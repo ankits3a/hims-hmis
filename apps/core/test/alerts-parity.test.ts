@@ -178,10 +178,14 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // placed in leg 1b (the 26-hour daily leg) on purpose: leg 1a pages at 300 s, which an
         // hourly job exceeds every hour by design. A dead worker still shows here within a day.
         "sweepOverdueQa",
+        // 20-U infra (owner 2026-10-04) — the twenty-fifth: the duty board's own 20:00/08:00 print.
+        // `every(60_000)`, so leg 1a, and an `absent()` term: a print that never ran is a wall
+        // carrying a sheet older than the board promises.
+        "printRosterBoard",
       ].sort(),
     );
-    expect(registered).toHaveLength(24); // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(24); // no job registered twice
+    expect(registered).toHaveLength(25); // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(25); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

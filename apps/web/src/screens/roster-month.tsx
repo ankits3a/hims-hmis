@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { dayWords } from "../lib/use-copilot";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
@@ -766,13 +767,14 @@ export function answerFromMonth(question: string, d: WireUnitMonth, t: T, lang: 
   else if (/\b(today|aaj|tonight)\b/.test(q)) day = today;
   if (day === undefined || !d.days.includes(day)) return null;
   const on = (night: boolean): string => d.assignments.filter((a) => a.istDate === day && a.kind === "duty" && a.night === night)
-    .map((a) => a.name ?? t("rosterMonth.vacantRow")).join(", ") || "—";
+    .map((a) => a.name ?? t("rosterMonth.vacantRow")).join(", ") || t("copilot.when.nobody");
   const away = d.leave.filter((l) => l.from <= day! && day! <= l.to).map((l) => d.people.find((p) => p.userId === l.userId)?.name ?? l.userId);
   const busy = new Set(d.assignments.filter((a) => a.istDate === day && a.userId !== null).map((a) => a.userId));
   const free = d.people.filter((p) => !busy.has(p.userId) && !away.includes(p.name) && cellFor(d, p.userId, day!, t)?.cls !== "rm-k-rest" && cellFor(d, p.userId, day!, t)?.cls !== "rm-k-none").map((p) => p.name);
+  // The boards' voice (review 2026-10-04): the day in words, "nobody" for an empty list — never a dash.
+  const list = (names: readonly string[]): string => (names.length === 0 ? t("copilot.when.nobody") : names.join(", "));
   return t("rosterMonth.answerDay", {
-    day: dayName(day, lang), night: on(true), dayDuty: on(false),
-    away: away.length === 0 ? "—" : away.join(", "), free: free.length === 0 ? "—" : free.join(", "),
+    day: dayWords(new Date(`${day}T12:00:00+05:30`), lang), night: on(true), dayDuty: on(false), away: list(away), free: list(free),
   });
 }
 

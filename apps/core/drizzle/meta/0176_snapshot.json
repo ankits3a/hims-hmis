@@ -1,6 +1,6 @@
 {
-  "id": "75d5d028-192b-4c4c-9610-fb8bc72783d8",
-  "prevId": "8531ddd1-5d99-4a76-b089-9fc23fef2925",
+  "id": "386f1ddb-da82-42af-9cb0-f1943f0f383c",
+  "prevId": "75d5d028-192b-4c4c-9610-fb8bc72783d8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -44589,6 +44589,18 @@
           "notNull": true,
           "default": "'main'"
         },
+        "aebas_entered_at": {
+          "name": "aebas_entered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "aebas_entered_by": {
+          "name": "aebas_entered_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -44630,6 +44642,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "roster_holidays_aebas_entered_by_users_id_fk": {
+          "name": "roster_holidays_aebas_entered_by_users_id_fk",
+          "tableFrom": "roster_holidays",
+          "tableTo": "users",
+          "columnsFrom": [
+            "aebas_entered_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -44651,6 +44676,10 @@
         "roster_holidays_pattern_ck": {
           "name": "roster_holidays_pattern_ck",
           "value": "\"roster_holidays\".\"pattern\" in ('as_sunday', 'opd_short', 'opd_off_ot_proceeds')"
+        },
+        "roster_holidays_aebas_ck": {
+          "name": "roster_holidays_aebas_ck",
+          "value": "(\"roster_holidays\".\"aebas_entered_at\" is null) = (\"roster_holidays\".\"aebas_entered_by\" is null)"
         }
       },
       "isRLSEnabled": false

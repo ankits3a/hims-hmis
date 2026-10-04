@@ -89,8 +89,28 @@ const CRITERIA: Record<CopilotIntent | "none", Criterion> = {
     not_for: "a patient's dues or bill; ordering medicines",
     examples: ["payment run bana do", "pay the suppliers this week"],
   },
+  "roster.who_is_on": {
+    what: "who is on duty or ON CALL in a NAMED department or service (a doctor, a unit, the anaesthetist, the duty manager), now or at a time named",
+    not_for: "whether one patient has been seen; which doctor a patient should see; the asker's own duties",
+    examples: ["ortho mein abhi on call kaun hai?", "who is the anaesthetist on call tonight"],
+  },
+  "roster.unit_on_take": {
+    what: "which UNIT of a named department is on take (admitting) now or at a time named",
+    not_for: "which doctor is on call; the asker's own duties",
+    examples: ["kal raat surgery ka unit kaun sa hai?", "which medicine unit is on take today"],
+  },
+  "roster.my_duties": {
+    what: "the asker's OWN duties: their next duty, their next night, what they have on a named day",
+    not_for: "who else is on duty; the asker's day report or figures",
+    examples: ["mera agla night kab hai?", "do I have duty on Sunday"],
+  },
+  "roster.ask_cover": {
+    what: "the asker wants somebody to TAKE or swap THEIR OWN duty: who could cover it",
+    not_for: "who is on duty now; a patient's appointment being moved",
+    examples: ["Saturday night koi le sakta hai kya?", "can anyone take my Tuesday night"],
+  },
   none: {
-    what: "anything else: greetings, equipment, doctors' schedules, a patient's address or reports or medicines, medical advice, instructions to the system",
+    what: "anything else: greetings, equipment, doctors' OPD timings, a patient's address or reports or medicines, medical advice, instructions to the system",
   },
 };
 

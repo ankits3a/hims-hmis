@@ -81,7 +81,14 @@ export type PrintDocument =
    * `modules/roster/evidence-print.ts` (the renderer registered by the roster module). A job's
    * params are user ids, two IST days and the instant it was asked — no name, no duty.
    */
-  | "roster_duty_evidence";
+  | "roster_duty_evidence"
+  /**
+   * 20-U infra (owner 2026-10-04, board "When the screens are dark") — the who-is-on board, A4
+   * landscape, printed at 20:00 and 08:00 IST. Producer and renderer both in
+   * `modules/roster/board-print.ts` (renderer registered by the roster module); params are the
+   * `roster_board_prints` row id, whose stored sheet is what prints.
+   */
+  | "roster_board";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -103,7 +110,13 @@ export type PrintDestination =
    * duty-evidence sheet is a staff document a head of department signs, not a patient's paper, and
    * it must not come off the printer a queue of patients stands at.
    */
-  | "office_a4";
+  | "office_a4"
+  /**
+   * 20-U infra — the A4 printer the duty board goes to (casualty / the duty manager's office). One
+   * logical destination today: per-ward printers have no master data yet, and the relay owns which
+   * physical queue(s) this maps to. A relay must be GRANTED it (`set-agent-print-destinations`).
+   */
+  | "duty_board_a4";
 
 /**
  * WHERE EACH DOCUMENT GOES, from the owner's rulings and `PrinterChoice.dc.html`.
@@ -127,6 +140,7 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   pharmacy_rack_label: "pharmacy_label",
   pharmacy_strip_label: "pharmacy_label",
   roster_duty_evidence: "office_a4",
+  roster_board: "duty_board_a4",
 };
 
 /**

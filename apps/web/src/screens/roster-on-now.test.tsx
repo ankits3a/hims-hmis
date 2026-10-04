@@ -77,8 +77,11 @@ describe("RosterOnNow (20-U U5a)", () => {
   const asked: string[] = [];
   const posted: { url: string; body: unknown }[] = [];
   let declarations: WireDeclarationsView = NO_DECLARE;
+  const NOT_UNDERSTOOD = { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null };
+  let reply: unknown = NOT_UNDERSTOOD;
   beforeEach(() => {
     setToken("t");
+    reply = NOT_UNDERSTOOD;
     asked.length = 0;
     posted.length = 0;
     declarations = NO_DECLARE;
@@ -87,12 +90,13 @@ describe("RosterOnNow (20-U U5a)", () => {
       asked.push(raw);
       if (init?.method === "POST" && !raw.endsWith("/copilot/ask")) posted.push({ url: raw, body: JSON.parse(String(init.body ?? "{}")) });
       const body = raw.includes("/roster/flags") ? { flagId: "f1", ok: true }
+        : raw.endsWith("/roster/covers") ? { requestId: "r1" }
         : raw.includes("/roster/declarations") || raw.includes("/roster/holidays") || raw.includes("/roster/modes") ? declarations
         : raw.includes("/roster/as-it-stood") ? STOOD
         : raw.endsWith("/auth/me")
         ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } }
         : raw.endsWith("/ops/mode") ? { mode: "normal", since: null, note: null, reportId: null }
-          : raw.endsWith("/copilot/ask") ? { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null }
+          : raw.endsWith("/copilot/ask") ? reply
             : BOARD;
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
@@ -169,9 +173,54 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(sheet).toHaveTextContent("SR Dr. Aditi Deshmukh · 9876543210");
     expect(sheet).toHaveTextContent("General Surgery");
     expect(sheet).toHaveTextContent(/Printed /);
-    // The card says what is true: printing is by hand; it does not claim a copy was printed.
-    expect(screen.getByTestId("on-now-dark")).toHaveTextContent("It does not print itself yet");
+    // The card says what is true: with no print on record it claims no copy and offers no download.
+    expect(screen.getByTestId("board-print-status")).toHaveTextContent("The server has not drawn this board yet");
     expect(screen.getByTestId("on-now-dark")).not.toHaveTextContent(/Last printed/);
+    expect(screen.queryByTestId("board-print-download")).toBeNull();
+  });
+
+  /* ═══ 20-U infra (owner 2026-10-04) — the card reads the RECORD of the 20:00 / 08:00 print ═══ */
+  const PRINT = {
+    printId: "p1", slotAt: "2026-10-05T14:30:00.000Z", renderedAt: "2026-10-05T14:30:02.000Z", outcome: "queued" as const,
+    destinations: ["duty_board_a4"], copies: { queued: 1, printed: 0, waiting: 0, failed: 0 }, lastPrintedAt: null, nextAt: "2026-10-06T02:30:00.000Z",
+  };
+  const withPrint = (lastPrint: WireOnNowBoard["lastPrint"]): void => {
+    const inner = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (raw.endsWith("/api/roster/on-now")) return new Response(JSON.stringify({ ...BOARD, lastPrint }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (raw.includes("/roster/board-prints/")) {
+        asked.push(raw);
+        return new Response(JSON.stringify({ html: "<!doctype html><p>board</p>", title: "Who is on duty", page: { widthMm: 297, heightMm: 210 } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return inner(input, init);
+    }));
+  };
+
+  it("a printed copy is counted only from the relay's report: \"Last printed 20:00 · 1 copy\"", async () => {
+    withPrint({ ...PRINT, copies: { queued: 1, printed: 1, waiting: 0, failed: 0 }, lastPrintedAt: "2026-10-05T14:30:20.000Z" });
+    renderWithProviders(<RosterOnNow />);
+    await vi.waitFor(() => expect(screen.getByTestId("board-print-status")).toHaveTextContent("Last printed 20:00 · 1 copy"));
+  });
+
+  it("a sheet sent and not yet printed is not called printed", async () => {
+    withPrint({ ...PRINT, copies: { queued: 1, printed: 0, waiting: 1, failed: 0 } });
+    renderWithProviders(<RosterOnNow />);
+    await vi.waitFor(() => expect(screen.getByTestId("board-print-status")).toHaveTextContent("The 20:00 sheet went to the printer and has not printed yet."));
+    expect(screen.getByTestId("on-now-dark")).not.toHaveTextContent(/Last printed/);
+  });
+
+  it("with no printer connected the card says the sheet was generated, and the sheet downloads", async () => {
+    withPrint({ ...PRINT, outcome: "no_printer", destinations: [], copies: { queued: 0, printed: 0, waiting: 0, failed: 0 } });
+    const doc = { write: vi.fn(), close: vi.fn() };
+    const open = vi.fn(() => ({ document: doc, focus: vi.fn(), print: vi.fn(), onload: null }));
+    vi.stubGlobal("open", open);
+    renderWithProviders(<RosterOnNow />);
+    await vi.waitFor(() => expect(screen.getByTestId("board-print-status")).toHaveTextContent("Generated 20:00 — no printer is connected for the board, so nothing was printed."));
+    expect(screen.getByTestId("on-now-dark")).not.toHaveTextContent(/Last printed/);
+    await userEvent.click(screen.getByTestId("board-print-download"));
+    await vi.waitFor(() => expect(doc.write).toHaveBeenCalledWith("<!doctype html><p>board</p>"));
+    expect(asked.some((u) => u.endsWith("/api/roster/board-prints/p1/document"))).toBe(true);
   });
 
   it("the ask bar answers from the board when the hospital copilot does not understand", async () => {
@@ -179,13 +228,67 @@ describe("RosterOnNow (20-U U5a)", () => {
     renderWithProviders(<RosterOnNow />);
     await screen.findByTestId("dept-MED");
     await user.type(screen.getByLabelText("Ask the copilot"), "medicine mein on call kaun hai?{Enter}");
-    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("General Medicine: Unit I is on take till 08:00. In the building: SR Dr. Aditi Deshmukh, JR Dr. Yusuf Qureshi. Faculty on call: Dr. S. P. Tripathi.");
+    // The same boards' voice as the server's tool (review 2026-10-04): "right now", the handover in words.
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("In General Medicine right now, Unit I is on take until Tuesday 6 Oct, 08:00. In the hospital: SR Dr. Aditi Deshmukh, JR Dr. Yusuf Qureshi. Faculty on call: Dr. S. P. Tripathi.");
     expect(asked.some((u) => u.endsWith("/api/copilot/ask"))).toBe(true);
+  });
+
+  /* 20-U U9 — once the server's roster tools answer, the ask bar says THEIR answer; the board's own
+     answerer above runs only when the server says it did not understand. */
+  it("the ask bar says the server's roster answer, not the board's guess, when the copilot understood", async () => {
+    reply = {
+      answer: { key: "copilot.answer.rosterWhoIsOn", params: { dept: "Orthopaedics", when: "now", unit: "Unit II", till: "2026-10-06T02:30:00.000Z", here: "SR Dr. Rao", fac: "" } },
+      source: "phrasebook", intent: "roster.who_is_on",
+    };
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    await screen.findByTestId("dept-MED");
+    await user.type(screen.getByLabelText("Ask the copilot"), "ortho mein abhi on call kaun hai?{Enter}");
+    // The board's voice: a day in words, "right now", "nobody" — never a log line of numeric stamps and dashes.
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("In Orthopaedics right now, Unit II is on take until Tuesday 6 Oct, 08:00. In the hospital: SR Dr. Rao. Faculty on call: nobody.");
+    // 2026-09-25 owner ruling: the answer is a LIGHT card with a way out — a close button, and Esc.
+    await user.click(screen.getByRole("button", { name: "Close the answer" }));
+    expect(screen.queryByTestId("desk-ask-answer")).toBeNull();
+    await user.type(screen.getByLabelText("Ask the copilot"), "{Enter}");
+    expect(await screen.findByTestId("desk-ask-answer")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("desk-ask-answer")).toBeNull();
+  });
+
+  it("roster.ask_cover: the ask bar shows the DRAFT, asks nobody by itself, and sends the request only on the person's tap", async () => {
+    reply = {
+      answer: {
+        key: "copilot.answer.rosterCoverDraft",
+        params: { day: "2026-10-10", from: "20:00", till: "08:00", n: 2, names: "Dr. Rohit Bansal, Dr. Aman Gupta" },
+        payload: {
+          kind: "roster_cover_draft", assignmentId: "A-1", post: "Ward junior resident", unit: "General Medicine Unit II",
+          startsAt: "2026-10-10T14:30:00.000Z", endsAt: "2026-10-11T02:30:00.000Z", night: true, more: 0, cannot: 1,
+          canTake: [
+            { userId: "u-rohit", name: "Dr. Rohit Bansal", grade: "jr1", teamName: "General Medicine Unit II", crossUnit: false },
+            { userId: "u-aman", name: "Dr. Aman Gupta", grade: "jr2", teamName: "General Medicine Unit I", crossUnit: true },
+          ],
+        },
+      },
+      source: "phrasebook", intent: "roster.ask_cover",
+    };
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    await screen.findByTestId("dept-MED");
+    await user.type(screen.getByLabelText("Ask the copilot"), "Saturday night koi le sakta hai kya?{Enter}");
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Your night on Saturday 10 Oct (20:00–08:00): Dr. Rohit Bansal, Dr. Aman Gupta can take it. Nothing is asked yet — tap Ask to send one request.");
+    const draft = await screen.findByTestId("cover-draft");
+    expect(draft).toHaveTextContent("Dr. Aman Gupta");
+    expect(draft).toHaveTextContent("Another unit, so the HOD also approves");
+    // The draft asked nobody.
+    expect(posted.filter((p) => p.url.endsWith("/roster/covers"))).toEqual([]);
+    await user.click(screen.getByTestId("cover-ask-u-rohit"));
+    expect(await screen.findByTestId("cover-draft-sent")).toHaveTextContent("Asked Dr. Rohit Bansal.");
+    expect(posted.filter((p) => p.url.endsWith("/roster/covers")).map((p) => p.body)).toEqual([{ assignmentId: "A-1", counterpartId: "u-rohit" }]);
   });
 
   it("the board's own answerer: a service by name, and nothing for a question it cannot place", () => {
     const t = (k: string, o?: Record<string, unknown>): string => `${k}${o === undefined ? "" : JSON.stringify(o)}`;
-    expect(answerFromBoard("who is the duty manager", BOARD, t)).toContain("rosterOnNow.answer.service");
+    expect(answerFromBoard("who is the duty manager", BOARD, t)).toContain("copilot.answer.rosterWhoService");
     expect(answerFromBoard("what is the weather", BOARD, t)).toBeNull();
   });
 

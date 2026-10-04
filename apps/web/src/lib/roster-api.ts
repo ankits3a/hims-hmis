@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import type { WireRenderedDocument } from "./print-api";
 
 /**
  * 20-U U5a — the wire contract of `roster-board.controller.ts` (`GET /roster/on-now`), transcribed
@@ -36,7 +37,23 @@ export type WireOnNowBoard = {
   departments: WireBoardDepartment[]; services: WireBoardService[]; holes: WireBoardHole[];
   /** 20-U U6 (I22) — open "this is wrong" flags. Optional: a board read before U6 carries none. */
   flags?: WireRosterFlag[];
+  /** 20-U infra — the RECORD of the last scheduled print (20:00 / 08:00 IST). Optional: older servers send none. */
+  lastPrint?: WireBoardPrint | null;
 };
+
+/**
+ * 20-U infra (owner 2026-10-04) — `board-print.ts` `lastBoardPrint`. `outcome` is what the server
+ * did (`no_printer`: no relay is granted the board's printer, nothing was queued); `copies.printed`
+ * is paper a relay REPORTED, never the number queued.
+ */
+export type WireBoardPrint = {
+  printId: string; slotAt: string; renderedAt: string; outcome: "queued" | "no_printer"; destinations: string[];
+  copies: { queued: number; printed: number; waiting: number; failed: number };
+  lastPrintedAt: string | null; nextAt: string;
+};
+/** One recorded board sheet as drawn at its instant — the house `{ html, title, page }` shape. */
+export const fetchBoardPrintDocument = (printId: string) =>
+  api<WireRenderedDocument>("GET", `/roster/board-prints/${encodeURIComponent(printId)}/document`);
 
 /** `at` omitted is the server's now. */
 export const fetchOnNowBoard = (at?: string) =>
@@ -254,3 +271,15 @@ export const markAebasEntered = (key: string) => {
   const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
   return api<WireAebasTodo>("POST", kind === "holiday" ? `/roster/aebas/holidays/${id}/entered` : `/roster/aebas/absences/${encodeURIComponent(id)}/entered`);
 };
+
+/* ═══ 20-U U7 — which unit (and which of its doctors) hold each OPD clinic on a day ═══ */
+
+export type WireOpdUnitDoctor = { userId: string; name: string; role: "head" | "faculty" | "senior_resident" };
+export type WireOpdUnit = {
+  teamId: string; code: string; name: string; short: string; startsAt: string; endsAt: string; doctors: WireOpdUnitDoctor[];
+};
+/** One OPD clinic (`opdDepartmentId` — the id Desk One's department cards carry) and its unit(s) that day. */
+export type WireOpdDepartmentUnits = { opdDepartmentId: string; departmentId: string; units: WireOpdUnit[] };
+
+export const fetchOpdUnits = (date: string) =>
+  api<WireOpdDepartmentUnits[]>("GET", `/roster/opd-units?date=${encodeURIComponent(date)}`);

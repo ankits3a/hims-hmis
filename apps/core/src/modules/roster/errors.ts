@@ -104,6 +104,8 @@ export const ROSTER_ERROR_CODES = [
   "cover_self_approval",
   "unknown_flag",
   "flag_already_resolved",
+  /** 20-U infra — a board print id that names no recorded sheet. */
+  "unknown_board_print",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -176,6 +178,7 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   cover_self_approval: "the people giving and taking a duty are not the people who approve it; ask whoever answers for the unit",
   unknown_flag: "there is no such flag on the who-is-on board",
   flag_already_resolved: "somebody has already dealt with this flag, and the time they did it stands",
+  unknown_board_print: "there is no printed board sheet with that id",
 };
 
 export class RosterError extends Error {
@@ -252,6 +255,7 @@ const STATUS: Record<RosterErrorCode, number> = {
   cover_self_approval: 409,
   unknown_flag: 404,
   flag_already_resolved: 409,
+  unknown_board_print: 404,
 };
 
 export function rosterHttpStatus(code: RosterErrorCode): number {

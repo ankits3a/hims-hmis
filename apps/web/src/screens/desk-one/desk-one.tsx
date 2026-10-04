@@ -14,6 +14,7 @@ import { fetchFeeQuote, issueInvoice, billingErrorMessage, fetchCurrentSession, 
 import type { TenderMode } from "../../lib/billing-api";
 import { fetchRecognition } from "../../lib/membership-api";
 import { fetchDesk } from "../../lib/desk-api";
+import { fetchOpdUnits } from "../../lib/roster-api";
 import {
   ageYearsOf, billOf, deptQueues, firstFreeDoctor, inHall, invoiceLinesOf, istClock, istDateLabel,
   laneOf, flowOf, LANE_TEXT, logged, openVisitsToday, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
@@ -154,6 +155,17 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     queryKey: ["d1", "summary", serviceDate],
     queryFn: () => listQueueSummary(serviceDate),
     refetchInterval: 20_000,
+  });
+  /*
+   * 20-U U7 — WHICH UNIT HOLDS TODAY'S OPD, from the roster's published calendar. Read-only: the
+   * queue is still doctor-days and nothing here seats anybody. A seat without `roster.read` does not
+   * ask; a failed read or a department that runs no units draws nothing on its card.
+   */
+  const opdUnits = useQuery({
+    queryKey: ["d1", "opd-units", serviceDate],
+    queryFn: () => fetchOpdUnits(serviceDate),
+    enabled: can("roster.read"),
+    staleTime: 5 * 60_000,
   });
   /*
     ═══ FD-26 — THE MONEY READS BELONG TO THE SEATS THAT TAKE MONEY ═══
@@ -1370,6 +1382,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     departments: departments.data?.items ?? [],
     summaries: summaries.data?.items ?? [],
     queues,
+    opdUnits: new Map((opdUnits.data ?? []).map((x) => [x.opdDepartmentId, x.units])),
     quote: quote.data ?? null,
     bill,
     serviceDate,

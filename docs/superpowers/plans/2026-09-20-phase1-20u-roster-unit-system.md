@@ -463,3 +463,53 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
 - **Left for later:** paging the duty manager on a flag; WhatsApp to the person asked; the board's
   per-hole "Asked: … waiting for her yes" line (a vacancy cover, U6 covers filled duties); U9's
   copilot `roster.ask_cover`.
+
+### U7 — OPD reads the unit calendar, read-only (`GET /roster/opd-units?date=`; Desk One; the OPD day report)
+
+- **DECIDED — the unit is read from the published cycle's `opd` windows** (`roster_duty_windows`,
+  live rows only), keyed by the OPD clinic the department runs (`org_departments.opd_department_id`).
+  A declared holiday that withdraws OPD supersedes the windows, so it withdraws the answer too.
+  `opdUnitsOn` (`modules/roster/opd-units.ts`) is the one read; the OPD module reaches it through
+  `roster/index.ts` and no OPD signature changed. The queue is untouched — a session is a doctor-day.
+- **DECIDED — the doctors named are the unit's head, faculty and senior residents** at the window's
+  start: who an Indian teaching OPD's patients are seen by and ask for by name. Juniors and interns
+  are not named to the front desk.
+- **DECIDED — where the front desk sees it: Desk One's department card**, one line under the
+  department's name — "Unit II holds today's OPD · Dr. A, Dr. B, Dr. C". A department running no
+  units (or with no OPD window that day) draws nothing — no "Unit —". The read is asked only by a
+  seat holding `roster.read` (front office already holds it, U5a); a failed read draws nothing.
+- **DECIDED — the OPD day report names the unit for a single DAY only** (screen row, PDF row,
+  department sheet subtitle "OPD held by Unit II", CSV "OPD unit" column/row). A week or a month
+  passes through every unit, so it names none. The CSV gains its column only when some clinic ran on
+  the unit calendar that day, so an install without units gets the CSV it had.
+
+### U9 — Copilot tools (`roster.who_is_on`, `roster.unit_on_take`, `roster.my_duties`, `roster.ask_cover`)
+
+- **DECIDED — the four are module tools** (`modules/roster/copilot-tools.ts`, on the roster manifest's
+  `copilotTools`), each gated on `roster.read` by the runner and asking the act matrix as the copilot
+  (`requireRosterAct(…, "read", {}, "copilot")`). The kernel gains only the four intents (phrasebook
+  cues, the classifier's criteria, the router's menu) and the contracts gain their answer keys.
+- **DECIDED — `roster.ask_cover` drafts; it never asks.** It reads `coverOptions` for the asker's own
+  duty and returns the people who can take it as a `payload`; the ask bar shows them with an *Ask*
+  button that calls the normal `POST /roster/covers` as the person. `request_cover` stays `never`
+  for the copilot in the matrix — the tool imports no writer.
+- **DECIDED — "kal" is tomorrow unless the sentence is past tense** ("kal raat kaun tha" →
+  yesterday): Hindi has one word for both. A weekday is the next one (today if today); a night is
+  22:00 of that day (a take or a night duty is what is meant); a day with no time is 10:00; nothing
+  named is now. "My next night" names no day.
+- **DECIDED — bare "medicine" is General Medicine**, not Respiratory Medicine (asked as "chest"/"TB");
+  counter aliases (ortho, gynae, paeds, eye, skin, haddi, aankh …) are matched before name prefixes,
+  and an ambiguous name asks "which department?" rather than guessing.
+- **DECIDED — bare "badal" is not a cover cue**: "doctor badal do" at a counter is about a patient's
+  doctor. "duty badal", "swap", "le sakta", "meri jagah" are.
+- **DECIDED — the ask bar's local answerers stay, as the fallback only**: `useCopilot` already asks
+  the server first and runs the screen's own answerer only when the server says "not understood".
+  With the tools live, a roster question is the server's answer.
+- **DECIDED (review 2026-10-04) — the answer is a LIGHT card** in the frame every roster screen
+  shares (owner, 2026-09-25: dark only for accents): white card, mint left edge, mint *Ask* buttons;
+  a × and Esc put it away; its body scrolls inside a bounded height, so at 390 px it fits the screen.
+- **DECIDED (review 2026-10-04) — the answers speak in the boards' voice.** Days travel as IST dates
+  and instants as ISO; the web says them in the reader's language ("Saturday 10 Oct", "on Saturday
+  10 Oct at 22:00", "right now"), an empty list as "nobody" — never "10-10-2026 22:00" or "—".
+- **Left for later:** a WhatsApp nudge to the person asked; the copilot on My duties itself (that
+  screen has no ask bar on its approved board).

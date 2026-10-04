@@ -287,6 +287,13 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // 20-U I1/I5/I23 — two reads.
     declarationsView: "a read, guarded by `requireRosterAct(…, \"read\")`; its `youMay` PROBES `declare` and grants nothing",
     boardAsItStood: "a read — the board as PUBLISHED at a past instant and the changes since; guarded at its route like `onNowBoard`",
+    // 20-U U7 — OPD reads the unit calendar.
+    opdUnitsOn: "a read — which unit (and doctors) hold each OPD clinic on a day; guarded at its route like `onNowBoard`, read as data by the OPD day report",
+    shortUnitName: "PURE: a unit's name in, the name without its department out",
+    // 20-U U9 — the copilot's roster tools. Each tool's `run` asks `requireRosterAct(…, "read", {}, "copilot")`.
+    rosterCopilotTools: "builds the four tool declarations; each one's run is a READ guarded by the act matrix as the copilot, and `ask_cover` returns a draft and writes nothing",
+    whenOf: "PURE: a question and an instant in, the instant it asks about out",
+    departmentOf: "PURE: a question and a list in, the department it names out",
     publishedAsKnownAt: "a read on the knowledge axis — `asKnownAt` across every scope",
     windowAsKnownAt: "a read on the knowledge axis — the take/backup window in force at an instant, as known then",
     boardColumn: "pure: which board column a position belongs in, from the position master",
@@ -300,6 +307,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // R6
     escalationRecipients: "a read, called from the worker's own consumers, which run as the kernel and carry their own authority — there is no Actor at 02:14 and inventing one would be the wrong shape",
     escalationTarget: "a read",
+    dutyManagersAt: "a read, called from the kernel alerts consumer for a \"this is wrong\" flag — the roster's duty manager at an instant, else the role's holders; no Actor, as escalationRecipients",
     listEscalationTargets: "a read",
     // R7 — pure arithmetic and reads.
     istMidnightUtc: "pure: the one place a calendar day becomes an instant",
@@ -331,6 +339,17 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     coverRequests: "a read, guarded by `read`, and filtered to the reader's own requests and those they could approve",
     myDutyRows: "a read of the ACTOR's own duties, asked with the actor's own id; guarded by `read`",
     myDuties: "a read — My duties, composed of the reads above; the reader's own and nobody else's",
+    flagForAlert: "a read — one flag's line, department and staff names for the duty manager's bell row; called from the kernel alerts consumer, no Actor",
+    // 20-U infra (owner 2026-10-04) — the board prints itself at 20:00 and 08:00 IST.
+    boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant is due",
+    nextBoardSlot: "PURE: the next 08:00/20:00 IST instant",
+    boardPrinterGranted: "a read — is any live relay granted the board's print destination",
+    renderBoardSheet: "a read — draws the who-is-on board as HTML; writes nothing",
+    printBoardIfDue: "the scheduler's print of the board. It writes a PRINT RECORD and, when a relay is granted the destination, a print job — never a roster row — and decides nothing about who is on; there is no Actor at 20:00",
+    renderBoardPrintJob: "a read — the stored sheet for the print relay's claim, refused when stale",
+    registerRosterPrinting: "registers the renderer with the kernel's print rail at boot; acts on nothing",
+    lastBoardPrint: "a read — the last print record and its jobs' statuses, for the board's card",
+    boardPrintDocument: "a read — one recorded sheet, for download; the route asks `read` first",
     openFlags: "a read — the open \"this is wrong\" flags for the board's holes card; `youMayResolve` PROBES `propose`",
     // 20-U U8 / U8b — reads, each guarded by the act inside it.
     dutyEvidence: "a read — guarded by `read_evidence` AT EACH PERSON'S DEPARTMENT before a row about them is read; selects no phone, no leave kind, no reason",

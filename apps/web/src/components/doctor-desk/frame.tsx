@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type React from "react";
 import { useAuth } from "../../lib/auth";
 import { useCopilot } from "../../lib/use-copilot";
+import { askCover, rosterErrorText } from "../../lib/roster-api";
 import { ModeBanner } from "../mode-banner";
 import "./frame.css";
 
@@ -241,14 +242,34 @@ export function AskBar({ id, placeholder, fallback, terms }: {
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const copilot = useCopilot({ fallback, terms });
+  /*
+    THE ANSWER IS A LIGHT CARD THAT CAN BE PUT AWAY (owner, 2026-09-25: "this dark color background is
+    feeling so heavy to eyes"; coordinator review 2026-10-04). It sits over the board the person is
+    reading, so it always has a way out — the × and Esc — and a new question opens it again. Its body
+    scrolls inside a bounded height, so at 390 px it never runs off the screen.
+  */
+  const [shut, setShut] = useState(false);
+  const open = !shut && (copilot.answer !== null || copilot.busy);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") setShut(true); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
   return (
     <form
       className="ddf-ask" data-testid="desk-ask"
-      onSubmit={(e) => { e.preventDefault(); copilot.ask(draft); }}
+      onSubmit={(e) => { e.preventDefault(); setShut(false); copilot.ask(draft); }}
     >
-      {(copilot.answer !== null || copilot.busy) && (
-        <div className="ddf-ask-answer" role="status" data-testid="desk-ask-answer">
-          {copilot.busy ? t("doctorDesk.asking") : copilot.answer}
+      {open && (
+        <div className="ddf-ask-pop" data-testid="desk-ask-pop">
+          <button type="button" className="ddf-ask-close" aria-label={t("doctorDesk.closeAnswer")} onClick={() => setShut(true)}>×</button>
+          <div className="ddf-ask-body">
+            <div className="ddf-ask-answer" role="status" data-testid="desk-ask-answer">
+              {copilot.busy ? t("doctorDesk.asking") : copilot.answer}
+            </div>
+            {!copilot.busy && isCoverDraft(copilot.payload) && <CoverDraft key={copilot.payload.assignmentId} draft={copilot.payload} />}
+          </div>
         </div>
       )}
       <div className="ddf-ask-row">
@@ -260,5 +281,55 @@ export function AskBar({ id, placeholder, fallback, terms }: {
         />
       </div>
     </form>
+  );
+}
+
+/**
+ * 20-U U9 — `roster.ask_cover`'s DRAFT: who can take the asker's duty, from the server's "who can
+ * take it" (`coverOptions`). The copilot asked nobody; the request is sent HERE, by the person's own
+ * tap, through the same `POST /roster/covers` My duties uses — so the act is the person's, under the
+ * person's own grant, and the validator checks it again as it is made.
+ */
+type CoverDraftPayload = {
+  kind: "roster_cover_draft"; assignmentId: string; post: string; unit: string;
+  canTake: { userId: string; name: string; grade: string; teamName: string; crossUnit: boolean }[];
+  more: number;
+};
+
+function isCoverDraft(p: unknown): p is CoverDraftPayload {
+  return typeof p === "object" && p !== null && (p as { kind?: unknown }).kind === "roster_cover_draft"
+    && Array.isArray((p as { canTake?: unknown }).canTake);
+}
+
+function CoverDraft({ draft }: { draft: CoverDraftPayload }): React.ReactElement {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const ask = (c: CoverDraftPayload["canTake"][number]): void => {
+    setBusy(true); setError(null);
+    askCover({ assignmentId: draft.assignmentId, counterpartId: c.userId })
+      .then(() => { setDone(t("doctorDesk.coverAsked", { name: c.name })); })
+      .catch((e: unknown) => { setError(rosterErrorText(e, t)); })
+      .finally(() => { setBusy(false); });
+  };
+  if (done !== null) return <div className="ddf-ask-draft" role="status" data-testid="cover-draft-sent">{done}</div>;
+  return (
+    <div className="ddf-ask-draft" data-testid="cover-draft">
+      {draft.canTake.map((c) => (
+        <div key={c.userId} className="ddf-ask-can">
+          <span className="ddf-ask-can-name">{c.name}</span>
+          <span className="ddf-ask-can-line">
+            {[t(`doctorDesk.grade.${c.grade}`, { defaultValue: c.grade }), c.teamName].join(" · ")}
+            {c.crossUnit ? ` · ${t("rosterMyDuties.pick.crossUnit")}` : ""}
+          </span>
+          <button type="button" className="ddf-ask-can-ask" disabled={busy} onClick={() => ask(c)} data-testid={`cover-ask-${c.userId}`}>
+            {t("rosterMyDuties.pick.ask")}
+          </button>
+        </div>
+      ))}
+      {draft.more > 0 && <div className="ddf-ask-can-more">{t("doctorDesk.coverMore", { count: draft.more })}</div>}
+      {error !== null && <div className="ddf-ask-can-error" role="alert">{error}</div>}
+    </div>
   );
 }

@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
 import { fmtIst } from "../lib/format";
+import { sayParams } from "../lib/use-copilot";
 import { todayIst } from "../lib/opd-api";
 import {
-  declareHoliday, declareSkeleton, fetchAsItStood, fetchDeclarations, fetchOnNowBoard, raiseRosterFlag, resolveRosterFlag, rosterErrorText, withdrawSkeleton,
+  declareHoliday, declareSkeleton, fetchAsItStood, fetchBoardPrintDocument, fetchDeclarations, fetchOnNowBoard, raiseRosterFlag, resolveRosterFlag, rosterErrorText, withdrawSkeleton,
 } from "../lib/roster-api";
 import { useAuth } from "../lib/auth";
+import { openDocumentForPrinting } from "../lib/print-api";
 import { DmyDateInput } from "../components/dmy-date-input";
 import type {
   HolidayKind, HolidayPattern, WireAsItStoodBoard, WireAsItStoodChange, WireBoardDepartment, WireBoardHole, WireBoardService,
@@ -109,7 +111,7 @@ export function RosterOnNow({ at, stood }: Props): React.ReactElement {
       ask={b === undefined ? undefined : (
         <AskBar
           id="ask-on" placeholder={t("rosterOnNow.askPlaceholder")}
-          fallback={(question) => answerFromBoard(question, b, t)}
+          fallback={(question) => answerFromBoard(question, b, t, lang, stoodAt === null && at === undefined && !ahead)}
           terms={() => boardNames(b)}
         />
       )}
@@ -404,12 +406,7 @@ function Rail({ b }: { b: WireOnNowBoard }): React.ReactElement {
         ))}
         <WrongFlag b={b} />
       </section>
-      <section className="ddf-card ro-rail-card ddf-noprint" data-testid="on-now-dark">
-        <h2 className="ro-rail-h">{t("rosterOnNow.darkTitle")}</h2>
-        <span className="ro-rail-p">{t("rosterOnNow.darkText")}</span>
-        <button type="button" className="ddf-btn ddf-btn-pri ro-print" data-testid="print-board" onClick={() => window.print()}>{t("rosterOnNow.printIt")}</button>
-        <span className="ro-small">{t("rosterOnNow.darkNotYet")}</span>
-      </section>
+      <DarkCard b={b} />
       <section className="ddf-card ro-rail-card ddf-noprint">
         <h2 className="ro-rail-h">{t("rosterOnNow.arrivingTitle")}</h2>
         <span className="ro-rail-p">{t("rosterOnNow.arrivingText")}</span>
@@ -731,6 +728,45 @@ function ModeRow({ m, busy, onWithdraw }: { m: WireDeclarationsView["modes"][num
 }
 
 /**
+ * 20-U infra (owner 2026-10-04) — **"WHEN THE SCREENS ARE DARK"**, read off the RECORD of the last
+ * scheduled print (`lastPrint`), never off the schedule: "Last printed 20:00 · 1 copy" only when a
+ * relay reported paper; "Generated 20:00 — no printer is connected" when nothing was queued; the
+ * recorded sheet is always offered for download (the browser's Save as PDF), and the hand print
+ * stays for a handover in between.
+ */
+function DarkCard({ b }: { b: WireOnNowBoard }): React.ReactElement {
+  const { t } = useTranslation();
+  const [blocked, setBlocked] = useState(false);
+  const p = b.lastPrint ?? null;
+  const time = p === null ? "" : fmtIst(p.slotAt);
+  const status = p === null ? null
+    : p.outcome === "no_printer" ? t("rosterOnNow.printNoPrinter", { time })
+      : p.copies.printed > 0 ? t("rosterOnNow.printDone", { time, count: p.copies.printed })
+        : p.copies.waiting > 0 ? t("rosterOnNow.printWaiting", { time })
+          : t("rosterOnNow.printFailed", { time });
+  const download = async (): Promise<void> => {
+    if (p === null) return;
+    setBlocked(!openDocumentForPrinting(await fetchBoardPrintDocument(p.printId)));
+  };
+  return (
+    <section className="ddf-card ro-rail-card ddf-noprint" data-testid="on-now-dark">
+      <h2 className="ro-rail-h">{t("rosterOnNow.darkTitle")}</h2>
+      <span className="ro-rail-p">{t("rosterOnNow.darkText")}</span>
+      <span className="ro-small" data-testid="board-print-status">
+        {status ?? t("rosterOnNow.printNone", { next: "20:00 / 08:00" })}
+      </span>
+      {p !== null && (
+        <button type="button" className="ddf-btn" data-testid="board-print-download" onClick={() => { void download(); }}>
+          {t("rosterOnNow.printDownload", { time: fmtIst(p.slotAt) })}
+        </button>
+      )}
+      {blocked && <span className="ro-small" role="alert">{t("rosterOnNow.printBlocked")}</span>}
+      <button type="button" className="ddf-btn ddf-btn-pri ro-print" data-testid="print-board" onClick={() => window.print()}>{t("rosterOnNow.printIt")}</button>
+    </section>
+  );
+}
+
+/**
  * THE PAPER COPY — A4 landscape, one page: every department's unit on take, the people in the
  * building with their grade and number, the faculty on call, who covers, the services, and the
  * instant it was printed. Hidden on screen; `roster.css`'s print rules show only this.
@@ -799,26 +835,31 @@ const words = (s: string): string[] => s.toLowerCase().split(/[^a-zऀ-ॿ]+/).f
  * screen: a department (or a service) named by any word that starts its name, and who is on for it.
  * Used when the hospital copilot does not understand the question or cannot be reached.
  */
-export function answerFromBoard(question: string, b: WireOnNowBoard, t: T): string | null {
+export function answerFromBoard(question: string, b: WireOnNowBoard, t: T, lang = "en", isNow = true): string | null {
   const ws = words(question);
   const hit = (name: string): boolean => words(name).some((n) => ws.some((w) => n.startsWith(w) || w.startsWith(n)));
+  /*
+    THE SAME SENTENCES AS THE SERVER'S `roster.who_is_on` (review 2026-10-04): one voice whichever of
+    the two answers. The params take the server's shape — "now" or an instant, ISO handover, "" for
+    nobody — and `sayParams` says them in the reader's language.
+  */
+  const say = (key: string, params: Record<string, string>): string => t(key, sayParams(key, params, t, lang));
+  const when = isNow ? "now" : b.at;
   const d = b.departments.find((x) => hit(x.name) || ws.includes(x.code.toLowerCase()));
   if (d !== undefined) {
-    if (d.source !== "published") return t("rosterOnNow.answer.unpublished", { dept: d.name });
-    const unit = d.unitOnTake === null ? t("rosterOnNow.noUnit") : shortUnit(d.unitOnTake.name, d.name);
+    if (d.source !== "published") return say("copilot.answer.rosterWhoUnpublished", { dept: d.name, when });
     const here = d.inTheBuilding.map((p) => `${t(`rosterOnNow.grade.${p.cadre}`, { defaultValue: p.cadre })} ${p.name}`).join(", ");
-    const fac = d.facultyOnCall.map((r) => r.name ?? t("rosterOnNow.vacant")).join(", ");
-    return t("rosterOnNow.answer.dept", {
-      dept: d.name, unit, till: d.unitOnTake === null ? "" : fmtIst(d.unitOnTake.endsAt),
-      here: here === "" ? t("rosterOnNow.nobodyIn") : here, fac: fac === "" ? "—" : fac,
-    });
+    const fac = d.facultyOnCall.flatMap((r) => (r.name === null ? [] : [r.name])).join(", ");
+    return d.unitOnTake === null
+      ? say("copilot.answer.rosterWhoNoTake", { dept: d.name, when, here, fac })
+      : say("copilot.answer.rosterWhoIsOn", { dept: d.name, when, unit: shortUnit(d.unitOnTake.name, d.name), till: new Date(d.unitOnTake.endsAt).toISOString(), here, fac });
   }
   const s = b.services.find((x) => hit(t(`rosterOnNow.position.${x.positionKey}`, { defaultValue: x.positionLabel })) || hit(x.positionLabel));
   if (s !== undefined) {
     const role = t(`rosterOnNow.position.${s.positionKey}`, { defaultValue: s.positionLabel });
-    if (s.source !== "published") return t("rosterOnNow.answer.serviceUnpublished", { role });
-    return s.people.length === 0 ? t("rosterOnNow.answer.serviceNobody", { role })
-      : t("rosterOnNow.answer.service", { role, who: s.people.map((p) => p.name).join(", ") });
+    if (s.source !== "published") return say("copilot.answer.rosterWhoServiceUnpublished", { role });
+    return s.people.length === 0 ? say("copilot.answer.rosterWhoServiceNobody", { role, when })
+      : say("copilot.answer.rosterWhoService", { role, when, who: s.people.map((p) => p.name).join(", ") });
   }
   return null;
 }

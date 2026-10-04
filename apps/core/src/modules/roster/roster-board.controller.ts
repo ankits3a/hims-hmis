@@ -21,6 +21,9 @@ import type { MyDuties, RosterFlagView } from "./my-duties";
 import { boardAsItStood } from "./as-it-stood";
 import type { AsItStoodBoard } from "./as-it-stood";
 import { declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
+import { boardPrintDocument, lastBoardPrint } from "./board-print";
+import type { BoardPrintView } from "./board-print";
+import type { RenderedDocument } from "../../kernel/printing/render";
 import type { DeclarationsView } from "./declarations";
 import { dutyEvidence, evidencePeople } from "./evidence";
 import type { DutyEvidence, EvidencePickerDepartment } from "./evidence";
@@ -28,6 +31,9 @@ import { printDutyEvidence, renderEvidenceHtml } from "./evidence-print";
 import { aebasTodo, markHolidayAebasEntered } from "./aebas";
 import type { AebasTodo } from "./aebas";
 import { markAebasEntered } from "./absences";
+import { istDateOfInstant } from "./calendar";
+import { opdUnitsOn } from "./opd-units";
+import type { OpdDepartmentUnits } from "./opd-units";
 
 /**
  * 20-U U5a — **WHO IS ON NOW**, over HTTP. The roster module's first route.
@@ -47,7 +53,7 @@ export class RosterBoardController {
 
   @Get("on-now")
   @RequirePermission("roster.read", "hospital")
-  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard & { you: RosterSelf; flags: RosterFlagView[] }> {
+  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard & { you: RosterSelf; flags: RosterFlagView[]; lastPrint: BoardPrintView | null }> {
     try {
       const instant = at === undefined || at === "" ? new Date() : new Date(at);
       if (Number.isNaN(instant.getTime())) {
@@ -59,7 +65,27 @@ export class RosterBoardController {
       return {
         ...(await onNowBoard(this.db, instant)), you: await rosterSelf(this.db, actor, new Date()),
         flags: await openFlags(this.db, actor),
+        // 20-U infra (owner 2026-10-04) — the "When the screens are dark" card reads the RECORD of
+        // the last scheduled print, never a promise; additive.
+        lastPrint: await lastBoardPrint(this.db),
       };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 20-U infra (owner 2026-10-04) — one recorded board sheet (the 20:00 / 08:00 print), as drawn at
+   * its instant, for the browser's Save as PDF — the house `GET /print/jobs/:id/document` shape. It is
+   * the board a `roster.read` holder sees on the screen, at a past instant; phone numbers are those
+   * the paper on the wall carried.
+   */
+  @Get("board-prints/:printId/document")
+  @RequirePermission("roster.read", "hospital")
+  async boardPrint(@CurrentActor() actor: Actor, @Param("printId") printId: string): Promise<RenderedDocument> {
+    try {
+      await requireRosterAct(this.db, actor, "read");
+      const doc = await boardPrintDocument(this.db, printId);
+      if (doc === null) throw new RosterError("unknown_board_print", undefined, { printId });
+      return doc;
     } catch (e) { toHttp(e); }
   }
 
@@ -417,6 +443,25 @@ export class RosterBoardController {
     try {
       await withTx(this.db, (tx) => markHolidayAebasEntered(tx, actor, istDate));
       return await aebasTodo(this.db, actor, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ 20-U U7 — OPD READS THE UNIT CALENDAR (read-only) ═══
+   *
+   * `GET /roster/opd-units?date=YYYY-MM-DD` (IST; today by default): which unit, and which of its
+   * doctors, hold each OPD clinic that day. Desk One's department cards read it; a department that
+   * runs no units is absent, so the card draws nothing. The queue is not touched.
+   */
+  @Get("opd-units")
+  @RequirePermission("roster.read", "hospital")
+  async opdUnits(@CurrentActor() actor: Actor, @Query("date") date?: string): Promise<OpdDepartmentUnits[]> {
+    try {
+      const day = date === undefined || date === "" ? istDateOfInstant(new Date()) : date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) {
+        throw new RosterError("invalid_window", "`date` is an IST day — send YYYY-MM-DD", { date });
+      }
+      await requireRosterAct(this.db, actor, "read");
+      return await opdUnitsOn(this.db, day);
     } catch (e) { toHttp(e); }
   }
 }
