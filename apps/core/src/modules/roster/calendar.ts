@@ -8,6 +8,7 @@ import {
 import { orgDepartments } from "../../kernel/db/schema/org";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { unitCountsAt } from "./teams";
 import { appendEvent } from "../../kernel/events/append";
 import { rosterHolidayDeclared } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -538,9 +539,12 @@ export async function departmentsWithTakeGaps(
  * department with no cycle at all is the hole — which is exactly what the row's own comment has
  * said since R7 and what neither earlier version actually checked.
  */
-export async function departmentsWithoutPublishedCycle(exec: Db | Tx): Promise<string[]> {
-  const units = await (exec as Db).select({ departmentId: rosterTeams.departmentId })
-    .from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit"));
+export async function departmentsWithoutPublishedCycle(exec: Db | Tx, at: Date = new Date()): Promise<string[]> {
+  // 2026-10-04 (owner) — only a CONFIRMED unit makes a department unit-bearing (`unitCountsAt`):
+  // a seeded-but-unconfirmed Paediatrics has no unit to put on take, so its missing cycle is not a hole.
+  const units = (await (exec as Db).select({ departmentId: rosterTeams.departmentId, active: rosterTeams.active, validTo: rosterTeams.validTo })
+    .from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit")))
+    .filter((t) => unitCountsAt(t, at));
   const unitBearing = [...new Set(units.map((u) => u.departmentId))].sort();
   if (unitBearing.length === 0) return [];
   const published = await (exec as Db).select({ departmentId: rosterCycles.departmentId })

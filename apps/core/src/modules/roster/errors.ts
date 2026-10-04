@@ -78,6 +78,8 @@ export const ROSTER_ERROR_CODES = [
   "empty_cycle",
   "unknown_template",
   "template_needs_more_units",
+  /** 2026-10-04 — a cycle may put on take or in OPD only a unit a head has confirmed (`unitCountsAt`). */
+  "unit_not_confirmed",
 
   /* ── PHASE R (R8) — whether the roster is any good ── */
   /**
@@ -162,6 +164,7 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   empty_cycle: "a cycle with no days on it would leave the department with no calendar at all",
   unknown_template: "that is not one of the duty patterns this hospital offers",
   template_needs_more_units: "that pattern is written for more units than this department has, and applied to fewer it would give somebody two turns on take at once",
+  unit_not_confirmed: "that unit has not been confirmed by its head of department, so it cannot be given a turn on take or in OPD",
   blocked_by_findings: "this roster breaks a rule that stops it going live — the findings say which, and each one can be accepted, with a reason, by whoever answers for the department",
   unknown_rule: "that is not a rule in this hospital's book",
   unknown_finding: "that finding is not on this roster",
@@ -240,6 +243,7 @@ const STATUS: Record<RosterErrorCode, number> = {
   empty_cycle: 422,
   unknown_template: 404,
   template_needs_more_units: 422,
+  unit_not_confirmed: 422,
   cycle_not_draft: 409,
   unknown_escalation_kind: 422,
   unknown_absence_kind: 422,

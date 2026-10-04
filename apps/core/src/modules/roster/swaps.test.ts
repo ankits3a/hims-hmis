@@ -1,4 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
+import { confirmSeededUnits } from "../../../test/helpers/units";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
@@ -99,6 +100,7 @@ describe("roster — covers and swaps (20-U U6)", () => {
     await seedOrgDepartments(db);
     await seedRosterPositions(db);
     await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
     await seedRosterRules(db, "t");
     MED = (await db.select().from(orgDepartments)).find((d) => d.code === "MED")!.id;
     U1 = (await teamByCode(db, "MED-U1"))!.id;

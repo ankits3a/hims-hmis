@@ -79,8 +79,10 @@ describe("RosterOnNow (20-U U5a)", () => {
   let declarations: WireDeclarationsView = NO_DECLARE;
   const NOT_UNDERSTOOD = { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null };
   let reply: unknown = NOT_UNDERSTOOD;
+  let boardReply: WireOnNowBoard = BOARD;
   beforeEach(() => {
     setToken("t");
+    boardReply = BOARD;
     reply = NOT_UNDERSTOOD;
     asked.length = 0;
     posted.length = 0;
@@ -97,7 +99,7 @@ describe("RosterOnNow (20-U U5a)", () => {
         ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } }
         : raw.endsWith("/ops/mode") ? { mode: "normal", since: null, note: null, reportId: null }
           : raw.endsWith("/copilot/ask") ? reply
-            : BOARD;
+            : boardReply;
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
   });
@@ -122,6 +124,27 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(screen.getByTestId("on-now-clock")).toHaveTextContent("Tuesday 6 October, 02:40");
     expect(screen.getByTestId("on-now-note")).toHaveTextContent("It is past midnight, and Monday's units are still on take. They hand over at 08:00, not at 12.");
     expect(asked.some((u) => u.endsWith("/api/roster/on-now"))).toBe(true);
+  });
+
+  it("2026-10-04 — departments with OPD doctors but no confirmed unit are one quiet line, never a row or a hole", async () => {
+    boardReply = {
+      ...BOARD,
+      departmentsWithoutUnit: [
+        { departmentId: "d-comm", code: "COMM", name: "Community Medicine", doctors: 1 },
+        { departmentId: "d-ped", code: "PED", name: "Paediatrics", doctors: 2 },
+      ],
+    };
+    renderWithProviders(<RosterOnNow />);
+    const line = await screen.findByTestId("on-now-without-unit");
+    expect(line).toHaveTextContent("No unit yet: Community Medicine (1 OPD doctor) · Paediatrics (2 OPD doctors) — their OPD runs on each doctor's own days, and no unit is on take");
+    expect(screen.queryByTestId("dept-PED")).toBeNull();
+    expect(screen.queryByTestId("dept-COMM")).toBeNull();
+  });
+
+  it("no line at all when every department with doctors runs a unit (or the server is older)", async () => {
+    renderWithProviders(<RosterOnNow />);
+    await screen.findByTestId("dept-MED");
+    expect(screen.queryByTestId("on-now-without-unit")).toBeNull();
   });
 
   it("D6 — a call button for a person in the building with a number on file, and none without one", async () => {

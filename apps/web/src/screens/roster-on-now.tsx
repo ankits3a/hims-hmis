@@ -161,6 +161,18 @@ export function RosterOnNow({ at, stood }: Props): React.ReactElement {
               <span>{t("rosterOnNow.col.backup")}</span>
             </div>
             {b.departments.map((d) => <DepartmentRow key={d.departmentId} d={d} b={b} />)}
+            {/*
+              2026-10-04 (owner) — DECIDED: a department whose OPD has doctors but which runs no
+              confirmed unit (Paediatrics, sat by guest faculty) is one quiet line under the units,
+              never a row of its own and never a hole: there is no unit to put on take, so nothing is missing.
+            */}
+            {(b.departmentsWithoutUnit ?? []).length > 0 && (
+              <p className="ro-nounit" data-testid="on-now-without-unit">
+                <span className="ro-nounit-h">{t("rosterOnNow.withoutUnit")}</span>{" "}
+                {(b.departmentsWithoutUnit ?? []).map((x) => t("rosterOnNow.withoutUnitItem", { dept: x.name, count: x.doctors })).join(" · ")}
+                <span className="ro-nounit-note"> — {t("rosterOnNow.withoutUnitNote")}</span>
+              </p>
+            )}
           </section>
           <Services services={b.services} b={b} />
           <PrintSheet b={b} />

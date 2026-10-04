@@ -1,4 +1,5 @@
 import { newId } from "@hmis/contracts";
+import { confirmSeededUnits } from "../../../test/helpers/units";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
@@ -64,6 +65,7 @@ describe("roster — which unit holds the OPD (20-U U7)", () => {
     await seedOrgDepartments(db);
     await seedRosterPositions(db);
     await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
     MED = (await db.select().from(orgDepartments)).find((d) => d.code === "MED")!.id;
     U1 = (await teamByCode(db, "MED-U1"))!.id;
     U2 = (await teamByCode(db, "MED-U2"))!.id;

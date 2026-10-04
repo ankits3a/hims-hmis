@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
@@ -150,9 +151,11 @@ describe("roster — the unit's month (20-U U5b)", () => {
     expect(() => monthWindow("2026-13")).toThrow(RosterError);
   });
 
-  it("the units a person can open: departments that run units, each with its units — an unconfirmed unit flagged, not hidden", async () => {
+  it("the units a person can open: departments that run CONFIRMED units, each with them — an unconfirmed unit is not a unit yet (owner 2026-10-04)", async () => {
+    expect(await rosterUnits(db)).toEqual([]);
+    await db.update(rosterTeams).set({ active: true }).where(eq(rosterTeams.id, TEAM));
     const list = await rosterUnits(db);
-    expect(list).toEqual([{ departmentId: MED, code: "MED", name: "General Medicine", units: [{ teamId: TEAM, code: "MED-U2", name: "Medicine Unit II", confirmed: false }] }]);
+    expect(list).toEqual([{ departmentId: MED, code: "MED", name: "General Medicine", units: [{ teamId: TEAM, code: "MED-U2", name: "Medicine Unit II", confirmed: true }] }]);
   });
 
   it("an undrafted month says so, and says who may draft it", async () => {

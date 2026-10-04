@@ -841,6 +841,7 @@
     "title": "OPD अपॉइंटमेंट",
     "pickDepartment": "विभाग चुनें",
     "pickDoctor": "डॉक्टर चुनें",
+    "unitHolds": "{{date}} की ओपीडी संभालती है",
     "tabs": {
       "day": "दिन",
       "needsRebooking": "पुनर्बुकिंग आवश्यक"
@@ -13288,6 +13289,10 @@
     },
     "noUnit": "टेक पर कोई यूनिट नहीं",
     "singleUnit": "एक यूनिट · हर दिन",
+    "withoutUnit": "अभी कोई यूनिट नहीं:",
+    "withoutUnitItem_one": "{{dept}} ({{count}} ओपीडी डॉक्टर)",
+    "withoutUnitItem_other": "{{dept}} ({{count}} ओपीडी डॉक्टर)",
+    "withoutUnitNote": "इनकी ओपीडी हर डॉक्टर के अपने दिनों पर चलती है, और कोई यूनिट टेक पर नहीं है",
     "singleBackup": "दूसरी यूनिट नहीं — अस्पताल का ड्यूटी मैनेजर तय करेगा",
     "tillToday": "{{time}} तक",
     "tillTomorrow": "कल {{time}} तक",

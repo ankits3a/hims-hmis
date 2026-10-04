@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { confirmSeededUnits } from "../../../test/helpers/units";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
@@ -80,6 +81,7 @@ describe("roster — who is on now (20-U U5a)", () => {
     await seedOrgDepartments(db);
     await seedRosterPositions(db);
     await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
     const depts = await db.select().from(orgDepartments);
     MED = depts.find((d) => d.code === "MED")!.id;
     SUR = depts.find((d) => d.code === "SUR")!.id;

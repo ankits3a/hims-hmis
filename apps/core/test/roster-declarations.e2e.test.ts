@@ -1,4 +1,5 @@
 import { Test } from "@nestjs/testing";
+import { confirmSeededUnits } from "./helpers/units";
 import request from "supertest";
 import { eq, sql } from "drizzle-orm";
 import { AppModule } from "../src/app.module";
@@ -78,6 +79,7 @@ describe("roster declarations + as it stood e2e (20-U I1/I5/I23)", () => {
     await seedOrgDepartments(db);
     await seedRosterPositions(db);
     await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
     await seedRosterRules(db, "t");
     ms = await mkUser(db, "roster.head", ["roster_head"]);
     reader = await mkUser(db, "board.reader", ["board_reader"]);

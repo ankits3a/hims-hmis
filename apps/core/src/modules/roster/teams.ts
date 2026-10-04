@@ -185,6 +185,32 @@ export async function listTeams(
     && (opts.activeOnly !== true || r.active));
 }
 
+/**
+ * ═══ 2026-10-04 (owner) — ONLY A CONFIRMED UNIT COUNTS ═══
+ *
+ * *"We only have 1 unit per department right now … some departments do not even have any single
+ * doctor so we don't have units there."* `seed:roster` writes the 27-unit establishment INACTIVE,
+ * and until a head confirms a unit it is our arithmetic, not a unit the hospital runs. Every reader
+ * that asks "which departments run units, and which units" — Who is on now, its "no take cycle"
+ * hole, the as-it-stood board, the declarations picker, the month picker, the OPD unit line, the
+ * census — asks THIS, so a seeded-but-unconfirmed Paediatrics is never drawn as a unit-running
+ * department with a hole nobody can fill.
+ *
+ * A unit counts at `at` when it is open (`valid_to` null) and confirmed (`active`), or when it
+ * closed AFTER `at` — `closeTeam` clears `active` at once, and last week's board still names the
+ * unit that ran last week.
+ */
+export function unitCountsAt(team: Pick<RosterTeamRow, "active" | "validTo">, at: Date): boolean {
+  return team.validTo === null ? team.active : team.validTo > at;
+}
+
+/** The clinical units that count at `at` (see `unitCountsAt`), by code. */
+export async function countingUnits(exec: Db | Tx, at: Date): Promise<RosterTeamRow[]> {
+  const rows = await (exec as Db).select().from(rosterTeams)
+    .where(eq(rosterTeams.kind, "clinical_unit")).orderBy(asc(rosterTeams.code));
+  return rows.filter((t) => unitCountsAt(t, at));
+}
+
 /** The units a HOD has not yet confirmed — the `standup:check` row, and the screen behind it. */
 export async function unconfirmedTeams(exec: Db | Tx): Promise<RosterTeamRow[]> {
   return (exec as Db).select().from(rosterTeams)

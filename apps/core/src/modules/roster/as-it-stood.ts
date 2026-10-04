@@ -8,6 +8,7 @@ import { resolverEnabled } from "./resolve";
 import { istDateOfInstant, istMidnightUtc, windowAsKnownAt } from "./calendar";
 import { publishedAsKnownAt } from "./periods";
 import { boardColumn } from "./board";
+import { unitCountsAt } from "./teams";
 import { RosterError } from "./errors";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { BoardDepartment, BoardPerson, BoardRung, BoardService, BoardUnit, OnNowBoard } from "./board";
@@ -87,9 +88,9 @@ export async function boardAsItStood(
   const deptById = new Map(departments.map((d) => [d.id, d]));
 
   const unitTeams = (await (exec as Db).select().from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit")))
-    // As the board does: a unit not closed by `at`. `valid_from` is not read — a unit seeded today
-    // was running last Tuesday too; its seed instant is not the day the unit began.
-    .filter((t) => t.validTo === null || t.validTo > at);
+    // As the board does: a CONFIRMED unit not closed by `at` (`unitCountsAt`). `valid_from` is not
+    // read — a unit seeded today was running last Tuesday too; its seed instant is not the day it began.
+    .filter((t) => unitCountsAt(t, at));
   const teamById = new Map(unitTeams.map((t) => [t.id, t]));
   const unitCount = new Map<string, number>();
   for (const t of unitTeams) unitCount.set(t.departmentId, (unitCount.get(t.departmentId) ?? 0) + 1);
@@ -176,7 +177,8 @@ export async function boardAsItStood(
   }
 
   return {
-    at, knownAt: at, resolverEnabled: resolverEnabled(env), departments: rows, services, holes: [],
+    // The unit-less line is today's staffing fact, not part of what the roster said then: not redrawn here.
+    at, knownAt: at, resolverEnabled: resolverEnabled(env), departments: rows, departmentsWithoutUnit: [], services, holes: [],
     changes: await changesSince(exec, at, istDate, deptById, labelOf, names, nameOf),
   };
 }

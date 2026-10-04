@@ -106,6 +106,34 @@ describe("OpdAppointments", () => {
     vi.useRealTimers();
   });
 
+  it("2026-10-04 — names the unit that holds the picked department's OPD on the booked day, and nothing for a department without one", async () => {
+    const asked: string[] = [];
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": { items: [] },
+      "GET /api/roster/opd-units": (_init?: RequestInit, url?: string) => {
+        asked.push(url ?? "");
+        return [{
+          opdDepartmentId: "dep-1", departmentId: "org-med",
+          units: [{
+            teamId: "t-1", code: "MED-U1", name: "General Medicine Unit I", short: "Unit I",
+            startsAt: "2026-08-18T03:30:00.000Z", endsAt: "2026-08-18T11:30:00.000Z",
+            doctors: [{ userId: "u-9", name: "Dr Meera Rao", role: "head" }],
+          }],
+        }];
+      },
+    });
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    // No department picked: the roster is not asked.
+    await screen.findByLabelText("Department");
+    expect(asked).toEqual([]);
+    await pickDeptAndDoctor(user);
+    const line = await screen.findByTestId("appt-opd-unit-dep-1");
+    expect(line).toHaveTextContent("Unit I holds the OPD on Tue 18 Aug · Dr Meera Rao");
+    expect(asked.some((u) => u.endsWith("/roster/opd-units?date=2026-08-18"))).toBe(true);
+  });
+
   it("loads GET /opd/slots for the picked department+doctor+date and renders IST-labelled buttons, booked disabled, past dimmed", async () => {
     stubFetch({
       "GET /api/opd/departments": { items: DEPARTMENTS },

@@ -1,10 +1,12 @@
 import { and, eq, gt, inArray, lt, lte, ne } from "drizzle-orm";
 import { rosterAssignments, rosterPeriods, rosterTeams, staffAbsences } from "../../kernel/db/schema/roster";
 import { users } from "../../kernel/db/schema/auth";
+import { opdDoctors } from "../../kernel/db/schema/opd";
 import { listOrgDepartments, listRosterPositions } from "./masters";
 import { calloutList, onDutyNow, resolverEnabled, whoIsOn } from "./resolve";
 import { backupUnit, departmentsWithoutPublishedCycle, istDateOfInstant, takeGaps, unitOnTake } from "./calendar";
 import { skeletonModeOn } from "./modes";
+import { unitCountsAt } from "./teams";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RosterAnswerSource } from "./resolve";
 import type { OnTakeAnswer } from "./calendar";
@@ -83,10 +85,17 @@ export interface BoardHole {
    */
   count: number | null;
 }
+/**
+ * 2026-10-04 (owner) — a department whose OPD has doctors but which runs NO confirmed unit yet
+ * (Paediatrics, sat by guest faculty). Not a unit row and never a hole: one quiet line, so the
+ * board does not read as though the department were forgotten. `doctors` counts its active OPD doctors.
+ */
+export interface BoardDepartmentWithoutUnit { departmentId: string; code: string; name: string; doctors: number }
 export interface OnNowBoard {
   at: Date;
   resolverEnabled: boolean;
   departments: BoardDepartment[];
+  departmentsWithoutUnit: BoardDepartmentWithoutUnit[];
   services: BoardService[];
   holes: BoardHole[];
 }
@@ -122,9 +131,10 @@ export async function onNowBoard(
   const departments = await listOrgDepartments(exec);
   const deptById = new Map(departments.map((d) => [d.id, d]));
 
-  // The population: departments that RUN UNITS (a clinical unit not closed by `at`).
+  // The population: departments that RUN UNITS — a clinical unit a head has CONFIRMED and that is
+  // not closed by `at` (`unitCountsAt`). A seeded-but-unconfirmed unit is our arithmetic, not a unit.
   const unitTeams = (await (exec as Db).select().from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit")))
-    .filter((t) => t.validTo === null || t.validTo > at);
+    .filter((t) => unitCountsAt(t, at));
   const teamById = new Map(unitTeams.map((t) => [t.id, t]));
   const unitCount = new Map<string, number>();
   for (const t of unitTeams) unitCount.set(t.departmentId, (unitCount.get(t.departmentId) ?? 0) + 1);
@@ -239,7 +249,7 @@ export async function onNowBoard(
     positionLabel: h.positionKey === null ? null : labelOf(h.positionKey),
   });
 
-  const noCycle = new Set(await departmentsWithoutPublishedCycle(exec));
+  const noCycle = new Set(await departmentsWithoutPublishedCycle(exec, at));
   for (const r of rows) {
     if (noCycle.has(r.departmentId)) {
       holes.push(hole({ kind: "no_take_cycle", departmentId: r.departmentId, from: at, to: until, positionKey: null, userId: null, name: null }));
@@ -289,7 +299,19 @@ export async function onNowBoard(
   holes.push(...grouped);
   holes.sort((x, y) => x.from.getTime() - y.from.getTime() || x.departmentName.localeCompare(y.departmentName) || x.kind.localeCompare(y.kind));
 
-  return { at, resolverEnabled: enabled, departments: rows, services, holes };
+  /* ─── DEPARTMENTS WITHOUT A UNIT YET ─── */
+  const doctorsByClinic = new Map<string, number>();
+  for (const d of await (exec as Db).select({ departmentId: opdDoctors.departmentId }).from(opdDoctors)
+    .innerJoin(users, eq(users.id, opdDoctors.userId))
+    .where(and(eq(opdDoctors.active, true), eq(users.active, true)))) {
+    doctorsByClinic.set(d.departmentId, (doctorsByClinic.get(d.departmentId) ?? 0) + 1);
+  }
+  const departmentsWithoutUnit: BoardDepartmentWithoutUnit[] = departments
+    .filter((d) => !unitCount.has(d.id) && d.opdDepartmentId !== null && (doctorsByClinic.get(d.opdDepartmentId) ?? 0) > 0)
+    .map((d) => ({ departmentId: d.id, code: d.code, name: d.name, doctors: doctorsByClinic.get(d.opdDepartmentId!) ?? 0 }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return { at, resolverEnabled: enabled, departments: rows, departmentsWithoutUnit, services, holes };
 }
 
 /**

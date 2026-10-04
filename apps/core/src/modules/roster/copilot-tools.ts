@@ -232,7 +232,7 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
         await asCopilot(ctx);
         const now = nowOf();
         const when = whenOf(ctx.question, now);
-        const dept = departmentOf(ctx.question, (await rosterUnits(ctx.db)).filter((d) => d.units.length > 0));
+        const dept = departmentOf(ctx.question, (await rosterUnits(ctx.db, when.at)).filter((d) => d.units.length > 0));
         if (dept === null) return { key: "copilot.answer.rosterNeedDept", params: {} };
         const take = await unitOnTake(ctx.db, dept.departmentId, when.at);
         if (take.teamId === null || take.startsAt === null || take.endsAt === null) {

@@ -1,4 +1,5 @@
 import { newId } from "@hmis/contracts";
+import { confirmSeededUnits } from "../../../test/helpers/units";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import { permissionCheckFor, runTool } from "../../kernel/copilot/catalog";
@@ -77,6 +78,7 @@ describe("roster — the copilot's tools (20-U U9)", () => {
     await seedOrgDepartments(db);
     await seedRosterPositions(db);
     await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
     MED = (await db.select().from(orgDepartments)).find((d) => d.code === "MED")!.id;
     const U1 = (await teamByCode(db, "MED-U1"))!.id;
     const U2 = (await teamByCode(db, "MED-U2"))!.id;

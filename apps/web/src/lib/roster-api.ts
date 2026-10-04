@@ -35,6 +35,11 @@ export type WireRosterSelf = {
 export type WireOnNowBoard = {
   at: string; resolverEnabled: boolean; you: WireRosterSelf;
   departments: WireBoardDepartment[]; services: WireBoardService[]; holes: WireBoardHole[];
+  /**
+   * 2026-10-04 (owner) — departments whose OPD has doctors but which run no CONFIRMED unit yet
+   * (Paediatrics, sat by guest faculty). Never a row and never a hole. Optional: older servers send none.
+   */
+  departmentsWithoutUnit?: { departmentId: string; code: string; name: string; doctors: number }[];
   /** 20-U U6 (I22) — open "this is wrong" flags. Optional: a board read before U6 carries none. */
   flags?: WireRosterFlag[];
   /** 20-U infra — the RECORD of the last scheduled print (20:00 / 08:00 IST). Optional: older servers send none. */

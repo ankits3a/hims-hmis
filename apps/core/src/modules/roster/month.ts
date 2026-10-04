@@ -12,7 +12,7 @@ import { assign, contentHash, periodWithAssignments, publishPeriod, unassign } f
 import { fairnessOf, proposalSeedFor, proposalStrategyFor, proposeMonth } from "./proposer";
 import { acceptFinding, listFindings, recordFindings } from "./findings";
 import { blockingFindings, findingKey, validate } from "./validator";
-import { teamMembers } from "./teams";
+import { teamMembers, unitCountsAt } from "./teams";
 import { membershipsOf } from "./memberships";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -149,12 +149,19 @@ export function monthWindow(month: string): { startsAt: Date; endsAt: Date; days
   return { startsAt: istMidnightUtc(first), endsAt: istMidnightUtc(next), days };
 }
 
-/** The units a roster can be opened for: every department that runs clinical units, with its units. */
-export async function rosterUnits(exec: Db | Tx): Promise<RosterUnitsDepartment[]> {
+/**
+ * The units a roster can be opened for: every department that runs CONFIRMED clinical units, with them.
+ *
+ * DECIDED (2026-10-04, owner: "we only have 1 unit per department right now") — the picker lists only
+ * units a head has confirmed and that are open now (`unitCountsAt`). It used to list all 27 seeded
+ * units, flagged: on this hospital that is 22 units that do not exist ahead of the 5 that do, and the
+ * proposer drafts nothing for an unconfirmed unit anyway (`proposer.ts` reads active units only).
+ * `standup:check` (`roster_units_confirmed`) is where the unconfirmed establishment is listed, and a
+ * unit opened directly by id still says it is unconfirmed (`unitMonth`'s `confirmed`).
+ */
+export async function rosterUnits(exec: Db | Tx, at: Date = new Date()): Promise<RosterUnitsDepartment[]> {
   const teams = (await (exec as Db).select().from(rosterTeams))
-    // Unconfirmed units are LISTED and flagged, never hidden: the seed's establishment is ours until
-    // a head confirms it (`rosterTeams.active`), and the screen says so rather than presenting it.
-    .filter((t) => t.kind === "clinical_unit")
+    .filter((t) => t.kind === "clinical_unit" && unitCountsAt(t, at))
     .sort((a, b) => a.code.localeCompare(b.code));
   const out: RosterUnitsDepartment[] = [];
   for (const d of await listOrgDepartments(exec)) {

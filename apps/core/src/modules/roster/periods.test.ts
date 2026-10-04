@@ -452,6 +452,11 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       officiatingAt: "an `at`; a read",
       onDutyNow: "an `at` — the board's question",
       onNowBoard: "an `at` — the who-is-on-now board's instant (20-U U5a)",
+      // 2026-10-04 (owner) — only a confirmed, open unit counts, AT an instant (a closed unit counted until it closed).
+      unitCountsAt: "PURE: an `at` — whether a unit is confirmed and open then",
+      countingUnits: "an `at`; a read — the units that count then",
+      departmentsWithoutPublishedCycle: "an `at` (default now) — which departments run a confirmed unit then",
+      rosterUnits: "an `at` (default now) — the month picker's confirmed, open units",
       // 20-U infra (owner 2026-10-04) — the board's own 20:00/08:00 print.
       boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant a `now` falls after",
       nextBoardSlot: "PURE: the next 08:00/20:00 IST instant after a `now`",

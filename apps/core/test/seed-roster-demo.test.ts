@@ -96,10 +96,11 @@ describe("seed:roster-demo — a demo roster for the on-now board", () => {
     expect(night.inTheBuilding.map((p) => p.name)).toEqual(["Dr. Sanjay Prasad"]);
 
     expect(row("ENT")).toMatchObject({ source: "published", inTheBuilding: [{ name: "Dr. Vivek Thakur" }] });
-    // A department with no doctor is honestly unpublished, and its missing cycle is a hole.
-    expect(row("PED").source).not.toBe("published");
+    // A department with no doctor has no confirmed unit (owner 2026-10-04): it is not a unit row, and
+    // its missing cycle is not a hole — there is no unit to put on take.
+    expect(board.departments.find((d) => d.departmentId === id("PED"))).toBeUndefined();
+    expect(board.holes.filter((h) => h.kind === "no_take_cycle")).toEqual([]);
     expect(board.holes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "no_take_cycle", departmentId: id("PED") }),
       expect.objectContaining({ kind: "vacant_slot", departmentId: id("SUR"), positionKey: "unit_sr", from: ist("2026-10-04T20:00") }),
     ]));
     // The deliberate hole is the ONLY vacant slot, and no published department has a take gap.

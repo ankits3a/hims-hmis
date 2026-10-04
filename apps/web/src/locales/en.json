@@ -841,6 +841,7 @@
     "title": "OPD appointments",
     "pickDepartment": "Choose a department",
     "pickDoctor": "Choose a doctor",
+    "unitHolds": "holds the OPD on {{date}}",
     "tabs": {
       "day": "Day",
       "needsRebooking": "Needs rebooking"
@@ -13288,6 +13289,10 @@
     },
     "noUnit": "No unit on take",
     "singleUnit": "one unit · every day",
+    "withoutUnit": "No unit yet:",
+    "withoutUnitItem_one": "{{dept}} ({{count}} OPD doctor)",
+    "withoutUnitItem_other": "{{dept}} ({{count}} OPD doctors)",
+    "withoutUnitNote": "their OPD runs on each doctor's own days, and no unit is on take",
     "singleBackup": "No second unit — the hospital's duty manager decides",
     "tillToday": "till {{time}}",
     "tillTomorrow": "till {{time}} tomorrow",

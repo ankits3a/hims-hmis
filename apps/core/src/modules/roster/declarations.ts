@@ -7,6 +7,7 @@ import { requireRosterAct } from "./access";
 import { addIstDays, declareHoliday, istDateOfInstant } from "./calendar";
 import { declareSkeletonMode, withdrawSkeletonMode } from "./modes";
 import { RosterError } from "./errors";
+import { unitCountsAt } from "./teams";
 import { ROSTER_HOLIDAY_KINDS, ROSTER_HOLIDAY_PATTERNS } from "../../kernel/db/schema/roster";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -81,9 +82,10 @@ export async function declarationsView(exec: Db | Tx, actor: Actor, now: Date): 
 
   const departments = await listOrgDepartments(exec);
   const deptById = new Map(departments.map((d) => [d.id, d]));
-  const unitDepts = [...new Set((await (exec as Db).select({ departmentId: rosterTeams.departmentId, validTo: rosterTeams.validTo })
+  // Departments that run a CONFIRMED unit (`unitCountsAt`) — skeleton cover is declared for units that exist.
+  const unitDepts = [...new Set((await (exec as Db).select({ departmentId: rosterTeams.departmentId, active: rosterTeams.active, validTo: rosterTeams.validTo })
     .from(rosterTeams).where(eq(rosterTeams.kind, "clinical_unit")))
-    .filter((t) => t.validTo === null || t.validTo > now).map((t) => t.departmentId))];
+    .filter((t) => unitCountsAt(t, now)).map((t) => t.departmentId))];
 
   const hospital = await may(exec, actor);
   const mine: DeclarationsView["departments"] = [];

@@ -30,8 +30,8 @@ export type {
   RosterAmendmentRow, RosterAssignmentRow, RosterPeriodRow, RosterScopeRef,
 } from "./periods";
 export {
-  UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, confirmTeam, createTeam, listTeams, nightPoolFor,
-  seedUnits, teamByCode, teamMembers, unconfirmedTeams,
+  UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, confirmTeam, countingUnits, createTeam, listTeams, nightPoolFor,
+  seedUnits, teamByCode, teamMembers, unconfirmedTeams, unitCountsAt,
 } from "./teams";
 export type { CreateTeamInput, RosterTeamRow, TeamMember } from "./teams";
 export {
@@ -87,8 +87,8 @@ export type {
   CycleEntrySpec, CycleSpec, DeclareHolidayInput, HolidaySpec, OnTakeAnswer, OverlayEntrySpec,
   PlannedWindow, PublishCycleResult, WindowGap,
 } from "./calendar";
-export { CYCLE_TEMPLATES, cycleTemplate, draftCycleFromTemplate } from "./templates";
-export type { CycleTemplate } from "./templates";
+export { CYCLE_TEMPLATES, cycleTemplate, draftCycle, draftCycleFromTemplate } from "./templates";
+export type { CycleTemplate, DraftCycleInput } from "./templates";
 export { istDateOfInstant, istMinutesOfInstant } from "./calendar";
 // PHASE R (R8) — whether a roster is any good.
 export {

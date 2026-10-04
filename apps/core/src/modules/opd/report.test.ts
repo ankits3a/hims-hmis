@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { confirmSeededUnits } from "../../../test/helpers/units";
 import { mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { opdAppointments, opdDepartments, opdEncounters, orgDepartments, patients, rosterDutyWindows } from "../../kernel/db/schema";
 import { seedOrgDepartments, seedUnits, teamByCode } from "../roster";
@@ -280,6 +281,7 @@ describe("OPD report", () => {
   it("the day report names the unit that held each clinic's OPD — and nothing for a clinic without units", async () => {
     await seedOrgDepartments(db);
     await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
     const med = (await db.select().from(orgDepartments)).find((d) => d.code === "MED")!.id;
     const u2 = (await teamByCode(db, "MED-U2"))!.id;
     await db.insert(rosterDutyWindows).values({

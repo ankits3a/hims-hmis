@@ -90,7 +90,7 @@ export interface RosterDemoReport {
 const istAt = (istDate: string, minute: number): Date => new Date(istMidnightUtc(istDate).getTime() + minute * 60_000);
 
 /** A user holding the roster publish grant, as an actor — the MS, never the system admin account if anyone else holds it. */
-async function publisher(db: Db): Promise<Actor & { id: string }> {
+export async function publisher(db: Db): Promise<Actor & { id: string }> {
   const rows = await db.select({ id: users.id, username: users.username }).from(users)
     .innerJoin(roleAssignments, eq(roleAssignments.userId, users.id))
     .where(and(eq(roleAssignments.roleKey, "medical_superintendent"), eq(users.active, true)))

@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { rosterCycleEntries, rosterCycles, rosterTeams } from "../../kernel/db/schema/roster";
+import { ROSTER_ACTIVITIES, rosterCycleEntries, rosterCycles, rosterTeams } from "../../kernel/db/schema/roster";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { unitCountsAt } from "./teams";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { RosterActivity } from "../../kernel/db/schema/roster";
@@ -215,6 +216,64 @@ export async function draftCycleFromTemplate(
   });
   await tx.insert(rosterCycleEntries).values(template.entries.map((e) => ({
     id: newId(), cycleId, dayIndex: e.dayIndex, teamId: teams[e.unitOffset]!.id,
+    activity: e.activity, startMinute: e.startMinute, durationMinutes: e.durationMinutes,
+    createdBy: actor.id, updatedBy: actor.id,
+  })));
+  return { cycleId, version };
+}
+
+/**
+ * ═══ 2026-10-04 (owner) — A CYCLE WRITTEN FOR THE HOSPITAL'S OWN WEEK, NOT FROM THE GALLERY ═══
+ *
+ * The gallery's one-unit pattern holds OPD every day. This hospital's one General Surgery unit holds
+ * it on Friday and Saturday, because that is when its one surgeon sits; its Orthopaedics unit on
+ * Tuesday, Wednesday, Thursday and Saturday. So a head may write the cycle's entries directly — a
+ * seven-day cycle anchored on a Monday is a weekly timetable — and it is a DRAFT exactly as a
+ * template's is: `publishCycle` is still where a human commits.
+ *
+ * Only a CONFIRMED, open unit of this department may be named (`unitCountsAt`): a cycle that put a
+ * seeded-but-unconfirmed unit on take would raise windows every reader now ignores, and the take
+ * would read as a gap.
+ */
+export interface DraftCycleInput {
+  departmentId: string;
+  cycleDays: number;
+  anchorIstDate: string;
+  entries: readonly { dayIndex: number; teamId: string; activity: RosterActivity; startMinute: number; durationMinutes: number }[];
+}
+
+export async function draftCycle(tx: Tx, actor: Actor, input: DraftCycleInput): Promise<{ cycleId: string; version: number }> {
+  await requireRosterAct(tx, actor, "publish", { departmentId: input.departmentId });
+  if (!Number.isInteger(input.cycleDays) || input.cycleDays < 1 || input.cycleDays > 28) {
+    throw new RosterError("invalid_window", "a cycle is one to twenty-eight days long", { cycleDays: input.cycleDays });
+  }
+  if (input.entries.length === 0) throw new RosterError("empty_cycle", undefined, { departmentId: input.departmentId });
+  const now = new Date();
+  const teams = new Map((await (tx as Db).select().from(rosterTeams).where(eq(rosterTeams.departmentId, input.departmentId)))
+    .filter((t) => t.kind === "clinical_unit").map((t) => [t.id, t]));
+  for (const e of input.entries) {
+    const team = teams.get(e.teamId);
+    if (team === undefined) throw new RosterError("unknown_team", undefined, { teamId: e.teamId, departmentId: input.departmentId });
+    if (!unitCountsAt(team, now)) throw new RosterError("unit_not_confirmed", undefined, { teamId: e.teamId, code: team.code });
+    if (!(ROSTER_ACTIVITIES as readonly string[]).includes(e.activity)
+      || !Number.isInteger(e.dayIndex) || e.dayIndex < 0 || e.dayIndex >= input.cycleDays
+      || !Number.isInteger(e.startMinute) || e.startMinute < 0 || e.startMinute >= 1440
+      || !Number.isInteger(e.durationMinutes) || e.durationMinutes < 1 || e.durationMinutes > 1440) {
+      throw new RosterError("invalid_window", "an entry needs a day inside the cycle, a known activity, a start inside the day and up to 24 h", { entry: e });
+    }
+  }
+
+  const existing = await (tx as Db).select({ version: rosterCycles.version }).from(rosterCycles)
+    .where(eq(rosterCycles.departmentId, input.departmentId));
+  const version = Math.max(0, ...existing.map((c) => c.version)) + 1;
+  const cycleId = newId();
+  await tx.insert(rosterCycles).values({
+    id: cycleId, departmentId: input.departmentId, cycleDays: input.cycleDays,
+    anchorIstDate: input.anchorIstDate, version, status: "draft",
+    createdBy: actor.id, updatedBy: actor.id,
+  });
+  await tx.insert(rosterCycleEntries).values(input.entries.map((e) => ({
+    id: newId(), cycleId, dayIndex: e.dayIndex, teamId: e.teamId,
     activity: e.activity, startMinute: e.startMinute, durationMinutes: e.durationMinutes,
     createdBy: actor.id, updatedBy: actor.id,
   })));

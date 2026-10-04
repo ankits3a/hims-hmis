@@ -1,8 +1,9 @@
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import { users } from "../../kernel/db/schema/auth";
+import { opdDoctorLeaves, opdDoctorSchedules, opdDoctors } from "../../kernel/db/schema/opd";
 import { orgDepartments } from "../../kernel/db/schema/org";
 import { rosterDutyWindows, rosterTeams } from "../../kernel/db/schema/roster";
-import { addIstDays, istMidnightUtc } from "./calendar";
+import { addIstDays, istMidnightUtc, istWeekday } from "./calendar";
 import { teamMembers } from "./teams";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -23,6 +24,17 @@ import type { Db, Tx } from "../../kernel/db/client";
  * DECIDED (20-U U7) — **the doctors named are the unit's head, faculty and senior residents**, at the
  * window's start: the people a patient is seen by in an Indian teaching OPD and asks for by name.
  * Junior residents and interns sit in the same OPD but are not named to the front desk.
+ *
+ * ═══ 2026-10-04 (owner) — ONLY A CONFIRMED UNIT, AND ONLY THE DOCTORS SITTING THAT DAY ═══
+ *
+ * A window on a unit nobody has confirmed (`unitCountsAt`) is not answered: a seeded Paediatrics
+ * unit must not tell the front desk it "holds today's OPD". And a unit's doctor is named only on a
+ * day they SIT: one General Medicine unit holds the OPD Monday to Saturday, but Dr Chandan sits
+ * Monday–Wednesday and Dr Yash Vardhan Thursday–Saturday, so Monday's line names Chandan alone.
+ * DECIDED — the OPD's own weekly schedule is the evidence (`opd_doctor_schedules` for that weekday,
+ * valid that day, less a planned OPD leave). A member with no OPD doctor profile at all is named as
+ * before — the roster is then the only word on them. Read straight from the kernel schema; the opd
+ * module is not imported (the roster reaches into no module, plan §2.4).
  */
 
 export interface OpdUnitDoctor { userId: string; name: string; role: "head" | "faculty" | "senior_resident" }
@@ -74,10 +86,13 @@ export async function opdUnitsOn(
       eq(rosterDutyWindows.activity, "opd"), isNull(rosterDutyWindows.supersededAt),
       gte(rosterDutyWindows.startsAt, from), lt(rosterDutyWindows.startsAt, to),
       isNotNull(orgDepartments.opdDepartmentId),
+      // Only a unit that counts that day: confirmed and open, or closed after the day began.
+      or(and(isNull(rosterTeams.validTo), eq(rosterTeams.active, true)), gt(rosterTeams.validTo, from)),
     ))
     .orderBy(asc(rosterDutyWindows.startsAt), asc(rosterTeams.code));
 
   const withDoctors = opts.doctors !== false;
+  const sitting = withDoctors ? await sittingThatDay(exec, istDate) : null;
   const out = new Map<string, OpdDepartmentUnits>();
   const names = new Map<string, string>();
   for (const r of rows) {
@@ -89,7 +104,8 @@ export async function opdUnitsOn(
     let doctors: OpdUnitDoctor[] = [];
     if (withDoctors) {
       const members = (await teamMembers(exec, r.teamId, r.startsAt))
-        .filter((m) => ROLE_ORDER.has(m.roleInTeam));
+        .filter((m) => ROLE_ORDER.has(m.roleInTeam))
+        .filter((m) => !sitting!.hasProfile.has(m.userId) || sitting!.sits.has(m.userId));
       const missing = members.map((m) => m.userId).filter((id) => !names.has(id));
       if (missing.length > 0) {
         for (const u of await (exec as Db).select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, missing))) {
@@ -107,4 +123,29 @@ export async function opdUnitsOn(
     });
   }
   return [...out.values()];
+}
+
+/**
+ * Who sits in an OPD clinic on `istDate`, by the OPD's own weekly schedule: users with an active
+ * OPD doctor profile (`hasProfile`), and of those the ones with a schedule row for that weekday,
+ * valid that day, and no planned (not cancelled) OPD leave covering it (`sits`).
+ */
+async function sittingThatDay(exec: Db | Tx, istDate: string): Promise<{ hasProfile: Set<string>; sits: Set<string> }> {
+  const profiles = await (exec as Db).select({ id: opdDoctors.id, userId: opdDoctors.userId })
+    .from(opdDoctors).where(eq(opdDoctors.active, true));
+  const hasProfile = new Set(profiles.map((p) => p.userId));
+  const userOf = new Map(profiles.map((p) => [p.id, p.userId]));
+  const scheduled = await (exec as Db).select({ doctorId: opdDoctorSchedules.doctorId }).from(opdDoctorSchedules).where(and(
+    eq(opdDoctorSchedules.active, true), eq(opdDoctorSchedules.weekday, istWeekday(istDate)),
+    lte(opdDoctorSchedules.validFrom, istDate),
+    or(isNull(opdDoctorSchedules.validTo), gte(opdDoctorSchedules.validTo, istDate)),
+  ));
+  const away = new Set((await (exec as Db).select({ doctorId: opdDoctorLeaves.doctorId }).from(opdDoctorLeaves).where(and(
+    eq(opdDoctorLeaves.status, "scheduled"), lte(opdDoctorLeaves.fromDate, istDate), gte(opdDoctorLeaves.toDate, istDate),
+  ))).map((l) => l.doctorId));
+  const sits = new Set(scheduled.filter((s) => !away.has(s.doctorId)).flatMap((s) => {
+    const u = userOf.get(s.doctorId);
+    return u === undefined ? [] : [u];
+  }));
+  return { hasProfile, sits };
 }

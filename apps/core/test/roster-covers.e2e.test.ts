@@ -1,4 +1,5 @@
 import { Test } from "@nestjs/testing";
+import { confirmSeededUnits } from "./helpers/units";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { setupTestDb, truncateAll } from "./helpers/db";
@@ -63,6 +64,7 @@ describe("roster covers e2e (20-U U5c/U6)", () => {
     await seedOrgDepartments(db);
     await seedRosterPositions(db);
     await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
     await seedRosterRules(db, "t");
     MED = (await db.select().from(orgDepartments)).find((d) => d.code === "MED")!.id;
     ms = await mkUser(db, "roster.head", ["roster_head"]);

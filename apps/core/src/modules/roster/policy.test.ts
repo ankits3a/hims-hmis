@@ -201,6 +201,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     extendWindows: { reaches: "materialiseWindows(", why: "the nightly roll-forward, through the checked writer" },
     sweepRosterWindows: { reaches: "extendWindows(", why: "the scheduler's entry point; see MATERIALISER_ACTOR on why a job is not a `system` actor here" },
     draftCycleFromTemplate: { reaches: "requireRosterAct(", why: "applying a pattern writes the department's own cycle, as a draft" },
+    draftCycle: { reaches: "requireRosterAct(", why: "a head writing the department's own weekly cycle, as a draft — as `draftCycleFromTemplate`" },
     // 20-U U5b — the unit's month. Each composes acting exports; none writes a roster table itself.
     draftUnitMonth: { reaches: "proposeMonth(", why: "asks the proposer for the month, through the checked path the monthly job uses" },
     editSlot: { reaches: "assign(", why: "`unassign` then `assign` in one transaction — the new occupant faces every check `assign` makes" },
@@ -248,6 +249,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     teamByCode: "a read",
     listTeams: "a read",
     unconfirmedTeams: "a read, for the census",
+    unitCountsAt: "pure: whether a unit counts at an instant (confirmed and open) — no database, no actor",
+    countingUnits: "a read — the confirmed, open units every unit-population reader asks for",
     teamMembers: "a read — R5's resolver is the guarded reader of it",
     nightPoolFor: "a read — as `teamMembers`",
     membershipsOf: "a read",
