@@ -52,12 +52,36 @@ const OT = { activity: "elective_ot" as const, startMinute: 540, durationMinutes
 const POST = { activity: "post_take" as const, startMinute: 480, durationMinutes: 240 };
 const WARD = { activity: "ward_teaching" as const, startMinute: 540, durationMinutes: 240 };
 
+const BACKUP = { activity: "backup" as const, startMinute: 480, durationMinutes: 1440 };
+
+/**
+ * ═══ 20-U U5 — DECIDED: THE BACKUP UNIT IS YESTERDAY'S TAKE UNIT ═══
+ *
+ * When the unit on take overflows, the standard Indian teaching-hospital answer is the unit that
+ * was on take YESTERDAY — the post-take unit. It is in the building rounding on its own admissions,
+ * knows the casualty that night produced, and is not today's elective theatre or OPD unit. So every
+ * multi-unit pattern gets a `backup` window for exactly the take's hours (08:00–08:00), on the unit
+ * that took the day before in the pattern's own cycle (wrapping round its last day). Derived from the
+ * take entries rather than typed out, so a pattern can never name a backup that disagrees with its
+ * own take order. A one-unit department has nobody to back it up; the board says who covers.
+ */
+function withBackup(entries: CycleTemplate["entries"], cycleDays: number, units: number): CycleTemplate["entries"] {
+  if (units < 2) return entries;
+  const takeOn = (d: number): number | undefined => entries.find((e) => e.activity === "take" && e.dayIndex === d)?.unitOffset;
+  const backups = Array.from({ length: cycleDays }, (_, d) => d).flatMap((d) => {
+    const today = takeOn(d);
+    const yesterday = takeOn((d + cycleDays - 1) % cycleDays);
+    return yesterday === undefined || yesterday === today ? [] : [{ dayIndex: d, unitOffset: yesterday, ...BACKUP }];
+  });
+  return [...entries, ...backups];
+}
+
 /**
  * Six patterns, from the stress test's survey of what colleges actually run. The `units` figure is
  * what the pattern is WRITTEN for; `draftCycleFromTemplate` refuses a department that has fewer,
  * because a five-unit rotation on three units silently gives somebody two takes in five days.
  */
-export const CYCLE_TEMPLATES: readonly CycleTemplate[] = [
+const PATTERNS: readonly CycleTemplate[] = [
   {
     key: "two_unit_alternate",
     label: "Two units, alternate days",
@@ -141,6 +165,8 @@ export const CYCLE_TEMPLATES: readonly CycleTemplate[] = [
     note: "A one-unit department (Dermatology, Psychiatry, Respiratory Medicine) is on take every day, by call from home. The hours-per-week line is the one to read before adopting it.",
   },
 ];
+
+export const CYCLE_TEMPLATES: readonly CycleTemplate[] = PATTERNS.map((t) => ({ ...t, entries: withBackup(t.entries, t.cycleDays, t.units) }));
 
 export function cycleTemplate(key: string): CycleTemplate {
   const t = CYCLE_TEMPLATES.find((x) => x.key === key);

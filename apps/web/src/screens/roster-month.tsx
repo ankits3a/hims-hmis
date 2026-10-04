@@ -9,7 +9,8 @@ import {
   rosterErrorCode, rosterErrorText,
 } from "../lib/roster-api";
 import type { WireMonthAssignment, WireMonthFinding, WireUnitMonth } from "../lib/roster-api";
-import { shortUnit } from "./roster-on-now";
+import { shortUnit, whoFrom } from "./roster-on-now";
+import { useAuth } from "../lib/auth";
 import "./roster.css";
 
 /**
@@ -133,10 +134,19 @@ function vacantCell(d: WireUnitMonth, day: string, t: T): Cell | null {
 }
 
 /** A finding as a sentence: the rule's own template, the person, the day, and the numbers it carries. */
+const PLURAL_PARAM: Record<string, string> = {
+  rest_after_duty: "restHours", unit_min_jr: "present", requirement_shortfall: "present", night_one_in_three: "gapDays",
+};
+
 function sentence(f: WireMonthFinding, t: T, lang: string): string {
   const p = f.params;
   const num = (k: string): string => (typeof p[k] === "number" ? String(p[k]) : "");
+  // The number the sentence's noun agrees with ("1 hour's rest", "2 junior residents"): i18next
+  // picks `_one`/`_other` from `count`, so no sentence spells a plural by hand.
+  const countKey = PLURAL_PARAM[f.ruleKey];
+  const count = countKey !== undefined && typeof p[countKey] === "number" ? (p[countKey] as number) : undefined;
   return t(`rosterMonth.rule.${f.ruleKey}`, {
+    ...(count === undefined ? {} : { count }),
     defaultValue: t("rosterMonth.rule.other", { rule: f.ruleKey, name: f.name ?? "" }),
     name: f.name ?? t("rosterMonth.someone"),
     day: f.istDate === null ? "" : dayName(f.istDate, lang),
@@ -154,6 +164,9 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
   const [teamId, setTeamId] = useState<string | undefined>(team);
   const [ym, setYm] = useState<string>(month ?? thisMonthIst());
   const [picked, setPicked] = useState<WireMonthAssignment | null>(null);
+  const { username } = useAuth();
+  /** The cell (or, for a finding about a whole day, the day) a finding was clicked to show. */
+  const [focus, setFocus] = useState<{ assignmentId: string | null; day: string; seq: number } | null>(null);
   // A phone opens on one day — a list, one line per person — rather than a grid it must scroll.
   const [zoom, setZoom] = useState<Zoom>(() => (typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches ? "day" : "weeks"));
   const [startIdx, setStartIdx] = useState<number | null>(null);
@@ -242,6 +255,7 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
       active="roster" testId="roster-month"
       context={d === undefined ? t("doctorDesk.contextBare") : t("doctorDesk.context", { dept: d.unit.departmentName, unit: unitShort })}
       pill={pill}
+      who={whoFrom(d?.you, username, t)}
       rail={d === undefined ? undefined : (
         <Rail
           d={d} busy={busy} sorted={sorted} mName={mName} unitShort={unitShort}
@@ -253,6 +267,15 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
           onPick={(a) => { setPicked(a); setZoom("day"); setStartIdx(d.days.indexOf(a.istDate)); }}
           onAccept={(f, reason) => accept.mutate({ f, reason })}
           onPublish={() => publish.mutate()}
+          onShow={(f) => {
+            if (f.istDate === null) return;
+            const i = d.days.indexOf(f.istDate);
+            if (i < 0) return;
+            // Bring the day into view in the zoom the reader chose: its week for 2 weeks, itself for one day.
+            if (zoom === "weeks" && (i < first || i >= first + span)) setStartIdx(Math.max(0, i - ((weekday(f.istDate) + 6) % 7)));
+            if (zoom === "day") setStartIdx(i);
+            setFocus((x) => ({ assignmentId: f.assignmentId, day: f.istDate!, seq: (x?.seq ?? 0) + 1 }));
+          }}
         />
       )}
       ask={d === undefined ? undefined : (
@@ -319,8 +342,11 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
 
       {d !== undefined && d.period !== null && (
         <>
-          <Legend />
-          <Grid d={d} days={shown} zoom={zoom} today={today} picked={picked} onPick={d.youMay.edit ? setPicked : undefined} />
+          {/* The list names every duty in words; the colour key is for the grid. */}
+          {zoom !== "day" && <Legend />}
+          {zoom === "day"
+            ? <DayList d={d} day={shown[0]!} picked={picked} focus={focus} onPick={d.youMay.edit ? setPicked : undefined} />
+            : <Grid d={d} days={shown} today={today} picked={picked} focus={focus} onPick={d.youMay.edit ? setPicked : undefined} />}
           {picked !== null && d.youMay.edit && (
             <SlotEditor key={picked.assignmentId} d={d} a={picked} busy={busy} onSave={(userId) => slot.mutate({ assignmentId: picked.assignmentId, userId })} onClose={() => setPicked(null)} />
           )}
@@ -349,10 +375,24 @@ function Legend(): React.ReactElement {
   );
 }
 
-function Grid({ d, days, zoom, today, picked, onPick }: {
-  d: WireUnitMonth; days: string[]; zoom: Zoom; today: string; picked: WireMonthAssignment | null; onPick?: (a: WireMonthAssignment) => void;
+type Focus = { assignmentId: string | null; day: string; seq: number } | null;
+
+/** Scrolls the focused cell into view when a finding is clicked — each click, not only the first. */
+function useFocusScroll(focus: Focus): void {
+  useEffect(() => {
+    if (focus === null) return;
+    const el = document.querySelector(".rm-focus");
+    if (el !== null && typeof (el as HTMLElement).scrollIntoView === "function") {
+      (el as HTMLElement).scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    }
+  }, [focus]);
+}
+
+function Grid({ d, days, today, picked, focus, onPick }: {
+  d: WireUnitMonth; days: string[]; today: string; picked: WireMonthAssignment | null; focus: Focus; onPick?: (a: WireMonthAssignment) => void;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
+  useFocusScroll(focus);
   const flagged = new Set(d.findings.filter((f) => f.blocking && f.assignmentId !== null).map((f) => f.assignmentId));
   const holidays = new Set(d.holidays.map((h) => h.istDate));
   const people = [...d.people].sort((a, b) => (GRADE_RANK[a.grade] ?? 9) - (GRADE_RANK[b.grade] ?? 9) || a.name.localeCompare(b.name));
@@ -366,11 +406,9 @@ function Grid({ d, days, zoom, today, picked, onPick }: {
   const dayCls = (day: string): string => [holidays.has(day) ? "rm-hol" : weekday(day) === 0 ? "rm-sun" : "", day === today ? "rm-today" : ""].join(" ");
   const box = (c: Cell | null, rowKey: string, day: string): React.ReactElement => {
     if (c === null) return <div key={day} className={`rm-cell ${dayCls(day)}`} />;
-    const mark = c.a !== null && flagged.has(c.a.assignmentId) ? " rm-bad" : c.a !== null && picked?.assignmentId === c.a.assignmentId ? " rm-picked" : "";
-    // One day has room for the hours; a month column has room for the label and one word.
-    const hours = zoom === "day" && c.a !== null ? c.title : "";
-    const sub = [c.sub, hours].filter((x) => x !== "").join(" · ");
-    const inner = (<><span>{c.label}</span>{sub !== "" && <span className="rm-box-sub">{sub}</span>}</>);
+    const focused = c.a !== null && focus !== null && focus.assignmentId === c.a.assignmentId ? " rm-focus" : "";
+    const mark = (c.a !== null && flagged.has(c.a.assignmentId) ? " rm-bad" : c.a !== null && picked?.assignmentId === c.a.assignmentId ? " rm-picked" : "") + focused;
+    const inner = (<><span>{c.label}</span>{c.sub !== "" && <span className="rm-box-sub">{c.sub}</span>}</>);
     return (
       <div key={day} className={`rm-cell ${dayCls(day)}`}>
         {onPick !== undefined && c.a !== null && c.a.kind !== "off"
@@ -380,7 +418,7 @@ function Grid({ d, days, zoom, today, picked, onPick }: {
     );
   };
   return (
-    <section className={`ddf-card rm-grid-card${zoom === "day" ? " rm-oneday" : ""}`} data-testid="month-grid">
+    <section className="ddf-card rm-grid-card" data-testid="month-grid">
       <div className="rm-scroll">
         <div className="rm-grid" role="table" aria-label={t("rosterMonth.gridLabel")}>
           <div className="rm-r rm-r-head" role="row">
@@ -390,7 +428,7 @@ function Grid({ d, days, zoom, today, picked, onPick }: {
               const acts = u?.activities ?? [];
               const word = holidays.has(day) && acts.length === 0 ? t("rosterMonth.act.holiday") : actWord(acts, t) || (weekday(day) === 0 ? "—" : "");
               return (
-                <div key={day} className={`rm-day ${dayCls(day)}`} role="columnheader" data-testid={`day-${day}`}>
+                <div key={day} className={`rm-day ${dayCls(day)}${focus !== null && focus.assignmentId === null && focus.day === day ? " rm-focus-day" : ""}`} role="columnheader" data-testid={`day-${day}`}>
                   <span className="rm-day-dow">{t(`rosterMonth.dow.${String(weekday(day))}`).toUpperCase()}</span>
                   <span className="rm-day-date">{dayNum(day)}</span>
                   <span className={`rm-day-act ${acts.includes("opd") ? "rm-act-opd" : ""}`} style={{ color: acts.includes("opd") ? "#0a5039" : acts.some((a) => a.endsWith("_ot")) ? "#23446f" : holidays.has(day) ? "#8a5a0b" : "#5c6f66" }}>{word}</span>
@@ -421,6 +459,67 @@ function Grid({ d, days, zoom, today, picked, onPick }: {
       </div>
       <div className="rm-foot">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 14A6 6 0 108 2a6 6 0 000 12zM8 7.2v3.6M8 5v.3" /></svg>
+        <span>{t("rosterMonth.gridFoot")}</span>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * ONE DAY, AS A LIST — the phone's view, and the one-day zoom everywhere: the duties nobody holds on
+ * top ("Nobody on it", with the post), then each person · grade · their duty (kind and hours) · tap
+ * to change. An off day, rest, leave or a day not posted here shows no working hours.
+ */
+function DayList({ d, day, picked, focus, onPick }: {
+  d: WireUnitMonth; day: string; picked: WireMonthAssignment | null; focus: Focus; onPick?: (a: WireMonthAssignment) => void;
+}): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  useFocusScroll(focus);
+  const u = d.unitDays.find((x) => x.istDate === day);
+  const holiday = d.holidays.find((h) => h.istDate === day);
+  const flagged = new Set(d.findings.filter((f) => f.blocking && f.assignmentId !== null).map((f) => f.assignmentId));
+  const people = [...d.people].sort((a, b) => (GRADE_RANK[a.grade] ?? 9) - (GRADE_RANK[b.grade] ?? 9) || a.name.localeCompare(b.name));
+  const vacant = d.assignments.filter((a) => a.userId === null && a.istDate === day && a.kind !== "off");
+  const hoursOf = (a: WireMonthAssignment): string => `${fmtIst(a.startsAt)}–${fmtIst(a.endsAt)}`;
+  const line = (key: string, name: string, sub: string, c: Cell | null, extra?: string): React.ReactElement => {
+    const a = c?.a ?? null;
+    const working = a !== null && a.kind !== "off";
+    const mark = (a !== null && flagged.has(a.assignmentId) ? " rm-bad" : "") + (a !== null && picked?.assignmentId === a.assignmentId ? " rm-picked" : "")
+      + (a !== null && focus?.assignmentId === a.assignmentId ? " rm-focus" : "");
+    const body = (
+      <>
+        <span className="rm-dl-who"><span className="rm-name">{name}</span><span className="rm-grade">{sub}</span></span>
+        <span className={`rm-dl-duty ${c?.cls ?? "rm-k-free"}`}>
+          <span className="rm-dl-kind">{c === null ? t("rosterMonth.free") : c.label}</span>
+          {c !== null && c.sub !== "" && <span className="rm-dl-sub">{c.sub}</span>}
+        </span>
+        <span className="rm-dl-hours mo">{working ? hoursOf(a) : ""}{extra ?? ""}</span>
+        {onPick !== undefined && working && <span className="rm-dl-go" aria-hidden="true">›</span>}
+      </>
+    );
+    return onPick !== undefined && working
+      ? <button key={key} type="button" className={`rm-dl-row${mark}`} onClick={() => onPick(a)} data-testid={`slot-${a.assignmentId}`}>{body}</button>
+      : <div key={key} className={`rm-dl-row${mark}`} data-testid={a !== null ? `slot-${a.assignmentId}` : `cell-${key}-${day}`}>{body}</div>;
+  };
+  const acts = u?.activities ?? [];
+  const head = [actWord(acts, t) === "" ? null : t("rosterMonth.pillDay", { act: actWord(acts, t) }), u?.take === true ? t("rosterMonth.takeMark") : null,
+    holiday === undefined ? null : t("rosterMonth.holidayShort", { kind: t(`rosterMonth.holidayKind.${holiday.kind}`, { defaultValue: holiday.kind }) })]
+    .filter((x) => x !== null).join(" · ");
+  return (
+    <section className="ddf-card rm-daylist" data-testid="month-grid">
+      <div className="rm-dl-head">
+        <span className="rm-dl-day">{dayName(day, i18n.language)}</span>
+        {head !== "" && <span className="rm-dl-unitday" data-testid={`day-${day}`}>{head}</span>}
+      </div>
+      {vacant.map((a) => line(a.assignmentId, t("rosterMonth.nobodyOnIt"), t(`rosterOnNow.position.${a.positionKey}`, { defaultValue: a.positionKey }),
+        { cls: "rm-k-vacant", label: a.night ? t("rosterMonth.cell.night") : t("rosterMonth.cell.day"), sub: "", a, title: "" }))}
+      {people.map((p) => {
+        const c = cellFor(d, p.userId, day, t);
+        // In words, not a hatch: a list has room to say "Not posted here".
+        const said = c !== null && c.cls === "rm-k-none" ? { ...c, cls: "rm-k-free", label: t("rosterMonth.legend.notPosted") } : c;
+        return line(p.userId, p.name, p.grade === "" ? "" : t(`rosterMonth.grade.${p.grade}`, { defaultValue: p.grade }), said);
+      })}
+      <div className="rm-foot">
         <span>{t("rosterMonth.gridFoot")}</span>
       </div>
     </section>
@@ -470,10 +569,11 @@ function Fairness({ d, mName }: { d: WireUnitMonth; mName: string }): React.Reac
   );
 }
 
-function Rail({ d, busy, sorted, mName, unitShort, onVacate, onUndo, onPick, onAccept, onPublish }: {
+function Rail({ d, busy, sorted, mName, unitShort, onVacate, onUndo, onPick, onAccept, onPublish, onShow }: {
   d: WireUnitMonth; busy: boolean; sorted: Sorted[]; mName: string; unitShort: string;
   onVacate: (f: WireMonthFinding, a: WireMonthAssignment) => void; onUndo: (s: Sorted) => void;
   onPick: (a: WireMonthAssignment) => void; onAccept: (f: WireMonthFinding, reason: string) => void; onPublish: () => void;
+  onShow: (f: WireMonthFinding) => void;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
@@ -495,7 +595,7 @@ function Rail({ d, busy, sorted, mName, unitShort, onVacate, onUndo, onPick, onA
           {d.findings.length === 0 && sorted.length === 0 && <p className="rm-f-text" style={{ color: "#0e6b4e" }}>{t("rosterMonth.noFindings")}</p>}
           {d.findings.map((f, i) => (
             <FindingCard key={`${f.ruleKey}-${f.assignmentId ?? ""}-${f.userId ?? ""}-${String(i)}`} f={f} d={d} busy={busy} published={published}
-              onVacate={onVacate} onPick={onPick} onAccept={onAccept} />
+              onVacate={onVacate} onPick={onPick} onAccept={onAccept} onShow={onShow} />
           ))}
           {sorted.map((s) => (
             <div key={s.key} className="rm-f rm-f-done" data-testid="finding-sorted">
@@ -537,10 +637,10 @@ function Rail({ d, busy, sorted, mName, unitShort, onVacate, onUndo, onPick, onA
   );
 }
 
-function FindingCard({ f, d, busy, published, onVacate, onPick, onAccept }: {
+function FindingCard({ f, d, busy, published, onVacate, onPick, onAccept, onShow }: {
   f: WireMonthFinding; d: WireUnitMonth; busy: boolean; published: boolean;
   onVacate: (f: WireMonthFinding, a: WireMonthAssignment) => void; onPick: (a: WireMonthAssignment) => void;
-  onAccept: (f: WireMonthFinding, reason: string) => void;
+  onAccept: (f: WireMonthFinding, reason: string) => void; onShow: (f: WireMonthFinding) => void;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const [reasoning, setReasoning] = useState(false);
@@ -554,10 +654,18 @@ function FindingCard({ f, d, busy, published, onVacate, onPick, onAccept }: {
   // Only a WARNING is accepted with a reason here; a must-fix is fixed, never signed away on this screen.
   const canAccept = open && d.youMay.acceptWarning && f.severity === "warn" && !f.blocking;
   return (
-    <div className={`rm-f rm-f-${kind}`} data-testid={`finding-${f.ruleKey}`}>
+    <div
+      className={`rm-f rm-f-${kind}${f.istDate !== null ? " rm-f-click" : ""}`} data-testid={`finding-${f.ruleKey}`}
+      // Clicking the card (not one of its buttons) shows its cell on the grid.
+      onClick={(e) => { if (!(e.target as HTMLElement).closest("button, input, label")) onShow(f); }}
+    >
       <div className="rm-f-top">
         <span className={`rm-tag rm-tag-${kind}`}>{tag}</span>
-        {f.istDate !== null && <span className="rm-f-when">{dayName(f.istDate, i18n.language)}</span>}
+        {f.istDate !== null && (
+          <button type="button" className="rm-f-when rm-f-show" onClick={() => onShow(f)} title={t("rosterMonth.showOnGrid")} data-testid="finding-show">
+            {dayName(f.istDate, i18n.language)} <span aria-hidden="true">↗</span><span className="sr">{t("rosterMonth.showOnGrid")}</span>
+          </button>
+        )}
       </div>
       <p className="rm-f-text">{sentence(f, t, i18n.language)}</p>
       {f.accepted !== null && <p className="rm-f-text" style={{ fontSize: 12, color: "#0a5039" }}>{t("rosterMonth.acceptedBy", { name: f.accepted.byName, reason: f.accepted.reason })}</p>}

@@ -268,6 +268,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     toHttp: "maps a RosterError to an HTTP refusal; decides nothing",
     // 20-U U5b — the unit's month: one guarded read, a window and a list.
     unitMonth: "a read, guarded by `requireRosterAct(…, \"read\")` at the unit's department; its `youMay` PROBES the write acts and grants nothing",
+    rosterSelf: "a read of the actor's OWN name and posting, for the header; acts on nothing",
     monthWindow: "pure: an IST month as an instant window and its days",
     rosterUnits: "a read: the departments that run units, and their units",
     proposalStrategyFor: "a read: pooled nights or unit split, by head-count — shared by the monthly job and the U5b draft",

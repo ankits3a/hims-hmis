@@ -41,6 +41,7 @@ const month = (over: Partial<WireUnitMonth> = {}): WireUnitMonth => ({
   })),
   holidays: [{ istDate: "2026-10-02", kind: "gazetted", pattern: "as_sunday" }],
   leave: [],
+  you: { name: "Dr. Anand Rao", grade: "associate_professor", positionKey: "unit_head", unitName: "General Medicine Unit II", departmentName: "General Medicine" },
   youMay: { draft: false, edit: true, acceptWarning: true, publish: true },
   ...over,
 });
@@ -89,7 +90,7 @@ describe("RosterMonth (20-U U5b)", () => {
     expect(within(panel).getByTestId("finding-rest_after_duty")).not.toHaveTextContent(/note why/);
     expect(within(panel).getByTestId("count-line")).toHaveTextContent("1 must fix · 1 to look at");
     const rest = within(panel).getByTestId("finding-rest_after_duty");
-    expect(rest).toHaveTextContent("Dr. Kavita Rao gets only 1 hours' rest before the duty on Tue 13 Oct, and needs at least 12 after a duty.");
+    expect(rest).toHaveTextContent("Dr. Kavita Rao gets only 1 hour's rest before the duty on Tue 13 Oct, and needs at least 12 hours after a duty.");
     expect(rest).toHaveTextContent("MUST FIX");
   });
 
@@ -207,5 +208,58 @@ describe("RosterMonth (20-U U5b)", () => {
     await user.click(within(rest).getByRole("button", { name: /leave it vacant/ }));
     expect(await screen.findByTestId("month-error")).toHaveTextContent("That person is already on duty somewhere else at that time.");
     expect(screen.queryByText(/server English/)).toBeNull();
+  });
+
+  it("a count in a sentence agrees with its noun: 1 junior resident, 2 junior residents", async () => {
+    const jr = (present: number): WireMonthFinding => ({ ruleKey: "unit_min_jr", severity: "warn", userId: null, name: null, assignmentId: null, istDate: "2026-10-22", params: { present, minCount: 2 }, blocking: false, accepted: null });
+    current = month({ findings: [jr(1)], counts: { blocking: 0, warnings: 1, info: 0 } });
+    const { unmount } = renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
+    expect(await screen.findByTestId("finding-unit_min_jr")).toHaveTextContent("On Thu 22 Oct the unit has 1 junior resident on — it needs at least 2.");
+    unmount();
+    current = month({ findings: [jr(0)], counts: { blocking: 0, warnings: 1, info: 0 } });
+    renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
+    expect(await screen.findByTestId("finding-unit_min_jr")).toHaveTextContent("the unit has 0 junior residents on");
+  });
+
+  it("one day is a list: nobody-on-it duties first, each person's duty with its hours — and an off day shows none", async () => {
+    current = month({
+      assignments: [
+        { ...morning, assignmentId: "a-off", istDate: "2026-10-13", userId: "sandeep", name: "Dr. Sandeep Yadav", kind: "off" },
+        { ...morning, assignmentId: "a-vac", istDate: "2026-10-13", userId: null, name: null, positionKey: "unit_sr" },
+        morning,
+      ],
+      findings: [], counts: { blocking: 0, warnings: 0, info: 0 },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
+    await screen.findByTestId("month-grid");
+    await user.click(screen.getByTestId("zoom-day"));
+    // Page to the 13th.
+    while (!screen.getByTestId("pager-range").textContent!.includes("13 Oct")) await user.click(screen.getByRole("button", { name: "Later" }));
+    const list = screen.getByTestId("month-grid");
+    const rows = [...list.querySelectorAll(".rm-dl-row")].map((r) => r.textContent);
+    expect(rows[0]).toContain("Nobody on it");
+    expect(rows[0]).toContain("Unit senior resident");
+    expect(screen.getByTestId("slot-a-morning")).toHaveTextContent("09:00–17:00");
+    expect(screen.getByTestId("slot-a-off")).toHaveTextContent("Off");
+    expect(screen.getByTestId("slot-a-off")).not.toHaveTextContent(/\d\d:\d\d/);
+    // Tap to change: the duty opens the slot editor.
+    await user.click(screen.getByTestId("slot-a-morning"));
+    expect(screen.getByTestId("slot-editor")).toBeInTheDocument();
+  });
+
+  it("clicking a finding brings its day into view and highlights its cell", async () => {
+    const LATE: WireMonthFinding = { ...REST, assignmentId: "a-late", istDate: "2026-10-27" };
+    current = month({
+      assignments: [night, morning, { ...morning, assignmentId: "a-late", istDate: "2026-10-27", startsAt: "2026-10-27T03:30:00.000Z", endsAt: "2026-10-27T11:30:00.000Z" }],
+      findings: [LATE], counts: { blocking: 1, warnings: 0, info: 0 },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
+    const card = await screen.findByTestId("finding-rest_after_duty");
+    expect(screen.queryByTestId("slot-a-late")).toBeNull();
+    await user.click(within(card).getByTestId("finding-show"));
+    expect(await screen.findByTestId("slot-a-late")).toHaveClass("rm-focus");
+    expect(screen.getByTestId("pager-range")).toHaveTextContent("Sun 18 – Sat 31 Oct"); // the last two weeks of the month
   });
 });

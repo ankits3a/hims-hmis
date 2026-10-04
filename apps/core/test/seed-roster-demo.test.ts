@@ -86,7 +86,9 @@ describe("seed:roster-demo — a demo roster for the on-now board", () => {
     const med = row("MED");
     expect(med.source).toBe("published");
     expect(med.unitOnTake).not.toBeNull();
-    expect(med.backupUnit).toBeNull();
+    // 20-U U5 DECIDED — the gallery's patterns name yesterday's take unit as today's backup.
+    expect(med.backupUnit).not.toBeNull();
+    expect(med.backupUnit!.teamId).not.toBe(med.unitOnTake!.teamId);
     expect(med.inTheBuilding.map((p) => [p.positionKey, p.name])).toEqual([["unit_sr", "Dr. Ritu Singh"]]);
     expect(med.facultyOnCall.map((r) => r.name)).toEqual(["Dr. Anand Rao"]);
     // At night the JR is the one in the building.

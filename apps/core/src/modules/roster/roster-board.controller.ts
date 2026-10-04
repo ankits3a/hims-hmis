@@ -7,8 +7,9 @@ import { onNowBoard } from "./board";
 import { toHttp } from "./roster-http";
 import {
   acceptUnitFinding, draftUnitMonth, editSlot, publishUnitMonth, rosterUnits, unitMonth,
+  rosterSelf,
 } from "./month";
-import type { RosterUnitsDepartment, UnitMonth } from "./month";
+import type { RosterSelf, RosterUnitsDepartment, UnitMonth } from "./month";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OnNowBoard } from "./board";
@@ -31,14 +32,15 @@ export class RosterBoardController {
 
   @Get("on-now")
   @RequirePermission("roster.read", "hospital")
-  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard> {
+  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard & { you: RosterSelf }> {
     try {
       const instant = at === undefined || at === "" ? new Date() : new Date(at);
       if (Number.isNaN(instant.getTime())) {
         throw new RosterError("invalid_window", "`at` is not an instant — send an ISO date-time", { at });
       }
       await requireRosterAct(this.db, actor, "read");
-      return await onNowBoard(this.db, instant);
+      // `you` — the reader, for the Doctor Desk header (`rosterSelf`); additive.
+      return { ...(await onNowBoard(this.db, instant)), you: await rosterSelf(this.db, actor, new Date()) };
     } catch (e) { toHttp(e); }
   }
 

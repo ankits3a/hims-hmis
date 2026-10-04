@@ -25,8 +25,12 @@ export type WireBoardHole = {
   kind: BoardHoleKind; departmentId: string; departmentName: string; from: string; to: string;
   positionKey: string | null; positionLabel: string | null; userId: string | null; name: string | null;
 };
+/** The reader, for the Doctor Desk header — `month.ts` `rosterSelf`. Null fields: not posted to a unit now. */
+export type WireRosterSelf = {
+  name: string | null; grade: string | null; positionKey: string | null; unitName: string | null; departmentName: string | null;
+};
 export type WireOnNowBoard = {
-  at: string; resolverEnabled: boolean;
+  at: string; resolverEnabled: boolean; you: WireRosterSelf;
   departments: WireBoardDepartment[]; services: WireBoardService[]; holes: WireBoardHole[];
 };
 
@@ -91,6 +95,7 @@ export type WireUnitMonth = {
   holidays: { istDate: string; kind: string; pattern: string }[];
   /** Approved absences, IST days inclusive; the kind, never the reason (D6). */
   leave: { userId: string; kind: string; from: string; to: string }[];
+  you: WireRosterSelf;
   youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean };
 };
 

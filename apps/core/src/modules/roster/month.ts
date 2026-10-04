@@ -13,6 +13,7 @@ import { fairnessOf, proposalSeedFor, proposalStrategyFor, proposeMonth } from "
 import { acceptFinding, listFindings, recordFindings } from "./findings";
 import { blockingFindings, findingKey, validate } from "./validator";
 import { teamMembers } from "./teams";
+import { membershipsOf } from "./memberships";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { RosterAct } from "./policy";
@@ -98,9 +99,35 @@ export type UnitMonth = {
    * reason: D6 keeps a leave reason for the approver alone.
    */
   leave: { userId: string; kind: string; from: string; to: string }[];
+  /** The reader, for the Doctor Desk header (`rosterSelf`). */
+  you: RosterSelf;
   /** What THIS actor may do here, probed through `requireRosterAct`. The server still decides. */
   youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean };
 };
+
+/**
+ * 20-U U5 — **WHO IS READING**, for the Doctor Desk header ("Dr. Pooja Mishra · SR"). No route hands
+ * a caller their own full name (`/auth/me` is `{ actor, permissions }`, kernel-owned), so the roster
+ * reads carry it: the name from `users`, and — when the reader is posted to a unit now — the grade,
+ * the post and the unit from their parent membership (else the first live one). Self only: it is
+ * asked with the actor's own id and says nothing about anybody else.
+ */
+export type RosterSelf = {
+  name: string | null; grade: string | null; positionKey: string | null; unitName: string | null; departmentName: string | null;
+};
+export async function rosterSelf(exec: Db | Tx, actor: Actor, at: Date): Promise<RosterSelf> {
+  const none: RosterSelf = { name: null, grade: null, positionKey: null, unitName: null, departmentName: null };
+  if (actor.type !== "user") return none;
+  const me = (await (exec as Db).select({ fullName: users.fullName }).from(users).where(eq(users.id, actor.id)))[0];
+  const m = (await membershipsOf(exec, actor.id, at))[0];
+  if (m === undefined) return { ...none, name: me?.fullName ?? null };
+  const team = (await (exec as Db).select().from(rosterTeams).where(eq(rosterTeams.id, m.teamId)))[0];
+  const dept = team === undefined ? undefined : (await listOrgDepartments(exec)).find((d) => d.id === team.departmentId);
+  return {
+    name: me?.fullName ?? null, grade: m.grade, positionKey: m.positionKey,
+    unitName: team?.name ?? null, departmentName: dept?.name ?? null,
+  };
+}
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
@@ -299,6 +326,7 @@ export async function unitMonth(exec: Db | Tx, actor: Actor, teamId: string, mon
     unitDays,
     holidays: holidays.map((h) => ({ istDate: h.istDate, kind: h.kind, pattern: h.pattern })),
     leave,
+    you: await rosterSelf(exec, actor, new Date()),
     youMay: {
       draft: period === undefined && await may(exec, actor, "draft_machine_period", team.departmentId),
       edit: draft && await may(exec, actor, editAct, team.departmentId),

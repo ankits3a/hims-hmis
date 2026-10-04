@@ -10,6 +10,7 @@ const AT = "2026-10-05T21:10:00.000Z";
 
 const BOARD: WireOnNowBoard = {
   at: AT, resolverEnabled: true,
+  you: { name: "Dr. Anand Rao", grade: "associate_professor", positionKey: "unit_head", unitName: "General Medicine Unit I", departmentName: "General Medicine" },
   departments: [
     {
       departmentId: "d-med", code: "MED", name: "General Medicine", units: 5, source: "published", skeleton: false,
@@ -67,6 +68,8 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(med).toHaveTextContent("Unit I");
     expect(med).not.toHaveTextContent("General Medicine Unit I");
     expect(med).toHaveTextContent("Monday's take · till 08:00");
+    // Two whole pieces, so the unit column breaks between them and never inside one.
+    expect([...screen.getByTestId("till-MED").querySelectorAll(".ro-nowrap")].map((e) => e.textContent?.trim())).toEqual(["Monday's take ·", "till 08:00"]);
     expect(med).toHaveTextContent("SRDr. Aditi Deshmukh");
     expect(med).toHaveTextContent("JRDr. Yusuf Qureshi");
     expect(med).toHaveTextContent("Dr. S. P. Tripathi");
@@ -107,6 +110,17 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(within(menu).queryByTestId("desk-menu-myOpd")).toBeNull();
     expect(within(menu).getAllByRole("link")).toHaveLength(2);
     expect(screen.getByTestId("desk-context")).toHaveTextContent("Who is on now");
+    // The person's full name and grade, with initials from the name — never the login name or a dot.
+    expect(screen.getByTestId("desk-user")).toHaveTextContent("ARDr. Anand Rao · Assoc. Prof");
+    expect(screen.getByTestId("desk-user")).not.toHaveTextContent("·Dr");
+  });
+
+  it("while the board is loading the header shows a neutral skeleton, not a placeholder glyph", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    renderWithProviders(<RosterOnNow />);
+    expect(await screen.findByTestId("desk-user-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("desk-user-loading")).toHaveTextContent("");
+    expect(screen.queryByTestId("desk-user")).toBeNull();
   });
 
   it("the paper copy names every department, the people in the building with their numbers, and when it was printed", async () => {

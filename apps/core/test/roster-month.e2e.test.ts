@@ -12,6 +12,7 @@ import { seedOrgDepartments, seedRosterPositions } from "../src/modules/roster/m
 import { seedUnits, teamByCode } from "../src/modules/roster/teams";
 import { seedRosterRules } from "../src/modules/roster/rules";
 import { addMembership } from "../src/modules/roster/memberships";
+import { assign } from "../src/modules/roster/periods";
 import { ROSTER_RESOLVER_FLAG } from "../src/modules/roster/resolve";
 import type { INestApplication } from "@nestjs/common";
 import type { Db } from "../src/kernel/db/client";
@@ -103,11 +104,15 @@ describe("roster month e2e (20-U U5b)", () => {
   it("a publish with a blocking finding is refused (422 blocked_by_findings), the fix clears it, and the who-is-on-now board then reads PUBLISHED", async () => {
     const m = await draft();
     const night = m.assignments.find((a) => a.night && a.istDate === "2026-10-05" && a.userId !== null)!;
-    const morning = m.assignments.find((a) => !a.night && a.istDate === "2026-10-06" && a.userId !== null && a.userId !== night.userId)!;
 
-    // The night's JR put on the next morning's list.
-    const bad = (await http().put(`/roster/slots/${morning.assignmentId}`).set("authorization", `Bearer ${ms.token}`)
-      .send({ userId: night.userId }).expect(200)).body as UnitMonth;
+    // The night's JR put on a 10:00 list the next morning, two hours after the night ends. (Since
+    // roster-correct the proposer's day is 08:00–20:00, contiguous with the night — one stretch for the
+    // hours rules, not a rest failure — so the clash is a list of its own, added through the domain.)
+    await withTx(db, (tx) => assign(tx, { type: "user", id: ms.id }, m.period!.periodId, {
+      userId: night.userId, positionKey: "ward_jr", departmentId: m.unit.departmentId, teamId: team, mode: "presence", kind: "duty",
+      startsAt: new Date("2026-10-06T10:00:00+05:30"), endsAt: new Date("2026-10-06T14:00:00+05:30"), source: "manual",
+    }));
+    const bad = (await http().get(`/roster/units/${team}/months/2026-10`).set("authorization", `Bearer ${ms.token}`).expect(200)).body as UnitMonth;
     expect(bad.findings.filter((f) => f.blocking).map((f) => f.ruleKey)).toEqual(["rest_after_duty"]);
     expect(bad.youMay.publish).toBe(true);
 

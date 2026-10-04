@@ -64,6 +64,8 @@ describe("roster board e2e (20-U U5a)", () => {
     // Nothing is published: every row says so and lists nobody.
     expect(body.departments.every((d) => d.source !== "published" && d.inTheBuilding.length === 0)).toBe(true);
     expect(body.holes.filter((h) => h.kind === "no_take_cycle")).toHaveLength(10);
+    // 20-U U5 — the reader, named for the Doctor Desk header; posted nowhere, so no grade.
+    expect((res.body as { you: unknown }).you).toEqual({ name: expect.any(String), grade: null, positionKey: null, unitName: null, departmentName: null });
   });
 
   it("a role WITHOUT roster.read is refused", async () => {

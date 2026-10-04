@@ -5,7 +5,8 @@ import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
 import { fmtIst } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import { fetchOnNowBoard, rosterErrorText } from "../lib/roster-api";
-import type { WireBoardDepartment, WireBoardHole, WireBoardService, WireOnNowBoard } from "../lib/roster-api";
+import { useAuth } from "../lib/auth";
+import type { WireBoardDepartment, WireBoardHole, WireBoardService, WireOnNowBoard, WireRosterSelf } from "../lib/roster-api";
 import "./roster.css";
 
 /**
@@ -48,8 +49,19 @@ function weekdayOf(iso: string, lang: string, style: "long" | "short" = "long"):
   return new Intl.DateTimeFormat(lang.startsWith("hi") ? "hi-IN" : "en-GB", { timeZone: "Asia/Kolkata", weekday: style }).format(new Date(iso));
 }
 
+/**
+ * The header's "Dr. Anand Rao · Assoc. Prof": the full name the roster read carries (`you`), and the
+ * grade the reader is posted as now. Falls back to the login name only for a reader with no user row.
+ */
+export function whoFrom(you: WireRosterSelf | undefined, username: string | null, t: T): { name: string; role: string | null } | undefined {
+  if (you === undefined) return undefined;
+  const name = you.name ?? username ?? "";
+  return { name, role: you.grade === null ? null : t(`doctorDesk.grade.${you.grade}`, { defaultValue: you.grade }) };
+}
+
 export function RosterOnNow({ at }: Props): React.ReactElement {
   const { t, i18n } = useTranslation();
+  const { username } = useAuth();
   const [ahead, setAhead] = useState(false);
   const pinned = at !== undefined;
   const q = useQuery({
@@ -64,6 +76,7 @@ export function RosterOnNow({ at }: Props): React.ReactElement {
     <DoctorDeskFrame
       active="onNow" testId="roster-on-now" menuDefault="closed" railWidth={340}
       context={t("rosterOnNow.context")}
+      who={whoFrom(b?.you, username, t)}
       rail={b === undefined ? undefined : <Rail b={b} />}
       ask={b === undefined ? undefined : (
         <AskBar
@@ -129,14 +142,17 @@ function clockNote(b: WireOnNowBoard, t: T, lang: string): string {
   return t("rosterOnNow.noteDay", { day: takeDay, time: fmtIst(take.startsAt) });
 }
 
-/** "Thursday's take · till 08:00", or "· till Sat 08:00" when the handover is another day. */
-function tillLine(d: WireBoardDepartment, b: WireOnNowBoard, t: T, lang: string): string {
+/**
+ * "Thursday's take" and "till 08:00" (or "till Sat 08:00" when the handover is another day) — two
+ * pieces, each kept whole, so the unit column wraps between them and never inside one: two lines.
+ */
+function tillParts(d: WireBoardDepartment, b: WireOnNowBoard, t: T, lang: string): string[] {
   const u = d.unitOnTake;
-  if (u === null) return "";
-  if (d.units === 1) return t("rosterOnNow.singleUnit");
+  if (u === null) return [];
+  if (d.units === 1) return [t("rosterOnNow.singleUnit")];
   const sameDay = todayIst(new Date(u.endsAt)) === todayIst(new Date(b.at));
   const till = sameDay ? fmtIst(u.endsAt) : `${weekdayOf(u.endsAt, lang, "short")} ${fmtIst(u.endsAt)}`;
-  return t("rosterOnNow.takeTill", { day: weekdayOf(u.startsAt, lang), till });
+  return [`${t("rosterOnNow.takeOf", { day: weekdayOf(u.startsAt, lang) })} ·`, t("rosterOnNow.tillShort", { time: till })];
 }
 
 function isDaytime(iso: string): boolean {
@@ -171,7 +187,9 @@ function DepartmentRow({ d, b }: { d: WireBoardDepartment; b: WireOnNowBoard }):
           : (
             <>
               <span className="ro-unit">{shortUnit(u.name, d.name)}</span>
-              <span className="ro-small">{tillLine(d, b, t, i18n.language)}</span>
+              <span className="ro-small" data-testid={`till-${d.code}`}>
+                {tillParts(d, b, t, i18n.language).map((part, i) => <span key={part} className="ro-nowrap">{i > 0 ? " " : ""}{part}</span>)}
+              </span>
             </>
           )}
       </div>

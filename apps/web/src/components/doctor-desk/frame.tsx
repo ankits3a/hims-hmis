@@ -81,8 +81,17 @@ function useNarrow(query: string): boolean {
   return m;
 }
 
+/** "Dr. Anand Rao" → "AR": the honorific is not an initial. */
+export function initialsOf(name: string): string {
+  const words = name.replace(/^(dr|mr|mrs|ms|sr|prof)\.?\s+/i, "").split(/\s+/).filter((w) => /^\p{L}/u.test(w));
+  if (words.length === 0) return "";
+  const first = words[0]!.charAt(0);
+  const last = words.length > 1 ? words[words.length - 1]!.charAt(0) : "";
+  return (first + last).toUpperCase();
+}
+
 export function DoctorDeskFrame({
-  active, context, pill, rail, ask, menuDefault = "open", railWidth = 348, testId, children,
+  active, context, pill, rail, ask, who, menuDefault = "open", railWidth = 348, testId, children,
 }: {
   active: DeskMenuKey;
   /** The header's context line — "Doctor Desk · General Medicine · Unit I". */
@@ -93,6 +102,11 @@ export function DoctorDeskFrame({
   rail?: React.ReactNode;
   /** The ask bar, at the foot of the centre. */
   ask?: React.ReactNode;
+  /**
+   * Who is signed in, as the board writes it: "Dr. Pooja Mishra · SR". Undefined while the screen's
+   * first read is in flight — the header then shows a neutral skeleton, never a placeholder glyph.
+   */
+  who?: { name: string; role: string | null };
   /** The OnNow board is drawn without the menu; the person can still open it. */
   menuDefault?: "open" | "closed";
   railWidth?: number;
@@ -100,7 +114,7 @@ export function DoctorDeskFrame({
   children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const { can, username } = useAuth();
+  const { can } = useAuth();
   const router = useRouter({ warn: false });
   const clock = useDeskClock();
   const drawerMode = useNarrow("(max-width: 1099px)");
@@ -123,7 +137,6 @@ export function DoctorDeskFrame({
   const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => i.key === active || can(i.permission)) }))
     .filter((g) => g.items.length > 0);
   const shownOpen = drawerMode ? drawer : menuOpen;
-  const initials = (username ?? "").replace(/[^a-z]/gi, "").slice(0, 2) || "·";
 
   return (
     <div
@@ -158,10 +171,17 @@ export function DoctorDeskFrame({
         )}
         <div className="ddf-grow" />
         <div className="ddf-when" data-testid="desk-clock">{clock}</div>
-        <span className="ddf-user">
-          <span className="ddf-avatar" aria-hidden="true">{initials}</span>
-          <span className="ddf-user-name">{username ?? ""}</span>
-        </span>
+        {who === undefined ? (
+          <span className="ddf-user" aria-hidden="true" data-testid="desk-user-loading">
+            <span className="ddf-avatar ddf-skel" />
+            <span className="ddf-user-name ddf-skel ddf-skel-line" />
+          </span>
+        ) : (
+          <span className="ddf-user" data-testid="desk-user">
+            {initialsOf(who.name) !== "" && <span className="ddf-avatar" aria-hidden="true">{initialsOf(who.name)}</span>}
+            <span className="ddf-user-name">{who.role === null ? who.name : `${who.name} · ${who.role}`}</span>
+          </span>
+        )}
       </header>
       <ModeBanner />
       <div className="ddf-body">

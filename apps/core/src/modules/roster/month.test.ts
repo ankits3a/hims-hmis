@@ -7,6 +7,7 @@ import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import { seedRosterPositions } from "./masters";
 import { seedRosterRules } from "./rules";
 import { addMembership } from "./memberships";
+import { assign } from "./periods";
 import { recordAbsence } from "./absences";
 import { declareHoliday, publishCycle } from "./calendar";
 import { newId } from "@hmis/contracts";
@@ -134,6 +135,10 @@ describe("roster — the unit's month (20-U U5b)", () => {
     expect(ritu).toMatchObject({ grade: "intern", postedFrom: "2026-10-16", postedTo: null });
     expect(farhan).toMatchObject({ grade: "intern", postedFrom: null, postedTo: "2026-10-15" });
     expect(m.people.find((p) => p.userId === JRS[1])).toMatchObject({ postedFrom: null, postedTo: null });
+    // The reader, named for the header: the full name, and where and as what they are posted now.
+    expect(m.you).toEqual({ name: "Dr. Sunita Mishra", grade: null, positionKey: null, unitName: null, departmentName: null });
+    expect((await unitMonth(db, { type: "user", id: JRS[1]! }, TEAM, "2026-10")).you)
+      .toEqual({ name: "Dr. Resident 1", grade: "jr2", positionKey: "ward_jr", unitName: "Medicine Unit II", departmentName: "General Medicine" });
   });
 
   it("an IST month is 1st 00:00 IST to the next 1st, with one column per day", () => {
@@ -182,11 +187,16 @@ describe("roster — the unit's month (20-U U5b)", () => {
 
   it("a blocking finding names the person and the day, stops the publish, and the one-tap fix clears it", async () => {
     const m = await draftUnitMonth(db, ms, TEAM, "2026-10");
-    const { night, morning } = nightAndNextMorning(m);
+    const { night } = nightAndNextMorning(m);
 
-    // The night's JR put on the next morning's list — one hour after a 12-hour night.
-    const ref = await editSlot(db, ms, morning.assignmentId, night.userId);
-    const bad = await unitMonth(db, ms, ref.teamId, ref.month);
+    // The night's JR put on a 10:00 list the next morning — two hours after a 12-hour night ends.
+    // (Since roster-correct the proposer's day runs 08:00–20:00, contiguous with the night: one
+    // stretch for the hours rules, not a rest failure — so the clash is a list of its own.)
+    await withTx(db, (tx) => assign(tx, ms, m.period!.periodId, {
+      userId: night.userId, positionKey: "ward_jr", departmentId: MED, teamId: TEAM, mode: "presence", kind: "duty",
+      startsAt: at("2026-10-06T10:00"), endsAt: at("2026-10-06T14:00"), source: "manual",
+    }));
+    const bad = await unitMonth(db, ms, TEAM, "2026-10");
     const stop = bad.findings.filter((f) => f.blocking);
     expect(stop.map((f) => [f.ruleKey, f.name, f.istDate])).toEqual([["rest_after_duty", night.name, "2026-10-06"]]);
     expect(bad.counts.blocking).toBe(1);

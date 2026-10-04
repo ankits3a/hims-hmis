@@ -84,6 +84,9 @@
   text-transform: uppercase;
 }
 
+.ddf-skel { background: #e3ebe5 !important; color: transparent !important; }
+.ddf-skel-line { display: inline-block; width: 120px; height: 12px; border-radius: 6px; }
+
 /* ─── body: menu | centre | rail ─── */
 .ddf-body {
   flex-grow: 1; display: grid; min-height: 0;
