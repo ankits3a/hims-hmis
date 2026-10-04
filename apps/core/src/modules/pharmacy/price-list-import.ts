@@ -69,16 +69,34 @@ function gstBps(text: string | undefined): number {
   return [0, 5, 18].includes(v) ? v * 100 : 500;
 }
 
-/** How well a catalogue medicine answers a row: brand words, strength numbers, composition words. */
+/** Words vendors put in a brand that name the form, not the brand ("Augmentin Duo Syrup", "Deriphyllin Inj"). */
+const FORM_WORDS = new Set(["tab", "tabs", "tablet", "tablets", "cap", "caps", "capsule", "capsules", "syp", "syrup", "susp", "suspension", "inj", "injection",
+  "drop", "drops", "cream", "gel", "ointment", "oint", "lotion", "sachet", "powder", "vial", "amp", "ampoule", "ml", "mg", "gm", "strip", "bottle", "dt", "md"]);
+/** "Moxikind-CV 625" → "moxikind cv 625"; form words dropped. */
+const brandCore = (brand: string): string => norm(brand.replace(/[-/+]/g, " ")).split(" ").filter((w) => w !== "" && !FORM_WORDS.has(w)).join(" ");
+const FORM_HINT: [RegExp, RegExp][] = [
+  [/\b(syp|syrup|susp|suspension|liquid)\b/, /suspension|syrup|solution|liquid/],
+  [/\b(inj|injection|vial|amp|ampoule)\b/, /injection|infusion/],
+  [/\b(drop|drops)\b/, /drop/],
+  [/\b(cream|gel|ointment|oint|lotion)\b/, /cream|gel|ointment|lotion/],
+  [/\b(cap|caps|capsule)\b/, /capsule/],
+];
+
+/** How well a catalogue medicine answers a row: brand words, strength numbers, composition words, the form named. */
 function score(row: { brand: string; composition: string }, hit: MedicineHit): number {
-  const brandWords = norm(row.brand).split(" ").filter((w) => w.length > 0);
-  const name = norm(hit.name);
+  const brandWords = brandCore(row.brand).split(" ").filter((w) => w.length > 0);
+  const name = norm(hit.name.replace(/[-/+]/g, " "));
   let s = 0;
   if (brandWords.length > 0 && name.startsWith(brandWords[0]!)) s += 40;
   s += 30 * (brandWords.filter((w) => name.split(" ").includes(w)).length / Math.max(1, brandWords.length));
   const wantNums = new Set([...numbers(row.brand), ...numbers(row.composition)]);
   const haveNums = new Set([...numbers(hit.name), ...numbers(hit.strength ?? "")]);
   if (wantNums.size > 0) s += 20 * ([...wantNums].filter((n) => haveNums.has(n)).length / wantNums.size);
+  // The catalogue's own brand words (before the "(salt)") the vendor did not write: "Pan Xpr" is not "Pan 40".
+  const catBrand = norm((hit.name.split("(")[0] ?? "").replace(/[-/+]/g, " ")).split(" ").filter((w) => w !== "" && !/^\d/.test(w) && !FORM_WORDS.has(w));
+  s -= 12 * catBrand.filter((w) => !brandWords.includes(w)).length;
+  const raw = row.brand.toLowerCase();
+  for (const [said, form] of FORM_HINT) if (said.test(raw)) s += form.test(`${hit.form} ${hit.name}`.toLowerCase()) ? 10 : -10;
   const comp = norm(row.composition);
   if (comp !== "" && hit.salts.length > 0) {
     const salted = hit.salts.filter((x) => comp.includes(norm(x).split(" ")[0] ?? "§")).length / hit.salts.length;
@@ -100,7 +118,15 @@ export async function matchPriceList(db: Db, rows: readonly PriceListRow[]): Pro
       continue;
     }
     const strengthNum = numbers(composition)[0];
-    const queries = [brand, ...(strengthNum !== undefined && !numbers(brand).includes(strengthNum) ? [`${brand} ${strengthNum}`] : [])];
+    const core = brandCore(brand);
+    const words = core.split(" ").filter((w) => w !== "");
+    // The vendor's spelling first, then looser: no form words or hyphens, then the first two words, then the first.
+    const queries = [...new Set([
+      brand, core,
+      ...(strengthNum !== undefined && !numbers(core).includes(strengthNum) ? [`${core} ${strengthNum}`] : []),
+      ...(words.length > 2 ? [words.slice(0, 2).join(" ")] : []),
+      ...(words.length > 1 && (words[0] ?? "").length >= 4 ? [words[0]!] : []),
+    ].filter((q) => q.trim().length >= 2))];
     const hits = new Map<string, MedicineHit>();
     for (const q of queries) for (const h of await searchMedicines(db, q, 10)) hits.set(h.id, h);
     const ranked = [...hits.values()].map((h) => ({ h, s: score({ brand, composition }, h) })).sort((a, b) => b.s - a.s).slice(0, 4);
