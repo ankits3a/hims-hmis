@@ -75,7 +75,7 @@ const FORM_WORDS = new Set(["tab", "tabs", "tablet", "tablets", "cap", "caps", "
 /** "Moxikind-CV 625" → "moxikind cv 625"; form words dropped. */
 const brandCore = (brand: string): string => norm(brand.replace(/[-/+]/g, " ")).split(" ").filter((w) => w !== "" && !FORM_WORDS.has(w)).join(" ");
 const FORM_HINT: [RegExp, RegExp][] = [
-  [/\b(syp|syrup|susp|suspension|liquid)\b/, /suspension|syrup|solution|liquid/],
+  [/\b(syp|syrup|susp|suspension|liquid|ml)\b/, /suspension|syrup|solution|liquid/],
   [/\b(inj|injection|vial|amp|ampoule)\b/, /injection|infusion/],
   [/\b(drop|drops)\b/, /drop/],
   [/\b(cream|gel|ointment|oint|lotion)\b/, /cream|gel|ointment|lotion/],
@@ -83,7 +83,7 @@ const FORM_HINT: [RegExp, RegExp][] = [
 ];
 
 /** How well a catalogue medicine answers a row: brand words, strength numbers, composition words, the form named. */
-function score(row: { brand: string; composition: string }, hit: MedicineHit): number {
+function score(row: { brand: string; composition: string; pack: string }, hit: MedicineHit): number {
   const brandWords = brandCore(row.brand).split(" ").filter((w) => w.length > 0);
   const name = norm(hit.name.replace(/[-/+]/g, " "));
   let s = 0;
@@ -95,8 +95,13 @@ function score(row: { brand: string; composition: string }, hit: MedicineHit): n
   // The catalogue's own brand words (before the "(salt)") the vendor did not write: "Pan Xpr" is not "Pan 40".
   const catBrand = norm((hit.name.split("(")[0] ?? "").replace(/[-/+]/g, " ")).split(" ").filter((w) => w !== "" && !/^\d/.test(w) && !FORM_WORDS.has(w));
   s -= 12 * catBrand.filter((w) => !brandWords.includes(w)).length;
-  const raw = row.brand.toLowerCase();
-  for (const [said, form] of FORM_HINT) if (said.test(raw)) s += form.test(`${hit.form} ${hit.name}`.toLowerCase()) ? 10 : -10;
+  // The form the vendor named, in the brand or the packing ("15 Tab", "30 ml", "Inj"): the wrong form is a wrong drug.
+  const raw = `${row.brand} ${row.pack}`.toLowerCase();
+  const hitForm = `${hit.form} ${hit.name}`.toLowerCase();
+  const injected = FORM_HINT[1]![0].test(raw);
+  const said = FORM_HINT.filter(([w], i) => w.test(raw) && !(injected && i === 0)); // "2 ml amp" is an injection, not a syrup
+  for (const [, form] of said) s += form.test(hitForm) ? 15 : -20;
+  if (said.length === 0 && /\b(tab|tabs|tablet|strip)\b/.test(raw)) s += /tablet/.test(hitForm) ? 15 : -20;
   const comp = norm(row.composition);
   if (comp !== "" && hit.salts.length > 0) {
     const salted = hit.salts.filter((x) => comp.includes(norm(x).split(" ")[0] ?? "§")).length / hit.salts.length;
@@ -128,8 +133,8 @@ export async function matchPriceList(db: Db, rows: readonly PriceListRow[]): Pro
       ...(words.length > 1 && (words[0] ?? "").length >= 4 ? [words[0]!] : []),
     ].filter((q) => q.trim().length >= 2))];
     const hits = new Map<string, MedicineHit>();
-    for (const q of queries) for (const h of await searchMedicines(db, q, 10)) hits.set(h.id, h);
-    const ranked = [...hits.values()].map((h) => ({ h, s: score({ brand, composition }, h) })).sort((a, b) => b.s - a.s).slice(0, 4);
+    for (const q of queries) for (const h of await searchMedicines(db, q, 25)) hits.set(h.id, h);
+    const ranked = [...hits.values()].map((h) => ({ h, s: score({ brand, composition, pack: base.pack }, h) })).sort((a, b) => b.s - a.s).slice(0, 4);
     const meds = await medicinesByIds(db, ranked.map((x) => x.h.id));
     const cands: MatchCandidate[] = ranked.map(({ h, s }) => ({
       medicineId: h.id, name: h.name, form: h.form, strength: h.strength, salts: h.salts, schedule: meds.get(h.id)?.scheduleFlag ?? null, score: s,
