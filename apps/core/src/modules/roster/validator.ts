@@ -1,14 +1,15 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, Tx } from "../../kernel/db/client";
 import {
-  rosterAssignments, rosterHolidays, rosterPeriods, rosterPositions, rosterRequirements,
-  staffCredentials,
+  rosterAssignments, rosterHolidays, rosterOfficiating, rosterPeriods, rosterPositions,
+  rosterRequirements, rosterTeamMemberships, staffCredentials,
 } from "../../kernel/db/schema/roster";
+import { users } from "../../kernel/db/schema";
 import type {
   RosterCadre, RosterRuleAuthority, RosterRuleSeverity,
 } from "../../kernel/db/schema/roster";
 import { addIstDays, istDateOfInstant, istMinutesOfInstant, istWeekday } from "./calendar";
-import { absentUserIds } from "./absences";
+import { approvedAbsenceWindows, awayDuring } from "./absences";
 import { RosterError } from "./errors";
 /**
  * TYPE-ONLY, AND LOAD-BEARING. `periods.ts` calls this module from its publish gate, so a runtime
@@ -119,7 +120,7 @@ const num = (rule: EffectiveRule, key: string, fallback: number): number => {
  * sweep rather than an arithmetic trick because a 26-hour duty crosses the band twice and a
  * cleverer expression would quietly answer only about the first.
  */
-function touchesNight(from: Date, to: Date): boolean {
+export function touchesNight(from: Date, to: Date): boolean {
   for (let t = from.getTime(); t < to.getTime(); t += 15 * 60_000) {
     const m = istMinutesOfInstant(new Date(t));
     if (m >= NIGHT_FROM_MINUTE && m < NIGHT_TO_MINUTE) return true;
@@ -394,6 +395,70 @@ const byUser = (slots: readonly Slot[]): Map<string, Slot[]> => {
   return new Map([...m].sort(([a], [b]) => a.localeCompare(b)));
 };
 
+/** `"2026-10-12 10:00"` — an instant as a person in the building reads it, never as UTC. */
+const istStamp = (at: Date): string => {
+  const m = istMinutesOfInstant(at);
+  return `${istDateOfInstant(at)} ${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+
+/**
+ * `lone_worker` — a location left to one person alone (audit 2026-10-04 #6).
+ *
+ * Seeded in R8 and never evaluated: the book claimed a rule the system did not keep. Evaluated as
+ * its seeded definition reads — at a LOCATION (`location_resource_id`), at any instant somebody is
+ * rostered there in person, fewer than `minPresent` people are. A filled presence duty counts, a
+ * supernumerary one included: a trainee is a second pair of hands for the safety question this asks,
+ * even where they are not cover for a staffing requirement (V16). A vacant slot is nobody. The
+ * population must exist: a location with nobody rostered is not a location with one person.
+ *
+ * One finding per maximal stretch per location, naming the person when it is one person.
+ */
+function loneWorker(slots: readonly Slot[], rule: EffectiveRule): RosterFinding[] {
+  const min = num(rule, "minPresent", 2);
+  const out: RosterFinding[] = [];
+  const byLoc = new Map<string, Slot[]>();
+  for (const s of slots) {
+    if (s.locationResourceId === null || s.userId === null || s.kind !== "duty" || s.mode !== "presence") continue;
+    byLoc.set(s.locationResourceId, [...(byLoc.get(s.locationResourceId) ?? []), s]);
+  }
+  for (const [loc, here] of [...byLoc].sort(([a], [b]) => a.localeCompare(b))) {
+    const cuts = [...new Set(here.flatMap((s) => [s.startsAt.getTime(), s.endsAt.getTime()]))].sort((a, b) => a - b);
+    let open: { from: number; to: number; who: Set<string>; present: number; first: Slot } | null = null;
+    const flush = (): void => {
+      if (open === null) return;
+      out.push(finding(rule, {
+        userId: open.who.size === 1 ? [...open.who][0]! : null,
+        assignmentId: open.first.id,
+        params: {
+          locationResourceId: loc, istDate: istDateOfInstant(new Date(open.from)),
+          istFrom: istStamp(new Date(open.from)), istTo: istStamp(new Date(open.to)),
+          present: open.present, minPresent: min,
+        },
+      }));
+      open = null;
+    };
+    for (let i = 0; i + 1 < cuts.length; i += 1) {
+      const [from, to] = [cuts[i]!, cuts[i + 1]!];
+      const on = here.filter((s) => s.startsAt.getTime() <= from && s.endsAt.getTime() >= to);
+      const people = new Set(on.map((s) => s.userId!));
+      if (people.size > 0 && people.size < min) {
+        if (open !== null && open.to === from) {
+          open.to = to;
+          open.present = Math.max(open.present, people.size);
+          for (const p of people) open.who.add(p);
+        } else {
+          flush();
+          open = { from, to, who: people, present: people.size, first: on[0]! };
+        }
+      } else {
+        flush();
+      }
+    }
+    flush();
+  }
+  return out;
+}
+
 /* ═══════════════════════════════════ feasibility (S4) ═══════════════════════════════════ */
 
 export type FeasibilityInput = {
@@ -581,18 +646,135 @@ export async function validate(
     return res;
   });
 
-  // `rostered_while_absent` — approved leave against the duties actually planned. Read once for
-  // the whole period rather than per slot; `absentUserIds` is the same reader V13 uses, so the
-  // validator and the resolver cannot disagree about who is away.
-  const absentIds = new Set(await absentUserIds(exec, period.startsAt, period.endsAt));
+  // `rostered_while_absent` — approved leave against the duties actually planned, judged PER SLOT
+  // (audit 2026-10-04 #2): one day of leave on the 10th is a clash with the duty on the 10th, not
+  // with every duty of the month. Read once for the whole period, matched against each slot.
+  const lastEnd = Math.max(period.endsAt.getTime(), ...slots.map((s) => s.endsAt.getTime()));
+  const leave = await approvedAbsenceWindows(exec, period.startsAt, new Date(lastEnd));
   run("rostered_while_absent", (r) => slots
-    .filter((s) => s.userId !== null && s.kind === "duty" && absentIds.has(s.userId))
+    .filter((s) => s.userId !== null && s.kind === "duty" && awayDuring(leave, s.userId, s.startsAt, s.endsAt))
     .map((s) => finding(r, {
       userId: s.userId, assignmentId: s.id,
       // The KIND of leave is deliberately not here (D6): that a person is away is the roster's
       // business, why they are away is not. `absences.ts` redacts it for the same reason.
       params: { istDate: s.istDate, positionKey: s.positionKey },
     })));
+
+  run("lone_worker", (r) => loneWorker(slots, r));
+
+  /**
+   * `presence_clash` — ONE BODY, TWO ROOMS, said before publish (audit 2026-10-04 #4).
+   *
+   * The publish gate refuses this (`presence_overlap`, periods.ts step 4) and still does; what was
+   * missing is a finding a screen can show while the roster is a draft, naming the person and the
+   * IST day and time. Two sources, the same two the gate checks: this roster's own presence slots
+   * against each other, and against every LIVE (effective) presence slot in any other roster —
+   * except this roster's own series, whose live version a publish of this one supersedes first.
+   * Presence only, as the gate: on-call may overlap a duty.
+   */
+  {
+    const own = slots.filter((s) => s.userId !== null && s.mode === "presence");
+    const rowsFrom = own.length === 0 ? [] : await (exec as Db).execute(sql`
+      select a.id as "id", a.user_id as "userId", a.period_id as "periodId",
+             a.starts_at as "startsAt", a.ends_at as "endsAt"
+        from roster_assignments a join roster_periods p on p.id = a.period_id
+       where a.effective and a.mode = 'presence' and a.live_to is null
+         and a.user_id in (${sql.join([...new Set(own.map((s) => s.userId!))].map((u) => sql`${u}`), sql`, `)})
+         and a.period_id <> ${period.id}
+         and not (p.scope_type = ${period.scopeType}
+                  and coalesce(p.scope_id, '') = ${period.scopeId ?? ""}
+                  and p.starts_at = ${period.startsAt})
+         and a.starts_at < ${new Date(lastEnd)} and a.ends_at > ${period.startsAt}`);
+    const toDate = (v: unknown): Date => (v instanceof Date ? v : new Date(String(v)));
+    const others = (Array.isArray(rowsFrom) ? [] : rowsFrom.rows as Record<string, unknown>[]).map((x) => ({
+      id: String(x.id), userId: String(x.userId), periodId: String(x.periodId),
+      startsAt: toDate(x.startsAt), endsAt: toDate(x.endsAt),
+    }));
+    run("presence_clash", (r) => {
+      const res: RosterFinding[] = [];
+      const say = (
+        s: Slot, o: { id: string; periodId: string; startsAt: Date; endsAt: Date },
+      ): RosterFinding => finding(r, {
+        userId: s.userId, assignmentId: s.id,
+        params: {
+          istDate: s.istDate, istFrom: istStamp(s.startsAt), istTo: istStamp(s.endsAt),
+          otherAssignmentId: o.id, otherPeriodId: o.periodId,
+          otherIstFrom: istStamp(o.startsAt), otherIstTo: istStamp(o.endsAt),
+        },
+      });
+      for (let i = 0; i < own.length; i += 1) {
+        const s = own[i]!;
+        for (let j = i + 1; j < own.length; j += 1) {
+          const o = own[j]!;
+          if (o.userId === s.userId && o.startsAt < s.endsAt && o.endsAt > s.startsAt) {
+            res.push(say(o, { id: s.id, periodId: period.id, startsAt: s.startsAt, endsAt: s.endsAt }));
+          }
+        }
+        for (const o of others) {
+          if (o.userId === s.userId && o.startsAt < s.endsAt && o.endsAt > s.startsAt) res.push(say(s, o));
+        }
+      }
+      return res;
+    });
+  }
+
+  /**
+   * `user_inactive` and `member_not_in_unit` — THE SILENT HOLE, MADE A FINDING (audit 2026-10-04 #5).
+   *
+   * At 03:10 the resolver (resolve.ts `subtract`, V13) drops a named person who has been
+   * deactivated, and — on a slot that names a TEAM — one who is not that team's member at that
+   * instant. It is right to; but nothing told the head before then, so a published roster could
+   * carry a hole that looked filled. These two rules ask exactly the resolver's questions, at each
+   * slot's START, so the validator and the resolver cannot disagree about who will answer:
+   *
+   *   · `user_inactive` (block) — the account is deactivated. Nobody of that name will be paged.
+   *   · `member_not_in_unit` (warn) — the slot names a team the person does not belong to at its
+   *     start (a posting closed, a rotation ended, or a cross-unit cover never given a membership).
+   *     A warn, because a cross-unit cover is sometimes intended; the head is told that, as written,
+   *     the resolver will not count it. `params.everMember` says which of the two it looks like.
+   *
+   * A department-scope slot (no `team_id`) is not judged by unit membership, as the resolver does not.
+   */
+  if (userIds.length > 0) {
+    const inactive = new Set((await (exec as Db).select({ id: users.id }).from(users)
+      .where(and(inArray(users.id, userIds), eq(users.active, false)))).map((u) => u.id));
+    run("user_inactive", (r) => slots
+      .filter((s) => s.userId !== null && s.kind !== "off" && inactive.has(s.userId))
+      .map((s) => finding(r, {
+        userId: s.userId, assignmentId: s.id,
+        params: { istDate: s.istDate, istFrom: istStamp(s.startsAt), positionKey: s.positionKey },
+      })));
+
+    const teamIds = [...new Set(slots.map((s) => s.teamId).filter((t): t is string => t !== null))];
+    if (teamIds.length > 0) {
+      const memberships = await (exec as Db).select({
+        teamId: rosterTeamMemberships.teamId, userId: rosterTeamMemberships.userId,
+        startsAt: rosterTeamMemberships.startsAt, endsAt: rosterTeamMemberships.endsAt,
+      }).from(rosterTeamMemberships).where(and(
+        inArray(rosterTeamMemberships.teamId, teamIds), inArray(rosterTeamMemberships.userId, userIds),
+      ));
+      // `teamMembers` returns an officiating person AS a member; so must this.
+      const acting = await (exec as Db).select({
+        teamId: rosterOfficiating.teamId, userId: rosterOfficiating.userId,
+        startsAt: rosterOfficiating.startsAt, endsAt: rosterOfficiating.endsAt,
+      }).from(rosterOfficiating).where(and(
+        inArray(rosterOfficiating.teamId, teamIds), inArray(rosterOfficiating.userId, userIds),
+      ));
+      const live = (w: { startsAt: Date; endsAt: Date | null }, t: Date): boolean =>
+        w.startsAt.getTime() <= t.getTime() && (w.endsAt === null || w.endsAt.getTime() > t.getTime());
+      run("member_not_in_unit", (r) => slots
+        .filter((s) => s.userId !== null && s.teamId !== null && s.kind !== "off")
+        .filter((s) => ![...memberships, ...acting]
+          .some((m) => m.teamId === s.teamId && m.userId === s.userId && live(m, s.startsAt)))
+        .map((s) => finding(r, {
+          userId: s.userId, assignmentId: s.id,
+          params: {
+            teamId: s.teamId, istDate: s.istDate, istFrom: istStamp(s.startsAt), positionKey: s.positionKey,
+            everMember: memberships.some((m) => m.teamId === s.teamId && m.userId === s.userId),
+          },
+        })));
+    }
+  }
 
   run("credential_expiring", (r) => {
     const within = num(r, "withinDays", 30);

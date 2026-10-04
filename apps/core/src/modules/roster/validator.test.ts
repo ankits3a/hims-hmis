@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
   orgDepartments, permissions, roleAssignments, rolePermissions, roles, rosterPositions,
-  rosterRequirements, rosterTeams, staffAbsences, staffCredentials, users,
+  resources, rosterRequirements, rosterTeams, staffAbsences, staffCredentials, users,
 } from "../../kernel/db/schema";
+import { addMembership } from "./memberships";
 import { RosterError } from "./errors";
 import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import { assign, draftPeriod, publishPeriod, unassign } from "./periods";
@@ -93,7 +94,7 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
 
   /* ═══════════════════════════════ helpers ═══════════════════════════════ */
 
-  const draft = (over: { coversPositions?: string[] } = {}) => withTx(db, (tx) => draftPeriod(tx, ms, {
+  const draft = (over: Partial<Parameters<typeof draftPeriod>[2]> = {}) => withTx(db, (tx) => draftPeriod(tx, ms, {
     scopeType: "team", scopeId: "MED-U2", departmentId: MED, title: "October — Medicine Unit II",
     coversPositions: ["unit_sr", "ward_jr"], ...OCT, ...over,
   }));
@@ -526,6 +527,12 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
   });
 
   it("simulate names the person who CAN take the slot", async () => {
+    // A member of the unit: a non-member would be `member_not_in_unit` (audit 2026-10-04 #5),
+    // because the resolver would not count them on a team slot.
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: JR, positionKey: "ward_jr", grade: "jr2",
+      roleInTeam: "junior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"),
+    }));
     const period = await draft();
     const vacancy = await slot(period.periodId, {
       userId: null, positionKey: "ward_jr",
@@ -614,5 +621,78 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
               'four residents at the national conference', '2026-10-01', '2026-10-31', ${MS}, 't', 't')
     `);
     expect(codes(await validate(db, period.periodId))).not.toContain("night_one_in_three");
+  });
+
+  /* ═══════════════════ audit 2026-10-04 — correctness defects ═══════════════════ */
+
+  it("#2 rostered_while_absent speaks about the slots INSIDE the leave, not every slot of the month", async () => {
+    await db.insert(staffAbsences).values({
+      id: "01ABS000000000000000002", userId: SR, kind: "CL",
+      startsAt: at("2026-10-10T00:00"), endsAt: at("2026-10-15T00:00"),
+      status: "approved", reason: "x", requestedBy: SR, approvedBy: MS, decidedAt: at("2026-09-20T10:00"),
+      source: "manual", createdBy: "t", updatedBy: "t",
+    });
+    const p = await draft();
+    await slot(p.periodId); // the 12th — inside the leave
+    await slot(p.periodId, { startsAt: at("2026-10-20T08:00"), endsAt: at("2026-10-20T16:00") }); // after it
+    const f = (await validate(db, p.periodId)).filter((x) => x.ruleKey === "rostered_while_absent");
+    expect(f.map((x) => x.params.istDate)).toEqual(["2026-10-12"]);
+  });
+
+  it("#4 a presence clash with another live roster is a FINDING naming the person and the time, before publish", async () => {
+    const med = await draft();
+    await slot(med.periodId);
+    await withTx(db, (tx) => publishPeriod(tx, ms, med.periodId));
+
+    const other = await draft({ scopeId: "MED-U3", title: "October — Medicine Unit III" });
+    const b = await slot(other.periodId, { startsAt: at("2026-10-12T10:00"), endsAt: at("2026-10-12T14:00") });
+    const f = (await validate(db, other.periodId)).filter((x) => x.ruleKey === "presence_clash");
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({
+      userId: SR, assignmentId: b.assignmentId, severity: "block",
+      params: { istDate: "2026-10-12", istFrom: "2026-10-12 10:00", istTo: "2026-10-12 14:00", otherPeriodId: med.periodId },
+    });
+    // The publish refusal is kept, and still says it in its own words.
+    expect((await refusal(withTx(db, (tx) => publishPeriod(tx, ms, other.periodId)))).code).toBe("presence_overlap");
+  });
+
+  it("#5 a slot naming somebody who has left the unit, or been deactivated, is a finding — not a silent hole", async () => {
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: SR, positionKey: "unit_sr", grade: "senior_resident",
+      roleInTeam: "senior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"), endsAt: at("2026-10-10T00:00"),
+    }));
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: JR, positionKey: "ward_jr", grade: "jr2",
+      roleInTeam: "junior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"),
+    }));
+    const p = await draft();
+    const left = await slot(p.periodId); // SR on the 12th — after the 10th
+    await slot(p.periodId, { startsAt: at("2026-10-05T08:00"), endsAt: at("2026-10-05T16:00") }); // still hers
+    const jr = await slot(p.periodId, { userId: JR, positionKey: "ward_jr" });
+    await db.update(users).set({ active: false }).where(eq(users.id, JR));
+
+    const f = await validate(db, p.periodId);
+    expect(f.filter((x) => x.ruleKey === "member_not_in_unit").map((x) => [x.assignmentId, x.userId]))
+      .toEqual([[left.assignmentId, SR]]);
+    expect(f.filter((x) => x.ruleKey === "user_inactive").map((x) => [x.assignmentId, x.userId]))
+      .toEqual([[jr.assignmentId, JR]]);
+  });
+
+  it("#6 lone_worker: a location left to one person alone is a finding; two together are not", async () => {
+    const LOC = "01RESWARD000000000000000A";
+    await db.insert(resources).values({
+      id: LOC, kind: "bed", code: "W-1", name: "Ward 1", status: "available", attributes: {},
+      createdBy: "t", updatedBy: "t",
+    });
+    const alone = await draft();
+    await slot(alone.periodId, { locationResourceId: LOC });
+    const f = (await validate(db, alone.periodId)).filter((x) => x.ruleKey === "lone_worker");
+    expect(f).toHaveLength(1);
+    expect(f[0]!.params).toMatchObject({ locationResourceId: LOC, present: 1, minPresent: 2, istDate: "2026-10-12" });
+
+    const pair = await draft();
+    await slot(pair.periodId, { locationResourceId: LOC });
+    await slot(pair.periodId, { userId: JR, positionKey: "ward_jr", locationResourceId: LOC });
+    expect(codes(await validate(db, pair.periodId))).not.toContain("lone_worker");
   });
 });
