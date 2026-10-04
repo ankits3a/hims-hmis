@@ -1457,7 +1457,7 @@ function DeptCard({ q, first, second }: { q: DeptQueue; first: boolean; second: 
       {q.doctors.map((doc) => {
         const away = !bookableToday(doc);
         return (
-          <div key={doc.doctor.id} className="drow">
+          <div key={doc.doctor.id} className="drow d1-docrow">
             <span style={{ fontSize: 12.5, fontWeight: 500, width: 160 }}>{doc.doctor.displayName}</span>
             <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)", width: 56 }}>{doc.roomCode ?? "—"}</span>
             {away ? (

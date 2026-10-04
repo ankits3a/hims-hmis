@@ -6908,6 +6908,15 @@
       "carried_one": "Carried forward from {{count}} earlier bill — it travels onto this one.",
       "carried_other": "Carried forward from {{count}} earlier bills — it travels onto this one."
     },
+    "phone": {
+      "menu": "Menu",
+      "showPatient": "Show the full record",
+      "hidePatient": "Hide the full record",
+      "toCollect": "to collect",
+      "collected": "collected",
+      "newWalkIn": "New walk-in",
+      "noUhid": "no UHID yet"
+    },
     "schemes": {
       "title": "Schemes",
       "hint": "attach before you take the money",
