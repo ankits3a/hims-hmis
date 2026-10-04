@@ -150,24 +150,79 @@ function slotOver24h(slots: readonly Slot[], rule: EffectiveRule): RosterFinding
     }));
 }
 
-/** `rest_after_duty` — the gap between one duty ending and the next beginning, per person. */
+/**
+ * `rest_after_duty` — the gap between one duty ending and the next beginning, per person.
+ *
+ * ═══ A NIGHT IS ALWAYS FOLLOWED BY TWELVE HOURS' REST — CONTIGUOUS OR NOT (20-U audit) ═══
+ *
+ * The rule as approved: *"nights of 12 hours, **12 hours' rest after**"* (20-U §9 item 3, the default
+ * built here), *"post-night rest ≥ 12 h before next assignment (no morning OPD/OT after a night,
+ * hard block; override = HOD + evented)"* (doc 10 §3.9), and E9 *"JR night 20:00–08:00, then 09:00
+ * OPD — blocked"* (brainstorm 00 §9). The first version treated contiguous duties as one stretch and
+ * only measured POSITIVE gaps, so a night 20:00–08:00 followed by a day at 08:00 — the worst case —
+ * had a gap of zero and was flagged by nothing; the 24-hour stretch cap does not fire at exactly 24.
+ *
+ * So, after anything touching the night (01:00–05:00 IST), any duty that runs on past the night's
+ * end and begins less than `minHours` after it is a finding, gap zero included. "The night's end" is
+ * the end of a run of contiguous night-touching slots (a night split at a 02:00 handover is one
+ * night). DECIDED for the 24-hour TAKE (08:00 → 08:00): it is ONE slot, it touches the night, and
+ * the twelve hours' rest runs from its end — the take itself is legal (its length is
+ * `slot_over_24h`'s and the hours rules' business). A day followed by the night (08:00–20:00 then
+ * 20:00–08:00) is the take day written as two slots and is judged the same way: no break between
+ * them, rest after the night. Between two duties neither of which touches the night the old rule
+ * stands: a positive gap shorter than `minHours`. Severity is the book's (block); the override is
+ * `acceptFinding`, named and evented.
+ */
 function restAfterDuty(slots: readonly Slot[], rule: EffectiveRule): RosterFinding[] {
   const min = num(rule, "minHours", 12);
   const out: RosterFinding[] = [];
+  const say = (userId: string, prev: Slot, next: Slot, endMs: number): RosterFinding => finding(rule, {
+    userId, assignmentId: next.id,
+    params: {
+      restHours: Math.max(0, Math.round(((next.startsAt.getTime() - endMs) / HOUR_MS) * 100) / 100),
+      minHours: min, afterAssignmentId: prev.id,
+    },
+  });
   for (const [userId, mine] of byUser(slots)) {
     const duties = mine.filter((s) => s.kind === "duty" && s.mode === "presence")
-      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+      .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime() || a.endsAt.getTime() - b.endsAt.getTime());
+    const flagged = new Set<string>();
+
+    // (1) After a night: everything that runs past its end and starts inside the rest window.
+    for (let i = 0; i < duties.length; i += 1) {
+      const first = duties[i]!;
+      if (!first.isNight) continue;
+      if (i > 0 && duties[i - 1]!.isNight && duties[i - 1]!.endsAt.getTime() >= first.startsAt.getTime()) continue;
+      let last = first;
+      let end = first.endsAt.getTime();
+      const chain = new Set([first.id]);
+      for (let j = i + 1; j < duties.length; j += 1) {
+        const d = duties[j]!;
+        if (!d.isNight || d.startsAt.getTime() > end) break;
+        chain.add(d.id);
+        if (d.endsAt.getTime() > end) { end = d.endsAt.getTime(); last = d; }
+      }
+      for (const next of duties) {
+        if (chain.has(next.id) || flagged.has(next.id)) continue;
+        if (next.startsAt.getTime() < first.startsAt.getTime()) continue; // before the night: not "after"
+        if (next.endsAt.getTime() <= end) continue; // inside the night: a clash, not a rest break
+        if (next.startsAt.getTime() < end + min * HOUR_MS) {
+          out.push(say(userId, last, next, end));
+          flagged.add(next.id);
+        }
+      }
+    }
+
+    // (2) Between ordinary duties: a positive gap shorter than the rule. Contiguous ordinary duties
+    // are one stretch, which the hours rules speak about.
     for (let i = 1; i < duties.length; i += 1) {
       const prev = duties[i - 1]!;
       const next = duties[i]!;
+      if (prev.isNight || flagged.has(next.id)) continue;
       const gap = (next.startsAt.getTime() - prev.endsAt.getTime()) / HOUR_MS;
-      // Overlapping or contiguous duties are one stretch, not a rest failure: the hours rules
-      // below are what speak about those, and saying it twice would double-count one fact.
       if (gap > 0 && gap < min) {
-        out.push(finding(rule, {
-          userId, assignmentId: next.id,
-          params: { restHours: Math.round(gap * 100) / 100, minHours: min, afterAssignmentId: prev.id },
-        }));
+        out.push(say(userId, prev, next, prev.endsAt.getTime()));
+        flagged.add(next.id);
       }
     }
   }

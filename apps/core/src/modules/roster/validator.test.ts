@@ -695,4 +695,44 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
     await slot(pair.periodId, { userId: JR, positionKey: "ward_jr", locationResourceId: LOC });
     expect(codes(await validate(db, pair.periodId))).not.toContain("lone_worker");
   });
+
+  /* ═══════════ 20-U: "a night is 20:00 to 08:00 and is always followed by 12 hours' rest" ═══════════ */
+
+  const restOf = async (periodId: string) =>
+    (await validate(db, periodId)).filter((x) => x.ruleKey === "rest_after_duty");
+
+  it("a night followed DIRECTLY by a day (08:00, contiguous) is a rest_after_duty BLOCK", async () => {
+    const p = await draft();
+    const night = await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+    const day = await slot(p.periodId, { startsAt: at("2026-10-13T08:00"), endsAt: at("2026-10-13T20:00") });
+    const f = await restOf(p.periodId);
+    expect(f.map((x) => [x.assignmentId, x.severity, x.params.afterAssignmentId, x.params.restHours]))
+      .toEqual([[day.assignmentId, "block", night.assignmentId, 0]]);
+  });
+
+  it("…and a night followed by a 09:00 OPD is one too (E9), said once", async () => {
+    const p = await draft();
+    await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+    const opd = await slot(p.periodId, { startsAt: at("2026-10-13T09:00"), endsAt: at("2026-10-13T14:00") });
+    expect((await restOf(p.periodId)).map((x) => x.assignmentId)).toEqual([opd.assignmentId]);
+  });
+
+  it("a 24-hour TAKE is ONE slot: legal by itself, and the 12 hours' rest runs from its end", async () => {
+    const alone = await draft();
+    await slot(alone.periodId, { startsAt: at("2026-10-12T08:00"), endsAt: at("2026-10-13T08:00") });
+    expect(await restOf(alone.periodId)).toEqual([]);
+
+    const after = await draft();
+    await slot(after.periodId, { startsAt: at("2026-10-12T08:00"), endsAt: at("2026-10-13T08:00") });
+    const next = await slot(after.periodId, { startsAt: at("2026-10-13T08:00"), endsAt: at("2026-10-13T16:00") });
+    expect((await restOf(after.periodId)).map((x) => x.assignmentId)).toEqual([next.assignmentId]);
+  });
+
+  it("a day then the night (the take day as two slots) is not a rest break, and twelve hours after the night is legal", async () => {
+    const p = await draft();
+    await slot(p.periodId, { startsAt: at("2026-10-12T08:00"), endsAt: at("2026-10-12T20:00") });
+    await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+    await slot(p.periodId, { startsAt: at("2026-10-13T20:00"), endsAt: at("2026-10-14T06:00") });
+    expect(await restOf(p.periodId)).toEqual([]);
+  });
 });
