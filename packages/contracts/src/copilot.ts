@@ -153,6 +153,32 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.duplicateItems",
   /** No two live items look like one thing twice. */
   "copilot.answer.duplicateItemsNothing",
+
+  /*
+    ═══ 20-U U9 — the roster: who is on, the unit on take, my duties, and a cover DRAFT ═══
+    `rosterCoverDraft` is a DRAFT, never a write: its `payload` lists who can take the asker's duty,
+    and the request is sent by the person's own tap (`POST /roster/covers`), as from My duties.
+  */
+  "copilot.answer.rosterNeedDept",
+  "copilot.answer.rosterWhoIsOn",
+  "copilot.answer.rosterWhoNoTake",
+  "copilot.answer.rosterWhoUnpublished",
+  "copilot.answer.rosterWhoService",
+  "copilot.answer.rosterWhoServiceNobody",
+  "copilot.answer.rosterWhoServiceUnpublished",
+  "copilot.answer.rosterUnitOnTake",
+  "copilot.answer.rosterNoTake",
+  "copilot.answer.rosterMyNext",
+  "copilot.answer.rosterMyNextNight",
+  "copilot.answer.rosterMyOnDay",
+  "copilot.answer.rosterMyNone",
+  "copilot.answer.rosterMyNoNight",
+  "copilot.answer.rosterMyNoneOnDay",
+  "copilot.answer.rosterCoverDraft",
+  "copilot.answer.rosterCoverAlready",
+  "copilot.answer.rosterCoverNobody",
+  "copilot.answer.rosterCoverNoDuty",
+  "copilot.answer.rosterCoverNoDutyOn",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];

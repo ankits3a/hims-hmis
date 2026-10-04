@@ -161,8 +161,9 @@ const MATRIX: Record<RosterAct, Record<RosterActorKind, Cell>> = {
   /**
    * A READER may ask about their own duty — the narrowest grant there is, and the one every doctor
    * already holds (U5a). Not `open` like an absence: a cover is an act on the roster, and somebody
-   * who may not even read it has no duty on it to give away. **`never` for the copilot today**: U9's
-   * `roster.ask_cover` drafts a request the person confirms, and opens this cell when it lands.
+   * who may not even read it has no duty on it to give away. **`never` for the copilot, and it stays
+   * so** (20-U U9): `roster.ask_cover` only READS who can take the duty and hands the person a draft;
+   * the request is sent by the person's own tap through `POST /roster/covers`, as a `user` actor.
    */
   request_cover: { user: grant(ROSTER_READ), copilot: never, agent: never, system: never, patient: never },
 

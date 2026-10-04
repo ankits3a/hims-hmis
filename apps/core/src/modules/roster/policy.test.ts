@@ -284,6 +284,10 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // 20-U U7 — OPD reads the unit calendar.
     opdUnitsOn: "a read — which unit (and doctors) hold each OPD clinic on a day; guarded at its route like `onNowBoard`, read as data by the OPD day report",
     shortUnitName: "PURE: a unit's name in, the name without its department out",
+    // 20-U U9 — the copilot's roster tools. Each tool's `run` asks `requireRosterAct(…, "read", {}, "copilot")`.
+    rosterCopilotTools: "builds the four tool declarations; each one's run is a READ guarded by the act matrix as the copilot, and `ask_cover` returns a draft and writes nothing",
+    whenOf: "PURE: a question and an instant in, the instant it asks about out",
+    departmentOf: "PURE: a question and a list in, the department it names out",
     publishedAsKnownAt: "a read on the knowledge axis — `asKnownAt` across every scope",
     windowAsKnownAt: "a read on the knowledge axis — the take/backup window in force at an instant, as known then",
     boardColumn: "pure: which board column a position belongs in, from the position master",

@@ -152,3 +152,6 @@ export { rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn } from "
 // 20-U U7 — OPD reads the unit calendar, read-only: which unit (and doctors) hold a clinic's OPD on a day.
 export { opdUnitsOn, shortUnitName } from "./opd-units";
 export type { OpdDepartmentUnits, OpdUnit, OpdUnitDoctor } from "./opd-units";
+// 20-U U9 — the copilot's roster tools (who is on, the unit on take, my duties, a cover DRAFT).
+export { DUTY_LOOKAHEAD_DAYS, departmentOf, rosterCopilotTools, whenOf } from "./copilot-tools";
+export type { AskedWhen, RosterToolOptions } from "./copilot-tools";

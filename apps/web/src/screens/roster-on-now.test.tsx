@@ -77,8 +77,11 @@ describe("RosterOnNow (20-U U5a)", () => {
   const asked: string[] = [];
   const posted: { url: string; body: unknown }[] = [];
   let declarations: WireDeclarationsView = NO_DECLARE;
+  const NOT_UNDERSTOOD = { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null };
+  let reply: unknown = NOT_UNDERSTOOD;
   beforeEach(() => {
     setToken("t");
+    reply = NOT_UNDERSTOOD;
     asked.length = 0;
     posted.length = 0;
     declarations = NO_DECLARE;
@@ -87,12 +90,13 @@ describe("RosterOnNow (20-U U5a)", () => {
       asked.push(raw);
       if (init?.method === "POST" && !raw.endsWith("/copilot/ask")) posted.push({ url: raw, body: JSON.parse(String(init.body ?? "{}")) });
       const body = raw.includes("/roster/flags") ? { flagId: "f1", ok: true }
+        : raw.endsWith("/roster/covers") ? { requestId: "r1" }
         : raw.includes("/roster/declarations") || raw.includes("/roster/holidays") || raw.includes("/roster/modes") ? declarations
         : raw.includes("/roster/as-it-stood") ? STOOD
         : raw.endsWith("/auth/me")
         ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } }
         : raw.endsWith("/ops/mode") ? { mode: "normal", since: null, note: null, reportId: null }
-          : raw.endsWith("/copilot/ask") ? { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null }
+          : raw.endsWith("/copilot/ask") ? reply
             : BOARD;
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
@@ -181,6 +185,51 @@ describe("RosterOnNow (20-U U5a)", () => {
     await user.type(screen.getByLabelText("Ask the copilot"), "medicine mein on call kaun hai?{Enter}");
     expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("General Medicine: Unit I is on take till 08:00. In the building: SR Dr. Aditi Deshmukh, JR Dr. Yusuf Qureshi. Faculty on call: Dr. S. P. Tripathi.");
     expect(asked.some((u) => u.endsWith("/api/copilot/ask"))).toBe(true);
+  });
+
+  /* 20-U U9 — once the server's roster tools answer, the ask bar says THEIR answer; the board's own
+     answerer above runs only when the server says it did not understand. */
+  it("the ask bar says the server's roster answer, not the board's guess, when the copilot understood", async () => {
+    reply = {
+      answer: { key: "copilot.answer.rosterWhoIsOn", params: { dept: "Orthopaedics", when: "06-10-2026 02:40", unit: "Unit II", till: "06-10-2026 08:00", here: "SR Dr. Rao", fac: "Dr. Sen" } },
+      source: "phrasebook", intent: "roster.who_is_on",
+    };
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    await screen.findByTestId("dept-MED");
+    await user.type(screen.getByLabelText("Ask the copilot"), "ortho mein abhi on call kaun hai?{Enter}");
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Orthopaedics, 06-10-2026 02:40: Unit II is on take till 06-10-2026 08:00. In the building: SR Dr. Rao. Faculty on call: Dr. Sen.");
+  });
+
+  it("roster.ask_cover: the ask bar shows the DRAFT, asks nobody by itself, and sends the request only on the person's tap", async () => {
+    reply = {
+      answer: {
+        key: "copilot.answer.rosterCoverDraft",
+        params: { post: "Ward junior resident", when: "10-10-2026 20:00 – 11-10-2026 08:00", n: 2, names: "Dr. Rohit Bansal, Dr. Aman Gupta" },
+        payload: {
+          kind: "roster_cover_draft", assignmentId: "A-1", post: "Ward junior resident", unit: "General Medicine Unit II",
+          startsAt: "2026-10-10T14:30:00.000Z", endsAt: "2026-10-11T02:30:00.000Z", night: true, more: 0, cannot: 1,
+          canTake: [
+            { userId: "u-rohit", name: "Dr. Rohit Bansal", grade: "jr1", teamName: "General Medicine Unit II", crossUnit: false },
+            { userId: "u-aman", name: "Dr. Aman Gupta", grade: "jr2", teamName: "General Medicine Unit I", crossUnit: true },
+          ],
+        },
+      },
+      source: "phrasebook", intent: "roster.ask_cover",
+    };
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    await screen.findByTestId("dept-MED");
+    await user.type(screen.getByLabelText("Ask the copilot"), "Saturday night koi le sakta hai kya?{Enter}");
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Your Ward junior resident, 10-10-2026 20:00 – 11-10-2026 08:00: 2 can take it — Dr. Rohit Bansal, Dr. Aman Gupta. Nothing is asked yet");
+    const draft = await screen.findByTestId("cover-draft");
+    expect(draft).toHaveTextContent("Dr. Aman Gupta");
+    expect(draft).toHaveTextContent("Another unit, so the HOD also approves");
+    // The draft asked nobody.
+    expect(posted.filter((p) => p.url.endsWith("/roster/covers"))).toEqual([]);
+    await user.click(screen.getByTestId("cover-ask-u-rohit"));
+    expect(await screen.findByTestId("cover-draft-sent")).toHaveTextContent("Asked Dr. Rohit Bansal.");
+    expect(posted.filter((p) => p.url.endsWith("/roster/covers")).map((p) => p.body)).toEqual([{ assignmentId: "A-1", counterpartId: "u-rohit" }]);
   });
 
   it("the board's own answerer: a service by name, and nothing for a question it cannot place", () => {

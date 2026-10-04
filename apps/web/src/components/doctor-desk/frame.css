@@ -144,6 +144,19 @@
 .ddf-ask-input::placeholder { color: #7f9c8f; }
 .ddf-ask-input:focus-visible { outline: none; }
 .ddf-ask:focus-within { box-shadow: 0 0 0 2px #9fc0b1; }
+/* 20-U U9 — the cover DRAFT inside the ask bar: who can take it, one tap each to ask. */
+.ddf-ask-draft { padding: 8px 14px 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #d9efe4; }
+.ddf-ask-can { display: flex; align-items: center; gap: 10px; min-height: 30px; border-top: 1px solid rgba(217, 239, 228, .14); padding-top: 6px; }
+.ddf-ask-can-name { font-weight: 600; flex-shrink: 0; }
+.ddf-ask-can-line { flex-grow: 1; min-width: 0; color: #9fc0b1; font-size: 11.5px; }
+.ddf-ask-can-ask {
+  flex-shrink: 0; height: 26px; padding: 0 12px; border-radius: 6px; border: 1px solid #9fc0b1; background: transparent;
+  color: #d9efe4; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.ddf-ask-can-ask:hover:not(:disabled) { background: rgba(217, 239, 228, .1); }
+.ddf-ask-can-ask:disabled { opacity: .5; cursor: default; }
+.ddf-ask-can-more { color: #9fc0b1; font-size: 11.5px; }
+.ddf-ask-can-error { color: #ffb4a8; font-size: 12px; }
 
 /* ─── shared card primitives the roster screens use ─── */
 .ddf-card { background: var(--dd-card); border: 1px solid var(--dd-line); border-radius: 8px; }

@@ -101,4 +101,16 @@ describe("roster board e2e (20-U U5a)", () => {
       .set("authorization", `Bearer ${reader.token}`).expect(422);
     expect((bad.body as { code: string }).code).toBe("invalid_window");
   });
+
+  /* 20-U U9 — the copilot's roster tools over HTTP: the phrasebook routes, the tool answers as the person. */
+  it("copilot: 'ortho mein abhi on call kaun hai?' is answered by roster.who_is_on for a reader, and refused without roster.read", async () => {
+    const reader = await mkUser(db, "board.reader4", ["board_reader"]);
+    const clerk = await mkUser(db, "no.roster3", ["no_roster"]);
+    const ok = await request(app.getHttpServer()).post("/copilot/ask")
+      .set("authorization", `Bearer ${reader.token}`).send({ question: "ortho mein abhi on call kaun hai?" }).expect(200);
+    expect(ok.body).toMatchObject({ source: "phrasebook", intent: "roster.who_is_on", answer: { key: "copilot.answer.rosterWhoUnpublished", params: { dept: "Orthopaedics" } } });
+    const no = await request(app.getHttpServer()).post("/copilot/ask")
+      .set("authorization", `Bearer ${clerk.token}`).send({ question: "Saturday night koi le sakta hai kya?" }).expect(200);
+    expect(no.body).toMatchObject({ intent: "roster.ask_cover", answer: { key: "copilot.answer.notPermitted" } });
+  });
 });

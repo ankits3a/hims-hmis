@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type React from "react";
 import { useAuth } from "../../lib/auth";
 import { useCopilot } from "../../lib/use-copilot";
+import { askCover, rosterErrorText } from "../../lib/roster-api";
 import { ModeBanner } from "../mode-banner";
 import "./frame.css";
 
@@ -246,6 +247,7 @@ export function AskBar({ id, placeholder, fallback, terms }: {
           {copilot.busy ? t("doctorDesk.asking") : copilot.answer}
         </div>
       )}
+      {!copilot.busy && isCoverDraft(copilot.payload) && <CoverDraft key={copilot.payload.assignmentId} draft={copilot.payload} />}
       <div className="ddf-ask-row">
         <span className="ddf-ask-word">{t("doctorDesk.ask")}</span>
         <label htmlFor={id} className="sr">{t("doctorDesk.askLabel")}</label>
@@ -255,5 +257,55 @@ export function AskBar({ id, placeholder, fallback, terms }: {
         />
       </div>
     </form>
+  );
+}
+
+/**
+ * 20-U U9 — `roster.ask_cover`'s DRAFT: who can take the asker's duty, from the server's "who can
+ * take it" (`coverOptions`). The copilot asked nobody; the request is sent HERE, by the person's own
+ * tap, through the same `POST /roster/covers` My duties uses — so the act is the person's, under the
+ * person's own grant, and the validator checks it again as it is made.
+ */
+type CoverDraftPayload = {
+  kind: "roster_cover_draft"; assignmentId: string; post: string; unit: string;
+  canTake: { userId: string; name: string; grade: string; teamName: string; crossUnit: boolean }[];
+  more: number;
+};
+
+function isCoverDraft(p: unknown): p is CoverDraftPayload {
+  return typeof p === "object" && p !== null && (p as { kind?: unknown }).kind === "roster_cover_draft"
+    && Array.isArray((p as { canTake?: unknown }).canTake);
+}
+
+function CoverDraft({ draft }: { draft: CoverDraftPayload }): React.ReactElement {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const ask = (c: CoverDraftPayload["canTake"][number]): void => {
+    setBusy(true); setError(null);
+    askCover({ assignmentId: draft.assignmentId, counterpartId: c.userId })
+      .then(() => { setDone(t("doctorDesk.coverAsked", { name: c.name })); })
+      .catch((e: unknown) => { setError(rosterErrorText(e, t)); })
+      .finally(() => { setBusy(false); });
+  };
+  if (done !== null) return <div className="ddf-ask-draft" role="status" data-testid="cover-draft-sent">{done}</div>;
+  return (
+    <div className="ddf-ask-draft" data-testid="cover-draft">
+      {draft.canTake.map((c) => (
+        <div key={c.userId} className="ddf-ask-can">
+          <span className="ddf-ask-can-name">{c.name}</span>
+          <span className="ddf-ask-can-line">
+            {[t(`doctorDesk.grade.${c.grade}`, { defaultValue: c.grade }), c.teamName].join(" · ")}
+            {c.crossUnit ? ` · ${t("rosterMyDuties.pick.crossUnit")}` : ""}
+          </span>
+          <button type="button" className="ddf-ask-can-ask" disabled={busy} onClick={() => ask(c)} data-testid={`cover-ask-${c.userId}`}>
+            {t("rosterMyDuties.pick.ask")}
+          </button>
+        </div>
+      ))}
+      {draft.more > 0 && <div className="ddf-ask-can-more">{t("doctorDesk.coverMore", { count: draft.more })}</div>}
+      {error !== null && <div className="ddf-ask-can-error" role="alert">{error}</div>}
+    </div>
   );
 }

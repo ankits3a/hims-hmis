@@ -1,3 +1,4 @@
+import { rosterCopilotTools } from "./copilot-tools";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -47,4 +48,7 @@ export const rosterManifest: ModuleManifest = {
     "roster.read",
   ],
   subscriptions: [],
+  // 20-U U9 — what the copilot may ask the roster: who is on, the unit on take, my duties, and a
+  // cover DRAFT the person sends themselves (`./copilot-tools`).
+  copilotTools: rosterCopilotTools(),
 };

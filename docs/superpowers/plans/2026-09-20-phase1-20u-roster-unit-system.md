@@ -482,3 +482,28 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
   department sheet subtitle "OPD held by Unit II", CSV "OPD unit" column/row). A week or a month
   passes through every unit, so it names none. The CSV gains its column only when some clinic ran on
   the unit calendar that day, so an install without units gets the CSV it had.
+
+### U9 — Copilot tools (`roster.who_is_on`, `roster.unit_on_take`, `roster.my_duties`, `roster.ask_cover`)
+
+- **DECIDED — the four are module tools** (`modules/roster/copilot-tools.ts`, on the roster manifest's
+  `copilotTools`), each gated on `roster.read` by the runner and asking the act matrix as the copilot
+  (`requireRosterAct(…, "read", {}, "copilot")`). The kernel gains only the four intents (phrasebook
+  cues, the classifier's criteria, the router's menu) and the contracts gain their answer keys.
+- **DECIDED — `roster.ask_cover` drafts; it never asks.** It reads `coverOptions` for the asker's own
+  duty and returns the people who can take it as a `payload`; the ask bar shows them with an *Ask*
+  button that calls the normal `POST /roster/covers` as the person. `request_cover` stays `never`
+  for the copilot in the matrix — the tool imports no writer.
+- **DECIDED — "kal" is tomorrow unless the sentence is past tense** ("kal raat kaun tha" →
+  yesterday): Hindi has one word for both. A weekday is the next one (today if today); a night is
+  22:00 of that day (a take or a night duty is what is meant); a day with no time is 10:00; nothing
+  named is now. "My next night" names no day.
+- **DECIDED — bare "medicine" is General Medicine**, not Respiratory Medicine (asked as "chest"/"TB");
+  counter aliases (ortho, gynae, paeds, eye, skin, haddi, aankh …) are matched before name prefixes,
+  and an ambiguous name asks "which department?" rather than guessing.
+- **DECIDED — bare "badal" is not a cover cue**: "doctor badal do" at a counter is about a patient's
+  doctor. "duty badal", "swap", "le sakta", "meri jagah" are.
+- **DECIDED — the ask bar's local answerers stay, as the fallback only**: `useCopilot` already asks
+  the server first and runs the screen's own answerer only when the server says "not understood".
+  With the tools live, a roster question is the server's answer.
+- **Left for later:** a WhatsApp nudge to the person asked; the copilot on My duties itself (that
+  screen has no ask bar on its approved board).
