@@ -70,6 +70,7 @@ export type {
   CallRung, Duty, OnDutyNow, RosterAnswerSource, WhoIsOnAnswer, WhoIsOnQuery,
 } from "./resolve";
 export {
+  DUTY_MANAGER_POSITION, dutyManagersAt,
   escalationRecipients, escalationTarget, listEscalationTargets, setEscalationTarget,
 } from "./escalation";
 export type {
@@ -136,7 +137,13 @@ export type {
   CoverCandidate, CoverDecision, CoverOptions, CoverReason, CoverRefusal, CoverRequestView, DutyRef, MyDuty,
   RequestCoverInput,
 } from "./swaps";
-export { myDuties, openFlags, raiseFlag, resolveFlag } from "./my-duties";
+export { flagForAlert, myDuties, openFlags, raiseFlag, resolveFlag } from "./my-duties";
+export {
+  BOARD_PRINT_CATCH_UP_MS, BOARD_PRINT_DESTINATION, BOARD_PRINT_SLOTS_IST, BOARD_PRINT_STALE_MS,
+  boardPrintDocument, boardPrinterGranted, boardSlotAtOrBefore, lastBoardPrint, nextBoardSlot,
+  printBoardIfDue, registerRosterPrinting, renderBoardPrintJob, renderBoardSheet,
+} from "./board-print";
+export type { BoardPrintResult, BoardPrintView } from "./board-print";
 export type { MyDuties, RaiseFlagInput, RosterFlagView } from "./my-duties";
 export {
   rosterCoverAnswered, rosterCoverDecided, rosterCoverRequested, rosterFlagRaised,

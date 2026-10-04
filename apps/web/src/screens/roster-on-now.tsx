@@ -6,9 +6,10 @@ import { fmtIst } from "../lib/format";
 import { sayParams } from "../lib/use-copilot";
 import { todayIst } from "../lib/opd-api";
 import {
-  declareHoliday, declareSkeleton, fetchAsItStood, fetchDeclarations, fetchOnNowBoard, raiseRosterFlag, resolveRosterFlag, rosterErrorText, withdrawSkeleton,
+  declareHoliday, declareSkeleton, fetchAsItStood, fetchBoardPrintDocument, fetchDeclarations, fetchOnNowBoard, raiseRosterFlag, resolveRosterFlag, rosterErrorText, withdrawSkeleton,
 } from "../lib/roster-api";
 import { useAuth } from "../lib/auth";
+import { openDocumentForPrinting } from "../lib/print-api";
 import { DmyDateInput } from "../components/dmy-date-input";
 import type {
   HolidayKind, HolidayPattern, WireAsItStoodBoard, WireAsItStoodChange, WireBoardDepartment, WireBoardHole, WireBoardService,
@@ -405,12 +406,7 @@ function Rail({ b }: { b: WireOnNowBoard }): React.ReactElement {
         ))}
         <WrongFlag b={b} />
       </section>
-      <section className="ddf-card ro-rail-card ddf-noprint" data-testid="on-now-dark">
-        <h2 className="ro-rail-h">{t("rosterOnNow.darkTitle")}</h2>
-        <span className="ro-rail-p">{t("rosterOnNow.darkText")}</span>
-        <button type="button" className="ddf-btn ddf-btn-pri ro-print" data-testid="print-board" onClick={() => window.print()}>{t("rosterOnNow.printIt")}</button>
-        <span className="ro-small">{t("rosterOnNow.darkNotYet")}</span>
-      </section>
+      <DarkCard b={b} />
       <section className="ddf-card ro-rail-card ddf-noprint">
         <h2 className="ro-rail-h">{t("rosterOnNow.arrivingTitle")}</h2>
         <span className="ro-rail-p">{t("rosterOnNow.arrivingText")}</span>
@@ -728,6 +724,45 @@ function ModeRow({ m, busy, onWithdraw }: { m: WireDeclarationsView["modes"][num
           </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 20-U infra (owner 2026-10-04) — **"WHEN THE SCREENS ARE DARK"**, read off the RECORD of the last
+ * scheduled print (`lastPrint`), never off the schedule: "Last printed 20:00 · 1 copy" only when a
+ * relay reported paper; "Generated 20:00 — no printer is connected" when nothing was queued; the
+ * recorded sheet is always offered for download (the browser's Save as PDF), and the hand print
+ * stays for a handover in between.
+ */
+function DarkCard({ b }: { b: WireOnNowBoard }): React.ReactElement {
+  const { t } = useTranslation();
+  const [blocked, setBlocked] = useState(false);
+  const p = b.lastPrint ?? null;
+  const time = p === null ? "" : fmtIst(p.slotAt);
+  const status = p === null ? null
+    : p.outcome === "no_printer" ? t("rosterOnNow.printNoPrinter", { time })
+      : p.copies.printed > 0 ? t("rosterOnNow.printDone", { time, count: p.copies.printed })
+        : p.copies.waiting > 0 ? t("rosterOnNow.printWaiting", { time })
+          : t("rosterOnNow.printFailed", { time });
+  const download = async (): Promise<void> => {
+    if (p === null) return;
+    setBlocked(!openDocumentForPrinting(await fetchBoardPrintDocument(p.printId)));
+  };
+  return (
+    <section className="ddf-card ro-rail-card ddf-noprint" data-testid="on-now-dark">
+      <h2 className="ro-rail-h">{t("rosterOnNow.darkTitle")}</h2>
+      <span className="ro-rail-p">{t("rosterOnNow.darkText")}</span>
+      <span className="ro-small" data-testid="board-print-status">
+        {status ?? t("rosterOnNow.printNone", { next: "20:00 / 08:00" })}
+      </span>
+      {p !== null && (
+        <button type="button" className="ddf-btn" data-testid="board-print-download" onClick={() => { void download(); }}>
+          {t("rosterOnNow.printDownload", { time: fmtIst(p.slotAt) })}
+        </button>
+      )}
+      {blocked && <span className="ro-small" role="alert">{t("rosterOnNow.printBlocked")}</span>}
+      <button type="button" className="ddf-btn ddf-btn-pri ro-print" data-testid="print-board" onClick={() => window.print()}>{t("rosterOnNow.printIt")}</button>
+    </section>
   );
 }
 

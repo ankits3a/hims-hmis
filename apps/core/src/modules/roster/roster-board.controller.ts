@@ -21,6 +21,9 @@ import type { MyDuties, RosterFlagView } from "./my-duties";
 import { boardAsItStood } from "./as-it-stood";
 import type { AsItStoodBoard } from "./as-it-stood";
 import { declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
+import { boardPrintDocument, lastBoardPrint } from "./board-print";
+import type { BoardPrintView } from "./board-print";
+import type { RenderedDocument } from "../../kernel/printing/render";
 import type { DeclarationsView } from "./declarations";
 import { istDateOfInstant } from "./calendar";
 import { opdUnitsOn } from "./opd-units";
@@ -44,7 +47,7 @@ export class RosterBoardController {
 
   @Get("on-now")
   @RequirePermission("roster.read", "hospital")
-  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard & { you: RosterSelf; flags: RosterFlagView[] }> {
+  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard & { you: RosterSelf; flags: RosterFlagView[]; lastPrint: BoardPrintView | null }> {
     try {
       const instant = at === undefined || at === "" ? new Date() : new Date(at);
       if (Number.isNaN(instant.getTime())) {
@@ -56,7 +59,27 @@ export class RosterBoardController {
       return {
         ...(await onNowBoard(this.db, instant)), you: await rosterSelf(this.db, actor, new Date()),
         flags: await openFlags(this.db, actor),
+        // 20-U infra (owner 2026-10-04) — the "When the screens are dark" card reads the RECORD of
+        // the last scheduled print, never a promise; additive.
+        lastPrint: await lastBoardPrint(this.db),
       };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * 20-U infra (owner 2026-10-04) — one recorded board sheet (the 20:00 / 08:00 print), as drawn at
+   * its instant, for the browser's Save as PDF — the house `GET /print/jobs/:id/document` shape. It is
+   * the board a `roster.read` holder sees on the screen, at a past instant; phone numbers are those
+   * the paper on the wall carried.
+   */
+  @Get("board-prints/:printId/document")
+  @RequirePermission("roster.read", "hospital")
+  async boardPrint(@CurrentActor() actor: Actor, @Param("printId") printId: string): Promise<RenderedDocument> {
+    try {
+      await requireRosterAct(this.db, actor, "read");
+      const doc = await boardPrintDocument(this.db, printId);
+      if (doc === null) throw new RosterError("unknown_board_print", undefined, { printId });
+      return doc;
     } catch (e) { toHttp(e); }
   }
 

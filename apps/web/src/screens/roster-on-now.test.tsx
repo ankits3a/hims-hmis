@@ -173,9 +173,54 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(sheet).toHaveTextContent("SR Dr. Aditi Deshmukh · 9876543210");
     expect(sheet).toHaveTextContent("General Surgery");
     expect(sheet).toHaveTextContent(/Printed /);
-    // The card says what is true: printing is by hand; it does not claim a copy was printed.
-    expect(screen.getByTestId("on-now-dark")).toHaveTextContent("It does not print itself yet");
+    // The card says what is true: with no print on record it claims no copy and offers no download.
+    expect(screen.getByTestId("board-print-status")).toHaveTextContent("The server has not drawn this board yet");
     expect(screen.getByTestId("on-now-dark")).not.toHaveTextContent(/Last printed/);
+    expect(screen.queryByTestId("board-print-download")).toBeNull();
+  });
+
+  /* ═══ 20-U infra (owner 2026-10-04) — the card reads the RECORD of the 20:00 / 08:00 print ═══ */
+  const PRINT = {
+    printId: "p1", slotAt: "2026-10-05T14:30:00.000Z", renderedAt: "2026-10-05T14:30:02.000Z", outcome: "queued" as const,
+    destinations: ["duty_board_a4"], copies: { queued: 1, printed: 0, waiting: 0, failed: 0 }, lastPrintedAt: null, nextAt: "2026-10-06T02:30:00.000Z",
+  };
+  const withPrint = (lastPrint: WireOnNowBoard["lastPrint"]): void => {
+    const inner = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (raw.endsWith("/api/roster/on-now")) return new Response(JSON.stringify({ ...BOARD, lastPrint }), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (raw.includes("/roster/board-prints/")) {
+        asked.push(raw);
+        return new Response(JSON.stringify({ html: "<!doctype html><p>board</p>", title: "Who is on duty", page: { widthMm: 297, heightMm: 210 } }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return inner(input, init);
+    }));
+  };
+
+  it("a printed copy is counted only from the relay's report: \"Last printed 20:00 · 1 copy\"", async () => {
+    withPrint({ ...PRINT, copies: { queued: 1, printed: 1, waiting: 0, failed: 0 }, lastPrintedAt: "2026-10-05T14:30:20.000Z" });
+    renderWithProviders(<RosterOnNow />);
+    await vi.waitFor(() => expect(screen.getByTestId("board-print-status")).toHaveTextContent("Last printed 20:00 · 1 copy"));
+  });
+
+  it("a sheet sent and not yet printed is not called printed", async () => {
+    withPrint({ ...PRINT, copies: { queued: 1, printed: 0, waiting: 1, failed: 0 } });
+    renderWithProviders(<RosterOnNow />);
+    await vi.waitFor(() => expect(screen.getByTestId("board-print-status")).toHaveTextContent("The 20:00 sheet went to the printer and has not printed yet."));
+    expect(screen.getByTestId("on-now-dark")).not.toHaveTextContent(/Last printed/);
+  });
+
+  it("with no printer connected the card says the sheet was generated, and the sheet downloads", async () => {
+    withPrint({ ...PRINT, outcome: "no_printer", destinations: [], copies: { queued: 0, printed: 0, waiting: 0, failed: 0 } });
+    const doc = { write: vi.fn(), close: vi.fn() };
+    const open = vi.fn(() => ({ document: doc, focus: vi.fn(), print: vi.fn(), onload: null }));
+    vi.stubGlobal("open", open);
+    renderWithProviders(<RosterOnNow />);
+    await vi.waitFor(() => expect(screen.getByTestId("board-print-status")).toHaveTextContent("Generated 20:00 — no printer is connected for the board, so nothing was printed."));
+    expect(screen.getByTestId("on-now-dark")).not.toHaveTextContent(/Last printed/);
+    await userEvent.click(screen.getByTestId("board-print-download"));
+    await vi.waitFor(() => expect(doc.write).toHaveBeenCalledWith("<!doctype html><p>board</p>"));
+    expect(asked.some((u) => u.endsWith("/api/roster/board-prints/p1/document"))).toBe(true);
   });
 
   it("the ask bar answers from the board when the hospital copilot does not understand", async () => {

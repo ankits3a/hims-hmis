@@ -301,6 +301,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // R6
     escalationRecipients: "a read, called from the worker's own consumers, which run as the kernel and carry their own authority — there is no Actor at 02:14 and inventing one would be the wrong shape",
     escalationTarget: "a read",
+    dutyManagersAt: "a read, called from the kernel alerts consumer for a \"this is wrong\" flag — the roster's duty manager at an instant, else the role's holders; no Actor, as escalationRecipients",
     listEscalationTargets: "a read",
     // R7 — pure arithmetic and reads.
     istMidnightUtc: "pure: the one place a calendar day becomes an instant",
@@ -332,6 +333,17 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     coverRequests: "a read, guarded by `read`, and filtered to the reader's own requests and those they could approve",
     myDutyRows: "a read of the ACTOR's own duties, asked with the actor's own id; guarded by `read`",
     myDuties: "a read — My duties, composed of the reads above; the reader's own and nobody else's",
+    flagForAlert: "a read — one flag's line, department and staff names for the duty manager's bell row; called from the kernel alerts consumer, no Actor",
+    // 20-U infra (owner 2026-10-04) — the board prints itself at 20:00 and 08:00 IST.
+    boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant is due",
+    nextBoardSlot: "PURE: the next 08:00/20:00 IST instant",
+    boardPrinterGranted: "a read — is any live relay granted the board's print destination",
+    renderBoardSheet: "a read — draws the who-is-on board as HTML; writes nothing",
+    printBoardIfDue: "the scheduler's print of the board. It writes a PRINT RECORD and, when a relay is granted the destination, a print job — never a roster row — and decides nothing about who is on; there is no Actor at 20:00",
+    renderBoardPrintJob: "a read — the stored sheet for the print relay's claim, refused when stale",
+    registerRosterPrinting: "registers the renderer with the kernel's print rail at boot; acts on nothing",
+    lastBoardPrint: "a read — the last print record and its jobs' statuses, for the board's card",
+    boardPrintDocument: "a read — one recorded sheet, for download; the route asks `read` first",
     openFlags: "a read — the open \"this is wrong\" flags for the board's holes card; `youMayResolve` PROBES `propose`",
     recordFindings: "brings the STORED findings into line with what `validate()` computed. It writes, and it is deliberately NOT an acting function: it decides nothing, grants nothing and refuses nothing — the judgement is `acceptFinding`, which is guarded. A proposer may record what it found; it may not accept it",
   };

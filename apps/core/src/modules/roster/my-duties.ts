@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
+import { orgDepartments } from "../../kernel/db/schema/org";
 import {
   rosterAssignments, rosterDutyWindows, rosterFlags, rosterPositions, rosterTeams,
 } from "../../kernel/db/schema/roster";
@@ -117,9 +118,10 @@ export interface RaiseFlagInput { departmentId?: string | null; userId?: string 
  * raising a hole ("a human may always raise one"). It changes nobody's duty. It is shown on the
  * board's holes card until somebody who can fix the roster says it is dealt with.
  *
- * It does NOT page the duty manager: paging is `kernel/alerts` + a `kernel/notify` template, both
- * files that belong to everyone, and this task does not edit the kernel. The duty manager reads the
- * board (`roster.read`), and the flag is on it.
+ * AND IT PAGES THE DUTY MANAGER (owner 2026-10-04). `roster.flag_raised` is subscribed by the
+ * kernel alerts consumer, which raises one bell row for whoever is duty manager at the instant it
+ * was raised (`dutyManagersAt`: the roster's answer, else the role's holders) — never for the reader
+ * who raised it. The flag stays on the board as well.
  */
 export async function raiseFlag(tx: Tx, actor: Actor, input: RaiseFlagInput): Promise<{ flagId: string }> {
   await requireRosterAct(tx, actor, "nag", input.departmentId == null ? {} : { departmentId: input.departmentId });
@@ -149,6 +151,25 @@ export async function resolveFlag(tx: Tx, actor: Actor, flagId: string): Promise
   const now = await dbNow(tx);
   await tx.update(rosterFlags).set({ resolvedBy: actor.id, resolvedAt: now, updatedBy: actor.id, updatedAt: now })
     .where(eq(rosterFlags.id, flagId));
+}
+
+/**
+ * What the duty manager's bell row says about one flag — department, the reader's line, who raised
+ * it and about whom. Staff names only; a flag concerns a duty, never a patient. Null for an unknown id.
+ */
+export async function flagForAlert(exec: Db | Tx, flagId: string): Promise<null | {
+  raisedBy: string; raisedByName: string; departmentName: string | null; userName: string | null; note: string; raisedAt: Date;
+}> {
+  const f = (await (exec as Db).select().from(rosterFlags).where(eq(rosterFlags.id, flagId)))[0];
+  if (f === undefined) return null;
+  const ids = [f.raisedBy, ...(f.userId === null ? [] : [f.userId])];
+  const names = new Map((await (exec as Db).select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, ids))).map((u) => [u.id, u.fullName]));
+  const dept = f.departmentId === null ? null
+    : (await (exec as Db).select({ name: orgDepartments.name }).from(orgDepartments).where(eq(orgDepartments.id, f.departmentId)))[0]?.name ?? null;
+  return {
+    raisedBy: f.raisedBy, raisedByName: names.get(f.raisedBy) ?? f.raisedBy, departmentName: dept,
+    userName: f.userId === null ? null : names.get(f.userId) ?? f.userId, note: f.note, raisedAt: f.raisedAt,
+  };
 }
 
 /** Open flags, newest first — the board's holes card. */
