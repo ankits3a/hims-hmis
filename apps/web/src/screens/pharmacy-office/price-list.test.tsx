@@ -19,8 +19,8 @@ function mockRoutes(routes: Record<string, Reply>): void {
 
 const cand = (id: string, name: string, schedule: string | null = null, score = 90) => ({ medicineId: id, name, form: "tablet", strength: "400 mg", salts: ["Ibuprofen"], schedule, score });
 const MATCHED = { rows: [
-  { line: 1, brand: "Brufen 400", manufacturer: "Abbott", composition: "Ibuprofen 400 mg", pack: "10x15", best: cand("m-bru", "Brufen 400", "H"), alternatives: [cand("m-ibu", "Ibugesic 400", null, 60)], existing: null, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: null },
-  { line: 2, brand: "Crocin 500", manufacturer: "GSK", composition: "Paracetamol 500 mg", pack: "10x15", best: cand("m-cro", "Crocin 500"), alternatives: [], existing: { itemId: "i-1", code: "CROC500", name: "Crocin 500 tablet" }, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 3000 },
+  { line: 1, brand: "Brufen 400", manufacturer: "Abbott", composition: "Ibuprofen 400 mg", pack: "10x15", best: cand("m-bru", "Brufen 400", "H"), alternatives: [cand("m-ibu", "Ibugesic 400", null, 60)], existing: null, twin: null, variant: null, outer: 10, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: null },
+  { line: 2, brand: "Crocin 500", manufacturer: "GSK", composition: "Paracetamol 500 mg", pack: "10x15", best: cand("m-cro", "Crocin 500"), alternatives: [], existing: { itemId: "i-1", code: "CROC500", name: "Crocin 500 tablet" }, twin: null, variant: null, outer: 10, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 3000 },
 ] };
 
 describe("import a vendor's price list (owner 2026-10-04)", () => {
@@ -45,7 +45,7 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
       { brand: "Brufen 400", manufacturer: "Abbott", composition: "Ibuprofen 400 mg", pack: "10x15" },
       { brand: "Crocin 500", manufacturer: "GSK", composition: "Paracetamol 500 mg", pack: "10x15" },
     ] }));
-    expect(await screen.findByTestId("price-summary")).toHaveTextContent("2 rows · 2 matched in the catalogue · 1 already in your item master · 0 ticked to create");
+    expect(await screen.findByTestId("price-summary")).toHaveTextContent("2 rows · 2 matched in the catalogue · 0 to add as new brands · 1 already in your item master · 0 ticked to create");
     expect(screen.getByTestId("price-existing-2")).toHaveTextContent("Already an item (CROC500)");
     expect(screen.queryByTestId("price-check-1")).toBeNull(); // a confident match (score 90) is not flagged
     await user.selectOptions(screen.getByTestId("price-pick-1"), "m-ibu");
@@ -56,9 +56,14 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     expect(screen.getByTestId("price-blocked")).toBeInTheDocument();
     expect(screen.getByTestId("price-create")).toBeDisabled();
     await user.type(screen.getByTestId("price-mrp-1"), "42.10");
+    // A packing of 10*15: what the MRP column prices is asked once, and Create waits for the answer.
+    expect(screen.getByTestId("price-basis-needed")).toBeInTheDocument();
+    expect(screen.getByTestId("price-create")).toBeDisabled();
+    await user.click(screen.getByTestId("price-basis-pack"));
+    await user.type(screen.getByTestId("price-mrp-1"), "42.10");
     await user.click(screen.getByTestId("price-create"));
     await waitFor(() => expect(posted.find((p) => p.path.endsWith("/import"))?.body).toEqual({ rows: [
-      { line: 1, medicineId: "m-bru", brand: "Brufen 400", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4210, storage: "ambient" },
+      { line: 1, medicineId: "m-bru", twin: false, variant: null, brand: "Brufen 400", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4210, storage: "ambient" },
     ] }));
     expect(await screen.findByTestId("price-result-1")).toHaveTextContent("Created · BRUFEN400");
     expect(screen.getByTestId("price-done")).toHaveTextContent("1 created, 0 not created");
@@ -103,5 +108,48 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     expect(await screen.findByTestId("price-check-col-brand")).toHaveTextContent("Cannot import — every row needs a brand.");
     expect(screen.getByTestId("price-match")).toBeDisabled();
   });
-});
 
+  /* Owner 2026-10-04 — the Aptus Drugs list: brands the catalogue lacks, an MRP for the whole packing, a drug in two kinds. */
+  it("a brand the catalogue lacks is added from its composition; an MRP for the whole packing is divided; two kinds make the person choose", async () => {
+    const tw = (id: string, name: string, newName: string, form: string) => ({ medicineId: id, name, form, schedule: "H", salts: ["x"], newName });
+    mockRoutes({
+      "POST /pharmacy/opening-stock/price-list/match": { status: 200, body: { rows: [
+        { line: 1, brand: "SAZOTEL-40", manufacturer: "Hauz", composition: "TELMISARTAN 40MG", pack: "10*15", best: null, alternatives: [], existing: null,
+          twin: { ...tw("m-telmi", "Telmisartan 40 mg oral tablet", "Sazotel-40 (telmisartan 40 mg oral tablet)", "Oral tablet"), ambiguous: false, others: [] },
+          variant: null, outer: 10, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 106_000 },
+        { line: 2, brand: "EMOPRED 40", manufacturer: "Hauz", composition: "METHYLPREDNISOLONE 40 MG", pack: "1'S", best: null, alternatives: [], existing: null,
+          twin: { ...tw("m-acet", "Methylprednisolone acetate 40 mg/mL suspension for injection", "Emopred 40 (methylprednisolone acetate 40 mg/mL suspension for injection)", "Suspension for injection"),
+            ambiguous: true, others: [tw("m-succ", "Solu-medrol (methylprednisolone sodium succinate) 40 mg/1 vial powder", "Emopred 40 (methylprednisolone sodium succinate) 40 mg/1 vial powder", "Powder for solution for injection")] },
+          variant: null, outer: 1, packType: "vial", packSize: 1, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4800 },
+      ] } },
+      "POST /pharmacy/opening-stock/price-list/import": { status: 200, body: { results: [{ line: 1, ok: true, itemId: "i-1", code: "SAZOTEL40", name: "Sazotel-40" }, { line: 2, ok: true, itemId: "i-2", code: "EMOPRED40", name: "Emopred 40" }] } },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PriceListImport />);
+    await user.click(screen.getByTestId("price-paste"));
+    await user.paste("Brand\tComposition\tPacking\tMRP\nSAZOTEL-40\tTELMISARTAN 40MG\t10*15\t1060\nEMOPRED 40\tMETHYLPREDNISOLONE 40 MG\t1'S\t48");
+    await user.click(screen.getByTestId("price-paste-read"));
+    await user.click(await screen.findByTestId("price-match"));
+    expect(await screen.findByTestId("price-guide-twin")).toHaveTextContent("2 brands are not in the drug catalogue");
+    expect(screen.getByTestId("price-guide-choose")).toHaveTextContent("1 row matches the drug in more than one kind");
+    expect(screen.getByTestId("price-new-1")).toHaveTextContent("New to the catalogue");
+    expect(screen.getByTestId("price-pick-1")).toHaveValue("twin:m-telmi");
+    // Two kinds of methylprednisolone 40 (a depot suspension, a powder for IV): not picked for the person.
+    expect(screen.getByTestId("price-pick-2")).toHaveValue("");
+    expect(screen.getByTestId("price-choose-2")).toHaveTextContent("2 different kinds");
+    expect(screen.getByTestId("price-outer-1")).toHaveTextContent("10 of these in the packing");
+    // ₹1,060 for a strip of 15 telmisartan is ₹70 a tablet: the screen suggests the whole packing, with the sums.
+    expect(screen.getByTestId("price-basis-example")).toHaveTextContent("Per strip of 15 tablets that is ₹1060.00 if the MRP is for one pack, or ₹106.00 if it is for the whole packing of 10");
+    expect(screen.getByTestId("price-basis")).toHaveTextContent("the whole packing as written (10*15 = 10 strips) — suggested from the prices");
+    await user.click(screen.getByTestId("price-basis-packing"));
+    expect(screen.getByTestId("price-mrp-1")).toHaveValue("106.00");
+    expect(screen.getByTestId("price-mrp-2")).toHaveValue("48.00"); // a single vial is its own packing
+    await user.selectOptions(screen.getByTestId("price-pick-2"), "twin:m-succ");
+    await user.click(within(screen.getByTestId("price-row-2")).getByRole("checkbox", { name: "Create EMOPRED 40" }));
+    await user.click(screen.getByTestId("price-create"));
+    await waitFor(() => expect(posted.find((p) => p.path.endsWith("/import"))?.body).toEqual({ rows: [
+      { line: 1, medicineId: "m-telmi", twin: true, variant: null, brand: "SAZOTEL-40", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 10_600, storage: "ambient" },
+      { line: 2, medicineId: "m-succ", twin: true, variant: null, brand: "EMOPRED 40", packType: "vial", packSize: 1, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4800, storage: "ambient" },
+    ] }));
+  });
+});
