@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, Tx } from "../../kernel/db/client";
 import {
-  rosterAssignments, rosterHolidays, rosterOfficiating, rosterPeriods, rosterPositions,
+  rosterAssignments, rosterHolidays, rosterModeDeclarations, rosterOfficiating, rosterPeriods, rosterPositions,
   rosterRequirements, rosterTeamMemberships, staffCredentials,
 } from "../../kernel/db/schema/roster";
 import { users } from "../../kernel/db/schema";
@@ -846,11 +846,73 @@ export async function validate(
       }));
   });
 
+  // 20-U I5 / D4 — a declared skeleton day relaxes exactly the rules the plan names, for exactly
+  // the people it names. See `relaxForSkeletonDays`.
+  const skeletonDays = dates.length === 0 ? new Set<string>() : new Set((await (exec as Db)
+    .select({ istDate: rosterModeDeclarations.istDate, departmentId: rosterModeDeclarations.departmentId })
+    .from(rosterModeDeclarations)
+    .where(and(inArray(rosterModeDeclarations.istDate, dates), sql`${rosterModeDeclarations.withdrawnAt} is null`)))
+    .filter((d) => d.departmentId === null || d.departmentId === period.departmentId
+      || slots.some((s) => s.departmentId === d.departmentId))
+    .map((d) => `${d.departmentId ?? "*"}\u0000${String(d.istDate)}`));
+  const relaxed = relaxForSkeletonDays(out, skeletonDays, slots, posByKey);
+
   const rank: Record<RosterRuleSeverity, number> = { block: 0, warn: 1, info: 2 };
-  return out.sort((a, b) =>
+  return relaxed.sort((a, b) =>
     rank[a.severity] - rank[b.severity]
     || a.ruleKey.localeCompare(b.ruleKey)
     || (a.userId ?? "").localeCompare(b.userId ?? ""));
+}
+
+/**
+ * ═══ 20-U I5 — SKELETON COVER RELAXES TWO RULES, FOR FACULTY, AND NOTHING ELSE (plan D4) ═══
+ *
+ * Plan `2026-09-20-phase1-20u-roster-unit-system.md` D4 (lines 149–154): *"The validator's ratio and
+ * rest rules drop from `block` to `warn` **for faculty and consenting staff only** (the 12-hour rest
+ * rule for a resident who is actually working a night is never relaxed silently — the override is
+ * per person, named, evented)"*. Read literally, and nothing wider:
+ *
+ *   · **the ratio rule** is `requirement_shortfall` (R-067's staffing gate) — relaxed when the
+ *     requirement's POSITION is a faculty post, on a day the department (or the hospital) is on
+ *     skeleton cover;
+ *   · **the rest rule** is `rest_after_duty` — relaxed when the PERSON is rostered as faculty on the
+ *     slot the finding is about, on a skeleton day;
+ *   · **a resident's rest and a resident post's ratio stay `block`.** Their override is the existing
+ *     per-person `acceptFinding` — named, with a reason, evented (`roster.finding_accepted`).
+ *   · **DECIDED — "consenting staff" relaxes nobody today.** The roster records no consent, and a
+ *     relaxation keyed on a consent that is not recorded would be a relaxation for everyone. When a
+ *     consent record exists it joins the faculty test here; until then the plan's safe half stands.
+ *
+ * Every other rule (hours, nights, weekly off, credentials, presence) is untouched. A relaxed
+ * finding is not removed — it is the same finding at `warn`, stamped `skeleton: true` and
+ * `relaxedFrom: "block"`, so the month still shows it and the head still reads it.
+ */
+function relaxForSkeletonDays(
+  findings: RosterFinding[],
+  skeletonDays: ReadonlySet<string>,
+  slots: readonly Slot[],
+  posByKey: ReadonlyMap<string, { cadre: string }>,
+): RosterFinding[] {
+  if (skeletonDays.size === 0) return findings;
+  const onSkeleton = (departmentId: string | null, istDate: string): boolean =>
+    skeletonDays.has(`*\u0000${istDate}`) || (departmentId !== null && skeletonDays.has(`${departmentId}\u0000${istDate}`));
+  const slotById = new Map(slots.map((s) => [s.id, s]));
+  return findings.map((f) => {
+    if (f.severity !== "block") return f;
+    let relax = false;
+    if (f.ruleKey === "rest_after_duty" && f.assignmentId !== null) {
+      const s = slotById.get(f.assignmentId);
+      relax = s !== undefined && s.cadre === "faculty" && onSkeleton(s.departmentId, s.istDate);
+    } else if (f.ruleKey === "requirement_shortfall") {
+      const positionKey = typeof f.params.positionKey === "string" ? f.params.positionKey : "";
+      const istDate = typeof f.params.istDate === "string" ? f.params.istDate : "";
+      const dept = f.params.scopeType === "department" && typeof f.params.scopeId === "string"
+        ? f.params.scopeId
+        : (slots.find((s) => s.positionKey === positionKey && s.istDate === istDate)?.departmentId ?? null);
+      relax = posByKey.get(positionKey)?.cadre === "faculty" && onSkeleton(dept, istDate);
+    }
+    return relax ? { ...f, severity: "warn", params: { ...f.params, skeleton: true, relaxedFrom: "block" } } : f;
+  });
 }
 
 /**

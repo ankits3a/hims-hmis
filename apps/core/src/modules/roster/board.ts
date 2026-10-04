@@ -73,10 +73,15 @@ export interface BoardService {
   positionKey: string; positionLabel: string; cadre: string; source: RosterAnswerSource;
   people: { userId: string; name: string; departmentId: string | null }[];
 }
-export type BoardHoleKind = "no_take_cycle" | "take_gap" | "vacant_slot" | "absent_on_duty";
+export type BoardHoleKind = "no_take_cycle" | "take_gap" | "vacant_slot" | "absent_on_duty" | "skeleton_short";
 export interface BoardHole {
   kind: BoardHoleKind; departmentId: string; departmentName: string; from: Date; to: Date;
   positionKey: string | null; positionLabel: string | null; userId: string | null; name: string | null;
+  /**
+   * 20-U I5 — `skeleton_short` only: how many duties of the department's strike day are vacant or
+   * held by somebody away. One line per department, never one per absent resident. Null otherwise.
+   */
+  count: number | null;
 }
 export interface OnNowBoard {
   at: Date;
@@ -229,8 +234,8 @@ export async function onNowBoard(
   /* ─── HOLES IN THE NEXT 24 HOURS ─── */
   const until = new Date(at.getTime() + BOARD_HORIZON_MS);
   const holes: BoardHole[] = [];
-  const hole = (h: Omit<BoardHole, "departmentName" | "positionLabel">): BoardHole => ({
-    ...h, departmentName: deptById.get(h.departmentId)?.name ?? h.departmentId,
+  const hole = (h: Omit<BoardHole, "departmentName" | "positionLabel" | "count">): BoardHole => ({
+    ...h, count: null, departmentName: deptById.get(h.departmentId)?.name ?? h.departmentId,
     positionLabel: h.positionKey === null ? null : labelOf(h.positionKey),
   });
 
@@ -279,9 +284,46 @@ export async function onNowBoard(
       }));
     }
   }
+  const grouped = await groupSkeletonHoles(exec, holes);
+  holes.length = 0;
+  holes.push(...grouped);
   holes.sort((x, y) => x.from.getTime() - y.from.getTime() || x.departmentName.localeCompare(y.departmentName) || x.kind.localeCompare(y.kind));
 
   return { at, resolverEnabled: enabled, departments: rows, services, holes };
+}
+
+/**
+ * 20-U I5 — **A STRIKE DAY IS ONE LINE PER DEPARTMENT.** On a day the department (or the hospital)
+ * is declared on skeleton cover, its vacant duties and its duties held by somebody away are one
+ * hole — "General Medicine · skeleton cover · 14 duties uncovered" — spanning the first to the last.
+ * Forty lines of "Dr X is away" is the thousand findings D4 says a mode exists to replace. The
+ * department-level holes (no take cycle, a take gap) are untouched: they are already one line.
+ */
+async function groupSkeletonHoles(exec: Db | Tx, holes: readonly BoardHole[]): Promise<BoardHole[]> {
+  const out: BoardHole[] = [];
+  const groups = new Map<string, BoardHole>();
+  const cache = new Map<string, boolean>();
+  for (const h of holes) {
+    if (h.kind !== "vacant_slot" && h.kind !== "absent_on_duty") { out.push(h); continue; }
+    const day = istDateOfInstant(h.from);
+    const key = `${h.departmentId}\u0000${day}`;
+    if (!cache.has(key)) cache.set(key, await skeletonModeOn(exec, h.departmentId, day));
+    if (cache.get(key) !== true) { out.push(h); continue; }
+    const g = groups.get(key);
+    if (g === undefined) {
+      const first: BoardHole = {
+        kind: "skeleton_short", departmentId: h.departmentId, departmentName: h.departmentName,
+        from: h.from, to: h.to, positionKey: null, positionLabel: null, userId: null, name: null, count: 1,
+      };
+      groups.set(key, first);
+      out.push(first);
+    } else {
+      g.count = (g.count ?? 0) + 1;
+      if (h.from < g.from) g.from = h.from;
+      if (h.to > g.to) g.to = h.to;
+    }
+  }
+  return out;
 }
 
 /**

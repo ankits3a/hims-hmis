@@ -179,6 +179,10 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // R8 — the one act in the validator's half of the phase. Everything else there READS.
     declareSkeletonMode: { reaches: "requireRosterAct(", why: "`declare` — the same act a holiday goes through. NO machine may put a hospital on skeleton cover however sure it is: the whole content of the declaration is that a person is answerable for it" },
     withdrawSkeletonMode: { reaches: "requireRosterAct(", why: "standing it down is the same authority as declaring it, at the same scope" },
+    // 20-U I1/I5 — the door's acts: each validates the body and calls the domain act unchanged.
+    declareHolidayAct: { reaches: "declareHoliday(", why: "the HTTP door onto `declareHoliday`; refuses a past day first, then the domain asks `declare`" },
+    declareModeAct: { reaches: "declareSkeletonMode(", why: "the HTTP door onto `declareSkeletonMode`; the domain asks `declare` at the department" },
+    withdrawModeAct: { reaches: "withdrawSkeletonMode(", why: "the HTTP door onto `withdrawSkeletonMode`, at the declaration's own scope" },
     // R9 — the proposer. It ACTS, and the act is the one the matrix grants a machine.
     proposeMonth: { reaches: "draftPeriod(", why: "`draft_machine_period` — a machine may draft a roster OF ITS OWN, and `assign` then judges every slot edit as `propose` or, once a human has touched the draft, `edit_human_draft`, which no machine may do" },
     runMonthlyProposals: { reaches: "proposeMonth(", why: "the scheduled entry point; it decides only WHICH units need next month, and every write goes through the checked path above" },
@@ -274,6 +278,11 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // `roster-board.controller.ts`, which is guarded by `RequirePermission("roster.read")` AND
     // `requireRosterAct(…, "read")` before it calls — `test/roster-board.e2e.test.ts` pins the 403.
     onNowBoard: "a read — the who-is-on-now board, composed of the reads above; guarded at its route",
+    // 20-U I1/I5/I23 — two reads.
+    declarationsView: "a read, guarded by `requireRosterAct(…, \"read\")`; its `youMay` PROBES `declare` and grants nothing",
+    boardAsItStood: "a read — the board as PUBLISHED at a past instant and the changes since; guarded at its route like `onNowBoard`",
+    publishedAsKnownAt: "a read on the knowledge axis — `asKnownAt` across every scope",
+    windowAsKnownAt: "a read on the knowledge axis — the take/backup window in force at an instant, as known then",
     boardColumn: "pure: which board column a position belongs in, from the position master",
     toHttp: "maps a RosterError to an HTTP refusal; decides nothing",
     // 20-U U5b — the unit's month: one guarded read, a window and a list.

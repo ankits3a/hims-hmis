@@ -20,10 +20,12 @@ export type WireBoardService = {
   positionKey: string; positionLabel: string; cadre: string; source: RosterSource;
   people: { userId: string; name: string; departmentId: string | null }[];
 };
-export type BoardHoleKind = "no_take_cycle" | "take_gap" | "vacant_slot" | "absent_on_duty";
+export type BoardHoleKind = "no_take_cycle" | "take_gap" | "vacant_slot" | "absent_on_duty" | "skeleton_short";
 export type WireBoardHole = {
   kind: BoardHoleKind; departmentId: string; departmentName: string; from: string; to: string;
   positionKey: string | null; positionLabel: string | null; userId: string | null; name: string | null;
+  /** 20-U I5 — `skeleton_short` only: the strike day's uncovered duties, as one line. Null otherwise. */
+  count: number | null;
 };
 /** The reader, for the Doctor Desk header — `month.ts` `rosterSelf`. Null fields: not posted to a unit now. */
 export type WireRosterSelf = {
@@ -181,3 +183,39 @@ export const raiseRosterFlag = (b: { departmentId: string | null; userId: string
   api<{ flagId: string }>("POST", "/roster/flags", b);
 export const resolveRosterFlag = (flagId: string) =>
   api<{ ok: true }>("POST", `/roster/flags/${encodeURIComponent(flagId)}/resolve`);
+
+/* ═══ 20-U I1 / I5 — holidays and skeleton cover: `GET /roster/declarations`, `POST /roster/holidays`,
+ * `POST /roster/modes`, `POST /roster/modes/:id/withdraw` — transcribed from `declarations.ts`. ═══ */
+export type HolidayKind = "gazetted" | "restricted" | "declared" | "local";
+export type HolidayPattern = "as_sunday" | "opd_short" | "opd_off_ot_proceeds";
+export type WireDeclaredHoliday = { istDate: string; kind: string; pattern: string; declaredByName: string | null; declaredAt: string };
+export type WireDeclaredMode = {
+  declarationId: string; departmentId: string | null; departmentName: string | null; mode: string;
+  istDate: string; reason: string; declaredByName: string | null; declaredAt: string;
+  withdrawnAt: string | null; withdrawnByName: string | null; withdrawReason: string | null;
+};
+export type WireDeclarationsView = {
+  from: string; to: string;
+  holidays: WireDeclaredHoliday[]; modes: WireDeclaredMode[];
+  departments: { departmentId: string; code: string; name: string }[];
+  youMay: { holiday: boolean; hospitalSkeleton: boolean; departmentSkeleton: boolean };
+};
+export const fetchDeclarations = () => api<WireDeclarationsView>("GET", "/roster/declarations");
+export const declareHoliday = (istDate: string, kind: HolidayKind, pattern: HolidayPattern) =>
+  api<WireDeclarationsView>("POST", "/roster/holidays", { istDate, kind, pattern });
+/** `departmentId: null` — the whole hospital. */
+export const declareSkeleton = (departmentId: string | null, istDate: string, reason: string) =>
+  api<WireDeclarationsView>("POST", "/roster/modes", { departmentId, istDate, reason });
+export const withdrawSkeleton = (declarationId: string, reason: string) =>
+  api<WireDeclarationsView>("POST", `/roster/modes/${encodeURIComponent(declarationId)}/withdraw`, { reason });
+
+/* ═══ 20-U I23 — the board as it stood: `GET /roster/as-it-stood?at=` — `as-it-stood.ts`. ═══ */
+export type WireChangedSlot = { userId: string | null; name: string | null; positionKey: string; positionLabel: string; startsAt: string; endsAt: string };
+export type WireAsItStoodChange = {
+  kind: string; periodId: string; departmentId: string | null; departmentName: string | null;
+  at: string; afterTheFact: boolean; byName: string | null; version: number | null;
+  removed: WireChangedSlot[]; added: WireChangedSlot[];
+};
+export type WireAsItStoodBoard = WireOnNowBoard & { knownAt: string; changes: WireAsItStoodChange[] };
+export const fetchAsItStood = (at: string) =>
+  api<WireAsItStoodBoard>("GET", `/roster/as-it-stood?at=${encodeURIComponent(at)}`);

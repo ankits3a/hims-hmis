@@ -8,6 +8,8 @@ import {
 import { orgDepartments } from "../../kernel/db/schema/org";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { appendEvent } from "../../kernel/events/append";
+import { rosterHolidayDeclared } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type {
@@ -405,6 +407,16 @@ export async function declareHoliday(
   for (const cycle of live) {
     await materialiseWindows(tx, actor, cycle.id, input.istDate, addIstDays(input.istDate, 1));
   }
+  // 20-U I1/I2 — the declaration is heard outside the roster (V9: the day as an instant, no prose).
+  const stamped = (await (tx as Db).select({ at: rosterHolidays.declaredAt }).from(rosterHolidays)
+    .where(eq(rosterHolidays.istDate, input.istDate)))[0];
+  await appendEvent(tx, rosterHolidayDeclared.make({
+    payload: {
+      dayStartsAt: istMidnightUtc(input.istDate).toISOString(), kind, pattern,
+      departmentsRematerialised: live.length, declaredAt: (stamped?.at ?? new Date()).toISOString(),
+    },
+    actor, correlationId: input.istDate,
+  }));
   return { istDate: input.istDate, departmentsRematerialised: live.length };
 }
 
@@ -439,6 +451,29 @@ export async function unitOnTake(exec: Db | Tx, departmentId: string, at: Date):
 
 export async function backupUnit(exec: Db | Tx, departmentId: string, at: Date): Promise<OnTakeAnswer> {
   const [row] = await (exec as Db).select().from(rosterDutyWindows).where(liveWindowAt(departmentId, "backup", at)).limit(1);
+  return row === undefined
+    ? { teamId: null, source: "none", startsAt: null, endsAt: null }
+    : { teamId: row.teamId, source: "published", startsAt: row.startsAt, endsAt: row.endsAt };
+}
+
+/**
+ * 20-U I23 — the unit on take (or the backup) at `at`, **as the calendar stood at `knownAt`**: a
+ * window written by then (`created_at ≤ knownAt`) and not yet superseded then. A holiday declared
+ * later, or a corrected cycle, re-materialises a day's windows — supersedes the old rows and writes
+ * new ones — and an inspection of last Tuesday must not be answered from today's re-write. The same
+ * two-axis rule as `asKnownAt` for slots; `unitOnTake` is this with `knownAt` = now's live rows.
+ */
+export async function windowAsKnownAt(
+  exec: Db | Tx, departmentId: string, activity: "take" | "backup", at: Date, knownAt: Date,
+): Promise<OnTakeAnswer> {
+  const [row] = await (exec as Db).select().from(rosterDutyWindows).where(and(
+    eq(rosterDutyWindows.departmentId, departmentId),
+    eq(rosterDutyWindows.activity, activity),
+    lte(rosterDutyWindows.startsAt, at),
+    gt(rosterDutyWindows.endsAt, at),
+    lte(rosterDutyWindows.createdAt, knownAt),
+    sql`(${rosterDutyWindows.supersededAt} is null or ${rosterDutyWindows.supersededAt} > ${knownAt})`,
+  )).orderBy(sql`${rosterDutyWindows.createdAt} desc`).limit(1);
   return row === undefined
     ? { teamId: null, source: "none", startsAt: null, endsAt: null }
     : { teamId: row.teamId, source: "published", startsAt: row.startsAt, endsAt: row.endsAt };

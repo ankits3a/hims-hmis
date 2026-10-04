@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 import {
-  ROSTER_AMENDMENT_KINDS, ROSTER_ORIGINS, ROSTER_RULE_SEVERITIES, ROSTER_SCOPE_TYPES,
+  ROSTER_AMENDMENT_KINDS, ROSTER_HOLIDAY_KINDS, ROSTER_HOLIDAY_PATTERNS, ROSTER_MODES, ROSTER_ORIGINS, ROSTER_RULE_SEVERITIES, ROSTER_SCOPE_TYPES,
   ROSTER_COVER_KINDS, STAFF_ABSENCE_KINDS,
 } from "../../kernel/db/schema/roster";
 
@@ -199,9 +199,42 @@ export const rosterFlagRaised = defineEvent("roster.flag_raised", MODULE, z.obje
   raisedAt: instant(),
 }));
 
+/**
+ * 20-U I1/I2/I5 — **THE TWO DECLARATIONS, EVENTED.** A holiday declared at 19:30 for tomorrow and a
+ * strike day are the two acts that change what a whole department does without touching one slot,
+ * so they are the two a consumer outside the roster (the OPD's re-book list, a notifier) most needs
+ * to hear about. The day travels as the INSTANT of its IST midnight (V9: instants, never a formatted
+ * day); the declaration's REASON does not travel at all — it is prose ("residents' strike over a
+ * stipend dispute") and is read from the row by whoever is entitled to it.
+ */
+export const rosterHolidayDeclared = defineEvent("roster.holiday_declared", MODULE, z.object({
+  dayStartsAt: instant(),
+  kind: code(ROSTER_HOLIDAY_KINDS),
+  pattern: code(ROSTER_HOLIDAY_PATTERNS),
+  departmentsRematerialised: z.number().int().nonnegative(),
+  declaredAt: instant(),
+}));
+
+export const rosterModeDeclared = defineEvent("roster.mode_declared", MODULE, z.object({
+  declarationId: id(),
+  departmentId: id().nullable(),
+  mode: code(ROSTER_MODES),
+  dayStartsAt: instant(),
+  declaredAt: instant(),
+}));
+
+export const rosterModeWithdrawn = defineEvent("roster.mode_withdrawn", MODULE, z.object({
+  declarationId: id(),
+  departmentId: id().nullable(),
+  mode: code(ROSTER_MODES),
+  dayStartsAt: instant(),
+  withdrawnAt: instant(),
+}));
+
 export const ROSTER_EVENTS = [
   rosterPeriodDrafted, rosterPeriodPublished, rosterPeriodSuperseded,
   rosterDutyChanged, rosterAmendmentApplied, rosterAbsenceRequested, rosterAbsenceApproved,
   rosterFindingAccepted,
   rosterCoverRequested, rosterCoverAnswered, rosterCoverDecided, rosterFlagRaised,
+  rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn,
 ] as const;

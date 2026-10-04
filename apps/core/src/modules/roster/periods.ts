@@ -927,6 +927,29 @@ export async function asKnownAt(
     .then((rows) => rows.map((r) => r.a));
 }
 
+/**
+ * 20-U I23 — `asKnownAt`'s two filters, across EVERY roster rather than one scope, for the slots that
+ * overlap `[from, to)`. The inspector's question is "who was on in Surgery last Tuesday" and does
+ * not know which scope (a unit's month, the department's, the hospital's) answered it; the knowledge
+ * axis is the same two predicates as above, so the two can never disagree about what was known.
+ */
+export async function publishedAsKnownAt(
+  exec: Db | Tx, knownAt: Date, from: Date, to: Date,
+): Promise<{ assignment: RosterAssignmentRow; period: RosterPeriodRow }[]> {
+  return (exec as Db).select({ a: rosterAssignments, p: rosterPeriods }).from(rosterAssignments)
+    .innerJoin(rosterPeriods, eq(rosterPeriods.id, rosterAssignments.periodId))
+    .where(and(
+      sql`${rosterPeriods.publishedAt} is not null and ${rosterPeriods.publishedAt} <= ${knownAt}`,
+      sql`(${rosterPeriods.supersededAt} is null or ${rosterPeriods.supersededAt} > ${knownAt})`,
+      sql`${rosterAssignments.liveFrom} <= ${knownAt}`,
+      sql`(${rosterAssignments.liveTo} is null or ${rosterAssignments.liveTo} > ${knownAt})`,
+      lt(rosterAssignments.startsAt, to),
+      gt(rosterAssignments.endsAt, from),
+    ))
+    .orderBy(asc(rosterAssignments.startsAt), asc(rosterAssignments.id))
+    .then((rows) => rows.map((r) => ({ assignment: r.a, period: r.p })));
+}
+
 export async function periodWithAssignments(
   exec: Db | Tx, periodId: string,
 ): Promise<{ period: RosterPeriodRow; assignments: RosterAssignmentRow[] }> {
