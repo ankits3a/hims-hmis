@@ -16,6 +16,7 @@ import { recordAbsence } from "../src/modules/roster/absences";
 import { addIstDays, istDateOfInstant, istMidnightUtc } from "../src/modules/roster/calendar";
 import type { INestApplication } from "@nestjs/common";
 import type { Db } from "../src/kernel/db/client";
+import type { AebasTodo } from "../src/modules/roster/aebas";
 import type { DutyEvidence, EvidencePickerDepartment } from "../src/modules/roster/evidence";
 
 /**
@@ -83,6 +84,9 @@ describe("roster duty evidence + AEBAS e2e (20-U U8/U8b)", () => {
     await http().get("/roster/evidence/people").expect(401);
     await http().get("/roster/evidence").expect(401);
     await http().post("/roster/evidence/print").send({}).expect(401);
+    await http().get("/roster/aebas").expect(401);
+    await http().post(`/roster/aebas/absences/${absenceId}/entered`).expect(401);
+    await http().post(`/roster/aebas/holidays/${tomorrow}/entered`).expect(401);
   });
 
   it("the duty-evidence report: a reader is refused; the MS previews the sheet and prints one job to the office's A4", async () => {
@@ -103,4 +107,16 @@ describe("roster duty evidence + AEBAS e2e (20-U U8/U8b)", () => {
     await http().post("/roster/evidence/print").set(as(reader)).send({ userIds: [meena.id], from: today, to: tomorrow }).expect(403);
   });
 
+  it("the AEBAS list: due today, one tap each, and it leaves the list; a reader is refused", async () => {
+    await http().get("/roster/aebas").set(as(reader)).expect(403);
+    await http().post(`/roster/aebas/absences/${absenceId}/entered`).set(as(reader)).expect(403);
+    const todo = (await http().get("/roster/aebas").set(as(ms)).expect(200)).body as AebasTodo;
+    expect(todo.items.map((i) => [i.key, i.state])).toEqual([[`holiday:${tomorrow}`, "due_today"], [`absence:${absenceId}`, "due_today"]]);
+    expect(JSON.stringify(todo)).not.toMatch(/wedding/);
+    const after = (await http().post(`/roster/aebas/absences/${absenceId}/entered`).set(as(ms)).expect(200)).body as AebasTodo;
+    expect(after.items.map((i) => i.key)).toEqual([`holiday:${tomorrow}`]);
+    const done = (await http().post(`/roster/aebas/holidays/${tomorrow}/entered`).set(as(ms)).expect(200)).body as AebasTodo;
+    expect(done.items).toEqual([]);
+    expect(done.recentlyEntered.map((i) => i.key).sort()).toEqual([`absence:${absenceId}`, `holiday:${tomorrow}`].sort());
+  });
 });

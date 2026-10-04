@@ -9,7 +9,7 @@ import { assignRole, grantPermissionToRole } from "../src/kernel/auth/permission
 import { withTx } from "../src/kernel/db/client";
 import {
   billingConfig, formularyInteractions, labOrderables, opdDepartments, opdDoctors, permissions,
-  resources, rolePermissions, services, pharmacySaleItems, users,
+  resources, rolePermissions, services, pharmacySaleItems, staffAbsences, users,
 } from "../src/kernel/db/schema";
 import { registerBillingApprovalTypes } from "../src/modules/billing/approval-types";
 import { registerPatientApprovalTypes } from "../src/modules/patients/approval-types";
@@ -32,6 +32,7 @@ import { registerMaterialsApprovalTypes } from "../src/modules/materials";
 import {
   ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_RESOLVER_FLAG, assign, draftPeriod, listTeams,
   publishPeriod, seedOrgDepartments, seedRosterPositions, seedUnits,
+  addIstDays, istDateOfInstant, istMidnightUtc,
 } from "../src/modules/roster";
 import { STANDUP_ROWS, anyRed, censusLines, isNotModelled, runCensus } from "../scripts/standup-check";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
@@ -704,6 +705,32 @@ describe("standup:check — the readiness census (11i T2)", () => {
     await assignRole(db, { userId: id, roleKey: "pathologist", scopeType: "hospital" });
     results = await runCensus(db, "lab");
     expect(verdictOf(results, "lab", "lab_role_held_pathologist")).toBe("ok");
+  });
+
+  /**
+   * 20-U U8b — AEBAS takes leave and holidays in advance only, so an item whose first day is
+   * tomorrow must be entered TODAY. The row's three states, on the REAL clock (the census reads
+   * `new Date()`, so the dates here are built from it — a fixed date would be a time bomb):
+   * RED on an empty population (the fresh-database test above covers it too), ok with something
+   * on the list and nothing due, RED once an item is due today and unmarked, ok when it is marked.
+   */
+  it("hospital.aebas_entered_before_due: RED on nothing, ok when nothing is due, RED when due today unmarked, ok once marked (20-U U8b)", async () => {
+    const row = async (): Promise<string | undefined> => verdictOf(await runCensus(db, "hospital"), "hospital", "aebas_entered_before_due");
+    expect(await row()).toBe("RED");
+    const today = istDateOfInstant(new Date());
+    const MS = "01USER0000000000000AEBASMS";
+    const JR = "01USER0000000000000AEBASJR";
+    for (const id of [MS, JR]) await db.insert(users).values({ id, username: id.slice(-8), fullName: id.slice(-8), staffCode: id.slice(-8), passwordHash: "x" });
+    const leave = (id: string, firstDay: string) => db.insert(staffAbsences).values({
+      id, userId: JR, kind: "CL", status: "approved", requestedBy: JR, approvedBy: MS, decidedAt: new Date(),
+      startsAt: istMidnightUtc(firstDay), endsAt: istMidnightUtc(addIstDays(firstDay, 1)), createdBy: MS, updatedBy: MS,
+    });
+    await leave("ABS-LATER", addIstDays(today, 5));
+    expect(await row()).toBe("ok");
+    await leave("ABS-TOMORROW", addIstDays(today, 1));
+    expect(await row()).toBe("RED");
+    await db.update(staffAbsences).set({ aebasEnteredAt: new Date(), aebasEnteredBy: MS }).where(eq(staffAbsences.id, "ABS-TOMORROW"));
+    expect(await row()).toBe("ok");
   });
 
   it("the second administrator is a row, and one administrator does not satisfy it (§1.3)", async () => {

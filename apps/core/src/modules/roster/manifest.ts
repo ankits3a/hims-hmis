@@ -42,6 +42,8 @@ export const rosterManifest: ModuleManifest = {
     { label: "My duties", path: "/roster/my-duties", permission: "roster.read" },
     // 20-U U8 — the duty-evidence report: whoever may publish a unit's roster may certify what it held.
     { label: "Duty evidence", path: "/roster/evidence", permission: "roster.periods.publish" },
+    // 20-U U8b — the AEBAS to-do list, for the college's nodal officer (publish at hospital scope).
+    { label: "AEBAS to-do", path: "/roster/aebas", permission: "roster.periods.publish" },
   ],
   permissions: [
     "roster.periods.manage",

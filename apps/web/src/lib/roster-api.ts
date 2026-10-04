@@ -241,3 +241,16 @@ export const fetchDutyEvidence = (userIds: readonly string[], from: string, to: 
 export const printDutyEvidence = (userIds: readonly string[], from: string, to: string) =>
   api<{ queued: boolean; ref: string; served: boolean }>("POST", "/roster/evidence/print", { userIds, from, to });
 
+/* ═══ 20-U U8b — the AEBAS to-do list (`aebas.ts`). HMIS never talks to AEBAS. ═══ */
+export type WireAebasItem = {
+  key: string; kind: "absence" | "holiday"; what: string; firstDay: string; lastDay: string; dueDay: string;
+  state: "upcoming" | "due_today" | "missed";
+  person: null | { userId: string; name: string; departmentName: string | null };
+};
+export type WireAebasTodo = { today: string; items: WireAebasItem[]; recentlyEntered: WireAebasItem[] };
+export const fetchAebasTodo = () => api<WireAebasTodo & { you: WireRosterSelf }>("GET", "/roster/aebas");
+/** One tap: `absence:<id>` or `holiday:<YYYY-MM-DD>`. Answers with the list as it now stands. */
+export const markAebasEntered = (key: string) => {
+  const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+  return api<WireAebasTodo>("POST", kind === "holiday" ? `/roster/aebas/holidays/${id}/entered` : `/roster/aebas/absences/${encodeURIComponent(id)}/entered`);
+};

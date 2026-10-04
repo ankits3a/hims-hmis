@@ -160,3 +160,8 @@ export type {
 export {
   printDutyEvidence, recordLines, registerRosterEvidencePrinting, renderDutyEvidence, renderEvidenceHtml, rosteredText,
 } from "./evidence-print";
+// 20-U U8b — the AEBAS to-do list for the college's nodal officer. HMIS never talks to AEBAS.
+export {
+  AEBAS_ABSENCE_KINDS, AEBAS_MISSED_DAYS, aebasCensus, aebasTodo, markHolidayAebasEntered,
+} from "./aebas";
+export type { AebasItem, AebasItemState, AebasTodo } from "./aebas";

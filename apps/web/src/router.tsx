@@ -33,6 +33,7 @@ import { RosterOnNow } from "./screens/roster-on-now";
 import { RosterMonth } from "./screens/roster-month";
 import { RosterMyDuties } from "./screens/roster-my-duties";
 import { RosterEvidence } from "./screens/roster-evidence";
+import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
@@ -272,8 +273,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/roster/month", label: "nav.rosterMonth", permission: "roster.read", group: "opd" },
   // 20-U U5c — my duties: a person's own week and "I can't do this" (`rosterManifest.menu`).
   { to: "/roster/my-duties", label: "nav.rosterMyDuties", permission: "roster.read", group: "opd" },
-  // 20-U U8 — the duty-evidence report (`rosterManifest.menu`).
+  // 20-U U8 / U8b — the duty-evidence report and the AEBAS to-do list (`rosterManifest.menu`).
   { to: "/roster/evidence", label: "nav.rosterEvidence", permission: "roster.periods.publish", group: "opd" },
+  { to: "/roster/aebas", label: "nav.rosterAebas", permission: "roster.periods.publish", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -762,6 +764,16 @@ const rosterEvidenceRoute = createRoute({
   staticData: { fullViewport: true },
   component: function RosterEvidenceScreen() {
     return <RosterEvidence />;
+  },
+});
+
+/** 20-U U8b — the AEBAS to-do list for the college's nodal officer. HMIS never talks to AEBAS. */
+const rosterAebasRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/aebas",
+  staticData: { fullViewport: true },
+  component: function RosterAebasScreen() {
+    return <RosterAebas />;
   },
 });
 
@@ -1764,6 +1776,7 @@ export const router = createRouter({
       // 20-U U5c — +1, `/roster/my-duties`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
       rosterMyDutiesRoute,
       rosterEvidenceRoute,
+      rosterAebasRoute,
     ]),
   ]),
 });

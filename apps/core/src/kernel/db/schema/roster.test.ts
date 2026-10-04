@@ -94,6 +94,8 @@ describe("roster — 0108 structure", () => {
       "updated_at", "updated_by",
     ],
     roster_holidays: [
+      // 20-U U8b — the AEBAS mark, the absences' pair.
+      "aebas_entered_at", "aebas_entered_by",
       "applies_to", "confirmation_due_at", "created_at", "created_by", "declared_at",
       "declared_by", "ist_date", "kind", "pattern", "site_id", "updated_at", "updated_by",
     ],

@@ -1019,12 +1019,23 @@ export const rosterHolidays = pgTable(
     /** D3's two-step: each HOD confirms what their department will run, by this instant. */
     confirmationDueAt: timestamp("confirmation_due_at", { withTimezone: true }),
     siteId: text("site_id").notNull().default("main"),
+    /**
+     * 20-U U8b — the holiday has been ENTERED IN AEBAS by the college's nodal officer, by hand.
+     * AEBAS takes no retrospective entry (notice 18.06.2024), so a holiday declared at 19:30 the
+     * evening before is due that same evening. The mark is the absences' `aebas_entered_*` pair,
+     * for the same reason: a discrepancy an inspection finds is a column, not a habit. HMIS never
+     * talks to AEBAS — this records that a person did.
+     */
+    aebasEnteredAt: timestamp("aebas_entered_at", { withTimezone: true }),
+    aebasEnteredBy: text("aebas_entered_by").references(() => users.id),
     ...calAudit,
   },
   (t) => [
     primaryKey({ columns: [t.siteId, t.istDate] }),
     check("roster_holidays_kind_ck", sql`${t.kind} in ('gazetted', 'restricted', 'declared', 'local')`),
     check("roster_holidays_pattern_ck", sql`${t.pattern} in ('as_sunday', 'opd_short', 'opd_off_ot_proceeds')`),
+    /** Filed with AEBAS, or not — never half. */
+    check("roster_holidays_aebas_ck", sql`(${t.aebasEnteredAt} is null) = (${t.aebasEnteredBy} is null)`),
   ],
 );
 

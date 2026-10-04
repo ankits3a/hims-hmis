@@ -25,6 +25,9 @@ import type { DeclarationsView } from "./declarations";
 import { dutyEvidence, evidencePeople } from "./evidence";
 import type { DutyEvidence, EvidencePickerDepartment } from "./evidence";
 import { printDutyEvidence, renderEvidenceHtml } from "./evidence-print";
+import { aebasTodo, markHolidayAebasEntered } from "./aebas";
+import type { AebasTodo } from "./aebas";
+import { markAebasEntered } from "./absences";
 
 /**
  * 20-U U5a — **WHO IS ON NOW**, over HTTP. The roster module's first route.
@@ -383,6 +386,39 @@ export class RosterBoardController {
     } catch (e) { toHttp(e); }
   }
 
+  /* ═══ 20-U U8b — THE AEBAS TO-DO LIST (§2.2) ═══
+   *
+   * For the college's AEBAS nodal officer: `publish` at hospital scope (see `aebas.ts`'s DECIDED).
+   * Each mark answers with the list as it now stands. HMIS never talks to AEBAS.
+   */
+
+  @Get("aebas")
+  @RequirePermission("roster.read", "hospital")
+  async aebas(@CurrentActor() actor: Actor): Promise<AebasTodo & { you: RosterSelf }> {
+    try {
+      return { ...(await aebasTodo(this.db, actor, new Date())), you: await rosterSelf(this.db, actor, new Date()) };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("aebas/absences/:absenceId/entered")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async aebasAbsenceEntered(@CurrentActor() actor: Actor, @Param("absenceId") absenceId: string): Promise<AebasTodo> {
+    try {
+      await withTx(this.db, (tx) => markAebasEntered(tx, actor, absenceId));
+      return await aebasTodo(this.db, actor, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("aebas/holidays/:istDate/entered")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async aebasHolidayEntered(@CurrentActor() actor: Actor, @Param("istDate") istDate: string): Promise<AebasTodo> {
+    try {
+      await withTx(this.db, (tx) => markHolidayAebasEntered(tx, actor, istDate));
+      return await aebasTodo(this.db, actor, new Date());
+    } catch (e) { toHttp(e); }
+  }
 }
 
 /** `a,b,,c` → `["a","b","c"]`; a missing parameter is no people (and `dutyEvidence` says so). */

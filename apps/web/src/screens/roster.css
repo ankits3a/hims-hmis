@@ -499,7 +499,30 @@ button.rm-dl-row:hover { background: #f6faf7; }
 .ev-sheet { position: absolute; top: 0; left: 0; border: 0; background: #ffffff; transform-origin: 0 0; }
 .ev-sources { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; line-height: 17px; }
 
+/* ═══ 20-U U8b — the AEBAS to-do list ═══ */
+.ab-group { display: flex; flex-direction: column; overflow: hidden; }
+.ab-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 12px 14px 8px; }
+.ab-h { margin: 0; font-size: 15px; line-height: 20px; font-weight: 700; }
+.ab-group-due .ab-h { color: var(--dd-red); }
+.ab-group-missed { background: #fffdf8; }
+.ab-group-missed .ab-h { color: var(--dd-amber); }
+.ab-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--dd-line2);
+}
+.ab-item-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ab-who { font-weight: 600; font-size: 14px; }
+.ab-what { font-size: 12.5px; color: var(--dd-ink); }
+.ab-days { font-size: 12px; color: var(--dd-dim); }
+.ab-item-side { flex-shrink: 0; display: flex; align-items: center; gap: 12px; }
+.ab-due { font-size: 12px; color: var(--dd-dim); white-space: nowrap; }
+.ab-due_today .ab-due { color: var(--dd-red); font-weight: 600; }
+.ab-mark { height: 34px; white-space: nowrap; }
+.ab-done { display: flex; flex-direction: column; gap: 1px; padding: 6px 0; border-top: 1px solid var(--dd-line2); font-size: 13px; }
+.ab-done:first-of-type { border-top: none; }
+.ab-done-who { font-weight: 600; }
 @media (max-width: 599px) {
+  .ab-item { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ab-item-side { justify-content: space-between; }
   .ev-show { width: 100%; }
   .ev-days .ddf-grow { display: none; }
 }

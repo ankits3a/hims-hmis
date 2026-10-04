@@ -401,11 +401,14 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
     const TAKES_A_CLOCK: Record<string, string> = {
       // 20-U U5c — the reader's own week, from the instant the screen asks about (`?at=`).
       myDuties: "a read — the reader's week from the instant asked; stamps nothing",
-      // 20-U U8
+      // 20-U U8 / U8b
       dutyEvidence: "a read — the days asked, and `now` only names the sheet's reference day and print time; stamps nothing",
       evidencePeople: "a read — who holds a unit place at the instant asked; stamps nothing",
       printDutyEvidence: "queues a job whose params carry the instant asked, so a reprint renders the same sheet; the queue row's own time is the database's",
       renderDutyEvidence: "the print renderer — the job's own instant, never the claim's; stamps nothing",
+      aebasTodo: "a read — what is due relative to the instant asked; stamps nothing",
+      aebasCensus: "a read for the census, relative to the instant asked; stamps nothing",
+      markHolidayAebasEntered: "takes the HOLIDAY'S IST date as a key; the mark itself is stamped from the database's `now()`",
       myDutyRows: "a read — the reader's own live duties in a window",
       absentUserIds: "a window — who is away between two instants",
       approvedAbsenceWindows: "a window — the leave overlapping it, as windows (audit 2026-10-04 #2)",

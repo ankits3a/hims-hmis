@@ -96,7 +96,8 @@
     "rosterOnNow": "Who is on now",
     "rosterMonth": "Roster — the unit's month",
     "rosterMyDuties": "My duties",
-    "rosterEvidence": "Duty evidence"
+    "rosterEvidence": "Duty evidence",
+    "rosterAebas": "AEBAS to-do"
   },
   "palette": {
     "title": "Search",
@@ -13722,7 +13723,8 @@
       "roster": "Roster",
       "onNow": "Who Is On Now",
       "myDuties": "My Duties",
-      "evidence": "Duty Evidence"
+      "evidence": "Duty Evidence",
+      "aebas": "AEBAS To-do"
     },
     "menu": "Menu",
     "showMenu": "Show the menu",
@@ -13828,5 +13830,51 @@
     },
     "sourcesLater": "Labour room, casualty and ward rounds join this list when those records name a person.",
     "ask": "e.g. which days of September show theatre times?"
+  },
+  "rosterAebas": {
+    "context": "Doctor Desk · Office · AEBAS",
+    "title": "AEBAS to-do",
+    "intro": "Leave, deputation and holidays approved here, to enter in AEBAS by hand before they begin — AEBAS takes nothing after the day. HMIS does not connect to AEBAS.",
+    "loading": "Reading the list…",
+    "pillTag": "TODAY",
+    "pill_zero": "Nothing to enter today",
+    "pill_one": "{{count}} to enter today",
+    "pill_other": "{{count}} to enter today",
+    "dueToday": "Enter today",
+    "dueTodaySub": "These begin tomorrow or today.",
+    "missed": "First day has passed",
+    "missedSub": "AEBAS will not take these now. Mark one only if it was entered after all.",
+    "upcoming": "Coming up",
+    "upcomingSub": "Each is due the day before it begins.",
+    "empty": "Nothing to enter. Every approved leave and holiday the roster holds is already marked entered in AEBAS.",
+    "holiday": "Holiday — everybody",
+    "days_one": "{{from}}",
+    "days_other": "{{from}} to {{to}}",
+    "dueBy": "by {{day}}",
+    "dueByToday": "by today",
+    "mark": "Entered in AEBAS",
+    "marking": "Marking…",
+    "enteredTitle": "Entered this week",
+    "enteredNone": "Nothing marked in the last seven days.",
+    "howTitle": "How this list works",
+    "how1": "Every approved leave, deputation and tour, and every declared holiday, appears here the moment it is approved or declared.",
+    "how2": "Enter it in AEBAS, then tap Entered in AEBAS. It leaves the list.",
+    "how3": "Anything due today and not marked shows red on the hospital's readiness check.",
+    "what": {
+      "CL": "Casual leave",
+      "EL": "Earned leave",
+      "ML": "Medical leave",
+      "maternity": "Maternity leave",
+      "paternity": "Paternity leave",
+      "comp_off": "Compensatory off",
+      "deputation": "Deputation",
+      "academic": "Academic leave / tour",
+      "study": "Study leave",
+      "gazetted": "Gazetted holiday",
+      "restricted": "Restricted holiday",
+      "declared": "Declared holiday",
+      "local": "Local holiday"
+    },
+    "ask": "e.g. what is due today?"
   }
 }
