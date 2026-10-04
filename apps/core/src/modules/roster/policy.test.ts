@@ -281,6 +281,9 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // 20-U I1/I5/I23 — two reads.
     declarationsView: "a read, guarded by `requireRosterAct(…, \"read\")`; its `youMay` PROBES `declare` and grants nothing",
     boardAsItStood: "a read — the board as PUBLISHED at a past instant and the changes since; guarded at its route like `onNowBoard`",
+    // 20-U U7 — OPD reads the unit calendar.
+    opdUnitsOn: "a read — which unit (and doctors) hold each OPD clinic on a day; guarded at its route like `onNowBoard`, read as data by the OPD day report",
+    shortUnitName: "PURE: a unit's name in, the name without its department out",
     publishedAsKnownAt: "a read on the knowledge axis — `asKnownAt` across every scope",
     windowAsKnownAt: "a read on the knowledge axis — the take/backup window in force at an instant, as known then",
     boardColumn: "pure: which board column a position belongs in, from the position master",

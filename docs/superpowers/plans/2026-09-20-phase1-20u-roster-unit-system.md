@@ -463,3 +463,22 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
 - **Left for later:** paging the duty manager on a flag; WhatsApp to the person asked; the board's
   per-hole "Asked: … waiting for her yes" line (a vacancy cover, U6 covers filled duties); U9's
   copilot `roster.ask_cover`.
+
+### U7 — OPD reads the unit calendar, read-only (`GET /roster/opd-units?date=`; Desk One; the OPD day report)
+
+- **DECIDED — the unit is read from the published cycle's `opd` windows** (`roster_duty_windows`,
+  live rows only), keyed by the OPD clinic the department runs (`org_departments.opd_department_id`).
+  A declared holiday that withdraws OPD supersedes the windows, so it withdraws the answer too.
+  `opdUnitsOn` (`modules/roster/opd-units.ts`) is the one read; the OPD module reaches it through
+  `roster/index.ts` and no OPD signature changed. The queue is untouched — a session is a doctor-day.
+- **DECIDED — the doctors named are the unit's head, faculty and senior residents** at the window's
+  start: who an Indian teaching OPD's patients are seen by and ask for by name. Juniors and interns
+  are not named to the front desk.
+- **DECIDED — where the front desk sees it: Desk One's department card**, one line under the
+  department's name — "Unit II holds today's OPD · Dr. A, Dr. B, Dr. C". A department running no
+  units (or with no OPD window that day) draws nothing — no "Unit —". The read is asked only by a
+  seat holding `roster.read` (front office already holds it, U5a); a failed read draws nothing.
+- **DECIDED — the OPD day report names the unit for a single DAY only** (screen row, PDF row,
+  department sheet subtitle "OPD held by Unit II", CSV "OPD unit" column/row). A week or a month
+  passes through every unit, so it names none. The CSV gains its column only when some clinic ran on
+  the unit calendar that day, so an install without units gets the CSV it had.

@@ -3559,6 +3559,7 @@
     "people_other": "{{count}} different patients were consulted; {{fresh}} came to the hospital for the first time. A patient seen in two departments is counted in each department's row.",
     "noDepartments": "No OPD department is set up yet.",
     "noPatients": "No consultation was completed in this department on this day.",
+    "opdUnit": "OPD: {{units}}",
     "seePatients": "See patients",
     "hidePatients": "Hide patients",
     "total": "Total",

@@ -1454,6 +1454,19 @@ function DeptCard({ q, first, second }: { q: DeptQueue; first: boolean; second: 
           first free doctor
         </button>
       </div>
+      {/*
+        20-U U7 — WHICH UNIT'S DAY IT IS, from the roster's published calendar. Read-only: the doctors'
+        rows below are still the doctor-day board. Nothing at all for a department that runs no units.
+      */}
+      {(d.opdUnits.get(q.departmentId) ?? []).map((u) => (
+        <div
+          key={u.teamId} data-testid={`opd-unit-${q.departmentId}`}
+          style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: "16px", padding: "0 13px 9px", marginTop: -3 }}
+        >
+          <b style={{ color: "var(--ink)", fontWeight: 600 }}>{u.short}</b> holds today's OPD
+          {u.doctors.length === 0 ? null : <> · <span>{u.doctors.map((x) => x.name).join(", ")}</span></>}
+        </div>
+      ))}
       {q.doctors.map((doc) => {
         const away = !bookableToday(doc);
         return (

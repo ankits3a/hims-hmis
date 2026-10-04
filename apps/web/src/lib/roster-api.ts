@@ -219,3 +219,15 @@ export type WireAsItStoodChange = {
 export type WireAsItStoodBoard = WireOnNowBoard & { knownAt: string; changes: WireAsItStoodChange[] };
 export const fetchAsItStood = (at: string) =>
   api<WireAsItStoodBoard>("GET", `/roster/as-it-stood?at=${encodeURIComponent(at)}`);
+
+/* ═══ 20-U U7 — which unit (and which of its doctors) hold each OPD clinic on a day ═══ */
+
+export type WireOpdUnitDoctor = { userId: string; name: string; role: "head" | "faculty" | "senior_resident" };
+export type WireOpdUnit = {
+  teamId: string; code: string; name: string; short: string; startsAt: string; endsAt: string; doctors: WireOpdUnitDoctor[];
+};
+/** One OPD clinic (`opdDepartmentId` — the id Desk One's department cards carry) and its unit(s) that day. */
+export type WireOpdDepartmentUnits = { opdDepartmentId: string; departmentId: string; units: WireOpdUnit[] };
+
+export const fetchOpdUnits = (date: string) =>
+  api<WireOpdDepartmentUnits[]>("GET", `/roster/opd-units?date=${encodeURIComponent(date)}`);

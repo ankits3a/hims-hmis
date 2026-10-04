@@ -149,3 +149,6 @@ export { windowAsKnownAt } from "./calendar";
 export type { AsItStoodBoard, AsItStoodChange, ChangedSlot } from "./as-it-stood";
 export { publishedAsKnownAt } from "./periods";
 export { rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn } from "./events";
+// 20-U U7 — OPD reads the unit calendar, read-only: which unit (and doctors) hold a clinic's OPD on a day.
+export { opdUnitsOn, shortUnitName } from "./opd-units";
+export type { OpdDepartmentUnits, OpdUnit, OpdUnitDoctor } from "./opd-units";

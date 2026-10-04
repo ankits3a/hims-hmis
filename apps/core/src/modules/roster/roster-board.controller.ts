@@ -22,6 +22,9 @@ import { boardAsItStood } from "./as-it-stood";
 import type { AsItStoodBoard } from "./as-it-stood";
 import { declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
 import type { DeclarationsView } from "./declarations";
+import { istDateOfInstant } from "./calendar";
+import { opdUnitsOn } from "./opd-units";
+import type { OpdDepartmentUnits } from "./opd-units";
 
 /**
  * 20-U U5a — **WHO IS ON NOW**, over HTTP. The roster module's first route.
@@ -334,6 +337,25 @@ export class RosterBoardController {
       const b = (body ?? {}) as Record<string, unknown>;
       await withTx(this.db, (tx) => withdrawModeAct(tx, actor, declarationId, { reason: b.reason }));
       return await declarationsView(this.db, actor, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ 20-U U7 — OPD READS THE UNIT CALENDAR (read-only) ═══
+   *
+   * `GET /roster/opd-units?date=YYYY-MM-DD` (IST; today by default): which unit, and which of its
+   * doctors, hold each OPD clinic that day. Desk One's department cards read it; a department that
+   * runs no units is absent, so the card draws nothing. The queue is not touched.
+   */
+  @Get("opd-units")
+  @RequirePermission("roster.read", "hospital")
+  async opdUnits(@CurrentActor() actor: Actor, @Query("date") date?: string): Promise<OpdDepartmentUnits[]> {
+    try {
+      const day = date === undefined || date === "" ? istDateOfInstant(new Date()) : date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) {
+        throw new RosterError("invalid_window", "`date` is an IST day — send YYYY-MM-DD", { date });
+      }
+      await requireRosterAct(this.db, actor, "read");
+      return await opdUnitsOn(this.db, day);
     } catch (e) { toHttp(e); }
   }
 }

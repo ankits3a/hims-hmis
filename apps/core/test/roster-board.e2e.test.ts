@@ -88,4 +88,17 @@ describe("roster board e2e (20-U U5a)", () => {
       .expect(422);
     expect((res.body as { code: string }).code).toBe("invalid_window");
   });
+
+  /* 20-U U7 — `GET /roster/opd-units`: the same door as the board's. Its content is `opd-units.test.ts`'s. */
+  it("opd-units: a reader gets the day's clinics (none run on units yet), a non-reader is refused, a bad day is a 422", async () => {
+    const reader = await mkUser(db, "board.reader3", ["board_reader"]);
+    const clerk = await mkUser(db, "no.roster2", ["no_roster"]);
+    const ok = await request(app.getHttpServer()).get("/roster/opd-units?date=2026-10-06")
+      .set("authorization", `Bearer ${reader.token}`).expect(200);
+    expect(ok.body).toEqual([]);
+    await request(app.getHttpServer()).get("/roster/opd-units").set("authorization", `Bearer ${clerk.token}`).expect(403);
+    const bad = await request(app.getHttpServer()).get("/roster/opd-units?date=06-10-2026")
+      .set("authorization", `Bearer ${reader.token}`).expect(422);
+    expect((bad.body as { code: string }).code).toBe("invalid_window");
+  });
 });
