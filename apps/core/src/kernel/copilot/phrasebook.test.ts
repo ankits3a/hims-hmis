@@ -209,3 +209,43 @@ it("a nukta letter typed either way is the same letter", () => {
   expect([...precomposed].map((c) => c.codePointAt(0))).toContain(0x095b);
   expect(matchIntent(precomposed)?.intent).toBe("queue_depth");
 });
+
+/**
+ * ═══ 20-U U9 — THE ROSTER'S FOUR QUESTIONS, IN ENGLISH AND HINGLISH ═══
+ *
+ * The plan's own sentences first, then the English a resident types, then the counter questions
+ * they must NOT steal: "my duty" is not "who is on", and a front desk's "doctor kaun hai abhi" or
+ * "doctor badal do" is not a roster question at all.
+ */
+describe("matchIntent — the roster (20-U U9)", () => {
+  it.each([
+    ["ortho mein abhi on call kaun hai?", "roster.who_is_on"],
+    ["who is on call in surgery now", "roster.who_is_on"],
+    ["who is the anaesthetist on call tonight", "roster.who_is_on"],
+    ["medicine mein duty pe kaun hai", "roster.who_is_on"],
+    ["kal raat surgery ka unit kaun sa hai?", "roster.unit_on_take"],
+    ["which medicine unit is on take today", "roster.unit_on_take"],
+    ["aaj ortho ka kaunsa unit take pe hai", "roster.unit_on_take"],
+    ["mera agla night kab hai?", "roster.my_duties"],
+    ["when is my next night", "roster.my_duties"],
+    ["meri duty kab hai", "roster.my_duties"],
+    ["मेरी ड्यूटी कब है", "roster.my_duties"],
+    ["Saturday night koi le sakta hai kya?", "roster.ask_cover"],
+    ["can anyone take my Tuesday night", "roster.ask_cover"],
+    ["meri jagah koi duty kar lega kya", "roster.ask_cover"],
+  ])("routes %s", (question: string, intent: string) => {
+    expect(matchIntent(question)?.intent).toBe(intent);
+  });
+
+  it.each([
+    ["doctor kaun hai abhi"],
+    ["doctor badal do"],
+  ])("leaves the counter's %s unanswered rather than guessed", (question: string) => {
+    expect(matchIntent(question)).toBeNull();
+  });
+
+  it("the queue and the patient keep their questions", () => {
+    expect(matchIntent("kaun si line chhoti hai")?.intent).toBe("queue_depth");
+    expect(matchIntent("kya <<P1>> ko doctor ne dekh liya?")?.intent).toBe("visit_status");
+  });
+});

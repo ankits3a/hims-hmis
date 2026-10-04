@@ -1,3 +1,4 @@
+import { rosterCopilotTools } from "./copilot-tools";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -32,11 +33,26 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 export const rosterManifest: ModuleManifest = {
   key: "roster",
   title: "Roster",
-  menu: [],
+  // 20-U U5a — the roster's first screen: who is on now, the hospital's unit board. A read.
+  // 20-U U5b — the unit's month: draft, problems as sentences, publish. The menu door is a read;
+  // drafting and publishing are acts checked at the unit's department (`month.ts`).
+  menu: [
+    { label: "Who is on now", path: "/roster/on-now", permission: "roster.read" },
+    { label: "Roster — the unit's month", path: "/roster/month", permission: "roster.read" },
+    // 20-U U5c — a person's own duties; "I can't do this" asks for a cover (`request_cover`).
+    { label: "My duties", path: "/roster/my-duties", permission: "roster.read" },
+    // 20-U U8 — the duty-evidence report: whoever may publish a unit's roster may certify what it held.
+    { label: "Duty evidence", path: "/roster/evidence", permission: "roster.periods.publish" },
+    // 20-U U8b — the AEBAS to-do list, for the college's nodal officer (publish at hospital scope).
+    { label: "AEBAS to-do", path: "/roster/aebas", permission: "roster.periods.publish" },
+  ],
   permissions: [
     "roster.periods.manage",
     "roster.periods.publish",
     "roster.read",
   ],
   subscriptions: [],
+  // 20-U U9 — what the copilot may ask the roster: who is on, the unit on take, my duties, and a
+  // cover DRAFT the person sends themselves (`./copilot-tools`).
+  copilotTools: rosterCopilotTools(),
 };

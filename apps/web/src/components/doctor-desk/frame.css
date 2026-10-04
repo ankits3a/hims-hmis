@@ -1,0 +1,234 @@
+/*
+ * ═══ 20-U U5 — THE DOCTOR DESK FRAME, PORTED FROM THE APPROVED BOARDS ═══
+ *
+ * `docs/design/2026-09-18-doctor-desk/Tower.dc.html` (owner-approved 2026-09-18) and the roster
+ * boards drawn inside it (`docs/design/2026-09-20-roster/{Main,OnNow}.dc.html`). Every size, colour
+ * and spacing below is the board's own inline value, moved into a class so the frame can respond to
+ * width. The board is drawn at 1440; the breakpoints are the brief's: below 1280 the right rail
+ * stacks under the centre, below 1100 the left menu becomes a drawer, and at phone width the
+ * screens switch their tables to cards. Dark fills are accents only (owner, lab-screens layout
+ * rule): the header is white, the menu is the page's paper, and the ask bar is a light card with a mint edge (owner, 2026-09-25: dark is for accents only).
+ */
+.ddf {
+  --dd-bg: #f4f7f4;
+  --dd-ink: #132420;
+  --dd-acc: #0e6b4e;
+  --dd-acc-hover: #0a5039;
+  --dd-line: #dfe7e1;
+  --dd-line2: #ecf1ed;
+  --dd-dim: #5c6f66;
+  --dd-card: #ffffff;
+  --dd-head: #f8faf8;
+  --dd-sel: #e3ede6;
+  --dd-red: #b23a30;
+  --dd-amber: #8a5a0b;
+  --rail-w: 348px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--dd-bg);
+  color: var(--dd-ink);
+  font-family: "IBM Plex Sans", "IBM Plex Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 19px;
+  -webkit-font-smoothing: antialiased;
+}
+.ddf *, .ddf *::before, .ddf *::after { box-sizing: border-box; }
+.ddf button { font: inherit; cursor: pointer; }
+.ddf input, .ddf select { font: inherit; }
+.ddf a { color: var(--dd-acc); text-decoration: none; }
+.ddf a:hover { color: var(--dd-acc-hover); }
+.ddf .mo { font-family: "IBM Plex Mono", ui-monospace, Menlo, monospace; }
+.ddf .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ddf :focus-visible { outline: 2px solid var(--dd-acc); outline-offset: 1px; }
+
+/* ─── header: white, 48px ─── */
+.ddf-top {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 14px;
+  height: 48px; flex-shrink: 0; padding: 0 20px 0 12px;
+  background: #ffffff; border-bottom: 1px solid var(--dd-line);
+}
+.ddf-toggle {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--dd-ink);
+  font-size: 12.5px; font-weight: 600; flex-shrink: 0;
+}
+.ddf-toggle:hover { border-color: var(--dd-line); }
+.ddf-toggle .ddf-toggle-word { display: none; }
+.ddf-brand { display: flex; align-items: center; gap: 8px; flex-shrink: 0; color: var(--dd-ink) !important; }
+.ddf-brand span { font-size: 14px; font-weight: 700; letter-spacing: .14em; }
+.ddf-context {
+  font-size: 13px; color: var(--dd-dim); padding-left: 10px; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ddf-grow { flex-grow: 1; }
+.ddf-pill {
+  display: inline-flex; align-items: center; height: 26px; max-width: 100%;
+  border: 1px solid var(--dd-line); border-radius: 5px; overflow: hidden; font-size: 12px; background: #ffffff;
+}
+.ddf-pill-tag {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 9px; flex-shrink: 0;
+  background: rgba(14, 107, 78, .10); color: var(--dd-acc); font-weight: 700; letter-spacing: .06em;
+}
+.ddf-pill-text { padding: 0 10px; color: var(--dd-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ddf-pill-inline { display: none; }
+.ddf-when { font-size: 13px; color: var(--dd-dim); white-space: nowrap; flex-shrink: 0; }
+.ddf-user {
+  display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px; flex-shrink: 0;
+  color: var(--dd-ink); font-size: 13px; font-weight: 600;
+}
+.ddf-avatar {
+  width: 30px; height: 30px; border-radius: 15px; background: #2f5e4e; color: #ffffff;
+  font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center;
+  text-transform: uppercase;
+}
+
+.ddf-skel { background: #e3ebe5 !important; color: transparent !important; }
+.ddf-skel-line { display: inline-block; width: 120px; height: 12px; border-radius: 6px; }
+
+/* ─── body: menu | centre | rail ─── */
+.ddf-body {
+  flex-grow: 1; display: grid; min-height: 0;
+  grid-template-columns: 208px minmax(0, 1fr) var(--rail-w);
+  grid-template-areas: "menu main rail";
+  align-items: start;
+}
+.ddf[data-menu="closed"] .ddf-body { grid-template-columns: minmax(0, 1fr) var(--rail-w); grid-template-areas: "main rail"; }
+.ddf[data-menu="closed"] .ddf-menu { display: none; }
+.ddf[data-rail="none"] .ddf-body { grid-template-columns: 208px minmax(0, 1fr); grid-template-areas: "menu main"; }
+.ddf[data-rail="none"][data-menu="closed"] .ddf-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
+
+.ddf-menu {
+  grid-area: menu; position: sticky; top: 48px; height: calc(100vh - 48px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px; padding: 14px 12px 12px;
+  background: var(--dd-bg); border-right: 1px solid var(--dd-line2);
+}
+.ddf-group { display: flex; flex-direction: column; gap: 1px; }
+.ddf-group-label { padding: 4px 10px; font-size: 10.5px; font-weight: 600; letter-spacing: .1em; color: var(--dd-dim); }
+.ddf-item {
+  display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px;
+  font-size: 13px; color: var(--dd-ink) !important;
+}
+.ddf-item:hover { background: #eaf0eb; }
+.ddf-item[aria-current="page"] { background: var(--dd-sel); font-weight: 600; }
+.ddf-item svg { flex-shrink: 0; }
+
+.ddf-main {
+  grid-area: main; min-width: 0; min-height: calc(100vh - 48px);
+  display: flex; flex-direction: column; gap: 14px; padding: 20px 20px 16px;
+  container-type: inline-size; container-name: ddmain;
+}
+.ddf-rail {
+  grid-area: rail; min-width: 0;
+  display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 16px 0;
+}
+
+/* ─── the ask bar: a LIGHT card at the foot of the centre (owner, 2026-09-25: dark is for accents only) ─── */
+.ddf-ask {
+  margin-top: auto; position: sticky; bottom: 12px; z-index: 5;
+  display: flex; flex-direction: column; gap: 8px;
+  /* A band of paper around the bar, so a sticky bar never sits on a half-hidden line of the work. */
+  box-shadow: 0 -10px 0 0 var(--dd-bg), 0 12px 0 0 var(--dd-bg);
+  background: var(--dd-bg);
+}
+.ddf-ask-row {
+  display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px;
+  background: var(--dd-card); border: 1px solid var(--dd-line); border-left: 3px solid var(--dd-acc); border-radius: 8px;
+}
+.ddf-ask-word { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dd-acc); font-weight: 600; flex-shrink: 0; }
+.ddf-ask-input {
+  flex-grow: 1; min-width: 0; height: 30px; border: none; outline: none; background: transparent;
+  color: var(--dd-ink); font-family: "IBM Plex Mono", monospace !important; font-size: 12.5px;
+}
+.ddf-ask-input::placeholder { color: var(--dd-dim); }
+.ddf-ask-input:focus-visible { outline: none; }
+.ddf-ask-row:focus-within { border-color: var(--dd-acc); box-shadow: 0 0 0 2px var(--dd-sel); }
+
+/* The answer: a light card over the work, with a way out (× and Esc) and a body that scrolls. */
+.ddf-ask-pop {
+  position: relative; background: var(--dd-card); color: var(--dd-ink);
+  border: 1px solid var(--dd-line); border-left: 3px solid var(--dd-acc); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(19, 36, 32, .10);
+}
+.ddf-ask-body { max-height: min(46vh, 360px); overflow-y: auto; padding: 11px 44px 11px 14px; }
+.ddf-ask-close {
+  position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 6px;
+  border: 1px solid var(--dd-line); background: var(--dd-card); color: var(--dd-ink); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.ddf-ask-close:hover { border-color: var(--dd-acc); color: var(--dd-acc); }
+.ddf-ask-answer { font-size: 13px; line-height: 19px; color: var(--dd-ink); }
+
+/* 20-U U9 — the cover DRAFT inside the answer: who can take it, one tap each to ask. */
+.ddf-ask-draft { margin-top: 8px; display: flex; flex-direction: column; font-size: 12.5px; }
+.ddf-ask-can { display: flex; align-items: center; gap: 10px; min-height: 38px; border-top: 1px solid var(--dd-line2); padding: 6px 0; }
+.ddf-ask-can-name { font-weight: 600; flex-shrink: 0; }
+.ddf-ask-can-line { flex-grow: 1; min-width: 0; color: var(--dd-dim); font-size: 11.5px; }
+.ddf-ask-can-ask {
+  flex-shrink: 0; height: 28px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--dd-acc); background: var(--dd-acc);
+  color: #ffffff; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.ddf-ask-can-ask:hover:not(:disabled) { background: var(--dd-acc-hover); }
+.ddf-ask-can-ask:disabled { opacity: .5; cursor: default; }
+.ddf-ask-can-more { color: var(--dd-dim); font-size: 11.5px; padding-top: 6px; border-top: 1px solid var(--dd-line2); }
+.ddf-ask-can-error { color: var(--dd-red); font-size: 12px; padding-top: 6px; }
+
+/* ─── shared card primitives the roster screens use ─── */
+.ddf-card { background: var(--dd-card); border: 1px solid var(--dd-line); border-radius: 8px; }
+.ddf-card-strong { background: var(--dd-card); border: 1px solid var(--dd-ink); border-radius: 8px; }
+.ddf-cap { font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--dd-dim); text-transform: uppercase; }
+.ddf-h1 { margin: 0; font-size: 22px; line-height: 28px; font-weight: 700; }
+.ddf-dim { color: var(--dd-dim); }
+.ddf-seg { display: inline-flex; border: 1px solid var(--dd-line); border-radius: 6px; overflow: hidden; background: #ffffff; font-size: 12.5px; flex-shrink: 0; }
+.ddf-seg button { border: none; border-left: 1px solid var(--dd-line); background: #ffffff; color: var(--dd-dim); padding: 0 12px; }
+.ddf-seg button:first-child { border-left: none; }
+.ddf-btn {
+  min-height: 34px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--dd-line);
+  background: #ffffff; color: var(--dd-ink); font-size: 12.5px; text-align: left;
+}
+.ddf-btn-pri { border: none; background: var(--dd-acc); color: #ffffff; font-weight: 600; }
+.ddf-btn-pri:hover:not(:disabled) { background: var(--dd-acc-hover); }
+.ddf-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ─── below 1280: the rail goes under the centre ─── */
+@media (max-width: 1279px) {
+  .ddf-body, .ddf[data-menu="closed"] .ddf-body { grid-template-columns: 208px minmax(0, 1fr); grid-template-areas: "menu main" "menu rail"; }
+  .ddf[data-menu="closed"] .ddf-body, .ddf[data-rail="none"][data-menu="closed"] .ddf-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "rail"; }
+  .ddf-main { min-height: 0; }
+  .ddf-rail { padding: 0 20px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+  .ddf-menu { grid-row: 1 / span 2; }
+}
+
+/* ─── below 1100: the menu is a drawer, opened from the header ─── */
+@media (max-width: 1099px) {
+  .ddf-body, .ddf[data-menu] .ddf-body, .ddf[data-rail="none"][data-menu] .ddf-body {
+    grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "rail";
+  }
+  .ddf-toggle .ddf-toggle-word { display: inline; }
+  .ddf .ddf-menu { display: none; }
+  .ddf[data-drawer="open"] .ddf-menu {
+    display: flex; position: fixed; top: 48px; left: 0; bottom: 0; height: auto; width: 260px; z-index: 40;
+    background: #ffffff; border-right: 1px solid var(--dd-line); box-shadow: 0 12px 32px rgba(19, 36, 32, .18);
+  }
+  .ddf-scrim { position: fixed; inset: 48px 0 0 0; z-index: 35; background: rgba(19, 36, 32, .25); border: none; }
+  .ddf-top .ddf-pill { display: none; }
+  .ddf-pill-inline { display: inline-flex; align-self: flex-start; }
+}
+@media (max-width: 767px) {
+  .ddf-top { gap: 8px; padding: 0 12px 0 8px; }
+  .ddf-when, .ddf-user-name { display: none; }
+  .ddf-context { padding-left: 2px; }
+  .ddf-main { padding: 16px 16px 12px; }
+  .ddf-rail { padding: 0 16px 16px; grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 479px) {
+  .ddf-brand span { display: none; }
+}
+
+@media print {
+  .ddf-top, .ddf-menu, .ddf-ask, .ddf-scrim, .ddf-noprint { display: none !important; }
+  /* Block flow on paper: a named `page` (a screen's own paper size) only reaches the page through blocks. */
+  .ddf { display: block; background: #ffffff; min-height: 0; }
+  .ddf-body { display: block; }
+  .ddf-main { display: block; min-height: 0; padding: 0; }
+}

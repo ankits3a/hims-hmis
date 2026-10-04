@@ -22,7 +22,11 @@ export type DayCounts = {
   stillOpen: number;
 };
 
-export type DayDepartment = DayCounts & { departmentId: string; code: string; name: string };
+export type DayDepartment = DayCounts & {
+  departmentId: string; code: string; name: string;
+  /** 20-U U7 — the roster unit(s) that held this clinic's OPD; a single day only, empty otherwise. */
+  units: string[];
+};
 
 export type ExcludedSunday = { date: string; consulted: number };
 

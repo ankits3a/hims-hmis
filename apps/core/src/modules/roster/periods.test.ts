@@ -399,8 +399,29 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
      * is a function that stopped taking a clock and should stop being listed.
      */
     const TAKES_A_CLOCK: Record<string, string> = {
+      // 20-U U5c — the reader's own week, from the instant the screen asks about (`?at=`).
+      myDuties: "a read — the reader's week from the instant asked; stamps nothing",
+      // 20-U U8 / U8b
+      dutyEvidence: "a read — the days asked, and `now` only names the sheet's reference day and print time; stamps nothing",
+      evidencePeople: "a read — who holds a unit place at the instant asked; stamps nothing",
+      printDutyEvidence: "queues a job whose params carry the instant asked, so a reprint renders the same sheet; the queue row's own time is the database's",
+      renderDutyEvidence: "the print renderer — the job's own instant, never the claim's; stamps nothing",
+      aebasTodo: "a read — what is due relative to the instant asked; stamps nothing",
+      aebasCensus: "a read for the census, relative to the instant asked; stamps nothing",
+      markHolidayAebasEntered: "takes the HOLIDAY'S IST date as a key; the mark itself is stamped from the database's `now()`",
+      myDutyRows: "a read — the reader's own live duties in a window",
       absentUserIds: "a window — who is away between two instants",
+      approvedAbsenceWindows: "a window — the leave overlapping it, as windows (audit 2026-10-04 #2)",
+      awayDuring: "PURE: windows in, one slot's two instants, a boolean out",
       asKnownAt: "`knownAt`: the KNOWLEDGE axis itself, which is the whole question",
+      publishedAsKnownAt: "`knownAt` and a window: the knowledge axis across every scope (20-U I23)",
+      windowAsKnownAt: "an `at` and a `knownAt`: the calendar's window then, as known then (20-U I23)",
+      boardAsItStood: "an `at` — the instant asked about AND the knowledge instant; `now` only refuses a future one (20-U I23)",
+      opdUnitsOn: "an IST date — the day whose OPD windows are read; stamps nothing (20-U U7)",
+      whenOf: "PURE: the instant `now` in, the instant the question names out; stamps nothing (20-U U9)",
+      declarationsView: "a `now` used to ask WHICH DAY it is — the listing starts today; stamps nothing",
+      declareHolidayAct: "a `now` used to refuse a past day; the declaration's stamps come from the database",
+      declareModeAct: "a `now` used to refuse a past day; the declaration's stamps come from the database",
       attendanceProjection: "a term's two dates",
       backupUnit: "an `at`; a read",
       calloutList: "an `at`; a read",
@@ -412,6 +433,7 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       dutiesOf: "a window",
       endMembership: "the date a posting ends",
       endOfficiating: "the date somebody stops standing in",
+      dutyManagersAt: "an `at` — whose duty-manager answer to page for a \"this is wrong\" flag; a read",
       escalationRecipients: "an `at` — who to ring THEN",
       expandCycle: "PURE: dates in, windows out, no database and no clock of its own (V15)",
       expiringCredentials: "a window",
@@ -429,15 +451,35 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       nightPoolFor: "an `at`; a read",
       officiatingAt: "an `at`; a read",
       onDutyNow: "an `at` — the board's question",
+      onNowBoard: "an `at` — the who-is-on-now board's instant (20-U U5a)",
+      // 2026-10-04 (owner) — only a confirmed, open unit counts, AT an instant (a closed unit counted until it closed).
+      unitCountsAt: "PURE: an `at` — whether a unit is confirmed and open then",
+      countingUnits: "an `at`; a read — the units that count then",
+      departmentsWithoutPublishedCycle: "an `at` (default now) — which departments run a confirmed unit then",
+      rosterUnits: "an `at` (default now) — the month picker's confirmed, open units",
+      doctorUnitsOn: "an IST date — each doctor's unit that day, judged at noon IST",
+      prescriberPrint: "an IST date — the visit's day, as `doctorUnitsOn`",
+      unitHeadsWithoutRegn: "an IST date — the heads that day",
+      opdSittingAt: "an `at` — who sits in OPD now or later that IST day",
+      // 20-U infra (owner 2026-10-04) — the board's own 20:00/08:00 print.
+      boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant a `now` falls after",
+      nextBoardSlot: "PURE: the next 08:00/20:00 IST instant after a `now`",
+      printBoardIfDue: "a `now` used to ask WHICH print instant is due; the row's and the sheet's `Printed` stamp come from `dbNow`, and `slot_at` is the scheduled instant itself",
+      renderBoardSheet: "an `at` (the instant drawn) and the stamp the caller took from the database; writes nothing",
+      renderBoardPrintJob: "a `now` used only to REFUSE a sheet older than twelve hours; writes nothing",
+      lastBoardPrint: "a `now` used to name the next print instant; a read",
+      rosterSelf: "an `at` — where the reader is posted NOW, for the Doctor Desk header (20-U U5)",
       parentTeamOf: "an `at`; a read",
       periodsTouching: "a window",
       publishCycle: "the IST date a cycle becomes effective from — a DECISION's date, and the row's own `published_at` still comes from the database",
       rulesInForce: "an IST date — which parameters a department is under that day",
       runMonthlyProposals: "a `now` used to ask WHICH DAY it is; every stamp it causes comes from `dbNow` inside the transaction",
+      proposalStrategyFor: "an `at` — whose membership counts for the strategy, as of the month's first instant (20-U U5b); stamps nothing",
       skeletonModeOn: "an IST date",
       sweepRosterWindows: "a `now` used as the HORIZON to extend to, never written to a column",
       takeGaps: "a window",
       teamMembers: "an `at` — which membership was live then",
+      touchesNight: "PURE: a slot's two instants, answering whether it touches 01:00–05:00 IST",
       unitOnTake: "an `at`; a read",
       whoIsAt: "an `at`",
       whoIsOn: "an `at` — who is on THEN",
@@ -843,5 +885,32 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
     const names = await eventNames();
     expect(names.filter((n) => n === "roster.period_superseded")).toHaveLength(1);
     expect(names.indexOf("roster.period_superseded")).toBeLessThan(names.lastIndexOf("roster.period_published"));
+  });
+
+  /* ═══════════════════ audit 2026-10-04 #7 — the unassign race ═══════════════════ */
+
+  it("#7 two concurrent removals of one slot: the second is REFUSED, not a silent no-op", async () => {
+    const p = await draft();
+    const { assignmentId } = await slot(p.periodId);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let removed!: () => void;
+    const firstRemoved = new Promise<void>((r) => { removed = r; });
+
+    const first = withTx(db, async (tx) => { await unassign(tx, ms, assignmentId); removed(); await gate; });
+    await firstRemoved;
+    const second = withTx(db, (tx) => unassign(tx, ms, assignmentId)).then(() => null, (e: unknown) => e);
+    // Wait until the second is queued behind the first's lock, then let the first commit.
+    for (let i = 0; i < 200; i += 1) {
+      const w = await db.execute(sql`select count(*)::int as n from pg_locks
+        where not granted and database = (select oid from pg_database where datname = current_database())`);
+      if ((w.rows[0] as { n: number }).n > 0) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    release();
+    await first;
+    const e = await second;
+    expect(e).toBeInstanceOf(RosterError);
+    expect((e as RosterError).code).toBe("unknown_assignment");
   });
 });

@@ -29,7 +29,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
-import { runMonthlyProposals, sweepRosterWindows } from "../../modules/roster";
+import { printBoardIfDue, runMonthlyProposals, sweepRosterWindows } from "../../modules/roster";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -578,5 +578,18 @@ export function registerAllJobs(
     name: "sweepImagingEscalations",
     every: 60_000,
     run: async (now) => { await sweepImagingEscalations(db, now); },
+  });
+  /**
+   * 20-U infra (owner 2026-10-04, board "When the screens are dark") — the who-is-on board prints
+   * itself at 20:00 and 08:00 IST. ONE job, every minute, rather than two `dailyIst` registrations:
+   * two instants a day would be two names in a seven-site census, and the print record
+   * (`roster_board_prints`, unique on the instant, under an advisory lock) is already the memory a
+   * daily heartbeat would be. It does nothing on 1438 ticks of 1440; a worker back within two hours
+   * of an instant still prints it, and later than that does not (a stale rota is worse than none).
+   */
+  scheduler.register({
+    name: "printRosterBoard",
+    every: 60_000,
+    run: async (now) => { await printBoardIfDue(db, now); },
   });
 }

@@ -74,10 +74,24 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
           The name and the council number are not read here even if an old payload carries them.
           No signature line joins it: K50 (owner 2026-08-15) makes the signed QR the authentication.
         */}
+        {/*
+          OWNER 2026-10-04 — SUPERSEDES the above: the department, then **Unit Number** (the unit for a
+          unit doctor; the Doctor ID for Guest Faculty and — DECIDED — anyone in no unit) and **Dept.
+          Regn** (that day's unit head's council number, blank when none). Never a doctor's name, and
+          never the words "Guest Faculty". The server resolves both (`prescriberPrint`).
+        */}
         <section className="space-y-1">
-          <p data-testid="rx-doctor-id" className="text-sm font-medium">{t("rx.doctorId")} <span className="font-mono">{data.doctor.code ?? "—"}</span></p>
           {data.doctor.departmentName !== null && (
-            <p className="text-xs text-neutral-600">{data.doctor.departmentName}</p>
+            <p data-testid="rx-department" className="text-sm font-medium">{data.doctor.departmentName}</p>
+          )}
+          {data.doctor.unitNumber !== undefined ? (
+            <>
+              <p data-testid="rx-unit-number" className="text-sm">{t("rx.unitNumber")}: <span className="font-mono">{data.doctor.unitNumber}</span></p>
+              {/* Blank — no placeholder — when the unit head's number is not on file (owner 2026-10-04). */}
+              <p data-testid="rx-dept-regn" className="text-sm">{t("rx.deptRegn")}: <span className="font-mono">{data.doctor.deptRegn ?? ""}</span></p>
+            </>
+          ) : (
+            <p data-testid="rx-doctor-id" className="text-sm font-medium">{t("rx.doctorId")} <span className="font-mono">{data.doctor.code ?? "—"}</span></p>
           )}
         </section>
 

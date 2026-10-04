@@ -36,6 +36,8 @@ export type WireDoctor = {
      minted at creation, so the screen never has to handle a doctor without one. */
   id: string; userId: string; displayName: string; code: string; registrationNo: string | null; departmentId: string;
   specialty: string | null; active: boolean;
+  /** 2026-10-04 — "Guest Faculty", "Senior Resident" (migration 0177). Optional: older servers send none. */
+  designation?: string | null;
   createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
 };
 
@@ -397,7 +399,12 @@ export type WireRxPrint = {
   letterhead: { name: string; addressLines: string[] };
   patient: { uhid: string; name: string | null; alias: string | null; restricted: boolean; ageYears: number | null; administrativeGender: string };
   /** The Doctor ID only — the print names no doctor and no council number (owner 2026-09-06, 2026-09-28). */
-  doctor: { code: string | null; departmentName: string | null };
+  /**
+   * Owner 2026-10-04: no name. `unitNumber` is the unit ("Unit I") or, for a doctor in no unit, the Doctor
+   * ID; `deptRegn` is that day's unit head's council number, null (blank) when none. `code` / `unit`
+   * are the older payload's fields, read only when `unitNumber` is absent.
+   */
+  doctor: { unitNumber?: string; deptRegn?: string | null; code?: string | null; departmentName: string | null; unit?: string | null };
   encounter: {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;

@@ -142,6 +142,8 @@ const doctorCreateBody = z.object({
   registrationNo: z.string().max(100).optional(),
   departmentId: z.string().min(1),
   specialty: z.string().max(200).optional(),
+  /* 2026-10-04 (owner) — "Guest Faculty", "Senior Resident": shown at the desk, never printed. */
+  designation: z.string().max(100).optional(),
 });
 const doctorPatchBody = z.object({
   displayName: z.string().min(1).max(200).optional(),
@@ -151,6 +153,7 @@ const doctorPatchBody = z.object({
   registrationNo: z.string().max(100).nullable().optional(),
   departmentId: z.string().min(1).optional(),
   specialty: z.string().max(200).nullable().optional(),
+  designation: z.string().max(100).nullable().optional(),
   active: z.boolean().optional(),
 });
 // Numbers coerced: an <input type="number"> posts strings (§3.19 class). The HH:MM strings and the

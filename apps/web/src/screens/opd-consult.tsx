@@ -15,6 +15,7 @@ import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { useDoctorLabel } from "../lib/use-doctor-label";
 import type {
   WireDoctor, WireEncounter, WireOpdConfig, WirePatientSummary, WirePrescription, WireQueueEntry,
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
@@ -600,6 +601,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   // erratum E3: 404 here is the ANSWER "this user has no doctor profile", not a transport error.
   const notADoctor = me.isError && me.error instanceof ApiError && me.error.status === 404;
   const doctorId = me.data?.id ?? "";
+  // 2026-10-04 (owner) — "Dr. Chandan · Unit I" in the doctor's own header too.
+  const doctorLabel = useDoctorLabel(todayIst());
+  const myTag = me.data === undefined ? null : doctorLabel(me.data);
 
   const config = useQuery({ queryKey: ["opd", "config"], queryFn: () => api<WireOpdConfig>("GET", "/opd/config") });
   /*
@@ -2448,7 +2452,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         onToggle={active === null ? setLeftOnBrief : setLeftOnConsult}
         waiting={ordered.length}
         sessionStatus={view?.session.status ?? null}
-        subtitle={view === null ? undefined : [view.doctor.displayName, view.doctor.specialty].filter((x) => x !== null && x !== "").join(" · ")}
+        subtitle={view === null ? undefined : [view.doctor.displayName, myTag, view.doctor.specialty].filter((x) => x !== null && x !== "").join(" · ")}
       >
           <div>
             <label className="tag" style={{ display: "block", marginBottom: 5 }} htmlFor="session-status">{t("opdConsult.sessionStatus")}</label>
@@ -2594,7 +2598,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
           )}
           <h1 className="cx-title" style={{ margin: 0 }}>{t("opdConsult.title")}</h1>
           <span className="cx-who" data-testid="consult-who">
-            {[me.data?.displayName ?? view?.doctor.displayName ?? null, view?.doctor.specialty ?? null].filter((x) => x !== null && x !== "").join(" · ")}
+            {[me.data?.displayName ?? view?.doctor.displayName ?? null, myTag, view?.doctor.specialty ?? null].filter((x) => x !== null && x !== "").join(" · ")}
           </span>
           <span className="cx-grow" />
           {active !== null && (

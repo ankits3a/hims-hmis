@@ -26,8 +26,8 @@ const SUNDAY = "2026-09-20";
 
 const hospital = { name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR"] };
 const DEPARTMENTS = [
-  { departmentId: "d-med", code: "MED", name: "General Medicine", booked: 20, consulted: 17, new: 5, revisit: 8, renewal: 4, stillOpen: 2 },
-  { departmentId: "d-ped", code: "PED", name: "Paediatrics", booked: 6, consulted: 5, new: 2, revisit: 2, renewal: 1, stillOpen: 0 },
+  { departmentId: "d-med", code: "MED", name: "General Medicine", units: ["Unit II"], booked: 20, consulted: 17, new: 5, revisit: 8, renewal: 4, stillOpen: 2 },
+  { departmentId: "d-ped", code: "PED", name: "Paediatrics", units: [], booked: 6, consulted: 5, new: 2, revisit: 2, renewal: 1, stillOpen: 0 },
 ];
 const report = (over: Record<string, unknown>) => ({
   period: "day", anchor: TODAY, from: TODAY, to: TODAY, generatedAt: "2026-09-19T12:00:00.000Z", provisional: true,
@@ -213,6 +213,13 @@ describe("the department-wise screen", () => {
     // The week's own rule is stated on a weekly report and nowhere else.
     expect(screen.getByTestId("odr-week-rule")).toHaveTextContent(/Monday to Saturday/);
     expect(screen.getByTestId("odr-sunday")).toHaveTextContent(/not counted here/);
+  });
+
+  it("20-U U7 — a day's row names the unit that held the OPD; a department that runs no units shows nothing", async () => {
+    await mountAt(`/reports/opd-day?period=day&date=${TODAY}`, ["opd.reports.read"]);
+    const table = await screen.findByTestId("odr-table");
+    expect(within(table).getByTestId("odr-unit-MED")).toHaveTextContent("OPD: Unit II");
+    expect(within(table).queryByTestId("odr-unit-PED")).toBeNull();
   });
 
   it("shows a department's patients on one tap, dated, with the patient type and a sealed patient marked", async () => {

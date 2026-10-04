@@ -21,6 +21,7 @@ import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as radiologyEscalationsMod from "../../modules/radiology/escalations";
 import * as rosterCalendarMod from "../../modules/roster/calendar";
 import * as rosterProposerMod from "../../modules/roster/proposer";
+import * as rosterBoardPrintMod from "../../modules/roster/board-print";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as dispatcherMod from "../events/dispatcher";
@@ -362,6 +363,16 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       return { skipped: true, drafted: 0, units: 0 };
     }),
     /**
+     * 20-U infra (owner 2026-10-04) — the duty board's print, stubbed on `modules/roster/board-print`
+     * (the module the index re-exports FROM, the eleventh's rule). Un-stubbed it would draw the board
+     * and write a print record inside a fake-clock test that is about the CLOCK; its behaviour is
+     * asserted in `test/roster-board-print.e2e.test.ts`.
+     */
+    jest.spyOn(rosterBoardPrintMod, "printBoardIfDue").mockImplementation(async () => {
+      invoked.push("printRosterBoard");
+      return null;
+    }),
+    /**
      * PHARMACY P6 (patient messages) — the refill reminders, stubbed on `modules/pharmacy/messages` (the
      * module the index re-exports FROM, the eleventh's rule). Un-stubbed it would read the preferences
      * and dispenses of a database this CLOCK test has no business touching; its behaviour is asserted
@@ -467,6 +478,8 @@ const THE_EIGHTEEN = [
   "sweepOverdueQa",
   // 18-S RS10 T2 — the TWENTY-FOURTH, `every(60_000)`: the HOD's escalations on the obligation spine.
   "sweepImagingEscalations",
+  // 20-U infra (owner 2026-10-04) — the TWENTY-FIFTH, `every(60_000)`: the duty board's 20:00/08:00 print.
+  "printRosterBoard",
 ];
 
 /**

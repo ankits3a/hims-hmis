@@ -103,6 +103,30 @@ export async function escalationRecipients(
   };
 }
 
+/**
+ * 20-U infra (owner 2026-10-04) — **WHO IS THE DUTY MANAGER NOW**, for an alert that is the duty
+ * manager's by its nature and so has no `roster_escalation_targets` row to configure: a reader's
+ * "this is wrong" flag on the who-is-on board (register I22).
+ *
+ * The same rungs as `escalationRecipients` with an implicit hospital-wide `duty_manager` target:
+ * the roster's answer at `at` when a published roster names somebody; otherwise every holder of the
+ * `duty_manager` role — the rung never removed — with `rosterWasEmpty` raised when a published
+ * roster answered and named nobody (a hole, filled from the role and visible as one).
+ */
+export const DUTY_MANAGER_POSITION = "duty_manager";
+export async function dutyManagersAt(
+  exec: Db | Tx, at: Date, env: NodeJS.ProcessEnv = process.env,
+): Promise<EscalationRecipients> {
+  const answer = await whoIsOn(exec, { position: DUTY_MANAGER_POSITION }, at, env);
+  if (answer.source === "published" && answer.userIds.length > 0) {
+    return { userIds: answer.userIds, via: "roster", rosterWasEmpty: false, roleKey: null, positionKey: DUTY_MANAGER_POSITION };
+  }
+  return {
+    userIds: await usersHoldingRole(exec as Tx, DUTY_MANAGER_POSITION),
+    via: "role", rosterWasEmpty: answer.source === "published", roleKey: DUTY_MANAGER_POSITION, positionKey: DUTY_MANAGER_POSITION,
+  };
+}
+
 /* ═══════════════════════════════ configuring it ═══════════════════════════════ */
 
 export interface SetEscalationTargetInput {

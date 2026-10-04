@@ -125,6 +125,7 @@ const CSS = `
   tbody tr:nth-child(even) td { background: #faf8fa; }
   th.n, td.n { text-align: right; }
   td.dim { color: #999; }
+  .unit { color: #555; font-weight: 400; }
   tfoot td { font-weight: 800; border-top: 2px solid #55064f; border-bottom: none; background: #f3eaf2; }
   .tag { display: inline-block; padding: 0 6px; border-radius: 9px; font-size: 10px; font-weight: 700; }
   .tag.new { background: #e3f4ea; color: #146c3a; }
@@ -186,6 +187,11 @@ function countCells(c: ReportCounts, showOpen: boolean): string {
   return cell(c.booked) + cell(c.consulted) + cell(c.new) + cell(c.revisit) + cell(c.renewal) + (showOpen ? cell(c.stillOpen) : "");
 }
 
+/** 20-U U7 — ` · Unit II`, the unit that held the OPD that day; nothing at all when none did. */
+function unitLine(units: readonly string[]): string {
+  return units.length === 0 ? "" : `<span class="unit"> · ${esc(units.join(", "))}</span>`;
+}
+
 /** `OPD-Day-Report-2026-09-20`, `OPD-Week-Report-MED-2026-09-21-to-2026-09-26`. */
 export function fileStem(range: ReportRange, department?: { code: string }): string {
   const parts = ["OPD", PERIOD_STEM[range.period], "Report"];
@@ -198,7 +204,7 @@ export function fileStem(range: ReportRange, department?: { code: string }): str
 export function renderReport(r: OpdReport): RenderedReport {
   const showOpen = r.totals.stillOpen > 0;
   const rows = r.departments.map((d, i) =>
-    `<tr><td class="num">${String(i + 1)}</td><td><b>${esc(d.name)}</b></td>${countCells(d, showOpen)}</tr>`).join("");
+    `<tr><td class="num">${String(i + 1)}</td><td><b>${esc(d.name)}</b>${unitLine(d.units)}</td>${countCells(d, showOpen)}</tr>`).join("");
   const body = letterhead(r.hospital)
     + title(PERIOD_TITLE[r.period], "Department-wise appointments and consultations", r, r.generatedAt)
     + provisionalNote(r.provisional, r.totals.stillOpen, r.period)
@@ -231,7 +237,7 @@ export function renderDepartmentReport(r: OpdDepartmentReport): RenderedReport {
     + `<td>${esc(p.shortAddress)}</td><td><span class="tag ${p.patientType}">${PATIENT_TYPE_LABEL[p.patientType]}</span></td>`
     + `<td>${esc(p.doctor)}</td></tr>`).join("");
   const body = letterhead(r.hospital)
-    + title(`${PERIOD_TITLE[r.period]} — ${d.name}`, "Department brief and patients consulted", r, r.generatedAt)
+    + title(`${PERIOD_TITLE[r.period]} — ${d.name}`, `Department brief and patients consulted${d.units.length === 0 ? "" : ` · OPD held by ${d.units.join(", ")}`}`, r, r.generatedAt)
     + provisionalNote(r.provisional, d.stillOpen, r.period)
     + sundayNote(r.excludedSunday)
     + `<div class="tiles">${tile(d.consulted, "Consulted", true)}${tile(d.new, "New")}${tile(d.revisit, "Revisit")}`
@@ -280,9 +286,18 @@ function csvHead(
 export function reportCsvRows(r: OpdReport): string[][] {
   return [
     ...csvHead(r.hospital, PERIOD_TITLE[r.period], r, r.provisional, r.generatedAt, r.excludedSunday),
-    ["Department", ...countHeader],
-    ...r.departments.map((d) => [sheetText(d.name), ...countRow(d)]),
-    ["Total", ...countRow(r.totals)],
+    /* 20-U U7 — the OPD unit column only when some clinic ran on the unit calendar that day. */
+    ...(r.departments.some((d) => d.units.length > 0)
+      ? [
+        ["Department", "OPD unit", ...countHeader],
+        ...r.departments.map((d) => [sheetText(d.name), sheetText(d.units.join(", ")), ...countRow(d)]),
+        ["Total", "", ...countRow(r.totals)],
+      ]
+      : [
+        ["Department", ...countHeader],
+        ...r.departments.map((d) => [sheetText(d.name), ...countRow(d)]),
+        ["Total", ...countRow(r.totals)],
+      ]),
     [],
     ["Different patients consulted", String(r.patientsConsulted)],
     ["New patients (first time at the hospital)", String(r.newPatients)],
@@ -297,6 +312,7 @@ export function departmentReportCsvRows(r: OpdDepartmentReport): string[][] {
     ...csvHead(r.hospital, sheetText(`${PERIOD_TITLE[r.period]} — ${d.name}`), r, r.provisional, r.generatedAt, r.excludedSunday),
     countHeader,
     countRow(d),
+    ...(d.units.length === 0 ? [] : [["OPD unit", sheetText(d.units.join(", "))]]),
     [],
     ["#", "Date", "Time", "Visit no", "Patient name", "UHID", "Age", "Sex", "Address", "Patient type", "Doctor"],
     ...r.rows.map((p, i) => [

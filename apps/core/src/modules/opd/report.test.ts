@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { confirmSeededUnits } from "../../../test/helpers/units";
 import { mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
-import { opdAppointments, opdDepartments, opdEncounters, patients } from "../../kernel/db/schema";
+import { opdAppointments, opdDepartments, opdEncounters, orgDepartments, patients, rosterDutyWindows } from "../../kernel/db/schema";
+import { seedOrgDepartments, seedUnits, teamByCode } from "../roster";
 import { ageLabel, loadOpdDepartmentReport, loadOpdReport, rangeFor, shortAddress } from "./report";
 import {
   departmentReportCsvRows, fileStem, rangeLabel, renderDepartmentReport, renderReport, reportCsvRows, sheetText,
@@ -269,6 +271,37 @@ describe("OPD report", () => {
     expect(doc.html).toContain("OPD Monthly Report");
     expect(doc.html).toContain("01-Sep-2026 to 19-Sep-2026 · 19 days");
     expect(doc.html).not.toContain("<b>Week</b>"); // the week rule belongs on a weekly sheet only
+  });
+
+  /*
+    20-U U7 — THE DAY REPORT CARRIES THE UNIT. General Medicine runs units and its cycle put Unit II
+    on the OPD that Friday; Paediatrics runs none. Read-only: the unit comes from the roster's
+    published windows and nothing about the visits changes.
+  */
+  it("the day report names the unit that held each clinic's OPD — and nothing for a clinic without units", async () => {
+    await seedOrgDepartments(db);
+    await seedUnits(db);
+    await confirmSeededUnits(db); // only a confirmed unit counts (owner 2026-10-04)
+    const med = (await db.select().from(orgDepartments)).find((d) => d.code === "MED")!.id;
+    const u2 = (await teamByCode(db, "MED-U2"))!.id;
+    await db.insert(rosterDutyWindows).values({
+      id: newId(), departmentId: med, teamId: u2, activity: "opd",
+      startsAt: new Date(`${DAY}T09:00:00+05:30`), endsAt: new Date(`${DAY}T13:00:00+05:30`), createdBy: "t", updatedBy: "t",
+    });
+
+    const r = await day(DAY);
+    expect(r.departments.map((d) => [d.name, d.units])).toEqual([["General Medicine", ["Unit II"]], ["Paediatrics", []]]);
+    expect(renderReport(r).html).toContain("<b>General Medicine</b><span class=\"unit\"> · Unit II</span>");
+    expect(reportCsvRows(r)).toContainEqual(["General Medicine", "Unit II", "3", "6", "3", "1", "2", "1"]);
+    expect(reportCsvRows(r)).toContainEqual(["Paediatrics", "", "1", "2", "1", "0", "1", "0"]);
+
+    const dept = (await loadOpdDepartmentReport(db, clerk.actor, rangeFor("day", DAY), deptId, NOW))!;
+    expect(dept.department.units).toEqual(["Unit II"]);
+    expect(renderDepartmentReport(dept).html).toContain("OPD held by Unit II");
+    expect(departmentReportCsvRows(dept)).toContainEqual(["OPD unit", "Unit II"]);
+
+    // A week passes through every unit, so it names none.
+    expect((await week(SAT, LATER)).departments.every((d) => d.units.length === 0)).toBe(true);
   });
 });
 

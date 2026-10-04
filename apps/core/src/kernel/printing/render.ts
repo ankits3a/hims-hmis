@@ -14,10 +14,16 @@ import { displayName, displayNameForRelease, listAllergies, resolvePatientId } f
 /* FD-29 — the crest as a data URI and a real QR encoder, both self-contained: `RenderedDocument`
    promises HTML with no external fetch, and the relay may be printing with the uplink down. */
 import { CREST_PNG_DATA_URI } from "./crest";
+// 2026-10-04 (owner) — the prescriber line. Imported from the file, not the roster index: the index
+// reaches the board printer, which reaches this renderer, and a load cycle resolves to `undefined`.
+import { prescriberPrint } from "../../modules/roster/doctor-units";
 import { qrSvg } from "./qr";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
-import type { PrintDocument } from "./enqueue";
+import { HOSPITAL, esc, registerDocumentRenderer, registeredRenderer } from "./document-kit";
+import type { DocumentRenderer, RenderedDocument } from "./document-kit";
+export { HOSPITAL, esc, registerDocumentRenderer };
+export type { DocumentRenderer, RenderedDocument };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -55,37 +61,7 @@ import type { PrintDocument } from "./enqueue";
  * where that was ruled, and the reason "Next Steps" fits here and would not fit on a 4×6 label.
  */
 
-/** A rendered document, ready for the relay to convert and print. */
-export type RenderedDocument = {
-  /** Self-contained HTML: inline CSS, no external fetch, no font CDN. The relay may be offline. */
-  html: string;
-  /** For the operator's log and the relay's own sanity check. */
-  title: string;
-  /**
-   * ═══ THE PAGE GEOMETRY, AND WHY IT TRAVELS AS DATA RATHER THAN LIVING ONLY IN THE CSS ═══
-   *
-   * **MEASURED, NOT ASSUMED: Chromium SILENTLY IGNORES `@page { size: 72mm auto }`.** A first cut of
-   * this phase relied on the CSS alone and produced a US-Letter PDF — 215.9 × 279.4 mm — with the
-   * slip stranded in the corner of a sheet. `preferCSSPageSize: true` does not rescue it either;
-   * only an EXPLICIT height is honoured (`size: 72mm 200mm` renders exactly 72.0 × 200.1 mm).
-   *
-   * A thermal roll is continuous, so there is no explicit height to write: the slip is as long as
-   * the job needs. So the geometry travels to the relay, which has the browser, and the relay
-   * MEASURES the laid-out document before printing when `heightMm` is null.
-   *
-   * The `@page` rules in the CSS below STAY. They are the correct declaration of intent for any
-   * renderer that honours them, and they keep the template readable — but they are not what makes
-   * the paper the right size, and a future reader should not believe they are.
-   */
-  page: { widthMm: number; heightMm: number | null };
-};
 
-/** Escapes text for HTML. Everything interpolated below goes through it — patient names included. */
-export function esc(value: unknown): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
 
 /**
  * THE THERMAL PAGE. 72 mm printable, continuous length, no margin of its own — a roll has no
@@ -157,32 +133,6 @@ function barField(payload: string): string {
   return `<div class="code"><div>${bars.join("")}</div><div class="digits mo">${esc(payload)}</div></div>`;
 }
 
-/**
- * ═══ EVERY FIELD HERE IS PRE-ESCAPED AND INTERPOLATED RAW ═══
- *
- * `name` and `nameTitleCase` carry `&amp;` as an ENTITY, so putting them through `esc()` prints the
- * literal `&amp;` on the paper. That is a trap the next reader will step in exactly once; it is
- * written down here rather than discovered on a printed sheet.
- */
-export const HOSPITAL = {
-  name: "CRK MEDICAL COLLEGE &amp; HOSPITAL",
-  /**
-   * The SAME establishment, title-cased, for the prescription letterhead's footer.
-   *
-   * NOT a unification of the line above, and deliberately so: the thermal slips print the name in
-   * caps, and a SECOND, unescaped copy of the same string lives at `modules/opd/config.ts` behind
-   * seven tests across four modules. Folding three spellings into one is a cross-module change with
-   * its own review — it is not something a layout change may quietly do on the way past.
-   */
-  nameTitleCase: "CRK Medical College &amp; Hospital",
-  address: "Chaurasia Chowk, Hajipur — 844101, Bihar",
-  contact: "Hotline +91 77648 88189 · Emergency 1068",
-  /* FD-29 — split out of `contact` for the prescription footer, which labels them separately. */
-  hotline: "+91 77648 88189",
-  emergency: "1068",
-  email: "info@crkmch.com",
-  website: "www.crkmch.com",
-};
 
 /**
  * ═══ THE HOSPITAL'S CLOCK, ONE MECHANISM, IN THE ONE SPELLING THIS FILE ALREADY USED ═══
@@ -330,6 +280,8 @@ export type SlipSubject = {
    * the `—` fallback below can only be reached by an encounter with no doctor at all.
    */
   doctorCode: string | null;
+  /** 2026-10-04 — the prescriber's user, so the prescription can print their UNIT instead of any id. */
+  doctorUserId: string | null;
 };
 
 /** `MED-4`. The same grammar the screen uses — a token printed one way and said another sends a patient to the wrong door. */
@@ -482,7 +434,7 @@ export async function subjectOf(
   */
   const doctor = await db
     .select({
-      name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo, code: opdDoctors.code,
+      name: opdDoctors.displayName, registrationNo: opdDoctors.registrationNo, code: opdDoctors.code, userId: opdDoctors.userId,
       /* FD-29 — the A4 letterhead prints a Speciality row. Nullable free text with no master
          behind it, so the sheet falls back to the department rather than printing a dash. */
       specialty: opdDoctors.specialty,
@@ -572,6 +524,7 @@ export async function subjectOf(
     doctorRegistrationNo: doctor[0]?.registrationNo ?? null,
     doctorSpecialty: doctor[0]?.specialty ?? null,
     doctorCode: doctor[0]?.code ?? null,
+    doctorUserId: doctor[0]?.userId ?? null,
     tokenNo: entry[0]?.tokenNo ?? null,
     roomCode: null,
     /* FD-29 — the canonical id, NOT `opd_encounters.patient_id`: see the field's own comment. */
@@ -945,28 +898,41 @@ export async function renderPrescriptionSheet(
     ? (await db.select({ username: users.username }).from(users).where(eq(users.id, requester.id)))[0]?.username ?? null
     : null;
 
-  const dobDay = formatCalendarDay(s.dob);
-  const ageSuffix = s.ageYears === null ? "" : ` (${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years)`;
-  /* An ESTIMATED date of birth is an entered age wearing a date's clothes — print the age alone. */
-  const dobCell = s.dobEstimated || dobDay === null
-    ? (s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`)
-    : `${dobDay}${ageSuffix}`;
   /*
-    OWNER, 2026-09-06: *"As a medical Institution with college, there's no need of mentioning Dr.
-    Name and their registration number. Only Dr. ID is required."*
-
-    An earlier cut of this sheet printed `Doctor: <name> · Reg. <no>` BECAUSE THE ID DID NOT EXIST —
-    `DR-0114` was in five design canvases and in no column — and dropping the name without putting
-    something in its place would have left the row empty. `opd_doctors.code` is that column now, so
-    the design's own row is what prints.
-
-    OWNER, 2026-09-28: *"Prescription print: Doctor ID only."* The signature block used to ask the
-    treating physician for their name and registration number in their own hand (the NMC Code of
-    Ethics reg. 1.4.2 reading); the owner has ruled the hospital's paper carries the Doctor ID and a
-    signature, so the block now asks for exactly that. The lab report's signing pathologist (full
-    name and council number) is the one exception, and it is not this sheet.
+    HISTORY. The header printed DOB (an estimated date as the age alone) and a "Doctor ID" row: owner
+    2026-09-06 *"Only Dr. ID is required"*, 2026-09-28 *"Prescription print: Doctor ID only"*. Both are
+    superseded for this sheet by the owner's header of 2026-10-04 below (Age; Unit Number; Dept. Regn).
   */
-  const doctorCell = esc(s.doctorCode ?? "—");
+  /*
+    ═══ OWNER, 2026-10-04 — THE HEADER, FIELD BY FIELD (supersedes the "Doctor ID only" rulings above) ═══
+
+    In this order: Name · UHID · Gender · Age · Address · Unit Number | Encounter ID · Encounter Type ·
+    Visit Date · Dept. Regn. The department NAME prints under the crest. NO doctor's name anywhere:
+      · Unit Number — the prescriber's unit that day ("Unit I"); a doctor in no unit (Guest Faculty,
+        and DECIDED: anyone else in none, e.g. Community Medicine) prints the Doctor ID here instead.
+        The words "Guest Faculty" never print.
+      · Dept. Regn — ONE field (owner correction, same day): the DEPARTMENT registration number, i.e.
+        the council number of that day's head of the unit concerned (officiating head counts) — the
+        prescriber's own unit, or for a doctor in no unit the unit holding the department's OPD that
+        day; blank when the department has no unit or the head has no number on file. The OPD admin
+        screen lists unit heads with none, so the gap is seen.
+      · Encounter ID — `visit_no`, the spelling the house prints and a clerk types back.
+      · Encounter Type — OPD (the same field will carry IPD / Emergency).
+      · Visit Date — the OPD visit day (the admission date, once IPD exists).
+      · Address — as registered; the row is left out when there is none, and for a sealed patient
+        (§14: the seal covers where they live as much as who they are).
+  */
+  const visitDay = String(s.serviceDate).slice(0, 10);
+  const clinic = (await db.select({ d: opdEncounters.departmentId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId)))[0]?.d ?? null;
+  const prescriber = s.doctorUserId === null
+    ? { unitNumber: "—", deptRegn: null as string | null }
+    : await prescriberPrint(db, { userId: s.doctorUserId, code: s.doctorCode }, { istDate: visitDay, opdDepartmentId: clinic });
+  const home = (await db.select({ addressLine: patients.addressLine, district: patients.district, stateName: patients.stateName, pincode: patients.pincode, sealed: patients.isConfidential })
+    .from(patients).where(eq(patients.id, s.patientId)))[0];
+  const addressText = home === undefined || home.sealed ? "" : [home.addressLine, home.district, home.stateName, home.pincode]
+    .map((x) => x?.trim() ?? "").filter((x) => x !== "").join(", ");
+  const ageCell = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`;
+  const signatureCaption = "Signature of the treating physician";
 
   const css = `
     /* The geometry is the artboard's: a 794 x 1123 px page at 96 dpi is exactly A4, so the layout
@@ -1092,15 +1058,15 @@ export async function renderPrescriptionSheet(
           ${idRow("Name:", esc(s.patientName))}
           ${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}
           ${idRow("Gender:", esc(genderLetter(s.gender)))}
-          ${idRow("DOB:", `<span class="num">${esc(dobCell)}</span>`)}
-          ${idRow("Doctor ID:", `<span class="num">${doctorCell}</span>`)}
+          ${idRow("Age:", `<span class="num">${esc(ageCell)}</span>`)}
+          ${addressText === "" ? "" : idRow("Address:", esc(addressText))}
+          ${idRow("Unit Number:", `<span class="num">${esc(prescriber.unitNumber)}</span>`)}
         </div>
         <div class="r">
           ${idRow("Encounter ID:", `<span class="num">${esc(s.visitNo)}</span>`)}
-          ${idRow("Encounter Type:", "Outpatient")}
-          ${idRow("Visit/Admn Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}
-          ${idRow("Department:", esc(s.departmentName))}
-          ${idRow("Speciality:", esc(s.doctorSpecialty ?? s.departmentName))}
+          ${idRow("Encounter Type:", "OPD")}
+          ${idRow("Visit Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}
+          ${idRow("Dept. Regn:", prescriber.deptRegn === null ? "" : `<span class="num">${esc(prescriber.deptRegn)}</span>`)}
         </div>
       </div>
       <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
@@ -1125,7 +1091,7 @@ export async function renderPrescriptionSheet(
         <div class="sig">
           <div class="b">
             <div class="thin"></div>
-            <div class="c">Doctor ID · signature of the treating physician</div>
+            <div class="c">${signatureCaption}</div>
           </div>
         </div>
       </div>
@@ -1171,28 +1137,6 @@ export async function renderPrescriptionSheet(
   };
 }
 
-/**
- * ═══ PHARMACY P1 — A MODULE DRAWS ITS OWN PAPER ═══
- *
- * The OPD documents are drawn in this file because the kernel already reads the encounter. A
- * pharmacy bill is the pharmacy's rows (the dispense, its merged bill rows, its labels), and this
- * file importing the pharmacy module would make the kernel depend on a leaf. So a module registers a
- * renderer for a document it declared in `PrintDocument`, from its Nest module's `onModuleInit` —
- * the `registerFeeStatusHook` shape. Keyed, so a second init replaces rather than doubles.
- *
- * A document with neither a case below nor a registration renders null, which the relay reports
- * failed: advisory, per R7, exactly as before.
- */
-export type DocumentRenderer = (
-  db: Db, params: Record<string, unknown>, now: Date, requester: Actor | null,
-) => Promise<RenderedDocument | null>;
-
-const MODULE_RENDERERS = new Map<string, DocumentRenderer>();
-
-export function registerDocumentRenderer(document: PrintDocument, renderer: DocumentRenderer): () => void {
-  MODULE_RENDERERS.set(document, renderer);
-  return () => { if (MODULE_RENDERERS.get(document) === renderer) MODULE_RENDERERS.delete(document); };
-}
 
 /**
  * The one dispatcher the relay's claim goes through.
@@ -1219,7 +1163,7 @@ export async function renderDocument(
     case "opd_payment_receipt": return await renderPaymentReceipt(db, params, now, requester);
     case "opd_prescription": return await renderPrescriptionSheet(db, params, now, requester);
     default: {
-      const registered = MODULE_RENDERERS.get(document);
+      const registered = registeredRenderer(document);
       return registered === undefined ? null : await registered(db, params, now, requester);
     }
   }

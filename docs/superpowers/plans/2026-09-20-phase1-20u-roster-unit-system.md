@@ -10,8 +10,13 @@ rulings are RU-1…RU-6 in `brainstorms/2026-09-20-roster-units/00-BRAINSTORM.md
 > `plans/2026-09-20-roster-backbone-IMPLEMENTATION-PLAN.md`** (executed via its EXECUTE-PROMPT). §2,
 > §6 and §8 remain the reference. Owner rulings the same afternoon: office timings **09:00–17:30**;
 > the default night rule is the planner's (pooled at department level — stress test S4); the four
-> boards are approved "as of now"; units **5/5/3/3/4/2/2/1/1 + Respiratory Medicine as its own
-> one-unit department** (DECIDED under "follow the standard protocol of top teaching hospitals");
+> boards are approved "as of now"; units ~~5/5/3/3/4/2/2/1/1 + Respiratory Medicine as its own
+> one-unit department~~ **SUPERSEDED 2026-10-04 by the owner's table ("Department-Wise Unit and Bed
+> Requirements"): MED 5 · SUR 5 · OBG 3 · PED 3 · ORT 2 · OPH 1 · ENT 1 · PSY 1 · DER 1 = 22 units;
+> beds 150/150/75/75/60/20/20/15/10 + combined ICUs 30 = 605 (recorded for the future IPD, not built);
+> Respiratory Medicine: no unit.** Surplus seeded units (OBG-U4, ORT-U3, ENT-U2, OPH-U2, RESP-U1 and the
+> RESP night pool) are CLOSED by `seed:roster` if never confirmed — never deleted, and a confirmed
+> unit is never closed automatically. Only Unit I is active today in MED, SUR, ENT, OBG, ORT;
 > the three messaging providers come later. Two of §2's citations could not be re-confirmed by the
 > legal reviewer and are marked unverified: the AEBAS OM of 03.09.2026 and the PGMSR amendment of
 > 20.02.2026 — nothing in the design rests on either.
@@ -369,3 +374,147 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
 ---
 
 ## 11. CLOSE — filled at execution
+
+### U5a — Who is on now (`/roster/on-now`, `GET /roster/on-now?at=`)
+
+- **DECIDED — who reads it.** `roster.read` to `doctor`, `front_office`, `front_office_supervisor`,
+  `vitals_desk`, `opd_admin` (the act matrix: a roster read costs nothing). README prose added.
+- **DECIDED — the columns, from the position master** (`board.ts` `boardColumn`): resident cadres
+  (intern/JR/SR) are *in the building*; cadre `faculty` with eligible role `doctor` is *faculty on
+  call* (first `calloutList` rung group; a vacant first rung shows as vacant); ward nursing (cadre
+  `nurse`, ladder rank < 3) is left to ward boards; everything else is a hospital-wide service.
+- **DECIDED — "published" is per department's UNITS.** A live hospital-wide period (the duty
+  manager's) makes `onDutyNow` read `published` for every department; the board calls a row
+  published only when a unit position is declared, and never lists RBAC holders for any other row.
+- **DECIDED — holes in the next 24 h**: no published take cycle, a gap in the take, a vacant slot,
+  and a rostered person on approved leave. Nav group `opd`. No phone numbers (D6 is a later task).
+
+### U5b — Roster, the unit's month (`/roster/month`; `GET /roster/units`, `GET|POST /roster/units/:teamId/months/:month[/draft]`, `PUT /roster/slots/:id`, `POST /roster/periods/:id/{findings/accept,publish}`)
+
+- **DECIDED — no HOD grant; publishing stays with the MS.** `seed-roles.ts` has no head-of-department
+  role (only `medical_superintendent` holds `roster.periods.manage` / `.publish`, at hospital scope).
+  Inventing one is a role-model decision, so none is invented: the screen works for whoever holds the
+  strings at the unit's department, the MS holds them hospital-wide today, and a department-scoped
+  grant to a unit head/SR lands with the role that gives it. Grant counts unchanged.
+- **DECIDED — the route door is `roster.read` (hospital), the guard is the act at the department.**
+  The house guard cannot see a department through a team or period id, so every route carries
+  `RequirePermission("roster.read", "hospital")` and the domain function asks `requireRosterAct` at
+  the unit's own department (`draft_machine_period` / `propose` / `edit_human_draft` → manage;
+  `accept_warning` / `publish` → publish). A reader is refused at the act (403 `not_permitted`).
+- **DECIDED — "draft it for me" runs the proposer as the asking USER** (`proposeMonth` with the
+  user's actor: origin `machine`, `draft_machine_period` = manage), with the monthly job's own
+  strategy and seed (`proposalStrategyFor` / `proposalSeedFor`, extracted from `runMonthlyProposals`
+  so the two cannot drift). Idempotent: a month already in hand is returned, after the act is asked.
+- **DECIDED — findings are computed on read** with `validate()` and `blockingFindings()` exactly as
+  the publish gate computes them; stored rows (refreshed by `recordFindings` after each write) only
+  supply the acceptance, matched by `findingKey`. The screen offers *accept* for `warn` only; the
+  domain's HOD override of a `block` (doc 10 §3.9) is not surfaced here.
+- **DECIDED — the one-tap fix is "leave that duty vacant"** (`unassign` + `assign` with no person,
+  one transaction). It is the only fix the domain supports for any finding about one duty; swaps and
+  covers are U6. A slot can also be given to another person from the grid.
+- **DECIDED — publish sends the content hash the month was read with** (V4); the route refuses a
+  publish without one (422).
+- **DECIDED — unconfirmed units are listed and flagged**, never hidden (`roster_teams.active` false
+  until the HOD confirms the seed). Grid is people × days (the board's shape), plus a "nobody yet"
+  row for vacant slots. Nav group `opd`.
+- **Left for later:** the board's "Who goes where on an OPD day" split, "Asked of you" (swaps — U6),
+  "Already taken care of" (postings/holidays notes), the 2-weeks/one-day zoom, the copilot ask bar.
+
+### U5c + U6 — My duties, covers and swaps (`/roster/my-duties`; `GET /roster/my-duties`, `GET /roster/duties/:id/cover-options`, `GET|POST /roster/covers`, `POST /roster/covers/:id/{answer,decide,withdraw}`, `POST /roster/flags`, `POST /roster/flags/:id/resolve`)
+
+- **DECIDED — asking is a reader's act about their OWN duty.** New act `request_cover` (matrix: user →
+  `roster.read`; copilot/agent/system → `never` until U9's `roster.ask_cover` drafts one). Somebody
+  else's duty is `propose` (the SR, `roster.periods.manage`), the `request_absence` shape. No new
+  permission string; every doctor already reads the roster (U5a).
+- **DECIDED — approving is `approve_swap`** (new act: `roster.periods.publish`, or a delegation of the
+  existing `approve_swap` authority). A delegation scoped to ONE unit (`roster_delegations.scope_type
+  = 'team'`, the only reader of that scope) lets the unit head approve that unit's covers and swaps; a
+  change between two units is asked WITHOUT the unit, so only a department-level holder — the HOD —
+  passes. No HOD role exists (U5b), so "the HOD" is whoever holds publish at the department (the MS
+  hospital-wide today). Applied through `amend(…, approvedAs: approve_swap)` — honoured for kind
+  `cover`/`swap` only; every other amendment is still `publish`.
+- **DECIDED — the three people are three people.** Only the person asked answers; nobody in the
+  request (owner, asker, person asked) approves it, whatever they hold (`cover_self_approval`).
+- **DECIDED — the validator is asked twice, over both people.** At the request and again at approval,
+  over the duty's month PLUS every live duty the two people hold on other rosters within eight days
+  (a JR of Unit I is not free just because Unit II's month does not mention him). A `block` refuses
+  the request (`cover_breaks_rule`, 422, naming the rule and the person) and, at approval, records the
+  request `refused` with `refused_rule` and changes nothing; a `warn` does not refuse — the approver
+  sees it in the "Checked" line. The "who can take it" list is stricter: R8's `simulate` semantics —
+  anyone with a new block OR warn is under "Cannot, and why"; approved leave is `unavailable`, never
+  its kind (A-4; the board's "On approved leave" is corrected).
+- **DECIDED — a cross-unit cover posts the borrowed person as a FLOAT** for the window of the duty
+  (register I12), so the resolver counts them (V13); `member_not_in_unit` is therefore set aside for
+  them in the check. That posting is `addMembership`'s `publish` — an `approve_swap`-only delegate at
+  department scope cannot approve a cross-unit cover; the HOD (publish) can.
+- **DECIDED — swaps offered** only with people who can take the duty, of their duties in the same post
+  within seven days, at most three, each checked both ways. A swap within one month is ONE amendment;
+  across two months, two in one transaction; both new slots carry `swap_of_id`. `after_the_fact` when
+  the duty had begun before approval. One open request per duty (partial unique index).
+- **DECIDED — "This is wrong" (I22) is stored, not paged.** Paging needs a `kernel/notify` template and
+  a `kernel/alerts` subscription — files that belong to everyone — so the flag (`roster_flags`, act
+  `nag`, any reader) sits on the who-is-on board's holes card until a `propose`-holder marks it dealt
+  with. `duty_manager` gains `roster.read` to read it. ONE button on the holes card, not one per row:
+  the approved rows stay as drawn.
+- **DECIDED — the board's promises the system cannot keep are not drawn**: "Sent on the app and on
+  WhatsApp" and the 19:00 WhatsApp line (no template); "Call my SR" only when the unit's SR is on duty
+  NOW with a number on file (D6); the today card says the hours and the unit (no OT-list data); "until
+  they and your SR agree" reads "until they say yes and it is approved". A published month's tapped
+  duty opens "who can take it" (`youMay.cover`), never the slot editor; its intro says so.
+- **DECIDED — who sees a request**: its three people and whoever could approve it; decided ones stay
+  in the lists for seven days. The note is on the row only — never in an event (V9).
+- **Migration** `0174_roster_cover_requests` (two tables, `roster_cover_requests`, `roster_flags`) —
+  renumbered at rebase.
+- **Left for later:** paging the duty manager on a flag; WhatsApp to the person asked; the board's
+  per-hole "Asked: … waiting for her yes" line (a vacancy cover, U6 covers filled duties); U9's
+  copilot `roster.ask_cover`.
+
+### U7 — OPD reads the unit calendar, read-only (`GET /roster/opd-units?date=`; Desk One; the OPD day report)
+
+- **DECIDED — the unit is read from the published cycle's `opd` windows** (`roster_duty_windows`,
+  live rows only), keyed by the OPD clinic the department runs (`org_departments.opd_department_id`).
+  A declared holiday that withdraws OPD supersedes the windows, so it withdraws the answer too.
+  `opdUnitsOn` (`modules/roster/opd-units.ts`) is the one read; the OPD module reaches it through
+  `roster/index.ts` and no OPD signature changed. The queue is untouched — a session is a doctor-day.
+- **DECIDED — the doctors named are the unit's head, faculty and senior residents** at the window's
+  start: who an Indian teaching OPD's patients are seen by and ask for by name. Juniors and interns
+  are not named to the front desk.
+- **DECIDED — where the front desk sees it: Desk One's department card**, one line under the
+  department's name — "Unit II holds today's OPD · Dr. A, Dr. B, Dr. C". A department running no
+  units (or with no OPD window that day) draws nothing — no "Unit —". The read is asked only by a
+  seat holding `roster.read` (front office already holds it, U5a); a failed read draws nothing.
+- **DECIDED — the OPD day report names the unit for a single DAY only** (screen row, PDF row,
+  department sheet subtitle "OPD held by Unit II", CSV "OPD unit" column/row). A week or a month
+  passes through every unit, so it names none. The CSV gains its column only when some clinic ran on
+  the unit calendar that day, so an install without units gets the CSV it had.
+
+### U9 — Copilot tools (`roster.who_is_on`, `roster.unit_on_take`, `roster.my_duties`, `roster.ask_cover`)
+
+- **DECIDED — the four are module tools** (`modules/roster/copilot-tools.ts`, on the roster manifest's
+  `copilotTools`), each gated on `roster.read` by the runner and asking the act matrix as the copilot
+  (`requireRosterAct(…, "read", {}, "copilot")`). The kernel gains only the four intents (phrasebook
+  cues, the classifier's criteria, the router's menu) and the contracts gain their answer keys.
+- **DECIDED — `roster.ask_cover` drafts; it never asks.** It reads `coverOptions` for the asker's own
+  duty and returns the people who can take it as a `payload`; the ask bar shows them with an *Ask*
+  button that calls the normal `POST /roster/covers` as the person. `request_cover` stays `never`
+  for the copilot in the matrix — the tool imports no writer.
+- **DECIDED — "kal" is tomorrow unless the sentence is past tense** ("kal raat kaun tha" →
+  yesterday): Hindi has one word for both. A weekday is the next one (today if today); a night is
+  22:00 of that day (a take or a night duty is what is meant); a day with no time is 10:00; nothing
+  named is now. "My next night" names no day.
+- **DECIDED — bare "medicine" is General Medicine**, not Respiratory Medicine (asked as "chest"/"TB");
+  counter aliases (ortho, gynae, paeds, eye, skin, haddi, aankh …) are matched before name prefixes,
+  and an ambiguous name asks "which department?" rather than guessing.
+- **DECIDED — bare "badal" is not a cover cue**: "doctor badal do" at a counter is about a patient's
+  doctor. "duty badal", "swap", "le sakta", "meri jagah" are.
+- **DECIDED — the ask bar's local answerers stay, as the fallback only**: `useCopilot` already asks
+  the server first and runs the screen's own answerer only when the server says "not understood".
+  With the tools live, a roster question is the server's answer.
+- **DECIDED (review 2026-10-04) — the answer is a LIGHT card** in the frame every roster screen
+  shares (owner, 2026-09-25: dark only for accents): white card, mint left edge, mint *Ask* buttons;
+  a × and Esc put it away; its body scrolls inside a bounded height, so at 390 px it fits the screen.
+- **DECIDED (review 2026-10-04) — the answers speak in the boards' voice.** Days travel as IST dates
+  and instants as ISO; the web says them in the reader's language ("Saturday 10 Oct", "on Saturday
+  10 Oct at 22:00", "right now"), an empty list as "nobody" — never "10-10-2026 22:00" or "—".
+- **Left for later:** a WhatsApp nudge to the person asked; the copilot on My duties itself (that
+  screen has no ask bar on its approved board).

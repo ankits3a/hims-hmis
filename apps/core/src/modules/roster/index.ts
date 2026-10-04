@@ -30,8 +30,8 @@ export type {
   RosterAmendmentRow, RosterAssignmentRow, RosterPeriodRow, RosterScopeRef,
 } from "./periods";
 export {
-  UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, confirmTeam, createTeam, listTeams, nightPoolFor,
-  seedUnits, teamByCode, teamMembers, unconfirmedTeams,
+  COMBINED_ICU_BEDS, SURPLUS_REASON, UNIT_COUNT, UNIT_ESTABLISHMENT, closeTeam, retireSurplusUnits, confirmTeam, countingUnits, createTeam, listTeams, nightPoolFor,
+  seedUnits, teamByCode, teamMembers, unconfirmedTeams, unitCountsAt,
 } from "./teams";
 export type { CreateTeamInput, RosterTeamRow, TeamMember } from "./teams";
 export {
@@ -70,6 +70,7 @@ export type {
   CallRung, Duty, OnDutyNow, RosterAnswerSource, WhoIsOnAnswer, WhoIsOnQuery,
 } from "./resolve";
 export {
+  DUTY_MANAGER_POSITION, dutyManagersAt,
   escalationRecipients, escalationTarget, listEscalationTargets, setEscalationTarget,
 } from "./escalation";
 export type {
@@ -86,8 +87,8 @@ export type {
   CycleEntrySpec, CycleSpec, DeclareHolidayInput, HolidaySpec, OnTakeAnswer, OverlayEntrySpec,
   PlannedWindow, PublishCycleResult, WindowGap,
 } from "./calendar";
-export { CYCLE_TEMPLATES, cycleTemplate, draftCycleFromTemplate } from "./templates";
-export type { CycleTemplate } from "./templates";
+export { CYCLE_TEMPLATES, cycleTemplate, draftCycle, draftCycleFromTemplate } from "./templates";
+export type { CycleTemplate, DraftCycleInput } from "./templates";
 export { istDateOfInstant, istMinutesOfInstant } from "./calendar";
 // PHASE R (R8) — whether a roster is any good.
 export {
@@ -115,3 +116,68 @@ export {
   declareSkeletonMode, modeDeclarations, skeletonModeOn, withdrawSkeletonMode,
 } from "./modes";
 export type { DeclareModeInput, RosterModeDeclarationRow } from "./modes";
+// 20-U U5a — who is on now: the hospital's unit board.
+export { BOARD_HORIZON_MS, boardColumn, onNowBoard } from "./board";
+export type {
+  BoardDepartment, BoardHole, BoardHoleKind, BoardPerson, BoardRung, BoardService, BoardUnit, OnNowBoard,
+} from "./board";
+// 20-U U5b — the unit's month: draft, problems as sentences, publish.
+export {
+  acceptUnitFinding, draftUnitMonth, editSlot, monthWindow, publishUnitMonth, rosterUnits, unitMonth,
+} from "./month";
+export type {
+  FindingKeyInput, MonthAssignment, MonthFinding, MonthRef, RosterUnitsDepartment, UnitMonth,
+} from "./month";
+export { proposalSeedFor, proposalStrategyFor } from "./proposer";
+// 20-U U5c/U6 — my duties; covers and swaps, asked, answered and approved as an amendment; "this is wrong".
+export {
+  answerCover, coverOptions, coverRequests, decideCover, myDutyRows, requestCover, withdrawCover,
+} from "./swaps";
+export type {
+  CoverCandidate, CoverDecision, CoverOptions, CoverReason, CoverRefusal, CoverRequestView, DutyRef, MyDuty,
+  RequestCoverInput,
+} from "./swaps";
+export { flagForAlert, myDuties, openFlags, raiseFlag, resolveFlag } from "./my-duties";
+export {
+  BOARD_PRINT_CATCH_UP_MS, BOARD_PRINT_DESTINATION, BOARD_PRINT_SLOTS_IST, BOARD_PRINT_STALE_MS,
+  boardPrintDocument, boardPrinterGranted, boardSlotAtOrBefore, lastBoardPrint, nextBoardSlot,
+  printBoardIfDue, registerRosterPrinting, renderBoardPrintJob, renderBoardSheet,
+} from "./board-print";
+export type { BoardPrintResult, BoardPrintView } from "./board-print";
+export type { MyDuties, RaiseFlagInput, RosterFlagView } from "./my-duties";
+export {
+  rosterCoverAnswered, rosterCoverDecided, rosterCoverRequested, rosterFlagRaised,
+} from "./events";
+// 20-U I1 / I5 / I23 — holidays and skeleton cover declared; the board as it stood.
+export { DECLARATIONS_DAYS, declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
+export type { DeclarationsView, DeclaredHoliday, DeclaredMode } from "./declarations";
+export { boardAsItStood } from "./as-it-stood";
+export { windowAsKnownAt } from "./calendar";
+export type { AsItStoodBoard, AsItStoodChange, ChangedSlot } from "./as-it-stood";
+export { publishedAsKnownAt } from "./periods";
+export { rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn } from "./events";
+// 20-U U8 — the duty-evidence report (RU-3): facts per person per day, never a verdict.
+export {
+  EVIDENCE_MAX_DAYS, EVIDENCE_MAX_PEOPLE, assertEvidenceAsk, dutyEvidence, evidencePeople, evidenceRef,
+  registerTheatreEvidenceSource,
+} from "./evidence";
+export type {
+  TheatreEvidenceRow, TheatreEvidenceSource, DutyEvidence, EvidenceDay, EvidenceDuty, EvidencePerson, EvidencePickerDepartment, EvidenceTheatre,
+} from "./evidence";
+export {
+  printDutyEvidence, recordLines, registerRosterEvidencePrinting, renderDutyEvidence, renderEvidenceHtml, rosteredText,
+} from "./evidence-print";
+// 20-U U8b — the AEBAS to-do list for the college's nodal officer. HMIS never talks to AEBAS.
+export {
+  AEBAS_ABSENCE_KINDS, AEBAS_MISSED_DAYS, aebasCensus, aebasTodo, markHolidayAebasEntered,
+} from "./aebas";
+export type { AebasItem, AebasItemState, AebasTodo } from "./aebas";
+// 20-U U7 — OPD reads the unit calendar, read-only: which unit (and doctors) hold a clinic's OPD on a day.
+export { opdSittingAt, opdUnitsOn, shortUnitName } from "./opd-units";
+// 2026-10-04 (owner) — the unit beside a doctor's name on the OPD screens.
+export { doctorUnitsOn, prescriberPrint, unitHeadsWithoutRegn } from "./doctor-units";
+export type { DoctorUnit, PrescriberPrint } from "./doctor-units";
+export type { OpdDepartmentUnits, OpdSitting, OpdUnit, OpdUnitDoctor } from "./opd-units";
+// 20-U U9 — the copilot's roster tools (who is on, the unit on take, my duties, a cover DRAFT).
+export { DUTY_LOOKAHEAD_DAYS, departmentOf, rosterCopilotTools, whenOf } from "./copilot-tools";
+export type { AskedWhen, RosterToolOptions } from "./copilot-tools";

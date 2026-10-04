@@ -264,3 +264,20 @@ describe("RxPrint — the prescriber is the Doctor ID only (H)", () => {
   });
 });
 
+
+/* ═══ OWNER 2026-10-04 — Unit Number and Dept. Regn; never a doctor's name, never "Guest Faculty" ═══ */
+it("2026-10-04: a unit doctor's e-Rx prints the department, Unit Number = the unit and the head's Dept. Regn — no name, no Doctor ID", () => {
+  renderWithProviders(<RxPrint data={{ ...DATA, doctor: { unitNumber: "Unit I", deptRegn: "BR-HEAD-77", departmentName: "General Medicine" } }} />);
+  expect(screen.getByTestId("rx-department")).toHaveTextContent("General Medicine");
+  expect(screen.getByTestId("rx-unit-number")).toHaveTextContent("Unit Number: Unit I");
+  expect(screen.getByTestId("rx-dept-regn")).toHaveTextContent("Dept. Regn: BR-HEAD-77");
+  expect(screen.queryByTestId("rx-doctor-id")).toBeNull();
+  expect(document.body).not.toHaveTextContent("DR-0114");
+});
+
+it("2026-10-04: Guest Faculty prints the Doctor ID as the Unit Number and a blank Dept. Regn when none — never 'Guest Faculty'", () => {
+  renderWithProviders(<RxPrint data={{ ...DATA, doctor: { unitNumber: "DR-0001", deptRegn: null, departmentName: "Paediatrics" } }} />);
+  expect(screen.getByTestId("rx-unit-number")).toHaveTextContent("Unit Number: DR-0001");
+  expect(screen.getByTestId("rx-dept-regn").textContent).toBe("Dept. Regn: ");
+  expect(document.body).not.toHaveTextContent("Guest Faculty");
+});

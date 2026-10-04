@@ -193,6 +193,8 @@ const THE_EIGHTEEN = [
   "sweepOverdueQa",
   /** 18-S RS10 T2 — `every(60_000)`: the HOD's escalations raised on, and resolved off, the obligation spine. */
   "sweepImagingEscalations",
+  /** 20-U infra (owner 2026-10-04) — `every(60_000)`: the duty board prints itself at 20:00 and 08:00 IST. */
+  "printRosterBoard",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -413,10 +415,12 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // filing tells every holder of the approver role. Sorted, it lands first.
         // PHASE O T1: `respond.overdue` is the alerts consumer's SEVENTH subscription — the
         // silence beside the lateness. Sorted, it lands last.
+        // 20-U infra (owner 2026-10-04): `roster.flag_raised` is the EIGHTH — a "this is wrong"
+        // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
-          "notification.failed", "ops.mode_changed", "respond.overdue",
+          "notification.failed", "ops.mode_changed", "respond.overdue", "roster.flag_raised",
         ].sort()],
         [
           "kernel.notify",

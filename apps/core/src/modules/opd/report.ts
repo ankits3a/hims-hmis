@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lte, min, ne } from "drizzle-orm";
 import { opdAppointments, opdDepartments, opdDoctors, opdEncounters, patients } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
+import { opdUnitsOn } from "../roster";
 import { loadOpdConfig } from "./config";
 import { LAB_DEPARTMENT_CODE } from "./encounters";
 import { addDays, ageYearsAt, istDate, istHourMinute, istWeekday } from "./time";
@@ -90,7 +91,15 @@ export type ReportCounts = {
   stillOpen: number;
 };
 
-export type ReportDepartment = ReportCounts & { departmentId: string; code: string; name: string };
+export type ReportDepartment = ReportCounts & {
+  departmentId: string; code: string; name: string;
+  /**
+   * 20-U U7 — the unit(s) that held this clinic's OPD, from the roster's published calendar (`Unit II`).
+   * A single DAY only: a week or a month passes through every unit, so it names none. Empty when the
+   * department runs no units or its cycle set no OPD window that day — and then nothing is drawn.
+   */
+  units: string[];
+};
 
 export type ReportHospital = { name: string; addressLines: string[] };
 
@@ -311,6 +320,13 @@ function tally(
   return out;
 }
 
+/** 20-U U7 — read-only: which unit held each clinic's OPD on the report's one day. */
+async function unitsFor(db: Db, range: ReportRange): Promise<Map<string, string[]>> {
+  if (range.from !== range.to) return new Map();
+  const held = await opdUnitsOn(db, range.from, { doctors: false });
+  return new Map(held.map((h) => [h.opdDepartmentId, h.units.map((u) => u.short)]));
+}
+
 function stamp(range: ReportRange, now: Date): { generatedAt: string; provisional: boolean } {
   return { generatedAt: now.toISOString(), provisional: range.to >= istDate(now) };
 }
@@ -321,11 +337,12 @@ function stamp(range: ReportRange, now: Date): { generatedAt: string; provisiona
  */
 export async function loadOpdReport(db: Db, range: ReportRange, now: Date = new Date()): Promise<OpdReport> {
   const data = await loadRange(db, range);
+  const units = await unitsFor(db, range);
   const departments: ReportDepartment[] = data.depts
     .map((d) => ({ dept: d, counts: tally(new Set([d.id]), data.visits, data.bookings, data.typeOf) }))
     .filter(({ dept, counts }) => dept.active || counts.booked + counts.consulted + counts.stillOpen > 0)
     .sort((a, b) => a.dept.name.localeCompare(b.dept.name))
-    .map(({ dept, counts }) => ({ departmentId: dept.id, code: dept.code, name: dept.name, ...counts }));
+    .map(({ dept, counts }) => ({ departmentId: dept.id, code: dept.code, name: dept.name, units: units.get(dept.id) ?? [], ...counts }));
   const all = new Set(data.depts.map((d) => d.id));
   const families = (rows: RangeEncounter[]) => new Set(rows.map((e) => data.rootOf.get(e.patientId) ?? e.patientId));
   const consultedHere = data.completed.filter((e) => e.departmentId !== null && all.has(e.departmentId));
@@ -437,7 +454,7 @@ export async function loadOpdDepartmentReport(
     ...range,
     ...stamp(range, now),
     hospital: data.hospital,
-    department: { departmentId: dept.id, code: dept.code, name: dept.name, ...counts },
+    department: { departmentId: dept.id, code: dept.code, name: dept.name, units: (await unitsFor(db, range)).get(dept.id) ?? [], ...counts },
     rows,
     excludedSunday: await excludedSundayFor(db, range, data.lab),
   };

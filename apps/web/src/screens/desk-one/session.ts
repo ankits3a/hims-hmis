@@ -3,6 +3,7 @@ import type { WirePatientHit, WireRegisterBody } from "../../lib/patients-api";
 import type { WireDepartment, WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib/billing-api";
 import type { WireRecognition } from "../../lib/membership-api";
+import type { WireOpdUnit } from "../../lib/roster-api";
 import type { BillLine, DeptQueue, Lane, LogLine, OpenVisit, Seat, Stage } from "./model";
 
 /**
@@ -306,6 +307,10 @@ export type DeskApi = {
   summaries: WireDoctorSummary[];
   /** The board, grouped by department and ordered by the shortest open line. */
   queues: DeptQueue[];
+  /** 20-U U7 — the roster unit(s) holding each OPD department's clinic today, by OPD department id. */
+  opdUnits: ReadonlyMap<string, readonly WireOpdUnit[]>;
+  /** 2026-10-04 (owner) — "Unit I", "Guest Faculty": what the desk writes beside a doctor's name (`useDoctorLabel`). */
+  doctorLabel: (doctor: { userId: string; designation?: string | null }) => string | null;
   quote: WireFeeQuote | null;
   /** The live bill, folded off the server's own priced draft — never re-added on the client. */
   bill: { lines: BillLine[]; totalPaise: number; free: boolean };
