@@ -17,9 +17,9 @@ function mockRoutes(routes: Record<string, Reply>): void {
   }));
 }
 
-const cand = (id: string, name: string, schedule: string | null = null) => ({ medicineId: id, name, form: "tablet", strength: "400 mg", salts: ["Ibuprofen"], schedule, score: 90 });
+const cand = (id: string, name: string, schedule: string | null = null, score = 90) => ({ medicineId: id, name, form: "tablet", strength: "400 mg", salts: ["Ibuprofen"], schedule, score });
 const MATCHED = { rows: [
-  { line: 1, brand: "Brufen 400", manufacturer: "Abbott", composition: "Ibuprofen 400 mg", pack: "10x15", best: cand("m-bru", "Brufen 400", "H"), alternatives: [cand("m-ibu", "Ibugesic 400")], existing: null, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: null },
+  { line: 1, brand: "Brufen 400", manufacturer: "Abbott", composition: "Ibuprofen 400 mg", pack: "10x15", best: cand("m-bru", "Brufen 400", "H"), alternatives: [cand("m-ibu", "Ibugesic 400", null, 60)], existing: null, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: null },
   { line: 2, brand: "Crocin 500", manufacturer: "GSK", composition: "Paracetamol 500 mg", pack: "10x15", best: cand("m-cro", "Crocin 500"), alternatives: [], existing: { itemId: "i-1", code: "CROC500", name: "Crocin 500 tablet" }, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 3000 },
 ] };
 
@@ -47,6 +47,10 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     ] }));
     expect(await screen.findByTestId("price-summary")).toHaveTextContent("2 rows · 2 matched in the catalogue · 1 already in your item master · 0 ticked to create");
     expect(screen.getByTestId("price-existing-2")).toHaveTextContent("Already an item (CROC500)");
+    expect(screen.queryByTestId("price-check-1")).toBeNull(); // a confident match (score 90) is not flagged
+    await user.selectOptions(screen.getByTestId("price-pick-1"), "m-ibu");
+    expect(screen.getByTestId("price-check-1")).toHaveTextContent("Check this match"); // a weak one is
+    await user.selectOptions(screen.getByTestId("price-pick-1"), "m-bru");
     // Brufen has no MRP in the list: tick it, and the create button waits for the MRP.
     await user.click(within(screen.getByTestId("price-row-1")).getByRole("checkbox", { name: "Create Brufen 400" }));
     expect(screen.getByTestId("price-blocked")).toBeInTheDocument();

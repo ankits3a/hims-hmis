@@ -121,7 +121,7 @@ export function PriceListImport(): React.ReactElement {
               </label>
             ))}
           </div>
-          <Button type="button" data-testid="price-match" disabled={busy || cols.brand === undefined} onClick={() => void match()}>{busy ? P("working") : P("match")}</Button>
+          <Button type="button" data-testid="price-match" disabled={busy || cols.brand === undefined} onClick={() => void match()}>{busy ? P("matching", { count: grid.length - 1, seconds: Math.max(5, Math.ceil((grid.length - 1) * 0.3)) }) : P("match")}</Button>
         </section>
       )}
 
@@ -147,9 +147,12 @@ export function PriceListImport(): React.ReactElement {
                       {r.existing !== null ? <span className="pill on" data-testid={`price-existing-${String(r.line)}`}>{P("already", { code: r.existing.code })}</span> : (
                         <select className={fieldCls} value={r.pick} data-testid={`price-pick-${String(r.line)}`} onChange={(e) => set(r.line, { pick: e.target.value })}>
                           <option value="">{cands.length === 0 ? P("noMatch") : P("pickNone")}</option>
-                          {cands.map((c) => <option key={c.medicineId} value={c.medicineId}>{`${c.name}${c.strength === null ? "" : ` · ${c.strength}`} · ${c.salts.join(" + ")}${c.schedule === null ? "" : ` · Sch ${c.schedule}`}`}</option>)}
+                          {cands.map((c) => <option key={c.medicineId} value={c.medicineId}>{[c.name, c.salts.join(" + "), c.schedule === null ? "" : `Sch ${c.schedule}`].filter((x) => x !== "").join(" · ")}</option>)}
                         </select>
                       )}
+                      {/* A match the score is unsure of is said so, so the reviewer reads it first. */}
+                      {r.existing === null && r.pick !== "" && (cands.find((c) => c.medicineId === r.pick)?.score ?? 0) < 85
+                        ? <span className="pill gd" data-testid={`price-check-${String(r.line)}`}>{P("check")}</span> : null}
                     </td>
                     <td className="whitespace-nowrap">
                       <select className={fieldCls} value={r.packType} onChange={(e) => set(r.line, { packType: e.target.value as PackType })}>
