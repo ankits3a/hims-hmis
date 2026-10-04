@@ -238,7 +238,12 @@ async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { d
   };
 }
 
-async function holidaysBetween(exec: Db | Tx, from: string, to: string): Promise<HolidaySpec[]> {
+/**
+ * The holidays declared for IST dates `[from, to)`. Exported for the proposer (audit 2026-10-04 #8):
+ * a declared holiday withdraws OPD and the elective list while the take and the nights run as usual,
+ * and a proposer that never read this table drafted a full routine day on Gandhi Jayanti.
+ */
+export async function holidaysBetween(exec: Db | Tx, from: string, to: string): Promise<HolidaySpec[]> {
   const rows = await (exec as Db).select().from(rosterHolidays)
     .where(and(gte(rosterHolidays.istDate, from), lt(rosterHolidays.istDate, to)));
   return rows.map((h) => ({

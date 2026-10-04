@@ -314,6 +314,35 @@ export async function absentUserIds(exec: Db | Tx, from: Date, to: Date): Promis
   return [...new Set(rows.map((r) => r.userId))].sort();
 }
 
+/**
+ * Every APPROVED absence across a window, as windows rather than names (audit 2026-10-04 #2).
+ *
+ * `absentUserIds` answers "who is away at any point in this window", which is the right question
+ * at one instant (the resolver) and the WRONG one across a month: one day of casual leave on the
+ * 10th made the proposer drop the person from all thirty-one days, and the validator flag every
+ * duty they had. A slot is judged against the leave that actually overlaps IT. No kind, no reason —
+ * D6: that a person is away is the roster's business, why is not.
+ */
+export async function approvedAbsenceWindows(
+  exec: Db | Tx, from: Date, to: Date,
+): Promise<{ userId: string; startsAt: Date; endsAt: Date }[]> {
+  return (exec as Db).select({
+    userId: staffAbsences.userId, startsAt: staffAbsences.startsAt, endsAt: staffAbsences.endsAt,
+  }).from(staffAbsences)
+    .where(and(
+      eq(staffAbsences.status, "approved"),
+      lt(staffAbsences.startsAt, to),
+      gt(staffAbsences.endsAt, from),
+    ))
+    .orderBy(asc(staffAbsences.userId), asc(staffAbsences.startsAt));
+}
+
+/** Is `userId` on approved leave at any instant of `[from, to)`, by the windows above? */
+export const awayDuring = (
+  windows: readonly { userId: string; startsAt: Date; endsAt: Date }[],
+  userId: string, from: Date, to: Date,
+): boolean => windows.some((w) => w.userId === userId && w.startsAt < to && w.endsAt > from);
+
 /* ═══════════════════════════════ the attendance projection ═══════════════════════════════ */
 
 export interface AttendanceProjection {

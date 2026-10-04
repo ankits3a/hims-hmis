@@ -436,7 +436,25 @@ export async function unassign(tx: Tx, actor: Actor, assignmentId: string): Prom
   const period = await lockPeriod(tx, row.periodId);
   assertDraft(period);
   await requireRosterAct(tx, actor, editAct(period), { departmentId: row.departmentId });
-  await tx.delete(rosterAssignments).where(eq(rosterAssignments.id, assignmentId));
+  /**
+   * AUDIT 2026-10-04 #7 — THE RACE. The read above is taken BEFORE the period lock, so two people
+   * removing the same slot both read it, queue on the lock, and the second deleted zero rows and
+   * returned as if it had succeeded — after which both put a replacement in and the draft carried
+   * a duplicate. Under the lock the row is re-read `for update` and the delete must remove exactly
+   * one row; anything else is the slot having gone from under the caller, and is refused.
+   */
+  const still = await (tx as Db).select({ id: rosterAssignments.id }).from(rosterAssignments)
+    .where(and(eq(rosterAssignments.id, assignmentId), eq(rosterAssignments.periodId, row.periodId)))
+    .for("update");
+  if (still.length !== 1) {
+    throw new RosterError("unknown_assignment", undefined, { assignmentId, periodId: row.periodId, removedConcurrently: true });
+  }
+  const gone = await tx.delete(rosterAssignments)
+    .where(and(eq(rosterAssignments.id, assignmentId), eq(rosterAssignments.periodId, row.periodId)))
+    .returning({ id: rosterAssignments.id });
+  if (gone.length !== 1) {
+    throw new RosterError("unknown_assignment", undefined, { assignmentId, periodId: row.periodId, removedConcurrently: true });
+  }
 }
 
 /* ═══════════════════════════════ one body, two rooms ═══════════════════════════════ */
@@ -582,7 +600,11 @@ export async function publishPeriods(
     const findings = await validate(tx, period.id);
     // One definition of "accepted", shared with the findings reader, so that a later change to
     // what an acceptance means cannot leave the gate honouring a different rule from the screen.
-    const blocking = blockingFindings(findings, await acceptedFindingKeys(tx, period.id));
+    const blocking = blockingFindings(findings, await acceptedFindingKeys(tx, period.id))
+      // `presence_clash` is refused at step (4) across the WHOLE set being published, in its own
+      // words (`presence_overlap`, naming the person). Judged here, one period at a time, it would
+      // wrongly refuse the S2(b) cross-unit swap that only a set publish can make legal.
+      .filter((f) => f.ruleKey !== "presence_clash");
     if (blocking.length > 0) {
       throw new RosterError("blocked_by_findings", undefined, {
         periodId: period.id,

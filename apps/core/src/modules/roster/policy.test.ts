@@ -244,6 +244,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     redactReason: "pure: decides who may read a reason, and mutates nothing",
     listAbsences: "a read — and the one that applies D6, so the caller that forgets cannot be the one that renders it",
     absentUserIds: "a read",
+    approvedAbsenceWindows: "a read — approved leave as windows, so a slot is judged against the leave that overlaps IT (audit 2026-10-04 #2)",
+    holidaysBetween: "a read — the declared holidays the proposer honours (audit 2026-10-04 #8)",
     livePeriodCount: "a read — how many rosters COVER an instant. Deliberately not `status = published`, which a roster keeps for ever once published; see the function",
     departmentsWithoutPublishedCycle: "a read — the departments that run units and have no cycle, which is the hole `departmentsWithTakeGaps` structurally cannot see",
     effectiveDrift: "a read — V5's repair query. It counts rows whose `effective` disagrees with their period's status, which is the half of the biconditional no constraint can see through a foreign key to hold",
@@ -287,6 +289,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // evaluation that could write would make the harness's own runs part of the hospital's record.
     istMinutesOfInstant: "pure: minutes past IST midnight. It lives in `calendar.ts` because `ist-clock-parity` pins how many places carry the IST offset, and a copy of it inside a rule evaluator is the drift that census refuses",
     istDateOfInstant: "pure: the inverse of `istMidnightUtc`, and the hospital's one opinion about where a day begins",
+    touchesNight: "PURE: does a slot touch 01:00–05:00 IST — the one definition of a night, shared by the validator and `fairnessOf`",
     templateFeasibility: "PURE arithmetic — hours per week from an establishment, answerable before anybody drafts anything",
     validate: "a read that returns findings. It does not persist them, takes no `now` it could stamp with, and the publish gate computes its refusal from the returned array rather than from a table it has just written",
     simulate: "a what-if. Applies its deltas to an in-memory COPY and writes nothing — asserted by a row count before and after, rather than merely intended",

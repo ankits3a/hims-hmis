@@ -400,6 +400,8 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
      */
     const TAKES_A_CLOCK: Record<string, string> = {
       absentUserIds: "a window — who is away between two instants",
+      approvedAbsenceWindows: "a window — the leave overlapping it, as windows (audit 2026-10-04 #2)",
+      awayDuring: "PURE: windows in, one slot's two instants, a boolean out",
       asKnownAt: "`knownAt`: the KNOWLEDGE axis itself, which is the whole question",
       attendanceProjection: "a term's two dates",
       backupUnit: "an `at`; a read",
@@ -440,6 +442,7 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       sweepRosterWindows: "a `now` used as the HORIZON to extend to, never written to a column",
       takeGaps: "a window",
       teamMembers: "an `at` — which membership was live then",
+      touchesNight: "PURE: a slot's two instants, answering whether it touches 01:00–05:00 IST",
       unitOnTake: "an `at`; a read",
       whoIsAt: "an `at`",
       whoIsOn: "an `at` — who is on THEN",
@@ -845,5 +848,32 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
     const names = await eventNames();
     expect(names.filter((n) => n === "roster.period_superseded")).toHaveLength(1);
     expect(names.indexOf("roster.period_superseded")).toBeLessThan(names.lastIndexOf("roster.period_published"));
+  });
+
+  /* ═══════════════════ audit 2026-10-04 #7 — the unassign race ═══════════════════ */
+
+  it("#7 two concurrent removals of one slot: the second is REFUSED, not a silent no-op", async () => {
+    const p = await draft();
+    const { assignmentId } = await slot(p.periodId);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let removed!: () => void;
+    const firstRemoved = new Promise<void>((r) => { removed = r; });
+
+    const first = withTx(db, async (tx) => { await unassign(tx, ms, assignmentId); removed(); await gate; });
+    await firstRemoved;
+    const second = withTx(db, (tx) => unassign(tx, ms, assignmentId)).then(() => null, (e: unknown) => e);
+    // Wait until the second is queued behind the first's lock, then let the first commit.
+    for (let i = 0; i < 200; i += 1) {
+      const w = await db.execute(sql`select count(*)::int as n from pg_locks
+        where not granted and database = (select oid from pg_database where datname = current_database())`);
+      if ((w.rows[0] as { n: number }).n > 0) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    release();
+    await first;
+    const e = await second;
+    expect(e).toBeInstanceOf(RosterError);
+    expect((e as RosterError).code).toBe("unknown_assignment");
   });
 });
