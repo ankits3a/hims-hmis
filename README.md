@@ -1617,6 +1617,14 @@ Until the unit system gives a unit's own people their strings, a roster exists o
 medical superintendent made it. The owner reads; the owner does not make the rota. **No agent, no
 copilot and no scheduled job may ever publish, amend, approve or override one**, whatever it holds.
 
+**Who is on now (20-U U5a, the roster's first screen).** `doctor`, `front_office`,
+`front_office_supervisor`, `vitals_desk` and `opd_admin` gain `roster.read`, so the people who have
+to reach a doctor can open `/roster/on-now`: per department, the unit on take and till when, who is
+in the building, the faculty on call and the backup unit; the hospital-wide services; and the holes
+in the next 24 hours. It is a READ — drafting and publishing stay with the medical superintendent —
+and the board carries no phone numbers yet. A department whose units have no published roster says
+so; it never lists the holders of a role as though they were on.
+
 **The approvals spine (owner ruling R1,
 2026-09-20).** `owner` gains `approvals.requests.read` and `approvals.requests.decide`. The role
 held `approvals.types.manage` — the authority to define what an approval IS — and neither of the two

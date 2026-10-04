@@ -29,6 +29,7 @@ import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
 import { MyReach } from "./screens/my-reach";
+import { RosterOnNow } from "./screens/roster-on-now";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
@@ -261,6 +262,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
+  // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
+  { to: "/roster/on-now", label: "nav.rosterOnNow", permission: "roster.read", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -681,6 +684,22 @@ const staffReportsRoute = createRoute({
  * THE OPD DAY REPORT, department by department (owner, 2026-09-19). The dashboard panel links here
  * with the day it was showing, so the screen opens on the same day rather than jumping to today.
  */
+/**
+ * 20-U U5a — who is on now. Shows NOW and refreshes; `?at=<ISO instant>` pins the board to one
+ * instant (a link to "who was on at 02:40"), and a value that is not an instant is ignored.
+ */
+const rosterOnNowRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/on-now",
+  validateSearch: (search: Record<string, unknown>): { at?: string } => ({
+    at: typeof search.at === "string" && search.at.length <= 40 && !Number.isNaN(Date.parse(search.at)) ? search.at : undefined,
+  }),
+  component: function RosterOnNowScreen() {
+    const { at } = rosterOnNowRoute.useSearch();
+    return <RosterOnNow at={at} />;
+  },
+});
+
 const opdDayReportRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/reports/opd-day",
@@ -1673,6 +1692,8 @@ export const router = createRouter({
       // laboratory's G6 closes. `caddyfile-parity.test.ts` pins the count and joins this task's
       // Files list — the S11 rule, applied to itself again.
       legacySeatRoute, legacySeatFiguresRoute, legacyVitalsBayRoute,
+      // 20-U U5a — +1, `/roster/on-now`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
+      rosterOnNowRoute,
     ]),
   ]),
 });

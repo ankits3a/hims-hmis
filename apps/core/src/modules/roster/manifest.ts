@@ -32,7 +32,8 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 export const rosterManifest: ModuleManifest = {
   key: "roster",
   title: "Roster",
-  menu: [],
+  // 20-U U5a — the roster's first screen: who is on now, the hospital's unit board. A read.
+  menu: [{ label: "Who is on now", path: "/roster/on-now", permission: "roster.read" }],
   permissions: [
     "roster.periods.manage",
     "roster.periods.publish",

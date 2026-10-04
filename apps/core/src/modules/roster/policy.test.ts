@@ -253,6 +253,12 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     dutiesOf: "a read — and `My duties` is a screen about yourself, so its guard is the route's",
     calloutList: "a read — the ladder phase consumes it",
     onDutyNow: "a read — the board's, and it carries `source` so an unpublished department cannot be rendered as an empty staffed one",
+    // 20-U U5a — the first route. The read itself takes no actor; its ONE caller is
+    // `roster-board.controller.ts`, which is guarded by `RequirePermission("roster.read")` AND
+    // `requireRosterAct(…, "read")` before it calls — `test/roster-board.e2e.test.ts` pins the 403.
+    onNowBoard: "a read — the who-is-on-now board, composed of the reads above; guarded at its route",
+    boardColumn: "pure: which board column a position belongs in, from the position master",
+    toHttp: "maps a RosterError to an HTTP refusal; decides nothing",
     // R6
     escalationRecipients: "a read, called from the worker's own consumers, which run as the kernel and carry their own authority — there is no Actor at 02:14 and inventing one would be the wrong shape",
     escalationTarget: "a read",

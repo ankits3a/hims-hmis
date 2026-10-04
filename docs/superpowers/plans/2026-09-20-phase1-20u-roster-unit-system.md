@@ -369,3 +369,17 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
 ---
 
 ## 11. CLOSE — filled at execution
+
+### U5a — Who is on now (`/roster/on-now`, `GET /roster/on-now?at=`)
+
+- **DECIDED — who reads it.** `roster.read` to `doctor`, `front_office`, `front_office_supervisor`,
+  `vitals_desk`, `opd_admin` (the act matrix: a roster read costs nothing). README prose added.
+- **DECIDED — the columns, from the position master** (`board.ts` `boardColumn`): resident cadres
+  (intern/JR/SR) are *in the building*; cadre `faculty` with eligible role `doctor` is *faculty on
+  call* (first `calloutList` rung group; a vacant first rung shows as vacant); ward nursing (cadre
+  `nurse`, ladder rank < 3) is left to ward boards; everything else is a hospital-wide service.
+- **DECIDED — "published" is per department's UNITS.** A live hospital-wide period (the duty
+  manager's) makes `onDutyNow` read `published` for every department; the board calls a row
+  published only when a unit position is declared, and never lists RBAC holders for any other row.
+- **DECIDED — holes in the next 24 h**: no published take cycle, a gap in the take, a vacant slot,
+  and a rostered person on approved leave. Nav group `opd`. No phone numbers (D6 is a later task).

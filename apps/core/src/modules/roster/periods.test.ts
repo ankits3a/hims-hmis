@@ -429,6 +429,7 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       nightPoolFor: "an `at`; a read",
       officiatingAt: "an `at`; a read",
       onDutyNow: "an `at` — the board's question",
+      onNowBoard: "an `at` — the who-is-on-now board's instant (20-U U5a)",
       parentTeamOf: "an `at`; a read",
       periodsTouching: "a window",
       publishCycle: "the IST date a cycle becomes effective from — a DECISION's date, and the row's own `published_at` still comes from the database",

@@ -92,7 +92,8 @@
     "radiologyPrep": "Prep & safety bay",
     "radiologyUsg": "Ultrasound & PCPNDT",
     "radiologyReports": "Report hand-over",
-    "radiologyHod": "Supervisor & HOD"
+    "radiologyHod": "Supervisor & HOD",
+    "rosterOnNow": "Who is on now"
   },
   "palette": {
     "title": "Search",
@@ -13147,5 +13148,68 @@
     "reissued": "New card issued (version {{version}}). Every older card has stopped working.",
     "actsNote": "Each act is drawn only for a role that holds its permission.",
     "more": "More"
+  },
+  "rosterOnNow": {
+    "title": "Who is on now",
+    "intro": "Casualty, the front desk, the duty manager and every ward read this same board. A unit's take runs 08:00 to 08:00.",
+    "lateNight": "It is past midnight and yesterday's units are still on take. They hand over at 08:00, not at 12.",
+    "clock": "{{day}}, {{time}}",
+    "when": "Which time",
+    "now": "Now",
+    "ahead": "In 8 hours",
+    "loading": "Reading the roster…",
+    "forbidden": "You do not hold roster.read, so this board is closed to you. Ask the medical superintendent.",
+    "resolverOff": "The roster is not switched on for this hospital yet (ROSTER_RESOLVER_ENABLED is off), so no department can show who is on. The units on take below come from the published take cycles.",
+    "col": {
+      "department": "Department",
+      "unit": "Unit on take",
+      "building": "In the building",
+      "faculty": "Faculty on call",
+      "backup": "If it overflows"
+    },
+    "noUnit": "No unit on take",
+    "singleUnit": "one unit · every day",
+    "singleBackup": "No second unit — the hospital's duty manager decides",
+    "tillToday": "till {{time}}",
+    "tillTomorrow": "till {{time}} tomorrow",
+    "tillOn": "till {{time}} on {{day}}",
+    "backup": "{{unit}} is the backup unit",
+    "skeleton": "SKELETON",
+    "notPublished": "No published roster for this department's units — nobody is listed, because nobody is confirmed. Call the unit on take's head.",
+    "nobodyIn": "Nobody is rostered in the building",
+    "vacant": "Vacant",
+    "services": "Not units, but you will need them",
+    "serviceNotPublished": "No published roster",
+    "nobodyOn": "Nobody is on",
+    "holes": "Holes in the next 24 hours",
+    "noHoles": "No holes: every take is covered and every rostered duty has somebody who is here.",
+    "hole": {
+      "no_take_cycle": "{{dept}} has no published take cycle — no unit is named as admitting.",
+      "take_gap": "{{dept}} has no unit on take from {{from}} to {{to}}.",
+      "vacant_slot": "{{dept}}: {{position}} from {{from}} to {{to}} has nobody named.",
+      "absent_on_duty": "{{dept}}: {{name}} ({{position}}) is rostered {{from}}–{{to}} and is on approved leave."
+    },
+    "grade": {
+      "intern": "Int",
+      "junior_resident": "JR",
+      "senior_resident": "SR"
+    },
+    "position": {
+      "intern": "Intern",
+      "ward_jr": "Ward junior resident",
+      "night_jr_pool": "Night junior resident",
+      "casualty_mo": "Casualty medical officer",
+      "blood_bank_mo": "Blood bank medical officer",
+      "unit_sr": "Unit senior resident",
+      "night_sr_pool": "Night senior resident",
+      "duty_manager": "Duty manager",
+      "radiologist_on_call": "Radiologist on call",
+      "pathologist_on_call": "Pathologist on call",
+      "anaesthetist_on_call": "Anaesthetist on call",
+      "faculty_on_call": "Faculty on call",
+      "unit_head": "Unit head",
+      "pharmacist_counter": "Pharmacist on duty",
+      "night_nursing_supervisor": "Night nursing supervisor"
+    }
   }
 }
