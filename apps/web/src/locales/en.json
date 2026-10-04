@@ -10374,6 +10374,7 @@
     "feedingNote": "Feeding note"
   },
   "pharmacyOffice": {
+    "priceList": {"title": "Import a vendor's price list", "lead": "Turn a vendor's list of drugs into items, matched to the national drug catalogue. You review every row before anything is created.", "step1": "1 · The vendor's list", "orPaste": "Choose a CSV or Excel (.xlsx) file — or copy the rows (with the heading row) from Excel and paste them here:", "pastePlaceholder": "Manufacturer\tBrand\tComposition\tPacking\tMRP …", "readPaste": "Read the pasted rows", "pdfNote": "A PDF cannot be read here: open it in Excel or ask the vendor for the Excel file. Best columns: manufacturer, brand, composition, packing, HSN, GST %, MRP per pack.", "tooShort": "The list needs a heading row and at least one drug.", "step2_one": "2 · Which column is which · {{count}} row", "step2_other": "2 · Which column is which · {{count}} rows", "noColumn": "— not in the list —", "column": "Column {{n}}", "field": {"brand": "Brand name (needed)", "manufacturer": "Manufacturer", "composition": "Composition", "pack": "Packing", "mrp": "MRP per pack", "gst": "GST %", "hsn": "HSN"}, "match": "Match with the drug catalogue", "working": "Working…", "step3": "3 · Review, then create", "summary": "{{total}} rows · {{matched}} matched in the catalogue · {{existing}} already in your item master · {{chosen}} ticked to create", "col": {"vendor": "Vendor's row", "match": "Catalogue match", "pack": "Pack", "mrp": "MRP (₹ per pack)", "cold": "2–8 °C", "result": "Result"}, "include": "Create {{brand}}", "packSize": "Units per pack of {{brand}}", "hsn": "HSN of {{brand}}", "mrp": "MRP of {{brand}}", "cold": "{{brand}} is kept at 2–8 °C", "already": "Already an item ({{code}})", "noMatch": "No match — add it by hand", "pickNone": "— do not create —", "packType": {"tablet_strip": "Strip of tablets", "capsule_strip": "Strip of capsules", "bottle": "Bottle", "vial": "Vial", "ampoule": "Ampoule", "tube": "Tube", "pouch": "Pouch", "sachet": "Sachet", "box": "Box", "other": "Other"}, "blocked_one": "{{count}} ticked row still needs a catalogue match, an MRP or an HSN.", "blocked_other": "{{count}} ticked rows still need a catalogue match, an MRP or an HSN.", "create_one": "Create {{count}} item", "create_other": "Create {{count}} items", "made": "Created · {{code}}", "done": "{{made}} created, {{failed}} not created — the reason is on each row. Next: set reorder levels, then raise a purchase order.", "check": "Check this match", "matching": "Matching {{count}} rows — about {{seconds}} seconds…"},
     "menu": {
       "was": "was {{path}}",
       "page": {
@@ -10393,6 +10394,7 @@
         "master": "Item master",
         "sells": "What the counter sells · GST slab",
         "formulary": "Formulary",
+        "import": "Import a price list",
         "monographs": "Drug monographs",
         "duplicates": "Duplicates & merge",
         "labels": "Rack & strip labels",

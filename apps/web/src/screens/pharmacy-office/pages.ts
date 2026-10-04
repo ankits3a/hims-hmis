@@ -37,6 +37,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   // Owner ruling 2026-09-30 — the stores' settings (the two-person GRN rule), for whoever may change them.
   { side: "stock", key: "settings", perms: ["materials.stores.manage"], was: null },
   { side: "items", key: "master", perms: ["materials.items.manage"], was: "/materials/items" },
+  // Owner 2026-10-04 — a vendor's price list into the item master, matched to the catalogue and reviewed first.
+  { side: "items", key: "import", perms: ["materials.items.manage"], was: null },
   { side: "items", key: "sells", perms: ["pharmacy.sale_items.manage"], was: "/pharmacy/items" },
   { side: "items", key: "formulary", perms: ["formulary.manage"], was: "/formulary/admin" },
   // OWNER 2026-10-02 — the pharmacy writes a drug monograph and a physician reviews it: both reach this page.

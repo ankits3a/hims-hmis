@@ -34,6 +34,7 @@ import { LabelsView } from "./labels";
 import { fetchControlledToday } from "../../lib/controlled-api";
 import { FormularyAdmin } from "../formulary-admin";
 import { FormularyMonograph } from "../formulary-monograph";
+import { PriceListImport } from "./price-list";
 import { MaterialsCounts } from "../materials-counts";
 import { MaterialsGrn } from "../materials-grn";
 import { MaterialsItems } from "../materials-items";
@@ -143,6 +144,7 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "settings": return <StoreSettingsView />;
     case "desk": return <DeskSettingsView />;
     case "master": return <MaterialsItems />;
+    case "import": return <PriceListImport />;
     case "sells": return <PharmacyItems />;
     case "formulary": return <FormularyAdmin />;
     case "monographs": return <FormularyMonograph />;

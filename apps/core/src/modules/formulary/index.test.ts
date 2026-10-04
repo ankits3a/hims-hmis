@@ -84,6 +84,7 @@ const SURFACE = [
   "matchProducts", // the CDS regimen fill: a composition to one stocked-or-generic product, exact
   "medicineExists",
   "medicineIdsByBrandNames",
+  "medicinesByBrandPrefix", // owner 2026-10-04 — a vendor price list's brand stem, read for the pharmacy's import
   "medicinesByIds",
   "monographForMedicine", // the reviewed monograph a stocked product reaches through its generic link
   "ndpsClassByMedicine", // PHARMACY P6 — bounded by MAX_IDS, the strictest class of each medicine's moieties
