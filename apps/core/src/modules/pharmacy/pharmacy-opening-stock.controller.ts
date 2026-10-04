@@ -9,6 +9,8 @@ import type { StockEntryItem } from "./stock-drug";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OpeningAuthority, OpeningGrnState, OpeningPlan } from "./opening-stock";
+import { importPriceList, matchPriceList } from "./price-list-import";
+import type { ImportResult, MatchedRow } from "./price-list-import";
 
 /** The sheet as the pharmacist saved it. ~2,000 rows of nine short columns fit well inside this. */
 const sheetBody = z.object({ content: z.string().min(1).max(990_000) });
@@ -135,6 +137,37 @@ export class PharmacyOpeningStockController {
    * A NEW DRUG in one transaction — item, pack unit, MRP, sale registration (and its schedule when changed).
    * Gated on the item master's permission; `createStockDrug` asks for the sale-item (and formulary) one too.
    */
+  /** Owner 2026-10-04 — a vendor's price list: each row matched to the catalogue (writes nothing). */
+  @RequirePermission("materials.items.manage", "hospital")
+  @Post("price-list/match")
+  async priceListMatch(@Body() body: unknown): Promise<{ rows: MatchedRow[] }> {
+    const b = parsed(z.object({ rows: z.array(z.object({
+      manufacturer: z.string().max(200).optional(), brand: z.string().max(200), composition: z.string().max(500).optional(),
+      pack: z.string().max(100).optional(), mrp: z.string().max(40).optional(), gst: z.string().max(20).optional(), hsn: z.string().max(20).optional(),
+    })).min(1).max(1000) }), body);
+    try {
+      return { rows: await matchPriceList(this.db, b.rows) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-04 — the ticked rows of a price list made into items, each through `createStockDrug`. */
+  @RequirePermission("materials.items.manage", "hospital")
+  @Post("price-list/import")
+  async priceListImport(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ results: ImportResult[] }> {
+    const b = parsed(z.object({ rows: z.array(z.object({
+      line: z.number().int().min(1), medicineId: idSchema, brand: z.string().max(200), packType: z.enum(PACK_TYPES), packSize: z.number().int().min(1).max(1000),
+      gstRateBps: z.number().int().min(0).max(2800), hsnCode: z.string().trim().regex(/^\d{4,8}$/), mrpPerPackPaise: z.number().int().min(1).max(100_000_000),
+      storage: z.enum(["ambient", "cold_2_8"]),
+    })).min(1).max(1000) }), body);
+    try {
+      return { results: await importPriceList(this.db, actor, b.rows) };
+    } catch (e) {
+      return toHttp(e);
+    }
+  }
+
   @RequirePermission("materials.items.manage", "hospital")
   @Post("new-drug")
   async newDrug(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<Awaited<ReturnType<typeof createStockDrug>>> {
