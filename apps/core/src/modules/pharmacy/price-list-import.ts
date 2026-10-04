@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
-import { formularyMedicines } from "../../kernel/db/schema";
-import { medicinesByIds, searchMedicines } from "../formulary";
+import { medicinesByBrandPrefix, medicinesByIds, searchMedicines } from "../formulary";
 import type { MedicineHit } from "../formulary";
 import { createStockDrug, stockEntryItems } from "./stock-drug";
 import { PharmacyError } from "./errors";
@@ -104,7 +102,9 @@ function score(row: { brand: string; composition: string; pack: string }, hit: M
   const said = FORM_HINT.filter(([w], i) => w.test(raw) && !(injected && i === 0)); // "2 ml amp" is an injection, not a syrup
   const isInjection = /injection|infusion/.test(hitForm);
   for (const [w, form] of said) s += form.test(hitForm) && !(isInjection && w !== FORM_HINT[1]![0]) ? 15 : -20;
-  if (said.length === 0 && /\b(tab|tabs|tablet|strip)\b/.test(raw)) s += /tablet/.test(hitForm) ? 15 : -20;
+  if (said.length === 0 && (/\b(tab|tabs|tablet|strip)\b/.test(raw) || /\d+\s*[x×*]\s*\d+/.test(raw))) s += /tablet|capsule/.test(hitForm) ? 15 : -20;
+  // …and the vendor's brand words the catalogue name lacks: "Glycomet GP 1" is not "Glycomet".
+  s -= 15 * brandWords.filter((w) => !/^\d/.test(w) && !name.split(" ").includes(w)).length;
   const comp = norm(row.composition);
   if (comp !== "" && hit.salts.length > 0) {
     const salted = hit.salts.filter((x) => comp.includes(norm(x).split(" ")[0] ?? "§")).length / hit.salts.length;
@@ -116,42 +116,47 @@ function score(row: { brand: string; composition: string; pack: string }, hit: M
 export async function matchPriceList(db: Db, rows: readonly PriceListRow[]): Promise<MatchedRow[]> {
   if (rows.length === 0) throw new PharmacyError("nothing_to_dispense", "the price list has no rows");
   if (rows.length > MAX_ROWS) throw new PharmacyError("invalid_range", `a price list is read ${String(MAX_ROWS)} rows at a time; this one has ${String(rows.length)}`);
-  const out: MatchedRow[] = [];
-  for (const [i, r] of rows.entries()) {
-    const brand = (r.brand ?? "").trim();
-    const composition = (r.composition ?? "").trim();
-    const base = { line: i + 1, brand, manufacturer: (r.manufacturer ?? "").trim(), composition, pack: (r.pack ?? "").trim() };
-    if (brand === "") {
-      out.push({ ...base, best: null, alternatives: [], existing: null, ...parsePack(base.pack, ""), gstRateBps: gstBps(r.gst), hsnCode: hsnOf(r.hsn), mrpPerPackPaise: rupeesToPaise(r.mrp) });
-      continue;
-    }
-    const strengthNum = numbers(composition)[0];
-    const core = brandCore(brand);
-    const words = core.split(" ").filter((w) => w !== "");
-    // The vendor's spelling first, then looser: no form words or hyphens, then the first two words, then the first.
-    const queries = [...new Set([
-      brand, core,
-      ...(strengthNum !== undefined && !numbers(core).includes(strengthNum) ? [`${core} ${strengthNum}`] : []),
-      ...(words.length > 2 ? [words.slice(0, 2).join(" ")] : []),
-      ...(words.length > 1 && (words[0] ?? "").length >= 4 ? [words[0]!] : []),
-    ].filter((q) => q.trim().length >= 2))];
-    const hits = new Map<string, MedicineHit>();
-    for (const q of queries) for (const h of await searchMedicines(db, q, 25)) hits.set(h.id, h);
-    for (const h of await byBrandStem(db, core)) if (!hits.has(h.id)) hits.set(h.id, h);
-    const ranked = [...hits.values()].map((h) => ({ h, s: score({ brand, composition, pack: base.pack }, h) })).sort((a, b) => b.s - a.s).slice(0, 4);
-    const meds = await medicinesByIds(db, ranked.map((x) => x.h.id));
-    const cands: MatchCandidate[] = ranked.map(({ h, s }) => ({
-      medicineId: h.id, name: h.name, form: h.form, strength: h.strength, salts: h.salts, schedule: meds.get(h.id)?.scheduleFlag ?? null, score: s,
-    }));
-    const best = cands[0] !== undefined && cands[0].score >= 40 ? cands[0] : null;
-    const existing = (await stockEntryItems(db, brand)).find((x) => norm(x.name).startsWith(norm(brand)));
-    out.push({
-      ...base, best, alternatives: cands.filter((c) => c !== best),
-      existing: existing === undefined ? null : { itemId: existing.itemId, code: existing.code, name: existing.name },
-      ...parsePack(base.pack, best?.form ?? composition), gstRateBps: gstBps(r.gst), hsnCode: hsnOf(r.hsn), mrpPerPackPaise: rupeesToPaise(r.mrp),
-    });
+  const out: MatchedRow[] = new Array<MatchedRow>(rows.length);
+  // Rows are independent: eight at a time (a 1,000-row list in about a minute, not ten).
+  const CHUNK = 8;
+  for (let at = 0; at < rows.length; at += CHUNK) {
+    await Promise.all(rows.slice(at, at + CHUNK).map(async (r, k) => { out[at + k] = await matchOne(db, r, at + k); }));
   }
   return out;
+}
+
+async function matchOne(db: Db, r: PriceListRow, i: number): Promise<MatchedRow> {
+  const brand = (r.brand ?? "").trim();
+  const composition = (r.composition ?? "").trim();
+  const base = { line: i + 1, brand, manufacturer: (r.manufacturer ?? "").trim(), composition, pack: (r.pack ?? "").trim() };
+  if (brand === "") {
+    return { ...base, best: null, alternatives: [], existing: null, ...parsePack(base.pack, ""), gstRateBps: gstBps(r.gst), hsnCode: hsnOf(r.hsn), mrpPerPackPaise: rupeesToPaise(r.mrp) };
+  }
+  const strengthNum = numbers(composition)[0];
+  const core = brandCore(brand);
+  const words = core.split(" ").filter((w) => w !== "");
+  // The vendor's spelling first, then looser: no form words or hyphens, then the first two words, then the first.
+  const queries = [...new Set([
+    brand, core,
+    ...(strengthNum !== undefined && !numbers(core).includes(strengthNum) ? [`${core} ${strengthNum}`] : []),
+    ...(words.length > 2 ? [words.slice(0, 2).join(" ")] : []),
+    ...(words.length > 1 && (words[0] ?? "").length >= 4 ? [words[0]!] : []),
+  ].filter((q) => q.trim().length >= 2))];
+  const hits = new Map<string, MedicineHit>();
+  for (const q of queries) for (const h of await searchMedicines(db, q, 25)) hits.set(h.id, h);
+  for (const h of await byBrandStem(db, core)) if (!hits.has(h.id)) hits.set(h.id, h);
+  const ranked = [...hits.values()].map((h) => ({ h, s: score({ brand, composition, pack: base.pack }, h) })).sort((a, b) => b.s - a.s).slice(0, 4);
+  const meds = await medicinesByIds(db, ranked.map((x) => x.h.id));
+  const cands: MatchCandidate[] = ranked.map(({ h, s }) => ({
+    medicineId: h.id, name: h.name, form: h.form, strength: h.strength, salts: h.salts, schedule: meds.get(h.id)?.scheduleFlag ?? null, score: s,
+  }));
+  const best = cands[0] !== undefined && cands[0].score >= 50 ? cands[0] : null;
+  const existing = (await stockEntryItems(db, brand)).find((x) => norm(x.name).startsWith(norm(brand)));
+  return {
+    ...base, best, alternatives: cands.filter((c) => c !== best),
+    existing: existing === undefined ? null : { itemId: existing.itemId, code: existing.code, name: existing.name },
+    ...parsePack(base.pack, best?.form ?? composition), gstRateBps: gstBps(r.gst), hsnCode: hsnOf(r.hsn), mrpPerPackPaise: rupeesToPaise(r.mrp),
+  };
 }
 
 /**
@@ -162,10 +167,11 @@ export async function matchPriceList(db: Db, rows: readonly PriceListRow[]): Pro
 async function byBrandStem(db: Db, core: string): Promise<MedicineHit[]> {
   const words = core.split(" ").filter((w) => w !== "" && !/^\d/.test(w));
   if (words.length === 0 || words.join("").length < 2) return [];
-  const pattern = `^${words.map((w) => w.replace(/[^a-z0-9]/g, "")).join("[- ]?")} \\(`;
-  const rows = await db.select({ id: formularyMedicines.id, name: formularyMedicines.brandName, form: formularyMedicines.form, strength: formularyMedicines.strengthLabel, code: formularyMedicines.code, routeClass: formularyMedicines.routeClass })
-    .from(formularyMedicines).where(sql`${formularyMedicines.active} and ${formularyMedicines.brandName} ~* ${pattern}`).limit(40);
-  return rows.map((r) => ({ ...r, salts: [], prefix: true, reviewed: true }));
+  const first = words[0]!.replace(/[^a-z0-9]/g, "");
+  if (first.length < 2) return [];
+  const stem = new RegExp(`^${words.map((w) => w.replace(/[^a-z0-9]/g, "")).join("[- ]?")} \\(`, "i");
+  const rows = await medicinesByBrandPrefix(db, first);
+  return rows.filter((r) => stem.test(r.name)).slice(0, 40).map((r) => ({ ...r, salts: [], prefix: true, reviewed: true }));
 }
 
 function hsnOf(text: string | undefined): string {

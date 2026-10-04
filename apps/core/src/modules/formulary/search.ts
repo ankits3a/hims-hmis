@@ -1,4 +1,5 @@
-import { sql } from "drizzle-orm";
+import { and, eq, ilike, sql } from "drizzle-orm";
+import { formularyMedicines } from "../../kernel/db/schema";
 import { escapeLike } from "../../kernel/search/text";
 import { isReviewedComponent } from "./moiety";
 import type { Db } from "../../kernel/db/client";
@@ -370,3 +371,16 @@ export async function searchMedicines(db: Db, query: string, limit = 10): Promis
     reviewed: r["reviewed"] === true,
   }));
 }
+
+/**
+ * Owner 2026-10-04 — the rows whose brand STARTS with `prefix`, for a vendor's price-list import (the pharmacy's
+ * `price-list-import.ts`). `searchMedicines` ranks generics and short names first, so a short brand ("Pan") is
+ * buried under "Pantoprazole", "Panz", "Panto"; this is the plain prefix read, active rows only, bounded.
+ */
+export async function medicinesByBrandPrefix(db: Db, prefix: string, limit = 400): Promise<{ id: string; name: string; form: string; strength: string | null; code: string | null; routeClass: string }[]> {
+  const p = prefix.trim();
+  if (p.length < 2) return [];
+  return db.select({ id: formularyMedicines.id, name: formularyMedicines.brandName, form: formularyMedicines.form, strength: formularyMedicines.strengthLabel, code: formularyMedicines.code, routeClass: formularyMedicines.routeClass })
+    .from(formularyMedicines).where(and(eq(formularyMedicines.active, true), ilike(formularyMedicines.brandName, `${escapeLike(p)}%`))).limit(Math.min(Math.max(limit, 1), 400));
+}
+

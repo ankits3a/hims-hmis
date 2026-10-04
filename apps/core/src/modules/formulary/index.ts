@@ -45,7 +45,7 @@ export type { DrugSuggestion } from "./suggest";
 export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 export type { StagingRow } from "./staging";
 
-export { searchMedicines } from "./search";
+export { medicinesByBrandPrefix, searchMedicines } from "./search";
 /** STAGE D5 — the WHO AWaRe 2023 list and the seed's fill-the-nulls classification (`seed:pharmacy`). */
 export { AWARE_LIST, classifyAwareMedicines, restrictedAntimicrobialExists } from "./aware";
 export type { AwareCategory, AwareClassificationReport } from "./aware";
