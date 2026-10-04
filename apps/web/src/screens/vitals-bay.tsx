@@ -20,6 +20,7 @@ import { useCopilot } from "../lib/use-copilot";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
+import "./vitals-bay.css";
 
 /**
  * VD-2 T1 — BAY ONE: identity and the bench. The signed-off design is
@@ -499,8 +500,10 @@ export function LaneToggle({ lane, onChange }: { lane: Lane; onChange: (next: La
   );
 }
 
-export function IdentifyBox({ onSubmit, error, busy, compact = false }: {
+export function IdentifyBox({ onSubmit, error, busy, compact = false, placeholder }: {
   onSubmit: (raw: string) => void; error: string | null; busy: boolean;
+  /** A phone's box is 16px (smaller zooms the page on focus), so it carries a shorter placeholder that fits whole. */
+  placeholder?: string;
   /**
    * SOMEBODY IS ALREADY ON THE STOOL. The door stays open — a nurse must be able to correct a
    * mis-scan, or answer "wrong patient" without hunting for a control — but it stops SHOUTING.
@@ -531,7 +534,7 @@ export function IdentifyBox({ onSubmit, error, busy, compact = false }: {
         id="identify" data-testid="identify" autoFocus={!compact} autoComplete="off" disabled={busy}
         className="in mo"
         style={compact ? { flexGrow: 1, minWidth: 200, height: 32, fontSize: 13 } : { height: 46, fontSize: 15 }}
-        placeholder={t("vitalsBay.identify.placeholder")} value={raw}
+        placeholder={placeholder ?? t("vitalsBay.identify.placeholder")} value={raw}
         onChange={(e) => setRaw(e.target.value)}
       />
       {!compact && <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("vitalsBay.identify.hint")}</p>}
@@ -808,6 +811,74 @@ export function VitalsBay(): React.ReactElement {
   const copilot = useCopilot({ fallback: localAnswer });
 
   /*
+    ═══ OWNER 2026-10-04 — THE BAY ON A PHONE ═══
+
+    At 390px the triptych below kept its three columns in a row that scrolled sideways: the nurse
+    saw the session card and a sliver of the bench, and the tiles were off the right edge. DECIDED,
+    layout only, the Desk One answer at the same width — at 900px and below the bay is one column:
+    the door, the patient in hand as a strip (token, name, doctor) that opens on tap, the tiles; the
+    bench behind ONE header button that carries the count and the recalls that are due, so "timers
+    die in drawers" is answered by the button rather than by a rail that does not fit. jsdom has no
+    `matchMedia`, so every other suite renders the wide bay and its DOM is unchanged.
+  */
+  const phone = useMedia("(max-width: 900px)");
+  const [benchOpen, setBenchOpen] = useState(false);
+  const [whoOpen, setWhoOpen] = useState(false);
+  useEffect(() => { setWhoOpen(false); }, [rowInHand?.encounterId]);
+  const dueCount = rows.filter((r) => r.recallDue || r.escalation === "escalated" || r.escalation === "recheck_demanded").length;
+
+  const identifyBox = (
+    <div className="box" style={{ padding: "15px 16px" }}>
+      <IdentifyBox
+        key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} compact={rowInHand !== null}
+        placeholder={phone ? t("vitalsBay.phone.identify") : undefined}
+      />
+    </div>
+  );
+  const banners = (
+    <>
+      {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
+      {banner !== null && trail !== null && <AmendTrail amended={trail} />}
+    </>
+  );
+  const stageBox = (
+    <div className="box" style={{ padding: "15px 16px" }}>
+      {/*
+        THE STAGE HOSTS THE WORK, NOT THE IDENTITY. An earlier pass wrapped this in a second
+        `SessionColumn`, which drew the token and the name again a few centimetres from the
+        left rail that already had them — the artboard splits who / what-you-are-doing /
+        who-is-next precisely so one fact lives in one column.
+      */}
+      <div data-testid="stage">
+      {rowInHand !== null && rowInHand.vitalsDone && (
+        <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => { void onAmended(a, rowInHand); }} />
+      )}
+      {rowInHand !== null && !rowInHand.vitalsDone && !pending && (
+        <CaptureCore
+          key={`${deskGen}:${rowInHand.encounterId}`} resetKey={`${deskGen}:${rowInHand.encounterId}`}
+          row={rowInHand} preStage={preStage} ranges={ranges} lane={lane}
+          onSaved={(result) => onSaved(result, rowInHand)} onKeys={onKeys} onBusy={setSaving}
+          onCommitted={onCommitted} initialTakes={initialTakes}
+          protocol={
+            <>
+              {preStage?.sealed === true && <p data-testid="sealed-line" style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.session.sealed")}</p>}
+              {held !== null && <p data-testid="held-first-take" style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</p>}
+              <ProtocolPanel
+                p={protocol} doctorName={rowInHand.doctorName}
+                rerun={rerun === null ? null : { onRerun: () => { const r = rerun; setRerun(null); void protocol.demand(r.reading, r.key).catch(() => undefined); } }}
+              />
+              {restOffer !== null && (protocol.view?.state ?? "none") === "none" && (
+                <RestOffer recallAt={recallClock(REST_MINUTES)} onRest={() => { void goRest(); }} busy={restBusy} />
+              )}
+            </>
+          }
+        />
+      )}
+      </div>
+    </div>
+  );
+
+  /*
     ONE VIEWPORT, AND THE DOCK IS INSIDE IT. `height` rather than `minHeight` because a bay monitor
     is a known size and this screen has a foot: the agent dock. Left to grow, the page ran 159px
     past the fold on a 1440×980 screen and the dock went under it — the "footer agent bar" ruling
@@ -815,7 +886,8 @@ export function VitalsBay(): React.ReactElement {
   */
   return (
     <PaperScreen testId="vitals-bay" style={{ height: "var(--pp-h)", overflow: "hidden" }}>
-      <div style={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      {/* On a phone the whole column scrolls under the dock, header included: 170px of fixed chrome is a third of the screen. */}
+      <div className={phone ? "vb-col" : undefined} style={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
         {/*
           ═══ THE HEADER CARRIES THE THREE FIGURES A BAY IS JUDGED ON ═══
 
@@ -824,6 +896,32 @@ export function VitalsBay(): React.ReactElement {
           the doctors' wait time. Both belong where the eye lands, beside the controls that change
           them, not under the fold.
         */}
+        {phone ? (
+          <div className="vb-head-phone" data-testid="vb-head-phone">
+            <div>
+              <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--green)", flexShrink: 0 }} />
+              <span className="mo vb-title">{t("vitalsBay.title")}</span>
+              <span className="vb-spacer" />
+              <button
+                type="button" data-testid="bench-toggle" className="sec" data-due={dueCount > 0 ? "true" : "false"}
+                aria-expanded={benchOpen} onClick={() => { setBenchOpen(true); }}
+              >
+                {t("vitalsBay.phone.bench", { count: rows.length })}
+                {dueCount > 0 ? <> · {t("vitalsBay.phone.due", { count: dueCount })}</> : null}
+              </button>
+            </div>
+            <div>
+              <select
+                aria-label={t("vitalsBay.doctor")} data-testid="doctor" className="in"
+                value={doctorId ?? ""} onChange={(e) => setDoctorId(e.target.value === "" ? undefined : e.target.value)}
+              >
+                <option value="">{t("vitalsBay.allDoctors")}</option>
+                {doctors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <LaneToggle lane={lane} onChange={(next) => { writeLane(next); setLane(next); }} />
+            </div>
+          </div>
+        ) : (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 11, padding: "11px 22px", background: "var(--card)", borderBottom: "1px solid var(--line)" }}>
           <span aria-hidden style={{ width: 10, height: 10, borderRadius: "50%", background: "var(--green)", flexShrink: 0 }} />
           <span className="mo" style={{ fontSize: 12.5, letterSpacing: ".08em", fontWeight: 600 }}>{t("vitalsBay.title")}</span>
@@ -846,6 +944,7 @@ export function VitalsBay(): React.ReactElement {
             </button>
           </span>
         </div>
+        )}
         {benchFailed && (
           <p role="alert" data-testid="bench-failed" className="pill rd" style={{ height: "auto", margin: "11px 22px 0", padding: "9px 12px" }}>
             {t("vitalsBay.bench.failed")}
@@ -870,51 +969,47 @@ export function VitalsBay(): React.ReactElement {
           horizontally below Desk One's 1220px floor rather than reflowing: a bay monitor is a known
           size, and three columns that become one stacked column are a different screen.
         */}
+        {phone ? (
+          <div className="vb-phone" data-testid="vb-phone">
+            {identifyBox}
+            {rowInHand === null ? (
+              <div className="box"><SessionColumn row={null} preStage={null} failed={false} pending={false} /></div>
+            ) : (
+              <section className="box vb-who">
+                <button
+                  type="button" className="vb-who-strip" data-testid="vb-who-toggle" aria-expanded={whoOpen}
+                  title={whoOpen ? t("vitalsBay.phone.hide") : t("vitalsBay.phone.show")}
+                  onClick={() => { setWhoOpen((o) => !o); }}
+                >
+                  <span className="mo vb-who-tok">#{rowInHand.tokenNo}</span>
+                  <span className="vb-who-id">
+                    <strong>{patientLabel(rowInHand, t)}</strong>
+                    <span>{rowInHand.doctorName}{preStage !== null ? ` · ${t(`vitalsBay.band.${preStage.band}`)}${preStage.ageYears !== null ? ` · ${t("vitalsBay.session.age", { years: preStage.ageYears })}` : ""}` : ""}</span>
+                  </span>
+                  <span className="vb-who-more" aria-hidden>{whoOpen ? "▴" : "▾"}</span>
+                </button>
+                {/* Clearing the desk lets go of THIS patient, so on a phone it sits beside them, not in the header. */}
+                <button type="button" data-testid="clear-desk" onClick={clearDesk} className="sec vb-who-clear">
+                  {t("vitalsBay.clearDesk")}
+                </button>
+                <div className="vb-who-body" hidden={!whoOpen}>
+                  <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending} />
+                </div>
+              </section>
+            )}
+            {banners}
+            {rowInHand !== null && stageBox}
+          </div>
+        ) : (
         <div style={{ flexGrow: 1, minHeight: 0, display: "flex", gap: 16, padding: "18px 22px", alignItems: "stretch", flexWrap: "nowrap", minWidth: 0, overflowX: "auto" }}>
           <aside className="box" style={{ width: 294, flexShrink: 0, padding: 14, overflowY: "auto" }}>
             <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending} />
           </aside>
 
           <main style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
-            <div className="box" style={{ padding: "15px 16px" }}>
-              <IdentifyBox key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} compact={rowInHand !== null} />
-            </div>
-            {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
-            {banner !== null && trail !== null && <AmendTrail amended={trail} />}
-            <div className="box" style={{ padding: "15px 16px" }}>
-              {/*
-                THE STAGE HOSTS THE WORK, NOT THE IDENTITY. An earlier pass wrapped this in a second
-                `SessionColumn`, which drew the token and the name again a few centimetres from the
-                left rail that already had them — the artboard splits who / what-you-are-doing /
-                who-is-next precisely so one fact lives in one column.
-              */}
-              <div data-testid="stage">
-              {rowInHand !== null && rowInHand.vitalsDone && (
-                <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => { void onAmended(a, rowInHand); }} />
-              )}
-              {rowInHand !== null && !rowInHand.vitalsDone && !pending && (
-                <CaptureCore
-                  key={`${deskGen}:${rowInHand.encounterId}`} resetKey={`${deskGen}:${rowInHand.encounterId}`}
-                  row={rowInHand} preStage={preStage} ranges={ranges} lane={lane}
-                  onSaved={(result) => onSaved(result, rowInHand)} onKeys={onKeys} onBusy={setSaving}
-                  onCommitted={onCommitted} initialTakes={initialTakes}
-                  protocol={
-                    <>
-                      {preStage?.sealed === true && <p data-testid="sealed-line" style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.session.sealed")}</p>}
-                      {held !== null && <p data-testid="held-first-take" style={{ margin: 0, fontSize: 11, color: "var(--dim)" }}>{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</p>}
-                      <ProtocolPanel
-                        p={protocol} doctorName={rowInHand.doctorName}
-                        rerun={rerun === null ? null : { onRerun: () => { const r = rerun; setRerun(null); void protocol.demand(r.reading, r.key).catch(() => undefined); } }}
-                      />
-                      {restOffer !== null && (protocol.view?.state ?? "none") === "none" && (
-                        <RestOffer recallAt={recallClock(REST_MINUTES)} onRest={() => { void goRest(); }} busy={restBusy} />
-                      )}
-                    </>
-                  }
-                />
-              )}
-              </div>
-            </div>
+            {identifyBox}
+            {banners}
+            {stageBox}
             {/*
               THE LANE HINT STAYS, and it moved OUT of the footer with the keys pill. It says which
               of the two ways to work this bay is currently in — `[Space] fires the next device` or
@@ -932,13 +1027,33 @@ export function VitalsBay(): React.ReactElement {
             </p>
           </aside>
         </div>
+        )}
+        {phone && benchOpen && (
+          <div className="vb-scrim" data-testid="bench-scrim" onClick={() => { setBenchOpen(false); }}>
+            <div
+              className="box vb-sheet" role="dialog" aria-modal="true" aria-label={t("vitalsBay.bench.title")}
+              data-testid="bench-sheet" onClick={(e) => { e.stopPropagation(); }}
+            >
+              <div className="vb-sheet-head">
+                <ValvePill benchCount={rows.length} summaries={summaries} />
+                <button type="button" className="sec" data-testid="bench-close" onClick={() => { setBenchOpen(false); }}>
+                  {t("vitalsBay.phone.close")}
+                </button>
+              </div>
+              <BenchRail rows={rows} inHandEncounterId={rowInHand?.encounterId ?? null} onTake={(r) => { setBenchOpen(false); take(r); }} />
+              <p style={{ margin: "11px 0 0", paddingTop: 9, borderTop: "1px solid var(--line2)", fontSize: 11, color: "var(--faint)", lineHeight: "15px" }}>
+                {t("vitalsBay.bench.valveNote")}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       <AgentDock
         answer={copilot.answer}
         log={log}
         onAsk={copilot.ask}
-        placeholder={t("vitalsBay.agent.placeholder")}
+        placeholder={phone ? t("vitalsBay.phone.ask") : t("vitalsBay.agent.placeholder")}
         idle={t("vitalsBay.agent.idle")}
         panel={copilot.report === null ? undefined : (
           <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
@@ -946,4 +1061,18 @@ export function VitalsBay(): React.ReactElement {
       />
     </PaperScreen>
   );
+}
+
+/** True while the viewport matches `query`. jsdom has no `matchMedia`, so a suite renders the wide bay. */
+function useMedia(query: string): boolean {
+  const [hit, setHit] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    const on = (): void => { setHit(mq.matches); };
+    on();
+    mq.addEventListener("change", on);
+    return () => { mq.removeEventListener("change", on); };
+  }, [query]);
+  return hit;
 }

@@ -6920,6 +6920,15 @@
       "carried_one": "Carried forward from {{count}} earlier bill — it travels onto this one.",
       "carried_other": "Carried forward from {{count}} earlier bills — it travels onto this one."
     },
+    "phone": {
+      "menu": "Menu",
+      "showPatient": "Show the full record",
+      "hidePatient": "Hide the full record",
+      "toCollect": "to collect",
+      "collected": "collected",
+      "newWalkIn": "New walk-in",
+      "noUhid": "no UHID yet"
+    },
     "schemes": {
       "title": "Schemes",
       "hint": "attach before you take the money",
@@ -7002,6 +7011,15 @@
     "department": "Department",
     "allDepartments": "All departments",
     "clearDesk": "Clear desk",
+    "phone": {
+      "identify": "token no. · UHID · scan",
+      "ask": "ask about the bench or a bump",
+      "bench": "Bench · {{count}}",
+      "due": "{{count}} due",
+      "close": "Close",
+      "show": "Details",
+      "hide": "Hide"
+    },
     "identify": {
       "label": "Who is in front of you?",
       "placeholder": "scan the slip, or type the token no. / UHID",

@@ -1,0 +1,87 @@
+/*
+ * ═══ OWNER 2026-10-04 — THE VITALS BAY ON A PHONE ═══
+ *
+ * Every rule here is scoped to `.vb-phone` / `.vb-head-phone` / `.vb-sheet`, which the bay renders
+ * only at 900px and below (`useMedia` in vitals-bay.tsx), or sits inside a max-width query. A wide
+ * bay matches none of them, so the desktop is the bay it was, pixel for pixel.
+ *
+ * House rules, the same as Desk One at this width: one column, nothing sideways, every control a
+ * thumb can hit (44px), inputs at 16px so the phone does not zoom on focus, the bench in a sheet
+ * that rises from the bottom.
+ */
+
+.vb-head-phone {
+  display: flex; flex-direction: column; gap: 8px; padding: 8px 14px 10px;
+  background: var(--card); border-bottom: 1px solid var(--line);
+}
+.vb-head-phone > div { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vb-head-phone .vb-title { flex-shrink: 0; font-size: 12.5px; letter-spacing: .08em; font-weight: 600; white-space: nowrap; }
+.vb-head-phone .vb-spacer { flex-grow: 1; }
+.vb-head-phone > div:last-child { flex-wrap: wrap; }
+.vb-head-phone select { flex: 1 1 200px; min-width: 0; width: auto; }
+.vb-head-phone [data-testid="lane-toggle"] { flex: 1 1 auto; justify-content: center; }
+.vb-head-phone .kb { display: none; }
+.vb-head-phone button, .vb-head-phone select { min-height: 44px; font-size: 16px; }
+.vb-head-phone .pill { height: 44px; padding: 0 12px; font-size: 13px; }
+.vb-head-phone [data-testid="bench-toggle"] { font-weight: 600; white-space: nowrap; padding: 0 12px; }
+.vb-head-phone [data-testid="bench-toggle"][data-due="true"] { border-color: var(--gold); color: var(--gold); }
+
+.vb-col { overflow-y: auto; overflow-x: hidden; }
+.vb-phone {
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 20px;
+}
+.vb-phone * { max-width: 100%; }
+.vb-phone > .box { padding: 12px 14px; flex-shrink: 0; }
+.vb-phone > .vb-who { padding: 0; }
+.vb-phone button, .vb-phone select, .vb-phone input { min-height: 44px; }
+.vb-phone input, .vb-phone select, .vb-phone textarea { font-size: 16px !important; }
+.vb-phone #identify { flex: 1 1 100%; min-width: 0 !important; height: 46px !important; }
+
+/* The patient in hand: one strip, the rest on tap; Clear desk beside them. */
+.vb-phone > .vb-who { display: flex; flex-wrap: wrap; align-items: center; }
+.vb-phone .vb-who-strip {
+  display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 0; min-height: 56px; padding: 8px 6px 8px 14px; text-align: left;
+}
+.vb-phone .vb-who-tok { font-size: 19px; font-weight: 700; flex-shrink: 0; }
+.vb-phone .vb-who-id { display: flex; flex-direction: column; min-width: 0; flex-grow: 1; }
+.vb-phone .vb-who-id strong { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vb-phone .vb-who-id span { font-size: 11.5px; line-height: 15px; color: var(--dim); }
+.vb-phone .vb-who-more { font-size: 14px; color: var(--green); flex-shrink: 0; }
+.vb-phone .vb-who-clear { flex-shrink: 0; margin-right: 10px; white-space: nowrap; padding: 0 12px; }
+.vb-phone .vb-who-body { flex: 1 1 100%; padding: 12px 14px 14px; border-top: 1px solid var(--line2); }
+/* The strip already names them: the open card starts at the doctor · UHID line, not a second token and name. */
+.vb-phone .vb-who-body [data-testid="session"] > .tag:first-child,
+.vb-phone .vb-who-body [data-testid="session"] > div:nth-child(2) > span:nth-child(-n+2) { display: none; }
+
+/* Two tiles a row; a range that does not fit wraps under its label instead of pushing the tile. */
+.vb-phone [data-testid="tiles"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.vb-phone [data-testid="tiles"] > div > div:first-child { flex-wrap: wrap; }
+/* A carried tile holds a reason picker; it takes the row so the picker reads whole. */
+.vb-phone [data-testid="tiles"] > div:has([data-testid^="carried-"]) { grid-column: 1 / -1; }
+.vb-phone [data-testid^="range-"] { white-space: normal !important; }
+.vb-phone [data-testid="amend-fields"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+.vb-phone [data-testid="keys"] { display: none; }
+
+/* The bench: a sheet from the bottom, full width. */
+.vb-scrim {
+  position: fixed; inset: 0; z-index: 40; background: rgba(19, 36, 32, .35);
+  display: flex; align-items: flex-end;
+}
+.vb-sheet {
+  width: 100%; max-height: 82vh; overflow-y: auto; padding: 12px 14px 18px;
+  border-radius: 14px 14px 0 0; border-bottom: none;
+}
+.vb-sheet-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.vb-sheet-head > button { margin-left: auto; min-height: 44px; }
+.vb-sheet [data-testid^="bench-row-"] { min-height: 52px; }
+
+/* The dock: the ask box takes the row; the agent's last line is in ▲ LOG. */
+@media (max-width: 900px) {
+  [data-testid="vitals-bay"] > [data-testid="agent-dock"] > div:last-child { gap: 10px !important; padding: 8px 10px !important; }
+  [data-testid="vitals-bay"] > [data-testid="agent-dock"] > div:last-child > span { display: none !important; }
+  [data-testid="vitals-bay"] > [data-testid="agent-dock"] form { flex: 1 1 auto !important; min-width: 0; }
+  [data-testid="vitals-bay"] > [data-testid="agent-dock"] form input { width: 100% !important; height: 44px !important; font-size: 16px !important; }
+  [data-testid="vitals-bay"] > [data-testid="agent-dock"] form .kb { display: none; }
+  [data-testid="vitals-bay"] > [data-testid="agent-dock"] button { min-height: 44px; }
+}

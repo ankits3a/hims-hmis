@@ -68,19 +68,20 @@ export function Dock({ onLogout }: { onLogout: () => void }): React.ReactElement
         </div>
       ) : null}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 13, height: 54, padding: "0 18px" }}>
+      <div className="d1-dock-row" style={{ display: "flex", alignItems: "center", gap: 13, height: 54, padding: "0 18px" }}>
         <span style={{ position: "relative", width: 9, height: 9, flexShrink: 0 }}>
           <span style={{ position: "absolute", inset: 0, borderRadius: 99, background: "var(--mint)" }} />
           <span style={{ position: "absolute", inset: -3, borderRadius: 99, border: "1px solid var(--mint)", opacity: .35 }} />
         </span>
-        <span className="tag" style={{ color: "var(--agent-dim)", flexShrink: 0 }}>desk agent</span>
-        <span className="mo" style={{
+        <span className="tag d1-dock-tag" style={{ color: "var(--agent-dim)", flexShrink: 0 }}>desk agent</span>
+        <span className="mo d1-dock-latest" style={{
           fontSize: 11.5, color: "var(--agent-fg)", whiteSpace: "nowrap",
           overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexGrow: 1,
         }}>
           {latest === undefined ? "watching the board — nothing to report yet" : `${latest.at}  ${latest.text}`}
         </span>
         <form
+          className="d1-ask"
           onSubmit={(e) => { e.preventDefault(); d.ask(draft); setDraft(""); }}
           style={{
             flexShrink: 0, display: "flex", alignItems: "center", gap: 8, width: 360, height: 36,

@@ -1470,7 +1470,7 @@ function DeptCard({ q, first, second }: { q: DeptQueue; first: boolean; second: 
       {q.doctors.map((doc) => {
         const away = !bookableToday(doc);
         return (
-          <div key={doc.doctor.id} className="drow">
+          <div key={doc.doctor.id} className="drow d1-docrow">
             <span style={{ fontSize: 12.5, fontWeight: 500, width: 160, lineHeight: "15px" }}>
               {doc.doctor.displayName}
               {/* 2026-10-04 (owner) — the unit (or "Guest Faculty") beside the name, one quiet line under it. */}

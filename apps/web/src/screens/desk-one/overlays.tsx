@@ -302,17 +302,17 @@ function QueuesOverlay(): React.ReactElement {
               </span>
             </div>
             {q.doctors.map((doc) => (
-              <div key={doc.doctor.id} style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-                <span style={{ fontSize: 11.5, width: 145 }}>{doc.doctor.displayName}</span>
+              <div key={doc.doctor.id} className="d1-q-row" style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+                <span className="d1-q-name" style={{ fontSize: 11.5, width: 145 }}>{doc.doctor.displayName}</span>
                 {bookableToday(doc) ? (
                   <>
-                    <div style={{ flexGrow: 1, height: 13, borderRadius: 3, background: "var(--wash)", overflow: "hidden" }}>
+                    <div className="d1-q-bar" style={{ flexGrow: 1, height: 13, borderRadius: 3, background: "var(--wash)", overflow: "hidden" }}>
                       <div style={{
                         height: "100%", width: `${String(Math.min(100, doc.waitingCount * 10))}%`,
                         background: doc.waitingCount > 6 ? "var(--gold)" : "var(--green)", opacity: .8,
                       }} />
                     </div>
-                    <span className="mo" style={{ fontSize: 11, width: 190, textAlign: "right" }}>
+                    <span className="mo d1-q-num" style={{ fontSize: 11, width: 190, textAlign: "right" }}>
                       {doc.waitingCount} · ~{waitMinutes(doc)} min · {etaClock(waitMinutes(doc))}
                       {vitalsAhead(doc) > 0 ? ` (+${vitalsAhead(doc)} at vitals)` : ""}
                     </span>
