@@ -22,6 +22,9 @@ import { boardAsItStood } from "./as-it-stood";
 import type { AsItStoodBoard } from "./as-it-stood";
 import { declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
 import type { DeclarationsView } from "./declarations";
+import { dutyEvidence, evidencePeople } from "./evidence";
+import type { DutyEvidence, EvidencePickerDepartment } from "./evidence";
+import { printDutyEvidence, renderEvidenceHtml } from "./evidence-print";
 
 /**
  * 20-U U5a — **WHO IS ON NOW**, over HTTP. The roster module's first route.
@@ -336,4 +339,53 @@ export class RosterBoardController {
       return await declarationsView(this.db, actor, new Date());
     } catch (e) { toHttp(e); }
   }
+
+  /* ═══ 20-U U8 — THE DUTY-EVIDENCE REPORT (RU-3) ═══
+   *
+   * The door is `roster.read` at hospital scope, as every route here; the real guard is the act
+   * `read_evidence` (`roster.periods.publish`), asked by `dutyEvidence` AT EACH PERSON'S OWN
+   * DEPARTMENT. The preview is the sheet's own HTML (`renderEvidenceHtml`), so the screen shows what
+   * the printer will print; Print queues ONE job to the office's A4 through the server-side rail.
+   */
+
+  /** The people the reader may run it for, by department. */
+  @Get("evidence/people")
+  @RequirePermission("roster.read", "hospital")
+  async evidencePeople(@CurrentActor() actor: Actor): Promise<{ you: RosterSelf; departments: EvidencePickerDepartment[] }> {
+    try {
+      // `you` — the reader, for the Doctor Desk header (as `on-now`'s).
+      return { you: await rosterSelf(this.db, actor, new Date()), departments: await evidencePeople(this.db, actor, new Date()) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** `?users=a,b&from=YYYY-MM-DD&to=YYYY-MM-DD` — the report, and the sheet as it will print. */
+  @Get("evidence")
+  @RequirePermission("roster.read", "hospital")
+  async evidence(
+    @CurrentActor() actor: Actor, @Query("users") usersParam?: string, @Query("from") from?: string, @Query("to") to?: string,
+  ): Promise<{ report: DutyEvidence; html: string }> {
+    try {
+      const report = await dutyEvidence(this.db, actor, { userIds: splitIds(usersParam), from: from ?? "", to: to ?? "" }, new Date());
+      return { report, html: renderEvidenceHtml(report).html };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("evidence/print")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async printEvidence(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ queued: boolean; ref: string; served: boolean }> {
+    try {
+      const b = (body ?? {}) as Record<string, unknown>;
+      const userIds = Array.isArray(b.userIds) ? b.userIds.filter((u): u is string => typeof u === "string") : [];
+      return await printDutyEvidence(this.db, actor, {
+        userIds, from: typeof b.from === "string" ? b.from : "", to: typeof b.to === "string" ? b.to : "",
+      }, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+}
+
+/** `a,b,,c` → `["a","b","c"]`; a missing parameter is no people (and `dutyEvidence` says so). */
+function splitIds(raw: string | undefined): string[] {
+  return (raw ?? "").split(",").map((s) => s.trim()).filter((s) => s !== "");
 }

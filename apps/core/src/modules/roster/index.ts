@@ -149,3 +149,14 @@ export { windowAsKnownAt } from "./calendar";
 export type { AsItStoodBoard, AsItStoodChange, ChangedSlot } from "./as-it-stood";
 export { publishedAsKnownAt } from "./periods";
 export { rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn } from "./events";
+// 20-U U8 — the duty-evidence report (RU-3): facts per person per day, never a verdict.
+export {
+  EVIDENCE_MAX_DAYS, EVIDENCE_MAX_PEOPLE, assertEvidenceAsk, dutyEvidence, evidencePeople, evidenceRef,
+  registerTheatreEvidenceSource,
+} from "./evidence";
+export type {
+  TheatreEvidenceRow, TheatreEvidenceSource, DutyEvidence, EvidenceDay, EvidenceDuty, EvidencePerson, EvidencePickerDepartment, EvidenceTheatre,
+} from "./evidence";
+export {
+  printDutyEvidence, recordLines, registerRosterEvidencePrinting, renderDutyEvidence, renderEvidenceHtml, rosteredText,
+} from "./evidence-print";

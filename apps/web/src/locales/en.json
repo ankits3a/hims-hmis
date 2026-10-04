@@ -95,7 +95,8 @@
     "radiologyHod": "Supervisor & HOD",
     "rosterOnNow": "Who is on now",
     "rosterMonth": "Roster — the unit's month",
-    "rosterMyDuties": "My duties"
+    "rosterMyDuties": "My duties",
+    "rosterEvidence": "Duty evidence"
   },
   "palette": {
     "title": "Search",
@@ -13713,13 +13714,15 @@
   "doctorDesk": {
     "group": {
       "desk": "DOCTOR DESK",
-      "unit": "UNIT"
+      "unit": "UNIT",
+      "office": "OFFICE"
     },
     "item": {
       "myOpd": "My OPD",
       "roster": "Roster",
       "onNow": "Who Is On Now",
-      "myDuties": "My Duties"
+      "myDuties": "My Duties",
+      "evidence": "Duty Evidence"
     },
     "menu": "Menu",
     "showMenu": "Show the menu",
@@ -13781,5 +13784,49 @@
       "unknown_mode_declaration": "There is no such declaration.",
       "mode_already_withdrawn": "Somebody has already withdrawn this skeleton cover — the list now shows who, and when."
     }
+  },
+  "rosterEvidence": {
+    "context": "Doctor Desk · Office · Duty evidence",
+    "title": "Duty evidence",
+    "intro": "What the roster gave each person, day by day, and what the hospital's records show them doing. The sheet states facts and draws no conclusion from them.",
+    "loading": "Reading the roster…",
+    "pickTitle": "Who and which days",
+    "department": "Department",
+    "search": "Find a name",
+    "searchPlaceholder": "Type part of a name",
+    "nobody": "Nobody here matches.",
+    "noDepartments": "There is nobody whose roster you answer for. The sheet is run by a head of department for their own staff, or by the medical superintendent.",
+    "chosen_one": "{{count}} person chosen",
+    "chosen_other": "{{count}} people chosen",
+    "maxPeople": "A sheet covers at most {{max}} people.",
+    "clear": "Clear",
+    "from": "First day",
+    "to": "Last day",
+    "lastMonth": "Last month",
+    "thisMonth": "This month",
+    "show": "Show the sheet",
+    "badRange": "Choose a first and a last day, at most 31 days apart, the last not before the first.",
+    "pickSomeone": "Choose at least one person.",
+    "previewTitle": "The sheet, as it will print",
+    "previewFrame": "Duty evidence sheet preview",
+    "previewEmpty": "Choose people and days, then Show the sheet. It appears here exactly as the printer will print it.",
+    "print": "Print on the office A4",
+    "printing": "Sending…",
+    "queued": "Sent to the office printer. Reference {{ref}}.",
+    "already": "This sheet is already on its way to the office printer (reference {{ref}}).",
+    "notServed": "Queued, reference {{ref}} — but no print relay has been heard from lately, so nothing may come off the office printer yet. Ask IT to check the relay and that it serves the office A4 printer; the sheet prints as soon as it does.",
+    "ruleTitle": "What the sheet is",
+    "rule1": "For each day: the duty the published roster gave, and what the records hold — theatre wheel-in and wheel-out, approved leave or deputation, a declared holiday.",
+    "rule2": "It says what the records hold and nothing about what they mean. The college reads it beside AEBAS.",
+    "rule3": "It never shows a phone number, a patient, or why anybody was on leave.",
+    "sourcesTitle": "Records read for this sheet",
+    "source": {
+      "roster": "Published roster",
+      "leave": "Approved leave and deputation",
+      "holidays": "Declared holidays",
+      "theatre": "Theatre wheel-in and wheel-out"
+    },
+    "sourcesLater": "Labour room, casualty and ward rounds join this list when those records name a person.",
+    "ask": "e.g. which days of September show theatre times?"
   }
 }

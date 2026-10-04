@@ -40,6 +40,8 @@ export const rosterManifest: ModuleManifest = {
     { label: "Roster — the unit's month", path: "/roster/month", permission: "roster.read" },
     // 20-U U5c — a person's own duties; "I can't do this" asks for a cover (`request_cover`).
     { label: "My duties", path: "/roster/my-duties", permission: "roster.read" },
+    // 20-U U8 — the duty-evidence report: whoever may publish a unit's roster may certify what it held.
+    { label: "Duty evidence", path: "/roster/evidence", permission: "roster.periods.publish" },
   ],
   permissions: [
     "roster.periods.manage",

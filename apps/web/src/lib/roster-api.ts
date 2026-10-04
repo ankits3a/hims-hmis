@@ -219,3 +219,25 @@ export type WireAsItStoodChange = {
 export type WireAsItStoodBoard = WireOnNowBoard & { knownAt: string; changes: WireAsItStoodChange[] };
 export const fetchAsItStood = (at: string) =>
   api<WireAsItStoodBoard>("GET", `/roster/as-it-stood?at=${encodeURIComponent(at)}`);
+
+/* ═══ 20-U U8 — the duty-evidence report (`evidence.ts`, `evidence-print.ts`) ═══ */
+export type WireEvidencePickerDepartment = {
+  departmentId: string; name: string;
+  people: { userId: string; name: string; grade: string; unitName: string }[];
+};
+export type WireEvidenceDay = {
+  istDate: string;
+  rostered: { positionLabel: string; teamName: string | null; startsAt: string; endsAt: string; off: boolean; mode: "site" | "call" | null }[];
+  approvedLeave: boolean; holiday: string | null;
+  theatre: { role: "surgeon" | "anaesthetist"; theatreName: string; wheelIn: string; wheelOut: string | null }[];
+};
+export type WireDutyEvidence = {
+  from: string; to: string; generatedAt: string; generatedBy: string; ref: string; sources: string[];
+  people: { userId: string; name: string; staffCode: string; grade: string | null; departmentName: string | null; unitName: string | null; days: WireEvidenceDay[] }[];
+};
+export const fetchEvidencePeople = () => api<{ you: WireRosterSelf; departments: WireEvidencePickerDepartment[] }>("GET", "/roster/evidence/people");
+export const fetchDutyEvidence = (userIds: readonly string[], from: string, to: string) =>
+  api<{ report: WireDutyEvidence; html: string }>("GET", `/roster/evidence?users=${encodeURIComponent(userIds.join(","))}&from=${from}&to=${to}`);
+export const printDutyEvidence = (userIds: readonly string[], from: string, to: string) =>
+  api<{ queued: boolean; ref: string; served: boolean }>("POST", "/roster/evidence/print", { userIds, from, to });
+

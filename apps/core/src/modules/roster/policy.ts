@@ -75,6 +75,13 @@ export const ROSTER_ACTS = [
    * approve within the unit; across units only a department-level holder (the HOD) may.
    */
   "approve_swap",
+  /**
+   * 20-U U8 — run the duty-evidence report (RU-3): per person per day, the rostered duty and what
+   * the records show. **Not in stress test §4**: it changes nothing on a roster. It is its own act,
+   * not `read`, because it puts a person's month on the hospital's letterhead for a regulator — the
+   * authority that publishes a unit's roster is the one that may certify what it held.
+   */
+  "read_evidence",
 ] as const;
 export type RosterAct = (typeof ROSTER_ACTS)[number];
 
@@ -168,6 +175,9 @@ const MATRIX: Record<RosterAct, Record<RosterActorKind, Cell>> = {
 
   /** Approving changes who is on — the same weight as `publish`, and no machine does it. */
   approve_swap: { user: grant(ROSTER_PUBLISH), copilot: never, agent: never, system: never, patient: never },
+
+  /** A paper that goes to a regulator is a person's act. No copilot, no agent, no job. */
+  read_evidence: { user: grant(ROSTER_PUBLISH), copilot: never, agent: never, system: never, patient: never },
 };
 
 export type RosterActVerdict =

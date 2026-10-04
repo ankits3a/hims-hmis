@@ -95,6 +95,8 @@ const ACT_AUTHORITIES: Partial<Record<RosterAct, readonly RosterAuthority[]>> = 
   declare: ["declare_holiday", "declare_mode"],
   // 20-U U6 — whoever may publish may approve; `approve_swap` hands on the approval alone.
   approve_swap: ["publish", "approve_swap"],
+  // 20-U U8 — whoever stands in to publish may certify what the roster held.
+  read_evidence: ["publish"],
 };
 
 async function heldByDelegation(

@@ -39,7 +39,7 @@ const ICON: Record<IconKey, string> = {
   phone: "M3 2.5h3l1 3-1.7 1.2a8 8 0 004 4L10.5 9l3 1v3a1 1 0 01-1 1A10.5 10.5 0 012 3.5a1 1 0 011-1z",
 };
 
-export type DeskMenuKey = "myOpd" | "myDuties" | "roster" | "onNow";
+export type DeskMenuKey = "myOpd" | "myDuties" | "roster" | "onNow" | "evidence";
 type MenuItem = { key: DeskMenuKey; to: string; label: string; permission: string; icon: IconKey };
 type MenuGroup = { key: string; label: string; items: MenuItem[] };
 
@@ -53,6 +53,10 @@ export const MENU: readonly MenuGroup[] = [
   { key: "unit", label: "doctorDesk.group.unit", items: [
     { key: "roster", to: "/roster/month", label: "doctorDesk.item.roster", permission: "roster.read", icon: "cal" },
     { key: "onNow", to: "/roster/on-now", label: "doctorDesk.item.onNow", permission: "roster.read", icon: "phone" },
+  ] },
+  // 20-U U8 — the office's roster paper: whoever may publish a roster sees them.
+  { key: "office", label: "doctorDesk.group.office", items: [
+    { key: "evidence", to: "/roster/evidence", label: "doctorDesk.item.evidence", permission: "roster.periods.publish", icon: "doc" },
   ] },
 ];
 

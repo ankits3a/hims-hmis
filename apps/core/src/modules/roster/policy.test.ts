@@ -53,6 +53,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // 20-U U6 — a person's own duty, and the approval that turns it into an amendment.
     request_cover: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
     approve_swap: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    // 20-U U8 — the duty-evidence report goes to a regulator: a person's act, nobody else's.
+    read_evidence: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
   };
 
   it("every act × every actor kind is DECLARED — no cell falls through", () => {
@@ -211,6 +213,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     decideCover: { reaches: "requireRosterAct(", why: "`approve_swap` at the unit, or at the department across units (the HOD); applied through `amend`, which asks again" },
     raiseFlag: { reaches: "requireRosterAct(", why: "`nag` — any reader may say a name on the board is wrong; it changes no duty" },
     resolveFlag: { reaches: "requireRosterAct(", why: "`propose` at the flag's department — whoever can fix the roster says it is dealt with" },
+    // 20-U U8 — the sheet is queued only after the report is built AS the actor.
+    printDutyEvidence: { reaches: "dutyEvidence(", why: "builds the report as the actor (`read_evidence` per person) before one job is queued" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -326,6 +330,17 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     myDutyRows: "a read of the ACTOR's own duties, asked with the actor's own id; guarded by `read`",
     myDuties: "a read — My duties, composed of the reads above; the reader's own and nobody else's",
     openFlags: "a read — the open \"this is wrong\" flags for the board's holes card; `youMayResolve` PROBES `propose`",
+    // 20-U U8 — reads, each guarded by the act inside it.
+    dutyEvidence: "a read — guarded by `read_evidence` AT EACH PERSON'S DEPARTMENT before a row about them is read; selects no phone, no leave kind, no reason",
+    evidencePeople: "a read — the picker; lists only departments where `read_evidence` holds (it PROBES the act and grants nothing)",
+    evidenceRef: "pure: the sheet's reference, a hash of who asked, whom, which days and the day asked",
+    assertEvidenceAsk: "pure: refuses a malformed range or an empty/oversized list of people",
+    renderEvidenceHtml: "pure: the sheet's HTML from a report already built under its guard",
+    renderDutyEvidence: "the print renderer — calls `dutyEvidence` AS THE JOB'S REQUESTER, so the act is asked again at claim time",
+    registerTheatreEvidenceSource: "wiring: the OT module hands over its theatre-times read; decides nothing",
+    registerRosterEvidencePrinting: "registers the renderer with the kernel dispatcher; decides nothing",
+    rosteredText: "pure: one day's rostered duty as a sentence",
+    recordLines: "pure: one day's records as sentences — never a conclusion",
     recordFindings: "brings the STORED findings into line with what `validate()` computed. It writes, and it is deliberately NOT an acting function: it decides nothing, grants nothing and refuses nothing — the judgement is `acceptFinding`, which is guarded. A proposer may record what it found; it may not accept it",
   };
 
