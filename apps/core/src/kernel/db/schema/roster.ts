@@ -1449,3 +1449,47 @@ export const rosterFlags = pgTable(
     check("roster_flags_resolved_ck", sql`(${t.resolvedAt} is null) = (${t.resolvedBy} is null)`),
   ],
 );
+
+/**
+ * 20-U infra (owner 2026-10-04, board "When the screens are dark", plan D5) — **THE BOARD PRINTS
+ * ITSELF AT 20:00 AND 08:00 IST, AND EACH PRINT IS A ROW.**
+ *
+ * One row per scheduled print instant (`slot_at`, unique — the at-least-once guard: a worker that
+ * ticks twice in the minute, or two workers, write ONE). It keeps the document exactly as generated
+ * at that instant (`html`), so the paper the relay prints, the PDF a reader downloads tomorrow and
+ * what an enquiry reads next month are the same sheet — the roster amended at 20:05 does not edit
+ * what was on the wall at 20:00.
+ *
+ * `outcome` says what the server DID, and the card reads nothing else:
+ *   · `queued`     — print jobs were put on the house print rail (`print_job_ids`, one per
+ *                    `destinations` entry); whether paper came out is those jobs' own status;
+ *   · `no_printer` — no print relay is granted the board's destination, so nothing was queued and
+ *                    the card says "generated — download", never "printed".
+ *
+ * `print_job_ids` is NOT a foreign key: `print_jobs` rows are pruned by the retention sweep, and a
+ * print record must outlive its outbox row.
+ */
+export const ROSTER_BOARD_PRINT_OUTCOMES = ["queued", "no_printer"] as const;
+export type RosterBoardPrintOutcome = (typeof ROSTER_BOARD_PRINT_OUTCOMES)[number];
+
+export const rosterBoardPrints = pgTable(
+  "roster_board_prints",
+  {
+    id: text("id").primaryKey(),
+    /** The scheduled instant (08:00 or 20:00 IST) — the board is drawn AS AT this instant. */
+    slotAt: timestamp("slot_at", { withTimezone: true }).notNull(),
+    renderedAt: timestamp("rendered_at", { withTimezone: true }).notNull().defaultNow(),
+    title: text("title").notNull(),
+    html: text("html").notNull(),
+    outcome: text("outcome").notNull(),
+    destinations: text("destinations").array().notNull().default(sql`'{}'::text[]`),
+    printJobIds: text("print_job_ids").array().notNull().default(sql`'{}'::text[]`),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_board_prints_slot_ux").on(t.slotAt),
+    check("roster_board_prints_outcome_ck", sql`${t.outcome} in ('queued', 'no_printer')`),
+    check("roster_board_prints_jobs_ck", sql`(${t.outcome} = 'queued') = (cardinality(${t.printJobIds}) > 0)`),
+  ],
+);

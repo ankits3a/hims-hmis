@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import type { WireRenderedDocument } from "./print-api";
 
 /**
  * 20-U U5a — the wire contract of `roster-board.controller.ts` (`GET /roster/on-now`), transcribed
@@ -36,7 +37,23 @@ export type WireOnNowBoard = {
   departments: WireBoardDepartment[]; services: WireBoardService[]; holes: WireBoardHole[];
   /** 20-U U6 (I22) — open "this is wrong" flags. Optional: a board read before U6 carries none. */
   flags?: WireRosterFlag[];
+  /** 20-U infra — the RECORD of the last scheduled print (20:00 / 08:00 IST). Optional: older servers send none. */
+  lastPrint?: WireBoardPrint | null;
 };
+
+/**
+ * 20-U infra (owner 2026-10-04) — `board-print.ts` `lastBoardPrint`. `outcome` is what the server
+ * did (`no_printer`: no relay is granted the board's printer, nothing was queued); `copies.printed`
+ * is paper a relay REPORTED, never the number queued.
+ */
+export type WireBoardPrint = {
+  printId: string; slotAt: string; renderedAt: string; outcome: "queued" | "no_printer"; destinations: string[];
+  copies: { queued: number; printed: number; waiting: number; failed: number };
+  lastPrintedAt: string | null; nextAt: string;
+};
+/** One recorded board sheet as drawn at its instant — the house `{ html, title, page }` shape. */
+export const fetchBoardPrintDocument = (printId: string) =>
+  api<WireRenderedDocument>("GET", `/roster/board-prints/${encodeURIComponent(printId)}/document`);
 
 /** `at` omitted is the server's now. */
 export const fetchOnNowBoard = (at?: string) =>

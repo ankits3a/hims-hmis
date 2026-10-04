@@ -73,7 +73,8 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
     "front_desk_a4":      "CRK-Laser-1",
     "vitals_thermal":     "CRK-Thermal-2",
     "pharmacy_thermal":   "CRK-Thermal-Pharmacy",
-    "pharmacy_label":     "CRK-Label-Pharmacy"
+    "pharmacy_label":     "CRK-Label-Pharmacy",
+    "duty_board_a4":      "CRK-Laser-Casualty"
   },
   "chromium":    "chromium",
   "pollSeconds": 3
@@ -105,6 +106,14 @@ lp -d CRK-Thermal-1 /usr/share/cups/data/testprint   # prove the queue before wi
 > not the 80 mm bill roll). Each sticker is its own 50 × 25 mm PDF page; set the printer's media to
 > that size with its gap sensor on. The same served-or-browser rule applies: with no relay seen, the
 > office prints the stickers from the browser.
+
+> **`duty_board_a4` (20-U, 2026-10-04)** — the who-is-on duty board, A4 **landscape**, printed by the
+> server's own schedule at **20:00 and 08:00 IST** (one job per print). Map it to the casualty / duty
+> manager's A4 laser and GRANT it to this relay (`scripts/set-agent-print-destinations.ts`). Until a
+> relay is granted it, the server queues nothing and the board's card says the sheet was generated
+> and offers it for download — it never claims a copy came out. A board job claimed more than twelve
+> hours after its print time renders nothing and fails, so a relay switched on late never prints a
+> stale rota.
 
 The **agent key** is created by an administrator on the server (`createAgent`). Only its SHA-256 is
 stored there, so the key is shown once — keep the config file `chmod 600`. A compromised relay is

@@ -193,6 +193,8 @@ const THE_EIGHTEEN = [
   "sweepOverdueQa",
   /** 18-S RS10 T2 — `every(60_000)`: the HOD's escalations raised on, and resolved off, the obligation spine. */
   "sweepImagingEscalations",
+  /** 20-U infra (owner 2026-10-04) — `every(60_000)`: the duty board prints itself at 20:00 and 08:00 IST. */
+  "printRosterBoard",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;

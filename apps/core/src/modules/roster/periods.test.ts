@@ -442,6 +442,13 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       officiatingAt: "an `at`; a read",
       onDutyNow: "an `at` — the board's question",
       onNowBoard: "an `at` — the who-is-on-now board's instant (20-U U5a)",
+      // 20-U infra (owner 2026-10-04) — the board's own 20:00/08:00 print.
+      boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant a `now` falls after",
+      nextBoardSlot: "PURE: the next 08:00/20:00 IST instant after a `now`",
+      printBoardIfDue: "a `now` used to ask WHICH print instant is due; the row's and the sheet's `Printed` stamp come from `dbNow`, and `slot_at` is the scheduled instant itself",
+      renderBoardSheet: "an `at` (the instant drawn) and the stamp the caller took from the database; writes nothing",
+      renderBoardPrintJob: "a `now` used only to REFUSE a sheet older than twelve hours; writes nothing",
+      lastBoardPrint: "a `now` used to name the next print instant; a read",
       rosterSelf: "an `at` — where the reader is posted NOW, for the Doctor Desk header (20-U U5)",
       parentTeamOf: "an `at`; a read",
       periodsTouching: "a window",

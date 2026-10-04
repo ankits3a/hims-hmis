@@ -138,6 +138,12 @@ export type {
   RequestCoverInput,
 } from "./swaps";
 export { flagForAlert, myDuties, openFlags, raiseFlag, resolveFlag } from "./my-duties";
+export {
+  BOARD_PRINT_CATCH_UP_MS, BOARD_PRINT_DESTINATION, BOARD_PRINT_SLOTS_IST, BOARD_PRINT_STALE_MS,
+  boardPrintDocument, boardPrinterGranted, boardSlotAtOrBefore, lastBoardPrint, nextBoardSlot,
+  printBoardIfDue, registerRosterPrinting, renderBoardPrintJob, renderBoardSheet,
+} from "./board-print";
+export type { BoardPrintResult, BoardPrintView } from "./board-print";
 export type { MyDuties, RaiseFlagInput, RosterFlagView } from "./my-duties";
 export {
   rosterCoverAnswered, rosterCoverDecided, rosterCoverRequested, rosterFlagRaised,

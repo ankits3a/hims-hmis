@@ -151,6 +151,11 @@ describe("roster — 0108 structure", () => {
       "at", "created_at", "created_by", "department_id", "id", "note", "raised_at", "raised_by",
       "resolved_at", "resolved_by", "site_id", "updated_at", "updated_by", "user_id",
     ],
+    // 20-U infra (owner 2026-10-04) — the board's 20:00/08:00 print, one row per instant.
+    roster_board_prints: [
+      "created_at", "created_by", "destinations", "html", "id", "outcome", "print_job_ids",
+      "rendered_at", "site_id", "slot_at", "title", "updated_at", "updated_by",
+    ],
   };
   // PHASE R (R4) — `staff_*`, not `roster_*`: these are facts about a MEMBER OF STAFF, true whether
   // or not anybody ever rosters them, and the prefix is what says so.
