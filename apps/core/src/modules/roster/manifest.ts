@@ -33,7 +33,12 @@ export const rosterManifest: ModuleManifest = {
   key: "roster",
   title: "Roster",
   // 20-U U5a — the roster's first screen: who is on now, the hospital's unit board. A read.
-  menu: [{ label: "Who is on now", path: "/roster/on-now", permission: "roster.read" }],
+  // 20-U U5b — the unit's month: draft, problems as sentences, publish. The menu door is a read;
+  // drafting and publishing are acts checked at the unit's department (`month.ts`).
+  menu: [
+    { label: "Who is on now", path: "/roster/on-now", permission: "roster.read" },
+    { label: "Roster — the unit's month", path: "/roster/month", permission: "roster.read" },
+  ],
   permissions: [
     "roster.periods.manage",
     "roster.periods.publish",

@@ -383,3 +383,34 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
   published only when a unit position is declared, and never lists RBAC holders for any other row.
 - **DECIDED — holes in the next 24 h**: no published take cycle, a gap in the take, a vacant slot,
   and a rostered person on approved leave. Nav group `opd`. No phone numbers (D6 is a later task).
+
+### U5b — Roster, the unit's month (`/roster/month`; `GET /roster/units`, `GET|POST /roster/units/:teamId/months/:month[/draft]`, `PUT /roster/slots/:id`, `POST /roster/periods/:id/{findings/accept,publish}`)
+
+- **DECIDED — no HOD grant; publishing stays with the MS.** `seed-roles.ts` has no head-of-department
+  role (only `medical_superintendent` holds `roster.periods.manage` / `.publish`, at hospital scope).
+  Inventing one is a role-model decision, so none is invented: the screen works for whoever holds the
+  strings at the unit's department, the MS holds them hospital-wide today, and a department-scoped
+  grant to a unit head/SR lands with the role that gives it. Grant counts unchanged.
+- **DECIDED — the route door is `roster.read` (hospital), the guard is the act at the department.**
+  The house guard cannot see a department through a team or period id, so every route carries
+  `RequirePermission("roster.read", "hospital")` and the domain function asks `requireRosterAct` at
+  the unit's own department (`draft_machine_period` / `propose` / `edit_human_draft` → manage;
+  `accept_warning` / `publish` → publish). A reader is refused at the act (403 `not_permitted`).
+- **DECIDED — "draft it for me" runs the proposer as the asking USER** (`proposeMonth` with the
+  user's actor: origin `machine`, `draft_machine_period` = manage), with the monthly job's own
+  strategy and seed (`proposalStrategyFor` / `proposalSeedFor`, extracted from `runMonthlyProposals`
+  so the two cannot drift). Idempotent: a month already in hand is returned, after the act is asked.
+- **DECIDED — findings are computed on read** with `validate()` and `blockingFindings()` exactly as
+  the publish gate computes them; stored rows (refreshed by `recordFindings` after each write) only
+  supply the acceptance, matched by `findingKey`. The screen offers *accept* for `warn` only; the
+  domain's HOD override of a `block` (doc 10 §3.9) is not surfaced here.
+- **DECIDED — the one-tap fix is "leave that duty vacant"** (`unassign` + `assign` with no person,
+  one transaction). It is the only fix the domain supports for any finding about one duty; swaps and
+  covers are U6. A slot can also be given to another person from the grid.
+- **DECIDED — publish sends the content hash the month was read with** (V4); the route refuses a
+  publish without one (422).
+- **DECIDED — unconfirmed units are listed and flagged**, never hidden (`roster_teams.active` false
+  until the HOD confirms the seed). Grid is people × days (the board's shape), plus a "nobody yet"
+  row for vacant slots. Nav group `opd`.
+- **Left for later:** the board's "Who goes where on an OPD day" split, "Asked of you" (swaps — U6),
+  "Already taken care of" (postings/holidays notes), the 2-weeks/one-day zoom, the copilot ask bar.

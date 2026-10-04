@@ -435,6 +435,7 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       publishCycle: "the IST date a cycle becomes effective from — a DECISION's date, and the row's own `published_at` still comes from the database",
       rulesInForce: "an IST date — which parameters a department is under that day",
       runMonthlyProposals: "a `now` used to ask WHICH DAY it is; every stamp it causes comes from `dbNow` inside the transaction",
+      proposalStrategyFor: "an `at` — whose membership counts for the strategy, as of the month's first instant (20-U U5b); stamps nothing",
       skeletonModeOn: "an IST date",
       sweepRosterWindows: "a `now` used as the HORIZON to extend to, never written to a column",
       takeGaps: "a window",

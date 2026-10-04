@@ -1625,6 +1625,15 @@ in the next 24 hours. It is a READ — drafting and publishing stay with the med
 and the board carries no phone numbers yet. A department whose units have no published roster says
 so; it never lists the holders of a role as though they were on.
 
+**Roster — the unit's month (20-U U5b).** `/roster/month` opens one clinical unit's month: the
+proposer's draft (asked for on demand — the same draft the monthly job cuts on the 20th), one row per
+person and one column per day, and a *Before you publish* list in which every validator finding is a
+sentence naming the person and the day. A duty can be given to somebody else or left vacant; a
+warning can be accepted, with a reason, by a holder of `roster.periods.publish`; **Publish stays
+disabled, and says why, while a blocking finding stands** — the server's publish gate decides, and
+the screen shows its count. No grant changes: anybody with `roster.read` can open the month, and
+drafting and publishing remain the medical superintendent's until a head-of-department role exists.
+
 **The approvals spine (owner ruling R1,
 2026-09-20).** `owner` gains `approvals.requests.read` and `approvals.requests.decide`. The role
 held `approvals.types.manage` — the authority to define what an approval IS — and neither of the two

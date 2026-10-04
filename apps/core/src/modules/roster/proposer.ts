@@ -311,6 +311,23 @@ export const fairnessSpread = (f: readonly FairnessCounters[]): number => {
   return Math.max(...n) - Math.min(...n);
 };
 
+/**
+ * THE STRATEGY IS CHOSEN BY ARITHMETIC, NOT BY PREFERENCE — stress test S4. A unit with fewer
+ * residents than can cover their own nights is drafted from the DEPARTMENT's night pool. Shared by
+ * the monthly job and 20-U U5b's "draft this month" so the two can never draft differently.
+ */
+export async function proposalStrategyFor(
+  exec: Db | Tx, teamId: string, at: Date,
+): Promise<ProposalStrategy> {
+  const members = await teamMembers(exec, teamId, at);
+  const own = members.filter((m) => !m.supernumerary && !m.officiating).length;
+  return own < 4 ? "pooled_nights" : "unit_split";
+}
+
+/** The tie-breaking seed the monthly job uses for a month starting on `firstOfMonth` (IST date). */
+export const proposalSeedFor = (firstOfMonth: string): number =>
+  Number(firstOfMonth.replace(/-/g, "")) % 100000;
+
 /* ═══════════════════════════ the monthly job ═══════════════════════════ */
 
 /**
@@ -374,9 +391,7 @@ export async function runMonthlyProposals(
      * all: three people cannot take one night in three and also leave anybody rested. Such a unit
      * is drafted from the DEPARTMENT's night pool. A unit that can cover itself is left to.
      */
-    const members = await teamMembers(db, team.id, startsAt);
-    const own = members.filter((m) => !m.supernumerary && !m.officiating).length;
-    const strategy: ProposalStrategy = own < 4 ? "pooled_nights" : "unit_split";
+    const strategy = await proposalStrategyFor(db, team.id, startsAt);
 
     await db.transaction((tx) => proposeMonth(tx, PROPOSER_ACTOR, {
       departmentId: team.departmentId,
@@ -385,7 +400,7 @@ export async function runMonthlyProposals(
       startsAt,
       endsAt,
       strategy,
-      seed: Number(firstOfNext.replace(/-/g, "")) % 100000,
+      seed: proposalSeedFor(firstOfNext),
     }));
     drafted += 1;
   }

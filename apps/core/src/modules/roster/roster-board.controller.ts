@@ -1,10 +1,14 @@
-import { Controller, Get, Inject, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
 import { onNowBoard } from "./board";
 import { toHttp } from "./roster-http";
+import {
+  acceptUnitFinding, draftUnitMonth, editSlot, publishUnitMonth, rosterUnits, unitMonth,
+} from "./month";
+import type { RosterUnitsDepartment, UnitMonth } from "./month";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OnNowBoard } from "./board";
@@ -35,6 +39,93 @@ export class RosterBoardController {
       }
       await requireRosterAct(this.db, actor, "read");
       return await onNowBoard(this.db, instant);
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ 20-U U5b — ROSTER: THE UNIT'S MONTH ═══
+   *
+   * The route's door is `roster.read` at hospital scope, as `on-now`'s: every route census reads it,
+   * and the house guard cannot see a department through a team or a period id. **The real guard is
+   * the act, at the unit's own department**, asked inside the domain function each route calls —
+   * `propose`/`edit_human_draft` (`roster.periods.manage`), `accept_warning` and `publish`
+   * (`roster.periods.publish`). A reader who holds neither reaches the door and is refused at the act
+   * (`not_permitted`, 403); `test/roster-month.e2e.test.ts` pins that. Every write answers with the
+   * month as it now stands, so the screen never renders a guess.
+   */
+
+  /** The departments that run units, and their units — the screen's unit picker. */
+  @Get("units")
+  @RequirePermission("roster.read", "hospital")
+  async units(@CurrentActor() actor: Actor): Promise<RosterUnitsDepartment[]> {
+    try {
+      await requireRosterAct(this.db, actor, "read");
+      return await rosterUnits(this.db);
+    } catch (e) { toHttp(e); }
+  }
+
+  /** One unit's month (`YYYY-MM`, IST): the period, its slots, the findings as the gate sees them. */
+  @Get("units/:teamId/months/:month")
+  @RequirePermission("roster.read", "hospital")
+  async month(@CurrentActor() actor: Actor, @Param("teamId") teamId: string, @Param("month") month: string): Promise<UnitMonth> {
+    try {
+      return await unitMonth(this.db, actor, teamId, month);
+    } catch (e) { toHttp(e); }
+  }
+
+  /** Ask the proposer to draft the month. Idempotent: a month already in hand is returned as it is. */
+  @Post("units/:teamId/months/:month/draft")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async draft(@CurrentActor() actor: Actor, @Param("teamId") teamId: string, @Param("month") month: string): Promise<UnitMonth> {
+    try {
+      return await draftUnitMonth(this.db, actor, teamId, month);
+    } catch (e) { toHttp(e); }
+  }
+
+  /** One slot, a different person — `userId: null` leaves it vacant (a declared hole). */
+  @Put("slots/:assignmentId")
+  @RequirePermission("roster.read", "hospital")
+  async slot(@CurrentActor() actor: Actor, @Param("assignmentId") assignmentId: string, @Body() body: unknown): Promise<UnitMonth> {
+    try {
+      const b = (body ?? {}) as { userId?: unknown };
+      if (!("userId" in b) || (b.userId !== null && (typeof b.userId !== "string" || b.userId === ""))) {
+        throw new RosterError("invalid_window", "say who takes this duty — a member of staff's id, or null to leave it vacant", {});
+      }
+      const ref = await editSlot(this.db, actor, assignmentId, b.userId);
+      return await unitMonth(this.db, actor, ref.teamId, ref.month);
+    } catch (e) { toHttp(e); }
+  }
+
+  /** A named person accepts one finding, with a reason. `accept_warning` at the department. */
+  @Post("periods/:periodId/findings/accept")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async accept(@CurrentActor() actor: Actor, @Param("periodId") periodId: string, @Body() body: unknown): Promise<UnitMonth> {
+    try {
+      const b = (body ?? {}) as Record<string, unknown>;
+      const idOrNull = (v: unknown): v is string | null => v === null || (typeof v === "string" && v !== "");
+      if (typeof b.ruleKey !== "string" || !idOrNull(b.assignmentId) || !idOrNull(b.userId) || typeof b.reason !== "string") {
+        throw new RosterError("invalid_window", "name the finding (rule, duty, person) and give a reason for accepting it", {});
+      }
+      const ref = await acceptUnitFinding(this.db, actor, periodId, {
+        ruleKey: b.ruleKey, assignmentId: b.assignmentId, userId: b.userId,
+      }, b.reason);
+      return await unitMonth(this.db, actor, ref.teamId, ref.month);
+    } catch (e) { toHttp(e); }
+  }
+
+  /** Publish the draft the person read: `expectedContentHash` is the hash the month read gave them (V4). */
+  @Post("periods/:periodId/publish")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async publish(@CurrentActor() actor: Actor, @Param("periodId") periodId: string, @Body() body: unknown): Promise<UnitMonth> {
+    try {
+      const b = (body ?? {}) as { expectedContentHash?: unknown };
+      if (typeof b.expectedContentHash !== "string" || b.expectedContentHash === "") {
+        throw new RosterError("invalid_window", "publish the roster you read — send the content hash the month was shown with", {});
+      }
+      const ref = await publishUnitMonth(this.db, actor, periodId, b.expectedContentHash);
+      return await unitMonth(this.db, actor, ref.teamId, ref.month);
     } catch (e) { toHttp(e); }
   }
 }

@@ -192,6 +192,11 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     extendWindows: { reaches: "materialiseWindows(", why: "the nightly roll-forward, through the checked writer" },
     sweepRosterWindows: { reaches: "extendWindows(", why: "the scheduler's entry point; see MATERIALISER_ACTOR on why a job is not a `system` actor here" },
     draftCycleFromTemplate: { reaches: "requireRosterAct(", why: "applying a pattern writes the department's own cycle, as a draft" },
+    // 20-U U5b — the unit's month. Each composes acting exports; none writes a roster table itself.
+    draftUnitMonth: { reaches: "proposeMonth(", why: "asks the proposer for the month, through the checked path the monthly job uses" },
+    editSlot: { reaches: "assign(", why: "`unassign` then `assign` in one transaction — the new occupant faces every check `assign` makes" },
+    acceptUnitFinding: { reaches: "requireRosterAct(", why: "`accept_warning` first, then `acceptFinding`, which asks again" },
+    publishUnitMonth: { reaches: "publishPeriod(", why: "the gate is `publishPeriods`', and nothing here decides a publish" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -259,6 +264,11 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     onNowBoard: "a read — the who-is-on-now board, composed of the reads above; guarded at its route",
     boardColumn: "pure: which board column a position belongs in, from the position master",
     toHttp: "maps a RosterError to an HTTP refusal; decides nothing",
+    // 20-U U5b — the unit's month: one guarded read, a window and a list.
+    unitMonth: "a read, guarded by `requireRosterAct(…, \"read\")` at the unit's department; its `youMay` PROBES the write acts and grants nothing",
+    monthWindow: "pure: an IST month as an instant window and its days",
+    rosterUnits: "a read: the departments that run units, and their units",
+    proposalStrategyFor: "a read: pooled nights or unit split, by head-count — shared by the monthly job and the U5b draft",
     // R6
     escalationRecipients: "a read, called from the worker's own consumers, which run as the kernel and carry their own authority — there is no Actor at 02:14 and inventing one would be the wrong shape",
     escalationTarget: "a read",

@@ -30,6 +30,7 @@ import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
 import { MyReach } from "./screens/my-reach";
 import { RosterOnNow } from "./screens/roster-on-now";
+import { RosterMonth } from "./screens/roster-month";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
@@ -264,6 +265,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
   { to: "/roster/on-now", label: "nav.rosterOnNow", permission: "roster.read", group: "opd" },
+  // 20-U U5b — the unit's month. The door is a read (`rosterManifest.menu`); drafting, editing and
+  // publishing are acts the server checks at the unit's department.
+  { to: "/roster/month", label: "nav.rosterMonth", permission: "roster.read", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -697,6 +701,23 @@ const rosterOnNowRoute = createRoute({
   component: function RosterOnNowScreen() {
     const { at } = rosterOnNowRoute.useSearch();
     return <RosterOnNow at={at} />;
+  },
+});
+
+/**
+ * 20-U U5b — the unit's month. `?team=<team id>&month=YYYY-MM` opens one unit's month (a link the
+ * proposer's notice can carry); either missing falls back to the first unit and this IST month.
+ */
+const rosterMonthRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/month",
+  validateSearch: (search: Record<string, unknown>): { team?: string; month?: string } => ({
+    team: typeof search.team === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(search.team) ? search.team : undefined,
+    month: typeof search.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? search.month : undefined,
+  }),
+  component: function RosterMonthScreen() {
+    const { team, month } = rosterMonthRoute.useSearch();
+    return <RosterMonth team={team} month={month} />;
   },
 });
 
@@ -1694,6 +1715,8 @@ export const router = createRouter({
       legacySeatRoute, legacySeatFiguresRoute, legacyVitalsBayRoute,
       // 20-U U5a — +1, `/roster/on-now`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
       rosterOnNowRoute,
+      // 20-U U5b — +1, `/roster/month`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
+      rosterMonthRoute,
     ]),
   ]),
 });

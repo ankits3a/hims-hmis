@@ -120,3 +120,11 @@ export { BOARD_HORIZON_MS, boardColumn, onNowBoard } from "./board";
 export type {
   BoardDepartment, BoardHole, BoardHoleKind, BoardPerson, BoardRung, BoardService, BoardUnit, OnNowBoard,
 } from "./board";
+// 20-U U5b — the unit's month: draft, problems as sentences, publish.
+export {
+  acceptUnitFinding, draftUnitMonth, editSlot, monthWindow, publishUnitMonth, rosterUnits, unitMonth,
+} from "./month";
+export type {
+  FindingKeyInput, MonthAssignment, MonthFinding, MonthRef, RosterUnitsDepartment, UnitMonth,
+} from "./month";
+export { proposalSeedFor, proposalStrategyFor } from "./proposer";

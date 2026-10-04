@@ -42,3 +42,49 @@ export function rosterErrorText(e: unknown, t: (key: string) => string): string 
   }
   return e instanceof Error ? e.message : String(e);
 }
+
+/* ═══ 20-U U5b — the unit's month: `roster-board.controller.ts`'s `/roster/units…`, `/roster/slots…`,
+ * `/roster/periods…`, transcribed from `apps/core/src/modules/roster/month.ts`. ═══ */
+export type WireRosterUnitsDepartment = {
+  departmentId: string; code: string; name: string;
+  units: { teamId: string; code: string; name: string; confirmed: boolean }[];
+};
+export type WireMonthAssignment = {
+  assignmentId: string; userId: string | null; name: string | null; positionKey: string;
+  startsAt: string; endsAt: string; istDate: string; night: boolean; mode: string | null; kind: string;
+};
+export type WireMonthFinding = {
+  ruleKey: string; severity: "block" | "warn" | "info"; userId: string | null; name: string | null;
+  assignmentId: string | null; istDate: string | null; params: Record<string, unknown>;
+  blocking: boolean; accepted: null | { byName: string; at: string; reason: string };
+};
+export type WireUnitMonth = {
+  unit: { teamId: string; code: string; name: string; confirmed: boolean; departmentId: string; departmentName: string };
+  month: string; startsAt: string; endsAt: string; days: string[];
+  period: null | {
+    periodId: string; version: number; status: string; origin: string; title: string;
+    contentHash: string; publishedAt: string | null;
+  };
+  positions: { key: string; label: string }[];
+  people: { userId: string; name: string; positionKey: string; grade: string }[];
+  assignments: WireMonthAssignment[];
+  findings: WireMonthFinding[];
+  counts: { blocking: number; warnings: number; info: number };
+  fairness: { userId: string; name: string; nights: number; sundays: number; holidays: number }[];
+  youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean };
+};
+
+export const fetchRosterUnits = () => api<WireRosterUnitsDepartment[]>("GET", "/roster/units");
+export const fetchUnitMonth = (teamId: string, month: string) =>
+  api<WireUnitMonth>("GET", `/roster/units/${encodeURIComponent(teamId)}/months/${encodeURIComponent(month)}`);
+export const draftUnitMonth = (teamId: string, month: string) =>
+  api<WireUnitMonth>("POST", `/roster/units/${encodeURIComponent(teamId)}/months/${encodeURIComponent(month)}/draft`);
+/** `userId: null` leaves the duty vacant — a declared hole. */
+export const editRosterSlot = (assignmentId: string, userId: string | null) =>
+  api<WireUnitMonth>("PUT", `/roster/slots/${encodeURIComponent(assignmentId)}`, { userId });
+export const acceptRosterFinding = (
+  periodId: string, f: { ruleKey: string; assignmentId: string | null; userId: string | null }, reason: string,
+) => api<WireUnitMonth>("POST", `/roster/periods/${encodeURIComponent(periodId)}/findings/accept`, { ...f, reason });
+/** V4: publish what was read — the hash the month came with. */
+export const publishUnitMonth = (periodId: string, expectedContentHash: string) =>
+  api<WireUnitMonth>("POST", `/roster/periods/${encodeURIComponent(periodId)}/publish`, { expectedContentHash });
