@@ -505,5 +505,11 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
 - **DECIDED — the ask bar's local answerers stay, as the fallback only**: `useCopilot` already asks
   the server first and runs the screen's own answerer only when the server says "not understood".
   With the tools live, a roster question is the server's answer.
+- **DECIDED (review 2026-10-04) — the answer is a LIGHT card** in the frame every roster screen
+  shares (owner, 2026-09-25: dark only for accents): white card, mint left edge, mint *Ask* buttons;
+  a × and Esc put it away; its body scrolls inside a bounded height, so at 390 px it fits the screen.
+- **DECIDED (review 2026-10-04) — the answers speak in the boards' voice.** Days travel as IST dates
+  and instants as ISO; the web says them in the reader's language ("Saturday 10 Oct", "on Saturday
+  10 Oct at 22:00", "right now"), an empty list as "nobody" — never "10-10-2026 22:00" or "—".
 - **Left for later:** a WhatsApp nudge to the person asked; the copilot on My duties itself (that
   screen has no ask bar on its approved board).

@@ -137,7 +137,12 @@ describe("roster — the copilot's tools (20-U U9)", () => {
   it("roster.who_is_on names who is in the building in the department asked, at the time asked", async () => {
     const a = await ask("roster.who_is_on", "medicine mein Tuesday raat on call kaun hai?");
     expect(a.key).toBe("copilot.answer.rosterWhoIsOn");
-    expect(a.params).toMatchObject({ dept: "General Medicine", when: "10-11-2026 22:00", unit: "Unit I", here: "JR Dr. Meena Joshi" });
+    // Instants travel as ISO and the web says them in words in the reader's language ("on Tuesday 10 Nov at 22:00").
+    expect(a.params).toMatchObject({ dept: "General Medicine", when: ist("2026-11-10T22:00").toISOString(), unit: "Unit I", here: "JR Dr. Meena Joshi" });
+    // Nobody on call in the faculty column is said as nobody (""), never as a dash.
+    expect(a.params.fac).toBe("");
+    // A question about NOW says "now", not a timestamp.
+    expect((await ask("roster.who_is_on", "medicine mein abhi on call kaun hai?")).params).toMatchObject({ when: "now" });
     expect(await ask("roster.who_is_on", "abhi on call kaun hai?")).toEqual({ key: "copilot.answer.rosterNeedDept", params: {} });
   });
 
@@ -145,17 +150,20 @@ describe("roster — the copilot's tools (20-U U9)", () => {
     const a = await ask("roster.unit_on_take", "kal raat medicine ka unit kaun sa hai?");
     // Monday 9 Nov is an odd day from the anchor: Unit II, 09-11 08:00 → 10-11 08:00.
     expect(a).toEqual({
-      key: "copilot.answer.rosterUnitOnTake",
-      params: { dept: "General Medicine", when: "09-11-2026 22:00", unit: "Unit II", from: "09-11-2026 08:00", till: "10-11-2026 08:00", backup: "—" },
+      key: "copilot.answer.rosterUnitOnTakeNoBackup",
+      params: {
+        dept: "General Medicine", when: ist("2026-11-09T22:00").toISOString(), unit: "Unit II",
+        from: ist("2026-11-09T08:00").toISOString(), till: ist("2026-11-10T08:00").toISOString(),
+      },
     });
   });
 
   it("roster.my_duties answers the reader's own next night, and a day with nothing on it", async () => {
     expect(await ask("roster.my_duties", "mera agla night kab hai?")).toEqual({
       key: "copilot.answer.rosterMyNextNight",
-      params: { post: "Ward junior resident", unit: "General Medicine Unit II", from: "10-11-2026 20:00", till: "11-11-2026 08:00" },
+      params: { post: "Ward junior resident", unit: "General Medicine Unit II", day: "2026-11-10", from: "20:00", till: "08:00" },
     });
-    expect(await ask("roster.my_duties", "Saturday ko meri duty hai?")).toEqual({ key: "copilot.answer.rosterMyNoneOnDay", params: { day: "14-11-2026" } });
+    expect(await ask("roster.my_duties", "Saturday ko meri duty hai?")).toEqual({ key: "copilot.answer.rosterMyNoneOnDay", params: { day: "2026-11-14" } });
   });
 
   it("roster.ask_cover returns a DRAFT of who can take my Tuesday night — and never asks anybody itself", async () => {
@@ -165,7 +173,7 @@ describe("roster — the copilot's tools (20-U U9)", () => {
     const draft = a.payload as { canTake: { userId: string; name: string }[] };
     expect(draft.canTake.length).toBeGreaterThan(0);
     expect(draft.canTake.map((c) => c.userId)).not.toContain(MEENA);
-    expect(a.params).toMatchObject({ post: "Ward junior resident", when: "10-11-2026 20:00 – 11-11-2026 08:00" });
+    expect(a.params).toMatchObject({ day: "2026-11-10", from: "20:00", till: "08:00" });
     // Nothing was written: the request is the person's tap on the draft, through POST /roster/covers.
     expect(await db.select().from(rosterCoverRequests)).toHaveLength(0);
     // …and the matrix still closes the act itself to the copilot.
@@ -173,7 +181,7 @@ describe("roster — the copilot's tools (20-U U9)", () => {
   });
 
   it("roster.ask_cover says so when there is no duty of mine on the day named", async () => {
-    expect(await ask("roster.ask_cover", "Saturday night koi le sakta hai kya?")).toEqual({ key: "copilot.answer.rosterCoverNoDutyOn", params: { day: "14-11-2026" } });
+    expect(await ask("roster.ask_cover", "Saturday night koi le sakta hai kya?")).toEqual({ key: "copilot.answer.rosterCoverNoDutyOn", params: { day: "2026-11-14" } });
     expect(await db.select().from(rosterCoverRequests)).toHaveLength(0);
   });
 

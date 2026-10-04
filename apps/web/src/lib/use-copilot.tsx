@@ -59,7 +59,7 @@ export function useCopilot(opts: {
   onNote?: (text: string) => void;
   date?: string;
 } = {}): CopilotState {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [answer, setAnswer] = useState<string | null>(null);
   const [report, setReport] = useState<CopilotDayReport | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,10 +85,10 @@ export function useCopilot(opts: {
           does.
         */
         if (reply.source === "none") {
-          setAnswer(local() ?? t(reply.answer.key, reply.answer.params));
+          setAnswer(local() ?? t(reply.answer.key, sayParams(reply.answer.key, reply.answer.params, t, i18n.language)));
           return;
         }
-        setAnswer(t(reply.answer.key, reply.answer.params));
+        setAnswer(t(reply.answer.key, sayParams(reply.answer.key, reply.answer.params, t, i18n.language)));
         if (reply.intent === "my_day_report" && reply.answer.payload !== undefined) {
           setReport(reply.answer.payload as CopilotDayReport);
         } else if (reply.answer.payload !== undefined) {
@@ -104,10 +104,48 @@ export function useCopilot(opts: {
         setAnswer(local() ?? t("copilot.answer.notUnderstood"));
       })
       .finally(() => { setBusy(false); });
-  }, [t, terms, fallback, onNote, date]);
+  }, [t, i18n.language, terms, fallback, onNote, date]);
 
   return {
     answer, report, busy, ask, dismissReport: useCallback(() => { setReport(null); }, []),
     payload, clearPayload: useCallback(() => { setPayload(null); }, []),
   };
+}
+
+/* ═══ 20-U U9 — THE ROSTER'S ANSWERS IN THE BOARDS' VOICE ═══
+ *
+ * The roster tools send a day as its IST date and an instant as ISO; this says them as the boards do,
+ * in the reader's language — "Saturday 10 Oct", "on Saturday 10 Oct at 22:00", "right now" — and an
+ * empty name list as "nobody". Applied to the roster's keys only: another tool's `2028-01-31` (a
+ * batch's expiry) means a date with a year and is left exactly as it came.
+ */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
+type Tr = (key: string, opts?: Record<string, unknown>) => string;
+
+function dayWords(at: Date, lang: string): string {
+  return new Intl.DateTimeFormat(lang.startsWith("hi") ? "hi-IN" : "en-IN", {
+    weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Kolkata",
+  }).format(at).replace(",", "");
+}
+function clockWords(at: Date): string {
+  return new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" }).format(at);
+}
+
+export function sayParams(
+  key: string, params: Record<string, string | number>, t: Tr, lang: string,
+): Record<string, string | number> {
+  if (!key.startsWith("copilot.answer.roster")) return params;
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (typeof v !== "string") { out[k] = v; continue; }
+    if (v === "") out[k] = t("copilot.when.nobody");
+    else if (k === "when" && v === "now") out[k] = t("copilot.when.now");
+    else if (ISO_DAY.test(v)) out[k] = dayWords(new Date(`${v}T12:00:00+05:30`), lang);
+    else if (ISO_INSTANT.test(v)) {
+      const at = new Date(v);
+      out[k] = t(k === "when" ? "copilot.when.at" : "copilot.when.stamp", { day: dayWords(at, lang), time: clockWords(at) });
+    } else out[k] = v;
+  }
+  return out;
 }

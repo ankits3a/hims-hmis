@@ -191,21 +191,29 @@ describe("RosterOnNow (20-U U5a)", () => {
      answerer above runs only when the server says it did not understand. */
   it("the ask bar says the server's roster answer, not the board's guess, when the copilot understood", async () => {
     reply = {
-      answer: { key: "copilot.answer.rosterWhoIsOn", params: { dept: "Orthopaedics", when: "06-10-2026 02:40", unit: "Unit II", till: "06-10-2026 08:00", here: "SR Dr. Rao", fac: "Dr. Sen" } },
+      answer: { key: "copilot.answer.rosterWhoIsOn", params: { dept: "Orthopaedics", when: "now", unit: "Unit II", till: "2026-10-06T02:30:00.000Z", here: "SR Dr. Rao", fac: "" } },
       source: "phrasebook", intent: "roster.who_is_on",
     };
     const user = userEvent.setup();
     renderWithProviders(<RosterOnNow />);
     await screen.findByTestId("dept-MED");
     await user.type(screen.getByLabelText("Ask the copilot"), "ortho mein abhi on call kaun hai?{Enter}");
-    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Orthopaedics, 06-10-2026 02:40: Unit II is on take till 06-10-2026 08:00. In the building: SR Dr. Rao. Faculty on call: Dr. Sen.");
+    // The board's voice: a day in words, "right now", "nobody" — never a log line of numeric stamps and dashes.
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("In Orthopaedics right now, Unit II is on take until Tuesday 6 Oct, 08:00. In the hospital: SR Dr. Rao. Faculty on call: nobody.");
+    // 2026-09-25 owner ruling: the answer is a LIGHT card with a way out — a close button, and Esc.
+    await user.click(screen.getByRole("button", { name: "Close the answer" }));
+    expect(screen.queryByTestId("desk-ask-answer")).toBeNull();
+    await user.type(screen.getByLabelText("Ask the copilot"), "{Enter}");
+    expect(await screen.findByTestId("desk-ask-answer")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("desk-ask-answer")).toBeNull();
   });
 
   it("roster.ask_cover: the ask bar shows the DRAFT, asks nobody by itself, and sends the request only on the person's tap", async () => {
     reply = {
       answer: {
         key: "copilot.answer.rosterCoverDraft",
-        params: { post: "Ward junior resident", when: "10-10-2026 20:00 – 11-10-2026 08:00", n: 2, names: "Dr. Rohit Bansal, Dr. Aman Gupta" },
+        params: { day: "2026-10-10", from: "20:00", till: "08:00", n: 2, names: "Dr. Rohit Bansal, Dr. Aman Gupta" },
         payload: {
           kind: "roster_cover_draft", assignmentId: "A-1", post: "Ward junior resident", unit: "General Medicine Unit II",
           startsAt: "2026-10-10T14:30:00.000Z", endsAt: "2026-10-11T02:30:00.000Z", night: true, more: 0, cannot: 1,
@@ -221,7 +229,7 @@ describe("RosterOnNow (20-U U5a)", () => {
     renderWithProviders(<RosterOnNow />);
     await screen.findByTestId("dept-MED");
     await user.type(screen.getByLabelText("Ask the copilot"), "Saturday night koi le sakta hai kya?{Enter}");
-    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Your Ward junior resident, 10-10-2026 20:00 – 11-10-2026 08:00: 2 can take it — Dr. Rohit Bansal, Dr. Aman Gupta. Nothing is asked yet");
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Your night on Saturday 10 Oct (20:00–08:00): Dr. Rohit Bansal, Dr. Aman Gupta can take it. Nothing is asked yet — tap Ask to send one request.");
     const draft = await screen.findByTestId("cover-draft");
     expect(draft).toHaveTextContent("Dr. Aman Gupta");
     expect(draft).toHaveTextContent("Another unit, so the HOD also approves");

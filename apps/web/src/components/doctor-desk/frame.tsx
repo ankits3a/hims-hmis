@@ -237,17 +237,36 @@ export function AskBar({ id, placeholder, fallback, terms }: {
   const { t } = useTranslation();
   const [draft, setDraft] = useState("");
   const copilot = useCopilot({ fallback, terms });
+  /*
+    THE ANSWER IS A LIGHT CARD THAT CAN BE PUT AWAY (owner, 2026-09-25: "this dark color background is
+    feeling so heavy to eyes"; coordinator review 2026-10-04). It sits over the board the person is
+    reading, so it always has a way out — the × and Esc — and a new question opens it again. Its body
+    scrolls inside a bounded height, so at 390 px it never runs off the screen.
+  */
+  const [shut, setShut] = useState(false);
+  const open = !shut && (copilot.answer !== null || copilot.busy);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") setShut(true); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
   return (
     <form
       className="ddf-ask" data-testid="desk-ask"
-      onSubmit={(e) => { e.preventDefault(); copilot.ask(draft); }}
+      onSubmit={(e) => { e.preventDefault(); setShut(false); copilot.ask(draft); }}
     >
-      {(copilot.answer !== null || copilot.busy) && (
-        <div className="ddf-ask-answer" role="status" data-testid="desk-ask-answer">
-          {copilot.busy ? t("doctorDesk.asking") : copilot.answer}
+      {open && (
+        <div className="ddf-ask-pop" data-testid="desk-ask-pop">
+          <button type="button" className="ddf-ask-close" aria-label={t("doctorDesk.closeAnswer")} onClick={() => setShut(true)}>×</button>
+          <div className="ddf-ask-body">
+            <div className="ddf-ask-answer" role="status" data-testid="desk-ask-answer">
+              {copilot.busy ? t("doctorDesk.asking") : copilot.answer}
+            </div>
+            {!copilot.busy && isCoverDraft(copilot.payload) && <CoverDraft key={copilot.payload.assignmentId} draft={copilot.payload} />}
+          </div>
         </div>
       )}
-      {!copilot.busy && isCoverDraft(copilot.payload) && <CoverDraft key={copilot.payload.assignmentId} draft={copilot.payload} />}
       <div className="ddf-ask-row">
         <span className="ddf-ask-word">{t("doctorDesk.ask")}</span>
         <label htmlFor={id} className="sr">{t("doctorDesk.askLabel")}</label>

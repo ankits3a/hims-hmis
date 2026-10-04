@@ -7,7 +7,7 @@
  * width. The board is drawn at 1440; the breakpoints are the brief's: below 1280 the right rail
  * stacks under the centre, below 1100 the left menu becomes a drawer, and at phone width the
  * screens switch their tables to cards. Dark fills are accents only (owner, lab-screens layout
- * rule): the header is white, the menu is the page's paper, and the only dark block is the ask bar.
+ * rule): the header is white, the menu is the page's paper, and the ask bar is a light card with a mint edge (owner, 2026-09-25: dark is for accents only).
  */
 .ddf {
   --dd-bg: #f4f7f4;
@@ -124,39 +124,54 @@
   display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 16px 0;
 }
 
-/* ─── the ask bar: the one dark block, at the foot of the centre ─── */
+/* ─── the ask bar: a LIGHT card at the foot of the centre (owner, 2026-09-25: dark is for accents only) ─── */
 .ddf-ask {
   margin-top: auto; position: sticky; bottom: 12px; z-index: 5;
-  display: flex; flex-direction: column; border-radius: 8px; background: var(--dd-ink); color: #d9efe4;
+  display: flex; flex-direction: column; gap: 8px;
   /* A band of paper around the bar, so a sticky bar never sits on a half-hidden line of the work. */
   box-shadow: 0 -10px 0 0 var(--dd-bg), 0 12px 0 0 var(--dd-bg);
+  background: var(--dd-bg);
 }
-.ddf-ask-answer {
-  padding: 10px 14px 0; font-size: 12.5px; line-height: 18px; color: #d9efe4;
+.ddf-ask-row {
+  display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px;
+  background: var(--dd-card); border: 1px solid var(--dd-line); border-left: 3px solid var(--dd-acc); border-radius: 8px;
 }
-.ddf-ask-answer .ddf-ask-src { color: #9fc0b1; font-family: "IBM Plex Mono", monospace; font-size: 11px; margin-right: 6px; }
-.ddf-ask-row { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; }
-.ddf-ask-word { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: #9fc0b1; flex-shrink: 0; }
+.ddf-ask-word { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dd-acc); font-weight: 600; flex-shrink: 0; }
 .ddf-ask-input {
   flex-grow: 1; min-width: 0; height: 30px; border: none; outline: none; background: transparent;
-  color: #d9efe4; font-family: "IBM Plex Mono", monospace !important; font-size: 12.5px;
+  color: var(--dd-ink); font-family: "IBM Plex Mono", monospace !important; font-size: 12.5px;
 }
-.ddf-ask-input::placeholder { color: #7f9c8f; }
+.ddf-ask-input::placeholder { color: var(--dd-dim); }
 .ddf-ask-input:focus-visible { outline: none; }
-.ddf-ask:focus-within { box-shadow: 0 0 0 2px #9fc0b1; }
-/* 20-U U9 — the cover DRAFT inside the ask bar: who can take it, one tap each to ask. */
-.ddf-ask-draft { padding: 8px 14px 0; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: #d9efe4; }
-.ddf-ask-can { display: flex; align-items: center; gap: 10px; min-height: 30px; border-top: 1px solid rgba(217, 239, 228, .14); padding-top: 6px; }
-.ddf-ask-can-name { font-weight: 600; flex-shrink: 0; }
-.ddf-ask-can-line { flex-grow: 1; min-width: 0; color: #9fc0b1; font-size: 11.5px; }
-.ddf-ask-can-ask {
-  flex-shrink: 0; height: 26px; padding: 0 12px; border-radius: 6px; border: 1px solid #9fc0b1; background: transparent;
-  color: #d9efe4; font-size: 12px; font-weight: 600; cursor: pointer;
+.ddf-ask-row:focus-within { border-color: var(--dd-acc); box-shadow: 0 0 0 2px var(--dd-sel); }
+
+/* The answer: a light card over the work, with a way out (× and Esc) and a body that scrolls. */
+.ddf-ask-pop {
+  position: relative; background: var(--dd-card); color: var(--dd-ink);
+  border: 1px solid var(--dd-line); border-left: 3px solid var(--dd-acc); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(19, 36, 32, .10);
 }
-.ddf-ask-can-ask:hover:not(:disabled) { background: rgba(217, 239, 228, .1); }
+.ddf-ask-body { max-height: min(46vh, 360px); overflow-y: auto; padding: 11px 44px 11px 14px; }
+.ddf-ask-close {
+  position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 6px;
+  border: 1px solid var(--dd-line); background: var(--dd-card); color: var(--dd-ink); font-size: 18px; line-height: 1; cursor: pointer;
+}
+.ddf-ask-close:hover { border-color: var(--dd-acc); color: var(--dd-acc); }
+.ddf-ask-answer { font-size: 13px; line-height: 19px; color: var(--dd-ink); }
+
+/* 20-U U9 — the cover DRAFT inside the answer: who can take it, one tap each to ask. */
+.ddf-ask-draft { margin-top: 8px; display: flex; flex-direction: column; font-size: 12.5px; }
+.ddf-ask-can { display: flex; align-items: center; gap: 10px; min-height: 38px; border-top: 1px solid var(--dd-line2); padding: 6px 0; }
+.ddf-ask-can-name { font-weight: 600; flex-shrink: 0; }
+.ddf-ask-can-line { flex-grow: 1; min-width: 0; color: var(--dd-dim); font-size: 11.5px; }
+.ddf-ask-can-ask {
+  flex-shrink: 0; height: 28px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--dd-acc); background: var(--dd-acc);
+  color: #ffffff; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.ddf-ask-can-ask:hover:not(:disabled) { background: var(--dd-acc-hover); }
 .ddf-ask-can-ask:disabled { opacity: .5; cursor: default; }
-.ddf-ask-can-more { color: #9fc0b1; font-size: 11.5px; }
-.ddf-ask-can-error { color: #ffb4a8; font-size: 12px; }
+.ddf-ask-can-more { color: var(--dd-dim); font-size: 11.5px; padding-top: 6px; border-top: 1px solid var(--dd-line2); }
+.ddf-ask-can-error { color: var(--dd-red); font-size: 12px; padding-top: 6px; }
 
 /* ─── shared card primitives the roster screens use ─── */
 .ddf-card { background: var(--dd-card); border: 1px solid var(--dd-line); border-radius: 8px; }

@@ -144,14 +144,18 @@ export function departmentOf<T extends Named>(question: string, departments: rea
 
 /* ═══════════════════════════════ saying it ═══════════════════════════════ */
 
+/*
+  WORDS ARE THE WEB'S. A day travels as its IST date (`2026-10-10`) and an instant as ISO, and the web
+  says them in the reader's language in the boards' voice ("Saturday 10 Oct", "on Saturday 10 Oct at
+  22:00", "right now") — a server-made "10-10-2026 22:00" read like a log line (coordinator review,
+  2026-10-04). Only a clock face is said here, because "20:00" is the same in both languages.
+*/
 const ist = (at: Date): Date => new Date(at.getTime() + 330 * 60_000);
 const two = (n: number): string => String(n).padStart(2, "0");
-/** `10-10-2026` — the owner's day (2026-10-03: DD-MM-YYYY). */
-const dayLabel = (istDate: string): string => istDate.split("-").reverse().join("-");
 /** `22:00` — 24-hour, IST. */
 const clock = (at: Date): string => `${two(ist(at).getUTCHours())}:${two(ist(at).getUTCMinutes())}`;
-/** `10-10-2026 22:00`. */
-const stamp = (at: Date): string => `${dayLabel(istDateOfInstant(at))} ${clock(at)}`;
+/** `when`: "now" when the question named no time, else the instant asked about. */
+const whenParam = (when: AskedWhen, now: Date): string => (when.at.getTime() === now.getTime() ? "now" : when.at.toISOString());
 const GRADE: Record<string, string> = { intern: "Int", junior_resident: "JR", senior_resident: "SR" };
 
 /* ═══════════════════════════════ the reader's own duties ═══════════════════════════════ */
@@ -169,8 +173,9 @@ function pointedAt(duties: readonly DutyRef[], when: AskedWhen): DutyRef[] {
   return duties.filter((d) => (when.day === null || d.istDate === when.day) && (!when.night || d.night));
 }
 
-const span = (d: DutyRef): string => `${stamp(d.startsAt)} – ${istDateOfInstant(d.endsAt) === d.istDate ? clock(d.endsAt) : stamp(d.endsAt)}`;
-const unitOf = (d: DutyRef): string => d.teamName ?? "—";
+/** A duty as the sentence wants it: its IST day and its two clock faces ("20:00", "08:00"). */
+const dutyWhen = (d: DutyRef): { day: string; from: string; till: string } => ({ day: d.istDate, from: clock(d.startsAt), till: clock(d.endsAt) });
+const unitOf = (d: DutyRef): string => d.teamName ?? "";
 
 /* ═══════════════════════════════ the tools ═══════════════════════════════ */
 
@@ -190,19 +195,21 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
       needsSubject: false,
       async run(ctx): Promise<CopilotAnswer> {
         await asCopilot(ctx);
-        const when = whenOf(ctx.question, nowOf());
+        const now = nowOf();
+        const when = whenOf(ctx.question, now);
         const board = await onNowBoard(ctx.db, when.at, env);
-        const at = stamp(when.at);
+        const at = whenParam(when, now);
         const dept = departmentOf(ctx.question, board.departments);
         if (dept !== null) {
           if (dept.source !== "published") return { key: "copilot.answer.rosterWhoUnpublished", params: { dept: dept.name, when: at } };
-          const here = dept.inTheBuilding.map((p) => `${GRADE[p.cadre] ?? p.positionLabel} ${p.name}`).join(", ") || "—";
-          const fac = dept.facultyOnCall.map((r) => r.name ?? "—").join(", ") || "—";
+          const here = dept.inTheBuilding.map((p) => `${GRADE[p.cadre] ?? p.positionLabel} ${p.name}`).join(", ");
+          // "" is said as "nobody" by the web; a vacant rung is nobody too.
+          const fac = dept.facultyOnCall.flatMap((r) => (r.name === null ? [] : [r.name])).join(", ");
           return dept.unitOnTake === null
             ? { key: "copilot.answer.rosterWhoNoTake", params: { dept: dept.name, when: at, here, fac } }
             : {
               key: "copilot.answer.rosterWhoIsOn",
-              params: { dept: dept.name, when: at, unit: shortUnitName(dept.unitOnTake.name, dept.name), till: stamp(dept.unitOnTake.endsAt), here, fac },
+              params: { dept: dept.name, when: at, unit: shortUnitName(dept.unitOnTake.name, dept.name), till: dept.unitOnTake.endsAt.toISOString(), here, fac },
             };
         }
         const asked = wordsOf(ctx.question).filter((w) => w.length >= 4 && !STOP.has(w));
@@ -223,23 +230,24 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
       needsSubject: false,
       async run(ctx): Promise<CopilotAnswer> {
         await asCopilot(ctx);
-        const when = whenOf(ctx.question, nowOf());
+        const now = nowOf();
+        const when = whenOf(ctx.question, now);
         const dept = departmentOf(ctx.question, (await rosterUnits(ctx.db)).filter((d) => d.units.length > 0));
         if (dept === null) return { key: "copilot.answer.rosterNeedDept", params: {} };
         const take = await unitOnTake(ctx.db, dept.departmentId, when.at);
         if (take.teamId === null || take.startsAt === null || take.endsAt === null) {
-          return { key: "copilot.answer.rosterNoTake", params: { dept: dept.name, when: stamp(when.at) } };
+          return { key: "copilot.answer.rosterNoTake", params: { dept: dept.name, when: whenParam(when, now) } };
         }
         const names = await rosterTeamNames(ctx.db);
         const backup = await backupUnit(ctx.db, dept.departmentId, when.at);
-        const unitName = (id: string | null): string => (id === null ? "—" : shortUnitName(names.get(id) ?? "—", dept.name));
-        return {
-          key: "copilot.answer.rosterUnitOnTake",
-          params: {
-            dept: dept.name, when: stamp(when.at), unit: unitName(take.teamId),
-            from: stamp(take.startsAt), till: stamp(take.endsAt), backup: unitName(backup.teamId),
-          },
+        const unitName = (id: string): string => shortUnitName(names.get(id) ?? "", dept.name);
+        const params = {
+          dept: dept.name, when: whenParam(when, now), unit: unitName(take.teamId),
+          from: take.startsAt.toISOString(), till: take.endsAt.toISOString(),
         };
+        return backup.teamId === null
+          ? { key: "copilot.answer.rosterUnitOnTakeNoBackup", params }
+          : { key: "copilot.answer.rosterUnitOnTake", params: { ...params, backup: unitName(backup.teamId) } };
       },
     },
     {
@@ -255,10 +263,10 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
         const pointed = pointedAt(duties, when);
         if (when.day !== null) {
           return pointed.length === 0
-            ? { key: "copilot.answer.rosterMyNoneOnDay", params: { day: dayLabel(when.day) } }
+            ? { key: "copilot.answer.rosterMyNoneOnDay", params: { day: when.day } }
             : {
               key: "copilot.answer.rosterMyOnDay",
-              params: { day: dayLabel(when.day), duties: pointed.map((d) => `${d.positionLabel}, ${unitOf(d)} (${span(d)})`).join("; ") },
+              params: { day: when.day, duties: pointed.map((d) => `${d.positionLabel}${unitOf(d) === "" ? "" : `, ${unitOf(d)}`} (${clock(d.startsAt)}–${clock(d.endsAt)})`).join("; ") },
             };
         }
         const next = pointed[0];
@@ -267,7 +275,7 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
         }
         return {
           key: when.night ? "copilot.answer.rosterMyNextNight" : "copilot.answer.rosterMyNext",
-          params: { post: next.positionLabel, unit: unitOf(next), from: stamp(next.startsAt), till: stamp(next.endsAt) },
+          params: { post: next.positionLabel, unit: unitOf(next), ...dutyWhen(next) },
         };
       },
     },
@@ -288,10 +296,10 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
         if (duty === undefined) {
           return when.day === null
             ? { key: "copilot.answer.rosterCoverNoDuty", params: { days: DUTY_LOOKAHEAD_DAYS } }
-            : { key: "copilot.answer.rosterCoverNoDutyOn", params: { day: dayLabel(when.day) } };
+            : { key: "copilot.answer.rosterCoverNoDutyOn", params: { day: when.day } };
         }
         const options = await coverOptions(ctx.db, ctx.actor, duty.assignmentId);
-        const params = { post: duty.positionLabel, when: span(duty) };
+        const params = dutyWhen(duty);
         if (options.openRequestId !== null) return { key: "copilot.answer.rosterCoverAlready", params };
         if (options.canTake.length === 0) return { key: "copilot.answer.rosterCoverNobody", params: { ...params, n: options.cannot.length } };
         const payload = {
@@ -304,7 +312,8 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
           cannot: options.cannot.length,
         };
         return {
-          key: "copilot.answer.rosterCoverDraft",
+          // A night and a day duty are said differently ("Your night on …" / "Your duty on …").
+          key: duty.night ? "copilot.answer.rosterCoverDraft" : "copilot.answer.rosterCoverDraftDuty",
           params: { ...params, n: options.canTake.length, names: options.canTake.slice(0, MAX_NAMED).map((c) => c.name).join(", ") },
           payload,
         };
