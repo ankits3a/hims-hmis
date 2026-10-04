@@ -272,6 +272,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     declarationsView: "a read, guarded by `requireRosterAct(…, \"read\")`; its `youMay` PROBES `declare` and grants nothing",
     boardAsItStood: "a read — the board as PUBLISHED at a past instant and the changes since; guarded at its route like `onNowBoard`",
     publishedAsKnownAt: "a read on the knowledge axis — `asKnownAt` across every scope",
+    windowAsKnownAt: "a read on the knowledge axis — the take/backup window in force at an instant, as known then",
     boardColumn: "pure: which board column a position belongs in, from the position master",
     toHttp: "maps a RosterError to an HTTP refusal; decides nothing",
     // 20-U U5b — the unit's month: one guarded read, a window and a list.

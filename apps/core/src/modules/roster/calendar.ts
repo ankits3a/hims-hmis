@@ -456,6 +456,29 @@ export async function backupUnit(exec: Db | Tx, departmentId: string, at: Date):
     : { teamId: row.teamId, source: "published", startsAt: row.startsAt, endsAt: row.endsAt };
 }
 
+/**
+ * 20-U I23 — the unit on take (or the backup) at `at`, **as the calendar stood at `knownAt`**: a
+ * window written by then (`created_at ≤ knownAt`) and not yet superseded then. A holiday declared
+ * later, or a corrected cycle, re-materialises a day's windows — supersedes the old rows and writes
+ * new ones — and an inspection of last Tuesday must not be answered from today's re-write. The same
+ * two-axis rule as `asKnownAt` for slots; `unitOnTake` is this with `knownAt` = now's live rows.
+ */
+export async function windowAsKnownAt(
+  exec: Db | Tx, departmentId: string, activity: "take" | "backup", at: Date, knownAt: Date,
+): Promise<OnTakeAnswer> {
+  const [row] = await (exec as Db).select().from(rosterDutyWindows).where(and(
+    eq(rosterDutyWindows.departmentId, departmentId),
+    eq(rosterDutyWindows.activity, activity),
+    lte(rosterDutyWindows.startsAt, at),
+    gt(rosterDutyWindows.endsAt, at),
+    lte(rosterDutyWindows.createdAt, knownAt),
+    sql`(${rosterDutyWindows.supersededAt} is null or ${rosterDutyWindows.supersededAt} > ${knownAt})`,
+  )).orderBy(sql`${rosterDutyWindows.createdAt} desc`).limit(1);
+  return row === undefined
+    ? { teamId: null, source: "none", startsAt: null, endsAt: null }
+    : { teamId: row.teamId, source: "published", startsAt: row.startsAt, endsAt: row.endsAt };
+}
+
 export interface WindowGap { from: Date; to: Date }
 
 /**

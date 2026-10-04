@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
+import { isoToDmy } from "../components/dmy-date-input";
 import { RosterOnNow, answerFromBoard } from "./roster-on-now";
 import type { WireAsItStoodBoard, WireDeclarationsView, WireOnNowBoard } from "../lib/roster-api";
 
@@ -222,12 +223,17 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(card).toHaveTextContent("Residents' strike from 08:00 · Dr. Sunita Mishra");
     expect(card).toHaveTextContent("Gazetted runs as a Sunday");
     await user.click(within(card).getByTestId("declare-open"));
+    // The day in Indian order: typed DD-MM-YYYY, sent as YYYY-MM-DD.
+    expect(within(card).getByTestId("holiday-day")).toHaveAttribute("placeholder", "DD-MM-YYYY");
+    await user.clear(within(card).getByTestId("holiday-day"));
+    await user.type(within(card).getByTestId("holiday-day"), "02-10-2099");
+    expect(within(card).getByTestId("holiday-day-words")).toHaveTextContent("Fri 2 Oct");
     await user.selectOptions(within(card).getByTestId("holiday-kind"), "declared");
     await user.click(within(card).getByTestId("holiday-pattern-opd_short"));
     await user.click(within(card).getByTestId("holiday-declare"));
     await vi.waitFor(() => expect(posted.map((p) => p.url.replace(/^.*\/api/, ""))).toEqual(["/roster/holidays"]));
     expect(posted[0]!.body).toMatchObject({ kind: "declared", pattern: "opd_short" });
-    expect((posted[0]!.body as { istDate: string }).istDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((posted[0]!.body as { istDate: string }).istDate).toBe("2099-10-02");
     expect(await within(card).findByTestId("declare-done")).toHaveTextContent("is declared a holiday.");
   });
 
@@ -275,8 +281,12 @@ describe("RosterOnNow (20-U U5a)", () => {
     await screen.findByTestId("dept-MED");
     await user.click(screen.getByTestId("stood-open"));
     const picker = screen.getByTestId("stood-picker");
+    // Owner 2026-10-03: a day is typed and read DD-MM-YYYY, the time 24-hour — never the browser's locale.
+    expect(within(picker).getByTestId("stood-day")).toHaveAttribute("placeholder", "DD-MM-YYYY");
+    expect(within(picker).getByTestId("stood-day")).toHaveValue(isoToDmy(new Date(Date.now() + 330 * 60_000 - 86_400_000).toISOString().slice(0, 10)));
+    expect(within(picker).getByTestId("stood-time")).toHaveAttribute("placeholder", "HH:MM");
     await user.clear(within(picker).getByTestId("stood-day"));
-    await user.type(within(picker).getByTestId("stood-day"), "2026-09-29");
+    await user.type(within(picker).getByTestId("stood-day"), "29-09-2026");
     await user.clear(within(picker).getByTestId("stood-time"));
     await user.type(within(picker).getByTestId("stood-time"), "03:10");
     await user.click(within(picker).getByTestId("stood-show"));

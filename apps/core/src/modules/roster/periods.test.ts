@@ -404,6 +404,7 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       awayDuring: "PURE: windows in, one slot's two instants, a boolean out",
       asKnownAt: "`knownAt`: the KNOWLEDGE axis itself, which is the whole question",
       publishedAsKnownAt: "`knownAt` and a window: the knowledge axis across every scope (20-U I23)",
+      windowAsKnownAt: "an `at` and a `knownAt`: the calendar's window then, as known then (20-U I23)",
       boardAsItStood: "an `at` — the instant asked about AND the knowledge instant; `now` only refuses a future one (20-U I23)",
       declarationsView: "a `now` used to ask WHICH DAY it is — the listing starts today; stamps nothing",
       declareHolidayAct: "a `now` used to refuse a past day; the declaration's stamps come from the database",

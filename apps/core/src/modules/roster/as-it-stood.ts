@@ -5,7 +5,7 @@ import {
 import { users } from "../../kernel/db/schema/auth";
 import { listOrgDepartments, listRosterPositions } from "./masters";
 import { resolverEnabled } from "./resolve";
-import { backupUnit, istDateOfInstant, istMidnightUtc, unitOnTake } from "./calendar";
+import { istDateOfInstant, istMidnightUtc, windowAsKnownAt } from "./calendar";
 import { publishedAsKnownAt } from "./periods";
 import { boardColumn } from "./board";
 import { RosterError } from "./errors";
@@ -35,9 +35,9 @@ import type { OnTakeAnswer } from "./calendar";
  *   · **No phone numbers.** D6 lets a number be shown only for a person on duty at that instant, and
  *     a past instant is nobody's "now".
  *   · **No holes.** "Holes in the next 24 hours" is a forward look; an inspection is a record.
- *   · **The unit on take is the calendar's** (`roster_duty_windows`), which is not versioned on the
- *     knowledge axis — a holiday declared later re-materialises that day's windows. The people are
- *     from the published roster as it stood, which is the question asked; the unit label is context.
+ *   · **The unit on take is the calendar's as it stood too** (`calendar.ts` `windowAsKnownAt`): a
+ *     holiday declared later re-materialises that day's windows by superseding them, and the
+ *     superseded row — written before `at`, superseded after it — is the one that was in force.
  *   · **Amendment reasons are not on the list.** A reason is prose ("covering for Dr Rao, her
  *     father is in ICU") and D6 keeps it with the people it touches; the kind, the approver, the
  *     instant and the after-the-fact stamp are the inspection's facts.
@@ -156,8 +156,9 @@ export async function boardAsItStood(
       departmentId, code: dept.code, name: dept.name, units: unitCount.get(departmentId) ?? 0,
       source: unitRows.length > 0 ? "published" : "static",
       skeleton: skeletonFor(departmentId),
-      unitOnTake: await unitOf(await unitOnTake(exec, departmentId, at)),
-      backupUnit: await unitOf(await backupUnit(exec, departmentId, at)),
+      // The calendar's windows AS KNOWN at `at` too — not today's re-materialised ones.
+      unitOnTake: await unitOf(await windowAsKnownAt(exec, departmentId, "take", at, at)),
+      backupUnit: await unitOf(await windowAsKnownAt(exec, departmentId, "backup", at, at)),
       inTheBuilding, facultyOnCall,
     });
   }

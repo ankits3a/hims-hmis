@@ -132,6 +132,7 @@ export { proposalSeedFor, proposalStrategyFor } from "./proposer";
 export { DECLARATIONS_DAYS, declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
 export type { DeclarationsView, DeclaredHoliday, DeclaredMode } from "./declarations";
 export { boardAsItStood } from "./as-it-stood";
+export { windowAsKnownAt } from "./calendar";
 export type { AsItStoodBoard, AsItStoodChange, ChangedSlot } from "./as-it-stood";
 export { publishedAsKnownAt } from "./periods";
 export { rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn } from "./events";

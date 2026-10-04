@@ -9,7 +9,7 @@ import { withTx } from "../src/kernel/db/client";
 import { createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
-import { events as domainEvents } from "../src/kernel/db/schema";
+import { events as domainEvents, rosterDutyWindows } from "../src/kernel/db/schema";
 import { seedOrgDepartments, seedRosterPositions } from "../src/modules/roster/masters";
 import { seedUnits, teamByCode } from "../src/modules/roster/teams";
 import { seedRosterRules } from "../src/modules/roster/rules";
@@ -247,5 +247,38 @@ describe("roster declarations + as it stood e2e (20-U I1/I5/I23)", () => {
   it("I23 — `as it stood` is a past instant; a future one is refused", async () => {
     const res = await http().get(`/roster/as-it-stood?at=${encodeURIComponent(new Date(Date.now() + 3_600_000).toISOString())}`).set(as(reader)).expect(422);
     expect((res.body as { code: string }).code).toBe("invalid_window");
+  });
+  it("I23 — the unit on take is the one the calendar named AT that instant, as it was known then — not today's re-materialised window", async () => {
+    const units = (await http().get("/roster/units").set(as(reader)).expect(200)).body as { code: string; departmentId: string; units: { teamId: string; code: string }[] }[];
+    const med = units.find((d) => d.code === "MED")!;
+    const u2 = med.units.find((u) => u.code === "MED-U2")!.teamId;
+    const u3 = med.units.find((u) => u.code === "MED-U3")!.teamId;
+    const u4 = med.units.find((u) => u.code === "MED-U4")!.teamId;
+    const mon = new Date("2026-09-28T08:00:00+05:30");
+    const tue = new Date("2026-09-29T08:00:00+05:30");
+    const known = new Date("2026-09-20T10:00:00+05:30");
+    const win = (id: string, teamId: string, activity: string, createdAt: Date) => ({
+      id, departmentId: med.departmentId, teamId, activity, startsAt: mon, endsAt: tue, source: "cycle",
+      createdBy: ms.id, updatedBy: ms.id, createdAt, updatedAt: createdAt,
+    });
+    // As materialised on 20 Sep: Monday's take is Unit II, its backup Unit III. Some other window
+    // (the Sunday take) is in the calendar too, so "the window live NOW" and "the window at 03:10
+    // Tuesday" are different questions.
+    await db.insert(rosterDutyWindows).values([
+      win("W-TAKE-MON", u2, "take", known), win("W-BACKUP-MON", u3, "backup", known),
+      { ...win("W-TAKE-SUN", u4, "take", known), startsAt: new Date("2026-09-27T08:00:00+05:30"), endsAt: mon },
+    ]);
+    // Today, the day is re-materialised (a later holiday, a corrected cycle): Unit IV now holds that take.
+    await db.execute(sql`update roster_duty_windows set superseded_at = now() where id = 'W-TAKE-MON'`);
+    await db.insert(rosterDutyWindows).values(win("W-TAKE-MON-2", u4, "take", new Date()));
+
+    const AT = "2026-09-29T03:10:00%2B05:30";
+    const stood = (await http().get(`/roster/as-it-stood?at=${AT}`).set(as(reader)).expect(200)).body as AsItStoodBoard;
+    const row = stood.departments.find((d) => d.code === "MED")!;
+    expect(row.unitOnTake).toMatchObject({ teamId: u2, startsAt: mon.toISOString(), endsAt: tue.toISOString() });
+    expect(row.backupUnit).toMatchObject({ teamId: u3 });
+    // …while the live board at the same instant reads today's calendar.
+    const live = (await http().get(`/roster/on-now?at=${AT}`).set(as(reader)).expect(200)).body as OnNowBoard;
+    expect(live.departments.find((d) => d.code === "MED")!.unitOnTake).toMatchObject({ teamId: u4 });
   });
 });

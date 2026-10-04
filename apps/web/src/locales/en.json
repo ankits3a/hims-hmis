@@ -13164,6 +13164,7 @@
       "banner_one": "The roster as published at {{when}}. {{count}} change made since is listed under “Changed since” — not applied.",
       "banner_other": "The roster as published at {{when}}. {{count}} changes made since are listed under “Changed since” — not applied.",
       "jump": "See the changes ↓",
+      "bad": "Type the day as DD-MM-YYYY and the time as HH:MM (24-hour).",
       "back": "Back to now",
       "changesTitle": "Changed since",
       "changesIntro": "Every amendment and new version of that day's roster made after this moment. The board does not include them.",

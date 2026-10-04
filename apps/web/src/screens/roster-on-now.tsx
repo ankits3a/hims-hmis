@@ -8,6 +8,7 @@ import {
   declareHoliday, declareSkeleton, fetchAsItStood, fetchDeclarations, fetchOnNowBoard, rosterErrorText, withdrawSkeleton,
 } from "../lib/roster-api";
 import { useAuth } from "../lib/auth";
+import { DmyDateInput } from "../components/dmy-date-input";
 import type {
   HolidayKind, HolidayPattern, WireAsItStoodBoard, WireAsItStoodChange, WireBoardDepartment, WireBoardHole, WireBoardService,
   WireDeclarationsView, WireOnNowBoard, WireRosterSelf,
@@ -358,12 +359,13 @@ function istParts(iso: string): [string, string] {
  * instant is sent as `…+05:30`, so a laptop set to UTC asks the same question as the ward's PC.
  */
 function StoodPicker({ initial, onShow }: { initial: string | null; onShow: (iso: string) => void }): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [day0, time0] = istParts(initial ?? new Date(Date.now() - 86_400_000).toISOString());
   const [day, setDay] = useState(day0);
   const [time, setTime] = useState(initial === null ? "10:00" : time0);
-  const today = todayIst(new Date());
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(day) && /^\d{2}:\d{2}$/.test(time) ? `${day}T${time}:00+05:30` : null;
+  const goodDay = /^\d{4}-\d{2}-\d{2}$/.test(day);
+  const goodTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+  const iso = goodDay && goodTime ? `${day}T${time}:00+05:30` : null;
   const future = iso !== null && Date.parse(iso) > Date.now();
   return (
     <form
@@ -373,14 +375,20 @@ function StoodPicker({ initial, onShow }: { initial: string | null; onShow: (iso
       <span className="ro-stood-label">{t("rosterOnNow.stood.ask")}</span>
       <label>
         <span>{t("rosterOnNow.stood.day")}</span>
-        <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} data-testid="stood-day" />
+        {/* Owner 2026-10-03: DD-MM-YYYY, never the browser's locale; the API gets YYYY-MM-DD. */}
+        <DmyDateInput className="ro-in-day" value={day} onChange={setDay} data-testid="stood-day" aria-label={t("rosterOnNow.stood.day")} />
       </label>
       <label>
         <span>{t("rosterOnNow.stood.time")}</span>
-        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="stood-time" />
+        <input
+          type="text" inputMode="numeric" placeholder="HH:MM" maxLength={5} className="ro-in-time" autoComplete="off"
+          value={time} onChange={(e) => setTime(e.target.value)} data-testid="stood-time"
+        />
       </label>
       <button type="submit" className="ddf-btn ddf-btn-pri" disabled={iso === null || future} data-testid="stood-show">{t("rosterOnNow.stood.show")}</button>
       {future && <span className="ro-small ro-red">{t("rosterOnNow.stood.future")}</span>}
+      {((day !== "" && !goodDay) || (time !== "" && !goodTime)) && <span className="ro-small ro-red" data-testid="stood-bad">{t("rosterOnNow.stood.bad")}</span>}
+      {goodDay && <b className="ro-day-words ro-stood-words">{dayLabel(day, i18n.language)}</b>}
     </form>
   );
 }
@@ -537,8 +545,8 @@ function HolidayForm({ busy, onDeclare }: { busy: boolean; onDeclare: (x: { day:
         <label>
           <span>{t("rosterOnNow.declare.day")}</span>
           <span className="ro-day-in">
-            <input type="date" value={day} min={today} required onChange={(e) => setDay(e.target.value)} data-testid="holiday-day" />
-            {/^\d{4}-\d{2}-\d{2}$/.test(day) && <b className="ro-day-words">{dayLabel(day, i18n.language)}</b>}
+            <DmyDateInput className="ro-in-day" value={day} onChange={setDay} required data-testid="holiday-day" aria-label={t("rosterOnNow.declare.day")} />
+            {/^\d{4}-\d{2}-\d{2}$/.test(day) && <b className="ro-day-words" data-testid="holiday-day-words">{dayLabel(day, i18n.language)}</b>}
           </span>
         </label>
         <label>
@@ -560,7 +568,7 @@ function HolidayForm({ busy, onDeclare }: { busy: boolean; onDeclare: (x: { day:
           </label>
         ))}
       </fieldset>
-      <button type="submit" className="ddf-btn ddf-btn-pri" disabled={busy || day < today} data-testid="holiday-declare">{t("rosterOnNow.declare.declareHoliday")}</button>
+      <button type="submit" className="ddf-btn ddf-btn-pri" disabled={busy || !/^\d{4}-\d{2}-\d{2}$/.test(day) || day < today} data-testid="holiday-declare">{t("rosterOnNow.declare.declareHoliday")}</button>
     </form>
   );
 }
