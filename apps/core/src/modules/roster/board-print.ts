@@ -6,11 +6,11 @@ import { printJobs } from "../../kernel/db/schema/printing";
 import { rosterBoardPrints } from "../../kernel/db/schema/roster";
 import { CREST_PNG_DATA_URI } from "../../kernel/printing/crest";
 import { DESTINATION_OF, enqueuePrintJob } from "../../kernel/printing/enqueue";
-import { HOSPITAL, esc, registerDocumentRenderer } from "../../kernel/printing/render";
+import { HOSPITAL, esc, registerDocumentRenderer } from "../../kernel/printing/document-kit";
 import { onNowBoard } from "./board";
 import { addIstDays, istDateOfInstant, istMidnightUtc } from "./calendar";
 import type { Db, Tx } from "../../kernel/db/client";
-import type { RenderedDocument } from "../../kernel/printing/render";
+import type { RenderedDocument } from "../../kernel/printing/document-kit";
 import type { RosterBoardPrintOutcome } from "../../kernel/db/schema/roster";
 import type { BoardDepartment, OnNowBoard } from "./board";
 

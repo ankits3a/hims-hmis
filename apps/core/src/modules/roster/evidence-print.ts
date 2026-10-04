@@ -3,12 +3,12 @@ import { CREST_PNG_DATA_URI } from "../../kernel/printing/crest";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { relayServes } from "../../kernel/printing/served";
 import { qrSvg } from "../../kernel/printing/qr";
-import { HOSPITAL, esc, registerDocumentRenderer } from "../../kernel/printing/render";
+import { HOSPITAL, esc, registerDocumentRenderer } from "../../kernel/printing/document-kit";
 import { RosterError } from "./errors";
 import { dutyEvidence } from "./evidence";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
-import type { RenderedDocument } from "../../kernel/printing/render";
+import type { RenderedDocument } from "../../kernel/printing/document-kit";
 import type { DutyEvidence, EvidenceDay } from "./evidence";
 
 /**

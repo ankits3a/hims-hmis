@@ -1,6 +1,6 @@
 import { requireRosterAct } from "./access";
 import { onNowBoard } from "./board";
-import { addIstDays, backupUnit, istDateOfInstant, istMidnightUtc, istWeekday, unitOnTake } from "./calendar";
+import { addIstDays, backupUnit, istDateOfInstant, istMidnightUtc, istMinutesOfInstant, istWeekday, unitOnTake } from "./calendar";
 import { rosterUnits } from "./month";
 import { shortUnitName } from "./opd-units";
 import { coverOptions, myDutyRows, positionLabels, rosterTeamNames, toDutyRef } from "./swaps";
@@ -150,10 +150,9 @@ export function departmentOf<T extends Named>(question: string, departments: rea
   22:00", "right now") — a server-made "10-10-2026 22:00" read like a log line (coordinator review,
   2026-10-04). Only a clock face is said here, because "20:00" is the same in both languages.
 */
-const ist = (at: Date): Date => new Date(at.getTime() + 330 * 60_000);
 const two = (n: number): string => String(n).padStart(2, "0");
-/** `22:00` — 24-hour, IST. */
-const clock = (at: Date): string => `${two(ist(at).getUTCHours())}:${two(ist(at).getUTCMinutes())}`;
+/** `22:00` — 24-hour, IST. The clock face comes from `calendar.ts`, the roster's one copy of the offset (ist-clock-parity). */
+const clock = (at: Date): string => { const m = istMinutesOfInstant(at); return `${two(Math.floor(m / 60))}:${two(m % 60)}`; };
 /** `when`: "now" when the question named no time, else the instant asked about. */
 const whenParam = (when: AskedWhen, now: Date): string => (when.at.getTime() === now.getTime() ? "now" : when.at.toISOString());
 const GRADE: Record<string, string> = { intern: "Int", junior_resident: "JR", senior_resident: "SR" };
