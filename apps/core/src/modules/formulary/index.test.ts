@@ -66,9 +66,13 @@ const SURFACE = [
   "adoptTherapeuticClasses", // P23 — therapeutic classes adopted under a named resolution
   "allergyClassKeys", // P22 — pure: the classes an allergy record names
   "attestSubstance",
+  "brandTitle", // owner 2026-10-04 — pure: a vendor brand in the catalogue's case
   "catalogueCensus",
+  "catalogueTwinForm", // pure: a catalogue form on the twin scale
   "classifyAwareMedicines", // PHARMACY STAGE D5 — the list written onto products whose class is null (aware:classify, the go-live act; never seed:pharmacy)
   "classifyNdpsSalts", // PHARMACY P6 — the cited list written onto the catalogue (a script's door)
+  "compositionAgrees", // owner 2026-10-04 — does a brand-name match say what the vendor's composition says
+  "compositionTwins", // owner 2026-10-04 — a vendor brand the catalogue lacks → the medicine of its composition, one spec at a time
   "counsellingByMedicine", // the counter's reader: what to tell the patient, from reviewed monographs only
   "counsellingOf",
   "countSalts",
@@ -93,6 +97,7 @@ const SURFACE = [
   "pageMappingWorklist",
   "pageMedicines",
   "pageSalts",
+  "parseComposition", // pure: a vendor's composition column into moieties and strengths
   "projectSubstances",
   "refreshRankSignals",
   "rejectStaging",
@@ -110,6 +115,11 @@ const SURFACE = [
   "searchStaging",
   "suggestDrugs",
   "suggestMoieties",
+  "tidyCatalogueName", // pure: the SNOMED sentence in a label's words
+  "twinFormAgrees", // pure
+  "twinFormOf", // pure: the form a vendor's row names
+  "twinName", // pure: the catalogue name a vendor brand gets
+  "twinStrengthAgrees", // pure: each component its own strength
   "unreviewedSaltIds",
   "updateInteraction",
   "updateMedicine",

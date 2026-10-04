@@ -20,12 +20,22 @@ import { OfficeHead, fieldCls } from "./office-page";
 const PACK_TYPES = ["tablet_strip", "capsule_strip", "bottle", "vial", "ampoule", "tube", "pouch", "sachet", "box", "other"] as const;
 type PackType = (typeof PACK_TYPES)[number];
 type Candidate = { medicineId: string; name: string; form: string; strength: string | null; salts: string[]; schedule: string | null; score: number };
+type TwinTemplate = { medicineId: string; name: string; form: string; schedule: string | null; salts: string[]; newName: string };
 type Matched = {
   line: number; brand: string; manufacturer: string; composition: string; pack: string;
   best: Candidate | null; alternatives: Candidate[]; existing: { itemId: string; code: string; name: string } | null;
+  /** Not in the catalogue, but its composition is: added as a new brand on create (owner 2026-10-04). */
+  twin: (TwinTemplate & { ambiguous: boolean; others: TwinTemplate[] }) | null;
+  variant: string | null;
+  /** Packs in the vendor's packing ("10*15" → 10). */
+  outer: number;
   packType: PackType; packSize: number; gstRateBps: number; hsnCode: string; mrpPerPackPaise: number | null;
 };
 type Draft = Matched & { pick: string; on: boolean; mrp: string; cold: boolean };
+/** What the list's MRP column prices: the pack the counter sells, or the whole packing as the vendor wrote it. */
+type Basis = "pack" | "packing";
+const TWIN = "twin:";
+const twinsOf = (m: Matched): TwinTemplate[] => (m.twin === null ? [] : [m.twin, ...m.twin.others]);
 type Result = { line: number; ok: true; itemId: string; code: string; name: string } | { line: number; ok: false; code: string; message: string };
 
 const toRupees = (p: number | null): string => (p === null ? "" : (p / 100).toFixed(2));
@@ -41,6 +51,7 @@ export function PriceListImport(): React.ReactElement {
   const [results, setResults] = useState<Result[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [basis, setBasis] = useState<Basis | null>(null);
 
   const [skipped, setSkipped] = useState(0);
   const take = (raw: Grid): void => {
@@ -76,7 +87,11 @@ export function PriceListImport(): React.ReactElement {
         pack: cell(r, "pack"), mrp: cell(r, "mrp"), gst: cell(r, "gst"), hsn: cell(r, "hsn"),
       })).filter((r) => r.brand.trim() !== "");
       const res = await api<{ rows: Matched[] }>("POST", "/pharmacy/opening-stock/price-list/match", { rows: body });
-      setRows(res.rows.map((m) => ({ ...m, pick: m.best?.medicineId ?? "", on: m.best !== null && m.existing === null && m.mrpPerPackPaise !== null, mrp: toRupees(m.mrpPerPackPaise), cold: false })));
+      // A twin the catalogue has in two kinds is not picked for the person: they choose.
+      const pickOf = (m: Matched): string => m.best?.medicineId ?? (m.twin !== null && !m.twin.ambiguous ? `${TWIN}${m.twin.medicineId}` : "");
+      const anyOuter = res.rows.some((m) => m.outer > 1);
+      setBasis(anyOuter ? null : "pack");
+      setRows(res.rows.map((m) => ({ ...m, pick: pickOf(m), on: pickOf(m) !== "" && m.existing === null && m.mrpPerPackPaise !== null, mrp: toRupees(m.mrpPerPackPaise), cold: false })));
     } catch (e) {
       setError(materialsErrorText(e, t));
     } finally {
@@ -86,6 +101,17 @@ export function PriceListImport(): React.ReactElement {
 
   const set = (line: number, patch: Partial<Draft>): void => setRows((rs) => (rs ?? []).map((r) => (r.line === line ? { ...r, ...patch } : r)));
   const ready = (r: Draft): boolean => r.pick !== "" && toPaise(r.mrp) !== null && /^\d{4,8}$/.test(r.hsnCode);
+  /** The MRP column re-read for the basis chosen: a packing's MRP divided by the packs in it. */
+  const chooseBasis = (b: Basis): void => {
+    setBasis(b);
+    setRows((rs) => (rs ?? []).map((r) => ({ ...r, mrp: toRupees(r.mrpPerPackPaise === null ? null : b === "packing" ? Math.round(r.mrpPerPackPaise / Math.max(1, r.outer)) : r.mrpPerPackPaise) })));
+  };
+  // The worked example and a suggestion: a strip of tablets priced at more than ₹15 a tablet is, in an Indian
+  // list, almost always the whole packing's MRP.
+  const example = (rows ?? []).find((r) => r.outer > 1 && r.mrpPerPackPaise !== null);
+  const perUnitIfPack = (rows ?? []).filter((r) => r.outer > 1 && r.mrpPerPackPaise !== null && (r.packType === "tablet_strip" || r.packType === "capsule_strip"))
+    .map((r) => r.mrpPerPackPaise! / r.packSize / 100).sort((a, b) => a - b);
+  const suggested: Basis | null = perUnitIfPack.length === 0 ? null : perUnitIfPack[Math.floor(perUnitIfPack.length / 2)]! > 15 ? "packing" : "pack";
   const chosen = (rows ?? []).filter((r) => r.on && r.existing === null);
   const blocked = chosen.filter((r) => !ready(r));
 
@@ -93,7 +119,8 @@ export function PriceListImport(): React.ReactElement {
     setBusy(true); setError(null);
     try {
       const res = await api<{ results: Result[] }>("POST", "/pharmacy/opening-stock/price-list/import", { rows: chosen.map((r) => ({
-        line: r.line, medicineId: r.pick, brand: r.brand, packType: r.packType, packSize: r.packSize, gstRateBps: r.gstRateBps,
+        line: r.line, medicineId: r.pick.startsWith(TWIN) ? r.pick.slice(TWIN.length) : r.pick, twin: r.pick.startsWith(TWIN), variant: r.variant,
+        brand: r.brand, packType: r.packType, packSize: r.packSize, gstRateBps: r.gstRateBps,
         hsnCode: r.hsnCode, mrpPerPackPaise: toPaise(r.mrp)!, storage: r.cold ? "cold_2_8" : "ambient",
       })) });
       setResults(res.results);
@@ -117,7 +144,7 @@ export function PriceListImport(): React.ReactElement {
           <Button type="button" variant="outline" size="sm" data-testid="price-sample" onClick={downloadSample}>{P("sample")}</Button>
         </div>
         <ol className="m-0 list-decimal space-y-1 pl-5">
-          {(["how1", "how2", "how3", "how4", "how5"] as const).map((k) => <li key={k}>{P(k)}</li>)}
+          {(["how1", "how2", "how3", "how4", "how5", "how6"] as const).map((k) => <li key={k}>{P(k)}</li>)}
         </ol>
         <table className="w-full text-xs [&_td]:px-1.5 [&_td]:py-0.5 [&_th]:px-1.5 [&_th]:text-left">
           <thead><tr className="text-muted-foreground"><th>{P("colHeading")}</th><th>{P("colNeeded")}</th><th>{P("colExample")}</th><th>{P("colIfMissing")}</th></tr></thead>
@@ -173,14 +200,34 @@ export function PriceListImport(): React.ReactElement {
         <section className="space-y-2">
           <h3 className="text-sm font-semibold">{P("step3")}</h3>
           <ul className="m-0 space-y-0.5 pl-5 text-xs list-disc" data-testid="price-guidance">
-            {rows.some((r) => r.best === null && r.existing === null) && <li>{P("guideNoMatch", { count: rows.filter((r) => r.best === null && r.existing === null).length })}</li>}
+            {rows.some((r) => r.best === null && r.twin !== null && r.existing === null) && <li data-testid="price-guide-twin">{P("guideTwin", { count: rows.filter((r) => r.best === null && r.twin !== null && r.existing === null).length })}</li>}
+            {rows.some((r) => r.best === null && r.twin?.ambiguous === true && r.existing === null) && <li className="text-red-600" data-testid="price-guide-choose">{P("guideChoose", { count: rows.filter((r) => r.best === null && r.twin?.ambiguous === true && r.existing === null).length })}</li>}
+            {rows.some((r) => r.best === null && r.twin === null && r.existing === null) && <li>{P("guideNoMatch", { count: rows.filter((r) => r.best === null && r.twin === null && r.existing === null).length })}</li>}
             {rows.some((r) => r.existing === null && r.best !== null && r.best.score < 85) && <li>{P("guideCheck", { count: rows.filter((r) => r.existing === null && r.best !== null && r.best.score < 85).length })}</li>}
             {rows.some((r) => r.existing === null && r.best !== null && toPaise(r.mrp) === null) && <li>{P("guideMrp", { count: rows.filter((r) => r.existing === null && r.best !== null && toPaise(r.mrp) === null).length })}</li>}
             {rows.some((r) => r.existing !== null) && <li>{P("guideExisting", { count: rows.filter((r) => r.existing !== null).length })}</li>}
             <li>{P("guidePack")}</li>
           </ul>
+          {rows.some((r) => r.outer > 1) && (
+            <fieldset className={`rounded border p-2 text-xs space-y-1 ${basis === null ? "border-red-500" : ""}`} data-testid="price-basis">
+              <legend className="px-1 text-sm font-semibold">{P("basisTitle")}</legend>
+              {(["pack", "packing"] as const).map((b) => (
+                <label key={b} className="flex items-center gap-2">
+                  <input type="radio" name="price-basis" data-testid={`price-basis-${b}`} checked={basis === b} disabled={results !== null} onChange={() => chooseBasis(b)} />
+                  <span>{P(b === "pack" ? "basisPack" : "basisPacking")}{suggested === b ? ` — ${P("basisSuggested")}` : ""}</span>
+                </label>
+              ))}
+              {example !== undefined && (
+                <p className="m-0 text-muted-foreground" data-testid="price-basis-example">{P("basisExample", {
+                  brand: example.brand, pack: example.pack, mrp: toRupees(example.mrpPerPackPaise), unit: P(`unitOf.${example.packType}`, { count: example.packSize }),
+                  asPack: toRupees(example.mrpPerPackPaise), asPacking: toRupees(Math.round(example.mrpPerPackPaise! / example.outer)), outer: example.outer,
+                })}</p>
+              )}
+              {basis === null && <p className="m-0 font-medium text-red-600" data-testid="price-basis-needed">{P("basisNeeded")}</p>}
+            </fieldset>
+          )}
           <p className="m-0 text-sm" data-testid="price-summary">
-            {P("summary", { total: rows.length, matched: rows.filter((r) => r.best !== null).length, existing: rows.filter((r) => r.existing !== null).length, chosen: chosen.length })}
+            {P("summary", { total: rows.length, matched: rows.filter((r) => r.best !== null).length, twins: rows.filter((r) => r.best === null && r.twin !== null).length, existing: rows.filter((r) => r.existing !== null).length, chosen: chosen.length })}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs [&_td]:px-1.5 [&_td]:py-1 [&_th]:px-1.5 [&_th]:text-left" data-testid="price-rows">
@@ -197,13 +244,21 @@ export function PriceListImport(): React.ReactElement {
                     <td>
                       {r.existing !== null ? <span className="pill on" data-testid={`price-existing-${String(r.line)}`}>{P("already", { code: r.existing.code })}</span> : (
                         <select className={fieldCls} value={r.pick} data-testid={`price-pick-${String(r.line)}`} onChange={(e) => set(r.line, { pick: e.target.value })}>
-                          <option value="">{cands.length === 0 ? P("noMatch") : P("pickNone")}</option>
+                          <option value="">{cands.length === 0 && r.twin === null ? P("noMatch") : P("pickNone")}</option>
                           {cands.map((c) => <option key={c.medicineId} value={c.medicineId}>{[c.name, c.salts.join(" + "), c.schedule === null ? "" : `Sch ${c.schedule}`].filter((x) => x !== "").join(" · ")}</option>)}
+                          {twinsOf(r).map((tw) => (
+                            <option key={`${TWIN}${tw.medicineId}`} value={`${TWIN}${tw.medicineId}`}>
+                              {P("twinOption", { name: tw.newName, template: tw.name })}{tw.schedule === null ? "" : ` · Sch ${tw.schedule}`}
+                            </option>
+                          ))}
                         </select>
                       )}
                       {/* A match the score is unsure of is said so, so the reviewer reads it first. */}
-                      {r.existing === null && r.pick !== "" && (cands.find((c) => c.medicineId === r.pick)?.score ?? 0) < 85
+                      {r.existing === null && r.pick !== "" && !r.pick.startsWith(TWIN) && (cands.find((c) => c.medicineId === r.pick)?.score ?? 0) < 85
                         ? <span className="pill gd" data-testid={`price-check-${String(r.line)}`}>{P("check")}</span> : null}
+                      {r.existing === null && r.pick.startsWith(TWIN) ? <span className="pill gd" data-testid={`price-new-${String(r.line)}`}>{P("newToCatalogue")}</span> : null}
+                      {r.existing === null && r.best === null && r.twin?.ambiguous === true && r.pick === ""
+                        ? <span className="pill" style={{ color: "#b91c1c" }} data-testid={`price-choose-${String(r.line)}`}>{P("chooseKind", { count: 1 + r.twin.others.length })}</span> : null}
                     </td>
                     <td className="whitespace-nowrap">
                       <select className={fieldCls} value={r.packType} onChange={(e) => set(r.line, { packType: e.target.value as PackType })}>
@@ -211,6 +266,8 @@ export function PriceListImport(): React.ReactElement {
                       </select>
                       <input className={`${fieldCls} w-14`} inputMode="numeric" aria-label={P("packSize", { brand: r.brand })} value={String(r.packSize)}
                         onChange={(e) => set(r.line, { packSize: Math.max(1, Math.min(1000, Number(e.target.value.replace(/\D/g, "")) || 1)) })} />
+                      {r.outer > 1 && <div className="text-muted-foreground" data-testid={`price-outer-${String(r.line)}`}>{P("outerNote", { outer: r.outer })}</div>}
+                      {r.variant !== null && <div className="text-muted-foreground">{P("variantNote", { variant: r.variant })}</div>}
                     </td>
                     <td>
                       <select className={fieldCls} value={r.gstRateBps} onChange={(e) => set(r.line, { gstRateBps: Number(e.target.value) })}>
@@ -230,7 +287,7 @@ export function PriceListImport(): React.ReactElement {
           </div>
           {blocked.length > 0 && <p className="m-0 text-xs text-red-600" data-testid="price-blocked">{P("blocked", { count: blocked.length })}</p>}
           {results === null ? (
-            <Button type="button" data-testid="price-create" disabled={busy || chosen.length === 0 || blocked.length > 0} onClick={() => void create()}>
+            <Button type="button" data-testid="price-create" disabled={busy || chosen.length === 0 || blocked.length > 0 || basis === null} onClick={() => void create()}>
               {busy ? P("working") : P("create", { count: chosen.length })}
             </Button>
           ) : (

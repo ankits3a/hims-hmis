@@ -159,7 +159,7 @@ export class PharmacyOpeningStockController {
     const b = parsed(z.object({ rows: z.array(z.object({
       line: z.number().int().min(1), medicineId: idSchema, brand: z.string().max(200), packType: z.enum(PACK_TYPES), packSize: z.number().int().min(1).max(1000),
       gstRateBps: z.number().int().min(0).max(2800), hsnCode: z.string().trim().regex(/^\d{4,8}$/), mrpPerPackPaise: z.number().int().min(1).max(100_000_000),
-      storage: z.enum(["ambient", "cold_2_8"]),
+      storage: z.enum(["ambient", "cold_2_8"]), twin: z.boolean().optional(), variant: z.string().trim().max(40).nullable().optional(),
     })).min(1).max(1000) }), body);
     try {
       return { results: await importPriceList(this.db, actor, b.rows) };
