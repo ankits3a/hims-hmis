@@ -38,6 +38,8 @@ export const rosterManifest: ModuleManifest = {
   menu: [
     { label: "Who is on now", path: "/roster/on-now", permission: "roster.read" },
     { label: "Roster — the unit's month", path: "/roster/month", permission: "roster.read" },
+    // 20-U U5c — a person's own duties; "I can't do this" asks for a cover (`request_cover`).
+    { label: "My duties", path: "/roster/my-duties", permission: "roster.read" },
   ],
   permissions: [
     "roster.periods.manage",

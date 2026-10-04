@@ -160,8 +160,8 @@ describe("roster — the unit's month (20-U U5b)", () => {
     expect(m.period).toBeNull();
     expect(m.days).toHaveLength(31);
     expect(m.people.map((p) => p.name)).toEqual(["Dr. Resident 0", "Dr. Resident 1", "Dr. Resident 2", "Dr. Resident 3"]);
-    expect(m.youMay).toEqual({ draft: true, edit: false, acceptWarning: true, publish: false });
-    expect((await unitMonth(db, doc, TEAM, "2026-10")).youMay).toEqual({ draft: false, edit: false, acceptWarning: false, publish: false });
+    expect(m.youMay).toEqual({ draft: true, edit: false, acceptWarning: true, publish: false, cover: false });
+    expect((await unitMonth(db, doc, TEAM, "2026-10")).youMay).toEqual({ draft: false, edit: false, acceptWarning: false, publish: false, cover: false });
   });
 
   it("the proposer drafts the month once — a second ask returns the same draft", async () => {
@@ -171,7 +171,7 @@ describe("roster — the unit's month (20-U U5b)", () => {
     expect(m.assignments.every((a) => a.userId === null || a.name?.startsWith("Dr. Resident"))).toBe(true);
     expect(m.counts.blocking).toBe(0);
     expect(m.fairness.reduce((n, f) => n + f.nights, 0)).toBe(31);
-    expect(m.youMay).toEqual({ draft: false, edit: true, acceptWarning: true, publish: true });
+    expect(m.youMay).toEqual({ draft: false, edit: true, acceptWarning: true, publish: true, cover: false });
     expect(m.period!.contentHash).toMatch(/^[0-9a-f]{64}$/);
     const again = await draftUnitMonth(db, ms, TEAM, "2026-10");
     expect(again.period!.periodId).toBe(m.period!.periodId);
@@ -213,7 +213,7 @@ describe("roster — the unit's month (20-U U5b)", () => {
     const published = await publishUnitMonth(db, ms, fixed.period!.periodId, fixed.period!.contentHash);
     const after = await unitMonth(db, ms, published.teamId, published.month);
     expect(after.period).toMatchObject({ status: "published", version: 1 });
-    expect(after.youMay).toEqual({ draft: false, edit: false, acceptWarning: true, publish: false });
+    expect(after.youMay).toEqual({ draft: false, edit: false, acceptWarning: true, publish: false, cover: true });
   });
 
   it("a stale review is refused: the hash the screen showed must be the draft's", async () => {

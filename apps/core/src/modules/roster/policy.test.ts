@@ -50,6 +50,9 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     nag: { user: "y", copilot: "n", agent: "y", system: "y", patient: "n" },
     // R4's own row. NOT from §4 — see the note on `request_absence` in `policy.ts`.
     request_absence: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    // 20-U U6 — a person's own duty, and the approval that turns it into an amendment.
+    request_cover: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    approve_swap: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
   };
 
   it("every act × every actor kind is DECLARED — no cell falls through", () => {
@@ -197,6 +200,13 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     editSlot: { reaches: "assign(", why: "`unassign` then `assign` in one transaction — the new occupant faces every check `assign` makes" },
     acceptUnitFinding: { reaches: "requireRosterAct(", why: "`accept_warning` first, then `acceptFinding`, which asks again" },
     publishUnitMonth: { reaches: "publishPeriod(", why: "the gate is `publishPeriods`', and nothing here decides a publish" },
+    // 20-U U6 — covers and swaps. Asking is a reader's act about THEIR OWN duty; deciding is `approve_swap`.
+    requestCover: { reaches: "requireAsker(", why: "`request_cover` for your own duty, `propose` for somebody else's — and the validator refuses a must-fix before anybody is asked" },
+    answerCover: { reaches: "requireRosterAct(", why: "`request_cover`, and then only the person asked may answer" },
+    withdrawCover: { reaches: "requireRosterAct(", why: "the asker's own act, or `propose`" },
+    decideCover: { reaches: "requireRosterAct(", why: "`approve_swap` at the unit, or at the department across units (the HOD); applied through `amend`, which asks again" },
+    raiseFlag: { reaches: "requireRosterAct(", why: "`nag` — any reader may say a name on the board is wrong; it changes no duty" },
+    resolveFlag: { reaches: "requireRosterAct(", why: "`propose` at the flag's department — whoever can fix the roster says it is dealt with" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -301,6 +311,12 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     fairnessOf: "PURE: counts nights, Sundays and holidays from rows it is handed. It reads no database and is the same answer for a roster somebody typed by hand as for one the proposer drafted",
     skeletonModeOn: "a read — and it answers `mine OR the whole hospital's`, because a department cannot be off skeleton cover on a day the hospital is on it",
     modeDeclarations: "a read: the day's checklist, withdrawn rows included",
+    // 20-U U5c/U6 — reads of a person's own duties and of the requests they may see.
+    coverOptions: "a read — who could take a duty and why everybody else cannot; guarded as the request would be (`requireAsker`), and it writes nothing (`simulate`)",
+    coverRequests: "a read, guarded by `read`, and filtered to the reader's own requests and those they could approve",
+    myDutyRows: "a read of the ACTOR's own duties, asked with the actor's own id; guarded by `read`",
+    myDuties: "a read — My duties, composed of the reads above; the reader's own and nobody else's",
+    openFlags: "a read — the open \"this is wrong\" flags for the board's holes card; `youMayResolve` PROBES `propose`",
     recordFindings: "brings the STORED findings into line with what `validate()` computed. It writes, and it is deliberately NOT an acting function: it decides nothing, grants nothing and refuses nothing — the judgement is `acceptFinding`, which is guarded. A proposer may record what it found; it may not accept it",
   };
 

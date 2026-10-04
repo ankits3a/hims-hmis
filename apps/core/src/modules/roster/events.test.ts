@@ -61,6 +61,15 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     "roster.finding_accepted": {
       findingId: ID, periodId: ID, ruleKey: ID, severity: "block", acceptedAt: WHEN,
     },
+    // 20-U U6. NOTE WHAT IS ABSENT: the request's NOTE ("my father is in ICU") — on the row only.
+    "roster.cover_requested": {
+      requestId: ID, kind: "swap", assignmentId: ID, ownerId: ID, counterpartId: ID,
+      counterpartAssignmentId: ID, crossUnit: true, requestedAt: WHEN,
+    },
+    "roster.cover_answered": { requestId: ID, counterpartId: ID, answer: "accepted", answeredAt: WHEN },
+    "roster.cover_decided": { requestId: ID, status: "approved", ruleKey: null, amendmentIds: [ID], decidedAt: WHEN },
+    // I22 — the flag's one-line note stays on `roster_flags`.
+    "roster.flag_raised": { flagId: ID, departmentId: ID, userId: ID, at: WHEN, raisedAt: WHEN },
   };
 
   /**
@@ -131,6 +140,6 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     for (const event of ROSTER_EVENTS) {
       expect(`${event.name}: ${event.module}/${event.version}`).toBe(`${event.name}: roster/1`);
     }
-    expect(ROSTER_EVENTS).toHaveLength(8);
+    expect(ROSTER_EVENTS).toHaveLength(12); // 20-U U6: +4, cover requested / answered / decided, flag raised
   });
 });

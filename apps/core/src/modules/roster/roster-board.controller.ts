@@ -13,6 +13,11 @@ import type { RosterSelf, RosterUnitsDepartment, UnitMonth } from "./month";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OnNowBoard } from "./board";
+import { withTx } from "../../kernel/db/client";
+import { answerCover, coverOptions, coverRequests, decideCover, requestCover, withdrawCover } from "./swaps";
+import { myDuties, openFlags, raiseFlag, resolveFlag } from "./my-duties";
+import type { CoverOptions, CoverRequestView } from "./swaps";
+import type { MyDuties, RosterFlagView } from "./my-duties";
 
 /**
  * 20-U U5a — **WHO IS ON NOW**, over HTTP. The roster module's first route.
@@ -32,7 +37,7 @@ export class RosterBoardController {
 
   @Get("on-now")
   @RequirePermission("roster.read", "hospital")
-  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard & { you: RosterSelf }> {
+  async onNow(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<OnNowBoard & { you: RosterSelf; flags: RosterFlagView[] }> {
     try {
       const instant = at === undefined || at === "" ? new Date() : new Date(at);
       if (Number.isNaN(instant.getTime())) {
@@ -40,7 +45,11 @@ export class RosterBoardController {
       }
       await requireRosterAct(this.db, actor, "read");
       // `you` — the reader, for the Doctor Desk header (`rosterSelf`); additive.
-      return { ...(await onNowBoard(this.db, instant)), you: await rosterSelf(this.db, actor, new Date()) };
+      // `flags` (20-U U6, register I22) — the open "this is wrong" flags, for the holes card; additive.
+      return {
+        ...(await onNowBoard(this.db, instant)), you: await rosterSelf(this.db, actor, new Date()),
+        flags: await openFlags(this.db, actor),
+      };
     } catch (e) { toHttp(e); }
   }
 
@@ -128,6 +137,129 @@ export class RosterBoardController {
       }
       const ref = await publishUnitMonth(this.db, actor, periodId, b.expectedContentHash);
       return await unitMonth(this.db, actor, ref.teamId, ref.month);
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ 20-U U5c / U6 — MY DUTIES, COVERS AND SWAPS, "THIS IS WRONG" ═══
+   *
+   * The door is `roster.read` as for every roster route; each domain function asks its own act —
+   * `read` for the reads, `request_cover` (your own duty) or `propose` to ask, `request_cover` to
+   * answer, `approve_swap` to decide (at the unit, or the department across units), `nag` to flag.
+   * A write answers with what the screen re-renders from, never a guess.
+   */
+
+  /** The reader's own week: duties, their unit's take, their SR on duty now, their requests. */
+  @Get("my-duties")
+  @RequirePermission("roster.read", "hospital")
+  async myDuties(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<MyDuties> {
+    try {
+      const instant = at === undefined || at === "" ? new Date() : new Date(at);
+      if (Number.isNaN(instant.getTime())) throw new RosterError("invalid_window", "`at` is not an instant — send an ISO date-time", { at });
+      return await myDuties(this.db, actor, instant);
+    } catch (e) { toHttp(e); }
+  }
+
+  /** "I can't do this": who can take the duty, and why everybody else cannot. */
+  @Get("duties/:assignmentId/cover-options")
+  @RequirePermission("roster.read", "hospital")
+  async coverOptions(@CurrentActor() actor: Actor, @Param("assignmentId") assignmentId: string): Promise<CoverOptions> {
+    try {
+      return await coverOptions(this.db, actor, assignmentId);
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The requests the reader may see — `teamId` narrows to one unit's (the month's "Asked of you"). */
+  @Get("covers")
+  @RequirePermission("roster.read", "hospital")
+  async covers(@CurrentActor() actor: Actor, @Query("teamId") teamId?: string): Promise<CoverRequestView[]> {
+    try {
+      return await coverRequests(this.db, actor, teamId === undefined || teamId === "" ? {} : { teamId });
+    } catch (e) { toHttp(e); }
+  }
+
+  /** Ask somebody to take a duty (a cover), or to exchange one of theirs (a swap). */
+  @Post("covers")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async askCover(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ requestId: string }> {
+    try {
+      const b = (body ?? {}) as Record<string, unknown>;
+      const id = (v: unknown): v is string => typeof v === "string" && v !== "" && v.length <= 64;
+      if (!id(b.assignmentId) || !id(b.counterpartId) || (b.counterpartAssignmentId !== undefined && b.counterpartAssignmentId !== null && !id(b.counterpartAssignmentId))
+        || (b.note !== undefined && b.note !== null && typeof b.note !== "string")) {
+        throw new RosterError("invalid_window", "name the duty and the person asked (and, for a swap, the duty they give back)", {});
+      }
+      return await withTx(this.db, (tx) => requestCover(tx, actor, {
+        assignmentId: b.assignmentId as string, counterpartId: b.counterpartId as string,
+        ...(id(b.counterpartAssignmentId) ? { counterpartAssignmentId: b.counterpartAssignmentId } : {}),
+        note: typeof b.note === "string" ? b.note : null,
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  /** The person asked says yes or no. */
+  @Post("covers/:requestId/answer")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async answer(@CurrentActor() actor: Actor, @Param("requestId") requestId: string, @Body() body: unknown): Promise<{ ok: true }> {
+    try {
+      const b = (body ?? {}) as { accept?: unknown };
+      if (typeof b.accept !== "boolean") throw new RosterError("invalid_window", "say yes or no — `accept: true` or `accept: false`", {});
+      await withTx(this.db, (tx) => answerCover(tx, actor, requestId, b.accept as boolean));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** Approve (applied as an amendment) or refuse. A rule the change breaks refuses it, recorded. */
+  @Post("covers/:requestId/decide")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async decide(@CurrentActor() actor: Actor, @Param("requestId") requestId: string, @Body() body: unknown): Promise<{ status: string; ruleKey: string | null }> {
+    try {
+      const b = (body ?? {}) as { approve?: unknown; note?: unknown };
+      if (typeof b.approve !== "boolean" || (b.note !== undefined && b.note !== null && typeof b.note !== "string")) {
+        throw new RosterError("invalid_window", "approve or refuse — `approve: true` or `approve: false`", {});
+      }
+      const d = await withTx(this.db, (tx) => decideCover(tx, actor, requestId, { approve: b.approve as boolean, note: typeof b.note === "string" ? b.note : null }));
+      return { status: d.status, ruleKey: d.ruleKey };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("covers/:requestId/withdraw")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async withdraw(@CurrentActor() actor: Actor, @Param("requestId") requestId: string): Promise<{ ok: true }> {
+    try {
+      await withTx(this.db, (tx) => withdrawCover(tx, actor, requestId));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** "This is wrong" — any reader, one line, about a name on the board at an instant. */
+  @Post("flags")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async flag(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ flagId: string }> {
+    try {
+      const b = (body ?? {}) as Record<string, unknown>;
+      const idOrNull = (v: unknown): boolean => v === undefined || v === null || (typeof v === "string" && v !== "" && v.length <= 64);
+      if (typeof b.note !== "string" || typeof b.at !== "string" || Number.isNaN(Date.parse(b.at)) || !idOrNull(b.departmentId) || !idOrNull(b.userId)) {
+        throw new RosterError("invalid_window", "say what is wrong in one line, and the instant the board was showing", {});
+      }
+      return await withTx(this.db, (tx) => raiseFlag(tx, actor, {
+        departmentId: (b.departmentId as string | null | undefined) ?? null, userId: (b.userId as string | null | undefined) ?? null,
+        at: new Date(b.at as string), note: b.note as string,
+      }));
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("flags/:flagId/resolve")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async resolve(@CurrentActor() actor: Actor, @Param("flagId") flagId: string): Promise<{ ok: true }> {
+    try {
+      await withTx(this.db, (tx) => resolveFlag(tx, actor, flagId));
+      return { ok: true };
     } catch (e) { toHttp(e); }
   }
 }

@@ -747,8 +747,15 @@ export interface AmendInput {
   /** Assignment ids to take out of effect. They must belong to this period and be live. */
   close?: readonly string[];
   /** New slots. `replacesAssignmentId` carries the lineage of the slot this one takes over. */
-  open?: readonly (AssignInput & { replacesAssignmentId?: string })[];
+  open?: readonly (AssignInput & { replacesAssignmentId?: string; swapOfId?: string })[];
   afterTheFact?: boolean;
+  /**
+   * 20-U U6 — an APPROVED cover or swap is applied under `approve_swap` rather than `publish`, so a
+   * unit head holding a team-scoped delegation of that one authority can apply their own unit's
+   * swap (and nothing else). Honoured only for `kind` `cover`/`swap`; `teamId` is the unit, absent
+   * across units — which only a department-level holder then satisfies.
+   */
+  approvedAs?: { act: "approve_swap"; teamId?: string };
 }
 
 /**
@@ -768,7 +775,12 @@ export async function amend(
   if (period.status !== "published") {
     throw new RosterError("period_not_published", undefined, { periodId, status: period.status });
   }
-  await requireRosterAct(tx, actor, "publish", period.departmentId === null ? {} : { departmentId: period.departmentId });
+  const dept = period.departmentId === null ? {} : { departmentId: period.departmentId };
+  if (input.approvedAs !== undefined && (input.kind === "cover" || input.kind === "swap")) {
+    await requireRosterAct(tx, actor, "approve_swap", input.approvedAs.teamId === undefined ? dept : { ...dept, teamId: input.approvedAs.teamId });
+  } else {
+    await requireRosterAct(tx, actor, "publish", dept);
+  }
 
   const reason = input.reason.trim();
   if (reason === "" || reason.length > 500) {
@@ -829,6 +841,8 @@ export async function amend(
       locationResourceId: slot.locationResourceId ?? null,
       batchRef: slot.batchRef ?? null, topic: slot.topic ?? null, note: slot.note ?? null,
       source: slot.source ?? "manual",
+      // 20-U U6 — a swap's two new slots name the slot each was exchanged for (T1's `swap_of_id`).
+      swapOfId: slot.swapOfId ?? null,
       // Inserted NOT YET EFFECTIVE, and flipped below once the invariant has been checked in
       // application code. Inserting them live would let the exclusion constraint fire first, and a
       // ward sister covering a night at 02:00 would be shown a constraint name instead of the

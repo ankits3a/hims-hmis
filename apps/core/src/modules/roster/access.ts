@@ -35,7 +35,16 @@ export type { RosterPermission } from "./policy";
  * An act that names NO department (the hospital's own roster, the master lists) is checked at
  * `hospital`, which a department-scoped holding does NOT satisfy. That asymmetry is the point.
  */
-export type RosterScope = { readonly departmentId?: string };
+export type RosterScope = {
+  readonly departmentId?: string;
+  /**
+   * 20-U U6 — the UNIT an act is about, when it is about one. The permission is still asked at the
+   * department (RBAC has no team scope); the unit matters only to a `team`-scoped DELEGATION, which
+   * satisfies an act naming that unit and nothing wider — a unit head handed `approve_swap` for
+   * Unit II approves Unit II's swaps, and not a swap between Unit II and Unit I (that is the HOD's).
+   */
+  readonly teamId?: string;
+};
 
 export async function requireRosterAct(
   exec: Db | Tx,
@@ -57,7 +66,7 @@ export async function requireRosterAct(
   if (held) return;
 
   // Not held outright — but somebody may have handed this authority over while they are away.
-  if (await heldByDelegation(exec, actor.id, act, departmentId)) return;
+  if (await heldByDelegation(exec, actor.id, act, departmentId, scope.teamId)) return;
 
   throw new RosterError("not_permitted", undefined, { permission, act, departmentId: departmentId ?? null });
 }
@@ -84,10 +93,12 @@ const ACT_AUTHORITIES: Partial<Record<RosterAct, readonly RosterAuthority[]>> = 
   publish: ["publish"],
   accept_warning: ["override_rule"],
   declare: ["declare_holiday", "declare_mode"],
+  // 20-U U6 — whoever may publish may approve; `approve_swap` hands on the approval alone.
+  approve_swap: ["publish", "approve_swap"],
 };
 
 async function heldByDelegation(
-  exec: Db | Tx, userId: string, act: RosterAct, departmentId: string | undefined,
+  exec: Db | Tx, userId: string, act: RosterAct, departmentId: string | undefined, teamId?: string,
 ): Promise<boolean> {
   const authorities = ACT_AUTHORITIES[act];
   if (authorities === undefined) return false;
@@ -101,6 +112,8 @@ async function heldByDelegation(
   return live.some((d) => {
     if (!authorities.includes(d.authority as RosterAuthority)) return false;
     if (d.scopeType === "hospital") return true;
+    // A unit's delegation answers for that unit only, and only when the act names it (20-U U6).
+    if (d.scopeType === "team") return teamId !== undefined && d.scopeId === teamId;
     if (departmentId === undefined) return false;
     return d.scopeType === "department" && d.scopeId === departmentId;
   });

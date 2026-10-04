@@ -414,3 +414,52 @@ ratio rules (R-067) are their own design pass** · permissions from postings (D7
   row for vacant slots. Nav group `opd`.
 - **Left for later:** the board's "Who goes where on an OPD day" split, "Asked of you" (swaps — U6),
   "Already taken care of" (postings/holidays notes), the 2-weeks/one-day zoom, the copilot ask bar.
+
+### U5c + U6 — My duties, covers and swaps (`/roster/my-duties`; `GET /roster/my-duties`, `GET /roster/duties/:id/cover-options`, `GET|POST /roster/covers`, `POST /roster/covers/:id/{answer,decide,withdraw}`, `POST /roster/flags`, `POST /roster/flags/:id/resolve`)
+
+- **DECIDED — asking is a reader's act about their OWN duty.** New act `request_cover` (matrix: user →
+  `roster.read`; copilot/agent/system → `never` until U9's `roster.ask_cover` drafts one). Somebody
+  else's duty is `propose` (the SR, `roster.periods.manage`), the `request_absence` shape. No new
+  permission string; every doctor already reads the roster (U5a).
+- **DECIDED — approving is `approve_swap`** (new act: `roster.periods.publish`, or a delegation of the
+  existing `approve_swap` authority). A delegation scoped to ONE unit (`roster_delegations.scope_type
+  = 'team'`, the only reader of that scope) lets the unit head approve that unit's covers and swaps; a
+  change between two units is asked WITHOUT the unit, so only a department-level holder — the HOD —
+  passes. No HOD role exists (U5b), so "the HOD" is whoever holds publish at the department (the MS
+  hospital-wide today). Applied through `amend(…, approvedAs: approve_swap)` — honoured for kind
+  `cover`/`swap` only; every other amendment is still `publish`.
+- **DECIDED — the three people are three people.** Only the person asked answers; nobody in the
+  request (owner, asker, person asked) approves it, whatever they hold (`cover_self_approval`).
+- **DECIDED — the validator is asked twice, over both people.** At the request and again at approval,
+  over the duty's month PLUS every live duty the two people hold on other rosters within eight days
+  (a JR of Unit I is not free just because Unit II's month does not mention him). A `block` refuses
+  the request (`cover_breaks_rule`, 422, naming the rule and the person) and, at approval, records the
+  request `refused` with `refused_rule` and changes nothing; a `warn` does not refuse — the approver
+  sees it in the "Checked" line. The "who can take it" list is stricter: R8's `simulate` semantics —
+  anyone with a new block OR warn is under "Cannot, and why"; approved leave is `unavailable`, never
+  its kind (A-4; the board's "On approved leave" is corrected).
+- **DECIDED — a cross-unit cover posts the borrowed person as a FLOAT** for the window of the duty
+  (register I12), so the resolver counts them (V13); `member_not_in_unit` is therefore set aside for
+  them in the check. That posting is `addMembership`'s `publish` — an `approve_swap`-only delegate at
+  department scope cannot approve a cross-unit cover; the HOD (publish) can.
+- **DECIDED — swaps offered** only with people who can take the duty, of their duties in the same post
+  within seven days, at most three, each checked both ways. A swap within one month is ONE amendment;
+  across two months, two in one transaction; both new slots carry `swap_of_id`. `after_the_fact` when
+  the duty had begun before approval. One open request per duty (partial unique index).
+- **DECIDED — "This is wrong" (I22) is stored, not paged.** Paging needs a `kernel/notify` template and
+  a `kernel/alerts` subscription — files that belong to everyone — so the flag (`roster_flags`, act
+  `nag`, any reader) sits on the who-is-on board's holes card until a `propose`-holder marks it dealt
+  with. `duty_manager` gains `roster.read` to read it. ONE button on the holes card, not one per row:
+  the approved rows stay as drawn.
+- **DECIDED — the board's promises the system cannot keep are not drawn**: "Sent on the app and on
+  WhatsApp" and the 19:00 WhatsApp line (no template); "Call my SR" only when the unit's SR is on duty
+  NOW with a number on file (D6); the today card says the hours and the unit (no OT-list data); "until
+  they and your SR agree" reads "until they say yes and it is approved". A published month's tapped
+  duty opens "who can take it" (`youMay.cover`), never the slot editor; its intro says so.
+- **DECIDED — who sees a request**: its three people and whoever could approve it; decided ones stay
+  in the lists for seven days. The note is on the row only — never in an event (V9).
+- **Migration** `0174_roster_cover_requests` (two tables, `roster_cover_requests`, `roster_flags`) —
+  renumbered at rebase.
+- **Left for later:** paging the duty manager on a flag; WhatsApp to the person asked; the board's
+  per-hole "Asked: … waiting for her yes" line (a vacancy cover, U6 covers filled duties); U9's
+  copilot `roster.ask_cover`.

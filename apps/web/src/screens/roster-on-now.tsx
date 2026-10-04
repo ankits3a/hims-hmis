@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
 import { fmtIst } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
-import { fetchOnNowBoard, rosterErrorText } from "../lib/roster-api";
+import { fetchOnNowBoard, raiseRosterFlag, resolveRosterFlag, rosterErrorText } from "../lib/roster-api";
 import { useAuth } from "../lib/auth";
-import type { WireBoardDepartment, WireBoardHole, WireBoardService, WireOnNowBoard, WireRosterSelf } from "../lib/roster-api";
+import type { WireBoardDepartment, WireBoardHole, WireBoardService, WireOnNowBoard, WireRosterFlag, WireRosterSelf } from "../lib/roster-api";
 import "./roster.css";
 
 /**
@@ -25,8 +25,12 @@ import "./roster.css";
  * The design board's three clock buttons were a review device; the real screen shows NOW, refreshes
  * every minute, and offers "In 8 hours" (and `?at=` for a link to an instant).
  *
- * The board's per-hole owner line ("Asked: Dr. Bhavna · waiting for her yes") is the swap request of
- * U6, which is not built; it is not drawn rather than invented.
+ * The board's per-hole owner line ("Asked: Dr. Bhavna · waiting for her yes") is not drawn: a U6 cover
+ * request is about a FILLED duty and is shown to its parties and approvers, not on this public board.
+ *
+ * 20-U U6 (register I22) — **"This is wrong"**: on every published department row, any reader may say
+ * a name on duty is wrong, in one line. The flag goes on the holes card — the duty manager's to read —
+ * until somebody who can fix the roster marks it dealt with. Nothing about anybody's duty changes.
  */
 const REFRESH_MS = 60_000;
 const AHEAD_MS = 8 * 3_600_000;
@@ -236,6 +240,68 @@ function DepartmentRow({ d, b }: { d: WireBoardDepartment; b: WireOnNowBoard }):
   );
 }
 
+/**
+ * "THIS IS WRONG" (register I22) — one button on the holes card, so the board's rows stay as the owner
+ * approved them. Which department, which name, and one line about it; sent as a flag at the instant
+ * the board is showing, and the duty manager reads it on this card.
+ */
+function WrongFlag({ b }: { b: WireOnNowBoard }): React.ReactElement {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [sent, setSent] = useState(false);
+  const depts = b.departments.filter((d) => d.source === "published");
+  const [deptId, setDeptId] = useState<string>(depts[0]?.departmentId ?? "");
+  const d = depts.find((x) => x.departmentId === deptId);
+  const people = d === undefined ? [] : [
+    ...d.inTheBuilding.map((p) => ({ userId: p.userId, name: p.name })),
+    ...d.facultyOnCall.flatMap((r) => (r.userId === null || r.name === null ? [] : [{ userId: r.userId, name: r.name }])),
+  ].filter((p, i, all) => all.findIndex((x) => x.userId === p.userId) === i);
+  const [who, setWho] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const shownWho = who !== null ? who : (people[0]?.userId ?? "");
+  const send = useMutation({
+    mutationFn: () => raiseRosterFlag({ departmentId: deptId === "" ? null : deptId, userId: shownWho === "" ? null : shownWho, at: b.at, note: note.trim() }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["roster", "on-now"] }); setOpen(false); setSent(true); setNote(""); },
+  });
+  if (!open) {
+    return (
+      <div className="ro-wrong-bar">
+        {sent && <span className="ro-wrong-done" role="status" data-testid="flag-sent">{t("rosterOnNow.wrong.done")}</span>}
+        <button type="button" className="ro-wrong" onClick={() => { setOpen(true); setSent(false); }} data-testid="wrong-open">{t("rosterOnNow.wrong.button")}</button>
+      </div>
+    );
+  }
+  return (
+    <form className="ro-wrong-form" data-testid="wrong-form" onSubmit={(e) => { e.preventDefault(); if (note.trim() !== "") send.mutate(); }}>
+      <span className="ro-wrong-h">{t("rosterOnNow.wrong.title")}</span>
+      <label className="ro-wrong-label">
+        <span>{t("rosterOnNow.wrong.dept")}</span>
+        <select value={deptId} onChange={(e) => { setDeptId(e.target.value); setWho(null); }} data-testid="wrong-dept">
+          {depts.map((x) => <option key={x.departmentId} value={x.departmentId}>{x.name}</option>)}
+        </select>
+      </label>
+      <label className="ro-wrong-label">
+        <span>{t("rosterOnNow.wrong.who")}</span>
+        <select value={shownWho} onChange={(e) => setWho(e.target.value)} data-testid="wrong-who">
+          {people.map((p) => <option key={p.userId} value={p.userId}>{p.name}</option>)}
+          <option value="">{t("rosterOnNow.wrong.nobodyNamed")}</option>
+        </select>
+      </label>
+      <label className="ro-wrong-label">
+        <span>{t("rosterOnNow.wrong.what")}</span>
+        <input type="text" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} placeholder={t("rosterOnNow.wrong.placeholder")} data-testid="wrong-note" />
+      </label>
+      {send.isError && <span role="alert" className="ro-alert">{rosterErrorText(send.error, t)}</span>}
+      <div className="ro-wrong-acts">
+        <button type="submit" className="ddf-btn ddf-btn-pri" disabled={send.isPending || note.trim() === ""} data-testid="wrong-send">{t("rosterOnNow.wrong.send")}</button>
+        <button type="button" className="ddf-btn" onClick={() => setOpen(false)}>{t("rosterOnNow.wrong.cancel")}</button>
+      </div>
+      <span className="ro-small">{t("rosterOnNow.wrong.hint")}</span>
+    </form>
+  );
+}
+
 function serviceNote(s: WireBoardService, b: WireOnNowBoard, t: T): string {
   if (s.source !== "published") return t("rosterOnNow.serviceNotPublished");
   if (s.people.length === 0) return "";
@@ -286,12 +352,14 @@ function Rail({ b }: { b: WireOnNowBoard }): React.ReactElement {
     <>
       <section className="ddf-card-strong ro-rail-card" data-testid="on-now-holes">
         <h2 className="ro-rail-h ro-rail-h-big">{t("rosterOnNow.holes")}</h2>
-        {b.holes.length === 0 ? <div className="ro-hole ro-hole-ok"><span>{t("rosterOnNow.noHoles")}</span></div> : b.holes.map((h, i) => (
+        {(b.flags ?? []).map((f) => <FlagHole key={f.flagId} f={f} b={b} />)}
+        {b.holes.length === 0 ? ((b.flags ?? []).length === 0 && <div className="ro-hole ro-hole-ok"><span>{t("rosterOnNow.noHoles")}</span></div>) : b.holes.map((h, i) => (
           <div key={`${h.kind}-${h.departmentId}-${h.userId ?? ""}-${h.from}-${String(i)}`} className="ro-hole">
             <span className="ro-hole-when">{holeWhen(h, i18n.language)}</span>
             <span className="ro-hole-text">{holeText(h, t)}</span>
           </div>
         ))}
+        <WrongFlag b={b} />
       </section>
       <section className="ddf-card ro-rail-card ddf-noprint" data-testid="on-now-dark">
         <h2 className="ro-rail-h">{t("rosterOnNow.darkTitle")}</h2>
@@ -304,6 +372,30 @@ function Rail({ b }: { b: WireOnNowBoard }): React.ReactElement {
         <span className="ro-rail-p">{t("rosterOnNow.arrivingText")}</span>
       </section>
     </>
+  );
+}
+
+/** A "this is wrong" flag, in the hole's own box: when, who said what about whom, and "Dealt with". */
+function FlagHole({ f, b }: { f: WireRosterFlag; b: WireOnNowBoard }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const qc = useQueryClient();
+  const done = useMutation({
+    mutationFn: () => resolveRosterFlag(f.flagId),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["roster", "on-now"] }); },
+  });
+  const dept = b.departments.find((d) => d.departmentId === f.departmentId)?.name ?? "";
+  const when = new Intl.DateTimeFormat(i18n.language.startsWith("hi") ? "hi-IN" : "en-GB", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short" }).format(new Date(f.raisedAt)).replace(",", "");
+  return (
+    <div className="ro-hole" data-testid={`flag-${f.flagId}`}>
+      <span className="ro-hole-when">{t("rosterOnNow.flag.when", { day: when, time: fmtIst(f.raisedAt), by: f.raisedBy.name })}</span>
+      <span className="ro-hole-text">
+        {f.user === null ? t("rosterOnNow.flag.textNobody", { dept, note: f.note }) : t("rosterOnNow.flag.text", { name: f.user.name, dept, note: f.note })}
+      </span>
+      <span className="ro-hole-own">
+        {t("rosterOnNow.flag.own")}
+        {f.youMayResolve && <button type="button" className="ro-dealt" disabled={done.isPending} onClick={() => done.mutate()} data-testid="flag-dealt">{t("rosterOnNow.flag.dealt")}</button>}
+      </span>
+    </div>
   );
 }
 

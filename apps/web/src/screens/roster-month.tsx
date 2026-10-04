@@ -5,10 +5,11 @@ import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
 import { fmtIst } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
 import {
-  acceptRosterFinding, draftUnitMonth, editRosterSlot, fetchRosterUnits, fetchUnitMonth, isStaleWrite, publishUnitMonth,
+  acceptRosterFinding, decideCover, draftUnitMonth, editRosterSlot, fetchCoverRequests, fetchRosterUnits, fetchUnitMonth, isStaleWrite, publishUnitMonth,
   rosterErrorCode, rosterErrorText,
 } from "../lib/roster-api";
-import type { WireMonthAssignment, WireMonthFinding, WireUnitMonth } from "../lib/roster-api";
+import type { WireCoverRequest, WireDutyRef, WireMonthAssignment, WireMonthFinding, WireUnitMonth } from "../lib/roster-api";
+import { CoverPicker, dutyName, reasonText } from "./roster-my-duties";
 import { shortUnit, whoFrom } from "./roster-on-now";
 import { useAuth } from "../lib/auth";
 import "./roster.css";
@@ -164,7 +165,9 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
   const [teamId, setTeamId] = useState<string | undefined>(team);
   const [ym, setYm] = useState<string>(month ?? thisMonthIst());
   const [picked, setPicked] = useState<WireMonthAssignment | null>(null);
-  const { username } = useAuth();
+  const { username, actor } = useAuth();
+  /** 20-U U6 — a published duty picked to be covered or swapped (the month's own "I can't do this"). */
+  const [covering, setCovering] = useState<WireMonthAssignment | null>(null);
   /** The cell (or, for a finding about a whole day, the day) a finding was clicked to show. */
   const [focus, setFocus] = useState<{ assignmentId: string | null; day: string; seq: number } | null>(null);
   // A phone opens on one day — a list, one line per person — rather than a grid it must scroll.
@@ -183,7 +186,7 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
     queryFn: () => fetchUnitMonth(unitId!, ym),
     enabled: unitId !== undefined && /^\d{4}-\d{2}$/.test(ym),
   });
-  useEffect(() => { setStartIdx(null); setSorted([]); setMoved(false); setRefusal(null); }, [unitId, ym]);
+  useEffect(() => { setStartIdx(null); setSorted([]); setMoved(false); setRefusal(null); setCovering(null); }, [unitId, ym]);
 
   const settle = (next: WireUnitMonth): void => { qc.setQueryData(key, next); setPicked(null); setMoved(false); setRefusal(null); };
   const onFail = (e: unknown): void => {
@@ -216,7 +219,22 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
     mutationFn: () => publishUnitMonth(m.data!.period!.periodId, m.data!.period!.contentHash),
     onSuccess: settle, onError: onFail,
   });
-  const busy = [draft, slot, accept, publish].some((x) => x.isPending);
+  // 20-U U6 — "Asked of you": the unit's requests this reader may answer or approve.
+  const covers = useQuery({
+    queryKey: ["roster", "covers", unitId ?? ""],
+    queryFn: () => fetchCoverRequests(unitId!),
+    enabled: unitId !== undefined,
+  });
+  const decide = useMutation({
+    mutationFn: (v: { id: string; approve: boolean }) => decideCover(v.id, v.approve),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["roster", "covers"] });
+      void qc.invalidateQueries({ queryKey: key });
+      setRefusal(null);
+    },
+    onError: onFail,
+  });
+  const busy = [draft, slot, accept, publish, decide].some((x) => x.isPending);
 
   const d = m.data;
   const unitShort = d === undefined ? "" : shortUnit(d.unit.name, d.unit.departmentName);
@@ -244,6 +262,22 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
       .filter((x) => x !== null).join(" · "),
   };
 
+  /**
+   * Who may tap a duty: on a DRAFT, an editor (the slot editor); on a PUBLISHED month, the person
+   * whose duty it is or whoever may ask on their behalf (`youMay.cover`) — and the tap opens "who
+   * can take it", because a published duty changes hands only by a cover or a swap (20-U U6).
+   */
+  const pickFor = (x: WireUnitMonth): ((a: WireMonthAssignment) => void) | undefined => {
+    if (x.period?.status === "published") {
+      return (a: WireMonthAssignment) => {
+        if (a.userId === null || !(x.youMay.cover === true || a.userId === actor?.id)) return;
+        setPicked(null);
+        setCovering(a);
+      };
+    }
+    return x.youMay.edit ? setPicked : undefined;
+  };
+
   const title = d === undefined ? t("rosterMonth.title") : d.period === null
     ? t("rosterMonth.titleEmpty", { month: mName, unit: unitShort })
     : d.period.status === "published"
@@ -259,6 +293,7 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
       rail={d === undefined ? undefined : (
         <Rail
           d={d} busy={busy} sorted={sorted} mName={mName} unitShort={unitShort}
+          covers={covers.data ?? []} onDecide={(id, approve) => decide.mutate({ id, approve })}
           onVacate={(f, a) => slot.mutate({
             assignmentId: a.assignmentId, userId: null,
             sorted: { key: `${f.ruleKey}|${a.assignmentId}`, text: sentence(f, t, lang), when: f.istDate, assignmentId: a.assignmentId, prevUserId: a.userId, prevName: a.name },
@@ -285,7 +320,7 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
       <div className="rm-title">
         <div className="rm-title-text">
           <h1 className="ddf-h1">{title}</h1>
-          <div className="ddf-dim">{t("rosterMonth.intro")}</div>
+          <div className="ddf-dim" data-testid="month-intro">{t(d?.period?.status === "published" ? (d.youMay.cover === true ? "rosterMonth.introPublished" : "rosterMonth.introPublishedRead") : "rosterMonth.intro")}</div>
         </div>
         {d !== undefined && d.period !== null && (
           <div className="ddf-seg rm-zoom" role="group" aria-label={t("rosterMonth.zoom")}>
@@ -345,8 +380,18 @@ export function RosterMonth({ team, month }: Props): React.ReactElement {
           {/* The list names every duty in words; the colour key is for the grid. */}
           {zoom !== "day" && <Legend />}
           {zoom === "day"
-            ? <DayList d={d} day={shown[0]!} picked={picked} focus={focus} onPick={d.youMay.edit ? setPicked : undefined} />
-            : <Grid d={d} days={shown} today={today} picked={picked} focus={focus} onPick={d.youMay.edit ? setPicked : undefined} />}
+            ? <DayList d={d} day={shown[0]!} picked={picked ?? covering} focus={focus} onPick={pickFor(d)} />
+            : <Grid d={d} days={shown} today={today} picked={picked ?? covering} focus={focus} onPick={pickFor(d)} />}
+          {covering !== null && d.period.status === "published" && (
+            <section className="ddf-card-strong rm-cover" data-testid="month-cover">
+              <p className="rm-cover-note">{t("rosterMonth.coverNote")}</p>
+              <CoverPicker
+                key={covering.assignmentId} duty={asDutyRef(covering, d)} embedded
+                onBack={() => setCovering(null)}
+                onAsked={() => { setCovering(null); void qc.invalidateQueries({ queryKey: ["roster", "covers"] }); }}
+              />
+            </section>
+          )}
           {picked !== null && d.youMay.edit && (
             <SlotEditor key={picked.assignmentId} d={d} a={picked} busy={busy} onSave={(userId) => slot.mutate({ assignmentId: picked.assignmentId, userId })} onClose={() => setPicked(null)} />
           )}
@@ -569,8 +614,9 @@ function Fairness({ d, mName }: { d: WireUnitMonth; mName: string }): React.Reac
   );
 }
 
-function Rail({ d, busy, sorted, mName, unitShort, onVacate, onUndo, onPick, onAccept, onPublish, onShow }: {
+function Rail({ d, busy, sorted, mName, unitShort, covers, onDecide, onVacate, onUndo, onPick, onAccept, onPublish, onShow }: {
   d: WireUnitMonth; busy: boolean; sorted: Sorted[]; mName: string; unitShort: string;
+  covers: WireCoverRequest[]; onDecide: (requestId: string, approve: boolean) => void;
   onVacate: (f: WireMonthFinding, a: WireMonthAssignment) => void; onUndo: (s: Sorted) => void;
   onPick: (a: WireMonthAssignment) => void; onAccept: (f: WireMonthFinding, reason: string) => void; onPublish: () => void;
   onShow: (f: WireMonthFinding) => void;
@@ -627,6 +673,7 @@ function Rail({ d, busy, sorted, mName, unitShort, onVacate, onUndo, onPick, onA
           )}
         </section>
       )}
+      {(published || covers.length > 0) && <AskedOfYou covers={covers} busy={busy} onDecide={onDecide} />}
       {care.length > 0 && (
         <section className="ddf-card rm-care" data-testid="taken-care-of">
           <h2>{t("rosterMonth.takenCareOf")}</h2>
@@ -727,4 +774,77 @@ export function answerFromMonth(question: string, d: WireUnitMonth, t: T, lang: 
     day: dayName(day, lang), night: on(true), dayDuty: on(false),
     away: away.length === 0 ? "—" : away.join(", "), free: free.length === 0 ? "—" : free.join(", "),
   });
+}
+
+/** A month's slot as the cover page names a duty. */
+function asDutyRef(a: WireMonthAssignment, d: WireUnitMonth): WireDutyRef {
+  return {
+    assignmentId: a.assignmentId, userId: a.userId, positionKey: a.positionKey, positionLabel: a.positionKey,
+    startsAt: a.startsAt, endsAt: a.endsAt, istDate: a.istDate, night: a.night, mode: a.mode, kind: a.kind,
+    departmentId: d.unit.departmentId, teamId: d.unit.teamId, teamName: d.unit.name,
+  };
+}
+
+/**
+ * "ASKED OF YOU" — the board's rail card (Main.dc.html): each cover or swap waiting on THIS reader,
+ * as a sentence naming both people and both days, what the validator says about it now, and
+ * Approve / Not this time. A request waiting on the person asked shows that and no buttons.
+ */
+function AskedOfYou({ covers, busy, onDecide }: { covers: WireCoverRequest[]; busy: boolean; onDecide: (id: string, approve: boolean) => void }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language;
+  const open = covers.filter((c) => c.status === "asked" || c.status === "accepted");
+  const decided = covers.filter((c) => (c.status === "approved" || c.status === "refused") && c.decidedBy !== null);
+  const waiting = open.filter((c) => c.youMay.approve || c.youMay.answer);
+  return (
+    <section className="ddf-card rm-asked" data-testid="asked-of-you">
+      <div className="rm-asked-head">
+        <h2>{t("rosterMonth.askedOfYou")}</h2>
+        <span className="mo rm-asked-count" data-testid="asked-count">{waiting.length}</span>
+      </div>
+      {open.length === 0 && decided.length === 0 && <span className="rm-asked-none">{t("rosterMonth.asked.none")}</span>}
+      {open.map((c) => (
+        <div key={c.requestId} className="rm-asked-item" data-testid={`asked-${c.requestId}`}>
+          <div className="rm-asked-text">
+            {bolded(
+              [
+                c.give === null
+                  ? t("rosterMonth.asked.cover", { a: c.owner.name, b: c.counterpart.name, day: dutyName(c.duty, t, lang) })
+                  : t("rosterMonth.asked.swap", { a: c.owner.name, b: c.counterpart.name, aDay: dutyName(c.duty, t, lang), bDay: dutyName(c.give, t, lang) }),
+                c.status === "accepted" ? t("rosterMonth.asked.saidYes", { b: c.counterpart.name }) : t("rosterMonth.asked.waitingYes", { b: c.counterpart.name }),
+                c.crossUnit ? t("rosterMonth.asked.crossUnit") : "",
+              ].filter((x) => x !== "").join(" "),
+              [c.owner.name, c.counterpart.name, dutyName(c.duty, t, lang), ...(c.give === null ? [] : [dutyName(c.give, t, lang)])],
+            )}
+          </div>
+          {c.check === null
+            ? <div className="rm-asked-ok">{t(c.give === null ? "rosterMonth.asked.checkedCover" : "rosterMonth.asked.checkedSwap")}</div>
+            : <div className={c.check.severity === "warn" ? "rm-asked-warn" : "rm-asked-bad"}>{t("rosterMonth.asked.checkedNot", { why: reasonText(c.check, t) })}</div>}
+          {c.youMay.approve && (
+            <div className="rm-asked-acts">
+              <button type="button" className="rm-asked-yes" disabled={busy} onClick={() => onDecide(c.requestId, true)} data-testid="approve-cover">{t("rosterMonth.asked.approve")}</button>
+              <button type="button" className="rm-asked-no" disabled={busy} onClick={() => onDecide(c.requestId, false)} data-testid="refuse-cover">{t("rosterMonth.asked.notThisTime")}</button>
+            </div>
+          )}
+        </div>
+      ))}
+      {decided.map((c) => (
+        <div key={c.requestId} className={c.status === "approved" ? "rm-asked-done" : "rm-asked-refused"} data-testid={`decided-${c.requestId}`}>
+          {c.status === "approved"
+            ? t("rosterMonth.asked.approved", { a: c.owner.name, b: c.counterpart.name })
+            : c.refusedRule !== null
+              ? t("rosterMonth.asked.refusedRule", { why: reasonText({ ruleKey: c.refusedRule, severity: "block", params: {} }, t) })
+              : t("rosterMonth.asked.refused", { a: c.owner.name, b: c.counterpart.name })}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** The board's sentence with each name and day in bold: `values` are found in `text` and wrapped. */
+function bolded(text: string, values: string[]): React.ReactNode[] {
+  const want = [...new Set(values.filter((v) => v !== ""))].sort((a, b) => b.length - a.length);
+  if (want.length === 0) return [text];
+  const re = new RegExp(`(${want.map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g");
+  return text.split(re).map((part, i) => (want.includes(part) ? <b key={i}>{part}</b> : part));
 }

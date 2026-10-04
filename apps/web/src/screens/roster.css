@@ -250,3 +250,136 @@ button.rm-dl-row:hover { background: #f6faf7; }
   .rm-who { width: 124px; padding: 5px 8px; }
   .rm-r-head .rm-who { padding: 8px; }
 }
+
+/* ════════ MY DUTIES (20-U U5c) — `docs/design/2026-09-20-roster/MyDuties.dc.html`, a resident's phone ════════
+ * Every value is the board's inline style. The board is one 390px column; inside the frame the
+ * column keeps the board's sizes and, when the centre is wide, the requests and the two links sit
+ * beside the week rather than under it. */
+.md-home { display: flex; flex-direction: column; gap: 14px; }
+.md-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.md-col-side { flex-grow: 1; }
+.md-spacer { flex-grow: 1; }
+@container ddmain (min-width: 900px) {
+  .md-home { display: grid; grid-template-columns: minmax(0, 560px) minmax(280px, 340px); gap: 20px; align-items: start; }
+  .md-col-side { position: sticky; top: 68px; }
+  .md-col-side .md-spacer { display: none; }
+}
+.md-hello { display: flex; flex-direction: column; gap: 2px; }
+.md-h1 { margin: 0; font-size: 20px; line-height: 26px; font-weight: 700; }
+.md-sub { font-size: 13px; color: var(--dd-dim); }
+.md-intro { font-size: 13.5px; color: var(--dd-dim); }
+.md-cap { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--dd-dim); text-transform: uppercase; line-height: 16px; }
+.md-cap-acc { color: var(--dd-acc); }
+
+.md-today { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 10px; background: #132420; color: #ffffff; }
+.md-today-cap { font-size: 11px; font-weight: 600; letter-spacing: .1em; color: #9fc0b1; }
+.md-today-what { font-size: 22px; line-height: 28px; font-weight: 700; }
+.md-today-text { font-size: 14px; line-height: 20px; color: #d9efe4; }
+.md-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
+.md-chip { padding: 3px 9px; border-radius: 4px; background: rgba(255, 255, 255, .12); font-size: 12px; line-height: 18px; }
+
+.md-asked, .md-asked-ok, .md-asked-bad { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; background: #fffaf1; border: 1px solid #f0d9ae; }
+.md-asked-ok { background: #f6faf7; border-color: #cfe9dd; }
+.md-asked-bad { background: #fdf3f2; border-color: #f0c7c2; }
+.md-asked-title { font-size: 13.5px; line-height: 19px; font-weight: 700; color: var(--dd-amber); }
+.md-asked-ok .md-asked-title { color: var(--dd-acc); }
+.md-asked-bad .md-asked-title { color: var(--dd-red); }
+.md-asked-body { font-size: 13px; line-height: 18px; }
+.md-asked-body:empty { display: none; }
+.ddf .md-withdraw { align-self: flex-start; min-height: 32px; padding: 0; border: none; background: transparent; color: var(--dd-acc); font-size: 12.5px; font-weight: 600; }
+
+.md-week, .md-list { display: flex; flex-direction: column; gap: 8px; }
+.md-day { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: #ffffff; border: 1px solid var(--dd-line); }
+.md-day-date { width: 44px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
+.md-dow { font-size: 10.5px; letter-spacing: .06em; color: var(--dd-dim); line-height: 15px; }
+.md-date { font-size: 17px; font-weight: 700; line-height: 22px; }
+.md-day-body { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
+.md-what { font-size: 14.5px; font-weight: 600; line-height: 20px; }
+.md-detail { font-size: 12.5px; color: var(--dd-dim); line-height: 18px; }
+.ddf .md-cant {
+  min-height: 44px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dd-line); background: #ffffff;
+  color: var(--dd-ink); font-size: 12.5px; line-height: 15px; display: inline-flex; flex-direction: column; justify-content: center; flex-shrink: 0;
+}
+.ddf .md-cant:hover { border-color: var(--dd-acc); }
+
+.md-ofme { display: flex; flex-direction: column; gap: 8px; }
+.md-ofme-card { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; border-radius: 10px; background: #ffffff; border: 1px solid var(--dd-ink); }
+.md-ofme-text { font-size: 13.5px; line-height: 19px; }
+.md-check-ok { font-size: 12px; color: var(--dd-acc); font-weight: 600; }
+.md-check-warn { font-size: 12px; color: var(--dd-amber); font-weight: 600; }
+.md-check-bad { font-size: 12px; color: var(--dd-red); font-weight: 600; }
+.md-ofme-acts { display: flex; gap: 6px; }
+.ddf .md-btn-pri, .ddf .md-btn { flex-grow: 1; flex-basis: 0; min-height: 44px; border-radius: 8px; font-size: 13px; }
+.ddf .md-btn-pri { border: none; background: var(--dd-acc); color: #ffffff; font-weight: 600; }
+.ddf .md-btn { border: 1px solid var(--dd-line); background: #ffffff; color: var(--dd-ink); }
+.md-btn-pri:disabled, .md-btn:disabled, .md-ask:disabled, .md-swap:disabled, .md-cant:disabled { opacity: .55; cursor: not-allowed; }
+
+.md-links { display: flex; gap: 8px; }
+.md-link {
+  flex-grow: 1; flex-basis: 0; min-height: 48px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: #ffffff; border: 1px solid var(--dd-line); color: var(--dd-ink) !important; font-size: 13.5px; font-weight: 600;
+}
+.md-link-pri { background: var(--dd-acc); border-color: var(--dd-acc); color: #ffffff !important; }
+
+.md-pick { display: flex; flex-direction: column; gap: 14px; max-width: 560px; min-height: calc(100vh - 100px); }
+.ddf .md-back { align-self: flex-start; min-height: 44px; padding: 0 4px; border: none; background: transparent; color: var(--dd-acc); font-size: 14px; font-weight: 600; }
+.md-can { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 10px; background: #ffffff; border: 1px solid #9fc0b1; }
+.md-can-body { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; }
+.md-can-name { font-size: 14.5px; font-weight: 600; line-height: 20px; }
+.md-can-line { font-size: 12.5px; color: var(--dd-dim); line-height: 18px; }
+.md-can-hod { font-size: 12.5px; color: var(--dd-amber); line-height: 18px; }
+.md-can-swap { font-size: 12.5px; line-height: 18px; color: var(--dd-ink); margin-top: 2px; }
+.ddf .md-swap { min-height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--dd-line); background: #ffffff; color: var(--dd-acc); font-size: 12px; font-weight: 600; }
+.ddf .md-ask { min-height: 44px; padding: 0 16px; border-radius: 8px; border: none; background: var(--dd-acc); color: #ffffff; font-size: 13.5px; font-weight: 600; flex-shrink: 0; }
+.md-cannot { display: flex; flex-direction: column; padding: 10px 12px; border-radius: 10px; background: #eef3ef; }
+.md-cannot-name { font-size: 14px; font-weight: 600; color: #4d5f57; line-height: 20px; }
+.md-cannot-why { font-size: 12.5px; color: #4d5f57; line-height: 18px; }
+.md-nobody, .md-note { margin: 0; padding: 10px 12px; border-radius: 10px; background: #fffaf1; border: 1px solid #f0d9ae; font-size: 13px; line-height: 18px; }
+.md-foot { font-size: 12.5px; line-height: 18px; color: var(--dd-dim); }
+.md-pick-embedded { min-height: 0; max-width: none; }
+.md-pick-embedded .md-spacer { display: none; }
+
+/* ════════ THE UNIT'S MONTH — "Asked of you" (20-U U6), Main.dc.html's rail card ════════ */
+.rm-asked { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.rm-asked-head { display: flex; align-items: baseline; gap: 8px; }
+.rm-asked-head h2 { margin: 0; flex-grow: 1; font-size: 14px; line-height: 19px; font-weight: 700; }
+.rm-asked-count { font-size: 12px; color: var(--dd-dim); }
+.rm-asked-none { font-size: 12.5px; line-height: 17px; color: var(--dd-dim); }
+.rm-asked-item { display: flex; flex-direction: column; gap: 7px; }
+.rm-asked-item + .rm-asked-item { padding-top: 8px; border-top: 1px solid var(--dd-line2); }
+.rm-asked-text { font-size: 13px; line-height: 18px; }
+.rm-asked-text b { font-weight: 600; }
+.rm-asked-ok { font-size: 12px; color: var(--dd-acc); font-weight: 600; }
+.rm-asked-warn { font-size: 12px; color: var(--dd-amber); font-weight: 600; }
+.rm-asked-bad { font-size: 12px; color: var(--dd-red); font-weight: 600; }
+.rm-asked-acts { display: flex; gap: 6px; }
+.ddf .rm-asked-yes, .ddf .rm-asked-no { flex-grow: 1; min-height: 36px; border-radius: 6px; font-size: 12.5px; }
+.ddf .rm-asked-yes { border: none; background: var(--dd-acc); color: #ffffff; font-weight: 600; }
+.ddf .rm-asked-no { border: 1px solid var(--dd-line); background: #ffffff; color: var(--dd-ink); }
+.rm-asked-yes:disabled, .rm-asked-no:disabled { opacity: .55; cursor: not-allowed; }
+.rm-asked-done { font-size: 12.5px; line-height: 17px; color: var(--dd-acc); font-weight: 600; }
+.rm-asked-refused { font-size: 12.5px; line-height: 17px; color: var(--dd-red); font-weight: 600; }
+.rm-cover { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.rm-cover-note { margin: 0; font-size: 12.5px; line-height: 18px; color: var(--dd-dim); }
+
+/* ════════ WHO IS ON NOW — "This is wrong" (20-U U6, register I22) ════════ */
+.ro-wrong-bar { display: flex; flex-direction: column; gap: 6px; }
+.ddf .ro-wrong {
+  align-self: stretch; min-height: 36px; border-radius: 6px; border: 1px solid var(--dd-line); background: #ffffff;
+  color: var(--dd-ink); font-size: 12.5px; font-weight: 600;
+}
+.ddf .ro-wrong:hover { border-color: var(--dd-red); color: var(--dd-red); }
+.ro-wrong-done { font-size: 11.5px; line-height: 16px; color: var(--dd-acc); font-weight: 600; }
+.ro-wrong-form {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  border-radius: 6px; background: #ffffff; border: 1px solid var(--dd-ink);
+}
+.ro-wrong-h { font-size: 13px; font-weight: 700; color: var(--dd-amber); }
+.ro-wrong-label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--dd-dim); min-width: 0; }
+.ro-wrong-label select, .ro-wrong-label input {
+  width: 100%; height: 34px; border: 1px solid var(--dd-line); border-radius: 6px; background: #ffffff; color: var(--dd-ink); padding: 0 8px; font-size: 13px; max-width: 100%;
+}
+.ro-wrong-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ro-hole-own { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--dd-amber); }
+.ddf .ro-dealt { margin-left: auto; min-height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--dd-line); background: #ffffff; color: var(--dd-acc); font-size: 12px; font-weight: 600; }
+@media print { .ro-wrong, .ro-wrong-form { display: none !important; } }

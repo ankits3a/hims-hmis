@@ -1219,6 +1219,13 @@
       "when": 1790966283457,
       "tag": "0173_sale_item_standing_discount",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1791117157701,
+      "tag": "0174_roster_cover_requests",
+      "breakpoints": true
     }
   ]
 }

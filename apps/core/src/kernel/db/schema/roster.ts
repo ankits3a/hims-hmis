@@ -1351,3 +1351,101 @@ export const rosterModeDeclarations = pgTable(
     ),
   ],
 );
+
+/**
+ * 20-U U6 — **"I CAN'T DO THIS": A COVER OR A SWAP, ASKED, ANSWERED, APPROVED.**
+ *
+ * A published duty changes hands only by an AMENDMENT (`periods.ts` `amend`), approved by a named
+ * person. This table is everything BEFORE that amendment: who asked, whom, for which duty, whether
+ * the person asked said yes, and who decided. **The duty stays the owner's until the row reads
+ * `approved`** — nothing here is read by the resolver, the board or the ladder.
+ *
+ *   · `cover` — the counterpart takes the owner's duty; `swap` — they also give one of theirs
+ *     (`counterpart_assignment_id`), which the owner takes.
+ *   · `owner_id` is whose duty it is; `requested_by` is who asked — the same person for a resident
+ *     asking for their own duty, the unit's SR when they ask on somebody's behalf.
+ *   · `cross_unit` — the two people belong to different units, so the approver must answer for the
+ *     department (the HOD), not one unit (`swaps.ts`).
+ *   · `refused_rule` — a refusal by the VALIDATOR names the rule; a refusal by a person names none.
+ *
+ * ONE OPEN REQUEST PER DUTY: two people each saying yes to the same night is two people turning up,
+ * or nobody. The partial unique index is the guard; the domain refuses first, in a sentence.
+ */
+export const ROSTER_COVER_KINDS = ["cover", "swap"] as const;
+export type RosterCoverKind = (typeof ROSTER_COVER_KINDS)[number];
+export const ROSTER_COVER_STATUSES = ["asked", "accepted", "declined", "approved", "refused", "withdrawn"] as const;
+export type RosterCoverStatus = (typeof ROSTER_COVER_STATUSES)[number];
+
+export const rosterCoverRequests = pgTable(
+  "roster_cover_requests",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("asked"),
+    assignmentId: text("assignment_id").notNull().references(() => rosterAssignments.id),
+    periodId: text("period_id").notNull().references(() => rosterPeriods.id),
+    ownerId: text("owner_id").notNull().references(() => users.id),
+    requestedBy: text("requested_by").notNull().references(() => users.id),
+    counterpartId: text("counterpart_id").notNull().references(() => users.id),
+    counterpartAssignmentId: text("counterpart_assignment_id").references(() => rosterAssignments.id),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    teamId: text("team_id").references(() => rosterTeams.id),
+    counterpartTeamId: text("counterpart_team_id").references(() => rosterTeams.id),
+    crossUnit: boolean("cross_unit").notNull().default(false),
+    /** Optional, short, shown to the counterpart and the approver. Never in an event (V9). */
+    note: text("note"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    decidedBy: text("decided_by").references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    refusedRule: text("refused_rule"),
+    decisionNote: text("decision_note"),
+    /** The amendments an approval applied — one per period touched. */
+    amendmentIds: jsonb("amendment_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_cover_requests_open_uq").on(t.assignmentId).where(sql`${t.status} in ('asked', 'accepted')`),
+    index("roster_cover_requests_counterpart_idx").on(t.counterpartId, t.status),
+    index("roster_cover_requests_dept_idx").on(t.departmentId, t.status),
+    check("roster_cover_requests_kind_ck", sql`${t.kind} in ('cover', 'swap')`),
+    check("roster_cover_requests_status_ck", sql`${t.status} in ('asked', 'accepted', 'declined', 'approved', 'refused', 'withdrawn')`),
+    /** A swap names the duty given back; a cover names none. */
+    check("roster_cover_requests_swap_ck", sql`(${t.kind} = 'swap') = (${t.counterpartAssignmentId} is not null)`),
+    check("roster_cover_requests_distinct_ck", sql`${t.counterpartId} <> ${t.ownerId}`),
+    check("roster_cover_requests_note_ck", sql`${t.note} is null or length(${t.note}) <= 280`),
+    /** A decision is two facts or none. */
+    check("roster_cover_requests_decided_ck", sql`(${t.decidedAt} is null) = (${t.decidedBy} is null)`),
+  ],
+);
+
+/**
+ * 20-U U6 (register I22) — **"THIS IS WRONG."** Any reader of the who-is-on board may say that a
+ * name on duty is wrong (leave approved on paper, a swap nobody entered), in one line. The flag is
+ * shown on the board's holes card until somebody who can fix the roster marks it dealt with. It
+ * changes no duty: the fix is an amendment, made by a person.
+ */
+export const rosterFlags = pgTable(
+  "roster_flags",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    /** The person whose name is wrong, when the reader picked one. */
+    userId: text("user_id").references(() => users.id),
+    /** The instant the board was showing when the reader flagged it. */
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    note: text("note").notNull(),
+    raisedBy: text("raised_by").notNull().references(() => users.id),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedBy: text("resolved_by").references(() => users.id),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    index("roster_flags_open_idx").on(t.raisedAt).where(sql`${t.resolvedAt} is null`),
+    check("roster_flags_note_ck", sql`length(btrim(${t.note})) between 1 and 200`),
+    check("roster_flags_resolved_ck", sql`(${t.resolvedAt} is null) = (${t.resolvedBy} is null)`),
+  ],
+);

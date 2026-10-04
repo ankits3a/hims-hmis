@@ -92,6 +92,18 @@ export const ROSTER_ERROR_CODES = [
   "finding_already_accepted",
   "unknown_mode_declaration",
   "mode_already_withdrawn",
+
+  /* ── 20-U U6 — covers and swaps; "this is wrong" ── */
+  "unknown_cover_request",
+  /** The validator re-ran over both people's adjoining days and a must-fix rule broke. */
+  "cover_breaks_rule",
+  "cover_already_asked",
+  "cover_not_open",
+  "cover_not_accepted",
+  "cover_not_counterpart",
+  "cover_self_approval",
+  "unknown_flag",
+  "flag_already_resolved",
 ] as const;
 
 export type RosterErrorCode = (typeof ROSTER_ERROR_CODES)[number];
@@ -154,6 +166,16 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   finding_already_accepted: "somebody has already accepted this finding, and their reason stands",
   unknown_mode_declaration: "there is no such declaration on that day",
   mode_already_withdrawn: "somebody has already stood this down, and the time they did it stands",
+
+  unknown_cover_request: "there is no such request to cover or swap a duty",
+  cover_breaks_rule: "that change would break a rule the roster will not go live with — the finding names whose rest, nights or hours it breaks",
+  cover_already_asked: "somebody has already been asked to take this duty; wait for their answer, or withdraw the request first",
+  cover_not_open: "this request has already been answered or decided, and that answer stands",
+  cover_not_accepted: "the person asked has not said yes yet, and nothing is approved before they do",
+  cover_not_counterpart: "only the person who was asked can say yes or no to this request",
+  cover_self_approval: "the people giving and taking a duty are not the people who approve it; ask whoever answers for the unit",
+  unknown_flag: "there is no such flag on the who-is-on board",
+  flag_already_resolved: "somebody has already dealt with this flag, and the time they did it stands",
 };
 
 export class RosterError extends Error {
@@ -220,6 +242,16 @@ const STATUS: Record<RosterErrorCode, number> = {
   unknown_absence_kind: 422,
   absence_already_decided: 409,
   absence_self_approval: 409,
+  unknown_cover_request: 404,
+  /** 422, as `blocked_by_findings`: well-formed, and the hospital will not stand behind it. */
+  cover_breaks_rule: 422,
+  cover_already_asked: 409,
+  cover_not_open: 409,
+  cover_not_accepted: 409,
+  cover_not_counterpart: 403,
+  cover_self_approval: 409,
+  unknown_flag: 404,
+  flag_already_resolved: 409,
 };
 
 export function rosterHttpStatus(code: RosterErrorCode): number {

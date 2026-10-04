@@ -139,6 +139,18 @@ describe("roster — 0108 structure", () => {
       "mode", "reason", "site_id", "updated_at", "updated_by", "withdraw_reason", "withdrawn_at",
       "withdrawn_by",
     ],
+    // 20-U U6 — a cover or a swap, asked and answered BEFORE the amendment that applies it.
+    roster_cover_requests: [
+      "amendment_ids", "answered_at", "assignment_id", "counterpart_assignment_id", "counterpart_id",
+      "counterpart_team_id", "created_at", "created_by", "cross_unit", "decided_at", "decided_by",
+      "decision_note", "department_id", "id", "kind", "note", "owner_id", "period_id", "refused_rule",
+      "requested_at", "requested_by", "site_id", "status", "team_id", "updated_at", "updated_by",
+    ],
+    // 20-U U6 (I22) — "this is wrong", flagged from the who-is-on board.
+    roster_flags: [
+      "at", "created_at", "created_by", "department_id", "id", "note", "raised_at", "raised_by",
+      "resolved_at", "resolved_by", "site_id", "updated_at", "updated_by", "user_id",
+    ],
   };
   // PHASE R (R4) — `staff_*`, not `roster_*`: these are facts about a MEMBER OF STAFF, true whether
   // or not anybody ever rosters them, and the prefix is what says so.

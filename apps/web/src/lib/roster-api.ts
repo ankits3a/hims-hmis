@@ -32,6 +32,8 @@ export type WireRosterSelf = {
 export type WireOnNowBoard = {
   at: string; resolverEnabled: boolean; you: WireRosterSelf;
   departments: WireBoardDepartment[]; services: WireBoardService[]; holes: WireBoardHole[];
+  /** 20-U U6 (I22) — open "this is wrong" flags. Optional: a board read before U6 carries none. */
+  flags?: WireRosterFlag[];
 };
 
 /** `at` omitted is the server's now. */
@@ -79,6 +81,7 @@ export type WireMonthFinding = {
   blocking: boolean; accepted: null | { byName: string; at: string; reason: string };
 };
 export type WireUnitMonth = {
+  /* 20-U U6 — `youMay.cover`: the month is published and the reader may ask a cover for anybody's duty (`propose`). */
   unit: { teamId: string; code: string; name: string; confirmed: boolean; departmentId: string; departmentName: string };
   month: string; startsAt: string; endsAt: string; days: string[];
   period: null | {
@@ -96,7 +99,7 @@ export type WireUnitMonth = {
   /** Approved absences, IST days inclusive; the kind, never the reason (D6). */
   leave: { userId: string; kind: string; from: string; to: string }[];
   you: WireRosterSelf;
-  youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean };
+  youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean; cover?: boolean };
 };
 
 export const fetchRosterUnits = () => api<WireRosterUnitsDepartment[]>("GET", "/roster/units");
@@ -113,3 +116,68 @@ export const acceptRosterFinding = (
 /** V4: publish what was read — the hash the month came with. */
 export const publishUnitMonth = (periodId: string, expectedContentHash: string) =>
   api<WireUnitMonth>("POST", `/roster/periods/${encodeURIComponent(periodId)}/publish`, { expectedContentHash });
+
+/* ═══ 20-U U5c / U6 — my duties, covers and swaps, "this is wrong": `roster-board.controller.ts`'s
+ * `/roster/my-duties`, `/roster/duties/:id/cover-options`, `/roster/covers…`, `/roster/flags…`,
+ * transcribed from `apps/core/src/modules/roster/{swaps,my-duties}.ts`. ═══ */
+export type WireDutyRef = {
+  assignmentId: string; userId: string | null; positionKey: string; positionLabel: string;
+  startsAt: string; endsAt: string; istDate: string; night: boolean; mode: string | null; kind: string;
+  departmentId: string; teamId: string | null; teamName: string | null;
+};
+export type WireMyDuty = WireDutyRef & { activities: string[]; upcoming: boolean };
+/** `unavailable` is approved leave, said as nothing more (D6); otherwise a validator rule key. */
+export type WireCoverReason = { ruleKey: string; severity: "block" | "warn" | "unavailable"; params: Record<string, unknown> };
+export type WireCoverStatus = "asked" | "accepted" | "declined" | "approved" | "refused" | "withdrawn";
+export type WireCoverRequest = {
+  requestId: string; kind: "cover" | "swap"; status: WireCoverStatus; crossUnit: boolean;
+  owner: { userId: string; name: string }; counterpart: { userId: string; name: string }; requestedBy: { userId: string; name: string };
+  duty: WireDutyRef; give: WireDutyRef | null;
+  note: string | null; requestedAt: string; answeredAt: string | null;
+  decidedBy: { userId: string; name: string } | null; decidedAt: string | null; refusedRule: string | null;
+  check: WireCoverReason | null;
+  youMay: { answer: boolean; approve: boolean; withdraw: boolean };
+};
+export type WireMyDuties = {
+  at: string; days: string[]; you: WireRosterSelf; duties: WireMyDuty[];
+  onTake: null | { teamId: string; name: string; endsAt: string };
+  /** D6: the reader's unit SR on duty NOW, with a number when one is on file. */
+  mySr: null | { userId: string; name: string; phone: string | null };
+  requests: WireCoverRequest[];
+};
+export type WireCoverCandidate = {
+  userId: string; name: string; grade: string; teamId: string; teamName: string; crossUnit: boolean;
+  nextDay: { istDate: string; duty: null | { night: boolean; positionKey: string } };
+  swaps: WireDutyRef[];
+};
+export type WireCoverRefusal = {
+  userId: string; name: string; grade: string; teamId: string; teamName: string;
+  reason: WireCoverReason; near: null | { istDate: string; night: boolean };
+};
+export type WireCoverOptions = {
+  duty: WireDutyRef; ownerName: string; canTake: WireCoverCandidate[]; cannot: WireCoverRefusal[]; openRequestId: string | null;
+};
+export type WireRosterFlag = {
+  flagId: string; departmentId: string | null; user: null | { userId: string; name: string };
+  at: string; note: string; raisedBy: { userId: string; name: string }; raisedAt: string; youMayResolve: boolean;
+};
+
+export const fetchMyDuties = (at?: string) =>
+  api<WireMyDuties>("GET", `/roster/my-duties${at === undefined ? "" : `?at=${encodeURIComponent(at)}`}`);
+export const fetchCoverOptions = (assignmentId: string) =>
+  api<WireCoverOptions>("GET", `/roster/duties/${encodeURIComponent(assignmentId)}/cover-options`);
+export const fetchCoverRequests = (teamId?: string) =>
+  api<WireCoverRequest[]>("GET", `/roster/covers${teamId === undefined ? "" : `?teamId=${encodeURIComponent(teamId)}`}`);
+/** A cover; with `counterpartAssignmentId`, a swap (the duty they give back). */
+export const askCover = (b: { assignmentId: string; counterpartId: string; counterpartAssignmentId?: string; note?: string }) =>
+  api<{ requestId: string }>("POST", "/roster/covers", b);
+export const answerCover = (requestId: string, accept: boolean) =>
+  api<{ ok: true }>("POST", `/roster/covers/${encodeURIComponent(requestId)}/answer`, { accept });
+export const decideCover = (requestId: string, approve: boolean) =>
+  api<{ status: "approved" | "refused"; ruleKey: string | null }>("POST", `/roster/covers/${encodeURIComponent(requestId)}/decide`, { approve });
+export const withdrawCover = (requestId: string) =>
+  api<{ ok: true }>("POST", `/roster/covers/${encodeURIComponent(requestId)}/withdraw`);
+export const raiseRosterFlag = (b: { departmentId: string | null; userId: string | null; at: string; note: string }) =>
+  api<{ flagId: string }>("POST", "/roster/flags", b);
+export const resolveRosterFlag = (flagId: string) =>
+  api<{ ok: true }>("POST", `/roster/flags/${encodeURIComponent(flagId)}/resolve`);

@@ -45,12 +45,18 @@ const BOARD: WireOnNowBoard = {
 
 describe("RosterOnNow (20-U U5a)", () => {
   const asked: string[] = [];
+  const posts: { url: string; body: unknown }[] = [];
   beforeEach(() => {
     setToken("t");
     asked.length = 0;
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    posts.length = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       asked.push(raw);
+      if (init?.method === "POST") {
+        posts.push({ url: raw, body: init.body === undefined ? null : JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify({ flagId: "f1", ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
       const body = raw.endsWith("/auth/me")
         ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } }
         : raw.endsWith("/ops/mode") ? { mode: "normal", since: null, note: null, reportId: null }
@@ -108,7 +114,9 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(within(menu).getByTestId("desk-menu-onNow")).toHaveAttribute("aria-current", "page");
     // My OPD needs opd.consult, which this person does not hold; nothing else is listed.
     expect(within(menu).queryByTestId("desk-menu-myOpd")).toBeNull();
-    expect(within(menu).getAllByRole("link")).toHaveLength(2);
+    // 20-U U5c — My Duties joins DOCTOR DESK (the board's menu), behind the same roster read.
+    expect(within(menu).getByTestId("desk-menu-myDuties")).toHaveAttribute("href", "/roster/my-duties");
+    expect(within(menu).getAllByRole("link")).toHaveLength(3);
     expect(screen.getByTestId("desk-context")).toHaveTextContent("Who is on now");
     // The person's full name and grade, with initials from the name — never the login name or a dot.
     expect(screen.getByTestId("desk-user")).toHaveTextContent("ARDr. Anand Rao · Assoc. Prof");
@@ -168,5 +176,42 @@ describe("RosterOnNow (20-U U5a)", () => {
     await screen.findByTestId("dept-MED");
     expect(asked.some((u) => u.includes(`at=${encodeURIComponent(AT)}`))).toBe(true);
     expect(screen.queryByRole("button", { name: "In 8 hours" })).toBeNull();
+  });
+
+  it("20-U U6 (I22) — \"This is wrong\": one button on the holes card; a reader picks the department and the name and says what, in one line", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    const holes = await screen.findByTestId("on-now-holes");
+    // The board's rows stay as approved: no per-row control.
+    expect(within(screen.getByTestId("dept-MED")).queryByRole("button")).toBeNull();
+    await user.click(within(holes).getByTestId("wrong-open"));
+    const form = within(holes).getByTestId("wrong-form");
+    expect(form).toHaveTextContent("What on this board is wrong?");
+    const send = within(form).getByTestId("wrong-send");
+    expect(send).toBeDisabled();
+    // Only published departments are offered, and the names are that department's.
+    expect([...within(form).getByTestId<HTMLSelectElement>("wrong-dept").options].map((o) => o.textContent)).toEqual(["General Medicine"]);
+    await user.selectOptions(within(form).getByTestId("wrong-who"), "jr");
+    await user.type(within(form).getByTestId("wrong-note"), "On leave since yesterday");
+    await user.click(send);
+    expect(posts.map((p) => [p.url.replace(/^.*\/roster/, "/roster"), p.body])).toEqual([
+      ["/roster/flags", { departmentId: "d-med", userId: "jr", at: AT, note: "On leave since yesterday" }],
+    ]);
+    expect(await within(holes).findByTestId("flag-sent")).toHaveTextContent("Flagged — the duty manager sees it on this board.");
+  });
+
+  it("an open flag sits on the holes card, and only somebody who can fix the roster sees Dealt with", async () => {
+    BOARD.flags = [{
+      flagId: "f9", departmentId: "d-med", user: { userId: "jr", name: "Dr. Yusuf Qureshi" }, at: AT, note: "Went home sick at 22:00",
+      raisedBy: { userId: "n1", name: "Sr. Mary Thomas" }, raisedAt: AT, youMayResolve: false,
+    }];
+    try {
+      renderWithProviders(<RosterOnNow />);
+      const flag = await screen.findByTestId("flag-f9");
+      expect(flag).toHaveTextContent("flagged by Sr. Mary Thomas");
+      expect(flag).toHaveTextContent("General Medicine: Dr. Yusuf Qureshi is on the board, and that is wrong — “Went home sick at 22:00”");
+      expect(flag).toHaveTextContent("For the duty manager");
+      expect(within(flag).queryByTestId("flag-dealt")).toBeNull();
+    } finally { delete BOARD.flags; }
   });
 });

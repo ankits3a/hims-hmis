@@ -128,3 +128,16 @@ export type {
   FindingKeyInput, MonthAssignment, MonthFinding, MonthRef, RosterUnitsDepartment, UnitMonth,
 } from "./month";
 export { proposalSeedFor, proposalStrategyFor } from "./proposer";
+// 20-U U5c/U6 — my duties; covers and swaps, asked, answered and approved as an amendment; "this is wrong".
+export {
+  answerCover, coverOptions, coverRequests, decideCover, myDutyRows, requestCover, withdrawCover,
+} from "./swaps";
+export type {
+  CoverCandidate, CoverDecision, CoverOptions, CoverReason, CoverRefusal, CoverRequestView, DutyRef, MyDuty,
+  RequestCoverInput,
+} from "./swaps";
+export { myDuties, openFlags, raiseFlag, resolveFlag } from "./my-duties";
+export type { MyDuties, RaiseFlagInput, RosterFlagView } from "./my-duties";
+export {
+  rosterCoverAnswered, rosterCoverDecided, rosterCoverRequested, rosterFlagRaised,
+} from "./events";

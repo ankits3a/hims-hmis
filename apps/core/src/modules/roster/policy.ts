@@ -61,6 +61,20 @@ export const ROSTER_ACTS = [
    * Added here rather than assumed, because that is what the matrix is for.
    */
   "request_absence",
+  /**
+   * 20-U U6 — ask somebody to take YOUR duty (a cover) or to exchange one (a swap), and answer when
+   * you are the one asked. **Not in stress test §4** either, for the same reason as
+   * `request_absence`: it is a person speaking about their own duty, and nothing changes until a
+   * human with `approve_swap` approves. The function enforces "your own": asking about somebody
+   * else's duty is `propose` (the unit's SR, `roster.periods.manage`).
+   */
+  "request_cover",
+  /**
+   * 20-U U6 — approve a cover or a swap, which applies it as an AMENDMENT. The `publish` authority,
+   * or a delegation of `approve_swap` (`access.ts`): a team-scoped delegation lets a unit head
+   * approve within the unit; across units only a department-level holder (the HOD) may.
+   */
+  "approve_swap",
 ] as const;
 export type RosterAct = (typeof ROSTER_ACTS)[number];
 
@@ -143,6 +157,17 @@ const MATRIX: Record<RosterAct, Record<RosterActorKind, Cell>> = {
    * number of taps, so the cell costs nothing and closes the path.
    */
   request_absence: { user: open, copilot: never, agent: never, system: never, patient: never },
+
+  /**
+   * A READER may ask about their own duty — the narrowest grant there is, and the one every doctor
+   * already holds (U5a). Not `open` like an absence: a cover is an act on the roster, and somebody
+   * who may not even read it has no duty on it to give away. **`never` for the copilot today**: U9's
+   * `roster.ask_cover` drafts a request the person confirms, and opens this cell when it lands.
+   */
+  request_cover: { user: grant(ROSTER_READ), copilot: never, agent: never, system: never, patient: never },
+
+  /** Approving changes who is on — the same weight as `publish`, and no machine does it. */
+  approve_swap: { user: grant(ROSTER_PUBLISH), copilot: never, agent: never, system: never, patient: never },
 };
 
 export type RosterActVerdict =

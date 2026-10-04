@@ -1006,7 +1006,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // night shift needs to lend authority for an hour, never to create an account or change what a
   // role means.
   // ------------------------------------------------------------------------------------------
-  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant"] },
+  // 20-U U6 (register I22) — and `roster.read`: the who-is-on board is where a ward flags a wrong
+  // name on duty ("this is wrong"), and the duty manager is the person that flag is for. A READ: the
+  // duty manager still drafts, publishes and approves nothing on a roster.
+  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant", "roster.read"] },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
    *

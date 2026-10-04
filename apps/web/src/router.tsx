@@ -31,6 +31,7 @@ import { ApprovalsInbox } from "./screens/approvals-inbox";
 import { MyReach } from "./screens/my-reach";
 import { RosterOnNow } from "./screens/roster-on-now";
 import { RosterMonth } from "./screens/roster-month";
+import { RosterMyDuties } from "./screens/roster-my-duties";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
@@ -268,6 +269,8 @@ const NAV: readonly NavEntry[] = [
   // 20-U U5b — the unit's month. The door is a read (`rosterManifest.menu`); drafting, editing and
   // publishing are acts the server checks at the unit's department.
   { to: "/roster/month", label: "nav.rosterMonth", permission: "roster.read", group: "opd" },
+  // 20-U U5c — my duties: a person's own week and "I can't do this" (`rosterManifest.menu`).
+  { to: "/roster/my-duties", label: "nav.rosterMyDuties", permission: "roster.read", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -722,6 +725,24 @@ const rosterMonthRoute = createRoute({
   component: function RosterMonthScreen() {
     const { team, month } = rosterMonthRoute.useSearch();
     return <RosterMonth team={team} month={month} />;
+  },
+});
+
+/**
+ * 20-U U5c — my duties: the reader's own week, and "I can't do this" (a cover or a swap). `?at=<ISO
+ * instant>` pins the page to one instant (a link "as it was at 07:40"); anything else is ignored.
+ */
+const rosterMyDutiesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/my-duties",
+  // Drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { at?: string } => ({
+    at: typeof search.at === "string" && search.at.length <= 40 && !Number.isNaN(Date.parse(search.at)) ? search.at : undefined,
+  }),
+  component: function RosterMyDutiesScreen() {
+    const { at } = rosterMyDutiesRoute.useSearch();
+    return <RosterMyDuties at={at} />;
   },
 });
 
@@ -1721,6 +1742,8 @@ export const router = createRouter({
       rosterOnNowRoute,
       // 20-U U5b — +1, `/roster/month`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
       rosterMonthRoute,
+      // 20-U U5c — +1, `/roster/my-duties`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
+      rosterMyDutiesRoute,
     ]),
   ]),
 });

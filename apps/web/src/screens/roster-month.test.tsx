@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
 import { RosterMonth } from "./roster-month";
-import type { WireMonthFinding, WireUnitMonth } from "../lib/roster-api";
+import type { WireCoverRequest, WireMonthFinding, WireUnitMonth } from "../lib/roster-api";
 
 const UNITS = [
   { departmentId: "d-der", code: "DER", name: "Dermatology", units: [{ teamId: "u-der", code: "DER-U1", name: "Dermatology Unit I", confirmed: true }] },
@@ -51,12 +51,14 @@ describe("RosterMonth (20-U U5b)", () => {
   let current: WireUnitMonth;
   let afterWrite: WireUnitMonth;
   let refuse: { status: number; code: string } | null;
+  let covers: WireCoverRequest[];
 
   beforeEach(() => {
     setToken("t");
     calls.length = 0;
     current = month();
     refuse = null;
+    covers = [];
     afterWrite = month({ assignments: [night, { ...morning, userId: null, name: null }], findings: [OFF], counts: { blocking: 0, warnings: 1, info: 0 } });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -66,6 +68,13 @@ describe("RosterMonth (20-U U5b)", () => {
       if (url.endsWith("/roster/units")) return json(UNITS);
       if (url.endsWith("/auth/me")) return json({ actor: { type: "user", id: "me" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } });
       if (url.endsWith("/ops/mode")) return json({ mode: "normal", since: null, note: null, reportId: null });
+      // 20-U U6 — the unit's covers and swaps ("Asked of you").
+      if (url.includes("/roster/covers") && method === "GET") return json(covers);
+      if (url.includes("/cover-options")) return json({ duty: { ...night, departmentId: "d-med", teamId: "u2", teamName: "General Medicine Unit II", positionLabel: "Ward junior resident" }, ownerName: "Dr. Kavita Rao", canTake: [], cannot: [], openRequestId: null });
+      if (url.includes("/decide")) {
+        covers = covers.map((c) => ({ ...c, status: "approved" as const, decidedBy: { userId: "me", name: "Dr. Anand Rao" }, decidedAt: "2026-10-04T10:00:00.000Z", youMay: { ...c.youMay, approve: false } }));
+        return json({ status: "approved", ruleKey: null });
+      }
       if (method === "GET") return json(current);
       if (refuse !== null) {
         const r = refuse;
@@ -261,5 +270,42 @@ describe("RosterMonth (20-U U5b)", () => {
     await user.click(within(card).getByTestId("finding-show"));
     expect(await screen.findByTestId("slot-a-late")).toHaveClass("rm-focus");
     expect(screen.getByTestId("pager-range")).toHaveTextContent("Sun 18 – Sat 31 Oct"); // the last two weeks of the month
+  });
+
+  /* ═══ 20-U U6 — "Asked of you", and a published duty changes hands by a cover or a swap ═══ */
+  const SWAP: WireCoverRequest = {
+    requestId: "rq-swap", kind: "swap", status: "accepted", crossUnit: false,
+    owner: { userId: "imtiaz", name: "Dr. Imtiaz Khan" }, counterpart: { userId: "neha", name: "Dr. Neha Saxena" }, requestedBy: { userId: "imtiaz", name: "Dr. Imtiaz Khan" },
+    duty: { ...night, istDate: "2026-10-12", departmentId: "d-med", teamId: "u2", teamName: "General Medicine Unit II", positionLabel: "Ward junior resident" },
+    give: { ...night, assignmentId: "a-thu", istDate: "2026-10-08", startsAt: "2026-10-08T14:30:00.000Z", endsAt: "2026-10-09T02:30:00.000Z", departmentId: "d-med", teamId: "u2", teamName: "General Medicine Unit II", positionLabel: "Ward junior resident" },
+    note: null, requestedAt: "2026-10-04T09:00:00.000Z", answeredAt: "2026-10-04T09:30:00.000Z", decidedBy: null, decidedAt: null, refusedRule: null,
+    check: null, youMay: { answer: false, approve: true, withdraw: false },
+  };
+
+  it("Asked of you: a swap the person asked has said yes to, checked, with Approve — and after approval the card says so", async () => {
+    current = month({ period: { ...month().period!, status: "published", publishedAt: "2026-09-21T06:00:00.000Z" }, findings: [], counts: { blocking: 0, warnings: 0, info: 0 }, youMay: { draft: false, edit: false, acceptWarning: true, publish: false, cover: true } });
+    covers = [SWAP];
+    const user = userEvent.setup();
+    renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
+    const card = await screen.findByTestId("asked-of-you");
+    const item = await within(card).findByTestId("asked-rq-swap");
+    expect(item).toHaveTextContent("Dr. Imtiaz Khan and Dr. Neha Saxena want to exchange duties: Dr. Neha Saxena takes Monday night, Dr. Imtiaz Khan takes Thursday night. Dr. Neha Saxena has already said yes.");
+    expect(item).toHaveTextContent("Checked: both are free on those days, and neither breaks a rule.");
+    expect(within(card).getByTestId("asked-count")).toHaveTextContent("1");
+    await user.click(within(item).getByTestId("approve-cover"));
+    expect(calls.find((c) => c.method === "POST" && c.url.endsWith("/roster/covers/rq-swap/decide"))?.body).toEqual({ approve: true });
+    expect(await within(card).findByTestId("decided-rq-swap")).toHaveTextContent("Approved. Dr. Imtiaz Khan and Dr. Neha Saxena see it on their duties, and the grid shows the change.");
+  });
+
+  it("a published month: tapping a duty opens who can take it — it is never edited in place", async () => {
+    current = month({ period: { ...month().period!, status: "published", publishedAt: "2026-09-21T06:00:00.000Z" }, findings: [], counts: { blocking: 0, warnings: 0, info: 0 }, youMay: { draft: false, edit: false, acceptWarning: true, publish: false, cover: true } });
+    const user = userEvent.setup();
+    renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
+    await user.click(await screen.findByTestId("slot-a-night"));
+    const panel = await screen.findByTestId("month-cover");
+    expect(panel).toHaveTextContent("This month is published, so a duty changes hands by a cover or a swap");
+    expect(await within(panel).findByTestId("nobody-can")).toBeInTheDocument();
+    expect(screen.queryByTestId("slot-editor")).toBeNull();
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
   });
 });

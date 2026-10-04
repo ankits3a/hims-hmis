@@ -84,7 +84,7 @@ describe("roster month e2e (20-U U5b)", () => {
     expect((units.body as { code: string }[]).map((d) => d.code)).toContain("MED");
     await draft();
     const m = await http().get(`/roster/units/${team}/months/2026-10`).set("authorization", `Bearer ${reader.token}`).expect(200);
-    expect((m.body as UnitMonth).youMay).toEqual({ draft: false, edit: false, acceptWarning: false, publish: false });
+    expect((m.body as UnitMonth).youMay).toEqual({ draft: false, edit: false, acceptWarning: false, publish: false, cover: false });
   });
 
   it("an unauthorised publish is refused at the act (403 not_permitted), and the month stays a draft", async () => {

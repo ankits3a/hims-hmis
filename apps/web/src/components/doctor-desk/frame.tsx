@@ -39,7 +39,7 @@ const ICON: Record<IconKey, string> = {
   phone: "M3 2.5h3l1 3-1.7 1.2a8 8 0 004 4L10.5 9l3 1v3a1 1 0 01-1 1A10.5 10.5 0 012 3.5a1 1 0 011-1z",
 };
 
-export type DeskMenuKey = "myOpd" | "roster" | "onNow";
+export type DeskMenuKey = "myOpd" | "myDuties" | "roster" | "onNow";
 type MenuItem = { key: DeskMenuKey; to: string; label: string; permission: string; icon: IconKey };
 type MenuGroup = { key: string; label: string; items: MenuItem[] };
 
@@ -47,6 +47,8 @@ type MenuGroup = { key: string; label: string; items: MenuItem[] };
 export const MENU: readonly MenuGroup[] = [
   { key: "desk", label: "doctorDesk.group.desk", items: [
     { key: "myOpd", to: "/opd/consult", label: "doctorDesk.item.myOpd", permission: "opd.consult", icon: "doc" },
+    // 20-U U5c — the board's "My Duties", under DOCTOR DESK after My OPD (Main.dc.html's menu).
+    { key: "myDuties", to: "/roster/my-duties", label: "doctorDesk.item.myDuties", permission: "roster.read", icon: "cal" },
   ] },
   { key: "unit", label: "doctorDesk.group.unit", items: [
     { key: "roster", to: "/roster/month", label: "doctorDesk.item.roster", permission: "roster.read", icon: "cal" },

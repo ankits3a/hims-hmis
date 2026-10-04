@@ -102,7 +102,11 @@ export type UnitMonth = {
   /** The reader, for the Doctor Desk header (`rosterSelf`). */
   you: RosterSelf;
   /** What THIS actor may do here, probed through `requireRosterAct`. The server still decides. */
-  youMay: { draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean };
+  youMay: {
+    draft: boolean; edit: boolean; acceptWarning: boolean; publish: boolean;
+    /** 20-U U6 — published, and the reader may ask a cover for anybody's duty here (`propose`). */
+    cover: boolean;
+  };
 };
 
 /**
@@ -332,6 +336,7 @@ export async function unitMonth(exec: Db | Tx, actor: Actor, teamId: string, mon
       edit: draft && await may(exec, actor, editAct, team.departmentId),
       acceptWarning: await may(exec, actor, "accept_warning", team.departmentId),
       publish: draft && await may(exec, actor, "publish", team.departmentId),
+      cover: period?.status === "published" && await may(exec, actor, "propose", team.departmentId),
     },
   };
 }
