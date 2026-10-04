@@ -46,6 +46,11 @@ export { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./sta
 export type { StagingRow } from "./staging";
 
 export { medicinesByBrandPrefix, searchMedicines } from "./search";
+/** Owner 2026-10-04 — a vendor brand the catalogue lacks → the catalogue drug of the same composition (bounded: one spec at a time). */
+export {
+  brandTitle, catalogueTwinForm, compositionAgrees, compositionTwins, parseComposition, tidyCatalogueName, twinFormAgrees, twinFormOf, twinName, twinStrengthAgrees,
+} from "./twins";
+export type { CompositionTwin, SaltFamilyCache, TwinComponent, TwinForm, TwinSpec } from "./twins";
 /** STAGE D5 — the WHO AWaRe 2023 list and the seed's fill-the-nulls classification (`seed:pharmacy`). */
 export { AWARE_LIST, classifyAwareMedicines, restrictedAntimicrobialExists } from "./aware";
 export type { AwareCategory, AwareClassificationReport } from "./aware";
