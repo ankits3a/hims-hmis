@@ -13354,13 +13354,6 @@
     "printedAt": "Printed {{at}}",
     "tillShort": "till {{time}}",
     "printNoRoster": "No published roster",
-    "answer": {
-      "dept": "{{dept}}: {{unit}} is on take till {{till}}. In the building: {{here}}. Faculty on call: {{fac}}.",
-      "unpublished": "{{dept}} has no published roster, so this board cannot say who is on. Ask the duty manager.",
-      "service": "{{role}}: {{who}}.",
-      "serviceNobody": "{{role}}: nobody is on right now.",
-      "serviceUnpublished": "{{role}}: no roster is published for this, so the board cannot say."
-    },
     "wrong": {
       "button": "This is wrong",
       "done": "Flagged — the duty manager sees it on this board.",
@@ -13719,7 +13712,7 @@
       "opd_off_ot_proceeds": "no OPD; theatre lists go ahead"
     },
     "askPlaceholder": "\"who is free on the 14th?\"   \"kal raat kaun hai?\"",
-    "answerDay": "{{day}} — night: {{night}}; day: {{dayDuty}}; away: {{away}}; free: {{free}}.",
+    "answerDay": "On {{day}} — on the night: {{night}}. On the day: {{dayDuty}}. Away: {{away}}. Free to cover: {{free}}.",
     "coverNote": "This month is published, so a duty changes hands by a cover or a swap — checked against every rule and approved, never edited.",
     "askedOfYou": "Asked of you",
     "asked": {

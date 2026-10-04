@@ -2,7 +2,8 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
-import { RosterMonth } from "./roster-month";
+import { RosterMonth, answerFromMonth } from "./roster-month";
+import i18n from "../lib/i18n";
 import type { WireCoverRequest, WireMonthFinding, WireUnitMonth } from "../lib/roster-api";
 
 const UNITS = [
@@ -307,5 +308,22 @@ describe("RosterMonth (20-U U5b)", () => {
     expect(await within(panel).findByTestId("nobody-can")).toBeInTheDocument();
     expect(screen.queryByTestId("slot-editor")).toBeNull();
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+});
+
+/* 20-U U9 review (2026-10-04) — the month's own ask-bar answer speaks in the boards' voice, in both
+   languages: a day in words, "nobody" for an empty list, never "night: —; away: —". */
+describe("the month's own answer, in the boards' voice", () => {
+  it("says the 12th as a person would, in English and Hindi", async () => {
+    const d = month();
+    const t = i18n.t.bind(i18n) as unknown as (k: string, o?: Record<string, unknown>) => string;
+    await i18n.changeLanguage("en");
+    const en = answerFromMonth("12th ko kaun hai?", d, t, "en");
+    expect(en).toMatch(/^On Monday 12 Oct — on the night: Dr\. Kavita Rao\. On the day: nobody\./);
+    expect(en).not.toMatch(/: —/); // no dash standing in for an empty list
+    await i18n.changeLanguage("hi");
+    const hi = answerFromMonth("12th ko kaun hai?", d, t, "hi");
+    expect(hi).toMatch(/^सोमवार 12 अक्टू॰ को — रात में: Dr\. Kavita Rao। दिन में: कोई नहीं।/);
+    await i18n.changeLanguage("en");
   });
 });

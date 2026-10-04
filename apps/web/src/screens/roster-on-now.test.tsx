@@ -183,7 +183,8 @@ describe("RosterOnNow (20-U U5a)", () => {
     renderWithProviders(<RosterOnNow />);
     await screen.findByTestId("dept-MED");
     await user.type(screen.getByLabelText("Ask the copilot"), "medicine mein on call kaun hai?{Enter}");
-    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("General Medicine: Unit I is on take till 08:00. In the building: SR Dr. Aditi Deshmukh, JR Dr. Yusuf Qureshi. Faculty on call: Dr. S. P. Tripathi.");
+    // The same boards' voice as the server's tool (review 2026-10-04): "right now", the handover in words.
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("In General Medicine right now, Unit I is on take until Tuesday 6 Oct, 08:00. In the hospital: SR Dr. Aditi Deshmukh, JR Dr. Yusuf Qureshi. Faculty on call: Dr. S. P. Tripathi.");
     expect(asked.some((u) => u.endsWith("/api/copilot/ask"))).toBe(true);
   });
 
@@ -242,7 +243,7 @@ describe("RosterOnNow (20-U U5a)", () => {
 
   it("the board's own answerer: a service by name, and nothing for a question it cannot place", () => {
     const t = (k: string, o?: Record<string, unknown>): string => `${k}${o === undefined ? "" : JSON.stringify(o)}`;
-    expect(answerFromBoard("who is the duty manager", BOARD, t)).toContain("rosterOnNow.answer.service");
+    expect(answerFromBoard("who is the duty manager", BOARD, t)).toContain("copilot.answer.rosterWhoService");
     expect(answerFromBoard("what is the weather", BOARD, t)).toBeNull();
   });
 

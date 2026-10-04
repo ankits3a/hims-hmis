@@ -123,7 +123,7 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
 type Tr = (key: string, opts?: Record<string, unknown>) => string;
 
-function dayWords(at: Date, lang: string): string {
+export function dayWords(at: Date, lang: string): string {
   return new Intl.DateTimeFormat(lang.startsWith("hi") ? "hi-IN" : "en-IN", {
     weekday: "long", day: "numeric", month: "short", timeZone: "Asia/Kolkata",
   }).format(at).replace(",", "");
