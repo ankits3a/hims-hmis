@@ -23,7 +23,8 @@
  */
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
-export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns" | "find_duplicate_items";
+export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns" | "find_duplicate_items"
+  | "roster.who_is_on" | "roster.unit_on_take" | "roster.my_duties" | "roster.ask_cover";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -175,6 +176,45 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("duplicate item"), S("duplicate items"), S("duplicate medicine"), S("duplicate entries"), S("duplicate entry"), S("merge items"),
     S("merge item"), S("item merge"), S("do baar"), S("twice in the item"), S("same medicine twice"), S("डुप्लिकेट"), S("दो बार"),
     W("duplicate"), W("duplicates"), W("merge"),
+  ],
+  /**
+   * 20-U U9 (2026-10-04) — THE ROSTER'S FOUR. "ortho mein abhi on call kaun hai?" — who is on, for a
+   * department or a service, now or at the time named. `kaun`, `abhi`, `duty` are weak: alone they
+   * are every counter question ("doctor kaun hai abhi" stays unanswered rather than guessed).
+   */
+  "roster.who_is_on": [
+    S("on call"), S("oncall"), S("on-call"), S("on duty"), S("duty pe"), S("duty par"), S("who is on"), S("kaun hai duty"),
+    S("ऑन कॉल"), S("ड्यूटी पर"),
+    W("kaun"), W("abhi"), W("duty"), W("ड्यूटी"), W("कौन"),
+  ],
+  /**
+   * "kal raat surgery ka unit kaun sa hai?" — which UNIT is on take. The phrase `unit kaun` outweighs
+   * the board's weak `kaun`; a bare `unit` or `take` alone is not enough to answer.
+   */
+  "roster.unit_on_take": [
+    S("unit kaun"), S("kaun sa unit"), S("kaunsa unit"), S("konsa unit"), S("which unit"), S("on take"), S("take pe"),
+    S("take par"), S("admitting unit"), S("यूनिट कौन"), S("कौन सा यूनिट"),
+    W("unit"), W("take"), W("यूनिट"),
+  ],
+  /**
+   * "mera agla night kab hai?" — the reader's OWN duties. `meri duty` beats the board's `duty`, and
+   * `मेरी ड्यूटी` beats its `ड्यूटी` by the margin, so "my duty" is never read as "who is on".
+   */
+  "roster.my_duties": [
+    S("meri duty"), S("mera duty"), S("my duty"), S("my duties"), S("my next"), S("mera agla"), S("meri agli"),
+    S("agla night"), S("agli night"), S("next night"), S("my night"), S("meri night"), S("mera night"), S("मेरी ड्यूटी"),
+    S("मेरा अगला"), S("मेरी अगली"),
+    W("mera"), W("meri"), W("मेरी"), W("मेरा"), W("kab"), W("agla"), W("agli"), W("night"),
+  ],
+  /**
+   * "Saturday night koi le sakta hai kya?" — somebody to take MY duty. The tool only DRAFTS (the
+   * person sends the request with their own tap). Bare `badal` is left out: "doctor badal do" at a
+   * counter is about a patient's doctor, not a duty.
+   */
+  "roster.ask_cover": [
+    S("le sakta"), S("le sakti"), S("le sakte"), S("le lega"), S("le legi"), S("koi le"), S("cover kar"), S("cover"), S("swap"),
+    S("duty badal"), S("meri jagah"), S("take my"), S("anyone take"), S("someone take"), S("मेरी जगह"), S("ले सकता"), S("ले सकती"),
+    W("koi"), W("कोई"),
   ],
 };
 

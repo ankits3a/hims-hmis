@@ -29,6 +29,11 @@ import { PatientDetail } from "./screens/patient-detail";
 import { MergeReview } from "./screens/merge-review";
 import { ApprovalsInbox } from "./screens/approvals-inbox";
 import { MyReach } from "./screens/my-reach";
+import { RosterOnNow } from "./screens/roster-on-now";
+import { RosterMonth } from "./screens/roster-month";
+import { RosterMyDuties } from "./screens/roster-my-duties";
+import { RosterEvidence } from "./screens/roster-evidence";
+import { RosterAebas } from "./screens/roster-aebas";
 import { OpdAdmin } from "./screens/opd-admin";
 import { OpdAppointments } from "./screens/opd-appointments";
 import { OpdDesk } from "./screens/opd-desk";
@@ -261,6 +266,16 @@ const NAV: readonly NavEntry[] = [
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
+  // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
+  { to: "/roster/on-now", label: "nav.rosterOnNow", permission: "roster.read", group: "opd" },
+  // 20-U U5b — the unit's month. The door is a read (`rosterManifest.menu`); drafting, editing and
+  // publishing are acts the server checks at the unit's department.
+  { to: "/roster/month", label: "nav.rosterMonth", permission: "roster.read", group: "opd" },
+  // 20-U U5c — my duties: a person's own week and "I can't do this" (`rosterManifest.menu`).
+  { to: "/roster/my-duties", label: "nav.rosterMyDuties", permission: "roster.read", group: "opd" },
+  // 20-U U8 / U8b — the duty-evidence report and the AEBAS to-do list (`rosterManifest.menu`).
+  { to: "/roster/evidence", label: "nav.rosterEvidence", permission: "roster.periods.publish", group: "opd" },
+  { to: "/roster/aebas", label: "nav.rosterAebas", permission: "roster.periods.publish", group: "opd" },
   // PLAN 09 T3 — the path and the permission match `membershipManifest.menu`'s own entry exactly,
   // which is where the authoritative pairing lives.
   { to: "/counter/instruments", label: "nav.counterInstruments", permission: "membership.instrument.read", group: "desk" },
@@ -681,6 +696,87 @@ const staffReportsRoute = createRoute({
  * THE OPD DAY REPORT, department by department (owner, 2026-09-19). The dashboard panel links here
  * with the day it was showing, so the screen opens on the same day rather than jumping to today.
  */
+/**
+ * 20-U U5a — who is on now. Shows NOW and refreshes; `?at=<ISO instant>` pins the board to one
+ * instant (a link to "who was on at 02:40"), and a value that is not an instant is ignored.
+ */
+const rosterOnNowRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/on-now",
+  // 20-U U5 — drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
+  staticData: { fullViewport: true },
+  // 20-U I23 — `?stood=<ISO instant>` opens the board AS IT STOOD then (an inspection's link).
+  validateSearch: (search: Record<string, unknown>): { at?: string; stood?: string } => ({
+    at: typeof search.at === "string" && search.at.length <= 40 && !Number.isNaN(Date.parse(search.at)) ? search.at : undefined,
+    stood: typeof search.stood === "string" && search.stood.length <= 40 && !Number.isNaN(Date.parse(search.stood)) ? search.stood : undefined,
+  }),
+  component: function RosterOnNowScreen() {
+    const { at, stood } = rosterOnNowRoute.useSearch();
+    return <RosterOnNow at={at} stood={stood} />;
+  },
+});
+
+/**
+ * 20-U U5b — the unit's month. `?team=<team id>&month=YYYY-MM` opens one unit's month (a link the
+ * proposer's notice can carry); either missing falls back to the first unit and this IST month.
+ */
+const rosterMonthRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/month",
+  // 20-U U5 — drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { team?: string; month?: string } => ({
+    team: typeof search.team === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(search.team) ? search.team : undefined,
+    month: typeof search.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(search.month) ? search.month : undefined,
+  }),
+  component: function RosterMonthScreen() {
+    const { team, month } = rosterMonthRoute.useSearch();
+    return <RosterMonth team={team} month={month} />;
+  },
+});
+
+/**
+ * 20-U U5c — my duties: the reader's own week, and "I can't do this" (a cover or a swap). `?at=<ISO
+ * instant>` pins the page to one instant (a link "as it was at 07:40"); anything else is ignored.
+ */
+const rosterMyDutiesRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/my-duties",
+  // Drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { at?: string } => ({
+    at: typeof search.at === "string" && search.at.length <= 40 && !Number.isNaN(Date.parse(search.at)) ? search.at : undefined,
+  }),
+  component: function RosterMyDutiesScreen() {
+    const { at } = rosterMyDutiesRoute.useSearch();
+    return <RosterMyDuties at={at} />;
+  },
+});
+
+/**
+ * 20-U U8 — the duty-evidence report: pick people and days, read the sheet, print it on the office's
+ * A4 through the server-side rail. Facts only — the sheet never says what they mean.
+ */
+const rosterEvidenceRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/evidence",
+  // Drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
+  staticData: { fullViewport: true },
+  component: function RosterEvidenceScreen() {
+    return <RosterEvidence />;
+  },
+});
+
+/** 20-U U8b — the AEBAS to-do list for the college's nodal officer. HMIS never talks to AEBAS. */
+const rosterAebasRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/aebas",
+  staticData: { fullViewport: true },
+  component: function RosterAebasScreen() {
+    return <RosterAebas />;
+  },
+});
+
 const opdDayReportRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/reports/opd-day",
@@ -1673,6 +1769,14 @@ export const router = createRouter({
       // laboratory's G6 closes. `caddyfile-parity.test.ts` pins the count and joins this task's
       // Files list — the S11 rule, applied to itself again.
       legacySeatRoute, legacySeatFiguresRoute, legacyVitalsBayRoute,
+      // 20-U U5a — +1, `/roster/on-now`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
+      rosterOnNowRoute,
+      // 20-U U5b — +1, `/roster/month`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
+      rosterMonthRoute,
+      // 20-U U5c — +1, `/roster/my-duties`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
+      rosterMyDutiesRoute,
+      rosterEvidenceRoute,
+      rosterAebasRoute,
     ]),
   ]),
 });

@@ -34,7 +34,7 @@ import {
 import {
   HORIZON_DAYS, ROSTER_POSITIONS, UNIT_COUNT, departmentsWithTakeGaps, listTeams,
   ROSTER_RESOLVER_FLAG, departmentsWithoutPublishedCycle, livePeriodCount, publishedCycleCount,
-  rosterMasterCounts, unconfirmedTeams,
+  rosterMasterCounts, unconfirmedTeams, aebasCensus,
 } from "../src/modules/roster";
 import { appointments, unlicensedDevices } from "../src/modules/aerb";
 import {
@@ -357,7 +357,7 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
       /**
        * PHASE R (R3) — **the row that stops our arithmetic being presented as the regulator's.**
        *
-       * UG-MSR 2023 dropped the units table altogether. The 27 units `seed:units` writes are one
+       * UG-MSR 2023 dropped the units table altogether. The 22 units `seed:units` writes (the owner's table, 2026-10-04) are
        * unit per sanctioned senior resident — a good default, and NOT a number from the gazette
        * (20-U §2, owner §10.2). So every seeded team lands inactive, and this row stays RED until a
        * head of department has confirmed each one. It is under `hospital` for the reason the masters
@@ -452,6 +452,28 @@ export const STANDUP_ROWS: Record<string, Row[]> = {
        */
       check: async (db) => (await livePeriodCount(db, new Date())) > 0,
       fix: `either publish a roster (a department's rota, via \`publishPeriods\`) or unset ${ROSTER_RESOLVER_FLAG} — with the flag on and nothing published, every on-call question falls back to role holders and nothing says so`,
+    },
+    {
+      gate: "G3", code: "aebas_entered_before_due",
+      /**
+       * 20-U U8b (plan §2.2) — **AEBAS takes leave, tours and holidays IN ADVANCE ONLY** (notice
+       * 18.06.2024: "no retrospective incorporation/updation is allowed"). The roster knows every
+       * approved one before it happens; the nodal officer enters it there by hand and marks it here
+       * (`/roster/aebas`). RED when anything is due today — its first day is tomorrow or today — and
+       * has not been marked.
+       *
+       * **AND RED ON AN EMPTY POPULATION.** A hospital that has never approved a leave or declared a
+       * holiday through the roster has nothing overdue, and that is not evidence that anything
+       * reaches AEBAS on time — it is evidence of nothing. The census's grammar: every G3 row is RED
+       * until an act. The act here is the roster holding its first leave or holiday.
+       *
+       * HMIS never talks to AEBAS. This row reads the roster's own marks.
+       */
+      check: async (db) => {
+        const c = await aebasCensus(db, new Date());
+        return c.population > 0 && c.overdue === 0;
+      },
+      fix: "the AEBAS nodal officer enters today's items in AEBAS and marks each one entered at /roster/aebas (the medical superintendent's login, or a hospital-scope delegate of publish). If the screen is empty, the roster holds no approved leave or holiday yet — approve leave and declare holidays through the roster first; until then nothing shows that AEBAS is being kept in advance",
     },
   ],
 

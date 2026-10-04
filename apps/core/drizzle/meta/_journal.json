@@ -1219,6 +1219,34 @@
       "when": 1790966283457,
       "tag": "0173_sale_item_standing_discount",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1791117157701,
+      "tag": "0174_roster_cover_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1791122622772,
+      "tag": "0175_roster_board_prints",
+      "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1791127670411,
+      "tag": "0176_roster_holiday_aebas",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1791135756053,
+      "tag": "0177_opd_doctor_designation",
+      "breakpoints": true
     }
   ]
 }

@@ -1617,6 +1617,39 @@ Until the unit system gives a unit's own people their strings, a roster exists o
 medical superintendent made it. The owner reads; the owner does not make the rota. **No agent, no
 copilot and no scheduled job may ever publish, amend, approve or override one**, whatever it holds.
 
+**Who is on now (20-U U5a, the roster's first screen).** `doctor`, `front_office`,
+`front_office_supervisor`, `vitals_desk` and `opd_admin` gain `roster.read`, so the people who have
+to reach a doctor can open `/roster/on-now`: per department, the unit on take and till when, who is
+in the building, the faculty on call and the backup unit; the hospital-wide services; and the holes
+in the next 24 hours. It is a READ — drafting and publishing stay with the medical superintendent —
+and the board carries no phone numbers yet. A department whose units have no published roster says
+so; it never lists the holders of a role as though they were on.
+
+**Roster — the unit's month (20-U U5b).** `/roster/month` opens one clinical unit's month: the
+proposer's draft (asked for on demand — the same draft the monthly job cuts on the 20th), one row per
+person and one column per day, and a *Before you publish* list in which every validator finding is a
+sentence naming the person and the day. A duty can be given to somebody else or left vacant; a
+warning can be accepted, with a reason, by a holder of `roster.periods.publish`; **Publish stays
+disabled, and says why, while a blocking finding stands** — the server's publish gate decides, and
+the screen shows its count. No grant changes: anybody with `roster.read` can open the month, and
+drafting and publishing remain the medical superintendent's until a head-of-department role exists.
+
+**My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
+rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
+without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A
+reader may ask for cover of THEIR OWN duty and answer when they are the one asked (the act
+`request_cover`, carried by `roster.read`, which every doctor already holds); asking about somebody
+else's duty stays `roster.periods.manage`. **The duty stays theirs until it is approved**: approval
+is the act `approve_swap` — `roster.periods.publish` at the department, or a delegation of
+`approve_swap`; a delegation scoped to ONE unit lets its head approve that unit's swaps, and a
+change across two units needs the department (the HOD). The people in a request never approve it,
+the validator re-runs over both people at approval and refuses a must-fix rule by name, and an
+approved change is an amendment of the published month. `duty_manager` gains `roster.read`: any
+reader of the who-is-on board may flag a wrong name on duty in one line (*"this is wrong"*), and the
+flag stays on the board's holes card — the duty manager's to read — until somebody who can fix the
+roster marks it dealt with. Paging the duty manager is not wired yet (it needs a kernel notify
+template).
+
 **The approvals spine (owner ruling R1,
 2026-09-20).** `owner` gains `approvals.requests.read` and `approvals.requests.decide`. The role
 held `approvals.types.manage` — the authority to define what an approval IS — and neither of the two

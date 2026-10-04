@@ -116,6 +116,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
         invoice list. This string admits `GET /billing/patients/:patientId/dues` and nothing else.
       */
       "billing.dues.patient.read",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   {
@@ -180,6 +183,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * closes the day with it. Every department read is logged (`day_report.patients_listed`).
        */
       "opd.reports.read",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   {
@@ -201,6 +207,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // narrow grant can be widened later without anybody being locked out in the meantime.
       "patients.read",
       "patients.update",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   {
@@ -317,6 +326,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D2 — a doctor who catches a medication error or near miss logs it (blame-free: the
       // log shows the role, the name only to the reviewer). DEFAULT — owner may change.
       "pharmacy.incidents.record",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   /**
@@ -410,6 +422,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // with it. A `manage` string declared here would be held by somebody and reach nothing, which
       // is the trap on line 160 seen from the other side.
       "resources.read",
+      // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
+      // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
+      "roster.read",
     ],
   },
   /**
@@ -991,7 +1006,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // night shift needs to lend authority for an hour, never to create an account or change what a
   // role means.
   // ------------------------------------------------------------------------------------------
-  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant"] },
+  // 20-U U6 (register I22) — and `roster.read`: the who-is-on board is where a ward flags a wrong
+  // name on duty ("this is wrong"), and the duty manager is the person that flag is for. A READ: the
+  // duty manager still drafts, publishes and approves nothing on a roster.
+  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant", "roster.read"] },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
    *

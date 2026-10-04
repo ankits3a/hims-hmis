@@ -4,6 +4,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { listDepartments, opdErrorMessage, todayIst } from "../lib/opd-api";
+import { useDoctorLabel } from "../lib/use-doctor-label";
 import type { WireDepartment, WireDoctorSummary, WireQueueEntryView, WireQueueView } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { PatientPhoto } from "../components/patient-photo";
@@ -95,6 +96,8 @@ export function OpdDesk(): React.ReactElement {
   const queryClient = useQueryClient();
   const router = useRouter({ warn: false });
   const today = todayIst();
+  // 2026-10-04 (owner) — the unit (or "Guest Faculty") beside each doctor's name.
+  const doctorLabel = useDoctorLabel(today);
   const now = Date.now();
 
   const [departmentId, setDepartmentId] = useState("");
@@ -318,7 +321,10 @@ export function OpdDesk(): React.ReactElement {
       )}
       <section className="od-lh" data-testid="queue-head">
         <div className="od-lh-top">
-          <span className="od-lh-t">{doctorRow === null ? t("opdDesk.queue") : doctorRow.doctor.displayName}</span>
+          <span className="od-lh-t">
+            {doctorRow === null ? t("opdDesk.queue") : doctorRow.doctor.displayName}
+            {doctorRow !== null && (() => { const tag = doctorLabel(doctorRow.doctor); return tag === null ? null : <span className="od-dtag"> · {tag}</span>; })()}
+          </span>
           <span className="od-live"><i />{t("opdDesk.live")}</span>
         </div>
         {doctorRow !== null && (
@@ -492,7 +498,10 @@ export function OpdDesk(): React.ReactElement {
                     onClick={() => pickDoctor(s.doctor.id)}
                   >
                     <span className="od-dot" style={{ background: dotOf(s) }} />
-                    <span className="od-dname">{s.doctor.displayName}</span>
+                    <span className="od-dname">
+                      {s.doctor.displayName}
+                      {(() => { const tag = doctorLabel(s.doctor); return tag === null ? null : <span className="od-dtag" data-testid={`doctor-tag-${s.doctor.id}`}> · {tag}</span>; })()}
+                    </span>
                     <span className="od-room">{t("opd.labels.room")}: {s.roomCode ?? "—"}</span>
                     <span className="od-bar"><i style={{ width: bar.pct, background: bar.ink }} /></span>
                     <span className="od-wait">

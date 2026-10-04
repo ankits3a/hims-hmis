@@ -279,7 +279,7 @@ function normaliseDoctorCode(code: string): string {
 export async function createDoctor(
   tx: Tx,
   actor: Actor,
-  input: { username: string; displayName: string; code?: string; registrationNo?: string; departmentId: string; specialty?: string },
+  input: { username: string; displayName: string; code?: string; registrationNo?: string; departmentId: string; specialty?: string; designation?: string },
 ): Promise<{ doctorId: string; userId: string }> {
   requireUserActor(actor);
   const userRows = await tx.select().from(users).where(eq(users.username, input.username));
@@ -304,6 +304,7 @@ export async function createDoctor(
       registrationNo: input.registrationNo ?? null,
       departmentId: input.departmentId,
       specialty: input.specialty ?? null,
+      designation: blankToNull(input.designation),
       createdBy: actor.id,
       updatedBy: actor.id,
     })
@@ -313,11 +314,17 @@ export async function createDoctor(
   return { doctorId: id, userId: user.id };
 }
 
+/** 2026-10-04 — the doctor's designation ("Guest Faculty"): trimmed, and empty means none. */
+function blankToNull(v: string | null | undefined): string | null {
+  const t = v?.trim() ?? "";
+  return t === "" ? null : t;
+}
+
 export async function updateDoctor(
   tx: Tx,
   actor: Actor,
   id: string,
-  patch: { displayName?: string; code?: string; registrationNo?: string | null; departmentId?: string; specialty?: string | null; active?: boolean },
+  patch: { displayName?: string; code?: string; registrationNo?: string | null; departmentId?: string; specialty?: string | null; designation?: string | null; active?: boolean },
 ): Promise<void> {
   requireUserActor(actor);
   const existing = await tx.select().from(opdDoctors).where(eq(opdDoctors.id, id));
@@ -331,7 +338,9 @@ export async function updateDoctor(
   /* NULLABLE NOWHERE: the column is NOT NULL, so a patch may CHANGE the id but never clear it —
      a prescription printed against a doctor with no id names nobody. */
   const code = patch.code === undefined ? {} : { code: normaliseDoctorCode(patch.code) };
-  await tx.update(opdDoctors).set({ ...patch, ...code, updatedBy: actor.id, updatedAt: new Date() }).where(eq(opdDoctors.id, id));
+  // 2026-10-04 — a designation typed as blanks is cleared, not stored as "  ".
+  const designation = patch.designation === undefined ? {} : { designation: blankToNull(patch.designation) };
+  await tx.update(opdDoctors).set({ ...patch, ...code, ...designation, updatedBy: actor.id, updatedAt: new Date() }).where(eq(opdDoctors.id, id));
 }
 
 export async function listDoctors(db: Db, opts: { departmentId?: string; activeOnly?: boolean } = {}): Promise<DoctorRow[]> {

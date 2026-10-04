@@ -1019,12 +1019,23 @@ export const rosterHolidays = pgTable(
     /** D3's two-step: each HOD confirms what their department will run, by this instant. */
     confirmationDueAt: timestamp("confirmation_due_at", { withTimezone: true }),
     siteId: text("site_id").notNull().default("main"),
+    /**
+     * 20-U U8b — the holiday has been ENTERED IN AEBAS by the college's nodal officer, by hand.
+     * AEBAS takes no retrospective entry (notice 18.06.2024), so a holiday declared at 19:30 the
+     * evening before is due that same evening. The mark is the absences' `aebas_entered_*` pair,
+     * for the same reason: a discrepancy an inspection finds is a column, not a habit. HMIS never
+     * talks to AEBAS — this records that a person did.
+     */
+    aebasEnteredAt: timestamp("aebas_entered_at", { withTimezone: true }),
+    aebasEnteredBy: text("aebas_entered_by").references(() => users.id),
     ...calAudit,
   },
   (t) => [
     primaryKey({ columns: [t.siteId, t.istDate] }),
     check("roster_holidays_kind_ck", sql`${t.kind} in ('gazetted', 'restricted', 'declared', 'local')`),
     check("roster_holidays_pattern_ck", sql`${t.pattern} in ('as_sunday', 'opd_short', 'opd_off_ot_proceeds')`),
+    /** Filed with AEBAS, or not — never half. */
+    check("roster_holidays_aebas_ck", sql`(${t.aebasEnteredAt} is null) = (${t.aebasEnteredBy} is null)`),
   ],
 );
 
@@ -1349,5 +1360,147 @@ export const rosterModeDeclarations = pgTable(
       sql`(${t.withdrawnAt} is null and ${t.withdrawnBy} is null)
           or (${t.withdrawnAt} is not null and ${t.withdrawnBy} is not null)`,
     ),
+  ],
+);
+
+/**
+ * 20-U U6 — **"I CAN'T DO THIS": A COVER OR A SWAP, ASKED, ANSWERED, APPROVED.**
+ *
+ * A published duty changes hands only by an AMENDMENT (`periods.ts` `amend`), approved by a named
+ * person. This table is everything BEFORE that amendment: who asked, whom, for which duty, whether
+ * the person asked said yes, and who decided. **The duty stays the owner's until the row reads
+ * `approved`** — nothing here is read by the resolver, the board or the ladder.
+ *
+ *   · `cover` — the counterpart takes the owner's duty; `swap` — they also give one of theirs
+ *     (`counterpart_assignment_id`), which the owner takes.
+ *   · `owner_id` is whose duty it is; `requested_by` is who asked — the same person for a resident
+ *     asking for their own duty, the unit's SR when they ask on somebody's behalf.
+ *   · `cross_unit` — the two people belong to different units, so the approver must answer for the
+ *     department (the HOD), not one unit (`swaps.ts`).
+ *   · `refused_rule` — a refusal by the VALIDATOR names the rule; a refusal by a person names none.
+ *
+ * ONE OPEN REQUEST PER DUTY: two people each saying yes to the same night is two people turning up,
+ * or nobody. The partial unique index is the guard; the domain refuses first, in a sentence.
+ */
+export const ROSTER_COVER_KINDS = ["cover", "swap"] as const;
+export type RosterCoverKind = (typeof ROSTER_COVER_KINDS)[number];
+export const ROSTER_COVER_STATUSES = ["asked", "accepted", "declined", "approved", "refused", "withdrawn"] as const;
+export type RosterCoverStatus = (typeof ROSTER_COVER_STATUSES)[number];
+
+export const rosterCoverRequests = pgTable(
+  "roster_cover_requests",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("asked"),
+    assignmentId: text("assignment_id").notNull().references(() => rosterAssignments.id),
+    periodId: text("period_id").notNull().references(() => rosterPeriods.id),
+    ownerId: text("owner_id").notNull().references(() => users.id),
+    requestedBy: text("requested_by").notNull().references(() => users.id),
+    counterpartId: text("counterpart_id").notNull().references(() => users.id),
+    counterpartAssignmentId: text("counterpart_assignment_id").references(() => rosterAssignments.id),
+    departmentId: text("department_id").notNull().references(() => orgDepartments.id),
+    teamId: text("team_id").references(() => rosterTeams.id),
+    counterpartTeamId: text("counterpart_team_id").references(() => rosterTeams.id),
+    crossUnit: boolean("cross_unit").notNull().default(false),
+    /** Optional, short, shown to the counterpart and the approver. Never in an event (V9). */
+    note: text("note"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    decidedBy: text("decided_by").references(() => users.id),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    refusedRule: text("refused_rule"),
+    decisionNote: text("decision_note"),
+    /** The amendments an approval applied — one per period touched. */
+    amendmentIds: jsonb("amendment_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_cover_requests_open_uq").on(t.assignmentId).where(sql`${t.status} in ('asked', 'accepted')`),
+    index("roster_cover_requests_counterpart_idx").on(t.counterpartId, t.status),
+    index("roster_cover_requests_dept_idx").on(t.departmentId, t.status),
+    check("roster_cover_requests_kind_ck", sql`${t.kind} in ('cover', 'swap')`),
+    check("roster_cover_requests_status_ck", sql`${t.status} in ('asked', 'accepted', 'declined', 'approved', 'refused', 'withdrawn')`),
+    /** A swap names the duty given back; a cover names none. */
+    check("roster_cover_requests_swap_ck", sql`(${t.kind} = 'swap') = (${t.counterpartAssignmentId} is not null)`),
+    check("roster_cover_requests_distinct_ck", sql`${t.counterpartId} <> ${t.ownerId}`),
+    check("roster_cover_requests_note_ck", sql`${t.note} is null or length(${t.note}) <= 280`),
+    /** A decision is two facts or none. */
+    check("roster_cover_requests_decided_ck", sql`(${t.decidedAt} is null) = (${t.decidedBy} is null)`),
+  ],
+);
+
+/**
+ * 20-U U6 (register I22) — **"THIS IS WRONG."** Any reader of the who-is-on board may say that a
+ * name on duty is wrong (leave approved on paper, a swap nobody entered), in one line. The flag is
+ * shown on the board's holes card until somebody who can fix the roster marks it dealt with. It
+ * changes no duty: the fix is an amendment, made by a person.
+ */
+export const rosterFlags = pgTable(
+  "roster_flags",
+  {
+    id: text("id").primaryKey(),
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    /** The person whose name is wrong, when the reader picked one. */
+    userId: text("user_id").references(() => users.id),
+    /** The instant the board was showing when the reader flagged it. */
+    at: timestamp("at", { withTimezone: true }).notNull(),
+    note: text("note").notNull(),
+    raisedBy: text("raised_by").notNull().references(() => users.id),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedBy: text("resolved_by").references(() => users.id),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    index("roster_flags_open_idx").on(t.raisedAt).where(sql`${t.resolvedAt} is null`),
+    check("roster_flags_note_ck", sql`length(btrim(${t.note})) between 1 and 200`),
+    check("roster_flags_resolved_ck", sql`(${t.resolvedAt} is null) = (${t.resolvedBy} is null)`),
+  ],
+);
+
+/**
+ * 20-U infra (owner 2026-10-04, board "When the screens are dark", plan D5) — **THE BOARD PRINTS
+ * ITSELF AT 20:00 AND 08:00 IST, AND EACH PRINT IS A ROW.**
+ *
+ * One row per scheduled print instant (`slot_at`, unique — the at-least-once guard: a worker that
+ * ticks twice in the minute, or two workers, write ONE). It keeps the document exactly as generated
+ * at that instant (`html`), so the paper the relay prints, the PDF a reader downloads tomorrow and
+ * what an enquiry reads next month are the same sheet — the roster amended at 20:05 does not edit
+ * what was on the wall at 20:00.
+ *
+ * `outcome` says what the server DID, and the card reads nothing else:
+ *   · `queued`     — print jobs were put on the house print rail (`print_job_ids`, one per
+ *                    `destinations` entry); whether paper came out is those jobs' own status;
+ *   · `no_printer` — no print relay is granted the board's destination, so nothing was queued and
+ *                    the card says "generated — download", never "printed".
+ *
+ * `print_job_ids` is NOT a foreign key: `print_jobs` rows are pruned by the retention sweep, and a
+ * print record must outlive its outbox row.
+ */
+export const ROSTER_BOARD_PRINT_OUTCOMES = ["queued", "no_printer"] as const;
+export type RosterBoardPrintOutcome = (typeof ROSTER_BOARD_PRINT_OUTCOMES)[number];
+
+export const rosterBoardPrints = pgTable(
+  "roster_board_prints",
+  {
+    id: text("id").primaryKey(),
+    /** The scheduled instant (08:00 or 20:00 IST) — the board is drawn AS AT this instant. */
+    slotAt: timestamp("slot_at", { withTimezone: true }).notNull(),
+    renderedAt: timestamp("rendered_at", { withTimezone: true }).notNull().defaultNow(),
+    title: text("title").notNull(),
+    html: text("html").notNull(),
+    outcome: text("outcome").notNull(),
+    destinations: text("destinations").array().notNull().default(sql`'{}'::text[]`),
+    printJobIds: text("print_job_ids").array().notNull().default(sql`'{}'::text[]`),
+    siteId: text("site_id").notNull().default("main"),
+    ...ruleAudit,
+  },
+  (t) => [
+    uniqueIndex("roster_board_prints_slot_ux").on(t.slotAt),
+    check("roster_board_prints_outcome_ck", sql`${t.outcome} in ('queued', 'no_printer')`),
+    check("roster_board_prints_jobs_ck", sql`(${t.outcome} = 'queued') = (cardinality(${t.printJobIds}) > 0)`),
   ],
 );

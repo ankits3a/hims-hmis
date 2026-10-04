@@ -11,7 +11,7 @@ import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
-import { escalationRecipients } from "../../modules/roster";
+import { dutyManagersAt, escalationRecipients, flagForAlert, rosterFlagRaised } from "../../modules/roster";
 import { alertRaised } from "./events";
 import type { Db } from "../db/client";
 import type { DispatchedEvent, Handler } from "../events/subscriptions";
@@ -86,6 +86,13 @@ const IMAGING_CHASE_REF_TYPE = "imaging_study";
 const OPERATING_MODE_REF_TYPE = "operating_mode";
 /** The two modes whose entry or exit is worth waking somebody for (D4). */
 const ALERTING_MODES: ReadonlySet<string> = new Set(["downtime", "degraded"]);
+/**
+ * 20-U infra (owner 2026-10-04) — a reader said a name on the who-is-on board is wrong. `refId` is
+ * the `roster_flags` row; the bell links to the board, where the flag is shown and resolved.
+ */
+const ALERT_KIND_ROSTER_FLAG = "roster_flag";
+const ROSTER_FLAG_REF_TYPE = "roster_flag";
+const IST_HHMM = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const ALERTS_ACTOR: Actor = { type: "system", id: "kernel-alerts" };
 
 /**
@@ -136,6 +143,10 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === respondOverdue.name) {
       await handleRespondOverdue(db, e);
+      return;
+    }
+    if (e.name === rosterFlagRaised.name) {
+      await handleRosterFlagRaised(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -491,5 +502,42 @@ async function handleRespondOverdue(db: Db, e: DispatchedEvent): Promise<void> {
     body: `Nobody has said they have this. Open it and mark it seen, or take it on, before it climbs.`,
     refType: ALERT_REF_TYPE,
     refId: payload.instanceId,
+  });
+}
+
+/**
+ * ═══ 20-U INFRA (owner 2026-10-04) — "THIS IS WRONG" PAGES THE DUTY MANAGER ON DUTY ═══
+ *
+ * A reader of the who-is-on board flagged a name on duty as wrong (register I22). The flag was
+ * stored and shown on the board only; a duty manager who was not looking at the board did not know.
+ * Now it is one bell row for whoever is duty manager at the instant it was raised — the roster's
+ * answer (`dutyManagersAt`), falling back to every `duty_manager` role holder exactly as R6 does —
+ * MINUS the reader who raised it: nobody is told about their own act (11c D4's rule).
+ *
+ * The text is the reader's one line, the department, and staff names. A flag is about a DUTY; no
+ * patient is on the event or the row, so GC6 has nothing to strip here, and the line is shown as
+ * written because "Dr Rao is on leave, Dr Sen is covering" is the whole of what the manager needs.
+ *
+ * Resolving the flag does NOT acknowledge the alert. An ack (`seen`/`owned`/`handed_over`) is a
+ * human's statement about the bell row (phase O T3) and the house alert has no system "closed"
+ * state; writing one on the manager's behalf would be the machine answering for a person.
+ */
+async function handleRosterFlagRaised(db: Db, e: DispatchedEvent): Promise<void> {
+  const payload = rosterFlagRaised.payloadSchema.parse(e.payload);
+  const { recipients, flag } = await withTx(db, async (tx) => ({
+    recipients: (await dutyManagersAt(tx, e.occurredAt)).userIds,
+    flag: await flagForAlert(tx, payload.flagId),
+  }));
+  if (flag === null) {
+    throw new Error(`alerts consumer: roster.flag_raised names flag ${payload.flagId}, which does not exist`);
+  }
+  const where = flag.departmentName ?? "Hospital-wide";
+  await raiseAlerts(db, e, recipients.filter((id) => id !== flag.raisedBy), {
+    kind: ALERT_KIND_ROSTER_FLAG,
+    title: `Roster flagged wrong: ${where}${flag.userName === null ? "" : ` · ${flag.userName}`}`,
+    body: `"${flag.note}" — ${flag.raisedByName}, ${IST_HHMM.format(flag.raisedAt)} IST. Open Who is on now, `
+      + "fix the roster by an amendment, then mark the flag dealt with.",
+    refType: ROSTER_FLAG_REF_TYPE,
+    refId: payload.flagId,
   });
 }

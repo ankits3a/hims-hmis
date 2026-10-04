@@ -3,11 +3,11 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
   orgDepartments, permissions, roleAssignments, rolePermissions, roles, rosterPositions,
-  rosterRequirements, rosterTeams, staffAbsences, users,
+  rosterHolidays, rosterRequirements, rosterTeams, staffAbsences, users,
 } from "../../kernel/db/schema";
 import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
 import { addMembership } from "./memberships";
-import { periodWithAssignments } from "./periods";
+import { periodWithAssignments, presenceClashes } from "./periods";
 import { seedRosterRules } from "./rules";
 import { validate } from "./validator";
 import { fairnessOf, fairnessSpread, proposeMonth } from "./proposer";
@@ -216,4 +216,150 @@ describe("roster — the proposer and the monthly draft (R9)", () => {
     const worst = (f: readonly { nights: number }[]): number => Math.max(...f.map((x) => x.nights));
     expect(worst(pooled.fairness)).toBeLessThan(worst(split.fairness));
   });
+
+  /* ═══════════════════ audit 2026-10-04 — correctness defects ═══════════════════ */
+
+  /** The IST hour a slot starts at — 08 cover, 09 routine, 20 night. */
+  const istHour = (d: Date): number => new Date(d.getTime() + 330 * 60_000).getUTCHours();
+  const rowsOf = async (periodId: string) => (await periodWithAssignments(db, periodId)).assignments;
+  const leave = (id: string, userId: string, from: string, to: string) => db.insert(staffAbsences).values({
+    id, userId, kind: "CL", startsAt: at(from), endsAt: at(to), status: "approved",
+    reason: "family function", requestedBy: userId, approvedBy: MS,
+    decidedAt: at("2026-09-20T10:00"), source: "manual", createdBy: "t", updatedBy: "t",
+  });
+
+  it("#1 pooled nights: DAY duty is the unit's own; the department pool is for the night only", async () => {
+    const r = await propose({ teamId: TEAM2, strategy: "pooled_nights", seed: 3 });
+    const rows = await rowsOf(r.periodId);
+    const days = rows.filter((a) => istHour(a.startsAt) !== 20);
+    const nights = rows.filter((a) => istHour(a.startsAt) === 20);
+    expect(days.length).toBeGreaterThan(0);
+    // Unit III's draft rosters Unit III's three residents by day — never Unit II's six.
+    expect(days.filter((a) => a.userId !== null && !JRS2.includes(a.userId)).map((a) => a.userId)).toEqual([]);
+    // The night is the DEPARTMENT's: it names no team, so the resolver does not subtract a pool
+    // member for not belonging to Unit III (resolve.ts V13).
+    expect(nights.every((a) => a.coverScope === "department" && a.teamId === null)).toBe(true);
+  });
+
+  it("#1 two units drafting pooled nights put ONE resident on the department's night, not one per unit", async () => {
+    const a = await propose({ teamId: TEAM, strategy: "pooled_nights", seed: 3, title: "October — Unit II" });
+    const b = await propose({ teamId: TEAM2, strategy: "pooled_nights", seed: 3, title: "October — Unit III" });
+    const nights = [...await rowsOf(a.periodId), ...await rowsOf(b.periodId)]
+      .filter((x) => istHour(x.startsAt) === 20);
+    expect(nights).toHaveLength(31);
+    expect(new Set(nights.map((n) => n.startsAt.toISOString())).size).toBe(31);
+    // …and nobody in either draft is in two places at once.
+    expect(await presenceClashes(db, [a.periodId, b.periodId])).toEqual([]);
+  });
+
+  it("#2 one day of casual leave takes the person off THAT day, not the month", async () => {
+    await leave("01ABS000000000000000010", JRS[0]!, "2026-10-10T00:00", "2026-10-11T00:00");
+    const r = await propose();
+    const mine = (await rowsOf(r.periodId)).filter((a) => a.userId === JRS[0]);
+    expect(mine.length).toBeGreaterThan(10);
+    const onLeave = mine.filter((a) => a.startsAt < at("2026-10-11T00:00") && a.endsAt > at("2026-10-10T00:00"));
+    expect(onLeave).toEqual([]);
+  });
+
+  it("#3 the in-building position is covered every minute: 08:00 cover, 20:00 night, no window between", async () => {
+    const r = await propose();
+    const spans = (await rowsOf(r.periodId))
+      .filter((a) => a.positionKey === "ward_jr" && a.mode === "presence" && a.userId !== null && a.kind === "duty")
+      .map((a) => [a.startsAt.getTime(), a.endsAt.getTime()] as const)
+      .sort((x, y) => x[0] - y[0]);
+    let cursor = at("2026-10-01T08:00").getTime();
+    const gaps: string[] = [];
+    for (const [s, e] of spans) {
+      if (s > cursor) gaps.push(`${new Date(cursor).toISOString()}→${new Date(s).toISOString()}`);
+      cursor = Math.max(cursor, e);
+    }
+    expect(gaps.slice(0, 3)).toEqual([]);
+    expect(cursor).toBeGreaterThanOrEqual(at("2026-11-01T08:00").getTime());
+  });
+
+  it("#8 a declared holiday: no routine/OPD day duty, take cover and night run, and the holiday is counted", async () => {
+    await db.insert(rosterHolidays).values({
+      istDate: "2026-10-02", kind: "gazetted", pattern: "as_sunday", declaredBy: MS,
+      createdBy: "t", updatedBy: "t",
+    });
+    const r = await propose();
+    const onTheDay = (await rowsOf(r.periodId)).filter((a) =>
+      a.startsAt >= at("2026-10-02T00:00") && a.startsAt < at("2026-10-03T00:00"));
+    // Gandhi Jayanti: no OPD, no elective list (20-U board). Take and nights run as usual.
+    expect(onTheDay.filter((a) => istHour(a.startsAt) === 9)).toEqual([]);
+    expect(onTheDay.filter((a) => istHour(a.startsAt) === 20 && a.userId !== null)).toHaveLength(1);
+    expect(onTheDay.filter((a) => istHour(a.startsAt) === 8 && a.userId !== null)).toHaveLength(1);
+    // Whoever worked the holiday carries it in the fairness count.
+    expect(r.fairness.reduce((n, f) => n + f.holidays, 0)).toBe(2);
+  });
+
+  it("#9 a rotation that changes mid-month: drafted from the day they join, not after the day they leave", async () => {
+    const NEW = "01USERJRNEW00000000000000";
+    await db.insert(users).values({ id: NEW, username: "jrnew", fullName: "Resident New", staffCode: "EMP-JRN", passwordHash: "x" });
+    await db.insert(roleAssignments).values({ id: "RA-NEW", userId: NEW, roleKey: "doctor", scopeType: "hospital", scopeId: null });
+    await withTx(db, (tx) => addMembership(tx, ms, {
+      teamId: TEAM, userId: NEW, positionKey: "ward_jr", grade: "jr1",
+      roleInTeam: "junior_resident", kind: "parent", startsAt: at("2026-10-15T00:00"),
+    }));
+    await db.execute(sql`update roster_team_memberships set ends_at = ${at("2026-10-10T00:00")}
+      where user_id = ${JRS[0]!} and team_id = ${TEAM}`);
+
+    const rows = await rowsOf((await propose()).periodId);
+    const leaver = rows.filter((a) => a.userId === JRS[0]);
+    const joiner = rows.filter((a) => a.userId === NEW);
+    expect(leaver.length).toBeGreaterThan(0);
+    expect(leaver.filter((a) => a.startsAt >= at("2026-10-10T00:00"))).toEqual([]);
+    expect(joiner.length).toBeGreaterThan(0);
+    expect(joiner.filter((a) => a.startsAt < at("2026-10-15T00:00"))).toEqual([]);
+  });
+
+  /* ═══════════ 20-U: a night is always followed by twelve hours' rest — over whole drafted months ═══════════ */
+
+  it.each(["unit_split", "pooled_nights"] as const)(
+    "a three-unit department, %s: nobody has ANY duty within twelve hours of a night's end",
+    async (strategy) => {
+      const TEAM3 = "01ROSTERTEAM00000MEDU4";
+      const JRS3 = Array.from({ length: 4 }, (_, i) => `01USERJZ00000000000000${i}`);
+      await db.insert(rosterTeams).values({
+        id: TEAM3, departmentId: MED, code: "MED-U4", name: "Medicine Unit IV", kind: "clinical_unit",
+        createdBy: "t", updatedBy: "t",
+      });
+      for (const [i, id] of JRS3.entries()) {
+        await db.insert(users).values({ id, username: `jz${i}`, fullName: `Resident Z${i}`, staffCode: `EMP-JZ${i}`, passwordHash: "x" });
+        await db.insert(roleAssignments).values({ id: `RA-${id}`, userId: id, roleKey: "doctor", scopeType: "hospital", scopeId: null });
+        await withTx(db, (tx) => addMembership(tx, ms, {
+          teamId: TEAM3, userId: id, positionKey: "ward_jr", grade: "jr2",
+          roleInTeam: "junior_resident", kind: "parent", startsAt: at("2026-01-01T00:00"),
+        }));
+      }
+
+      const periods: string[] = [];
+      for (const [teamId, title] of [[TEAM, "U2"], [TEAM2, "U3"], [TEAM3, "U4"]] as const) {
+        periods.push((await propose({ teamId, strategy, seed: 5, title: `October — ${title}` })).periodId);
+      }
+      const rows = (await Promise.all(periods.map(rowsOf))).flat()
+        .filter((a) => a.userId !== null && a.kind === "duty" && a.mode === "presence");
+      expect(rows.length).toBeGreaterThan(200); // a green cannot come from an empty month
+
+      const REST_MS = 12 * 3_600_000;
+      const breaks: string[] = [];
+      let nightsSeen = 0;
+      for (const n of rows.filter((a) => istHour(a.startsAt) === 20)) {
+        nightsSeen += 1;
+        for (const s of rows) {
+          if (s.id === n.id || s.userId !== n.userId) continue;
+          // Any duty that runs on past the night's end and begins before twelve hours have passed.
+          if (s.endsAt > n.endsAt && s.startsAt.getTime() < n.endsAt.getTime() + REST_MS && s.startsAt >= n.startsAt) {
+            breaks.push(`${n.userId} ${n.endsAt.toISOString()} → ${s.startsAt.toISOString()}`);
+          }
+        }
+      }
+      expect(nightsSeen).toBeGreaterThanOrEqual(31);
+      expect(breaks).toEqual([]);
+      // …and the validator, which now reads contiguous slots too, agrees for every unit's draft.
+      for (const id of periods) {
+        expect((await validate(db, id)).filter((f) => f.ruleKey === "rest_after_duty")).toEqual([]);
+      }
+    },
+  );
 });

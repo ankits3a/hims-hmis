@@ -194,6 +194,9 @@ export function OpdReportScreen({ initial }: { initial?: Selection }): React.Rea
                                 onClick={() => setOpen(isOpen ? null : d.departmentId)} data-testid={`odr-toggle-${d.code}`}>
                                 <span className="odr-caret" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
                                 <span className="nm">{d.name}</span>
+                                {d.units.length === 0 ? null : (
+                                  <span className="odr-unit" data-testid={`odr-unit-${d.code}`}>{t("dayReport.opdUnit", { units: d.units.join(", ") })}</span>
+                                )}
                                 <span className="odr-see">{isOpen ? t("dayReport.hidePatients") : t("dayReport.seePatients")}</span>
                               </button>
                             </td>

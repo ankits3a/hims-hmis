@@ -50,6 +50,11 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     nag: { user: "y", copilot: "n", agent: "y", system: "y", patient: "n" },
     // R4's own row. NOT from §4 — see the note on `request_absence` in `policy.ts`.
     request_absence: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    // 20-U U6 — a person's own duty, and the approval that turns it into an amendment.
+    request_cover: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    approve_swap: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    // 20-U U8 — the duty-evidence report goes to a regulator: a person's act, nobody else's.
+    read_evidence: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
   };
 
   it("every act × every actor kind is DECLARED — no cell falls through", () => {
@@ -176,6 +181,10 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // R8 — the one act in the validator's half of the phase. Everything else there READS.
     declareSkeletonMode: { reaches: "requireRosterAct(", why: "`declare` — the same act a holiday goes through. NO machine may put a hospital on skeleton cover however sure it is: the whole content of the declaration is that a person is answerable for it" },
     withdrawSkeletonMode: { reaches: "requireRosterAct(", why: "standing it down is the same authority as declaring it, at the same scope" },
+    // 20-U I1/I5 — the door's acts: each validates the body and calls the domain act unchanged.
+    declareHolidayAct: { reaches: "declareHoliday(", why: "the HTTP door onto `declareHoliday`; refuses a past day first, then the domain asks `declare`" },
+    declareModeAct: { reaches: "declareSkeletonMode(", why: "the HTTP door onto `declareSkeletonMode`; the domain asks `declare` at the department" },
+    withdrawModeAct: { reaches: "withdrawSkeletonMode(", why: "the HTTP door onto `withdrawSkeletonMode`, at the declaration's own scope" },
     // R9 — the proposer. It ACTS, and the act is the one the matrix grants a machine.
     proposeMonth: { reaches: "draftPeriod(", why: "`draft_machine_period` — a machine may draft a roster OF ITS OWN, and `assign` then judges every slot edit as `propose` or, once a human has touched the draft, `edit_human_draft`, which no machine may do" },
     runMonthlyProposals: { reaches: "proposeMonth(", why: "the scheduled entry point; it decides only WHICH units need next month, and every write goes through the checked path above" },
@@ -192,6 +201,23 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     extendWindows: { reaches: "materialiseWindows(", why: "the nightly roll-forward, through the checked writer" },
     sweepRosterWindows: { reaches: "extendWindows(", why: "the scheduler's entry point; see MATERIALISER_ACTOR on why a job is not a `system` actor here" },
     draftCycleFromTemplate: { reaches: "requireRosterAct(", why: "applying a pattern writes the department's own cycle, as a draft" },
+    draftCycle: { reaches: "requireRosterAct(", why: "a head writing the department's own weekly cycle, as a draft — as `draftCycleFromTemplate`" },
+    // 20-U U5b — the unit's month. Each composes acting exports; none writes a roster table itself.
+    draftUnitMonth: { reaches: "proposeMonth(", why: "asks the proposer for the month, through the checked path the monthly job uses" },
+    editSlot: { reaches: "assign(", why: "`unassign` then `assign` in one transaction — the new occupant faces every check `assign` makes" },
+    acceptUnitFinding: { reaches: "requireRosterAct(", why: "`accept_warning` first, then `acceptFinding`, which asks again" },
+    publishUnitMonth: { reaches: "publishPeriod(", why: "the gate is `publishPeriods`', and nothing here decides a publish" },
+    // 20-U U6 — covers and swaps. Asking is a reader's act about THEIR OWN duty; deciding is `approve_swap`.
+    requestCover: { reaches: "requireAsker(", why: "`request_cover` for your own duty, `propose` for somebody else's — and the validator refuses a must-fix before anybody is asked" },
+    answerCover: { reaches: "requireRosterAct(", why: "`request_cover`, and then only the person asked may answer" },
+    withdrawCover: { reaches: "requireRosterAct(", why: "the asker's own act, or `propose`" },
+    decideCover: { reaches: "requireRosterAct(", why: "`approve_swap` at the unit, or at the department across units (the HOD); applied through `amend`, which asks again" },
+    raiseFlag: { reaches: "requireRosterAct(", why: "`nag` — any reader may say a name on the board is wrong; it changes no duty" },
+    resolveFlag: { reaches: "requireRosterAct(", why: "`propose` at the flag's department — whoever can fix the roster says it is dealt with" },
+    // 20-U U8b — the AEBAS mark for a holiday, the twin of R4's `markAebasEntered`.
+    markHolidayAebasEntered: { reaches: "requireRosterAct(", why: "`publish` at hospital scope — the nodal officer's governed record, as the absence's mark" },
+    // 20-U U8 — the sheet is queued only after the report is built AS the actor.
+    printDutyEvidence: { reaches: "dutyEvidence(", why: "builds the report as the actor (`read_evidence` per person) before one job is queued" },
   };
   /**
    * ═══ THE READS TAKE NO ACTOR, AND THAT IS A DELIBERATE BOUNDARY FOR THIS TASK ═══
@@ -223,6 +249,13 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     teamByCode: "a read",
     listTeams: "a read",
     unconfirmedTeams: "a read, for the census",
+    unitCountsAt: "pure: whether a unit counts at an instant (confirmed and open) — no database, no actor",
+    retireSurplusUnits: "a deploy seed (`seed:roster`), run by an operator's own shell — there is no Actor; it closes only never-confirmed seed-shaped teams beyond the owner's table",
+    doctorUnitsOn: "a read — the unit beside a doctor's name; guarded at its route like `opdUnitsOn`",
+    prescriberPrint: "a read — the Unit Number and Dept. Regn the prescription prints instead of the prescriber's name (owner 2026-10-04)",
+    unitHeadsWithoutRegn: "a read — unit heads with no council number, so the blank Dept. Regn is seen; guarded at its route",
+    opdSittingAt: "a read — who sits in OPD from the OPD weekly schedule; read by the board",
+    countingUnits: "a read — the confirmed, open units every unit-population reader asks for",
     teamMembers: "a read — R5's resolver is the guarded reader of it",
     nightPoolFor: "a read — as `teamMembers`",
     membershipsOf: "a read",
@@ -239,6 +272,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     redactReason: "pure: decides who may read a reason, and mutates nothing",
     listAbsences: "a read — and the one that applies D6, so the caller that forgets cannot be the one that renders it",
     absentUserIds: "a read",
+    approvedAbsenceWindows: "a read — approved leave as windows, so a slot is judged against the leave that overlaps IT (audit 2026-10-04 #2)",
+    holidaysBetween: "a read — the declared holidays the proposer honours (audit 2026-10-04 #8)",
     livePeriodCount: "a read — how many rosters COVER an instant. Deliberately not `status = published`, which a roster keeps for ever once published; see the function",
     departmentsWithoutPublishedCycle: "a read — the departments that run units and have no cycle, which is the hole `departmentsWithTakeGaps` structurally cannot see",
     effectiveDrift: "a read — V5's repair query. It counts rows whose `effective` disagrees with their period's status, which is the half of the biconditional no constraint can see through a foreign key to hold",
@@ -253,9 +288,34 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     dutiesOf: "a read — and `My duties` is a screen about yourself, so its guard is the route's",
     calloutList: "a read — the ladder phase consumes it",
     onDutyNow: "a read — the board's, and it carries `source` so an unpublished department cannot be rendered as an empty staffed one",
+    // 20-U U5a — the first route. The read itself takes no actor; its ONE caller is
+    // `roster-board.controller.ts`, which is guarded by `RequirePermission("roster.read")` AND
+    // `requireRosterAct(…, "read")` before it calls — `test/roster-board.e2e.test.ts` pins the 403.
+    onNowBoard: "a read — the who-is-on-now board, composed of the reads above; guarded at its route",
+    // 20-U I1/I5/I23 — two reads.
+    declarationsView: "a read, guarded by `requireRosterAct(…, \"read\")`; its `youMay` PROBES `declare` and grants nothing",
+    boardAsItStood: "a read — the board as PUBLISHED at a past instant and the changes since; guarded at its route like `onNowBoard`",
+    // 20-U U7 — OPD reads the unit calendar.
+    opdUnitsOn: "a read — which unit (and doctors) hold each OPD clinic on a day; guarded at its route like `onNowBoard`, read as data by the OPD day report",
+    shortUnitName: "PURE: a unit's name in, the name without its department out",
+    // 20-U U9 — the copilot's roster tools. Each tool's `run` asks `requireRosterAct(…, "read", {}, "copilot")`.
+    rosterCopilotTools: "builds the four tool declarations; each one's run is a READ guarded by the act matrix as the copilot, and `ask_cover` returns a draft and writes nothing",
+    whenOf: "PURE: a question and an instant in, the instant it asks about out",
+    departmentOf: "PURE: a question and a list in, the department it names out",
+    publishedAsKnownAt: "a read on the knowledge axis — `asKnownAt` across every scope",
+    windowAsKnownAt: "a read on the knowledge axis — the take/backup window in force at an instant, as known then",
+    boardColumn: "pure: which board column a position belongs in, from the position master",
+    toHttp: "maps a RosterError to an HTTP refusal; decides nothing",
+    // 20-U U5b — the unit's month: one guarded read, a window and a list.
+    unitMonth: "a read, guarded by `requireRosterAct(…, \"read\")` at the unit's department; its `youMay` PROBES the write acts and grants nothing",
+    rosterSelf: "a read of the actor's OWN name and posting, for the header; acts on nothing",
+    monthWindow: "pure: an IST month as an instant window and its days",
+    rosterUnits: "a read: the departments that run units, and their units",
+    proposalStrategyFor: "a read: pooled nights or unit split, by head-count — shared by the monthly job and the U5b draft",
     // R6
     escalationRecipients: "a read, called from the worker's own consumers, which run as the kernel and carry their own authority — there is no Actor at 02:14 and inventing one would be the wrong shape",
     escalationTarget: "a read",
+    dutyManagersAt: "a read, called from the kernel alerts consumer for a \"this is wrong\" flag — the roster's duty manager at an instant, else the role's holders; no Actor, as escalationRecipients",
     listEscalationTargets: "a read",
     // R7 — pure arithmetic and reads.
     istMidnightUtc: "pure: the one place a calendar day becomes an instant",
@@ -271,6 +331,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     // evaluation that could write would make the harness's own runs part of the hospital's record.
     istMinutesOfInstant: "pure: minutes past IST midnight. It lives in `calendar.ts` because `ist-clock-parity` pins how many places carry the IST offset, and a copy of it inside a rule evaluator is the drift that census refuses",
     istDateOfInstant: "pure: the inverse of `istMidnightUtc`, and the hospital's one opinion about where a day begins",
+    touchesNight: "PURE: does a slot touch 01:00–05:00 IST — the one definition of a night, shared by the validator and `fairnessOf`",
     templateFeasibility: "PURE arithmetic — hours per week from an establishment, answerable before anybody drafts anything",
     validate: "a read that returns findings. It does not persist them, takes no `now` it could stamp with, and the publish gate computes its refusal from the returned array rather than from a table it has just written",
     simulate: "a what-if. Applies its deltas to an in-memory COPY and writes nothing — asserted by a row count before and after, rather than merely intended",
@@ -281,6 +342,36 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     fairnessOf: "PURE: counts nights, Sundays and holidays from rows it is handed. It reads no database and is the same answer for a roster somebody typed by hand as for one the proposer drafted",
     skeletonModeOn: "a read — and it answers `mine OR the whole hospital's`, because a department cannot be off skeleton cover on a day the hospital is on it",
     modeDeclarations: "a read: the day's checklist, withdrawn rows included",
+    // 20-U U5c/U6 — reads of a person's own duties and of the requests they may see.
+    coverOptions: "a read — who could take a duty and why everybody else cannot; guarded as the request would be (`requireAsker`), and it writes nothing (`simulate`)",
+    coverRequests: "a read, guarded by `read`, and filtered to the reader's own requests and those they could approve",
+    myDutyRows: "a read of the ACTOR's own duties, asked with the actor's own id; guarded by `read`",
+    myDuties: "a read — My duties, composed of the reads above; the reader's own and nobody else's",
+    flagForAlert: "a read — one flag's line, department and staff names for the duty manager's bell row; called from the kernel alerts consumer, no Actor",
+    // 20-U infra (owner 2026-10-04) — the board prints itself at 20:00 and 08:00 IST.
+    boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant is due",
+    nextBoardSlot: "PURE: the next 08:00/20:00 IST instant",
+    boardPrinterGranted: "a read — is any live relay granted the board's print destination",
+    renderBoardSheet: "a read — draws the who-is-on board as HTML; writes nothing",
+    printBoardIfDue: "the scheduler's print of the board. It writes a PRINT RECORD and, when a relay is granted the destination, a print job — never a roster row — and decides nothing about who is on; there is no Actor at 20:00",
+    renderBoardPrintJob: "a read — the stored sheet for the print relay's claim, refused when stale",
+    registerRosterPrinting: "registers the renderer with the kernel's print rail at boot; acts on nothing",
+    lastBoardPrint: "a read — the last print record and its jobs' statuses, for the board's card",
+    boardPrintDocument: "a read — one recorded sheet, for download; the route asks `read` first",
+    openFlags: "a read — the open \"this is wrong\" flags for the board's holes card; `youMayResolve` PROBES `propose`",
+    // 20-U U8 / U8b — reads, each guarded by the act inside it.
+    dutyEvidence: "a read — guarded by `read_evidence` AT EACH PERSON'S DEPARTMENT before a row about them is read; selects no phone, no leave kind, no reason",
+    evidencePeople: "a read — the picker; lists only departments where `read_evidence` holds (it PROBES the act and grants nothing)",
+    evidenceRef: "pure: the sheet's reference, a hash of who asked, whom, which days and the day asked",
+    assertEvidenceAsk: "pure: refuses a malformed range or an empty/oversized list of people",
+    renderEvidenceHtml: "pure: the sheet's HTML from a report already built under its guard",
+    renderDutyEvidence: "the print renderer — calls `dutyEvidence` AS THE JOB'S REQUESTER, so the act is asked again at claim time",
+    registerTheatreEvidenceSource: "wiring: the OT module hands over its theatre-times read; decides nothing",
+    registerRosterEvidencePrinting: "registers the renderer with the kernel dispatcher; decides nothing",
+    rosteredText: "pure: one day's rostered duty as a sentence",
+    recordLines: "pure: one day's records as sentences — never a conclusion",
+    aebasTodo: "a read — guarded by `publish` at hospital scope (the nodal officer); never selects a reason",
+    aebasCensus: "a read, for the census — counts; no names",
     recordFindings: "brings the STORED findings into line with what `validate()` computed. It writes, and it is deliberately NOT an acting function: it decides nothing, grants nothing and refuses nothing — the judgement is `acceptFinding`, which is guarded. A proposer may record what it found; it may not accept it",
   };
 

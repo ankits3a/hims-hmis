@@ -1454,11 +1454,28 @@ function DeptCard({ q, first, second }: { q: DeptQueue; first: boolean; second: 
           first free doctor
         </button>
       </div>
+      {/*
+        20-U U7 — WHICH UNIT'S DAY IT IS, from the roster's published calendar. Read-only: the doctors'
+        rows below are still the doctor-day board. Nothing at all for a department that runs no units.
+      */}
+      {(d.opdUnits.get(q.departmentId) ?? []).map((u) => (
+        <div
+          key={u.teamId} data-testid={`opd-unit-${q.departmentId}`}
+          style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: "16px", padding: "0 13px 9px", marginTop: -3 }}
+        >
+          <b style={{ color: "var(--ink)", fontWeight: 600 }}>{u.short}</b> holds today's OPD
+          {u.doctors.length === 0 ? null : <> · <span>{u.doctors.map((x) => x.name).join(", ")}</span></>}
+        </div>
+      ))}
       {q.doctors.map((doc) => {
         const away = !bookableToday(doc);
         return (
           <div key={doc.doctor.id} className="drow d1-docrow">
-            <span style={{ fontSize: 12.5, fontWeight: 500, width: 160 }}>{doc.doctor.displayName}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 500, width: 160, lineHeight: "15px" }}>
+              {doc.doctor.displayName}
+              {/* 2026-10-04 (owner) — the unit (or "Guest Faculty") beside the name, one quiet line under it. */}
+              {(() => { const tag = d.doctorLabel(doc.doctor); return tag === null ? null : <span data-testid={`doctor-tag-${doc.doctor.id}`} style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--dim)" }}>{tag}</span>; })()}
+            </span>
             <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)", width: 56 }}>{doc.roomCode ?? "—"}</span>
             {away ? (
               /*
@@ -1803,7 +1820,7 @@ function FutureTab(): React.ReactElement {
           >
             {bookable.length === 0 ? <option value="">nobody in this department</option> : null}
             {bookable.map((x) => (
-              <option key={x.doctor.id} value={x.doctor.id}>{x.doctor.displayName}</option>
+              <option key={x.doctor.id} value={x.doctor.id}>{x.doctor.displayName}{(() => { const tag = d.doctorLabel(x.doctor); return tag === null ? "" : ` · ${tag}`; })()}</option>
             ))}
           </select>
         </div>

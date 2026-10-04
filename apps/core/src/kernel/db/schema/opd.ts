@@ -97,6 +97,13 @@ export const opdDoctors = pgTable(
     registrationNo: text("registration_no"), // NMC/state council registration — printed on the e-Rx
     departmentId: text("department_id").notNull().references(() => opdDepartments.id),
     specialty: text("specialty"),
+    /**
+     * 2026-10-04 (owner) — the doctor's DESIGNATION in this hospital: "Guest Faculty", "Senior
+     * Resident", "Assistant Professor". Not the specialty (Neurosurgeon stays there). Shown as a quiet
+     * tag on the front desk's doctor rows and the appointment book; NOT printed on hospital paper
+     * (owner 2026-09-06: Doctor ID only). Nullable free text.
+     */
+    designation: text("designation"),
     active: boolean("active").notNull().default(true),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

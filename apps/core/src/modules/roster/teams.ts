@@ -23,33 +23,34 @@ export type RosterMembershipRow = typeof rosterTeamMemberships.$inferSelect;
 /* ═══════════════════════════════ the establishment ═══════════════════════════════ */
 
 /**
- * ═══ 27 UNITS, AND THE NUMBER IS OURS RATHER THAN THE REGULATOR'S ═══
+ * ═══ 22 UNITS — THE OWNER'S TABLE (2026-10-04) ═══
  *
- * **UG-MSR 2023 DROPPED THE UNITS TABLE.** Its only sentence about units is that one *"should have
- * at least 02 (two) Junior Residents or postgraduates / M.O.s for patient care"*. The
- * 5/5/3/3/4/2/2/1/1 establishment below is the superseded MSR 2020 table, which is also what one
- * unit per sanctioned SR produces from UG-MSR 2023's own faculty counts — so it is a good default
- * and it is **not a number a screen may present as the NMC's** (20-U §2, owner §10.2).
+ * "Department-Wise Unit and Bed Requirements", from the owner: General Medicine 5, General Surgery 5,
+ * Obstetrics & Gynaecology 3, Paediatrics 3, Orthopaedics 2, Ophthalmology 1, ENT 1, Psychiatry 1,
+ * Dermatology 1 — 22 units, 575 unit beds plus 30 combined ICU beds = 605 (`COMBINED_ICU_BEDS`, for the
+ * future IPD; no bed is built here). Respiratory Medicine has NO unit. This SUPERSEDES the 2026-09-20
+ * reading (the MSR 2020 table 5/5/3/3/4/2/2/1/1 + Respiratory 1 = 27): OBG 4→3, ORT 3→2, ENT 2→1,
+ * OPH 2→1, RESP 1→0. `retireSurplusUnits` closes what an earlier seed wrote beyond it.
  *
- * That is exactly why every seeded team lands `active = false`: the head of department confirms it,
- * and `standup:check` lists what is still unconfirmed. Respiratory Medicine is the 27th and has no
- * row in UG-MSR's final table at all — its faculty are counted under Medicine (FAQ Q8) — and the
- * owner's ruling RU-1 makes it a one-unit department of its own.
+ * Every seeded team still lands `active = false`: a unit counts only once its head confirms it
+ * (`unitCountsAt`), and today only Unit I of MED, SUR, ENT, OBG and ORT is confirmed.
  */
 export const UNIT_ESTABLISHMENT: readonly { departmentCode: string; units: number; sanctionedBeds: number }[] = [
   { departmentCode: "MED", units: 5, sanctionedBeds: 150 },
   { departmentCode: "SUR", units: 5, sanctionedBeds: 150 },
+  { departmentCode: "OBG", units: 3, sanctionedBeds: 75 },
   { departmentCode: "PED", units: 3, sanctionedBeds: 75 },
-  { departmentCode: "ORT", units: 3, sanctionedBeds: 60 },
-  { departmentCode: "OBG", units: 4, sanctionedBeds: 75 },
-  { departmentCode: "ENT", units: 2, sanctionedBeds: 20 },
-  { departmentCode: "OPH", units: 2, sanctionedBeds: 20 },
+  { departmentCode: "ORT", units: 2, sanctionedBeds: 60 },
+  { departmentCode: "OPH", units: 1, sanctionedBeds: 20 },
+  { departmentCode: "ENT", units: 1, sanctionedBeds: 20 },
   { departmentCode: "PSY", units: 1, sanctionedBeds: 15 },
   { departmentCode: "DER", units: 1, sanctionedBeds: 10 },
-  { departmentCode: "RESP", units: 1, sanctionedBeds: 0 },
 ];
 
-/** 5+5+3+3+4+2+2+1+1+1. Named so a test can pin the arithmetic rather than the list. */
+/** The owner's table: 30 beds of combined ICUs, belonging to no unit — recorded for the IPD, not built. */
+export const COMBINED_ICU_BEDS = 30;
+
+/** 5+5+3+3+2+1+1+1+1 = 22. Named so a test can pin the arithmetic rather than the list. */
 export const UNIT_COUNT = UNIT_ESTABLISHMENT.reduce((n, d) => n + d.units, 0);
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"];
@@ -96,6 +97,39 @@ export async function seedUnits(exec: Db | Tx, by = "seed"): Promise<{ added: nu
     added += pool.length;
   }
   return { added, present: intended - added };
+}
+
+/**
+ * ═══ 2026-10-04 — CLOSING WHAT AN EARLIER SEED WROTE BEYOND THE OWNER'S TABLE ═══
+ *
+ * An install seeded before 2026-10-04 holds the old 27 (OBG-U4, ORT-U3, ENT-U2, OPH-U2, RESP-U1 and
+ * the RESP night pool beyond today's 22). Each such team that was NEVER CONFIRMED (inactive, still
+ * open) is CLOSED, never deleted: `valid_to` one millisecond after its `valid_from`, so it never counted
+ * at any instant (`unitCountsAt`) and every reader treats it as never having run. A CONFIRMED surplus
+ * unit is a head's decision and is never closed here: it is returned in `keptConfirmed` for a human.
+ * Only seed-shaped codes (`XXX-U<n>`, `XXX-NIGHT`) are judged; a team a HOD created by hand is left alone.
+ * Idempotent: a closed team is not open, so a second run finds nothing.
+ */
+export const SURPLUS_REASON = "beyond the owner's unit establishment of 2026-10-04 (22 units; Respiratory Medicine none)";
+
+export async function retireSurplusUnits(
+  exec: Db | Tx, by = "seed",
+): Promise<{ retired: string[]; keptConfirmed: string[] }> {
+  const expected = new Set(UNIT_ESTABLISHMENT.flatMap((r) => [
+    ...Array.from({ length: r.units }, (_, i) => `${r.departmentCode}-U${i + 1}`), `${r.departmentCode}-NIGHT`,
+  ]));
+  const open = (await (exec as Db).select().from(rosterTeams).where(isNull(rosterTeams.validTo)))
+    .filter((t) => (t.kind === "clinical_unit" || t.kind === "pool") && /^[A-Z]+-(U\d+|NIGHT)$/.test(t.code) && !expected.has(t.code));
+  const retired: string[] = [];
+  const keptConfirmed: string[] = [];
+  for (const t of open.sort((a, b) => a.code.localeCompare(b.code))) {
+    if (t.active) { keptConfirmed.push(t.code); continue; }
+    await (exec as Db).update(rosterTeams)
+      .set({ validTo: new Date(t.validFrom.getTime() + 1), active: false, updatedBy: by, updatedAt: new Date() })
+      .where(and(eq(rosterTeams.id, t.id), isNull(rosterTeams.validTo), eq(rosterTeams.active, false)));
+    retired.push(t.code);
+  }
+  return { retired, keptConfirmed };
 }
 
 /* ═══════════════════════════════ writes ═══════════════════════════════ */
@@ -183,6 +217,32 @@ export async function listTeams(
     (opts.departmentId === undefined || r.departmentId === opts.departmentId)
     && (opts.kind === undefined || r.kind === opts.kind)
     && (opts.activeOnly !== true || r.active));
+}
+
+/**
+ * ═══ 2026-10-04 (owner) — ONLY A CONFIRMED UNIT COUNTS ═══
+ *
+ * *"We only have 1 unit per department right now … some departments do not even have any single
+ * doctor so we don't have units there."* `seed:roster` writes the 27-unit establishment INACTIVE,
+ * and until a head confirms a unit it is our arithmetic, not a unit the hospital runs. Every reader
+ * that asks "which departments run units, and which units" — Who is on now, its "no take cycle"
+ * hole, the as-it-stood board, the declarations picker, the month picker, the OPD unit line, the
+ * census — asks THIS, so a seeded-but-unconfirmed Paediatrics is never drawn as a unit-running
+ * department with a hole nobody can fill.
+ *
+ * A unit counts at `at` when it is open (`valid_to` null) and confirmed (`active`), or when it
+ * closed AFTER `at` — `closeTeam` clears `active` at once, and last week's board still names the
+ * unit that ran last week.
+ */
+export function unitCountsAt(team: Pick<RosterTeamRow, "active" | "validTo">, at: Date): boolean {
+  return team.validTo === null ? team.active : team.validTo > at;
+}
+
+/** The clinical units that count at `at` (see `unitCountsAt`), by code. */
+export async function countingUnits(exec: Db | Tx, at: Date): Promise<RosterTeamRow[]> {
+  const rows = await (exec as Db).select().from(rosterTeams)
+    .where(eq(rosterTeams.kind, "clinical_unit")).orderBy(asc(rosterTeams.code));
+  return rows.filter((t) => unitCountsAt(t, at));
 }
 
 /** The units a HOD has not yet confirmed — the `standup:check` row, and the screen behind it. */

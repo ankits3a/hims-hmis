@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { daycareEncounters } from "../../kernel/db/schema";
+import { registerOtDutyEvidence } from "./duty-evidence";
 import { OtDefinitionsController } from "./ot-definitions.controller";
 import { OtCasesController } from "./ot-cases.controller";
 import { OtCockpitController } from "./ot-cockpit.controller";
@@ -38,6 +39,8 @@ export class OtModule implements OnModuleInit {
    */
   onModuleInit(): void {
     registerOtEncounterResolver();
+    // 20-U U8 — the roster's duty-evidence report reads theatre times through this registration.
+    registerOtDutyEvidence();
   }
 }
 

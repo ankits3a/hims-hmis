@@ -76,7 +76,7 @@ async function pickDeptAndDoctor(user: ReturnType<typeof userEvent.setup>): Prom
   await waitFor(() => expect(within(departmentSelect).getByText(/General medicine/)).toBeInTheDocument());
   await user.selectOptions(departmentSelect, "dep-1");
   const doctorSelect = await screen.findByLabelText("Doctor");
-  await waitFor(() => expect(within(doctorSelect).getByText("Dr Meera Rao")).toBeInTheDocument());
+  await waitFor(() => expect(within(doctorSelect).getByText(/^Dr Meera Rao/)).toBeInTheDocument());
   await user.selectOptions(doctorSelect, "doc-1");
 }
 
@@ -104,6 +104,39 @@ describe("OpdAppointments", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("2026-10-04 — names the unit that holds the picked department's OPD on the booked day, and nothing for a department without one", async () => {
+    const asked: string[] = [];
+    stubFetch({
+      ...DAY_STUBS,
+      "GET /api/opd/appointments": { items: [] },
+      "GET /api/auth/me": { actor: { type: "user", id: "u1" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } },
+      "GET /api/roster/doctor-units": [{ userId: "u-9", teamId: "t-1", code: "MED-U1", unitName: "General Medicine Unit I", short: "Unit I", departmentId: "org-med", departmentName: "General Medicine", roleInTeam: "head" }],
+      "GET /api/roster/opd-units": (_init?: RequestInit, url?: string) => {
+        asked.push(url ?? "");
+        return [{
+          opdDepartmentId: "dep-1", departmentId: "org-med",
+          units: [{
+            teamId: "t-1", code: "MED-U1", name: "General Medicine Unit I", short: "Unit I",
+            startsAt: "2026-08-18T03:30:00.000Z", endsAt: "2026-08-18T11:30:00.000Z",
+            doctors: [{ userId: "u-9", name: "Dr Meera Rao", role: "head" }],
+          }],
+        }];
+      },
+    });
+    setToken("t-1");
+    renderWithProviders(<OpdAppointments />);
+    const user = userEvent.setup();
+    // No department picked: the roster is not asked.
+    await screen.findByLabelText("Department");
+    expect(asked).toEqual([]);
+    await pickDeptAndDoctor(user);
+    const line = await screen.findByTestId("appt-opd-unit-dep-1");
+    // 2026-10-04 (owner) — the doctor list says each doctor's unit beside the name.
+    expect(within(screen.getByLabelText("Doctor")).getByText("Dr Meera Rao · Unit I")).toBeInTheDocument();
+    expect(line).toHaveTextContent("Unit I holds the OPD on Tue 18 Aug · Dr Meera Rao");
+    expect(asked.some((u) => u.endsWith("/roster/opd-units?date=2026-08-18"))).toBe(true);
   });
 
   it("loads GET /opd/slots for the picked department+doctor+date and renders IST-labelled buttons, booked disabled, past dimmed", async () => {

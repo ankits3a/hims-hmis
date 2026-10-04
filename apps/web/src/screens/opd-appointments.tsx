@@ -4,6 +4,8 @@ import type { QueryClient } from "@tanstack/react-query";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { fetchOpdUnits } from "../lib/roster-api";
+import { useDoctorLabel } from "../lib/use-doctor-label";
 import { listDepartments, listDoctors, listPatientAppointments, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
 import { upcomingOf } from "../lib/appointment-view";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
@@ -570,6 +572,12 @@ function NeedsRebookingTab(
 
 // ——— screen ———
 
+/** "Mon 5 Oct" — the booked day as the unit line says it. */
+function dayLabel(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })
+    .format(new Date(`${iso}T00:00:00Z`)).replace(",", "");
+}
+
 export function OpdAppointments(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -616,6 +624,20 @@ export function OpdAppointments(): React.ReactElement {
   });
   const allDoctors = useQuery({ queryKey: ["opd", "doctors", "all"], queryFn: listDoctors, refetchInterval: POLL_MS });
   const rooms = useQuery({ queryKey: ["opd", "rooms"], queryFn: listRooms, refetchInterval: POLL_MS });
+  /*
+    2026-10-04 (owner) — WHICH UNIT HOLDS THIS DEPARTMENT'S OPD ON THE BOOKED DAY, from the roster's
+    published calendar (the same read Desk One's department cards use). Read-only and quiet: a
+    department with no confirmed unit, a day its unit holds no OPD, or a reader without `roster.read`
+    draws nothing — the doctor list below is still the book.
+  */
+  const doctorLabel = useDoctorLabel(date);
+  const opdUnits = useQuery({
+    queryKey: ["opd", "opd-units", date],
+    queryFn: () => fetchOpdUnits(date),
+    enabled: departmentId !== "" && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    retry: false,
+  });
+  const unitsHere = (opdUnits.data ?? []).find((x) => x.opdDepartmentId === departmentId)?.units ?? [];
 
   const [tab, setTab] = useState<"day" | "needsRebooking">("day");
   const [log, setLog] = useState<AgentLine[]>([]);
@@ -742,7 +764,11 @@ export function OpdAppointments(): React.ReactElement {
                 onChange={(e) => { setValue("doctorId", e.target.value); }}
               >
                 <option value="">{t("opdAppt.pickDoctor")}</option>
-                {doctorItems.map((doc) => <option key={doc.id} value={doc.id}>{doc.displayName}</option>)}
+                {/* 2026-10-04 (owner) — "Dr. Chandan · Unit I", "Dr. S.I Raza · Guest Faculty". */}
+                {doctorItems.map((doc) => {
+                  const tag = doctorLabel(doc);
+                  return <option key={doc.id} value={doc.id}>{tag === null ? doc.displayName : `${doc.displayName} · ${tag}`}</option>;
+                })}
               </select>
             </div>
             <div style={{ width: 170 }}>
@@ -760,6 +786,16 @@ export function OpdAppointments(): React.ReactElement {
             </div>
           </div>
         </FormProvider>
+
+        {unitsHere.map((u) => (
+          <div
+            key={u.teamId} data-testid={`appt-opd-unit-${departmentId}`}
+            style={{ fontSize: 12, color: "var(--dim)", lineHeight: "17px", marginTop: 10 }}
+          >
+            <b style={{ color: "var(--ink)", fontWeight: 600 }}>{u.short}</b> {t("opdAppt.unitHolds", { date: dayLabel(date) })}
+            {u.doctors.length === 0 ? null : <> · <span>{u.doctors.map((x) => x.name).join(", ")}</span></>}
+          </div>
+        ))}
 
         {/* Pill tabs, the counter's own idiom — not a shadcn TabsList with a grey underline. */}
         {/*
