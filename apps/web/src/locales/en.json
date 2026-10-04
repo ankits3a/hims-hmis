@@ -13151,6 +13151,91 @@
     "more": "More"
   },
   "rosterOnNow": {
+    "stood": {
+      "button": "As it stood…",
+      "ask": "Who was on duty at",
+      "day": "Day",
+      "time": "Time (IST)",
+      "show": "Show",
+      "future": "That is still to come — read the board for now or later.",
+      "title": "As it stood: {{when}}",
+      "intro": "The roster as it was published at that moment — not as it has been corrected since.",
+      "tag": "HISTORICAL VIEW",
+      "banner_one": "The roster as published at {{when}}. {{count}} change made since is listed under “Changed since” — not applied.",
+      "banner_other": "The roster as published at {{when}}. {{count}} changes made since are listed under “Changed since” — not applied.",
+      "jump": "See the changes ↓",
+      "back": "Back to now",
+      "changesTitle": "Changed since",
+      "changesIntro": "Every amendment and new version of that day's roster made after this moment. The board does not include them.",
+      "noChanges": "Nothing has been changed since. The roster shown is also the roster today."
+    },
+    "change": {
+      "swap": "Swap",
+      "cover": "Cover",
+      "float": "Float",
+      "withdrawal": "Withdrawal",
+      "correction": "Correction",
+      "hold_over": "Held over",
+      "new_version": "Re-published as version {{version}}",
+      "afterTheFact": "AFTER THE FACT",
+      "when": "{{when}} · {{dept}}",
+      "hospital": "Hospital-wide",
+      "off": "Off:",
+      "on": "On:",
+      "approvedBy": "Approved by {{name}}",
+      "publishedBy": "Published by {{name}}"
+    },
+    "declare": {
+      "title": "Holiday or strike day",
+      "open": "Declare…",
+      "intro": "Declare a holiday, or put a department on skeleton cover for a day. Both are told to everyone affected.",
+      "tabHoliday": "Holiday",
+      "tabSkeleton": "Skeleton cover",
+      "day": "Day",
+      "kindLabel": "Kind",
+      "kind": {
+        "declared": "Declared by the state",
+        "gazetted": "Gazetted",
+        "restricted": "Restricted",
+        "local": "Local festival"
+      },
+      "patternLabel": "What closes",
+      "pattern": {
+        "opd_off_ot_proceeds": "OPD and elective lists off",
+        "as_sunday": "Runs as a Sunday",
+        "opd_short": "Short OPD"
+      },
+      "patternHint": {
+        "opd_off_ot_proceeds": "The take, the nights and emergency theatre run as usual.",
+        "as_sunday": "The Sunday rota runs. The Sunday sequence does not move on.",
+        "opd_short": "Clinics open and close at lunch (3 hours). Theatre as usual."
+      },
+      "patternShort": {
+        "opd_off_ot_proceeds": "OPD and elective lists off",
+        "as_sunday": "runs as a Sunday",
+        "opd_short": "short OPD"
+      },
+      "declareHoliday": "Declare holiday",
+      "department": "Department",
+      "wholeHospital": "Whole hospital",
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "reason": "Reason",
+      "reasonHint": "Residents' strike from 08:00",
+      "skeletonRules": "On this day faculty rest and faculty staffing drop to warnings. A resident's 12 hours' rest after a night still stops a roster. The board shows SKELETON.",
+      "choose": "Choose a department…",
+      "declareSkeleton": "Declare skeleton cover",
+      "holidayDone": "{{day}} is declared a holiday.",
+      "skeletonDone": "Skeleton cover declared for {{day}}.",
+      "withdrawn": "Skeleton cover withdrawn.",
+      "close": "Close",
+      "already": "Declared",
+      "modeLine": "{{reason}} · {{name}}",
+      "withdraw": "Withdraw",
+      "withdrawWhy": "Why (optional)",
+      "withdrawYes": "Withdraw",
+      "withdrawnLine": "Skeleton cover, {{scope}} — withdrawn by {{name}}"
+    },
     "title": "Who is on now",
     "intro": "Casualty, the front desk, the duty manager and every ward read this same board. A unit's take runs 08:00 to 08:00.",
     "lateNight": "It is past midnight and yesterday's units are still on take. They hand over at 08:00, not at 12.",
@@ -13188,7 +13273,9 @@
       "no_take_cycle": "{{dept}} has no published take cycle — no unit is named as admitting.",
       "take_gap": "{{dept}} has no unit on take from {{from}} to {{to}}.",
       "vacant_slot": "{{dept}}: {{position}} from {{from}} to {{to}} has nobody named.",
-      "absent_on_duty": "{{dept}}: {{name}} ({{position}}) is rostered {{from}}–{{to}} and is on approved leave."
+      "absent_on_duty": "{{dept}}: {{name}} ({{position}}) is rostered {{from}}–{{to}} and is on approved leave.",
+      "skeleton_short_one": "{{dept}} · skeleton cover — {{count}} duty uncovered, {{from}}–{{to}}.",
+      "skeleton_short_other": "{{dept}} · skeleton cover — {{count}} duties uncovered, {{from}}–{{to}}."
     },
     "grade": {
       "intern": "Int",
@@ -13518,7 +13605,9 @@
       "stale_base": "This month was built on an older roster that has since changed.",
       "draft_changed_since_review": "The month changed after you read it, so it was not published.",
       "blocked_by_findings": "A must-fix still stands, so the month was not published. Fix it on the grid, or leave that duty vacant.",
-      "finding_already_accepted": "Someone has already accepted that."
+      "finding_already_accepted": "Someone has already accepted that.",
+      "unknown_mode_declaration": "There is no such declaration.",
+      "mode_already_withdrawn": "Somebody has already withdrawn this skeleton cover — the list now shows who, and when."
     }
   }
 }

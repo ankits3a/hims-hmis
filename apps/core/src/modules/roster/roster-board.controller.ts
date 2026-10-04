@@ -13,6 +13,11 @@ import type { RosterSelf, RosterUnitsDepartment, UnitMonth } from "./month";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { OnNowBoard } from "./board";
+import { withTx } from "../../kernel/db/client";
+import { boardAsItStood } from "./as-it-stood";
+import type { AsItStoodBoard } from "./as-it-stood";
+import { declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
+import type { DeclarationsView } from "./declarations";
 
 /**
  * 20-U U5a — **WHO IS ON NOW**, over HTTP. The roster module's first route.
@@ -128,6 +133,75 @@ export class RosterBoardController {
       }
       const ref = await publishUnitMonth(this.db, actor, periodId, b.expectedContentHash);
       return await unitMonth(this.db, actor, ref.teamId, ref.month);
+    } catch (e) { toHttp(e); }
+  }
+  /* ═══ 20-U I23 — THE BOARD AS IT STOOD ═══
+   *
+   * `GET /roster/as-it-stood?at=<ISO instant>` — the roster AS PUBLISHED at that instant (the
+   * knowledge axis, `as-it-stood.ts`), never the rows in effect today, and every change made to that
+   * day since. A read: `roster.read` at the door, `read` at the act, as `on-now`.
+   */
+  @Get("as-it-stood")
+  @RequirePermission("roster.read", "hospital")
+  async asItStood(@CurrentActor() actor: Actor, @Query("at") at?: string): Promise<AsItStoodBoard & { you: RosterSelf }> {
+    try {
+      const instant = at === undefined || at === "" ? new Date(Number.NaN) : new Date(at);
+      if (Number.isNaN(instant.getTime())) {
+        throw new RosterError("invalid_window", "`at` is not an instant — send an ISO date-time", { at });
+      }
+      await requireRosterAct(this.db, actor, "read");
+      const now = new Date();
+      return { ...(await boardAsItStood(this.db, instant, now)), you: await rosterSelf(this.db, actor, now) };
+    } catch (e) { toHttp(e); }
+  }
+
+  /* ═══ 20-U I1 / I2 / I5 — HOLIDAYS AND SKELETON COVER, DECLARED ═══
+   *
+   * The read is the next thirty days' declarations and what this reader may declare; each act
+   * answers with the same read. The door is `roster.read` (as every roster route); the act is
+   * `declare` (`roster.periods.publish`, MS or a named delegate), asked by the domain function —
+   * a reader is refused there with `not_permitted` (403).
+   */
+  @Get("declarations")
+  @RequirePermission("roster.read", "hospital")
+  async declarations(@CurrentActor() actor: Actor): Promise<DeclarationsView> {
+    try {
+      return await declarationsView(this.db, actor, new Date());
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("holidays")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async declareHoliday(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<DeclarationsView> {
+    try {
+      const b = (body ?? {}) as Record<string, unknown>;
+      const now = new Date();
+      await withTx(this.db, (tx) => declareHolidayAct(tx, actor, { istDate: b.istDate, kind: b.kind, pattern: b.pattern }, now));
+      return await declarationsView(this.db, actor, now);
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("modes")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async declareMode(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<DeclarationsView> {
+    try {
+      const b = (body ?? {}) as Record<string, unknown>;
+      const now = new Date();
+      await withTx(this.db, (tx) => declareModeAct(tx, actor, { departmentId: b.departmentId ?? null, istDate: b.istDate, reason: b.reason }, now));
+      return await declarationsView(this.db, actor, now);
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("modes/:declarationId/withdraw")
+  @HttpCode(200)
+  @RequirePermission("roster.read", "hospital")
+  async withdrawMode(@CurrentActor() actor: Actor, @Param("declarationId") declarationId: string, @Body() body: unknown): Promise<DeclarationsView> {
+    try {
+      const b = (body ?? {}) as Record<string, unknown>;
+      await withTx(this.db, (tx) => withdrawModeAct(tx, actor, declarationId, { reason: b.reason }));
+      return await declarationsView(this.db, actor, new Date());
     } catch (e) { toHttp(e); }
   }
 }

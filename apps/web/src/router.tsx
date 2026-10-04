@@ -697,12 +697,14 @@ const rosterOnNowRoute = createRoute({
   path: "/roster/on-now",
   // 20-U U5 — drawn inside the Doctor Desk frame, which owns the viewport (and draws the mode banner).
   staticData: { fullViewport: true },
-  validateSearch: (search: Record<string, unknown>): { at?: string } => ({
+  // 20-U I23 — `?stood=<ISO instant>` opens the board AS IT STOOD then (an inspection's link).
+  validateSearch: (search: Record<string, unknown>): { at?: string; stood?: string } => ({
     at: typeof search.at === "string" && search.at.length <= 40 && !Number.isNaN(Date.parse(search.at)) ? search.at : undefined,
+    stood: typeof search.stood === "string" && search.stood.length <= 40 && !Number.isNaN(Date.parse(search.stood)) ? search.stood : undefined,
   }),
   component: function RosterOnNowScreen() {
-    const { at } = rosterOnNowRoute.useSearch();
-    return <RosterOnNow at={at} />;
+    const { at, stood } = rosterOnNowRoute.useSearch();
+    return <RosterOnNow at={at} stood={stood} />;
   },
 });
 

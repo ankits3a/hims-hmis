@@ -128,3 +128,10 @@ export type {
   FindingKeyInput, MonthAssignment, MonthFinding, MonthRef, RosterUnitsDepartment, UnitMonth,
 } from "./month";
 export { proposalSeedFor, proposalStrategyFor } from "./proposer";
+// 20-U I1 / I5 / I23 — holidays and skeleton cover declared; the board as it stood.
+export { DECLARATIONS_DAYS, declarationsView, declareHolidayAct, declareModeAct, withdrawModeAct } from "./declarations";
+export type { DeclarationsView, DeclaredHoliday, DeclaredMode } from "./declarations";
+export { boardAsItStood } from "./as-it-stood";
+export type { AsItStoodBoard, AsItStoodChange, ChangedSlot } from "./as-it-stood";
+export { publishedAsKnownAt } from "./periods";
+export { rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn } from "./events";

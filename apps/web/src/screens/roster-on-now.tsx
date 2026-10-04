@@ -1,12 +1,17 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AskBar, DoctorDeskFrame } from "../components/doctor-desk/frame";
 import { fmtIst } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
-import { fetchOnNowBoard, rosterErrorText } from "../lib/roster-api";
+import {
+  declareHoliday, declareSkeleton, fetchAsItStood, fetchDeclarations, fetchOnNowBoard, rosterErrorText, withdrawSkeleton,
+} from "../lib/roster-api";
 import { useAuth } from "../lib/auth";
-import type { WireBoardDepartment, WireBoardHole, WireBoardService, WireOnNowBoard, WireRosterSelf } from "../lib/roster-api";
+import type {
+  HolidayKind, HolidayPattern, WireAsItStoodBoard, WireAsItStoodChange, WireBoardDepartment, WireBoardHole, WireBoardService,
+  WireDeclarationsView, WireOnNowBoard, WireRosterSelf,
+} from "../lib/roster-api";
 import "./roster.css";
 
 /**
@@ -31,7 +36,8 @@ import "./roster.css";
 const REFRESH_MS = 60_000;
 const AHEAD_MS = 8 * 3_600_000;
 
-type Props = { at?: string };
+/** `stood` — 20-U I23: open the board as it stood at that instant (a link an inspection can carry). */
+type Props = { at?: string; stood?: string };
 type T = (k: string, o?: Record<string, unknown>) => string;
 
 /** "General Medicine Unit III" under "General Medicine" reads "Unit III", as the board writes it. */
@@ -59,25 +65,37 @@ export function whoFrom(you: WireRosterSelf | undefined, username: string | null
   return { name, role: you.grade === null ? null : t(`doctorDesk.grade.${you.grade}`, { defaultValue: you.grade }) };
 }
 
-export function RosterOnNow({ at }: Props): React.ReactElement {
+export function RosterOnNow({ at, stood }: Props): React.ReactElement {
   const { t, i18n } = useTranslation();
   const { username } = useAuth();
   const [ahead, setAhead] = useState(false);
+  // 20-U I23 — the inspection: `stoodAt` is the instant asked about; `picking` shows the picker.
+  const [stoodAt, setStoodAt] = useState<string | null>(stood ?? null);
+  const [picking, setPicking] = useState(stood !== undefined);
   const pinned = at !== undefined;
-  const q = useQuery({
+  const live = useQuery({
     queryKey: ["roster", "on-now", at ?? (ahead ? "ahead" : "now")],
     queryFn: () => fetchOnNowBoard(at ?? (ahead ? new Date(Date.now() + AHEAD_MS).toISOString() : undefined)),
     refetchInterval: pinned ? false : REFRESH_MS,
+    enabled: stoodAt === null,
   });
-  const b = q.data;
+  const past = useQuery({
+    queryKey: ["roster", "as-it-stood", stoodAt],
+    queryFn: () => fetchAsItStood(stoodAt!),
+    enabled: stoodAt !== null,
+  });
+  const q = stoodAt === null ? live : past;
+  const b: WireOnNowBoard | undefined = q.data;
+  const history = stoodAt === null ? undefined : past.data;
   const lang = i18n.language;
+  const showNow = (): void => { setStoodAt(null); setPicking(false); };
 
   return (
     <DoctorDeskFrame
       active="onNow" testId="roster-on-now" menuDefault="closed" railWidth={340}
       context={t("rosterOnNow.context")}
       who={whoFrom(b?.you, username, t)}
-      rail={b === undefined ? undefined : <Rail b={b} />}
+      rail={b === undefined ? undefined : (history !== undefined ? <HistoryRail h={history} /> : <Rail b={b} />)}
       ask={b === undefined ? undefined : (
         <AskBar
           id="ask-on" placeholder={t("rosterOnNow.askPlaceholder")}
@@ -89,23 +107,39 @@ export function RosterOnNow({ at }: Props): React.ReactElement {
       <div className="ro-title">
         <div className="ro-title-text">
           <h1 className="ddf-h1" data-testid="on-now-clock">
-            {b === undefined ? t("rosterOnNow.title") : clockLine(b.at, lang)}
+            {history !== undefined ? t("rosterOnNow.stood.title", { when: clockLine(history.at, lang) })
+              : b === undefined ? t("rosterOnNow.title") : clockLine(b.at, lang)}
           </h1>
-          <div className="ddf-dim" data-testid="on-now-note">{b === undefined ? t("rosterOnNow.intro") : clockNote(b, t, lang)}</div>
+          <div className="ddf-dim" data-testid="on-now-note">
+            {history !== undefined ? t("rosterOnNow.stood.intro") : b === undefined ? t("rosterOnNow.intro") : clockNote(b, t, lang)}
+          </div>
         </div>
         {!pinned && (
           <div className="ddf-seg ro-times" role="group" aria-label={t("rosterOnNow.when")}>
-            <button type="button" aria-pressed={!ahead} className={!ahead ? "on" : ""} onClick={() => setAhead(false)}>{t("rosterOnNow.now")}</button>
-            <button type="button" aria-pressed={ahead} className={ahead ? "on" : ""} onClick={() => setAhead(true)}>{t("rosterOnNow.ahead")}</button>
+            <button type="button" aria-pressed={!picking && !ahead} className={!picking && !ahead ? "on" : ""} onClick={() => { showNow(); setAhead(false); }}>{t("rosterOnNow.now")}</button>
+            <button type="button" aria-pressed={!picking && ahead} className={!picking && ahead ? "on" : ""} onClick={() => { showNow(); setAhead(true); }}>{t("rosterOnNow.ahead")}</button>
+            <button type="button" aria-pressed={picking} className={picking ? "on" : ""} data-testid="stood-open" onClick={() => setPicking(true)}>{t("rosterOnNow.stood.button")}</button>
           </div>
         )}
       </div>
+
+      {picking && <StoodPicker initial={stoodAt} onShow={setStoodAt} />}
+      {history !== undefined && (
+        <div role="status" className="ro-history" data-testid="stood-banner">
+          <span className="ro-history-tag">{t("rosterOnNow.stood.tag")}</span>
+          <span className="ro-history-text">
+            {t("rosterOnNow.stood.banner", { when: clockLine(history.at, lang), count: history.changes.length })}
+            {history.changes.length > 0 && <> <a href="#stood-changes" className="ro-history-jump">{t("rosterOnNow.stood.jump")}</a></>}
+          </span>
+          <button type="button" className="ddf-btn" onClick={showNow} data-testid="stood-close">{t("rosterOnNow.stood.back")}</button>
+        </div>
+      )}
 
       {q.isError && <p role="alert" className="ro-alert">{rosterErrorText(q.error, t)}</p>}
       {q.isPending && <p className="ddf-dim">{t("rosterOnNow.loading")}</p>}
       {b !== undefined && (
         <>
-          {!b.resolverEnabled && <p role="status" className="ro-note-amber" data-testid="resolver-off">{t("rosterOnNow.resolverOff")}</p>}
+          {history === undefined && !b.resolverEnabled && <p role="status" className="ro-note-amber" data-testid="resolver-off">{t("rosterOnNow.resolverOff")}</p>}
           <section className="ddf-card ro-board" data-testid="on-now-table">
             <div className="ro-board-head" aria-hidden="true">
               <span>{t("rosterOnNow.col.department")}</span>
@@ -271,6 +305,9 @@ function holeWhen(h: WireBoardHole, lang: string): string {
 }
 
 function holeText(h: WireBoardHole, t: T): string {
+  if (h.kind === "skeleton_short") {
+    return t("rosterOnNow.hole.skeleton_short", { dept: h.departmentName, count: h.count ?? 0, from: fmtIst(h.from), to: fmtIst(h.to) });
+  }
   return t(`rosterOnNow.hole.${h.kind}`, {
     dept: h.departmentName,
     position: h.positionKey === null ? "" : t(`rosterOnNow.position.${h.positionKey}`, { defaultValue: h.positionLabel ?? h.positionKey }),
@@ -287,7 +324,7 @@ function Rail({ b }: { b: WireOnNowBoard }): React.ReactElement {
       <section className="ddf-card-strong ro-rail-card" data-testid="on-now-holes">
         <h2 className="ro-rail-h ro-rail-h-big">{t("rosterOnNow.holes")}</h2>
         {b.holes.length === 0 ? <div className="ro-hole ro-hole-ok"><span>{t("rosterOnNow.noHoles")}</span></div> : b.holes.map((h, i) => (
-          <div key={`${h.kind}-${h.departmentId}-${h.userId ?? ""}-${h.from}-${String(i)}`} className="ro-hole">
+          <div key={`${h.kind}-${h.departmentId}-${h.userId ?? ""}-${h.from}-${String(i)}`} className={h.kind === "skeleton_short" ? "ro-hole ro-hole-skeleton" : "ro-hole"}>
             <span className="ro-hole-when">{holeWhen(h, i18n.language)}</span>
             <span className="ro-hole-text">{holeText(h, t)}</span>
           </div>
@@ -303,7 +340,288 @@ function Rail({ b }: { b: WireOnNowBoard }): React.ReactElement {
         <h2 className="ro-rail-h">{t("rosterOnNow.arrivingTitle")}</h2>
         <span className="ro-rail-p">{t("rosterOnNow.arrivingText")}</span>
       </section>
+      <DeclareCard />
     </>
+  );
+}
+
+/* ═══════════════ 20-U I23 — THE BOARD AS IT STOOD ═══════════════ */
+
+/** IST wall-clock parts of an instant: `["2026-09-29", "03:10"]`. */
+function istParts(iso: string): [string, string] {
+  const d = new Date(new Date(iso).getTime() + 330 * 60_000).toISOString();
+  return [d.slice(0, 10), d.slice(11, 16)];
+}
+
+/**
+ * The picker: a day and a time, read as IST (the hospital's wall), never the browser's zone. The
+ * instant is sent as `…+05:30`, so a laptop set to UTC asks the same question as the ward's PC.
+ */
+function StoodPicker({ initial, onShow }: { initial: string | null; onShow: (iso: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [day0, time0] = istParts(initial ?? new Date(Date.now() - 86_400_000).toISOString());
+  const [day, setDay] = useState(day0);
+  const [time, setTime] = useState(initial === null ? "10:00" : time0);
+  const today = todayIst(new Date());
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(day) && /^\d{2}:\d{2}$/.test(time) ? `${day}T${time}:00+05:30` : null;
+  const future = iso !== null && Date.parse(iso) > Date.now();
+  return (
+    <form
+      className="ddf-card ro-stood-pick" data-testid="stood-picker"
+      onSubmit={(e) => { e.preventDefault(); if (iso !== null && !future) onShow(iso); }}
+    >
+      <span className="ro-stood-label">{t("rosterOnNow.stood.ask")}</span>
+      <label>
+        <span>{t("rosterOnNow.stood.day")}</span>
+        <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} data-testid="stood-day" />
+      </label>
+      <label>
+        <span>{t("rosterOnNow.stood.time")}</span>
+        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} data-testid="stood-time" />
+      </label>
+      <button type="submit" className="ddf-btn ddf-btn-pri" disabled={iso === null || future} data-testid="stood-show">{t("rosterOnNow.stood.show")}</button>
+      {future && <span className="ro-small ro-red">{t("rosterOnNow.stood.future")}</span>}
+    </form>
+  );
+}
+
+function changeWindow(c: { startsAt: string; endsAt: string }): string {
+  return `${fmtIst(c.startsAt)}\u2060–\u2060${fmtIst(c.endsAt)}`; // a window never breaks at its dash
+}
+
+function ChangeItem({ c }: { c: WireAsItStoodChange }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const [d, tm] = istParts(c.at);
+  const when = `${new Intl.DateTimeFormat(i18n.language.startsWith("hi") ? "hi-IN" : "en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" }).format(new Date(`${d}T12:00:00+05:30`))}, ${tm}`;
+  const slot = (x: WireAsItStoodChange["added"][number]): string =>
+    `${x.name ?? t("rosterOnNow.vacant")} · ${t(`rosterOnNow.position.${x.positionKey}`, { defaultValue: x.positionLabel })} · ${changeWindow(x)}`;
+  return (
+    <div className={`ro-change${c.afterTheFact ? " ro-change-late" : ""}`} data-testid="stood-change">
+      <div className="ro-change-top">
+        <span className="ro-change-kind">{t(`rosterOnNow.change.${c.kind}`, { defaultValue: c.kind, version: c.version ?? "" })}</span>
+        {c.afterTheFact && <span className="ro-tag-late">{t("rosterOnNow.change.afterTheFact")}</span>}
+      </div>
+      <span className="ro-hole-when">{t("rosterOnNow.change.when", { when, dept: c.departmentName ?? t("rosterOnNow.change.hospital") })}</span>
+      {c.removed.map((x) => <span key={`r-${x.startsAt}-${x.userId ?? ""}`} className="ro-change-line"><b>{t("rosterOnNow.change.off")}</b> {slot(x)}</span>)}
+      {c.added.map((x) => <span key={`a-${x.startsAt}-${x.userId ?? ""}`} className="ro-change-line"><b>{t("rosterOnNow.change.on")}</b> {slot(x)}</span>)}
+      {c.byName !== null && <span className="ro-small">{t(c.kind === "new_version" ? "rosterOnNow.change.publishedBy" : "rosterOnNow.change.approvedBy", { name: c.byName })}</span>}
+    </div>
+  );
+}
+
+function HistoryRail({ h }: { h: WireAsItStoodBoard }): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <section className="ddf-card-strong ro-rail-card" data-testid="stood-changes" id="stood-changes">
+      <h2 className="ro-rail-h ro-rail-h-big">{t("rosterOnNow.stood.changesTitle")}</h2>
+      <span className="ro-rail-p ddf-dim">{t("rosterOnNow.stood.changesIntro")}</span>
+      {h.changes.length === 0
+        ? <div className="ro-hole ro-hole-ok"><span>{t("rosterOnNow.stood.noChanges")}</span></div>
+        : h.changes.map((c, i) => <ChangeItem key={`${c.periodId}-${c.at}-${String(i)}`} c={c} />)}
+    </section>
+  );
+}
+
+/* ═══════════════ 20-U I1 / I5 — HOLIDAY OR STRIKE DAY (the medical superintendent's card) ═══════════════ */
+
+const HOLIDAY_KINDS: readonly HolidayKind[] = ["declared", "gazetted", "restricted", "local"];
+const HOLIDAY_PATTERNS: readonly HolidayPattern[] = ["opd_off_ot_proceeds", "as_sunday", "opd_short"];
+
+function dayLabel(istDate: string, lang: string): string {
+  return new Intl.DateTimeFormat(lang.startsWith("hi") ? "hi-IN" : "en-GB", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short" })
+    .format(new Date(`${istDate}T12:00:00+05:30`)).replace(",", "");
+}
+
+/**
+ * Shown only to a reader who may declare (`youMay`, probed through the same `requireRosterAct` the
+ * act calls). Collapsed it is one line and what is already declared; open it is two short forms.
+ * Every act answers with the declarations as they now stand, and the board re-reads (the SKELETON
+ * badge and the grouped holes are the board's, not this card's).
+ */
+function DeclareCard(): React.ReactElement | null {
+  const { t, i18n } = useTranslation();
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["roster", "declarations"], queryFn: fetchDeclarations });
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"holiday" | "skeleton">("holiday");
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const v = q.data;
+  const settle = (next: WireDeclarationsView, said: string): void => {
+    qc.setQueryData(["roster", "declarations"], next);
+    void qc.invalidateQueries({ queryKey: ["roster", "on-now"] });
+    setRefusal(null); setDone(said);
+  };
+  const onFail = (e: unknown): void => { setDone(null); setRefusal(rosterErrorText(e, t)); };
+  const holiday = useMutation({
+    mutationFn: (x: { day: string; kind: HolidayKind; pattern: HolidayPattern }) => declareHoliday(x.day, x.kind, x.pattern),
+    onSuccess: (next, x) => settle(next, t("rosterOnNow.declare.holidayDone", { day: dayLabel(x.day, i18n.language) })),
+    onError: onFail,
+  });
+  const skeleton = useMutation({
+    mutationFn: (x: { dept: string | null; day: string; reason: string }) => declareSkeleton(x.dept, x.day, x.reason),
+    onSuccess: (next, x) => settle(next, t("rosterOnNow.declare.skeletonDone", { day: dayLabel(x.day, i18n.language) })),
+    onError: onFail,
+  });
+  const withdraw = useMutation({
+    mutationFn: (x: { id: string; reason: string }) => withdrawSkeleton(x.id, x.reason),
+    onSuccess: (next) => settle(next, t("rosterOnNow.declare.withdrawn")),
+    onError: onFail,
+  });
+  if (v === undefined) return null;
+  const may = v.youMay.holiday || v.youMay.hospitalSkeleton || v.youMay.departmentSkeleton;
+  if (!may) return null;
+  const busy = holiday.isPending || skeleton.isPending || withdraw.isPending;
+  const live = v.modes.filter((m) => m.withdrawnAt === null);
+
+  return (
+    <section className="ddf-card ro-rail-card ddf-noprint ro-declare" data-testid="declare-card">
+      <div className="ro-declare-head">
+        <h2 className="ro-rail-h">{t("rosterOnNow.declare.title")}</h2>
+        {!open && <button type="button" className="ddf-btn ddf-btn-pri" onClick={() => setOpen(true)} data-testid="declare-open">{t("rosterOnNow.declare.open")}</button>}
+      </div>
+      {!open && <span className="ro-rail-p ddf-dim">{t("rosterOnNow.declare.intro")}</span>}
+
+      {open && (
+        <>
+          <div className="ddf-seg ro-declare-tabs" role="tablist">
+            {v.youMay.holiday && <button type="button" role="tab" aria-selected={tab === "holiday"} className={tab === "holiday" ? "on" : ""} onClick={() => setTab("holiday")} data-testid="declare-tab-holiday">{t("rosterOnNow.declare.tabHoliday")}</button>}
+            {(v.youMay.hospitalSkeleton || v.youMay.departmentSkeleton) && <button type="button" role="tab" aria-selected={tab === "skeleton" || !v.youMay.holiday} className={tab === "skeleton" || !v.youMay.holiday ? "on" : ""} onClick={() => setTab("skeleton")} data-testid="declare-tab-skeleton">{t("rosterOnNow.declare.tabSkeleton")}</button>}
+          </div>
+          {tab === "holiday" && v.youMay.holiday
+            ? <HolidayForm busy={busy} onDeclare={(x) => holiday.mutate(x)} />
+            : <SkeletonForm v={v} busy={busy} onDeclare={(x) => skeleton.mutate(x)} />}
+          {refusal !== null && <p role="alert" className="ro-alert ro-declare-msg" data-testid="declare-error">{refusal}</p>}
+          {done !== null && refusal === null && <p role="status" className="ro-declare-done" data-testid="declare-done">{done}</p>}
+          <button type="button" className="rm-undo ro-declare-close" onClick={() => { setOpen(false); setRefusal(null); setDone(null); }}>{t("rosterOnNow.declare.close")}</button>
+        </>
+      )}
+
+      {(v.holidays.length > 0 || v.modes.length > 0) && (
+        <div className="ro-declared" data-testid="declared-list">
+          <span className="ro-declared-cap">{t("rosterOnNow.declare.already")}</span>
+          {live.map((m) => <ModeRow key={m.declarationId} m={m} busy={busy} onWithdraw={(reason) => withdraw.mutate({ id: m.declarationId, reason })} />)}
+          {v.holidays.map((h) => (
+            <div key={h.istDate} className="ro-declared-row">
+              <span className="ro-declared-day">{dayLabel(h.istDate, i18n.language)}</span>
+              <span className="ro-declared-what">
+                <span className="ro-declared-line">
+                  <span className="ro-tag-hol">{t(`rosterOnNow.declare.kind.${h.kind}`, { defaultValue: h.kind })}</span>
+                  {" "}{t(`rosterOnNow.declare.patternShort.${h.pattern}`, { defaultValue: h.pattern })}
+                </span>
+              </span>
+            </div>
+          ))}
+          {v.modes.filter((m) => m.withdrawnAt !== null).map((m) => (
+            <div key={m.declarationId} className="ro-declared-row ro-declared-off">
+              <span className="ro-declared-day">{dayLabel(m.istDate, i18n.language)}</span>
+              <span className="ro-declared-what">{t("rosterOnNow.declare.withdrawnLine", { scope: m.departmentName ?? t("rosterOnNow.declare.wholeHospital"), name: m.withdrawnByName ?? "" })}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function HolidayForm({ busy, onDeclare }: { busy: boolean; onDeclare: (x: { day: string; kind: HolidayKind; pattern: HolidayPattern }) => void }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const today = todayIst(new Date());
+  const tomorrow = todayIst(new Date(Date.now() + 86_400_000));
+  const [day, setDay] = useState(tomorrow);
+  const [kind, setKind] = useState<HolidayKind>("declared");
+  const [pattern, setPattern] = useState<HolidayPattern>("opd_off_ot_proceeds");
+  return (
+    <form className="ro-declare-form" data-testid="holiday-form" onSubmit={(e) => { e.preventDefault(); onDeclare({ day, kind, pattern }); }}>
+      <div className="ro-declare-pair">
+        <label>
+          <span>{t("rosterOnNow.declare.day")}</span>
+          <span className="ro-day-in">
+            <input type="date" value={day} min={today} required onChange={(e) => setDay(e.target.value)} data-testid="holiday-day" />
+            {/^\d{4}-\d{2}-\d{2}$/.test(day) && <b className="ro-day-words">{dayLabel(day, i18n.language)}</b>}
+          </span>
+        </label>
+        <label>
+          <span>{t("rosterOnNow.declare.kindLabel")}</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value as HolidayKind)} data-testid="holiday-kind">
+            {HOLIDAY_KINDS.map((k) => <option key={k} value={k}>{t(`rosterOnNow.declare.kind.${k}`)}</option>)}
+          </select>
+        </label>
+      </div>
+      <fieldset className="ro-declare-patterns">
+        <legend>{t("rosterOnNow.declare.patternLabel")}</legend>
+        {HOLIDAY_PATTERNS.map((p) => (
+          <label key={p} className={`ro-pattern${pattern === p ? " on" : ""}`}>
+            <input type="radio" name="holiday-pattern" value={p} checked={pattern === p} onChange={() => setPattern(p)} data-testid={`holiday-pattern-${p}`} />
+            <span className="ro-pattern-text">
+              <b>{t(`rosterOnNow.declare.pattern.${p}`)}</b>
+              <span className="ro-small">{t(`rosterOnNow.declare.patternHint.${p}`)}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <button type="submit" className="ddf-btn ddf-btn-pri" disabled={busy || day < today} data-testid="holiday-declare">{t("rosterOnNow.declare.declareHoliday")}</button>
+    </form>
+  );
+}
+
+function SkeletonForm({ v, busy, onDeclare }: {
+  v: WireDeclarationsView; busy: boolean; onDeclare: (x: { dept: string | null; day: string; reason: string }) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const today = todayIst(new Date());
+  const tomorrow = todayIst(new Date(Date.now() + 86_400_000));
+  const HOSPITAL = "__hospital__";
+  // No default: a strike is declared for the department somebody chose, never the first in a list.
+  const [dept, setDept] = useState("");
+  const [day, setDay] = useState(today);
+  const [reason, setReason] = useState("");
+  return (
+    <form
+      className="ro-declare-form" data-testid="skeleton-form"
+      onSubmit={(e) => { e.preventDefault(); if (reason.trim() !== "" && dept !== "") onDeclare({ dept: dept === HOSPITAL ? null : dept, day, reason: reason.trim() }); }}
+    >
+      <label>
+        <span>{t("rosterOnNow.declare.department")}</span>
+        <select value={dept} onChange={(e) => setDept(e.target.value)} data-testid="skeleton-dept">
+          <option value="" disabled>{t("rosterOnNow.declare.choose")}</option>
+          {v.youMay.hospitalSkeleton && <option value={HOSPITAL}>{t("rosterOnNow.declare.wholeHospital")}</option>}
+          {v.departments.map((d) => <option key={d.departmentId} value={d.departmentId}>{d.name}</option>)}
+        </select>
+      </label>
+      <div className="ddf-seg ro-declare-days" role="group" aria-label={t("rosterOnNow.declare.day")}>
+        <button type="button" aria-pressed={day === today} className={day === today ? "on" : ""} onClick={() => setDay(today)}>{t("rosterOnNow.declare.today")}</button>
+        <button type="button" aria-pressed={day === tomorrow} className={day === tomorrow ? "on" : ""} onClick={() => setDay(tomorrow)} data-testid="skeleton-tomorrow">{t("rosterOnNow.declare.tomorrow")}</button>
+      </div>
+      <label>
+        <span>{t("rosterOnNow.declare.reason")}</span>
+        <input type="text" value={reason} maxLength={500} placeholder={t("rosterOnNow.declare.reasonHint")} onChange={(e) => setReason(e.target.value)} data-testid="skeleton-reason" />
+      </label>
+      <span className="ro-small">{t("rosterOnNow.declare.skeletonRules")}</span>
+      <button type="submit" className="ddf-btn ro-btn-red" disabled={busy || reason.trim() === "" || dept === ""} data-testid="skeleton-declare">{t("rosterOnNow.declare.declareSkeleton")}</button>
+    </form>
+  );
+}
+
+function ModeRow({ m, busy, onWithdraw }: { m: WireDeclarationsView["modes"][number]; busy: boolean; onWithdraw: (reason: string) => void }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  return (
+    <div className="ro-declared-row ro-declared-mode" data-testid={`mode-${m.declarationId}`}>
+      <span className="ro-declared-day">{dayLabel(m.istDate, i18n.language)}</span>
+      <span className="ro-declared-what">
+        <span className="ro-declared-line"><span className="ro-skeleton">{t("rosterOnNow.skeleton")}</span> <b>{m.departmentName ?? t("rosterOnNow.declare.wholeHospital")}</b></span>
+        <span className="ro-small ro-block">{t("rosterOnNow.declare.modeLine", { reason: m.reason, name: m.declaredByName ?? "" })}</span>
+        {!asking && <button type="button" className="rm-f-show ro-declared-act" onClick={() => setAsking(true)} data-testid={`withdraw-${m.declarationId}`}>{t("rosterOnNow.declare.withdraw")}</button>}
+      </span>
+      {asking && (
+          <div className="rm-f-reason ro-declared-why">
+            <input placeholder={t("rosterOnNow.declare.withdrawWhy")} value={reason} onChange={(e) => setReason(e.target.value)} aria-label={t("rosterOnNow.declare.withdrawWhy")} />
+            <button type="button" className="ddf-btn ddf-btn-pri" disabled={busy} onClick={() => onWithdraw(reason.trim())} data-testid={`withdraw-yes-${m.declarationId}`}>{t("rosterOnNow.declare.withdrawYes")}</button>
+          </div>
+      )}
+    </div>
   );
 }
 

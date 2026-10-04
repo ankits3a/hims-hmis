@@ -8,6 +8,8 @@ import {
 import { orgDepartments } from "../../kernel/db/schema/org";
 import { RosterError } from "./errors";
 import { requireRosterAct } from "./access";
+import { appendEvent } from "../../kernel/events/append";
+import { rosterHolidayDeclared } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type {
@@ -405,6 +407,16 @@ export async function declareHoliday(
   for (const cycle of live) {
     await materialiseWindows(tx, actor, cycle.id, input.istDate, addIstDays(input.istDate, 1));
   }
+  // 20-U I1/I2 — the declaration is heard outside the roster (V9: the day as an instant, no prose).
+  const stamped = (await (tx as Db).select({ at: rosterHolidays.declaredAt }).from(rosterHolidays)
+    .where(eq(rosterHolidays.istDate, input.istDate)))[0];
+  await appendEvent(tx, rosterHolidayDeclared.make({
+    payload: {
+      dayStartsAt: istMidnightUtc(input.istDate).toISOString(), kind, pattern,
+      departmentsRematerialised: live.length, declaredAt: (stamped?.at ?? new Date()).toISOString(),
+    },
+    actor, correlationId: input.istDate,
+  }));
   return { istDate: input.istDate, departmentsRematerialised: live.length };
 }
 

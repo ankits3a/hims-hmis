@@ -15,6 +15,7 @@ import { seedRosterRules } from "./rules";
 import { templateFeasibility, validate } from "./validator";
 import { simulate } from "./simulate";
 import { acceptFinding, listFindings, recordFindings } from "./findings";
+import { declareSkeletonMode, withdrawSkeletonMode } from "./modes";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -734,5 +735,72 @@ describe("roster — requirements, rules, the validator and simulate (R8)", () =
     await slot(p.periodId, { startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
     await slot(p.periodId, { startsAt: at("2026-10-13T20:00"), endsAt: at("2026-10-14T06:00") });
     expect(await restOf(p.periodId)).toEqual([]);
+  });
+  /* ═══════════ 20-U I5 / plan D4: skeleton cover relaxes the ratio and rest rules — for faculty only ═══════════ */
+
+  describe("skeleton cover (D4)", () => {
+    const FAC = "01USER0000000000000000FAC";
+    beforeEach(async () => {
+      await db.insert(rosterPositions).values({
+        key: "faculty_on_call", label: "Faculty on call", cadre: "faculty", ladderRank: 5, eligibleRoleKey: "doctor",
+        maxPresenceHours: 24, createdBy: "t", updatedBy: "t",
+      });
+      await db.insert(users).values({ id: FAC, username: "anand.rao", fullName: "anand.rao", staffCode: "EMP-0FAC", passwordHash: "x" });
+      await db.insert(roleAssignments).values({ id: "RA-FAC", userId: FAC, roleKey: "doctor", scopeType: "hospital", scopeId: null });
+      for (const [i, positionKey] of (["faculty_on_call", "ward_jr"] as const).entries()) {
+        await db.insert(rosterRequirements).values({
+          id: `01REQSKEL00000000000000${String(i)}`, scopeType: "department", scopeId: MED, positionKey,
+          dayClass: "any", minCount: 2, basis: "fixed", authority: "nmc", validFrom: "2026-01-01", createdBy: "t", updatedBy: "t",
+        });
+      }
+    });
+
+    /** A faculty night then a 10:00 list, a JR night then a 10:00 list, on 12–13 Oct: two rest blocks, two ratio blocks a day. */
+    const strikeDraft = async () => {
+      const p = await draft({ coversPositions: ["unit_sr", "ward_jr", "faculty_on_call"] });
+      await slot(p.periodId, { userId: FAC, positionKey: "faculty_on_call", startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+      const facNext = await slot(p.periodId, { userId: FAC, positionKey: "faculty_on_call", startsAt: at("2026-10-13T10:00"), endsAt: at("2026-10-13T14:00") });
+      await slot(p.periodId, { userId: JR, positionKey: "ward_jr", startsAt: at("2026-10-12T20:00"), endsAt: at("2026-10-13T08:00") });
+      const jrNext = await slot(p.periodId, { userId: JR, positionKey: "ward_jr", startsAt: at("2026-10-13T10:00"), endsAt: at("2026-10-13T14:00") });
+      return { periodId: p.periodId, facNext: facNext.assignmentId, jrNext: jrNext.assignmentId };
+    };
+    const judged = async (periodId: string) => (await validate(db, periodId))
+      .filter((f) => f.ruleKey === "rest_after_duty" || (f.ruleKey === "requirement_shortfall" && f.params.istDate === "2026-10-13"))
+      .map((f) => [f.ruleKey, f.ruleKey === "rest_after_duty" ? f.assignmentId : f.params.positionKey, f.severity, f.params.skeleton ?? false])
+      .sort((a, b) => `${String(a[0])}${String(a[1])}`.localeCompare(`${String(b[0])}${String(b[1])}`));
+
+    it("on a declared skeleton day a FACULTY rest and a FACULTY-post ratio drop to warn; a resident's stay block", async () => {
+      const r = await strikeDraft();
+      // Not declared: all four are the book's blocks.
+      expect(await judged(r.periodId)).toEqual([
+        ["requirement_shortfall", "faculty_on_call", "block", false],
+        ["requirement_shortfall", "ward_jr", "block", false],
+        ["rest_after_duty", r.facNext, "block", false],
+        ["rest_after_duty", r.jrNext, "block", false],
+      ].sort((a, b) => `${String(a[0])}${String(a[1])}`.localeCompare(`${String(b[0])}${String(b[1])}`)));
+
+      await withTx(db, (tx) => declareSkeletonMode(tx, ms, { departmentId: MED, istDate: "2026-10-13", reason: "residents' strike" }));
+      expect(await judged(r.periodId)).toEqual([
+        ["requirement_shortfall", "faculty_on_call", "warn", true],
+        ["requirement_shortfall", "ward_jr", "block", false],
+        ["rest_after_duty", r.facNext, "warn", true],
+        ["rest_after_duty", r.jrNext, "block", false],
+      ].sort((a, b) => `${String(a[0])}${String(a[1])}`.localeCompare(`${String(b[0])}${String(b[1])}`)));
+      // Only the declared DAY: the faculty-post ratio on the 12th is still a block.
+      const twelfth = (await validate(db, r.periodId)).find((f) => f.ruleKey === "requirement_shortfall"
+        && f.params.positionKey === "faculty_on_call" && f.params.istDate === "2026-10-12");
+      expect(twelfth?.severity).toBe("block");
+      // No other rule moved: every non-relaxed finding is identical with and without the mode.
+      const others = (await validate(db, r.periodId)).filter((f) => f.params.skeleton !== true);
+      expect(others.every((f) => !("relaxedFrom" in f.params))).toBe(true);
+    });
+
+    it("a withdrawn declaration relaxes nothing", async () => {
+      const r = await strikeDraft();
+      const d = await withTx(db, (tx) => declareSkeletonMode(tx, ms, { departmentId: null, istDate: "2026-10-13", reason: "bandh" }));
+      expect((await judged(r.periodId)).filter((x) => x[2] === "warn")).toHaveLength(2);
+      await withTx(db, (tx) => withdrawSkeletonMode(tx, ms, d.id, "called off"));
+      expect((await judged(r.periodId)).filter((x) => x[2] === "warn")).toHaveLength(0);
+    });
   });
 });

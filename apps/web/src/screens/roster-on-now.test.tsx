@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
 import { RosterOnNow, answerFromBoard } from "./roster-on-now";
-import type { WireOnNowBoard } from "../lib/roster-api";
+import type { WireAsItStoodBoard, WireDeclarationsView, WireOnNowBoard } from "../lib/roster-api";
 
 /** 02:40 IST on Tuesday 6 October — Monday's unit is still on take until 08:00. */
 const AT = "2026-10-05T21:10:00.000Z";
@@ -34,24 +34,60 @@ const BOARD: WireOnNowBoard = {
   holes: [
     {
       kind: "absent_on_duty", departmentId: "d-med", departmentName: "General Medicine", from: "2026-10-05T14:30:00.000Z", to: "2026-10-06T02:30:00.000Z",
-      positionKey: "ward_jr", positionLabel: "Ward junior resident", userId: "jr2", name: "Dr. Tanvi Shah",
+      positionKey: "ward_jr", positionLabel: "Ward junior resident", userId: "jr2", name: "Dr. Tanvi Shah", count: null,
     },
     {
       kind: "no_take_cycle", departmentId: "d-sur", departmentName: "General Surgery", from: AT, to: "2026-10-06T21:10:00.000Z",
-      positionKey: null, positionLabel: null, userId: null, name: null,
+      positionKey: null, positionLabel: null, userId: null, name: null, count: null,
     },
   ],
 };
 
+/** 20-U I1/I5 — what `/roster/declarations` answers; a plain reader may declare nothing. */
+const NO_DECLARE: WireDeclarationsView = {
+  from: "2026-10-06", to: "2026-11-05", holidays: [], modes: [], departments: [],
+  youMay: { holiday: false, hospitalSkeleton: false, departmentSkeleton: false },
+};
+const MS_DECLARE: WireDeclarationsView = {
+  ...NO_DECLARE,
+  departments: [{ departmentId: "d-med", code: "MED", name: "General Medicine" }, { departmentId: "d-sur", code: "SUR", name: "General Surgery" }],
+  holidays: [{ istDate: "2026-10-20", kind: "gazetted", pattern: "as_sunday", declaredByName: "Dr. Sunita Mishra", declaredAt: AT }],
+  modes: [{
+    declarationId: "m1", departmentId: "d-sur", departmentName: "General Surgery", mode: "skeleton", istDate: "2026-10-06",
+    reason: "Residents' strike from 08:00", declaredByName: "Dr. Sunita Mishra", declaredAt: AT,
+    withdrawnAt: null, withdrawnByName: null, withdrawReason: null,
+  }],
+  youMay: { holiday: true, hospitalSkeleton: true, departmentSkeleton: true },
+};
+
+/** 20-U I23 — the board as it stood at 03:10 on Tuesday 29 September, and the correction made since. */
+const STOOD: WireAsItStoodBoard = {
+  ...BOARD, at: "2026-09-28T21:40:00.000Z", knownAt: "2026-09-28T21:40:00.000Z", holes: [],
+  departments: BOARD.departments.map((d) => ({ ...d, inTheBuilding: d.inTheBuilding.map((p) => ({ ...p, phone: null })) })),
+  changes: [{
+    kind: "correction", periodId: "p1", departmentId: "d-med", departmentName: "General Medicine", at: "2026-10-03T06:30:00.000Z",
+    afterTheFact: true, byName: "Dr. Anand Rao", version: 1,
+    removed: [{ userId: "jr", name: "Dr. Yusuf Qureshi", positionKey: "ward_jr", positionLabel: "Ward junior resident", startsAt: "2026-09-28T14:30:00.000Z", endsAt: "2026-09-29T02:30:00.000Z" }],
+    added: [{ userId: "jr3", name: "Dr. Meera Iyer", positionKey: "ward_jr", positionLabel: "Ward junior resident", startsAt: "2026-09-28T14:30:00.000Z", endsAt: "2026-09-29T02:30:00.000Z" }],
+  }],
+};
+
 describe("RosterOnNow (20-U U5a)", () => {
   const asked: string[] = [];
+  const posted: { url: string; body: unknown }[] = [];
+  let declarations: WireDeclarationsView = NO_DECLARE;
   beforeEach(() => {
     setToken("t");
     asked.length = 0;
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    posted.length = 0;
+    declarations = NO_DECLARE;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       asked.push(raw);
-      const body = raw.endsWith("/auth/me")
+      if (init?.method === "POST" && !raw.endsWith("/copilot/ask")) posted.push({ url: raw, body: JSON.parse(String(init.body ?? "{}")) });
+      const body = raw.includes("/roster/declarations") || raw.includes("/roster/holidays") || raw.includes("/roster/modes") ? declarations
+        : raw.includes("/roster/as-it-stood") ? STOOD
+        : raw.endsWith("/auth/me")
         ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } }
         : raw.endsWith("/ops/mode") ? { mode: "normal", since: null, note: null, reportId: null }
           : raw.endsWith("/copilot/ask") ? { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null }
@@ -168,5 +204,99 @@ describe("RosterOnNow (20-U U5a)", () => {
     await screen.findByTestId("dept-MED");
     expect(asked.some((u) => u.includes(`at=${encodeURIComponent(AT)}`))).toBe(true);
     expect(screen.queryByRole("button", { name: "In 8 hours" })).toBeNull();
+  });
+  it("a plain reader sees no declare card", async () => {
+    renderWithProviders(<RosterOnNow />);
+    await screen.findByTestId("dept-MED");
+    await vi.waitFor(() => expect(asked.some((u) => u.endsWith("/api/roster/declarations"))).toBe(true));
+    expect(screen.queryByTestId("declare-card")).toBeNull();
+  });
+
+  it("I1 — the medical superintendent declares tomorrow a holiday: day, kind and what closes, in one act", async () => {
+    declarations = MS_DECLARE;
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    const card = await screen.findByTestId("declare-card");
+    // Collapsed: what is already declared, in words.
+    expect(card).toHaveTextContent("SKELETON General Surgery");
+    expect(card).toHaveTextContent("Residents' strike from 08:00 · Dr. Sunita Mishra");
+    expect(card).toHaveTextContent("Gazetted runs as a Sunday");
+    await user.click(within(card).getByTestId("declare-open"));
+    await user.selectOptions(within(card).getByTestId("holiday-kind"), "declared");
+    await user.click(within(card).getByTestId("holiday-pattern-opd_short"));
+    await user.click(within(card).getByTestId("holiday-declare"));
+    await vi.waitFor(() => expect(posted.map((p) => p.url.replace(/^.*\/api/, ""))).toEqual(["/roster/holidays"]));
+    expect(posted[0]!.body).toMatchObject({ kind: "declared", pattern: "opd_short" });
+    expect((posted[0]!.body as { istDate: string }).istDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(await within(card).findByTestId("declare-done")).toHaveTextContent("is declared a holiday.");
+  });
+
+  it("I5 — skeleton cover needs a reason, names its department, and can be withdrawn", async () => {
+    declarations = MS_DECLARE;
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    const card = await screen.findByTestId("declare-card");
+    await user.click(within(card).getByTestId("declare-open"));
+    await user.click(within(card).getByTestId("declare-tab-skeleton"));
+    expect(within(card).getByTestId("skeleton-declare")).toBeDisabled();
+    await user.selectOptions(within(card).getByTestId("skeleton-dept"), "d-med");
+    expect(within(card).getByTestId("skeleton-declare")).toBeDisabled();
+    await user.click(within(card).getByTestId("skeleton-tomorrow"));
+    await user.type(within(card).getByTestId("skeleton-reason"), "Residents' strike");
+    await user.click(within(card).getByTestId("skeleton-declare"));
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]!.url).toMatch(/\/api\/roster\/modes$/);
+    expect(posted[0]!.body).toMatchObject({ departmentId: "d-med", reason: "Residents' strike" });
+    await user.click(within(card).getByTestId("withdraw-m1"));
+    await user.click(within(card).getByTestId("withdraw-yes-m1"));
+    await vi.waitFor(() => expect(posted.map((p) => p.url.replace(/^.*\/api/, ""))).toContain("/roster/modes/m1/withdraw"));
+  });
+
+  it("I5 — a strike day's holes are one line per department", async () => {
+    const strike: WireOnNowBoard = { ...BOARD, holes: [{
+      kind: "skeleton_short", departmentId: "d-sur", departmentName: "General Surgery", from: "2026-10-06T02:30:00.000Z", to: "2026-10-06T14:30:00.000Z",
+      positionKey: null, positionLabel: null, userId: null, name: null, count: 14,
+    }] };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const body = raw.includes("/roster/declarations") ? NO_DECLARE : raw.endsWith("/auth/me")
+        ? { actor: { type: "user", id: "me" }, permissions: { hospital: ["roster.read"], scoped: { department: {}, floor: {} } } }
+        : raw.endsWith("/ops/mode") ? { mode: "normal", since: null, note: null, reportId: null } : strike;
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    renderWithProviders(<RosterOnNow />);
+    const holes = await screen.findByTestId("on-now-holes");
+    expect(holes).toHaveTextContent("General Surgery · skeleton cover — 14 duties uncovered, 08:00–20:00.");
+  });
+
+  it("I23 — as it stood: a past instant asked in IST, a historical banner, and the changes since listed beside it", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<RosterOnNow />);
+    await screen.findByTestId("dept-MED");
+    await user.click(screen.getByTestId("stood-open"));
+    const picker = screen.getByTestId("stood-picker");
+    await user.clear(within(picker).getByTestId("stood-day"));
+    await user.type(within(picker).getByTestId("stood-day"), "2026-09-29");
+    await user.clear(within(picker).getByTestId("stood-time"));
+    await user.type(within(picker).getByTestId("stood-time"), "03:10");
+    await user.click(within(picker).getByTestId("stood-show"));
+    await vi.waitFor(() => expect(asked.some((u) => u.includes(`/api/roster/as-it-stood?at=${encodeURIComponent("2026-09-29T03:10:00+05:30")}`))).toBe(true));
+    expect(await screen.findByTestId("stood-banner")).toHaveTextContent("HISTORICAL VIEW");
+    expect(screen.getByTestId("stood-banner")).toHaveTextContent("1 change made since is listed under “Changed since” — not applied.");
+    expect(screen.getByTestId("on-now-clock")).toHaveTextContent("As it stood: Tuesday 29 September, 03:10");
+    // The published version: Dr. Qureshi, as it stood — and no call buttons for a past instant (D6).
+    const med = screen.getByTestId("dept-MED");
+    expect(med).toHaveTextContent("Dr. Yusuf Qureshi");
+    expect(within(med).queryByRole("link")).toBeNull();
+    const change = screen.getByTestId("stood-change");
+    expect(change).toHaveTextContent("Correction");
+    expect(change).toHaveTextContent("AFTER THE FACT");
+    expect(change).toHaveTextContent("Off: Dr. Yusuf Qureshi · Ward junior resident · 20:00\u2060–\u206008:00");
+    expect(change).toHaveTextContent("On: Dr. Meera Iyer");
+    expect(change).toHaveTextContent("Approved by Dr. Anand Rao");
+    expect(screen.queryByTestId("on-now-holes")).toBeNull();
+    await user.click(screen.getByTestId("stood-close"));
+    expect(screen.queryByTestId("stood-banner")).toBeNull();
+    expect(await screen.findByTestId("on-now-holes")).toBeInTheDocument();
   });
 });

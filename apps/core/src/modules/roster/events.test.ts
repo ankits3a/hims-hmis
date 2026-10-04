@@ -61,6 +61,16 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     "roster.finding_accepted": {
       findingId: ID, periodId: ID, ruleKey: ID, severity: "block", acceptedAt: WHEN,
     },
+    // 20-U I1/I5. NOTE WHAT IS ABSENT: the declaration's reason, and the day as a formatted string.
+    "roster.holiday_declared": {
+      dayStartsAt: WHEN, kind: "declared", pattern: "as_sunday", departmentsRematerialised: 0, declaredAt: WHEN,
+    },
+    "roster.mode_declared": {
+      declarationId: ID, departmentId: null, mode: "skeleton", dayStartsAt: WHEN, declaredAt: WHEN,
+    },
+    "roster.mode_withdrawn": {
+      declarationId: ID, departmentId: ID, mode: "skeleton", dayStartsAt: WHEN, withdrawnAt: WHEN,
+    },
   };
 
   /**
@@ -131,6 +141,6 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     for (const event of ROSTER_EVENTS) {
       expect(`${event.name}: ${event.module}/${event.version}`).toBe(`${event.name}: roster/1`);
     }
-    expect(ROSTER_EVENTS).toHaveLength(8);
+    expect(ROSTER_EVENTS).toHaveLength(11);
   });
 });
