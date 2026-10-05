@@ -26,6 +26,9 @@ const config: ExpoConfig = {
   userInterfaceStyle: "light",
   android: {
     package: ENV === "production" ? "com.crkmch.hmis" : "com.crkmch.hmis.staging",
+    // Sideloaded (no Play Store, owner 2026-10-05): a phone only accepts an update whose versionCode
+    // is HIGHER than the installed one. scripts/build-apk.sh passes a counter that only goes up.
+    versionCode: Number(process.env.HMIS_VERSION_CODE ?? "1"),
     adaptiveIcon: {
       backgroundColor: "#0E6B4E",
       foregroundImage: "./assets/android-icon-foreground.png",

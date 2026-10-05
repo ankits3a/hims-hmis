@@ -73,6 +73,19 @@ http://{$HMIS_UAT_SITE}:8080 {
 		reverse_proxy api:3000
 	}
 
+	# The staff Android app (owner 2026-10-05: no Play Store, ever). APKs that
+	# apps/mobile/scripts/build-apk.sh writes to /opt/hmis-context/mobile-apk on the host are
+	# mounted read-only at /downloads (docker-compose.uat.yml) and listed here, behind the same
+	# basic auth as the screens: https://stagehmis.crkmch.com/app/
+	handle_path /app/* {
+		basic_auth {
+			uat {$HMIS_UAT_BASIC_AUTH_HASH}
+		}
+		@apk path *.apk
+		header @apk Content-Type application/vnd.android.package-archive
+		root * /downloads
+		file_server browse
+	}
 	handle {
 		basic_auth {
 			uat {$HMIS_UAT_BASIC_AUTH_HASH}

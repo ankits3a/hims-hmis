@@ -99,6 +99,10 @@ services:
     # Container side is 8080 because `Caddyfile.uat`'s site address is `http://{$HMIS_UAT_SITE}:8080`
     # — the earlier `8443:443` bug was exactly these two numbers disagreeing.
     ports: !override ["172.17.0.1:8444:8080"]
+    # The staff Android APKs (apps/mobile/scripts/build-apk.sh), served at /app/ by Caddyfile.uat.
+    # Read-only, and a host directory outside every compose project — no volume is shared.
+    volumes:
+      - /opt/hmis-context/mobile-apk:/downloads:ro
     # WITHOUT THIS, `Caddyfile.uat`'s `{$HMIS_UAT_SITE}` AND `{$HMIS_UAT_BASIC_AUTH_HASH}` EXPAND TO
     # EMPTY — caddy reads them from its own process environment and neither the base file nor this
     # one gave it any. The `:?` form makes compose refuse with the variable's name rather than
