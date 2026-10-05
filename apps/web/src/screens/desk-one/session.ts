@@ -365,6 +365,12 @@ export type DeskApi = {
    */
   changeDoctor: (reason: string) => Promise<void>;
   /**
+   * Owner 2026-10-05 — "Wrong department — move patient": the server abandons this visit and opens
+   * one in `departmentId` with `doctorId`, in one act. `null` when it moved; otherwise the refusal,
+   * for the panel to show beside its own button.
+   */
+  moveDepartment: (departmentId: string, doctorId: string, reason: string) => Promise<string | null>;
+  /**
    * FD-18 — correct a misread visit type (the owner's billing override). Not a discount: the fee
    * quote re-derives from the corrected type, so a revisit is free because it IS a revisit.
    */

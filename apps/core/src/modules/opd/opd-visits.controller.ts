@@ -19,6 +19,8 @@ import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
 import { walkIn } from "./walk-in";
+import { moveVisitDepartment, previewDepartmentMove } from "./department-move";
+import type { DepartmentMovePreview, DepartmentMoveResult } from "./department-move";
 import { continuityDoctorFor } from "./continuity";
 import { suggestDepartments } from "./triage";
 import type { TriageChoice } from "./triage";
@@ -109,7 +111,7 @@ const appointmentCreateBody = z.object({
   source: z.enum(["desk", "phone"]).optional(),
   note: z.string().max(1000).optional(),
 });
-const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional() });
+const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
 /* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
    clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
@@ -158,6 +160,9 @@ const walkInBody = z.object({
   // assignment, the token arrives with POST /opd/visits/:id/join-queue after the money.
   join: z.enum(["queue", "defer"]).optional(),
 });
+/* Owner 2026-10-05 — a blank reason is the SERVICE's `reason_required`, as for abandon. */
+const moveDepartmentBody = z.object({ departmentId: z.string().min(1), doctorId: z.string().min(1), reason: z.string().max(400) });
+const movePreviewQuery = z.object({ departmentId: z.string().min(1) });
 const reclassifyBody = z.object({
   visitType: z.enum(["new", "revisit", "renewal"]),
   reason: z.string().min(1).max(400),
@@ -613,6 +618,32 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await abandonVisit(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * Owner 2026-10-05 — "Wrong department — move patient" (`department-move.ts`). The preview is a
+   * read: what the visit becomes in that department, and the bill that would refuse the move.
+   */
+  @RequirePermission("opd.visits.open", "hospital")
+  @Get("visits/:id/move-preview")
+  async movePreview(@Param("id") id: string, @Query() query: unknown): Promise<DepartmentMovePreview> {
+    const q = parsed(movePreviewQuery, query);
+    try {
+      return await previewDepartmentMove(this.db, id, q.departmentId);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.visits.open", "hospital")
+  @Post("visits/:id/move-department")
+  async moveDepartment(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<DepartmentMoveResult> {
+    const b = parsed(moveDepartmentBody, body);
+    try {
+      return await moveVisitDepartment(this.db, actor, id, b);
     } catch (e) {
       toHttp(e);
     }

@@ -7,11 +7,13 @@ import {
   cancelAppointment, checkInAppointment, getContinuity, getSlots, listDayAppointments, listDoctors,
   listPatientAppointments,
   opdErrorMessage,
+  previewDepartmentMove,
   rescheduleAppointment,
 } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import { listPrintJobs, printSummary, reprintJob, PRINT_DOCUMENT_LABEL } from "../../lib/print-api";
-import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
+import type { WireDoctorSummary, WireSlot, WireVisitType } from "../../lib/opd-api";
+import type { WireConsultTerms } from "../../lib/billing-api";
 import {
   ageOf, bookableToday, etaClock, initialsOf, rs, seatHasStage, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
 } from "./model";
@@ -1688,7 +1690,10 @@ function FutureTab(): React.ReactElement {
    * in, so they share one mechanism: mark a booking as the one being moved, then pick a slot. The
    * grid and its confirmation are the ones already on screen; only the verb changes.
    */
-  const [moving, setMoving] = useState<{ id: string; who: string; was: string } | null>(null);
+  /* `doctorId` is the booking's own doctor: a move to a doctor of ANOTHER department is the owner's
+     "wrong department" case (2026-10-05) and asks why before it is made. */
+  const [moving, setMoving] = useState<{ id: string; who: string; was: string; doctorId: string } | null>(null);
+  const [moveReason, setMoveReason] = useState("");
 
   /**
    * ═══ FD-22 — A REFUSAL BELONGS WHERE THE ACTION WAS, NOT AT THE TOP OF THE SCREEN ═══
@@ -1715,14 +1720,15 @@ function FutureTab(): React.ReactElement {
    * booking's own — which is exactly the owner's second route, "search the doctor and change the
    * patient schedule from there", reaching the same endpoint as the first.
    */
-  const move = async (appointmentId: string, slotStart: string): Promise<void> => {
+  const move = async (appointmentId: string, slotStart: string, reason?: string): Promise<void> => {
     d.patch({ busy: "future", error: null });
     try {
-      await rescheduleAppointment(appointmentId, slotStart, chosen?.doctor.id);
+      await rescheduleAppointment(appointmentId, slotStart, chosen?.doctor.id, reason);
       await Promise.all([dayBook.refetch(), theirs.refetch()]);
       d.patch({ busy: null });
       d.note(`appointment moved to ${slotClock(slotStart)}`, "ok");
       setMoving(null);
+      setMoveReason("");
       setPicked(null);
     } catch (e) {
       d.patch({ busy: null });
@@ -1770,6 +1776,10 @@ function FutureTab(): React.ReactElement {
   };
 
   const deptName = d.departments.find((x) => x.id === chosen?.doctor.departmentId)?.name ?? "";
+  /* Owner 2026-10-05 — the booking's department, and whether the picked doctor is in ANOTHER one. */
+  const movingFromDept = moving === null ? null : d.summaries.find((x) => x.doctor.id === moving.doctorId)?.doctor.departmentId ?? null;
+  const crossDept = moving !== null && chosen !== null && movingFromDept !== null && movingFromDept !== chosen.doctor.departmentId;
+  const movingFromName = d.departments.find((x) => x.id === movingFromDept)?.name ?? "";
   const all = slots.data?.slots ?? [];
   const free = all.filter((x) => !x.booked && !x.past);
   /* A cancelled or no-show booking is not somebody the desk should expect at that hour. */
@@ -1803,7 +1813,7 @@ function FutureTab(): React.ReactElement {
               across belongs to a board nobody is looking at any more.
             */
             setPicked(null);
-            setMoving({ id: row.id, who: row.who, was: slotClock(row.slotStart) });
+            setMoving({ id: row.id, who: row.who, was: slotClock(row.slotStart), doctorId: row.doctorId });
             d.note(`moving ${row.who}'s booking — pick a new time`, "warn");
           }}
         />
@@ -1895,7 +1905,7 @@ function FutureTab(): React.ReactElement {
                 className="sec"
                 data-testid={`move-theirs-${a.id}`}
                 onClick={() => {
-                  setMoving({ id: a.id, who: s.person?.name ?? "this patient", was: slotClock(a.slotStart) });
+                  setMoving({ id: a.id, who: s.person?.name ?? "this patient", was: slotClock(a.slotStart), doctorId: a.doctorId });
                   setPicked(null);
                 }}
               >
@@ -2087,8 +2097,26 @@ function FutureTab(): React.ReactElement {
         </div>
 
         {/* THE CONFIRMATION. A booking is a promise about a time; it is made deliberately or not at all. */}
+        {picked === null || !crossDept ? null : (
+          <div className="box" data-testid="move-appt-crossdept" style={{ marginTop: 13, padding: "10px 12px", background: "var(--wash)" }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>
+              {t("registrationCounter.move.apptCross", { from: movingFromName, to: deptName })}
+            </div>
+            <input
+              className="in"
+              data-testid="move-appt-reason"
+              style={{ marginTop: 7 }}
+              placeholder={t("registrationCounter.move.reasonHint")}
+              value={moveReason}
+              onChange={(e) => { setMoveReason(e.target.value); }}
+            />
+            {moving !== null && rowError?.id === moving.id ? (
+              <div role="alert" data-testid="move-appt-error" style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>{rowError.message}</div>
+            ) : null}
+          </div>
+        )}
         {picked === null ? null : (
-          <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line2)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line2)", flexWrap: "wrap" }}>
             <button
               className="pri"
               data-testid={moving === null ? "confirm-slot" : "confirm-move"}
@@ -2096,7 +2124,14 @@ function FutureTab(): React.ReactElement {
               onClick={() => {
                 const slot = all.find((x) => x.start === picked);
                 if (slot === undefined || chosen === null) return;
-                if (moving !== null) { void move(moving.id, slot.start); return; }
+                if (moving !== null) {
+                  if (crossDept && moveReason.trim() === "") {
+                    setRowError({ id: moving.id, message: t("registrationCounter.move.reasonRequired") });
+                    return;
+                  }
+                  void move(moving.id, slot.start, crossDept ? moveReason.trim() : undefined);
+                  return;
+                }
                 void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName);
                 setPicked(null);
               }}
@@ -2111,7 +2146,7 @@ function FutureTab(): React.ReactElement {
             <button
               className="sec"
               data-testid="clear-slot"
-              onClick={() => { setPicked(null); setMoving(null); }}
+              onClick={() => { setPicked(null); setMoving(null); setMoveReason(""); }}
             >
               {moving === null ? "pick another" : "leave it where it is"}
             </button>
@@ -2172,6 +2207,7 @@ function FutureTab(): React.ReactElement {
                         id: a.id,
                         who: a.patient?.restricted === true ? (a.patient.alias ?? "this patient") : (a.patient?.name ?? "this patient"),
                         was: slotClock(a.slotStart),
+                        doctorId: a.doctorId,
                       });
                       setPicked(null);
                     }}
@@ -2239,8 +2275,10 @@ function FutureTab(): React.ReactElement {
 function StageBill(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
+  const { t } = useTranslation();
   const [coupon, setCoupon] = useState("");
   const [slip, setSlip] = useState(s.attributionCode);
+  const [moveOpen, setMoveOpen] = useState(false);
 
   if (s.visit === null) {
     return (
@@ -2550,7 +2588,9 @@ function StageBill(): React.ReactElement {
       */}
       {s.issued !== null ? (
         <div data-testid="change-doctor-locked" style={{ fontSize: 11, color: "var(--faint)", marginTop: 14, lineHeight: "15px" }}>
-          Settled against {s.visit.doctorName}. Changing the doctor now is a credit note, not a desk correction.
+          {t("registrationCounter.changeDoctor.locked", { doctor: s.visit.doctorName })}
+          {" "}
+          <span data-testid="move-dept-locked">{t("registrationCounter.move.billed")}</span>
         </div>
       ) : (
         <>
@@ -2567,12 +2607,12 @@ function StageBill(): React.ReactElement {
           and the token the patient is holding, and the change beside it as a real action.
         */}
         <div
-          className="box"
+          className="box d1-seating"
           data-testid="seating-card"
-          style={{ marginTop: 16, padding: "12px 14px", display: "flex", alignItems: "center", gap: 13 }}
+          style={{ marginTop: 16, padding: "12px 14px", display: "flex", alignItems: "center", gap: 13, flexWrap: "wrap" }}
         >
           <div style={{ minWidth: 0, flexGrow: 1 }}>
-            <div className="tag" style={{ marginBottom: 3 }}>seeing</div>
+            <div className="tag" style={{ marginBottom: 3 }}>{t("registrationCounter.changeDoctor.seeing")}</div>
             <div style={{ fontSize: 14, fontWeight: 700, lineHeight: "18px" }}>{s.visit.doctorName}</div>
             <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
               {s.visit.departmentName}
@@ -2591,19 +2631,31 @@ function StageBill(): React.ReactElement {
                 : ` · ${tokenLabel(d.departments.find((x) => x.id === s.visit?.departmentId)?.code ?? null, s.visit.tokenNo)}`}
             </div>
           </div>
-          <button
-            className="sec grn"
-            data-testid="change-doctor"
-            style={{ flexShrink: 0, height: 36 }}
-            disabled={s.busy === "assign"}
-            onClick={() => void d.changeDoctor("doctor changed at the desk before billing")}
-          >
-            {s.busy === "assign" ? "withdrawing…" : "change the doctor"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
+            <button
+              className="sec grn"
+              data-testid="change-doctor"
+              style={{ height: 36 }}
+              disabled={s.busy === "assign"}
+              onClick={() => void d.changeDoctor("doctor changed at the desk before billing")}
+            >
+              {s.busy === "assign" ? t("registrationCounter.changeDoctor.busy") : t("registrationCounter.changeDoctor.button")}
+            </button>
+            <button
+              className="sec"
+              data-testid="move-dept-open"
+              style={{ height: 36 }}
+              disabled={s.busy === "assign" || moveOpen}
+              onClick={() => { setMoveOpen(true); }}
+            >
+              {t("registrationCounter.move.open")}
+            </button>
+          </div>
         </div>
         <div style={{ fontSize: 11, color: "var(--faint)", lineHeight: "15px", marginTop: 6, maxWidth: 460 }}>
-          Changing it cancels this token on the board and records why. The patient stays in hand — nothing is re-typed.
+          {t("registrationCounter.changeDoctor.hint")}
         </div>
+        {moveOpen ? <MoveDepartmentPanel onClose={() => { setMoveOpen(false); }} /> : null}
         </>
       )}
 
@@ -2615,6 +2667,180 @@ function StageBill(): React.ReactElement {
       </div>
 
       <SchemesRail />
+    </div>
+  );
+}
+
+/** What a visit type costs under the terms in force — `null` when the terms are unknown (no fee claim). */
+function feeOf(vt: WireVisitType, terms: WireConsultTerms | undefined, t: (k: string) => string): string | null {
+  if (terms === undefined) return null;
+  if (terms.consultFeeOff) return t("registrationCounter.move.feesOff");
+  const paise = terms.paise[vt];
+  if (paise === null) return vt === "revisit" ? t("registrationCounter.move.free") : null;
+  return paise > 0 ? rs(paise) : t("registrationCounter.move.free");
+}
+
+/**
+ * ═══ OWNER 2026-10-05 — "WRONG DEPARTMENT — MOVE PATIENT" ═══
+ *
+ * *"If by mistake the front desk set the patient to Orthopedics but it should be General Medicine,
+ * how can they move that patient … making sure the OPD report also gets auto corrected."*
+ *
+ * Reason-first, like the visit-type correction: from → to, the department, then the doctor (with the
+ * unit or "Guest Faculty" beside the name), why, and what the visit will cost there BEFORE the write —
+ * the server re-classifies in the new department, so a "new" in orthopaedics can be a free revisit in
+ * medicine. One server act moves it; the report reads the visits live and follows by itself.
+ */
+function MoveDepartmentPanel({ onClose }: { onClose: () => void }): React.ReactElement | null {
+  const d = useDesk();
+  const { s } = d;
+  const { t } = useTranslation();
+  const [deptId, setDeptId] = useState<string | null>(null);
+  const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const visit = s.visit;
+  const mayOpenVisits = useAuth().can("opd.visits.open");
+  const terms = useQuery({ queryKey: ["billing", "consult-terms"], queryFn: fetchConsultTerms, enabled: mayOpenVisits, staleTime: 60_000, retry: false });
+  const preview = useQuery({
+    queryKey: ["d1", "move-preview", visit?.encounterId ?? "", deptId ?? ""],
+    queryFn: () => previewDepartmentMove(visit!.encounterId, deptId!),
+    enabled: visit !== null && deptId !== null,
+    retry: false,
+  });
+  if (visit === null) return null;
+
+  const targets = d.queues.filter((q) => q.departmentId !== visit.departmentId);
+  const dq = targets.find((q) => q.departmentId === deptId) ?? null;
+  const fromCode = d.departments.find((x) => x.id === visit.departmentId)?.code ?? null;
+  const vtName = (vt: WireVisitType) => t(`registrationCounter.move.vt.${vt}`);
+  const p = preview.data;
+  const billedNo = p?.standingInvoiceNo ?? null;
+  const feeLine = (vt: WireVisitType) => {
+    const fee = feeOf(vt, terms.data, t);
+    return fee === null ? vtName(vt) : `${vtName(vt)} · ${fee}`;
+  };
+
+  const submit = async (): Promise<void> => {
+    if (deptId === null || doctorId === null) { setError(t("registrationCounter.move.pickBoth")); return; }
+    if (reason.trim() === "") { setError(t("registrationCounter.move.reasonRequired")); return; }
+    setError(null);
+    const refused = await d.moveDepartment(deptId, doctorId, reason.trim());
+    if (refused === null) onClose();
+    else setError(refused);
+  };
+
+  return (
+    <div className="box d1-move" data-testid="move-dept-panel" style={{ marginTop: 12, padding: "12px 14px", background: "var(--wash)" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700 }}>{t("registrationCounter.move.title")}</div>
+      <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3, lineHeight: "16px" }}>
+        {t("registrationCounter.move.explain")}
+      </div>
+
+      <div data-testid="move-dept-from" style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginTop: 10, fontSize: 12 }}>
+        <span className="tag">{t("registrationCounter.move.from")}</span>
+        <b>{visit.departmentName}</b>
+        <span style={{ color: "var(--dim)" }}>
+          {visit.doctorName}
+          {visit.tokenNo === null ? "" : ` · ${tokenLabel(fromCode, visit.tokenNo)}`}
+        </span>
+      </div>
+
+      <div className="tag" style={{ marginTop: 11 }}>{t("registrationCounter.move.toDept")}</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+        {targets.map((q) => (
+          <button
+            key={q.departmentId}
+            className="pill"
+            data-testid={`move-dept-${q.departmentId}`}
+            onClick={() => { setDeptId(q.departmentId); setDoctorId(q.doctors.length === 1 ? q.doctors[0]!.doctor.id : null); setError(null); }}
+            style={{
+              borderColor: deptId === q.departmentId ? "var(--green)" : "var(--line)",
+              background: deptId === q.departmentId ? "var(--green)" : "var(--card)",
+              color: deptId === q.departmentId ? "#fff" : "var(--ink)",
+              fontWeight: deptId === q.departmentId ? 700 : 400,
+            }}
+          >
+            {q.departmentName}
+          </button>
+        ))}
+        {targets.length === 0 ? <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("registrationCounter.move.noTargets")}</span> : null}
+      </div>
+
+      {dq === null ? null : (
+        <>
+          <div className="tag" style={{ marginTop: 11 }}>{t("registrationCounter.move.toDoctor")}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+            {dq.doctors.map((doc) => {
+              const tag = d.doctorLabel(doc.doctor);
+              const on = doctorId === doc.doctor.id;
+              return (
+                <button
+                  key={doc.doctor.id}
+                  className="pill"
+                  data-testid={`move-doctor-${doc.doctor.id}`}
+                  onClick={() => { setDoctorId(doc.doctor.id); setError(null); }}
+                  style={{
+                    borderColor: on ? "var(--green)" : "var(--line)",
+                    background: on ? "var(--green)" : "var(--card)",
+                    color: on ? "#fff" : "var(--ink)",
+                    fontWeight: on ? 700 : 400,
+                    textAlign: "left",
+                    height: "auto",
+                    padding: "5px 10px",
+                    lineHeight: "15px",
+                  }}
+                >
+                  {doc.doctor.displayName}
+                  <span style={{ display: "block", fontSize: 10.5, fontWeight: 400, opacity: 0.85 }}>
+                    {tag === null ? "" : `${tag} · `}{t("registrationCounter.move.waiting", { count: doc.waitingCount })}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {p === undefined || deptId === null ? null : (
+        <div
+          data-testid="move-dept-fee"
+          style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 11, fontSize: 12, padding: "8px 10px", background: "var(--card)", border: "1px solid var(--line2)", borderRadius: 6 }}
+        >
+          <span style={{ color: "var(--dim)" }}>{t("registrationCounter.move.now")}</span>
+          <b>{feeLine(p.from.visitType)}</b>
+          <span style={{ color: "var(--faint)" }}>→</span>
+          <span style={{ color: "var(--dim)" }}>{t("registrationCounter.move.after", { dept: dq?.departmentName ?? "" })}</span>
+          <b data-testid="move-dept-fee-after">{feeLine(p.to.visitType)}</b>
+        </div>
+      )}
+
+      {billedNo === null ? null : (
+        <div role="alert" data-testid="move-dept-billed" style={{ fontSize: 11.5, color: "var(--red)", marginTop: 8, lineHeight: "16px" }}>
+          {t("registrationCounter.move.billedNo", { no: billedNo })}
+        </div>
+      )}
+
+      <input
+        className="in"
+        data-testid="move-dept-reason"
+        style={{ marginTop: 10 }}
+        placeholder={t("registrationCounter.move.reasonHint")}
+        value={reason}
+        onChange={(e) => { setReason(e.target.value); }}
+      />
+      <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 5, lineHeight: "14px" }}>{t("registrationCounter.move.slips")}</div>
+      {error === null ? null : (
+        <div role="alert" data-testid="move-dept-error" style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>{error}</div>
+      )}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+        <SubmitButton plain className="pri" data-testid="move-dept-submit" disabled={billedNo !== null} onClick={submit}>
+          {dq === null ? t("registrationCounter.move.submitBare") : t("registrationCounter.move.submit", { dept: dq.departmentName })}
+        </SubmitButton>
+        <button className="sec" data-testid="move-dept-cancel" onClick={onClose}>
+          {t("registrationCounter.move.cancel")}
+        </button>
+      </div>
     </div>
   );
 }

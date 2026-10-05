@@ -121,6 +121,27 @@ export async function openVisit(db: Db, actor: Actor, input: OpenVisitInput, now
 }
 
 /**
+ * What kind of visit a NEW visit in `departmentId` would be for this patient chain, now — the
+ * department's own follow-up window and referral anchor. `openVisitInTx` classifies with it, and the
+ * department move (owner 2026-10-05) previews and re-classifies with the SAME function, so the fee a
+ * clerk is shown before moving is the fee the new visit opens with.
+ */
+export async function visitTypeIn(
+  tx: Db | Tx, chainIds: string[], departmentId: string, now: Date, referredNow = false,
+): Promise<VisitType> {
+  const anchorRows = await tx
+    .select({ consultCompletedAt: opdEncounters.consultCompletedAt, followUpDays: opdEncounters.followUpDays })
+    .from(opdEncounters)
+    .where(and(inArray(opdEncounters.patientId, chainIds), eq(opdEncounters.departmentId, departmentId), eq(opdEncounters.status, "completed")))
+    .orderBy(desc(opdEncounters.consultCompletedAt))
+    .limit(1);
+  const a = anchorRows[0];
+  // The referral opening THIS visit is its own anchor, at this moment; otherwise the latest earlier one.
+  const referredAt = referredNow ? now : (await referralAnchorFor(tx, chainIds, departmentId))?.referredAt ?? null;
+  return classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now, referredAt);
+}
+
+/**
  * Tx-first core (also called by appointments.checkIn inside ITS transaction). patientId MUST already be canonical.
  *
  * OVERLOADED on `join` so the DEFERRED branch cannot leak nulls into the shipped callers: the
@@ -141,16 +162,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   if (doctor.departmentId !== dept.id) throw new OpdError("doctor_department_mismatch");
 
   const serviceDate = istDate(now);
-  const anchorRows = await tx
-    .select({ consultCompletedAt: opdEncounters.consultCompletedAt, followUpDays: opdEncounters.followUpDays })
-    .from(opdEncounters)
-    .where(and(inArray(opdEncounters.patientId, input.chainIds), eq(opdEncounters.departmentId, dept.id), eq(opdEncounters.status, "completed")))
-    .orderBy(desc(opdEncounters.consultCompletedAt))
-    .limit(1);
-  const a = anchorRows[0];
-  // The referral opening THIS visit is its own anchor, at this moment; otherwise the latest earlier one.
-  const referredAt = input.referredFromEncounterId !== undefined ? now : (await referralAnchorFor(tx, input.chainIds, dept.id))?.referredAt ?? null;
-  const visitType = classifyVisit(a && a.consultCompletedAt ? { consultCompletedAt: a.consultCompletedAt, followUpDays: a.followUpDays ?? 7 } : null, now, referredAt);
+  const visitType = await visitTypeIn(tx, input.chainIds, dept.id, now, input.referredFromEncounterId !== undefined);
 
   const deskWords = normaliseDeskComplaint(input.deskComplaint);
   const encounterId = newId();

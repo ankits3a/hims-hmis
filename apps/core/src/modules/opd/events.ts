@@ -60,6 +60,11 @@ export const appointmentBooked = defineEvent("appointment.booked", MODULE, z.obj
 export const appointmentRescheduled = defineEvent("appointment.rescheduled", MODULE, z.object({
   fromAppointmentId: id, toAppointmentId: id, patientId: id, doctorId: id, departmentId: id,
   serviceDate: isoDate, slotStart: iso, previousDoctorId: id, previousSlotStart: iso,
+  /**
+   * Owner 2026-10-05 — a booking moved because it was made in the WRONG department says so and why.
+   * Optional and only written then: an ordinary reschedule carries neither, as before.
+   */
+  previousDepartmentId: z.string().optional(), reason: z.string().min(1).optional(),
 }));
 
 export const appointmentCancelled = defineEvent("appointment.cancelled", MODULE, z.object({
@@ -185,6 +190,25 @@ export const visitReclassified = defineEvent("visit.reclassified", MODULE, z.obj
   from: z.enum(["new", "revisit", "renewal"]),
   to: z.enum(["new", "revisit", "renewal"]),
   /** Free text: the clerk is explaining a judgement, and an enum cannot anticipate these. */
+  reason: z.string().min(1),
+}));
+
+/**
+ * Owner 2026-10-05 — "Wrong department — move patient". The front desk seated the patient in the
+ * wrong department; ONE act abandons that visit (its own `visit.abandoned` is also written) and
+ * opens the right one. This event is the link between the two and the record of who, from what, to
+ * what and why. The OPD report needs nothing from it: it reads the visits live, and the abandoned
+ * one no longer counts.
+ */
+export const visitMovedDepartment = defineEvent("visit.moved_department", MODULE, z.object({
+  patientId: id, serviceDate: isoDate,
+  fromEncounterId: id, toEncounterId: id,
+  fromDepartmentId: z.string().nullable(), toDepartmentId: id,
+  fromDoctorId: z.string().nullable(), toDoctorId: id,
+  fromVisitType: z.enum(["new", "revisit", "renewal"]), toVisitType: z.enum(["new", "revisit", "renewal"]),
+  fromTokenNo: z.number().int().positive().nullable(), toTokenNo: z.number().int().positive().nullable(),
+  /** The booking that brought the patient in, moved with them so the report's booked count follows. */
+  appointmentId: z.string().nullable(),
   reason: z.string().min(1),
 }));
 

@@ -66,7 +66,11 @@ export type OpdErrorCode =
   | "glasses_rx_empty"
   // The consult layout (layout.ts): a body the one validator refuses, and a save that lost a race
   // for its version number (409 by the `_state_conflict` rule — re-read, then save again).
-  | "invalid_layout" | "layout_state_conflict";
+  | "invalid_layout" | "layout_state_conflict"
+  // Owner 2026-10-05 — "Wrong department — move patient". A move to the department the visit is
+  // already in is the same-department "change the doctor" (400); a visit with a bill that still
+  // stands is a credit note first (409 by the `_state_conflict` rule).
+  | "move_same_department" | "visit_billed_state_conflict";
 
 export class OpdError extends Error {
   constructor(
