@@ -130,7 +130,7 @@ describe("OPD — move a visit to the right department", () => {
     expect(report.departments.find((d) => d.departmentId === dept2Id)?.booked).toBe(1);
   });
 
-  it("REFUSES while a bill stands against the visit — a credit note first; after a full credit note it moves", async () => {
+  it("a bill refunded in full no longer stands: the visit moves with nothing to carry (the money rules: department-move-money.test.ts)", async () => {
     await openSessionFor(db, { id: clerk.id }, 200_000);
     const wrong = await seatInOrtho();
     const issued = await issueInvoice(db, clerk.actor, {
@@ -138,14 +138,14 @@ describe("OPD — move a visit to the right department", () => {
       lines: [{ lineId: "fee", serviceId: base.consultNewServiceId, qty: 1 }],
       receipt: { tenders: [{ mode: "cash", amountPaise: 50_000 }] },
     });
-    await expect(move(wrong.encounter.id)).rejects.toMatchObject({ code: "visit_billed_state_conflict" });
-    expect((await getEncounter(db, wrong.encounter.id))!.status).toBe("registered"); // nothing moved
     expect((await previewDepartmentMove(db, wrong.encounter.id, dept2Id, MON)).standingInvoiceNo).toBe(issued.invoiceNo);
 
     const lines = await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, issued.invoiceId));
     await issueCreditNote(db, clerk.actor, { invoiceId: issued.invoiceId, kind: "refund", reason: "wrong department", lines: [{ invoiceLineId: lines[0]!.id, qty: 1 }] });
+    expect((await previewDepartmentMove(db, wrong.encounter.id, dept2Id, MON)).money.kind).toBe("none");
     const r = await move(wrong.encounter.id);
     expect(r.to.encounter.departmentId).toBe(dept2Id);
+    expect(r.money.kind).toBe("none");
   });
 
   it("refuses once the consult has begun, a blank reason, and the department the visit is already in", async () => {

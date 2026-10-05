@@ -25,7 +25,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AbdmVerifyPanel } from "../components/abdm-verify";
 import { abhaCapability, getPatientDocument, listPatientDocuments } from "../lib/patients-api";
 import { completeAllergen, listDepartments, listDoctors, listPatientAppointmentsAll, patientTimeline } from "../lib/opd-api";
-import type { WireAllergenHit, WireAppointment } from "../lib/opd-api";
+import type { WireAllergenHit, WireAppointment, WireTimelineItem } from "../lib/opd-api";
+import { VisitCard } from "./desk-one/visit-card";
 import { slotClock, upcomingOf } from "../lib/appointment-view";
 import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
@@ -703,7 +704,7 @@ const APPT_HISTORY_ROWS = 5;
  * `billing.invoice.read`'s; a seat without it is told so rather than shown an empty list that looks
  * like "no bill".
  */
-function AppointmentBills({ appointment, mayRead }: { appointment: WireAppointment; mayRead: boolean }): React.ReactElement {
+function AppointmentBills({ appointment, mayRead, onOpenVisit }: { appointment: WireAppointment; mayRead: boolean; onOpenVisit: (() => void) | null }): React.ReactElement {
   const { t } = useTranslation();
   const encounterId = appointment.encounterId;
   const bills = useQuery({
@@ -714,10 +715,16 @@ function AppointmentBills({ appointment, mayRead }: { appointment: WireAppointme
   });
   const line = (text: string): React.ReactElement => <p data-testid="appt-bills-note" style={{ fontSize: 12, color: "var(--dim)", margin: "0 0 9px" }}>{text}</p>;
   if (encounterId === null) return line(t("profile.apptNoVisit"));
-  if (!mayRead) return line(t("profile.apptBillsHidden"));
+  // Owner 2026-10-05 — the visit this booking became opens as ONE visit card: token, prescription, bills, change department.
+  const open = onOpenVisit === null ? null : (
+    <button type="button" className="sec" data-testid="appt-open-visit" style={{ height: 28, margin: "0 0 9px" }} onClick={onOpenVisit}>
+      {t("visitCard.open")}
+    </button>
+  );
+  if (!mayRead) return <>{line(t("profile.apptBillsHidden"))}{open}</>;
   if (bills.isPending) return line(t("app.loading"));
   const items = bills.data?.items ?? [];
-  if (items.length === 0) return line(t("profile.apptNoBill"));
+  if (items.length === 0) return <>{line(t("profile.apptNoBill"))}{open}</>;
   return (
     <div data-testid="appt-bills" style={{ margin: "0 0 9px" }}>
       {items.map((inv) => (
@@ -727,7 +734,20 @@ function AppointmentBills({ appointment, mayRead }: { appointment: WireAppointme
           <span className="mo">{fmtPaise(inv.netPayablePaise)}</span>
         </div>
       ))}
+      {open === null ? null : <div style={{ marginTop: 6 }}>{open}</div>}
     </div>
+  );
+}
+
+/** Owner 2026-10-05 — one visit, one card: the same card Desk One's history opens (`VisitCard`). */
+function VisitDialog({ visit, onClose }: { visit: WireTimelineItem | null; onClose: () => void }): React.ReactElement {
+  return (
+    <Dialog open={visit !== null} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="pp" data-testid="visit-dialog" style={{ maxWidth: 640, width: "calc(100vw - 32px)", maxHeight: "85vh", overflowY: "auto", padding: 0 }}>
+        <DialogHeader className="sr-only"><DialogTitle>{visit?.visitNo ?? ""}</DialogTitle></DialogHeader>
+        {visit === null ? null : <VisitCard key={visit.encounterId} encounterId={visit.encounterId} when={visit.serviceDate} visit={visit} />}
+      </DialogContent>
+    </Dialog>
   );
 }
 /** The lane's red band: active allergies only, severe in brick red; corrections live under Edit details. */
@@ -1169,6 +1189,7 @@ export function PatientDetail(): React.ReactElement {
   const [moreOpen, setMoreOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
+  const [openVisit, setOpenVisit] = useState<WireTimelineItem | null>(null);
 
   const patientQuery = useQuery({
     queryKey: ["patient", patientId],
@@ -1315,6 +1336,8 @@ export function PatientDetail(): React.ReactElement {
     ...(documents.data !== undefined ? { documents: documents.data } : {}),
   }, labels);
   const days = groupByDay(rows);
+  const visitOf = (encounterId: string | null | undefined): WireTimelineItem | null =>
+    encounterId == null ? null : (visits.data?.items.find((v) => v.encounterId === encounterId) ?? null);
   const DAYS_SHOWN = 6;
   const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);
   const hiddenRows = days.slice(DAYS_SHOWN).reduce((s, d) => s + d.rows.length, 0);
@@ -1459,10 +1482,19 @@ export function PatientDetail(): React.ReactElement {
                 <div className="tag" style={{ marginBottom: 6 }}>{t("profile.today", { date: dmy(today) })}</div>
                 <div className="today" data-testid="today-band">
                   {openToday.map((v) => (
-                    <div key={v.encounterId}>
+                    /* Owner 2026-10-05 — today's visit opens its card: token, prescription, bills, change department. */
+                    <button
+                      key={v.encounterId}
+                      type="button"
+                      data-testid="today-visit"
+                      title={t("visitCard.openHint")}
+                      onClick={() => { setOpenVisit(visitOf(v.encounterId)); }}
+                      style={{ display: "block", textAlign: "left", background: "none", border: 0, padding: 0, cursor: "pointer", font: "inherit", color: "inherit" }}
+                    >
                       <b>{t("profile.todayVisit", { dept: v.departmentName ?? "OPD" })}</b>
                       <div className="s">{[t(`profile.visitStatus.${v.status}`, v.status), v.doctorName, v.visitNo !== undefined ? t("profile.tl.visit", { n: v.visitNo }) : null].filter(Boolean).join(" · ")}</div>
-                    </div>
+                      <div className="s" style={{ color: "var(--green)", fontWeight: 600 }}>{t("visitCard.open")} ›</div>
+                    </button>
                   ))}
                   {pending.length > 0 && (
                     <div>
@@ -1520,7 +1552,12 @@ export function PatientDetail(): React.ReactElement {
                             <span className={a.status === "cancelled" || a.status === "no_show" ? "pill rd" : a.status === "checked_in" ? "pill on" : "pill"} style={{ height: 20 }}>{t(`opdAppt.status.${a.status}`)}</span>
                             <span aria-hidden style={{ color: "var(--faint)", fontSize: 11 }}>{openAppt === a.id ? "▴" : "▾"}</span>
                           </button>
-                          {openAppt === a.id && <AppointmentBills appointment={a} mayRead={can("billing.invoice.read")} />}
+                          {openAppt === a.id && (
+                            <AppointmentBills
+                              appointment={a} mayRead={can("billing.invoice.read")}
+                              onOpenVisit={visitOf(a.encounterId) === null ? null : () => { setOpenVisit(visitOf(a.encounterId)); }}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1552,6 +1589,9 @@ export function PatientDetail(): React.ReactElement {
                         {r.note !== undefined && <span className="r s">{r.note}</span>}
                         {r.documentId !== undefined && (
                           <button type="button" className="r lnk" onClick={() => setOpenDoc(r.documentId!)}>{t("profile.view")}</button>
+                        )}
+                        {r.encounterId !== undefined && visitOf(r.encounterId) !== null && (
+                          <button type="button" className="r lnk" data-testid="timeline-open-visit" title={t("visitCard.openHint")} onClick={() => { setOpenVisit(visitOf(r.encounterId)); }}>{t("visitCard.open")}</button>
                         )}
                       </div>
                     ))}
@@ -1629,6 +1669,7 @@ export function PatientDetail(): React.ReactElement {
       <RecordDeathDialog patient={patient} open={recordingDeath} onOpenChange={setRecordingDeath} />
       {!restricted && <AddGuardianDialog patientId={patient.id} open={addingRep} onOpenChange={setAddingRep} />}
       <DocumentDialog documentId={openDoc} onClose={() => setOpenDoc(null)} />
+      <VisitDialog visit={openVisit} onClose={() => { setOpenVisit(null); }} />
 
       <AgentDock
         answer={copilot.answer}

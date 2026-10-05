@@ -7099,7 +7099,31 @@
       "billedNo": "Bill {{no}} stands against this visit. Raise a credit note on it in the Billing office first, then move the patient.",
       "done": "moved from {{from}} to {{to}} — new token {{token}}; new slips print",
       "refused": "move REFUSED",
-      "apptCross": "Different department — moving the booking from {{from}} to {{to}}. Say why:"
+      "apptCross": "Different department — moving the booking from {{from}} to {{to}}. Say why:",
+      "money": {
+        "zeroBill": "The ₹0 bill {{no}} is corrected and the new visit gets its own — nothing to collect.",
+        "transfer": "{{paid}} paid on bill {{no}} moves to the new visit — no refund, nothing more to collect.",
+        "lower": "{{paid}} was paid; the consultation costs {{fee}} there. {{left}} stays as the patient's credit — refund it from Refunds if they want cash.",
+        "higher": "{{paid}} was paid; the consultation costs {{fee}} there. Collect {{diff}} now:",
+        "differsDesk": "The fee is different there ({{paid}} paid, {{fee}} there) — the billing counter makes this move.",
+        "office": {
+          "other_services": "Bill {{no}} carries more than the consultation — the Billing office corrects it first, then the patient is moved.",
+          "on_credit": "Bill {{no}} is on credit — the Billing office settles it first, then the patient is moved.",
+          "part_paid": "Bill {{no}} is only part paid — the Billing office settles it first, then the patient is moved.",
+          "several_bills": "This visit carries more than one bill — the Billing office corrects them first, then the patient is moved."
+        },
+        "mode": {
+          "cash": "Cash",
+          "upi": "UPI",
+          "card": "Card"
+        },
+        "refHint": "UPI / card reference",
+        "refRequired": "Write the UPI or card reference first.",
+        "submitCollect": "Collect {{diff}} and move to {{dept}}",
+        "doneTransfer": "payment moved to bill {{bill}}",
+        "doneCredit": "{{amount}} kept as the patient's credit",
+        "doneCollected": "{{amount}} collected"
+      }
     },
     "reclassify": {
       "open": "Wrong visit type? (now: {{current}})",
@@ -14044,5 +14068,44 @@
       "local": "Local holiday"
     },
     "ask": "e.g. what is due today?"
+  },
+  "visitCard": {
+    "title": "Visit {{no}}",
+    "titleBare": "This visit",
+    "status": {
+      "registered": "Registered",
+      "waiting": "Waiting",
+      "in_consultation": "With the doctor",
+      "awaiting_results": "Awaiting results",
+      "completed": "Completed",
+      "abandoned": "Cancelled"
+    },
+    "changeDept": "Change department",
+    "seenByDoctor": "The doctor has already seen this patient — a move now is the doctor's internal referral.",
+    "abandoned": "This visit was cancelled — nothing to move.",
+    "moved": "Moved to {{dept}} — new token {{token}}.",
+    "open": "Open the visit",
+    "openHint": "token, prescription, bills — and change the department",
+    "papers": {
+      "title": "Their papers",
+      "sub": "everything this visit put on paper, and a way to hand it over again",
+      "thisVisit": "this visit",
+      "printed": "printed at the counter",
+      "readingPrints": "reading the print log…",
+      "noJobs": "Nothing was queued for this visit. That is expected for a visit opened before the printer was wired — the bill below can still be printed.",
+      "pdf": "save as PDF",
+      "again": "print again",
+      "gone": "This {{label}} is no longer available to open.",
+      "popup": "The browser blocked the document window — allow pop-ups for this site and try again.",
+      "opened": "{{label}} opened — choose “Save as PDF” in the print dialog.",
+      "queued": "{{label}} queued again — it prints at the front desk.",
+      "bills": "bills raised for this visit",
+      "readingBills": "reading the ledger…",
+      "noBills": "No bill was raised for this visit.",
+      "onCredit": "on credit",
+      "openBill": "open the bill",
+      "back": "back to the papers",
+      "billNote": "The bill opens as the printed document — the same one the counter prints on the day, from the server's own figures."
+    }
   }
 }

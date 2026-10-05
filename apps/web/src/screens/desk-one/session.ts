@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { WirePatientHit, WireRegisterBody } from "../../lib/patients-api";
-import type { WireDepartment, WireDoctorSummary, WireSlot } from "../../lib/opd-api";
+import type { WireDepartment, WireDoctorSummary, WireMoveTender, WireSlot, WireTimelineItem } from "../../lib/opd-api";
 import type { WireFeeQuote, WireIssueInvoiceResult, TenderMode } from "../../lib/billing-api";
 import type { WireRecognition } from "../../lib/membership-api";
 import type { WireOpdUnit } from "../../lib/roster-api";
@@ -267,7 +267,8 @@ export type Session = {
    * opened from a HISTORY row — a visit that is not the one in hand, and therefore not derivable
    * from `s.visit`. Null means "the visit in hand", which is what the dock's own entry opens.
    */
-  papersFor: { encounterId: string; when: string | null } | null;
+  /** Owner 2026-10-05 — `visit` is the history row the card was opened from (its header and whether it may move). */
+  papersFor: { encounterId: string; when: string | null; visit?: WireTimelineItem } | null;
   drawer: boolean;
   answer: string | null;
   /** Wall-clock ms the person arrived at the desk — the "2 min at desk" figure on the done stage. */
@@ -369,7 +370,7 @@ export type DeskApi = {
    * one in `departmentId` with `doctorId`, in one act. `null` when it moved; otherwise the refusal,
    * for the panel to show beside its own button.
    */
-  moveDepartment: (departmentId: string, doctorId: string, reason: string) => Promise<string | null>;
+  moveDepartment: (departmentId: string, doctorId: string, reason: string, tenders?: WireMoveTender[]) => Promise<string | null>;
   /**
    * FD-18 — correct a misread visit type (the owner's billing override). Not a discount: the fee
    * quote re-derives from the corrected type, so a revisit is free because it IS a revisit.

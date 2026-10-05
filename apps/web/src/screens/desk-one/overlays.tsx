@@ -5,9 +5,10 @@ import {
   vitalsAhead, waitMinutes,
 } from "./model";
 import type { Lane } from "./model";
+import type { WireTimelineItem } from "../../lib/opd-api";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
-import { PapersSheet } from "./papers";
+import { VisitCard } from "./visit-card";
 import { HistorySheet } from "./history-sheet";
 import { usePaletteOptional } from "../../components/command-palette";
 
@@ -62,7 +63,8 @@ function HistoryOverlay(): React.ReactElement {
  */
 function PapersOverlay(): React.ReactElement {
   const d = useDesk();
-  const chosen = d.s.papersFor ?? (d.s.visit === null ? null : { encounterId: d.s.visit.encounterId, when: null });
+  const chosen: { encounterId: string; when: string | null; visit?: WireTimelineItem } | null =
+    d.s.papersFor ?? (d.s.visit === null ? null : { encounterId: d.s.visit.encounterId, when: null });
   return (
     <Sheet width={620}>
       {chosen === null ? (
@@ -74,7 +76,7 @@ function PapersOverlay(): React.ReactElement {
           </p>
         </div>
       ) : (
-        <PapersSheet encounterId={chosen.encounterId} when={chosen.when} />
+        <VisitCard key={chosen.encounterId} encounterId={chosen.encounterId} when={chosen.when} visit={chosen.visit ?? null} />
       )}
     </Sheet>
   );

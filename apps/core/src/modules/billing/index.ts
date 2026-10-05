@@ -96,6 +96,10 @@ export type { BillingConfig } from "./config";
  * the fee (settle at issue, credit extension, or a later allocation).
  */
 export { encounterFeeStatuses, standingInvoiceFor } from "./fee-status";
+// Owner 2026-10-05 — a visit moved to another department takes its money with it (OPD's department move calls these).
+export { carryMoneyToMovedVisit, maySettleMoveDifference, moveMoneyPlan, newConsultFeePaise } from "./visit-move";
+export type { BillingOfficeReason, MoveMoneyKind, MoveMoneyPlan, MoveMoneyResult } from "./visit-move";
+export type { TenderInput } from "./cash-law";
 export type { EncounterFeeStatus } from "./fee-status";
 export { registerFeeStatusHook } from "./settle-hooks";
 // RC-2 T2 / D3 — the pricing-side mirror of the settle hook. `partners` registers its referral

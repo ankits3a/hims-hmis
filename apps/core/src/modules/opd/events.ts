@@ -210,6 +210,17 @@ export const visitMovedDepartment = defineEvent("visit.moved_department", MODULE
   /** The booking that brought the patient in, moved with them so the report's booked count follows. */
   appointmentId: z.string().nullable(),
   reason: z.string().min(1),
+  /**
+   * Owner 2026-10-05 — what the move did with the visit's money (billing's `visit-move.ts`). Absent on
+   * moves written before it, and `none` when the visit carried no bill. The ledger rows (credit note,
+   * allocation moves, the new invoice) carry their own events; this names them together.
+   */
+  money: z.object({
+    kind: z.enum(["none", "zero_bill", "transfer", "difference"]),
+    fromInvoiceNo: z.string().nullable(), creditNoteNo: z.string().nullable(), toInvoiceNo: z.string().nullable(),
+    paidPaise: z.number().int().nonnegative(), newFeePaise: z.number().int().nonnegative(),
+    advancePaise: z.number().int().nonnegative(), collectedPaise: z.number().int().nonnegative(),
+  }).optional(),
 }));
 
 export const vitalsRecorded = defineEvent("vitals.recorded", MODULE, z.object({
