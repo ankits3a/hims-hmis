@@ -132,8 +132,9 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
       ) : (
         <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 2 }}>
           {[...latest.values()].map((j) => (
-            <div key={j.id} data-testid={`papers-job-${j.document}`} className="drow" style={{ cursor: "default" }}>
-              <span style={{ fontSize: 12.5, flexGrow: 1, minWidth: 0 }}>
+            <div key={j.id} data-testid={`papers-job-${j.document}`} className="drow" style={{ cursor: "default", flexWrap: "wrap", rowGap: 6 }}>
+              {/* On a phone the name takes its own line rather than being squeezed under the buttons. */}
+              <span style={{ fontSize: 12.5, flex: "1 1 140px", minWidth: 0 }}>
                 {PRINT_DOCUMENT_LABEL[j.document] ?? j.document}
               </span>
               {/*
