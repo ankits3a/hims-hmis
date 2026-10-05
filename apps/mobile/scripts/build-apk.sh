@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Build a signed, sideloadable Android APK of the staff app ON THIS SERVER — no expo.dev cloud
+# (owner 2026-10-05: no Play Store / App Store, ever). See BUILDING.md.
+#
+#   apps/mobile/scripts/build-apk.sh staging      # talks to stagehmis.crkmch.com, id com.crkmch.hmis.staging
+#   apps/mobile/scripts/build-apk.sh production   # talks to hmis.crkmch.com,      id com.crkmch.hmis
+#
+# Production runs on this same box, so the build is capped (3 GB heap, 2 workers, no daemon), runs
+# at the lowest CPU/IO priority, and holds the test lock so it never overlaps a jest/vitest pool.
+set -euo pipefail
+
+ENV_NAME="${1:-}"
+case "$ENV_NAME" in
+  staging) APP_ENV=preview ;;
+  production) APP_ENV=production ;;
+  *) echo "usage: $0 <staging|production>" >&2; exit 2 ;;
+esac
+
+APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+KEY_DIR=/root/.config/hmis/android
+OUT_DIR=/opt/hmis-context/mobile-apk
+LOCK=/opt/hmis-lanes/.orchestrator/bin/test-lock.sh
+export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk
+export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
+export PATH="$JAVA_HOME/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+ENV_FILE="$KEY_DIR/hmis-$ENV_NAME.env"
+[ -r "$ENV_FILE" ] || { echo "no signing key for $ENV_NAME at $ENV_FILE — see BUILDING.md" >&2; exit 1; }
+# shellcheck disable=SC1090
+source "$ENV_FILE"   # HMIS_KEYSTORE, HMIS_KEY_ALIAS, HMIS_STORE_PASSWORD, HMIS_KEY_PASSWORD — never echoed
+
+# versionCode only ever goes up, per app id, or a phone refuses the update.
+COUNTER="$KEY_DIR/versioncode-$ENV_NAME"
+VC=$(( $(cat "$COUNTER" 2>/dev/null || echo 0) + 1 ))
+VERSION=$(cd "$APP_DIR" && APP_ENV=$APP_ENV npx expo config --json 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).version))')
+SHA=$(git -C "$APP_DIR" rev-parse --short=8 HEAD)
+DIRTY=$(git -C "$APP_DIR" status --porcelain -- . | grep -q . && echo "-dirty" || true)
+NAME="hmis-staff-$ENV_NAME-$VERSION-vc$VC-$SHA$DIRTY.apk"
+
+build() {
+  cd "$APP_DIR"
+  APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC CI=1 npx expo prebuild --platform android --clean --no-install
+  # Signing reaches Gradle through the generated (git-ignored) android/gradle.properties, mode 600,
+  # removed after the build — never on a command line, where `ps` would show it.
+  local props=android/gradle.properties
+  chmod 600 "$props"
+  {
+    echo   # the generated file ends without a newline; without this the next line glues onto its last property
+    echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m"
+    echo "org.gradle.daemon=false"
+    echo "org.gradle.workers.max=2"
+    echo "reactNativeArchitectures=armeabi-v7a,arm64-v8a"   # real phones only; drops the emulator ABIs (~half the APK)
+    echo "android.injected.signing.store.file=$HMIS_KEYSTORE"
+    echo "android.injected.signing.store.password=$HMIS_STORE_PASSWORD"
+    echo "android.injected.signing.key.alias=$HMIS_KEY_ALIAS"
+    echo "android.injected.signing.key.password=$HMIS_KEY_PASSWORD"
+  } >> "$props"
+  trap 'sed -i "/^android.injected.signing/d" "$APP_DIR/android/gradle.properties" 2>/dev/null || true' EXIT
+  (cd android && APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC nice -n 19 ionice -c3 ./gradlew assembleRelease --no-daemon --max-workers=2)
+}
+
+export -f build
+export APP_DIR APP_ENV VC HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
+"$LOCK" run mobile-apk bash -c build
+
+mkdir -p "$OUT_DIR"
+cp "$APP_DIR/android/app/build/outputs/apk/release/app-release.apk" "$OUT_DIR/$NAME"
+echo "$VC" > "$COUNTER"
+(cd "$OUT_DIR" && sha256sum "$NAME" > "$NAME.sha256")
+"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$OUT_DIR/$NAME"
+echo "built $OUT_DIR/$NAME (versionCode $VC)"

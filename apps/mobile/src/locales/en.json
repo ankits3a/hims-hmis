@@ -1,0 +1,77 @@
+{
+  "app": {
+    "title": "HMIS",
+    "logout": "Log out",
+    "language": "हिन्दी",
+    "loading": "Loading…"
+  },
+  "login": {
+    "title": "Sign in",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "failed": "Sign-in failed — check the username and password",
+    "product": "Hospital Operating System",
+    "welcome": "Sign in to your seat",
+    "issued": "Accounts are issued by the hospital administrator.",
+    "reveal": "SHOW",
+    "hide": "HIDE",
+    "signingIn": "Signing you in…",
+    "helpTitle": "Cannot get in?",
+    "help": "Ask the administrator to reset it. Never sign in on somebody else's name — every act at a counter is recorded against the person who did it."
+  },
+  "changePassword": {
+    "title": "Change your password",
+    "why": "If an administrator issued this password, you must choose your own before you can use the system.",
+    "current": "Current password",
+    "next": "New password",
+    "confirm": "New password again",
+    "rule": "At least 10 characters. No upper-case or symbol rules — length is what matters. It must not be your username.",
+    "mismatch": "The two new passwords do not match"
+  },
+  "mobile": {
+    "submitChange": "Change password",
+    "wrongCurrent": "The current password is wrong",
+    "policy": "The new password does not meet the rule above",
+    "network": "The server could not be reached. Check the phone’s internet and try again.",
+    "expired": "Your session ended. Sign in again.",
+    "staging": "STAGING · test data only",
+    "seatTitle": "Your screens",
+    "seatHint": "Only the screens your role allows are shown.",
+    "none": "Your account has no phone screens yet. Ask the administrator.",
+    "soon": "Coming in the next release",
+    "unlockTitle": "Unlock HMIS",
+    "unlockPrompt": "Confirm it is you",
+    "unlockAgain": "Unlock",
+    "usePassword": "Sign in with password instead",
+    "signedInAs": "Signed in as {{name}}",
+    "back": "Back",
+    "unlockFailed": "Not confirmed. Tap Unlock to try again."
+  },
+  "screen": {
+    "vitals": {
+      "title": "Vitals bay",
+      "hint": "Record BP, pulse, SpO₂, temperature and weight at the bench."
+    },
+    "slips": {
+      "title": "Slip desk",
+      "hint": "Photograph the doctor’s paper slip and file it on the visit."
+    },
+    "consult": {
+      "title": "My OPD queue",
+      "hint": "Your patients waiting today and their summary."
+    },
+    "counter": {
+      "title": "Desk One",
+      "hint": "Search, register, token and collect."
+    },
+    "onNow": {
+      "title": "Who is on now",
+      "hint": "The unit on take and who to call."
+    },
+    "myDuties": {
+      "title": "My duties",
+      "hint": "Your duties this month, swaps and covers."
+    }
+  }
+}

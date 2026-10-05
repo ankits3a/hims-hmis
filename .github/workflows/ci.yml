@@ -203,3 +203,21 @@ jobs:
       # `vite build` is the cheapest thing that would have caught it — it runs Tailwind for real,
       # resolves every import and type-checks nothing that `tsc` already covers. ~10s.
       - run: pnpm --filter @hmis/web run build
+
+  mobile:
+    # The staff Android app (apps/mobile, Expo). NOT a required check on `main` and not in
+    # auto-deploy's REQUIRED list: the app ships through EAS builds, never through deploy.sh, so a
+    # red here blocks no server deploy. It runs beside the others and costs them nothing: its own
+    # npm lockfile, outside the pnpm workspace (pnpm-workspace.yaml).
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/mobile/package-lock.json }
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npx jest --ci
