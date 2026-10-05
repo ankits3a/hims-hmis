@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MyDay, SectionTable } from "./my-day";
 import { renderWithProviders } from "../test-utils";
@@ -37,6 +37,22 @@ const SECTION = {
   columnKeys: ["report.col.time", "report.col.visitNo", "report.col.uhid", "report.col.patient", "report.col.type", "report.col.status"],
   rows: [["09:30", "V2608290011", "HMS0000001234", "Asha Devi", "new", "completed"]],
   totals: ["", "", "", "", "", "1"],
+};
+
+const COLLECTIONS = {
+  key: "billing.myCollections",
+  titleKey: "report.billing.myCollections",
+  columnKeys: ["report.col.mode", "report.col.amount"],
+  rows: [["report.mode.cash", "₹4,200.00"], ["report.mode.upi", "₹2,850.00"], ["report.mode.card", "₹0.00"]],
+  totals: ["report.col.total", "₹7,050.00"],
+};
+
+const CONSULTS = {
+  key: "opd.myConsults",
+  titleKey: "report.opd.myConsults",
+  columnKeys: ["report.col.time", "report.col.visitNo", "report.col.uhid", "report.col.patient", "report.col.type", "report.col.outcome"],
+  rows: [["10:40", "V2608290011", "HMS0000001234", "Anita Kumari", "new", "prescribed"], ["11:50", "V2608290012", "HMS0000001235", "Ajay Paswan", "renewal", "referred"]],
+  totals: ["", "", "", "", "", "2"],
 };
 
 /**
@@ -115,52 +131,114 @@ describe("07c T2/T3/T5 — my day", () => {
     expect(todayIst()).toBe(FIXTURE_DAY);
   });
 
-  it("renders the server's sections, with the column keys translated and the totals row kept", async () => {
+  /** The redesigned SCREEN (owner board 2026-10-05) — the paper below it is a separate, print-only node. */
+  const onScreen = () => within(screen.getByTestId("my-day-screen"));
+  const paper = (): string => document.querySelector(".print-doc")?.textContent ?? "";
+
+  it("renders the server's sections on the screen — names first, codes worded — and keeps the paper's totals row", async () => {
     mount({ date: "2026-08-29", provisional: false, sections: [SECTION] });
 
-    await waitFor(() => { expect(screen.getByText("Visits I opened")).toBeInTheDocument(); });
-    expect(screen.getByRole("columnheader", { name: "Visit no" })).toBeInTheDocument();
-    expect(screen.getByText("Asha Devi")).toBeInTheDocument();
-    // The totals row is the server's arithmetic, rendered rather than recomputed.
-    expect(screen.getByRole("table").querySelector("tfoot")?.textContent).toContain("1");
+    await waitFor(() => { expect(onScreen().getByText("Visits I opened")).toBeInTheDocument(); });
+    expect(onScreen().getAllByText("Asha Devi").length).toBeGreaterThan(0);
+    // `completed` / `new` are CODES; the screen words them.
+    expect(onScreen().getAllByText("Done").length).toBeGreaterThan(0);
+    expect(onScreen().queryByText("completed")).not.toBeInTheDocument();
+    // The paper keeps the server's own table, totals row included.
+    const doc = document.querySelector(".print-doc")!;
+    expect(within(doc as HTMLElement).getByRole("columnheader", { name: "Visit no" })).toBeInTheDocument();
+    expect(doc.querySelector("tfoot")?.textContent).toContain("1");
   });
 
   /**
    * T2 A4 / E-5 — a report pulled at 14:00 and one pulled at 21:00 are different documents with the
    * same title and the same date, and only one of them is the close.
    */
-  it("A4: a day that is still happening is marked PROVISIONAL, on the screen and on the paper", async () => {
+  it("A4: a day that is still happening says so, on the screen and on the paper", async () => {
     mount({ date: "2026-08-29", provisional: true, sections: [SECTION] });
 
-    await waitFor(() => { expect(screen.getByText("Provisional")).toBeInTheDocument(); });
-    // …and inside the printable node, because the paper is what gets filed.
-    expect(document.querySelector(".print-doc")?.textContent).toContain("This day is not closed");
+    await waitFor(() => { expect(onScreen().getByText("Day open · figures may change")).toBeInTheDocument(); });
+    expect(paper()).toContain("This day is not closed");
   });
 
-  it("A4b: a finished day is NOT marked provisional — the flag is the server's, not a decoration", async () => {
+  it("A4b: a finished day is NOT marked open — the flag is the server's, not a decoration", async () => {
     mount({ date: "2026-08-01", provisional: false, sections: [SECTION] });
 
-    await waitFor(() => { expect(screen.getByText("Visits I opened")).toBeInTheDocument(); });
-    expect(screen.queryByText("Provisional")).not.toBeInTheDocument();
-    expect(document.querySelector(".print-doc")?.textContent).not.toContain("This day is not closed");
+    await waitFor(() => { expect(onScreen().getByText("Day closed")).toBeInTheDocument(); });
+    expect(onScreen().queryByText("Day open · figures may change")).not.toBeInTheDocument();
+    expect(paper()).not.toContain("This day is not closed");
   });
 
   /**
    * THE PRINT CONSTRAINT, ASSERTED RATHER THAN COMMENTED. `.print-doc` is `position: fixed` at the
    * origin: a second printable node does not make a second page, it prints on top of the first.
    */
-  it("T5: there is exactly ONE printable node, however many sections the report has", async () => {
-    mount({ date: "2026-08-29", provisional: false, sections: [SECTION, { ...SECTION, key: "billing.myCollections", titleKey: "report.opd.myVisits" }] });
+  it("T5: there is exactly ONE printable node, holding every section and the signature lines", async () => {
+    mount({ date: "2026-08-29", provisional: false, sections: [SECTION, COLLECTIONS] });
 
-    await waitFor(() => { expect(screen.getAllByRole("table")).toHaveLength(2); });
+    await waitFor(() => { expect(document.querySelectorAll(".print-doc table")).toHaveLength(2); });
     expect(document.querySelectorAll(".print-doc")).toHaveLength(1);
-    // …and the signature line is part of that document, not chrome around it.
-    expect(document.querySelector(".print-doc")?.textContent).toContain("Received by");
+    expect(document.querySelector(".print-doc")!.classList.contains("print-only")).toBe(true);
+    expect(paper()).toContain("Received by");
+    expect(paper()).toContain("Signed");
+  });
+
+  /**
+   * THE RAW-KEY BUG (found on the 2026-10-05 walk): the collections section sends `report.mode.cash`
+   * and `report.col.total` as KEYS, and both the screen and the filed paper printed them verbatim.
+   */
+  it("the collections section is worded, never printed as raw keys — on the screen and on the paper", async () => {
+    mount({ date: "2026-08-29", provisional: false, sections: [SECTION, COLLECTIONS] });
+
+    await waitFor(() => { expect(onScreen().getByTestId("myd-collections")).toBeInTheDocument(); });
+    const card = within(onScreen().getByTestId("myd-collections"));
+    expect(card.getByText("Cash")).toBeInTheDocument();
+    expect(card.getByText("Total")).toBeInTheDocument();
+    expect(paper()).toContain("Cash");
+    expect(paper()).not.toContain("report.mode");
+    expect(paper()).not.toContain("report.col.total");
+    expect(document.body.textContent).not.toContain("report.mode.cash");
+  });
+
+  /** Owner ruling 2026-09-28 — the cashier never sees collections before the drawer is counted. */
+  it("blind count: a cashier whose server sent no collections section sees 'after your count', no figure", async () => {
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] }, {
+      "GET /api/me/desk": { status: 200, body: { date: "2026-08-29", cards: [
+        { key: "billing.myCollections", band: "today", titleKey: "desk.billing.myCollections", stats: [{ key: "desk.billing.receipts", value: "14" }] },
+      ] } },
+    });
+    expect(await onScreen().findByText("Shown after you count your drawer.")).toBeInTheDocument();
+    expect(onScreen().getByText("After your count")).toBeInTheDocument();
+    expect(onScreen().queryByText(/₹/)).not.toBeInTheDocument();
+  });
+
+  it("a doctor's day lists the consultations they completed, with the outcome worded", async () => {
+    mount({ date: "2026-08-29", provisional: true, sections: [
+      { ...SECTION, rows: [], totals: ["", "", "", "", "", "0"] },
+      CONSULTS,
+    ] });
+    await waitFor(() => { expect(onScreen().getByText("Consultations I completed")).toBeInTheDocument(); });
+    expect(onScreen().getAllByText("Rx given").length).toBeGreaterThan(0);
+    expect(onScreen().getAllByText("Referred").length).toBeGreaterThan(0);
+    // An empty "Visits I opened" is the clerk's grain, not shown to a doctor on screen…
+    expect(onScreen().queryByText("Visits I opened")).not.toBeInTheDocument();
+    // …but the paper still carries every section the server sent.
+    expect(paper()).toContain("Visits I opened");
+    expect(paper()).toContain("Consultations I completed");
+  });
+
+  it("needs-you-now counts what is still waiting from the report's own rows", async () => {
+    mount({ date: FIXTURE_DAY, provisional: true, sections: [{ ...SECTION, rows: [
+      ["09:30", "V1", "U1", "A", "new", "waiting"], ["09:40", "V2", "U2", "B", "new", "registered"],
+      ["09:50", "V3", "U3", "C", "new", "in_consultation"], ["10:00", "V4", "U4", "D", "new", "completed"],
+    ] }] });
+    const now = within(await onScreen().findByTestId("myd-now"));
+    expect(now.getByText("patients you opened still waiting").previousSibling?.textContent).toBe("2");
+    expect(now.getByText("with the doctor").previousSibling?.textContent).toBe("1");
   });
 
   it("E-4: a day with nothing on it is an answer, not an error", async () => {
     mount({ date: "2020-01-01", provisional: false, sections: [] });
-    expect(await screen.findByText(/Nothing was recorded against your account/i)).toBeInTheDocument();
+    expect(await onScreen().findByText(/Nothing was recorded against your account/i)).toBeInTheDocument();
   });
 
   /**
@@ -178,21 +256,19 @@ describe("07c T2/T3/T5 — my day", () => {
       mount({ date: "2026-08-29", provisional: true, sections: [SECTION] }, {
         "GET /api/me/report.csv": {
           status: 200,
-          body: "﻿report.date,2026-08-29\r\n",
+          body: "\ufeffreport.date,2026-08-29\r\n",
           headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="my-day-2026-08-29.csv"' },
         },
       });
-      await waitFor(() => { expect(screen.getByText("Visits I opened")).toBeInTheDocument(); });
+      await waitFor(() => { expect(onScreen().getByText("Visits I opened")).toBeInTheDocument(); });
 
-      await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+      await userEvent.click(onScreen().getAllByRole("button", { name: "Download CSV" })[0]!);
 
       await waitFor(() => { expect(clicked).toEqual(["my-day-2026-08-29.csv"]); });
       const asked = vi.mocked(fetch).mock.calls.map(([i]) => String(i));
       expect(asked).toContain("/api/me/report.csv?date=2026-08-29");
       expect(urls.created).toHaveLength(1);
-      // A blob that is never revoked is a leak that grows with every export of a long day.
       expect(urls.revoked).toEqual(["blob:my-day"]);
-      // The anchor is cleaned up: a download link left in the tree is a stray control at a counter.
       expect(document.querySelector('a[download]')).toBeNull();
     } finally {
       HTMLAnchorElement.prototype.click = realClick;
@@ -204,21 +280,17 @@ describe("07c T2/T3/T5 — my day", () => {
     mount({ date: "2026-08-29", provisional: false, sections: [SECTION] }, {
       "GET /api/me/report.csv": { status: 500, body: { message: "boom" } },
     });
-    await waitFor(() => { expect(screen.getByText("Visits I opened")).toBeInTheDocument(); });
+    await waitFor(() => { expect(onScreen().getByText("Visits I opened")).toBeInTheDocument(); });
 
-    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    await userEvent.click(onScreen().getAllByRole("button", { name: "Download CSV" })[0]!);
     expect(await screen.findByText(/The export could not be prepared/i)).toBeInTheDocument();
   });
 
   /**
-   * PLAN 07c T8 / DD12 — THE BRIEF RENDERS KEYS, AND COMPOSES NO PROSE OF ITS OWN.
-   *
-   * Every clause arrives from the server as an i18n key plus pre-formatted values. That is what
-   * makes DD12's promise enforceable rather than aspirational: there is no branch in this component
-   * that could invent a comparison, because a comparison the server could not make honestly simply
-   * does not arrive.
+   * PLAN 07c T8 / DD12, REDRAWN AS A SCOREBOARD (owner 2026-10-05). The figures are still the
+   * server's own strings; the only arithmetic is the percentage between two figures it printed.
    */
-  it("T8: the server's clauses become sentences, with the server's own figures in them", async () => {
+  it("T8: the brief becomes a scoreboard — the server's figure big, the comparison as a word", async () => {
     mount({ date: "2026-08-29", provisional: true, sections: [SECTION] }, {
       "GET /api/me/brief": {
         status: 200,
@@ -233,9 +305,12 @@ describe("07c T2/T3/T5 — my day", () => {
       },
     });
 
-    expect(await screen.findByText("61 visits opened, against a median of 48.")).toBeInTheDocument();
-    expect(screen.getByText("₹1,20,450.00 collected.")).toBeInTheDocument();
-    expect(screen.getByText("2026-08-23 to 2026-08-29")).toBeInTheDocument();
+    const brief = within(await onScreen().findByTestId("myd-brief"));
+    expect(await brief.findByText("61")).toBeInTheDocument();
+    expect(brief.getByText(/27% above/)).toBeInTheDocument();
+    expect(brief.getByText("your usual 48")).toBeInTheDocument();
+    expect(brief.getByText("₹1,20,450.00")).toBeInTheDocument();
+    expect(brief.getByText("Visits opened")).toBeInTheDocument();
   });
 
   /** DD8 — a thin history produces a SHORT brief, and the screen says why rather than spinning. */
@@ -302,6 +377,21 @@ describe("07c T2/T3/T5 — my day", () => {
  * table scrolls inside its box and the page stays the width of the screen. `/counter/figures`
  * renders the same component.
  */
+describe("SectionTable — keys and codes are worded (raw-key bug, 2026-10-05)", () => {
+  it("translates report keys and words status codes, leaving data as it is", () => {
+    renderWithProviders(<SectionTable section={COLLECTIONS} />);
+    expect(screen.getByText("Cash")).toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.queryByText("report.mode.cash")).not.toBeInTheDocument();
+  });
+  it("words a status code but never a patient's name", () => {
+    renderWithProviders(<SectionTable section={{ ...SECTION, rows: [["09:30", "V1", "U1", "report.mode.cash is a name", "revisit", "in_consultation"]] }} />);
+    expect(screen.getByText("With doctor")).toBeInTheDocument();
+    expect(screen.getByText("Revisit")).toBeInTheDocument();
+    expect(screen.getByText("report.mode.cash is a name")).toBeInTheDocument();
+  });
+});
+
 describe("SectionTable — a wide table scrolls inside its own box", () => {
   it("wraps the table in a horizontal scroller", () => {
     renderWithProviders(<SectionTable section={SECTION as never} />);
