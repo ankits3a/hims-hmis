@@ -164,6 +164,9 @@ describe("OPD — a moved visit takes its money with it", () => {
 
     const p = await previewDepartmentMove(db, wrong.encounter.id, dept2Id, MON, cashier.actor);
     expect(p.money).toMatchObject({ kind: "difference", paidPaise: 30_000, newFeePaise: 50_000, differencePaise: 20_000 });
+    // ONE source: the fee line's two amounts are the money line's own (coordinator review 2026-10-05).
+    expect(p.from).toMatchObject({ visitType: "renewal", feePaise: 30_000 });
+    expect(p.to).toMatchObject({ visitType: "new", feePaise: 50_000 });
 
     await expect(move(cashier, wrong.encounter.id)).rejects.toMatchObject({ code: "move_difference_unpaid" });
     await expect(move(cashier, wrong.encounter.id, { tenders: [{ mode: "cash", amountPaise: 10_000 }] })).rejects.toMatchObject({ code: "move_difference_unpaid" });
@@ -195,7 +198,10 @@ describe("OPD — a moved visit takes its money with it", () => {
 
   it("a visit with no bill moves exactly as before, and says so", async () => {
     const wrong = await seatInOrtho();
-    expect((await previewDepartmentMove(db, wrong.encounter.id, dept2Id, MON, desk.actor)).money.kind).toBe("none");
+    const p = await previewDepartmentMove(db, wrong.encounter.id, dept2Id, MON, desk.actor);
+    expect(p.money.kind).toBe("none");
+    expect(p.to.feePaise).toBe(p.money.newFeePaise); // the fee line and the money rule read one pricer
+    expect(p.from.feePaise).toBe(50_000);
     const r = await move(desk, wrong.encounter.id);
     expect(r.money).toMatchObject({ kind: "none", creditNoteNo: null, newInvoiceNo: null });
   });

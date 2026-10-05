@@ -21,10 +21,17 @@ export type MovableVisit = {
   tokenNo: number | null;
 };
 
-/** What a visit type costs under the terms in force — `null` when the terms are unknown (no fee claim). */
-function feeOf(vt: WireVisitType, terms: WireConsultTerms | undefined, t: (k: string) => string): string | null {
+/**
+ * What one side of the move costs. The SERVER'S amount (`feePaise` on the preview — the same pricer
+ * the money rule reads) wins whenever it is there, so the fee line and the money line can never state
+ * two different amounts (coordinator review 2026-10-05: "₹300 → ₹300" above "costs ₹500 there").
+ * The terms in force only name WHY it is free, or stand in for an older server with no amount.
+ */
+function feeOf(vt: WireVisitType, terms: WireConsultTerms | undefined, t: (k: string) => string, serverPaise?: number): string | null {
+  if (serverPaise !== undefined && serverPaise > 0) return rs(serverPaise);
+  if (terms?.consultFeeOff === true) return t("registrationCounter.move.feesOff");
+  if (serverPaise !== undefined) return t("registrationCounter.move.free");
   if (terms === undefined) return null;
-  if (terms.consultFeeOff) return t("registrationCounter.move.feesOff");
   const paise = terms.paise[vt];
   if (paise === null) return vt === "revisit" ? t("registrationCounter.move.free") : null;
   return paise > 0 ? rs(paise) : t("registrationCounter.move.free");
@@ -89,8 +96,8 @@ export function MoveDepartmentForm({
   const maySettle = p?.maySettleDifference === true;
   const blocked = moneyBlocks(money, maySettle);
   const collect = money?.kind === "difference" && maySettle && money.differencePaise > 0 ? money.differencePaise : 0;
-  const feeLine = (vt: WireVisitType) => {
-    const fee = feeOf(vt, terms.data, t);
+  const feeLine = (vt: WireVisitType, serverPaise?: number) => {
+    const fee = feeOf(vt, terms.data, t, serverPaise);
     return fee === null ? vtName(vt) : `${vtName(vt)} · ${fee}`;
   };
 
@@ -187,10 +194,10 @@ export function MoveDepartmentForm({
           style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 11, fontSize: 12, padding: "8px 10px", background: "var(--card)", border: "1px solid var(--line2)", borderRadius: 6 }}
         >
           <span style={{ color: "var(--dim)" }}>{t("registrationCounter.move.now")}</span>
-          <b>{feeLine(p.from.visitType)}</b>
+          <b>{feeLine(p.from.visitType, p.from.feePaise)}</b>
           <span style={{ color: "var(--faint)" }}>→</span>
           <span style={{ color: "var(--dim)" }}>{t("registrationCounter.move.after", { dept: dq?.departmentName ?? "" })}</span>
-          <b data-testid="move-dept-fee-after">{feeLine(p.to.visitType)}</b>
+          <b data-testid="move-dept-fee-after">{feeLine(p.to.visitType, p.to.feePaise)}</b>
         </div>
       )}
 

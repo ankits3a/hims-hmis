@@ -52,8 +52,14 @@ const MOVABLE: readonly string[] = ["registered", "waiting"];
 
 export type DepartmentMovePreview = {
   encounterId: string;
-  from: { departmentId: string | null; doctorId: string | null; visitType: VisitType };
-  to: { departmentId: string; visitType: VisitType };
+  /**
+   * `feePaise` — what the consultation costs on each side, from ONE pricer (`newConsultFeePaise`, the
+   * counter's own `previewInvoice`: member and coupon benefits included) — never the list price the
+   * screen could read elsewhere. The FROM side is what the visit's bill charged when it carries one,
+   * so the fee line and the money line can never state two different amounts.
+   */
+  from: { departmentId: string | null; doctorId: string | null; visitType: VisitType; feePaise: number };
+  to: { departmentId: string; visitType: VisitType; feePaise: number };
   /** The bill standing against the visit, when there is one. Kept for older screens; `money` says what happens to it. */
   standingInvoiceNo: string | null;
   /** What the move does with the visit's money — one of billing's four rules, or the billing office. */
@@ -93,11 +99,16 @@ export async function previewDepartmentMove(
   const dept = (await db.select().from(opdDepartments).where(eq(opdDepartments.id, departmentId)))[0];
   if (!dept) throw new OpdError("unknown_department");
   const visitType = await visitTypeIn(db, await chainOf(db, current.patientId), departmentId, now);
-  const money = await moveMoneyPlan(db, encounterId, await newConsultFeePaise(db, current, visitType, now));
+  const toFee = await newConsultFeePaise(db, current, visitType, now);
+  const money = await moveMoneyPlan(db, encounterId, toFee);
+  // The bill's own amount when the visit carries a consultation-only bill; otherwise the same pricer.
+  const fromFee = money.kind === "zero_bill" || money.kind === "transfer" || money.kind === "difference"
+    ? money.paidPaise
+    : await newConsultFeePaise(db, current, current.visitType, now);
   return {
     encounterId,
-    from: { departmentId: current.departmentId, doctorId: current.doctorId, visitType: current.visitType as VisitType },
-    to: { departmentId, visitType },
+    from: { departmentId: current.departmentId, doctorId: current.doctorId, visitType: current.visitType as VisitType, feePaise: fromFee },
+    to: { departmentId, visitType, feePaise: toFee },
     standingInvoiceNo: money.kind === "none" ? null : money.invoiceNo,
     money,
     maySettleDifference: money.kind === "difference" && actor !== undefined && (await maySettleMoveDifference(db, actor)),

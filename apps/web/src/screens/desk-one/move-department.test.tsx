@@ -60,7 +60,7 @@ const money = (m: Partial<Money> & Pick<Money, "kind">): Money & { invoiceId: st
   invoiceNo: null, paidPaise: 0, newFeePaise: 0, differencePaise: 0, billingOfficeReason: null, ...m,
 });
 
-function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean; money?: Money; maySettle?: boolean; extra?: Record<string, unknown> } = {}): void {
+function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean; money?: Money; maySettle?: boolean; fees?: { from: number; to: number }; extra?: Record<string, unknown> } = {}): void {
   stubFetch({
     ...(opts.extra ?? {}),
     "GET /api/auth/me": {
@@ -94,8 +94,8 @@ function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean; money?:
       calls.previews.push(String(url));
       return {
         encounterId: "e-1",
-        from: { departmentId: "d-1", doctorId: "doc-1", visitType: "new" },
-        to: { departmentId: "d-2", visitType: "revisit" },
+        from: { departmentId: "d-1", doctorId: "doc-1", visitType: "new", ...(opts.fees === undefined ? {} : { feePaise: opts.fees.from }) },
+        to: { departmentId: "d-2", visitType: "revisit", ...(opts.fees === undefined ? {} : { feePaise: opts.fees.to }) },
         standingInvoiceNo: opts.billed === true ? "INV/26-27/000042" : null,
         ...(opts.money === undefined ? {} : { money: opts.money, maySettleDifference: opts.maySettle === true }),
       };
@@ -221,6 +221,18 @@ describe("Wrong department — move patient (owner 2026-10-05)", () => {
     await user.click(within(panel).getByTestId("move-dept-d-2"));
     expect(await within(panel).findByTestId("move-dept-money")).toHaveTextContent(/billing counter makes this move/);
     expect(within(panel).getByTestId("move-dept-submit")).toBeDisabled();
+  });
+
+  it("the fee line and the money line read ONE amount — the server's, never the price list's (coordinator review)", async () => {
+    // The price list says New ₹300; the server prices this visit at ₹500 there (its own pricer). Only one may be shown.
+    const calls: Calls = { moves: [], previews: [] };
+    mount(calls, { billed: true, money: higher, maySettle: true, fees: { from: 15_000, to: 30_000 } });
+    const user = await seatInOrthoAndOpenMove();
+    const panel = screen.getByTestId("move-dept-panel");
+    await user.click(within(panel).getByTestId("move-dept-d-2"));
+    await waitFor(() => expect(within(panel).getByTestId("move-dept-fee")).toHaveTextContent(/New · ₹150/));
+    expect(within(panel).getByTestId("move-dept-fee-after")).toHaveTextContent("Revisit · ₹300");
+    expect(within(panel).getByTestId("move-dept-money")).toHaveTextContent("₹150 was paid; the consultation costs ₹300 there.");
   });
 
   it("RULE 3 — a higher fee at the billing counter: the difference is collected in the same act", async () => {

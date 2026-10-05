@@ -922,8 +922,9 @@ export function abandonVisit(encounterId: string, reason: string): Promise<{ enc
 export type WireVisitType = "new" | "revisit" | "renewal";
 export type WireMovePreview = {
   encounterId: string;
-  from: { departmentId: string | null; doctorId: string | null; visitType: WireVisitType };
-  to: { departmentId: string; visitType: WireVisitType };
+  /** `feePaise` — the server's one pricer for both sides (the fee line and the money line agree). Optional: an older server sends none. */
+  from: { departmentId: string | null; doctorId: string | null; visitType: WireVisitType; feePaise?: number };
+  to: { departmentId: string; visitType: WireVisitType; feePaise?: number };
   /** The bill on the visit, when there is one; `money` says what the move does with it. */
   standingInvoiceNo: string | null;
   /** Owner 2026-10-05 — what the move does with the visit's money (billing's four rules). Optional: an older server sends none. */
