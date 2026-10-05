@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # The staff Android app is a standalone Expo project with its own npm lockfile
+  # (apps/mobile/package-lock.json). It stays OUT of the pnpm workspace so the server image's
+  # `pnpm install --frozen-lockfile` and the root lockfile never see React Native
+  # (docs/superpowers/plans/2026-10-05-mobile-staff-app.md, "Monorepo").
+  - "!apps/mobile"
