@@ -140,8 +140,23 @@ function present(v: VitalsInput, k: VitalKey): boolean {
  */
 export const EMERGENCY_REQUIRED: readonly VitalKey[] = ["sbp", "dbp", "pulse", "spo2"];
 
+/** The paediatric line the bands already draw (`child_6_12` ends at 13; `sanityGates` uses the same). */
+export const CHILD_UNDER_YEARS = 13;
+
 /**
- * Completeness: the band's required list, plus weight under `cfg.weightRequiredUnderYears` (§11.8),
+ * OWNER 2026-10-05 — what the desk may DEMAND, over whatever the configured band lists: temperature
+ * is never mandatory, and a child's (under 13) BP is not either. Both are still recorded, ranged
+ * and flagged when typed. This sits in code, not in `opd_config.danger_ranges`, because it is the
+ * owner's ruling and the configured lists are clinical staff's data — an edited band cannot undo it.
+ * Unknown age is the adult tail, as everywhere else.
+ */
+export function requiredFor(band: BandConfig, ageYears: number | null): VitalKey[] {
+  const child = ageYears !== null && ageYears < CHILD_UNDER_YEARS;
+  return band.required.filter((k) => k !== "tempC" && !(child && (k === "sbp" || k === "dbp")));
+}
+
+/**
+ * Completeness: the band's required list (as `requiredFor` narrows it), plus weight under `cfg.weightRequiredUnderYears` (§11.8),
  * minus anything the caller CARRIED FORWARD from the last reading (D7 — a carried height is
  * present on the chart, it was simply not measured today).
  */
@@ -155,8 +170,7 @@ export function missingRequired(
   if (opts.emergency === true) {
     for (const k of EMERGENCY_REQUIRED) need.add(k);
   } else {
-    const band = bandFor(ageYears, cfg);
-    for (const k of band.required) need.add(k);
+    for (const k of requiredFor(bandFor(ageYears, cfg), ageYears)) need.add(k);
     if (ageYears !== null && ageYears < cfg.weightRequiredUnderYears) need.add("weightKg");
   }
   for (const k of opts.carriedForward ?? []) need.delete(k);
