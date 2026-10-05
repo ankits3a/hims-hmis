@@ -517,6 +517,30 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       expect(doc!.html).not.toContain("Laheriasarai");
     });
 
+    /**
+     * OWNER, 2026-10-05: *"the prescription fields could not hold many information in the header …
+     * address field looks awkward as the text isn't fitting up well."* The address takes the whole
+     * width beside the crest (it was a 298px column, so a real address ran to six lines); a very long
+     * one steps down a size; the unit and its head's number sit on one line below it.
+     */
+    it("2026-10-05: the address has the header's full width, a very long one steps down a size, and the fields keep the owner's order", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      await db.update(patients).set({ addressLine: "Ward No. 12, Near Hanuman Mandir, Mohalla Purani Bazar, Post Office Road", district: "Sitamarhi", stateName: "Bihar", pincode: "843302" }).where(eq(patients.id, row!.patientId));
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<div class="c-addr"><div class="row">${field("Address:", "Ward No. 12, Near Hanuman Mandir, Mohalla Purani Bazar, Post Office Road, Sitamarhi, Bihar, 843302")}</div></div>`);
+      expect(doc!.html).toMatch(/\.hd \.c-addr \{ grid-area: 4 \/ 1 \/ 5 \/ 3; \}/);
+      expect(doc!.html).toContain(`<div class="c-unit"><div class="row"><span class="lb">Unit Number:</span>`);
+      expect(doc!.html).toContain(`<div class="c-regn"><div class="row"><span class="lb">Dept. Regn:</span>`);
+      const at = NEW_ORDER.map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));
+      expect(at.every((x) => x > 0)).toBe(true);
+      expect([...at].sort((a, b) => a - b)).toEqual(at);
+
+      await db.update(patients).set({ addressLine: "House No. 221/B, Shanti Kunj Apartments, Behind Sri Krishna Memorial Hall, Near Gandhi Maidan Bus Stand, Frazer Road Area, Kankarbagh Colony, Patna City", district: "Patna", stateName: "Bihar", pincode: "800020" }).where(eq(patients.id, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(`<div class="c-addr long"><div class="row"><span class="lb">Address:</span>`);
+      expect(doc!.html).toContain("Patna, Bihar, 800020</span>");
+    });
+
     /** No doctor on the encounter: a dash in Unit Number and a blank Regn, never an invented value. */
     it("prints a dash rather than a blank when the encounter names no doctor", async () => {
       await db.update(opdEncounters).set({ doctorId: null }).where(eq(opdEncounters.id, encounterId));
