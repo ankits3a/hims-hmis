@@ -1,8 +1,30 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders, stubFetch } from "../test-utils";
 import { base64Bytes, fitToMaxEdge, fitsBudget, SlipCapture } from "./slip-capture";
+import { detectInImage, warpToCanvas } from "../lib/doc-crop/browser";
+import type { Quad } from "../lib/doc-crop/geometry";
+
+/*
+  THE CROP STEP'S CANVAS SEAM (owner 2026-10-05). jsdom cannot decode or draw, so finding the page
+  and flattening it are replaced here; the finding and the flattening themselves are proved on real
+  pixel buffers in `lib/doc-crop/doc-crop.test.ts`. A photo here is 1200 × 1600 (a 3024 × 4032
+  phone frame after the downscale) and the page is found at FOUND.
+*/
+const FOUND: Quad = [{ x: 120, y: 160 }, { x: 1080, y: 200 }, { x: 1040, y: 1480 }, { x: 150, y: 1440 }];
+vi.mock("../lib/doc-crop/browser", () => ({
+  loadImage: vi.fn(() => Promise.resolve({ naturalWidth: 1200, naturalHeight: 1600 })),
+  detectInImage: vi.fn(() => Promise.resolve({ score: 0.9, quad: FOUND })),
+  warpToCanvas: vi.fn(() => { const c = document.createElement("canvas"); c.width = 900; c.height = 1273; return c; }),
+}));
+
+/** Through the crop step as the desk does it most: the page was found, "Use this". */
+async function acceptCrop(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await waitFor(() => { expect(screen.getByTestId("slip-crop")).toHaveAttribute("data-status", "found"); });
+  await user.click(screen.getByTestId("slip-crop-use"));
+  await screen.findByTestId("slip-preview");
+}
 
 /**
  * ═══ THE SLIP DESK ═══
@@ -152,7 +174,7 @@ describe("SlipCapture", () => {
     const png = new File([Uint8Array.from([0x89, 0x50, 0x4e, 0x47])], "slip.png", { type: "image/png" });
     await user.upload(screen.getByTestId("slip-file"), png);
 
-    await waitFor(() => { expect(screen.getByTestId("slip-preview")).toBeInTheDocument(); });
+    await acceptCrop(user);
     await user.type(screen.getByLabelText(/Note for the doctor/), "two pages, this is the first");
     await user.click(screen.getByTestId("slip-file-it"));
 
@@ -251,7 +273,7 @@ describe("SlipCapture", () => {
     await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
     await screen.findByTestId("slip-readback");
     await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
-    await waitFor(() => { expect(screen.getByTestId("slip-preview")).toBeInTheDocument(); });
+    await acceptCrop(user);
     await user.click(screen.getByTestId("slip-file-it"));
     await screen.findByTestId("slip-filed");
 
@@ -269,7 +291,7 @@ describe("SlipCapture", () => {
     await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
     await screen.findByTestId("slip-readback");
     await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
-    await waitFor(() => { expect(screen.getByTestId("slip-preview")).toBeInTheDocument(); });
+    await acceptCrop(user);
 
     await user.click(screen.getByTestId("slip-retake"));
     expect(screen.queryByTestId("slip-preview")).toBeNull();
@@ -348,7 +370,7 @@ describe("SlipCapture — the board", () => {
     expect(await screen.findByTestId("slip-onfile")).toHaveTextContent("filed at 11:05. This adds page 2.");
 
     await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
-    await waitFor(() => { expect(screen.getByTestId("slip-preview")).toBeInTheDocument(); });
+    await acceptCrop(user);
     expect(screen.getByTestId("slip-dock")).toHaveTextContent("page 2");
   });
 
@@ -401,7 +423,7 @@ describe("SlipCapture — the board", () => {
     await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
     await screen.findByTestId("slip-readback");
     await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
-    await screen.findByTestId("slip-preview");
+    await acceptCrop(user);
 
     expect(screen.getByRole("radio", { name: /Prescription from this visit/ })).toBeChecked();
     await user.click(screen.getByRole("radio", { name: /Outside report/ }));
@@ -439,7 +461,7 @@ describe("SlipCapture — the board", () => {
     await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
     await screen.findByTestId("slip-readback");
     await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
-    await screen.findByTestId("slip-preview");
+    await acceptCrop(user);
     (document.activeElement as HTMLElement | null)?.blur();
     await user.keyboard("r");
     expect(screen.queryByTestId("slip-preview")).toBeNull();
@@ -453,7 +475,7 @@ describe("SlipCapture — the board", () => {
     await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
     await screen.findByTestId("slip-readback");
     await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
-    await screen.findByTestId("slip-preview");
+    await acceptCrop(user);
     await user.click(screen.getByTestId("slip-file-it"));
     await screen.findByTestId("slip-filed");
     expect(screen.getByTestId("slip-dock")).toHaveTextContent("Another page for Asha Devi?");
@@ -461,5 +483,132 @@ describe("SlipCapture — the board", () => {
     await user.click(screen.getByTestId("slip-add-page"));
     expect(await screen.findByTestId("slip-readback")).toHaveTextContent("Asha Devi");
     expect(callsTo("GET", "/api/opd/visits/by-number/V2609140007")).toHaveLength(2);
+  });
+});
+
+/**
+ * ═══ THE CROP STEP — owner, 2026-10-05 ═══
+ *
+ * "auto detects the edges and crops the document. If any changes are required then the user can
+ * adjust manually." The photo lands on a crop step, not straight on the review: the corners sit
+ * where the page was found, a corner drags, Reset gives the whole photo back, and Use this flattens
+ * exactly the corners on screen.
+ */
+describe("SlipCapture — the crop step", () => {
+  beforeEach(() => {
+    setToken(null);
+    localStorage.clear();
+    vi.stubGlobal("URL", { ...URL, createObjectURL: () => "blob:slip", revokeObjectURL: () => undefined });
+    vi.stubGlobal("Image", class {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      naturalWidth = 3024;
+      naturalHeight = 4032;
+      set src(_v: string) { setTimeout(() => { this.onload?.(); }, 0); }
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage: () => undefined } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/jpeg;base64,/9j/4AAQSkZJRg==");
+    vi.mocked(detectInImage).mockResolvedValue({ score: 0.9, quad: FOUND });
+    vi.mocked(warpToCanvas).mockClear();
+    /* jsdom has no PointerEvent: without one, fireEvent sends a bare Event with no clientX at all. */
+    vi.stubGlobal("PointerEvent", class extends MouseEvent {
+      pointerId: number;
+      constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerId = init.pointerId ?? 0; }
+    });
+  });
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  async function photographed(): Promise<ReturnType<typeof userEvent.setup>> {
+    stubFetch({ "GET /api/opd/visits/by-number/V2609140007": VISIT, "POST /api/patients/p-1/documents": { documentId: "doc-9" } });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+    await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([1])], "s.png", { type: "image/png" }));
+    await screen.findByTestId("slip-crop");
+    return user;
+  }
+  const at = (i: number): { left: string; top: string } => {
+    const h = screen.getByTestId(`slip-crop-h${String(i)}`);
+    return { left: h.style.left, top: h.style.top };
+  };
+  /** The stage as a 300 × 400 box at the page's top-left, so a client point is a quarter of a photo pixel. */
+  function stageAt300x400(): void {
+    vi.spyOn(screen.getByTestId("slip-crop-stage"), "getBoundingClientRect").mockReturnValue({
+      left: 0, top: 0, width: 300, height: 400, right: 300, bottom: 400, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  it("C1: the photo opens the crop step — not the review — with the corners where the page was found", async () => {
+    await photographed();
+    expect(screen.queryByTestId("slip-preview")).toBeNull();
+    await waitFor(() => { expect(screen.getByTestId("slip-crop")).toHaveAttribute("data-status", "found"); });
+    expect(screen.getByTestId("slip-crop-status")).toHaveTextContent(/Page found/);
+    expect(at(0)).toEqual({ left: "10%", top: "10%" }); // 120/1200, 160/1600
+    expect(at(2)).toEqual({ left: `${String((1040 / 1200) * 100)}%`, top: "92.5%" });
+    expect(screen.getByTestId("slip-capture")).toHaveAttribute("data-step", "3");
+  });
+
+  it("C2: no page found — it SAYS so, and the corners wait just inside the frame for the desk to drag", async () => {
+    vi.mocked(detectInImage).mockResolvedValue(null);
+    await photographed();
+    await waitFor(() => { expect(screen.getByTestId("slip-crop")).toHaveAttribute("data-status", "none"); });
+    expect(screen.getByTestId("slip-crop-status")).toHaveTextContent(/Couldn't find the edges/);
+    expect(at(0)).toEqual({ left: "4%", top: "4%" });
+    expect(at(2)).toEqual({ left: "96%", top: "96%" });
+  });
+
+  it("C3: a dragged corner is the corner that is cut — Use this flattens exactly what is on screen", async () => {
+    const user = await photographed();
+    await waitFor(() => { expect(screen.getByTestId("slip-crop")).toHaveAttribute("data-status", "found"); });
+    stageAt300x400();
+    const tl = screen.getByTestId("slip-crop-h0");
+    fireEvent.pointerDown(tl, { pointerId: 1, clientX: 30, clientY: 40 });
+    fireEvent.pointerMove(tl, { pointerId: 1, clientX: 15, clientY: 20 });
+    expect(screen.getByTestId("slip-crop-loupe")).toBeInTheDocument(); // the finger hides the corner, the loupe shows it
+    fireEvent.pointerUp(tl, { pointerId: 1 });
+    expect(at(0)).toEqual({ left: "5%", top: "5%" });
+
+    await user.click(screen.getByTestId("slip-crop-use"));
+    await screen.findByTestId("slip-preview");
+    expect(vi.mocked(warpToCanvas)).toHaveBeenCalledTimes(1);
+    const quad = vi.mocked(warpToCanvas).mock.calls[0]![1];
+    expect(quad[0]).toEqual({ x: 60, y: 80 });
+    expect(quad.slice(1)).toEqual(FOUND.slice(1));
+    expect(screen.getByTestId("slip-capture")).toHaveAttribute("data-step", "4");
+  });
+
+  it("C4: Reset to full photo uses the photo as taken — no flattening, no second JPEG pass", async () => {
+    const user = await photographed();
+    await waitFor(() => { expect(screen.getByTestId("slip-crop")).toHaveAttribute("data-status", "found"); });
+    await user.click(screen.getByTestId("slip-crop-reset"));
+    expect(at(0)).toEqual({ left: "0%", top: "0%" });
+    await user.click(screen.getByTestId("slip-crop-use"));
+    await screen.findByTestId("slip-preview");
+    expect(vi.mocked(warpToCanvas)).not.toHaveBeenCalled();
+  });
+
+  it("C5: Adjust the crop goes back to the SAME photo and corners; Retake goes back to the camera", async () => {
+    const user = await photographed();
+    await acceptCrop(user);
+    await user.click(screen.getByTestId("slip-crop-adjust"));
+    expect(screen.queryByTestId("slip-preview")).toBeNull();
+    expect(at(0)).toEqual({ left: "10%", top: "10%" });
+    await user.click(screen.getByTestId("slip-retake"));
+    expect(screen.queryByTestId("slip-crop")).toBeNull();
+    expect(screen.getByTestId("slip-file")).toBeInTheDocument();
+    expect(screen.getByTestId("slip-capture")).toHaveAttribute("data-step", "2");
+  });
+
+  it("C6: corners dragged past each other cannot be used, and the dock says why", async () => {
+    await photographed();
+    await waitFor(() => { expect(screen.getByTestId("slip-crop")).toHaveAttribute("data-status", "found"); });
+    stageAt300x400();
+    const tl = screen.getByTestId("slip-crop-h0");
+    fireEvent.pointerDown(tl, { pointerId: 1, clientX: 30, clientY: 40 });
+    fireEvent.pointerMove(tl, { pointerId: 1, clientX: 290, clientY: 395 });
+    fireEvent.pointerUp(tl, { pointerId: 1 });
+    expect(screen.getByTestId("slip-crop-use")).toBeDisabled();
+    expect(screen.getByTestId("slip-dock")).toHaveTextContent(/two corners have crossed/);
   });
 });

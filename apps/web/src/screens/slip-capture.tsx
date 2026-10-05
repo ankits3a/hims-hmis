@@ -4,6 +4,9 @@ import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { fmtIst, useDebounced } from "../lib/format";
 import { StationShell } from "../components/station/station-shell";
+import { DocCrop, type CropStatus } from "../components/doc-crop";
+import { frameQuad, isConvex, type Quad } from "../lib/doc-crop/geometry";
+import { detectInImage, loadImage, warpToCanvas } from "../lib/doc-crop/browser";
 import type { StationLink } from "../components/station/station-shell";
 import "./slip-desk.css";
 
@@ -200,6 +203,13 @@ export function SlipCapture(): React.ReactElement {
   const [via, setVia] = useState<"qr" | "search">("qr");
   const [shot, setShot] = useState<string | null>(null);
   const [shotSize, setShotSize] = useState<{ width: number; height: number } | null>(null);
+  /*
+    THE PHOTO BEFORE IT IS CROPPED (owner, 2026-10-05). The camera's frame lands here first, the page
+    is found in it, and the desk confirms or drags the corners; "Use this" flattens it into `shot`.
+    It is KEPT after that, so "Adjust the crop" goes back to the same photo instead of a retake.
+  */
+  const [raw, setRaw] = useState<{ b64: string; width: number; height: number; quad: Quad; status: CropStatus } | null>(null);
+  const [cropping, setCropping] = useState(false);
   const [kind, setKind] = useState<Kind>("consult_prescription");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -246,14 +256,14 @@ export function SlipCapture(): React.ReactElement {
   }, []);
 
   const take = (back: Readback, how: "qr" | "search"): void => {
-    setResolved(back); setVia(how); setShot(null); setShotSize(null); setKind("consult_prescription"); setNote("");
+    setResolved(back); setVia(how); setShot(null); setRaw(null); setShotSize(null); setKind("consult_prescription"); setNote("");
     setRefused(null); setError(null); setFiled(null); setFindOpen(false); setFindQ("");
   };
 
   const resolveNumber = async (raw: string): Promise<void> => {
     const v = raw.trim();
     if (v === "") return;
-    setError(null); setRefused(null); setResolved(null); setShot(null); setFiled(null);
+    setError(null); setRefused(null); setResolved(null); setShot(null); setRaw(null); setFiled(null);
     stopCamera();
     try {
       const r = await api<Readback>("GET", `/opd/visits/by-number/${encodeURIComponent(v)}`);
@@ -270,7 +280,7 @@ export function SlipCapture(): React.ReactElement {
   /** Esc — the wrong person, or a slip put down: nothing in hand, the scan box ready. */
   const clearDesk = useCallback((): void => {
     stopCamera();
-    setResolved(null); setShot(null); setShotSize(null); setNote(""); setError(null); setRefused(null);
+    setResolved(null); setShot(null); setRaw(null); setShotSize(null); setNote(""); setError(null); setRefused(null);
     setVisitNo("");
     setTimeout(() => scanRef.current?.focus(), 0);
   }, [stopCamera]);
@@ -316,7 +326,7 @@ export function SlipCapture(): React.ReactElement {
     if (video.videoWidth === 0 || video.videoHeight === 0) { setError(t("slipCapture.notReady")); return; }
     const b64 = await downscaleToJpeg(video, video.videoWidth, video.videoHeight);
     if (b64 === null) { setError(t("slipCapture.tooLarge")); return; }
-    setShot(b64); setShotSize(fitToMaxEdge(video.videoWidth, video.videoHeight));
+    toCrop(b64, fitToMaxEdge(video.videoWidth, video.videoHeight));
     stopCamera();
   };
 
@@ -332,7 +342,7 @@ export function SlipCapture(): React.ReactElement {
       });
       const b64 = await downscaleToJpeg(img, img.naturalWidth, img.naturalHeight);
       if (b64 === null) { setError(t("slipCapture.tooLarge")); return; }
-      setShot(b64); setShotSize(fitToMaxEdge(img.naturalWidth, img.naturalHeight));
+      toCrop(b64, fitToMaxEdge(img.naturalWidth, img.naturalHeight));
       stopCamera();
     } catch {
       setError(t("slipCapture.badImage"));
@@ -342,7 +352,54 @@ export function SlipCapture(): React.ReactElement {
     }
   };
 
-  const retake = (): void => { setShot(null); setShotSize(null); setError(null); };
+  const retake = (): void => { setShot(null); setShotSize(null); setRaw(null); setError(null); };
+
+  /* A new photograph opens the crop step with the corners just inside the frame, then looks for the page. */
+  const toCrop = (b64: string, size: { width: number; height: number }): void => {
+    setRaw({ b64, ...size, quad: frameQuad(size.width, size.height, 0.04), status: "finding" });
+  };
+  const rawKey = raw?.b64;
+  useEffect(() => {
+    if (rawKey === undefined) return;
+    let live = true;
+    void (async () => {
+      let found: Awaited<ReturnType<typeof detectInImage>> = null;
+      try { found = await detectInImage(await loadImage(`data:image/jpeg;base64,${rawKey}`)); } catch { found = null; }
+      if (!live) return;
+      setRaw((r) => r === null || r.b64 !== rawKey || r.status !== "finding" ? r
+        : found === null ? { ...r, status: "none" } : { ...r, quad: found.quad, status: "found" });
+    })();
+    return () => { live = false; };
+  }, [rawKey]);
+
+  const resetCrop = (): void => { setRaw((r) => r === null ? r : { ...r, quad: frameQuad(r.width, r.height) }); };
+
+  /*
+    "Use this": the quad is warped flat and goes through the SAME downscale-and-budget as every shot.
+    Corners left on the photo's own edges mean "no crop" — the photo is used as taken, with no
+    second JPEG pass to soften it.
+  */
+  const applyCrop = async (): Promise<void> => {
+    if (raw === null || cropping || !isConvex(raw.quad)) return;
+    const full = frameQuad(raw.width, raw.height);
+    const untouched = raw.quad.every((p, i) => Math.hypot(p.x - full[i]!.x, p.y - full[i]!.y) <= Math.max(raw.width, raw.height) * 0.005);
+    if (untouched) { setShot(raw.b64); setShotSize({ width: raw.width, height: raw.height }); return; }
+    setCropping(true); setError(null);
+    try {
+      const img = await loadImage(`data:image/jpeg;base64,${raw.b64}`);
+      const sx = img.naturalWidth / raw.width;
+      const sy = img.naturalHeight / raw.height;
+      const quad = raw.quad.map((p) => ({ x: p.x * sx, y: p.y * sy })) as Quad;
+      const flat = warpToCanvas(img, quad, MAX_EDGE);
+      const b64 = await downscaleToJpeg(flat, flat.width, flat.height);
+      if (b64 === null) { setError(t("slipCapture.tooLarge")); return; }
+      setShot(b64); setShotSize(fitToMaxEdge(flat.width, flat.height));
+    } catch {
+      setError(t("slipCapture.crop.failed"));
+    } finally {
+      setCropping(false);
+    }
+  };
 
   const file = async (): Promise<void> => {
     if (resolved === null || shot === null) return;
@@ -358,7 +415,7 @@ export function SlipCapture(): React.ReactElement {
       /* The confirmation NAMES the patient. A desk that photographs forty slips an hour needs to see
          which one just landed, not a green tick that could belong to any of them. */
       setFiled({ back: resolved, kind, at: new Date().toISOString() });
-      setVisitNo(""); setResolved(null); setShot(null); setShotSize(null); setNote("");
+      setVisitNo(""); setResolved(null); setShot(null); setRaw(null); setShotSize(null); setNote("");
       void queryClient.invalidateQueries({ queryKey: ["opd", "slips", "today"] });
       setTimeout(() => scanRef.current?.focus(), 0);
     } catch (e) {
@@ -381,12 +438,13 @@ export function SlipCapture(): React.ReactElement {
     back.patient?.name ?? back.patient?.alias ?? t("slipCapture.unnamed");
 
   /* The flow's one position: 1 scan · 2 check · 3 photograph · 4 file. */
-  const step = resolved === null ? 1 : shot !== null ? 4 : cameraOn ? 3 : 2;
+  const step = resolved === null ? 1 : shot !== null ? 4 : cameraOn || raw !== null ? 3 : 2;
 
   /* ═══ THE KEYS — Enter the dock's act, R retake, Esc clear, P add a page ═══ */
   const act = useRef<() => void>(() => undefined);
   act.current = () => {
     if (step === 2) void startCamera();
+    else if (step === 3 && raw !== null) void applyCrop();
     else if (step === 3) void takeShot();
     else if (step === 4) void file();
     else scanRef.current?.focus();
@@ -398,7 +456,7 @@ export function SlipCapture(): React.ReactElement {
       if (typingIn(e.target)) return;
       if (e.key === "Enter") { e.preventDefault(); act.current(); return; }
       const k = e.key.toLowerCase();
-      if (k === "r" && shot !== null) { e.preventDefault(); retake(); return; }
+      if (k === "r" && (shot !== null || raw !== null)) { e.preventDefault(); retake(); return; }
       if (k === "p" && resolved === null && filed !== null) { e.preventDefault(); void addPage(); }
     };
     window.addEventListener("keydown", onKey);
@@ -699,6 +757,31 @@ export function SlipCapture(): React.ReactElement {
         </div>
       </>
     );
+  } else if (shot === null && raw !== null) {
+    work = (
+      <DocCrop
+        src={`data:image/jpeg;base64,${raw.b64}`} width={raw.width} height={raw.height}
+        quad={raw.quad} status={raw.status} onQuad={(quad) => { setRaw((r) => r === null ? r : { ...r, quad }); }}
+      />
+    );
+    const usable = isConvex(raw.quad);
+    dock = (
+      <>
+        <div className="who">
+          <b>{t("slipCapture.crop.dock")}</b>
+          <small>{usable ? t("slipCapture.crop.dockSub") : t("slipCapture.crop.crossed")}</small>
+        </div>
+        <div className="acts">
+          <button type="button" className="sec" data-testid="slip-retake" onClick={retake}>
+            {t("slipCapture.retake")} <span className="kb">R</span>
+          </button>
+          <button type="button" className="sec" data-testid="slip-crop-reset" onClick={resetCrop}>{t("slipCapture.crop.reset")}</button>
+          <button type="button" className="pri" data-testid="slip-crop-use" disabled={!usable || cropping} onClick={() => void applyCrop()}>
+            {cropping ? t("slipCapture.crop.working") : t("slipCapture.crop.use")} <span className="kb">⏎</span>
+          </button>
+        </div>
+      </>
+    );
   } else if (shot === null) {
     work = (
       <div className="sd-cam" data-testid="slip-cam">
@@ -783,6 +866,11 @@ export function SlipCapture(): React.ReactElement {
           <button type="button" className="sec" data-testid="slip-retake" onClick={retake}>
             {t("slipCapture.retake")} <span className="kb">R</span>
           </button>
+          {raw !== null && (
+            <button type="button" className="sec" data-testid="slip-crop-adjust" onClick={() => { setShot(null); setShotSize(null); }}>
+              {t("slipCapture.crop.adjust")}
+            </button>
+          )}
           <button type="button" className="pri" data-testid="slip-file-it" onClick={() => void file()}>
             {t("slipCapture.fileIt")} <span className="kb">⏎</span>
           </button>
