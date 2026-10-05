@@ -5,6 +5,15 @@ import "../styles/paper-pine.css";
 import "../screens/desk-one/desk-one.css";
 
 /**
+ * `100dvh` where the browser has it. On a phone `100vh` is the viewport with the address bar
+ * HIDDEN, so a screen sized from it puts its foot — the agent dock — under the address bar until
+ * the page is scrolled. `dvh` is the viewport as it is now. A desktop has no such bar and the two
+ * are equal there.
+ */
+const VIEWPORT_HEIGHT =
+  typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("height", "100dvh") ? "100dvh" : "100vh";
+
+/**
  * ═══ FD-25 T0 — THE `.pp` SCREEN, AS ONE COMPONENT INSTEAD OF A CLASSNAME EVERYBODY RETYPES ═══
  *
  * There are two ways to wear paper-and-pine. `.d1` OWNS THE VIEWPORT: `position: fixed; inset: 0`
@@ -93,10 +102,27 @@ export function PaperScreen({
         AND WHAT THE SHELL PUTS BELOW US. `router.tsx` renders `<ShortcutLegend />` after the outlet,
         so a screen sized to `100vh - top` is exactly the legend's height too tall and the page grows
         a scrollbar — which is how the dock ended up 42px under the fold with the top offset already
-        correct. This term is independent of our own height (`scrollHeight` moves with it, one for
-        one), so the two settle in a single pass instead of chasing each other.
+        correct.
+
+        COUNTED, NOT INFERRED (owner, 2026-10-05). This used to be `scrollHeight - (top + our
+        height)`. The shell is `min-h-screen` with the outlet in a `flex-1` wrapper, so whenever the
+        screen fits, the page is exactly one viewport tall and that difference is whatever the
+        wrapper stretched to fill — our OWN previous offset handed back to us. Any offset was then a
+        fixed point: once it was too big (a header that wrapped for a moment, a patient strip that
+        then went away, a phone turned on its side) nothing could make it smaller again, and on a
+        phone the vitals bay shrank to a strip with its ask bar mid-screen and blank page below.
+        Summing the boxes that follow us, up every ancestor, reads the legend and nothing else. A
+        fixed or absolute box takes no room in the flow, so it is not counted.
       */
-      const below = Math.max(0, document.documentElement.scrollHeight - (top + el.offsetHeight));
+      let below = 0;
+      for (let n: Element | null = el; n !== null && n !== document.body; n = n.parentElement) {
+        for (let s = n.nextElementSibling; s !== null; s = s.nextElementSibling) {
+          if (!(s instanceof HTMLElement)) continue;
+          const position = getComputedStyle(s).position;
+          if (position === "fixed" || position === "absolute") continue;
+          below += s.offsetHeight;
+        }
+      }
       setOffset(top + below <= 0 ? null : Math.round(top + below));
     };
     measure();
@@ -112,6 +138,12 @@ export function PaperScreen({
     */
     const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     ro?.observe(document.body);
+    /*
+      The body does not always move. Under a `min-h-screen` shell, a patient strip that goes away
+      leaves the body one viewport tall; what changes is the wrapper that holds us. So every
+      ancestor is watched too.
+    */
+    for (let n = rootRef.current?.parentElement ?? null; n !== null && n !== document.body; n = n.parentElement) ro?.observe(n);
     return () => { window.removeEventListener("resize", measure); ro?.disconnect(); };
   }, []);
 
@@ -139,7 +171,7 @@ export function PaperScreen({
           — the bay, which has a dock at its foot — can say `height: "var(--pp-h)"` without
           re-deriving the shell's height and getting a different answer.
         */
-        ["--pp-h" as string]: `calc(100vh - ${String(offset ?? 96)}px)`,
+        ["--pp-h" as string]: `calc(${VIEWPORT_HEIGHT} - ${String(offset ?? 96)}px)`,
         background: "var(--paper)",
         color: "var(--ink)",
         ...style,
