@@ -260,7 +260,7 @@ async function lockInvoice(
  * decision), so it has no fee line and nothing on it can be a delivered consultation.
  */
 function feeServiceIdFor(visitType: string, rules: ChargeRules): string | null {
-  if (visitType === "revisit") return null;
+  if (visitType === "revisit") return rules.opdConsult.revisit ?? null;
   return visitType === "renewal" ? rules.opdConsult.renewal : rules.opdConsult.new;
 }
 

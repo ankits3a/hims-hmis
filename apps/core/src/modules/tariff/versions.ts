@@ -272,6 +272,21 @@ export async function resolveActiveTariffVersion(
   return { versionId: row.id, versionNo: row.versionNo };
 }
 
+/**
+ * One service's price in the version in force at `at`, or null when no version is active or the
+ * version does not price it. The billing fee branch asks this for the optional revisit fee (owner,
+ * 2026-10-05) — one indexed read instead of a whole pricing context on every queue refresh.
+ */
+export async function activePricePaise(db: Db | Tx, serviceId: string, at: Date): Promise<number | null> {
+  const active = await resolveActiveTariffVersion(db as Db, at);
+  if (active === null) return null;
+  const rows = await db
+    .select({ pricePaise: tariffItems.pricePaise })
+    .from(tariffItems)
+    .where(and(eq(tariffItems.versionId, active.versionId), eq(tariffItems.serviceId, serviceId)));
+  return rows[0]?.pricePaise ?? null;
+}
+
 export async function getVersion(
   db: Db,
   versionId: string,

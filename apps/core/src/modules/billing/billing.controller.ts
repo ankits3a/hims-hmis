@@ -1,7 +1,9 @@
 import { feeSwitchesView, setFeeSwitch } from "./fee-switches";
 import type { FeeSwitchesView } from "./fee-switches";
+import { consultPricesView, decideConsultPrices, proposeConsultPrices } from "./consult-prices";
+import type { ConsultPricesView } from "./consult-prices";
 import { FEE_KINDS } from "./config";
-import { Body, Controller, Get, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post, Put, Query, Headers } from "@nestjs/common";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { gstinState } from "@hmis/contracts";
@@ -472,12 +474,18 @@ const configPatchBody = z
     feeBps: z.object({ upi: z.number().int().nonnegative(), card: z.number().int().nonnegative() }),
     reconTolerancePaise: z.number().int().nonnegative(),
     seriesPrefixes: z.record(z.string(), z.string().min(1)),
-    chargeRules: z.object({ opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1) }) }),
+    chargeRules: z.object({ opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1), revisit: z.string().min(1).optional() }) }),
     degradedTender: z.boolean(),
     caSigned: z.boolean(),
   })
   .partial();
 const feeSwitchBody = z.object({ kind: z.enum(FEE_KINDS), off: z.boolean() }).strict();
+const paiseField = z.number().int().nonnegative();
+const consultProposalBody = z.object({
+  prices: z.object({ new: paiseField, renewal: paiseField, revisit: paiseField }).partial(),
+  note: z.string().max(500).optional(),
+}).strict();
+const consultDecisionBody = z.object({ approve: z.boolean(), note: z.string().trim().min(1).max(500) }).strict();
 const degradedBody = z.object({ on: z.boolean(), reason: z.string().min(1) });
 
 type ReceiptRowSelect = typeof receipts.$inferSelect;
@@ -1369,6 +1377,46 @@ export class BillingController {
     const b = parsed(feeSwitchBody, body);
     try {
       return await setFeeSwitch(this.db, actor, b.kind, b.off);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— the consultation price list (owner, 2026-10-05) ——————————————————————————————————————————————
+  // A price change is a tariff version: the doors are the tariff's own permissions, and the
+  // approval's role and requester ≠ approver checks run inside (`consult-prices.ts`).
+
+  @RequirePermission("tariff.read", "hospital")
+  @Get("consult-prices")
+  async consultPrices(): Promise<ConsultPricesView> {
+    try {
+      return await consultPricesView(this.db);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("tariff.versions.draft", "hospital")
+  @Post("consult-prices")
+  @HttpCode(200)
+  async consultPricesPropose(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<ConsultPricesView> {
+    const b = parsed(consultProposalBody, body);
+    try {
+      return await proposeConsultPrices(this.db, actor, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("tariff.versions.activate", "hospital")
+  @Post("consult-prices/:versionId/decision")
+  @HttpCode(200)
+  async consultPricesDecide(
+    @CurrentActor() actor: Actor, @Param("versionId") versionId: string, @Body() body: unknown,
+  ): Promise<ConsultPricesView> {
+    const b = parsed(consultDecisionBody, body);
+    try {
+      return await decideConsultPrices(this.db, actor, versionId, b);
     } catch (e) {
       toHttp(e);
     }

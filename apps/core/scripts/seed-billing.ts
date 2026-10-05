@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
 import { billingConfig, roles } from "../src/kernel/db/schema";
@@ -6,6 +7,7 @@ import { createService, listServices } from "../src/modules/tariff";
 import { registerBillingApprovalTypes } from "../src/modules/billing/approval-types";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
+import type { ChargeRules } from "../src/modules/billing/config";
 
 /**
  * Seeds/updates the dev billing_config row (D-17 DEV PLACEHOLDERS — CA sign-off required, §19),
@@ -38,7 +40,10 @@ async function main(): Promise<void> {
 
     const consultNewId = await ensureService(db, "OPD-CONSULT-NEW", "OPD Consultation (New)", "consultation");
     const consultRenewalId = await ensureService(db, "OPD-CONSULT-RENEWAL", "OPD Consultation (Renewal)", "consultation");
-    console.log(`services ensured: OPD-CONSULT-NEW (${consultNewId}), OPD-CONSULT-RENEWAL (${consultRenewalId})`);
+    // Owner 2026-10-05: a revisit may carry a fee. The service is wired below but unpriced, so a
+    // revisit stays free until a price above ₹0 is approved on the Billing office price list.
+    const consultRevisitId = await ensureService(db, "OPD-CONSULT-REVISIT", "OPD Consultation (Revisit)", "consultation");
+    console.log(`services ensured: OPD-CONSULT-NEW (${consultNewId}), OPD-CONSULT-RENEWAL (${consultRenewalId}), OPD-CONSULT-REVISIT (${consultRevisitId})`);
 
     const cfg = await db
       .insert(billingConfig)
@@ -54,7 +59,7 @@ async function main(): Promise<void> {
         feeBps: { upi: 0, card: 150 }, // DEV PLACEHOLDER — CA sign-off required (§19)
         reconTolerancePaise: 100, // DEV PLACEHOLDER — CA sign-off required (§19)
         seriesPrefixes: { invoice: "INV", receipt: "RCP", credit_note: "CN", voucher: "RFV" },
-        chargeRules: { opdConsult: { new: consultNewId, renewal: consultRenewalId } },
+        chargeRules: { opdConsult: { new: consultNewId, renewal: consultRenewalId, revisit: consultRevisitId } },
         degradedTender: false,
         caSigned: false, // flips only via the CA sign-off runbook step
         updatedAt: new Date(),
@@ -62,6 +67,16 @@ async function main(): Promise<void> {
       .onConflictDoNothing()
       .returning({ id: billingConfig.id });
     console.log(cfg.length === 1 ? "billing_config seeded (ALL DEV PLACEHOLDERS — CA sign-off required, §19)" : "billing_config exists — left untouched");
+
+    // An existing row gets the revisit service wired once; nothing else in it is touched.
+    const stored = (await db.select({ chargeRules: billingConfig.chargeRules }).from(billingConfig).where(eq(billingConfig.id, "main")))[0]
+      ?.chargeRules as ChargeRules | undefined;
+    if (stored !== undefined && stored.opdConsult.revisit === undefined) {
+      await db.update(billingConfig)
+        .set({ chargeRules: { ...stored, opdConsult: { ...stored.opdConsult, revisit: consultRevisitId } } })
+        .where(eq(billingConfig.id, "main"));
+      console.log("billing_config: revisit consultation service wired (unpriced — revisits stay free)");
+    }
 
     await registerBillingApprovalTypes(db, activator);
     console.log(

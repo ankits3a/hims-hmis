@@ -1,5 +1,5 @@
 import { getEncounter, reviewAnchorFor } from "../opd";
-import { feeOffAt, feeOffNow, loadBillingConfig } from "./config";
+import { chargeRulesAt, feeOffAt, feeOffNow, loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { previewInvoice } from "./invoices";
 import type { ChargeRules } from "./config";
@@ -22,7 +22,8 @@ export const FEE_LINE_ID = "fee";
 /**
  * The service a visit's consultation fee is charged against, or `null` when the visit is FREE.
  *
- * `revisit` is free (spec:224, Plan 07's owner decision): the null is the free branch, not a
+ * `revisit` is free (spec:224, Plan 07's owner decision) unless the owner prices a revisit fee
+ * (2026-10-05; pass the rules through `chargeRulesAt` first): the null is the free branch, not a
  * missing mapping, which is why the gate treats it as "nothing to collect" rather than as an
  * error. A visit type outside the three OPD ships has no rule to apply at all.
  */
@@ -46,7 +47,8 @@ export function consultFeeSwitchedOff(encounter: Pick<EncounterRow, "openedAt">,
 function chargedServiceFor(encounter: EncounterRow, rules: ChargeRules): string | null {
   switch (encounter.visitType) {
     case "revisit":
-      return null;
+      // Free unless a revisit fee is wired AND priced above ₹0 — `chargeRulesAt` drops it otherwise.
+      return rules.opdConsult.revisit ?? null;
     case "new":
       return rules.opdConsult.new;
     case "renewal":
@@ -129,12 +131,13 @@ export async function feeQuote(
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new BillingError("unknown_encounter", `unknown encounter ${encounterId}`);
   const cfg = await loadBillingConfig(db);
-  const feeServiceId = feeServiceFor(encounter, cfg.chargeRules);
+  const rules = await chargeRulesAt(db, cfg.chargeRules, now);
+  const feeServiceId = feeServiceFor(encounter, rules);
   if (feeServiceId === null) {
     const anchor = await reviewAnchorFor(db, encounter);
     return {
       encounterId, visitType: encounter.visitType, free: true, feeServiceId: null, draft: null,
-      feesOff: encounter.visitType !== "revisit" && consultFeeSwitchedOff(encounter, cfg.chargeRules),
+      feesOff: (encounter.visitType !== "revisit" || rules.opdConsult.revisit !== undefined) && consultFeeSwitchedOff(encounter, rules),
       freeReason: anchor === null ? null : {
         kind: anchor.via === "referral" ? "referral_window" : "review_window",
         doctorName: anchor.doctorName, seenOn: anchor.seenOn, windowEndsOn: anchor.windowEndsOn,

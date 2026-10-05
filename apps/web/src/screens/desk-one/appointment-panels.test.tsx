@@ -89,6 +89,8 @@ function mount(opts: {
   cancels?: { reason: string }[];
   checkInRefuses?: boolean;
   emptyBoard?: boolean;
+  /** Owner 2026-10-05 — the revisit price in force; the seat reads the price list only when set. */
+  revisitPaise?: number;
 } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -97,6 +99,7 @@ function mount(opts: {
         hospital: [
           "opd.visits.open", "opd.visits.read", "opd.appointments.read", "opd.appointments.manage",
           "patients.register", "patients.update", "billing.invoice.issue", "membership.instrument.recognise",
+          ...(opts.revisitPaise === undefined ? [] : ["tariff.read"]),
         ],
         scoped: { department: {}, floor: {} },
       },
@@ -134,6 +137,10 @@ function mount(opts: {
       }],
     },
     "GET /api/opd/continuity": { anchor: opts.anchor ?? null },
+    "GET /api/billing/consult-prices": {
+      rows: [{ branch: "revisit", serviceId: "s-rev", code: "OPD-CONSULT-REVISIT", activePaise: opts.revisitPaise ?? null }],
+      activeVersionNo: 2, pending: null,
+    },
     "GET /api/opd/slots": { slots: opts.slots ?? [] },
     /*
       Two different reads land on this path — the DAY's book (doctorId + serviceDate) and THIS
@@ -486,6 +493,21 @@ describe("FD-17: the appointment's type, and the bookings the desk did not warn 
     expect(badge).toHaveTextContent("Revisit — no consultation fee");
     expect(badge).toHaveTextContent("30-day");
     expect(badge).toHaveTextContent("2026-09-29");
+  });
+
+  it("owner 2026-10-05: when the price list charges a revisit, the box says the price, not 'no fee'", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 5000 });
+    await holdPatient();
+
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — consultation ₹50.00"));
+    expect(badge).not.toHaveTextContent("no consultation fee");
+  });
+
+  it("a revisit priced at ₹0 is still called free", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 0 });
+    await holdPatient();
+    expect(await screen.findByTestId("visit-type")).toHaveTextContent("Revisit — no consultation fee");
   });
 
   it("says a renewal is chargeable, and why the window no longer covers it", async () => {

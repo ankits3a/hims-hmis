@@ -1922,7 +1922,8 @@
         "daybook": "Day book",
         "gstr1": "GSTR-1",
         "unbilled": "Unbilled visits",
-        "fees": "Fees"
+        "fees": "Fees",
+        "prices": "Prices"
       },
       "page": {
         "pay": "Vouchers to pay",
@@ -1936,7 +1937,8 @@
         "daybook": "Day book — any date",
         "gstr1": "Summary by GSTIN, SAC and rate",
         "unbilled": "Visits with no bill — any date",
-        "fees": "Fees — switch on or off"
+        "fees": "Fees — switch on or off",
+        "prices": "Prices — OPD consultation"
       },
       "was": {
         "pay": "was: Refunds tab, below two forms",
@@ -1950,7 +1952,8 @@
         "daybook": "was: Day book tab",
         "gstr1": "was: GSTR-1 tab",
         "unbilled": "was: Unbilled visits tab",
-        "fees": "new: owner, 1 Oct"
+        "fees": "new: owner, 1 Oct",
+        "prices": "new: owner, 5 Oct"
       },
       "pill": {
         "toPay_one": "{{count}} voucher to pay · {{amount}}",
@@ -2943,6 +2946,60 @@
       },
       "stays": "Still applies: staff need the desk’s billing and Schedule H permissions; Schedule X and narcotic medicines are refused on paper; allergy and severe-interaction blocks; the H1 register is written at hand-over.",
       "law": "The Pharmacy Act (section 42) asks that a registered pharmacist dispenses prescription medicines, and Schedule H1 sales need the prescriber on the register. With this on, the system no longer enforces the first — the hospital answers for it."
+    }
+  },
+  "consultPrices": {
+    "lead": "The OPD consultation prices in force. A change needs two people: one proposes it here, and the owner approves it — the new prices are charged from that moment.",
+    "colNow": "In force",
+    "colNew": "New price",
+    "colProposed": "Proposed",
+    "inForce": "Prices in force",
+    "version": "price list v{{no}}",
+    "new": {
+      "label": "New consultation",
+      "note": "A patient's first visit to the department."
+    },
+    "renewal": {
+      "label": "Renewal",
+      "note": "A patient whose follow-up window has ended."
+    },
+    "revisit": {
+      "label": "Revisit",
+      "note": "A patient back inside the doctor's follow-up window. ₹0 keeps revisits free."
+    },
+    "free": "Free",
+    "unpriced": "Not priced",
+    "notSetUp": "Not set up",
+    "newPrice": "New price for {{what}}, in rupees",
+    "badAmount": "Type a price in rupees, for example 100 or 150.50.",
+    "noteLabel": "Reason (optional)",
+    "notePlaceholder": "for example: owner's new OPD fees",
+    "send": "Send for approval",
+    "sent": "Sent for approval. The new prices are not charged until the owner approves them.",
+    "approved": "Approved. The new prices are charged from now.",
+    "rejected": "Rejected. The prices in force have not changed.",
+    "twoPeople": "The person who proposes a price cannot approve it. The Fees page still decides whether a consultation is charged at all.",
+    "noAccess": "You do not have access to the price list. The owner or a tariff editor can open it.",
+    "pending": {
+      "title": "Waiting for approval",
+      "grantedTitle": "Approved — not yet in use",
+      "by": "Proposed by {{name}} on {{when}}",
+      "noteLabel": "Your note (required)",
+      "notePlaceholder": "for example: approved, from Monday's meeting",
+      "approve": "Approve and charge from now",
+      "putInUse": "Charge from now",
+      "reject": "Reject",
+      "yours": "You proposed this. The owner must approve it before it is charged.",
+      "ownerDecides": "The owner approves or rejects this here, in Billing office → Prices."
+    },
+    "refusal": {
+      "consult_price_pending": "A price change is already waiting for approval. Approve or reject it first.",
+      "consult_price_unchanged": "These are already the prices in force.",
+      "revisit_fee_unwired": "The revisit price is not set up yet. Ask IT to run the billing setup.",
+      "consult_price_not_pending": "This change is no longer waiting — the page has been refreshed.",
+      "sod_violation": "You proposed this change, so someone else must approve it.",
+      "role_denied": "Only the owner can approve a price change.",
+      "effective_from_not_monotone": "A newer price list is already in use. Refresh the page."
     }
   },
   "feeSwitches": {
@@ -6973,6 +7030,8 @@
       }
     },
     "visitType": {
+      "revisitCharged": "Revisit — consultation {{price}}",
+      "referralWhyCharged": "Within 7 days of a doctor's referral into this department, so it counts as a revisit; the window runs to {{until}}.",
       "revisit": "Revisit — no consultation fee",
       "referralWhy": "Within 7 days of a doctor's referral into this department, so no fee; free until {{until}}.",
       "revisitWhy": "Within the {{days}}-day follow-up the doctor set; the window runs to {{until}}.",

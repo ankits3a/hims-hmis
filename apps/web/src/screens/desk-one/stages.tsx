@@ -16,7 +16,8 @@ import {
   ageOf, bookableToday, etaClock, initialsOf, rs, seatHasStage, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
 } from "./model";
 import type { DeptQueue } from "./model";
-import { dayMonthIst, monthYearIst } from "../../lib/format";
+import { dayMonthIst, fmtPaise, monthYearIst } from "../../lib/format";
+import { fetchConsultPrices } from "../../lib/billing-api";
 import { SubmitButton } from "../../components/submit-button";
 import { Field, Fold, Picker, TogglePills, GRID3, GRID4 } from "../../components/desk-fields";
 import { AbdmVerifyPanel } from "../../components/abdm-verify";
@@ -1032,6 +1033,12 @@ function StageAppointment(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
   const { t } = useTranslation();
+  // Owner 2026-10-05: a revisit may carry a fee. The visit-type box must not promise "no fee" when the
+  // price list charges one; a seat that cannot read the price list keeps the old wording.
+  const mayReadPrices = useAuth().can("tariff.read");
+  const prices = useQuery({ queryKey: ["billing", "consult-prices"], queryFn: fetchConsultPrices, enabled: mayReadPrices, staleTime: 60_000, retry: false });
+  const revisitPaise = prices.data?.rows.find((r) => r.branch === "revisit")?.activePaise ?? null;
+  const revisitCharged = revisitPaise !== null && revisitPaise > 0;
 
   /*
     THE RANKING IS THE SERVER'S, BROKEN ONLY BY THE SHORTEST OPEN LINE.
@@ -1270,12 +1277,14 @@ function StageAppointment(): React.ReactElement {
               >
                 <span style={{ fontSize: 12.5, fontWeight: 700, color: proposal.anchor.wouldBe === "revisit" ? "var(--green)" : "var(--ink)" }}>
                   {proposal.anchor.wouldBe === "revisit"
-                    ? t("registrationCounter.visitType.revisit")
+                    ? revisitCharged
+                      ? t("registrationCounter.visitType.revisitCharged", { price: fmtPaise(revisitPaise) })
+                      : t("registrationCounter.visitType.revisit")
                     : t("registrationCounter.visitType.renewal")}
                 </span>
                 <span style={{ fontSize: 11.5, color: "var(--dim)", marginLeft: 7, lineHeight: "16px" }}>
                   {proposal.anchor.via === "referral"
-                    ? t("registrationCounter.visitType.referralWhy", { until: proposal.anchor.windowEndsOn })
+                    ? t(revisitCharged ? "registrationCounter.visitType.referralWhyCharged" : "registrationCounter.visitType.referralWhy", { until: proposal.anchor.windowEndsOn })
                     : proposal.anchor.wouldBe === "revisit"
                     ? t("registrationCounter.visitType.revisitWhy", {
                       days: proposal.anchor.followUpDays, until: proposal.anchor.windowEndsOn,

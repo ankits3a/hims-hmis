@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { billingConfig } from "../../kernel/db/schema";
-import { listServices } from "../tariff";
+import { activePricePaise, listServices } from "../tariff";
 import { BillingError } from "./errors";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -46,9 +46,26 @@ const feeFlipSchema = z.object({ at: z.string().datetime(), off: z.boolean(), by
 export type FeeFlip = z.infer<typeof feeFlipSchema>;
 const feeSwitchesSchema = z.object({ opdConsult: z.array(feeFlipSchema), lab: z.array(feeFlipSchema) }).partial();
 const chargeRulesSchema = z.object({
-  opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1) }),
+  // `revisit` (owner, 2026-10-05): optional. Absent, a revisit is free exactly as before; present,
+  // it is charged only while the active tariff prices it above ₹0 (`chargeRulesAt`).
+  opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1), revisit: z.string().min(1).optional() }),
   feeSwitches: feeSwitchesSchema.optional(),
 });
+
+/**
+ * THE REVISIT FEE (owner, 2026-10-05) — the charge rules as they apply at `at`. A revisit service is
+ * wired by `seed:billing` long before anybody prices it, so a wired service whose active price is
+ * missing or ₹0 is dropped here and the revisit stays on the free road, byte-for-byte as before.
+ * Rules with no revisit service are returned as they are, with no read. Every reader of the fee
+ * branch (`feeServiceFor`'s callers) passes its rules through this first.
+ */
+export async function chargeRulesAt(exec: Db | Tx, rules: ChargeRules, at: Date): Promise<ChargeRules> {
+  const revisit = rules.opdConsult.revisit;
+  if (revisit === undefined) return rules;
+  const paise = await activePricePaise(exec, revisit, at);
+  if (paise !== null && paise > 0) return rules;
+  return { ...rules, opdConsult: { new: rules.opdConsult.new, renewal: rules.opdConsult.renewal } };
+}
 
 /** The latest flip, or null when the fee has never been switched (it is charged). */
 export function lastFeeFlip(rules: ChargeRules, kind: FeeKind): FeeFlip | null {
@@ -147,8 +164,13 @@ export async function updateBillingConfig(tx: Tx, patch: BillingConfigPatch, now
     // The fee switches have ONE writer, `setFeeSwitch`, which audits. A config patch that names the
     // fee branch keeps whatever flips are stored: it can neither erase the ledger nor forge a flip.
     const stored = await tx.select({ chargeRules: billingConfig.chargeRules }).from(billingConfig).where(eq(billingConfig.id, "main")).for("update");
-    const kept = (stored[0]?.chargeRules as ChargeRules | undefined)?.feeSwitches;
-    checked.chargeRules = { opdConsult: checked.chargeRules.opdConsult, ...(kept === undefined ? {} : { feeSwitches: kept }) };
+    const storedRules = stored[0]?.chargeRules as ChargeRules | undefined;
+    const kept = storedRules?.feeSwitches;
+    // A patch written before the revisit fee existed names only new + renewal; it keeps the stored
+    // revisit service rather than silently un-wiring it.
+    const revisit = checked.chargeRules.opdConsult.revisit ?? storedRules?.opdConsult.revisit;
+    const opdConsult = { ...checked.chargeRules.opdConsult, ...(revisit === undefined ? {} : { revisit }) };
+    checked.chargeRules = { opdConsult, ...(kept === undefined ? {} : { feeSwitches: kept }) };
   }
   const rows = await tx
     .update(billingConfig)
@@ -189,6 +211,7 @@ export async function validateBillingConfig(db: Db): Promise<{ ok: boolean; erro
   const branches: [string, string][] = [
     ["new", cfg.chargeRules.opdConsult.new],
     ["renewal", cfg.chargeRules.opdConsult.renewal],
+    ...(cfg.chargeRules.opdConsult.revisit === undefined ? [] : [["revisit", cfg.chargeRules.opdConsult.revisit] as [string, string]]),
   ];
   for (const [branch, serviceId] of branches) {
     const svc = byId.get(serviceId);

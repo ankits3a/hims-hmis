@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FeeSwitches } from "./billing-office/fee-switches";
+import { ConsultPrices } from "./billing-office/consult-prices";
 import { useAuth } from "../lib/auth";
 import { dayWords, fetchBillingNeeds } from "../lib/billing-office-api";
 import { istClock, istDateLabel } from "./desk-one/model";
@@ -1396,6 +1397,8 @@ export function BillingOffice(): React.ReactElement {
             <h1 className="mb-3 text-lg font-semibold">{page === null ? sideName(shown) : pageName(page)}</h1>
             {page !== null && (page.key === "fees"
               ? <FeeSwitches />
+              : page.key === "prices"
+              ? <ConsultPrices />
               : <OfficePages key={page.key} page={page.key} onHand={(id) => go("today", undefined, id)} onGo={(v, pg) => go(v, pg)} />)}
           </div>
         </div>

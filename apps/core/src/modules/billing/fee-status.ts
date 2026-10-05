@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { invoiceLines, invoices, opdEncounters } from "../../kernel/db/schema";
 import { feeServiceFor } from "./charge-rules";
-import { loadBillingConfig } from "./config";
+import { chargeRulesAt, loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import { allocatedByInvoice, creditedByInvoice, enteredInErrorDocIds } from "./receipts";
 import { settlementState } from "./settlement";
@@ -36,7 +36,7 @@ export async function encounterFeeStatuses(
 
   let rules;
   try {
-    rules = (await loadBillingConfig(exec)).chargeRules;
+    rules = await chargeRulesAt(exec, (await loadBillingConfig(exec)).chargeRules, new Date());
   } catch (e) {
     if (e instanceof BillingError) return out; // unconfigured — status unknown, not amber
     throw e;
