@@ -3541,6 +3541,7 @@
       "showAll": "Show all {{count}}",
       "showFewer": "Show fewer",
       "blind": {
+        "weekNote": "today added after your count",
         "title": "Shown after you count your drawer.",
         "body": "Count first, then your totals appear here — the blind count rule.",
         "receipts_one": "{{count}} receipt today",

@@ -313,6 +313,38 @@ describe("07c T2/T3/T5 — my day", () => {
     expect(brief.getByText("Visits opened")).toBeInTheDocument();
   });
 
+  /** Owner 2026-10-05 — before the count the week's "Collected" leaves today out; the line says so. */
+  it("blind count: the week's Collected line says today is added after the count — and only while blind", async () => {
+    const WEEK = {
+      status: 200,
+      body: {
+        period: "week", from: "2026-08-23", to: "2026-08-29", daysWithActivity: 5, totals: {},
+        clauses: [{ key: "brief.collected.plain", values: { total: "₹38,250.00" } }],
+      },
+    };
+    const CASHIER = { status: 200, body: { date: "2026-08-29", cards: [
+      { key: "billing.myCollections", band: "today", titleKey: "desk.billing.myCollections", stats: [{ key: "desk.billing.receipts", value: "14" }] },
+    ] } };
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION] }, { "GET /api/me/brief": WEEK, "GET /api/me/desk": CASHIER });
+    const brief = within(await onScreen().findByTestId("myd-brief"));
+    expect(await brief.findByText("₹38,250.00")).toBeInTheDocument();
+    expect(brief.getByTestId("myd-collected-uncounted")).toHaveTextContent("today added after your count");
+  });
+
+  it("counted drawer: the week's Collected line carries no 'after your count' note", async () => {
+    const WEEK = {
+      status: 200,
+      body: {
+        period: "week", from: "2026-08-23", to: "2026-08-29", daysWithActivity: 5, totals: {},
+        clauses: [{ key: "brief.collected.plain", values: { total: "₹45,300.00" } }],
+      },
+    };
+    mount({ date: "2026-08-29", provisional: true, sections: [SECTION, COLLECTIONS] }, { "GET /api/me/brief": WEEK });
+    const brief = within(await onScreen().findByTestId("myd-brief"));
+    expect(await brief.findByText("₹45,300.00")).toBeInTheDocument();
+    expect(brief.queryByTestId("myd-collected-uncounted")).not.toBeInTheDocument();
+  });
+
   /** DD8 — a thin history produces a SHORT brief, and the screen says why rather than spinning. */
   it("T8/A4: a brief with no honest clause to make says so, in a sentence", async () => {
     mount({ date: "2026-08-29", provisional: true, sections: [SECTION] });
