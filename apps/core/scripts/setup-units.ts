@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { createDb, withTx } from "../src/kernel/db/client";
 import { requireEnv } from "../src/kernel/config";
@@ -11,6 +9,7 @@ import {
   membershipsOf, publishCycle, teamByCode,
 } from "../src/modules/roster";
 import { publisher } from "./seed-roster-demo";
+import { CRKMCH_UNITS_2026_10 } from "./data/crkmch-units-2026-10";
 import { updateDoctor } from "../src/modules/opd/masters";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -22,7 +21,7 @@ import type { RosterActivity } from "../src/kernel/db/schema/roster";
  *
  * *"We only have 1 unit per department right now which is active … some departments do not even have
  * any single doctor so we don't have units there."* `seed:roster` wrote the 27-unit establishment
- * inactive. This reads the OPD doctor list (`scripts/data/crkmch-units-2026-10.json` — every reading
+ * inactive. This reads the OPD doctor list (`scripts/data/crkmch-units-2026-10.ts` — every reading
  * of the handwritten sheet is noted there) and, for each department that has a unit:
  *
  *   1. confirms Unit I (`confirmTeam`) — Units II–V stay unconfirmed, because they do not exist yet;
@@ -51,21 +50,21 @@ import type { RosterActivity } from "../src/kernel/db/schema/roster";
  * doctors, for the OPD line to name them on the days they sit — with these names.
  */
 
-export const DATA_FILE = join(__dirname, "data", "crkmch-units-2026-10.json");
-
 export type Place = "unit_head" | "unit_sr" | "guest_faculty" | "casualty_mo" | "no_unit";
 export interface ListedDoctor {
   sl: number; name: string; sheetName: string; aliases: string[]; department: string; sheetDepartment: string;
   days: string[]; hours: string; designation: string; place: Place; notes: string;
 }
 export interface UnitsData {
-  opdWindow: { start: string; end: string };
+  title: string; source: string; asOf: string; ownerSaid: string; notes: string[];
+  opdWindow: { start: string; end: string; notes: string };
   doctors: ListedDoctor[];
   omitted: { sl: number; name: string; department: string; reason: string }[];
 }
 
-export function loadUnitsData(path: string = DATA_FILE): UnitsData {
-  return JSON.parse(readFileSync(path, "utf8")) as UnitsData;
+/** The list compiles into the image as a module; a .json beside the script would not (see the data file). */
+export function loadUnitsData(): UnitsData {
+  return CRKMCH_UNITS_2026_10;
 }
 
 const WEEKDAY: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
