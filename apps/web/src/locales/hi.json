@@ -3478,7 +3478,8 @@
   },
   "report": {
     "opd": {
-      "myVisits": "मेरे द्वारा खोली गई विज़िट"
+      "myVisits": "मेरे द्वारा खोली गई विज़िट",
+      "myConsults": "मेरे द्वारा पूरे परामर्श"
     },
     "col": {
       "time": "समय",
@@ -3489,7 +3490,8 @@
       "status": "स्थिति",
       "mode": "माध्यम",
       "amount": "राशि",
-      "total": "कुल"
+      "total": "कुल",
+      "outcome": "परिणाम"
     },
     "billing": {
       "myCollections": "मेरी वसूली"
@@ -3498,9 +3500,110 @@
       "cash": "नकद",
       "upi": "यूपीआई",
       "card": "कार्ड"
+    },
+    "value": {
+        "new": "नया",
+        "revisit": "पुनः विज़िट",
+        "renewal": "नवीनीकरण",
+        "registered": "पंजीकृत",
+        "waiting": "प्रतीक्षा में",
+        "in_consultation": "डॉक्टर के पास",
+        "awaiting_results": "रिपोर्ट की प्रतीक्षा",
+        "completed": "पूरा",
+        "abandoned": "चले गए",
+        "prescribed": "पर्चा दिया",
+        "referred": "रेफ़र"
     }
   },
   "myDay": {
+      "prevDay": "पिछला दिन",
+      "nextDay": "अगला दिन",
+      "today": "आज",
+      "dayOpen": "दिन खुला है · आँकड़े बदल सकते हैं",
+      "dayOpenShort": "दिन खुला",
+      "dayClosed": "दिन बंद",
+      "role": {
+        "doctor": "डॉक्टर",
+        "deskCash": "फ्रंट डेस्क और कैश"
+      },
+      "filterLabel": "विज़िट दिखाएँ",
+      "filter": {
+        "all": "सभी",
+        "waiting": "प्रतीक्षा में",
+        "doctor": "डॉक्टर के पास",
+        "done": "पूरा",
+        "left": "चले गए"
+      },
+      "col": {
+        "visit": "विज़िट"
+      },
+      "shownOf": "{{total}} में से {{shown}} · नए पहले",
+      "showAll": "सभी {{count}} दिखाएँ",
+      "showFewer": "कम दिखाएँ",
+      "blind": {
+        "title": "दराज़ गिनने के बाद दिखेगा।",
+        "body": "पहले गिनती करें, फिर आपका योग यहाँ दिखेगा — ब्लाइंड काउंट नियम।",
+        "receipts_one": "आज {{count}} रसीद",
+        "receipts_other": "आज {{count}} रसीदें"
+      },
+      "metric": {
+        "registered": "पंजीकृत मरीज़",
+        "visits": "खोली गई विज़िट",
+        "consults": "पूरे परामर्श",
+        "vitals": "दर्ज वाइटल्स",
+        "appointments": "बुक अपॉइंटमेंट",
+        "receipts": "रसीदें",
+        "collected": "वसूली"
+      },
+      "noCompare": "तुलना के लिए अभी पर्याप्त इतिहास नहीं",
+      "above": "{{pct}}% अधिक",
+      "below": "{{pct}}% कम",
+      "same": "सामान्य जितना",
+      "usual": "आपका सामान्य {{median}}",
+      "halves": "पहला आधा → दूसरा आधा",
+      "busierLater": "दूसरे आधे में अधिक काम",
+      "busierEarlier": "पहले आधे में अधिक काम",
+      "evenHalves": "पूरी अवधि में बराबर",
+      "periodTitle": {
+        "day": "यह दिन",
+        "week": "यह सप्ताह",
+        "month": "यह महीना",
+        "quarter": "पिछले 3 महीने",
+        "half": "पिछले 6 महीने",
+        "year": "पिछला साल"
+      },
+      "now": {
+        "title": "अभी आपका काम",
+        "stillWaiting": "आपके खोले मरीज़ अभी प्रतीक्षा में",
+        "withDoctor": "डॉक्टर के पास",
+        "rebook": "दोबारा बुक करने हैं",
+        "queueWaiting": "आपकी कतार में प्रतीक्षा",
+        "nowServing": "अभी बुलाया गया",
+        "nothing": "अभी आपके लिए कुछ प्रतीक्षा में नहीं है।",
+        "openDesk": "डेस्क वन खोलें",
+        "openConsult": "परामर्श खोलें"
+      },
+      "tile": {
+        "visitsOpened": "खोली गई विज़िट",
+        "span": "पहली {{first}} · आख़िरी {{last}}",
+        "seen": "डॉक्टर ने देखे",
+        "leftUnseen_one": "{{count}} बिना दिखाए चले गए",
+        "leftUnseen_other": "{{count}} बिना दिखाए चले गए",
+        "ofOpened": "{{count}} खोली गई में से",
+        "stillHere": "अभी यहाँ",
+        "stillHereSplit": "{{waiting}} प्रतीक्षा में · {{doctor}} डॉक्टर के पास",
+        "collected": "वसूली",
+        "afterCount": "गिनती के बाद",
+        "modes": "नकद {{cash}} · यूपीआई {{upi}}",
+        "seenToday": "आज देखे",
+        "since": "{{time}} से",
+        "queueWaiting": "अभी प्रतीक्षा",
+        "queueNow": "आपकी कतार में",
+        "prescribed": "पर्चा दिया",
+        "referred": "रेफ़र किए",
+        "ofSeen": "{{count}} देखे में से"
+      },
+      "paperNote": "प्रिंट में हस्ताक्षर वाली शिफ्ट रिपोर्ट आती है: सभी तालिकाएँ, योग, “हस्ताक्षर” और “प्राप्तकर्ता”।",
     "title": "मेरा दिन",
     "date": "दिनांक",
     "provisional": "अस्थायी",

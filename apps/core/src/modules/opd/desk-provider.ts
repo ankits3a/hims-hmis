@@ -182,6 +182,63 @@ async function myVisitsSection(ctx: DeskProviderCtx): Promise<ReportSection> {
 }
 
 /**
+ * MY DAY REDESIGN (owner 2026-10-05) — CONSULTATIONS I COMPLETED, the doctor's section of the day.
+ *
+ * "Visits I opened" is the CLERK's grain, so a doctor's report used to be empty. This section is cut
+ * on exactly the predicate `opd.consultsCompleted` counts below — the encounter's ASSIGNED doctor,
+ * the service date, status completed — so the list and the brief's number cannot disagree. A person
+ * who is not a doctor gets no section at all rather than an empty one.
+ *
+ * Outcome is a code the screen words: `referred` when the consult referred the patient on,
+ * `prescribed` when a prescription was issued, else `completed`. Names obey the same alias rule as
+ * the visits section: `ctx.reader` decides visibility.
+ */
+async function myConsultsSection(ctx: DeskProviderCtx, doctorId: string): Promise<ReportSection> {
+  const rows = await ctx.db
+    .select({
+      id: opdEncounters.id,
+      visitNo: opdEncounters.visitNo,
+      patientId: opdEncounters.patientId,
+      visitType: opdEncounters.visitType,
+      referralTo: opdEncounters.referralTo,
+      completedAt: opdEncounters.consultCompletedAt,
+      openedAt: opdEncounters.openedAt,
+    })
+    .from(opdEncounters)
+    .where(and(
+      eq(opdEncounters.doctorId, doctorId),
+      eq(opdEncounters.serviceDate, ctx.date),
+      eq(opdEncounters.status, "completed"),
+    ));
+  rows.sort((a, b) => (a.completedAt ?? a.openedAt).getTime() - (b.completedAt ?? b.openedAt).getTime());
+
+  const prescribed = rows.length === 0 ? new Set<string>() : new Set(
+    (await ctx.db.selectDistinct({ id: opdPrescriptions.encounterId }).from(opdPrescriptions)
+      .where(inArray(opdPrescriptions.encounterId, rows.map((r) => r.id)))).map((r) => r.id),
+  );
+  const summaries = await getPatientSummaries(ctx.db, ctx.reader, rows.map((r) => r.patientId));
+  const byId = new Map(summaries.map((s) => [s.requestedId, s]));
+
+  return {
+    key: "opd.myConsults",
+    titleKey: "report.opd.myConsults",
+    columnKeys: ["report.col.time", "report.col.visitNo", "report.col.uhid", "report.col.patient", "report.col.type", "report.col.outcome"],
+    rows: rows.map((r) => {
+      const p = byId.get(r.patientId);
+      return [
+        istHourMinute(r.completedAt ?? r.openedAt),
+        r.visitNo,
+        p?.uhid ?? "—",
+        (p?.restricted === true ? p.alias : p?.name) ?? "—",
+        r.visitType,
+        r.referralTo !== null && r.referralTo !== "" ? "referred" : prescribed.has(r.id) ? "prescribed" : "completed",
+      ];
+    }),
+    totals: ["", "", "", "", "", String(rows.length)],
+  };
+}
+
+/**
  * PLAN 07c T8 — OPD's counters for one person on one day.
  *
  * ═══ EACH ONE IS CUT ON THE GRAIN THE ACT ACTUALLY HAPPENED ON, AND THEY DIFFER ═══
@@ -287,7 +344,12 @@ export const opdDeskProvider: DeskProvider = {
     cards.push(await myVisitsCard(ctx));
     return cards;
   },
-  report: async (ctx) => [await myVisitsSection(ctx)],
+  report: async (ctx) => {
+    const doctor = await doctorForUser(ctx.db, ctx.actor.id);
+    return doctor === null
+      ? [await myVisitsSection(ctx)]
+      : [await myVisitsSection(ctx), await myConsultsSection(ctx, doctor.id)];
+  },
   facts: opdFacts,
   /* T3 — the same events at a fourth grain: a range, sliced by the dimensions the reader chose. */
   range: opdRange,

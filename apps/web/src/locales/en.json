@@ -3478,7 +3478,8 @@
   },
   "report": {
     "opd": {
-      "myVisits": "Visits I opened"
+      "myVisits": "Visits I opened",
+      "myConsults": "Consultations I completed"
     },
     "col": {
       "time": "Time",
@@ -3489,7 +3490,8 @@
       "status": "Status",
       "mode": "Mode",
       "amount": "Amount",
-      "total": "Total"
+      "total": "Total",
+      "outcome": "Outcome"
     },
     "billing": {
       "myCollections": "My collections"
@@ -3498,9 +3500,110 @@
       "cash": "Cash",
       "upi": "UPI",
       "card": "Card"
+    },
+    "value": {
+        "new": "New",
+        "revisit": "Revisit",
+        "renewal": "Renewal",
+        "registered": "Registered",
+        "waiting": "Waiting",
+        "in_consultation": "With doctor",
+        "awaiting_results": "Awaiting results",
+        "completed": "Done",
+        "abandoned": "Left",
+        "prescribed": "Rx given",
+        "referred": "Referred"
     }
   },
   "myDay": {
+      "prevDay": "Previous day",
+      "nextDay": "Next day",
+      "today": "today",
+      "dayOpen": "Day open · figures may change",
+      "dayOpenShort": "Day open",
+      "dayClosed": "Day closed",
+      "role": {
+        "doctor": "Doctor",
+        "deskCash": "Front desk & cash"
+      },
+      "filterLabel": "Show visits",
+      "filter": {
+        "all": "All",
+        "waiting": "Waiting",
+        "doctor": "With doctor",
+        "done": "Done",
+        "left": "Left"
+      },
+      "col": {
+        "visit": "Visit"
+      },
+      "shownOf": "{{shown}} of {{total}} shown · newest first",
+      "showAll": "Show all {{count}}",
+      "showFewer": "Show fewer",
+      "blind": {
+        "title": "Shown after you count your drawer.",
+        "body": "Count first, then your totals appear here — the blind count rule.",
+        "receipts_one": "{{count}} receipt today",
+        "receipts_other": "{{count}} receipts today"
+      },
+      "metric": {
+        "registered": "Patients registered",
+        "visits": "Visits opened",
+        "consults": "Consultations completed",
+        "vitals": "Vitals recorded",
+        "appointments": "Appointments booked",
+        "receipts": "Receipts taken",
+        "collected": "Collected"
+      },
+      "noCompare": "not enough history to compare yet",
+      "above": "{{pct}}% above",
+      "below": "{{pct}}% below",
+      "same": "same as usual",
+      "usual": "your usual {{median}}",
+      "halves": "First half → second half",
+      "busierLater": "busier in the second half",
+      "busierEarlier": "busier in the first half",
+      "evenHalves": "even across the period",
+      "periodTitle": {
+        "day": "This day",
+        "week": "This week",
+        "month": "This month",
+        "quarter": "Last 3 months",
+        "half": "Last 6 months",
+        "year": "Last year"
+      },
+      "now": {
+        "title": "Needs you now",
+        "stillWaiting": "patients you opened still waiting",
+        "withDoctor": "with the doctor",
+        "rebook": "appointments to re-book",
+        "queueWaiting": "waiting in your queue",
+        "nowServing": "now serving",
+        "nothing": "Nothing is waiting on you right now.",
+        "openDesk": "Open Desk One",
+        "openConsult": "Open consultation"
+      },
+      "tile": {
+        "visitsOpened": "Visits opened",
+        "span": "first at {{first}} · last at {{last}}",
+        "seen": "Seen by doctor",
+        "leftUnseen_one": "{{count}} left without being seen",
+        "leftUnseen_other": "{{count}} left without being seen",
+        "ofOpened": "of {{count}} opened",
+        "stillHere": "Still here",
+        "stillHereSplit": "{{waiting}} waiting · {{doctor}} with doctor",
+        "collected": "Collected",
+        "afterCount": "After your count",
+        "modes": "cash {{cash}} · UPI {{upi}}",
+        "seenToday": "Seen today",
+        "since": "since {{time}}",
+        "queueWaiting": "Waiting now",
+        "queueNow": "in your queue",
+        "prescribed": "Prescribed",
+        "referred": "Referred",
+        "ofSeen": "of {{count}} seen"
+      },
+      "paperNote": "Print gives the signed shift report: every table, the totals, “Signed” and “Received by”.",
     "title": "My day",
     "date": "Date",
     "provisional": "Provisional",

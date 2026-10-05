@@ -140,6 +140,63 @@ describe("opd desk provider (07c)", () => {
   });
 
   /**
+   * MY DAY REDESIGN (owner 2026-10-05) — a doctor's day had no section at all: "Visits I opened" is
+   * the clerk's grain, so a doctor's report was empty. "Consultations I completed" is cut on the
+   * SAME predicate `opd.consultsCompleted` counts (assigned doctor, service date, completed), so the
+   * list and the brief's number cannot disagree.
+   */
+  describe("my consultations (doctor section)", () => {
+    const complete = async (encounterId: string, at: Date, extra: Partial<typeof opdEncounters.$inferInsert> = {}): Promise<void> => {
+      await db.update(opdEncounters).set({ status: "completed", consultCompletedAt: at, ...extra }).where(eq(opdEncounters.id, encounterId));
+    };
+
+    it("lists the doctor's own completed consultations, oldest first, with an outcome", async () => {
+      const a = await mkPatient(db, clerk.actor, { name: "Anita Kumari", phone: "9876540011" });
+      const b = await mkPatient(db, clerk.actor, { name: "Ajay Paswan", phone: "9876540012" });
+      const c = await mkPatient(db, clerk.actor, { name: "Still Waiting", phone: "9876540013" });
+      const v1 = await openOpdVisit(db, { clerk: clerk.actor, patientId: a.id, departmentId: deptId, doctorId: dra.doctorId }, T0);
+      const v2 = await openOpdVisit(db, { clerk: clerk.actor, patientId: b.id, departmentId: deptId, doctorId: dra.doctorId }, T0);
+      await openOpdVisit(db, { clerk: clerk.actor, patientId: c.id, departmentId: deptId, doctorId: dra.doctorId }, T0);
+      await complete(v2.encounterId, new Date("2026-08-17T06:20:00.000Z"), { referralTo: "ENT · Dr X" });
+      await complete(v1.encounterId, new Date("2026-08-17T05:10:00.000Z"));
+
+      const sections = await opdDeskProvider.report!(ctxFor(dra as unknown as Awaited<ReturnType<typeof mkUser>>));
+      const mine = sections.find((s) => s.key === "opd.myConsults");
+      expect(mine).toBeDefined();
+      expect(mine!.titleKey).toBe("report.opd.myConsults");
+      expect(mine!.rows.map((r) => [r[0], r[3], r[5]])).toEqual([
+        ["10:40", "Anita Kumari", "completed"],
+        ["11:50", "Ajay Paswan", "referred"],
+      ]);
+      expect(mine!.totals?.[5]).toBe("2");
+    });
+
+    it("never lists another doctor's consultations", async () => {
+      const drb = await mkDoctor(db, { username: "drb", departmentId: deptId, roomId });
+      const p = await mkPatient(db, clerk.actor, { name: "Other Doctor's", phone: "9876540014" });
+      const v = await openOpdVisit(db, { clerk: clerk.actor, patientId: p.id, departmentId: deptId, doctorId: drb.doctorId }, T0);
+      await complete(v.encounterId, T0);
+      const sections = await opdDeskProvider.report!(ctxFor(dra as unknown as Awaited<ReturnType<typeof mkUser>>));
+      expect(sections.find((s) => s.key === "opd.myConsults")!.rows).toEqual([]);
+    });
+
+    it("a person who is not a doctor gets no consultation section", async () => {
+      const sections = await opdDeskProvider.report!(ctxFor(clerk));
+      expect(sections.map((s) => s.key)).toEqual(["opd.myVisits"]);
+    });
+
+    it("a confidential patient is listed by alias", async () => {
+      const sealed = await mkPatient(db, clerk.actor, { name: "Asha Confidential", phone: "9111111112", isConfidential: true, alias: "Guest Two" });
+      const v = await openOpdVisit(db, { clerk: clerk.actor, patientId: sealed.id, departmentId: deptId, doctorId: dra.doctorId }, T0);
+      await complete(v.encounterId, T0);
+      const sections = await opdDeskProvider.report!(ctxFor(dra as unknown as Awaited<ReturnType<typeof mkUser>>));
+      const flat = sections.find((s) => s.key === "opd.myConsults")!.rows.flat().join("|");
+      expect(flat).toContain("Guest Two");
+      expect(flat).not.toContain("Asha Confidential");
+    });
+  });
+
+  /**
    * ═══ STAFF-REPORTS T1 — new / revisit / renewal, AS COUNTABLE FACTS ═══
    *
    * `opd_encounters.visit_type` has carried `'new' | 'revisit' | 'renewal'` on every visit since
