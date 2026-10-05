@@ -933,6 +933,8 @@ export async function renderPrescriptionSheet(
     .map((x) => x?.trim() ?? "").filter((x) => x !== "").join(", ");
   const ageCell = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`;
   const signatureCaption = "Signature of the treating physician";
+  /** Past this many characters the header's address steps down to 10px (two lines at 10.5px hold about 190). */
+  const ADDRESS_LONG_CHARS = 170;
 
   const css = `
     /* The geometry is the artboard's: a 794 x 1123 px page at 96 dpi is exactly A4, so the layout
@@ -955,14 +957,35 @@ export async function renderPrescriptionSheet(
     .lb { color: #333; font-weight: 400; }
     .vl { color: #000; font-weight: 700; }
     .sheet { width: 210mm; height: 296.8mm; padding: 26px 30px 20px; display: flex; flex-direction: column; overflow: hidden; }
-    .hd { display: flex; gap: 20px; flex-shrink: 0; }
-    .hd .crest { width: 150px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; }
+    .hd { display: flex; gap: 18px; flex-shrink: 0; }
+    .hd .crest { width: 132px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-start; }
     .hd .crest img { width: 78px; height: auto; display: block; }
-    .hd .dept { font-size: 12px; font-weight: 700; color: #55064f; margin-top: 5px; line-height: 14px; }
-    .hd .l { width: 298px; display: flex; flex-direction: column; gap: 1px; }
-    .hd .r { flex-grow: 1; display: flex; flex-direction: column; gap: 1px; }
-    .hd .row { display: flex; align-items: baseline; gap: 5px; min-height: 19px; }
-    .hd .r .row { justify-content: flex-end; }
+    .hd .dept { font-size: 10.5px; font-weight: 700; color: #55064f; margin-top: 4px; line-height: 12px; }
+    /* Owner 2026-10-05: "the fields could not hold many information … the address field looks
+       awkward". The fields were two flex columns, the left one 298px wide, so a real address wrapped
+       into six lines while the right column stood half empty. They are now ONE grid over the full
+       width beside the crest, placed by the c-* classes (the DOM keeps the owner's order):
+         Name        | Encounter ID
+         UHID        | Encounter Type
+         Gender  Age | Visit Date
+         Address — the whole width, at most two lines
+         Unit Number | Dept. Regn          (the unit and its head's number, side by side)
+       Owner, same day, on staging: "every text in the header should be small so that more
+       information can fit in". Values 10.5px semibold (600 stays crisp at that size where 700
+       fills in on a laser), labels 10px, the long address 10px. */
+    .hd .f { flex-grow: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+      column-gap: 18px; row-gap: 1px; align-content: start; font-size: 10.5px; line-height: 13px; }
+    .hd .f > div { min-width: 0; }
+    .hd .row { display: flex; align-items: baseline; gap: 4px; min-height: 14px; }
+    .hd .row .lb { font-size: 10px; flex-shrink: 0; }
+    .hd .row .vl { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+    .hd .c-name { grid-area: 1 / 1; } .hd .c-uhid { grid-area: 2 / 1; } .hd .c-ga { grid-area: 3 / 1; display: flex; gap: 22px; }
+    .hd .c-addr { grid-area: 4 / 1 / 5 / 3; } .hd .c-unit { grid-area: 5 / 1; }
+    .hd .c-enc { grid-area: 1 / 2; } .hd .c-type { grid-area: 2 / 2; } .hd .c-date { grid-area: 3 / 2; } .hd .c-regn { grid-area: 5 / 2; }
+    /* A name wraps to a second line at most; an address too, and a very long one steps down to 10px
+       before it is clipped — the pincode is at its END and is the part a clerk needs. */
+    .hd .c-name .vl, .hd .c-addr .vl { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .hd .c-addr.long .vl { font-size: 10px; }
     .rule { height: 1px; background: #000; }
     .thin { height: 1px; background: #9a9a9a; }
     .body { flex-grow: 1; padding-top: 12px; display: flex; flex-direction: column; min-height: 0; }
@@ -1054,19 +1077,16 @@ export async function renderPrescriptionSheet(
           <img src="${CREST_PNG_DATA_URI}" alt="${HOSPITAL.nameTitleCase}">
           <div class="dept">${esc(s.departmentName)}</div>
         </div>
-        <div class="l">
-          ${idRow("Name:", esc(s.patientName))}
-          ${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}
-          ${idRow("Gender:", esc(genderLetter(s.gender)))}
-          ${idRow("Age:", `<span class="num">${esc(ageCell)}</span>`)}
-          ${addressText === "" ? "" : idRow("Address:", esc(addressText))}
-          ${idRow("Unit Number:", `<span class="num">${esc(prescriber.unitNumber)}</span>`)}
-        </div>
-        <div class="r">
-          ${idRow("Encounter ID:", `<span class="num">${esc(s.visitNo)}</span>`)}
-          ${idRow("Encounter Type:", "OPD")}
-          ${idRow("Visit Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}
-          ${idRow("Dept. Regn:", prescriber.deptRegn === null ? "" : `<span class="num">${esc(prescriber.deptRegn)}</span>`)}
+        <div class="f">
+          <div class="c-name">${idRow("Name:", esc(s.patientName))}</div>
+          <div class="c-uhid">${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}</div>
+          <div class="c-ga">${idRow("Gender:", esc(genderLetter(s.gender)))}${idRow("Age:", `<span class="num">${esc(ageCell)}</span>`)}</div>
+          ${addressText === "" ? "" : `<div class="c-addr${addressText.length > ADDRESS_LONG_CHARS ? " long" : ""}">${idRow("Address:", esc(addressText))}</div>`}
+          <div class="c-unit">${idRow("Unit Number:", `<span class="num">${esc(prescriber.unitNumber)}</span>`)}</div>
+          <div class="c-enc">${idRow("Encounter ID:", `<span class="num">${esc(s.visitNo)}</span>`)}</div>
+          <div class="c-type">${idRow("Encounter Type:", "OPD")}</div>
+          <div class="c-date">${idRow("Visit Date:", `<span class="num">${esc(formatCalendarDay(s.serviceDate) ?? s.serviceDate)}</span>`)}</div>
+          <div class="c-regn">${idRow("Dept. Regn:", prescriber.deptRegn === null ? "" : `<span class="num">${esc(prescriber.deptRegn)}</span>`)}</div>
         </div>
       </div>
       <div class="rule" style="margin-top:10px;flex-shrink:0"></div>
