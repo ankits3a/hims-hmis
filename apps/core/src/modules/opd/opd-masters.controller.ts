@@ -9,6 +9,7 @@ import { SodViolationError } from "../../kernel/auth/sod";
 import { WorkflowError } from "../../kernel/workflow/instances";
 import { withTx } from "../../kernel/db/client";
 import { PatientError } from "../patients";
+import { BillingError, billingHttpStatus } from "../billing";
 import { ResourceError, resourceHttpStatus } from "../../kernel/resources";
 import { COUNTER_SEQUENCES, TOKEN_LANES, loadOpdConfig, updateOpdConfig } from "./config";
 import { OpdError } from "./errors";
@@ -107,6 +108,9 @@ export function toHttp(e: unknown): never {
   if (e instanceof WorkflowError) throw httpError(e.code === "role_denied" ? 403 : 409, e.message, e.code);
   if (e instanceof SodViolationError) throw httpError(403, e.message, "sod_violation");
   if (e instanceof PatientError) throw httpError(e.code === "patient_not_found" ? 404 : 400, e.message, e.code);
+  // Owner 2026-10-05 — a department move carries the visit's money (billing's `visit-move.ts`), so
+  // its refusals reach this controller and are mapped from billing's own table, never as a 500.
+  if (e instanceof BillingError) throw httpError(billingHttpStatus(e.code), e.message, e.code, e.detail);
   throw e;
 }
 

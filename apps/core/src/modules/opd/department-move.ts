@@ -3,11 +3,12 @@ import { withTx } from "../../kernel/db/client";
 import { opdAppointments, opdDepartments, opdEncounters, opdQueueEntries, opdQueueSessions } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { listMergedLoserIds, resolvePatientId } from "../patients";
-import { standingInvoiceFor } from "../billing";
+import { carryMoneyToMovedVisit, maySettleMoveDifference, moveMoneyPlan, newConsultFeePaise } from "../billing";
 import { OpdError } from "./errors";
 import { visitAbandoned, visitMovedDepartment } from "./events";
 import { getEncounter, LIVE_ENTRY_STATUSES, moveEncounter, openVisitInTx, visitTypeIn } from "./encounters";
 import type { Actor } from "@hmis/contracts";
+import type { MoveMoneyPlan, MoveMoneyResult, TenderInput } from "../billing";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { EncounterRow } from "./encounters";
 import type { VisitType } from "./visit-type";
@@ -33,8 +34,14 @@ import type { VisitType } from "./visit-type";
  *
  * WHEN IT REFUSES:
  *  - the consult has begun (only `registered` and `waiting` move) — that is the doctor's referral;
- *  - a bill against the visit still stands — that is a credit note first (`standingInvoiceFor`);
  *  - the target is the department the visit is already in — that is "change the doctor".
+ *
+ * THE MONEY MOVES WITH THE VISIT (owner, 2026-10-05 — "yes go ahead" to four rules; billing's
+ * `visit-move.ts` holds them): a ₹0 bill is corrected and re-raised; a paid fee that costs the same
+ * in the new department moves to the new visit's bill with no refund and no new collection; a
+ * different fee is the billing counter's to settle in the same act; a bill with anything but the
+ * consultation on it, on credit or part paid goes to the billing office first. All of it commits in
+ * this transaction or none of it does.
  *
  * ON `opd.visits.open`, the counter's own permission, as `abandon` and `reclassify` are: the seat
  * that opened the visit corrects it, and the event carries the whole control.
@@ -45,15 +52,26 @@ const MOVABLE: readonly string[] = ["registered", "waiting"];
 
 export type DepartmentMovePreview = {
   encounterId: string;
-  from: { departmentId: string | null; doctorId: string | null; visitType: VisitType };
-  to: { departmentId: string; visitType: VisitType };
-  /** The bill standing against the visit, when there is one — the move is then refused. */
+  /**
+   * `feePaise` — what the consultation costs on each side, from ONE pricer (`newConsultFeePaise`, the
+   * counter's own `previewInvoice`: member and coupon benefits included) — never the list price the
+   * screen could read elsewhere. The FROM side is what the visit's bill charged when it carries one,
+   * so the fee line and the money line can never state two different amounts.
+   */
+  from: { departmentId: string | null; doctorId: string | null; visitType: VisitType; feePaise: number };
+  to: { departmentId: string; visitType: VisitType; feePaise: number };
+  /** The bill standing against the visit, when there is one. Kept for older screens; `money` says what happens to it. */
   standingInvoiceNo: string | null;
+  /** What the move does with the visit's money — one of billing's four rules, or the billing office. */
+  money: MoveMoneyPlan;
+  /** May THIS person settle a fee difference (rule 3)? Only asked when there is one. */
+  maySettleDifference: boolean;
 };
 
 export type DepartmentMoveResult = {
   from: { encounter: EncounterRow; tokenNo: number | null };
   to: { encounter: EncounterRow; tokenNo: number | null; sessionId: string | null; roomId: string | null; visitType: VisitType };
+  money: MoveMoneyResult;
 };
 
 async function chainOf(db: Db | Tx, patientId: string): Promise<string[]> {
@@ -75,18 +93,25 @@ async function movableOrRefuse(db: Db | Tx, encounterId: string, departmentId: s
 
 /** What the move would do, without doing it: the visit type (and so the fee) in the new department. */
 export async function previewDepartmentMove(
-  db: Db, encounterId: string, departmentId: string, now: Date = new Date(),
+  db: Db, encounterId: string, departmentId: string, now: Date = new Date(), actor?: Actor,
 ): Promise<DepartmentMovePreview> {
   const current = await movableOrRefuse(db, encounterId, departmentId);
   const dept = (await db.select().from(opdDepartments).where(eq(opdDepartments.id, departmentId)))[0];
   if (!dept) throw new OpdError("unknown_department");
   const visitType = await visitTypeIn(db, await chainOf(db, current.patientId), departmentId, now);
-  const standing = await standingInvoiceFor(db, encounterId);
+  const toFee = await newConsultFeePaise(db, current, visitType, now);
+  const money = await moveMoneyPlan(db, encounterId, toFee);
+  // The bill's own amount when the visit carries a consultation-only bill; otherwise the same pricer.
+  const fromFee = money.kind === "zero_bill" || money.kind === "transfer" || money.kind === "difference"
+    ? money.paidPaise
+    : await newConsultFeePaise(db, current, current.visitType, now);
   return {
     encounterId,
-    from: { departmentId: current.departmentId, doctorId: current.doctorId, visitType: current.visitType as VisitType },
-    to: { departmentId, visitType },
-    standingInvoiceNo: standing?.invoiceNo ?? null,
+    from: { departmentId: current.departmentId, doctorId: current.doctorId, visitType: current.visitType as VisitType, feePaise: fromFee },
+    to: { departmentId, visitType, feePaise: toFee },
+    standingInvoiceNo: money.kind === "none" ? null : money.invoiceNo,
+    money,
+    maySettleDifference: money.kind === "difference" && actor !== undefined && (await maySettleMoveDifference(db, actor)),
   };
 }
 
@@ -94,7 +119,7 @@ export async function moveVisitDepartment(
   db: Db,
   actor: Actor,
   encounterId: string,
-  input: { departmentId: string; doctorId: string; reason: string },
+  input: { departmentId: string; doctorId: string; reason: string; tenders?: TenderInput[] },
   now: Date = new Date(),
 ): Promise<DepartmentMoveResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
@@ -104,16 +129,6 @@ export async function moveVisitDepartment(
   const chainIds = await chainOf(db, current.patientId);
 
   return withTx(db, async (tx) => {
-    // Inside the transaction, so a bill issued a moment ago is seen (the billing desk is a second seat).
-    const standing = await standingInvoiceFor(tx, encounterId);
-    if (standing !== null) {
-      throw new OpdError(
-        "visit_billed_state_conflict",
-        `bill ${standing.invoiceNo} stands against this visit — raise a credit note on it first, then move the patient`,
-        { invoiceId: standing.id, invoiceNo: standing.invoiceNo },
-      );
-    }
-
     // ── 1. the wrong visit ends: abandoned, its live token cancelled on the board ──
     const live = (await tx
       .select()
@@ -177,6 +192,13 @@ export async function moveVisitDepartment(
       }
     }
 
+    // ── 4. the money moves with the visit (billing's four rules), in this same transaction ──
+    // Read inside the transaction, so a bill issued a moment ago at another seat is seen.
+    const money = await carryMoneyToMovedVisit(tx, actor, {
+      from: current, to: opened.encounter, reason,
+      ...(input.tenders === undefined ? {} : { tenders: input.tenders }),
+    }, now);
+
     await appendEvent(tx, visitMovedDepartment.make({
       actor, patientId: current.patientId, encounterId: opened.encounter.id, correlationId: opened.encounter.workflowInstanceId,
       payload: {
@@ -187,12 +209,19 @@ export async function moveVisitDepartment(
         fromVisitType: current.visitType as VisitType, toVisitType: opened.visitType,
         fromTokenNo: live?.tokenNo ?? null, toTokenNo: opened.tokenNo,
         appointmentId, reason,
+        money: {
+          kind: money.kind === "billing_office" ? "none" : money.kind,
+          fromInvoiceNo: money.invoiceNo, creditNoteNo: money.creditNoteNo, toInvoiceNo: money.newInvoiceNo,
+          paidPaise: money.paidPaise, newFeePaise: money.newFeePaise,
+          advancePaise: money.advancePaise, collectedPaise: money.collectedPaise,
+        },
       },
     }));
 
     return {
       from: { encounter: abandoned, tokenNo: live?.tokenNo ?? null },
       to: { encounter: opened.encounter, tokenNo: opened.tokenNo, sessionId: opened.sessionId, roomId: opened.roomId, visitType: opened.visitType },
+      money,
     };
   });
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import {
   fetchPrintDocument, listPrintJobs, openDocumentForPrinting, printSummary, reprintJob,
   PRINT_DOCUMENT_LABEL,
@@ -57,6 +58,7 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
     only thing a desk adds is a line in its log.
   */
   const d = useDeskOptional();
+  const { t } = useTranslation();
   const [note, setNote] = useState<string | null>(null);
 
   const jobs = useQuery({
@@ -99,7 +101,7 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
       <div style={{ padding: "16px 18px" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
           <span style={{ fontSize: 15, fontWeight: 600 }}>{sheet.data.invoice.invoiceNo}</span>
-          <button className="sec" style={{ height: 24 }} onClick={() => setShowing(null)}>back to the papers</button>
+          <button className="sec" style={{ height: 24 }} onClick={() => setShowing(null)}>{t("visitCard.papers.back")}</button>
         </div>
         <InvoicePrint data={sheet.data} />
       </div>
@@ -109,9 +111,9 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
   return (
     <div style={{ padding: "16px 18px" }} data-testid="papers-sheet">
       <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontSize: 15, fontWeight: 600 }}>Their papers</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>{t("visitCard.papers.title")}</span>
         <span style={{ fontSize: 11.5, color: "var(--faint)" }}>
-          {when === null ? "this visit" : dayMonthIst(when)} · everything this visit put on paper, and a way to hand it over again
+          {when === null ? t("visitCard.papers.thisVisit") : dayMonthIst(when)} · {t("visitCard.papers.sub")}
         </span>
       </div>
 
@@ -120,19 +122,19 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
       )}
 
       {/* ═══ THE SLIPS ═══ */}
-      <div className="tag" style={{ marginTop: 16 }}>printed at the counter</div>
+      <div className="tag" style={{ marginTop: 16 }}>{t("visitCard.papers.printed")}</div>
       {jobs.isPending ? (
-        <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 6 }}>reading the print log…</div>
+        <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 6 }}>{t("visitCard.papers.readingPrints")}</div>
       ) : latest.size === 0 ? (
         <div data-testid="papers-no-jobs" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 6, lineHeight: "16px" }}>
-          Nothing was queued for this visit. That is expected for a visit opened before the printer
-          was wired — the bill below can still be printed.
+          {t("visitCard.papers.noJobs")}
         </div>
       ) : (
         <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 2 }}>
           {[...latest.values()].map((j) => (
-            <div key={j.id} data-testid={`papers-job-${j.document}`} className="drow" style={{ cursor: "default" }}>
-              <span style={{ fontSize: 12.5, flexGrow: 1, minWidth: 0 }}>
+            <div key={j.id} data-testid={`papers-job-${j.document}`} className="drow" style={{ cursor: "default", flexWrap: "wrap", rowGap: 6 }}>
+              {/* On a phone the name takes its own line rather than being squeezed under the buttons. */}
+              <span style={{ fontSize: 12.5, flex: "1 1 140px", minWidth: 0 }}>
                 {PRINT_DOCUMENT_LABEL[j.document] ?? j.document}
               </span>
               {/*
@@ -167,17 +169,17 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
                 onClick={async () => {
                   const label = PRINT_DOCUMENT_LABEL[j.document] ?? j.document;
                   const doc = await fetchPrintDocument(j.id);
-                  if (doc === null) { setNote(`This ${label} is no longer available to open.`); return; }
+                  if (doc === null) { setNote(t("visitCard.papers.gone", { label })); return; }
                   if (!openDocumentForPrinting(doc)) {
                     /* A blocked pop-up is silent; a button that does nothing must say why. */
-                    setNote("The browser blocked the document window — allow pop-ups for this site and try again.");
+                    setNote(t("visitCard.papers.popup"));
                     return;
                   }
-                  setNote(`${label} opened — choose “Save as PDF” in the print dialog.`);
+                  setNote(t("visitCard.papers.opened", { label }));
                   d?.note(`${label} opened on screen`, "ok");
                 }}
               >
-                save as PDF
+                {t("visitCard.papers.pdf")}
               </SubmitButton>
               <SubmitButton
                 plain
@@ -189,11 +191,11 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
                   await reprintJob(j.id);
                   await jobs.refetch();
                   const label = PRINT_DOCUMENT_LABEL[j.document] ?? j.document;
-                  setNote(`${label} queued again — it prints at the front desk.`);
+                  setNote(t("visitCard.papers.queued", { label }));
                   d?.note(`reprint queued — ${label}`, "ok");
                 }}
               >
-                print again
+                {t("visitCard.papers.again")}
               </SubmitButton>
             </div>
           ))}
@@ -209,12 +211,12 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
       ) : null}
 
       {/* ═══ THE MONEY ═══ */}
-      <div className="tag" style={{ marginTop: 20 }}>bills raised for this visit</div>
+      <div className="tag" style={{ marginTop: 20 }}>{t("visitCard.papers.bills")}</div>
       {bills.isPending ? (
-        <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 6 }}>reading the ledger…</div>
+        <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 6 }}>{t("visitCard.papers.readingBills")}</div>
       ) : (bills.data?.items ?? []).length === 0 ? (
         <div data-testid="papers-no-bills" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 6 }}>
-          No bill was raised for this visit.
+          {t("visitCard.papers.noBills")}
         </div>
       ) : (
         <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -222,7 +224,7 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
             <div key={inv.id} data-testid={`papers-invoice-${inv.invoiceNo}`} className="drow" style={{ cursor: "default" }}>
               <span className="mo" style={{ fontSize: 12, flexGrow: 1, minWidth: 0 }}>{inv.invoiceNo}</span>
               <span className="mo" style={{ fontSize: 12.5, fontWeight: 600, flexShrink: 0 }}>{rs(inv.netPayablePaise)}</span>
-              {inv.creditExtended ? <span className="pill gd" style={{ height: 20, flexShrink: 0 }}>on credit</span> : null}
+              {inv.creditExtended ? <span className="pill gd" style={{ height: 20, flexShrink: 0 }}>{t("visitCard.papers.onCredit")}</span> : null}
               <button
                 type="button"
                 className="sec"
@@ -230,15 +232,14 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
                 style={{ height: 24, flexShrink: 0 }}
                 onClick={() => setShowing(inv.id)}
               >
-                open the bill
+                {t("visitCard.papers.openBill")}
               </button>
             </div>
           ))}
         </div>
       )}
       <p style={{ margin: "10px 0 0", fontSize: 11, color: "var(--faint)", lineHeight: "15px" }}>
-        The bill opens as the printed document — the same one the counter prints on the day, from the
-        server&apos;s own figures. Nothing here re-adds anything up.
+        {t("visitCard.papers.billNote")}
       </p>
     </div>
   );

@@ -138,7 +138,7 @@ function History({ patientId }: { patientId: string }): React.ReactElement | nul
               type="button"
               data-testid="history-row"
               title="open this visit's papers — slips and bills, and a way to print them again"
-              onClick={() => d.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate } })}
+              onClick={() => d.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate, visit: h } })}
               style={{
                 display: "flex", gap: 8, alignItems: "baseline", padding: "6px 0", width: "100%",
                 borderBottom: "1px solid var(--line2)", background: "none", border: 0,

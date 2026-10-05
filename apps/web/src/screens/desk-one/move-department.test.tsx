@@ -49,10 +49,20 @@ const QUOTE = {
   },
 };
 
-type Calls = { moves: { departmentId: string; doctorId: string; reason: string }[]; previews: string[] };
+type Calls = { moves: { departmentId: string; doctorId: string; reason: string; tenders?: unknown }[]; previews: string[] };
+type Money = {
+  kind: "none" | "zero_bill" | "transfer" | "difference" | "billing_office";
+  invoiceNo: string | null; paidPaise: number; newFeePaise: number; differencePaise: number;
+  billingOfficeReason: "other_services" | "on_credit" | "part_paid" | "several_bills" | null;
+};
+const money = (m: Partial<Money> & Pick<Money, "kind">): Money & { invoiceId: string | null } => ({
+  invoiceId: m.invoiceNo === undefined || m.invoiceNo === null ? null : "inv-1",
+  invoiceNo: null, paidPaise: 0, newFeePaise: 0, differencePaise: 0, billingOfficeReason: null, ...m,
+});
 
-function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean } = {}): void {
+function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean; money?: Money; maySettle?: boolean; fees?: { from: number; to: number }; extra?: Record<string, unknown> } = {}): void {
   stubFetch({
+    ...(opts.extra ?? {}),
     "GET /api/auth/me": {
       actor: { type: "user", id: "u1" },
       permissions: {
@@ -84,9 +94,10 @@ function mount(calls: Calls, opts: { billed?: boolean; feeOff?: boolean } = {}):
       calls.previews.push(String(url));
       return {
         encounterId: "e-1",
-        from: { departmentId: "d-1", doctorId: "doc-1", visitType: "new" },
-        to: { departmentId: "d-2", visitType: "revisit" },
+        from: { departmentId: "d-1", doctorId: "doc-1", visitType: "new", ...(opts.fees === undefined ? {} : { feePaise: opts.fees.from }) },
+        to: { departmentId: "d-2", visitType: "revisit", ...(opts.fees === undefined ? {} : { feePaise: opts.fees.to }) },
         standingInvoiceNo: opts.billed === true ? "INV/26-27/000042" : null,
+        ...(opts.money === undefined ? {} : { money: opts.money, maySettleDifference: opts.maySettle === true }),
       };
     },
     "POST /api/opd/visits/e-1/move-department": (init?: RequestInit) => {
@@ -177,14 +188,72 @@ describe("Wrong department — move patient (owner 2026-10-05)", () => {
     expect(card).toHaveTextContent(/General Medicine.*MED-3/);
   });
 
-  it("a bill standing against the visit is named, and the move is not offered", async () => {
+  it("a bill the Billing office must handle is named, and the move is not offered", async () => {
     const calls: Calls = { moves: [], previews: [] };
-    mount(calls, { billed: true });
+    mount(calls, { billed: true, money: money({ kind: "billing_office", invoiceNo: "INV/26-27/000042", billingOfficeReason: "other_services" }) });
     const user = await seatInOrthoAndOpenMove();
     const panel = screen.getByTestId("move-dept-panel");
     await user.click(within(panel).getByTestId("move-dept-d-2"));
-    expect(await within(panel).findByTestId("move-dept-billed")).toHaveTextContent(/INV\/26-27\/000042.*credit note/);
+    expect(await within(panel).findByTestId("move-dept-money")).toHaveTextContent(/INV\/26-27\/000042 carries more than the consultation.*Billing office/);
     expect(within(panel).getByTestId("move-dept-submit")).toBeDisabled();
+  });
+
+  it("RULE 2 — a paid fee that costs the same: the panel says the payment moves, and the desk may move it", async () => {
+    const calls: Calls = { moves: [], previews: [] };
+    mount(calls, { billed: true, money: money({ kind: "transfer", invoiceNo: "INV/26-27/000042", paidPaise: 30_000, newFeePaise: 30_000 }) });
+    const user = await seatInOrthoAndOpenMove();
+    const panel = screen.getByTestId("move-dept-panel");
+    await user.click(within(panel).getByTestId("move-dept-d-2"));
+    expect(await within(panel).findByTestId("move-dept-money")).toHaveTextContent("₹300 paid on bill INV/26-27/000042 moves to the new visit — no refund, nothing more to collect.");
+    await user.type(within(panel).getByTestId("move-dept-reason"), "wrong department");
+    await user.click(within(panel).getByTestId("move-dept-submit"));
+    await waitFor(() => expect(calls.moves).toHaveLength(1));
+    expect(calls.moves[0]).toEqual({ departmentId: "d-2", doctorId: "doc-2", reason: "wrong department" }); // no money handed over
+  });
+
+  const higher = money({ kind: "difference", invoiceNo: "INV/26-27/000042", paidPaise: 15_000, newFeePaise: 30_000, differencePaise: 15_000 });
+
+  it("RULE 3 — a different fee at a seat that settles no money: the billing counter makes this move", async () => {
+    const calls: Calls = { moves: [], previews: [] };
+    mount(calls, { billed: true, money: higher, maySettle: false });
+    const user = await seatInOrthoAndOpenMove();
+    const panel = screen.getByTestId("move-dept-panel");
+    await user.click(within(panel).getByTestId("move-dept-d-2"));
+    expect(await within(panel).findByTestId("move-dept-money")).toHaveTextContent(/billing counter makes this move/);
+    expect(within(panel).getByTestId("move-dept-submit")).toBeDisabled();
+  });
+
+  it("the fee line and the money line read ONE amount — the server's, never the price list's (coordinator review)", async () => {
+    // The price list says New ₹300; the server prices this visit at ₹500 there (its own pricer). Only one may be shown.
+    const calls: Calls = { moves: [], previews: [] };
+    mount(calls, { billed: true, money: higher, maySettle: true, fees: { from: 15_000, to: 30_000 } });
+    const user = await seatInOrthoAndOpenMove();
+    const panel = screen.getByTestId("move-dept-panel");
+    await user.click(within(panel).getByTestId("move-dept-d-2"));
+    await waitFor(() => expect(within(panel).getByTestId("move-dept-fee")).toHaveTextContent(/New · ₹150/));
+    expect(within(panel).getByTestId("move-dept-fee-after")).toHaveTextContent("Revisit · ₹300");
+    expect(within(panel).getByTestId("move-dept-money")).toHaveTextContent("₹150 was paid; the consultation costs ₹300 there.");
+  });
+
+  it("RULE 3 — a higher fee at the billing counter: the difference is collected in the same act", async () => {
+    const calls: Calls = { moves: [], previews: [] };
+    mount(calls, { billed: true, money: higher, maySettle: true });
+    const user = await seatInOrthoAndOpenMove();
+    const panel = screen.getByTestId("move-dept-panel");
+    await user.click(within(panel).getByTestId("move-dept-d-2"));
+    expect(await within(panel).findByTestId("move-dept-money")).toHaveTextContent("₹150 was paid; the consultation costs ₹300 there. Collect ₹150 now:");
+    expect(within(panel).getByTestId("move-dept-submit")).toHaveTextContent("Collect ₹150 and move to General Medicine");
+    await user.click(within(panel).getByTestId("move-tender-upi"));
+    await user.type(within(panel).getByTestId("move-dept-reason"), "wrong department");
+    await user.click(within(panel).getByTestId("move-dept-submit"));
+    expect(await within(panel).findByTestId("move-dept-error")).toHaveTextContent(/reference/); // a UPI tender names its reference
+    await user.type(within(panel).getByTestId("move-tender-ref"), "UTR123");
+    await user.click(within(panel).getByTestId("move-dept-submit"));
+    await waitFor(() => expect(calls.moves).toHaveLength(1));
+    expect(calls.moves[0]).toEqual({
+      departmentId: "d-2", doctorId: "doc-2", reason: "wrong department",
+      tenders: [{ mode: "upi", amountPaise: 15_000, refText: "UTR123" }],
+    });
   });
 
   it("with the consultation fee switched off, both sides of the preview say free", async () => {
@@ -195,5 +264,58 @@ describe("Wrong department — move patient (owner 2026-10-05)", () => {
     await user.click(within(panel).getByTestId("move-dept-d-2"));
     await waitFor(() => expect(within(panel).getByTestId("move-dept-fee")).toHaveTextContent(/New · Free \(consultation fee switched off\)/));
     expect(within(panel).getByTestId("move-dept-fee-after")).toHaveTextContent("Revisit · Free (consultation fee switched off)");
+  });
+
+  /*
+    OWNER 2026-10-05 — "Or I could click on appointment tab and from the left side bar, clicking on
+    this visit from the history, I should see a change department … option along with token,
+    prescription and bills." A row of the history rail opens the VISIT CARD; a visit the desk is not
+    holding moves straight through the server, and the card then shows the visit the patient holds.
+  */
+  it("a row of the history rail opens the visit card, and a waiting visit the desk is not holding moves from it", async () => {
+    const today = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+    const calls: Calls = { moves: [], previews: [] };
+    mount(calls, {
+      extra: {
+        "GET /api/opd/patients/p-1/timeline": { items: [{
+          encounterId: "e-9", visitNo: "V9", serviceDate: today, openedAt: new Date().toISOString(), status: "waiting", visitType: "new",
+          doctorId: "doc-1", doctorName: "Dr. Verma", departmentId: "d-1", departmentName: "Orthopaedics",
+          diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+        }] },
+        "GET /api/print/jobs": { jobs: [] },
+        "GET /api/billing/invoices": { items: [] },
+        "GET /api/opd/visits/e-9/move-preview": {
+          encounterId: "e-9", from: { departmentId: "d-1", doctorId: "doc-1", visitType: "new" }, to: { departmentId: "d-2", visitType: "new" },
+          standingInvoiceNo: null, money: money({ kind: "none", newFeePaise: 30_000 }), maySettleDifference: false,
+        },
+        "POST /api/opd/visits/e-9/move-department": (init?: RequestInit) => {
+          calls.moves.push(JSON.parse(String(init?.body ?? "{}")) as Calls["moves"][number]);
+          return {
+            from: { encounter: { id: "e-9", status: "abandoned" }, tokenNo: 4 },
+            to: { encounter: { id: "e-10", visitNo: "V10", serviceDate: today, departmentId: "d-2", doctorId: "doc-2", status: "registered" }, tokenNo: 6, sessionId: "s-doc-2", roomId: null, visitType: "new" },
+          };
+        },
+      },
+    });
+    await act(async () => { await router.navigate({ to: "/counter" }); });
+    await waitFor(() => expect(screen.getByTestId("desk-one")).toBeInTheDocument());
+    const user = userEvent.setup({ delay: null });
+    await user.type(screen.getByPlaceholderText("mobile · name · UHID"), "Ramesh");
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /this is them/i })[0]).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /this is them/i })[0]!);
+
+    await waitFor(() => expect(screen.getAllByTestId("history-row").length).toBeGreaterThan(0), { timeout: 3000 });
+    await user.click(screen.getAllByTestId("history-row")[0]!);
+    const card = await screen.findByTestId("visit-card");
+    expect(within(card).getByTestId("visit-card-title")).toHaveTextContent("Visit V9");
+    expect(within(card).getByTestId("papers-sheet")).toBeInTheDocument();
+
+    await user.click(within(card).getByTestId("visit-card-move"));
+    await user.click(await within(card).findByTestId("move-dept-d-2"));
+    await user.type(within(card).getByTestId("move-dept-reason"), "wrong department");
+    await user.click(within(card).getByTestId("move-dept-submit"));
+    await waitFor(() => expect(calls.moves).toEqual([{ departmentId: "d-2", doctorId: "doc-2", reason: "wrong department" }]));
+    expect(await within(card).findByTestId("visit-card-moved")).toHaveTextContent("Moved to General Medicine — new token MED-6.");
+    expect(within(card).getByTestId("visit-card-title")).toHaveTextContent("Visit V10");
   });
 });

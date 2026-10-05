@@ -161,7 +161,13 @@ const walkInBody = z.object({
   join: z.enum(["queue", "defer"]).optional(),
 });
 /* Owner 2026-10-05 — a blank reason is the SERVICE's `reason_required`, as for abandon. */
-const moveDepartmentBody = z.object({ departmentId: z.string().min(1), doctorId: z.string().min(1), reason: z.string().max(400) });
+const moveDepartmentBody = z.object({
+  departmentId: z.string().min(1), doctorId: z.string().min(1), reason: z.string().max(400),
+  /** Owner 2026-10-05, rule 3 — the difference a higher fee in the new department costs, taken now. */
+  tenders: z.array(z.object({
+    mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().max(80).optional(),
+  })).max(3).optional(),
+});
 const movePreviewQuery = z.object({ departmentId: z.string().min(1) });
 const reclassifyBody = z.object({
   visitType: z.enum(["new", "revisit", "renewal"]),
@@ -629,10 +635,10 @@ export class OpdVisitsController {
    */
   @RequirePermission("opd.visits.open", "hospital")
   @Get("visits/:id/move-preview")
-  async movePreview(@Param("id") id: string, @Query() query: unknown): Promise<DepartmentMovePreview> {
+  async movePreview(@CurrentActor() actor: Actor, @Param("id") id: string, @Query() query: unknown): Promise<DepartmentMovePreview> {
     const q = parsed(movePreviewQuery, query);
     try {
-      return await previewDepartmentMove(this.db, id, q.departmentId);
+      return await previewDepartmentMove(this.db, id, q.departmentId, new Date(), actor);
     } catch (e) {
       toHttp(e);
     }

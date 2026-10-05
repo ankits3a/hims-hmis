@@ -7,13 +7,11 @@ import {
   cancelAppointment, checkInAppointment, getContinuity, getSlots, listDayAppointments, listDoctors,
   listPatientAppointments,
   opdErrorMessage,
-  previewDepartmentMove,
   rescheduleAppointment,
 } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import { listPrintJobs, printSummary, reprintJob, PRINT_DOCUMENT_LABEL } from "../../lib/print-api";
-import type { WireDoctorSummary, WireSlot, WireVisitType } from "../../lib/opd-api";
-import type { WireConsultTerms } from "../../lib/billing-api";
+import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
   ageOf, bookableToday, etaClock, initialsOf, rs, seatHasStage, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
 } from "./model";
@@ -27,6 +25,7 @@ import { ScanSharePanel } from "../../components/abdm-scan-share";
 import type { WireAbhaFlow, WireShare } from "../../lib/abdm-api";
 import { EMPTY_COVERAGE, EMPTY_FORM, ageOrDobText, formAgeYears, formNeedsGuardian, parseAgeOrDob, useDesk } from "./session";
 import { RebookingRail } from "./rebooking-rail";
+import { MoveDepartmentForm } from "./move-department";
 import { RegAllergies } from "./reg-allergies";
 import { useAuth } from "../../lib/auth";
 import type { CoverageDraft, Person } from "./session";
@@ -2587,11 +2586,21 @@ function StageBill(): React.ReactElement {
         way out. An ISSUED INVOICE is what makes this a credit note; nothing else is.
       */}
       {s.issued !== null ? (
+        <>
         <div data-testid="change-doctor-locked" style={{ fontSize: 11, color: "var(--faint)", marginTop: 14, lineHeight: "15px" }}>
           {t("registrationCounter.changeDoctor.locked", { doctor: s.visit.doctorName })}
-          {" "}
-          <span data-testid="move-dept-locked">{t("registrationCounter.move.billed")}</span>
         </div>
+        {/*
+          OWNER 2026-10-05 — A BILL NO LONGER STOPS A DEPARTMENT MOVE. The money moves with the visit
+          (the four rules in billing's `visit-move.ts`); the panel's preview says which rule applies,
+          and the server refuses only what the Billing office has to handle.
+        */}
+        {moveOpen ? <MoveDepartmentPanel onClose={() => { setMoveOpen(false); }} /> : (
+          <button className="sec" data-testid="move-dept-open" style={{ height: 32, marginTop: 8 }} onClick={() => { setMoveOpen(true); }}>
+            {t("registrationCounter.move.open")}
+          </button>
+        )}
+        </>
       ) : (
         <>
         {/*
@@ -2671,177 +2680,26 @@ function StageBill(): React.ReactElement {
   );
 }
 
-/** What a visit type costs under the terms in force — `null` when the terms are unknown (no fee claim). */
-function feeOf(vt: WireVisitType, terms: WireConsultTerms | undefined, t: (k: string) => string): string | null {
-  if (terms === undefined) return null;
-  if (terms.consultFeeOff) return t("registrationCounter.move.feesOff");
-  const paise = terms.paise[vt];
-  if (paise === null) return vt === "revisit" ? t("registrationCounter.move.free") : null;
-  return paise > 0 ? rs(paise) : t("registrationCounter.move.free");
-}
-
 /**
- * ═══ OWNER 2026-10-05 — "WRONG DEPARTMENT — MOVE PATIENT" ═══
- *
- * *"If by mistake the front desk set the patient to Orthopedics but it should be General Medicine,
- * how can they move that patient … making sure the OPD report also gets auto corrected."*
- *
- * Reason-first, like the visit-type correction: from → to, the department, then the doctor (with the
- * unit or "Guest Faculty" beside the name), why, and what the visit will cost there BEFORE the write —
- * the server re-classifies in the new department, so a "new" in orthopaedics can be a free revisit in
- * medicine. One server act moves it; the report reads the visits live and follows by itself.
+ * Owner 2026-10-05 — the move panel at the bill: the shared `MoveDepartmentForm`, fed the visit this
+ * desk holds and the desk's own `moveDepartment`, which re-seats the patient in hand on the new visit.
  */
 function MoveDepartmentPanel({ onClose }: { onClose: () => void }): React.ReactElement | null {
   const d = useDesk();
-  const { s } = d;
-  const { t } = useTranslation();
-  const [deptId, setDeptId] = useState<string | null>(null);
-  const [doctorId, setDoctorId] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const visit = s.visit;
-  const mayOpenVisits = useAuth().can("opd.visits.open");
-  const terms = useQuery({ queryKey: ["billing", "consult-terms"], queryFn: fetchConsultTerms, enabled: mayOpenVisits, staleTime: 60_000, retry: false });
-  const preview = useQuery({
-    queryKey: ["d1", "move-preview", visit?.encounterId ?? "", deptId ?? ""],
-    queryFn: () => previewDepartmentMove(visit!.encounterId, deptId!),
-    enabled: visit !== null && deptId !== null,
-    retry: false,
-  });
+  const visit = d.s.visit;
   if (visit === null) return null;
-
-  const targets = d.queues.filter((q) => q.departmentId !== visit.departmentId);
-  const dq = targets.find((q) => q.departmentId === deptId) ?? null;
-  const fromCode = d.departments.find((x) => x.id === visit.departmentId)?.code ?? null;
-  const vtName = (vt: WireVisitType) => t(`registrationCounter.move.vt.${vt}`);
-  const p = preview.data;
-  const billedNo = p?.standingInvoiceNo ?? null;
-  const feeLine = (vt: WireVisitType) => {
-    const fee = feeOf(vt, terms.data, t);
-    return fee === null ? vtName(vt) : `${vtName(vt)} · ${fee}`;
-  };
-
-  const submit = async (): Promise<void> => {
-    if (deptId === null || doctorId === null) { setError(t("registrationCounter.move.pickBoth")); return; }
-    if (reason.trim() === "") { setError(t("registrationCounter.move.reasonRequired")); return; }
-    setError(null);
-    const refused = await d.moveDepartment(deptId, doctorId, reason.trim());
-    if (refused === null) onClose();
-    else setError(refused);
-  };
-
   return (
-    <div className="box d1-move" data-testid="move-dept-panel" style={{ marginTop: 12, padding: "12px 14px", background: "var(--wash)" }}>
-      <div style={{ fontSize: 12.5, fontWeight: 700 }}>{t("registrationCounter.move.title")}</div>
-      <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 3, lineHeight: "16px" }}>
-        {t("registrationCounter.move.explain")}
-      </div>
-
-      <div data-testid="move-dept-from" style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginTop: 10, fontSize: 12 }}>
-        <span className="tag">{t("registrationCounter.move.from")}</span>
-        <b>{visit.departmentName}</b>
-        <span style={{ color: "var(--dim)" }}>
-          {visit.doctorName}
-          {visit.tokenNo === null ? "" : ` · ${tokenLabel(fromCode, visit.tokenNo)}`}
-        </span>
-      </div>
-
-      <div className="tag" style={{ marginTop: 11 }}>{t("registrationCounter.move.toDept")}</div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
-        {targets.map((q) => (
-          <button
-            key={q.departmentId}
-            className="pill"
-            data-testid={`move-dept-${q.departmentId}`}
-            onClick={() => { setDeptId(q.departmentId); setDoctorId(q.doctors.length === 1 ? q.doctors[0]!.doctor.id : null); setError(null); }}
-            style={{
-              borderColor: deptId === q.departmentId ? "var(--green)" : "var(--line)",
-              background: deptId === q.departmentId ? "var(--green)" : "var(--card)",
-              color: deptId === q.departmentId ? "#fff" : "var(--ink)",
-              fontWeight: deptId === q.departmentId ? 700 : 400,
-            }}
-          >
-            {q.departmentName}
-          </button>
-        ))}
-        {targets.length === 0 ? <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("registrationCounter.move.noTargets")}</span> : null}
-      </div>
-
-      {dq === null ? null : (
-        <>
-          <div className="tag" style={{ marginTop: 11 }}>{t("registrationCounter.move.toDoctor")}</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
-            {dq.doctors.map((doc) => {
-              const tag = d.doctorLabel(doc.doctor);
-              const on = doctorId === doc.doctor.id;
-              return (
-                <button
-                  key={doc.doctor.id}
-                  className="pill"
-                  data-testid={`move-doctor-${doc.doctor.id}`}
-                  onClick={() => { setDoctorId(doc.doctor.id); setError(null); }}
-                  style={{
-                    borderColor: on ? "var(--green)" : "var(--line)",
-                    background: on ? "var(--green)" : "var(--card)",
-                    color: on ? "#fff" : "var(--ink)",
-                    fontWeight: on ? 700 : 400,
-                    textAlign: "left",
-                    height: "auto",
-                    padding: "5px 10px",
-                    lineHeight: "15px",
-                  }}
-                >
-                  {doc.doctor.displayName}
-                  <span style={{ display: "block", fontSize: 10.5, fontWeight: 400, opacity: 0.85 }}>
-                    {tag === null ? "" : `${tag} · `}{t("registrationCounter.move.waiting", { count: doc.waitingCount })}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {p === undefined || deptId === null ? null : (
-        <div
-          data-testid="move-dept-fee"
-          style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 11, fontSize: 12, padding: "8px 10px", background: "var(--card)", border: "1px solid var(--line2)", borderRadius: 6 }}
-        >
-          <span style={{ color: "var(--dim)" }}>{t("registrationCounter.move.now")}</span>
-          <b>{feeLine(p.from.visitType)}</b>
-          <span style={{ color: "var(--faint)" }}>→</span>
-          <span style={{ color: "var(--dim)" }}>{t("registrationCounter.move.after", { dept: dq?.departmentName ?? "" })}</span>
-          <b data-testid="move-dept-fee-after">{feeLine(p.to.visitType)}</b>
-        </div>
-      )}
-
-      {billedNo === null ? null : (
-        <div role="alert" data-testid="move-dept-billed" style={{ fontSize: 11.5, color: "var(--red)", marginTop: 8, lineHeight: "16px" }}>
-          {t("registrationCounter.move.billedNo", { no: billedNo })}
-        </div>
-      )}
-
-      <input
-        className="in"
-        data-testid="move-dept-reason"
-        style={{ marginTop: 10 }}
-        placeholder={t("registrationCounter.move.reasonHint")}
-        value={reason}
-        onChange={(e) => { setReason(e.target.value); }}
-      />
-      <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 5, lineHeight: "14px" }}>{t("registrationCounter.move.slips")}</div>
-      {error === null ? null : (
-        <div role="alert" data-testid="move-dept-error" style={{ fontSize: 11, color: "var(--red)", marginTop: 6 }}>{error}</div>
-      )}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-        <SubmitButton plain className="pri" data-testid="move-dept-submit" disabled={billedNo !== null} onClick={submit}>
-          {dq === null ? t("registrationCounter.move.submitBare") : t("registrationCounter.move.submit", { dept: dq.departmentName })}
-        </SubmitButton>
-        <button className="sec" data-testid="move-dept-cancel" onClick={onClose}>
-          {t("registrationCounter.move.cancel")}
-        </button>
-      </div>
-    </div>
+    <MoveDepartmentForm
+      visit={{
+        encounterId: visit.encounterId, departmentId: visit.departmentId, departmentName: visit.departmentName,
+        doctorName: visit.doctorName, tokenNo: visit.tokenNo,
+        departmentCode: d.departments.find((x) => x.id === visit.departmentId)?.code ?? null,
+      }}
+      queues={d.queues}
+      doctorLabel={d.doctorLabel}
+      onMove={(input) => d.moveDepartment(input.departmentId, input.doctorId, input.reason, input.tenders)}
+      onClose={onClose}
+    />
   );
 }
 

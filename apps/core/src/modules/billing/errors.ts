@@ -43,7 +43,13 @@ export type BillingErrorCode =
    * decision on a version that is not waiting.
    */
   | "consult_price_pending" | "consult_price_unchanged" | "revisit_fee_unwired" | "consult_price_not_pending"
-  | "consult_price_reason_required";
+  | "consult_price_reason_required"
+  /**
+   * OWNER 2026-10-05 — a visit moved to another department takes its money with it
+   * (`visit-move.ts`): a bill the billing office must handle, a fee difference the desk may not
+   * settle, and a difference the move was not handed (or handed when none was due).
+   */
+  | "move_needs_billing_office" | "move_fee_differs" | "move_difference_unpaid";
 
 export class BillingError extends Error {
   constructor(
@@ -78,7 +84,7 @@ const NOT_FOUND_CODES = new Set<BillingErrorCode>([
   "unknown_invoice", "unknown_receipt", "unknown_line", "unknown_encounter", "unknown_series",
   "unknown_session", "unknown_credit_request", "unknown_tender",
 ]);
-const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required", "not_your_session"]);
+const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required", "not_your_session", "move_fee_differs"]);
 /** Client-input refusals. Everything else is a state/ledger conflict and answers 409. */
 const VALIDATION_CODES = new Set<BillingErrorCode>([
   "invalid_paise", "pan_required", "tender_ref_required", "bank_transfer_required",

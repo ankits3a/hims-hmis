@@ -73,7 +73,7 @@ export function HistorySheet({ patientId, name }: { patientId: string; name: str
               data-testid="history-full-row"
               className="drow"
               style={{ alignItems: "baseline", gap: 10, textAlign: "left", padding: "9px 0", borderBottom: "1px solid var(--line2)" }}
-              onClick={() => d?.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate } })}
+              onClick={() => d?.patch({ overlay: "papers", papersFor: { encounterId: h.encounterId, when: h.serviceDate, visit: h } })}
             >
               <span className="mo" style={{ fontSize: 11, color: "var(--dim)", width: 66, flexShrink: 0 }}>
                 {dayMonthIst(h.serviceDate)}

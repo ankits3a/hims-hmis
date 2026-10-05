@@ -904,6 +904,79 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(fetchCalls().some((c) => c.url.includes("/billing/invoices"))).toBe(false);
   });
 
+  /*
+    OWNER 2026-10-05 — "Can't I go to the patient profile and there I can click on the visit and change
+    it?" One visit card, the same as Desk One's: today's visit opens it, and a visit nobody has seen
+    yet can change department from it; a visit the doctor has seen cannot.
+  */
+  const todayIstDay = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+  const CARD_ROUTES = {
+    "GET /api/opd/departments": { items: [{ id: "d-1", name: "Orthopaedics", code: "ORT", active: true }, { id: "d-2", name: "General Medicine", code: "MED", active: true }] },
+    "GET /api/opd/queues/summary": { items: [
+      { doctor: { id: "doc-1", userId: "u-o", displayName: "Dr. Verma", departmentId: "d-1", active: true }, sessionId: "s1", status: "open", waitingCount: 1, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "R1", avgConsultMinutes: 10 },
+      { doctor: { id: "doc-2", userId: "u-m", displayName: "Dr. Sharma", departmentId: "d-2", active: true }, sessionId: "s2", status: "open", waitingCount: 4, waitingVitalsCount: 0, nowServing: null, scheduledToday: true, roomCode: "R4", avgConsultMinutes: 10 },
+    ] },
+    "GET /api/billing/consult-terms": { consultFeeOff: false, paise: { new: 30_000, renewal: 15_000, revisit: null } },
+    "GET /api/print/jobs": { jobs: [] },
+    "GET /api/billing/invoices": { items: [] },
+  };
+  const waitingToday = {
+    encounterId: "e-5", visitNo: "V-26-00005", serviceDate: todayIstDay, openedAt: new Date().toISOString(), status: "waiting",
+    visitType: "new", doctorId: "doc-1", doctorName: "Dr. Verma", departmentId: "d-1", departmentName: "Orthopaedics",
+    diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+  };
+
+  it("front desk: today's visit opens the visit card, and a visit nobody has seen yet moves to the right department from it", async () => {
+    const moves: unknown[] = [];
+    stubSeat({
+      ...BASE, ...CARD_ROUTES,
+      "GET /api/opd/patients/p-1/timeline": { items: [waitingToday, ...TIMELINE.items] },
+      "GET /api/opd/visits/e-5/move-preview": {
+        encounterId: "e-5", from: { departmentId: "d-1", doctorId: "doc-1", visitType: "new" }, to: { departmentId: "d-2", visitType: "new" },
+        standingInvoiceNo: "INV/26/000200",
+        money: { kind: "transfer", invoiceId: "inv-2", invoiceNo: "INV/26/000200", paidPaise: 30_000, newFeePaise: 30_000, differencePaise: 0, billingOfficeReason: null },
+        maySettleDifference: false,
+      },
+      "POST /api/opd/visits/e-5/move-department": (init?: RequestInit) => {
+        moves.push(JSON.parse(String(init?.body ?? "{}")));
+        return {
+          from: { encounter: { id: "e-5", status: "abandoned" }, tokenNo: 3 },
+          to: { encounter: { id: "e-6", visitNo: "V-26-00006", serviceDate: todayIstDay, status: "registered", departmentId: "d-2", doctorId: "doc-2" }, tokenNo: 5, sessionId: "s2", roomId: null, visitType: "new" },
+          money: { kind: "transfer", invoiceId: "inv-2", invoiceNo: "INV/26/000200", paidPaise: 30_000, newFeePaise: 30_000, differencePaise: 0, billingOfficeReason: null, creditNoteNo: "CN/1", newInvoiceId: "inv-3", newInvoiceNo: "INV/26/000201", advancePaise: 0, collectedPaise: 0 },
+        };
+      },
+    }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByTestId("today-visit"));
+    const dialog = await screen.findByTestId("visit-dialog");
+    expect(within(dialog).getByTestId("visit-card-title")).toHaveTextContent("Visit V-26-00005");
+    expect(within(dialog).getByTestId("visit-card-where")).toHaveTextContent(/Orthopaedics · Dr\. Verma/);
+    expect(within(dialog).getByTestId("visit-card-status")).toHaveTextContent("Waiting");
+    expect(within(dialog).getByTestId("papers-sheet")).toBeInTheDocument(); // the slips and bills, as before
+
+    await user.click(within(dialog).getByTestId("visit-card-move"));
+    await user.click(await within(dialog).findByTestId("move-dept-d-2"));
+    expect(await within(dialog).findByTestId("move-dept-money")).toHaveTextContent("₹300 paid on bill INV/26/000200 moves to the new visit");
+    await user.type(within(dialog).getByTestId("move-dept-reason"), "needs medicine");
+    await user.click(within(dialog).getByTestId("move-dept-submit"));
+    await waitFor(() => expect(moves).toEqual([{ departmentId: "d-2", doctorId: "doc-2", reason: "needs medicine" }]));
+    // the card now shows the visit the patient holds
+    expect(await within(dialog).findByTestId("visit-card-moved")).toHaveTextContent("Moved to General Medicine — new token MED-5.");
+    expect(within(dialog).getByTestId("visit-card-title")).toHaveTextContent("Visit V-26-00006");
+  });
+
+  it("front desk: a visit the doctor has seen opens from the timeline, and says a move is now the doctor's referral", async () => {
+    stubSeat({ ...BASE, ...CARD_ROUTES, "GET /api/opd/patients/p-1/timeline": TIMELINE }, FRONT_DESK);
+    renderWithProviders(<PatientDetail />);
+    await userEvent.setup().click(await screen.findByTestId("timeline-open-visit"));
+    const dialog = await screen.findByTestId("visit-dialog");
+    expect(within(dialog).getByTestId("visit-card-status")).toHaveTextContent("Completed");
+    expect(within(dialog).getByTestId("visit-card-seen")).toHaveTextContent(/internal referral/);
+    expect(within(dialog).queryByTestId("visit-card-move")).toBeNull();
+  });
+
   it("front desk: with nothing booked ahead the profile says so; a seat without the appointment book is not shown the heading", async () => {
     stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/opd/appointments": { items: [] } }, FRONT_DESK);
     const first = renderWithProviders(<PatientDetail />);

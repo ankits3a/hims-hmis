@@ -9,7 +9,7 @@ import {
   getOpdConfig, putCounterFlow, listDepartments, listQueueSummary, opdErrorMessage,
   triage, walkIn, joinQueue, bookAppointment, todayIst, patientTimeline,
 } from "../../lib/opd-api";
-import type { WireSlot } from "../../lib/opd-api";
+import type { WireMoveTender, WireSlot } from "../../lib/opd-api";
 import { fetchFeeQuote, issueInvoice, billingErrorMessage, fetchCurrentSession, listDues } from "../../lib/billing-api";
 import type { TenderMode } from "../../lib/billing-api";
 import { fetchRecognition } from "../../lib/membership-api";
@@ -907,18 +907,25 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
    * Owner 2026-10-05 — "WRONG DEPARTMENT — MOVE PATIENT". One server act (`POST
    * /opd/visits/:id/move-department`) abandons the wrong visit and opens the right one; the desk then
    * holds the NEW visit exactly as `assign` would have, so the bill re-quotes in the new department
-   * and the clerk never re-types the patient. Refused (by the server too) once a bill stands.
+   * and the clerk never re-types the patient. Since the owner's four money rules (2026-10-05) a bill
+   * no longer refuses it here: the money moves with the visit, and the server refuses only what the
+   * Billing office must handle. `tenders` is the difference a higher fee costs, taken in the same act.
    */
-  const moveDepartment = useCallback(async (departmentId: string, doctorId: string, reason: string): Promise<string | null> => {
+  const moveDepartment = useCallback(async (departmentId: string, doctorId: string, reason: string, tenders?: WireMoveTender[]): Promise<string | null> => {
     const visit = s.visit;
     if (visit === null) return t("registrationCounter.move.refused");
-    if (s.issued !== null) return t("registrationCounter.move.billed");
     const dq = queues.find((q) => q.departmentId === departmentId);
     const chosen = (summaries.data?.items ?? []).find((x) => x.doctor.id === doctorId) ?? null;
     patch({ busy: "assign", error: null });
     try {
       const { moveVisitDepartment } = await import("../../lib/opd-api");
-      const res = await moveVisitDepartment(visit.encounterId, { departmentId, doctorId, reason });
+      const res = await moveVisitDepartment(visit.encounterId, { departmentId, doctorId, reason, ...(tenders === undefined ? {} : { tenders }) });
+      const money = res.money;
+      const moneyNote = money === undefined ? "" : [
+        money.kind === "transfer" && money.newInvoiceNo !== null ? t("registrationCounter.move.money.doneTransfer", { bill: money.newInvoiceNo }) : null,
+        money.collectedPaise > 0 ? t("registrationCounter.move.money.doneCollected", { amount: rs(money.collectedPaise) }) : null,
+        money.advancePaise > 0 ? t("registrationCounter.move.money.doneCredit", { amount: rs(money.advancePaise) }) : null,
+      ].filter((x): x is string => x !== null).map((x) => ` · ${x}`).join("");
       const deptName = dq?.departmentName ?? departments.data?.items.find((x) => x.id === departmentId)?.name ?? departmentId;
       const deptCode = departments.data?.items.find((x) => x.id === departmentId)?.code ?? null;
       setS((prev) => ({
@@ -946,9 +953,10 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
         log: logged(prev.log, t("registrationCounter.move.done", {
           from: visit.departmentName, to: deptName,
           token: res.to.tokenNo === null ? "—" : tokenLabel(deptCode, res.to.tokenNo),
-        }), "ok"),
+        }) + moneyNote, "ok"),
       }));
       await qc.invalidateQueries({ queryKey: ["d1", "quote"] });
+      void qc.invalidateQueries({ queryKey: ["d1", "papers"] });
       void qc.invalidateQueries({ queryKey: ["d1", "summary"] });
       void qc.invalidateQueries({ queryKey: ["d1", "timeline"] });
       return null;
@@ -960,7 +968,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
       }));
       return opdErrorMessage(e);
     }
-  }, [s.visit, s.issued, patch, qc, queues, summaries.data, departments.data, t]);
+  }, [s.visit, patch, qc, queues, summaries.data, departments.data, t]);
 
   /**
    * FD-18 — THE BILLING OVERRIDE, AS A CORRECTION. Owner ruling 2026-09-04, choosing between three

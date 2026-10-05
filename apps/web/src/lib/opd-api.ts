@@ -922,20 +922,40 @@ export function abandonVisit(encounterId: string, reason: string): Promise<{ enc
 export type WireVisitType = "new" | "revisit" | "renewal";
 export type WireMovePreview = {
   encounterId: string;
-  from: { departmentId: string | null; doctorId: string | null; visitType: WireVisitType };
-  to: { departmentId: string; visitType: WireVisitType };
-  /** A bill standing against the visit — the move is refused until a credit note takes it back. */
+  /** `feePaise` — the server's one pricer for both sides (the fee line and the money line agree). Optional: an older server sends none. */
+  from: { departmentId: string | null; doctorId: string | null; visitType: WireVisitType; feePaise?: number };
+  to: { departmentId: string; visitType: WireVisitType; feePaise?: number };
+  /** The bill on the visit, when there is one; `money` says what the move does with it. */
   standingInvoiceNo: string | null;
+  /** Owner 2026-10-05 — what the move does with the visit's money (billing's four rules). Optional: an older server sends none. */
+  money?: WireMoveMoney;
+  /** May THIS person settle a fee difference as part of the move? */
+  maySettleDifference?: boolean;
 };
+export type WireMoveMoneyKind = "none" | "zero_bill" | "transfer" | "difference" | "billing_office";
+export type WireMoveMoney = {
+  kind: WireMoveMoneyKind;
+  invoiceId: string | null; invoiceNo: string | null;
+  paidPaise: number; newFeePaise: number;
+  /** newFee − paid: positive is collected now, negative stays as the patient's credit. */
+  differencePaise: number;
+  billingOfficeReason: "other_services" | "on_credit" | "part_paid" | "several_bills" | null;
+};
+export type WireMoveMoneyResult = WireMoveMoney & {
+  creditNoteNo: string | null; newInvoiceId: string | null; newInvoiceNo: string | null;
+  advancePaise: number; collectedPaise: number;
+};
+export type WireMoveTender = { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string };
 export type WireDepartmentMove = {
   from: { encounter: WireEncounter; tokenNo: number | null };
   to: { encounter: WireEncounter; tokenNo: number | null; sessionId: string | null; roomId: string | null; visitType: WireVisitType };
+  money?: WireMoveMoneyResult;
 };
 export function previewDepartmentMove(encounterId: string, departmentId: string): Promise<WireMovePreview> {
   return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/move-preview?departmentId=${encodeURIComponent(departmentId)}`);
 }
 export function moveVisitDepartment(
-  encounterId: string, input: { departmentId: string; doctorId: string; reason: string },
+  encounterId: string, input: { departmentId: string; doctorId: string; reason: string; tenders?: WireMoveTender[] },
 ): Promise<WireDepartmentMove> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/move-department`, input);
 }

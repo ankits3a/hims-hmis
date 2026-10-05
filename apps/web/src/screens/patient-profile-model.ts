@@ -54,6 +54,8 @@ export type TimelineRow = {
   /** Sort key within the day, newest first (ISO instant or the day itself). */
   at: string;
   title: string;
+  /** Owner 2026-10-05 — an OPD row's visit, so the row opens the visit card. */
+  encounterId?: string;
   /** The part of the title drawn in brick red (an abnormal value, a critical impression). */
   alert?: string;
   sub: string | null;
@@ -119,7 +121,7 @@ export function buildTimeline(src: TimelineSources, l: Labels): TimelineRow[] {
     if (v.diagnosis !== null && v.diagnosis !== "") parts.push(l.clinical && v.icd10Code !== null ? `${v.diagnosis} (${v.icd10Code})` : v.diagnosis);
     if (l.clinical && v.prescriptionLineCount > 0) parts.push(l.medicines(v.prescriptionLineCount));
     rows.push({
-      key: `opd-${v.encounterId}`, source: "OPD", day: v.serviceDate, at: v.openedAt,
+      key: `opd-${v.encounterId}`, source: "OPD", day: v.serviceDate, at: v.openedAt, encounterId: v.encounterId,
       title: who === "" ? "OPD" : who, sub: parts.length === 0 ? null : parts.join(" · "),
       ...(v.visitNo !== undefined && v.visitNo !== "" ? { note: l.visit(v.visitNo) } : {}),
     });
