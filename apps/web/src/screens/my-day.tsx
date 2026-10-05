@@ -326,7 +326,7 @@ function CollectionsCard({ section, blind, receipts }: { section: WireReportSect
   );
 }
 
-function MetricRow({ m }: { m: Metric }): React.ReactElement {
+function MetricRow({ m, uncountedToday = false }: { m: Metric; uncountedToday?: boolean }): React.ReactElement {
   const { t } = useTranslation();
   const drift = m.first !== undefined && m.second !== undefined;
   return (
@@ -345,6 +345,7 @@ function MetricRow({ m }: { m: Metric }): React.ReactElement {
               <span>{t("myDay.usual", { median: m.median })}</span>
             </>
           )}
+          {uncountedToday && m.fact === "collected" ? <span data-testid="myd-collected-uncounted">{t("myDay.blind.weekNote")}</span> : null}
         </span>
       </div>
       {drift ? (
@@ -358,7 +359,12 @@ function MetricRow({ m }: { m: Metric }): React.ReactElement {
   );
 }
 
-function WeekCard({ date }: { date: string }): React.ReactElement {
+/**
+ * `blind` — today's drawer is not counted yet, so the server left this day's money out of the window
+ * (blind count, owner 2026-09-28). The "Collected" line then says so instead of reading as a short week
+ * (owner 2026-10-05).
+ */
+function WeekCard({ date, blind }: { date: string; blind: boolean }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const { actor, can } = useAuth();
   const [period, setPeriod] = useState<WireBriefPeriod>("week");
@@ -381,7 +387,7 @@ function WeekCard({ date }: { date: string }): React.ReactElement {
       {brief.isPending ? <p className="myd-empty">{t("app.loading")}</p> : null}
       {brief.isError ? <p role="alert" className="myd-empty err">{t("brief.failed")}</p> : null}
       {brief.data !== undefined && metrics.length === 0 ? <p className="myd-empty">{t("brief.nothingToSay")}</p> : null}
-      {metrics.map((m) => <MetricRow key={m.fact} m={m} />)}
+      {metrics.map((m) => <MetricRow key={m.fact} m={m} uncountedToday={blind && brief.data?.to === date} />)}
       {brief.data === undefined ? null : (
         <div className="myd-range mono">{t("brief.range", { from: longDate(brief.data.from, i18n.language, false), to: longDate(brief.data.to, i18n.language) })}</div>
       )}
@@ -533,7 +539,7 @@ export function MyDay(): React.ReactElement {
           </div>
           <div className="myd-stack">
             <CollectionsCard section={moneySection} blind={blind} receipts={receipts} />
-            <WeekCard date={date} />
+            <WeekCard date={date} blind={blind} />
           </div>
         </div>
 
