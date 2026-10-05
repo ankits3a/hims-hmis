@@ -19,7 +19,7 @@ import { useDoctorLabel } from "../../lib/use-doctor-label";
 import {
   ageOf, ageYearsOf, billOf, deptQueues, firstFreeDoctor, inHall, initialsOf, invoiceLinesOf, istClock, istDateLabel,
   laneOf, flowOf, LANE_TEXT, logged, openVisitsToday, rs, SEAT_LABEL, SEAT_ROUTE, SEATS, shortestLine, shouldJoinNow,
-  seatHasStage, sexLetter, stageForSeat, waitMinutes,
+  seatHasStage, sexLetter, stageForSeat, tokenLabel, waitMinutes,
 } from "./model";
 import type { Lane, LogLine, Seat } from "./model";
 import { DeskProvider, emptySession, EMPTY_FORM, formAgeYears, allergiesOf, registerBodyOf } from "./session";
@@ -904,6 +904,65 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
   }, [s.visit, s.issued, patch, qc, seat]);
 
   /**
+   * Owner 2026-10-05 — "WRONG DEPARTMENT — MOVE PATIENT". One server act (`POST
+   * /opd/visits/:id/move-department`) abandons the wrong visit and opens the right one; the desk then
+   * holds the NEW visit exactly as `assign` would have, so the bill re-quotes in the new department
+   * and the clerk never re-types the patient. Refused (by the server too) once a bill stands.
+   */
+  const moveDepartment = useCallback(async (departmentId: string, doctorId: string, reason: string): Promise<string | null> => {
+    const visit = s.visit;
+    if (visit === null) return t("registrationCounter.move.refused");
+    if (s.issued !== null) return t("registrationCounter.move.billed");
+    const dq = queues.find((q) => q.departmentId === departmentId);
+    const chosen = (summaries.data?.items ?? []).find((x) => x.doctor.id === doctorId) ?? null;
+    patch({ busy: "assign", error: null });
+    try {
+      const { moveVisitDepartment } = await import("../../lib/opd-api");
+      const res = await moveVisitDepartment(visit.encounterId, { departmentId, doctorId, reason });
+      const deptName = dq?.departmentName ?? departments.data?.items.find((x) => x.id === departmentId)?.name ?? departmentId;
+      const deptCode = departments.data?.items.find((x) => x.id === departmentId)?.code ?? null;
+      setS((prev) => ({
+        ...prev,
+        busy: null,
+        issued: null,
+        tender: null,
+        armedTender: null,
+        tenderRef: "",
+        visit: {
+          ...(prev.visit ?? visit),
+          encounterId: res.to.encounter.id,
+          visitNo: res.to.encounter.visitNo,
+          departmentId,
+          departmentName: deptName,
+          doctorId,
+          doctorName: chosen?.doctor.displayName ?? doctorId,
+          roomCode: chosen?.roomCode ?? null,
+          ahead: chosen?.waitingCount ?? 0,
+          waitMinutes: chosen === null ? 0 : waitMinutes(chosen),
+          tokenNo: res.to.tokenNo,
+          joining: false,
+          joinError: null,
+        },
+        log: logged(prev.log, t("registrationCounter.move.done", {
+          from: visit.departmentName, to: deptName,
+          token: res.to.tokenNo === null ? "—" : tokenLabel(deptCode, res.to.tokenNo),
+        }), "ok"),
+      }));
+      await qc.invalidateQueries({ queryKey: ["d1", "quote"] });
+      void qc.invalidateQueries({ queryKey: ["d1", "summary"] });
+      void qc.invalidateQueries({ queryKey: ["d1", "timeline"] });
+      return null;
+    } catch (e) {
+      // The refusal is the PANEL's to show, beside the button the clerk pressed — not the page banner.
+      setS((prev) => ({
+        ...prev, busy: null,
+        log: logged(prev.log, `${t("registrationCounter.move.refused")} — ${opdErrorMessage(e)}`, "err"),
+      }));
+      return opdErrorMessage(e);
+    }
+  }, [s.visit, s.issued, patch, qc, queues, summaries.data, departments.data, t]);
+
+  /**
    * FD-18 — THE BILLING OVERRIDE, AS A CORRECTION. Owner ruling 2026-09-04, choosing between three
    * designs: *"re-classify the visit, not the price"* and *"cashier alone, fully audited"*.
    *
@@ -1403,7 +1462,7 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
     duesCount: (dues.data?.items ?? []).filter((row) => row.outstandingPaise > 0).length,
     moneyTaken,
     openVisits, adoptVisit,
-    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor, reclassify,
+    note, hold, startEnrolment, enrol, runTriage, assign, unassign, holdFutureSlot, setPhoto, changeDoctor, moveDepartment, reclassify,
     presentCoupon, presentSlip, settle, amend, setLane, openDrawer, clearDesk, ask, goto,
   };
 

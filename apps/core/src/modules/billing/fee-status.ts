@@ -125,3 +125,23 @@ export async function encounterFeeStatuses(
   }
   return out;
 }
+
+/**
+ * OWNER 2026-10-05 — "Wrong department — move patient". The FIRST bill against a visit that still
+ * stands, or `null`: an invoice counts unless it was entered in error or credit notes have taken it
+ * back in full. A visit with such a bill is not a desk correction — unwinding it is a credit note
+ * (`POST /billing/invoices/:id/credit-notes`), with its own permission and audit — so OPD's move
+ * refuses on this answer. A ₹0 invoice stands for nothing and does not block.
+ */
+export async function standingInvoiceFor(exec: Db | Tx, encounterId: string): Promise<{ id: string; invoiceNo: string } | null> {
+  const rows = await exec
+    .select({ id: invoices.id, invoiceNo: invoices.invoiceNo, netPayablePaise: invoices.netPayablePaise })
+    .from(invoices)
+    .where(eq(invoices.encounterId, encounterId));
+  if (rows.length === 0) return null;
+  const ids = rows.map((r) => r.id);
+  const dead = await enteredInErrorDocIds(exec, "invoice", ids);
+  const credited = await creditedByInvoice(exec, ids);
+  const standing = rows.find((r) => !dead.has(r.id) && r.netPayablePaise - (credited.get(r.id) ?? 0) > 0);
+  return standing === undefined ? null : { id: standing.id, invoiceNo: standing.invoiceNo };
+}

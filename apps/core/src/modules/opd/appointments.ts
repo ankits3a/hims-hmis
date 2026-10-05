@@ -87,7 +87,7 @@ export async function rescheduleAppointment(
   db: Db,
   actor: Actor,
   appointmentId: string,
-  input: { slotStart: Date; doctorId?: string },
+  input: { slotStart: Date; doctorId?: string; reason?: string },
   now: Date = new Date(),
 ): Promise<{ from: AppointmentRow; to: AppointmentRow }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
@@ -137,6 +137,9 @@ export async function rescheduleAppointment(
         fromAppointmentId: appointmentId, toAppointmentId: toId, patientId: loaded.patientId,
         doctorId: doctor.id, departmentId: doctor.departmentId, serviceDate, slotStart: input.slotStart.toISOString(),
         previousDoctorId: loaded.doctorId, previousSlotStart: loaded.slotStart.toISOString(),
+        // Owner 2026-10-05 — "wrong department": the move to another department records why.
+        ...(doctor.departmentId !== loaded.departmentId ? { previousDepartmentId: loaded.departmentId } : {}),
+        ...((input.reason ?? "").trim() === "" ? {} : { reason: input.reason!.trim() }),
       },
     }));
     return { from, to };

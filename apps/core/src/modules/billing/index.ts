@@ -95,7 +95,7 @@ export type { BillingConfig } from "./config";
  * `queue.fee_status_changed` board flip and billing calls it inside the very transaction that covered
  * the fee (settle at issue, credit extension, or a later allocation).
  */
-export { encounterFeeStatuses } from "./fee-status";
+export { encounterFeeStatuses, standingInvoiceFor } from "./fee-status";
 export type { EncounterFeeStatus } from "./fee-status";
 export { registerFeeStatusHook } from "./settle-hooks";
 // RC-2 T2 / D3 — the pricing-side mirror of the settle hook. `partners` registers its referral

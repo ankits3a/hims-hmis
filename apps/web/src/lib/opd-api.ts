@@ -917,6 +917,29 @@ export function abandonVisit(encounterId: string, reason: string): Promise<{ enc
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/abandon`, { reason });
 }
 
+/* ══ Owner 2026-10-05 — "Wrong department — move patient" ══════════════════════════════════════ */
+
+export type WireVisitType = "new" | "revisit" | "renewal";
+export type WireMovePreview = {
+  encounterId: string;
+  from: { departmentId: string | null; doctorId: string | null; visitType: WireVisitType };
+  to: { departmentId: string; visitType: WireVisitType };
+  /** A bill standing against the visit — the move is refused until a credit note takes it back. */
+  standingInvoiceNo: string | null;
+};
+export type WireDepartmentMove = {
+  from: { encounter: WireEncounter; tokenNo: number | null };
+  to: { encounter: WireEncounter; tokenNo: number | null; sessionId: string | null; roomId: string | null; visitType: WireVisitType };
+};
+export function previewDepartmentMove(encounterId: string, departmentId: string): Promise<WireMovePreview> {
+  return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/move-preview?departmentId=${encodeURIComponent(departmentId)}`);
+}
+export function moveVisitDepartment(
+  encounterId: string, input: { departmentId: string; doctorId: string; reason: string },
+): Promise<WireDepartmentMove> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/move-department`, input);
+}
+
 /* ══ FD-16 — the appointment screen's two reads, both already on the server ═════════════════════ */
 
 /**
@@ -968,10 +991,10 @@ export function reclassifyVisit(
  * the owner's second route — find the doctor, move the patient off them — the same call as the first.
  */
 export function rescheduleAppointment(
-  appointmentId: string, slotStart: string, doctorId?: string,
+  appointmentId: string, slotStart: string, doctorId?: string, reason?: string,
 ): Promise<{ from: WireAppointment; to: WireAppointment }> {
   return api("POST", `/opd/appointments/${encodeURIComponent(appointmentId)}/reschedule`, {
-    slotStart, ...(doctorId === undefined ? {} : { doctorId }),
+    slotStart, ...(doctorId === undefined ? {} : { doctorId }), ...(reason === undefined || reason.trim() === "" ? {} : { reason: reason.trim() }),
   });
 }
 
