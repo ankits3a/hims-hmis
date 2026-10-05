@@ -6,13 +6,13 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedBillingBase } from "../../../test/helpers/billing";
 import type { BillingBaseFixture } from "../../../test/helpers/billing";
 import { withTx } from "../../kernel/db/client";
-import { opdEncounters, registrationConfig, roles } from "../../kernel/db/schema";
+import { events, opdEncounters, registrationConfig, roles, tariffVersions } from "../../kernel/db/schema";
 import { getEncounter } from "../opd";
 import { registerPatient } from "../patients";
 import { createService } from "../tariff";
 import { feeQuote } from "./charge-rules";
 import { loadBillingConfig, updateBillingConfig } from "./config";
-import { consultPricesView, decideConsultPrices, proposeConsultPrices } from "./consult-prices";
+import { changeConsultPricesNow, consultPricesView, consultTerms, decideConsultPrices, proposeConsultPrices } from "./consult-prices";
 import { encounterFeeStatuses } from "./fee-status";
 import { setFeeSwitch } from "./fee-switches";
 import { feeGate } from "./gate";
@@ -39,9 +39,10 @@ describe("the consultation price list and the revisit fee", () => {
     await truncateAll(db);
     await db.insert(registrationConfig).values({ id: "main", uhidPrefix: "HMS", updatedBy: "t" }).onConflictDoNothing();
     base = await seedBillingBase(db);
+    // Owner ruling 2026-10-05: the billing manager proposes.
     const { id } = await createUser(db, { username: "price_editor", fullName: "Price Editor", password: "p1234567" });
-    await db.insert(roles).values({ key: "tariff_editor", title: "Tariff editor" }).onConflictDoNothing();
-    await assignRole(db, { userId: id, roleKey: "tariff_editor", scopeType: "hospital" });
+    await db.insert(roles).values({ key: "billing_manager", title: "Billing Manager" }).onConflictDoNothing();
+    await assignRole(db, { userId: id, roleKey: "billing_manager", scopeType: "hospital" });
     editor = { type: "user", id };
   });
 
@@ -148,5 +149,36 @@ describe("the consultation price list and the revisit fee", () => {
     const revisitId = await wireRevisit();
     await withTx(db, (tx) => updateBillingConfig(tx, { chargeRules: { opdConsult: { new: base.consultNewServiceId, renewal: base.consultRenewalServiceId } } }));
     expect((await loadBillingConfig(db)).chargeRules.opdConsult.revisit).toBe(revisitId);
+  });
+
+  it("owner ruling 2026-10-05: the admin changes prices directly — in use at once, a reason required, audited as direct", async () => {
+    await expect(changeConsultPricesNow(db, base.owner, { prices: { new: 10000 }, note: "  " }, T_DECIDE)).rejects.toMatchObject({ code: "consult_price_reason_required" });
+
+    const after = await changeConsultPricesNow(db, base.owner, { prices: { new: 10000, renewal: 8000 }, note: "owner's new fees" }, T_DECIDE);
+    expect(after.pending).toBeNull();
+    expect(after.rows.map((r) => r.activePaise)).toEqual([10000, 8000, null]);
+
+    const direct = (await db.select().from(events)).filter((e) => e.name === "tariff.revision_applied_directly");
+    expect(direct).toHaveLength(1);
+    expect(direct[0]!.payload).toMatchObject({ direct: true, note: "owner's new fees", versionNo: 2 });
+    expect(direct[0]!.actorId).toBe(base.owner.id);
+    const v2 = (await db.select().from(tariffVersions)).find((v) => v.versionNo === 2)!;
+    expect(v2).toMatchObject({ status: "activated", createdBy: base.owner.id, activatedBy: base.owner.id, approvalId: null });
+  });
+
+  it("a direct change waits behind a proposal that is already waiting", async () => {
+    await proposeConsultPrices(db, editor, { prices: { new: 12000 } }, T_PROPOSE);
+    await expect(changeConsultPricesNow(db, base.owner, { prices: { new: 10000 }, note: "now" }, T_DECIDE)).rejects.toMatchObject({ code: "consult_price_pending" });
+  });
+
+  it("the desk's terms: the fee switch, and a revisit price only when a revisit is charged", async () => {
+    expect(await consultTerms(db, T_VISIT)).toEqual({ consultFeeOff: false, paise: { new: 50000, renewal: 50000, revisit: null } });
+    await wireRevisit();
+    await approvedRevisitPrice(0);
+    expect((await consultTerms(db, T_VISIT)).paise.revisit).toBeNull();
+    await changeConsultPricesNow(db, base.owner, { prices: { revisit: 7000 }, note: "revisits charged" }, new Date("2026-09-01T06:00:00Z"));
+    expect((await consultTerms(db, T_VISIT)).paise.revisit).toBe(7000);
+    await setFeeSwitch(db, base.owner, "opdConsult", true, new Date("2026-09-01T07:00:00Z"));
+    expect((await consultTerms(db, T_VISIT)).consultFeeOff).toBe(true);
   });
 });

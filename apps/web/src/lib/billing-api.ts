@@ -508,6 +508,14 @@ export function fetchConsultPrices(): Promise<WireConsultPrices> {
 export function proposeConsultPrices(body: { prices: Partial<Record<ConsultBranch, number>>; note?: string }): Promise<WireConsultPrices> {
   return api<WireConsultPrices>("POST", "/billing/consult-prices", body);
 }
+export function changeConsultPricesNow(body: { prices: Partial<Record<ConsultBranch, number>>; note: string }): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("POST", "/billing/consult-prices/now", body);
+}
+/** What the desk may say about a visit's fee before it is seated: the switch and the prices in force. */
+export type WireConsultTerms = { consultFeeOff: boolean; paise: Record<ConsultBranch, number | null> };
+export function fetchConsultTerms(): Promise<WireConsultTerms> {
+  return api<WireConsultTerms>("GET", "/billing/consult-terms");
+}
 export function decideConsultPrices(versionId: string, body: { approve: boolean; note: string }): Promise<WireConsultPrices> {
   return api<WireConsultPrices>("POST", `/billing/consult-prices/${encodeURIComponent(versionId)}/decision`, body);
 }

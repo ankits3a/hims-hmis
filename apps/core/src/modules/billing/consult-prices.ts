@@ -5,10 +5,11 @@ import { withTx } from "../../kernel/db/client";
 import { approveRequest, rejectRequest } from "../../kernel/approvals/decisions";
 import { getApproval } from "../../kernel/approvals/worklist";
 import {
-  activateVersion, createDraftVersion, getVersion, listServices, resolveActiveTariffVersion, setTariffItem, submitVersion,
+  activateVersion, activateVersionDirectly, createDraftVersion, getVersion, listServices, resolveActiveTariffVersion, setTariffItem,
+  submitVersion,
 } from "../tariff";
 import { formatPaise } from "../../kernel/report/money";
-import { loadBillingConfig } from "./config";
+import { chargeRulesAt, feeOffNow, loadBillingConfig } from "./config";
 import { BillingError } from "./errors";
 import type { ChargeRules } from "./config";
 import type { Db } from "../../kernel/db/client";
@@ -22,13 +23,21 @@ import type { Db } from "../../kernel/db/client";
  * that ceremony for the three consultation prices, nothing else — it calls the tariff module's own
  * writers, so every guard stays where it is:
  *
- *   · propose — `tariff.versions.draft` (the route); copies the version in force, changes the
- *     prices that differ, and submits it. One proposal waits at a time.
+ *   · propose — `billing.config.write`, the billing manager's door (OWNER RULING 2026-10-05,
+ *     below); copies the version in force, changes the prices that differ, and submits it. One
+ *     proposal waits at a time.
  *   · approve — `tariff.versions.activate` (the route) AND the approval's own checks: the approver
  *     holds the `owner` role, and is not the person who proposed (requester ≠ approver, and
- *     `activateVersion`'s drafter/submitter ≠ activator). So a price change always has two people.
- *     Approving puts the prices into use at once.
+ *     `activateVersion`'s drafter/submitter ≠ activator). Approving puts the prices into use at once.
  *   · reject — the same door; the version stays dead and a new proposal may be made.
+ *   · change now — the same door as approve, with a required reason and no second person
+ *     (`activateVersionDirectly`, event `tariff.revision_applied_directly`, `direct: true`).
+ *
+ * ═══ OWNER RULING 2026-10-05 (money) ═══
+ * *"The billing manager, admin can approve or admin can change it directly."* The billing manager
+ * proposes; the admin approves, or changes the prices directly. DECIDED: "admin" is the person who
+ * holds the `owner` role (the `admin` login carries it); the `admin` ROLE stays the access
+ * administrator it is (`seed-admin.ts`: "not a superuser that silently acquires every permission").
  */
 export const CONSULT_BRANCHES = ["new", "renewal", "revisit"] as const;
 export type ConsultBranch = (typeof CONSULT_BRANCHES)[number];
@@ -104,6 +113,18 @@ export type ConsultPriceProposal = { prices: Partial<Record<ConsultBranch, numbe
 
 export async function proposeConsultPrices(db: Db, actor: Actor, input: ConsultPriceProposal, now: Date = new Date()): Promise<ConsultPricesView> {
   if (actor.type !== "user") throw new BillingError("fee_not_applicable", "a price is proposed by a named person");
+  await draftChange(db, actor, input, now, "");
+  return consultPricesView(db, now);
+}
+
+/**
+ * The change both roads share: refuse while a proposal waits, copy the version in force, set the
+ * prices that differ. `submitNote` null leaves the version a DRAFT (the direct road activates it);
+ * a string submits it for approval.
+ */
+async function draftChange(
+  db: Db, actor: Actor, input: ConsultPriceProposal, now: Date, submitNote: string | null,
+): Promise<{ versionId: string; changes: { branch: ConsultBranch; serviceId: string; paise: number }[] }> {
   for (const [branch, paise] of Object.entries(input.prices)) {
     if (paise === undefined) continue;
     if (!Number.isInteger(paise) || paise < 0) throw new BillingError("invalid_paise", `${branch} price must be a whole number of paise, 0 or more`);
@@ -127,11 +148,21 @@ export async function proposeConsultPrices(db: Db, actor: Actor, input: ConsultP
 
   const note = input.note?.trim() || null;
   const describe = changes.map((c) => `${c.branch} ${formatPaise(c.paise)}`).join(", ");
-  await withTx(db, async (tx) => {
+  return withTx(db, async (tx) => {
     const { versionId } = await createDraftVersion(tx, actor, { copyFromVersionId: active.versionId, notes: note ?? `OPD consultation: ${describe}` });
     for (const c of changes) await setTariffItem(tx, actor, versionId, c.serviceId, c.paise);
-    await submitVersion(tx, actor, versionId, `OPD consultation prices: ${describe}${note === null ? "" : ` — ${note}`}`);
+    if (submitNote !== null) await submitVersion(tx, actor, versionId, `OPD consultation prices: ${describe}${note === null ? "" : ` — ${note}`}${submitNote}`);
+    return { versionId, changes };
   });
+}
+
+/** Owner ruling 2026-10-05: the admin changes the prices directly — no second person, a reason required, audited. */
+export async function changeConsultPricesNow(db: Db, actor: Actor, input: ConsultPriceProposal, now: Date = new Date()): Promise<ConsultPricesView> {
+  if (actor.type !== "user") throw new BillingError("fee_not_applicable", "a price is changed by a named person");
+  const note = input.note?.trim() ?? "";
+  if (note === "") throw new BillingError("consult_price_reason_required", "a direct price change needs a reason");
+  const { versionId } = await draftChange(db, actor, input, now, null);
+  await activateVersionDirectly(db, actor, versionId, now, note);
   return consultPricesView(db, now);
 }
 
@@ -155,4 +186,18 @@ export async function decideConsultPrices(
   if (waiting.status === "pending") await approveRequest(db, actor, { approvalId, note: input.note });
   await activateVersion(db, actor, versionId, now);
   return consultPricesView(db, now);
+}
+
+/**
+ * What a desk may say about a visit's fee BEFORE it is seated (Desk One's visit-type box): whether
+ * the consultation fee is switched off now, and each branch's price in force. `revisit` is null
+ * unless a revisit is actually charged (`chargeRulesAt`). Prices only — never a patient's bill.
+ */
+export type ConsultTerms = { consultFeeOff: boolean; paise: Prices };
+export async function consultTerms(db: Db, now: Date = new Date()): Promise<ConsultTerms> {
+  const { chargeRules } = await loadBillingConfig(db);
+  const rules = await chargeRulesAt(db, chargeRules, now);
+  const active = await resolveActiveTariffVersion(db, now);
+  const paise: Prices = active === null ? { new: null, renewal: null, revisit: null } : await pricesIn(db, active.versionId, branchServices(rules));
+  return { consultFeeOff: feeOffNow(chargeRules, "opdConsult"), paise };
 }

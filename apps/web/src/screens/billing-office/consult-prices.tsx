@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import {
-  billingErrorCode, billingErrorMessage, CONSULT_BRANCHES, decideConsultPrices, fetchConsultPrices, proposeConsultPrices,
+  billingErrorCode, billingErrorMessage, changeConsultPricesNow, CONSULT_BRANCHES, decideConsultPrices, fetchConsultPrices,
+  proposeConsultPrices,
 } from "../../lib/billing-api";
 import { fmtPaise } from "../../lib/format";
 import type { ConsultBranch, WireConsultPrices } from "../../lib/billing-api";
@@ -13,9 +14,11 @@ import type { ConsultBranch, WireConsultPrices } from "../../lib/billing-api";
  *
  * *"Build a price list in billing screen so that I could change values from there. Revisit charge,
  * New and Renewal charges."* One row per consultation fee with the price in force. A change is a
- * tariff version: whoever holds `tariff.versions.draft` proposes, and the owner
- * (`tariff.versions.activate`, and not the proposer) approves — the new prices are in use from that
- * moment. The Fees switch still decides whether a consultation is charged at all.
+ * tariff version. OWNER RULING 2026-10-05 (money): *"The billing manager, admin can approve or admin
+ * can change it directly."* So the billing manager (`billing.config.write`) sends a change for
+ * approval, and the admin — the holder of `tariff.versions.activate`, the owner role — approves it
+ * (never their own) or changes the prices directly with a reason. The Fees switch still decides
+ * whether a consultation is charged at all.
  */
 const KEY = ["billing", "consult-prices"] as const;
 
@@ -35,7 +38,10 @@ export function ConsultPrices(): React.ReactElement {
   const { t } = useTranslation();
   const { can, actor, ready } = useAuth();
   const qc = useQueryClient();
-  const mayRead = can("tariff.read");
+  const mayRead = can("billing.reports.read");
+  // The admin changes directly; a billing manager sends for approval; anyone else reads.
+  const mayDirect = can("tariff.versions.activate");
+  const mode: "direct" | "propose" | null = mayDirect ? "direct" : can("billing.config.write") ? "propose" : null;
   const q = useQuery({ queryKey: KEY, queryFn: fetchConsultPrices, enabled: mayRead });
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -46,12 +52,13 @@ export function ConsultPrices(): React.ReactElement {
     await qc.invalidateQueries({ predicate: (query) => query.queryKey[0] !== KEY[0] || query.queryKey[1] !== KEY[1] });
   };
   const propose = useMutation({ mutationFn: proposeConsultPrices, onSuccess: (view) => after(view, t("consultPrices.sent")) });
+  const now = useMutation({ mutationFn: changeConsultPricesNow, onSuccess: (view) => after(view, t("consultPrices.changed")) });
   const decide = useMutation({
     mutationFn: (v: { versionId: string; approve: boolean; note: string }) => decideConsultPrices(v.versionId, { approve: v.approve, note: v.note }),
     onSuccess: (view, v) => after(view, t(v.approve ? "consultPrices.approved" : "consultPrices.rejected")),
   });
 
-  const error = q.error ?? propose.error ?? decide.error;
+  const error = q.error ?? propose.error ?? now.error ?? decide.error;
   const errorText = (e: unknown): string => {
     const code = billingErrorCode(e);
     return code !== null && t(`consultPrices.refusal.${code}`, { defaultValue: "" }) !== "" ? t(`consultPrices.refusal.${code}`) : billingErrorMessage(e);
@@ -65,23 +72,27 @@ export function ConsultPrices(): React.ReactElement {
   return (
     <div className="space-y-4" data-testid="consult-prices">
       <p className="text-sm text-muted-foreground">{t("consultPrices.lead")}</p>
+      <p className="text-sm" data-testid="consult-prices-rule">{t(`consultPrices.rule.${mode ?? "read"}`)}</p>
       {error !== null && <p role="alert" className="text-sm text-red-600" data-testid="consult-prices-error">{errorText(error)}</p>}
       {notice !== null && <p role="status" className="text-sm text-green-700">{notice}</p>}
       {view === undefined ? null : (
         <>
           {view.pending !== null && (
             <PendingCard
-              view={view} mine={actor?.id === view.pending.proposedBy.id} mayDecide={can("tariff.versions.activate")}
+              view={view} mine={actor?.id === view.pending.proposedBy.id} mayDecide={mayDirect}
               busy={decide.isPending}
               onDecide={(approve, note) => { setNotice(null); decide.mutate({ versionId: view.pending!.versionId, approve, note }); }}
             />
           )}
           <PriceCard
             key={`${view.activeVersionNo ?? "none"}-${view.pending?.versionId ?? "none"}`}
-            view={view} mayPropose={can("tariff.versions.draft") && view.pending === null} busy={propose.isPending}
-            onPropose={(prices, note) => { setNotice(null); propose.mutate({ prices, ...(note === "" ? {} : { note }) }); }}
+            view={view} mode={view.pending === null ? mode : null} busy={propose.isPending || now.isPending}
+            onSubmit={(prices, note) => {
+              setNotice(null);
+              if (mode === "direct") now.mutate({ prices, note });
+              else propose.mutate({ prices, ...(note === "" ? {} : { note }) });
+            }}
           />
-          <p className="text-sm text-muted-foreground" data-testid="consult-prices-rule">{t("consultPrices.twoPeople")}</p>
         </>
       )}
     </div>
@@ -90,12 +101,14 @@ export function ConsultPrices(): React.ReactElement {
 
 function PriceCard(props: {
   view: WireConsultPrices;
-  mayPropose: boolean;
+  /** `direct` — the admin's Change now (a reason required); `propose` — Send for approval; null — read only. */
+  mode: "direct" | "propose" | null;
   busy: boolean;
-  onPropose: (prices: Partial<Record<ConsultBranch, number>>, note: string) => void;
+  onSubmit: (prices: Partial<Record<ConsultBranch, number>>, note: string) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const { view } = props;
+  const editable = props.mode !== null;
   const initial = Object.fromEntries(view.rows.map((r) => [r.branch, paiseToRupeesText(r.activePaise)])) as Record<ConsultBranch, string>;
   const [text, setText] = useState<Record<ConsultBranch, string>>(initial);
   const [note, setNote] = useState("");
@@ -111,7 +124,7 @@ function PriceCard(props: {
     const wrong = view.rows.find((r) => r.serviceId !== null && text[r.branch].trim() !== "" && rupeesToPaise(text[r.branch]) === null);
     if (wrong !== undefined) { setBad(wrong.branch); return; }
     setBad(null);
-    props.onPropose(Object.fromEntries(changed), note.trim());
+    props.onSubmit(Object.fromEntries(changed), note.trim());
   };
 
   return (
@@ -122,7 +135,7 @@ function PriceCard(props: {
           {view.activeVersionNo !== null && <span className="ml-2 text-xs font-normal text-muted-foreground">{t("consultPrices.version", { no: view.activeVersionNo })}</span>}
         </div>
         <div className="hidden w-28 shrink-0 text-right text-xs text-muted-foreground sm:block">{t("consultPrices.colNow")}</div>
-        {props.mayPropose && <div className="hidden w-36 shrink-0 text-right text-xs text-muted-foreground sm:block">{t("consultPrices.colNew")}</div>}
+        {editable && <div className="hidden w-36 shrink-0 text-right text-xs text-muted-foreground sm:block">{t("consultPrices.colNew")}</div>}
       </div>
       {CONSULT_BRANCHES.map((branch) => {
         const row = view.rows.find((r) => r.branch === branch)!;
@@ -137,7 +150,7 @@ function PriceCard(props: {
             <div className="w-28 shrink-0 text-right text-sm font-medium tabular-nums" data-testid={`consult-price-${branch}-active`}>
               {unwired ? t("consultPrices.notSetUp") : free && branch === "revisit" ? t("consultPrices.free") : row.activePaise === null ? t("consultPrices.unpriced") : fmtPaise(row.activePaise)}
             </div>
-            {props.mayPropose && (
+            {editable && (
               <div className="flex w-full items-center gap-1 sm:w-36">
                 <span aria-hidden className="text-sm text-muted-foreground sm:hidden">{t("consultPrices.colNew")}</span>
                 <span aria-hidden className="ml-auto text-sm text-muted-foreground sm:ml-0">₹</span>
@@ -154,20 +167,21 @@ function PriceCard(props: {
         );
       })}
       {bad !== null && <p role="alert" className="px-3 pt-2 text-sm text-red-600">{t("consultPrices.badAmount")}</p>}
-      {props.mayPropose && (
+      {editable && (
         <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-end">
           <label className="min-w-0 flex-1 space-y-1 text-sm">
-            <span className="block text-muted-foreground">{t("consultPrices.noteLabel")}</span>
+            <span className="block text-muted-foreground">{t(props.mode === "direct" ? "consultPrices.reasonLabel" : "consultPrices.noteLabel")}</span>
             <input
               data-testid="consult-prices-note" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} disabled={props.busy}
               className="h-9 w-full rounded-md border bg-background px-2 text-sm" placeholder={t("consultPrices.notePlaceholder")}
             />
           </label>
           <button
-            type="submit" data-testid="consult-prices-send" disabled={props.busy || changed.length === 0}
+            type="submit" data-testid={props.mode === "direct" ? "consult-prices-now" : "consult-prices-send"}
+            disabled={props.busy || changed.length === 0 || (props.mode === "direct" && note.trim() === "")}
             className="h-9 shrink-0 rounded-md border border-emerald-800 bg-emerald-800 px-4 text-sm font-medium text-white disabled:opacity-50"
           >
-            {t("consultPrices.send")}
+            {t(props.mode === "direct" ? "consultPrices.changeNow" : "consultPrices.send")}
           </button>
         </div>
       )}
