@@ -484,3 +484,38 @@ export function fetchFeeSwitches(): Promise<WireFeeSwitches> {
 export function saveFeeSwitch(body: { kind: FeeKind; off: boolean }): Promise<WireFeeSwitches> {
   return api<WireFeeSwitches>("PUT", "/billing/fee-switches", body);
 }
+
+/** Owner, 2026-10-05 — the OPD consultation price list (`/billing/consult-prices`). Paise throughout. */
+export type ConsultBranch = "new" | "renewal" | "revisit";
+export const CONSULT_BRANCHES: readonly ConsultBranch[] = ["new", "renewal", "revisit"];
+export type WireConsultPrices = {
+  rows: { branch: ConsultBranch; serviceId: string | null; code: string | null; activePaise: number | null }[];
+  activeVersionNo: number | null;
+  pending: null | {
+    versionId: string;
+    versionNo: number;
+    approvalId: string | null;
+    approvalStatus: "pending" | "granted";
+    proposedBy: { id: string; name: string | null };
+    proposedAt: string | null;
+    note: string | null;
+    prices: Record<ConsultBranch, number | null>;
+  };
+};
+export function fetchConsultPrices(): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("GET", "/billing/consult-prices");
+}
+export function proposeConsultPrices(body: { prices: Partial<Record<ConsultBranch, number>>; note?: string }): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("POST", "/billing/consult-prices", body);
+}
+export function changeConsultPricesNow(body: { prices: Partial<Record<ConsultBranch, number>>; note: string }): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("POST", "/billing/consult-prices/now", body);
+}
+/** What the desk may say about a visit's fee before it is seated: the switch and the prices in force. */
+export type WireConsultTerms = { consultFeeOff: boolean; paise: Record<ConsultBranch, number | null> };
+export function fetchConsultTerms(): Promise<WireConsultTerms> {
+  return api<WireConsultTerms>("GET", "/billing/consult-terms");
+}
+export function decideConsultPrices(versionId: string, body: { approve: boolean; note: string }): Promise<WireConsultPrices> {
+  return api<WireConsultPrices>("POST", `/billing/consult-prices/${encodeURIComponent(versionId)}/decision`, body);
+}

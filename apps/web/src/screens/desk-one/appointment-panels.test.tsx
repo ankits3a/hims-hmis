@@ -89,6 +89,10 @@ function mount(opts: {
   cancels?: { reason: string }[];
   checkInRefuses?: boolean;
   emptyBoard?: boolean;
+  /** Owner 2026-10-05 — the consultation terms the desk reads: the revisit price and the Fees switch. */
+  revisitPaise?: number;
+  feeOff?: boolean;
+  termsRefused?: boolean;
 } = {}): void {
   stubFetch({
     "GET /api/auth/me": {
@@ -134,6 +138,9 @@ function mount(opts: {
       }],
     },
     "GET /api/opd/continuity": { anchor: opts.anchor ?? null },
+    "GET /api/billing/consult-terms": opts.termsRefused === true
+      ? (): unknown => { throw new Error("refused"); }
+      : { consultFeeOff: opts.feeOff ?? false, paise: { new: 30000, renewal: 15000, revisit: opts.revisitPaise ?? null } },
     "GET /api/opd/slots": { slots: opts.slots ?? [] },
     /*
       Two different reads land on this path — the DAY's book (doctorId + serviceDate) and THIS
@@ -483,9 +490,49 @@ describe("FD-17: the appointment's type, and the bookings the desk did not warn 
     await holdPatient();
 
     const badge = await screen.findByTestId("visit-type");
-    expect(badge).toHaveTextContent("Revisit — no consultation fee");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — no consultation fee"));
     expect(badge).toHaveTextContent("30-day");
     expect(badge).toHaveTextContent("2026-09-29");
+  });
+
+  it("owner 2026-10-05: when the price list charges a revisit, the box says the price, not 'no fee'", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 5000 });
+    await holdPatient();
+
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — consultation ₹50.00"));
+    expect(badge).not.toHaveTextContent("no consultation fee");
+  });
+
+  it("owner 2026-10-05: with the Fees switch off, a priced revisit is still free and a renewal says it is free", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 5000, feeOff: true });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — no consultation fee"));
+  });
+
+  it("owner 2026-10-05: a renewal while the Fees switch is off is free, not chargeable", async () => {
+    mount({ anchor: ANCHOR("renewal", 7, "2026-09-06"), feeOff: true });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Renewal — free while the consultation fee is switched off"));
+    expect(badge).not.toHaveTextContent("chargeable");
+  });
+
+  it("owner 2026-10-05: when the desk cannot read the terms it names the visit type and claims no fee either way", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), termsRefused: true });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    expect(badge).toHaveTextContent("Revisit");
+    expect(badge).not.toHaveTextContent("no consultation fee");
+    expect(badge).toHaveTextContent("30-day");
+  });
+
+  it("a revisit priced at ₹0 is still called free", async () => {
+    mount({ anchor: ANCHOR("revisit", 30, "2026-09-29"), revisitPaise: 0 });
+    await holdPatient();
+    const badge = await screen.findByTestId("visit-type");
+    await waitFor(() => expect(badge).toHaveTextContent("Revisit — no consultation fee"));
   });
 
   it("says a renewal is chargeable, and why the window no longer covers it", async () => {
@@ -493,7 +540,7 @@ describe("FD-17: the appointment's type, and the bookings the desk did not warn 
     await holdPatient();
 
     const badge = await screen.findByTestId("visit-type");
-    expect(badge).toHaveTextContent("chargeable");
+    await waitFor(() => expect(badge).toHaveTextContent("chargeable"));
     expect(badge).toHaveTextContent("2026-09-06");
   });
 

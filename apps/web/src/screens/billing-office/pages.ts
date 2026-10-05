@@ -10,10 +10,10 @@
  * The office holds no permission model of its own (the old screen's rule, kept): every page is listed
  * and the server refuses what the person may not do, in its own words.
  */
-export type OfficeView = "today" | "refunds" | "receipts" | "recon" | "daybook" | "gstr1" | "unbilled" | "fees";
+export type OfficeView = "today" | "refunds" | "receipts" | "recon" | "daybook" | "gstr1" | "unbilled" | "fees" | "prices";
 export type OfficePage = { side: Exclude<OfficeView, "today">; key: string };
 
-export const MENU: readonly OfficeView[] = ["today", "refunds", "receipts", "recon", "daybook", "gstr1", "unbilled", "fees"];
+export const MENU: readonly OfficeView[] = ["today", "refunds", "receipts", "recon", "daybook", "gstr1", "unbilled", "fees", "prices"];
 
 export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "refunds", key: "pay" },
@@ -29,11 +29,12 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "unbilled", key: "unbilled" },
   // Owner, 2026-10-01 — the fee switches (`fee-switches.tsx`): consultation and laboratory fees, off and on.
   { side: "fees", key: "fees" },
+  { side: "prices", key: "prices" },
 ];
 
 /** The board's keys for each side (artboard 3). */
 export const SIDE_KEYS: Readonly<Partial<Record<OfficeView, string>>> = {
-  refunds: "R", receipts: "V", recon: "C", daybook: "D", gstr1: "G", unbilled: "U", fees: "F",
+  refunds: "R", receipts: "V", recon: "C", daybook: "D", gstr1: "G", unbilled: "U", fees: "F", prices: "P",
 };
 
 /** The five tabs the office had before the board → the page that replaced each. */

@@ -36,7 +36,14 @@ export type BillingErrorCode =
    * OWNER RULING 2026-09-30 (money) — a rounding rule or a sale discount asked on a bill that is not a
    * pharmacy bill, and a sale discount that cannot be given (no reason, over 100%, over the bill).
    */
-  | "pharmacy_bill_only" | "sale_discount_refused";
+  | "pharmacy_bill_only" | "sale_discount_refused"
+  /**
+   * OWNER 2026-10-05 — the consultation price list (`consult-prices.ts`): a proposal while another
+   * waits, a proposal that changes nothing, a revisit price with no revisit service wired, a
+   * decision on a version that is not waiting.
+   */
+  | "consult_price_pending" | "consult_price_unchanged" | "revisit_fee_unwired" | "consult_price_not_pending"
+  | "consult_price_reason_required";
 
 export class BillingError extends Error {
   constructor(
@@ -86,6 +93,8 @@ const VALIDATION_CODES = new Set<BillingErrorCode>([
   "aadhaar_not_stored",
   // OWNER RULING 2026-09-30 — the request itself asks for what cannot be given.
   "pharmacy_bill_only", "sale_discount_refused",
+  // OWNER 2026-10-05 — a price proposal that changes nothing.
+  "consult_price_unchanged", "consult_price_reason_required",
 ]);
 
 export function billingHttpStatus(code: BillingErrorCode): number {

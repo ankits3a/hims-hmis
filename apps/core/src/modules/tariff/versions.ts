@@ -8,7 +8,7 @@ import { requestApproval } from "../../kernel/approvals/requests";
 import { getApproval } from "../../kernel/approvals/worklist";
 import { assertPaise } from "./money";
 import { TariffError } from "./errors";
-import { tariffRevisionApplied } from "./events";
+import { tariffRevisionApplied, tariffRevisionAppliedDirectly } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -256,6 +256,72 @@ export async function activateVersion(
   });
 }
 
+/**
+ * OWNER RULING 2026-10-05 (money) — *"The billing manager, admin can approve or admin can change it
+ * directly."* A DRAFT the actor drafted themself goes into use with no approval. This is a second,
+ * separate road beside `activateVersion`, not a relaxation of it: the caller's door is
+ * `tariff.versions.activate`, a reason is required, the version is marked submitted and activated by
+ * the same named person, and `tariff.revision_applied_directly` (`direct: true`, the reason) is
+ * appended in the same transaction. The activation lock and the monotone effective date are the
+ * same as the approved road's.
+ */
+export async function activateVersionDirectly(
+  db: Db,
+  actor: Actor,
+  versionId: string,
+  effectiveFrom: Date,
+  note: string,
+): Promise<{ versionNo: number; effectiveFrom: Date }> {
+  const reason = note.trim();
+  if (reason === "") throw new TariffError("not_draft", "a direct price change needs a reason");
+  if (actor.type !== "user") throw new TariffError("not_draft", "a direct price change is made by a named person");
+  return withTx(db, async (tx) => {
+    // The approved road's lock, widened to the target draft so it is held too.
+    await tx.execute(
+      sql`select id from tariff_versions where status in ('submitted', 'activated') or id = ${versionId} order by id for update`,
+    );
+    const rows = await tx.select().from(tariffVersions).where(eq(tariffVersions.id, versionId));
+    const version = rows[0];
+    if (!version) throw new TariffError("unknown_version", `unknown tariff version ${versionId}`);
+    if (version.status !== "draft") throw new TariffError("not_draft", `version ${versionId} is ${version.status}, not draft`);
+    if (version.createdBy !== actor.id) {
+      throw new TariffError("sod_drafter_activator", `a direct change activates only a draft its own author made`);
+    }
+    const items = await tx.select({ id: tariffItems.id }).from(tariffItems).where(eq(tariffItems.versionId, versionId));
+    if (items.length === 0) throw new TariffError("empty_version", `version ${versionId} has no tariff items`);
+
+    const activated = await tx
+      .select({ effectiveFrom: tariffVersions.effectiveFrom })
+      .from(tariffVersions)
+      .where(and(eq(tariffVersions.status, "activated"), ne(tariffVersions.id, versionId)));
+    if (activated.some((r) => r.effectiveFrom !== null && r.effectiveFrom >= effectiveFrom)) {
+      throw new TariffError(
+        "effective_from_not_monotone",
+        `effectiveFrom must be strictly greater than every previously-activated version's effectiveFrom`,
+      );
+    }
+    const now = new Date();
+    const claimed = await tx
+      .update(tariffVersions)
+      .set({ status: "activated", submittedBy: actor.id, submittedAt: now, activatedBy: actor.id, activatedAt: now, effectiveFrom })
+      .where(and(eq(tariffVersions.id, versionId), eq(tariffVersions.status, "draft")))
+      .returning({ versionNo: tariffVersions.versionNo });
+    if (claimed.length === 0) throw new TariffError("not_draft", `version ${versionId} changed concurrently`);
+
+    await appendEvent(
+      tx,
+      tariffRevisionAppliedDirectly.make({
+        actor,
+        payload: {
+          versionId, versionNo: claimed[0]!.versionNo, effectiveFrom: effectiveFrom.toISOString(),
+          itemCount: items.length, direct: true, note: reason,
+        },
+      }),
+    );
+    return { versionNo: claimed[0]!.versionNo, effectiveFrom };
+  });
+}
+
 /** The lock (D5): the activated version with the greatest effectiveFrom <= at (equal included). */
 export async function resolveActiveTariffVersion(
   db: Db,
@@ -270,6 +336,21 @@ export async function resolveActiveTariffVersion(
   const row = rows[0];
   if (!row) return null;
   return { versionId: row.id, versionNo: row.versionNo };
+}
+
+/**
+ * One service's price in the version in force at `at`, or null when no version is active or the
+ * version does not price it. The billing fee branch asks this for the optional revisit fee (owner,
+ * 2026-10-05) — one indexed read instead of a whole pricing context on every queue refresh.
+ */
+export async function activePricePaise(db: Db | Tx, serviceId: string, at: Date): Promise<number | null> {
+  const active = await resolveActiveTariffVersion(db as Db, at);
+  if (active === null) return null;
+  const rows = await db
+    .select({ pricePaise: tariffItems.pricePaise })
+    .from(tariffItems)
+    .where(and(eq(tariffItems.versionId, active.versionId), eq(tariffItems.serviceId, serviceId)));
+  return rows[0]?.pricePaise ?? null;
 }
 
 export async function getVersion(
