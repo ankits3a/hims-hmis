@@ -27,7 +27,7 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
 
 - **Colours:** `src/theme.ts` is the web's `styles/paper-pine.css` token for token. `__tests__/theme.test.ts` reads the CSS file and fails on drift.
 - **Type and touch:** type scale on a phone is body 15, title 26, and mono tags as on the web. Touch targets are at least 48dp.
-- **Fonts:** IBM Plex (the web's) lands in M1 via `@expo-google-fonts/ibm-plex-sans`, `ibm-plex-mono` and `ibm-plex-sans-devanagari`. M0 uses the system font plus Android `monospace`.
+- **Fonts:** IBM Plex Sans and Mono (the web's), bundled since M3 (`src/fonts.ts`, `src/text.tsx`). Hindi uses the phone's own Devanagari face.
 - **Strings:** `src/locales/{en,hi}.json`. Keys the web also has are copied verbatim. `__tests__/i18n.test.ts` fails if their wording differs from the web's or if en/hi key sets differ.
 
 ## 3. Milestones (each: tests, a web-export walk at 360/390/412 read by eye, then a preview APK on a real phone)
@@ -37,7 +37,7 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
 | **M0** ✅ | Scaffold, sign-in, forced password change, fingerprint unlock, seat home, logout, en/hi | 38 jest tests; walk shots read |
 | **M1** ✅ | **Vitals bay** (built 2026-10-06, see §3a) | Bench with a doctor filter; three doors (token, UHID, camera scan of a card). Capture BP with `/ - , .` or a space as separator, plausibility, the gate mirrors. Temperature sensed as °F or °C by band and charted in °C. Temperature optional; BP optional under 13 (the server's `requiredFor`). Danger protocol (other arm, class 0, cancel window), rest chairs, emergency save, fee gate in board words. Rules shared with web (#491) as ONE file |
 | **M2** ✅ | **Slip desk** (built 2026-10-06, see §3b) | Find the visit (scan, visit number, token as printed, UHID, name), the server's read-back and "check the person", full-screen camera with a lamp, the crop step (page found, four draggable corners with a loupe, Reset, Retake), perspective-straightened page, kind + note, file against the visit with progress; never queued. Detector and warp arithmetic shared with web (#490) |
-| M3 | **Doctor OPD queue + patient summary** | My queue now, call next, the patient's vitals/allergies/history card. Read-only consult notes; prescribing stays on the web until a doctor-desk board exists for phone |
+| **M3** ✅ | **Doctor's OPD line + patient brief** (built 2026-10-06, see §3c) | My line today (waiting / with me / seen, longest wait, each row's age, visit kind, wait, UNPAID and DANGER marks), call next, call again, skip with a coded reason and undo, tokens held for the bill opened with a reason, the patient brief (allergy, the patient's words, today's vitals with the bay's flags, lab and radiology since the last visit, the last prescription and its refill record, past visits, filed papers with zoom), start / park / resume / complete. Plex fonts, the CRK crest as the app icon, and the in-app update check land with it |
 | M4 | **Desk One essentials** | Search by name/UHID/phone, register (minimal fields), token, collect with Cash or UPI. Money writes never queued offline |
 | M5 | **Roster** On-now and My duties | The boards' phone layouts (D6) |
 | M6 | Push and devices | `expo-notifications`. The server registers a device push token per session and sends existing alert kinds (roster flags, unpaid-token door, lab criticals). Devices are bound to sessions, with an admin "sign this phone out" |
@@ -107,6 +107,58 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
 - **Not verified without a phone:** the camera preview and capture, the lamp, Skia at runtime (decode, pixel read,
   warp, JPEG), detection speed in Hermes, the loupe under a real thumb, upload progress on mobile data.
 
+### 3c. M3 as built (2026-10-06)
+
+- **Same routes, same guards as the web consultation screen:** `/opd/me/doctor` (404 `not_a_doctor` is an answer),
+  `/opd/queues?doctorId=&serviceDate=`, `/opd/queues/:sessionId/{call-next,status}`,
+  `/opd/queues/entries/:id/{recall,skip,undo-skip}`, `/opd/visits/:id/consult/{open-unpaid,start,park,resume,complete}`,
+  `/opd/visits/:id`, `/patients/:id` (+ `/allergies`, `/documents`, `documents/:id`), `/opd/patients/:id/{timeline,prescriptions}`,
+  `/lab/results/patient/:id`, `/radiology/reports/patient/:id`, `/pharmacy/doctor/patients/:id/dispenses`,
+  `/roster/doctor-units`, `/opd/config`. **No server change:** the queue view already carried each patient's date of
+  birth and administrative gender (the summary is returned whole), so "56 M" needed nothing new.
+- **Shared, one copy:** `packages/contracts/src/doctor-queue.ts` — the queue's wire shapes, how a row is worded (age and
+  sex, the wait, the visit kind, UNPAID only on `unsettled`), the follow-up choices and the completion body, and — moved
+  out of the web — `briefResults` / `briefRefill` (web `lib/brief-history.ts` re-exports) and `besideName`
+  (web `lib/doctor-label.ts` re-exports). `apps/mobile/__tests__/doctor-rules.test.ts` fails if either side grows a copy,
+  and pins the skip reasons against `opd/skip-reasons.ts` read as text.
+- **The line is the server's, shown as sent:** the callable order, the tokens held for the bill, the ones that fell out
+  after three skips and the parked ones are four lists off one read, re-read every 5 s while the app is in front. A
+  failed re-read keeps the last list and stamps its time.
+- **Completing from a phone — DECIDED:** the phone sends **no note** (`{testsOrderedReturnToday, followUpDays?}`), so
+  whatever the doctor saved on the computer is untouched, and the default follow-up is left out of the body so the
+  server's own applies (K49). The phone **refuses** to complete while the visit holds prescription rows typed on the
+  computer and never issued (`encounter.rxDraft`) — production 2026-09-23: Complete once dropped an unissued
+  prescription. The web closes that by issuing first; the phone cannot issue, so it says where to finish. This guard
+  is the phone's only; the server would accept the completion (a server guard would break the web's own
+  issue-then-complete, which clears the draft in the same request).
+- **Starting ahead of the line:** the server lets a doctor start any waiting visit of their own
+  (`startConsultation` asks only for `waiting`), so the brief of a patient who is not next offers "Start now, ahead of
+  the line", worded as such. There is no "call this token" route, and none was added.
+- **Deferred, with the reason:**
+  - *Writing the note, a coded diagnosis and an e-prescription* — the web's checks (allergy, interaction, duplicate,
+    drug–disease, stock substitution, the override dialogs) are that screen's, 4,700 lines of it; a phone version
+    needs its own board. The paper road works end to end: start → complete on the phone, the slip desk photographs
+    the paper (M2).
+  - *Refer to another department, advised tests, specialty sections (eye, paediatrics), the scribe's draft* — parts of
+    the note.
+  - *Closing or reopening the session* — the phone steps out and back in; closing a day is done at the computer.
+  - *Realtime push* — the 5 s poll is the truth here as on the web; push arrives with M6.
+  - *Pinch-to-zoom on a filed paper* — the viewer zooms with buttons (100–400%) and scrolls both ways; a pinch
+    gesture needs the gesture library wired through every screen's root and is not worth it for one viewer yet.
+  - *IBM Plex Sans Devanagari* — Hindi is drawn by the phone's own Devanagari face (Plex Sans has no Devanagari;
+    Android falls back glyph by glyph).
+- **Polish that landed with M3:** IBM Plex Sans / Mono bundled (`src/fonts.ts`, `src/text.tsx` — every screen imports
+  `Text` / `TextInput` from there); the CRK crest as the icon, adaptive icon and splash (rendered from
+  `docs/design/2026-08-29-opd-counter-flow-v2/crk-logo.png`, 240 px — sharp at launcher sizes, soft if ever shown
+  larger; the owner's 717 px master is not on this box).
+- **The update check (no app store):** `scripts/build-apk.sh` writes `hmis-staff-<env>-latest.json` beside the APKs
+  (versionCode, versionName, file name, sha256, one line of notes from `HMIS_RELEASE_NOTES`). The app reads it when
+  the home screen opens and from "Check for update" (`src/update.ts`); a higher versionCode shows "Update available"
+  and opens the download in the browser. On staging, Caddy serves exactly `/app/hmis-staff-*-latest.json` without
+  the basic-auth prompt (an app cannot answer one); the APK and the folder listing stay behind it.
+- **Not verified without a phone:** the fonts and the crest icon as Android draws them, the splash, haptics, the
+  update download hand-off to Chrome and the installer, the paper viewer's two-way scroll under a real thumb.
+
 **Offline rule (all milestones):** cached reads show their age ("as of 10:42"). A clinical or money write is never queued silently. With no network the button says so and stays disabled.
 
 ## 4. Verification without an emulator
@@ -129,16 +181,62 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
   - It runs in parallel, so the core and web wall-clock is unchanged.
 - **React versions:** web is on React 19 (^19.0.0) and mobile on 19.2.3. They are separate trees, so there is no conflict.
 
-## 6. Distribution
+## 6. Distribution (owner 2026-10-05: no Play Store and no App Store, ever)
 
-1. **Internal APK (now):** `eas build -p android --profile preview` gives a link and a QR the owner opens on any Android phone. Allow "install unknown apps" once.
-2. **Play Store (after M4):** `eas build --profile production` builds an AAB, and `eas submit` uploads it to a Play Console internal track. Signing keys are generated and held by EAS. Play Console is the owner's account (US$25 one-time fee); package `com.crkmch.hmis`.
+The app is built on this server (`apps/mobile/BUILDING.md`), signed with the hospital's own key, and installed from a
+download link. expo.dev's cloud builder is not used.
 
-### Owner actions, exactly
+- **Staging build** (`com.crkmch.hmis.staging`, "HMIS Staging", talks to stagehmis): served at
+  `https://stagehmis.crkmch.com/app/` behind the staging password. This is the owner's and a trainee's test app —
+  test data only.
+- **Updates:** every build raises the versionCode; the app's own check (§3c) offers the newer APK. Android installs it
+  over the old one only because it is signed with the same key — **the keystore folder
+  `/root/.config/hmis/android/` must be backed up offline** (lost key ⇒ every phone uninstalls to update).
 
-```
-! cd /opt/hmis-lanes/mobile-m0/hmis/apps/mobile && npx eas-cli@latest login
-! cd /opt/hmis-lanes/mobile-m0/hmis/apps/mobile && npx eas-cli@latest build -p android --profile preview
-```
+## 7. Production rollout — DESIGNED, NOT EXECUTED (needs the owner's decisions below)
 
-The first command logs this box into the owner's expo.dev account; it is interactive. The second asks once whether to generate a new Android keystore: answer **Yes**. It prints a link and a QR to install the staging app. Nothing else is needed from the owner for M0.
+Owner, 2026-10-06 (Hinglish): staff should get the APK link on their phones. No stores; the link must not be open to
+the world.
+
+**What exists today:** the production profile (`com.crkmch.hmis`, "HMIS", `https://hmis.crkmch.com/api`), its own
+keystore, and `build-apk.sh production`. **Nothing production is built or served yet**, and the production app's update
+feed (`https://hmis.crkmch.com/app/hmis-staff-production-latest.json`) answers nothing until step 2 — the app treats
+that as "unknown" and says nothing.
+
+**Proposed steps**
+
+1. **Build:** `HMIS_RELEASE_NOTES="…" apps/mobile/scripts/build-apk.sh production` → `/opt/hmis-context/mobile-apk/`.
+   Verify the signature and the app id; install on the owner's phone first (it installs beside the staging app).
+2. **Serve it from hmis.crkmch.com, never publicly listed:**
+   - `GET /app/hmis-staff-production-latest.json` — open, like staging's: a version number, a file name, a checksum.
+   - The APK itself behind a **signed, short-lived link**: `GET /api/app/download?t=<token>` on the API, which checks an
+     HMAC token (staff user id + expiry, 24 h) and streams the file from a read-only mount. No folder listing. The
+     download is audited (`app.downloaded`, who and which build). This needs a small server change — one controller and
+     one read-only mount in `docker-compose.prod.yml`; no new Caddy route for the APK, because `/api` is already
+     proxied — and is its own PR. (The open feed file is one Caddy line, as on staging.)
+   - The installed app gets its update link the same way: signed in, it asks `POST /api/app/download-link` and opens
+     the answer. So an update never needs a password prompt, and a link forwarded outside the hospital dies in a day
+     and names who it was minted for.
+3. **Send the first link to staff phones:**
+   - **WhatsApp** through the existing Meta Cloud API integration (`NOTIFY_PROVIDER=meta_cloud`): a business-initiated
+     message needs a **Meta-approved template** — on 2026-09-26 the account had **zero templates** and the display name
+     was not approved; the template wording needs the owner's OK before it is submitted. Proposed wording: "CRK
+     Hospital HMIS staff app. Install: {{1}} — valid 24 hours. Sign in with your HMIS username."
+   - **QR poster** at each desk and the doctors' room for the same per-day link (printed from an admin page that mints
+     a link valid for the day), as the fallback for a phone not on WhatsApp.
+   - `/admin/users` gains "Send app link" per user and "Send to everyone active" (admin permission; each send audited).
+4. **First run on a phone:** Chrome → the APK → "Install unknown apps" for Chrome (once) → sign in with the HMIS
+   username and password → fingerprint unlock from then on.
+5. **Updates:** the app's check on start-up; the prompt's button asks the API for a fresh signed link.
+6. **A lost or leaving phone:** deactivate the user or reset the password (both end the phone's session today). A
+   per-device "sign this phone out" is M6.
+
+**Open owner decisions**
+
+- **D-1 Who gets it first:** everyone with a login, or a pilot (the doctors and the vitals / slip desks) for a week?
+- **D-2 WhatsApp wording and sender name** — the template must be approved by Meta before the first send; OK to submit
+  the wording above?
+- **D-3 Personal phones:** staff install on their own phones. Is that acceptable for patient data (the app keeps only
+  the session token on the phone, never records), or hospital-issued phones only for some seats?
+- **D-4 Link lifetime:** 24 hours proposed. Shorter is safer; longer saves re-sends.
+- **D-5 Keystore backup:** where the offline copy of `/root/.config/hmis/android/` lives, and who holds it.

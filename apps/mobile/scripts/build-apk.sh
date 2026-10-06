@@ -70,4 +70,14 @@ echo "$VC" > "$COUNTER"
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$OUT_DIR/$NAME"
 # The download link staff phones use always names the newest VERIFIED build of this app id.
 ln -sfn "$NAME" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.apk"
+# What the app reads on start-up to offer an update (src/update.ts): written LAST, and through a
+# rename, so a phone never reads of a build whose APK is not yet in place. `HMIS_RELEASE_NOTES` is
+# the one line the update prompt shows ("Doctor's OPD line; new icon").
+SUM=$(cut -d' ' -f1 "$OUT_DIR/$NAME.sha256")
+HMIS_RELEASE_NOTES="${HMIS_RELEASE_NOTES:-}" node -e '
+  const [vc, version, apk, sha256, out] = process.argv.slice(1);
+  const body = { versionCode: Number(vc), versionName: version, apk, sha256, builtAt: new Date().toISOString(), notes: process.env.HMIS_RELEASE_NOTES || "" };
+  require("fs").writeFileSync(out + ".tmp", JSON.stringify(body, null, 2) + "\n");
+  require("fs").renameSync(out + ".tmp", out);
+' "$VC" "$VERSION" "$NAME" "$SUM" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.json"
 echo "built $OUT_DIR/$NAME (versionCode $VC)"

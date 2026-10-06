@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View, type TextInputProps } from "react-native";
+import { Text, TextInput } from "./text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { IS_PRODUCTION } from "./config";
 import { useI18n } from "./i18n";

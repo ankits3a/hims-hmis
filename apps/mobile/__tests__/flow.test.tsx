@@ -74,7 +74,8 @@ describe("sign-in flow", () => {
     expect(screen.getByTestId("seat-onNow")).toBeTruthy();
     expect(screen.queryByTestId("seat-counter")).toBeNull();
     expect(screen.getByTestId("signed-in-as")).toHaveTextContent("Signed in as asha.devi");
-    expect(calls).toEqual(["POST /auth/login", "GET /auth/me"]);
+    // …and one read that is not the API: the update feed, asked quietly when the home screen opens (M3).
+    expect(calls).toEqual(["POST /auth/login", "GET /auth/me", "GET https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.json"]);
   });
 
   it("says the web's own words for a wrong password and stays on sign-in", async () => {

@@ -1,5 +1,6 @@
 import { useRef } from "react";
-import { Modal, StyleSheet, Text, View } from "react-native";
+import { Modal, StyleSheet, View } from "react-native";
+import { Text } from "../text";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useI18n } from "../i18n";
 import { color, radius, space } from "../theme";

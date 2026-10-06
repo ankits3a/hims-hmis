@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "../text";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { color, space, type } from "../theme";

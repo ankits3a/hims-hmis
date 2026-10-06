@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppState, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "../text";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { ApiError, NetworkError } from "../api";

@@ -64,7 +64,24 @@ auth (`docker/prod/Caddyfile.uat` + a read-only mount in `docker-compose.uat.yml
 To install on a phone, open the link in Chrome and tap the APK. When Android asks, allow
 "Install unknown apps" for Chrome, then tap Install.
 
-## Later (not built yet)
+## The update check (no app store)
 
-The app should check for a newer APK on start-up, for example from a small `latest.json` beside the
-APKs, and offer the download. Without that check, staff learn about updates by word of mouth.
+After a verified build the script writes `hmis-staff-<env>-latest.json` beside the APK:
+
+```json
+{ "versionCode": 5, "versionName": "0.4.0", "apk": "hmis-staff-staging-0.4.0-vc5-<sha>.apk", "sha256": "…", "builtAt": "…", "notes": "…" }
+```
+
+The installed app reads it when the home screen opens, and from "Check for update" at the foot of that screen
+(`src/update.ts`). A higher `versionCode` shows "Update available" with the notes and opens the APK in the browser;
+Android installs it over the old build because the signing key is the same. Give the prompt its one line with
+`HMIS_RELEASE_NOTES="Doctor's OPD line; new icon" apps/mobile/scripts/build-apk.sh staging`.
+
+On staging, Caddy serves exactly `/app/hmis-staff-*-latest.json` without the basic-auth prompt (an app cannot answer
+one); the APK and the folder listing stay behind it. The production feed is designed in the plan (§7) and not served yet.
+
+## Fonts and the icon
+
+IBM Plex Sans and Mono are bundled per weight (`src/fonts.ts`); every screen imports `Text` and `TextInput` from
+`src/text.tsx`, not from `react-native`, or its text is drawn in the system face. The icon, adaptive icon and splash
+are the CRK crest, rendered from `docs/design/2026-08-29-opd-counter-flow-v2/crk-logo.png`.

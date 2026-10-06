@@ -1,6 +1,8 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { Text, View } from "react-native";
+import { View } from "react-native";
+import { Text } from "../../src/text";
 import { useI18n } from "../../src/i18n";
+import { DoctorQueue } from "../../src/screens/doctor-queue";
 import { SlipDesk } from "../../src/screens/slip-desk";
 import { VitalsBay } from "../../src/screens/vitals-bay";
 import { SEATS, seatsFor } from "../../src/seats";
@@ -19,6 +21,7 @@ export default function SeatScreen() {
   if (seat === null || !SEATS.includes(seat)) return <Redirect href="/" />;
   if (seat.key === "vitals") return <VitalsBay />;
   if (seat.key === "slips") return <SlipDesk />;
+  if (seat.key === "consult") return <DoctorQueue />;
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band />

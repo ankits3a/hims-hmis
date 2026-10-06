@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text, TextInput } from "../text";
 import { useI18n } from "../i18n";
 import { color, radius, space, TOUCH } from "../theme";
 import { Button, Tag } from "../ui";
