@@ -75,6 +75,12 @@ Modules import each other only through the other module's `index.ts` (lint-enfor
 
 ## Reading budget
 
+**Before exploring code, read `docs/architecture/README.md`, then the page for the module you touch
+(`docs/architecture/modules/<m>.md`: dependencies, public API, routes, tables).** It is generated
+from the source and CI keeps it current, so trust it over a grep crawl. After changing module
+imports, an `index.ts`, routes, tables or web routes, run `node tools/arch/gen.mjs` and commit the
+result; after a rebase conflict in `docs/architecture/`, regenerate instead of merging by hand.
+
 Read the phase doc for your lane and this file. Do not read `EXECUTION-LESSONS.md` (468 KB), the
 plan series index, or the project brief unless a task names a section. Method for closing a
 phase: `docs/superpowers/EXECUTE-METHOD-V3.md` §5A only. Context is re-sent every turn; a big read
