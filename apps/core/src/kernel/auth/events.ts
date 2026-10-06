@@ -318,6 +318,17 @@ export const authPhoneSignedOut = defineEvent(
 
 export const AUTH_PHONE_EVENTS = [authPhoneBound, authPhoneLimitRefused, authPhoneSignedOut] as const;
 
+/**
+ * MOBILE M6b — an ADMINISTRATOR sent the fixed test notification to one phone. `outcome` is what
+ * happened (`sent`, `gone`, `no_address`, `not_signed_in`, `not_configured`, `failed`). No text is
+ * carried because there is none to carry: the test sentence is a constant. Never the phone's address.
+ */
+export const authPhonePushTested = defineEvent(
+  "auth.phone_push_tested",
+  "auth",
+  z.object({ userId: z.string(), username: z.string(), deviceRowId: z.string(), outcome: z.string() }),
+);
+
 /** The M-05 catalogue, for the census in `test/auth-audit.e2e.test.ts`. */
 export const AUTH_AUDIT_EVENTS = [
   authLoginSucceeded, authLoginFailed, authPinSwitched, authBadgeSwitched, authSessionRevoked,

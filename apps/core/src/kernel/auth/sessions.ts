@@ -6,6 +6,7 @@ import { verifyPassword, verifyPinByUsername, resolveBadge } from "./identity";
 import type { AppConfig } from "../config";
 import { withTx } from "../db/client";
 import { claimPhone } from "./devices";
+import { clearPushTokensOfUser } from "../push/phone-push";
 import type { DeviceClaim } from "./devices";
 import type { Db } from "../db/client";
 
@@ -102,6 +103,10 @@ export async function revokeUserSessions(db: Db, userId: string): Promise<number
     .set({ revokedAt: new Date() })
     .where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)))
     .returning({ id: authSessions.id });
+  // MOBILE M6b — every session of the person has ended (deactivated, or the password was reset), so
+  // every phone of theirs forgets where its notifications go. The sender already asks no phone
+  // without a live session (`push/phone-push.ts`); this is the address not outliving the reason for it.
+  await clearPushTokensOfUser(db, userId);
   return rows.length;
 }
 

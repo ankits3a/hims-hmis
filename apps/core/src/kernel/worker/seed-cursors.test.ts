@@ -7,6 +7,7 @@ import { withTx, Db } from "../db/client";
 import { ALERTS_CONSUMER } from "../alerts/consumer";
 import { NOTIFY_CONSUMER } from "../notify/consumer";
 import { OBLIGATIONS_CONSUMER } from "../obligations/consumer";
+import { PHONE_PUSH_CONSUMER } from "../push/consumer";
 import { PARTNERS_ACCRUAL_CONSUMER } from "../../modules/partners";
 import { MATERIALS_CONSUMPTION_CONSUMER } from "../../modules/materials";
 import { OT_IMPLANT_CONFIRMED_CONSUMER, OT_PATIENT_MERGED_CONSUMER } from "../../modules/ot";
@@ -135,6 +136,14 @@ describe("seedCursors", () => {
          * the reason every entry above gives for being here.
          */
         OBLIGATIONS_CONSUMER,
+        /**
+         * MOBILE M6b — the phone's bell. THIS ONE MUST BE SEEDED, and not by luck: an unseeded cursor
+         * would re-read every `alert.raised` the hospital has ever emitted and, on the day the
+         * Firebase key is present, put every one of them on somebody's lock screen. The consumer
+         * also refuses an alert older than half an hour (`push/consumer.ts`) — the seed is the
+         * rule, that is the belt.
+         */
+        PHONE_PUSH_CONSUMER,
         /**
          * ABDM S2 — the tenth. Its unseeded cursor would re-read every `consultation.completed`,
          * `lab.report_published` and `imaging.report_published` the hospital has ever emitted the

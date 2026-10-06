@@ -1254,6 +1254,13 @@
       "when": 1791294010899,
       "tag": "0178_auth_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1791301514151,
+      "tag": "0179_auth_phone_push",
+      "breakpoints": true
     }
   ]
 }

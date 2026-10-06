@@ -3,6 +3,7 @@ import { Linking, Pressable, ScrollView, View } from "react-native";
 import { Text } from "../text";
 import { useRouter } from "expo-router";
 import { useI18n } from "../i18n";
+import { useNotifications } from "../notifications";
 import { seatsFor } from "../seats";
 import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
@@ -15,6 +16,7 @@ export function SeatHome() {
   const { t } = useI18n();
   const router = useRouter();
   const { state, logout, fetcher } = useSession();
+  const push = useNotifications();
   /*
     THE UPDATE OFFER (no app store, owner 2026-10-05). Asked once when this screen opens, quietly:
     "unknown" — no signal, or the feed is not served — shows nothing at all. Asked again by hand
@@ -58,6 +60,20 @@ export function SeatHome() {
             <Button testID="update-later" kind="secondary" label={t("mobile.update.later")} onPress={() => setLater(true)} />
           </View>
         )}
+        {/*
+          M6b — THE ONE TIME NOTIFICATIONS ARE OFFERED UNINVITED: once, here, after sign-in, when they
+          could be on and the person has never been asked. It says what a notification will and will
+          not contain BEFORE the phone's own prompt can open; "Not now" is remembered.
+        */}
+        {push.offer && (
+          <View testID="push-offer" style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.greenLine, borderRadius: radius.lg, padding: space.lg, marginBottom: space.lg, gap: space.sm }}>
+            <Text style={[type.heading, { color: color.ink }]}>{t("mobile.push.offerTitle")}</Text>
+            <Text style={[type.small, { color: color.dim }]}>{t("mobile.push.promise")}</Text>
+            <Button testID="push-offer-on" busy={push.busy} label={t("mobile.push.turnOn")} onPress={() => { void push.enable(); }} />
+            <Button testID="push-offer-later" kind="secondary" label={t("mobile.push.notNow")} onPress={push.dismissOffer} />
+          </View>
+        )}
+        {push.problem !== null && !push.offer && push.status !== "on" && <Note tone="warn" testID="push-home-problem">{t(push.problem)}</Note>}
         <Text style={[type.small, { color: color.dim, fontFamily: MONO }]} testID="signed-in-as">
           {t("mobile.signedInAs", { name: state.username || state.me.actor.id })}
         </Text>

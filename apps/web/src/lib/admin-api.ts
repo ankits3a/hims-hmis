@@ -71,11 +71,24 @@ export function resetPassword(id: string, newPassword: string): Promise<{ sessio
 export type WireUserPhone = {
   id: string; model: string | null; osVersion: string | null; appVersion: string | null;
   firstSeenAt: string; lastSeenAt: string; lastIp: string | null; signedIn: boolean; signedInSince: string | null;
+  /** Mobile M6b — the phone has switched notifications on (it gave the server an address). Absent from an older server. */
+  notifications?: boolean;
 };
 
-/** `limit` is how many phones one person may be signed in on at once. */
-export function listUserPhones(id: string): Promise<{ limit: number; phones: WireUserPhone[] }> {
+/**
+ * `limit` is how many phones one person may be signed in on at once. `notificationsConfigured` —
+ * the server holds a Firebase key and can send a notification at all (absent from an older server).
+ */
+export function listUserPhones(id: string): Promise<{ limit: number; notificationsConfigured?: boolean; phones: WireUserPhone[] }> {
   return api("GET", `/admin/users/${id}/phones`);
+}
+
+/** What the fixed test notification did (kernel/push `sendTestPush`). */
+export type TestNotificationOutcome = "sent" | "gone" | "no_address" | "not_signed_in" | "not_configured" | "failed";
+
+/** Sends the one fixed test sentence to that ONE phone. Nothing can be typed into it. */
+export function sendTestNotification(id: string, phoneId: string): Promise<{ outcome: TestNotificationOutcome }> {
+  return api("POST", `/admin/users/${id}/phones/${phoneId}/test-notification`);
 }
 
 /** Ends every session opened on that ONE phone. The password, PIN and other sessions stand. */

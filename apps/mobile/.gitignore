@@ -42,3 +42,6 @@ yarn-error.*
 
 # scaffold-only editor settings
 .claude/
+
+# Firebase client config, copied in by scripts/build-apk.sh when the owner has supplied it (BUILDING.md)
+/google-services.json

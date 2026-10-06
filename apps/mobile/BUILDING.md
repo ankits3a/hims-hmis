@@ -122,6 +122,65 @@ On staging, Caddy serves exactly `/app/hmis-staff-*-latest.json` without the bas
 one); the APK and the folder listing stay behind it. Production serves its feed at
 `https://hmis.crkmch.com/app/hmis-staff-production-latest.json`, with `Cache-Control: no-store`.
 
+## Notifications (plan M6b)
+
+Notifications go through Firebase Cloud Messaging. Two files, both the owner's, both on this server only:
+
+| File | What it is | Who reads it |
+|---|---|---|
+| `/root/.config/hmis/firebase/google-services.json` | Firebase's CLIENT config. Not a secret (it is inside every APK), but kept out of this public repo. | `scripts/build-apk.sh`, at build time |
+| `/root/.config/hmis/firebase/service-account.json` | The SERVER's key. **Secret.** | `docker/prod/deploy.sh` step 2 copies it to `$DEPLOY_DIR/firebase/` for the api and the worker |
+
+Folder mode 0700, files 0600. Never commit either; never paste their contents anywhere.
+
+### How the owner makes them (once)
+
+1. Open <https://console.firebase.google.com> signed in with the hospital's Google account → **Add project** → name it
+   (e.g. `CRKMCH HMIS`) → turn **Google Analytics OFF** → **Create project**.
+2. On the project page click the **Android** icon ("Add app"). Package name `com.crkmch.hmis` → **Register app** →
+   skip the download and the remaining steps (**Next** → **Next** → **Continue to console**).
+3. **Add app** → Android again. Package name `com.crkmch.hmis.staging` → **Register app** → this time
+   **Download google-services.json** (downloaded after BOTH apps exist, the one file covers both). No SHA
+   certificate fingerprint is needed for notifications.
+4. Gear icon → **Project settings** → **Service accounts** → **Generate new private key** → **Generate key**. A second
+   JSON file downloads. This one is the secret.
+5. Gear icon → **Project settings** → **Cloud Messaging**: "Firebase Cloud Messaging API (V1)" must say **Enabled**
+   (it is by default on a new project).
+6. Put both files on this server without pasting them into a chat: upload them (e.g. `scp` to `/root/`), then
+   ```
+   install -d -m 700 /root/.config/hmis/firebase
+   install -m 600 /root/<downloaded google-services file>.json /root/.config/hmis/firebase/google-services.json
+   install -m 600 /root/<downloaded key file>.json            /root/.config/hmis/firebase/service-account.json
+   rm /root/<both downloaded files>
+   ```
+
+### Check, then switch on
+
+```
+apps/mobile/scripts/enable-push.sh --check      # both files there, right shape, same project, both app ids
+apps/mobile/scripts/enable-push.sh --validate   # the same, then a DRY RUN against Firebase (validate_only: nothing is sent)
+```
+
+The script prints the project id and the app ids, never a key. It changes nothing. Then:
+
+1. `apps/mobile/scripts/build-apk.sh staging` and `… production` — each says `notifications: IN this build` when the
+   file names its app id (a build made without the file is the same app with notifications dormant).
+2. The next deploy copies the key for the api and the worker (step 2 prints `firebase key installed …`). They look for
+   the file once a minute, so no restart is needed; the worker's boot line reads `phone notifications: ON`.
+3. On a phone: install the new build → sign in → **Turn on notifications** → allow. In `/admin/users` → **Phones** the
+   phone reads "Notifications on" → **Send test notification**.
+
+Replacing the key (rotation, or a leaked one): generate a new key in the console, overwrite `service-account.json`,
+run `--validate`, deploy; then delete the old key in the console (**Service accounts → Manage service account
+permissions → Keys**). Re-run `/opt/hmis-context/mobile-tools/backup-signing-keys.sh` is NOT needed — the Firebase
+key is replaceable, the signing keys are not.
+
+### What a notification contains
+
+`HMIS`, one fixed sentence ("Something needs you. Open HMIS to see it."), a category and the name of a screen. Never a
+patient's name, number or result (`apps/core/src/kernel/push/phone-push.ts`). The production build also blocks
+screenshots, screen recording and the recent-apps preview (`src/privacy.ts`); the staging build does not.
+
 ## Fonts and the icon
 
 IBM Plex Sans and Mono are bundled per weight (`src/fonts.ts`); every screen imports `Text` and `TextInput` from

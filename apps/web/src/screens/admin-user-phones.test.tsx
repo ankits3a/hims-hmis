@@ -126,4 +126,55 @@ describe("AdminUsers — the phones a person is signed in on", () => {
     await userEvent.click(screen.getByTestId("admin-phones-asha"));
     expect(await screen.findByTestId("admin-phones-none")).toHaveTextContent("The staff app has not signed in on any phone for this person.");
   });
+
+  /** MOBILE M6b — notifications on a phone, and the fixed test (owner 2026-10-06). */
+  it("says for each phone whether notifications are on, and offers the test only where one can arrive", async () => {
+    const PHONE_QUIET = { ...PHONE_A, id: "ph-q", model: "Samsung A15", notifications: false };
+    mockRoutes({
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
+      "GET /api/admin/users/u-asha/phones": { status: 200, body: { limit: 2, notificationsConfigured: true, phones: [{ ...PHONE_A, notifications: true }, PHONE_QUIET, PHONE_OLD] } },
+    });
+    renderWithProviders(<AdminUsers />);
+    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    expect(await screen.findByTestId("admin-phone-notifications-ph-a")).toHaveTextContent("Notifications on");
+    expect(screen.getByTestId("admin-phone-test-ph-a")).toHaveTextContent("Send test notification");
+    expect(screen.getByTestId("admin-phone-notifications-ph-q")).toHaveTextContent("Notifications off on this phone");
+    expect(screen.queryByTestId("admin-phone-test-ph-q")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("admin-phone-test-ph-old")).not.toBeInTheDocument();
+  });
+
+  it("a server with no Firebase key says so on every phone and offers no test", async () => {
+    mockRoutes({
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
+      "GET /api/admin/users/u-asha/phones": { status: 200, body: { limit: 2, notificationsConfigured: false, phones: [{ ...PHONE_A, notifications: false }] } },
+    });
+    renderWithProviders(<AdminUsers />);
+    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    expect(await screen.findByTestId("admin-phone-notifications-ph-a")).toHaveTextContent("Notifications are not set up on this server");
+    expect(screen.queryByTestId("admin-phone-test-ph-a")).not.toBeInTheDocument();
+  });
+
+  it("sends the test to ONE phone and says what happened — only `sent` is good news", async () => {
+    let outcome = "sent";
+    mockRoutes({
+      "GET /api/admin/users": { status: 200, body: { users: [ASHA] } },
+      "GET /api/admin/users/u-asha/phones": { status: 200, body: { limit: 2, notificationsConfigured: true, phones: [{ ...PHONE_A, notifications: true }] } },
+      "POST /api/admin/users/u-asha/phones/ph-a/test-notification": () => ({ status: 200, body: { outcome } }),
+    });
+    renderWithProviders(<AdminUsers />);
+    await userEvent.click(await screen.findByTestId("admin-phones-asha"));
+    await userEvent.click(await screen.findByTestId("admin-phone-test-ph-a"));
+    expect(await screen.findByTestId("admin-phones-notice")).toHaveTextContent("A test notification was sent to Redmi Note 12. It says only “Test — this phone can receive HMIS notifications.”");
+    // The request carries no text: there is nothing an administrator can type into a colleague's lock screen.
+    expect(callsTo("POST", "/api/admin/users/u-asha/phones/ph-a/test-notification")).toEqual([{ body: undefined }]);
+
+    outcome = "failed";
+    await userEvent.click(screen.getByTestId("admin-phone-test-ph-a"));
+    expect(await screen.findByTestId("admin-phones-error")).toHaveTextContent("The notification service refused that just now. Nothing was sent — try again in a minute.");
+    expect(screen.queryByTestId("admin-phones-notice")).not.toBeInTheDocument();
+
+    outcome = "gone";
+    await userEvent.click(screen.getByTestId("admin-phone-test-ph-a"));
+    expect(await screen.findByTestId("admin-phones-error")).toHaveTextContent(/Redmi Note 12 no longer accepts notifications/);
+  });
 });
