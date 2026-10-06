@@ -209,6 +209,36 @@ hmis.crkmch.com {
 		reverse_proxy api:3000
 	}
 
+	# The staff Android app (owner 2026-10-05: no Play Store, ever; 2026-10-06: every staff phone at
+	# once, the owner shares the link himself). apps/mobile/scripts/build-apk.sh writes the
+	# PRODUCTION build to /opt/hmis-context/mobile-apk-prod on the host; docker-compose.prod.yml
+	# mounts that folder read-only at /downloads.
+	#
+	# NO PASSWORD, DELIBERATELY (DECIDED 2026-10-06, plan 2026-10-05-mobile-staff-app §7): an APK
+	# holds no secret — only this site's address — and nothing in it works without a staff login.
+	# A phone's installer and the app's own update check cannot answer a password prompt either.
+	# What it costs: anybody who learns the link can download the app and read its code. So the
+	# link is UNLISTED — no screen links to it — and NOTHING is browsable: only a file named
+	# `hmis-staff-…` ending .apk, .json or .png is served, every other /app/ path is a 404, and
+	# there is no directory listing.
+	#
+	# `/app/*`, never `/app*`: /appointment and /approvals are SCREENS (caddyfile-parity.test.ts).
+	@app_file path_regexp ^/app/hmis-staff-[A-Za-z0-9._-]+\.(apk|json|png)$
+	handle @app_file {
+		uri strip_prefix /app
+		@apk path *.apk
+		header @apk Content-Type application/vnd.android.package-archive
+		header @apk Content-Disposition attachment
+		# The update feed is read on every app start; a cached one hides a new build.
+		@feed path *.json
+		header @feed Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
+	handle /app/* {
+		respond 404
+	}
+
 	# The SPA. /srv is where the Dockerfile's `web` target puts the vite build (T1-1); the
 	# index.html fallback is what makes client-side routing survive a hard refresh.
 	handle {

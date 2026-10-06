@@ -336,3 +336,76 @@ describe("Owner 2026-09-30 — production's caddy fronts the staging site", () =
     expect(prodCompose).toMatch(/extra_hosts:\n\s+- "host\.docker\.internal:host-gateway"/);
   });
 });
+
+/**
+ * Owner 2026-10-05 / 2026-10-06 — THE STAFF ANDROID APP IS DOWNLOADED FROM PRODUCTION, WITH NO STORE
+ * AND NO PASSWORD. An APK holds no secret and nothing in it works without a staff login; a phone's
+ * installer and the app's update check cannot answer a password prompt. What stands between that
+ * decision and an open file share is the SHAPE of the route, so the shape is pinned on shipped bytes:
+ * one folder, three kinds of file, one name prefix, nothing browsable, and a 404 — not the SPA's
+ * index.html — for everything else under /app/.
+ *
+ * The mount is the half a reload cannot give: a Caddyfile that names /downloads over a container that
+ * does not mount it serves 404 for the app while deploy.sh exits 0.
+ */
+describe("Owner 2026-10-06 — production serves the staff app's files, and only those", () => {
+  const source = readFileSync(CADDYFILE, "utf8");
+  const prodCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.prod.yml"), "utf8");
+  const uatCompose = readFileSync(resolve(REPO_ROOT, "docker", "prod", "docker-compose.uat.yml"), "utf8");
+  const live = source.split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+
+  function appFileMatcher(): RegExp {
+    const found = /^\t@app_file path_regexp (\S+)$/m.exec(live);
+    if (found === null) throw new Error("no `@app_file path_regexp` line in docker/prod/Caddyfile");
+    return new RegExp(found[1]!);
+  }
+
+  it("admits the build, the short link, the update feed and the poster's QR", () => {
+    const re = appFileMatcher();
+    for (const path of [
+      "/app/hmis-staff-latest.apk",
+      "/app/hmis-staff-production-0.4.0-vc1-ce5d7ae0.apk",
+      "/app/hmis-staff-production-latest.json",
+      "/app/hmis-staff-install-qr.png",
+    ]) expect([path, re.test(path)]).toEqual([path, true]);
+  });
+
+  it("admits nothing else — no listing, no checksum file, no other name, no folder below, no screen", () => {
+    const re = appFileMatcher();
+    for (const path of [
+      "/app/",
+      "/app",
+      "/app/other.apk",
+      "/app/hmis-staff-x.apk.sha256",
+      "/app/hmis-staff-a/b.apk",
+      "/app/hmis-staff-x.txt",
+      "/app/../etc/caddy/Caddyfile",
+      "/appointment",
+      "/approvals",
+      "/api/app/hmis-staff-latest.apk",
+    ]) expect([path, re.test(path)]).toEqual([path, false]);
+  });
+
+  it("answers every other /app/ path with a 404 before the SPA's index.html can", () => {
+    const refuse = live.search(/^\thandle \/app\/\* \{\n\t\trespond 404\n\t\}$/m);
+    const spa = live.search(/^\thandle \{\n\t\troot \* \/srv$/m);
+    expect(refuse).toBeGreaterThanOrEqual(0);
+    expect(spa).toBeGreaterThan(refuse);
+    expect(live.search(/^\thandle @app_file \{$/m)).toBeLessThan(refuse);
+  });
+
+  it("never lists a directory on the production site", () => {
+    expect(live).not.toMatch(/file_server\s+browse/);
+  });
+
+  it("sends an APK as a download of the APK type, and never lets the update feed be cached", () => {
+    expect(live).toMatch(/header @apk Content-Type application\/vnd\.android\.package-archive/);
+    expect(live).toMatch(/header @apk Content-Disposition attachment/);
+    expect(live).toMatch(/header @feed Cache-Control "no-store"/);
+  });
+
+  it("the caddy container mounts the production builds read-only, and staging mounts its own folder", () => {
+    expect(prodCompose).toMatch(/^\s+- \/opt\/hmis-context\/mobile-apk-prod:\/downloads:ro$/m);
+    expect(uatCompose).toMatch(/^\s+- \/opt\/hmis-context\/mobile-apk:\/downloads:ro$/m);
+  });
+});

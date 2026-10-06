@@ -18,7 +18,13 @@ esac
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 KEY_DIR=/root/.config/hmis/android
-OUT_DIR=/opt/hmis-context/mobile-apk
+# One folder per environment, because each is mounted into a different caddy: staging's at
+# stagehmis.crkmch.com/app/ (behind its password), production's at hmis.crkmch.com/app/ (unlisted,
+# no password — docker/prod/Caddyfile). A staging build must never be served to the hospital.
+case "$ENV_NAME" in
+  production) OUT_DIR=/opt/hmis-context/mobile-apk-prod ;;
+  *) OUT_DIR=/opt/hmis-context/mobile-apk ;;
+esac
 LOCK=/opt/hmis-lanes/.orchestrator/bin/test-lock.sh
 export ANDROID_HOME=/opt/android-sdk ANDROID_SDK_ROOT=/opt/android-sdk
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
@@ -70,6 +76,8 @@ echo "$VC" > "$COUNTER"
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$OUT_DIR/$NAME"
 # The download link staff phones use always names the newest VERIFIED build of this app id.
 ln -sfn "$NAME" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.apk"
+# The link the owner hands to staff: short, and it never changes between builds.
+[ "$ENV_NAME" != production ] || ln -sfn "$NAME" "$OUT_DIR/hmis-staff-latest.apk"
 # What the app reads on start-up to offer an update (src/update.ts): written LAST, and through a
 # rename, so a phone never reads of a build whose APK is not yet in place. `HMIS_RELEASE_NOTES` is
 # the one line the update prompt shows ("Doctor's OPD line; new icon").
