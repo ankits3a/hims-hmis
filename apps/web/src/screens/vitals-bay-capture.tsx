@@ -57,7 +57,7 @@ export function tileSetFor(pre: WirePreStage | null): { required: TileKey[]; not
     }
     return out;
   };
-  if (pre === null) return { required: ["bp", "pulse", "spo2", "tempC", "weightKg", "heightCm"], notRoutine: [] };
+  if (pre === null) return { required: ["bp", "pulse", "spo2", "weightKg", "heightCm"], notRoutine: [] };
   return { required: fold(pre.required), notRoutine: fold(pre.notRoutine) };
 }
 
@@ -81,14 +81,51 @@ export function leadTileFor(pre: WirePreStage | null): TileKey {
   return pre !== null && pre.band !== "adult" ? "tempC" : "bp";
 }
 
+/*
+  OWNER 2026-10-05 — A PHONE'S NUMBER PAD HAS NO "/". The field opens the decimal pad on purpose
+  (no letters), and Gboard's offers "-" "," "." and space while iOS's offers "." — so any one of
+  them, or "/", separates the two numbers: 150/90 = 150-90 = 150,90 = 150.90 = 150 90.
+*/
+const BP_RE = /^(\d{2,3})\s*[/,.\- ]\s*(\d{2,3})$/;
+
+/*
+  OWNER 2026-10-05 — °F OR °C, SENSED FROM THE NUMBER. The two plausible bands do not overlap
+  (25–45 °C is 77–113 °F), so the number alone says which scale it is in and no unit switch is
+  needed. The chart keeps °C, so a fever flag reads the converted value. Anything between or
+  outside the bands is refused — the server's own plausibility bound is 25–45 °C.
+*/
+const TEMP_C: readonly [number, number] = [25, 45];
+const TEMP_F: readonly [number, number] = [77, 113];
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+/** A typed temperature, read: which scale it was in, and both readings (to one decimal). */
+export function tempNote(raw: string): { unit: "C" | "F"; f: number; c: number } | null {
+  const s = raw.trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  if (n >= TEMP_C[0] && n <= TEMP_C[1]) return { unit: "C", c: n, f: round1(n * 9 / 5 + 32) };
+  if (n >= TEMP_F[0] && n <= TEMP_F[1]) return { unit: "F", f: n, c: round1((n - 32) * 5 / 9) };
+  return null;
+}
+
 export function parseTake(key: TileKey, raw: string): Take | null {
   const s = raw.trim();
   if (s === "") return null;
   if (key === "bp") {
-    const m = /^(\d{2,3})\s*\/\s*(\d{2,3})$/.exec(s);
-    return m === null ? null : [Number(m[1]), Number(m[2])];
+    const m = BP_RE.exec(s);
+    if (m === null) return null;
+    const sys = Number(m[1]), dia = Number(m[2]);
+    return sys > dia ? [sys, dia] : null;   // 80-120 is the numbers swapped, not a reading
   }
+  if (key === "tempC") return tempNote(s)?.c ?? null;
   return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+}
+
+/** Why `parseTake` said no — the i18n key under `vitalsBay.capture`. */
+export function takeError(key: TileKey, raw: string): "bpBoth" | "bpOrder" | "tempUnit" | "notANumber" {
+  if (key === "bp") return BP_RE.test(raw.trim()) ? "bpOrder" : "bpBoth";
+  if (key === "tempC" && /^\d+(\.\d+)?$/.test(raw.trim())) return "tempUnit";
+  return "notANumber";
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -340,8 +377,6 @@ export type TileDelta = { serviceDate: string; from: string; delta: string; hot:
 
 const signed = (n: number): string => (n > 0 ? `+${String(n)}` : String(n));
 /* One decimal only where the vital actually has one — a temperature moves by 0.4, a weight by 1.5. */
-const round1 = (n: number): number => Math.round(n * 10) / 10;
-
 export function tileDeltaOf(k: TileKey, tile: Tile, pre: WirePreStage | null): TileDelta | null {
   const last = pre?.last;
   if (last === null || last === undefined) return null;
@@ -405,6 +440,8 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
   const [lockedByServer, setLockedByServer] = useState<WireVitalKey[]>([]);
   const [missing, setMissing] = useState<TileKey[]>([]);
   const [error, setError] = useState<string | null>(null);
+  /* The temperature as it was TYPED, when that was °F — the tile shows the charted °C beside it. */
+  const [tempTyped, setTempTyped] = useState<number | null>(null);
   /** Ruling: a chip is ASKED (yes / no) or not asked. Cycle null → yes → no → null; a mis-click never fabricates an answer. */
   const [chips, setChips] = useState<Record<string, "yes" | "no" | undefined>>({});
   const [busy, setBusy] = useState(false);
@@ -477,7 +514,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     }
     setTiles(next);
     putRaw(() => Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>);
-    setMirror(null); setServerGates([]); setLockedByServer([]); setMissing([]); setError(null); setChips({});
+    setMirror(null); setServerGates([]); setLockedByServer([]); setMissing([]); setError(null); setChips({}); setTempTyped(null);
     setKeys({ typed: 0, device: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `initialTakes` is read once per patient, with the reset
   }, [resetKey, preStage]);
@@ -534,8 +571,9 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     const text = rawRef.current[key];
     if (!opts.demandANumber && text.trim() === "") return true;
     const take = parseTake(key, text);
-    if (take === null) { setError(key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber")); return false; }
+    if (take === null) { setError(t(`vitalsBay.capture.${takeError(key, text)}`)); return false; }
     setError(null);
+    if (key === "tempC") { const n = tempNote(text); setTempTyped(n !== null && n.unit === "F" ? n.f : null); }
     putRaw((r) => ({ ...r, [key]: "" }));       // emptied BEFORE the focus moves — see `rawRef`
     if (key === "rr" && typeof take === "number") {
       const instant = rrFocusedAt.current !== null && Date.now() - rrFocusedAt.current < 15_000 && (rrNudge === null || rrNudge.secondsLeft !== 0);
@@ -603,12 +641,13 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
       A half-typed BP must not cost her the six numbers below it — they are charted, the cursor
       goes to the one tile that needs her, and the bad text stays in its box for her to finish.
     */
-    let stop: { key: TileKey; mirror: Mirror | null } | null = null;
+    let stop: { key: TileKey; mirror: Mirror | null; text?: string } | null = null;
     for (const k of order) {
       const text = rawRef.current[k];
       if (text.trim() === "") continue;
       const take = parseTake(k, text);
-      if (take === null) { stop ??= { key: k, mirror: null }; continue; }   // her text stays in the box
+      if (take === null) { stop ??= { key: k, mirror: null, text }; continue; }   // her text stays in the box
+      if (k === "tempC") { const n = tempNote(text); setTempTyped(n !== null && n.unit === "F" ? n.f : null); }
       const r = applyTake(current, k, "typed", take, gateCtx);
       current = r.tiles;
       flushed.push(k);
@@ -619,7 +658,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
     if (current !== tiles) setTiles(current);
     if (stop !== null) {
       if (stop.mirror !== null) setMirror({ key: stop.key, m: stop.mirror });
-      else setError(stop.key === "bp" ? t("vitalsBay.capture.bpBoth") : t("vitalsBay.capture.notANumber"));
+      else setError(t(`vitalsBay.capture.${takeError(stop.key, stop.text ?? "")}`));
       refs.current[stop.key]?.focus();
       return;
     }
@@ -746,6 +785,10 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                     )}
                   </div>
 
+                  {/* OWNER 2026-10-05 — a °F thermometer: the chart is °C, and what she typed stays in sight. */}
+                  {k === "tempC" && op !== null && tempTyped !== null && (
+                    <span data-testid="temp-typed-f" className="mo" style={{ fontSize: 10.5, color: "var(--dim)" }}>{t("vitalsBay.capture.tempTypedF", { f: tempTyped })}</span>
+                  )}
                   {/* WHERE IT CAME FROM, and — for a pulse — the fact that it was never counted separately. */}
                   {op !== null && (
                     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4 }}>
@@ -782,7 +825,7 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                     aria-label={`${label(k)} ${unit(k)}`.trim()}
                     data-testid={`input-${k}`} inputMode="decimal" autoComplete="off"
                     className="in mo" style={{ padding: "4px 7px", fontSize: 13 }}
-                    placeholder={k === "bp" ? "158/96" : ""}
+                    placeholder={k === "bp" ? "158-96" : k === "tempC" ? "98.6 / 37.0" : ""}
                     value={raw[k]}
                     onChange={(e) => putRaw((r) => ({ ...r, [k]: e.target.value }))}
                     onFocus={() => { if (k === "rr" && rrFocusedAt.current === null) rrFocusedAt.current = Date.now(); }}
@@ -798,6 +841,18 @@ export function CaptureCore({ row, preStage, ranges, lane, driver = nullDriver, 
                       if (e.key.length === 1 || e.key === "Backspace") setKeys((c) => ({ ...c, typed: c.typed + 1 }));
                     }}
                   />
+                  {(k === "bp" || k === "tempC") && raw[k].trim() !== "" && (() => {
+                    /* OWNER 2026-10-05 — say what the typed text WILL chart as, before she leaves the box. */
+                    const take = parseTake(k, raw[k]);
+                    if (take === null) return null;
+                    const n = k === "tempC" ? tempNote(raw[k]) : null;
+                    const text = Array.isArray(take)
+                      ? t("vitalsBay.capture.readsBp", { sys: take[0], dia: take[1] })
+                      : n !== null && n.unit === "F"
+                        ? t("vitalsBay.capture.readsTempF", { f: n.f, c: n.c })
+                        : t("vitalsBay.capture.readsTempC", { c: take });
+                    return <span data-testid={`reads-${k}`} className="mo" style={{ fontSize: 10.5, color: "var(--green, var(--dim))" }}>{text}</span>;
+                  })()}
                   {/*
                     THE OWNER'S DIGNITY RULING, ON THE TILE THAT NEEDS IT. A weight is the one
                     number at this desk that a patient can be humiliated by, and the bay is a

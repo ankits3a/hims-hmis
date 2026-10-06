@@ -6,7 +6,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
 import { ageYearsAt } from "./time";
-import { bandFor, evaluateVitals } from "./vitals-rules";
+import { bandFor, evaluateVitals, requiredFor } from "./vitals-rules";
 /* The ledger projection the queue token and the billing rail already read — one definition of paid. */
 import { encounterFeeStatuses } from "../billing";
 import type { BandConfig, BandKey, DangerRangesConfig, VitalKey } from "./config";
@@ -206,7 +206,7 @@ export async function preStage(db: Db, actor: Actor, encounterId: string, now: D
     ranges: band.ranges, noticeRanges: band.noticeRanges,
     gates: cfg.dangerRanges.gates, muacBands: cfg.dangerRanges.muacBands,
     sealed,
-    required: [...band.required],
+    required: requiredFor(band, ageYears), // owner 2026-10-05: temperature never, a child's BP never
     notRoutine: [...band.notRoutine],
     /* One derivation, shared with the visit route so three desks cannot disagree. */
     ...(await feeMarksFor(db, encounter)),

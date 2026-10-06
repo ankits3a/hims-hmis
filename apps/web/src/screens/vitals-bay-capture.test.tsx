@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { VitalsBay } from "./vitals-bay";
 import {
-  buildBody, emptyTiles, flagOf, humanDate, leadTileFor, mirrorFor, missingFor, parseTake, readLane, tileOrder, tileSetFor,
+  buildBody, emptyTiles, takeError, tempNote, flagOf, humanDate, leadTileFor, mirrorFor, missingFor, parseTake, readLane, tileOrder, tileSetFor,
 } from "./vitals-bay-capture";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
@@ -88,6 +88,24 @@ beforeEach(() => { vi.stubGlobal("WebSocket", FakeWebSocket); resetRealtimeClien
 afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
 describe("the pure rules mirror the server's", () => {
+  it("owner 2026-10-05 — BP takes any separator a phone keypad has", () => {
+    for (const raw of ["150/90", "150-90", "150,90", "150.90", "150 90", " 150 - 90 "]) expect(parseTake("bp", raw)).toEqual([150, 90]);
+    expect(parseTake("bp", "80-120")).toBeNull();          // the bigger number is the top one
+    expect(takeError("bp", "80-120")).toBe("bpOrder");
+    expect(takeError("bp", "150")).toBe("bpBoth");
+    expect(parseTake("bp", "150--90")).toBeNull();
+  });
+  it("owner 2026-10-05 — temperature in °F or °C, sensed from the number, charted in °C", () => {
+    expect(parseTake("tempC", "37")).toBe(37);
+    expect(parseTake("tempC", "37.2")).toBe(37.2);
+    expect(parseTake("tempC", "98.6")).toBe(37);
+    expect(parseTake("tempC", "101")).toBe(38.3);
+    expect(parseTake("tempC", "50")).toBeNull();
+    expect(takeError("tempC", "50")).toBe("tempUnit");
+    expect(tempNote("101")).toEqual({ unit: "F", f: 101, c: 38.3 });
+    expect(tempNote("37.2")).toEqual({ unit: "C", f: 99, c: 37.2 });
+    expect(tempNote("50")).toBeNull();
+  });
   it("parseTake: BP needs both numbers; a scalar is a number", () => {
     expect(parseTake("bp", "158/96")).toEqual([158, 96]);
     expect(parseTake("bp", "158")).toBeNull();
@@ -547,5 +565,36 @@ describe("a typed number is a reading whether or not ⏎ was pressed", () => {
     const body = posted[0]!.body as { readings: Record<string, { takes: unknown[] }> };
     expect(body.readings.bp!.takes).toEqual([[128, 84]]);
     expect(body.readings.pulse!.takes).toEqual([78]);
+  });
+});
+
+describe("owner 2026-10-05 — a phone's number pad, and a thermometer in °F", () => {
+  it("150-90 says what it will chart while typing, and charts 150/90", async () => {
+    stubBay([ROW_B], () => saved([]));
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    await user.click(screen.getByTestId("input-bp")); await user.keyboard("150-90");
+    expect(screen.getByTestId("reads-bp").textContent).toBe("reads 150/90 mmHg");
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("value-bp").textContent).toBe("150/90");
+    await user.click(screen.getByTestId("input-bp")); await user.keyboard("80,120{Enter}");
+    expect(screen.getByRole("alert").textContent ?? screen.getByTestId("capture").textContent).toContain("The top number is the bigger one");
+  });
+  it("101 on a four-year-old reads as °F, charts 38.3 °C, keeps the 101 °F beside it, and wears the fever notice", async () => {
+    stubBay([ROW_K], () => saved([]));
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-130")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-130"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    await user.click(screen.getByTestId("input-tempC")); await user.keyboard("101");
+    expect(screen.getByTestId("reads-tempC").textContent).toBe("101 °F = 38.3 °C");
+    await user.keyboard("{Enter}");
+    expect(screen.getByTestId("value-tempC").textContent).toBe("38.3");
+    expect(screen.getByTestId("temp-typed-f").textContent).toBe("typed 101 °F");
+    expect(screen.getByTestId("tile-tempC").getAttribute("data-tint")).toBe("notice");
   });
 });
