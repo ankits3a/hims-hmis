@@ -11,10 +11,29 @@ apps/mobile/scripts/build-apk.sh staging      # → stagehmis.crkmch.com, app id
 apps/mobile/scripts/build-apk.sh production   # → hmis.crkmch.com,      app id com.crkmch.hmis
 ```
 
-The APK lands in `/opt/hmis-context/mobile-apk/` as
-`hmis-staff-<env>-<version>-vc<versionCode>-<sha>.apk`, with a `.sha256` beside it, and
-`hmis-staff-<env>-latest.apk` is re-pointed at it once its signature verifies. The two app ids
-install side by side on one phone.
+The APK lands in a folder per environment — staging in `/opt/hmis-context/mobile-apk/`, production
+in `/opt/hmis-context/mobile-apk-prod/` — as `hmis-staff-<env>-<version>-vc<versionCode>-<sha>.apk`,
+with a `.sha256` beside it, and `hmis-staff-<env>-latest.apk` is re-pointed at it once its signature
+verifies. A production build also re-points `hmis-staff-latest.apk`, the short link staff are given.
+The two app ids install side by side on one phone.
+
+## Where each build is served
+
+| build | link | who can open it |
+|---|---|---|
+| staging | `https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.apk` | behind the staging password |
+| production | `https://hmis.crkmch.com/app/hmis-staff-latest.apk` | anyone who has the link (owner 2026-10-06) |
+
+Production has **no password, deliberately**: an APK holds no secret (only the site's address),
+nothing in it works without a staff login, and a phone's installer cannot answer a password prompt.
+The link is unlisted — no screen links to it — and nothing is browsable: production's Caddyfile
+serves only files named `hmis-staff-…` ending `.apk`, `.json` or `.png` from that folder, and every
+other `/app/` path is a 404 (`apps/core/test/caddyfile-hardening.test.ts` pins this). What that
+leaves open: somebody who learns the link can download the app and read its code. The owner shares
+the link with staff himself; nothing sends it automatically.
+
+The folder is a read-only mount in `docker-compose.prod.yml`. A new build needs no deploy: the
+script writes into the folder and the next request serves it.
 
 What the script does:
 1. `expo prebuild --platform android --clean` generates `android/` (git-ignored, regenerated every build).
@@ -37,9 +56,31 @@ in the APK file names.
 - each keystore's passwords, in `hmis-<env>.env` (mode 600);
 - the versionCode counters.
 
-**If a keystore is lost, every phone must uninstall the app before it can take an update.** Copy the
-whole folder somewhere safe and offline, such as an encrypted USB drive. Never commit it, and never
-paste it into chat.
+**If a keystore is lost, every phone must uninstall the app before it can take an update.** Never
+commit the folder, and never paste it into chat.
+
+### The backup (DECIDED 2026-10-06)
+
+`/opt/hmis-context/mobile-tools/backup-signing-keys.sh --offsite` (outside the repo) does all of it:
+
+1. packs both keystores, both env files and the counters into one archive, encrypted with AES-256
+   (`gpg --symmetric`) → `/opt/hmis-context/backups/hmis-android-signing-keys-<time>.tar.gpg`;
+2. **proves it restores**: decrypts into a temp folder and compares every file's checksum;
+3. copies the archive **off this server**, to the bucket the database's own backups already go to
+   (the pgBackRest repository on Cloudflare R2), under its own prefix `hmis-android-keys/`, and
+   reads it back to compare.
+
+The passphrase is made once and kept in `/root/.config/hmis/android/BACKUP-PASSPHRASE.txt` (mode
+600). It is the one thing that must ALSO exist away from this server: the owner reads it once, writes
+it on paper, and keeps the paper with the hospital's other keys. The archive without the passphrase
+is noise; a passphrase that lives only on the server that died is no backup.
+
+Run the script again after a keystore or env file changes (it does not need running after an
+ordinary build — a lost counter is rebuilt from the APK file names).
+
+To restore on a new server:
+`gpg -d hmis-android-signing-keys-<time>.tar.gpg | tar -C /root/.config/hmis/android -xf -`
+(gpg asks for the passphrase), then `chmod 700` the folder and `chmod 600` its files.
 
 ## Toolchain (installed outside the repo)
 
@@ -78,7 +119,8 @@ Android installs it over the old build because the signing key is the same. Give
 `HMIS_RELEASE_NOTES="Doctor's OPD line; new icon" apps/mobile/scripts/build-apk.sh staging`.
 
 On staging, Caddy serves exactly `/app/hmis-staff-*-latest.json` without the basic-auth prompt (an app cannot answer
-one); the APK and the folder listing stay behind it. The production feed is designed in the plan (§7) and not served yet.
+one); the APK and the folder listing stay behind it. Production serves its feed at
+`https://hmis.crkmch.com/app/hmis-staff-production-latest.json`, with `Cache-Control: no-store`.
 
 ## Fonts and the icon
 

@@ -194,6 +194,13 @@ services:
       # Let's Encrypt for a fresh certificate and hit the rate limit.
       - caddy_data:/data
       - caddy_config:/config
+      # The staff Android app's PRODUCTION builds (apps/mobile/scripts/build-apk.sh production),
+      # served at https://hmis.crkmch.com/app/hmis-staff-… by the Caddyfile's `@app_file` handle.
+      # Read-only, and a host directory outside every compose project. The UAT overlay mounts its
+      # own folder at the same path, so staging never serves a production build nor the reverse.
+      # A NEW MOUNT NEEDS A NEW CONTAINER, not a reload: `compose up -d` recreates caddy when this
+      # file changes (deploy.sh step 6), which is what makes the route exist.
+      - /opt/hmis-context/mobile-apk-prod:/downloads:ro
     depends_on:
       api:
         condition: service_started
