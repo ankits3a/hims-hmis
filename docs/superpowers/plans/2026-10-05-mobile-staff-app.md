@@ -193,50 +193,65 @@ download link. expo.dev's cloud builder is not used.
   over the old one only because it is signed with the same key — **the keystore folder
   `/root/.config/hmis/android/` must be backed up offline** (lost key ⇒ every phone uninstalls to update).
 
-## 7. Production rollout — DESIGNED, NOT EXECUTED (needs the owner's decisions below)
+## 7. Production rollout — EXECUTED 2026-10-06 (the owner's rulings, and what was built)
 
-Owner, 2026-10-06 (Hinglish): staff should get the APK link on their phones. No stores; the link must not be open to
-the world.
+**Owner, 2026-10-06 (verbatim):** *"Roll out to everyone at once. Yes Staff will be using their personal phones for the
+next few months. Once all department is live on the operating system the devices will be replaced by hospital's own.
+No, don't draft wording for install links. I will share personally. Choose the logical and practical choice to keep the
+offline backup of the signing keys."*
 
-**What exists today:** the production profile (`com.crkmch.hmis`, "HMIS", `https://hmis.crkmch.com/api`), its own
-keystore, and `build-apk.sh production`. **Nothing production is built or served yet**, and the production app's update
-feed (`https://hmis.crkmch.com/app/hmis-staff-production-latest.json`) answers nothing until step 2 — the app treats
-that as "unknown" and says nothing.
+So: no pilot (D-1), personal phones for now and hospital phones later (D-3), **no WhatsApp sending and no template**
+(D-2 — the owner hands the link out himself), and the link-lifetime question (D-4) falls away with the signed-link
+design it belonged to. D-5 is DECIDED below.
 
-**Proposed steps**
+### 7.1 What serves the app (DECIDED)
 
-1. **Build:** `HMIS_RELEASE_NOTES="…" apps/mobile/scripts/build-apk.sh production` → `/opt/hmis-context/mobile-apk/`.
-   Verify the signature and the app id; install on the owner's phone first (it installs beside the staging app).
-2. **Serve it from hmis.crkmch.com, never publicly listed:**
-   - `GET /app/hmis-staff-production-latest.json` — open, like staging's: a version number, a file name, a checksum.
-   - The APK itself behind a **signed, short-lived link**: `GET /api/app/download?t=<token>` on the API, which checks an
-     HMAC token (staff user id + expiry, 24 h) and streams the file from a read-only mount. No folder listing. The
-     download is audited (`app.downloaded`, who and which build). This needs a small server change — one controller and
-     one read-only mount in `docker-compose.prod.yml`; no new Caddy route for the APK, because `/api` is already
-     proxied — and is its own PR. (The open feed file is one Caddy line, as on staging.)
-   - The installed app gets its update link the same way: signed in, it asks `POST /api/app/download-link` and opens
-     the answer. So an update never needs a password prompt, and a link forwarded outside the hospital dies in a day
-     and names who it was minted for.
-3. **Send the first link to staff phones:**
-   - **WhatsApp** through the existing Meta Cloud API integration (`NOTIFY_PROVIDER=meta_cloud`): a business-initiated
-     message needs a **Meta-approved template** — on 2026-09-26 the account had **zero templates** and the display name
-     was not approved; the template wording needs the owner's OK before it is submitted. Proposed wording: "CRK
-     Hospital HMIS staff app. Install: {{1}} — valid 24 hours. Sign in with your HMIS username."
-   - **QR poster** at each desk and the doctors' room for the same per-day link (printed from an admin page that mints
-     a link valid for the day), as the fallback for a phone not on WhatsApp.
-   - `/admin/users` gains "Send app link" per user and "Send to everyone active" (admin permission; each send audited).
-4. **First run on a phone:** Chrome → the APK → "Install unknown apps" for Chrome (once) → sign in with the HMIS
-   username and password → fingerprint unlock from then on.
-5. **Updates:** the app's check on start-up; the prompt's button asks the API for a fresh signed link.
-6. **A lost or leaving phone:** deactivate the user or reset the password (both end the phone's session today). A
-   per-device "sign this phone out" is M6.
+- `https://hmis.crkmch.com/app/hmis-staff-latest.apk` — the link staff are given. It never changes between builds.
+- `https://hmis.crkmch.com/app/hmis-staff-production-latest.json` — the update feed the installed app reads.
+- `https://hmis.crkmch.com/app/hmis-staff-install-qr.png` — the same link as a QR, for a poster.
 
-**Open owner decisions**
+Production's caddy mounts `/opt/hmis-context/mobile-apk-prod` read-only at `/downloads` and serves from it ONLY files
+named `hmis-staff-…` ending `.apk`, `.json` or `.png`; every other `/app/` path is a 404, and nothing lists the folder
+(`docker/prod/Caddyfile`, `@app_file`; pinned by `apps/core/test/caddyfile-hardening.test.ts`). `build-apk.sh production`
+writes into that folder, so a new build needs no deploy.
 
-- **D-1 Who gets it first:** everyone with a login, or a pilot (the doctors and the vitals / slip desks) for a week?
-- **D-2 WhatsApp wording and sender name** — the template must be approved by Meta before the first send; OK to submit
-  the wording above?
-- **D-3 Personal phones:** staff install on their own phones. Is that acceptable for patient data (the app keeps only
-  the session token on the phone, never records), or hospital-issued phones only for some seats?
-- **D-4 Link lifetime:** 24 hours proposed. Shorter is safer; longer saves re-sends.
-- **D-5 Keystore backup:** where the offline copy of `/root/.config/hmis/android/` lives, and who holds it.
+**No password, and the earlier signed-link design is dropped — DECIDED.** The first draft of this section put the APK
+behind a per-staff signed link minted by the API and sent on WhatsApp. The owner ruled the sending out, and without it
+a signed link is a cost with nobody to mint it for: the owner shares one link, by hand, with everybody. An APK holds no
+secret — only the site's address — and nothing in it works without an HMIS staff login; a phone's installer and the
+app's own update check cannot answer a password prompt.
+
+**The residual risk, plainly:** the link is unlisted, not secret. Anyone who is sent it — or guesses the file name —
+can download the app and read its code and the API paths it calls. That gives them nothing the login page does not:
+every route still needs a staff session and its permission. What it does NOT protect against is a staff member's own
+phone: see 7.4.
+
+### 7.2 The build
+
+`HMIS_RELEASE_NOTES="…" apps/mobile/scripts/build-apk.sh production` → app id `com.crkmch.hmis`, name "HMIS", API
+`https://hmis.crkmch.com/api`, no staging strip, signed with `hmis-production.jks`, its own versionCode counter. It
+installs beside the staging app. The production signing certificate (every later build must carry it, or phones refuse
+the update):
+
+`SHA-256 32:C8:C3:E7:44:42:F3:A5:A2:7E:9C:B6:17:6F:95:E9:0A:0E:A9:3A:E9:FB:D5:38:1D:BA:66:BF:F0:EA:57:A4`
+
+### 7.3 The signing keys' backup (D-5, DECIDED)
+
+One encrypted archive (AES-256), restored and checksum-compared every time it is made, kept in two places: on this
+server (`/opt/hmis-context/backups/`) and **off it, in the bucket the database's own backups already go to** (the
+pgBackRest repository on Cloudflare R2, prefix `hmis-android-keys/`). The passphrase is the third piece and the only
+one a person must hold: it is in a mode-600 file on the server, and the owner copies it once onto paper kept away from
+the server. Reasoning: the hospital already trusts that bucket with every patient record and already pays for and
+monitors it; a USB stick in a drawer is the backup nobody can find in three years. `apps/mobile/BUILDING.md` has the
+commands.
+
+### 7.4 What a phone needs, and what is still owed
+
+1. Chrome → the link → "Install unknown apps" for Chrome (once) → Install → sign in with the HMIS username and password
+   → fingerprint from then on.
+2. Updates: the app's own check on start-up and "Check for update"; the prompt opens the new APK from the same folder.
+3. **A lost or leaving phone (personal phones make this matter more):** deactivate the user or reset the password —
+   both end that phone's session today. **Owed in M6:** device binding (which phones hold a session, shown in
+   `/admin/users`) and "sign this phone out" without resetting the password.
+4. **Hospital-owned phones later (owner):** nothing here assumes a personal phone. When the hospital's devices arrive,
+   M6's device list is what lets an admin retire the personal ones.
