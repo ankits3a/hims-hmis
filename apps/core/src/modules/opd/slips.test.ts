@@ -102,6 +102,11 @@ describe("opd — the slip desk's day", () => {
     /* The waiting clock starts when the doctor finished, and the row carries the room and Doctor ID. */
     expect(ramRow.consultDoneAt?.toISOString()).toBe(LATER(20).toISOString());
     expect(ramRow).toMatchObject({ roomName: "Room 12", doctorCode: "DR-0412", pages: 0 });
+    /* Owner 2026-10-06 — what the paper says: the token as the slip prints it (`<dept>-<n>`), so the desk can find a visit by it. */
+    expect(typeof ramRow.tokenNo).toBe("number");
+    expect(ramRow.tokenNo).toBeGreaterThan(0);
+    expect(typeof ramRow.departmentCode).toBe("string");
+    expect(ramRow.departmentCode).not.toBe("");
     expect(day.items[1]).toMatchObject({ pages: 1, kinds: ["consult_prescription"] });
   });
 

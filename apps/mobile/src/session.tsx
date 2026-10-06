@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as LocalAuthentication from "expo-local-authentication";
 import { Platform } from "react-native";
-import { api, ApiError, NetworkError } from "./api";
+import { api, ApiError, NetworkError, xhrPost } from "./api";
 import { tokenStore } from "./storage";
 import type { EffectivePermissions } from "./seats";
 
@@ -37,6 +37,11 @@ type Session = {
    * the server has ended (401) returns the phone to sign-in instead of failing screen by screen.
    */
   call: <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown) => Promise<T>;
+  /**
+   * A signed POST that reports how much of the body has left the phone (0–1) — for a photograph on
+   * a slow connection. Same errors as `call` (`ApiError`, `NetworkError`), same 401 handling.
+   */
+  upload: <T>(path: string, body: unknown, onProgress: (fraction: number) => void) => Promise<T>;
 };
 
 const Ctx = createContext<Session | null>(null);
@@ -166,9 +171,27 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
     [token, fetcher],
   );
 
+  const upload = useCallback(
+    async <T,>(path: string, body: unknown, onProgress: (fraction: number) => void): Promise<T> => {
+      // An injected transport (tests) and a platform with no XHR take the plain road: no progress, same result.
+      if (fetcher !== undefined || typeof XMLHttpRequest === "undefined") return call<T>("POST", path, body);
+      try {
+        return await xhrPost<T>(path, token, body, onProgress);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) {
+          await tokenStore.clear();
+          setToken(null);
+          setState({ status: "signedOut", note: "expired" });
+        }
+        throw e;
+      }
+    },
+    [call, fetcher, token],
+  );
+
   const value = useMemo(
-    () => ({ state, login, unlock, changePassword, logout, forgetAndSignIn, token, call }),
-    [state, login, unlock, changePassword, logout, forgetAndSignIn, token, call],
+    () => ({ state, login, unlock, changePassword, logout, forgetAndSignIn, token, call, upload }),
+    [state, login, unlock, changePassword, logout, forgetAndSignIn, token, call, upload],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

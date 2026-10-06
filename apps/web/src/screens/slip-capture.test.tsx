@@ -395,6 +395,35 @@ describe("SlipCapture — the board", () => {
     expect(await screen.findByTestId("slip-readback")).toHaveTextContent("Mohammed Irfan");
   });
 
+  /** Owner 2026-10-06 — one reader for what the desk types or scans, shared with the phone and the vitals bay. */
+  it("B3b: the token as the slip prints it, or a UHID, finds today's visit — and it is still the SERVER's read-back", async () => {
+    const coded = { ...DAY, items: DAY.items.map((r, i) => ({ ...r, tokenNo: i + 1, departmentCode: i === 0 ? "MED" : "ORT" })) };
+    stubFetch({ "GET /api/opd/slips/today": coded, "GET /api/opd/visits/by-number/V2609140002": { ...RICH, encounterId: "e-2", patientId: "p-2", visitNo: "V2609140002", patient: { uhid: "HMS0000000002", name: "Mohammed Irfan", alias: null } }, "GET /api/opd/visits/by-number/V2609140007": RICH });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await waitFor(() => { expect(screen.getByTestId("slip-list")).toHaveTextContent("Today's slips · 4"); });
+
+    await user.type(screen.getByLabelText("Visit number"), "med-1{Enter}");
+    expect(await screen.findByTestId("slip-readback")).toHaveTextContent("Mohammed Irfan");
+    expect(callsTo("GET", "/api/opd/visits/by-number/V2609140002")).toHaveLength(1);
+
+    await user.keyboard("{Escape}");
+    await user.type(screen.getByLabelText("Visit number"), "hms0000000020{Enter}");
+    await waitFor(() => { expect(screen.getByTestId("slip-readback")).toHaveTextContent("Asha Devi"); });
+  });
+
+  it("B3c: a token nobody finished a consultation with today is refused in words, and nothing is guessed", async () => {
+    const coded = { ...DAY, items: DAY.items.map((r, i) => ({ ...r, tokenNo: i + 1, departmentCode: "MED" })) };
+    stubFetch({ "GET /api/opd/slips/today": coded });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await waitFor(() => { expect(screen.getByTestId("slip-list")).toHaveTextContent("Today's slips · 4"); });
+    await user.type(screen.getByLabelText("Visit number"), "MED-99{Enter}");
+    expect(await screen.findByTestId("slip-error")).toHaveTextContent("Token MED-99 is not among today's finished consultations");
+    expect(screen.queryByTestId("slip-readback")).not.toBeInTheDocument();
+    expect(callsTo("GET", "/api/opd/visits/by-number/MED-99")).toHaveLength(0);
+  });
+
   it("B4: a torn QR — today's visit found by name, and the person is still checked before the camera", async () => {
     const find = vi.fn(() => ({ items: [RICH] }));
     stubFetch({ "GET /api/opd/slips/find": (_i?: RequestInit, url?: string) => { find(); return url?.includes("q=Asha") ? { items: [RICH] } : { items: [] }; } });

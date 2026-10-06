@@ -8,6 +8,11 @@ import { DocCrop, type CropStatus } from "../components/doc-crop";
 import { frameQuad, isConvex, type Quad } from "../lib/doc-crop/geometry";
 import { detectInImage, loadImage, warpToCanvas } from "../lib/doc-crop/browser";
 import type { StationLink } from "../components/station/station-shell";
+import {
+  MAX_EDGE, QUALITIES, SLIP_KINDS, ageYearsAt, base64Bytes, fitToMaxEdge, fitsBudget, minutesSince, slipDoor, slipOfPatient,
+} from "../../../../packages/contracts/src/slip-desk";
+import type { SlipDay, SlipKind, SlipPatient, SlipReadback } from "../../../../packages/contracts/src/slip-desk";
+import { tokenText } from "../../../../packages/contracts/src/vitals-entry";
 import "./slip-desk.css";
 
 /**
@@ -56,34 +61,12 @@ import "./slip-desk.css";
  *     the same read-back the scan gets, so the check is not skipped by the other door;
  *   · the doctor is named by Doctor ID only.
  */
-const MAX_EDGE = 1600;
-const TARGET_BYTES = 1_400_000; // just under the server's 1.5 MB refusal
-const QUALITIES = [0.82, 0.7, 0.6, 0.5, 0.4];
-
-/**
- * The bounded size for a source of this shape. Pulled out so the arithmetic is testable without a
- * rasteriser — jsdom has no canvas, so a screen test cannot prove a single pixel of it.
- *
- * NEVER UPSCALES: a 400 px photograph of a slip is a bad photograph, and stretching it to 1600
- * makes a bigger bad photograph and a bigger file. `Math.min(1, …)` is that rule.
- */
-export function fitToMaxEdge(width: number, height: number): { width: number; height: number } {
-  const longest = Math.max(width, height);
-  const scale = longest === 0 ? 1 : Math.min(1, MAX_EDGE / longest);
-  return { width: Math.round(width * scale), height: Math.round(height * scale) };
-}
-
-/**
- * The byte count of a base64 payload WITHOUT decoding it — 4 characters carry 3 bytes. Decoding a
- * 1.5 MB string on a desk machine to find out whether it is 1.5 MB is work for nothing.
- */
-export function base64Bytes(b64: string): number {
-  return Math.floor((b64.length * 3) / 4);
-}
-
-export function fitsBudget(b64: string): boolean {
-  return base64Bytes(b64) <= TARGET_BYTES;
-}
+/*
+  The size budget, the visit/slip wire shapes and the reader for what the desk types or scans live in
+  packages/contracts/src/slip-desk.ts since 2026-10-06 — the phone's slip desk files by the same
+  rules. Re-exported, so every import from this file keeps working.
+*/
+export { base64Bytes, fitToMaxEdge, fitsBudget } from "../../../../packages/contracts/src/slip-desk";
 
 /**
  * Draw the frame to a canvas at a bounded size and encode it, stepping the quality down until it
@@ -116,35 +99,10 @@ export async function downscaleToJpeg(source: CanvasImageSource, width: number, 
   return null;
 }
 
-type Summary = {
-  uhid: string; name: string | null; alias: string | null;
-  administrativeGender?: string | null; dob?: string | null;
-};
-
-/** `GET /opd/visits/by-number/:visitNo` — and each hit of `GET /opd/slips/find`. */
-type Readback = {
-  encounterId: string;
-  patientId: string;
-  visitNo: string;
-  serviceDate: string;
-  patient: Summary | null;
-  /* UX-AUDIT 2026-09-28 · BOARD — additive server fields; optional so an older API still reads. */
-  doctorCode?: string | null;
-  departmentName?: string | null;
-  roomName?: string | null;
-  filed?: { id: string; kind: string; capturedAt: string; retakeRequestedAt: string | null }[];
-};
-
-type SlipRow = {
-  encounterId: string; patientId: string; visitNo: string; patient: Summary;
-  doctorCode: string | null; roomName: string | null; state: "waiting" | "retake" | "filed";
-  consultDoneAt: string | null; filedAt: string | null; pages: number; kinds: string[];
-  retakeRequestedAt: string | null; retakeReason: string | null;
-};
-type SlipDay = { serviceDate: string; items: SlipRow[]; counts: { waiting: number; retake: number; filed: number } };
-
-const KINDS = ["consult_prescription", "outside_prescription", "outside_report"] as const;
-type Kind = (typeof KINDS)[number];
+type Summary = SlipPatient;
+type Readback = SlipReadback;
+const KINDS = SLIP_KINDS;
+type Kind = SlipKind;
 
 /** OPD's screens, for the header's switch — the board's seven, each shown only to a person who may open it. */
 const OPD_STATIONS: readonly (Omit<StationLink, "label"> & { labelKey: string })[] = [
@@ -163,18 +121,7 @@ function dmy(serviceDate: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(serviceDate);
   return m === null ? serviceDate : `${m[3]}-${MONTHS[Number(m[2]) - 1] ?? ""}-${m[1]}`;
 }
-/** Whole years from an ISO date of birth. */
-function ageYears(dob: string | null | undefined, now: number): number | null {
-  if (dob === null || dob === undefined) return null;
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const n = new Date(now);
-  let y = n.getUTCFullYear() - d.getUTCFullYear();
-  if (n.getUTCMonth() < d.getUTCMonth() || (n.getUTCMonth() === d.getUTCMonth() && n.getUTCDate() < d.getUTCDate())) y -= 1;
-  return y;
-}
-const minutesSince = (iso: string | null, now: number): number =>
-  iso === null ? 0 : Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
+const ageYears = ageYearsAt;
 
 /** Keys a desk types into a box must not also fire the dock — except the scan box's own Enter. */
 function typingIn(target: EventTarget | null): boolean {
@@ -260,20 +207,51 @@ export function SlipCapture(): React.ReactElement {
     setRefused(null); setError(null); setFiled(null); setFindOpen(false); setFindQ("");
   };
 
+  /**
+   * OWNER 2026-10-06 — ONE READER for what the desk types or scans (`slipDoor`, shared with the
+   * phone and, underneath, with the vitals bay): the visit number, the token as the slip prints it
+   * (`ORT-4`), a UHID, a printed e-prescription's code or a patient card. Whatever it is, it ends at
+   * the SERVER's read-back of one visit — the camera never opens on a match made on this screen.
+   */
   const resolveNumber = async (raw: string): Promise<void> => {
     const v = raw.trim();
-    if (v === "") return;
+    const door = slipDoor(day.data?.items ?? [], v);
+    if (door.to === "empty") return;
     setError(null); setRefused(null); setResolved(null); setShot(null); setRaw(null); setFiled(null);
     stopCamera();
-    try {
-      const r = await api<Readback>("GET", `/opd/visits/by-number/${encodeURIComponent(v)}`);
-      take(r, "qr");
-    } catch {
-      /* Named for what the operator can DO about it: check the number, or type it — and the torn-QR
-         door opens beside it (owner ruling 28-Sep-2026). */
-      setRefused(v);
-      setFindOpen(true);
+    const readBack = async (visit: string): Promise<boolean> => {
+      try { take(await api<Readback>("GET", `/opd/visits/by-number/${encodeURIComponent(visit)}`), "qr"); return true; } catch { return false; }
+    };
+    if (door.to === "ambiguous") {
+      const coded = door.rows.find((r) => r.departmentCode !== null && r.departmentCode !== undefined && r.departmentCode !== "");
+      setError(coded === undefined
+        ? t("slipCapture.miss.ambiguousPlain", { token: tokenText(door.door), count: door.rows.length })
+        : t("slipCapture.miss.ambiguous", { token: tokenText(door.door), count: door.rows.length, example: `${coded.departmentCode!}-${String(door.door.tokenNo)}` }));
+      return;
     }
+    if (door.to === "miss") {
+      setError(door.door.kind === "token" ? t("slipCapture.miss.token", { token: tokenText(door.door) }) : t("slipCapture.miss.prescription"));
+      setFindOpen(true);
+      return;
+    }
+    if (door.to === "verify") {
+      try {
+        const verdict = await api<{ ok: true; patient: { id: string; uhid: string } } | { ok: false; reason: string }>("POST", "/patients/qr/verify", { payload: door.payload });
+        const row = verdict.ok ? slipOfPatient(day.data?.items ?? [], verdict.patient.id) : null;
+        if (row !== null && await readBack(row.visitNo)) return;
+        setError(verdict.ok ? t("slipCapture.miss.card", { uhid: verdict.patient.uhid }) : t(`vitalsBay.identify.scanFailed.${verdict.reason}`));
+      } catch {
+        setError(t("vitalsBay.identify.scanUnavailable"));
+      }
+      setFindOpen(true);
+      return;
+    }
+    if (await readBack(door.to === "visit" ? door.visitNo : v)) return;
+    /* Named for what the operator can DO about it: check the number, or type it — and the torn-QR
+       door opens beside it (owner ruling 28-Sep-2026), already holding what was typed when that was words. */
+    setRefused(v);
+    setFindOpen(true);
+    if (door.to === "search") setFindQ(door.q);
   };
   const resolve = (): Promise<void> => resolveNumber(visitNo);
 

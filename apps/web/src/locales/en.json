@@ -9525,6 +9525,13 @@
     "fill": "Fill prescription ({{n}} lines)"
   },
   "slipCapture": {
+    "miss": {
+      "token": "Token {{token}} is not among today's finished consultations — type the visit number on the slip, or find the visit by name",
+      "prescription": "That prescription's visit is not among today's finished consultations — type the visit number, or find the visit by name",
+      "card": "{{uhid}} has no finished consultation today — check the slip, or find the visit by name",
+      "ambiguous": "Token {{token}} belongs to {{count}} patients today — type it as the slip prints it, like {{example}}, or type the visit number",
+      "ambiguousPlain": "Token {{token}} belongs to {{count}} patients today — type the visit number on the slip"
+    },
     "brand": "OPD",
     "stations": {
       "desk": "Desk",

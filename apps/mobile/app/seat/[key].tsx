@@ -1,6 +1,7 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, View } from "react-native";
 import { useI18n } from "../../src/i18n";
+import { SlipDesk } from "../../src/screens/slip-desk";
 import { VitalsBay } from "../../src/screens/vitals-bay";
 import { SEATS, seatsFor } from "../../src/seats";
 import { useSession } from "../../src/session";
@@ -17,6 +18,7 @@ export default function SeatScreen() {
   const seat = seatsFor(state.me.permissions).find((s) => s.key === key) ?? null;
   if (seat === null || !SEATS.includes(seat)) return <Redirect href="/" />;
   if (seat.key === "vitals") return <VitalsBay />;
+  if (seat.key === "slips") return <SlipDesk />;
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band />
