@@ -4,6 +4,8 @@ import { Text } from "../../src/text";
 import { useI18n } from "../../src/i18n";
 import { DeskOne } from "../../src/screens/desk-one";
 import { DoctorQueue } from "../../src/screens/doctor-queue";
+import { RosterMyDuties } from "../../src/screens/roster-my-duties";
+import { RosterOnNow } from "../../src/screens/roster-on-now";
 import { SlipDesk } from "../../src/screens/slip-desk";
 import { VitalsBay } from "../../src/screens/vitals-bay";
 import { SEATS, seatsFor } from "../../src/seats";
@@ -24,6 +26,8 @@ export default function SeatScreen() {
   if (seat.key === "slips") return <SlipDesk />;
   if (seat.key === "consult") return <DoctorQueue />;
   if (seat.key === "counter") return <DeskOne />;
+  if (seat.key === "onNow") return <RosterOnNow />;
+  if (seat.key === "myDuties") return <RosterMyDuties />;
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band />

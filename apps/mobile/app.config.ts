@@ -21,7 +21,7 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 const VERSION_CODE = Number(process.env.HMIS_VERSION_CODE ?? "1");
 
 const config: ExpoConfig = {

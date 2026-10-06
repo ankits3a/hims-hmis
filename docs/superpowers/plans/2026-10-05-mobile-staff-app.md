@@ -218,6 +218,33 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
 
 **Offline rule (all milestones):** cached reads show their age ("as of 10:42"). A clinical or money write is never queued silently. With no network the button says so and stays disabled.
 
+### 3e. M5 as built (2026-10-06)
+
+`apps/mobile/src/screens/roster-on-now.tsx`, `roster-my-duties.tsx` + `src/roster/{api,rules,words}.ts`; seats `onNow` and
+`myDuties` (`roster.read`). No server change and no new route.
+
+- **Shared:** `packages/contracts/src/roster-board.ts` — the wire shapes of `GET /roster/on-now` and `/roster/my-duties`
+  (moved out of the web's `lib/roster-api.ts`, which re-exports them) and the reading rules both screens use: `clockNoteOf`,
+  `takeTillOf`, `backupOf`, `hasNoTakeCycle`, `opdFallbackOf`, `flaggablePeople`, `dutyWhatKey`, `weekOf`, `coverBuckets`,
+  `greetingKey` / `greetingName`, `requestTone`, `shortUnit`. Rules return i18n KEYS; each side says them with its own
+  translator. The web screens were refactored onto the file (their 56 roster tests unchanged and green).
+- **Who is on now:** the clock line and what it means for the take; per department a card — unit on take and till when,
+  who is in the building with **Call** only where the server sent a number (D6), faculty on call, the overflow; the OPD
+  sitting list where no duty roster is published; a quiet card for a department with no unit; services; holes; "This is
+  wrong" (a flag for the duty manager) and "Dealt with" for whoever may. Now / In 8 hours. Re-read every 60 s; a failed
+  re-read keeps the last board and stamps its time.
+- **My duties:** greeting, today on a LIGHT card (owner: no dark slabs), tonight and the unit on take; asked-of-you with
+  the server's check and Yes / No; my requests and where each stands, with Withdraw; the week, rest after a night;
+  "I can't do this" → who can take it, who cannot and why → Ask or Swap; "Call my SR" only when a number was sent.
+- **Words:** days and months come from the app's locale files by IST arithmetic, not `Intl` (a phone engine's `hi-IN` names
+  vary by build). Refusals are `roster.refusal.<code>` — the web's sentences, copied and pinned by `i18n.test.ts`.
+- **Never queued:** a flag, an ask, an answer or a withdrawal that did not reach the server stays on screen and says
+  nothing was changed.
+- **Deferred:** the unit's month grid (a 31-column sheet — read on the computer); the board as it stood, declaring a
+  holiday or skeleton cover, printing (desk and inspection tools); approving a cover (`decide` — the unit head's act, on
+  the month screen); asking for leave (the web has no screen for it either).
+- **Unverified on a phone:** `tel:` hand-off to the dialler, the sheet above the keyboard.
+
 ## 4. Verification without an emulator
 
 1. **Behaviour:** jest-expo plus `@testing-library/react-native`, with mocked fetch, SecureStore and LocalAuthentication.
