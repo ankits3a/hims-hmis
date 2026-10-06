@@ -6,6 +6,8 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { FONT_FILES, setPlexReady } from "../src/fonts";
 import { I18nProvider } from "../src/i18n";
+import { NotificationsProvider } from "../src/notifications";
+import { guardScreen } from "../src/privacy";
 import { SessionProvider } from "../src/session";
 
 // The crest stays up until the typeface is registered, so no screen is first drawn in the system's.
@@ -17,13 +19,17 @@ export default function RootLayout() {
   const ready = loaded || error !== null;
   if (loaded) setPlexReady(true);
   useEffect(() => { if (ready) void SplashScreen.hideAsync().catch(() => undefined); }, [ready]);
+  // M6b — the production app shows no patient in a screenshot, a recording or the recent-apps strip.
+  useEffect(() => { void guardScreen(); }, []);
   if (!ready) return null;
   return (
     <SafeAreaProvider>
       <I18nProvider>
         <SessionProvider>
-          <StatusBar style="light" />
-          <Stack screenOptions={{ headerShown: false }} />
+          <NotificationsProvider>
+            <StatusBar style="light" />
+            <Stack screenOptions={{ headerShown: false }} />
+          </NotificationsProvider>
         </SessionProvider>
       </I18nProvider>
     </SafeAreaProvider>

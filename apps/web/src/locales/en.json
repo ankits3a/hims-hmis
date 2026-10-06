@@ -2342,6 +2342,18 @@
       "firstSeen": "first seen {{when}}",
       "app": "app {{version}}",
       "signOut": "Sign out this phone",
+      "notificationsOn": "Notifications on",
+      "notificationsOff": "Notifications off on this phone",
+      "notificationsNotSetUp": "Notifications are not set up on this server",
+      "sendTest": "Send test notification",
+      "test": {
+        "sent": "A test notification was sent to {{model}}. It says only “Test — this phone can receive HMIS notifications.”",
+        "gone": "{{model}} no longer accepts notifications (the app was removed or reset). It has been marked off; the person can turn them on again in the app.",
+        "no_address": "{{model}} has notifications switched off. The person turns them on in the app: This phone → Notifications.",
+        "not_signed_in": "{{model}} is not signed in, so nothing was sent.",
+        "not_configured": "Notifications are not set up on this server yet. Nothing was sent.",
+        "failed": "The notification service refused that just now. Nothing was sent — try again in a minute."
+      },
       "signedOutDone": "{{model}} is signed out. The app on it asks for the password again.",
       "nothingToEnd": "{{model}} held no session — nothing to end.",
       "phone_not_found": "That phone is no longer on this person's list.",

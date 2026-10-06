@@ -43,9 +43,35 @@ SHA=$(git -C "$APP_DIR" rev-parse --short=8 HEAD)
 DIRTY=$(git -C "$APP_DIR" status --porcelain -- . | grep -q . && echo "-dirty" || true)
 NAME="hmis-staff-$ENV_NAME-$VERSION-vc$VC-$SHA$DIRTY.apk"
 
+# NOTIFICATIONS (plan M6b). A build carries Firebase only when the owner's `google-services.json` is
+# on this host AND names the app id being built — Gradle's google-services plugin fails the whole
+# build on a file that does not ("No matching client found"), so that is checked here, by name,
+# before anything is built. Without it the same app is built with notifications dormant. The file
+# is copied beside app.config.ts (git-ignored) because Expo wants a path inside the project; it is
+# Firebase's CLIENT config and holds no secret — the server's key is a different file (BUILDING.md).
+GOOGLE_SERVICES="${HMIS_GOOGLE_SERVICES:-/root/.config/hmis/firebase/google-services.json}"
+case "$ENV_NAME" in production) APP_ID=com.crkmch.hmis ;; *) APP_ID=com.crkmch.hmis.staging ;; esac
+HMIS_PUSH_IN_BUILD=0
+rm -f "$APP_DIR/google-services.json"
+if [ -r "$GOOGLE_SERVICES" ]; then
+  if node -e '
+      const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      const ids = (j.client || []).map((c) => c && c.client_info && c.client_info.android_client_info && c.client_info.android_client_info.package_name);
+      process.exit(ids.includes(process.argv[2]) ? 0 : 1);
+    ' "$GOOGLE_SERVICES" "$APP_ID" 2>/dev/null; then
+    install -m 0600 "$GOOGLE_SERVICES" "$APP_DIR/google-services.json"
+    HMIS_PUSH_IN_BUILD=1
+    echo "notifications: IN this build ($APP_ID is in google-services.json)"
+  else
+    echo "notifications: NOT in this build — $GOOGLE_SERVICES does not name $APP_ID (BUILDING.md, Notifications)" >&2
+  fi
+else
+  echo "notifications: NOT in this build — no $GOOGLE_SERVICES yet (BUILDING.md, Notifications)"
+fi
+
 build() {
   cd "$APP_DIR"
-  APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC CI=1 npx expo prebuild --platform android --clean --no-install
+  APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD CI=1 npx expo prebuild --platform android --clean --no-install
   # Signing reaches Gradle through the generated (git-ignored) android/gradle.properties, mode 600,
   # removed after the build — never on a command line, where `ps` would show it.
   local props=android/gradle.properties
@@ -62,11 +88,11 @@ build() {
     echo "android.injected.signing.key.password=$HMIS_KEY_PASSWORD"
   } >> "$props"
   trap 'sed -i "/^android.injected.signing/d" "$APP_DIR/android/gradle.properties" 2>/dev/null || true' EXIT
-  (cd android && APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC nice -n 19 ionice -c3 ./gradlew assembleRelease --no-daemon --max-workers=2)
+  (cd android && APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD nice -n 19 ionice -c3 ./gradlew assembleRelease --no-daemon --max-workers=2)
 }
 
 export -f build
-export APP_DIR APP_ENV VC HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
+export APP_DIR APP_ENV VC HMIS_PUSH_IN_BUILD HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
 "$LOCK" run mobile-apk bash -c build
 
 mkdir -p "$OUT_DIR"
@@ -82,9 +108,9 @@ ln -sfn "$NAME" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.apk"
 # rename, so a phone never reads of a build whose APK is not yet in place. `HMIS_RELEASE_NOTES` is
 # the one line the update prompt shows ("Doctor's OPD line; new icon").
 SUM=$(cut -d' ' -f1 "$OUT_DIR/$NAME.sha256")
-HMIS_RELEASE_NOTES="${HMIS_RELEASE_NOTES:-}" node -e '
+HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD HMIS_RELEASE_NOTES="${HMIS_RELEASE_NOTES:-}" node -e '
   const [vc, version, apk, sha256, out] = process.argv.slice(1);
-  const body = { versionCode: Number(vc), versionName: version, apk, sha256, builtAt: new Date().toISOString(), notes: process.env.HMIS_RELEASE_NOTES || "" };
+  const body = { versionCode: Number(vc), versionName: version, apk, sha256, builtAt: new Date().toISOString(), notes: process.env.HMIS_RELEASE_NOTES || "", notifications: process.env.HMIS_PUSH_IN_BUILD === "1" };
   require("fs").writeFileSync(out + ".tmp", JSON.stringify(body, null, 2) + "\n");
   require("fs").renameSync(out + ".tmp", out);
 ' "$VC" "$VERSION" "$NAME" "$SUM" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.json"

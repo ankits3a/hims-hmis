@@ -15,6 +15,8 @@ import { ALERTS_CONSUMER, alertsConsumer } from "../src/kernel/alerts/consumer";
 import { alertsManifest } from "../src/kernel/alerts/manifest";
 import { NOTIFY_CONSUMER, notifyConsumer } from "../src/kernel/notify/consumer";
 import { OBLIGATIONS_CONSUMER, obligationsConsumer } from "../src/kernel/obligations/consumer";
+import { PHONE_PUSH_CONSUMER, phonePushConsumer } from "../src/kernel/push/consumer";
+import { fixedPhonePushSource } from "../src/kernel/push/sender";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { runDueTimers } from "../src/kernel/workflow/timers";
 import { runDispatchCycle } from "../src/kernel/events/dispatcher";
@@ -457,6 +459,10 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
          * deliberately stops nothing (G6).
          */
         ["kernel.obligations", ["alert.acknowledged"]],
+        // MOBILE M6b (owner 2026-10-06) — the bell on a phone: `alert.raised` is relayed to the
+        // person's signed-in phones by a consumer of its OWN, declared by its own worker-only
+        // manifest (`phonePushManifest`; its cursor and dead letters are not the bell's). With no Firebase key the handler returns at once. Sorted, it lands here.
+        ["kernel.phone_push", ["alert.raised"]],
         ["lab.interface_status", ["interface.down", "interface.restored"]],
         // PLAN 14 T7 / DD13 — THE FOURTH WIRE, and the first one that subscribes to an event NOTHING
         // IN THIS BUILD PUBLISHES YET. `consignment.deployed` is DEFINED by `modules/materials`
@@ -550,6 +556,15 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
         }),
       ).toThrow(/kernel\.obligations/);
+      // MOBILE M6b: the same proof for the phone's wire. Pass the three kernel handlers above, omit
+      // `kernel.phone_push`, and the worker refuses to boot.
+      expect(() =>
+        buildSubscriptionBus(registry, {
+          [ALERTS_CONSUMER]: alertsConsumer(workerDb),
+          [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
+          [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
+        }),
+      ).toThrow(/kernel\.phone_push/);
       // PLAN 09 T6: the same both-directions proof for the third wire. Pass the KERNEL handlers
       // and omit `partners.accrual` and the worker refuses to boot — which is what makes
       // "declare the subscriptions and the handler in ONE commit" a mechanism rather than a habit.
@@ -558,6 +573,7 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           [ALERTS_CONSUMER]: alertsConsumer(workerDb),
           [NOTIFY_CONSUMER]: notifyConsumer(workerDb),
           [OBLIGATIONS_CONSUMER]: obligationsConsumer(workerDb),
+          [PHONE_PUSH_CONSUMER]: phonePushConsumer(workerDb, fixedPhonePushSource(null)),
         }),
       ).toThrow(/partners\.accrual/);
     } finally {

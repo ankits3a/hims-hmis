@@ -4,6 +4,8 @@ import { useRouter } from "expo-router";
 import { API_BASE, APP_VERSION, APP_VERSION_CODE } from "../config";
 import { describePhone } from "../device";
 import { useI18n } from "../i18n";
+import { useNotifications } from "../notifications";
+import { SCREENSHOTS_BLOCKED } from "../privacy";
 import { useSession } from "../session";
 import { Text } from "../text";
 import { color, radius, space, type } from "../theme";
@@ -24,6 +26,7 @@ export function AccountScreen() {
   const { t } = useI18n();
   const router = useRouter();
   const { state, logout, fetcher } = useSession();
+  const push = useNotifications();
   const [update, setUpdate] = useState<UpdateAnswer | null>(null);
   const [checking, setChecking] = useState(false);
   const check = useCallback(async () => {
@@ -59,8 +62,20 @@ export function AccountScreen() {
         <View style={s.card}>
           <Row label={t("mobile.account.phone")} value={said === "" ? t("mobile.account.phoneUnknown") : said} testID="account-phone" />
           <Row label={t("mobile.account.app")} value={t("mobile.account.appLine", { version: APP_VERSION, code: APP_VERSION_CODE })} testID="account-app" />
-          <Row label={t("mobile.account.server")} value={server} testID="account-server" last />
+          <Row label={t("mobile.account.server")} value={server} testID="account-server" />
+          <Row label={t("mobile.account.screenshots")} value={t(SCREENSHOTS_BLOCKED ? "mobile.account.screenshotsBlocked" : "mobile.account.screenshotsAllowed")} testID="account-screenshots" last />
         </View>
+
+        <Pressable
+          testID="account-notifications" accessibilityRole="button" onPress={() => router.push("/notifications")}
+          style={({ pressed }) => [s.card, { flexDirection: "row", alignItems: "center", gap: space.md }, pressed && { backgroundColor: color.wash }]}
+        >
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={s.label}>{t("mobile.push.title")}</Text>
+            <Text style={s.value} testID="account-notifications-status">{t(`mobile.push.status.${push.status}`)}</Text>
+          </View>
+          <Text style={{ fontSize: 22, color: color.faint }}>›</Text>
+        </Pressable>
 
         <Note tone="info" testID="account-lost">{`${t("mobile.account.lost")} ${t("mobile.account.limit")}`}</Note>
 

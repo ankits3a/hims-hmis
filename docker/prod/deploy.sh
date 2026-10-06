@@ -471,6 +471,23 @@ fi
 install -D -m 0644 "$SRC_DIR/pgbackrest/pgbackrest.conf" "$DEPLOY_DIR/pgbackrest/pgbackrest.conf"
 install -D -m 0750 "$SRC_DIR/drill/restore-drill.sh" "$DEPLOY_DIR/drill/restore-drill.sh"
 install -d -m 0750 "$DEPLOY_DIR/log"
+# MOBILE M6b — THE FIREBASE KEY THE STAFF APP'S NOTIFICATIONS ARE SENT WITH (apps/mobile/BUILDING.md,
+# "Notifications"). The owner supplies it on THIS HOST at $HMIS_FIREBASE_KEY; it is never in the
+# repository and never in an image. It is copied here, group-readable by the containers' user (node,
+# gid 1000), because a root-only 0600 file is unreadable through a bind mount by a non-root process.
+# The api and worker mount the DIRECTORY (the caddy/ inode lesson above) and re-read the file by
+# themselves, so a key that arrives or changes needs no restart.
+#
+# ABSENT IS NORMAL, and it must never fail a deploy: the directory is still made (the mount needs
+# it), the api and worker boot with notifications OFF and say so once, and nothing else changes.
+FIREBASE_KEY="${HMIS_FIREBASE_KEY:-/root/.config/hmis/firebase/service-account.json}"
+install -d -m 0750 -g 1000 "$DEPLOY_DIR/firebase"
+if [ -r "$FIREBASE_KEY" ]; then
+  install -m 0440 -g 1000 "$FIREBASE_KEY" "$DEPLOY_DIR/firebase/service-account.json"
+  echo "    firebase key installed for the api and the worker (phone notifications)"
+else
+  echo "    no firebase key at $FIREBASE_KEY — phone notifications stay off; nothing else is affected"
+fi
 # The monitoring trees, same directory-mount shape as caddy/ and pgbackrest/ above.
 #
 # THESE SIX LINES WERE MISSING AND THE WHOLE MONITORING STACK WAS INERT IN PRODUCTION (ledger

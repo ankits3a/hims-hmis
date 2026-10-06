@@ -290,6 +290,56 @@ now — device control — was built first; push is its own decision (below).
 3. **The cap.** Two phones per person is the default; say if it should be one, or lifted for named people.
 4. **Hospital-owned phones (later, owner):** when they arrive, the Phones list is how personal phones are retired.
 
+### 3g. M6b as built (2026-10-06) — notifications on the phone, and no screenshots in production
+
+**DECIDED by the owner's delegation, 2026-10-06** — to the three open decisions above: *"go with your recommendations
+and keep building the rest. tell me what you want from google firebase and how to get it."* So: **(1) push through
+FCM, the payload carrying no patient text; (2) screenshots blocked in the PRODUCTION build, allowed in staging;
+(3) the cap stays 2.** The owner supplied the two Firebase files the same day (project `crkmch-hmis-37cc9`), so push
+shipped ON, not dormant.
+
+- **What a phone is told** (`kernel/push/phone-push.ts` `phoneMessage`): title `HMIS`, one fixed sentence per category
+  and language ("Something needs you. Open HMIS to see it."), and two closed words — `category` (`alert` | `roster` |
+  `queue`) and `link` (`home` | `onNow` | `myDuties` | `consult`). The function takes no alert, so there is no argument
+  a patient's name, a UHID or a finding could arrive through. Pinned by `push.test.ts`.
+- **The feed is the bell.** `alertsManifest` gained `alert.raised → kernel.phone_push`: every row the web bell shows is
+  relayed at once to the person's phones. It is NOT a rung of the reach ladder (`notify/reach.ts`), which is untouched.
+  Kinds reaching phones today: `escalation`, `respond_overdue`, `manual_notify`, `approval_requested`, `operating_mode`,
+  `imaging_chase` (category `alert`, opens home) and `roster_flag` (category `roster`, opens Who is on now).
+- **Who is told:** a phone with a LIVE session for that person, an address, and the category not switched off. The
+  session join is the guard, so an administrator's sign-out, a deactivation, a password reset and an expired session all
+  silence a phone with nobody deleting anything; the address is also cleared on logout, on "Sign out this phone", and
+  for every phone on deactivation/reset. One phone, one row: an address arriving on another row leaves the old one.
+- **Sender** (`kernel/push/fcm.ts`, no SDK): a signed RS256 assertion → Google access token (cached) → FCM HTTP v1, one
+  message per phone, Android channel = category. `UNREGISTERED`/`SENDER_ID_MISMATCH`/404 ⇒ `gone` (address forgotten);
+  anything else throws and the dispatcher's own backoff retries (5 attempts), a retry sending only what is missing
+  (`phone_push_sends`, unique per alert + phone). 12 per person per hour. Nothing logs, returns or events an address.
+- **Key delivery:** env `HMIS_FCM_SERVICE_ACCOUNT_FILE=/run/hmis/firebase/service-account.json` on api + worker
+  (compose), a read-only DIRECTORY mount of `$DEPLOY_DIR/firebase`, and `deploy.sh` step 2 copies the owner's key from
+  `/root/.config/hmis/firebase/service-account.json` (group `1000`, mode 0440) when it exists. Absent is normal: the
+  worker logs ONE WARN ("FCM not configured") and boots; the sender re-checks the file every minute, so a key that
+  arrives needs no restart (`push/sender.ts`).
+- **Migration 0179 (additive):** `auth_devices.push_token | push_token_at | push_language | push_muted`, and
+  `phone_push_sends` (category + phone + outcome; no text, no address).
+- **Routes:** the phone's own `GET | PUT | DELETE /auth/phone/notifications` (identity, like the bell; a browser session
+  is `not_a_phone`); admin `POST /admin/users/:id/phones/:phoneId/test-notification` (`auth.users.manage`, the fixed
+  test sentence, evented `auth.phone_push_tested`); the admin phones list now carries `notifications` per phone and
+  `notificationsConfigured`.
+- **App:** `src/push-phone.ts` (the edge onto expo-notifications, lazily loaded, every call guarded),
+  `src/notifications.tsx` (five states — notInBuild / serverOff / off / denied / on; the offer on the home screen once;
+  the foreground banner; a tap opens only a screen the person may open), `app/notifications.tsx` (status, the promise,
+  a switch per category the server says is live, turn off). The phone's own prompt opens only after "Turn on".
+  Quiet hours — DECIDED: none inside HMIS; the phone's Do Not Disturb is respected. `google-services.json` is copied
+  into the build by `build-apk.sh` only when it names the app id; a build without it is the same app, dormant.
+- **Screenshots:** `src/privacy.ts` — `preventScreenCaptureAsync` (FLAG_SECURE) in production only; the Account screen
+  says which this build is.
+- **Admin web:** Phones panel shows "Notifications on / off / not set up on this server" and **Send test notification**.
+- **Later (no alert kind exists yet, so nothing was wired):** a cover / swap request addressed to me, "my duty
+  changed", the doctor's "patients waiting and you are stepped out". Each needs an `alerts` row first; the phone then
+  gets it with no app change (an unknown kind is a plain `alert`).
+- **Only a real phone can show:** the system prompt on Android 13+, a notification arriving with the app closed, the
+  tray icon, the tap opening the right screen, the banner over a screen, and that a production screenshot is black.
+
 ## 4. Verification without an emulator
 
 1. **Behaviour:** jest-expo plus `@testing-library/react-native`, with mocked fetch, SecureStore and LocalAuthentication.

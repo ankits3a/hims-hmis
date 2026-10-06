@@ -44,6 +44,8 @@ export type DeviceClaim = z.infer<typeof deviceClaimSchema>;
 export type PhoneView = {
   id: string; model: string | null; osVersion: string | null; appVersion: string | null;
   firstSeenAt: Date; lastSeenAt: Date; lastIp: string | null;
+  /** Mobile M6b — this phone has given the server an address for notifications. Never the address itself. */
+  notifications: boolean;
   /** A live (unrevoked, unexpired) session exists on this phone; `signedInSince` is when it opened. */
   signedIn: boolean; signedInSince: Date | null;
 };
@@ -68,6 +70,7 @@ export async function listPhones(db: Db, userId: string, now: Date = new Date())
     return {
       id: d.id, model: d.model, osVersion: d.osVersion, appVersion: d.appVersion,
       firstSeenAt: d.firstSeenAt, lastSeenAt: d.lastSeenAt, lastIp: d.lastIp,
+      notifications: d.pushToken !== null,
       signedIn: mine.length > 0, signedInSince: mine.length > 0 ? new Date(Math.max(...mine)) : null,
     };
   });
@@ -125,5 +128,7 @@ export async function signOutPhone(tx: Db, userId: string, deviceRowId: string, 
   const ended = await tx.update(authSessions).set({ revokedAt: now })
     .where(and(eq(authSessions.deviceRowId, deviceRowId), eq(authSessions.userId, userId), isNull(authSessions.revokedAt)))
     .returning({ id: authSessions.id });
+  // Mobile M6b — a signed-out phone takes no more notifications: its address goes with its session.
+  await tx.update(authDevices).set({ pushToken: null, pushTokenAt: null }).where(eq(authDevices.id, deviceRowId));
   return { sessionIds: ended.map((r) => r.id), model: phone.model };
 }

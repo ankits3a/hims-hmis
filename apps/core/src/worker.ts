@@ -7,6 +7,7 @@ import { ModuleRegistry } from "./kernel/modules/loader";
 import { Scheduler, pgLocks } from "./kernel/worker/scheduler";
 import { registerAllJobs } from "./kernel/worker/jobs";
 import { adaptersFor } from "./kernel/notify/adapters";
+import { describePhonePush, phonePushSource } from "./kernel/push/sender";
 import type { AppConfig } from "./kernel/config";
 import type { Db } from "./kernel/db/client";
 import type { ShutdownLog } from "./kernel/worker/worker.module";
@@ -46,6 +47,10 @@ async function bootstrap(): Promise<void> {
   registerAllJobs(scheduler, db, registry, workerConsumers(db, cfg), cfg, adaptersFor(cfg));
   scheduler.start();
   console.log(`worker started: jobs=${scheduler.jobs().join(",")}`);
+  // MOBILE M6b — say ONCE whether phone notifications are on. Off is a WARN and never a refusal: a
+  // hospital with no Firebase project is every hospital until the owner makes one.
+  const phonePush = describePhonePush(phonePushSource(cfg.fcmServiceAccountFile), cfg.fcmServiceAccountFile);
+  console[phonePush.level](phonePush.line);
 
   // Every Scheduler timer is deliberately unref()'d (a stray un-stopped Scheduler must never
   // hang a jest worker), and this process has no HTTP listener and opens no DB connection
