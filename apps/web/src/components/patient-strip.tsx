@@ -70,7 +70,7 @@ export function PatientStrip({ path }: { path?: string } = {}): React.ReactEleme
   return (
     <div
       data-testid="patient-strip"
-      className="no-print flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-blue-50 px-4 py-1.5 text-sm"
+      className="shell-strip no-print flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-blue-50 px-4 py-1.5 text-sm"
     >
       <span className="font-semibold" data-testid="strip-label">{label}</span>
       {row !== undefined && !restricted && (

@@ -439,7 +439,7 @@ function ShellChrome(): React.ReactElement {
 
   */
   return (
-    <header className="shell no-print">
+    <header className={menuOpen ? "shell no-print menu-open" : "shell no-print"}>
       <div className="top">
         {/*
           PLAN 07c T4 — THE TITLE IS THE WAY HOME. `/` carries no permission and belongs to no
@@ -472,7 +472,15 @@ function ShellChrome(): React.ReactElement {
             The search button the owner ruled stays in the header. It advertises F8 and not
             Ctrl+K: Chrome answers Ctrl+K with its own address bar first, which FD-9 measured.
           */}
-          <button type="button" className="find" onClick={() => { palette.open(); }}>
+          {/*
+            On a phone the sentence and the keycap are not drawn — the icon is the button, and it
+            opens the same full-width search (`shell.css`, the 700 px block). The name stays.
+          */}
+          <button type="button" className="find" aria-label={t("app.search")} onClick={() => { palette.open(); }}>
+            <svg className="ico" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+              <circle cx="7.6" cy="7.6" r="5.1" fill="none" stroke="currentColor" strokeWidth="1.7" />
+              <path d="M11.6 11.6 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
             <span>{t("app.search")}</span>
             <span className="kb">F8</span>
           </button>

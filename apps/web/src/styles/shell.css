@@ -63,6 +63,7 @@
   border: 1px solid var(--line); background: var(--card); font-size: 12px; color: var(--dim);
 }
 .shell .find:hover { border-color: var(--faint); }
+.shell .find .ico { display: none; }
 .shell .kb {
   display: inline-flex; align-items: center; justify-content: center; height: 16px; min-width: 20px;
   padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); background: var(--wash);
@@ -174,16 +175,57 @@
   .shell .clock { display: none; }
 }
 
-/*
- * SHELL-UX — A PHONE'S IDENTITY ROW. At 390 px the search label wrapped to two lines and "Log out"
- * broke in half. Every control stays on one line; the search keeps its F8 keycap and truncates its
- * sentence, because the keycap is what a returning person reads and the box still opens the palette.
- */
 .shell .util, .shell .find, .shell .menu-btn { white-space: nowrap; }
-@media (max-width: 600px) {
-  .shell .right { gap: 4px; }
-  .shell .find { min-width: 0; flex: 1 1 auto; }
-  .shell .find > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .shell .util { padding: 0 6px; }
-  .shell .right { flex: 1 1 100%; min-width: 0; }
+
+/*
+ * A PHONE'S HEADER IS ONE ROW (owner's phone, 2026-10-05). The identity row wrapped to two — the
+ * mark, the name and Menu, then the search sentence, the bell and three utilities — and with the mode
+ * banner and the patient strip under it a quarter of a small screen was gone before the work began.
+ *
+ * At 700 px and below the row is the mark, Menu, the search as its icon, and the bell. Who is signed
+ * in, the language, the theme and Log out are used once a shift: they show at the top of the opened
+ * Menu (`.menu-open` on the header), as full 44 px targets, and nowhere else. Nothing is copied — the
+ * same buttons, in the same DOM order, so the tab order and the names do not change.
+ */
+@media (max-width: 700px) {
+  .shell .top { padding: 6px 12px; gap: 0 8px; flex-wrap: wrap; }
+  .shell .top .right { display: contents; }
+  .shell .top .brand { order: 1; }
+  .shell .top .menu-btn { order: 2; height: 36px; padding: 0 13px; font-size: 13px; }
+  .shell .top .find { order: 3; margin-left: auto; flex: 0 0 auto; width: 40px; height: 36px; padding: 0; justify-content: center; color: var(--ink); }
+  .shell .top .find > span { display: none; }
+  .shell .top .find .ico { display: block; }
+  .shell .top .right > div { order: 4; display: flex; align-items: center; justify-content: center; min-width: 36px; height: 36px; }
+  .shell .top .sep, .shell .top .who, .shell .top .util { display: none; }
+
+  .shell.menu-open .top { row-gap: 8px; padding-bottom: 10px; }
+  .shell.menu-open .top .who {
+    display: block; order: 10; flex: 1 1 100%; margin-top: 2px; padding-top: 9px;
+    border-top: 1px solid var(--line); font-size: 13px; overflow: hidden; text-overflow: ellipsis;
+  }
+  .shell.menu-open .top .util {
+    display: inline-flex; order: 11; flex: 1 1 0; justify-content: center; min-height: 44px; padding: 0 8px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 13.5px; color: var(--ink);
+  }
+  .shell .nav.open { padding: 10px 12px 12px; }
+
+  /* The mode banner is one line; its note truncates rather than taking a second. */
+  div.shell-mode { padding: 3px 12px; font-size: 12px; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /*
+   * The patient in hand stays ONE line with Release at its right. A field that does not fit is not
+   * drawn at all — a row of "U0… f… Vi…" stubs reads worse than nothing — so the strip wraps and
+   * shows only its first line: the name first, then the UHID, the open visit, the credit, the rest.
+   * Release is pinned, outside that contest. A name longer than the line is cut last, with an ellipsis.
+   */
+  div.shell-strip {
+    position: relative; flex-wrap: wrap; align-content: flex-start; height: 34px; overflow: hidden;
+    padding: 5px 92px 5px 12px; column-gap: 10px; row-gap: 12px; line-height: 24px;
+  }
+  div.shell-strip > * { order: 5; white-space: nowrap; flex: 0 0 auto; }
+  div.shell-strip > [data-testid="strip-label"] { order: 0; flex: 0 1 auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  div.shell-strip > [data-testid="strip-uhid"] { order: 1; }
+  div.shell-strip > [data-testid="strip-visit"] { order: 2; }
+  div.shell-strip > [data-testid="strip-credit"] { order: 3; }
+  div.shell-strip > [data-testid="strip-release"] { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); margin: 0; }
 }
