@@ -765,7 +765,19 @@ describe("opd e2e", () => {
 
     const bench = await request(app.getHttpServer())
       .get("/opd/bench").set(...auth(vitalsDesk.token)).expect(200);
-    expect(bench.body.items.find((r: { encounterId: string }) => r.encounterId === encounterId).benchState).toBe("resting");
+    const mine = bench.body.items.find((r: { encounterId: string }) => r.encounterId === encounterId);
+    expect(mine.benchState).toBe("resting");
+
+    // Owner 2026-10-06 — the visit number on the slip resolves over HTTP: on the row, and by lookup.
+    expect(mine.visitNo).toBe(open.body.encounter.visitNo);
+    const found = await request(app.getHttpServer())
+      .get(`/opd/bench/locate?visitNo=${String(mine.visitNo).toLowerCase()}`).set(...auth(vitalsDesk.token)).expect(200);
+    expect(found.body).toEqual({ onBench: true, visitNo: mine.visitNo, encounterId });
+    const missing = await request(app.getHttpServer())
+      .get("/opd/bench/locate?visitNo=V0000000000").set(...auth(vitalsDesk.token)).expect(200);
+    expect(missing.body).toEqual({ onBench: false, visitNo: "V0000000000", reason: "unknown_visit" });
+    await request(app.getHttpServer()).get("/opd/bench/locate?visitNo=V0000000000").expect(401);
+    await request(app.getHttpServer()).get("/opd/bench/locate").set(...auth(vitalsDesk.token)).expect(400);
   });
 
   it("VD-1 — an amendment supersedes and carries the field-level trail", async () => {

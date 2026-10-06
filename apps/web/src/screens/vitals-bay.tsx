@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { completeAllergen, fetchBench, fetchEscalation, fetchPreStage, setBenchState, todayIst } from "../lib/opd-api";
-import type { WireAllergenHit, WireBenchRow, WireDoctorSummary, WirePreStage, WireVitalKey, WireVitalsSaveResult } from "../lib/opd-api";
-import { CaptureCore, SavedBannerView, bandFor, classifyDoor, flagOf, humanDate, istClock, matchOnBench, rangesFrom, readLane, writeLane } from "./vitals-bay-capture";
+import { completeAllergen, fetchBench, fetchEscalation, fetchPreStage, locateVisitOnBench, setBenchState, todayIst } from "../lib/opd-api";
+import type { WireAllergenHit, WireBenchRow, WireDoctorSummary, WirePreStage, WireVisitOnBench, WireVitalKey, WireVitalsSaveResult } from "../lib/opd-api";
+import { CaptureCore, SavedBannerView, ambiguousMessage, bandFor, flagOf, humanDate, istClock, matchOnBench, missMessage, rangesFrom, readLane, resolveDoor, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
 import {
   ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, readingFromVitals, releaseFirstTake, useDangerProtocol,
@@ -55,7 +55,7 @@ const RANGED: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr"];
 /** The same set in the wire's vocabulary — which vitals an AMENDMENT can be an answer to a demand about. */
 const RANGED_WIRE: readonly WireVitalKey[] = ["sbp", "dbp", "pulse", "spo2", "tempC", "rr"];
 
-export { classifyDoor, matchOnBench } from "./vitals-bay-capture";
+export { classifyDoor, matchOnBench, resolveDoor } from "./vitals-bay-capture";
 export type { Door } from "./vitals-bay-capture";
 
 export function isTypingTarget(el: EventTarget | null): boolean {
@@ -516,7 +516,7 @@ export function IdentifyBox({ onSubmit, error, busy, compact = false, placeholde
       />
       {!compact && <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)" }}>{t("vitalsBay.identify.hint")}</p>}
       {error !== null && (
-        <p role="alert" data-testid="identify-error" className="pill rd" style={{ height: "auto", padding: "8px 11px" }}>
+        <p role="alert" data-testid="identify-error" className="pill rd" style={{ height: "auto", padding: "8px 11px", whiteSpace: "normal", lineHeight: "18px", flexBasis: "100%" }}>
           {error}
         </p>
       )}
@@ -708,17 +708,30 @@ export function VitalsBay(): React.ReactElement {
     if (inHandRef.current?.encounterId === row.encounterId) clearDesk();
   }, [qc, clearDesk, t, note]);
 
+  /**
+   * OWNER 2026-10-06 — ONE RESOLVER FOR WHATEVER WAS TYPED OR SCANNED (`resolveDoor`, shared with
+   * the phone): a token (`4`, `#4`, `ORT-4`), a UHID, the visit number the slip prints and the
+   * prescription's QR carries, a printed e-prescription's code, or a patient card. It reads the
+   * WHOLE bench, not the doctor filter's slice — the paper does not know which filter is on.
+   * A miss says what was understood, and for a visit number asks the server why.
+   */
   const identify = useCallback(async (raw: string) => {
-    const door = classifyDoor(raw);
-    if (door === null) return;
+    const r = resolveDoor(allRows, raw);
+    if (r.outcome === "empty") return;
     setError(null);
-    if (door.kind === "scan") {
+    if (r.outcome === "row") { take(r.row); return; }
+    if (r.outcome === "ambiguous") {
+      const m = ambiguousMessage(r.door, r.rows);
+      setError(t(`vitalsBay.identify.miss.${m.key}`, m.vars));
+      return;
+    }
+    if (r.outcome === "verify") {
       setBusy(true);
       try {
-        const verdict = await verifyQrScan(door.payload);
+        const verdict = await verifyQrScan(r.payload);
         if (!verdict.ok) { setError(t(`vitalsBay.identify.scanFailed.${verdict.reason}`)); return; }
-        const row = matchOnBench(rows, { kind: "patient", patientId: verdict.patient.id });
-        if (row === null) { setError(t("vitalsBay.identify.notOnBench", { who: verdict.patient.uhid })); return; }
+        const row = matchOnBench(allRows, { kind: "patient", patientId: verdict.patient.id });
+        if (row === null) { setError(t("vitalsBay.identify.miss.uhid", { uhid: verdict.patient.uhid })); return; }
         take(row);
       } catch {
         setError(t("vitalsBay.identify.scanUnavailable"));
@@ -727,10 +740,27 @@ export function VitalsBay(): React.ReactElement {
       }
       return;
     }
-    const row = matchOnBench(rows, door);
-    if (row === null) { setError(t("vitalsBay.identify.notOnBench", { who: raw.trim() })); return; }
-    take(row);
-  }, [rows, t, take]);
+    let why: WireVisitOnBench | null = null;
+    if (r.door.kind === "visit") {
+      setBusy(true);
+      try {
+        why = await locateVisitOnBench(r.door.visitNo, today);
+        if (why.onBench) {
+          // The server has them on the bench and this list does not yet: read it again, then take.
+          const fresh = await fetchBench({ serviceDate: today });
+          void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+          const row = matchOnBench(fresh.items, { kind: "encounter", encounterId: why.encounterId });
+          if (row !== null) { take(row); return; }
+        }
+      } catch {
+        why = null; // the plain sentence still names the visit number
+      } finally {
+        setBusy(false);
+      }
+    }
+    const m = missMessage(r.door, why);
+    setError(t(`vitalsBay.identify.miss.${m.key}`, m.vars));
+  }, [allRows, t, take, today, qc]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

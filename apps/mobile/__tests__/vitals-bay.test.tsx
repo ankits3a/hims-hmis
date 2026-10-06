@@ -54,7 +54,7 @@ function server(routes: Record<string, Route>) {
 
 const ME = { actor: { type: "user", id: "01J" }, permissions: { hospital: ["opd.vitals.record"], scoped: { department: {}, floor: {} } } };
 const row = (over: Record<string, unknown>) => ({
-  encounterId: "e4", entryId: "q4", tokenNo: 4, seq: 4, doctorId: "d1", doctorName: "Dr Chandan Kumar", serviceDate: "2026-10-06",
+  encounterId: "e4", entryId: "q4", tokenNo: 4, seq: 4, visitNo: "V2610060004", departmentCode: "MED", doctorId: "d1", doctorName: "Dr Chandan Kumar", serviceDate: "2026-10-06",
   patient: { requestedId: "p4", id: "p4", uhid: "U00110049", name: "Geeta Devi", alias: null, restricted: false, administrativeGender: "female", dob: null },
   benchState: null, recallAt: null, vitalsDone: false, vitalsId: null, escalation: "none", cancelMsRemaining: 0, recallDue: false,
   ...over,
@@ -67,7 +67,7 @@ const ADULT = {
   last: null, carryCandidates: [], expectedFlags: [],
 };
 const CHILD = { ...ADULT, patientId: "p7", ageYears: 8, band: "child_6_12", required: ["pulse", "spo2", "weightKg"], ranges: { pulse: { min: 70, max: 130 }, spo2: { min: 92 } } };
-const KID_ROW = row({ encounterId: "e7", entryId: "q7", tokenNo: 7, seq: 7, patient: { requestedId: "p7", id: "p7", uhid: "U00110060", name: "Aarav Kumar", alias: null, restricted: false, administrativeGender: "male", dob: null } });
+const KID_ROW = row({ encounterId: "e7", entryId: "q7", tokenNo: 7, seq: 7, visitNo: "V2610060007", departmentCode: "PED", patient: { requestedId: "p7", id: "p7", uhid: "U00110060", name: "Aarav Kumar", alias: null, restricted: false, administrativeGender: "male", dob: null } });
 
 function base(extra: Record<string, Route> = {}): Record<string, Route> {
   return {
@@ -123,7 +123,34 @@ describe("the vitals bay on a phone", () => {
     await mount(fetcher);
     await fireEvent.changeText(await screen.findByTestId("identify"), "99");
     await fireEvent.press(screen.getByTestId("begin"));
-    expect(await screen.findByTestId("identify-error")).toHaveTextContent("99 is not on this bench — check the slip, or send them to the front desk");
+    expect(await screen.findByTestId("identify-error")).toHaveTextContent("Token #99 is not on today's bench — check the slip, or send them to the front desk");
+  });
+
+  /** Owner 2026-10-06, on a real phone: he typed the visit number on the slip and was told "not on this bench". */
+  it("takes the patient by the visit number printed on the slip", async () => {
+    const { fetcher } = server(base());
+    await mount(fetcher);
+    await fireEvent.changeText(await screen.findByTestId("identify"), "v2610060004");
+    await fireEvent.press(screen.getByTestId("begin"));
+    expect(await screen.findByTestId("who-name")).toHaveTextContent("Geeta Devi");
+  });
+
+  it("takes the patient when the prescription sheet's QR — the bare visit number — is scanned", async () => {
+    (globalThis as { __scan?: string }).__scan = "V2610060007";
+    const s = server(base());
+    await mount(s.fetcher);
+    await fireEvent.press(await screen.findByTestId("scan"));
+    await fireEvent.press(await screen.findByTestId("fake-camera"));
+    expect(await screen.findByTestId("who-name")).toHaveTextContent("Aarav Kumar");
+    expect(s.of("POST /patients/qr/verify")).toEqual([]);
+  });
+
+  it("says why a visit number is not on today's bench, in the server's reason", async () => {
+    const s = server(base({ "GET /opd/bench/locate": () => ({ status: 200, body: { onBench: false, visitNo: "V2610050003", reason: "other_day", serviceDate: "2026-10-05" } }) }));
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("identify"), "V2610050003");
+    await fireEvent.press(screen.getByTestId("begin"));
+    expect(await screen.findByTestId("identify-error")).toHaveTextContent("Visit V2610050003 is from 05-Oct-2026, not today — send them to the front desk for today's visit");
   });
 
   it("reads a BP typed with a dash and a temperature typed in °F, before they are charted", async () => {

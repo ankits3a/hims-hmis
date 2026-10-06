@@ -148,6 +148,44 @@ describe("VD-2 T1 — the ASSEMBLED bay, two patients, three doors (method §5A.
     expect(screen.getByTestId("session").textContent).not.toContain("Sunita");
   });
 
+  /**
+   * Owner 2026-10-06 — he typed `V2610060001`, the Encounter ID printed and QR-coded on the slip, for
+   * a patient who WAS on the bench, and the bay said "not on this bench": the row carried no visit
+   * number and the text was read as a UHID.
+   */
+  it("the visit number on the slip takes the patient — typed in any case, or as the prescription's QR types it", async () => {
+    stubBay([{ ...ROW_A, visitNo: "V2610060001", departmentCode: "MED" }, { ...ROW_B, visitNo: "V2610060002", departmentCode: "ORT" }]);
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+
+    await user.type(screen.getByTestId("identify"), "v2610060001{Enter}");
+    await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-A"));
+
+    await user.clear(screen.getByTestId("identify"));
+    await user.type(screen.getByTestId("identify"), "V2610060002{Enter}");
+    await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-B"));
+
+    // …and the token as the slip prints it.
+    await user.clear(screen.getByTestId("identify"));
+    await user.type(screen.getByTestId("identify"), "MED-118{Enter}");
+    await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-A"));
+  });
+
+  it("a visit number that is not on today's bench says which visit, and the server's reason", async () => {
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-vd" }, permissions: { hospital: ["opd.vitals.record", "opd.queue.read"], scoped: { department: {}, floor: {} } } },
+      "GET /api/opd/bench": { items: [{ ...ROW_A, visitNo: "V2610060001" }] },
+      "GET /api/opd/queues/summary": { items: SUMMARY },
+      "GET /api/opd/bench/locate": { onBench: false, visitNo: "V2610050003", reason: "abandoned" },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
+    await user.type(screen.getByTestId("identify"), "V2610050003{Enter}");
+    await waitFor(() => expect(screen.getByTestId("identify-error").textContent).toBe("Visit V2610050003 was withdrawn at the front desk — send them back there"));
+  });
+
   it("UHID door → A; a token that is not on the bench says so and leaves A in hand; a bad scan says why", async () => {
     stubBay([ROW_A, ROW_B]);
     const user = userEvent.setup();
@@ -159,7 +197,7 @@ describe("VD-2 T1 — the ASSEMBLED bay, two patients, three doors (method §5A.
 
     await user.clear(screen.getByTestId("identify"));
     await user.type(screen.getByTestId("identify"), "999{Enter}");
-    await waitFor(() => expect(screen.getByTestId("identify-error").textContent).toContain("999 is not on this bench"));
+    await waitFor(() => expect(screen.getByTestId("identify-error").textContent).toContain("Token #999 is not on today's bench"));
     expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-A");
 
     await user.clear(screen.getByTestId("identify"));

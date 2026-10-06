@@ -66,8 +66,14 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
   - *The first BP held across a rest* lives in memory: closing the app in those five minutes means
     retyping the pair (the recall itself is the server's).
   - *IBM Plex fonts and the CRK app icon* — still the system font and Expo's icon.
-  - *A slip's visit-number QR* — the bench row carries no visit number, so only a patient card (`q1.…`),
-    a token number or a UHID resolves; same as the web bay.
+
+- **FIXED 2026-10-06, the same day, on the owner's phone test:** he typed the visit number on the slip
+  (`V2610060001`) for a patient on the bench and was told "not on this bench" — the bench row carried no
+  visit number, and I had listed that as deferred. Bench rows now carry `visitNo` and `departmentCode`;
+  `resolveDoor` in the shared rules file reads a token (`4`, `#4`, `ORT-4`), a UHID (any case, digits
+  alone), a visit number (any case, spaces, wrapped in text), the prescription sheet's QR (the bare visit
+  number), a printed e-prescription's QR (`rx1.…`) and a patient card (`q1.…`, server-verified); a miss
+  names what was understood, and `GET /opd/bench/locate` gives a visit's reason. Web and phone both use it.
 
 **Offline rule (all milestones):** cached reads show their age ("as of 10:42"). A clinical or money write is never queued silently. With no network the button says so and stays disabled.
 

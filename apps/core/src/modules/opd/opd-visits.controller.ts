@@ -33,12 +33,12 @@ import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
 import { istDate } from "./time";
 import { amendVitals, getVitalsForAmend, listVitals, recordVitals } from "./vitals";
-import { BENCH_STATES, listBench, setBenchState } from "./bench";
+import { BENCH_STATES, listBench, locateVisit, setBenchState } from "./bench";
 import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
 import { preStage } from "./prestage";
 import { READING_SOURCES, UNLOCK_REASONS } from "./vitals-rules";
 import { VITAL_KEYS } from "./config";
-import type { BenchRow } from "./bench";
+import type { BenchRow, VisitOnBench } from "./bench";
 import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
@@ -251,6 +251,7 @@ const benchQuery = z.object({
   doctorId: z.string().min(1).optional(),
   serviceDate: z.string().max(10).optional(),
 });
+const benchLocateQuery = z.object({ visitNo: z.string().trim().min(1).max(40), serviceDate: z.string().max(10).optional() });
 /** T3 — the reading the bay is asking the SERVER to judge. It asks; the band decides. */
 const escalationBody = z.object({
   sbp: z.number().optional(), dbp: z.number().optional(), pulse: z.number().optional(),
@@ -742,6 +743,18 @@ export class OpdVisitsController {
     const q = parsed(benchQuery, query);
     try {
       return { items: await listBench(this.db, actor, { ...q, serviceDate: q.serviceDate ?? istDate(new Date()) }) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-06 — why a typed or scanned visit number is not on today's bench. The bench's own door. */
+  @RequirePermission("opd.queue.read", "hospital")
+  @Get("bench/locate")
+  async locateOnBench(@Query() query: unknown): Promise<VisitOnBench> {
+    const q = parsed(benchLocateQuery, query);
+    try {
+      return await locateVisit(this.db, { visitNo: q.visitNo, serviceDate: q.serviceDate ?? istDate(new Date()) });
     } catch (e) {
       toHttp(e);
     }

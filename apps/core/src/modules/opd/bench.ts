@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals } from "../../kernel/db/schema";
+import { opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { OpdError } from "./errors";
 import { benchStateSet } from "./events";
@@ -47,6 +47,13 @@ export type BenchRow = {
   encounterId: string;
   entryId: string;
   tokenNo: number;
+  /**
+   * Owner 2026-10-06 — what the PAPER says. The slip and the prescription print the visit number
+   * (the prescription's QR is the visit number and nothing else) and the token as `<dept code>-<n>`;
+   * a bay that could not match either told a nurse the patient in front of her was not on the bench.
+   */
+  visitNo: string;
+  departmentCode: string | null;
   seq: number;
   doctorId: string;
   doctorName: string;
@@ -67,6 +74,44 @@ export type BenchRow = {
 /** Entries the bay can still act on. `done`/`left`/`cancelled` have left the bench. */
 const BENCH_STATUSES = ["waiting_vitals", "waiting", "called", "in_consult"] as const;
 
+/** A visit number as typed or scanned: any case, spaces tolerated — `v 2610060001` is `V2610060001`. */
+export function normalizeVisitNo(raw: string): string {
+  return raw.replace(/\s+/g, "").toUpperCase();
+}
+
+export type VisitOnBench =
+  | { onBench: true; visitNo: string; encounterId: string }
+  | {
+    onBench: false; visitNo: string;
+    /**
+     * WHY — so the bay can say it instead of "check the slip": no such visit; a visit of another
+     * day (and which); withdrawn; the consultation already finished; or a visit that holds no place
+     * in any doctor's queue (a pharmacy-only visit, or an entry that left the board).
+     */
+    reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued";
+    serviceDate?: string;
+  };
+
+/**
+ * Owner 2026-10-06 — *"searching or scanning the visit id isn't enabling me to select the patient"*.
+ * The bench itself now carries the visit number, so a hit is a lookup on screen; this is the answer
+ * for a MISS. It reads no patient: a visit number, a date and a reason, behind the bench's own door.
+ */
+export async function locateVisit(db: Db, input: { visitNo: string; serviceDate: string }): Promise<VisitOnBench> {
+  const visitNo = normalizeVisitNo(input.visitNo);
+  const [encounter] = await db.select().from(opdEncounters).where(eq(opdEncounters.visitNo, visitNo)).limit(1);
+  if (encounter === undefined) return { onBench: false, visitNo, reason: "unknown_visit" };
+  if (encounter.serviceDate !== input.serviceDate) return { onBench: false, visitNo, reason: "other_day", serviceDate: encounter.serviceDate };
+  if (encounter.status === "abandoned") return { onBench: false, visitNo, reason: "abandoned" };
+  if (encounter.status === "completed") return { onBench: false, visitNo, reason: "completed" };
+  const live = await db
+    .select({ id: opdQueueEntries.id }).from(opdQueueEntries)
+    .where(and(eq(opdQueueEntries.encounterId, encounter.id), inArray(opdQueueEntries.status, [...BENCH_STATUSES])))
+    .limit(1);
+  if (live.length === 0) return { onBench: false, visitNo, reason: "not_queued" };
+  return { onBench: true, visitNo, encounterId: encounter.id };
+}
+
 /**
  * The bay's whole worklist in one read: who is waiting, who is resting and when they are due back,
  * whose turn is being held, and which rows already have a chart (so a ✓ row can be re-opened).
@@ -85,6 +130,8 @@ export async function listBench(
     && (filter.departmentId === undefined || d.departmentId === filter.departmentId));
   if (doctors.length === 0) return [];
   const doctorById = new Map(doctors.map((d) => [d.id, d] as const));
+  const departments = await db.select({ id: opdDepartments.id, code: opdDepartments.code }).from(opdDepartments);
+  const codeByDepartment = new Map(departments.map((d) => [d.id, d.code] as const));
 
   const sessions = await db
     .select().from(opdQueueSessions)
@@ -127,6 +174,7 @@ export async function listBench(
     const escalation = (entry.escalation ?? "none") as EscalationState;
     rows.push({
       encounterId: entry.encounterId, entryId: entry.id, tokenNo: entry.tokenNo, seq: entry.seq,
+      visitNo: encounter.visitNo, departmentCode: codeByDepartment.get(doctor.departmentId) ?? null,
       doctorId: doctor.id, doctorName: doctor.displayName, serviceDate: session.serviceDate,
       patient: summaryByPatient.get(encounter.patientId) ?? null,
       benchState: state, recallAt: entry.recallAt,
@@ -206,8 +254,10 @@ export async function setBenchState(
     const escalation = await escalationFor(tx, encounterId, now);
     const [summary] = await getPatientSummaries(tx, actor, [encounter.patientId]);
     const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, session.doctorId)))[0]!;
+    const department = (await tx.select({ code: opdDepartments.code }).from(opdDepartments).where(eq(opdDepartments.id, doctor.departmentId)))[0];
     return {
       encounterId, entryId: entry.id, tokenNo: entry.tokenNo, seq: entry.seq,
+      visitNo: encounter.visitNo, departmentCode: department?.code ?? null,
       doctorId: doctor.id, doctorName: doctor.displayName, serviceDate: session.serviceDate,
       patient: summary ?? null, benchState: input.state, recallAt,
       // Read, never assumed: a patient can be sent to the chairs AFTER a first chart exists

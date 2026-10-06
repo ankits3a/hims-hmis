@@ -20,7 +20,7 @@ const config: ExpoConfig = {
   // that held this id was written by `eas init` run from /opt/hmis, whose package name is "hmis".
   slug: "hmis",
   scheme: "hmis",
-  version: "0.2.0",
+  version: "0.2.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
