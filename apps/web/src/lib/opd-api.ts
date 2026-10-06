@@ -12,6 +12,20 @@ import type { Eye, TaperStep } from "./eye-line";
 
 // ——— small closed vocabularies the screens branch and label on (D1 / D2 / D7) ———
 
+/*
+  The vitals desk's wire shapes live in packages/contracts/src/vitals-entry.ts, the ONE source the
+  web bay and the phone app (apps/mobile) both read. They are re-exported so every import of them
+  from this file keeps working.
+*/
+import type {
+  WirePatientSummary, WireDangerFlag, WireBenchState, WireEscalationState, WireBenchRow, WireVitalKey, WirePreStage, WireVitalsPostBody, WireEscalationReading,
+} from "../../../../packages/contracts/src/vitals-entry";
+export type {
+  WirePatientSummary, WireDangerFlag, WireBenchState, WireEscalationState, WireBenchRow, WireRange, WireVitalKey, WireBandKey, WirePreStage,
+  WireBandConfig, WireDangerRanges, WireReadingSource, WireReading, WireBpReading, WireReadings, WireUnlockReason, WireVitalsPostBody, WireEscalationReading,
+} from "../../../../packages/contracts/src/vitals-entry";
+export { UNLOCK_REASONS } from "../../../../packages/contracts/src/vitals-entry";
+
 export type OpdVisitStatus = "registered" | "waiting" | "in_consultation" | "awaiting_results" | "completed" | "abandoned";
 export type OpdQueueStatus = "waiting_vitals" | "waiting" | "called" | "in_consult" | "done" | "left" | "transferred" | "cancelled";
 export type OpdSessionStatus = "not_started" | "in" | "out" | "closed";
@@ -92,17 +106,6 @@ export function putCounterFlow(body: Partial<WireCounterFlow>): Promise<WireOpdC
 
 // ——— patients, as the OPD module is allowed to see them (§14 / D-37) ———
 
-export type WirePatientSummary = {
-  requestedId: string; id: string; uhid: string; name: string | null; alias: string | null;
-  restricted: boolean; administrativeGender: string; dob: string | null;
-  /**
-   * FD-25 — present ONLY on `GET /opd/appointments?needsRebooking=true&contact=true`, and null on a
-   * restricted row. Optional because it is absent from every other read of this shape: a display
-   * surface has never needed a contact number and still does not. See the server type for why this
-   * is a second narrow surface rather than a widening of `PatientSummary`.
-   */
-  phone?: string | null;
-};
 
 // ——— appointments and slots ———
 
@@ -341,16 +344,7 @@ export type WireOpenVisitResult = {
   roomId: string | null; visitType: OpdVisitType; doctorScheduledToday: boolean;
 };
 
-// VD-1 T1 — `muacCm` appended, because the SERVER can now emit it: a supplied MUAC under six is
-// flagged at the zone it breached (11.5 SAM, 12.5 MAM). Widened here in the same task that made
-// the server able to send it — a wire union narrower than its producer is a type that lies, and it
-// lies silently until the first child is measured.
-// VD-1 CLOSE / F1 — `severity` appended for the same reason `muacCm` was in T1: the SERVER can now
-// emit it, and a wire union narrower than its producer is a type that lies until the first case
-// arrives. `danger` moves the queue; `notice` reaches the doctor and does not — a paediatric fever
-// is flagged ahead of the call without seating a toddler ahead of a stroke. Optional so every flag
-// already persisted reads back unchanged; absent means `danger`, which is the shipped meaning.
-export type WireDangerFlag = { vital: "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm"; value: number; bound: "min" | "max"; limit: number; severity?: "danger" | "notice" };
+
 
 export type WireVitals = {
   id: string; encounterId: string; patientId: string;
@@ -740,20 +734,6 @@ export type WireVitalsHistoryItem = {
  * `matchedOn` finding for the fourth time. Declared here in the PR of the screen that reads them,
  * so a rail and its consumer cannot drift apart again. Dates arrive as ISO strings.
  */
-export type WireBenchState = "resting" | "away";
-export type WireEscalationState = "none" | "recheck_demanded" | "escalated" | "cancelled";
-export type WireBenchRow = {
-  encounterId: string; entryId: string; tokenNo: number; seq: number;
-  doctorId: string; doctorName: string; serviceDate: string;
-  patient: WirePatientSummary | null;
-  benchState: WireBenchState | null;
-  recallAt: string | null;
-  vitalsDone: boolean;
-  vitalsId: string | null;
-  escalation: WireEscalationState;
-  cancelMsRemaining: number;
-  recallDue: boolean;
-};
 export function fetchBench(filter: { departmentId?: string; doctorId?: string; serviceDate: string }): Promise<{ items: WireBenchRow[] }> {
   const qs = new URLSearchParams({ serviceDate: filter.serviceDate });
   if (filter.departmentId !== undefined) qs.set("departmentId", filter.departmentId);
@@ -761,39 +741,6 @@ export function fetchBench(filter: { departmentId?: string; doctorId?: string; s
   return api("GET", `/opd/bench?${qs.toString()}`);
 }
 
-export type WireRange = { min?: number; max?: number };
-export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm";
-export type WireBandKey = "infant" | "child_1_5" | "child_6_12" | "adult";
-export type WirePreStage = {
-  patientId: string;
-  ageYears: number | null;
-  band: WireBandKey;
-  /** CLOSE pass 1 — the band's limits travel with the pre-stage; the bay mirrors nothing from `GET /opd/config` (a permission `vitals_desk` does not hold). */
-  ranges: Partial<Record<WireVitalKey, WireRange>>;
-  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
-  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
-  muacBands: { samUnderCm: number; mamUnderCm: number };
-  /** The patient is confidential to this actor: the band is answered, the history is not. */
-  sealed: boolean;
-  required: WireVitalKey[];
-  notRoutine: WireVitalKey[];
-  /**
-   * FD-32 / owner ruling 2026-09-13 — *"A symbol to symbolize in the vital dashboard that the user
-   * has not yet paid."* The LEDGER's answer, not the draft's: false on an unconfigured hospital,
-   * which has no fee policy to warn about. `feeBypass` is the front desk's waiver carried as the
-   * clerk's own sentence, so each desk shows WHY rather than a bare icon — and it never clears
-   * `feeUnpaid`, because a bypass waives the ORDER of payment and not the fee.
-   */
-  feeUnpaid: boolean;
-  feeBypass: { by: string; reason: string; at: string } | null;
-  last: {
-    vitalsId: string; recordedAt: string; serviceDate: string;
-    heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
-    pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null; muacCm: number | null;
-  } | null;
-  carryCandidates: WireVitalKey[];
-  expectedFlags: WireDangerFlag[];
-};
 /** `opd.vitals.history.read` — the last chart, the band and the carry candidates, nothing else (VD-1 D6). */
 export function fetchPreStage(encounterId: string): Promise<WirePreStage> {
   return api("GET", `/opd/visits/${encodeURIComponent(encounterId)}/prestage`);
@@ -810,34 +757,6 @@ export function completeAllergen(q: string): Promise<{ items: WireAllergenHit[];
 }
 
 // ——— VD-2 T2 — the capture body, the save result, and the danger-range config the tiles mirror ———
-export type WireBandConfig = {
-  key: WireBandKey; upToAgeYears: number | null;
-  required: WireVitalKey[]; notRoutine: WireVitalKey[];
-  ranges: Partial<Record<WireVitalKey, WireRange>>;
-  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
-};
-/** `GET /opd/config`'s `dangerRanges`, typed at last — the bay's client-side mirrors read it; the server stays the authority. */
-export type WireDangerRanges = {
-  weightRequiredUnderYears: number;
-  bands: WireBandConfig[];
-  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
-  muacBands: { samUnderCm: number; mamUnderCm: number };
-};
-export type WireReadingSource = "typed" | "device" | "counted";
-export type WireReading = { takes: number[]; source: WireReadingSource; held?: number[]; note?: string };
-export type WireBpReading = { takes: [number, number][]; source: WireReadingSource; held?: number[]; note?: string };
-export type WireReadings = Partial<Record<Exclude<WireVitalKey, "sbp" | "dbp">, WireReading>> & { bp?: WireBpReading };
-export const UNLOCK_REASONS = ["yearly_remeasure_due", "patient_disputes_old_value", "posture_or_device_changed", "surgical_or_limb_change"] as const;
-export type WireUnlockReason = (typeof UNLOCK_REASONS)[number];
-export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & {
-  notes?: string | null;
-  readings?: WireReadings;
-  contextChips?: { key: string; question: string; answer: string }[];
-  carriedForward?: WireVitalKey[];
-  emergency?: boolean;
-  overrides?: Partial<Record<WireVitalKey, string>>;
-  unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
-};
 export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
 /**
  * `feeWaived` — FD-32 + the 20-Sep ruling: TRUE when this save was the emergency one AND it is what
@@ -855,7 +774,6 @@ export type WireEscalationView = {
   entryId: string; state: WireEscalationState; escalatedAt: string | null;
   escalatedFromClass: number | null; escalationBy: string | null; cancelMsRemaining: number;
 };
-export type WireEscalationReading = Partial<Record<Exclude<WireVitalKey, "heightCm" | "weightKg">, number>>;
 export function demandRecheck(encounterId: string, reading: WireEscalationReading): Promise<WireEscalationView> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/escalation/recheck`, reading);
 }

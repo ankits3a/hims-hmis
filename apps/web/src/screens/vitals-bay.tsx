@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { completeAllergen, fetchBench, fetchEscalation, fetchPreStage, setBenchState, todayIst } from "../lib/opd-api";
 import type { WireAllergenHit, WireBenchRow, WireDoctorSummary, WirePreStage, WireVitalKey, WireVitalsSaveResult } from "../lib/opd-api";
-import { CaptureCore, SavedBannerView, bandFor, flagOf, humanDate, istClock, rangesFrom, readLane, writeLane } from "./vitals-bay-capture";
+import { CaptureCore, SavedBannerView, bandFor, classifyDoor, flagOf, humanDate, istClock, matchOnBench, rangesFrom, readLane, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
 import {
   ProtocolPanel, REST_MINUTES, RestOffer, heldFirstTake, holdFirstTake, isElevated, readingFrom, readingFromVitals, releaseFirstTake, useDangerProtocol,
@@ -55,31 +55,8 @@ const RANGED: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr"];
 /** The same set in the wire's vocabulary — which vitals an AMENDMENT can be an answer to a demand about. */
 const RANGED_WIRE: readonly WireVitalKey[] = ["sbp", "dbp", "pulse", "spo2", "tempC", "rr"];
 
-export type Door =
-  | { kind: "token"; tokenNo: number }
-  | { kind: "uhid"; uhid: string }
-  | { kind: "scan"; payload: string };
-
-/** Digits are a token; a card payload starts `q1.` (`patients/qr.ts:15`); everything else is a UHID. */
-export function classifyDoor(raw: string): Door | null {
-  const s = raw.trim();
-  if (s === "") return null;
-  if (/^\d{1,6}$/.test(s)) return { kind: "token", tokenNo: Number(s) };
-  if (s.startsWith("q1.")) return { kind: "scan", payload: s };
-  return { kind: "uhid", uhid: s.toUpperCase() };
-}
-
-export function matchOnBench(
-  rows: readonly WireBenchRow[],
-  by: { kind: "token"; tokenNo: number } | { kind: "uhid"; uhid: string } | { kind: "patient"; patientId: string },
-): WireBenchRow | null {
-  for (const r of rows) {
-    if (by.kind === "token" && r.tokenNo === by.tokenNo) return r;
-    if (by.kind === "uhid" && r.patient !== null && r.patient.uhid.toUpperCase() === by.uhid) return r;
-    if (by.kind === "patient" && r.patient !== null && r.patient.id === by.patientId) return r;
-  }
-  return null;
-}
+export { classifyDoor, matchOnBench } from "./vitals-bay-capture";
+export type { Door } from "./vitals-bay-capture";
 
 export function isTypingTarget(el: EventTarget | null): boolean {
   return el instanceof HTMLElement && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);

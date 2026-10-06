@@ -12,7 +12,8 @@ apps/mobile/scripts/build-apk.sh production   # → hmis.crkmch.com,      app id
 ```
 
 The APK lands in `/opt/hmis-context/mobile-apk/` as
-`hmis-staff-<env>-<version>-vc<versionCode>-<sha>.apk`, with a `.sha256` beside it. The two app ids
+`hmis-staff-<env>-<version>-vc<versionCode>-<sha>.apk`, with a `.sha256` beside it, and
+`hmis-staff-<env>-latest.apk` is re-pointed at it once its signature verifies. The two app ids
 install side by side on one phone.
 
 What the script does:

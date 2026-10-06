@@ -1,12 +1,13 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text, View } from "react-native";
 import { useI18n } from "../../src/i18n";
+import { VitalsBay } from "../../src/screens/vitals-bay";
 import { SEATS, seatsFor } from "../../src/seats";
 import { useSession } from "../../src/session";
 import { color, space, type } from "../../src/theme";
 import { Band, Button, Note, Tag } from "../../src/ui";
 
-/** M0 placeholder for each phone screen; the plan's milestones replace these one by one. */
+/** One route per phone screen. Built ones render; the rest hold the plan's placeholder until their milestone. */
 export default function SeatScreen() {
   const { key } = useLocalSearchParams<{ key: string }>();
   const { t } = useI18n();
@@ -15,6 +16,7 @@ export default function SeatScreen() {
   if (state.status !== "signedIn") return <Redirect href="/" />;
   const seat = seatsFor(state.me.permissions).find((s) => s.key === key) ?? null;
   if (seat === null || !SEATS.includes(seat)) return <Redirect href="/" />;
+  if (seat.key === "vitals") return <VitalsBay />;
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band />

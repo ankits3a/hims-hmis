@@ -20,7 +20,7 @@ const config: ExpoConfig = {
   // that held this id was written by `eas init` run from /opt/hmis, whose package name is "hmis".
   slug: "hmis",
   scheme: "hmis",
-  version: "0.1.0",
+  version: "0.2.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
@@ -44,6 +44,11 @@ const config: ExpoConfig = {
     [
       "expo-local-authentication",
       { faceIDPermission: "Unlock HMIS with your face or fingerprint." },
+    ],
+    [
+      // The vitals bay's scan door reads a patient card or slip. No microphone, no recording.
+      "expo-camera",
+      { cameraPermission: "HMIS uses the camera to scan a patient card or slip.", recordAudioAndroid: false },
     ],
   ],
   extra: {

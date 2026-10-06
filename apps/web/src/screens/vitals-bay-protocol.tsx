@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cancelEscalation, demandRecheck, escalateVisit, opdErrorMessage } from "../lib/opd-api";
-import type { WireBandConfig, WireEscalationReading, WireEscalationView, WirePreStage, WireVitals } from "../lib/opd-api";
-import { operative } from "./vitals-bay-capture";
-import type { Take, TileKey, Tiles } from "./vitals-bay-capture";
+import type { WireEscalationReading, WireEscalationView } from "../lib/opd-api";
+import { REST_MINUTES } from "./vitals-bay-capture";
+
+export { REST_MINUTES, isElevated, readingFrom, readingFromVitals } from "./vitals-bay-capture";
+import type { TileKey } from "./vitals-bay-capture";
 
 /**
  * VD-2 T3 — THE DANGER PROTOCOL AND THE REST (stories 3 and 4).
@@ -26,7 +28,6 @@ import type { Take, TileKey, Tiles } from "./vitals-bay-capture";
  * Rest is refused at danger numbers — the design's line — because a stroke does not improve by
  * sitting down.
  */
-export const REST_MINUTES = 5;
 const PENDING_KEY = (encounterId: string): string => `vitalsBay.pending.${encounterId}`;
 
 export function holdFirstTake(encounterId: string, take: [number, number]): void {
@@ -42,50 +43,6 @@ export function heldFirstTake(encounterId: string): [number, number] | null {
 }
 export function releaseFirstTake(encounterId: string): void {
   try { sessionStorage.removeItem(PENDING_KEY(encounterId)); } catch { /* nothing to release */ }
-}
-
-/**
- * "Elevated but not dangerous": inside the band, but within 20 / 10 mmHg of its ceiling, or 20 mmHg
- * above the last chart's systolic. DECIDED here (a threshold, not money): the standard corporate-OPD
- * rest-and-recheck trigger, and the server never sees it — it is the bay's offer, not a chart fact.
- */
-export function isElevated(take: Take, band: WireBandConfig | null, last: WirePreStage["last"]): boolean {
-  if (!Array.isArray(take) || band === null || band.notRoutine.includes("sbp")) return false;
-  const [s, d] = take;
-  const sMax = band.ranges.sbp?.max; const dMax = band.ranges.dbp?.max;
-  if (sMax !== undefined && s > sMax) return false;
-  if (dMax !== undefined && d > dMax) return false;
-  if (sMax !== undefined && s >= sMax - 20) return true;
-  if (dMax !== undefined && d >= dMax - 10) return true;
-  if (last !== null && last.sbp !== null && s >= last.sbp + 20) return true;
-  return false;
-}
-
-/** The numbers on the tiles right now, in the wire's vocabulary, for the protocol's routes. */
-/**
- * The same reading, taken off a SAVED chart instead of the tiles — what an amendment has to hand
- * the protocol. A corrected BP is the answer to "the other arm, now" as surely as a second take
- * typed at the bay is, and the server judges both by the same rule.
- */
-export function readingFromVitals(v: Pick<WireVitals, "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm">): WireEscalationReading {
-  const r: WireEscalationReading = {};
-  if (v.sbp !== null && v.dbp !== null) { r.sbp = v.sbp; r.dbp = v.dbp; }
-  for (const k of ["pulse", "rr", "spo2", "tempC", "muacCm"] as const) {
-    const x = v[k];
-    if (typeof x === "number") r[k] = x;
-  }
-  return r;
-}
-
-export function readingFrom(tiles: Tiles): WireEscalationReading {
-  const r: WireEscalationReading = {};
-  const bp = operative(tiles.bp);
-  if (Array.isArray(bp)) { r.sbp = bp[0]; r.dbp = bp[1]; }
-  for (const k of ["pulse", "rr", "spo2", "tempC", "muacCm"] as const) {
-    const v = operative(tiles[k]);
-    if (typeof v === "number") r[k] = v;
-  }
-  return r;
 }
 
 export type ProtocolState = {
