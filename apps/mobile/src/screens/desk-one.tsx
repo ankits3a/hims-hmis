@@ -746,8 +746,8 @@ export function DeskOne() {
                       style={[s.docRow, on && { borderColor: color.green, borderWidth: 2, backgroundColor: color.greenSoft }, !open && { opacity: 0.55 }]}>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={[type.body, { color: color.ink, fontWeight: "700" }]} numberOfLines={1}>{d.doctor.displayName}</Text>
-                        <Text style={[type.small, { color: color.dim }]} numberOfLines={1}>
-                          {[tag, d.roomCode === null ? null : t("mobile.counter.seat.room", { room: d.roomCode })].filter((x) => x !== null).join(" · ") || " "}
+                        <Text style={[type.small, { color: color.dim }]} numberOfLines={2}>
+                          {[d.roomCode === null ? null : t("mobile.counter.seat.room", { room: d.roomCode }), tag].filter((x) => x !== null).join(" · ") || " "}
                         </Text>
                       </View>
                       <View style={{ alignItems: "flex-end" }}>
