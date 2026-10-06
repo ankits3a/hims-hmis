@@ -7,174 +7,363 @@ Source: `apps/core/src/modules/materials/`
 - **Depends on modules:** `formulary`
 - **Used by modules:** `opd`, `ot`, `pharmacy`
 - **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
+- **Subscribes to events:** `consignmentDeployed`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `ADJUSTMENT_REASONS`, `AGE_BUCKETS`, `BANK_CHANGE_COOLING_OFF_DAYS`, `BATCH_MANDATORY_CLASSES`, `BILL_MATCH_TOLERANCE_BPS`, `BILL_MATCH_TOLERANCE_MIN_PAISE`, `BLACKLIST_REASONS`, `BLACKLIST_YEARS`, `BOOKED_BILL_STATUSES`, `CASH_PAYMENT_DAILY_LIMIT_PAISE`, `CONTROLLED_ATTRIBUTE`, `DEEMED_SUPPLY_DAYS`, `DEFAULT_SUPPLIER_TERMS_DAYS`, `EXPIRY_PRESETS`, `EXPIRY_REPORT_PRESET_DAYS`, `EXPIRY_RETURN_WINDOW_DAYS`, `EXPIRY_THRESHOLD_DAYS`, `LOSS_ADJUSTMENT_REASONS`, `MATERIALS_APPROVAL_TYPES`, `MATERIALS_CONSUMPTION_CONSUMER`, `MATERIALS_EVENTS`, `MATERIALS_RESOURCE_KINDS`, `MRP_MANDATORY_CLASSES`, `MSME_MAX_PAYMENT_DAYS`, `MaterialsController`, `MaterialsError`, `MaterialsIndentsController`, `MaterialsModule`, `NEAR_EXPIRY_APPROVAL_TYPE`, `NEAR_EXPIRY_MIN_FRACTION`, `NEAR_EXPIRY_MIN_MONTHS`, `NEAR_EXPIRY_RETURN_DAYS`, `NON_MOVING_PRESETS`, `NON_SUPPLIER_VENDOR_CODES`, `OPEN_PO_STATUSES`, `PAYABLE_BILL_STATUSES`, `PAYMENT_MODES`, `PAYMENT_RUN_APPROVAL_TYPE`, `PAYMENT_RUN_HORIZON_DAYS`, `PO_APPROVAL_TYPE`, `PO_HEAD_APPROVAL_LIMIT_PAISE`, `PO_OWNER_APPROVAL_TYPE`, `PO_RECEIPT_TOLERANCE_BPS`, `RECALL_SOURCES`, `RETURN_LINE_REASONS`, `STOCK_ADJUSTMENT_APPROVAL_TYPE`, `STOCK_IN_KINDS`, `STOCK_OUT_KINDS`, `TRANSIT_STORE_CODE`, `VENDOR_BANK_CHANGE_APPROVAL_TYPE`, `WRITE_OFF_REASONS`, `acceptBillDifference`, `acceptSupplierBill`, `activateVendor`, `addBarcode`, `addItemUom`, `addVendorDocument`, `ageBucketOf`, `allowedReceiptBase`, `applyBankChange`, `approvalTierFor`, `approveSupplierReturn`, `assertNotMerged`, `assertNotPoApprover`, `assertNotReturnApprover`, `assertNotRunAuthoriser`, `assertVendorPurchasable`, `availableQty`, `availableQtyByItem`, `balances`, `batchLineage`, `batchLocations`, `batchesByIds`, `batchesByNo`, `billDraftFromGrn`, `billsDueBy`, `billsForReconciliation`, `blacklistVendor`, `cancelCount`, `cancelIndent`, `cancelPaymentRun`, `cancelPurchaseOrder`, `cancelSupplierBill`, `cancelSupplierReturn`, `cancelVendorCredit`, `captureGrn`, `closeCount`, `closeRecall`, `closeSupplierReturn`, `comparePackPrices`, `consignmentDeployed`, `consumeReservation`, `consumedQtyByItem`, `consumptionConsumer`, `consumptionRowsAt`, `consumptionsFor`, `controlledAdjustmentsToBook`, `controlledBalance`, `controlledCheckSheet`, `controlledChecksOn`, `controlledRegisterRows`, `countSheet`, `countVariancesBetween`, `createPaymentRun`, `createPurchaseOrder`, `createStore`, `createSupplierBill`, `createSupplierReturn`, `daysBetween`, `decidePaymentRun`, `decidePurchaseOrder`, `dispatchSupplierReturn`, `draftPaymentRun`, `draftReturnFromRecall`, `draftSupplierReturns`, `dueDateFor`, `effectiveRegulation`, `ensureTransitStore`, `executeItemMerge`, `expiredStockAt`, `expiringBatches`, `expiryRange`, `expiryReport`, `fefoPick`, `financialYearOf`, `findDocumentByNo`, `findDuplicateItems`, `findStoreByCode`, `fromBase`, `getBankChange`, `getBatch`, `getCount`, `getGrn`, `getIndent`, `getItem`, `getItemMerge`, `getPaymentRun`, `getPurchaseOrder`, `getRecall`, `getSupplierBill`, `getSupplierReturn`, `getTransfer`, `getVendor`, `getWriteOff`, `handleConsignmentDeployed`, `hasValidDocument`, `isControlledStore`, `issueIndent`, `issueStock`, `itemCatalogue`, `itemFactsThroughMerge`, `itemMergePreview`, `itemUomRows`, `itemsByIds`, `lastPurchaseByItem`, `ledgerQtyByIds`, `lineGstPaise`, `lineMismatches`, `listAdjustments`, `listBankChanges`, `listCounts`, `listDiscrepancies`, `listGrns`, `listIndents`, `listItemMerges`, `listItems`, `listPaymentRuns`, `listPurchaseOrders`, `listRecalls`, `listStores`, `listSupplierBills`, `listSupplierReturns`, `listTransfers`, `listVendorDocuments`, `listVendors`, `listWriteOffs`, `loadMaterialsSettings`, `lossBookings`, `lotsForBatch`, `matchSupplierBill`, `matchTolerancePaise`, `materialConsumed`, `materialsHttpStatus`, `materialsManifest`, `movementsFor`, `mrpPerBaseUnit`, `multiplierFor`, `myCounts`, `nearExpiryMinDays`, `nonMovingStock`, `onOrderAt`, `openControlledDiscrepancies`, `overduePurchaseOrders`, `packPriceOf`, `payables`, `planPaymentRun`, `planSupplierReturns`, `postAdjustments`, `postGrn`, `postMovement`, `postMovements`, `postWriteOff`, `purchasableVendors`, `purchaseAdjustmentsBetween`, `purchaseOrderOfGrn`, `purchaseOrdersAwaiting`, `purchaseRegister`, `qcLine`, `raiseIndent`, `raiseItemMerge`, `raiseRecall`, `raiseWriteOff`, `recallBatch`, `recallableBatches`, `receivableLines`, `receiveStock`, `recordControlledCheck`, `recordVendorCredit`, `recordVendorPayment`, `refIdsWithMovementBetween`, `registerItem`, `registerMaterialsApprovalTypes`, `registerVendor`, `reinstateVendor`, `rejectIndent`, `releaseReservation`, `requestBankChange`, `requestCountAdjustment`, `requestNearExpiryAcceptance`, `requireStore`, `reserveStock`, `resolveBarcode`, `returnVerdict`, `returnWindowDays`, `returnableUntil`, `returnedQtyByRef`, `runGateQc`, `saleAmountPaise`, `scheduleCount`, `sellableBatchesByItem`, `sendPurchaseOrder`, `setPriceRegulation`, `setStockLevel`, `setStoreControlled`, `setStoreCustodianRoles`, `settleItemMerges`, `settlePaymentRuns`, `settlePurchaseOrders`, `settleWriteOffs`, `similarNames`, `splitLikeDebitNote`, `stockLevelsAt`, `stockMovementSummary`, `stockValuationAt`, `storeCustodianRoles`, `submitCount`, `submitPaymentRun`, `submitPurchaseOrder`, `supplierKindOf`, `supplierLedger`, `supplierPaymentsBetween`, `survivorsOf`, `suspendVendor`, `sweepBatchExpiry`, `thresholdToAnnounce`, `toBase`, `transferWorklist`, `unbilledGrns`, `uomsByItems`, `updateItem`, `updateMaterialsSettings`, `updatePaymentRun`, `updatePurchaseOrder`, `updateSupplierBill`, `updateSupplierReturn`, `updateVendor`, `vendorBillKey`, `vendorCredits`, `withMergedAliases`, `withinMatch`, `writeOffsAwaitingApproval`, `writeOffsReadyToPost`
-
-Types: `AdjustmentReason`, `AdjustmentView`, `AgeBucket`, `BalanceRow`, `BankDetails`, `BatchFacts`, `BatchRow`, `BillDraft`, `BillFilter`, `BillInput`, `BillLineInput`, `BillLineView`, `BillMismatch`, `BillStatus`, `BillSummary`, `BillView`, `BlacklistReason`, `CaptureLine`, `CatalogueItem`, `ConsumptionRow`, `ControlledBalance`, `ControlledBalanceRow`, `ControlledCheckResult`, `ControlledCheckSummary`, `ControlledRegister`, `ControlledRegisterRow`, `ControlledSheetLine`, `CountFlag`, `CountHeader`, `CountReview`, `CountReviewLine`, `CountSheet`, `CountSheetLine`, `CountStatus`, `CreditInput`, `Custody`, `DestroyCandidate`, `DisposalInput`, `DuplicateSuggestion`, `DuplicateWhy`, `ExpiringBatch`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `GrnLineRow`, `GrnRow`, `GrnWithLines`, `IndentLineInput`, `IndentStatus`, `IndentView`, `IssueIndentInput`, `IssueLine`, `ItemBarcodeRow`, `ItemMergeHooks`, `ItemMergeStatus`, `ItemMergeSummary`, `ItemMergeView`, `ItemRow`, `ItemUomRow`, `ItemWithUoms`, `LastPurchase`, `LedgerEntry`, `LedgerRow`, `LossBooking`, `MaskedBank`, `MaterialsDocKind`, `MaterialsDocRef`, `MaterialsErrorCode`, `MaterialsSettings`, `MergeItemSide`, `MergePreview`, `MergeRefusal`, `MergeRule`, `MergeStockLine`, `MergeTally`, `MovementInput`, `MovementReason`, `NonMovingReport`, `NonMovingRow`, `NonMovingSuggestion`, `PackPrice`, `PayableRow`, `Payables`, `PaymentInput`, `PaymentMode`, `PaymentPlan`, `PlanBill`, `PlanGroup`, `PoFilter`, `PoInput`, `PoLineInput`, `PoLineView`, `PoStatus`, `PoSummary`, `PoView`, `PriceRegulationRow`, `PurchaseAdjustment`, `PurchaseRegister`, `PurchaseRegisterLine`, `PurchaseRegisterRow`, `QcContext`, `QcLine`, `QcVerdict`, `RaiseIndentInput`, `RecallSource`, `RecallStatus`, `RecallSummary`, `RecallView`, `ReconBill`, `RegisterItemInput`, `ReservationRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `RuleCode`, `RunLineInput`, `RunLineView`, `RunStatus`, `RunSummary`, `RunVendorView`, `RunView`, `SaleAmount`, `StockInKind`, `StockLevel`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`, `StockValuation`, `StoreRow`, `SubmitCountInput`, `SupplierKind`, `SupplierLedger`, `SupplierPaymentRead`, `SupplierSummaryRow`, `TransferLineRow`, `TransferRow`, `TransferView`, `TransferWithLines`, `UnbilledGrn`, `UomRow`, `ValuationGroup`, `ValuationRow`, `VendorBankChangeRow`, `VendorCredit`, `VendorDocumentRow`, `VendorRow`, `VendorView`, `WriteOffLineInput`, `WriteOffLineView`, `WriteOffReason`, `WriteOffStatus`, `WriteOffSummary`, `WriteOffView`
+- `adjustments.ts`
+  - `ADJUSTMENT_REASONS`
+  - `listAdjustments(db: Db, actor: Actor, filter: { countId?: string; approvalId?: string }): Promise<AdjustmentView[]>`
+  - `postAdjustments(db: Db, actor: Actor, approvalId: string, now: Date, opts: { custody?: Custody } = {}): Promise<{ posted: number; refused: …`
+  - `requestCountAdjustment(db: Db, actor: Actor, countId: string, input: { lines: { lineId: string; reasonCode: AdjustmentReason }[]; note?: st…`
+  - types: `AdjustmentReason`, `AdjustmentView`
+- `approval-types.ts`
+  - `MATERIALS_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `NEAR_EXPIRY_APPROVAL_TYPE`
+  - `PAYMENT_RUN_APPROVAL_TYPE`
+  - `PO_APPROVAL_TYPE`
+  - `PO_OWNER_APPROVAL_TYPE`
+  - `STOCK_ADJUSTMENT_APPROVAL_TYPE`
+  - `VENDOR_BANK_CHANGE_APPROVAL_TYPE`
+  - `registerMaterialsApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `config.ts`
+  - `BANK_CHANGE_COOLING_OFF_DAYS`
+  - `BATCH_MANDATORY_CLASSES`
+  - `BILL_MATCH_TOLERANCE_BPS`
+  - `BILL_MATCH_TOLERANCE_MIN_PAISE`
+  - `BLACKLIST_REASONS`
+  - `BLACKLIST_YEARS`
+  - `CASH_PAYMENT_DAILY_LIMIT_PAISE`
+  - `DEEMED_SUPPLY_DAYS`
+  - `DEFAULT_SUPPLIER_TERMS_DAYS`
+  - `EXPIRY_REPORT_PRESET_DAYS`
+  - `EXPIRY_RETURN_WINDOW_DAYS`
+  - `EXPIRY_THRESHOLD_DAYS`
+  - `MRP_MANDATORY_CLASSES`
+  - `MSME_MAX_PAYMENT_DAYS`
+  - `NEAR_EXPIRY_MIN_FRACTION`
+  - `NEAR_EXPIRY_MIN_MONTHS`
+  - `NEAR_EXPIRY_RETURN_DAYS`
+  - `NON_SUPPLIER_VENDOR_CODES`
+  - `PAYMENT_RUN_HORIZON_DAYS`
+  - `PO_HEAD_APPROVAL_LIMIT_PAISE`
+  - `PO_RECEIPT_TOLERANCE_BPS`
+  - `TRANSIT_STORE_CODE`
+  - types: `BlacklistReason`
+- `consumption.ts`
+  - `MATERIALS_CONSUMPTION_CONSUMER`
+  - `consumptionConsumer(db: Db): Handler`
+  - `consumptionsFor(db: Db | Tx, encounterId: string): Promise<ConsumptionRow[]>`
+  - `handleConsignmentDeployed(tx: Tx, actor: Actor, eventId: string, payload: unknown): Promise<{ handled: boolean; ledgerEntryId?: string }>`
+  - types: `ConsumptionRow`
+- `controlled-check.ts`
+  - `controlledAdjustmentsToBook(db: Db | Tx, storeResourceId: string): Promise<{ approvalId: string; countId: string; lines: number; netQty: nu…`
+  - `controlledBalance(db: Db | Tx, input: { storeResourceId: string; fromDay: string; toDay: string }): Promise<ControlledBalance>`
+  - `controlledCheckSheet(db: Db | Tx, storeResourceId: string): Promise<ControlledSheetLine[]>`
+  - `controlledChecksOn(db: Db | Tx, storeResourceId: string, day: string): Promise<ControlledCheckSummary[]>`
+  - `controlledRegisterRows(db: Db | Tx, filter: { storeResourceId?: string; fromDay: string; toDay: string; register: ControlledRegister; itemI…`
+  - `openControlledDiscrepancies(db: Db | Tx, storeResourceId: string): Promise<{ countId: string; checkedAt: string }[]>`
+  - `recordControlledCheck(db: Db, actor: Actor, input: { storeResourceId: string; witnessId: string; lines: readonly { batchId: string; counted…`
+  - types: `ControlledBalance`, `ControlledBalanceRow`, `ControlledCheckResult`, `ControlledCheckSummary`, `ControlledRegister`, `ControlledRegisterRow`, `ControlledSheetLine`
+- `controlled.ts`
+  - `CONTROLLED_ATTRIBUTE`
+  - `isControlledStore(store: { attributes: unknown }): boolean`
+  - `setStoreControlled(tx: Tx, actor: Actor, storeId: string, controlled: boolean): Promise<void>`
+  - types: `Custody`
+- `counts.ts`
+  - `cancelCount(db: Db, actor: Actor, countId: string, input: { reason: string }, now: Date): Promise<CountHeader>`
+  - `closeCount(db: Db, actor: Actor, countId: string, input: { note: string }, now: Date): Promise<CountHeader>`
+  - `countSheet(db: Db, actor: Actor, countId: string): Promise<CountSheet>`
+  - `countVariancesBetween(db: Db | Tx, resourceId: string, start: Date, end: Date): Promise<{ counts: number; lines: { countId: string; itemCod…`
+  - `getCount(db: Db, actor: Actor, countId: string): Promise<CountReview>`
+  - `listCounts(db: Db, actor: Actor, opts: { status?: CountStatus } = {}): Promise<CountHeader[]>`
+  - `myCounts(db: Db, actor: Actor): Promise<CountHeader[]>`
+  - `scheduleCount(db: Db, actor: Actor, input: { storeResourceId: string }, now: Date): Promise<CountHeader>`
+  - `submitCount(db: Db, actor: Actor, countId: string, input: SubmitCountInput, now: Date): Promise<CountHeader>`
+  - types: `CountFlag`, `CountHeader`, `CountReview`, `CountReviewLine`, `CountSheet`, `CountSheetLine`, `CountStatus`, `SubmitCountInput`
+- `errors.ts`
+  - `class MaterialsError`
+  - `materialsHttpStatus(code: MaterialsErrorCode): number`
+  - types: `MaterialsErrorCode`
+- `events.ts`
+  - `MATERIALS_EVENTS`
+  - `consignmentDeployed`
+  - `materialConsumed`
+- `expiry.ts`
+  - `expiringBatches(db: Db | Tx, now: Date, withinDays: number = EXPIRY_THRESHOLD_DAYS[0]): Promise<ExpiringBatch[]>`
+  - `sweepBatchExpiry(db: Db, now: Date): Promise<{ announced: { batchId: string; thresholdDays: number }[] }>`
+  - `thresholdToAnnounce(daysRemaining: number, alreadyNotified: readonly number[]): number | null`
+  - types: `ExpiringBatch`
+- `grn.ts`
+  - `captureGrn(tx: Tx, actor: Actor, input: { vendorId: string; source: string; storeResourceId: string; challanNo: string; challanDate: string…`
+  - `getGrn(db: Db | Tx, grnId: string): Promise<GrnWithLines | undefined>`
+  - `listGrns(db: Db | Tx, filter: { vendorId?: string; storeResourceId?: string; status?: string } = {}): Promise<GrnRow[]>`
+  - `lotsForBatch(db: Db | Tx, batchId: string): Promise<(typeof consignmentLots.$inferSelect)[]>`
+  - `postGrn(tx: Tx, actor: Actor, grnId: string, now: Date, opts: { custody?: Custody } = {}): Promise<{ status: string; ledgerEntryIds: string…`
+  - `requestNearExpiryAcceptance(tx: Tx, actor: Actor, grnId: string, note?: string): Promise<{ approvalId: string }>`
+  - `runGateQc(tx: Tx, actor: Actor, grnId: string): Promise<{ status: string; verdicts: { grnLineId: string; verdict: string; rule?: RuleCode }…`
+  - types: `CaptureLine`, `GrnLineRow`, `GrnRow`, `GrnWithLines`
+- `indents.ts`
+  - `cancelIndent(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<IndentView>`
+  - `getIndent(db: Db | Tx, indentId: string, now: Date = new Date()): Promise<IndentView | undefined>`
+  - `issueIndent(db: Db, actor: Actor, indentId: string, input: IssueIndentInput = {}, now: Date = new Date()): Promise<IndentView>`
+  - `listIndents(db: Db | Tx, filter: { storeId?: string; status?: IndentStatus } = {}, now: Date = new Date()): Promise<IndentView[]>`
+  - `raiseIndent(db: Db, actor: Actor, input: RaiseIndentInput, now: Date = new Date()): Promise<IndentView>`
+  - `rejectIndent(db: Db, actor: Actor, indentId: string, reason: string, now: Date = new Date()): Promise<IndentView>`
+  - types: `IndentLineInput`, `IndentStatus`, `IndentView`, `IssueIndentInput`, `RaiseIndentInput`
+- `item-merge.ts`
+  - `executeItemMerge(db: Db, actor: Actor, mergeId: string, hooks: ItemMergeHooks = {}, now: Date = new Date()): Promise<ItemMergeView>`
+  - `findDuplicateItems(db: Db, actor: Actor, opts: { limit?: number } = {}): Promise<{ suggestions: DuplicateSuggestion[]; scanned: number }>`
+  - `getItemMerge(db: Db, actor: Actor, mergeId: string, now: Date = new Date()): Promise<ItemMergeView>`
+  - `itemMergePreview(db: Db, actor: Actor, survivorItemId: string, mergedItemId: string, hooks: ItemMergeHooks = {}): Promise<MergePreview>`
+  - `listItemMerges(db: Db, actor: Actor, filter: { statuses?: readonly ItemMergeStatus[]; limit?: number } = {}): Promise<ItemMergeSummary[]>`
+  - `raiseItemMerge(db: Db, actor: Actor, input: { survivorItemId: string; mergedItemId: string; reason: string; source?: "agent" | "manual" }, …`
+  - `settleItemMerges(db: Db, now: Date = new Date(), ids?: readonly string[]): Promise<number>`
+  - `similarNames(p: string, q: string): boolean`
+  - types: `DuplicateSuggestion`, `DuplicateWhy`, `ItemMergeHooks`, `ItemMergeStatus`, `ItemMergeSummary`, `ItemMergeView`, `MergeItemSide`, `MergePreview`, `MergeRefusal`, `MergeRule`, `MergeStockLine`, `MergeTally`
+- `items.ts`
+  - `addBarcode(tx: Tx, actor: Actor, itemId: string, input: { code: string; packUom: string; vendorId?: string | null }, opts: { skipEvent?: bo…`
+  - `addItemUom(tx: Tx, actor: Actor, itemId: string, input: { uom: string; toBaseMultiplier: number; isPurchaseUom?: boolean; isIssueUom?: bool…`
+  - `assertNotMerged(db: Db | Tx, itemIds: readonly string[], doing: string): Promise<void>`
+  - `batchLineage(db: Db | Tx, batchId: string): Promise<string[]>`
+  - `effectiveRegulation(db: Db | Tx, itemId: string, at: Date): Promise<PriceRegulationRow | undefined>`
+  - `getItem(db: Db | Tx, itemId: string): Promise<ItemWithUoms | undefined>`
+  - `itemUomRows(db: Db | Tx, itemId: string): Promise<UomRow[]>`
+  - `itemsByIds(db: Db | Tx, itemIds: string[]): Promise<Map<string, ItemRow>>`
+  - `listItems(db: Db | Tx, filter: { class?: string; active?: boolean; search?: string } = {}): Promise<ItemRow[]>`
+  - `registerItem(tx: Tx, actor: Actor, input: RegisterItemInput): Promise<{ itemId: string }>`
+  - `resolveBarcode(db: Db | Tx, code: string): Promise<{ itemId: string; packUom: string } | undefined>`
+  - `setPriceRegulation(tx: Tx, actor: Actor, itemId: string, input: { mrpDefaultPaise?: number | null; mrpUom?: string | null; ceilingPaise?: n…`
+  - `survivorsOf(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, string>>`
+  - `uomsByItems(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { uom: string; toBaseMultiplier: number; isIssueUom: boolean }[]>>`
+  - `updateItem(tx: Tx, actor: Actor, itemId: string, patch: { name?: string; class?: string; formularyMedicineId?: string | null; hsnCode?: str…`
+  - `withMergedAliases(db: Db | Tx, itemIds: readonly string[]): Promise<{ ids: string[]; standsFor: Map<string, string> }>`
+  - types: `ItemBarcodeRow`, `ItemRow`, `ItemUomRow`, `ItemWithUoms`, `PriceRegulationRow`, `RegisterItemInput`
+- `kinds.ts`
+  - `MATERIALS_RESOURCE_KINDS: readonly ResourceKindDecl[]`
+- `ledger.ts`
+  - `availableQty(db: Db | Tx, resourceId: string, itemId: string, asOf: Date = new Date()): Promise<number>`
+  - `availableQtyByItem(db: Db | Tx, resourceId: string, itemIds: readonly string[], asOf: Date = new Date()): Promise<Map<string, number>>`
+  - `balances(db: Db | Tx, filter: { resourceId?: string; itemId?: string; batchId?: string } = {}): Promise<BalanceRow[]>`
+  - `batchLocations(db: Db | Tx, batchId: string): Promise<BalanceRow[]>`
+  - `batchesByNo(db: Db | Tx, itemId: string, batchNo: string): Promise<BatchRow[]>`
+  - `consumeReservation(tx: Tx, actor: Actor, reservationId: string, movement: Omit<MovementInput, "resourceId" | "batchId" | "qtyDelta">): Prom…`
+  - `consumedQtyByItem(db: Db | Tx, resourceId: string, itemIds: readonly string[], since: Date, until: Date): Promise<Map<string, number>>`
+  - `consumptionRowsAt(db: Db | Tx, resourceId: string, start: Date, end: Date): Promise<{ id: string; itemId: string; itemCode: string; batchId…`
+  - `expiredStockAt(db: Db | Tx, resourceId: string, asOf: Date = new Date()): Promise<{ itemId: string; batchId: string; batchNo: string; expir…`
+  - `fefoPick(db: Db | Tx, resourceId: string, itemId: string, qtyBase: number, asOf: Date = new Date()): Promise<{ batchId: string; qty: number…`
+  - `getBatch(db: Db | Tx, batchId: string): Promise<BatchRow | undefined>`
+  - `ledgerQtyByIds(db: Db | Tx, ids: readonly string[]): Promise<Map<string, number>>`
+  - `movementsFor(db: Db | Tx, filter: { batchId?: string; resourceId?: string; itemId?: string; encounterId?: string }, opts: { limit?: number;…`
+  - `postMovement(tx: Tx, actor: Actor, input: MovementInput): Promise<{ ledgerEntryId: string; balanceAfter: number }>`
+  - `postMovements(tx: Tx, actor: Actor, inputs: MovementInput[]): Promise<{ ledgerEntryId: string; balanceAfter: number }[]>`
+  - `recallBatch(tx: Tx, actor: Actor, batchId: string, reason: string, register?: { recallId: string; recallNo: string; source: "cdsco" | "manu…`
+  - `refIdsWithMovementBetween(db: Db | Tx, reason: MovementReason, refType: string, start: Date, end: Date): Promise<string[]>`
+  - `releaseReservation(tx: Tx, _actor: Actor, reservationId: string): Promise<void>`
+  - `reserveStock(tx: Tx, actor: Actor, input: { resourceId: string; batchId: string; qty: number; refType: string; refId: string; expiresAt?: D…`
+  - `returnedQtyByRef(db: Db | Tx, refType: string, refIds: readonly string[]): Promise<Map<string, number>>`
+  - `sellableBatchesByItem(db: Db | Tx, resourceId: string, itemIds: readonly string[], asOf: Date = new Date()): Promise<Map<string, { batchId:…`
+  - types: `BalanceRow`, `BatchRow`, `LedgerRow`, `MovementInput`, `MovementReason`, `ReservationRow`
+- `manifest.ts`
+  - `materialsManifest: ModuleManifest`
+- `materials-indents.controller.ts`
+  - `class MaterialsIndentsController`
+- `materials.controller.ts`
+  - `class MaterialsController`
+- `materials.module.ts`
+  - `class MaterialsModule`
+- `payments.ts`
+  - `PAYMENT_MODES: readonly PaymentMode[]`
+  - `assertNotRunAuthoriser(db: Db, actor: Actor, runId: string): Promise<void>`
+  - `cancelPaymentRun(db: Db, actor: Actor, runId: string, reason: string, now: Date = new Date()): Promise<RunView>`
+  - `createPaymentRun(db: Db, actor: Actor, input: { lines: RunLineInput[]; note?: string | null }, opts: { source?: "manual" | "agent"; now?: D…`
+  - `decidePaymentRun(db: Db, actor: Actor, runId: string, verdict: "approve" | "reject", note: string, now: Date = new Date()): Promise<RunView>`
+  - `draftPaymentRun(db: Db, actor: Actor, now: Date = new Date()): Promise<RunView>`
+  - `getPaymentRun(db: Db, actor: Actor, runId: string, now: Date = new Date()): Promise<RunView>`
+  - `listPaymentRuns(db: Db, actor: Actor, filter: { statuses?: readonly RunStatus[]; limit?: number } = {}): Promise<RunSummary[]>`
+  - `planPaymentRun(db: Db, now: Date = new Date()): Promise<PaymentPlan>`
+  - `recordVendorPayment(db: Db, actor: Actor, runId: string, vendorId: string, input: PaymentInput, now: Date = new Date()): Promise<RunView>`
+  - `settlePaymentRuns(db: Db, now: Date = new Date(), runIds?: readonly string[]): Promise<number>`
+  - `submitPaymentRun(db: Db, actor: Actor, runId: string, now: Date = new Date()): Promise<RunView>`
+  - `updatePaymentRun(db: Db, actor: Actor, runId: string, patch: { lines?: RunLineInput[]; note?: string | null }, now: Date = new Date()): Pro…`
+  - types: `PaymentInput`, `PaymentMode`, `PaymentPlan`, `PlanBill`, `PlanGroup`, `RunLineInput`, `RunLineView`, `RunStatus`, `RunSummary`, `RunVendorView`, `RunView`
+- `purchase-orders.ts`
+  - `OPEN_PO_STATUSES: readonly PoStatus[]`
+  - `allowedReceiptBase(orderedBase: number): number`
+  - `approvalTierFor(totalPaise: number): "head" | "owner"`
+  - `assertNotPoApprover(db: Db, actor: Actor, poId: string): Promise<void>`
+  - `cancelPurchaseOrder(db: Db, actor: Actor, poId: string, reason: string, now: Date = new Date()): Promise<PoView>`
+  - `createPurchaseOrder(db: Db, actor: Actor, input: PoInput, opts: { source?: "manual" | "agent"; now?: Date } = {}): Promise<PoView>`
+  - `decidePurchaseOrder(db: Db, actor: Actor, poId: string, verdict: "approve" | "reject", note: string, now: Date = new Date()): Promise<PoVie…`
+  - `getPurchaseOrder(db: Db, actor: Actor, poId: string): Promise<PoView>`
+  - `lastPurchaseByItem(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, LastPurchase>>`
+  - `lineGstPaise(lineTotalPaise: number, gstRateBps: number): number`
+  - `listPurchaseOrders(db: Db, actor: Actor, filter: PoFilter = {}): Promise<PoSummary[]>`
+  - `onOrderAt(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, { onOrderBase: number; inDraftBase: number…`
+  - `overduePurchaseOrders(db: Db, actor: Actor, now: Date = new Date()): Promise<PoSummary[]>`
+  - `purchasableVendors(db: Db, actor: Actor): Promise<{ id: string; code: string; name: string }[]>`
+  - `purchaseOrderOfGrn(db: Db, grnId: string): Promise<string | null>`
+  - `purchaseOrdersAwaiting(db: Db, actor: Actor): Promise<PoSummary[]>`
+  - `receivableLines(db: Db, actor: Actor, poId: string): Promise<{ purchaseOrder: PoSummary; lines: { itemId: string; itemCode: string; itemNam…`
+  - `sendPurchaseOrder(db: Db, actor: Actor, poId: string, now: Date = new Date()): Promise<PoView>`
+  - `setStockLevel(db: Db, actor: Actor, input: { itemId: string; storeResourceId: string } & StockLevel, now: Date = new Date()): Promise<Stock…`
+  - `settlePurchaseOrders(db: Db, now: Date = new Date(), poIds?: readonly string[]): Promise<number>`
+  - `stockLevelsAt(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, StockLevel>>`
+  - `submitPurchaseOrder(db: Db, actor: Actor, poId: string, now: Date = new Date()): Promise<PoView>`
+  - `updatePurchaseOrder(db: Db, actor: Actor, poId: string, patch: Partial<PoInput>, now: Date = new Date()): Promise<PoView>`
+  - types: `LastPurchase`, `PoFilter`, `PoInput`, `PoLineInput`, `PoLineView`, `PoStatus`, `PoSummary`, `PoView`, `StockLevel`
+- `qc.ts`
+  - `daysBetween(from: string, to: string): number`
+  - `nearExpiryMinDays(shelfLifeDays: number | null): number`
+  - `qcLine(ctx: QcContext, line: QcLine): QcVerdict`
+  - types: `QcContext`, `QcLine`, `QcVerdict`, `RuleCode`
+- `recalls.ts`
+  - `RECALL_SOURCES: readonly RecallSource[]`
+  - `closeRecall(db: Db, actor: Actor, recallId: string, note: string, now: Date = new Date()): Promise<RecallView>`
+  - `getRecall(db: Db, actor: Actor, recallId: string): Promise<RecallView>`
+  - `listRecalls(db: Db, actor: Actor, filter: { statuses?: readonly RecallStatus[]; limit?: number } = {}): Promise<RecallSummary[]>`
+  - `raiseRecall(db: Db, actor: Actor, input: { batchId: string; source?: RecallSource; reference?: string | null; reason: string }, now: Date =…`
+  - `recallableBatches(db: Db, actor: Actor, itemId: string): Promise<{ batchId: string; batchNo: string; expiryDate: string | null; onHand: num…`
+  - types: `RecallSource`, `RecallStatus`, `RecallSummary`, `RecallView`
+- `reports.ts`
+  - `BOOKED_BILL_STATUSES`
+  - `NON_MOVING_PRESETS`
+  - `batchesByIds(db: Db | Tx, ids: readonly string[]): Promise<Map<string, BatchFacts>>`
+  - `billsForReconciliation(db: Db | Tx, from: string, to: string): Promise<ReconBill[]>`
+  - `findDocumentByNo(db: Db | Tx, typed: string): Promise<MaterialsDocRef | null>`
+  - `itemFactsThroughMerge(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { id: string; code: string; name: string; baseUom: stri…`
+  - `nonMovingStock(db: Db | Tx, now: Date, days: number, opts: { storeResourceId?: string | null } = {}): Promise<NonMovingReport>`
+  - `purchaseAdjustmentsBetween(db: Db | Tx, from: string, to: string): Promise<PurchaseAdjustment[]>`
+  - `purchaseRegister(db: Db | Tx, from: string, to: string): Promise<PurchaseRegister>`
+  - `splitLikeDebitNote(amountPaise: number, note: { taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: …`
+  - `stockValuationAt(db: Db | Tx, asOf: string, opts: { storeResourceId?: string | null } = {}): Promise<StockValuation>`
+  - `supplierPaymentsBetween(db: Db | Tx, from: string, to: string): Promise<SupplierPaymentRead[]>`
+  - types: `BatchFacts`, `MaterialsDocKind`, `MaterialsDocRef`, `NonMovingReport`, `NonMovingRow`, `NonMovingSuggestion`, `PurchaseAdjustment`, `PurchaseRegister`, `PurchaseRegisterLine`, `PurchaseRegisterRow`, `ReconBill`, `StockValuation`, `SupplierPaymentRead`, `ValuationGroup`, `ValuationRow`
+- `settings.ts`
+  - `loadMaterialsSettings(db: Db | Tx): Promise<MaterialsSettings>`
+  - `updateMaterialsSettings(tx: Tx, actor: Actor, rawPatch: unknown, now: Date): Promise<MaterialsSettings>`
+  - types: `MaterialsSettings`
+- `stock-reports.ts`
+  - `LOSS_ADJUSTMENT_REASONS`
+  - `STOCK_IN_KINDS`
+  - `STOCK_OUT_KINDS`
+  - `itemCatalogue(db: Db | Tx, opts: { storeResourceId?: string | null } = {}): Promise<{ rows: CatalogueItem[]; truncated: boolean }>`
+  - `lossBookings(db: Db | Tx, from: string, to: string, opts: { storeResourceId?: string | null } = {}): Promise<{ rows: LossBooking[]; truncat…`
+  - `stockMovementSummary(db: Db | Tx, from: string, to: string, opts: { storeResourceId?: string | null } = {}): Promise<StockMovementSummary>`
+  - types: `CatalogueItem`, `LossBooking`, `StockInKind`, `StockMovementRow`, `StockMovementSummary`, `StockOutKind`
+- `stores.ts`
+  - `createStore(tx: Tx, actor: Actor, input: { code: string; name: string; parentId?: string | null; siteId?: string; attributes?: Record<strin…`
+  - `ensureTransitStore(tx: Tx, siteId = "main"): Promise<string>`
+  - `findStoreByCode(db: Db | Tx, code: string, siteId = "main"): Promise<StoreRow | undefined>`
+  - `listStores(db: Db | Tx, opts: { siteId?: string; includeTransit?: boolean } = {}): Promise<StoreRow[]>`
+  - `requireStore(db: Db | Tx, resourceId: string): Promise<StoreRow>`
+  - `setStoreCustodianRoles(tx: Tx, actor: Actor, storeId: string, roleKeys: readonly string[]): Promise<void>`
+  - `storeCustodianRoles(store: Pick<StoreRow, "attributes">): string[]`
+  - types: `StoreRow`
+- `supplier-bills.ts`
+  - `AGE_BUCKETS: readonly AgeBucket[]`
+  - `PAYABLE_BILL_STATUSES: readonly BillStatus[]`
+  - `acceptBillDifference(db: Db, actor: Actor, billId: string, reason: string, now: Date = new Date()): Promise<BillView>`
+  - `acceptSupplierBill(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<BillView>`
+  - `ageBucketOf(ageDays: number): AgeBucket`
+  - `billDraftFromGrn(db: Db, actor: Actor, grnId: string, opts: { hospitalStateCode?: string | null } = {}): Promise<BillDraft>`
+  - `billsDueBy(db: Db | Tx, until: string): Promise<BillRow[]>`
+  - `cancelSupplierBill(db: Db, actor: Actor, billId: string, reason: string, now: Date = new Date()): Promise<BillView>`
+  - `createSupplierBill(db: Db, actor: Actor, input: BillInput, opts: { source?: "manual" | "agent"; now?: Date } = {}): Promise<BillView>`
+  - `dueDateFor(input: { msme: boolean; termsDays: number | null; billDate: string; acceptanceDate: string }): string`
+  - `financialYearOf(isoDate: string): string`
+  - `getSupplierBill(db: Db, actor: Actor, billId: string): Promise<BillView>`
+  - `lineMismatches(l: { qtyPacks: number; multiplier: number; ratePaise: number; taxablePaise: number; gstRateBps: number; expectedBase: number…`
+  - `listSupplierBills(db: Db, actor: Actor, filter: BillFilter = {}): Promise<BillSummary[]>`
+  - `matchSupplierBill(db: Db, actor: Actor, billId: string, now: Date = new Date()): Promise<BillView>`
+  - `matchTolerancePaise(expectedPaise: number): number`
+  - `payables(db: Db, actor: Actor, now: Date = new Date(), filter: { vendorId?: string } = {}): Promise<Payables>`
+  - `supplierLedger(db: Db, actor: Actor, vendorId: string, range: { from?: string | null; to?: string | null } = {}): Promise<SupplierLedger>`
+  - `unbilledGrns(db: Db, actor: Actor, limit = 200): Promise<UnbilledGrn[]>`
+  - `updateSupplierBill(db: Db, actor: Actor, billId: string, patch: Partial<BillInput>, now: Date = new Date()): Promise<BillView>`
+  - `vendorBillKey(no: string): string`
+  - `vendorCredits(db: Db | Tx, vendorIds?: readonly string[], exceptRunId?: string): Promise<Map<string, VendorCredit>>`
+  - `withinMatch(actualPaise: number, expectedPaise: number): boolean`
+  - types: `AgeBucket`, `BillDraft`, `BillFilter`, `BillInput`, `BillLineInput`, `BillLineView`, `BillMismatch`, `BillStatus`, `BillSummary`, `BillView`, `LedgerEntry`, `PayableRow`, `Payables`, `SupplierLedger`, `SupplierSummaryRow`, `UnbilledGrn`, `VendorCredit`
+- `supplier-returns.ts`
+  - `EXPIRY_PRESETS: readonly ExpiryPreset[]`
+  - `RETURN_LINE_REASONS: readonly ReturnLineReason[]`
+  - `approveSupplierReturn(db: Db, actor: Actor, returnId: string, now: Date = new Date()): Promise<ReturnView>`
+  - `assertNotReturnApprover(db: Db, actor: Actor, returnId: string): Promise<void>`
+  - `cancelSupplierReturn(db: Db, actor: Actor, returnId: string, reason: string, now: Date = new Date()): Promise<ReturnView>`
+  - `cancelVendorCredit(db: Db, actor: Actor, returnId: string, reason: string, now: Date = new Date()): Promise<ReturnView>`
+  - `closeSupplierReturn(db: Db, actor: Actor, returnId: string, reason: string, now: Date = new Date()): Promise<ReturnView>`
+  - `createSupplierReturn(db: Db, actor: Actor, input: ReturnInput, opts: { source?: ReturnSource; recallId?: string | null; now?: Date; hospita…`
+  - `dispatchSupplierReturn(db: Db, actor: Actor, returnId: string, now: Date = new Date(), opts: { custody?: Custody } = {}): Promise<ReturnVie…`
+  - `draftReturnFromRecall(db: Db, actor: Actor, recallId: string, now: Date = new Date(), opts: { hospitalStateCode?: string | null } = {}): Pr…`
+  - `draftSupplierReturns(db: Db, actor: Actor, now: Date = new Date(), opts: { hospitalStateCode?: string | null; storeResourceId?: string | nu…`
+  - `expiryRange(preset: ExpiryPreset, today: string, custom: { from?: string | null; to?: string | null } = {}): { from: string | null; to: str…`
+  - `expiryReport(db: Db, actor: Actor, input: { preset: ExpiryPreset; from?: string | null; to?: string | null; storeResourceId?: string | null…`
+  - `getSupplierReturn(db: Db, actor: Actor, returnId: string): Promise<ReturnView>`
+  - `listSupplierReturns(db: Db, actor: Actor, filter: ReturnFilter = {}): Promise<ReturnSummary[]>`
+  - `planSupplierReturns(db: Db | Tx, now: Date = new Date(), opts: { storeResourceId?: string | null } = {}): Promise<ReturnPlan>`
+  - `recordVendorCredit(db: Db, actor: Actor, returnId: string, input: CreditInput, now: Date = new Date()): Promise<ReturnView>`
+  - `returnVerdict(input: { expiryDate: string | null; windowDays: number; recalled: boolean; today: string }): ReturnVerdict`
+  - `returnWindowDays(vendor: { expiryReturnDays: number | null } | null): number`
+  - `returnableUntil(expiryDate: string, windowDays: number): string`
+  - `supplierKindOf(vendor: { code: string } | null): SupplierKind`
+  - `updateSupplierReturn(db: Db, actor: Actor, returnId: string, patch: { lines?: ReturnLineInput[]; note?: string | null; interState?: boolean…`
+  - types: `CreditInput`, `DestroyCandidate`, `ExpiryPreset`, `ExpiryReport`, `ExpiryReportRow`, `ExpirySupplierRow`, `ReturnFilter`, `ReturnInput`, `ReturnLineInput`, `ReturnLineReason`, `ReturnLineView`, `ReturnPlan`, `ReturnPlanGroup`, `ReturnPlanLine`, `ReturnSource`, `ReturnStatus`, `ReturnSummary`, `ReturnVerdict`, `ReturnView`, `SupplierKind`
+- `transfers.ts`
+  - `getTransfer(db: Db | Tx, transferId: string): Promise<TransferWithLines | undefined>`
+  - `issueStock(tx: Tx, actor: Actor, input: { fromResourceId: string; toResourceId: string; lines: IssueLine[]; note?: string | null; occurredA…`
+  - `listDiscrepancies(db: Db | Tx): Promise<TransferWithLines[]>`
+  - `listTransfers(db: Db | Tx, filter: { status?: string; fromResourceId?: string; toResourceId?: string } = {}): Promise<TransferRow[]>`
+  - `receiveStock(tx: Tx, actor: Actor, transferId: string, lines: { lineId: string; qtyReceived: number }[], occurredAt: Date, siteId?: string,…`
+  - `transferWorklist(db: Db | Tx, filter: { storeId?: string }): Promise<{ awaiting: TransferView[]; recent: TransferView[] }>`
+  - types: `IssueLine`, `TransferLineRow`, `TransferRow`, `TransferView`, `TransferWithLines`
+- `uom.ts`
+  - `comparePackPrices(a: PackPrice, b: PackPrice): -1 | 0 | 1`
+  - `fromBase(uoms: readonly UomRow[], uom: string, qtyBase: number): { whole: number; remainderBase: number }`
+  - `mrpPerBaseUnit(uoms: readonly UomRow[], mrpPaise: number | null | undefined, mrpUom: string | null | undefined): number | null`
+  - `multiplierFor(uoms: readonly UomRow[], uom: string): number`
+  - `packPriceOf(uoms: readonly UomRow[], paise: number | null | undefined, uom: string | null | undefined): PackPrice | null`
+  - `saleAmountPaise(input: { mrpPaise: number; packMultiplier: number; qtyBase: number }): SaleAmount`
+  - `toBase(uoms: readonly UomRow[], uom: string, qty: number): number`
+  - types: `PackPrice`, `SaleAmount`, `UomRow`
+- `vendors.ts`
+  - `activateVendor(tx: Tx, actor: Actor, vendorId: string, now: Date): Promise<void>`
+  - `addVendorDocument(tx: Tx, actor: Actor, vendorId: string, input: { type: string; number: string; validFrom?: string | null; validTo?: strin…`
+  - `applyBankChange(tx: Tx, actor: Actor, changeId: string, now: Date): Promise<{ coolingOffUntil: Date }>`
+  - `assertVendorPurchasable(tx: Tx | Db, vendorId: string): Promise<VendorRow>`
+  - `blacklistVendor(tx: Tx, actor: Actor, vendorId: string, reason: BlacklistReason, now: Date): Promise<{ blacklistUntil: Date }>`
+  - `getBankChange(db: Db | Tx, changeId: string): Promise<VendorBankChangeRow | undefined>`
+  - `getVendor(db: Db | Tx, vendorId: string): Promise<VendorView | undefined>`
+  - `hasValidDocument(db: Db | Tx, vendorId: string, type: string, onDate: string): Promise<boolean>`
+  - `listBankChanges(db: Db | Tx, vendorId: string): Promise<Omit<VendorBankChangeRow, "newBank">[]>`
+  - `listVendorDocuments(db: Db | Tx, vendorId: string): Promise<VendorDocumentRow[]>`
+  - `listVendors(db: Db | Tx, filter: { status?: string; search?: string } = {}): Promise<VendorView[]>`
+  - `registerVendor(tx: Tx, actor: Actor, input: { code: string; legalName: string; tradeName?: string | null; gstin?: string | null; pan?: stri…`
+  - `reinstateVendor(tx: Tx, actor: Actor, vendorId: string, now: Date): Promise<void>`
+  - `requestBankChange(tx: Tx, actor: Actor, vendorId: string, newBank: BankDetails, note?: string): Promise<{ changeId: string; approvalId: str…`
+  - `suspendVendor(tx: Tx, actor: Actor, vendorId: string, reason: string): Promise<void>`
+  - `updateVendor(tx: Tx, actor: Actor, vendorId: string, patch: { legalName?: string; tradeName?: string | null; gstin?: string | null; gstinVe…`
+  - types: `BankDetails`, `MaskedBank`, `VendorBankChangeRow`, `VendorDocumentRow`, `VendorRow`, `VendorView`
+- `write-offs.ts`
+  - `WRITE_OFF_REASONS: readonly WriteOffReason[]`
+  - `getWriteOff(db: Db, actor: Actor, writeOffId: string, now: Date = new Date()): Promise<WriteOffView>`
+  - `listWriteOffs(db: Db, actor: Actor, filter: { statuses?: readonly WriteOffStatus[]; limit?: number } = {}): Promise<WriteOffSummary[]>`
+  - `postWriteOff(db: Db, actor: Actor, writeOffId: string, disposal: DisposalInput = {}, now: Date = new Date(), opts: { custody?: Custody } = …`
+  - `raiseWriteOff(db: Db, actor: Actor, input: { storeResourceId: string; reason: WriteOffReason; lines: WriteOffLineInput[]; note?: string | n…`
+  - `settleWriteOffs(db: Db, now: Date = new Date(), ids?: readonly string[]): Promise<number>`
+  - `writeOffsAwaitingApproval(db: Db, actor: Actor): Promise<WriteOffSummary[]>`
+  - `writeOffsReadyToPost(db: Db, actor: Actor): Promise<WriteOffSummary[]>`
+  - types: `DisposalInput`, `WriteOffLineInput`, `WriteOffLineView`, `WriteOffReason`, `WriteOffStatus`, `WriteOffSummary`, `WriteOffView`
 
 ## Tables (`kernel/db/schema/materials.ts`)
 
-- `consignment_lots` (`consignmentLots`)
-- `controlled_stock_register` (`controlledStockRegister`)
-- `grn_lines` (`grnLines`)
-- `grns` (`grns`)
-- `item_barcodes` (`itemBarcodes`)
-- `item_merges` (`itemMerges`)
-- `item_price_regulations` (`itemPriceRegulations`)
-- `item_stock_levels` (`itemStockLevels`)
-- `item_uoms` (`itemUoms`)
-- `items` (`items`)
-- `materials_settings` (`materialsSettings`)
-- `purchase_order_lines` (`purchaseOrderLines`)
-- `purchase_orders` (`purchaseOrders`)
-- `stock_adjustments` (`stockAdjustments`)
-- `stock_balances` (`stockBalances`)
-- `stock_batches` (`stockBatches`)
-- `stock_count_lines` (`stockCountLines`)
-- `stock_counts` (`stockCounts`)
-- `stock_ledger` (`stockLedger`)
-- `stock_recalls` (`stockRecalls`)
-- `stock_reservations` (`stockReservations`)
-- `stock_write_off_lines` (`stockWriteOffLines`)
-- `stock_write_offs` (`stockWriteOffs`)
-- `store_indent_lines` (`storeIndentLines`)
-- `store_indents` (`storeIndents`)
-- `supplier_bill_lines` (`supplierBillLines`)
-- `supplier_bills` (`supplierBills`)
-- `supplier_credit_notes` (`supplierCreditNotes`)
-- `supplier_payment_run_lines` (`supplierPaymentRunLines`)
-- `supplier_payment_runs` (`supplierPaymentRuns`)
-- `supplier_payments` (`supplierPayments`)
-- `supplier_return_lines` (`supplierReturnLines`)
-- `supplier_returns` (`supplierReturns`)
-- `transfer_lines` (`transferLines`)
-- `transfers` (`transfers`)
-- `vendor_bank_changes` (`vendorBankChanges`)
-- `vendor_documents` (`vendorDocuments`)
-- `vendors` (`vendors`)
+`consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendors`
 
-References tables in: `formulary`, `resources`
+Foreign keys into: `formulary`, `resources`
 
 ## HTTP routes (117)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/materials/adjustments/:approvalId/post` | `materials.controller.ts` |
-| POST | `/materials/bank-changes/:id/apply` | `materials.controller.ts` |
-| GET | `/materials/bank-changes/:id` | `materials.controller.ts` |
-| GET | `/materials/barcodes/:code` | `materials.controller.ts` |
-| GET | `/materials/consumptions` | `materials.controller.ts` |
-| GET | `/materials/counts/:id/adjustments` | `materials.controller.ts` |
-| POST | `/materials/counts/:id/adjustments` | `materials.controller.ts` |
-| POST | `/materials/counts/:id/cancel` | `materials.controller.ts` |
-| POST | `/materials/counts/:id/close` | `materials.controller.ts` |
-| GET | `/materials/counts/:id/sheet` | `materials.controller.ts` |
-| POST | `/materials/counts/:id/submit` | `materials.controller.ts` |
-| GET | `/materials/counts/:id` | `materials.controller.ts` |
-| GET | `/materials/counts/mine` | `materials.controller.ts` |
-| GET | `/materials/counts` | `materials.controller.ts` |
-| POST | `/materials/counts` | `materials.controller.ts` |
-| GET | `/materials/expiring` | `materials.controller.ts` |
-| GET | `/materials/expiry-report` | `materials.controller.ts` |
-| POST | `/materials/grns/:id/near-expiry-request` | `materials.controller.ts` |
-| GET | `/materials/grns/:id/near-expiry` | `materials.controller.ts` |
-| POST | `/materials/grns/:id/post` | `materials.controller.ts` |
-| POST | `/materials/grns/:id/qc` | `materials.controller.ts` |
-| GET | `/materials/grns/:id` | `materials.controller.ts` |
-| GET | `/materials/grns` | `materials.controller.ts` |
-| POST | `/materials/grns` | `materials.controller.ts` |
-| POST | `/materials/indents/:id/cancel` | `materials-indents.controller.ts` |
-| POST | `/materials/indents/:id/issue` | `materials-indents.controller.ts` |
-| POST | `/materials/indents/:id/reject` | `materials-indents.controller.ts` |
-| GET | `/materials/indents/:id` | `materials-indents.controller.ts` |
-| GET | `/materials/indents` | `materials-indents.controller.ts` |
-| POST | `/materials/indents` | `materials-indents.controller.ts` |
-| POST | `/materials/items/:id/barcodes` | `materials.controller.ts` |
-| POST | `/materials/items/:id/regulations` | `materials.controller.ts` |
-| POST | `/materials/items/:id/uoms` | `materials.controller.ts` |
-| GET | `/materials/items/:id` | `materials.controller.ts` |
-| PATCH | `/materials/items/:id` | `materials.controller.ts` |
-| GET | `/materials/items` | `materials.controller.ts` |
-| POST | `/materials/items` | `materials.controller.ts` |
-| GET | `/materials/payables/ledger/:vendorId` | `materials.controller.ts` |
-| GET | `/materials/payables` | `materials.controller.ts` |
-| POST | `/materials/payment-runs/:id/cancel` | `materials.controller.ts` |
-| POST | `/materials/payment-runs/:id/decision` | `materials.controller.ts` |
-| GET | `/materials/payment-runs/:id/for-approval` | `materials.controller.ts` |
-| POST | `/materials/payment-runs/:id/submit` | `materials.controller.ts` |
-| POST | `/materials/payment-runs/:id/vendors/:vendorId/pay` | `materials.controller.ts` |
-| GET | `/materials/payment-runs/:id` | `materials.controller.ts` |
-| PATCH | `/materials/payment-runs/:id` | `materials.controller.ts` |
-| POST | `/materials/payment-runs/draft` | `materials.controller.ts` |
-| GET | `/materials/payment-runs/plan` | `materials.controller.ts` |
-| GET | `/materials/payment-runs` | `materials.controller.ts` |
-| POST | `/materials/payment-runs` | `materials.controller.ts` |
-| POST | `/materials/purchase-orders/:id/cancel` | `materials.controller.ts` |
-| POST | `/materials/purchase-orders/:id/decision` | `materials.controller.ts` |
-| GET | `/materials/purchase-orders/:id/receivable` | `materials.controller.ts` |
-| POST | `/materials/purchase-orders/:id/send` | `materials.controller.ts` |
-| POST | `/materials/purchase-orders/:id/submit` | `materials.controller.ts` |
-| GET | `/materials/purchase-orders/:id` | `materials.controller.ts` |
-| PATCH | `/materials/purchase-orders/:id` | `materials.controller.ts` |
-| GET | `/materials/purchase-orders` | `materials.controller.ts` |
-| POST | `/materials/purchase-orders` | `materials.controller.ts` |
-| GET | `/materials/purchase-vendors` | `materials.controller.ts` |
-| POST | `/materials/recalls/:id/close` | `materials.controller.ts` |
-| GET | `/materials/recalls/:id` | `materials.controller.ts` |
-| GET | `/materials/recalls/batches` | `materials.controller.ts` |
-| GET | `/materials/recalls` | `materials.controller.ts` |
-| POST | `/materials/recalls` | `materials.controller.ts` |
-| GET | `/materials/settings` | `materials.controller.ts` |
-| PUT | `/materials/settings` | `materials.controller.ts` |
-| POST | `/materials/stock-levels` | `materials.controller.ts` |
-| GET | `/materials/stock/balances` | `materials.controller.ts` |
-| GET | `/materials/stock/ledger/items` | `materials.controller.ts` |
-| GET | `/materials/stock/ledger` | `materials.controller.ts` |
-| GET | `/materials/stock/movements` | `materials.controller.ts` |
-| GET | `/materials/stores` | `materials.controller.ts` |
-| POST | `/materials/stores` | `materials.controller.ts` |
-| POST | `/materials/supplier-bills/:id/accept-difference` | `materials.controller.ts` |
-| POST | `/materials/supplier-bills/:id/accept` | `materials.controller.ts` |
-| POST | `/materials/supplier-bills/:id/cancel` | `materials.controller.ts` |
-| POST | `/materials/supplier-bills/:id/match` | `materials.controller.ts` |
-| GET | `/materials/supplier-bills/:id` | `materials.controller.ts` |
-| PATCH | `/materials/supplier-bills/:id` | `materials.controller.ts` |
-| GET | `/materials/supplier-bills/unbilled-grns` | `materials.controller.ts` |
-| GET | `/materials/supplier-bills` | `materials.controller.ts` |
-| POST | `/materials/supplier-bills` | `materials.controller.ts` |
-| POST | `/materials/supplier-returns/:id/approve` | `materials.controller.ts` |
-| POST | `/materials/supplier-returns/:id/cancel` | `materials.controller.ts` |
-| POST | `/materials/supplier-returns/:id/close` | `materials.controller.ts` |
-| POST | `/materials/supplier-returns/:id/credit-note/cancel` | `materials.controller.ts` |
-| POST | `/materials/supplier-returns/:id/credit-note` | `materials.controller.ts` |
-| POST | `/materials/supplier-returns/:id/dispatch` | `materials.controller.ts` |
-| GET | `/materials/supplier-returns/:id` | `materials.controller.ts` |
-| PATCH | `/materials/supplier-returns/:id` | `materials.controller.ts` |
-| GET | `/materials/supplier-returns/plan` | `materials.controller.ts` |
-| GET | `/materials/supplier-returns/returnable` | `materials.controller.ts` |
-| GET | `/materials/supplier-returns/vendors` | `materials.controller.ts` |
-| GET | `/materials/supplier-returns` | `materials.controller.ts` |
-| POST | `/materials/supplier-returns` | `materials.controller.ts` |
-| POST | `/materials/transfers/:id/receive` | `materials.controller.ts` |
-| GET | `/materials/transfers/:id` | `materials.controller.ts` |
-| GET | `/materials/transfers/discrepancies` | `materials.controller.ts` |
-| GET | `/materials/transfers/worklist` | `materials.controller.ts` |
-| GET | `/materials/transfers` | `materials.controller.ts` |
-| POST | `/materials/transfers` | `materials.controller.ts` |
-| POST | `/materials/vendors/:id/activate` | `materials.controller.ts` |
-| POST | `/materials/vendors/:id/bank-change` | `materials.controller.ts` |
-| GET | `/materials/vendors/:id/bank-changes` | `materials.controller.ts` |
-| POST | `/materials/vendors/:id/blacklist` | `materials.controller.ts` |
-| POST | `/materials/vendors/:id/documents` | `materials.controller.ts` |
-| POST | `/materials/vendors/:id/reinstate` | `materials.controller.ts` |
-| POST | `/materials/vendors/:id/suspend` | `materials.controller.ts` |
-| GET | `/materials/vendors/:id` | `materials.controller.ts` |
-| PATCH | `/materials/vendors/:id` | `materials.controller.ts` |
-| GET | `/materials/vendors` | `materials.controller.ts` |
-| POST | `/materials/vendors` | `materials.controller.ts` |
-| POST | `/materials/write-offs/:id/post` | `materials.controller.ts` |
-| GET | `/materials/write-offs/:id` | `materials.controller.ts` |
-| GET | `/materials/write-offs` | `materials.controller.ts` |
-| POST | `/materials/write-offs` | `materials.controller.ts` |
+- `materials-indents.controller.ts` — 6: `/materials/indents`
+- `materials.controller.ts` — 111: `/materials/adjustments`, `/materials/bank-changes`, `/materials/barcodes`, `/materials/consumptions`, `/materials/counts`, `/materials/expiring`, `/materials/expiry-report`, `/materials/grns`, `/materials/items`, `/materials/payables`, `/materials/payment-runs`, `/materials/purchase-orders`, `/materials/purchase-vendors`, `/materials/recalls`, `/materials/settings`, `/materials/stock`, `/materials/stock-levels`, `/materials/stores`, `/materials/supplier-bills`, `/materials/supplier-returns`, `/materials/transfers`, `/materials/vendors`, `/materials/write-offs`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/materials`

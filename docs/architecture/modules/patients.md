@@ -8,57 +8,94 @@ Source: `apps/core/src/modules/patients/`
 - **Used by modules:** `abdm`, `aerb`, `billing`, `lab`, `membership`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `documents`, `events`, `modules`, `phi`, `search`, `tokens`, `workflow`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `ABDM_ACTOR`, `ABDM_EVIDENCE_REF`, `LINKED_CAP`, `NO_AUTHORITY`, `PatientError`, `PatientsModule`, `abhaAlreadyLinked`, `acceptAbdmDemographics`, `addAllergy`, `captureDocument`, `displayName`, `displayNameFor`, `displayNameForRelease`, `documentsForEncounters`, `effectiveGuardianAuthority`, `findAbhaHolder`, `getPatient`, `getPatientSummaries`, `guardiansWithAuthority`, `holderUhidVisibleTo`, `isValidUhid`, `linkedPatients`, `listAllergies`, `listDocuments`, `listMergedLoserIds`, `listPatientCoverages`, `nearMatches`, `patientsManifest`, `recordAbhaVerifiedByAbdm`, `registerPatient`, `registrationConfigured`, `requestDocumentRetake`, `resolvePatientId`, `searchPatients`, `sweepGuardianMajority`, `updatePatient`, `verifyQrScan`, `visiblePatientIds`
-
-Types: `AbhaHolder`, `AllergyRow`, `CoverageInput`, `CoverageRow`, `DuplicateCandidate`, `EncounterDocument`, `GuardianAuthority`, `GuardianInput`, `GuardianRow`, `LinkedPatientRow`, `LinkedPatients`, `MatchLane`, `NameablePatient`, `PatientErrorCode`, `PatientPatch`, `PatientRow`, `PatientSearchResult`, `PatientSummary`, `QrVerifyResult`, `RegisterPatientInput`
+- `abha-holders.ts`
+  - `abhaAlreadyLinked(db: Db | Tx, actor: Actor | null, holder: AbhaHolder): Promise<PatientError>`
+  - `findAbhaHolder(db: Db | Tx, input: { abhaNumber?: string | null; abhaAddress?: string | null }, excludePatientId: string | null): Promise<A…`
+  - `holderUhidVisibleTo(db: Db | Tx, actor: Actor | null, holder: AbhaHolder): Promise<string | null>`
+  - types: `AbhaHolder`
+- `abha-verified.ts`
+  - `ABDM_ACTOR: Actor`
+  - `ABDM_EVIDENCE_REF`
+  - `acceptAbdmDemographics(tx: Tx, actor: Actor, patientId: string, fields: Pick<PatientPatch, "name" | "dob" | "dobEstimated" | "administrativ…`
+  - `recordAbhaVerifiedByAbdm(tx: Tx, patientId: string, input: { abhaNumber: string; abhaAddress?: string | null; via: string; requestedBy?: Ac…`
+- `allergies.ts`
+  - `addAllergy(tx: Tx, actor: Actor, patientId: string, input: { substance: string; reaction?: string; severity?: "mild" | "moderate" | "severe…`
+  - `listAllergies(db: Db, patientId: string): Promise<AllergyRow[]>`
+  - types: `AllergyRow`
+- `coverages.ts`
+  - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`
+  - types: `CoverageRow`
+- `display-name.ts`
+  - `displayName(patient: NameablePatient, canSeeConfidential: boolean): string`
+  - `displayNameFor(exec: Db | Tx, actor: Actor, patient: NameablePatient): Promise<string>`
+  - `displayNameForRelease(exec: Db | Tx, actor: Actor, patient: NameablePatient, patientId: string): Promise<string>`
+  - types: `NameablePatient`
+- `documents.ts`
+  - `captureDocument(tx: Tx, store: DocumentStore, actor: Actor, patientId: string, input: { encounterId?: string | null; kind: DocumentKind; mi…`
+  - `documentsForEncounters(db: Db | Tx, encounterIds: readonly string[]): Promise<EncounterDocument[]>`
+  - `listDocuments(db: Db, actor: Actor, patientId: string): Promise<CapturedDocument[]>`
+  - `requestDocumentRetake(tx: Tx, actor: Actor, documentId: string, reason: string | null, now: Date = new Date()): Promise<{ documentId: strin…`
+  - types: `EncounterDocument`
+- `duplicates.ts`
+  - `nearMatches(db: Db, actor: Actor, input: Pick<RegisterPatientInput, "name" | "phone">): Promise<DuplicateCandidate[]>`
+  - types: `DuplicateCandidate`
+- `events.ts`
+  - `allergyRecorded`
+  - `correctionEnteredInError`
+  - `guardianAuthorityChanged`
+  - `guardianLinked`
+  - `identityAssuranceChanged`
+  - `identityVersionMinted`
+  - `patientMerged`
+  - `patientRegistered`
+  - `patientUnmerged`
+  - `patientUpdated`
+  - `qrSignatureFailed`
+- `guardians.ts`
+  - `NO_AUTHORITY: GuardianAuthority`
+  - `effectiveGuardianAuthority(patient: PatientRow, guardian: GuardianRow, now: Date = new Date()): GuardianAuthority`
+  - `guardiansWithAuthority(exec: Db | Tx, patientId: string, at: Date = new Date()): Promise<{ guardianId: string; name: string; relationship: …`
+  - `sweepGuardianMajority(db: Db, now: Date = new Date()): Promise<number>`
+  - types: `GuardianAuthority`, `GuardianRow`
+- `linked.ts`
+  - `LINKED_CAP`
+  - `linkedPatients(db: Db, actor: Actor, patientId: string): Promise<LinkedPatients>`
+  - types: `LinkedPatientRow`, `LinkedPatients`
+- `manifest.ts`
+  - `patientsManifest: ModuleManifest`
+- `patients.module.ts`
+  - `class PatientsModule`
+- `qr.ts`
+  - `verifyQrScan(db: Db, cfg: AppConfig, actor: Actor, payload: string): Promise<QrVerifyResult>`
+  - types: `QrVerifyResult`
+- `registration.ts`
+  - `getPatient(db: Db, actor: Actor, patientId: string): Promise<{ patient: PatientRow; resolvedFrom: string | null; breakGlass: { id: string; …`
+  - `getPatientSummaries(db: Db, actor: Actor, patientIds: string[], opts: { withContact?: { reason: string } } = {}): Promise<PatientSummary[]>`
+  - `listMergedLoserIds(db: Db | Tx, winnerId: string): Promise<string[]>`
+  - `registerPatient(tx: Tx, actor: Actor, input: RegisterPatientInput): Promise<{ patient: PatientRow; guardianId: string | null }>`
+  - `resolvePatientId(db: Db | Tx, patientId: string): Promise<string | null>`
+  - `updatePatient(tx: Tx, actor: Actor, patientId: string, patch: PatientPatch, ctx: AmendmentContext = {}): Promise<{ patient: PatientRow; cha…`
+  - types: `CoverageInput`, `GuardianInput`, `PatientPatch`, `PatientRow`, `PatientSummary`, `RegisterPatientInput`
+- `search.ts`
+  - `searchPatients(db: Db, actor: Actor, q: string, limit = 20): Promise<PatientSearchResult[]>`
+  - `visiblePatientIds(db: Db, actor: Actor, ids: string[]): Promise<string[]>`
+  - types: `MatchLane`, `PatientSearchResult`
+- `uhid.ts`
+  - `class PatientError`
+  - `isValidUhid(uhid: string): boolean`
+  - `registrationConfigured(exec: Db | Tx): Promise<boolean>`
+  - types: `PatientErrorCode`
 
 ## Tables (`kernel/db/schema/patients.ts`)
 
-- `patient_allergies` (`patientAllergies`)
-- `patient_coverages` (`patientCoverages`)
-- `patient_guardians` (`patientGuardians`)
-- `patient_identity_versions` (`patientIdentityVersions`)
-- `patient_merge_requests` (`patientMergeRequests`)
-- `patient_photos` (`patientPhotos`)
-- `patients` (`patients`)
-- `registration_config` (`registrationConfig`)
+`patient_allergies`, `patient_coverages`, `patient_guardians`, `patient_identity_versions`, `patient_merge_requests`, `patient_photos`, `patients`, `registration_config`
 
-References tables in: —
+Foreign keys into: —
 
 ## HTTP routes (31)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/patients/:id/allergies/:allergyId/entered-in-error` | `patients.controller.ts` |
-| GET | `/patients/:id/allergies` | `patients.controller.ts` |
-| POST | `/patients/:id/allergies` | `patients.controller.ts` |
-| POST | `/patients/:id/assurance` | `patients.controller.ts` |
-| GET | `/patients/:id/coverages` | `patients.controller.ts` |
-| GET | `/patients/:id/documents` | `patients.controller.ts` |
-| POST | `/patients/:id/documents` | `patients.controller.ts` |
-| POST | `/patients/:id/guardians/:guardianId/end` | `patients.controller.ts` |
-| PATCH | `/patients/:id/guardians/:guardianId` | `patients.controller.ts` |
-| GET | `/patients/:id/guardians` | `patients.controller.ts` |
-| POST | `/patients/:id/guardians` | `patients.controller.ts` |
-| GET | `/patients/:id/linked` | `patients.controller.ts` |
-| GET | `/patients/:id/photo` | `patients.controller.ts` |
-| PUT | `/patients/:id/photo` | `patients.controller.ts` |
-| POST | `/patients/:id/qr/reissue` | `patients.controller.ts` |
-| GET | `/patients/:id/qr` | `patients.controller.ts` |
-| GET | `/patients/:id` | `patients.controller.ts` |
-| PATCH | `/patients/:id` | `patients.controller.ts` |
-| GET | `/patients/abha/capability` | `patients.controller.ts` |
-| POST | `/patients/documents/:documentId/entered-in-error` | `patients.controller.ts` |
-| GET | `/patients/documents/:documentId` | `patients.controller.ts` |
-| POST | `/patients/merge-requests/:id/execute` | `patients.controller.ts` |
-| POST | `/patients/merge-requests/:id/unmerge-request` | `patients.controller.ts` |
-| POST | `/patients/merge-requests/:id/unmerge` | `patients.controller.ts` |
-| GET | `/patients/merge-requests/:id` | `patients.controller.ts` |
-| GET | `/patients/merge-requests` | `patients.controller.ts` |
-| POST | `/patients/merge-requests` | `patients.controller.ts` |
-| GET | `/patients/merge-visits` | `patients.controller.ts` |
-| POST | `/patients/qr/verify` | `patients.controller.ts` |
-| GET | `/patients/search` | `patients.controller.ts` |
-| POST | `/patients` | `patients.controller.ts` |
+- `patients.controller.ts` — 31: `/patients`, `/patients/:id`, `/patients/abha`, `/patients/documents`, `/patients/merge-requests`, `/patients/merge-visits`, `/patients/qr`, `/patients/search`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/patients`

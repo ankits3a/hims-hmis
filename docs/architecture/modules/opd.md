@@ -8,159 +8,156 @@ Source: `apps/core/src/modules/opd/`
 - **Used by modules:** `abdm`, `billing`, `lab`, `pharmacy`, `radiology`
 - **Kernel used:** `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `CANCEL_WINDOW_MS`, `DEFAULT_DEPARTMENTS`, `EYE_TEXT`, `LAB_DEPARTMENT_CODE`, `OPD_VISIT_DEFINITION_JSON`, `OPD_VISIT_DEF_KEY`, `OPD_VISIT_STATES`, `OpdError`, `OpdModule`, `PHARMACY_VISIT_TYPE`, `SKIP_REASONS`, `cancelEscalation`, `cancelMsRemaining`, `classOf`, `classifyVisit`, `completedVisitIdsOf`, `completedVisitsForRelease`, `counterState`, `demandRecheck`, `discardDraft`, `escalate`, `escalationFor`, `findVisitByToken`, `getDoctor`, `getEncounter`, `getPendingDraft`, `getPrescription`, `getVisit`, `isCurrentDose`, `issueDraft`, `issuePharmacyPaperPrescription`, `joinQueue`, `lastActiveVitals`, `listDepartments`, `listDoctors`, `listPrescriptions`, `listVisits`, `loadOpdConfig`, `matchAllergies`, `nextInQueue`, `opdManifest`, `opdVisitDefinition`, `openLabWalkin`, `openLabWalkinInTx`, `openPharmacyVisitInTx`, `orderQueue`, `parkConsultation`, `patientTimeline`, `registerConsultStartGuard`, `registerVitalsStartGuard`, `requireTreatingDoctor`, `resumeConsultation`, `reviewAnchorFor`, `runRxChecks`, `saveDraft`, `verifyPrescriptionQr`, `vitalsGateVerdict`, `walkIn`
-
-Types: `AdvisedTest`, `AllergyMatch`, `AllergyOverride`, `ConsultStartGuard`, `DoctorRow`, `DraftRow`, `DuplicateCandidate`, `EncounterRow`, `EscalationState`, `EscalationView`, `Eye`, `IssuedPrescription`, `JoinQueueResult`, `OpdConfig`, `OpdErrorCode`, `OpdReleaseDiagnosis`, `OpdReleaseVisit`, `OpdVisitState`, `OpenLabWalkinInput`, `OpenVisitResult`, `OutsidePrescriber`, `PrescriptionRow`, `QueueClass`, `QueueEntryRow`, `QueueEntryState`, `QueuePolicy`, `ReviewAnchor`, `RxCheckOutcome`, `RxLine`, `RxNotice`, `RxOverride`, `RxVerifyReason`, `RxVerifyResult`, `SaveDraftInput`, `SkipReason`, `TaperStep`, `TimelineItem`, `VisitType`, `VitalsStartGuard`, `WalkInDeferredResult`, `WalkInInput`, `WalkInResult`
+- `abdm-release.ts`
+  - `completedVisitIdsOf(db: Db | Tx, patientIds: readonly string[]): Promise<{ encounterId: string; patientId: string }[]>`
+  - `completedVisitsForRelease(db: Db | Tx, encounterIds: readonly string[]): Promise<OpdReleaseVisit[]>`
+  - types: `OpdReleaseDiagnosis`, `OpdReleaseVisit`
+- `config.ts`
+  - `DEFAULT_DEPARTMENTS: { code: string; name: string }[]`
+  - `loadOpdConfig(db: Db | Tx): Promise<OpdConfig>`
+  - types: `OpdConfig`
+- `consultation.ts`
+  - `parkConsultation(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<{ encounter: EncounterRow; queueEntry: QueueEn…`
+  - `registerConsultStartGuard(key: string, guard: ConsultStartGuard): () => void`
+  - `registerVitalsStartGuard(key: string, guard: VitalsStartGuard): () => void`
+  - `requireTreatingDoctor(db: Db | Tx, actor: Actor, encounter: EncounterRow): Promise<DoctorRow>`
+  - `resumeConsultation(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<{ encounter: EncounterRow; queueEntry: Queue…`
+  - `vitalsGateVerdict(db: Db | Tx, encounter: EncounterRow): Promise<{ ok: true } | { ok: false; code: string; detail?: unknown }>`
+  - types: `AdvisedTest`, `ConsultStartGuard`, `VitalsStartGuard`
+- `encounters.ts`
+  - `LAB_DEPARTMENT_CODE`
+  - `PHARMACY_VISIT_TYPE`
+  - `counterState(db: Db, encounterId: string): Promise<CounterState | null>`
+  - `findVisitByToken(db: Db, filter: { serviceDate: string; tokenNo: number }): Promise<EncounterRow | null>`
+  - `getEncounter(db: Db | Tx, id: string): Promise<EncounterRow | null>`
+  - `getVisit(db: Db, actor: Actor, encounterId: string): Promise<{ encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];…`
+  - `joinQueue(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<JoinQueueResult>`
+  - `listVisits(db: Db, filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string; ty…`
+  - `openLabWalkin(db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date()): Promise<OpenVisitResult>`
+  - `openLabWalkinInTx(tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult>`
+  - `openPharmacyVisitInTx(tx: Tx, actor: Actor, input: { patientId: string; serviceDate: string }, now: Date): Promise<EncounterRow>`
+  - `patientTimeline(db: Db, actor: Actor, patientId: string, limit = 50): Promise<TimelineItem[]>`
+  - `reviewAnchorFor(db: Db | Tx, encounter: { patientId: string; departmentId: string | null; visitType: string; openedAt: Date; referredFromEn…`
+  - types: `EncounterRow`, `JoinQueueResult`, `OpenLabWalkinInput`, `OpenVisitResult`, `PrescriptionRow`, `QueueEntryRow`, `ReviewAnchor`, `TimelineItem`
+- `errors.ts`
+  - `class OpdError`
+  - types: `OpdErrorCode`
+- `escalation.ts`
+  - `CANCEL_WINDOW_MS`
+  - `cancelEscalation(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<EscalationView>`
+  - `cancelMsRemaining(escalatedAt: Date | null, state: EscalationState, now: Date): number`
+  - `demandRecheck(db: Db, actor: Actor, encounterId: string, reading: VitalsInput, now: Date = new Date()): Promise<EscalationView>`
+  - `escalate(db: Db, actor: Actor, encounterId: string, reading: VitalsInput, now: Date = new Date()): Promise<EscalationView>`
+  - `escalationFor(db: Db | Tx, encounterId: string, now: Date = new Date()): Promise<EscalationView | null>`
+  - types: `EscalationState`, `EscalationView`
+- `events.ts`
+  - `admissionRequested`
+  - `appointmentBooked`
+  - `appointmentCancelled`
+  - `appointmentNoShow`
+  - `appointmentRescheduled`
+  - `benchStateSet`
+  - `consultFeeOverridden`
+  - `consultationCompleted`
+  - `consultationParked`
+  - `consultationResumed`
+  - `consultationStarted`
+  - `dangerFlagSchema`
+  - `dayReportPatientsListed`
+  - `doctorLeaveScheduled`
+  - `patientCheckedIn`
+  - `prescriptionIssued`
+  - `queueCalled`
+  - `queueEscalated`
+  - `queueEscalationCancelled`
+  - `queueFeeStatusChanged`
+  - `queueSessionClosed`
+  - `queueSessionOpened`
+  - `queueSessionReopened`
+  - `queueSkipUndone`
+  - `queueSkipped`
+  - `referralIssued`
+  - `rxQrSignatureFailed`
+  - `visitAbandoned`
+  - `visitMovedDepartment`
+  - `visitOpened`
+  - `visitReclassified`
+  - `visitTransferred`
+  - `vitalsAmended`
+  - `vitalsDangerFlagged`
+  - `vitalsRecheckDemanded`
+  - `vitalsRecheckWithdrawn`
+  - `vitalsRecorded`
+  - types: `DangerFlag`
+- `fhir.ts`
+  - `EYE_TEXT`
+  - types: `Eye`, `RxLine`, `TaperStep`
+- `manifest.ts`
+  - `opdManifest: ModuleManifest`
+- `masters.ts`
+  - `getDoctor(db: Db, id: string): Promise<DoctorRow | null>`
+  - `listDepartments(db: Db, opts: { activeOnly?: boolean } = {}): Promise<DepartmentRow[]>`
+  - `listDoctors(db: Db, opts: { departmentId?: string; activeOnly?: boolean } = {}): Promise<DoctorRow[]>`
+  - types: `DoctorRow`
+- `modules/patients/duplicates.ts`
+  - types: `DuplicateCandidate`
+- `opd.module.ts`
+  - `class OpdModule`
+- `prescription-drafts.ts`
+  - `discardDraft(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<DraftRow | null>`
+  - `getPendingDraft(db: Db | Tx, encounterId: string): Promise<DraftRow | null>`
+  - `issueDraft(db: Db, actor: Actor, cfg: AppConfig, encounterId: string, overrides: Omit<IssuePrescriptionInput, "lines"> = {}, now: Date = ne…`
+  - `saveDraft(db: Db, actor: Actor, encounterId: string, input: SaveDraftInput, now: Date = new Date()): Promise<DraftRow>`
+  - types: `DraftRow`, `SaveDraftInput`
+- `prescriptions.ts`
+  - `getPrescription(db: Db, actor: Actor, prescriptionId: string): Promise<PrescriptionRow | null>`
+  - `issuePharmacyPaperPrescription(db: Db, actor: Actor, cfg: AppConfig, encounterId: string, input: { lines: RxLine[]; doctorId?: string; outs…`
+  - `listPrescriptions(db: Db, actor: Actor, encounterId: string): Promise<PrescriptionRow[]>`
+  - `matchAllergies(lines: { drug: string }[], activeSubstances: string[]): AllergyMatch[]`
+  - `runRxChecks(db: Db, patientId: string, lines: RxLine[], now: Date, opts: { excludeEncounterId?: string } = {}): Promise<RxCheckOutcome>`
+  - `verifyPrescriptionQr(db: Db, cfg: AppConfig, actor: Actor, payload: string): Promise<RxVerifyResult>`
+  - types: `AllergyMatch`, `AllergyOverride`, `IssuedPrescription`, `OutsidePrescriber`, `RxCheckOutcome`, `RxNotice`, `RxOverride`, `RxVerifyReason`, `RxVerifyResult`
+- `queue-engine.ts`
+  - `classOf(e: QueueEntryState, now: Date): QueueClass`
+  - `nextInQueue(entries: QueueEntryState[], now: Date, policy: QueuePolicy, callsMade: number): QueueEntryState | null`
+  - `orderQueue(entries: QueueEntryState[], now: Date, policy: QueuePolicy, callsMade: number): QueueEntryState[]`
+  - types: `QueueClass`, `QueueEntryState`, `QueuePolicy`
+- `rx-checks.ts`
+  - `isCurrent(durationDays: number | null, issuedAt: Date, now: Date): { current: boolean; assumedCurrent: boolean }`
+- `skip-reasons.ts`
+  - `SKIP_REASONS`
+  - types: `SkipReason`
+- `visit-type.ts`
+  - `classifyVisit(anchor: { consultCompletedAt: Date; followUpDays: number } | null, now: Date, referredAt: Date | null = null): VisitType`
+  - types: `VisitType`
+- `vitals.ts`
+  - `lastActiveVitals(db: Db | Tx, patientId: string): Promise<VitalsRow | null>`
+- `walk-in.ts`
+  - `walkIn(db: Db, actor: Actor, input: WalkInInput & { join: "defer" }, idempotencyKey: string | undefined, now?: Date): Promise<WalkInDeferre…`
+  - types: `WalkInDeferredResult`, `WalkInInput`, `WalkInResult`
+- `workflow-def.ts`
+  - `OPD_VISIT_DEFINITION_JSON`
+  - `OPD_VISIT_DEF_KEY`
+  - `OPD_VISIT_STATES`
+  - `opdVisitDefinition(): WorkflowDefinition`
+  - types: `OpdVisitState`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-- `opd_advice_templates` (`opdAdviceTemplates`)
-- `opd_appointments` (`opdAppointments`)
-- `opd_complaint_concepts` (`opdComplaintConcepts`)
-- `opd_complaint_term_usage` (`opdComplaintTermUsage`)
-- `opd_complaint_terms` (`opdComplaintTerms`)
-- `opd_config` (`opdConfig`)
-- `opd_consult_layouts` (`opdConsultLayouts`)
-- `opd_department_tokens` (`opdDepartmentTokens`)
-- `opd_departments` (`opdDepartments`)
-- `opd_doctor_leaves` (`opdDoctorLeaves`)
-- `opd_doctor_schedules` (`opdDoctorSchedules`)
-- `opd_doctors` (`opdDoctors`)
-- `opd_encounter_diagnoses` (`opdEncounterDiagnoses`)
-- `opd_encounters` (`opdEncounters`)
-- `opd_patient_reminders` (`opdPatientReminders`)
-- `opd_prescription_drafts` (`opdPrescriptionDrafts`)
-- `opd_prescriptions` (`opdPrescriptions`)
-- `opd_queue_entries` (`opdQueueEntries`)
-- `opd_queue_sessions` (`opdQueueSessions`)
-- `opd_section_records` (`opdSectionRecords`)
-- `opd_vitals` (`opdVitals`)
+`opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_section_records`, `opd_vitals`
 
-References tables in: `patients`, `resources`
+Foreign keys into: `patients`, `resources`
 
 ## HTTP routes (120)
 
-| verb | path | controller |
-|---|---|---|
-| DELETE | `/opd/advice-templates/:id` | `opd-advice.controller.ts` |
-| GET | `/opd/advice-templates` | `opd-advice.controller.ts` |
-| POST | `/opd/advice-templates` | `opd-advice.controller.ts` |
-| POST | `/opd/appointments/:id/cancel` | `opd-visits.controller.ts` |
-| POST | `/opd/appointments/:id/check-in` | `opd-visits.controller.ts` |
-| POST | `/opd/appointments/:id/reschedule` | `opd-visits.controller.ts` |
-| GET | `/opd/appointments` | `opd-visits.controller.ts` |
-| POST | `/opd/appointments` | `opd-visits.controller.ts` |
-| GET | `/opd/bench/locate` | `opd-visits.controller.ts` |
-| GET | `/opd/bench` | `opd-visits.controller.ts` |
-| GET | `/opd/cds/complete/allergen` | `opd-cds.controller.ts` |
-| GET | `/opd/cds/complete/complaint` | `opd-cds.controller.ts` |
-| GET | `/opd/cds/complete/diagnosis` | `opd-cds.controller.ts` |
-| GET | `/opd/cds/complete/term` | `opd-cds.controller.ts` |
-| GET | `/opd/cds/recognise/complaint` | `opd-cds.controller.ts` |
-| GET | `/opd/cds/regimen` | `opd-cds.controller.ts` |
-| GET | `/opd/cds/suggest/tests` | `opd-cds.controller.ts` |
-| GET | `/opd/cds/suggest` | `opd-cds.controller.ts` |
-| PUT | `/opd/config/counter-flow` | `opd-masters.controller.ts` |
-| GET | `/opd/config` | `opd-masters.controller.ts` |
-| PUT | `/opd/config` | `opd-masters.controller.ts` |
-| GET | `/opd/continuity` | `opd-visits.controller.ts` |
-| GET | `/opd/definition` | `opd-masters.controller.ts` |
-| PATCH | `/opd/departments/:id` | `opd-masters.controller.ts` |
-| GET | `/opd/departments` | `opd-masters.controller.ts` |
-| POST | `/opd/departments` | `opd-masters.controller.ts` |
-| GET | `/opd/doctors/:id/schedules` | `opd-masters.controller.ts` |
-| PUT | `/opd/doctors/:id/schedules` | `opd-masters.controller.ts` |
-| GET | `/opd/doctors/:id` | `opd-masters.controller.ts` |
-| PATCH | `/opd/doctors/:id` | `opd-masters.controller.ts` |
-| GET | `/opd/doctors` | `opd-masters.controller.ts` |
-| POST | `/opd/doctors` | `opd-masters.controller.ts` |
-| GET | `/opd/layouts/:departmentId` | `opd-masters.controller.ts` |
-| PUT | `/opd/layouts/:departmentId` | `opd-masters.controller.ts` |
-| POST | `/opd/leaves/:id/cancel` | `opd-masters.controller.ts` |
-| GET | `/opd/leaves` | `opd-masters.controller.ts` |
-| POST | `/opd/leaves` | `opd-masters.controller.ts` |
-| GET | `/opd/me/doctor` | `opd-masters.controller.ts` |
-| GET | `/opd/me/layout` | `opd-masters.controller.ts` |
-| PUT | `/opd/me/layout` | `opd-masters.controller.ts` |
-| GET | `/opd/patients/:patientId/prescriptions` | `opd-visits.controller.ts` |
-| POST | `/opd/patients/:patientId/reminder/clear` | `opd-queue.controller.ts` |
-| GET | `/opd/patients/:patientId/reminder` | `opd-queue.controller.ts` |
-| PUT | `/opd/patients/:patientId/reminder` | `opd-queue.controller.ts` |
-| GET | `/opd/patients/:patientId/timeline` | `opd-visits.controller.ts` |
-| GET | `/opd/patients/:patientId/vitals` | `opd-visits.controller.ts` |
-| GET | `/opd/prescriptions/:id/print` | `opd-queue.controller.ts` |
-| POST | `/opd/prescriptions/verify` | `opd-queue.controller.ts` |
-| POST | `/opd/queues/:sessionId/call-next` | `opd-queue.controller.ts` |
-| POST | `/opd/queues/:sessionId/status` | `opd-queue.controller.ts` |
-| GET | `/opd/queues/board` | `opd-queue.controller.ts` |
-| POST | `/opd/queues/entries/:entryId/recall` | `opd-queue.controller.ts` |
-| POST | `/opd/queues/entries/:entryId/skip` | `opd-queue.controller.ts` |
-| POST | `/opd/queues/entries/:entryId/undo-skip` | `opd-queue.controller.ts` |
-| GET | `/opd/queues/summary` | `opd-queue.controller.ts` |
-| POST | `/opd/queues/transfer` | `opd-queue.controller.ts` |
-| GET | `/opd/queues` | `opd-queue.controller.ts` |
-| GET | `/opd/reports/consultations/csv` | `opd-reports.controller.ts` |
-| GET | `/opd/reports/consultations/departments/:departmentId/csv` | `opd-reports.controller.ts` |
-| GET | `/opd/reports/consultations/departments/:departmentId/document` | `opd-reports.controller.ts` |
-| GET | `/opd/reports/consultations/departments/:departmentId` | `opd-reports.controller.ts` |
-| GET | `/opd/reports/consultations/document` | `opd-reports.controller.ts` |
-| GET | `/opd/reports/consultations` | `opd-reports.controller.ts` |
-| PATCH | `/opd/rooms/:id` | `opd-masters.controller.ts` |
-| GET | `/opd/rooms` | `opd-masters.controller.ts` |
-| POST | `/opd/rooms` | `opd-masters.controller.ts` |
-| POST | `/opd/slips/:documentId/retake` | `opd-visits.controller.ts` |
-| GET | `/opd/slips/find` | `opd-visits.controller.ts` |
-| GET | `/opd/slips/today` | `opd-visits.controller.ts` |
-| GET | `/opd/slots` | `opd-visits.controller.ts` |
-| POST | `/opd/triage` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/abandon` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/bench-state` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/consult/complete` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/consult/lease/release` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/consult/lease` | `opd-queue.controller.ts` |
-| PUT | `/opd/visits/:id/consult/note` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/consult/open-unpaid` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/consult/park` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/consult/resume` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/consult/start` | `opd-queue.controller.ts` |
-| GET | `/opd/visits/:id/counter-state` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/escalation/cancel` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/escalation/escalate` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/escalation/recheck` | `opd-visits.controller.ts` |
-| GET | `/opd/visits/:id/escalation` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/fee-bypass` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/glasses-rx/print` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/join-queue` | `opd-visits.controller.ts` |
-| GET | `/opd/visits/:id/layout` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/move-department` | `opd-visits.controller.ts` |
-| GET | `/opd/visits/:id/move-preview` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/prescription-draft/discard` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/prescription-draft/issue` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/prescription-draft/transcribe` | `opd-queue.controller.ts` |
-| GET | `/opd/visits/:id/prescription-draft` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/prescription-draft` | `opd-queue.controller.ts` |
-| GET | `/opd/visits/:id/prescriptions` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/prescriptions` | `opd-queue.controller.ts` |
-| GET | `/opd/visits/:id/prestage` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/re-enter` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/reclassify` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/refer` | `opd-queue.controller.ts` |
-| POST | `/opd/visits/:id/rx-precheck` | `opd-queue.controller.ts` |
-| PUT | `/opd/visits/:id/sections/:key` | `opd-queue.controller.ts` |
-| GET | `/opd/visits/:id/sections` | `opd-queue.controller.ts` |
-| GET | `/opd/visits/:id/vitals` | `opd-visits.controller.ts` |
-| POST | `/opd/visits/:id/vitals` | `opd-visits.controller.ts` |
-| GET | `/opd/visits/:id` | `opd-visits.controller.ts` |
-| GET | `/opd/visits/by-number/:visitNo` | `opd-visits.controller.ts` |
-| GET | `/opd/visits` | `opd-visits.controller.ts` |
-| POST | `/opd/visits` | `opd-visits.controller.ts` |
-| POST | `/opd/vitals/:vitalsId/amend` | `opd-visits.controller.ts` |
-| GET | `/opd/vitals/:vitalsId` | `opd-visits.controller.ts` |
-| GET | `/opd/vocabulary/concepts` | `opd-vocabulary.controller.ts` |
-| POST | `/opd/vocabulary/concepts` | `opd-vocabulary.controller.ts` |
-| POST | `/opd/vocabulary/map` | `opd-vocabulary.controller.ts` |
-| GET | `/opd/vocabulary/propose` | `opd-vocabulary.controller.ts` |
-| GET | `/opd/vocabulary/unmapped` | `opd-vocabulary.controller.ts` |
-| POST | `/opd/walk-in` | `opd-visits.controller.ts` |
+- `opd-advice.controller.ts` — 3: `/opd/advice-templates`
+- `opd-cds.controller.ts` — 8: `/opd/cds`
+- `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
+- `opd-queue.controller.ts` — 35: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
+- `opd-reports.controller.ts` — 6: `/opd/reports`
+- `opd-visits.controller.ts` — 39: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
+- `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/opd`

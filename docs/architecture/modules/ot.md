@@ -7,84 +7,189 @@ Source: `apps/core/src/modules/ot/`
 - **Depends on modules:** `billing`, `materials`, `patients`, `roster`, `tariff`
 - **Used by modules:** `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
+- **Subscribes to events:** `materialConsumed`, `patientMerged`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `ADULT_AGE_YEARS`, `BACKFILL_PHASES`, `CASH_LIMIT_PAISE`, `CLINICALLY_OVERRIDABLE_KINDS`, `COMPOSABLE_OUTCOMES`, `CONSENT_KINDS`, `CRITERIA_SEED_BODY`, `DAYCARE_CASE_DEF_KEY`, `DAYCARE_RECOVERY_BAY_CLASS`, `DEFINITION_PUBLISH_APPROVAL_TYPE`, `DEPOSIT_EXCEPTION_APPROVAL_TYPE`, `DEPOSIT_POLICY_SEED_BODY`, `IMPLANTABLE_STATES`, `NPO_CLEAR_FLUIDS_HOURS`, `NPO_SOLIDS_HOURS`, `OT_APPROVAL_TYPES`, `OT_CONSIGNMENT_STORE_CODE`, `OT_DEFINITION_KIND_VALUES`, `OT_DEFINITION_SEEDS`, `OT_ERROR_CODES`, `OT_EVENTS`, `OT_GATE_DEF_KEY`, `OT_IMPLANT_CONFIRMED_CONSUMER`, `OT_PATIENT_MERGED_CONSUMER`, `OT_RECOVERY_BAY_CODES`, `OT_RESOURCE_KINDS`, `OT_THEATRE_CODE`, `OT_WORKFLOW_DEFINITIONS`, `OtError`, `OtModule`, `PACU_THRESHOLDS_SEED_BODY`, `POSTPONE_REASONS`, `PROCEDURE_CLASS_VALUES`, `SPECIMEN_STATES`, `SURGEON_LATE_RUNGS_MINUTES`, `TERMINAL_GATE_STATES`, `activeDefinition`, `activeDefinitionRow`, `admitToBay`, `assertCashWithinEncounterLimit`, `backfillCase`, `bookCase`, `cancelCase`, `caseGates`, `caseState`, `changePayerClass`, `clampImplantUnitPaise`, `completeChecklist`, `composeDischargeBill`, `consentEvidence`, `consentSchema`, `convertToAdmission`, `countsFor`, `createSpecimen`, `criteriaBodySchema`, `criteriaFor`, `currentState`, `daycareCaseDefinition`, `deployImplant`, `deployingImplants`, `depositPolicyBodySchema`, `dischargeDaycare`, `dispatchSpecimen`, `draftDefinition`, `encounterCashPaise`, `evaluateDischargeReady`, `evaluateReadiness`, `explantImplant`, `finalCountVerdict`, `flagLateSurgeons`, `frozenCeilingPaisePerBase`, `gateState`, `grantedShortfallPaise`, `handleMaterialConsumed`, `handlePatientMerged`, `heldPaise`, `holdDeposit`, `implantConfirmedConsumer`, `implantsFor`, `intendedPayerFor`, `istTimePassed`, `listForDay`, `markAbsconded`, `markClosure`, `markIncision`, `openCountMismatch`, `openHolds`, `otGateDefinition`, `otHttpStatus`, `otManifest`, `overrideGate`, `pacuThresholdsBodySchema`, `parseDefinitionBody`, `patientMergedConsumer`, `postponeCase`, `printPack`, `privilegesBodySchema`, `publishDefinition`, `publishList`, `readinessOf`, `recordCount`, `recordDeathOnTable`, `recordDoseLog`, `recordProcedureConverted`, `recordScore`, `recoveryBoard`, `registerOtApprovalTypes`, `registerOtDutyEvidence`, `registerOtEncounterResolver`, `releaseHolds`, `requestDefinitionPublish`, `requestDepositException`, `requiredDeposit`, `resequence`, `satisfyGate`, `scoresFor`, `settleDischargeBill`, `signIn`, `signOut`, `specimensFor`, `theatreTimesOf`, `timeOut`, `toHolding`, `unbilledDaycare`, `validateConsent`, `verifyEscort`, `verifyHolding`, `waiveGate`, `wheelOut`
-
-Types: `BackfillPhase`, `BookCaseInput`, `BookCaseResult`, `ChecklistPhase`, `ComposedBill`, `ConsentEvidence`, `ConsentKind`, `CountRound`, `CountRow`, `CriteriaBody`, `CriteriaEntry`, `DeployImplantInput`, `DepositHoldRow`, `DepositPolicyBody`, `EscortVerification`, `GateRow`, `ImplantConfirmation`, `ImplantLine`, `ImplantRow`, `ListItem`, `MergeRewrite`, `OtDefinitionKind`, `OtDefinitionRow`, `OtErrorCode`, `OtListRow`, `PacuScoreRow`, `PacuThresholdsBody`, `PayerClass`, `PrivilegesBody`, `ProcedureClass`, `ReadinessVerdict`, `RecordCountInput`, `RequiredDepositInput`, `SettleResult`, `SpecimenRow`, `TheatreTime`
+- `approval-types.ts`
+  - `DEFINITION_PUBLISH_APPROVAL_TYPE`
+  - `DEPOSIT_EXCEPTION_APPROVAL_TYPE`
+  - `OT_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `registerOtApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `bill.ts`
+  - `COMPOSABLE_OUTCOMES`
+  - `clampImplantUnitPaise(tariffUnitPaise: number, row: { mrpPaisePerBase: number | null; ceilingPaisePerBase: number | null }): { capUnitPaise…`
+  - `composeDischargeBill(db: Db, encounterId: string, now: Date = new Date()): Promise<ComposedBill>`
+  - `frozenCeilingPaisePerBase(exec: Db | Tx, ledgerEntryId: string): Promise<number | null>`
+  - `settleDischargeBill(db: Db, actor: Actor, input: { encounterId: string; tenders?: { mode: "cash" | "upi" | "card"; amountPaise: number; ref…`
+  - `unbilledDaycare(db: Db, day: string): Promise<{ encounterId: string; encounterNo: string; outcome: string | null }[]>`
+  - types: `ComposedBill`, `ImplantLine`, `SettleResult`
+- `booking.ts`
+  - `bookCase(db: Db, actor: Actor, input: BookCaseInput, now: Date = new Date()): Promise<BookCaseResult>`
+  - `cancelCase(db: Db, actor: Actor, input: { caseId: string; reason: string; attribution: "patient" | "hospital" | "surgeon" | "payer" | "clin…`
+  - `caseState(exec: Db | Tx, caseId: string): Promise<string>`
+  - `changePayerClass(db: Db, actor: Actor, input: { encounterId: string; to: PayerClass; reason: string; sanctionedPaise?: number; creditAvaila…`
+  - `currentState(exec: Db | Tx, workflowInstanceId: string): Promise<string>`
+  - `postponeCase(db: Db, actor: Actor, input: { caseId: string; reason: (typeof POSTPONE_REASONS)[number]; newListDate: string }): Promise<{ st…`
+  - types: `BookCaseInput`, `BookCaseResult`
+- `cash-limit.ts`
+  - `CASH_LIMIT_PAISE`
+  - `assertCashWithinEncounterLimit(exec: Db | Tx, encounterId: string, encounterNo: string, incomingCashPaise: number): Promise<void>`
+  - `encounterCashPaise(exec: Db | Tx, encounterId: string, encounterNo: string): Promise<number>`
+- `cockpit.ts`
+  - `BACKFILL_PHASES`
+  - `backfillCase(db: Db, actor: Actor, input: { caseId: string; phases: { phase: BackfillPhase; occurredAt: Date }[]; reason: string }): Promis…`
+  - `completeChecklist(db: Db, actor: Actor, input: { caseId: string; phase: ChecklistPhase; items: unknown; participants: string[]; halt?: { re…`
+  - `markClosure(db: Db, actor: Actor, caseId: string): Promise<{ state: string; closure: Date }>`
+  - `markIncision(db: Db, actor: Actor, caseId: string): Promise<{ state: string; incision: Date }>`
+  - `recordDeathOnTable(db: Db, actor: Actor, input: { caseId: string; at?: Date; mlcApplicable: boolean; note: string }): Promise<{ state: stri…`
+  - `recordDoseLog(db: Db, actor: Actor, input: { caseId: string; dapCgyCm2: number; fluoroSeconds: number; operatorUserId: string }): Promise<v…`
+  - `recordProcedureConverted(db: Db, actor: Actor, input: { caseId: string; toProcedureCode: string; reason: string }): Promise<{ consentCovere…`
+  - `signIn(db: Db, actor: Actor, caseId: string): Promise<{ state: string; wheelIn: Date }>`
+  - `signOut(db: Db, actor: Actor, caseId: string): Promise<{ state: string }>`
+  - `timeOut(db: Db, actor: Actor, caseId: string): Promise<{ state: string }>`
+  - `toHolding(db: Db, actor: Actor, caseId: string): Promise<{ state: string }>`
+  - `verifyHolding(db: Db, cfg: AppConfig, actor: Actor, caseId: string, qrPayload: string): Promise<{ ok: true } | { ok: false; reason: string …`
+  - `wheelOut(db: Db, actor: Actor, caseId: string): Promise<{ state: string; wheelOut: Date }>`
+  - types: `BackfillPhase`, `ChecklistPhase`
+- `consents.ts`
+  - `CONSENT_KINDS`
+  - `consentEvidence(consent: ConsentEvidence, actor: Actor): Record<string, unknown>`
+  - `consentSchema`
+  - `validateConsent(tx: Tx, caseId: string, raw: unknown, at: Date = new Date()): Promise<ConsentEvidence>`
+  - types: `ConsentEvidence`, `ConsentKind`
+- `consumers.ts`
+  - `OT_IMPLANT_CONFIRMED_CONSUMER`
+  - `OT_PATIENT_MERGED_CONSUMER`
+  - `handleMaterialConsumed(tx: Tx, eventId: string, payload: unknown): Promise<ImplantConfirmation>`
+  - `handlePatientMerged(tx: Tx, eventId: string, payload: unknown): Promise<MergeRewrite>`
+  - `implantConfirmedConsumer(db: Db): Handler`
+  - `patientMergedConsumer(db: Db): Handler`
+  - types: `ImplantConfirmation`, `MergeRewrite`
+- `counts.ts`
+  - `countsFor(exec: Db | Tx, caseId: string): Promise<CountRow[]>`
+  - `finalCountVerdict(rows: CountRow[]): { ok: boolean; mismatches: CountRow[]; counted: number }`
+  - `openCountMismatch(tx: Tx, actor: Actor, caseId: string, mismatches: CountRow[]): Promise<{ incidentId: string }>`
+  - `recordCount(db: Db, actor: Actor, input: RecordCountInput): Promise<{ countId: string; version: number }>`
+  - types: `CountRound`, `CountRow`, `RecordCountInput`
+- `definitions.ts`
+  - `CRITERIA_SEED_BODY`
+  - `DEPOSIT_POLICY_SEED_BODY`
+  - `OT_DEFINITION_SEEDS: { kind: OtDefinitionKind; body: unknown }[]`
+  - `PACU_THRESHOLDS_SEED_BODY`
+  - `PROCEDURE_CLASS_VALUES`
+  - `activeDefinition(exec: Db | Tx, kind: K): Promise<z.infer<(typeof SCHEMA_BY_KIND)[K]>>`
+  - `activeDefinitionRow(exec: Db | Tx, kind: OtDefinitionKind): Promise<OtDefinitionRow | undefined>`
+  - `criteriaBodySchema`
+  - `criteriaFor(body: CriteriaBody, procedure: string): CriteriaEntry | undefined`
+  - `depositPolicyBodySchema`
+  - `draftDefinition(tx: Tx, actor: Actor, input: { kind: OtDefinitionKind; body: unknown }): Promise<{ definitionId: string; version: number }>`
+  - `pacuThresholdsBodySchema`
+  - `parseDefinitionBody(kind: K, body: unknown): z.infer<(typeof SCHEMA_BY_KIND)[K]>`
+  - `privilegesBodySchema`
+  - `publishDefinition(db: Db, actor: Actor, input: { definitionId: string; approvalId: string }): Promise<{ kind: OtDefinitionKind; version: nu…`
+  - `requestDefinitionPublish(tx: Tx, actor: Actor, definitionId: string): Promise<{ approvalId: string }>`
+  - types: `CriteriaBody`, `CriteriaEntry`, `DepositPolicyBody`, `OtDefinitionKind`, `OtDefinitionRow`, `PacuThresholdsBody`, `PrivilegesBody`, `ProcedureClass`
+- `deposit.ts`
+  - `grantedShortfallPaise(tx: Tx, encounterId: string, approvalId: string | null): Promise<number>`
+  - `heldPaise(exec: Tx, encounterId: string): Promise<number>`
+  - `holdDeposit(tx: Tx, actor: Actor, input: { encounterId: string; receiptId: string; amountPaise: number; paidBy?: { name: string; relation: …`
+  - `openHolds(exec: Tx, encounterId: string): Promise<DepositHoldRow[]>`
+  - `releaseHolds(tx: Tx, encounterId: string, reason: string): Promise<{ released: number; amountPaise: number }>`
+  - `requestDepositException(tx: Tx, actor: Actor, input: { encounterId: string; patientId: string; allowedShortfallPaise: number; reason: strin…`
+  - `requiredDeposit(policy: DepositPolicyBody, input: RequiredDepositInput): number`
+  - types: `DepositHoldRow`, `PayerClass`, `RequiredDepositInput`
+- `duty-evidence.ts`
+  - `registerOtDutyEvidence(): () => void`
+  - `theatreTimesOf(exec: Db | Tx, userIds: readonly string[], fromIstDate: string, toIstDate: string): Promise<TheatreTime[]>`
+  - types: `TheatreTime`
+- `errors.ts`
+  - `OT_ERROR_CODES`
+  - `class OtError`
+  - `otHttpStatus(code: OtErrorCode): number`
+  - types: `OtErrorCode`
+- `events.ts`
+  - `OT_EVENTS`
+- `gates.ts`
+  - `ADULT_AGE_YEARS`
+  - `CLINICALLY_OVERRIDABLE_KINDS`
+  - `NPO_CLEAR_FLUIDS_HOURS`
+  - `NPO_SOLIDS_HOURS`
+  - `TERMINAL_GATE_STATES`
+  - `caseGates(exec: Db | Tx, caseId: string): Promise<{ id: string; kind: string; state: string; waivable: boolean }[]>`
+  - `evaluateReadiness(tx: Tx, caseId: string): Promise<{ state: string; open: string[] }>`
+  - `gateState(exec: Db | Tx, gateId: string): Promise<string>`
+  - `overrideGate(tx: Tx, actor: Actor, gateId: string, input: { surgeonId: string; anaesthetistId: string; reason: string }): Promise<{ state: …`
+  - `satisfyGate(tx: Tx, actor: Actor, gateId: string, evidence: unknown): Promise<{ state: string }>`
+  - `waiveGate(tx: Tx, actor: Actor, gateId: string, reason: string): Promise<{ state: string }>`
+  - types: `GateRow`
+- `implants.ts`
+  - `IMPLANTABLE_STATES`
+  - `deployImplant(tx: Tx, actor: Actor, input: DeployImplantInput, occurredAt: Date = new Date()): Promise<{ implantId: string; state: string }>`
+  - `deployingImplants(exec: Db | Tx, caseId: string): Promise<ImplantRow[]>`
+  - `explantImplant(tx: Tx, actor: Actor, input: { implantId: string; reason: string }): Promise<void>`
+  - `implantsFor(exec: Db | Tx, caseId: string): Promise<ImplantRow[]>`
+  - types: `DeployImplantInput`, `ImplantRow`
+- `kernel/db/schema/ot.ts`
+  - `OT_DEFINITION_KIND_VALUES`
+- `kinds.ts`
+  - `DAYCARE_RECOVERY_BAY_CLASS`
+  - `OT_CONSIGNMENT_STORE_CODE`
+  - `OT_RECOVERY_BAY_CODES`
+  - `OT_RESOURCE_KINDS: readonly ResourceKindDecl[]`
+  - `OT_THEATRE_CODE`
+- `lists.ts`
+  - `SURGEON_LATE_RUNGS_MINUTES`
+  - `flagLateSurgeons(db: Db, now: Date = new Date()): Promise<number>`
+  - `listForDay(exec: Db | Tx, actor: Actor, listDate: string, theatreResourceId: string): Promise<ListItem[]>`
+  - `printPack(exec: Db | Tx, caseId: string): Promise<{ caseId: string; procedureCode: string; laterality: string | null; listDate: string; seq…`
+  - `publishList(db: Db, actor: Actor, input: { listDate: string; theatreResourceId: string }): Promise<{ listId: string; version: number; caseC…`
+  - `resequence(db: Db, actor: Actor, input: { listDate: string; theatreResourceId: string; caseIdsInOrder: string[]; reason?: string | null; })…`
+  - types: `ListItem`, `OtListRow`
+- `manifest.ts`
+  - `otManifest: ModuleManifest`
+- `ot.module.ts`
+  - `class OtModule`
+  - `intendedPayerFor(payerClass: string): string`
+  - `registerOtEncounterResolver(): () => void`
+- `recovery.ts`
+  - `admitToBay(db: Db, actor: Actor, input: { encounterId: string; bayResourceId: string }): Promise<void>`
+  - `convertToAdmission(db: Db, actor: Actor, input: { encounterId: string; caseId: string; destination?: string; reason: string }): Promise<{ s…`
+  - `dischargeDaycare(db: Db, actor: Actor, input: { encounterId: string; caseId: string; isbarAcknowledgedBy: string }): Promise<{ state: strin…`
+  - `evaluateDischargeReady(db: Db, input: { encounterId: string; caseId: string }, now: Date = new Date()): Promise<ReadinessVerdict & { state:…`
+  - `istTimePassed(now: Date, cutoffHhMm: string): boolean`
+  - `markAbsconded(db: Db, actor: Actor, input: { encounterId: string; caseId: string; noticedAt?: Date }): Promise<{ state: string }>`
+  - `readinessOf(scores: { total: number; occurredAt: Date }[], scale: { threshold: number; minScores: number; minGapMinutes: number }): Readine…`
+  - `recordScore(db: Db, actor: Actor, input: { encounterId: string; caseId: string; values: Record<string, number>; occurredAt?: Date }): Promi…`
+  - `recoveryBoard(exec: Db | Tx, actor: Actor): Promise<{ bayResourceId: string; code: string; status: string; occupantType: string | null; occ…`
+  - `scoresFor(exec: Db | Tx, encounterId: string): Promise<PacuScoreRow[]>`
+  - `verifyEscort(db: Db, actor: Actor, input: { encounterId: string; at: "checkin" | "discharge"; escort: EscortVerification }): Promise<void>`
+  - types: `EscortVerification`, `PacuScoreRow`, `ReadinessVerdict`
+- `specimens.ts`
+  - `SPECIMEN_STATES`
+  - `createSpecimen(tx: Tx, actor: Actor, input: { caseId: string; site: string; container: string; serviceDate: string }): Promise<{ specimenId…`
+  - `dispatchSpecimen(tx: Tx, actor: Actor, input: { specimenId: string; destination: string }): Promise<void>`
+  - `specimensFor(exec: Db | Tx, caseId: string): Promise<SpecimenRow[]>`
+  - types: `SpecimenRow`
+- `workflow-def.ts`
+  - `DAYCARE_CASE_DEF_KEY`
+  - `OT_GATE_DEF_KEY`
+  - `OT_WORKFLOW_DEFINITIONS: readonly WorkflowDefinition[]`
+  - `POSTPONE_REASONS`
+  - `daycareCaseDefinition: WorkflowDefinition`
+  - `otGateDefinition: WorkflowDefinition`
 
 ## Tables (`kernel/db/schema/ot.ts`)
 
-- `daycare_encounters` (`daycareEncounters`)
-- `ot_case_gates` (`otCaseGates`)
-- `ot_case_implants` (`otCaseImplants`)
-- `ot_cases` (`otCases`)
-- `ot_checklist_runs` (`otChecklistRuns`)
-- `ot_counts` (`otCounts`)
-- `ot_definitions` (`otDefinitions`)
-- `ot_deposit_holds` (`otDepositHolds`)
-- `ot_incidents` (`otIncidents`)
-- `ot_lists` (`otLists`)
-- `ot_specimens` (`otSpecimens`)
-- `pacu_scores` (`pacuScores`)
+`daycare_encounters`, `ot_case_gates`, `ot_case_implants`, `ot_cases`, `ot_checklist_runs`, `ot_counts`, `ot_definitions`, `ot_deposit_holds`, `ot_incidents`, `ot_lists`, `ot_specimens`, `pacu_scores`
 
-References tables in: `patients`, `resources`
+Foreign keys into: `patients`, `resources`
 
 ## HTTP routes (53)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/ot/cases/:caseId/cancel` | `ot-cases.controller.ts` |
-| POST | `/ot/cases/:caseId/evaluate-readiness` | `ot-cases.controller.ts` |
-| GET | `/ot/cases/:caseId/gates` | `ot-cases.controller.ts` |
-| GET | `/ot/cases/:caseId/pack` | `ot-cases.controller.ts` |
-| POST | `/ot/cases/:caseId/postpone` | `ot-cases.controller.ts` |
-| POST | `/ot/cases` | `ot-cases.controller.ts` |
-| POST | `/ot/cockpit/:caseId/backfill` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/checklist` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/closure` | `ot-cockpit.controller.ts` |
-| GET | `/ot/cockpit/:caseId/counts` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/counts` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/death-on-table` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/dose-log` | `ot-cockpit.controller.ts` |
-| GET | `/ot/cockpit/:caseId/implants` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/implants` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/incision` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/procedure-converted` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/sign-in` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/sign-out` | `ot-cockpit.controller.ts` |
-| GET | `/ot/cockpit/:caseId/specimens` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/specimens` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/time-out` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/to-holding` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/verify-holding` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/:caseId/wheel-out` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/implants/:implantId/explant` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/specimens/:specimenId/dispatch` | `ot-cockpit.controller.ts` |
-| POST | `/ot/cockpit/theatre/:theatreResourceId/return-to-service` | `ot-cockpit.controller.ts` |
-| POST | `/ot/definitions/:definitionId/publish` | `ot-definitions.controller.ts` |
-| POST | `/ot/definitions/:definitionId/request-publish` | `ot-definitions.controller.ts` |
-| GET | `/ot/definitions/:kind` | `ot-definitions.controller.ts` |
-| POST | `/ot/definitions/draft` | `ot-definitions.controller.ts` |
-| POST | `/ot/encounters/:encounterId/deposit-exception` | `ot-cases.controller.ts` |
-| POST | `/ot/encounters/:encounterId/deposit-hold` | `ot-cases.controller.ts` |
-| POST | `/ot/encounters/:encounterId/payer-class` | `ot-cases.controller.ts` |
-| POST | `/ot/encounters/:encounterId/release-holds` | `ot-cases.controller.ts` |
-| POST | `/ot/gates/:gateId/override` | `ot-cases.controller.ts` |
-| POST | `/ot/gates/:gateId/satisfy` | `ot-cases.controller.ts` |
-| POST | `/ot/gates/:gateId/waive` | `ot-cases.controller.ts` |
-| GET | `/ot/list` | `ot-cases.controller.ts` |
-| POST | `/ot/lists/publish` | `ot-cases.controller.ts` |
-| POST | `/ot/lists/resequence` | `ot-cases.controller.ts` |
-| POST | `/ot/recovery/:encounterId/absconded` | `ot-recovery.controller.ts` |
-| POST | `/ot/recovery/:encounterId/admit` | `ot-recovery.controller.ts` |
-| GET | `/ot/recovery/:encounterId/bill-preview` | `ot-recovery.controller.ts` |
-| POST | `/ot/recovery/:encounterId/bill` | `ot-recovery.controller.ts` |
-| POST | `/ot/recovery/:encounterId/convert` | `ot-recovery.controller.ts` |
-| POST | `/ot/recovery/:encounterId/discharge` | `ot-recovery.controller.ts` |
-| POST | `/ot/recovery/:encounterId/escort` | `ot-recovery.controller.ts` |
-| GET | `/ot/recovery/:encounterId/scores` | `ot-recovery.controller.ts` |
-| POST | `/ot/recovery/:encounterId/scores` | `ot-recovery.controller.ts` |
-| GET | `/ot/recovery/board` | `ot-recovery.controller.ts` |
-| GET | `/ot/recovery/unbilled` | `ot-recovery.controller.ts` |
+- `ot-cases.controller.ts` — 16: `/ot/cases`, `/ot/encounters`, `/ot/gates`, `/ot/list`, `/ot/lists`
+- `ot-cockpit.controller.ts` — 22: `/ot/cockpit`
+- `ot-definitions.controller.ts` — 4: `/ot/definitions`
+- `ot-recovery.controller.ts` — 11: `/ot/recovery`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ot`

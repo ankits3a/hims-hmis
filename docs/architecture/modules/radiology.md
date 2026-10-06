@@ -7,154 +7,433 @@ Source: `apps/core/src/modules/radiology/`
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
 - **Used by modules:** `abdm`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `resources`, `tokens`, `workflow`
+- **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `ACKNOWLEDGED_LOG_HOURS`, `ADVISORY_DUPLICATE_DAYS`, `BEDSIDE_LOCATION_MAX_LENGTH`, `BOOKED_STUDY_STATUSES`, `CHASER_ACTOR`, `COMPLETED_VISIT_GRACE_DAYS`, `CONSULTANT_ROLE`, `CONTRAST_ALLERGEN_TERMS`, `CONTRAST_ALLERGY_SUFFIX`, `CONTRAST_RECORDABLE_STATUSES`, `CREATININE_UMOL_PER_MG_DL`, `CRITICAL_RUNG_ROLES`, `CRITICAL_TERMS`, `DEFAULT_PREGNANCY_POLICY`, `DEVICE_AE_TITLE_ATTRIBUTE`, `DEVICE_AE_TITLE_RE`, `DEVICE_MODALITY_ATTRIBUTE`, `DEVICE_PORTABLE_ATTRIBUTE`, `DICOM_MODALITY`, `DICOM_UID_MAX_LENGTH`, `DUPLICATE_WINDOW_HOURS`, `EGFR_HOLD_BELOW`, `EGFR_HYDRATE_BELOW`, `EGFR_METFORMIN_BELOW`, `ESCALATION_SPECS`, `FOLLOWUP_SWEEP_ACTOR`, `IMAGES_READ`, `IMAGING_DEFINITION_KINDS`, `IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE`, `IMAGING_ESCALATION_CAUSES`, `IMAGING_GATE_DEF_KEY`, `IMAGING_GATE_OVERRIDE_APPROVAL_TYPE`, `IMAGING_MODALITIES`, `IMAGING_RELEASE_UNPAID_APPROVAL_TYPE`, `IMAGING_STUDY_DEF_KEY`, `IMAGING_TERMINAL_GATE_STATES`, `INVESTIGATION_GST_CATEGORY`, `IR_KAR_SKIN_FOLLOWUP_MGY`, `IR_KAR_SRDL_MGY`, `IR_THRESHOLDS`, `IV_HYDRATION_INSTRUCTION`, `LATE_ENTRY_MINUTES`, `LMP_REASSURING_DAYS`, `METFORMIN_NOTE`, `MWL_READ`, `MWL_STATUSES`, `NEVER_OVERRIDABLE_KINDS`, `NEVER_WAIVABLE_KINDS`, `NORTH_STAR_SOURCES`, `PACS_INTERFACE`, `PACS_RECONCILE`, `PCPNDT_AGE_MAX_YEARS`, `PCPNDT_AGE_MIN_YEARS`, `PEER_SAMPLE_RATE`, `PRE_SIGN_CHECKS`, `RADIOLOGY_APPROVAL_GRANTED_CONSUMER`, `RADIOLOGY_APPROVAL_TYPES`, `RADIOLOGY_DEVICES_MANAGE`, `RADIOLOGY_ERROR_CODES`, `RADIOLOGY_ESCALATION_DEFINITIONS`, `RADIOLOGY_ORDER_PLACED_CONSUMER`, `RADIOLOGY_READY_ON_PAYMENT_CONSUMER`, `RADIOLOGY_RESOURCE_KINDS`, `RADIOLOGY_RULED_SERVICES`, `RADIOLOGY_WORKFLOW_DEFINITIONS`, `READY_ON_PAYMENT_EVENTS`, `RENAL_CREATININE_CEILING_UMOL_L`, `RENAL_VALIDITY_DAYS_ADMITTED`, `RENAL_VALIDITY_DAYS_CKD`, `RENAL_VALIDITY_DAYS_OPD`, `REPORT_SECTION_KEYS`, `REPORT_TEMPLATES`, `RESIDENT_ROLE`, `ROOM_GATE_KINDS`, `RadiologyError`, `SCHEDULABLE_DEVICE_STATUSES`, `SECOND_FACTOR_WINDOW_MINUTES`, `SETTABLE_DEVICE_STATUSES`, `STUDY_TYPE_SEEDS`, `STUDY_UID_ROOT`, `TAT_MINUTES`, `UNREAD_REPORT_HOURS`, `VIEWER_URL_PLACEHOLDERS`, `WAIVABLE_KINDS`, `WORKLIST_VIEWS`, `abortAcquisition`, `acknowledgeCritical`, `activateSeededDefinition`, `activeDefinition`, `activeDefinitionRow`, `activeDrafter`, `activeStudyTypes`, `addImagingViews`, `addInterval`, `ageInYearsOn`, `amendReport`, `applyGrantedGateOverride`, `approvalGrantedConsumer`, `assertContrastPermissible`, `assertNotTeleReader`, `assertPatientCopyReleasable`, `assessEgfr`, `attachUnmatched`, `authorisationOf`, `autoSlotWalkIn`, `bedsideStudiesFor`, `bookFollowup`, `bookedStudiesOn`, `cancelStudy`, `checkIn`, `ckdEpi2021`, `closeFollowup`, `contrastAdministrationsFor`, `contrastAllergySubstance`, `contrastReactionHistory`, `contrastReactionsFor`, `cosignReport`, `createImagingDevice`, `criticalCallBoard`, `criticalTermsIn`, `decideGateOverride`, `deriveGateSet`, `deviceDiary`, `doctorFollowups`, `doseDisagreement`, `draftDefinition`, `draftReport`, `drawPeerSample`, `dryRunPreSign`, `editImagingDevice`, `encounterPayer`, `ensureEscalationDefinitions`, `escalationCauses`, `escalationList`, `evaluateReadiness`, `flagCritical`, `followupBoard`, `followupsFromBody`, `gateOverrideRequests`, `gateState`, `handleOrderPlaced`, `handleSettlementEvent`, `hasBillDecision`, `imagingDevices`, `imagingDoorFor`, `imagingGateDefinition`, `imagingStudyDefinition`, `ingestArrival`, `ingestDoseSr`, `irCaseList`, `isContrastAllergen`, `isIonisingModality`, `isRoomGate`, `isTreatingDoctor`, `isValidDicomUid`, `istDayWindow`, `latestSigned`, `linkInvoiceLine`, `markFollowupNotified`, `markNoShow`, `matchVerdict`, `mintStudyInstanceUid`, `mwlExport`, `northStar`, `offlineTemplateDrafter`, `openBillDecisions`, `openFollowupsAtSignature`, `openImages`, `openStudyGate`, `openUnmatchedCount`, `orderPlacedConsumer`, `outsideStudyFor`, `overReadNightPrelim`, `overrideGate`, `pacsArchiveConfigured`, `pacsInbox`, `parseDefinitionBody`, `parseDoseSr`, `parseOrthancStudy`, `patientCopyHold`, `pcpndtApplicability`, `peerBoard`, `peerCase`, `placeImagingOrder`, `portableRound`, `pregnancyPolicy`, `prepBayList`, `prepStudyView`, `proposalLockoutHits`, `proposeDraft`, `publishDefinition`, `publishReport`, `radiologyHttpStatus`, `radiologyManifest`, `raiseBillDecision`, `readBackNamesFinding`, `readiness`, `readingContext`, `readingWorklist`, `readyOnPaymentConsumer`, `recordAcquired`, `recordCallAttempt`, `recordContrastAdministration`, `recordContrastReaction`, `registerOutsideStudy`, `registerRadiologyApprovalTypes`, `rejectUnmatched`, `renalBand`, `renderMwlDump`, `renderViewerUrl`, `reportPrintView`, `reportView`, `requestDefinitionPublish`, `requestGateOverride`, `requestUnpaidRelease`, `requireStudyGate`, `requireStudyType`, `rescheduleStudy`, `resolveBillDecision`, `resolveStudyInstanceUid`, `runPreSignChecks`, `sampleSize`, `satisfyGate`, `savePrelim`, `scheduleStudy`, `scorePeerReview`, `setImagingDeviceStatus`, `setupBooks`, `setupPrices`, `setupRooms`, `signReport`, `signedContentDigest`, `signedImagingReportsForRelease`, `signerSnapshot`, `signsAsResident`, `skinDoseLevels`, `startAcquisition`, `studyGates`, `studyImageViews`, `studyState`, `studyTypeByService`, `studyTypeFor`, `studyView`, `summariseContrast`, `supervisorAccessLog`, `supervisorApprovals`, `supervisorEquipment`, `supervisorFloor`, `supervisorMoney`, `supervisorQuality`, `supervisorRoster`, `sweepCriticalChaser`, `sweepImagingEscalations`, `sweepOverdueFollowups`, `sweepPeerSample`, `sweepUnreadWatchman`, `tatClassOf`, `teleBoard`, `teleReaderOf`, `templateFor`, `templateKeyFor`, `templatesFor`, `toPersonName`, `treatingDoctorsOf`, `waiveGate`, `worklist`
-
-Types: `AdvisedImagingLine`, `ArrivalNotice`, `ArrivalOutcome`, `AuthorisationEncounterFacts`, `AuthorisationStudyFacts`, `BedsideStudyRow`, `BookRow`, `BookVersionRow`, `BookedStudyRow`, `CheckInResult`, `ContrastAdministrationRow`, `ContrastReactionRow`, `CreateImagingDeviceInput`, `CreatedStudy`, `CriticalCallView`, `CriticalCategoriesBody`, `CriticalChaseResult`, `DerivedGateSet`, `DoseConflictRow`, `DoseSrNotice`, `DraftProposal`, `DrafterFacts`, `EditImagingDevicePatch`, `EgfrAssessment`, `EscalationCauseRow`, `EscalationListRow`, `ExternalReferrerInput`, `FollowupBoard`, `FollowupDraft`, `FollowupSource`, `FollowupView`, `GateOverrideDecision`, `GateOverrideRequest`, `GateRow`, `GovernedReportTemplate`, `HoldRelease`, `ImageViewRow`, `ImagingBookEntry`, `ImagingDefinitionRow`, `ImagingDeviceRow`, `ImagingDoorView`, `ImagingEscalationCause`, `ImagingModality`, `ImagingOrderable`, `ImagingRecentItem`, `ImagingReleaseReport`, `ImagingVisitOrder`, `InboxRow`, `IrCaseView`, `IrListRow`, `LadderRungView`, `MwlExport`, `MwlRow`, `NorthStar`, `NorthStarRow`, `NorthStarSource`, `OrderPlacedPayload`, `OutsideStudyRow`, `PacsInboxRow`, `PacsSettingsBody`, `PatientCopyHold`, `PcpndtApplicability`, `PcpndtPatientFacts`, `PcpndtStudyTypeFacts`, `PeerBoard`, `PeerCase`, `PeerScore`, `PlaceImagingItemInput`, `PlaceImagingOrderInput`, `PlaceImagingOrderResult`, `PreSignCheck`, `PreSignContext`, `PreSignFinding`, `PreSignLevel`, `PregnancyPolicyBody`, `PrepBayRow`, `PrepGate`, `PrepStudyView`, `RadiologyErrorCode`, `ReaderAgreement`, `ReadingContext`, `ReadingRow`, `ReadingTemplate`, `RecordAcquiredInput`, `RecordContrastInput`, `RecordContrastReactionInput`, `RegisterOutsideStudyInput`, `RenalBand`, `ReportContent`, `ReportDrafter`, `ReportPrintView`, `ReportRow`, `ReportSignatoriesBody`, `ReportTemplate`, `ReportTemplatesBody`, `ReportView`, `ResidentSignature`, `ScheduleInput`, `ScheduleResult`, `SettableDeviceStatus`, `SetupPriceRow`, `SetupRoomRow`, `SignChecksRecord`, `SignerBlock`, `StartAcquisitionResult`, `StudyGate`, `StudyRow`, `StudyType`, `StudyTypeSeed`, `StudyTypesBody`, `StudyView`, `SupervisorFloor`, `TatClass`, `TeleBoard`, `TeleQueueRow`, `TeleReader`, `TeleradiologyBody`, `TreatingDoctors`, `UnreadChaseResult`, `WorklistRow`, `WorklistView`
+- `abdm-release.ts`
+  - `signedImagingReportsForRelease(db: Db | Tx, encounterNos: readonly string[]): Promise<ImagingReleaseReport[]>`
+  - types: `ImagingReleaseReport`
+- `acquisition.ts`
+  - `LATE_ENTRY_MINUTES`
+  - `abortAcquisition(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; reason: string; now?: Date }): Promise<{ …`
+  - `recordAcquired(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: RecordAcquiredInput): Promise<{ studyId: string; accessionNo: …`
+  - `resolveStudyInstanceUid(studyId: string, input: Pick<RecordAcquiredInput, "imageSource" | "studyInstanceUid">): string | null`
+  - `startAcquisition(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; now?: Date; bedsideSafety?: string | null…`
+  - types: `RecordAcquiredInput`, `StartAcquisitionResult`
+- `advised.ts`
+  - `ADVISORY_DUPLICATE_DAYS`
+  - `imagingDoorFor(db: Db, actor: Actor, encounterNo: string, now: Date = new Date()): Promise<ImagingDoorView>`
+  - types: `AdvisedImagingLine`, `ImagingBookEntry`, `ImagingDoorView`, `ImagingOrderable`, `ImagingRecentItem`, `ImagingVisitOrder`
+- `applicability.ts`
+  - `PCPNDT_AGE_MAX_YEARS`
+  - `PCPNDT_AGE_MIN_YEARS`
+  - `ageInYearsOn(dob: Date, asOf: Date): number`
+  - `pcpndtApplicability(patient: PcpndtPatientFacts, studyType: PcpndtStudyTypeFacts, asOf: Date): PcpndtApplicability`
+  - types: `PcpndtApplicability`, `PcpndtPatientFacts`, `PcpndtStudyTypeFacts`
+- `approval-consumer.ts`
+  - `RADIOLOGY_APPROVAL_GRANTED_CONSUMER`
+  - `approvalGrantedConsumer(db: Db): Handler`
+- `approval-types.ts`
+  - `IMAGING_DEFINITION_PUBLISH_APPROVAL_TYPE`
+  - `IMAGING_GATE_OVERRIDE_APPROVAL_TYPE`
+  - `IMAGING_RELEASE_UNPAID_APPROVAL_TYPE`
+  - `RADIOLOGY_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `registerRadiologyApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `bedside.ts`
+  - `bedsideStudiesFor(db: Db, actor: Actor, locationPrefix: string): Promise<BedsideStudyRow[]>`
+  - `portableRound(db: Db, actor: Actor): Promise<BedsideStudyRow[]>`
+  - types: `BedsideStudyRow`
+- `chasers.ts`
+  - `CHASER_ACTOR: Actor`
+  - `UNREAD_REPORT_HOURS`
+  - `sweepCriticalChaser(db: Db, now: Date = new Date()): Promise<CriticalChaseResult>`
+  - `sweepUnreadWatchman(db: Db, now: Date = new Date()): Promise<UnreadChaseResult>`
+  - types: `CriticalChaseResult`, `UnreadChaseResult`
+- `checkin.ts`
+  - `checkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<CheckInResult>`
+  - `deriveGateSet(studyType: StudyType, patient: { sex: string; dob: Date | null }, study: { formFRequired: boolean }, policy: PregnancyPolicyB…`
+  - types: `CheckInResult`, `DerivedGateSet`
+- `checks.ts`
+  - `CRITICAL_TERMS`
+  - `PRE_SIGN_CHECKS: readonly PreSignCheck[]`
+  - `criticalTermsIn(text: string): string[]`
+  - `runPreSignChecks(ctx: PreSignContext, checks: readonly PreSignCheck[] = PRE_SIGN_CHECKS): PreSignFinding[]`
+  - types: `PreSignCheck`, `PreSignContext`, `PreSignFinding`, `PreSignLevel`
+- `closed-loop.ts`
+  - `isTreatingDoctor(exec: Db | Tx, actor: Actor, studyId: string): Promise<boolean>`
+  - `treatingDoctorsOf(exec: Db | Tx, studyId: string): Promise<TreatingDoctors | null>`
+  - types: `InboxRow`, `TreatingDoctors`
+- `consumers.ts`
+  - `RADIOLOGY_ORDER_PLACED_CONSUMER`
+  - `handleOrderPlaced(tx: Tx, payload: OrderPlacedPayload): Promise<CreatedStudy[]>`
+  - `orderPlacedConsumer(db: Db): Handler`
+  - types: `CreatedStudy`, `OrderPlacedPayload`
+- `contrast.ts`
+  - `CONTRAST_RECORDABLE_STATUSES: readonly string[]`
+  - `assertContrastPermissible(tx: Tx, study: { id: string; patientId: string; studyTypeCode: string }, studyType: StudyType): Promise<void>`
+  - `contrastAdministrationsFor(exec: Db | Tx, studyId: string): Promise<ContrastAdministrationRow[]>`
+  - `recordContrastAdministration(tx: Tx, actor: Actor, input: RecordContrastInput): Promise<{ administrationId: string }>`
+  - `summariseContrast(rows: readonly { agent: string; volumeMl: string; route: string }[]): { contrastGiven: boolean; contrastAgent: string | n…`
+  - types: `ContrastAdministrationRow`, `RecordContrastInput`
+- `critical-ladder.ts`
+  - `ACKNOWLEDGED_LOG_HOURS`
+  - `CRITICAL_RUNG_ROLES: Record<ImagingCriticalRung, { position: string | null; role: string | null }>`
+  - `criticalCallBoard(db: Db, actor: Actor, now: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<{ open: CriticalCallView[]; …`
+  - `readBackNamesFinding(readBack: string, report: { impression: string | null; findings: string | null }): boolean`
+  - `recordCallAttempt(tx: Tx, actor: Actor, input: { criticalId: string; rung: number; calledUserId?: string | null; calledName?: string | null…`
+  - types: `CriticalCallView`, `LadderRungView`
+- `definitions.ts`
+  - `IMAGING_DEFINITION_KINDS`
+  - `REPORT_SECTION_KEYS`
+  - `VIEWER_URL_PLACEHOLDERS`
+  - `activateSeededDefinition(db: Db, actor: Actor, definitionId: string): Promise<{ kind: ImagingDefinitionKind; version: number; supersededVer…`
+  - `activeDefinition(exec: Db | Tx, kind: K): Promise<z.infer<(typeof SCHEMA_BY_KIND)[K]>>`
+  - `activeDefinitionRow(exec: Db | Tx, kind: ImagingDefinitionKind): Promise<ImagingDefinitionRow | undefined>`
+  - `draftDefinition(tx: Tx, actor: Actor, input: { kind: ImagingDefinitionKind; body: unknown }): Promise<{ definitionId: string; version: numb…`
+  - `parseDefinitionBody(kind: K, body: unknown): z.infer<(typeof SCHEMA_BY_KIND)[K]>`
+  - `publishDefinition(db: Db, actor: Actor, input: { definitionId: string; approvalId: string }): Promise<{ kind: ImagingDefinitionKind; versio…`
+  - `requestDefinitionPublish(tx: Tx, actor: Actor, definitionId: string): Promise<{ approvalId: string }>`
+  - `templatesFor(body: ReportTemplatesBody, studyTypeCode: string, modality: string): GovernedReportTemplate[]`
+  - types: `CriticalCategoriesBody`, `GovernedReportTemplate`, `ImagingDefinitionRow`, `PacsSettingsBody`, `PregnancyPolicyBody`, `ReportSignatoriesBody`, `ReportTemplatesBody`, `StudyType`, `StudyTypesBody`, `TeleradiologyBody`
+- `devices.ts`
+  - `imagingDevices(db: Db, onDate: string, opts: { includeRetired?: boolean } = {}): Promise<ImagingDeviceRow[]>`
+  - types: `ImagingDeviceRow`
+- `drafter.ts`
+  - `activeDrafter(): ReportDrafter`
+  - `offlineTemplateDrafter: ReportDrafter`
+  - `proposalLockoutHits(p: DraftProposal, tier: LockoutTier): string[]`
+  - types: `DraftProposal`, `DrafterFacts`, `ReportDrafter`
+- `egfr.ts`
+  - `CREATININE_UMOL_PER_MG_DL`
+  - `EGFR_HOLD_BELOW`
+  - `EGFR_HYDRATE_BELOW`
+  - `EGFR_METFORMIN_BELOW`
+  - `IV_HYDRATION_INSTRUCTION`
+  - `METFORMIN_NOTE`
+  - `assessEgfr(creatinineUmolL: number, patient: { sex: string; ageYears: number | null }): EgfrAssessment`
+  - `ckdEpi2021(creatinineMgDl: number, ageYears: number, sex: EgfrSex): number`
+  - `renalBand(egfr: number): RenalBand`
+  - types: `EgfrAssessment`, `RenalBand`
+- `errors.ts`
+  - `RADIOLOGY_ERROR_CODES`
+  - `class RadiologyError`
+  - `radiologyHttpStatus(code: RadiologyErrorCode): number`
+  - types: `RadiologyErrorCode`
+- `escalations.ts`
+  - `ESCALATION_SPECS: Record<ImagingEscalationCause, CauseSpec>`
+  - `IMAGING_ESCALATION_CAUSES`
+  - `RADIOLOGY_ESCALATION_DEFINITIONS: readonly WorkflowDefinition[]`
+  - `ensureEscalationDefinitions(db: Db, activator: Actor): Promise<string[]>`
+  - `escalationCauses(db: Db, now: Date = new Date()): Promise<EscalationCauseRow[]>`
+  - `escalationList(db: Db, actor: Actor, now: Date = new Date()): Promise<{ rows: EscalationListRow[]; notActive: ImagingEscalationCause[]; }>`
+  - `sweepImagingEscalations(db: Db, now: Date = new Date()): Promise<EscalationSweepResult>`
+  - types: `EscalationCauseRow`, `EscalationListRow`, `ImagingEscalationCause`
+- `events.ts`
+  - `IR_COAGULATION_VERDICTS`
+  - `IR_SKIN_DOSE_LEVELS`
+  - `RADIOLOGY_EVENTS`
+  - `REPEAT_REASON_CODES`
+  - `imagingBedsideRequested`
+  - `imagingBillDecisionRaised`
+  - `imagingBookingChanged`
+  - `imagingContrastAdministered`
+  - `imagingContrastReaction`
+  - `imagingCriticalAcknowledged`
+  - `imagingCriticalFlagged`
+  - `imagingCriticalOverdue`
+  - `imagingExposureRepeated`
+  - `imagingFollowupBooked`
+  - `imagingFollowupOverdue`
+  - `imagingGateEvaluated`
+  - `imagingImageViewed`
+  - `imagingImagesArrived`
+  - `imagingImagesReconciled`
+  - `imagingIrCoagulationOverridden`
+  - `imagingIrSkinDoseAlert`
+  - `imagingMediaRequested`
+  - `imagingOutsideStudyRegistered`
+  - `imagingOverreadRecorded`
+  - `imagingReportActedUpon`
+  - `imagingReportHandedOver`
+  - `imagingReportPublished`
+  - `imagingReportReleasedUnpaid`
+  - `imagingReportUnread`
+  - `imagingStudyAcquired`
+  - `imagingStudyScheduled`
+  - types: `RepeatReasonCode`
+- `followups.ts`
+  - `FOLLOWUP_SWEEP_ACTOR: Actor`
+  - `addInterval(day: string, interval: FollowupDraft["interval"]): string`
+  - `bookFollowup(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: { followupId: string; encounterNo?: string | null; serviceId?: s…`
+  - `closeFollowup(tx: Tx, actor: Actor, input: { followupId: string; reason: string; note: string; now?: Date }): Promise<{ followupId: string;…`
+  - `doctorFollowups(db: Db, actor: Actor, now: Date = new Date()): Promise<FollowupView[]>`
+  - `followupBoard(db: Db, actor: Actor, now: Date = new Date()): Promise<FollowupBoard>`
+  - `followupsFromBody(body: unknown): FollowupDraft[]`
+  - `markFollowupNotified(tx: Tx, actor: Actor, input: { followupId: string; channel: string; note?: string | null; now?: Date }): Promise<{ fol…`
+  - `openFollowupsAtSignature(tx: Tx, actor: Actor, study: StudyRef, signed: { reportId: string; body: unknown }, now: Date): Promise<{ opened: …`
+  - `sweepOverdueFollowups(db: Db, now: Date = new Date()): Promise<{ chased: string[] }>`
+  - types: `FollowupBoard`, `FollowupDraft`, `FollowupSource`, `FollowupView`
+- `gates.ts`
+  - `CONTRAST_ALLERGEN_TERMS: readonly string[]`
+  - `DEFAULT_PREGNANCY_POLICY: PregnancyPolicyBody`
+  - `IMAGING_TERMINAL_GATE_STATES`
+  - `LMP_REASSURING_DAYS`
+  - `NEVER_OVERRIDABLE_KINDS: readonly ImagingGateKind[]`
+  - `NEVER_WAIVABLE_KINDS: readonly ImagingGateKind[]`
+  - `RENAL_CREATININE_CEILING_UMOL_L`
+  - `RENAL_VALIDITY_DAYS_ADMITTED`
+  - `RENAL_VALIDITY_DAYS_CKD`
+  - `RENAL_VALIDITY_DAYS_OPD`
+  - `WAIVABLE_KINDS: readonly ImagingGateKind[]`
+  - `evaluateReadiness(tx: Tx, studyId: string): Promise<{ state: string; open: string[] }>`
+  - `gateState(exec: Db | Tx, gateId: string): Promise<string>`
+  - `isContrastAllergen(substance: string): boolean`
+  - `openStudyGate(tx: Tx, study: Pick<StudyRow, "id" | "patientId" | "encounterNo">, kind: ImagingGateKind): Promise<{ gateId: string; opened: …`
+  - `overrideGate(tx: Tx, actor: Actor, gateId: string, reason: string): Promise<{ state: string; kind: string }>`
+  - `pregnancyPolicy(exec: Db | Tx): Promise<{ policy: PregnancyPolicyBody; source: "published" | "default"; }>`
+  - `readiness(exec: Db | Tx, actor: Actor, studyId: string): Promise<{ state: string; ready: boolean; gates: StudyGate[]; open: string[] }>`
+  - `requireStudyGate(exec: Db | Tx, studyId: string, kind: string): Promise<StudyGate>`
+  - `satisfyGate(tx: Tx, actor: Actor, gateId: string, evidence: unknown, now: Date = new Date()): Promise<{ state: string; kind: string }>`
+  - `studyGates(exec: Db | Tx, studyId: string): Promise<StudyGate[]>`
+  - `studyState(exec: Db | Tx, studyId: string): Promise<string>`
+  - `waiveGate(tx: Tx, actor: Actor, gateId: string, reason: string): Promise<{ state: string; kind: string }>`
+  - types: `GateRow`, `StudyGate`, `StudyRow`
+- `held.ts`
+  - `assertPatientCopyReleasable(exec: Db | Tx, study: StudyFacts & { accessionNo: string }): Promise<{ releaseApprovalId: string | null; outsta…`
+  - `patientCopyHold(exec: Db | Tx, study: StudyFacts): Promise<PatientCopyHold>`
+  - `requestUnpaidRelease(tx: Tx, actor: Actor, input: { reportId: string; reason: string }): Promise<{ approvalId: string; status: "pending" | …`
+  - types: `HoldRelease`, `PatientCopyHold`
+- `ir.ts`
+  - `IR_KAR_SKIN_FOLLOWUP_MGY`
+  - `IR_KAR_SRDL_MGY`
+  - `IR_THRESHOLDS`
+  - `irCaseList(db: Db, actor: Actor, now: Date = new Date()): Promise<IrListRow[]>`
+  - `skinDoseLevels(karMgy: number | null): { level: "skin_followup" | "substantial_radiation_dose_level"; thresholdMgy: number }[]`
+  - types: `IrCaseView`, `IrListRow`
+- `kinds.ts`
+  - `BEDSIDE_LOCATION_MAX_LENGTH`
+  - `DEVICE_MODALITY_ATTRIBUTE`
+  - `DEVICE_PORTABLE_ATTRIBUTE`
+  - `IMAGING_MODALITIES`
+  - `RADIOLOGY_RESOURCE_KINDS: readonly ResourceKindDecl[]`
+  - `SCHEDULABLE_DEVICE_STATUSES: readonly string[]`
+  - types: `ImagingModality`
+- `machines.ts`
+  - `BOOKED_STUDY_STATUSES`
+  - `DEVICE_AE_TITLE_RE`
+  - `RADIOLOGY_DEVICES_MANAGE`
+  - `SETTABLE_DEVICE_STATUSES`
+  - `bookedStudiesOn(exec: Db | Tx, deviceResourceId: string): Promise<BookedStudyRow[]>`
+  - `createImagingDevice(tx: Tx, actor: Actor, input: CreateImagingDeviceInput): Promise<{ deviceResourceId: string }>`
+  - `editImagingDevice(tx: Tx, actor: Actor, id: string, patch: EditImagingDevicePatch): Promise<void>`
+  - `isIonisingModality(modality: string): boolean`
+  - `setImagingDeviceStatus(tx: Tx, actor: Actor, id: string, input: { status: string; reason: string }): Promise<{ from: string; to: string; st…`
+  - types: `BookedStudyRow`, `CreateImagingDeviceInput`, `EditImagingDevicePatch`, `SettableDeviceStatus`
+- `manifest.ts`
+  - `radiologyManifest: ModuleManifest`
+- `money.ts`
+  - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts): ImagingAuthorisation | null`
+  - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`
+  - `hasBillDecision(exec: Db | Tx, studyId: string, kind: ImagingBillDecisionKind): Promise<boolean>`
+  - `linkInvoiceLine(tx: Tx, studyId: string, invoiceLineId: string): Promise<{ studyId: string; invoiceLineId: string }>`
+  - `openBillDecisions(exec: Db | Tx): Promise<{ id: string; studyId: string; kind: string; detail: unknown; raisedAt: Date }[]>`
+  - `raiseBillDecision(tx: Tx, actor: Actor, input: { studyId: string; kind: ImagingBillDecisionKind; detail?: Record<string, unknown> | null })…`
+  - `resolveBillDecision(tx: Tx, actor: Actor, input: { billDecisionId: string; resolution: string }): Promise<{ billDecisionId: string; resolve…`
+  - types: `AuthorisationEncounterFacts`, `AuthorisationStudyFacts`
+- `mwl.ts`
+  - `DEVICE_AE_TITLE_ATTRIBUTE`
+  - `DICOM_MODALITY: Readonly<Record<string, string>>`
+  - `MWL_READ`
+  - `MWL_STATUSES`
+  - `istDayWindow(date: string): { start: Date; end: Date }`
+  - `mwlExport(db: Db, actor: Actor, opts: { date: string; deviceResourceId?: string }): Promise<MwlExport>`
+  - `renderMwlDump(row: MwlRow): string`
+  - `toPersonName(name: string): string`
+  - types: `MwlExport`, `MwlRow`
+- `north-star.ts`
+  - `NORTH_STAR_SOURCES`
+  - `northStar(db: Db, input: { from: string; to: string; now?: Date }): Promise<NorthStar>`
+  - types: `NorthStar`, `NorthStarRow`, `NorthStarSource`
+- `outside.ts`
+  - `outsideStudyFor(exec: Db | Tx, studyId: string): Promise<OutsideStudyRow | null>`
+  - `registerOutsideStudy(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: RegisterOutsideStudyInput): Promise<{ outsideStudyId: st…`
+  - types: `OutsideStudyRow`, `RegisterOutsideStudyInput`
+- `override-requests.ts`
+  - `applyGrantedGateOverride(db: Db, actor: Actor, approvalId: string, reason: string): Promise<GateOverrideDecision>`
+  - `decideGateOverride(db: Db, actor: Actor, input: { approvalId: string; verdict: "grant" | "refuse"; reason: string }): Promise<GateOverrideD…`
+  - `gateOverrideRequests(db: Db, actor: Actor, opts: { studyId?: string; status?: "pending" | "all" } = {}): Promise<GateOverrideRequest[]>`
+  - `requestGateOverride(tx: Tx, actor: Actor, input: { studyId: string; kind: string; note: string }): Promise<{ approvalId: string; kind: stri…`
+  - types: `GateOverrideDecision`, `GateOverrideRequest`
+- `pacs.ts`
+  - `PACS_INTERFACE`
+  - `PACS_RECONCILE`
+  - `attachUnmatched(tx: Tx, actor: Actor, input: { unmatchedId: string; accessionNo: string; reason: string; now?: Date }): Promise<{ studyId: …`
+  - `doseDisagreement(typed: DoseNumbers, sr: DoseNumbers): Record<string, { typed: number; sr: number }> | null`
+  - `ingestArrival(tx: Tx, actor: Actor, notice: ArrivalNotice, now = new Date()): Promise<ArrivalOutcome>`
+  - `ingestDoseSr(tx: Tx, actor: Actor, n: DoseSrNotice, now = new Date()): Promise<DoseSrOutcomeResult>`
+  - `matchVerdict(n: { studyInstanceUid: string; accessionNumber: string | null; patientId: string | null }, candidate: StudyHit | null, uidOwne…`
+  - `openUnmatchedCount(db: Db): Promise<number>`
+  - `pacsArchiveConfigured(db: Db): Promise<boolean>`
+  - `pacsInbox(db: Db, actor: Actor): Promise<{ configured: boolean; lastArrivalAt: string | null; unmatched: InboxRow[]; doseConflicts: DoseCon…`
+  - `parseDoseSr(body: unknown): DoseSrNotice`
+  - `parseOrthancStudy(body: unknown): ArrivalNotice`
+  - `rejectUnmatched(tx: Tx, actor: Actor, input: { unmatchedId: string; reason: string; now?: Date }): Promise<{ unmatchedId: string }>`
+  - types: `ArrivalNotice`, `ArrivalOutcome`, `DoseConflictRow`, `DoseSrNotice`, `InboxRow`
+- `peer-review.ts`
+  - `PEER_SAMPLE_RATE`
+  - `drawPeerSample(db: Db, month: string): Promise<{ opened: number }>`
+  - `peerBoard(db: Db, actor: Actor, now: Date = new Date()): Promise<PeerBoard>`
+  - `peerCase(db: Db, actor: Actor, reviewId: string, now: Date = new Date()): Promise<PeerCase>`
+  - `sampleSize(n: number): number`
+  - `scorePeerReview(tx: Tx, actor: Actor, input: { reviewId: string; score: string; learningCase?: boolean; note?: string | null; now?: Date })…`
+  - `sweepPeerSample(db: Db, now: Date = new Date()): Promise<{ opened: number }>`
+  - types: `PeerBoard`, `PeerCase`, `PeerScore`, `ReaderAgreement`
+- `place.ts`
+  - `COMPLETED_VISIT_GRACE_DAYS`
+  - `DUPLICATE_WINDOW_HOURS`
+  - `addImagingViews(db: Db, actor: Actor, decls: readonly OrderKindDecl[], parentOrderId: string, input: Omit<PlaceImagingOrderInput, "orderGro…`
+  - `placeImagingOrder(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: PlaceImagingOrderInput, idemKey?: string, now: Date = new D…`
+  - types: `ExternalReferrerInput`, `PlaceImagingItemInput`, `PlaceImagingOrderInput`, `PlaceImagingOrderResult`
+- `prep-bay.ts`
+  - `ROOM_GATE_KINDS: readonly ImagingGateKind[]`
+  - `isRoomGate(kind: string): boolean`
+  - `prepBayList(db: Db, actor: Actor): Promise<PrepBayRow[]>`
+  - `prepStudyView(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<PrepStudyView>`
+  - types: `PrepBayRow`, `PrepGate`, `PrepStudyView`
+- `reactions.ts`
+  - `CONTRAST_ALLERGY_SUFFIX`
+  - `contrastAllergySubstance(agent: string): string`
+  - `contrastReactionHistory(exec: Db | Tx, patientId: string): Promise<ContrastReactionRow[]>`
+  - `contrastReactionsFor(exec: Db | Tx, studyId: string): Promise<ContrastReactionRow[]>`
+  - `recordContrastReaction(tx: Tx, actor: Actor, input: RecordContrastReactionInput): Promise<{ reactionId: string; allergyId: string }>`
+  - types: `ContrastReactionRow`, `RecordContrastReactionInput`
+- `read.ts`
+  - `WORKLIST_VIEWS`
+  - `reportView(db: Db, actor: Actor, reportId: string): Promise<ReportView | null>`
+  - `studyView(db: Db, actor: Actor, studyId: string): Promise<StudyView | null>`
+  - `worklist(db: Db, actor: Actor, opts: { view?: WorklistView; deviceResourceId?: string; limit?: number } = {}): Promise<WorklistRow[]>`
+  - types: `ReportView`, `StudyView`, `WorklistRow`, `WorklistView`
+- `reading.ts`
+  - `TAT_MINUTES: Record<TatClass, number>`
+  - `readingContext(db: Db, actor: Actor, studyId: string, now: Date = new Date()): Promise<ReadingContext | null>`
+  - `readingWorklist(db: Db, actor: Actor, now: Date = new Date()): Promise<ReadingRow[]>`
+  - `reportPrintView(db: Db, actor: Actor, reportId: string, now: Date = new Date()): Promise<ReportPrintView | null>`
+  - `tatClassOf(priority: string, bedsideLocation: string | null): TatClass`
+  - types: `ReadingContext`, `ReadingRow`, `ReadingTemplate`, `ReportPrintView`, `TatClass`
+- `ready-on-payment.ts`
+  - `RADIOLOGY_READY_ON_PAYMENT_CONSUMER`
+  - `READY_ON_PAYMENT_EVENTS`
+  - `handleSettlementEvent(tx: Tx, e: Pick<DispatchedEvent, "name" | "payload" | "occurredAt">): Promise<{ queued: string[] }>`
+  - `readyOnPaymentConsumer(db: Db): Handler`
+- `reports.ts`
+  - `CONSULTANT_ROLE`
+  - `RESIDENT_ROLE`
+  - `SECOND_FACTOR_WINDOW_MINUTES`
+  - `acknowledgeCritical(tx: Tx, actor: Actor, input: { criticalId: string; acknowledgedByClinicianId: string; readBack?: string | null; now?: D…`
+  - `amendReport(tx: Tx, actor: Actor, input: { studyId: string; secondFactorAt: Date | null; reason: string; windowMinutes?: number; criticalCa…`
+  - `cosignReport(tx: Tx, actor: Actor, input: { studyId: string; reportId: string; secondFactorAt: Date | null; windowMinutes?: number; acknowl…`
+  - `draftReport(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
+  - `dryRunPreSign(tx: Tx, actor: Actor, input: { studyId: string; templateKey?: string; body: Record<string, unknown>; impression?: string | nu…`
+  - `flagCritical(tx: Tx, actor: Actor, input: { reportId: string; category: ImagingCriticalCategory; communicatedTo?: string | null; now?: Date…`
+  - `latestSigned(exec: Db | Tx, studyId: string): Promise<ReportRow | undefined>`
+  - `overReadNightPrelim(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { teleReadId: string; grade: string; note?: string | null…`
+  - `proposeDraft(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ reportId: string; version: number; templateKey: strin…`
+  - `publishReport(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; now?: Date }): Promise<{ reportId: string; v…`
+  - `savePrelim(tx: Tx, actor: Actor, input: { studyId: string } & ReportContent): Promise<{ reportId: string; version: number }>`
+  - `signReport(tx: Tx, actor: Actor, input: { studyId: string; reportId: string; secondFactorAt: Date | null; windowMinutes?: number; criticalC…`
+  - `signsAsResident(tx: Tx, actor: Actor): Promise<boolean>`
+  - types: `ReportContent`, `ReportRow`, `SignChecksRecord`
+- `schedule.ts`
+  - `autoSlotWalkIn(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<ScheduleResult>`
+  - `cancelStudy(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: { studyId: string; reason?: string | null }): Promise<{ studyId: …`
+  - `deviceDiary(exec: Db, actor: Actor, deviceResourceId: string): Promise<DiaryEntry[]>`
+  - `markNoShow(tx: Tx, actor: Actor, studyId: string, reason?: string | null): Promise<{ studyId: string; status: string }>`
+  - `rescheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput & { reason?: string | null }): Promise<ScheduleResult>`
+  - `scheduleStudy(tx: Tx, actor: Actor, input: ScheduleInput): Promise<ScheduleResult>`
+  - types: `ScheduleInput`, `ScheduleResult`
+- `setup.ts`
+  - `INVESTIGATION_GST_CATEGORY`
+  - `RADIOLOGY_RULED_SERVICES`
+  - `setupBooks(db: Db): Promise<BookRow[]>`
+  - `setupPrices(db: Db, at: Date = new Date()): Promise<SetupPriceRow[]>`
+  - `setupRooms(db: Db): Promise<SetupRoomRow[]>`
+  - types: `BookRow`, `BookVersionRow`, `SetupPriceRow`, `SetupRoomRow`
+- `signer.ts`
+  - `signedContentDigest(content: { templateKey: string; body: unknown; impression: string | null; laterality: string | null; }): string`
+  - `signerSnapshot(tx: Tx, input: { userId: string; now: Date; secondFactorAt: Date; content: { templateKey: string; body: unknown; impression:…`
+  - types: `ResidentSignature`, `SignerBlock`
+- `study-types.ts`
+  - `STUDY_TYPE_SEEDS: readonly StudyTypeSeed[]`
+  - `activeStudyTypes(exec: Db | Tx): Promise<StudyType[]>`
+  - `requireStudyType(exec: Db | Tx, code: string): Promise<StudyType>`
+  - `studyTypeByService(exec: Db | Tx): Promise<Map<string, StudyType>>`
+  - `studyTypeFor(body: StudyTypesBody, code: string): StudyType | undefined`
+  - types: `StudyTypeSeed`
+- `supervisor.ts`
+  - `supervisorAccessLog(db: Db, actor: Actor, input: { from: string; to: string; now?: Date }): Promise<{ from: string; to: string; rows: Acces…`
+  - `supervisorApprovals(db: Db, now: Date = new Date()): Promise<{ rows: SupervisorApproval[]; billDecisions: BillDecisionRow[] }>`
+  - `supervisorEquipment(db: Db, now: Date = new Date()): Promise<{ machines: (FloorRoom & { uptimePct: number | null; booked: number; lastChang…`
+  - `supervisorFloor(db: Db, now: Date = new Date()): Promise<SupervisorFloor>`
+  - `supervisorMoney(db: Db, input: { day?: string; now?: Date } = {}): Promise<{ day: string; billed: { modality: string; source: NorthStarSour…`
+  - `supervisorQuality(db: Db, input: { from: string; to: string; now?: Date }): Promise<{ from: string; to: string; indicators: QualityIndicato…`
+  - `supervisorRoster(db: Db, now: Date = new Date()): Promise<{ resolverEnabled: boolean; department: { code: string; name: string } | null; so…`
+  - types: `SupervisorFloor`
+- `tele.ts`
+  - `assertNotTeleReader(exec: Db | Tx, actor: Actor, act: "sign" | "co-sign" | "amend" | "over-read"): Promise<void>`
+  - `teleBoard(db: Db, actor: Actor, now: Date = new Date()): Promise<TeleBoard>`
+  - `teleReaderOf(exec: Db | Tx, userId: string): Promise<TeleReader | null>`
+  - types: `TeleBoard`, `TeleQueueRow`, `TeleReader`
+- `templates.ts`
+  - `REPORT_TEMPLATES: readonly ReportTemplate[]`
+  - `templateFor(key: string): ReportTemplate`
+  - `templateKeyFor(modality: string, bodyPart: string): string`
+  - types: `ReportTemplate`
+- `uid.ts`
+  - `DICOM_UID_MAX_LENGTH`
+  - `STUDY_UID_ROOT`
+  - `isValidDicomUid(value: string): boolean`
+  - `mintStudyInstanceUid(studyId: string): string`
+- `views.ts`
+  - `IMAGES_READ`
+  - `openImages(tx: Tx, actor: Actor, input: { studyId: string; now?: Date }): Promise<{ url: string; viewId: string; studyInstanceUid: string; …`
+  - `renderViewerUrl(template: string, values: { accessionNo: string; studyInstanceUid: string }): string`
+  - `studyImageViews(exec: Db | Tx, studyId: string): Promise<ImageViewRow[]>`
+  - types: `ImageViewRow`
+- `workflow-def.ts`
+  - `IMAGING_GATE_DEF_KEY`
+  - `IMAGING_STUDY_DEF_KEY`
+  - `RADIOLOGY_WORKFLOW_DEFINITIONS: readonly WorkflowDefinition[]`
+  - `imagingGateDefinition: WorkflowDefinition`
+  - `imagingStudyDefinition: WorkflowDefinition`
 
 ## Tables (`kernel/db/schema/radiology.ts`)
 
-- `imaging_bill_decisions` (`imagingBillDecisions`)
-- `imaging_contrast_administrations` (`imagingContrastAdministrations`)
-- `imaging_contrast_reactions` (`imagingContrastReactions`)
-- `imaging_critical_call_attempts` (`imagingCriticalCallAttempts`)
-- `imaging_critical_findings` (`imagingCriticalFindings`)
-- `imaging_definitions` (`imagingDefinitions`)
-- `imaging_dose_sr_receipts` (`imagingDoseSrReceipts`)
-- `imaging_followups` (`imagingFollowups`)
-- `imaging_image_views` (`imagingImageViews`)
-- `imaging_ir_cases` (`imagingIrCases`)
-- `imaging_ir_checklists` (`imagingIrChecklists`)
-- `imaging_ir_sedation_vitals` (`imagingIrSedationVitals`)
-- `imaging_media_requests` (`imagingMediaRequests`)
-- `imaging_outside_studies` (`imagingOutsideStudies`)
-- `imaging_peer_reviews` (`imagingPeerReviews`)
-- `imaging_report_delivery` (`imagingReportDelivery`)
-- `imaging_report_handovers` (`imagingReportHandovers`)
-- `imaging_reports` (`imagingReports`)
-- `imaging_safety_screenings` (`imagingSafetyScreenings`)
-- `imaging_studies` (`imagingStudies`)
-- `imaging_tele_reads` (`imagingTeleReads`)
-- `imaging_unmatched_studies` (`imagingUnmatchedStudies`)
+`imaging_bill_decisions`, `imaging_contrast_administrations`, `imaging_contrast_reactions`, `imaging_critical_call_attempts`, `imaging_critical_findings`, `imaging_definitions`, `imaging_dose_sr_receipts`, `imaging_followups`, `imaging_image_views`, `imaging_ir_cases`, `imaging_ir_checklists`, `imaging_ir_sedation_vitals`, `imaging_media_requests`, `imaging_outside_studies`, `imaging_peer_reviews`, `imaging_report_delivery`, `imaging_report_handovers`, `imaging_reports`, `imaging_safety_screenings`, `imaging_studies`, `imaging_tele_reads`, `imaging_unmatched_studies`
 
-References tables in: `billing`, `orders`, `patients`, `resources`, `tariff`
+Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 
 ## HTTP routes (113)
 
-| verb | path | controller |
-|---|---|---|
-| GET | `/radiology/advised` | `radiology-orders.controller.ts` |
-| POST | `/radiology/bill-decisions/:billDecisionId/resolve` | `radiology-bill-decisions.controller.ts` |
-| GET | `/radiology/bill-decisions` | `radiology-bill-decisions.controller.ts` |
-| POST | `/radiology/criticals/:criticalId/acknowledge` | `radiology-reports.controller.ts` |
-| POST | `/radiology/criticals/:criticalId/calls` | `radiology-reports.controller.ts` |
-| GET | `/radiology/definitions/:kind/active` | `radiology-definitions.controller.ts` |
-| POST | `/radiology/definitions/draft` | `radiology-definitions.controller.ts` |
-| POST | `/radiology/definitions/publish` | `radiology-definitions.controller.ts` |
-| GET | `/radiology/devices` | `radiology-floor.controller.ts` |
-| GET | `/radiology/display` | `radiology-floor.controller.ts` |
-| POST | `/radiology/followups/:followupId/book` | `radiology-reading-room.controller.ts` |
-| POST | `/radiology/followups/:followupId/close` | `radiology-reading-room.controller.ts` |
-| POST | `/radiology/followups/:followupId/notified` | `radiology-reading-room.controller.ts` |
-| POST | `/radiology/gate-override-requests/:approvalId/decide` | `radiology-prep.controller.ts` |
-| GET | `/radiology/gate-override-requests` | `radiology-prep.controller.ts` |
-| GET | `/radiology/ir/cases` | `radiology-ir.controller.ts` |
-| POST | `/radiology/media/:requestId/printed` | `radiology-release.controller.ts` |
-| GET | `/radiology/mwl` | `radiology-mwl.controller.ts` |
-| GET | `/radiology/north-star` | `radiology-release.controller.ts` |
-| POST | `/radiology/orders/:orderId/items` | `radiology-orders.controller.ts` |
-| POST | `/radiology/orders` | `radiology-orders.controller.ts` |
-| POST | `/radiology/pacs/arrivals` | `radiology-pacs.controller.ts` |
-| POST | `/radiology/pacs/dose-reports` | `radiology-pacs.controller.ts` |
-| GET | `/radiology/pacs/inbox` | `radiology-pacs.controller.ts` |
-| POST | `/radiology/pacs/unmatched/:unmatchedId/attach` | `radiology-pacs.controller.ts` |
-| POST | `/radiology/pacs/unmatched/:unmatchedId/reject` | `radiology-pacs.controller.ts` |
-| GET | `/radiology/pcpndt/monthly-return` | `radiology-pcpndt.controller.ts` |
-| GET | `/radiology/pcpndt/register` | `radiology-pcpndt.controller.ts` |
-| POST | `/radiology/pcpndt/studies/:studyId/form-f-gate` | `radiology-pcpndt.controller.ts` |
-| GET | `/radiology/portable/round` | `radiology-floor.controller.ts` |
-| GET | `/radiology/prep/studies/:studyId` | `radiology-prep.controller.ts` |
-| GET | `/radiology/prep` | `radiology-prep.controller.ts` |
-| GET | `/radiology/reading/criticals` | `radiology-reading.controller.ts` |
-| GET | `/radiology/reading/followups` | `radiology-reading-room.controller.ts` |
-| POST | `/radiology/reading/peer/:reviewId/score` | `radiology-reading-room.controller.ts` |
-| GET | `/radiology/reading/peer/:reviewId` | `radiology-reading-room.controller.ts` |
-| GET | `/radiology/reading/peer` | `radiology-reading-room.controller.ts` |
-| GET | `/radiology/reading/studies/:studyId` | `radiology-reading.controller.ts` |
-| GET | `/radiology/reading/tele` | `radiology-reading-room.controller.ts` |
-| GET | `/radiology/reading/worklist` | `radiology-reading.controller.ts` |
-| GET | `/radiology/release` | `radiology-release.controller.ts` |
-| POST | `/radiology/reports/:reportId/acted` | `radiology-release.controller.ts` |
-| POST | `/radiology/reports/:reportId/critical` | `radiology-reports.controller.ts` |
-| POST | `/radiology/reports/:reportId/handover` | `radiology-release.controller.ts` |
-| GET | `/radiology/reports/:reportId/print` | `radiology-reading.controller.ts` |
-| POST | `/radiology/reports/:reportId/read-back` | `radiology-release.controller.ts` |
-| POST | `/radiology/reports/:reportId/release-unpaid` | `radiology-release.controller.ts` |
-| GET | `/radiology/reports/:reportId` | `radiology-reports.controller.ts` |
-| GET | `/radiology/reports/patient/:patientId` | `radiology-reports.controller.ts` |
-| GET | `/radiology/results/followups` | `radiology-reading-room.controller.ts` |
-| GET | `/radiology/results` | `radiology-release.controller.ts` |
-| GET | `/radiology/room/rejects` | `radiology-room.controller.ts` |
-| GET | `/radiology/setup/books` | `radiology-setup.controller.ts` |
-| POST | `/radiology/setup/devices/:id/status` | `radiology-setup.controller.ts` |
-| PATCH | `/radiology/setup/devices/:id` | `radiology-setup.controller.ts` |
-| GET | `/radiology/setup/devices` | `radiology-setup.controller.ts` |
-| POST | `/radiology/setup/devices` | `radiology-setup.controller.ts` |
-| GET | `/radiology/setup/prices` | `radiology-setup.controller.ts` |
-| POST | `/radiology/studies/:studyId/acquisition/abort` | `radiology-acquisition.controller.ts` |
-| POST | `/radiology/studies/:studyId/acquisition/acquired` | `radiology-acquisition.controller.ts` |
-| POST | `/radiology/studies/:studyId/acquisition/repeat` | `radiology-room.controller.ts` |
-| POST | `/radiology/studies/:studyId/acquisition/start` | `radiology-acquisition.controller.ts` |
-| POST | `/radiology/studies/:studyId/cancel` | `radiology-schedule.controller.ts` |
-| POST | `/radiology/studies/:studyId/check-in` | `radiology-study.controller.ts` |
-| GET | `/radiology/studies/:studyId/contrast-reactions` | `radiology-acquisition.controller.ts` |
-| GET | `/radiology/studies/:studyId/contrast` | `radiology-acquisition.controller.ts` |
-| POST | `/radiology/studies/:studyId/contrast` | `radiology-acquisition.controller.ts` |
-| GET | `/radiology/studies/:studyId/counter` | `radiology-schedule.controller.ts` |
-| POST | `/radiology/studies/:studyId/gates/:kind/override-request` | `radiology-study.controller.ts` |
-| POST | `/radiology/studies/:studyId/gates/:kind/override` | `radiology-study.controller.ts` |
-| POST | `/radiology/studies/:studyId/gates/:kind/satisfy` | `radiology-study.controller.ts` |
-| POST | `/radiology/studies/:studyId/gates/:kind/waive` | `radiology-study.controller.ts` |
-| POST | `/radiology/studies/:studyId/images/open` | `radiology-images.controller.ts` |
-| POST | `/radiology/studies/:studyId/invoice-line` | `radiology-acquisition.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/coagulation-override` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/handoff` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/note` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/sign-in` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/sign-out` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/skin-follow-up` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/time-out` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/ir/vitals` | `radiology-ir.controller.ts` |
-| GET | `/radiology/studies/:studyId/ir` | `radiology-ir.controller.ts` |
-| POST | `/radiology/studies/:studyId/media` | `radiology-release.controller.ts` |
-| POST | `/radiology/studies/:studyId/no-show` | `radiology-schedule.controller.ts` |
-| POST | `/radiology/studies/:studyId/outside` | `radiology-schedule.controller.ts` |
-| GET | `/radiology/studies/:studyId/readiness` | `radiology-study.controller.ts` |
-| POST | `/radiology/studies/:studyId/readiness` | `radiology-study.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/amend` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/checks` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/cosign` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/draft` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/prelim` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/propose` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/publish` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reports/sign` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/:studyId/reschedule` | `radiology-schedule.controller.ts` |
-| GET | `/radiology/studies/:studyId/room` | `radiology-room.controller.ts` |
-| POST | `/radiology/studies/:studyId/schedule` | `radiology-schedule.controller.ts` |
-| POST | `/radiology/studies/:studyId/walk-in` | `radiology-schedule.controller.ts` |
-| GET | `/radiology/studies/:studyId` | `radiology-reports.controller.ts` |
-| POST | `/radiology/studies/contrast-reactions` | `radiology-acquisition.controller.ts` |
-| GET | `/radiology/studies/device/:deviceResourceId/diary` | `radiology-schedule.controller.ts` |
-| GET | `/radiology/supervisor/access-log` | `radiology-supervisor.controller.ts` |
-| GET | `/radiology/supervisor/approvals` | `radiology-supervisor.controller.ts` |
-| GET | `/radiology/supervisor/equipment` | `radiology-supervisor.controller.ts` |
-| GET | `/radiology/supervisor/escalations` | `radiology-supervisor.controller.ts` |
-| GET | `/radiology/supervisor/floor` | `radiology-supervisor.controller.ts` |
-| GET | `/radiology/supervisor/money` | `radiology-supervisor.controller.ts` |
-| GET | `/radiology/supervisor/quality` | `radiology-supervisor.controller.ts` |
-| GET | `/radiology/supervisor/roster` | `radiology-supervisor.controller.ts` |
-| POST | `/radiology/tele/:teleReadId/overread` | `radiology-reading-room.controller.ts` |
-| GET | `/radiology/worklist` | `radiology-reports.controller.ts` |
+- `radiology-acquisition.controller.ts` — 8: `/radiology/studies`
+- `radiology-bill-decisions.controller.ts` — 2: `/radiology/bill-decisions`
+- `radiology-definitions.controller.ts` — 3: `/radiology/definitions`
+- `radiology-floor.controller.ts` — 3: `/radiology/devices`, `/radiology/display`, `/radiology/portable`
+- `radiology-images.controller.ts` — 1: `/radiology/studies`
+- `radiology-ir.controller.ts` — 10: `/radiology/ir`, `/radiology/studies`
+- `radiology-mwl.controller.ts` — 1: `/radiology/mwl`
+- `radiology-orders.controller.ts` — 3: `/radiology/advised`, `/radiology/orders`
+- `radiology-pacs.controller.ts` — 5: `/radiology/pacs`
+- `radiology-pcpndt.controller.ts` — 3: `/radiology/pcpndt`
+- `radiology-prep.controller.ts` — 4: `/radiology/gate-override-requests`, `/radiology/prep`
+- `radiology-reading-room.controller.ts` — 10: `/radiology/followups`, `/radiology/reading`, `/radiology/results`, `/radiology/tele`
+- `radiology-reading.controller.ts` — 4: `/radiology/reading`, `/radiology/reports`
+- `radiology-release.controller.ts` — 9: `/radiology/media`, `/radiology/north-star`, `/radiology/release`, `/radiology/reports`, `/radiology/results`, `/radiology/studies`
+- `radiology-reports.controller.ts` — 15: `/radiology/criticals`, `/radiology/reports`, `/radiology/studies`, `/radiology/worklist`
+- `radiology-room.controller.ts` — 3: `/radiology/room`, `/radiology/studies`
+- `radiology-schedule.controller.ts` — 8: `/radiology/studies`
+- `radiology-setup.controller.ts` — 6: `/radiology/setup`
+- `radiology-study.controller.ts` — 7: `/radiology/studies`
+- `radiology-supervisor.controller.ts` — 8: `/radiology/supervisor`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/radiology`

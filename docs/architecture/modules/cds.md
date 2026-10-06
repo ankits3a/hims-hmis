@@ -8,11 +8,57 @@ Source: `apps/core/src/modules/cds/`
 - **Used by modules:** `opd`
 - **Kernel used:** `db`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `ALLERGEN_MIN_CHARS`, `ICD10_MIN_QUERY_CHARS`, `Icd11MapFormatError`, `KNOWLEDGE`, `WHO_NO_MAPPING`, `WHO_ONE_TO_ONE_HEADER`, `allSyndromes`, `bandFor`, `buildRegimen`, `cardsFor`, `complaintVocabulary`, `completeComplaint`, `doseFor`, `durationDaysOf`, `frequencyOf`, `ghostFor`, `icd11ForCodes`, `mapKindOf`, `matchesAKnownAllergen`, `parseWhoOneToOneMap`, `productSpecFor`, `rankSyndromes`, `rulesOf`, `searchAllergens`, `searchIcd10`, `syndromeByKey`, `toRxDraft`, `withIcd11`
-
-Types: `AllergenHit`, `BuiltLine`, `BuiltRegimen`, `Card`, `CdsRule`, `ComplaintTerm`, `DoseVerdict`, `Dosing`, `Icd10Hit`, `Icd11MapKind`, `Icd11Ref`, `Knowledge`, `ParsedWhoMap`, `PatientBand`, `PatientFacts`, `RegimenLine`, `RxDraftLine`, `Syndrome`, `SyndromeHit`, `WhoMapRow`
+- `allergens.ts`
+  - `ALLERGEN_MIN_CHARS`
+  - `matchesAKnownAllergen(substance: string): boolean`
+  - `searchAllergens(db: Db, query: string, limit = 8): Promise<AllergenHit[]>`
+  - types: `AllergenHit`
+- `guardrails.ts`
+  - `cardsFor(r: BuiltRegimen, p: PatientFacts, sex: string | null): Card[]`
+  - types: `Card`
+- `icd10.ts`
+  - `MIN_QUERY_CHARS`
+  - `searchIcd10(db: Db, query: string, limit = 10): Promise<Icd10Hit[]>`
+  - types: `Icd10Hit`
+- `icd11-lookup.ts`
+  - `icd11ForCodes(db: Db | Tx, codes: readonly (string | null | undefined)[]): Promise<Map<string, Icd11Ref>>`
+  - `withIcd11(db: Db | Tx, items: readonly T[], codeOf: (item: T) => string | null | undefined): Promise<(T & { icd11: Icd11Ref | null })[]>`
+  - types: `Icd11Ref`
+- `icd11-map.ts`
+  - `class Icd11MapFormatError`
+  - `WHO_NO_MAPPING`
+  - `WHO_ONE_TO_ONE_HEADER`
+  - `mapKindOf(row: Omit<WhoMapRow, "mapKind">, line: number): Icd11MapKind`
+  - `parseWhoOneToOneMap(text: string): ParsedWhoMap`
+  - types: `Icd11MapKind`, `ParsedWhoMap`, `WhoMapRow`
+- `knowledge.ts`
+  - `KNOWLEDGE: Knowledge`
+  - `rulesOf(domain: string): CdsRule[]`
+  - `syndromeByKey(key: string): Syndrome | null`
+  - types: `CdsRule`, `Dosing`, `Knowledge`, `RegimenLine`, `Syndrome`
+- `matcher.ts`
+  - `allSyndromes(): Syndrome[]`
+  - `rankSyndromes(complaint: string, limit = 4): SyndromeHit[]`
+  - types: `SyndromeHit`
+- `products.ts`
+  - `productSpecFor(drugLabel: string): ProductSpec | null`
+- `regimen.ts`
+  - `bandFor(p: PatientFacts): PatientBand`
+  - `buildRegimen(syndromeKey: string, p: PatientFacts): BuiltRegimen | null`
+  - `doseFor(dosing: Dosing | null, p: PatientFacts, sig: string): DoseVerdict`
+  - types: `BuiltLine`, `BuiltRegimen`, `DoseVerdict`, `PatientBand`, `PatientFacts`
+- `rx.ts`
+  - `durationDaysOf(duration: string | null, sig: string): number | null`
+  - `frequencyOf(sig: string): RxFrequency`
+  - `toRxDraft(line: BuiltLine): RxDraftLine`
+  - types: `RxDraftLine`
+- `vocabulary.ts`
+  - `complaintVocabulary(): ComplaintTerm[]`
+  - `completeComplaint(q: string, limit = 8): ComplaintTerm[]`
+  - `ghostFor(q: string): string | null`
+  - types: `ComplaintTerm`
 
 ## Tables (`kernel/db/schema/cds.ts`)
 
@@ -21,3 +67,5 @@ None under this name.
 ## HTTP routes (0)
 
 None.
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/cds`

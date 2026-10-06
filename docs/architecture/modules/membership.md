@@ -8,40 +8,121 @@ Source: `apps/core/src/modules/membership/`
 - **Used by modules:** `billing`, `partners`, `pharmacy`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `events`, `modules`, `search`, `tokens`, `workflow`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `COLUMN_MAP_VERSIONS`, `COUPON_SOURCE_KEY`, `GRACE_HONOR_APPROVAL_TYPE`, `GRACE_HONOR_SUBJECT_TYPE`, `HOLDER_BOOK_COLUMN_MAPS`, `INSTRUMENT_SEARCH_PROVIDER_KEY`, `IST_OFFSET_MS`, `MATCH_QUEUE_REASONS`, `MATCH_TRIGRAM_THRESHOLD`, `MEMBERSHIP_APPROVAL_TYPES`, `MEMBERSHIP_DISCLOSURE`, `MEMBERSHIP_SOURCE_KEY`, `MembershipError`, `MembershipModule`, `QUARANTINE_REASONS`, `RECOGNITION_PERK_NOTE`, `benefitCandidate`, `benefitCoversLine`, `cardsToday`, `clampValueEntitlementsToBalance`, `consumeEntitlements`, `counterForWinner`, `counterLiveAt`, `couponRedemptionStates`, `couponRedemptionsOf`, `couponSource`, `couponUnusableReason`, `dismissMatch`, `enrolMember`, `entitlementCountersOf`, `entitlementMovementsOf`, `findPatientCandidates`, `graceHonor`, `holderBookFileHash`, `importHolderBook`, `inDropDuplicateRowNos`, `instrumentSearchProvider`, `istDayIndex`, `istMinuteOfDay`, `istWeekdayMondayZero`, `listLapsedRestores`, `listMatchQueue`, `listQuarantine`, `membershipHttpStatus`, `membershipManifest`, `membershipSalesEnabled`, `membershipSource`, `membershipUsableAt`, `narrowToRedeemableCoupons`, `narrowToUsableEntitlements`, `nextActOf`, `parseHolderBook`, `primaryReason`, `quarantineRows`, `recogniseAtCounter`, `recogniseForActor`, `recordRecognition`, `redeemCoupons`, `registerMembershipApprovalTypes`, `releaseRedemptions`, `requireSalesLane`, `resolveColumnMap`, `resolveInstruments`, `resolveMatch`, `restoreEntitlements`, `standingOf`
-
-Types: `BenefitScope`, `BenefitTerm`, `CardTodayRow`, `ColumnMap`, `CounterAllowance`, `CounterHolder`, `CounterMembership`, `CounterNextAct`, `CounterRecognition`, `CounterStanding`, `CouponRedemptionRequest`, `CouponRedemptionState`, `CouponUnusableReason`, `EnrolInput`, `EnrolResult`, `EntitlementConsume`, `EntitlementCounterState`, `EntitlementRestore`, `GraceHonorInput`, `GraceHonorResult`, `HolderBookField`, `HolderBookImportInput`, `HolderBookImportResult`, `ImportQuarantineReport`, `ImportQueueReport`, `LapsedRestoreItem`, `MatchCandidate`, `MatchQueueItem`, `MatchQueueReason`, `MembershipErrorCode`, `ParsedHolderBook`, `ParsedMember`, `ParsedRow`, `QuarantineReason`, `QuarantineRow`, `RecognisedCoupon`, `RecognisedMembership`, `RecognitionResult`, `ReleaseTrigger`, `ReleasedRedemption`, `ResolveInstrumentsInput`, `ResolveMatchInput`, `ResolvedCoupon`, `ResolvedInstruments`, `ResolvedMembership`
+- `approval-types.ts`
+  - `MEMBERSHIP_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `registerMembershipApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `counter-view.ts`
+  - `cardsToday(db: Db, actor: Actor, now: Date): Promise<CardTodayRow[]>`
+  - `nextActOf(standing: CounterStanding, linked: boolean): CounterNextAct`
+  - `recogniseAtCounter(db: Db, actor: Actor, input: { patientId?: string | null; presentedCodes?: string[]; at: Date }): Promise<CounterRecogni…`
+  - `recordRecognition(db: Db, actor: Actor, presentedCodes: string[], result: CounterRecognition, at: Date): Promise<void>`
+  - `standingOf(m: Pick<RecognisedMembership, "status" | "usable" | "validFrom">, at: Date): CounterStanding`
+  - types: `CardTodayRow`, `CounterAllowance`, `CounterHolder`, `CounterMembership`, `CounterNextAct`, `CounterRecognition`, `CounterStanding`
+- `coupon-rules.ts`
+  - `IST_OFFSET_MS`
+  - `couponUnusableReason(coupon: ResolvedCoupon, args: { at: Date; billGrossPaise: number }): CouponUnusableReason | null`
+  - `istDayIndex(at: Date): number`
+  - `istMinuteOfDay(at: Date): number`
+  - `istWeekdayMondayZero(at: Date): number`
+  - `membershipUsableAt(instrument: ResolvedMembership, at: Date): boolean`
+  - types: `CouponUnusableReason`
+- `enrolment.ts`
+  - `enrolMember(db: Db, actor: Actor, input: EnrolInput, now: Date = new Date()): Promise<EnrolResult>`
+  - `membershipSalesEnabled(env: NodeJS.ProcessEnv = process.env): boolean`
+  - `requireSalesLane(): void`
+  - types: `EnrolInput`, `EnrolResult`
+- `entitlements.ts`
+  - `clampValueEntitlementsToBalance(resolved: ResolvedInstruments, counters: EntitlementCounterState[], billGrossPaise: number): ResolvedInstru…`
+  - `consumeEntitlements(tx: Tx, actor: Actor, input: { invoiceId: string; at: Date; consumes: EntitlementConsume[] }): Promise<{ movementIds: s…`
+  - `counterForWinner(resolved: ResolvedInstruments, counters: EntitlementCounterState[], args: { benefitKey: string; at: Date }): { instanceId:…`
+  - `counterLiveAt(counter: { state: string; validFrom: Date; validTo: Date }, at: Date): boolean`
+  - `entitlementCountersOf(exec: Db | Tx, instanceIds: string[]): Promise<EntitlementCounterState[]>`
+  - `entitlementMovementsOf(exec: Db | Tx, counterId: string): Promise<(typeof entitlementMovements.$inferSelect)[]>`
+  - `narrowToUsableEntitlements(resolved: ResolvedInstruments, counters: EntitlementCounterState[], at: Date): ResolvedInstruments`
+  - `restoreEntitlements(tx: Tx, actor: Actor, input: { invoiceId: string; invoiceLineIds: string[]; at: Date; reason: string }): Promise<Entitl…`
+  - types: `EntitlementConsume`, `EntitlementCounterState`, `EntitlementRestore`
+- `errors.ts`
+  - `class MembershipError`
+  - `membershipHttpStatus(code: MembershipErrorCode): number`
+  - types: `MembershipErrorCode`
+- `events.ts`
+  - `MEMBERSHIP_EVENTS`
+  - `couponRedemptionReleased`
+  - `holderBookImported`
+  - `instrumentEnrolled`
+  - `instrumentGraceHonored`
+  - `instrumentHolderLinked`
+  - `instrumentLookupRefused`
+  - `instrumentRecognised`
+- `import/column-maps.ts`
+  - `COLUMN_MAP_VERSIONS: readonly string[]`
+  - `HOLDER_BOOK_COLUMN_MAPS: readonly ColumnMap[]`
+  - `resolveColumnMap(headerCells: readonly string[], requested?: string): ColumnMap`
+  - types: `ColumnMap`, `HolderBookField`
+- `import/importer.ts`
+  - `holderBookFileHash(csv: string): string`
+  - `importHolderBook(db: Db, actor: Actor, input: HolderBookImportInput, now: Date = new Date()): Promise<HolderBookImportResult>`
+  - `inDropDuplicateRowNos(rows: readonly ParsedRow[]): Set<number>`
+  - `parseHolderBook(csv: string, requestedVersion?: string): ParsedHolderBook`
+  - types: `HolderBookImportInput`, `HolderBookImportResult`, `ImportQuarantineReport`, `ImportQueueReport`, `ParsedHolderBook`, `ParsedMember`, `ParsedRow`
+- `import/match-queue.ts`
+  - `MATCH_QUEUE_REASONS`
+  - `MATCH_TRIGRAM_THRESHOLD`
+  - `dismissMatch(db: Db, actor: Actor, input: { queueItemId: string; note?: string; reason?: DismissReason }, now: Date = new Date()): Promise<…`
+  - `findPatientCandidates(db: Db | Tx, holderName: string): Promise<MatchCandidate[]>`
+  - `listLapsedRestores(db: Db, limit = 50): Promise<LapsedRestoreItem[]>`
+  - `listMatchQueue(db: Db, actor: Actor, opts: { state?: "open" | "resolved" | "dismissed"; limit?: number } = {}): Promise<MatchQueueItem[]>`
+  - `resolveMatch(db: Db, actor: Actor, input: ResolveMatchInput, now: Date = new Date()): Promise<{ queueItemId: string; instanceId: string; pa…`
+  - types: `LapsedRestoreItem`, `MatchCandidate`, `MatchQueueItem`, `MatchQueueReason`, `ResolveMatchInput`
+- `import/quarantine.ts`
+  - `QUARANTINE_REASONS`
+  - `listQuarantine(db: Db, batchId: string): Promise<QuarantineRow[]>`
+  - `primaryReason(reasons: readonly QuarantineReason[]): QuarantineReason`
+  - `quarantineRows(tx: Tx, rows: readonly QuarantineInput[]): Promise<string[]>`
+  - types: `QuarantineReason`, `QuarantineRow`
+- `instruments.ts`
+  - `benefitCandidate(args: { sourceKey: string; term: BenefitTerm; grossPaise: number; }): AdjustmentCandidate`
+  - `benefitCoversLine(scope: BenefitScope, ctx: PricingContext, line: InvoiceLineInput): boolean`
+  - types: `BenefitScope`, `BenefitTerm`, `ResolvedCoupon`, `ResolvedInstruments`, `ResolvedMembership`
+- `manifest.ts`
+  - `membershipManifest: ModuleManifest`
+- `membership.module.ts`
+  - `class MembershipModule`
+- `recognition.ts`
+  - `GRACE_HONOR_APPROVAL_TYPE`
+  - `GRACE_HONOR_SUBJECT_TYPE`
+  - `MEMBERSHIP_DISCLOSURE`
+  - `RECOGNITION_PERK_NOTE`
+  - `graceHonor(db: Db, actor: Actor, input: GraceHonorInput): Promise<GraceHonorResult>`
+  - `recogniseForActor(db: Db, actor: Actor, input: { patientId?: string | null; presentedCodes?: string[]; at: Date }): Promise<RecognitionResu…`
+  - `resolveInstruments(db: Db, input: ResolveInstrumentsInput): Promise<ResolvedInstruments>`
+  - types: `GraceHonorInput`, `GraceHonorResult`, `RecognisedCoupon`, `RecognisedMembership`, `RecognitionResult`, `ResolveInstrumentsInput`
+- `redemptions.ts`
+  - `couponRedemptionStates(exec: Db | Tx, couponIds: string[]): Promise<Map<string, CouponRedemptionState>>`
+  - `couponRedemptionsOf(exec: Db | Tx, invoiceId: string): Promise<(typeof couponRedemptions.$inferSelect)[]>`
+  - `narrowToRedeemableCoupons(resolved: ResolvedInstruments, states: Map<string, CouponRedemptionState>): ResolvedInstruments`
+  - `redeemCoupons(tx: Tx, actor: Actor, input: { invoiceId: string; patientId: string; at: Date; redemptions: CouponRedemptionRequest[]; }): Pr…`
+  - `releaseRedemptions(tx: Tx, actor: Actor, input: { invoiceId: string; trigger: ReleaseTrigger; at: Date; reason: string }): Promise<Released…`
+  - types: `CouponRedemptionRequest`, `CouponRedemptionState`, `ReleaseTrigger`, `ReleasedRedemption`
+- `search-providers.ts`
+  - `INSTRUMENT_SEARCH_PROVIDER_KEY`
+  - `instrumentSearchProvider: SearchProvider`
+- `sources.ts`
+  - `COUPON_SOURCE_KEY`
+  - `MEMBERSHIP_SOURCE_KEY`
+  - `couponSource(resolved: ResolvedInstruments): AdjustmentSource`
+  - `membershipSource(resolved: ResolvedInstruments): AdjustmentSource`
 
 ## Tables (`kernel/db/schema/membership.ts`)
 
-- `coupon_definitions` (`couponDefinitions`)
-- `coupon_redemptions` (`couponRedemptions`)
-- `covered_members` (`coveredMembers`)
-- `entitlement_counters` (`entitlementCounters`)
-- `entitlement_movements` (`entitlementMovements`)
-- `holder_book_imports` (`holderBookImports`)
-- `import_quarantine` (`importQuarantine`)
-- `lapsed_restore_checks` (`lapsedRestoreChecks`)
-- `membership_instances` (`membershipInstances`)
-- `membership_plans` (`membershipPlans`)
-- `patient_match_queue` (`patientMatchQueue`)
+`coupon_definitions`, `coupon_redemptions`, `covered_members`, `entitlement_counters`, `entitlement_movements`, `holder_book_imports`, `import_quarantine`, `lapsed_restore_checks`, `membership_instances`, `membership_plans`, `patient_match_queue`
 
-References tables in: `billing`, `partners`, `patients`
+Foreign keys into: `billing`, `partners`, `patients`
 
 ## HTTP routes (11)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/membership/grace-honor` | `membership.controller.ts` |
-| GET | `/membership/import/:importId/quarantine` | `membership.controller.ts` |
-| POST | `/membership/import/holder-book` | `membership.controller.ts` |
-| POST | `/membership/instruments/enrol` | `membership.controller.ts` |
-| GET | `/membership/instruments/lookup` | `membership.controller.ts` |
-| GET | `/membership/recognition/today` | `membership.controller.ts` |
-| GET | `/membership/recognition` | `membership.controller.ts` |
-| POST | `/membership/reconcile/dismiss` | `membership.controller.ts` |
-| POST | `/membership/reconcile/lapsed/checked` | `membership.controller.ts` |
-| GET | `/membership/reconcile/queue` | `membership.controller.ts` |
-| POST | `/membership/reconcile/resolve` | `membership.controller.ts` |
+- `membership.controller.ts` — 11: `/membership/grace-honor`, `/membership/import`, `/membership/instruments`, `/membership/recognition`, `/membership/reconcile`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/membership`

@@ -8,232 +8,261 @@ Source: `apps/core/src/modules/pharmacy/`
 - **Used by modules:** —
 - **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `report`, `resources`, `tokens`, `workflow`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `ANTIMICROBIAL_STEWARD_ROLE`, `CONTROLLED_LICENCE_KINDS`, `CONTROLLED_STORE_CODE`, `CUSTODY_PERMISSION`, `DOWNTIME_BACKFILL_DAYS`, `GST_NOTIFICATION`, `H1_REGISTER_MAX_DAYS`, `LICENCES_PERMISSION`, `LICENCE_RENEWAL_NOTICE_DAYS`, `NIL_RATED_DRUGS`, `OPD_PHARMACY_STORE_CODE`, `PHARMACIST_ROLE`, `PHARMACY_APPROVAL_TYPES`, `PHARMACY_BILL_TEMPLATE`, `PHARMACY_DEFINITIONS`, `PHARMACY_DEF_KEYS`, `PHARMACY_DISPENSE_DEFINITION_JSON`, `PHARMACY_DISPENSE_DEF_KEY`, `PHARMACY_DISPENSE_STATES`, `PHARMACY_ERROR_CODES`, `PHARMACY_EVENTS`, `PHARMACY_GST_CATEGORIES`, `PHARMACY_IDEMPOTENT_ROUTES`, `PHARMACY_MESSAGES_CONSUMER`, `PHARMACY_MESSAGE_TEMPLATES`, `PHARMACY_PICK_SWEEP_ACTOR`, `PHARMACY_REFILL_TEMPLATE`, `PHARMACY_RX_ISSUED_CONSUMER`, `PHARMACY_SUBSTITUTION_ENABLED`, `PICK_EXPIRED_REASON`, `PICK_RESERVATION_MINUTES`, `PharmacyControlledController`, `PharmacyError`, `PharmacyModule`, `REFILL_MIN_SUPPLY_DAYS`, `REFILL_REMINDER_LEAD_DAYS`, `REFILL_REMINDER_NAMES_DRUGS`, `REFUSED_FLAGS`, `REGISTER_FLAGS`, `REGISTRATION_RENEWAL_NOTICE_DAYS`, `RESTRICTED_ANTIMICROBIAL_APPROVAL_TYPE`, `RETAIL_PHARMACY_STORE_CODE`, `RETAIL_REF_TYPE`, `SALE_SERVICE_PREFIX`, `SCHEDULED_FLAGS`, `WITNESS_PERMISSION`, `acceptRetailReturn`, `acceptReturn`, `activatePharmacyDefinitions`, `activeStewards`, `alternativesFor`, `anyEndPrescriber`, `applyGstSlabPlan`, `askSteward`, `billDispense`, `cancelBilledDispense`, `cancelDispense`, `claimDispense`, `classifyControlledDrugs`, `controlOf`, `controlledLicenceStates`, `controlledStore`, `controlledToday`, `counterBatches`, `counterSummary`, `currentRegistration`, `custodianPairHeld`, `declineLine`, `dispenseBilled`, `dispenseCancelled`, `dispenseClaimed`, `dispenseHandedOver`, `dispenseLineDeclined`, `dispensePicked`, `dispenseQueued`, `dispenseVerified`, `doseUnits`, `dosesPerDay`, `endPharmacistRegistration`, `enqueueBillMessage`, `enqueueDispense`, `enterPaperDispense`, `findAtCounter`, `findRetailSaleByInvoiceNo`, `getDispense`, `getDispenseRow`, `getRetailSale`, `getSaleItem`, `gstCategoryFor`, `gstSlabPlan`, `h1Register`, `handOverDispense`, `handlePharmacyMessageEvent`, `handlePrescriptionIssued`, `inspectSheet`, `isEndPrescriber`, `istDateOf`, `labelFor`, `linesOf`, `listPaperDispenses`, `listPharmacists`, `listQueue`, `listRetailLicences`, `listRetailSales`, `listSaleItems`, `liveDispenseFor`, `messagesOffice`, `namableDrugs`, `patientMessagesFor`, `pharmacistRegistered`, `pharmacistRegistrationEnded`, `pharmacyDltTemplateIdsRecorded`, `pharmacyHttpStatus`, `pharmacyLeakage`, `pharmacyManifest`, `pharmacyMessagesConsumer`, `pharmacyMessagingProviderLive`, `pharmacyStaff`, `pharmacyToHttp`, `pickDispense`, `prefillQtyBase`, `previewDispenseBill`, `previewPaperDispense`, `previewRetailSale`, `priceForBatch`, `recordContactPhone`, `recordControlledLicence`, `recordEndPrescriber`, `recordPharmacistRegistration`, `recordRetailLicence`, `refillDue`, `registerPharmacyApprovalTypes`, `registerSaleItem`, `renewalDaysLeft`, `reorderAdvice`, `requireActiveSaleItem`, `requireRegisteredPharmacist`, `retailLicenceRecorded`, `retailLicenceState`, `retailLineReturned`, `retailSold`, `retailStore`, `runRefillReminders`, `rxIssuedConsumer`, `saleItemCandidates`, `searchCounterShelf`, `searchRetailShelf`, `sellRetail`, `setItemGstSlab`, `setSaleItemActive`, `setSaleItemDiscount`, `setShelfLocation`, `shelfLocationsFor`, `stewardToday`, `stockForDoctor`, `substitutionRecorded`, `suggestGstSlab`, `supplyDays`, `sweepExpiredPicks`, `syncSaleItemCategory`, `tallyLedgersConfirmed`, `verifyDispense`
-
-Types: `ActivatePharmacyDefinitionsReport`, `Alternative`, `BatchPrice`, `BatchPriceInput`, `BatchPriceWinner`, `BillInput`, `BillMessageState`, `CancelBilledInput`, `CancelBilledResult`, `ControlledClassification`, `ControlledLicenceKind`, `ControlledLicenceState`, `ControlledLicenceView`, `ControlledToday`, `CounterBatch`, `CounterDoor`, `CounterSummary`, `DispenseLineRow`, `DispenseLineView`, `DispenseRow`, `DispenseView`, `DoctorStock`, `DoctorStockAlternative`, `FindResult`, `GstSlabPlanRow`, `GstSuggestion`, `H1Register`, `H1RegisterRow`, `HandoverInput`, `LabelData`, `LabelLine`, `LeakageMismatch`, `LeakageReport`, `LineControl`, `MessagesOffice`, `PaperDispenseInput`, `PatientMessagesView`, `PharmacistRegistration`, `PharmacistView`, `PharmacyDispenseState`, `PharmacyErrorCode`, `PharmacyStaffMember`, `PickInput`, `PickLineInput`, `QueueRow`, `RecordLicenceInput`, `RefillLine`, `RefillRunResult`, `ReorderAdvice`, `ReorderLine`, `ReorderStatus`, `RetailCustomerInput`, `RetailLicenceState`, `RetailLicenceView`, `RetailLineInput`, `RetailPrescriptionInput`, `RetailPreview`, `RetailReturnInput`, `RetailReturnResult`, `RetailSaleInput`, `RetailSaleRow`, `RetailSaleView`, `RetailShelfEntry`, `ReturnInput`, `ReturnResult`, `SaleItemRow`, `SaleItemView`, `SheetCheck`, `VerifyInput`, `VerifyLineInput`
+- `antimicrobial.ts`
+  - `activeStewards(db: Db): Promise<string[]>`
+  - `askSteward(db: Db, actor: Actor, dispenseId: string, lineIdx: number, input: StewardAskInput, now: Date): Promise<StewardVerdict>`
+  - `stewardToday(db: Db, now: Date = new Date()): Promise<StewardToday>`
+- `approval-types.ts`
+  - `ANTIMICROBIAL_STEWARD_ROLE`
+  - `PHARMACY_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `RESTRICTED_ANTIMICROBIAL_APPROVAL_TYPE`
+  - `registerPharmacyApprovalTypes(db: Db, activator: Actor): Promise<{ registered: string[]; already: string[] }>`
+- `bill.ts`
+  - `billDispense(db: Db, actor: Actor, dispenseId: string, input: BillInput, now: Date): Promise<DispenseView>`
+  - `previewDispenseBill(db: Db, actor: Actor, dispenseId: string, now: Date, opts: { tender?: TenderKind; discount?: DiscountAsk } = {}): Promi…`
+  - types: `BillInput`
+- `claim.ts`
+  - `claimDispense(db: Db, actor: Actor, input: { dispenseId: string; door: CounterDoor }, now: Date): Promise<DispenseView>`
+  - `findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: string, now: Date): Promise<FindResult>`
+  - types: `CounterDoor`, `FindResult`
+- `config.ts`
+  - `CONTROLLED_STORE_CODE`
+  - `DOWNTIME_BACKFILL_DAYS`
+  - `LICENCE_RENEWAL_NOTICE_DAYS`
+  - `OPD_PHARMACY_STORE_CODE`
+  - `PHARMACY_BILL_TEMPLATE`
+  - `PHARMACY_MESSAGE_TEMPLATES`
+  - `PHARMACY_REFILL_TEMPLATE`
+  - `PHARMACY_SUBSTITUTION_ENABLED`
+  - `PICK_RESERVATION_MINUTES`
+  - `REFILL_MIN_SUPPLY_DAYS`
+  - `REFILL_REMINDER_LEAD_DAYS`
+  - `REFILL_REMINDER_NAMES_DRUGS`
+  - `REFUSED_FLAGS`
+  - `REGISTER_FLAGS`
+  - `REGISTRATION_RENEWAL_NOTICE_DAYS`
+  - `RETAIL_PHARMACY_STORE_CODE`
+  - `RETAIL_REF_TYPE`
+  - `SCHEDULED_FLAGS`
+  - `istDateOf(at: Date): string`
+- `consumers.ts`
+  - `PHARMACY_RX_ISSUED_CONSUMER`
+  - `handlePrescriptionIssued(tx: Tx, eventId: string, payload: unknown, now: Date): Promise<{ handled: boolean; dispenseId: string | null }>`
+  - `rxIssuedConsumer(db: Db): Handler`
+- `controlled-classify.ts`
+  - `classifyControlledDrugs(db: Db, actor: Actor, opts: { apply: boolean }): Promise<ControlledClassification>`
+  - types: `ControlledClassification`
+- `controlled-office.ts`
+  - `controlledToday(db: Db, actor: Actor, now: Date): Promise<ControlledToday>`
+  - `custodianPairHeld(db: Db): Promise<boolean>`
+  - types: `ControlledToday`
+- `controlled.ts`
+  - `CONTROLLED_LICENCE_KINDS`
+  - `CUSTODY_PERMISSION`
+  - `LICENCES_PERMISSION`
+  - `WITNESS_PERMISSION`
+  - `anyEndPrescriber(db: Db | Tx): Promise<boolean>`
+  - `controlOf(scheduleFlag: string | null | undefined, ndpsClass: string | null | undefined): LineControl`
+  - `controlledLicenceStates(db: Db | Tx, now: Date): Promise<Record<ControlledLicenceKind, ControlledLicenceState>>`
+  - `controlledStore(db: Db | Tx): Promise<StoreRow | undefined>`
+  - `isEndPrescriber(db: Db | Tx, doctorId: string): Promise<boolean>`
+  - `recordControlledLicence(db: Db, actor: Actor, input: RecordControlledLicenceInput, now: Date): Promise<ControlledLicenceView>`
+  - `recordEndPrescriber(db: Db, actor: Actor, input: { doctorId: string; training: string }, now: Date): Promise<{ id: string }>`
+  - types: `ControlledLicenceKind`, `ControlledLicenceState`, `ControlledLicenceView`, `LineControl`
+- `definitions.ts`
+  - `PHARMACY_DEFINITIONS`
+  - `PHARMACY_DEF_KEYS`
+  - `activatePharmacyDefinitions(db: Db, activator: Actor): Promise<ActivatePharmacyDefinitionsReport>`
+  - types: `ActivatePharmacyDefinitionsReport`
+- `doctor-stock.ts`
+  - `stockForDoctor(db: Db, medicineIds: readonly string[], now: Date = new Date()): Promise<DoctorStock[]>`
+  - types: `DoctorStock`, `DoctorStockAlternative`
+- `errors.ts`
+  - `PHARMACY_ERROR_CODES`
+  - `class PharmacyError`
+  - `pharmacyHttpStatus(code: PharmacyErrorCode): number`
+  - types: `PharmacyErrorCode`
+- `events.ts`
+  - `PHARMACY_EVENTS`
+  - `dispenseBilled`
+  - `dispenseCancelled`
+  - `dispenseClaimed`
+  - `dispenseHandedOver`
+  - `dispenseLineDeclined`
+  - `dispensePicked`
+  - `dispenseQueued`
+  - `dispenseVerified`
+  - `pharmacistRegistered`
+  - `pharmacistRegistrationEnded`
+  - `retailLicenceRecorded`
+  - `retailLineReturned`
+  - `retailSold`
+  - `substitutionRecorded`
+- `expiry.ts`
+  - `PHARMACY_PICK_SWEEP_ACTOR: Actor`
+  - `PICK_EXPIRED_REASON`
+  - `sweepExpiredPicks(db: Db, decls: readonly OrderKindDecl[], now: Date): Promise<{ cancelled: string[] }>`
+- `gst-slab.ts`
+  - `GST_NOTIFICATION`
+  - `NIL_RATED_DRUGS`
+  - `applyGstSlabPlan(db: Db, actor: Actor, plan: readonly GstSlabPlanRow[], opts: { overwrite?: boolean } = {}): Promise<{ slabsSet: number; ca…`
+  - `gstSlabPlan(db: Db): Promise<GstSlabPlanRow[]>`
+  - `setItemGstSlab(tx: Tx, actor: Actor, itemId: string, rateBps: number): Promise<{ categoryChanged: boolean }>`
+  - `suggestGstSlab(ingredients: readonly { name: string; aliases?: readonly string[] }[]): GstSuggestion | null`
+  - `syncSaleItemCategory(tx: Tx, actor: Actor, itemId: string, rateBps: number): Promise<{ categoryChanged: boolean }>`
+  - types: `GstSlabPlanRow`, `GstSuggestion`
+- `handover.ts`
+  - `handOverDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, input: HandoverInput, now: Date): Promise<Dispe…`
+  - types: `HandoverInput`
+- `label.ts`
+  - `labelFor(db: Db, actor: Actor, dispenseId: string): Promise<LabelData>`
+  - types: `LabelData`, `LabelLine`
+- `leakage.ts`
+  - `pharmacyLeakage(db: Db, day: string, storeCode: string = OPD_PHARMACY_STORE_CODE): Promise<LeakageReport>`
+  - types: `LeakageMismatch`, `LeakageReport`
+- `manifest.ts`
+  - `pharmacyManifest: ModuleManifest`
+- `messages.ts`
+  - `PHARMACY_MESSAGES_CONSUMER`
+  - `enqueueBillMessage(tx: Tx, input: { patientId: string; invoiceId: string; occurredAt: Date; sourceEventId: string | null }): Promise<{ id: …`
+  - `handlePharmacyMessageEvent(tx: Tx, e: Pick<DispatchedEvent, "eventId" | "name" | "payload" | "occurredAt">): Promise<{ id: string | null; s…`
+  - `messagesOffice(db: Db, provider: ProviderState, now: Date): Promise<MessagesOffice>`
+  - `namableDrugs(lines: readonly RefillLine[]): string[]`
+  - `patientMessagesFor(db: Db, dispenseId: string, provider: ProviderState, now: Date): Promise<PatientMessagesView>`
+  - `pharmacyDltTemplateIdsRecorded(db: Db): Promise<boolean>`
+  - `pharmacyMessagesConsumer(db: Db): Handler`
+  - `pharmacyMessagingProviderLive(env: NodeJS.ProcessEnv = process.env): boolean`
+  - `recordContactPhone(tx: Tx, userId: string, phone: string, now: Date): Promise<string>`
+  - `refillDue(handedOverOn: string, lines: readonly RefillLine[], today: string, opts: { leadDays: number; minSupplyDays: number }): { runsOutO…`
+  - `runRefillReminders(db: Db, now: Date, opts: { leadDays?: number; minSupplyDays?: number; nameDrugs?: boolean } = {}): Promise<RefillRunResu…`
+  - `supplyDays(line: Pick<RxLine, "dose" | "frequency">, qtyBase: number): number | null`
+  - types: `BillMessageState`, `MessagesOffice`, `PatientMessagesView`, `RefillLine`, `RefillRunResult`
+- `pharmacists.ts`
+  - `PHARMACIST_ROLE`
+  - `currentRegistration(db: Db | Tx, userId: string, today: string): Promise<PharmacistRegistration | null>`
+  - `endPharmacistRegistration(tx: Tx, actor: Actor, registrationId: string, reason: string, now: Date = new Date()): Promise<void>`
+  - `listPharmacists(db: Db, now: Date = new Date()): Promise<PharmacistView[]>`
+  - `recordPharmacistRegistration(tx: Tx, actor: Actor, input: { userId: string; council: string; registrationNo: string; validUntil?: string | …`
+  - `renewalDaysLeft(today: string, validUntil: string): number | null`
+  - `requireRegisteredPharmacist(db: Db | Tx, actor: Actor, now: Date): Promise<PharmacistRegistration>`
+  - types: `PharmacistRegistration`, `PharmacistView`
+- `pharmacy-controlled.controller.ts`
+  - `class PharmacyControlledController`
+- `pharmacy-http.ts`
+  - `PHARMACY_IDEMPOTENT_ROUTES`
+  - `toHttp(e: unknown): never`
+- `pharmacy.module.ts`
+  - `class PharmacyModule`
+- `pick.ts`
+  - `pickDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, input: PickInput, now: Date): Promise<DispenseView>`
+  - types: `PickInput`, `PickLineInput`
+- `price.ts`
+  - `PHARMACY_GST_CATEGORIES`
+  - `gstCategoryFor(gstRateBps: number | null): string`
+  - `priceForBatch(input: BatchPriceInput): BatchPrice`
+  - types: `BatchPrice`, `BatchPriceInput`, `BatchPriceWinner`
+- `qty.ts`
+  - `doseUnits(dose: string, strength?: string | null): number | null`
+  - `dosesPerDay(frequency: string): number | null`
+  - `prefillQtyBase(line: Pick<RxLine, "dose" | "frequency" | "durationDays">, strength?: string | null): number | null`
+- `queue.ts`
+  - `enqueueDispense(tx: Tx, actor: Actor, input: { prescriptionId: string; prescriptionVersion: number; patientId: string; encounterId: string;…`
+  - `getDispense(db: Db, actor: Actor, dispenseId: string, now: Date = new Date()): Promise<DispenseView>`
+  - `getDispenseRow(db: Db | Tx, dispenseId: string): Promise<DispenseRow>`
+  - `linesOf(db: Db | Tx, dispenseId: string): Promise<DispenseLineRow[]>`
+  - `listQueue(db: Db, actor: Actor, filter: { serviceDate: string }, now: Date = new Date()): Promise<QueueRow[]>`
+  - `liveDispenseFor(db: Db | Tx, prescriptionId: string, version: number): Promise<DispenseRow | undefined>`
+  - types: `DispenseLineRow`, `DispenseLineView`, `DispenseRow`, `DispenseView`, `QueueRow`
+- `refund.ts`
+  - `cancelBilledDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, input: CancelBilledInput, now: Date): Promi…`
+  - types: `CancelBilledInput`, `CancelBilledResult`
+- `registers.ts`
+  - `H1_REGISTER_MAX_DAYS`
+  - `h1Register(db: Db, actor: Actor, period: { from: string; to: string }): Promise<H1Register>`
+  - types: `H1Register`, `H1RegisterRow`
+- `replenishment.ts`
+  - `reorderAdvice(db: Db, now: Date = new Date()): Promise<ReorderAdvice>`
+  - types: `ReorderAdvice`, `ReorderLine`, `ReorderStatus`
+- `retail-returns.ts`
+  - `acceptRetailReturn(db: Db, actor: Actor, saleId: string, input: RetailReturnInput, idempotencyKey: string | undefined, now: Date): Promise<…`
+  - `findRetailSaleByInvoiceNo(db: Db, actor: Actor, invoiceNo: string): Promise<RetailSaleView>`
+  - types: `RetailReturnInput`, `RetailReturnResult`
+- `retail.ts`
+  - `counterBatches(db: Db, actor: Actor, storeCode: string, itemId: string): Promise<CounterBatch[]>`
+  - `enterPaperDispense(db: Db, documents: DocumentStore, secretKey: Buffer, actor: Actor, input: PaperDispenseInput, idempotencyKey: string | u…`
+  - `getRetailSale(db: Db, actor: Actor, saleId: string): Promise<RetailSaleView>`
+  - `inspectSheet(db: Db, actor: Actor, secretKey: Buffer, qr: string): Promise<SheetCheck>`
+  - `listPaperDispenses(db: Db, actor: Actor): Promise<RetailSaleRow[]>`
+  - `listRetailLicences(db: Db, actor: Actor): Promise<RetailLicenceView[]>`
+  - `listRetailSales(db: Db, actor: Actor, day: string): Promise<RetailSaleRow[]>`
+  - `pharmacyStaff(db: Db, actor: Actor, now: Date): Promise<PharmacyStaffMember[]>`
+  - `previewPaperDispense(db: Db, actor: Actor, input: { storeCode: string; occurredAt: Date; patientId?: string; lines: RetailLineInput[] }, no…`
+  - `previewRetailSale(db: Db, actor: Actor, input: { patientId?: string; lines: RetailLineInput[]; tender?: TenderKind; discount?: DiscountAsk …`
+  - `recordRetailLicence(db: Db, actor: Actor, input: RecordLicenceInput, now: Date): Promise<RetailLicenceView>`
+  - `retailLicenceState(db: Db, now: Date): Promise<RetailLicenceState>`
+  - `retailStore(db: Db): Promise<StoreRow>`
+  - `searchCounterShelf(db: Db, actor: Actor, storeCode: string, q: string, now: Date): Promise<RetailShelfEntry[]>`
+  - `searchRetailShelf(db: Db, actor: Actor, q: string, now: Date): Promise<RetailShelfEntry[]>`
+  - `sellRetail(db: Db, documents: DocumentStore, actor: Actor, input: RetailSaleInput, idempotencyKey: string | undefined, now: Date): Promise<…`
+  - types: `CounterBatch`, `PaperDispenseInput`, `PharmacyStaffMember`, `RecordLicenceInput`, `RetailCustomerInput`, `RetailLicenceState`, `RetailLicenceView`, `RetailLineInput`, `RetailPrescriptionInput`, `RetailPreview`, `RetailSaleInput`, `RetailSaleRow`, `RetailSaleView`, `RetailShelfEntry`, `SheetCheck`
+- `returns.ts`
+  - `acceptReturn(db: Db, actor: Actor, _decls: readonly OrderKindDecl[], dispenseId: string, input: ReturnInput, now: Date): Promise<ReturnResu…`
+  - types: `ReturnInput`, `ReturnResult`
+- `sale-items.ts`
+  - `SALE_SERVICE_PREFIX`
+  - `getSaleItem(db: Db | Tx, itemId: string): Promise<SaleItemRow | undefined>`
+  - `listSaleItems(db: Db | Tx, filter: { search?: string } = {}): Promise<SaleItemView[]>`
+  - `registerSaleItem(tx: Tx, actor: Actor, itemId: string): Promise<{ itemId: string; serviceId: string; serviceCode: string; category: string …`
+  - `requireActiveSaleItem(db: Db | Tx, itemId: string): Promise<SaleItemRow>`
+  - `saleItemCandidates(db: Db | Tx, filter: { search?: string } = {}): Promise<ItemRow[]>`
+  - `setSaleItemActive(tx: Tx, actor: Actor, itemId: string, active: boolean): Promise<void>`
+  - `setSaleItemDiscount(tx: Tx, actor: Actor, itemId: string, discountBps: number): Promise<void>`
+  - types: `SaleItemRow`, `SaleItemView`
+- `shelf-locations.ts`
+  - `setShelfLocation(db: Db, actor: Actor, input: { storeResourceId: string; itemId: string; location: string }, now: Date): Promise<{ location…`
+  - `shelfLocationsFor(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, string>>`
+- `summary.ts`
+  - `counterSummary(db: Db, day: string): Promise<CounterSummary>`
+  - types: `CounterSummary`
+- `tally.ts`
+  - `tallyLedgersConfirmed(db: Db): Promise<boolean>`
+- `verify.ts`
+  - `alternativesFor(db: Db, dispenseId: string, lineIdx: number): Promise<Alternative[]>`
+  - `cancelDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, reason: string, now: Date): Promise<DispenseView>`
+  - `declineLine(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, lineIdx: number, reason: string, now: Date): Promise…`
+  - `verifyDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, input: VerifyInput, now: Date): Promise<DispenseV…`
+  - types: `Alternative`, `VerifyInput`, `VerifyLineInput`
+- `workflow-def.ts`
+  - `PHARMACY_DISPENSE_DEFINITION_JSON`
+  - `PHARMACY_DISPENSE_DEF_KEY`
+  - `PHARMACY_DISPENSE_STATES`
+  - types: `PharmacyDispenseState`
 
 ## Tables (`kernel/db/schema/pharmacy.ts`)
 
-- `pharmacy_adr_events` (`pharmacyAdrEvents`)
-- `pharmacy_adr_reports` (`pharmacyAdrReports`)
-- `pharmacy_adr_suspects` (`pharmacyAdrSuspects`)
-- `pharmacy_authorisations` (`pharmacyAuthorisations`)
-- `pharmacy_cold_excursion_batches` (`pharmacyColdExcursionBatches`)
-- `pharmacy_cold_excursion_closes` (`pharmacyColdExcursionCloses`)
-- `pharmacy_cold_excursion_decisions` (`pharmacyColdExcursionDecisions`)
-- `pharmacy_cold_excursions` (`pharmacyColdExcursions`)
-- `pharmacy_cold_readings` (`pharmacyColdReadings`)
-- `pharmacy_cold_units` (`pharmacyColdUnits`)
-- `pharmacy_controlled_licences` (`pharmacyControlledLicences`)
-- `pharmacy_credit_moves` (`pharmacyCreditMoves`)
-- `pharmacy_dispense_lines` (`pharmacyDispenseLines`)
-- `pharmacy_dispenses` (`pharmacyDispenses`)
-- `pharmacy_end_prescribers` (`pharmacyEndPrescribers`)
-- `pharmacy_medication_incident_events` (`pharmacyMedicationIncidentEvents`)
-- `pharmacy_medication_incidents` (`pharmacyMedicationIncidents`)
-- `pharmacy_message_settings` (`pharmacyMessageSettings`)
-- `pharmacy_pharmacist_registrations` (`pharmacyPharmacistRegistrations`)
-- `pharmacy_reg_h1` (`pharmacyRegH1`)
-- `pharmacy_retail_licences` (`pharmacyRetailLicences`)
-- `pharmacy_retail_sale_lines` (`pharmacyRetailSaleLines`)
-- `pharmacy_retail_sales` (`pharmacyRetailSales`)
-- `pharmacy_sale_items` (`pharmacySaleItems`)
-- `pharmacy_settings` (`pharmacySettings`)
-- `pharmacy_shelf_locations` (`pharmacyShelfLocations`)
-- `pharmacy_short_book` (`pharmacyShortBook`)
-- `pharmacy_tally_config` (`pharmacyTallyConfig`)
-- `pharmacy_tally_exports` (`pharmacyTallyExports`)
-- `pharmacy_tray_check_lines` (`pharmacyTrayCheckLines`)
-- `pharmacy_tray_checks` (`pharmacyTrayChecks`)
-- `pharmacy_tray_templates` (`pharmacyTrayTemplates`)
+`pharmacy_adr_events`, `pharmacy_adr_reports`, `pharmacy_adr_suspects`, `pharmacy_authorisations`, `pharmacy_cold_excursion_batches`, `pharmacy_cold_excursion_closes`, `pharmacy_cold_excursion_decisions`, `pharmacy_cold_excursions`, `pharmacy_cold_readings`, `pharmacy_cold_units`, `pharmacy_controlled_licences`, `pharmacy_credit_moves`, `pharmacy_dispense_lines`, `pharmacy_dispenses`, `pharmacy_end_prescribers`, `pharmacy_medication_incident_events`, `pharmacy_medication_incidents`, `pharmacy_message_settings`, `pharmacy_pharmacist_registrations`, `pharmacy_reg_h1`, `pharmacy_retail_licences`, `pharmacy_retail_sale_lines`, `pharmacy_retail_sales`, `pharmacy_sale_items`, `pharmacy_settings`, `pharmacy_shelf_locations`, `pharmacy_short_book`, `pharmacy_tally_config`, `pharmacy_tally_exports`, `pharmacy_tray_check_lines`, `pharmacy_tray_checks`, `pharmacy_tray_templates`
 
-References tables in: `auth`, `billing`, `formulary`, `materials`, `opd`, `orders`, `patients`, `resources`, `tariff`
+Foreign keys into: `auth`, `billing`, `formulary`, `materials`, `opd`, `orders`, `patients`, `resources`, `tariff`
 
 ## HTTP routes (182)
 
-| verb | path | controller |
-|---|---|---|
-| GET | `/pharmacy/adr/:id/document` | `pharmacy-adr.controller.ts` |
-| POST | `/pharmacy/adr/:id/events` | `pharmacy-adr.controller.ts` |
-| GET | `/pharmacy/adr/:id` | `pharmacy-adr.controller.ts` |
-| GET | `/pharmacy/adr/salts` | `pharmacy-adr.controller.ts` |
-| GET | `/pharmacy/adr` | `pharmacy-adr.controller.ts` |
-| POST | `/pharmacy/adr` | `pharmacy-adr.controller.ts` |
-| POST | `/pharmacy/authorisations/:id/decision` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/authorisations/:id` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/cold-chain/excursions/:id/close` | `pharmacy-cold-chain.controller.ts` |
-| GET | `/pharmacy/cold-chain/excursions` | `pharmacy-cold-chain.controller.ts` |
-| POST | `/pharmacy/cold-chain/readings` | `pharmacy-cold-chain.controller.ts` |
-| GET | `/pharmacy/cold-chain/stores` | `pharmacy-cold-chain.controller.ts` |
-| GET | `/pharmacy/cold-chain/units/:id/readings` | `pharmacy-cold-chain.controller.ts` |
-| POST | `/pharmacy/cold-chain/units/:id` | `pharmacy-cold-chain.controller.ts` |
-| GET | `/pharmacy/cold-chain/units` | `pharmacy-cold-chain.controller.ts` |
-| POST | `/pharmacy/cold-chain/units` | `pharmacy-cold-chain.controller.ts` |
-| POST | `/pharmacy/controlled/acts` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/controlled/balance` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/controlled/check` | `pharmacy-controlled.controller.ts` |
-| POST | `/pharmacy/controlled/checks` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/controlled/licences` | `pharmacy-controlled.controller.ts` |
-| POST | `/pharmacy/controlled/licences` | `pharmacy-controlled.controller.ts` |
-| POST | `/pharmacy/controlled/prescribers/:id/end` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/controlled/prescribers` | `pharmacy-controlled.controller.ts` |
-| POST | `/pharmacy/controlled/prescribers` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/controlled/register/document` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/controlled/register` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/controlled/today` | `pharmacy-controlled.controller.ts` |
-| GET | `/pharmacy/discount-requests/:approvalId` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/bill/preview` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/bill` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/cancel` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/closing` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/confirm-slip` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/discount-requests` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/handover` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/label` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/lines/:idx/alternatives` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/lines/:idx/authorisations` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/lines/:idx/decline` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/lines/:idx/scan` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/lines/:idx/shelf` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/lines/:idx/steward` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/messages` | `pharmacy-messages.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/messages` | `pharmacy-messages.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/paper` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/patient` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/pick` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/precheck` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/print` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/print` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/refund` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/retained-prescription` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/returns` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id/steward` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/take-over` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses/:id/verify` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/dispenses/:id` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/dispenses` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/doctor/patients/:patientId/dispenses` | `pharmacy-doctor.controller.ts` |
-| GET | `/pharmacy/doctor/stock` | `pharmacy-doctor.controller.ts` |
-| GET | `/pharmacy/find/suggest` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/find` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/incidents/:id/events` | `pharmacy-incidents.controller.ts` |
-| GET | `/pharmacy/incidents/:id` | `pharmacy-incidents.controller.ts` |
-| GET | `/pharmacy/incidents/indicator` | `pharmacy-incidents.controller.ts` |
-| GET | `/pharmacy/incidents` | `pharmacy-incidents.controller.ts` |
-| POST | `/pharmacy/incidents` | `pharmacy-incidents.controller.ts` |
-| POST | `/pharmacy/labels/print` | `pharmacy-labels.controller.ts` |
-| GET | `/pharmacy/labels` | `pharmacy-labels.controller.ts` |
-| GET | `/pharmacy/leakage` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/office/bill-draft/:grnId` | `pharmacy-office.controller.ts` |
-| POST | `/pharmacy/office/draft-orders` | `pharmacy-office.controller.ts` |
-| POST | `/pharmacy/office/item-merges/:id/merge` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/item-merges/:id` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/item-merges/preview` | `pharmacy-office.controller.ts` |
-| POST | `/pharmacy/office/item-merges` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/items` | `pharmacy-office.controller.ts` |
-| POST | `/pharmacy/office/messages/contact` | `pharmacy-messages.controller.ts` |
-| POST | `/pharmacy/office/messages/templates` | `pharmacy-messages.controller.ts` |
-| GET | `/pharmacy/office/messages` | `pharmacy-messages.controller.ts` |
-| GET | `/pharmacy/office/needs` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/pay` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/plan` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/purchase-orders/:id/document` | `pharmacy-office.controller.ts` |
-| POST | `/pharmacy/office/recalls/:id/return` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/recalls/:id` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/reports/accounts` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/activity/document` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/activity` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/catalogue` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/credit-notes` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/daily-stock` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/gst-book` | `pharmacy-reports.controller.ts` |
-| POST | `/pharmacy/office/reports/gstr2b` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/gstr3b` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/hsn` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/losses` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/margin` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/non-moving` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/purchases` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/sales` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/stores` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/ticket-invoices` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/top-selling` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/reports/valuation` | `pharmacy-reports.controller.ts` |
-| GET | `/pharmacy/office/returns/:id/debit-note` | `pharmacy-office.controller.ts` |
-| POST | `/pharmacy/office/returns/draft` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/returns` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/tally/exports/:id/masters.xml` | `pharmacy-tally.controller.ts` |
-| GET | `/pharmacy/office/tally/exports/:id/vouchers.xml` | `pharmacy-tally.controller.ts` |
-| GET | `/pharmacy/office/tally/exports` | `pharmacy-tally.controller.ts` |
-| POST | `/pharmacy/office/tally/exports` | `pharmacy-tally.controller.ts` |
-| GET | `/pharmacy/office/tally/ledgers` | `pharmacy-tally.controller.ts` |
-| PUT | `/pharmacy/office/tally/ledgers` | `pharmacy-tally.controller.ts` |
-| GET | `/pharmacy/office/tally/preview` | `pharmacy-tally.controller.ts` |
-| GET | `/pharmacy/office/today` | `pharmacy-office.controller.ts` |
-| GET | `/pharmacy/office/write-offs/:id/manifest` | `pharmacy-office.controller.ts` |
-| POST | `/pharmacy/opening-stock/capture` | `pharmacy-opening-stock.controller.ts` |
-| POST | `/pharmacy/opening-stock/check` | `pharmacy-opening-stock.controller.ts` |
-| GET | `/pharmacy/opening-stock/items` | `pharmacy-opening-stock.controller.ts` |
-| GET | `/pharmacy/opening-stock/medicines/:id` | `pharmacy-opening-stock.controller.ts` |
-| POST | `/pharmacy/opening-stock/new-drug` | `pharmacy-opening-stock.controller.ts` |
-| POST | `/pharmacy/opening-stock/price-list/import` | `pharmacy-opening-stock.controller.ts` |
-| POST | `/pharmacy/opening-stock/price-list/match` | `pharmacy-opening-stock.controller.ts` |
-| GET | `/pharmacy/opening-stock/suppliers` | `pharmacy-opening-stock.controller.ts` |
-| GET | `/pharmacy/paper-rx/context` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/paper-rx/shelf` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/paper-rx` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/patients/:patientId/credit` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/patients/:patientId/pharmacy-bills` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/pharmacists/:userId/registrations` | `pharmacy-pharmacists.controller.ts` |
-| GET | `/pharmacy/pharmacists/me` | `pharmacy-pharmacists.controller.ts` |
-| POST | `/pharmacy/pharmacists/registrations/:registrationId/end` | `pharmacy-pharmacists.controller.ts` |
-| GET | `/pharmacy/pharmacists` | `pharmacy-pharmacists.controller.ts` |
-| GET | `/pharmacy/queue` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/registers/h1` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/reorder` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/retail/batches` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/bill` | `pharmacy-retail.controller.ts` |
-| POST | `/pharmacy/retail/discount-requests` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/dispenses` | `pharmacy-retail.controller.ts` |
-| POST | `/pharmacy/retail/dispenses` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/licences` | `pharmacy-retail.controller.ts` |
-| POST | `/pharmacy/retail/licences` | `pharmacy-retail.controller.ts` |
-| POST | `/pharmacy/retail/preview` | `pharmacy-retail.controller.ts` |
-| POST | `/pharmacy/retail/preview` | `pharmacy-retail.controller.ts` |
-| POST | `/pharmacy/retail/sales/:id/returns` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/sales/:id` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/sales` | `pharmacy-retail.controller.ts` |
-| POST | `/pharmacy/retail/sales` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/sheet` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/shelf` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/shelf` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/staff` | `pharmacy-retail.controller.ts` |
-| GET | `/pharmacy/retail/state` | `pharmacy-retail.controller.ts` |
-| PUT | `/pharmacy/sale-items/:itemId/discount` | `pharmacy-items.controller.ts` |
-| PUT | `/pharmacy/sale-items/:itemId/gst-slab` | `pharmacy-items.controller.ts` |
-| PUT | `/pharmacy/sale-items/:itemId/location` | `pharmacy-items.controller.ts` |
-| PATCH | `/pharmacy/sale-items/:itemId` | `pharmacy-items.controller.ts` |
-| GET | `/pharmacy/sale-items/candidates` | `pharmacy-items.controller.ts` |
-| POST | `/pharmacy/sale-items/gst-plan/apply` | `pharmacy-items.controller.ts` |
-| GET | `/pharmacy/sale-items/gst-plan` | `pharmacy-items.controller.ts` |
-| GET | `/pharmacy/sale-items` | `pharmacy-items.controller.ts` |
-| POST | `/pharmacy/sale-items` | `pharmacy-items.controller.ts` |
-| GET | `/pharmacy/settings` | `pharmacy-counter.controller.ts` |
-| PUT | `/pharmacy/settings` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/short-book/:id/resolve` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/short-book` | `pharmacy-counter.controller.ts` |
-| POST | `/pharmacy/short-book` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/steward-requests/:approvalId` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/summary/mine` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/summary` | `pharmacy-counter.controller.ts` |
-| GET | `/pharmacy/trays/:id/checks` | `pharmacy-trays.controller.ts` |
-| POST | `/pharmacy/trays/:id/keepers` | `pharmacy-trays.controller.ts` |
-| POST | `/pharmacy/trays/:id/template` | `pharmacy-trays.controller.ts` |
-| POST | `/pharmacy/trays/checks/:id/receive` | `pharmacy-trays.controller.ts` |
-| POST | `/pharmacy/trays/checks/:id/restock` | `pharmacy-trays.controller.ts` |
-| POST | `/pharmacy/trays/checks` | `pharmacy-trays.controller.ts` |
-| GET | `/pharmacy/trays/items` | `pharmacy-trays.controller.ts` |
-| GET | `/pharmacy/trays` | `pharmacy-trays.controller.ts` |
-| POST | `/pharmacy/trays` | `pharmacy-trays.controller.ts` |
+- `pharmacy-adr.controller.ts` — 6: `/pharmacy/adr`
+- `pharmacy-cold-chain.controller.ts` — 8: `/pharmacy/cold-chain`
+- `pharmacy-controlled.controller.ts` — 12: `/pharmacy/controlled`
+- `pharmacy-counter.controller.ts` — 50: `/pharmacy/authorisations`, `/pharmacy/discount-requests`, `/pharmacy/dispenses`, `/pharmacy/find`, `/pharmacy/leakage`, `/pharmacy/paper-rx`, `/pharmacy/patients`, `/pharmacy/queue`, `/pharmacy/registers`, `/pharmacy/reorder`, `/pharmacy/settings`, `/pharmacy/short-book`, `/pharmacy/steward-requests`, `/pharmacy/summary`
+- `pharmacy-doctor.controller.ts` — 2: `/pharmacy/doctor`
+- `pharmacy-incidents.controller.ts` — 5: `/pharmacy/incidents`
+- `pharmacy-items.controller.ts` — 9: `/pharmacy/sale-items`
+- `pharmacy-labels.controller.ts` — 2: `/pharmacy/labels`
+- `pharmacy-messages.controller.ts` — 5: `/pharmacy/dispenses`, `/pharmacy/office`
+- `pharmacy-office.controller.ts` — 18: `/pharmacy/office`
+- `pharmacy-opening-stock.controller.ts` — 8: `/pharmacy/opening-stock`
+- `pharmacy-pharmacists.controller.ts` — 4: `/pharmacy/pharmacists`
+- `pharmacy-reports.controller.ts` — 19: `/pharmacy/office`
+- `pharmacy-retail.controller.ts` — 18: `/pharmacy/retail`
+- `pharmacy-tally.controller.ts` — 7: `/pharmacy/office`
+- `pharmacy-trays.controller.ts` — 9: `/pharmacy/trays`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/pharmacy`

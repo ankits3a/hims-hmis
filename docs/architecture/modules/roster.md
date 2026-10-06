@@ -8,75 +8,334 @@ Source: `apps/core/src/modules/roster/`
 - **Used by modules:** `opd`, `ot`, `radiology`
 - **Kernel used:** `auth`, `copilot`, `db`, `events`, `modules`, `printing`, `tokens`, `workflow`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `AEBAS_ABSENCE_KINDS`, `AEBAS_MISSED_DAYS`, `AUTHORITY_PERMISSION`, `BLOCKING_RULE_KEYS`, `BOARD_HORIZON_MS`, `BOARD_PRINT_CATCH_UP_MS`, `BOARD_PRINT_DESTINATION`, `BOARD_PRINT_SLOTS_IST`, `BOARD_PRINT_STALE_MS`, `COMBINED_ICU_BEDS`, `CRMI_LEAVE_DAYS`, `CRMI_TABLE`, `CRMI_TOTAL_WEEKS`, `CYCLE_TEMPLATES`, `DECLARATIONS_DAYS`, `DUTY_LOOKAHEAD_DAYS`, `DUTY_MANAGER_POSITION`, `EVIDENCE_MAX_DAYS`, `EVIDENCE_MAX_PEOPLE`, `HORIZON_DAYS`, `LOOK_BACK_DAYS`, `MAX_BLOCK_WEEKS`, `MAX_PRESENCE_HOURS`, `ORG_DEPARTMENTS`, `PROPOSAL_DAY_OF_MONTH`, `PROPOSAL_STRATEGIES`, `PROPOSER_ACTOR`, `ROSTER_ACTOR_KINDS`, `ROSTER_ACTS`, `ROSTER_ERROR_CODES`, `ROSTER_ERROR_SENTENCES`, `ROSTER_EVENTS`, `ROSTER_MANAGE`, `ROSTER_PERMISSIONS`, `ROSTER_POSITIONS`, `ROSTER_PUBLISH`, `ROSTER_READ`, `ROSTER_RESOLVER_FLAG`, `ROSTER_RULES`, `ROSTER_RULE_COUNT`, `ROSTER_VIAS`, `RosterError`, `RosterModule`, `SHORT_OPD_MINUTES`, `SURPLUS_REASON`, `UNIT_COUNT`, `UNIT_ESTABLISHMENT`, `absentUserIds`, `acceptFinding`, `acceptUnitFinding`, `acceptedFindingKeys`, `addIstDays`, `addMembership`, `aebasCensus`, `aebasTodo`, `amend`, `answerCover`, `approveAbsence`, `asFinding`, `asKnownAt`, `assertEvidenceAsk`, `assign`, `attendanceProjection`, `backupUnit`, `blockingFindings`, `boardAsItStood`, `boardColumn`, `boardPrintDocument`, `boardPrinterGranted`, `boardSlotAtOrBefore`, `calloutList`, `cancelAbsence`, `closeTeam`, `confirmTeam`, `contentHash`, `countingUnits`, `coverOptions`, `coverRequests`, `createTeam`, `credentialsOf`, `crmiBlocks`, `crmiWeeksTotal`, `cycleTemplate`, `decideCover`, `declarationsView`, `declareHoliday`, `declareHolidayAct`, `declareModeAct`, `declareSkeletonMode`, `delegationsInForce`, `departmentOf`, `departmentsWithTakeGaps`, `departmentsWithoutPublishedCycle`, `doctorUnitsOn`, `draftCycle`, `draftCycleFromTemplate`, `draftPeriod`, `draftUnitMonth`, `dutiesOf`, `dutyEvidence`, `dutyManagersAt`, `editSlot`, `effectiveDrift`, `endMembership`, `endOfficiating`, `escalationRecipients`, `escalationTarget`, `evidencePeople`, `evidenceRef`, `expandCycle`, `expiringCredentials`, `extendWindows`, `extensionPostings`, `fairnessOf`, `fairnessSpread`, `findingKey`, `flagForAlert`, `holdsCredential`, `hoursCarried`, `importMemberships`, `internYear`, `istDateOfInstant`, `istMidnightUtc`, `istMinutesOfInstant`, `istWeekday`, `lastBoardPrint`, `listAbsences`, `listEscalationTargets`, `listFindings`, `listOrgDepartments`, `listRosterPositions`, `listTeams`, `livePeriodCount`, `markAebasEntered`, `markHolidayAebasEntered`, `materialiseWindows`, `membershipsOf`, `modeDeclarations`, `monthWindow`, `myDuties`, `myDutyRows`, `nextBoardSlot`, `nightPoolFor`, `officiatingAt`, `onDutyNow`, `onNowBoard`, `opdSittingAt`, `opdUnitsOn`, `openFlags`, `orgDepartmentByCode`, `parentTeamOf`, `periodWithAssignments`, `periodsTouching`, `prescriberPrint`, `presenceClashes`, `printBoardIfDue`, `printDutyEvidence`, `proposalSeedFor`, `proposalStrategyFor`, `proposeMonth`, `publishCycle`, `publishPeriod`, `publishPeriods`, `publishUnitMonth`, `publishedAsKnownAt`, `publishedCycleCount`, `raiseFlag`, `recordAbsence`, `recordAbsenceUnchecked`, `recordAbsences`, `recordCredential`, `recordDelegation`, `recordFindings`, `recordLines`, `recordOfficiating`, `redactReason`, `registerRosterEvidencePrinting`, `registerRosterPrinting`, `registerTheatreEvidenceSource`, `rejectAbsence`, `renderBoardPrintJob`, `renderBoardSheet`, `renderDutyEvidence`, `renderEvidenceHtml`, `requestAbsence`, `requestCover`, `requireRosterAct`, `resolveFlag`, `resolverEnabled`, `retireSurplusUnits`, `rosterAbsenceApproved`, `rosterAbsenceRequested`, `rosterActMatrix`, `rosterActPolicy`, `rosterAmendmentApplied`, `rosterCopilotTools`, `rosterCoverAnswered`, `rosterCoverDecided`, `rosterCoverRequested`, `rosterDutyChanged`, `rosterFlagRaised`, `rosterHolidayDeclared`, `rosterHttpStatus`, `rosterManifest`, `rosterMasterCounts`, `rosterModeDeclared`, `rosterModeWithdrawn`, `rosterPeriodDrafted`, `rosterPeriodPublished`, `rosterPeriodSuperseded`, `rosterUnits`, `rosteredText`, `rulesInForce`, `runMonthlyProposals`, `seedOrgDepartments`, `seedRosterPositions`, `seedRosterRules`, `seedUnits`, `setEscalationTarget`, `shortUnitName`, `simulate`, `skeletonModeOn`, `splitBlock`, `sweepRosterWindows`, `takeGaps`, `teamByCode`, `teamMembers`, `templateFeasibility`, `unassign`, `unconfirmedTeams`, `unitCountsAt`, `unitHeadsWithoutRegn`, `unitMonth`, `unitOnTake`, `validate`, `verifyCredential`, `whenOf`, `whoIsAt`, `whoIsOn`, `windowAsKnownAt`, `withdrawCover`, `withdrawModeAct`, `withdrawSkeletonMode`
-
-Types: `AbsenceQuery`, `AddMembershipInput`, `AebasItem`, `AebasItemState`, `AebasTodo`, `AmendInput`, `AsItStoodBoard`, `AsItStoodChange`, `AskedWhen`, `AssignInput`, `AttendanceProjection`, `BoardDepartment`, `BoardHole`, `BoardHoleKind`, `BoardPerson`, `BoardPrintResult`, `BoardPrintView`, `BoardRung`, `BoardService`, `BoardUnit`, `CallRung`, `ChangedSlot`, `CoverCandidate`, `CoverDecision`, `CoverOptions`, `CoverReason`, `CoverRefusal`, `CoverRequestView`, `CreateTeamInput`, `CrmiBlock`, `CycleEntrySpec`, `CycleSpec`, `CycleTemplate`, `DeclarationsView`, `DeclareHolidayInput`, `DeclareModeInput`, `DeclaredHoliday`, `DeclaredMode`, `DelegationInput`, `DoctorUnit`, `DraftCycleInput`, `DraftPeriodInput`, `Duty`, `DutyEvidence`, `DutyRef`, `EffectiveRule`, `EscalationContext`, `EscalationRecipients`, `EvidenceDay`, `EvidenceDuty`, `EvidencePerson`, `EvidencePickerDepartment`, `EvidenceTheatre`, `Exclusion`, `FairnessCounters`, `Feasibility`, `FeasibilityInput`, `FindingKeyInput`, `HolidaySpec`, `HypotheticalRoster`, `ImportProblem`, `InternAbsence`, `InternPosting`, `InternYearInput`, `MembershipImportRow`, `MonthAssignment`, `MonthFinding`, `MonthRef`, `MyDuties`, `MyDuty`, `OfficiatingInput`, `OnDutyNow`, `OnNowBoard`, `OnTakeAnswer`, `OpdDepartmentUnits`, `OpdSitting`, `OpdUnit`, `OpdUnitDoctor`, `OrgDepartmentRow`, `OrgDepartmentSeed`, `OverlayEntrySpec`, `PlannedWindow`, `PrescriberPrint`, `PresenceClash`, `ProposalResult`, `ProposalStrategy`, `ProposeMonthInput`, `PublishCycleResult`, `PublishRequest`, `PublishResult`, `RaiseFlagInput`, `RecordCredentialInput`, `RequestAbsenceInput`, `RequestCoverInput`, `RosterAct`, `RosterActorKind`, `RosterAmendmentRow`, `RosterAnswerSource`, `RosterAssignmentRow`, `RosterDelegationRow`, `RosterErrorCode`, `RosterEscalationTargetRow`, `RosterFinding`, `RosterFindingRow`, `RosterFlagView`, `RosterMembershipRow`, `RosterModeDeclarationRow`, `RosterOfficiatingRow`, `RosterPeriodRow`, `RosterPermission`, `RosterPositionRow`, `RosterPositionSeed`, `RosterRuleSeed`, `RosterScope`, `RosterScopeRef`, `RosterTeamRow`, `RosterToolOptions`, `RosterUnitsDepartment`, `RosterVia`, `SeedCount`, `SetEscalationTargetInput`, `SimulateDelta`, `SimulateOptions`, `SimulateResult`, `StaffAbsenceRow`, `StaffCredentialRow`, `TeamMember`, `TheatreEvidenceRow`, `TheatreEvidenceSource`, `UnitMonth`, `ValidateInput`, `WhoIsOnAnswer`, `WhoIsOnQuery`, `WindowGap`
+- `absences.ts`
+  - `absentUserIds(exec: Db | Tx, from: Date, to: Date): Promise<string[]>`
+  - `approveAbsence(tx: Tx, actor: Actor, absenceId: string): Promise<void>`
+  - `attendanceProjection(exec: Db | Tx, userId: string, termStart: Date, termEnd: Date, thresholdFraction = 0.8): Promise<AttendanceProjection>`
+  - `cancelAbsence(tx: Tx, actor: Actor, absenceId: string, via: RosterVia = "direct"): Promise<void>`
+  - `listAbsences(exec: Db | Tx, reader: Actor, q: AbsenceQuery = {}): Promise<StaffAbsenceRow[]>`
+  - `markAebasEntered(tx: Tx, actor: Actor, absenceId: string): Promise<void>`
+  - `recordAbsence(tx: Tx, actor: Actor, input: RequestAbsenceInput): Promise<{ absenceId: string }>`
+  - `recordAbsenceUnchecked(tx: Tx, actor: Actor, input: RequestAbsenceInput): Promise<{ absenceId: string }>`
+  - `recordAbsences(tx: Tx, actor: Actor, userIds: readonly string[], input: Omit<RequestAbsenceInput, "userId">): Promise<{ absenceIds: string[…`
+  - `redactReason(row: StaffAbsenceRow, readerUserId: string | null): StaffAbsenceRow`
+  - `rejectAbsence(tx: Tx, actor: Actor, absenceId: string): Promise<void>`
+  - `requestAbsence(tx: Tx, actor: Actor, input: RequestAbsenceInput, via: RosterVia = "direct"): Promise<{ absenceId: string }>`
+  - types: `AbsenceQuery`, `AttendanceProjection`, `RequestAbsenceInput`, `StaffAbsenceRow`
+- `access.ts`
+  - `requireRosterAct(exec: Db | Tx, actor: Actor, act: RosterAct, scope: RosterScope = {}, via: RosterVia = "direct"): Promise<void>`
+  - types: `RosterScope`
+- `aebas.ts`
+  - `AEBAS_ABSENCE_KINDS: readonly StaffAbsenceKind[]`
+  - `AEBAS_MISSED_DAYS`
+  - `aebasCensus(exec: Db | Tx, now: Date): Promise<{ population: number; overdue: number }>`
+  - `aebasTodo(exec: Db | Tx, actor: Actor, now: Date): Promise<AebasTodo>`
+  - `markHolidayAebasEntered(tx: Tx, actor: Actor, istDate: string): Promise<void>`
+  - types: `AebasItem`, `AebasItemState`, `AebasTodo`
+- `as-it-stood.ts`
+  - `boardAsItStood(exec: Db | Tx, at: Date, now: Date, env: NodeJS.ProcessEnv = process.env): Promise<AsItStoodBoard>`
+  - types: `AsItStoodBoard`, `AsItStoodChange`, `ChangedSlot`
+- `board-print.ts`
+  - `BOARD_PRINT_CATCH_UP_MS`
+  - `BOARD_PRINT_DESTINATION`
+  - `BOARD_PRINT_SLOTS_IST: readonly string[]`
+  - `BOARD_PRINT_STALE_MS`
+  - `boardPrintDocument(exec: Db | Tx, printId: string): Promise<RenderedDocument | null>`
+  - `boardPrinterGranted(exec: Db | Tx): Promise<boolean>`
+  - `boardSlotAtOrBefore(now: Date): Date`
+  - `lastBoardPrint(exec: Db | Tx, now: Date = new Date()): Promise<BoardPrintView | null>`
+  - `nextBoardSlot(now: Date): Date`
+  - `printBoardIfDue(db: Db, now: Date, env: NodeJS.ProcessEnv = process.env): Promise<BoardPrintResult | null>`
+  - `registerRosterPrinting(): () => void`
+  - `renderBoardPrintJob(db: Db, params: Record<string, unknown>, now: Date): Promise<RenderedDocument | null>`
+  - `renderBoardSheet(exec: Db | Tx, at: Date, renderedAt: Date, env: NodeJS.ProcessEnv = process.env): Promise<RenderedDocument>`
+  - types: `BoardPrintResult`, `BoardPrintView`
+- `board.ts`
+  - `BOARD_HORIZON_MS`
+  - `boardColumn(p: Pick<RosterPositionRow, "cadre" | "eligibleRoleKey" | "ladderRank">): Column`
+  - `onNowBoard(exec: Db | Tx, at: Date, env: NodeJS.ProcessEnv = process.env): Promise<OnNowBoard>`
+  - types: `BoardDepartment`, `BoardHole`, `BoardHoleKind`, `BoardPerson`, `BoardRung`, `BoardService`, `BoardUnit`, `OnNowBoard`
+- `calendar.ts`
+  - `HORIZON_DAYS`
+  - `SHORT_OPD_MINUTES`
+  - `addIstDays(d: string, n: number): string`
+  - `backupUnit(exec: Db | Tx, departmentId: string, at: Date): Promise<OnTakeAnswer>`
+  - `declareHoliday(tx: Tx, actor: Actor, input: DeclareHolidayInput): Promise<{ istDate: string; departmentsRematerialised: number }>`
+  - `departmentsWithTakeGaps(exec: Db | Tx, from: Date, to: Date): Promise<{ departmentId: string; code: string; gaps: WindowGap[] }[]>`
+  - `departmentsWithoutPublishedCycle(exec: Db | Tx, at: Date = new Date()): Promise<string[]>`
+  - `expandCycle(spec: CycleSpec, fromIstDate: string, toIstDate: string, holidays: readonly HolidaySpec[] = []): PlannedWindow[]`
+  - `extendWindows(tx: Tx, actor: Actor, todayIstDate: string): Promise<{ departments: number; written: number }>`
+  - `istDateOfInstant(at: Date): string`
+  - `istMidnightUtc(istDate: string): Date`
+  - `istMinutesOfInstant(at: Date): number`
+  - `istWeekday(d: string): number`
+  - `materialiseWindows(tx: Tx, actor: Actor, cycleId: string, fromIstDate: string, toIstDate: string): Promise<{ written: number; superseded: n…`
+  - `publishCycle(tx: Tx, actor: Actor, cycleId: string, effectiveFromIstDate: string): Promise<PublishCycleResult>`
+  - `publishedCycleCount(exec: Db | Tx): Promise<number>`
+  - `sweepRosterWindows(db: Db, now: Date): Promise<{ departments: number; written: number }>`
+  - `takeGaps(exec: Db | Tx, departmentId: string, from: Date, to: Date): Promise<WindowGap[]>`
+  - `unitOnTake(exec: Db | Tx, departmentId: string, at: Date): Promise<OnTakeAnswer>`
+  - `windowAsKnownAt(exec: Db | Tx, departmentId: string, activity: "take" | "backup", at: Date, knownAt: Date): Promise<OnTakeAnswer>`
+  - types: `CycleEntrySpec`, `CycleSpec`, `DeclareHolidayInput`, `HolidaySpec`, `OnTakeAnswer`, `OverlayEntrySpec`, `PlannedWindow`, `PublishCycleResult`, `WindowGap`
+- `copilot-tools.ts`
+  - `DUTY_LOOKAHEAD_DAYS`
+  - `departmentOf(question: string, departments: readonly T[]): T | null`
+  - `rosterCopilotTools(opts: RosterToolOptions = {}): readonly CopilotToolDecl[]`
+  - `whenOf(question: string, now: Date): AskedWhen`
+  - types: `AskedWhen`, `RosterToolOptions`
+- `credentials.ts`
+  - `credentialsOf(exec: Db | Tx, userId: string, at: Date): Promise<StaffCredentialRow[]>`
+  - `expiringCredentials(exec: Db | Tx, from: Date, to: Date): Promise<StaffCredentialRow[]>`
+  - `holdsCredential(exec: Db | Tx, userId: string, credentialKey: StaffCredentialKey, at: Date, opts: { verifiedOnly?: boolean } = {}): Promise…`
+  - `recordCredential(tx: Tx, actor: Actor, input: RecordCredentialInput): Promise<{ credentialId: string }>`
+  - `verifyCredential(tx: Tx, actor: Actor, credentialId: string): Promise<void>`
+  - types: `RecordCredentialInput`, `StaffCredentialRow`
+- `declarations.ts`
+  - `DECLARATIONS_DAYS`
+  - `declarationsView(exec: Db | Tx, actor: Actor, now: Date): Promise<DeclarationsView>`
+  - `declareHolidayAct(tx: Tx, actor: Actor, body: { istDate: unknown; kind: unknown; pattern: unknown }, now: Date): Promise<void>`
+  - `declareModeAct(tx: Tx, actor: Actor, body: { departmentId: unknown; istDate: unknown; reason: unknown }, now: Date): Promise<void>`
+  - `withdrawModeAct(tx: Tx, actor: Actor, declarationId: string, body: { reason: unknown }): Promise<void>`
+  - types: `DeclarationsView`, `DeclaredHoliday`, `DeclaredMode`
+- `delegations-read.ts`
+  - `delegationsInForce(exec: Db | Tx, delegateUserId: string, at: Date): Promise<RosterDelegationRow[]>`
+  - types: `RosterDelegationRow`
+- `delegations.ts`
+  - `AUTHORITY_PERMISSION: Record<RosterAuthority, RosterPermission>`
+  - `recordDelegation(tx: Tx, actor: Actor, input: DelegationInput): Promise<{ delegationId: string }>`
+  - types: `DelegationInput`
+- `doctor-units.ts`
+  - `doctorUnitsOn(exec: Db | Tx, istDate: string): Promise<DoctorUnit[]>`
+  - `prescriberPrint(exec: Db | Tx, doctor: { userId: string; code: string | null }, visit: { istDate: string; opdDepartmentId: string | null })…`
+  - `unitHeadsWithoutRegn(exec: Db | Tx, istDate: string): Promise<{ teamId: string; unitName: string; userId: string; name: string }[]>`
+  - types: `DoctorUnit`, `PrescriberPrint`
+- `errors.ts`
+  - `ROSTER_ERROR_CODES`
+  - `ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string>`
+  - `class RosterError`
+  - `rosterHttpStatus(code: RosterErrorCode): number`
+  - types: `RosterErrorCode`
+- `escalation.ts`
+  - `DUTY_MANAGER_POSITION`
+  - `dutyManagersAt(exec: Db | Tx, at: Date, env: NodeJS.ProcessEnv = process.env): Promise<EscalationRecipients>`
+  - `escalationRecipients(exec: Db | Tx, alertKind: RosterEscalationKind, ctx: EscalationContext, at: Date, env: NodeJS.ProcessEnv = process.env…`
+  - `escalationTarget(exec: Db | Tx, alertKind: RosterEscalationKind, departmentId?: string): Promise<RosterEscalationTargetRow | undefined>`
+  - `listEscalationTargets(exec: Db | Tx): Promise<RosterEscalationTargetRow[]>`
+  - `setEscalationTarget(tx: Tx, actor: Actor, input: SetEscalationTargetInput): Promise<{ targetId: string }>`
+  - types: `EscalationContext`, `EscalationRecipients`, `RosterEscalationTargetRow`, `SetEscalationTargetInput`
+- `events.ts`
+  - `ROSTER_EVENTS`
+  - `rosterAbsenceApproved`
+  - `rosterAbsenceRequested`
+  - `rosterAmendmentApplied`
+  - `rosterCoverAnswered`
+  - `rosterCoverDecided`
+  - `rosterCoverRequested`
+  - `rosterDutyChanged`
+  - `rosterFlagRaised`
+  - `rosterHolidayDeclared`
+  - `rosterModeDeclared`
+  - `rosterModeWithdrawn`
+  - `rosterPeriodDrafted`
+  - `rosterPeriodPublished`
+  - `rosterPeriodSuperseded`
+- `evidence-print.ts`
+  - `printDutyEvidence(db: Db, actor: Actor, ask: { userIds: string[]; from: string; to: string }, now: Date): Promise<{ queued: boolean; ref: s…`
+  - `recordLines(d: EvidenceDay): string[]`
+  - `registerRosterEvidencePrinting(): () => void`
+  - `renderDutyEvidence(db: Db, params: Record<string, unknown>, now: Date, requester: Actor | null): Promise<RenderedDocument | null>`
+  - `renderEvidenceHtml(r: DutyEvidence): RenderedDocument`
+  - `rosteredText(d: EvidenceDay): string`
+- `evidence.ts`
+  - `EVIDENCE_MAX_DAYS`
+  - `EVIDENCE_MAX_PEOPLE`
+  - `assertEvidenceAsk(userIds: readonly string[], from: string, to: string): void`
+  - `dutyEvidence(exec: Db | Tx, actor: Actor, ask: { userIds: readonly string[]; from: string; to: string }, now: Date): Promise<DutyEvidence>`
+  - `evidencePeople(exec: Db | Tx, actor: Actor, now: Date): Promise<EvidencePickerDepartment[]>`
+  - `evidenceRef(actorId: string, userIds: readonly string[], from: string, to: string, day: string): string`
+  - `registerTheatreEvidenceSource(source: TheatreEvidenceSource): () => void`
+  - types: `DutyEvidence`, `EvidenceDay`, `EvidenceDuty`, `EvidencePerson`, `EvidencePickerDepartment`, `EvidenceTheatre`, `TheatreEvidenceRow`, `TheatreEvidenceSource`
+- `findings.ts`
+  - `acceptFinding(tx: Tx, actor: Actor, findingId: string, reason: string): Promise<RosterFindingRow>`
+  - `acceptedFindingKeys(exec: Db | Tx, periodId: string): Promise<Set<string>>`
+  - `asFinding(row: RosterFindingRow): RosterFinding`
+  - `listFindings(exec: Db | Tx, periodId: string, opts: { includeCleared?: boolean } = {}): Promise<RosterFindingRow[]>`
+  - `recordFindings(tx: Tx, actor: Actor, periodId: string): Promise<{ stored: RosterFindingRow[]; added: number; cleared: number }>`
+  - types: `RosterFindingRow`
+- `interns.ts`
+  - `CRMI_LEAVE_DAYS`
+  - `CRMI_TABLE: readonly CrmiBlock[]`
+  - `CRMI_TOTAL_WEEKS`
+  - `MAX_BLOCK_WEEKS`
+  - `crmiBlocks(): CrmiBlock[]`
+  - `crmiWeeksTotal(): number`
+  - `extensionPostings(plan: readonly InternPosting[], absences: readonly InternAbsence[], allowanceDays = CRMI_LEAVE_DAYS): InternPosting[]`
+  - `internYear(input: InternYearInput): InternPosting[]`
+  - `splitBlock(weeks: number): number[]`
+  - types: `CrmiBlock`, `InternAbsence`, `InternPosting`, `InternYearInput`
+- `manifest.ts`
+  - `rosterManifest: ModuleManifest`
+- `masters.ts`
+  - `ORG_DEPARTMENTS: readonly OrgDepartmentSeed[]`
+  - `ROSTER_POSITIONS: readonly RosterPositionSeed[]`
+  - `listOrgDepartments(exec: Db | Tx, opts: { activeOnly?: boolean } = {}): Promise<OrgDepartmentRow[]>`
+  - `listRosterPositions(exec: Db | Tx, opts: { activeOnly?: boolean } = {}): Promise<RosterPositionRow[]>`
+  - `orgDepartmentByCode(exec: Db | Tx, code: string): Promise<OrgDepartmentRow | undefined>`
+  - `rosterMasterCounts(exec: Db | Tx): Promise<{ departments: number; positions: number }>`
+  - `seedOrgDepartments(exec: Db | Tx, by = "seed"): Promise<SeedCount>`
+  - `seedRosterPositions(exec: Db | Tx, by = "seed"): Promise<SeedCount>`
+  - types: `OrgDepartmentRow`, `OrgDepartmentSeed`, `RosterPositionRow`, `RosterPositionSeed`, `SeedCount`
+- `memberships.ts`
+  - `addMembership(tx: Tx, actor: Actor, input: AddMembershipInput): Promise<{ membershipId: string }>`
+  - `endMembership(tx: Tx, actor: Actor, membershipId: string, endsAt: Date): Promise<void>`
+  - `importMemberships(tx: Tx, actor: Actor, rows: readonly MembershipImportRow[]): Promise<{ imported: number } | { problems: ImportProblem[] }>`
+  - `membershipsOf(exec: Db | Tx, userId: string, at: Date): Promise<RosterMembershipRow[]>`
+  - `parentTeamOf(exec: Db | Tx, userId: string, at: Date): Promise<RosterMembershipRow | undefined>`
+  - types: `AddMembershipInput`, `ImportProblem`, `MembershipImportRow`, `RosterMembershipRow`
+- `modes.ts`
+  - `declareSkeletonMode(tx: Tx, actor: Actor, input: DeclareModeInput): Promise<RosterModeDeclarationRow>`
+  - `modeDeclarations(exec: Db | Tx, istDate: string): Promise<RosterModeDeclarationRow[]>`
+  - `skeletonModeOn(exec: Db | Tx, departmentId: string | null, istDate: string): Promise<boolean>`
+  - `withdrawSkeletonMode(tx: Tx, actor: Actor, declarationId: string, reason: string): Promise<RosterModeDeclarationRow>`
+  - types: `DeclareModeInput`, `RosterModeDeclarationRow`
+- `month.ts`
+  - `acceptUnitFinding(db: Db, actor: Actor, periodId: string, key: FindingKeyInput, reason: string): Promise<MonthRef>`
+  - `draftUnitMonth(db: Db, actor: Actor, teamId: string, month: string): Promise<UnitMonth>`
+  - `editSlot(db: Db, actor: Actor, assignmentId: string, userId: string | null): Promise<MonthRef>`
+  - `monthWindow(month: string): { startsAt: Date; endsAt: Date; days: string[] }`
+  - `publishUnitMonth(db: Db, actor: Actor, periodId: string, expectedContentHash?: string): Promise<MonthRef>`
+  - `rosterUnits(exec: Db | Tx, at: Date = new Date()): Promise<RosterUnitsDepartment[]>`
+  - `unitMonth(exec: Db | Tx, actor: Actor, teamId: string, month: string): Promise<UnitMonth>`
+  - types: `FindingKeyInput`, `MonthAssignment`, `MonthFinding`, `MonthRef`, `RosterUnitsDepartment`, `UnitMonth`
+- `my-duties.ts`
+  - `flagForAlert(exec: Db | Tx, flagId: string): Promise<null | { raisedBy: string; raisedByName: string; departmentName: string | null; userNa…`
+  - `myDuties(exec: Db | Tx, actor: Actor, at: Date): Promise<MyDuties>`
+  - `openFlags(exec: Db | Tx, actor: Actor): Promise<RosterFlagView[]>`
+  - `raiseFlag(tx: Tx, actor: Actor, input: RaiseFlagInput): Promise<{ flagId: string }>`
+  - `resolveFlag(tx: Tx, actor: Actor, flagId: string): Promise<void>`
+  - types: `MyDuties`, `RaiseFlagInput`, `RosterFlagView`
+- `officiating.ts`
+  - `endOfficiating(tx: Tx, actor: Actor, officiatingId: string, endsAt: Date): Promise<void>`
+  - `officiatingAt(exec: Db | Tx, teamId: string, at: Date): Promise<RosterOfficiatingRow[]>`
+  - `recordOfficiating(tx: Tx, actor: Actor, input: OfficiatingInput): Promise<{ officiatingId: string }>`
+  - types: `OfficiatingInput`, `RosterOfficiatingRow`
+- `opd-units.ts`
+  - `opdSittingAt(exec: Db | Tx, at: Date): Promise<Map<string, OpdSitting[]>>`
+  - `opdUnitsOn(exec: Db | Tx, istDate: string, opts: { doctors?: boolean } = {}): Promise<OpdDepartmentUnits[]>`
+  - `shortUnitName(unitName: string, departmentName: string): string`
+  - types: `OpdDepartmentUnits`, `OpdSitting`, `OpdUnit`, `OpdUnitDoctor`
+- `periods.ts`
+  - `MAX_PRESENCE_HOURS`
+  - `amend(tx: Tx, actor: Actor, periodId: string, input: AmendInput): Promise<{ amendmentId: string; supersededCount: number; addedCount: numbe…`
+  - `asKnownAt(exec: Db | Tx, scope: RosterScopeRef, knownAt: Date): Promise<RosterAssignmentRow[]>`
+  - `assign(tx: Tx, actor: Actor, periodId: string, input: AssignInput): Promise<{ assignmentId: string }>`
+  - `contentHash(exec: Db | Tx, periodId: string): Promise<string>`
+  - `draftPeriod(tx: Tx, actor: Actor, input: DraftPeriodInput): Promise<{ periodId: string; version: number; copiedAssignments: number }>`
+  - `effectiveDrift(exec: Db | Tx): Promise<number>`
+  - `livePeriodCount(exec: Db | Tx, at: Date): Promise<number>`
+  - `periodWithAssignments(exec: Db | Tx, periodId: string): Promise<{ period: RosterPeriodRow; assignments: RosterAssignmentRow[] }>`
+  - `periodsTouching(exec: Db | Tx, from: Date, to: Date, statuses: readonly RosterPeriodRow["status"][] = ["draft", "published"]): Promise<Rost…`
+  - `presenceClashes(exec: Db | Tx, periodIds: readonly string[]): Promise<PresenceClash[]>`
+  - `publishPeriod(tx: Tx, actor: Actor, periodId: string, opts: { expectedContentHash?: string } = {}): Promise<PublishResult>`
+  - `publishPeriods(tx: Tx, actor: Actor, requests: readonly PublishRequest[]): Promise<PublishResult[]>`
+  - `publishedAsKnownAt(exec: Db | Tx, knownAt: Date, from: Date, to: Date): Promise<{ assignment: RosterAssignmentRow; period: RosterPeriodRow …`
+  - `unassign(tx: Tx, actor: Actor, assignmentId: string): Promise<void>`
+  - types: `AmendInput`, `AssignInput`, `DraftPeriodInput`, `PresenceClash`, `PublishRequest`, `PublishResult`, `RosterAmendmentRow`, `RosterAssignmentRow`, `RosterPeriodRow`, `RosterScopeRef`
+- `policy.ts`
+  - `ROSTER_ACTOR_KINDS`
+  - `ROSTER_ACTS`
+  - `ROSTER_MANAGE`
+  - `ROSTER_PERMISSIONS`
+  - `ROSTER_PUBLISH`
+  - `ROSTER_READ`
+  - `ROSTER_VIAS`
+  - `rosterActMatrix(): Record<RosterAct, Record<RosterActorKind, Cell["verdict"]>>`
+  - `rosterActPolicy(actor: Actor, act: RosterAct, via: RosterVia = "direct"): RosterActVerdict`
+  - types: `RosterAct`, `RosterActorKind`, `RosterPermission`, `RosterVia`
+- `proposer.ts`
+  - `PROPOSAL_DAY_OF_MONTH`
+  - `PROPOSAL_STRATEGIES`
+  - `PROPOSER_ACTOR: Actor`
+  - `fairnessOf(assignments: readonly { userId: string | null; startsAt: Date; endsAt: Date; kind: string; }[], holidays: readonly string[] = []…`
+  - `fairnessSpread(f: readonly FairnessCounters[]): number`
+  - `proposalSeedFor(firstOfMonth: string): number`
+  - `proposalStrategyFor(exec: Db | Tx, teamId: string, at: Date): Promise<ProposalStrategy>`
+  - `proposeMonth(tx: Tx, actor: Actor, input: ProposeMonthInput): Promise<ProposalResult>`
+  - `runMonthlyProposals(db: Db, now: Date): Promise<{ skipped: boolean; drafted: number; units: number }>`
+  - types: `FairnessCounters`, `ProposalResult`, `ProposalStrategy`, `ProposeMonthInput`
+- `resolve.ts`
+  - `LOOK_BACK_DAYS`
+  - `ROSTER_RESOLVER_FLAG`
+  - `calloutList(exec: Db | Tx, departmentId: string, at: Date, env: NodeJS.ProcessEnv = process.env): Promise<CallRung[]>`
+  - `dutiesOf(exec: Db | Tx, userId: string, from: Date, to: Date): Promise<Duty[]>`
+  - `onDutyNow(exec: Db | Tx, departmentId: string, at: Date, env: NodeJS.ProcessEnv = process.env): Promise<OnDutyNow>`
+  - `resolverEnabled(env: NodeJS.ProcessEnv = process.env): boolean`
+  - `whoIsAt(exec: Db | Tx, locationId: string, at: Date, env: NodeJS.ProcessEnv = process.env): Promise<WhoIsOnAnswer>`
+  - `whoIsOn(exec: Db | Tx, q: WhoIsOnQuery, at: Date, env: NodeJS.ProcessEnv = process.env): Promise<WhoIsOnAnswer>`
+  - types: `CallRung`, `Duty`, `OnDutyNow`, `RosterAnswerSource`, `WhoIsOnAnswer`, `WhoIsOnQuery`
+- `roster.module.ts`
+  - `class RosterModule`
+- `rules.ts`
+  - `BLOCKING_RULE_KEYS: readonly string[]`
+  - `ROSTER_RULES: readonly RosterRuleSeed[]`
+  - `ROSTER_RULE_COUNT`
+  - `rulesInForce(exec: Db | Tx, departmentId: string | null, onIstDate: string): Promise<EffectiveRule[]>`
+  - `seedRosterRules(exec: Db | Tx, by = "seed"): Promise<SeedCount>`
+  - types: `EffectiveRule`, `RosterRuleSeed`
+- `simulate.ts`
+  - `hoursCarried(rows: readonly RosterAssignmentRow[], userId: string, from: Date, to: Date): number`
+  - `simulate(exec: Db | Tx, base: string | HypotheticalRoster, deltas: readonly SimulateDelta[] = [], opts: SimulateOptions = {}): Promise<Simu…`
+  - types: `Exclusion`, `SimulateDelta`, `SimulateOptions`, `SimulateResult`
+- `swaps.ts`
+  - `answerCover(tx: Tx, actor: Actor, requestId: string, accept: boolean): Promise<void>`
+  - `coverOptions(exec: Db | Tx, actor: Actor, assignmentId: string): Promise<CoverOptions>`
+  - `coverRequests(exec: Db | Tx, actor: Actor, opts: { teamId?: string; userId?: string } = {}): Promise<CoverRequestView[]>`
+  - `decideCover(tx: Tx, actor: Actor, requestId: string, input: { approve: boolean; note?: string | null }): Promise<CoverDecision>`
+  - `myDutyRows(exec: Db | Tx, actor: Actor, from: Date, to: Date): Promise<RosterAssignmentRow[]>`
+  - `requestCover(tx: Tx, actor: Actor, input: RequestCoverInput): Promise<{ requestId: string }>`
+  - `withdrawCover(tx: Tx, actor: Actor, requestId: string): Promise<void>`
+  - types: `CoverCandidate`, `CoverDecision`, `CoverOptions`, `CoverReason`, `CoverRefusal`, `CoverRequestView`, `DutyRef`, `MyDuty`, `RequestCoverInput`
+- `teams.ts`
+  - `COMBINED_ICU_BEDS`
+  - `SURPLUS_REASON`
+  - `UNIT_COUNT`
+  - `UNIT_ESTABLISHMENT: readonly { departmentCode: string; units: number; sanctionedBeds: number }[]`
+  - `closeTeam(tx: Tx, actor: Actor, teamId: string, validTo: Date): Promise<void>`
+  - `confirmTeam(tx: Tx, actor: Actor, teamId: string): Promise<void>`
+  - `countingUnits(exec: Db | Tx, at: Date): Promise<RosterTeamRow[]>`
+  - `createTeam(tx: Tx, actor: Actor, input: CreateTeamInput): Promise<{ teamId: string }>`
+  - `listTeams(exec: Db | Tx, opts: { departmentId?: string; kind?: RosterTeamKind; activeOnly?: boolean } = {}): Promise<RosterTeamRow[]>`
+  - `nightPoolFor(exec: Db | Tx, departmentId: string, at: Date): Promise<string[]>`
+  - `retireSurplusUnits(exec: Db | Tx, by = "seed"): Promise<{ retired: string[]; keptConfirmed: string[] }>`
+  - `seedUnits(exec: Db | Tx, by = "seed"): Promise<{ added: number; present: number }>`
+  - `teamByCode(exec: Db | Tx, code: string): Promise<RosterTeamRow | undefined>`
+  - `teamMembers(exec: Db | Tx, teamId: string, at: Date): Promise<TeamMember[]>`
+  - `unconfirmedTeams(exec: Db | Tx): Promise<RosterTeamRow[]>`
+  - `unitCountsAt(team: Pick<RosterTeamRow, "active" | "validTo">, at: Date): boolean`
+  - types: `CreateTeamInput`, `RosterTeamRow`, `TeamMember`
+- `templates.ts`
+  - `CYCLE_TEMPLATES: readonly CycleTemplate[]`
+  - `cycleTemplate(key: string): CycleTemplate`
+  - `draftCycle(tx: Tx, actor: Actor, input: DraftCycleInput): Promise<{ cycleId: string; version: number }>`
+  - `draftCycleFromTemplate(tx: Tx, actor: Actor, input: { departmentId: string; templateKey: string; anchorIstDate: string }): Promise<{ cycleI…`
+  - types: `CycleTemplate`, `DraftCycleInput`
+- `validator.ts`
+  - `blockingFindings(findings: readonly RosterFinding[], acceptedKeys: ReadonlySet<string> = new Set()): RosterFinding[]`
+  - `findingKey(f: Pick<RosterFinding, "ruleKey" | "assignmentId" | "userId">): string`
+  - `templateFeasibility(input: FeasibilityInput): Feasibility`
+  - `validate(exec: Db | Tx, input: ValidateInput): Promise<RosterFinding[]>`
+  - types: `Feasibility`, `FeasibilityInput`, `HypotheticalRoster`, `RosterFinding`, `ValidateInput`
 
 ## Tables (`kernel/db/schema/roster.ts`)
 
-- `roster_amendments` (`rosterAmendments`)
-- `roster_assignments` (`rosterAssignments`)
-- `roster_bed_allotments` (`rosterBedAllotments`)
-- `roster_board_prints` (`rosterBoardPrints`)
-- `roster_cover_requests` (`rosterCoverRequests`)
-- `roster_cycle_entries` (`rosterCycleEntries`)
-- `roster_cycle_overlays` (`rosterCycleOverlays`)
-- `roster_cycles` (`rosterCycles`)
-- `roster_delegations` (`rosterDelegations`)
-- `roster_duty_windows` (`rosterDutyWindows`)
-- `roster_escalation_targets` (`rosterEscalationTargets`)
-- `roster_findings` (`rosterFindings`)
-- `roster_flags` (`rosterFlags`)
-- `roster_holidays` (`rosterHolidays`)
-- `roster_mode_declarations` (`rosterModeDeclarations`)
-- `roster_officiating` (`rosterOfficiating`)
-- `roster_periods` (`rosterPeriods`)
-- `roster_positions` (`rosterPositions`)
-- `roster_requirements` (`rosterRequirements`)
-- `roster_rule_profiles` (`rosterRuleProfiles`)
-- `roster_rules` (`rosterRules`)
-- `roster_shift_defs` (`rosterShiftDefs`)
-- `roster_team_memberships` (`rosterTeamMemberships`)
-- `roster_teams` (`rosterTeams`)
-- `staff_absences` (`staffAbsences`)
-- `staff_credentials` (`staffCredentials`)
+`roster_amendments`, `roster_assignments`, `roster_bed_allotments`, `roster_board_prints`, `roster_cover_requests`, `roster_cycle_entries`, `roster_cycle_overlays`, `roster_cycles`, `roster_delegations`, `roster_duty_windows`, `roster_escalation_targets`, `roster_findings`, `roster_flags`, `roster_holidays`, `roster_mode_declarations`, `roster_officiating`, `roster_periods`, `roster_positions`, `roster_requirements`, `roster_rule_profiles`, `roster_rules`, `roster_shift_defs`, `roster_team_memberships`, `roster_teams`, `staff_absences`, `staff_credentials`
 
-References tables in: `auth`, `org`, `resources`
+Foreign keys into: `auth`, `org`, `resources`
 
 ## HTTP routes (31)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/roster/aebas/absences/:absenceId/entered` | `roster-board.controller.ts` |
-| POST | `/roster/aebas/holidays/:istDate/entered` | `roster-board.controller.ts` |
-| GET | `/roster/aebas` | `roster-board.controller.ts` |
-| GET | `/roster/as-it-stood` | `roster-board.controller.ts` |
-| GET | `/roster/board-prints/:printId/document` | `roster-board.controller.ts` |
-| POST | `/roster/covers/:requestId/answer` | `roster-board.controller.ts` |
-| POST | `/roster/covers/:requestId/decide` | `roster-board.controller.ts` |
-| POST | `/roster/covers/:requestId/withdraw` | `roster-board.controller.ts` |
-| GET | `/roster/covers` | `roster-board.controller.ts` |
-| POST | `/roster/covers` | `roster-board.controller.ts` |
-| GET | `/roster/declarations` | `roster-board.controller.ts` |
-| GET | `/roster/doctor-units` | `roster-board.controller.ts` |
-| GET | `/roster/duties/:assignmentId/cover-options` | `roster-board.controller.ts` |
-| GET | `/roster/evidence/people` | `roster-board.controller.ts` |
-| POST | `/roster/evidence/print` | `roster-board.controller.ts` |
-| GET | `/roster/evidence` | `roster-board.controller.ts` |
-| POST | `/roster/flags/:flagId/resolve` | `roster-board.controller.ts` |
-| POST | `/roster/flags` | `roster-board.controller.ts` |
-| POST | `/roster/holidays` | `roster-board.controller.ts` |
-| POST | `/roster/modes/:declarationId/withdraw` | `roster-board.controller.ts` |
-| POST | `/roster/modes` | `roster-board.controller.ts` |
-| GET | `/roster/my-duties` | `roster-board.controller.ts` |
-| GET | `/roster/on-now` | `roster-board.controller.ts` |
-| GET | `/roster/opd-units` | `roster-board.controller.ts` |
-| POST | `/roster/periods/:periodId/findings/accept` | `roster-board.controller.ts` |
-| POST | `/roster/periods/:periodId/publish` | `roster-board.controller.ts` |
-| PUT | `/roster/slots/:assignmentId` | `roster-board.controller.ts` |
-| GET | `/roster/unit-heads-without-regn` | `roster-board.controller.ts` |
-| POST | `/roster/units/:teamId/months/:month/draft` | `roster-board.controller.ts` |
-| GET | `/roster/units/:teamId/months/:month` | `roster-board.controller.ts` |
-| GET | `/roster/units` | `roster-board.controller.ts` |
+- `roster-board.controller.ts` — 31: `/roster/aebas`, `/roster/as-it-stood`, `/roster/board-prints`, `/roster/covers`, `/roster/declarations`, `/roster/doctor-units`, `/roster/duties`, `/roster/evidence`, `/roster/flags`, `/roster/holidays`, `/roster/modes`, `/roster/my-duties`, `/roster/on-now`, `/roster/opd-units`, `/roster/periods`, `/roster/slots`, `/roster/unit-heads-without-regn`, `/roster/units`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/roster`

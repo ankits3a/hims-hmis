@@ -8,43 +8,87 @@ Source: `apps/core/src/modules/tariff/`
 - **Used by modules:** `billing`, `lab`, `membership`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `search`, `tokens`, `workflow`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `* from ./types`, `TARIFF_APPROVAL_TYPES`, `TARIFF_REVISION_APPROVAL_TYPE`, `TariffError`, `TariffModule`, `activateVersion`, `activateVersionDirectly`, `activePricePaise`, `appendRegulatedPrice`, `assertPaise`, `computeGst`, `createDraftVersion`, `createService`, `divHalfUp`, `getGstSettings`, `getVersion`, `inclusiveOf`, `inclusiveTaxHead`, `listAdjustmentRules`, `listGstCategories`, `listPriceList`, `listServices`, `listVersions`, `loadPricingContext`, `loadRuleConfig`, `manualDiscountSource`, `percentAmount`, `priceInvoiceLines`, `registerTariffApprovalTypes`, `resolveActiveTariffVersion`, `resolveRegulatedPrices`, `roundTotalToRupee`, `runContest`, `serviceCategoriesByIds`, `setTariffItem`, `simulateRevision`, `standingRuleSource`, `submitVersion`, `tariffHttpStatus`, `tariffManifest`, `taxHead`, `updateService`, `upsertAdjustmentRule`, `upsertGstCategory`, `upsertGstSettings`, `validateTariffConfig`
-
-Types: `ConfigError`, `ImpactByService`, `ImpactLineDelta`, `ImpactReport`, `ImpactTotals`, `PriceListRow`, `TariffErrorCode`
+- `approval-types.ts`
+  - `TARIFF_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `registerTariffApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `contest.ts`
+  - `manualDiscountSource: AdjustmentSource`
+  - `runContest(ctx: PricingContext, line: InvoiceLineInput, grossPaise: number): { candidates: AdjustmentCandidate[]; winner: AdjustmentCandida…`
+  - `standingRuleSource: AdjustmentSource`
+- `context.ts`
+  - `loadPricingContext(db: Db, opts: { at: Date; tariffVersionId?: string; allowDraft?: boolean; tags?: string[] }): Promise<PricingContext>`
+  - `validateTariffConfig(db: Db, at: Date): Promise<{ ok: boolean; errors: ConfigError[]; caSigned: boolean }>`
+  - types: `ConfigError`
+- `errors.ts`
+  - `class TariffError`
+  - `tariffHttpStatus(code: TariffErrorCode): number`
+  - types: `TariffErrorCode`
+- `events.ts`
+  - `configValidated`
+  - `tariffRevisionApplied`
+  - `tariffRevisionAppliedDirectly`
+- `gst-config.ts`
+  - `getGstSettings(db: Db): Promise<GstSettings>`
+  - `listGstCategories(db: Db): Promise<GstCategoryConfig[]>`
+  - `upsertGstCategory(tx: Tx, actor: Actor, cfg: GstCategoryConfig): Promise<void>`
+  - `upsertGstSettings(tx: Tx, actor: Actor, patch: Partial<GstSettings>): Promise<void>`
+- `gst.ts`
+  - `computeGst(args: { cfg: GstCategoryConfig; settings: GstSettings; line: InvoiceLineInput; taxableBasePaise: number; qty: number; }): Priced…`
+- `manifest.ts`
+  - `tariffManifest: ModuleManifest`
+- `money.ts`
+  - `assertPaise(n: number, what: string): void`
+  - `divHalfUp(n: number, d: number): number`
+  - `inclusiveOf(exclusivePaise: number, rateBps: number): number`
+  - `inclusiveTaxHead(inclusivePaise: number, rateBps: number): number`
+  - `percentAmount(grossPaise: number, bps: number): number`
+  - `roundTotalToRupee(totalPaise: number): { roundedPaise: number; roundingPaise: number }`
+  - `taxHead(basePaise: number, rateBps: number): number`
+- `pricing.ts`
+  - `priceInvoiceLines(ctx: PricingContext, lines: InvoiceLineInput[]): PricedLine[]`
+- `rules.ts`
+  - `listAdjustmentRules(db: Db, opts?: { sourceKey?: string }): Promise<AdjustmentRuleRow[]>`
+  - `loadRuleConfig(db: Db, at: Date): Promise<{ rules: AdjustmentRuleConfig[]; manualCaps: ManualCaps }>`
+  - `upsertAdjustmentRule(tx: Tx, actor: Actor, input: { ruleKey: string; sourceKey: "rule" | "manual"; title: string; params: unknown; serviceC…`
+- `services.ts`
+  - `appendRegulatedPrice(tx: Tx, actor: Actor, input: { serviceId: string; mrpPaise?: number | null; ceilingPaise?: number | null; effectiveFro…`
+  - `createService(tx: Tx, actor: Actor, input: ServiceInput): Promise<{ serviceId: string }>`
+  - `listPriceList(db: Db, at: Date = new Date()): Promise<PriceListRow[]>`
+  - `listServices(db: Db, opts?: { activeOnly?: boolean }): Promise<ServiceRow[]>`
+  - `resolveRegulatedPrices(db: Db, at: Date): Promise<Record<string, { mrpPaise: number | null; ceilingPaise: number | null }>>`
+  - `serviceCategoriesByIds(db: Db | Tx, serviceIds: readonly string[]): Promise<Map<string, string>>`
+  - `updateService(tx: Tx, actor: Actor, serviceId: string, patch: Partial<ServiceInput> & { active?: boolean }): Promise<void>`
+  - types: `PriceListRow`
+- `simulation.ts`
+  - `simulateRevision(currentCtx: PricingContext, draftCtx: PricingContext, lines: InvoiceLineInput[]): ImpactReport`
+  - types: `ImpactByService`, `ImpactLineDelta`, `ImpactReport`, `ImpactTotals`
+- `tariff.module.ts`
+  - `class TariffModule`
+- `types.ts`
+  - `DISCOUNT_CATEGORIES`
+  - types: `AdjustmentCandidate`, `AdjustmentRuleConfig`, `AdjustmentSource`, `DiscountCategory`, `GstCategoryConfig`, `GstSettings`, `InvoiceLineInput`, `ManualCaps`, `ManualDiscountInput`, `PricedLine`, `PricedLineGst`, `PricingContext`, `RegulatedClamp`, `ServiceInfo`
+- `versions.ts`
+  - `TARIFF_REVISION_APPROVAL_TYPE`
+  - `activateVersion(db: Db, actor: Actor, versionId: string, effectiveFrom: Date): Promise<{ versionNo: number; effectiveFrom: Date }>`
+  - `activateVersionDirectly(db: Db, actor: Actor, versionId: string, effectiveFrom: Date, note: string): Promise<{ versionNo: number; effective…`
+  - `activePricePaise(db: Db | Tx, serviceId: string, at: Date): Promise<number | null>`
+  - `createDraftVersion(tx: Tx, actor: Actor, input?: { notes?: string; copyFromVersionId?: string }): Promise<{ versionId: string; versionNo: n…`
+  - `getVersion(db: Db, versionId: string): Promise<{ version: TariffVersionRow; items: TariffItemRow[] } | null>`
+  - `listVersions(db: Db): Promise<TariffVersionRow[]>`
+  - `resolveActiveTariffVersion(db: Db, at: Date): Promise<{ versionId: string; versionNo: number } | null>`
+  - `setTariffItem(tx: Tx, actor: Actor, versionId: string, serviceId: string, pricePaise: number): Promise<void>`
+  - `submitVersion(tx: Tx, actor: Actor, versionId: string, requestNote?: string): Promise<{ approvalId: string; instanceId: string }>`
 
 ## Tables (`kernel/db/schema/tariff.ts`)
 
-- `adjustment_rules` (`adjustmentRules`)
-- `gst_config` (`gstConfig`)
-- `gst_settings` (`gstSettings`)
-- `regulated_prices` (`regulatedPrices`)
-- `services` (`services`)
-- `tariff_items` (`tariffItems`)
-- `tariff_versions` (`tariffVersions`)
+`adjustment_rules`, `gst_config`, `gst_settings`, `regulated_prices`, `services`, `tariff_items`, `tariff_versions`
 
-References tables in: —
+Foreign keys into: —
 
 ## HTTP routes (18)
 
-| verb | path | controller |
-|---|---|---|
-| PUT | `/tariff/gst/config/:category` | `tariff.controller.ts` |
-| PUT | `/tariff/gst/settings` | `tariff.controller.ts` |
-| GET | `/tariff/gst` | `tariff.controller.ts` |
-| GET | `/tariff/price-list` | `tariff.controller.ts` |
-| GET | `/tariff/rules` | `tariff.controller.ts` |
-| POST | `/tariff/rules` | `tariff.controller.ts` |
-| GET | `/tariff/services/:id/regulated-prices` | `tariff.controller.ts` |
-| POST | `/tariff/services/:id/regulated-prices` | `tariff.controller.ts` |
-| PATCH | `/tariff/services/:id` | `tariff.controller.ts` |
-| GET | `/tariff/services` | `tariff.controller.ts` |
-| POST | `/tariff/services` | `tariff.controller.ts` |
-| POST | `/tariff/versions/:id/activate` | `tariff.controller.ts` |
-| PUT | `/tariff/versions/:id/items/:serviceId` | `tariff.controller.ts` |
-| POST | `/tariff/versions/:id/simulate` | `tariff.controller.ts` |
-| POST | `/tariff/versions/:id/submit` | `tariff.controller.ts` |
-| GET | `/tariff/versions/:id` | `tariff.controller.ts` |
-| GET | `/tariff/versions` | `tariff.controller.ts` |
-| POST | `/tariff/versions` | `tariff.controller.ts` |
+- `tariff.controller.ts` — 18: `/tariff/gst`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/tariff`

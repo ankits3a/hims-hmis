@@ -7,89 +7,247 @@ Source: `apps/core/src/modules/lab/`
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
 - **Used by modules:** `abdm`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `realtime`, `resources`, `tokens`, `workflow`
+- **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `CREATININE_ANALYTE_CODES`, `CRITICAL_CALL_TARGET_MINUTES`, `DRAW_ORDER`, `EXEMPT_ENCOUNTER_PREFIXES`, `EXEMPT_PAYERS`, `INR_ANALYTE_CODES`, `LAB_APPROVAL_TYPES`, `LAB_BENCH_NAMES`, `LAB_BENCH_TOPIC`, `LAB_CRITICALS_CLOSE`, `LAB_DEFINITIONS`, `LAB_DEF_KEYS`, `LAB_DESK_OPERATE`, `LAB_ERROR_CODES`, `LAB_IDEMPOTENT_ROUTES`, `LAB_INTERFACE_ACTOR`, `LAB_INTERFACE_CONSUMER`, `LAB_ITEM_DEFINITION_JSON`, `LAB_ITEM_DEF_KEY`, `LAB_ITEM_STATES`, `LAB_NON_RETURN_ACTOR`, `LAB_REALTIME_NAMES`, `LAB_REFLEX_ACTOR`, `LAB_REPORTS_AMEND`, `LAB_REPORTS_PRINT`, `LAB_REPORTS_PUBLISH`, `LAB_REPORT_ROUTES`, `LAB_RESOURCE_KINDS`, `LAB_RESULTS_ENTER`, `LAB_RESULTS_READ`, `LAB_RESULTS_VERIFY`, `LAB_SLA_ACTOR`, `LAB_SPECIMEN_DEFINITION_JSON`, `LAB_SPECIMEN_DEF_KEY`, `LAB_SPECIMEN_STATES`, `LAB_TOPIC_SPACES`, `LabBenchController`, `LabCatalogueController`, `LabCollectionController`, `LabDeskController`, `LabError`, `LabModule`, `LabVerifyController`, `NIGHT_MODE_FROM_HOUR_IST`, `NIGHT_MODE_TO_HOUR_IST`, `NON_RETURN_DAYS`, `PATIENT_LAB_REPORT_READY`, `PLATELET_ANALYTE_CODES`, `RELEASE_UNPAID_APPROVAL_TYPE`, `RUNGS`, `acknowledgeCritical`, `activateLabDefinitions`, `activeReflexRules`, `addOnOrder`, `advisedTestItems`, `ageInDaysIst`, `amendReport`, `amendResult`, `analytesFor`, `assertFormulaParses`, `assertRightPatient`, `awaitingLabels`, `benchArrivals`, `benchWorklist`, `billedLabLines`, `cancelLabItem`, `chargeReasonFor`, `chooseReportedResult`, `collect`, `collectionQueue`, `deliveryAllowed`, `deliveryRegister`, `deskFind`, `deskOrder`, `deskOrderAtCounter`, `deskWalkinOrder`, `drawRank`, `duplicateWarnings`, `encounterNoOfLabOrder`, `enterResult`, `evaluateFormula`, `flagFor`, `getOrderable`, `getReport`, `getSpecimenByNo`, `inrFromReported`, `isSingleOperatorNight`, `labDoctors`, `labHttpStatus`, `labInterfaceConsumer`, `labItemDefinition`, `labManifest`, `labSpecimenDefinition`, `labToHttp`, `labTopicRouter`, `labTopicsFor`, `labWorklist`, `latestVerifiedCreatinine`, `latestVerifiedInr`, `latestVerifiedPlatelets`, `listOrderables`, `listProvisionalResultsForEncounter`, `listResultsForEncounter`, `matchReflex`, `nextRung`, `nightReleasesAwaitingReview`, `openCriticalCalls`, `orderableCodesFor`, `overlappingAnalytes`, `plateletsPerUlFromReported`, `printLabels`, `printReport`, `publishReport`, `publishableOrders`, `putReferenceRange`, `rangesFor`, `receive`, `refundOnCancel`, `registerLabApprovalTypes`, `reject`, `releaseUnpaid`, `reportVersions`, `reportsForPatient`, `requestRerun`, `resolveRange`, `resultContext`, `reviewNightRelease`, `sweepLabNonReturn`, `sweepLabSla`, `tokensByVisit`, `tubePlan`, `upsertAnalyte`, `upsertOrderable`, `verifiedLabTestsForRelease`, `verifyResult`, `verifyWorklist`
-
-Types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `ActivateLabDefinitionsReport`, `AddOnOrderInput`, `AmendReportInput`, `AmendResultInput`, `AnalyteInput`, `AnalyteRow`, `AwaitingLabelRow`, `BenchArrivalRow`, `CancelLabItemInput`, `ChooseReportedResultInput`, `CollectInput`, `CollectionQueueRow`, `CriticalAttempt`, `DeliveryRegisterRow`, `DeliveryVerdict`, `DeskAdvisedLine`, `DeskFindHit`, `DeskItemInput`, `DeskOrderInput`, `DeskOrderResult`, `DeskWalkinInput`, `DuplicateWarning`, `EncounterResultRow`, `EnterResultInput`, `EnterResultOutcome`, `EnteredResult`, `FormulaOutcome`, `LabChargeReason`, `LabCollectionSite`, `LabEntryMode`, `LabErrorCode`, `LabItemState`, `LabPriority`, `LabReleaseTest`, `LabReleaseValue`, `LabSpecimenState`, `LatestCreatinine`, `LatestLabNumber`, `NonReturnSweepReport`, `OpenCriticalCall`, `OrderableInput`, `PatientReportRow`, `PatientReports`, `PrintLabelsInput`, `PrintLabelsResult`, `PrintReportInput`, `PrintedReport`, `PrintedSpecimen`, `ProvisionalResultRow`, `PublishReportInput`, `PublishableOrder`, `PublishedReport`, `RangeRow`, `RangeSubject`, `ReceiveInput`, `ReceiveResult`, `ReferenceRangeInput`, `ReflexMatch`, `ReflexPlacement`, `ReflexRefusal`, `ReflexRule`, `RefundOutcome`, `RejectInput`, `RejectResult`, `ReleaseUnpaidInput`, `ReportAnalyteLine`, `ReportDeliveryRow`, `ReportNotice`, `ReportPanel`, `ReportSnapshot`, `ReportVersionRow`, `ReportView`, `RequestRerunInput`, `ResolvedRange`, `Siblings`, `SlaSweepReport`, `SpecimenView`, `TubePlanRow`, `VerifyResultInput`, `VerifyResultOutcome`, `WorklistRow`
+- `abdm-release.ts`
+  - `encounterNoOfLabOrder(db: Db | Tx, orderId: string): Promise<string | null>`
+  - `verifiedLabTestsForRelease(db: Db | Tx, encounterNos: readonly string[]): Promise<LabReleaseTest[]>`
+  - types: `LabReleaseTest`, `LabReleaseValue`
+- `accession.ts`
+  - `orderableCodesFor(tx: Tx, itemIds: readonly string[]): Promise<string[]>`
+  - `receive(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: ReceiveInput, now: Date = new Date()): Promise<ReceiveResult>`
+  - `reject(tx: Tx, actor: Actor, input: RejectInput, now: Date = new Date()): Promise<RejectResult>`
+  - types: `ReceiveInput`, `ReceiveResult`, `RejectInput`, `RejectResult`
+- `approval-types.ts`
+  - `LAB_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `RELEASE_UNPAID_APPROVAL_TYPE`
+  - `registerLabApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `catalogue.ts`
+  - `activeReflexRules(exec: Db | Tx, analyteId: string): Promise<(typeof labReflexRules.$inferSelect)[]>`
+  - `analytesFor(exec: Db | Tx, serviceId: string): Promise<(typeof labAnalytes.$inferSelect)[]>`
+  - `getOrderable(exec: Db | Tx, serviceId: string): Promise<typeof labOrderables.$inferSelect>`
+  - `listOrderables(exec: Db | Tx): Promise<(typeof labOrderables.$inferSelect)[]>`
+  - `putReferenceRange(exec: Db | Tx, actor: Actor, input: ReferenceRangeInput, now: Date = new Date()): Promise<string>`
+  - `rangesFor(exec: Db | Tx, analyteId: string): Promise<(typeof labReferenceRanges.$inferSelect)[]>`
+  - `upsertAnalyte(exec: Db | Tx, actor: Actor, input: AnalyteInput): Promise<string>`
+  - `upsertOrderable(exec: Db | Tx, actor: Actor, input: OrderableInput): Promise<void>`
+  - types: `AnalyteInput`, `OrderableInput`, `ReferenceRangeInput`
+- `coagulation.ts`
+  - `INR_ANALYTE_CODES: readonly string[]`
+  - `PLATELET_ANALYTE_CODES: readonly string[]`
+  - `inrFromReported(value: number, unit: string | null): number | null`
+  - `latestVerifiedInr(exec: Db | Tx, patientId: string): Promise<LatestLabNumber | null>`
+  - `latestVerifiedPlatelets(exec: Db | Tx, patientId: string): Promise<LatestLabNumber | null>`
+  - `plateletsPerUlFromReported(value: number, unit: string | null): number | null`
+  - types: `LatestLabNumber`
+- `collection.ts`
+  - `assertRightPatient(actor: Actor, input: { orderGroupId: string; patientId: string; expectedUhid: string; scannedUhid: string }, now: Date):…`
+  - `awaitingLabels(db: Db, actor: Actor, filter: { serviceDate: string }): Promise<AwaitingLabelRow[]>`
+  - `collect(tx: Tx, actor: Actor, input: CollectInput, now: Date = new Date()): Promise<{ specimenId: string; specimenNo: string; itemIds: stri…`
+  - `collectionQueue(db: Db, actor: Actor, filter: { site?: LabCollectionSite; serviceDate: string }): Promise<CollectionQueueRow[]>`
+  - `tokensByVisit(exec: Db | Tx, encounterNos: readonly string[]): Promise<Map<string, number>>`
+  - types: `AwaitingLabelRow`, `CollectInput`, `CollectionQueueRow`
+- `creatinine.ts`
+  - `CREATININE_ANALYTE_CODES: readonly string[]`
+  - `latestVerifiedCreatinine(exec: Db | Tx, patientId: string): Promise<LatestCreatinine | null>`
+  - types: `LatestCreatinine`
+- `criticals.ts`
+  - `CRITICAL_CALL_TARGET_MINUTES`
+  - `LAB_CRITICALS_CLOSE`
+  - `RUNGS`
+  - `acknowledgeCritical(tx: Tx, actor: Actor, input: AcknowledgeCriticalInput, now: Date = new Date()): Promise<AcknowledgeCriticalOutcome>`
+  - `nextRung(attempts: readonly CriticalAttempt[]): CriticalRung | null`
+  - `openCriticalCalls(db: Db, actor: Actor, now: Date = new Date()): Promise<OpenCriticalCall[]>`
+  - types: `AcknowledgeCriticalInput`, `AcknowledgeCriticalOutcome`, `CriticalAttempt`, `OpenCriticalCall`
+- `definitions.ts`
+  - `LAB_DEFINITIONS`
+  - `LAB_DEF_KEYS`
+  - `activateLabDefinitions(db: Db, activator: Actor): Promise<ActivateLabDefinitionsReport>`
+  - types: `ActivateLabDefinitionsReport`
+- `desk.ts`
+  - `DRAW_ORDER: readonly string[]`
+  - `LAB_DESK_OPERATE`
+  - `addOnOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: AddOnOrderInput, now: Date = new Date()): Promise<DeskOrderResult>`
+  - `advisedTestItems(advised: readonly { serviceId: string }[]): DeskItemInput[]`
+  - `deskFind(db: Db, actor: Actor, q: string, serviceDate: string): Promise<DeskFindHit[]>`
+  - `deskOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskOrderInput, now: Date = new Date()): Promise<DeskOrderResult>`
+  - `deskWalkinOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskWalkinInput, now: Date = new Date()): Promise<DeskOrderRe…`
+  - `drawRank(container: string): number`
+  - `labDoctors(db: Db): Promise<{ id: string; displayName: string }[]>`
+  - `tubePlan(exec: Db | Tx, serviceIds: readonly string[]): Promise<TubePlanRow[]>`
+  - types: `AddOnOrderInput`, `DeskAdvisedLine`, `DeskFindHit`, `DeskItemInput`, `DeskOrderInput`, `DeskOrderResult`, `DeskWalkinInput`, `LabCollectionSite`, `LabPriority`, `TubePlanRow`
+- `duplicates.ts`
+  - `duplicateWarnings(exec: Db | Tx, actor: Actor, patientId: string, serviceIds: readonly string[], now: Date = new Date()): Promise<Duplicate…`
+  - `overlappingAnalytes(exec: Db | Tx, serviceIds: readonly string[]): Promise<Map<string, string[]>>`
+  - types: `DuplicateWarning`
+- `errors.ts`
+  - `LAB_ERROR_CODES`
+  - `class LabError`
+  - `labHttpStatus(code: LabErrorCode): number`
+  - types: `LabErrorCode`
+- `events.ts`
+  - `LAB_EVENTS`
+  - `labAttributionUnverifiedFlagged`
+  - `labCriticalAcknowledged`
+  - `labLabelPrinted`
+  - `labNightReleaseReviewed`
+  - `labNotifiableFlagged`
+  - `labOrderDesked`
+  - `labRecollectionRequested`
+  - `labReflexAdded`
+  - `labReflexRefused`
+  - `labReportAmended`
+  - `labReportPrintBlocked`
+  - `labReportPrinted`
+  - `labReportPublished`
+  - `labReportReleasedUnpaid`
+  - `labResultChosen`
+  - `labResultCriticalFlagged`
+  - `labResultDeltaFlagged`
+  - `labResultEntered`
+  - `labResultVerified`
+  - `labSlaBreached`
+  - `labSodViolationBlocked`
+  - `labSpecimenCollected`
+  - `labSpecimenReceived`
+  - `labSpecimenRejected`
+  - `labSpecimenRelabelled`
+  - `labTubeMismatchFlagged`
+  - `labTubeSwapSuspected`
+- `formula.ts`
+  - `assertFormulaParses(formula: string, guard: string | null): void`
+  - `evaluateFormula(analyte: { code: string; formula: string | null; formulaGuard: string | null }, siblings: Siblings): FormulaOutcome`
+  - types: `FormulaOutcome`, `Siblings`
+- `interface-status.ts`
+  - `LAB_INTERFACE_ACTOR: Actor`
+  - `LAB_INTERFACE_CONSUMER`
+  - `labInterfaceConsumer(db: Db): Handler`
+- `interlock.ts`
+  - `EXEMPT_ENCOUNTER_PREFIXES: readonly string[]`
+  - `EXEMPT_PAYERS: readonly string[]`
+  - `deliveryAllowed(exec: Db | Tx, orderId: string, opts: { releasedByApproval?: boolean } = {}): Promise<DeliveryVerdict>`
+  - types: `DeliveryVerdict`
+- `kinds.ts`
+  - `LAB_RESOURCE_KINDS: readonly ResourceKindDecl[]`
+- `lab-bench.controller.ts`
+  - `class LabBenchController`
+- `lab-catalogue.controller.ts`
+  - `class LabCatalogueController`
+- `lab-collection.controller.ts`
+  - `class LabCollectionController`
+- `lab-desk.controller.ts`
+  - `class LabDeskController`
+- `lab-http.ts`
+  - `LAB_IDEMPOTENT_ROUTES`
+  - `LAB_REPORT_ROUTES`
+  - `toHttp(e: unknown): never`
+- `lab-verify.controller.ts`
+  - `class LabVerifyController`
+- `lab.module.ts`
+  - `class LabModule`
+- `manifest.ts`
+  - `labManifest: ModuleManifest`
+- `money.ts`
+  - `billedLabLines(exec: Db | Tx, orderId: string): Promise<{ orderItemId: string; invoiceId: string | null; invoiceLineId: string | null; stat…`
+  - `cancelLabItem(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: CancelLabItemInput, now: Date = new Date()): Promise<{ cancelle…`
+  - `chargeReasonFor(origin: OrderItemOrigin, walkIn = false): LabChargeReason`
+  - `deskOrderAtCounter(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: DeskOrderInput | DeskWalkinInput, now: Date = new Date()):…`
+  - `refundOnCancel(tx: Tx, actor: Actor, orderItemId: string, now: Date = new Date()): Promise<RefundOutcome>`
+  - types: `CancelLabItemInput`, `LabChargeReason`, `RefundOutcome`
+- `ranges.ts`
+  - `ageInDaysIst(dob: string, collectedAt: Date): number`
+  - `flagFor(value: number, range: ResolvedRange): "L" | "H" | "LL" | "HH" | "N" | null`
+  - `resolveRange(analyte: Pick<AnalyteRow, "criticalLow" | "criticalHigh">, rows: readonly RangeRow[], subject: RangeSubject, collectedAt: Date…`
+  - types: `AnalyteRow`, `RangeRow`, `RangeSubject`, `ResolvedRange`
+- `realtime.ts`
+  - `LAB_BENCH_NAMES`
+  - `LAB_BENCH_TOPIC`
+  - `LAB_REALTIME_NAMES`
+  - `LAB_TOPIC_SPACES: TopicSpace[]`
+  - `labTopicRouter: TopicRouter`
+  - `labTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[]`
+- `reflex.ts`
+  - `matchReflex(rules: readonly ReflexRule[], result: { analyteId: string; valueNumeric: string | null }): ReflexMatch[]`
+  - types: `ReflexMatch`, `ReflexRule`
+- `reports.ts`
+  - `LAB_REPORTS_AMEND`
+  - `LAB_REPORTS_PRINT`
+  - `LAB_REPORTS_PUBLISH`
+  - `LAB_RESULTS_READ`
+  - `PATIENT_LAB_REPORT_READY`
+  - `amendReport(db: Db, actor: Actor, input: AmendReportInput, now: Date = new Date()): Promise<PublishedReport>`
+  - `deliveryRegister(db: Db, actor: Actor, serviceDate: string): Promise<DeliveryRegisterRow[]>`
+  - `getReport(db: Db, actor: Actor, reportId: string, now: Date = new Date()): Promise<ReportView>`
+  - `listProvisionalResultsForEncounter(db: Db, actor: Actor, encounterNo: string, now: Date = new Date()): Promise<ProvisionalResultRow[]>`
+  - `listResultsForEncounter(db: Db, actor: Actor, encounterNo: string, now: Date = new Date()): Promise<EncounterResultRow[]>`
+  - `printReport(db: Db, actor: Actor, input: PrintReportInput, now: Date = new Date()): Promise<PrintedReport>`
+  - `publishReport(db: Db, actor: Actor, input: PublishReportInput, now: Date = new Date()): Promise<PublishedReport>`
+  - `releaseUnpaid(db: Db, actor: Actor, input: ReleaseUnpaidInput, now: Date = new Date()): Promise<PrintedReport>`
+  - `reportVersions(exec: Db | Tx, orderId: string): Promise<ReportVersionRow[]>`
+  - `reportsForPatient(db: Db, actor: Actor, patientId: string, now: Date = new Date()): Promise<PatientReports>`
+  - types: `AmendReportInput`, `DeliveryRegisterRow`, `EncounterResultRow`, `PatientReportRow`, `PatientReports`, `PrintReportInput`, `PrintedReport`, `ProvisionalResultRow`, `PublishReportInput`, `PublishedReport`, `ReleaseUnpaidInput`, `ReportAnalyteLine`, `ReportDeliveryRow`, `ReportNotice`, `ReportPanel`, `ReportSnapshot`, `ReportVersionRow`, `ReportView`
+- `results.ts`
+  - `LAB_RESULTS_ENTER`
+  - `amendResult(db: Db, actor: Actor, input: AmendResultInput, now: Date = new Date()): Promise<EnteredResult>`
+  - `chooseReportedResult(db: Db, actor: Actor, input: ChooseReportedResultInput, now: Date = new Date()): Promise<{ resultId: string; analyteId…`
+  - `enterResult(db: Db, actor: Actor, input: EnterResultInput, now: Date = new Date()): Promise<EnterResultOutcome>`
+  - `requestRerun(tx: Tx, actor: Actor, input: RequestRerunInput, now: Date = new Date()): Promise<{ resultId: string; orderItemId: string; stat…`
+  - `resultContext(tx: Tx, orderItemId: string): Promise<ResultContext>`
+  - types: `AmendResultInput`, `ChooseReportedResultInput`, `EnterResultInput`, `EnterResultOutcome`, `EnteredResult`, `LabEntryMode`, `RequestRerunInput`
+- `specimens.ts`
+  - `getSpecimenByNo(exec: Db | Tx, specimenNo: string): Promise<{ specimen: SpecimenView; itemIds: string[] } | null>`
+  - `printLabels(db: Db, actor: Actor, input: PrintLabelsInput, now: Date = new Date()): Promise<PrintLabelsResult>`
+  - types: `PrintLabelsInput`, `PrintLabelsResult`, `PrintedSpecimen`, `SpecimenView`
+- `sweeps.ts`
+  - `LAB_NON_RETURN_ACTOR: Actor`
+  - `LAB_SLA_ACTOR: Actor`
+  - `NON_RETURN_DAYS`
+  - `sweepLabNonReturn(db: Db, now: Date, decls: readonly OrderKindDecl[], actor: Actor = LAB_NON_RETURN_ACTOR): Promise<NonReturnSweepReport>`
+  - `sweepLabSla(db: Db, now: Date, actor: Actor = LAB_SLA_ACTOR): Promise<SlaSweepReport>`
+  - types: `NonReturnSweepReport`, `SlaSweepReport`
+- `verify.ts`
+  - `LAB_REFLEX_ACTOR: Actor`
+  - `LAB_RESULTS_VERIFY`
+  - `NIGHT_MODE_FROM_HOUR_IST`
+  - `NIGHT_MODE_TO_HOUR_IST`
+  - `isSingleOperatorNight(at: Date): boolean`
+  - `nightReleasesAwaitingReview(db: Db, actor: Actor): Promise<NightReleaseRow[]>`
+  - `reviewNightRelease(db: Db, actor: Actor, input: ReviewNightReleaseInput, now: Date = new Date()): Promise<{ resultId: string; reviewedBy: s…`
+  - `verifyResult(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: VerifyResultInput, now: Date = new Date()): Promise<VerifyResult…`
+  - types: `ReflexPlacement`, `ReflexRefusal`, `VerifyResultInput`, `VerifyResultOutcome`
+- `workflow-def.ts`
+  - `LAB_ITEM_DEFINITION_JSON`
+  - `LAB_ITEM_DEF_KEY`
+  - `LAB_ITEM_STATES`
+  - `LAB_SPECIMEN_DEFINITION_JSON`
+  - `LAB_SPECIMEN_DEF_KEY`
+  - `LAB_SPECIMEN_STATES`
+  - `labItemDefinition(): WorkflowDefinition`
+  - `labSpecimenDefinition(): WorkflowDefinition`
+  - types: `LabItemState`, `LabSpecimenState`
+- `worklist.ts`
+  - `benchArrivals(db: Db, actor: Actor): Promise<BenchArrivalRow[]>`
+  - `benchWorklist(db: Db, actor: Actor): Promise<WorklistRow[]>`
+  - `labWorklist(db: Db, actor: Actor, states: readonly string[]): Promise<WorklistRow[]>`
+  - `publishableOrders(db: Db, actor: Actor, now: Date = new Date()): Promise<PublishableOrder[]>`
+  - `verifyWorklist(db: Db, actor: Actor): Promise<WorklistRow[]>`
+  - types: `BenchArrivalRow`, `PublishableOrder`, `WorklistRow`
 
 ## Tables (`kernel/db/schema/lab.ts`)
 
-- `lab_analytes` (`labAnalytes`)
-- `lab_catalogue_imports` (`labCatalogueImports`)
-- `lab_critical_calls` (`labCriticalCalls`)
-- `lab_instrument_codes` (`labInstrumentCodes`)
-- `lab_instruments` (`labInstruments`)
-- `lab_items` (`labItems`)
-- `lab_orderable_analytes` (`labOrderableAnalytes`)
-- `lab_orderables` (`labOrderables`)
-- `lab_parked_results` (`labParkedResults`)
-- `lab_plate_maps` (`labPlateMaps`)
-- `lab_plate_wells` (`labPlateWells`)
-- `lab_reference_ranges` (`labReferenceRanges`)
-- `lab_reflex_rules` (`labReflexRules`)
-- `lab_report_deliveries` (`labReportDeliveries`)
-- `lab_reports` (`labReports`)
-- `lab_results` (`labResults`)
-- `lab_run_sheet_positions` (`labRunSheetPositions`)
-- `lab_run_sheets` (`labRunSheets`)
-- `lab_sla_breaches` (`labSlaBreaches`)
-- `lab_specimen_items` (`labSpecimenItems`)
-- `lab_specimens` (`labSpecimens`)
-- `lab_transmissions` (`labTransmissions`)
+`lab_analytes`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions`
 
-References tables in: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
+Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
 ## HTTP routes (48)
 
-| verb | path | controller |
-|---|---|---|
-| GET | `/lab/bench/arrivals` | `lab-bench.controller.ts` |
-| POST | `/lab/bench/criticals/:callId/ack` | `lab-bench.controller.ts` |
-| GET | `/lab/bench/criticals` | `lab-bench.controller.ts` |
-| POST | `/lab/bench/receive` | `lab-bench.controller.ts` |
-| POST | `/lab/bench/reject` | `lab-bench.controller.ts` |
-| POST | `/lab/bench/results/choose` | `lab-bench.controller.ts` |
-| POST | `/lab/bench/results` | `lab-bench.controller.ts` |
-| GET | `/lab/bench/worklist` | `lab-bench.controller.ts` |
-| GET | `/lab/catalogue/analytes/:analyteId/ranges` | `lab-catalogue.controller.ts` |
-| POST | `/lab/catalogue/analytes/:analyteId/ranges` | `lab-catalogue.controller.ts` |
-| POST | `/lab/catalogue/analytes` | `lab-catalogue.controller.ts` |
-| POST | `/lab/catalogue/duplicates` | `lab-catalogue.controller.ts` |
-| GET | `/lab/catalogue/orderables/:serviceId` | `lab-catalogue.controller.ts` |
-| POST | `/lab/catalogue/orderables` | `lab-catalogue.controller.ts` |
-| GET | `/lab/catalogue/search` | `lab-catalogue.controller.ts` |
-| GET | `/lab/collection/awaiting` | `lab-collection.controller.ts` |
-| POST | `/lab/collection/collect` | `lab-collection.controller.ts` |
-| POST | `/lab/collection/labels` | `lab-collection.controller.ts` |
-| GET | `/lab/collection/queue` | `lab-collection.controller.ts` |
-| GET | `/lab/collection/specimen/:specimenNo` | `lab-collection.controller.ts` |
-| POST | `/lab/desk/add-on` | `lab-desk.controller.ts` |
-| GET | `/lab/desk/find` | `lab-desk.controller.ts` |
-| POST | `/lab/desk/items/:itemId/cancel` | `lab-desk.controller.ts` |
-| GET | `/lab/desk/orders` | `lab-desk.controller.ts` |
-| POST | `/lab/desk/orders` | `lab-desk.controller.ts` |
-| POST | `/lab/desk/preview` | `lab-desk.controller.ts` |
-| POST | `/lab/instruments/:instrumentId/interface` | `lab-instruments.controller.ts` |
-| POST | `/lab/instruments/:instrumentId/results` | `lab-instruments.controller.ts` |
-| GET | `/lab/instruments/:instrumentId/worklist` | `lab-instruments.controller.ts` |
-| GET | `/lab/instruments` | `lab-instruments.controller.ts` |
-| POST | `/lab/reports/:reportId/amend` | `lab-verify.controller.ts` |
-| POST | `/lab/reports/:reportId/print` | `lab-verify.controller.ts` |
-| POST | `/lab/reports/:reportId/release` | `lab-verify.controller.ts` |
-| GET | `/lab/reports/:reportId` | `lab-verify.controller.ts` |
-| GET | `/lab/reports/order/:orderId` | `lab-verify.controller.ts` |
-| GET | `/lab/reports/patient/:patientId` | `lab-verify.controller.ts` |
-| GET | `/lab/reports/publishable` | `lab-verify.controller.ts` |
-| GET | `/lab/reports/register` | `lab-verify.controller.ts` |
-| POST | `/lab/reports` | `lab-verify.controller.ts` |
-| POST | `/lab/results/amend` | `lab-verify.controller.ts` |
-| GET | `/lab/results/encounter/:encounterNo/provisional` | `lab-verify.controller.ts` |
-| GET | `/lab/results/encounter/:encounterNo` | `lab-verify.controller.ts` |
-| GET | `/lab/results/patient/:patientId` | `lab-verify.controller.ts` |
-| POST | `/lab/verify/night-releases/:resultId/review` | `lab-verify.controller.ts` |
-| GET | `/lab/verify/night-releases` | `lab-verify.controller.ts` |
-| POST | `/lab/verify/rerun` | `lab-verify.controller.ts` |
-| POST | `/lab/verify/results/:resultId` | `lab-verify.controller.ts` |
-| GET | `/lab/verify/worklist` | `lab-verify.controller.ts` |
+- `lab-bench.controller.ts` — 8: `/lab/bench`
+- `lab-catalogue.controller.ts` — 7: `/lab/catalogue`
+- `lab-collection.controller.ts` — 5: `/lab/collection`
+- `lab-desk.controller.ts` — 6: `/lab/desk`
+- `lab-instruments.controller.ts` — 4: `/lab/instruments`
+- `lab-verify.controller.ts` — 18: `/lab/reports`, `/lab/results`, `/lab/verify`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/lab`

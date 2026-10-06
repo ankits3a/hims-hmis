@@ -8,83 +8,157 @@ Source: `apps/core/src/modules/billing/`
 - **Used by modules:** `lab`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `BILLING_APPROVAL_TYPES`, `BILL_DEPARTMENTS`, `BillingError`, `BillingModule`, `ITEM_DISCOUNT_SOURCE_KEY`, `ROUNDING_RULES`, `SALE_DISCOUNT_SOURCE_KEY`, `advanceOf`, `allocateReceipt`, `billingDocumentByNo`, `billingHttpStatus`, `billingManifest`, `carryMoneyToMovedVisit`, `cashierDay`, `chargeOrphans`, `collectionsBlind`, `creditNotesBetween`, `creditShare`, `creditedInvoiceLineIdsBetween`, `dayBook`, `encounterFeeStatuses`, `getInvoice`, `gstr1Summary`, `invoiceAccrualView`, `invoiceHeadsByIds`, `invoiceLineCredits`, `invoiceLinesOf`, `invoicePayments`, `invoiceSettlement`, `invoicesBetween`, `isDrawerSupervisor`, `issueCreditNote`, `issueInvoice`, `issueRefundVoucher`, `listCreditNotes`, `listDues`, `listInvoices`, `listSessions`, `liveExpectedCashPaise`, `loadBillingConfig`, `markEnteredInError`, `mayReadExpectedCash`, `maySettleMoveDifference`, `memberBenefitsEnabled`, `moveMoneyPlan`, `newConsultFeePaise`, `patientBalance`, `patientBillDetail`, `patientBills`, `payRefundVoucher`, `previewInvoice`, `receiptAllocationsBetween`, `receiptUnallocatedPaise`, `recordReceipt`, `refundVouchersPaidBetween`, `registerBenefitSourceProvider`, `registerBillingApprovalTypes`, `registerEncounterResolver`, `registerFeeStatusHook`, `registeredEncounterPrefixes`, `releaseInvoiceSurplusOnTx`, `requestRefund`, `reverseAllocation`, `roundTotalBy`, `runDailyClose`, `settlementState`, `standingInvoiceFor`, `totalInvoice`, `withIdempotency`
-
-Types: `AllocationRow`, `BenefitSourceArgs`, `BenefitSourceProvider`, `BillDepartment`, `BillingConfig`, `BillingDocRef`, `BillingErrorCode`, `BillingOfficeReason`, `CashierDay`, `ChargeOrphanRow`, `CreditNoteKind`, `CreditNoteLineRead`, `CreditNoteRead`, `DailyCloseResult`, `DayBook`, `DueRow`, `EncounterFeeStatus`, `EncounterResolver`, `FeeStatusHook`, `FeeStatusVia`, `Gstr1Row`, `InvoiceAccrualLine`, `InvoiceAccrualView`, `InvoiceHead`, `InvoiceLineRead`, `InvoiceLineRow`, `InvoicePayment`, `InvoiceRow`, `InvoiceTotals`, `IssueCreditNoteInput`, `IssueCreditNoteResult`, `IssueInvoiceInput`, `IssueInvoiceResult`, `MoveMoneyKind`, `MoveMoneyPlan`, `MoveMoneyResult`, `PatientBalance`, `PatientBillDetail`, `PatientBillRow`, `PricedDraft`, `ReceiptAllocationRead`, `ReceiptRow`, `RefundKind`, `RefundMethod`, `RefundPaidRead`, `RefundVoucherRow`, `RoundingRule`, `SaleDiscountInput`, `Settlement`, `SettlementState`, `TaxSummaryRow`, `TenderInput`, `TenderMode`
+- `accrual-view.ts`
+  - `invoiceAccrualView(exec: Db | Tx, invoiceId: string): Promise<InvoiceAccrualView | null>`
+  - types: `InvoiceAccrualLine`, `InvoiceAccrualView`
+- `approval-types.ts`
+  - `BILLING_APPROVAL_TYPES: (ApprovalTypeSpec & { closureSlaMinutes: number })[]`
+  - `registerBillingApprovalTypes(db: Db, activator: Actor): Promise<void>`
+- `benefit-sources.ts`
+  - `registerBenefitSourceProvider(key: string, provider: BenefitSourceProvider): () => void`
+  - types: `BenefitSourceArgs`, `BenefitSourceProvider`
+- `billing.module.ts`
+  - `class BillingModule`
+- `cash-law.ts`
+  - types: `TenderInput`
+- `config.ts`
+  - `loadBillingConfig(db: Db | Tx): Promise<BillingConfig>`
+  - types: `BillingConfig`
+- `credit-notes.ts`
+  - `creditedInvoiceLineIdsBetween(exec: Db | Tx, start: Date, end: Date): Promise<string[]>`
+  - `invoiceLineCredits(exec: Db | Tx, invoiceLineIds: readonly string[]): Promise<Map<string, { qty: number; unitPaise: number; creditedQty: nu…`
+  - `issueCreditNote(db: Db, actor: Actor, rawInput: IssueCreditNoteInput, now: Date = new Date()): Promise<IssueCreditNoteResult>`
+  - `listCreditNotes(exec: Db | Tx, filters: { invoiceId?: string } = {}): Promise<CreditNoteRow[]>`
+  - types: `CreditNoteKind`, `IssueCreditNoteInput`, `IssueCreditNoteResult`
+- `credit-share.ts`
+  - `creditShare(orig: CreditableLine, prevQty: number, addQty: number): CreditShare`
+- `daily-close.ts`
+  - `chargeOrphans(db: Db, day: string): Promise<ChargeOrphanRow[]>`
+  - `dayBook(exec: Db | Tx, day: string): Promise<DayBook>`
+  - `gstr1Summary(exec: Db | Tx, from: string, to: string): Promise<Gstr1Row[]>`
+  - `runDailyClose(db: Db, day?: string, now: Date = new Date()): Promise<DailyCloseResult>`
+  - types: `ChargeOrphanRow`, `DailyCloseResult`, `DayBook`, `Gstr1Row`
+- `desk-provider.ts`
+  - `cashierDay(exec: Db | Tx, userId: string, day: string): Promise<CashierDay>`
+  - types: `CashierDay`
+- `errors.ts`
+  - `class BillingError`
+  - `billingHttpStatus(code: BillingErrorCode): number`
+  - types: `BillingErrorCode`
+- `events.ts`
+  - `BILLING_EVENTS`
+  - `advanceReceived`
+  - `allocationReversed`
+  - `cashThresholdBlocked`
+  - `cashThresholdWarned`
+  - `cashierSessionClosed`
+  - `cashierSessionOpened`
+  - `cashierSessionRecounted`
+  - `chargeOrphanFlagged`
+  - `creditNoteIssued`
+  - `dayClosed`
+  - `degradedModeChanged`
+  - `documentEnteredInError`
+  - `feeSwitchChanged`
+  - `invoiceCreditExtended`
+  - `invoiceIssued`
+  - `paymentReceived`
+  - `paymentRefunded`
+  - `receiptRecorded`
+  - `refundVoucherIssued`
+  - `tenderMismatched`
+  - `tenderReconciled`
+  - `tenderResolved`
+  - `varianceFlagged`
+- `fee-status.ts`
+  - `encounterFeeStatuses(exec: Db | Tx, encounters: Pick<EncounterRow, "id" | "visitType">[]): Promise<Map<string, EncounterFeeStatus>>`
+  - `standingInvoiceFor(exec: Db | Tx, encounterId: string): Promise<{ id: string; invoiceNo: string } | null>`
+  - types: `EncounterFeeStatus`
+- `idempotency.ts`
+  - `withIdempotency(db: Db, scope: { actorId: string; route: string; key: string | undefined }, body: unknown, work: () => Promise<T>, now: Dat…`
+- `invoices.ts`
+  - `getInvoice(exec: Db | Tx, invoiceId: string): Promise<{ invoice: InvoiceRow; lines: InvoiceLineRow[] } | null>`
+  - `invoiceSettlement(exec: Db | Tx, invoiceId: string): Promise<Settlement>`
+  - `issueInvoice(db: Db, actor: Actor, input: IssueInvoiceInput, now: Date = new Date()): Promise<IssueInvoiceResult>`
+  - `listInvoices(exec: Db | Tx, filters: { patientId?: string; encounterId?: string | string[] } = {}): Promise<InvoiceRow[]>`
+  - `memberBenefitsEnabled(env: NodeJS.ProcessEnv = process.env): boolean`
+  - `previewInvoice(db: Db, input: PreviewInvoiceInput, now: Date = new Date()): Promise<PricedDraft>`
+  - types: `InvoiceLineRow`, `InvoiceRow`, `IssueInvoiceInput`, `IssueInvoiceResult`, `PricedDraft`
+- `kernel/episodes/encounter-resolvers.ts`
+  - `registerEncounterResolver(prefix: string, resolver: EncounterResolver): () => void`
+  - `registeredEncounterPrefixes(): string[]`
+  - types: `EncounterResolver`
+- `manifest.ts`
+  - `billingManifest: ModuleManifest`
+- `patient-bills.ts`
+  - `BILL_DEPARTMENTS`
+  - `patientBillDetail(db: Db, actor: Actor, invoiceId: string): Promise<PatientBillDetail | null>`
+  - `patientBills(db: Db, actor: Actor, patientId: string): Promise<{ bills: PatientBillRow[] }>`
+  - types: `BillDepartment`, `PatientBillDetail`, `PatientBillRow`
+- `receipts.ts`
+  - `advanceOf(exec: Db | Tx, patientId: string): Promise<number>`
+  - `allocateReceipt(db: Db, actor: Actor, input: AllocateReceiptInput, now: Date = new Date()): Promise<AllocateReceiptResult>`
+  - `listDues(db: Db, actor: Actor, filters: { patientId?: string } = {}): Promise<DueRow[]>`
+  - `markEnteredInError(db: Db, actor: Actor, input: { receiptId: string; reason: string }, now: Date = new Date()): Promise<MarkEnteredInErrorR…`
+  - `patientBalance(db: Db, actor: Actor, patientId: string): Promise<PatientBalance>`
+  - `receiptUnallocatedPaise(exec: Db | Tx, receiptId: string): Promise<{ patientId: string; totalPaise: number; unallocatedPaise: number; enter…`
+  - `recordReceipt(db: Db, actor: Actor, input: RecordReceiptInput, now: Date = new Date()): Promise<RecordReceiptResult>`
+  - `releaseInvoiceSurplusOnTx(tx: Tx, actor: Actor, input: { invoiceId: string; amountPaise: number; reason: string }, now: Date = new Date()):…`
+  - `reverseAllocation(db: Db, actor: Actor, input: { allocationId: string; reason?: string }, now: Date = new Date()): Promise<ReverseAllocatio…`
+  - types: `AllocationRow`, `DueRow`, `PatientBalance`, `ReceiptRow`
+- `refunds.ts`
+  - `issueRefundVoucher(db: Db, actor: Actor, rawInput: IssueRefundVoucherInput, now: Date = new Date()): Promise<IssueRefundVoucherResult>`
+  - `payRefundVoucher(db: Db, actor: Actor, rawInput: PayRefundVoucherInput, now: Date = new Date()): Promise<PayRefundVoucherResult>`
+  - `requestRefund(db: Db, actor: Actor, rawInput: RequestRefundInput): Promise<RequestRefundResult>`
+  - types: `RefundKind`, `RefundMethod`, `RefundVoucherRow`
+- `report-reads.ts`
+  - `billingDocumentByNo(exec: Db | Tx, typed: string): Promise<BillingDocRef | null>`
+  - `creditNotesBetween(exec: Db | Tx, from: string, to: string): Promise<CreditNoteRead[]>`
+  - `invoiceHeadsByIds(exec: Db | Tx, ids: readonly string[]): Promise<InvoiceHead[]>`
+  - `invoiceLinesOf(exec: Db | Tx, invoiceIds: readonly string[]): Promise<InvoiceLineRead[]>`
+  - `invoicePayments(exec: Db | Tx, invoiceIds: readonly string[]): Promise<Map<string, InvoicePayment>>`
+  - `invoicesBetween(exec: Db | Tx, from: string, to: string): Promise<InvoiceHead[]>`
+  - `receiptAllocationsBetween(exec: Db | Tx, from: string, to: string): Promise<ReceiptAllocationRead[]>`
+  - `refundVouchersPaidBetween(exec: Db | Tx, from: string, to: string): Promise<RefundPaidRead[]>`
+  - types: `BillingDocRef`, `CreditNoteLineRead`, `CreditNoteRead`, `InvoiceHead`, `InvoiceLineRead`, `InvoicePayment`, `ReceiptAllocationRead`, `RefundPaidRead`, `TenderMode`
+- `sale-discount.ts`
+  - `ITEM_DISCOUNT_SOURCE_KEY`
+  - `SALE_DISCOUNT_SOURCE_KEY`
+  - types: `SaleDiscountInput`
+- `sessions.ts`
+  - `collectionsBlind(db: Db, subject: Actor, viewer: Actor, day: string): Promise<boolean>`
+  - `isDrawerSupervisor(db: Db, viewer: Actor): Promise<boolean>`
+  - `listSessions(db: Db, filters: { cashierUserId?: string; status?: "open" | "closing" | "closed" } = {}): Promise<CashierSessionRow[]>`
+  - `liveExpectedCashPaise(exec: Db | Tx, session: Pick<CashierSessionRow, "id" | "openingFloatPaise">): Promise<number>`
+  - `mayReadExpectedCash(db: Db, viewer: Actor, session: Pick<CashierSessionRow, "status">): Promise<boolean>`
+- `settle-hooks.ts`
+  - `registerFeeStatusHook(key: string, hook: FeeStatusHook): () => void`
+  - types: `FeeStatusHook`, `FeeStatusVia`
+- `settlement.ts`
+  - `settlementState(netPayablePaise: number, creditedPaise: number, allocatedPaise: number): Settlement`
+  - types: `Settlement`, `SettlementState`
+- `totals.ts`
+  - `ROUNDING_RULES`
+  - `roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number }`
+  - `totalInvoice(lines: PricedLine[], roundingRule: RoundingRule = "half_up"): InvoiceTotals`
+  - types: `InvoiceTotals`, `RoundingRule`, `TaxSummaryRow`
+- `visit-move.ts`
+  - `carryMoneyToMovedVisit(tx: Tx, actor: Actor, input: { from: EncounterRow; to: EncounterRow; reason: string; tenders?: TenderInput[]; }, now…`
+  - `maySettleMoveDifference(exec: Db | Tx, actor: Actor): Promise<boolean>`
+  - `moveMoneyPlan(exec: Db | Tx, fromEncounterId: string, newFeePaise: number): Promise<MoveMoneyPlan>`
+  - `newConsultFeePaise(exec: Db | Tx, from: EncounterRow, toVisitType: string, now: Date): Promise<number>`
+  - types: `BillingOfficeReason`, `MoveMoneyKind`, `MoveMoneyPlan`, `MoveMoneyResult`
 
 ## Tables (`kernel/db/schema/billing.ts`)
 
-- `allocations` (`allocations`)
-- `billing_config` (`billingConfig`)
-- `cashier_sessions` (`cashierSessions`)
-- `credit_note_lines` (`creditNoteLines`)
-- `credit_notes` (`creditNotes`)
-- `daily_closes` (`dailyCloses`)
-- `document_series` (`documentSeries`)
-- `entered_in_error_marks` (`enteredInErrorMarks`)
-- `idempotency_keys` (`idempotencyKeys`)
-- `invoice_lines` (`invoiceLines`)
-- `invoices` (`invoices`)
-- `receipt_tenders` (`receiptTenders`)
-- `receipts` (`receipts`)
-- `recon_batches` (`reconBatches`)
-- `recon_resolutions` (`reconResolutions`)
-- `refund_vouchers` (`refundVouchers`)
+`allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_vouchers`
 
-References tables in: `patients`
+Foreign keys into: `patients`
 
 ## HTTP routes (49)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/billing/allocations/:id/reverse` | `billing.controller.ts` |
-| GET | `/billing/charge-orphans` | `billing.controller.ts` |
-| GET | `/billing/config` | `billing.controller.ts` |
-| PUT | `/billing/config` | `billing.controller.ts` |
-| POST | `/billing/consult-prices/:versionId/decision` | `billing.controller.ts` |
-| POST | `/billing/consult-prices/now` | `billing.controller.ts` |
-| GET | `/billing/consult-prices` | `billing.controller.ts` |
-| POST | `/billing/consult-prices` | `billing.controller.ts` |
-| GET | `/billing/consult-terms` | `billing.controller.ts` |
-| GET | `/billing/credit-requests/:approvalId` | `billing.controller.ts` |
-| POST | `/billing/credit-requests` | `billing.controller.ts` |
-| GET | `/billing/day-book` | `billing.controller.ts` |
-| PUT | `/billing/degraded` | `billing.controller.ts` |
-| POST | `/billing/eie` | `billing.controller.ts` |
-| GET | `/billing/fee-switches` | `billing.controller.ts` |
-| PUT | `/billing/fee-switches` | `billing.controller.ts` |
-| GET | `/billing/gstr1` | `billing.controller.ts` |
-| GET | `/billing/invoices/:id/credit-notes` | `billing.controller.ts` |
-| POST | `/billing/invoices/:id/credit-notes` | `billing.controller.ts` |
-| GET | `/billing/invoices/:id/full` | `billing.controller.ts` |
-| GET | `/billing/invoices/:id/print` | `billing.controller.ts` |
-| GET | `/billing/invoices/:id` | `billing.controller.ts` |
-| POST | `/billing/invoices/preview` | `billing.controller.ts` |
-| GET | `/billing/invoices` | `billing.controller.ts` |
-| POST | `/billing/invoices` | `billing.controller.ts` |
-| GET | `/billing/office/needs` | `billing.controller.ts` |
-| GET | `/billing/patients/:patientId/balance` | `billing.controller.ts` |
-| GET | `/billing/patients/:patientId/bills` | `billing.controller.ts` |
-| GET | `/billing/patients/:patientId/dues` | `billing.controller.ts` |
-| POST | `/billing/receipts/:id/allocations` | `billing.controller.ts` |
-| GET | `/billing/receipts` | `billing.controller.ts` |
-| POST | `/billing/receipts` | `billing.controller.ts` |
-| POST | `/billing/recon/mismatches/:tenderId/resolve` | `billing.controller.ts` |
-| GET | `/billing/recon/mismatches` | `billing.controller.ts` |
-| POST | `/billing/recon/upload` | `billing.controller.ts` |
-| POST | `/billing/refunds/:id/pay` | `billing.controller.ts` |
-| POST | `/billing/refunds/approved/:approvalId/voucher` | `billing.controller.ts` |
-| POST | `/billing/refunds/request` | `billing.controller.ts` |
-| GET | `/billing/refunds` | `billing.controller.ts` |
-| POST | `/billing/refunds` | `billing.controller.ts` |
-| POST | `/billing/sessions/:id/close` | `billing.controller.ts` |
-| POST | `/billing/sessions/:id/confirm-close` | `billing.controller.ts` |
-| POST | `/billing/sessions/:id/recount` | `billing.controller.ts` |
-| GET | `/billing/sessions/current/open-items` | `billing.controller.ts` |
-| GET | `/billing/sessions/current` | `billing.controller.ts` |
-| GET | `/billing/sessions` | `billing.controller.ts` |
-| POST | `/billing/sessions` | `billing.controller.ts` |
-| GET | `/billing/visits/:encounterId/fee-quote` | `billing.controller.ts` |
-| GET | `/billing/worklist` | `billing.controller.ts` |
+- `billing.controller.ts` — 49: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/sessions`, `/billing/visits`, `/billing/worklist`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/billing`

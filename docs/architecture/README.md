@@ -122,7 +122,9 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `alerts` | — | approvals, auth, db, events, modules, notify, ops, realtime, tokens, workflow | 3 |
 | `approvals` | abdm, aerb, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, tariff | auth, db, events, modules, phi, tokens, workflow | 6 |
 | `auth` | abdm, aerb, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 32 |
+| `config` | abdm, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | opd, pharmacy, roster | approvals, auth, config, db, desk, inference, modules, tokens | 1 |
+| `crypto` | abdm, billing, opd, patients | — | — |
 | `db` | abdm, aerb, billing, cds, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `desk` | billing, membership, opd, partners, patients, pharmacy | approvals, auth, db, events, modules, report, tokens, workflow | 8 |
 | `documents` | patients, pharmacy | — | — |
@@ -142,6 +144,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
 | `retention` | — | db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
+| `tokens` | abdm, aerb, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `worker` | — | alerts, approvals, auth, config, db, desk, events, modules, notify, obligations, ops, orders, push, resources, retention, tokens, workflow | — |
 | `workflow` | billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | 9 |
 

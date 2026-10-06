@@ -8,35 +8,114 @@ Source: `apps/core/src/modules/partners/`
 - **Used by modules:** —
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `events`, `modules`, `tokens`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `ACCRUAL_EVENT_NAMES`, `AGING_BUCKETS`, `PARTNERS_ACCRUAL_CONSUMER`, `PartnersError`, `PartnersModule`, `REFERRAL_SOURCE_KEY`, `STATEMENT_COLUMN_MAPS`, `STATEMENT_MAP_VERSIONS`, `STATEMENT_QUARANTINE_REASONS`, `accrualBasis`, `accrualConsumer`, `accrualLedger`, `accrualTermsSchema`, `agingReport`, `appendAccrualDelta`, `assertIdentityFree`, `attributeInvoice`, `attributionCodeFor`, `bucketFor`, `commissionAccrualEnabled`, `countActivations`, `counterpartyFacts`, `escrowedTotalPaise`, `expireUnclaimed`, `exportCounterpartyStatement`, `findAttributionByCode`, `handleAccrualEvent`, `identityLeaks`, `importStatement`, `issueAttribution`, `kickerBonusPaise`, `listPartnerRefs`, `listStatementQuarantine`, `mapPartnerRef`, `openExpectations`, `parseStatement`, `partnerPnl`, `partnerPnlAll`, `partnersManifest`, `payableTotalPaise`, `periodBounds`, `periodKeyFor`, `periodSettled`, `rateSnapshotOf`, `receivableCommissionEnabled`, `receivableSnapshotOf`, `receivableTermsOf`, `receivableTermsSchema`, `receivableTotalPaise`, `recomputeKicker`, `referralSource`, `replayAccruals`, `requireAgreementAt`, `requireReceivableLane`, `resolveAgreementAt`, `resolveReferral`, `resolveStatementColumnMap`, `resolveStatementRef`, `voidAttribution`, `writeOffExpectation`
-
-Types: `AccrualAttribution`, `AccrualBasis`, `AccrualLedgerRow`, `AccrualOutcome`, `AccrualTerms`, `AgingBucket`, `AgingItem`, `AgingReport`, `AppendAccrualInput`, `AppendAccrualResult`, `AttributionSlip`, `CounterpartyFacts`, `ExpirySweepResult`, `ImportStatementInput`, `IssueAttributionInput`, `KickerRecomputeInput`, `KickerRecomputeResult`, `ParsedStatement`, `ParsedStatementRow`, `PartnerExport`, `PartnerExportRow`, `PartnerPnl`, `PartnerRefMapping`, `PartnersErrorCode`, `PeriodKind`, `ReceivableTerms`, `RefResolution`, `ReplayCounts`, `ReplayOptions`, `ResolvedAgreement`, `ResolvedReferral`, `ScannedAttribution`, `StatementColumnMap`, `StatementField`, `StatementImportResult`, `StatementLineOutcome`, `StatementQuarantineReason`, `VoidAttributionResult`
+- `accrual.ts`
+  - `accrualBasis(view: InvoiceAccrualView, terms: Pick<AccrualTerms, "payableRateBps" | "eligibleCategories">): AccrualBasis`
+  - `accrualLedger(exec: Db | Tx, filter: { counterpartyId?: string; invoiceId?: string }): Promise<AccrualLedgerRow[]>`
+  - `appendAccrualDelta(db: Db, input: AppendAccrualInput): Promise<AppendAccrualResult>`
+  - `attributeInvoice(exec: Db | Tx, invoiceId: string): Promise<AccrualAttribution | null>`
+  - `escrowedTotalPaise(exec: Db | Tx, counterpartyId: string): Promise<number>`
+  - `payableTotalPaise(exec: Db | Tx, counterpartyId: string): Promise<number>`
+  - types: `AccrualAttribution`, `AccrualBasis`, `AccrualLedgerRow`, `AppendAccrualInput`, `AppendAccrualResult`
+- `aging.ts`
+  - `AGING_BUCKETS`
+  - `agingReport(exec: Db | Tx, input: { counterpartyId?: string; asOf: Date }): Promise<AgingReport>`
+  - `bucketFor(ageDays: number): AgingBucket`
+  - `receivableTotalPaise(exec: Db | Tx, counterpartyId: string): Promise<number>`
+  - types: `AgingBucket`, `AgingItem`, `AgingReport`
+- `agreements.ts`
+  - `accrualTermsSchema`
+  - `counterpartyFacts(exec: Db | Tx, counterpartyId: string): Promise<CounterpartyFacts | null>`
+  - `rateSnapshotOf(agreement: ResolvedAgreement, pinnedAt: Date): { agreementId: string; versionNo: number; effectiveFrom: string; payableRateB…`
+  - `requireAgreementAt(exec: Db | Tx, counterpartyId: string, at: Date): Promise<ResolvedAgreement>`
+  - `resolveAgreementAt(exec: Db | Tx, counterpartyId: string, at: Date): Promise<ResolvedAgreement | null>`
+  - types: `AccrualTerms`, `CounterpartyFacts`, `ResolvedAgreement`
+- `attribution.ts`
+  - `attributionCodeFor(id: string): string`
+  - `expireUnclaimed(db: Db, actor: Actor, input: { at: Date; counterpartyId?: string }): Promise<ExpirySweepResult>`
+  - `findAttributionByCode(exec: Db | Tx, code: string): Promise<ScannedAttribution | null>`
+  - `issueAttribution(db: Db, actor: Actor, input: IssueAttributionInput, at: Date): Promise<AttributionSlip>`
+  - `openExpectations(exec: Db | Tx, counterpartyId: string): Promise<{ id: string; attributionId: string | null; amountPaise: number; expectedA…`
+  - `receivableCommissionEnabled(env: NodeJS.ProcessEnv = process.env): boolean`
+  - `receivableSnapshotOf(agreement: ResolvedAgreement, terms: ReceivableTerms, pinnedAt: Date, provenance: { attributionId: string; expectation…`
+  - `receivableTermsOf(agreement: ResolvedAgreement): ReceivableTerms`
+  - `receivableTermsSchema`
+  - `requireReceivableLane(): void`
+  - `voidAttribution(db: Db, actor: Actor, input: { attributionId: string; reason: string }, at: Date): Promise<VoidAttributionResult>`
+  - types: `AttributionSlip`, `ExpirySweepResult`, `IssueAttributionInput`, `ReceivableTerms`, `ScannedAttribution`, `VoidAttributionResult`
+- `consumer.ts`
+  - `ACCRUAL_EVENT_NAMES: readonly string[]`
+  - `PARTNERS_ACCRUAL_CONSUMER`
+  - `accrualConsumer(db: Db): Handler`
+  - `commissionAccrualEnabled(env: NodeJS.ProcessEnv = process.env): boolean`
+  - `handleAccrualEvent(db: Db, e: DispatchedEvent): Promise<AccrualOutcome>`
+  - types: `AccrualOutcome`
+- `errors.ts`
+  - `class PartnersError`
+  - types: `PartnersErrorCode`
+- `events.ts`
+  - `PARTNERS_EVENTS`
+  - `attributionIssued`
+  - `attributionVoided`
+  - `expectationCorrected`
+  - `expectationDisputed`
+  - `expectationWrittenOff`
+  - `payoutClassBlocked`
+  - `statementImported`
+- `exports.ts`
+  - `assertIdentityFree(value: unknown, context: string): void`
+  - `exportCounterpartyStatement(exec: Db | Tx, input: { counterpartyId: string; asOf: Date }): Promise<PartnerExport>`
+  - `identityLeaks(value: unknown): string[]`
+  - types: `PartnerExport`, `PartnerExportRow`
+- `kicker.ts`
+  - `countActivations(exec: Db | Tx, counterpartyId: string, bounds: { start: Date; end: Date }): Promise<number>`
+  - `kickerBonusPaise(kicker: AccrualTerms["kicker"], activations: number): number`
+  - `periodBounds(periodKey: string): { start: Date; end: Date }`
+  - `periodKeyFor(kind: PeriodKind, at: Date): string`
+  - `periodSettled(exec: Db | Tx, counterpartyId: string, periodKey: string): Promise<boolean>`
+  - `recomputeKicker(db: Db, input: KickerRecomputeInput): Promise<KickerRecomputeResult>`
+  - types: `KickerRecomputeInput`, `KickerRecomputeResult`, `PeriodKind`
+- `manifest.ts`
+  - `partnersManifest: ModuleManifest`
+- `partners.module.ts`
+  - `class PartnersModule`
+- `pnl.ts`
+  - `partnerPnl(exec: Db | Tx, input: { counterpartyId: string; asOf: Date }): Promise<PartnerPnl>`
+  - `partnerPnlAll(exec: Db | Tx, input: { asOf: Date }): Promise<PartnerPnl[]>`
+  - types: `PartnerPnl`
+- `reconcile.ts`
+  - `listPartnerRefs(exec: Db | Tx, counterpartyId: string): Promise<PartnerRefMapping[]>`
+  - `mapPartnerRef(db: Db, actor: Actor, input: { counterpartyId: string; partnerRef: string; attributionId: string }, at: Date): Promise<Partne…`
+  - `resolveStatementRef(exec: Db | Tx, counterpartyId: string, line: { attributionCode?: string | null; partnerRef?: string | null }): Promise<…`
+  - `writeOffExpectation(db: Db, actor: Actor, input: { expectationId: string; reason: string }, at: Date): Promise<{ expectationId: string; sta…`
+  - types: `PartnerRefMapping`, `RefResolution`
+- `replay.ts`
+  - `replayAccruals(db: Db, opts: ReplayOptions = {}): Promise<ReplayCounts>`
+  - types: `ReplayCounts`, `ReplayOptions`
+- `sources.ts`
+  - `REFERRAL_SOURCE_KEY`
+  - `referralSource(resolved: ResolvedReferral): AdjustmentSource`
+  - `resolveReferral(db: Db, args: { code: string | undefined; patientId: string | null; at: Date }): Promise<ResolvedReferral | null>`
+  - types: `ResolvedReferral`
+- `statements.ts`
+  - `STATEMENT_COLUMN_MAPS: readonly StatementColumnMap[]`
+  - `STATEMENT_MAP_VERSIONS: readonly string[]`
+  - `STATEMENT_QUARANTINE_REASONS`
+  - `importStatement(db: Db, actor: Actor, input: ImportStatementInput, at: Date): Promise<StatementImportResult>`
+  - `listStatementQuarantine(exec: Db | Tx, statementRef: string): Promise<{ id: string; rowNo: number; reason: string; line: string }[]>`
+  - `parseStatement(csv: string, requestedVersion?: string): ParsedStatement`
+  - `resolveStatementColumnMap(headerCells: readonly string[], requested?: string): StatementColumnMap`
+  - types: `ImportStatementInput`, `ParsedStatement`, `ParsedStatementRow`, `StatementColumnMap`, `StatementField`, `StatementImportResult`, `StatementLineOutcome`, `StatementQuarantineReason`
 
 ## Tables (`kernel/db/schema/partners.ts`)
 
-- `attribution_ids` (`attributionIds`)
-- `commission_accrual_subjects` (`commissionAccrualSubjects`)
-- `commission_accruals` (`commissionAccruals`)
-- `counterparties` (`counterparties`)
-- `partner_agreements` (`partnerAgreements`)
-- `partner_ref_map` (`partnerRefMap`)
-- `receivable_expectations` (`receivableExpectations`)
+`attribution_ids`, `commission_accrual_subjects`, `commission_accruals`, `counterparties`, `partner_agreements`, `partner_ref_map`, `receivable_expectations`
 
-References tables in: `billing`, `patients`
+Foreign keys into: `billing`, `patients`
 
 ## HTTP routes (10)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/partners/attributions/:attributionId/void` | `partners.controller.ts` |
-| GET | `/partners/attributions/:code` | `partners.controller.ts` |
-| POST | `/partners/attributions` | `partners.controller.ts` |
-| GET | `/partners/pnl` | `partners.controller.ts` |
-| POST | `/partners/receivables/:expectationId/write-off` | `partners.controller.ts` |
-| GET | `/partners/receivables/aging` | `partners.controller.ts` |
-| POST | `/partners/receivables/expire` | `partners.controller.ts` |
-| POST | `/partners/refs` | `partners.controller.ts` |
-| GET | `/partners/statements/:statementRef/quarantine` | `partners.controller.ts` |
-| POST | `/partners/statements/import` | `partners.controller.ts` |
+- `partners.controller.ts` — 10: `/partners/attributions`, `/partners/pnl`, `/partners/receivables`, `/partners/refs`, `/partners/statements`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/partners`

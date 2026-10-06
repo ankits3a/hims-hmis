@@ -8,33 +8,70 @@ Source: `apps/core/src/modules/pcpndt/`
 - **Used by modules:** `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `phi`, `tokens`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `FORM_F_FIELDS`, `LOCKOUT_LEXICON`, `LOCKOUT_LEXICON_CODED`, `LOCKOUT_LEXICON_DEMOGRAPHIC`, `PCPNDT_ERROR_CODES`, `PcpndtError`, `PcpndtModule`, `activeRegistrationFor`, `activeRegistrations`, `addMachine`, `addPerson`, `assertFormFRecorded`, `assertMachineRegistered`, `assertPersonRegistered`, `createRegistration`, `deactivateMachine`, `deactivatePerson`, `deactivateRegistration`, `findFoetalSexDisclosures`, `findLockoutHits`, `foldForGuard`, `formFForStudy`, `formFForStudyTx`, `formFMissingFields`, `isLockedOut`, `openFormF`, `pcpndtHttpStatus`, `pcpndtManifest`, `readRegister`, `recordFormF`, `registerFormFSubjectResolver`, `registeredMachines`, `registeredPersons`, `verifyFormF`
-
-Types: `FoetalSexHit`, `FoetalSexRule`, `FormFField`, `FormFRow`, `FormFSubject`, `FormFSubjectResolver`, `FormFView`, `LockoutHit`, `LockoutTier`, `OpenFormFInput`, `PcpndtErrorCode`, `RecordFormFInput`, `RegisterBookEntry`, `RegisteredMachineRow`, `RegisteredPersonRow`, `RegistrationRow`
+- `errors.ts`
+  - `PCPNDT_ERROR_CODES`
+  - `class PcpndtError`
+  - `pcpndtHttpStatus(code: PcpndtErrorCode): number`
+  - types: `PcpndtErrorCode`
+- `events.ts`
+  - `PCPNDT_EVENTS`
+  - `formFRecorded`
+- `foetal-sex.ts`
+  - `findFoetalSexDisclosures(text: string, opts: { obstetric: boolean }): FoetalSexHit[]`
+  - `foldForGuard(text: string): string`
+  - types: `FoetalSexHit`, `FoetalSexRule`
+- `form-f-fields.ts`
+  - `FORM_F_FIELDS`
+  - `formFMissingFields(form: FormLike): FormFField[]`
+  - types: `FormFField`
+- `form-f.ts`
+  - `assertFormFRecorded(exec: Db | Tx, studyId: string, formFRequired: boolean): Promise<FormFRow | null>`
+  - `assertMachineRegistered(exec: Db | Tx, deviceResourceId: string, onDate: string): Promise<{ registrationId: string; machineId: string }>`
+  - `assertPersonRegistered(exec: Db | Tx, userId: string, registrationId: string): Promise<{ personId: string }>`
+  - `openFormF(tx: Tx, actor: Actor, input: OpenFormFInput): Promise<{ formFId: string; serialNo: number; serialYear: number }>`
+  - `recordFormF(tx: Tx, actor: Actor, input: RecordFormFInput): Promise<{ formFId: string; serialNo: number }>`
+  - `registerFormFSubjectResolver(key: string, fn: FormFSubjectResolver): () => void`
+  - `verifyFormF(tx: Tx, actor: Actor, formFId: string): Promise<{ formFId: string; verifiedAt: Date }>`
+  - types: `FormFRow`, `FormFSubject`, `FormFSubjectResolver`, `OpenFormFInput`, `RecordFormFInput`
+- `lockout.ts`
+  - `LOCKOUT_LEXICON: readonly string[]`
+  - `LOCKOUT_LEXICON_CODED: readonly string[]`
+  - `LOCKOUT_LEXICON_DEMOGRAPHIC: readonly string[]`
+  - `findLockoutHits(text: string, tier: LockoutTier = "full"): LockoutHit[]`
+  - `isLockedOut(text: string, tier: LockoutTier = "full"): boolean`
+  - types: `LockoutHit`, `LockoutTier`
+- `manifest.ts`
+  - `pcpndtManifest: ModuleManifest`
+- `pcpndt.module.ts`
+  - `class PcpndtModule`
+- `read.ts`
+  - `formFForStudy(db: Db, actor: Actor, studyId: string): Promise<FormFView | null>`
+  - `formFForStudyTx(tx: Tx, actor: Actor, studyId: string): Promise<FormFView | null>`
+  - types: `FormFView`
+- `registrations.ts`
+  - `activeRegistrationFor(exec: Db | Tx, deviceResourceId: string, onDate: string): Promise<{ registration: RegistrationRow; machine: Registere…`
+  - `activeRegistrations(exec: Db | Tx, onDate: string): Promise<RegistrationRow[]>`
+  - `addMachine(tx: Tx, actor: Actor, input: { registrationId: string; deviceResourceId: string; make: string; model: string; serial: string; fo…`
+  - `addPerson(tx: Tx, actor: Actor, input: { registrationId: string; userId: string; qualification: string; councilRegNo?: string | null }): Pr…`
+  - `createRegistration(tx: Tx, actor: Actor, input: { site: string; registrationNo: string; validFrom: string; validTo: string; inchargeUserId?…`
+  - `deactivateMachine(tx: Tx, actor: Actor, machineId: string): Promise<void>`
+  - `deactivatePerson(tx: Tx, actor: Actor, personId: string): Promise<void>`
+  - `deactivateRegistration(tx: Tx, actor: Actor, registrationId: string, status: "suspended" | "cancelled"): Promise<void>`
+  - `readRegister(exec: Db | Tx): Promise<RegisterBookEntry[]>`
+  - `registeredMachines(exec: Db | Tx, registrationId: string): Promise<RegisteredMachineRow[]>`
+  - `registeredPersons(exec: Db | Tx, registrationId: string): Promise<RegisteredPersonRow[]>`
+  - types: `RegisterBookEntry`, `RegisteredMachineRow`, `RegisteredPersonRow`, `RegistrationRow`
 
 ## Tables (`kernel/db/schema/pcpndt.ts`)
 
-- `pcpndt_form_f` (`pcpndtFormF`)
-- `pcpndt_form_f_serials` (`pcpndtFormFSerials`)
-- `pcpndt_registered_machines` (`pcpndtRegisteredMachines`)
-- `pcpndt_registered_persons` (`pcpndtRegisteredPersons`)
-- `pcpndt_registrations` (`pcpndtRegistrations`)
+`pcpndt_form_f`, `pcpndt_form_f_serials`, `pcpndt_registered_machines`, `pcpndt_registered_persons`, `pcpndt_registrations`
 
-References tables in: `auth`, `patients`, `resources`
+Foreign keys into: `auth`, `patients`, `resources`
 
 ## HTTP routes (10)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/pcpndt/form-f/:formFId/record` | `pcpndt.controller.ts` |
-| POST | `/pcpndt/form-f/:formFId/verify` | `pcpndt.controller.ts` |
-| POST | `/pcpndt/form-f` | `pcpndt.controller.ts` |
-| POST | `/pcpndt/machines/:machineId/deactivate` | `pcpndt.controller.ts` |
-| POST | `/pcpndt/persons/:personId/deactivate` | `pcpndt.controller.ts` |
-| POST | `/pcpndt/registrations/:registrationId/machines` | `pcpndt.controller.ts` |
-| POST | `/pcpndt/registrations/:registrationId/persons` | `pcpndt.controller.ts` |
-| GET | `/pcpndt/registrations` | `pcpndt.controller.ts` |
-| POST | `/pcpndt/registrations` | `pcpndt.controller.ts` |
-| GET | `/pcpndt/studies/:studyId/form-f` | `pcpndt.controller.ts` |
+- `pcpndt.controller.ts` — 10: `/pcpndt/form-f`, `/pcpndt/machines`, `/pcpndt/persons`, `/pcpndt/registrations`, `/pcpndt/studies`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/pcpndt`

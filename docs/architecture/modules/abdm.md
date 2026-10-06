@@ -7,54 +7,146 @@ Source: `apps/core/src/modules/abdm/`
 - **Depends on modules:** `lab`, `opd`, `patients`, `radiology`
 - **Used by modules:** —
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `events`, `modules`, `notify`, `phi`, `tokens`
+- **Subscribes to events:** `consultationCompleted`, `imagingReportPublished`, `labReportPublished`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `ABDM_CALLBACKS`, `ABDM_CARE_CONTEXT_CONSUMER`, `ABDM_CLOCK`, `ABDM_FETCH`, `ABDM_PURPOSES`, `ABHA_ENCRYPTION`, `ABHA_ENCRYPTION_NAME`, `ABHA_PATHS`, `ABHA_TXN_TTL_MS`, `ALL_HI_TYPES`, `AbdmCallbackAuthError`, `AbdmCallbackVerifier`, `AbdmGatewayClient`, `AbdmGatewayError`, `AbdmModule`, `AbdmRuntime`, `AbhaClient`, `AbhaError`, `AbhaFlowError`, `AbhaService`, `AbhaTransactions`, `BC_CURVE25519`, `BUILT_HI_TYPES`, `CONSULT_PURPOSES`, `CareContexts`, `Consents`, `DEFAULT_REQUEST_HI_TYPES`, `FIDELIUS_CRYPTO_ALG`, `FIDELIUS_CURVE_NAME`, `FIDELIUS_KEY_PARAMETERS`, `FideliusKeyPair`, `GENERATE_TOKEN_DAILY_LIMIT`, `HIP_PATHS`, `HIU_DEFAULT_EXPIRY_DAYS`, `HIU_DEFAULT_RANGE_MONTHS`, `HIU_KEY_LIFETIME_MS`, `HIU_MAX_EXPIRY_DAYS`, `HIU_PATHS`, `HIU_PUSH_PREFIX`, `HIU_PUSH_TOKEN_PARAM`, `HIU_SWEEP_INTERVAL_MS`, `HealthInformation`, `HipClient`, `Hiu`, `HiuClient`, `HiuError`, `LINK_OTP_MAX_ATTEMPTS`, `LINK_OTP_TTL_MS`, `LINK_TOKEN_LIFETIME_MS`, `LoggingOtpSender`, `ON_SHARE_PATH`, `OtpSenderUnavailable`, `PUSH_PAGE_SIZE`, `PatientLinking`, `ProfileShares`, `SHARE_TOKEN_EXPIRY_S`, `TOKEN_FALLBACK_LIFETIME_S`, `TOKEN_REFRESH_EARLY_MS`, `abdmManifest`, `abdmSettingsFrom`, `callbackKind`, `careContextConsumer`, `careContextDisplay`, `classifyAbhaIdentifier`, `classifyBundle`, `compareWithPatient`, `counterQrUrl`, `eraseArtefact`, `externalRecordsErased`, `externalRecordsReceived`, `fideliusDecrypt`, `fideliusEncrypt`, `healthInformationReleased`, `imagingReportBundle`, `labReportBundle`, `listAbdmMessages`, `opConsultBundle`, `parseFideliusPublicKey`, `prescriptionBundle`, `purgeExpiredExternalRecords`, `readAbdmProfile`, `readExternalRecords`, `registerAbdmCallbackHandler`, `summarizeBundle`
-
-Types: `AbdmCallOptions`, `AbdmCallResult`, `AbdmCallbackAuthReason`, `AbdmCallbackHandler`, `AbdmCallbackPath`, `AbdmFetch`, `AbdmHttpMethod`, `AbdmInboundMessage`, `AbdmJwtClaims`, `AbdmMessageRow`, `AbdmProfile`, `AbdmPurpose`, `AbdmRuntimeOptions`, `AbdmSettings`, `AbhaFlowView`, `AbhaLoginKind`, `AbhaOtpSystem`, `AnyHiType`, `BundleVerdict`, `CareContextRow`, `ConsentRequestInput`, `ExternalFacility`, `ExternalRecordSummary`, `ExternalRecordView`, `FideliusPeer`, `FieldComparison`, `HiType`, `HiuErrorCode`, `HiuRequestView`, `OtpSender`, `PatientExternalRecords`, `PushAnswer`, `RecordContext`, `RecordPatient`, `ShareView`
+- `abdm.module.ts`
+  - `class AbdmModule`
+- `abha-client.ts`
+  - `ABHA_ENCRYPTION`
+  - `ABHA_ENCRYPTION_NAME`
+  - `ABHA_PATHS`
+  - `class AbhaClient`
+  - `class AbhaError`
+  - types: `AbhaLoginKind`, `AbhaOtpSystem`
+- `abha-service.ts`
+  - `class AbhaFlowError`
+  - `class AbhaService`
+  - `classifyAbhaIdentifier(raw: string, cmId: "sbx" | "abdm"): { kind: AbhaLoginKind; identifier: string } | null`
+  - types: `AbhaFlowView`
+- `abha-transactions.ts`
+  - `ABHA_TXN_TTL_MS`
+  - `class AbhaTransactions`
+- `callback-auth.ts`
+  - `class AbdmCallbackAuthError`
+  - `class AbdmCallbackVerifier`
+  - types: `AbdmCallbackAuthReason`, `AbdmJwtClaims`
+- `callbacks.ts`
+  - `ABDM_CALLBACKS`
+  - `callbackKind(path: string): string`
+  - `registerAbdmCallbackHandler(kind: string, handler: AbdmCallbackHandler): () => void`
+  - types: `AbdmCallbackHandler`, `AbdmCallbackPath`, `AbdmInboundMessage`
+- `care-contexts.ts`
+  - `class CareContexts`
+  - `GENERATE_TOKEN_DAILY_LIMIT`
+  - `LINK_TOKEN_LIFETIME_MS`
+  - `careContextDisplay(v: { visitNo: string; serviceDate: string; departmentName: string | null }): string`
+  - types: `CareContextRow`
+- `consents.ts`
+  - `class Consents`
+- `consumer.ts`
+  - `ABDM_CARE_CONTEXT_CONSUMER`
+  - `careContextConsumer(db: Db, cfg: AppConfig | null, fetchImpl: AbdmFetch = defaultAbdmFetch, now: () => Date = () => new Date()): Handler`
+- `events.ts`
+  - `externalRecordsErased`
+  - `externalRecordsReceived`
+  - `healthInformationReleased`
+- `fhir-read.ts`
+  - `classifyBundle(bundle: unknown): BundleVerdict`
+  - `summarizeBundle(bundle: unknown): ExternalRecordSummary`
+  - types: `BundleVerdict`, `ExternalRecordSummary`
+- `fhir-records.ts`
+  - `BUILT_HI_TYPES: readonly HiType[]`
+  - `imagingReportBundle(ctx: RecordContext, v: OpdReleaseVisit, r: ImagingReleaseReport): Json`
+  - `labReportBundle(ctx: RecordContext, v: OpdReleaseVisit, test: LabReleaseTest): Json`
+  - `opConsultBundle(ctx: RecordContext, v: OpdReleaseVisit): Json`
+  - `prescriptionBundle(ctx: RecordContext, v: OpdReleaseVisit): Json | null`
+  - types: `HiType`, `RecordContext`, `RecordPatient`
+- `fidelius.ts`
+  - `BC_CURVE25519: Readonly<{ p: bigint; n: bigint; h: bigint; a: bigint; b: bigint; Gx: bigint; Gy: bigint }>`
+  - `FIDELIUS_CRYPTO_ALG`
+  - `FIDELIUS_CURVE_NAME`
+  - `FIDELIUS_KEY_PARAMETERS`
+  - `class FideliusKeyPair`
+  - `fideliusDecrypt(requester: FideliusKeyPair, sender: FideliusPeer, ciphertextBase64: string): string`
+  - `fideliusEncrypt(sender: FideliusKeyPair, requester: FideliusPeer, plaintext: string): string`
+  - `parseFideliusPublicKey(value: string): Uint8Array`
+  - types: `FideliusPeer`
+- `gateway-client.ts`
+  - `class AbdmGatewayClient`
+  - `class AbdmGatewayError`
+  - `TOKEN_FALLBACK_LIFETIME_S`
+  - `TOKEN_REFRESH_EARLY_MS`
+  - types: `AbdmCallOptions`, `AbdmCallResult`, `AbdmFetch`, `AbdmHttpMethod`
+- `health-information.ts`
+  - `class HealthInformation`
+- `hip-client.ts`
+  - `HIP_PATHS`
+  - `class HipClient`
+  - `PUSH_PAGE_SIZE`
+- `hiu-client.ts`
+  - `ABDM_PURPOSES`
+  - `ALL_HI_TYPES`
+  - `CONSULT_PURPOSES: readonly AbdmPurpose[]`
+  - `DEFAULT_REQUEST_HI_TYPES: readonly AnyHiType[]`
+  - `HIU_PATHS`
+  - `HIU_PUSH_PREFIX`
+  - `HIU_PUSH_TOKEN_PARAM`
+  - `class HiuClient`
+  - types: `AbdmPurpose`, `AnyHiType`
+- `hiu.ts`
+  - `HIU_DEFAULT_EXPIRY_DAYS`
+  - `HIU_DEFAULT_RANGE_MONTHS`
+  - `HIU_KEY_LIFETIME_MS`
+  - `HIU_MAX_EXPIRY_DAYS`
+  - `HIU_SWEEP_INTERVAL_MS`
+  - `class Hiu`
+  - `class HiuError`
+  - `eraseArtefact(db: Db, art: ArtefactRow, reason: "REVOKED" | "EXPIRED", by: "abdm_notify" | "data_erase_at", now: Date): Promise<number>`
+  - `purgeExpiredExternalRecords(db: Db, now: Date): Promise<{ artefacts: number; records: number }>`
+  - `readExternalRecords(db: Db, actor: Actor, patientId: string, opts: { hiuConfigured: boolean; now: Date }): Promise<PatientExternalRecords>`
+  - types: `ConsentRequestInput`, `ExternalFacility`, `ExternalRecordView`, `HiuErrorCode`, `HiuRequestView`, `PatientExternalRecords`, `PushAnswer`
+- `manifest.ts`
+  - `abdmManifest: ModuleManifest`
+- `messages.ts`
+  - `listAbdmMessages(db: Db, actor: Actor, filter: { kind?: string; direction?: "in" | "out"; limit?: number; } = {}): Promise<AbdmMessageRow[]>`
+  - types: `AbdmMessageRow`
+- `patient-linking.ts`
+  - `LINK_OTP_MAX_ATTEMPTS`
+  - `LINK_OTP_TTL_MS`
+  - `class LoggingOtpSender`
+  - `class OtpSenderUnavailable`
+  - `class PatientLinking`
+  - types: `OtpSender`
+- `profile-shares.ts`
+  - `ON_SHARE_PATH`
+  - `class ProfileShares`
+  - `SHARE_TOKEN_EXPIRY_S`
+  - `counterQrUrl(settings: Pick<AbdmSettings, "hipId" | "scanShareUrl">, counterId: string): string`
+  - types: `ShareView`
+- `profile.ts`
+  - `compareWithPatient(p: AbdmProfile, h: HospitalDemographics): FieldComparison[]`
+  - `readAbdmProfile(raw: unknown): AbdmProfile`
+  - types: `AbdmProfile`, `FieldComparison`
+- `runtime.ts`
+  - `ABDM_CLOCK`
+  - `ABDM_FETCH`
+  - `class AbdmRuntime`
+  - types: `AbdmRuntimeOptions`
+- `settings.ts`
+  - `abdmSettingsFrom(abdm: AppConfig["abdm"]): AbdmSettings | null`
+  - types: `AbdmSettings`
 
 ## Tables (`kernel/db/schema/abdm.ts`)
 
-- `abdm_care_contexts` (`abdmCareContexts`)
-- `abdm_consents` (`abdmConsents`)
-- `abdm_external_records` (`abdmExternalRecords`)
-- `abdm_health_info_requests` (`abdmHealthInfoRequests`)
-- `abdm_hiu_consent_artefacts` (`abdmHiuConsentArtefacts`)
-- `abdm_hiu_consent_requests` (`abdmHiuConsentRequests`)
-- `abdm_hiu_data_requests` (`abdmHiuDataRequests`)
-- `abdm_link_requests` (`abdmLinkRequests`)
-- `abdm_link_tokens` (`abdmLinkTokens`)
-- `abdm_messages` (`abdmMessages`)
-- `abdm_profile_shares` (`abdmProfileShares`)
+`abdm_care_contexts`, `abdm_consents`, `abdm_external_records`, `abdm_health_info_requests`, `abdm_hiu_consent_artefacts`, `abdm_hiu_consent_requests`, `abdm_hiu_data_requests`, `abdm_link_requests`, `abdm_link_tokens`, `abdm_messages`, `abdm_profile_shares`
 
-References tables in: `opd`, `patients`
+Foreign keys into: `opd`, `patients`
 
 ## HTTP routes (24)
 
-| verb | path | controller |
-|---|---|---|
-| POST | `/abdm/abha/create` | `abha.controller.ts` |
-| POST | `/abdm/abha/find-by-aadhaar` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/account` | `abha.controller.ts` |
-| GET | `/abdm/abha/transactions/:id/address-suggestions` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/address` | `abha.controller.ts` |
-| GET | `/abdm/abha/transactions/:id/card/download` | `abha.controller.ts` |
-| GET | `/abdm/abha/transactions/:id/card` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/compare` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/link` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/mobile/otp` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/mobile/verify` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/otp` | `abha.controller.ts` |
-| POST | `/abdm/abha/transactions/:id/resend` | `abha.controller.ts` |
-| GET | `/abdm/abha/transactions/:id` | `abha.controller.ts` |
-| POST | `/abdm/abha/verify` | `abha.controller.ts` |
-| POST | `/abdm/hiu/consent-requests/:id/status` | `hiu.controller.ts` |
-| POST | `/abdm/hiu/consent-requests` | `hiu.controller.ts` |
-| GET | `/abdm/hiu/patients/:patientId/records` | `hiu.controller.ts` |
-| POST | `/abdm/hiu` | `hiu.controller.ts` |
-| GET | `/abdm/scan-share/qr` | `abha.controller.ts` |
-| POST | `/abdm/scan-share/shares/:id/dismiss` | `abha.controller.ts` |
-| POST | `/abdm/scan-share/shares/:id/link` | `abha.controller.ts` |
-| GET | `/abdm/scan-share/shares/:id` | `abha.controller.ts` |
-| GET | `/abdm/scan-share/shares` | `abha.controller.ts` |
+- `abha.controller.ts` — 20: `/abdm/abha`, `/abdm/scan-share`
+- `hiu.controller.ts` — 4: `/abdm/hiu`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/abdm`

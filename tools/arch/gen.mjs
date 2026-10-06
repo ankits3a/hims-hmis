@@ -109,7 +109,11 @@ function balanced(src, open) {
 // ---------- core: modules + kernel ----------
 
 const moduleNames = dirs(MODULES);
-const kernelNames = dirs(KERNEL);
+/** Kernel units are its directories AND its top-level files (`config.ts`, `crypto.ts`, `tokens.ts`). */
+const kernelFileUnits = readdirSync(KERNEL).filter((n) => /\.ts$/.test(n) && !isTest(n)).map((n) => n.replace(/\.ts$/, ""));
+const kernelNames = uniqSorted([...dirs(KERNEL), ...kernelFileUnits]);
+/** Source files of a unit, whether it is a directory or a single file. */
+const unitFiles = (base, name) => (existsSync(join(base, name)) && statSync(join(base, name)).isDirectory() ? walk(join(base, name)) : [join(base, `${name}.ts`)]);
 
 /** deps[unit] = Set of units it imports. */
 const deps = new Map();
@@ -123,7 +127,7 @@ for (const [base, kind, names] of [[MODULES, "module", moduleNames], [KERNEL, "k
   for (const name of names) {
     const unit = `${kind}:${name}`;
     deps.set(unit, deps.get(unit) ?? new Set());
-    for (const file of walk(join(base, name))) {
+    for (const file of unitFiles(base, name)) {
       for (const spec of specifiers(read(file))) {
         if (!spec.startsWith(".")) continue;
         const target = unitOf(resolve(dirname(file), spec));
@@ -136,32 +140,131 @@ for (const [base, kind, names] of [[MODULES, "module", moduleNames], [KERNEL, "k
 const depsOf = (unit, kind) => uniqSorted([...(deps.get(unit) ?? [])].filter((u) => u.startsWith(kind + ":")).map((u) => u.split(":")[1]));
 const usedBy = (unit, kind) => uniqSorted([...deps.entries()].filter(([from, to]) => from.startsWith(kind + ":") && to.has(unit)).map(([from]) => from.split(":")[1]));
 
-/** Public surface: names exported from a module's index.ts. */
-function exportsOf(indexPath) {
-  if (!existsSync(indexPath)) return { values: [], types: [] };
-  const s = stripComments(read(indexPath));
-  const values = [];
-  const types = [];
-  for (const m of s.matchAll(/export\s+(type\s+)?\{([^}]*)\}/g)) {
+/** Resolve a relative specifier to a .ts/.tsx file, or null. */
+function resolveTs(fromFile, spec) {
+  const b = resolve(dirname(fromFile), spec);
+  for (const c of [b + ".ts", b + ".tsx", join(b, "index.ts")]) if (existsSync(c)) return c;
+  return null;
+}
+
+/** Collapse whitespace and cap length, so one export is one short line. */
+function oneLine(text, max = 140) {
+  const t = text.replace(/\s+/g, " ").replace(/\(\s+/g, "(").replace(/\s+\)/g, ")").replace(/,\s*\)/g, ")").trim();
+  return t.length > max ? t.slice(0, max - 1) + "…" : t;
+}
+
+/** A return-type annotation starting at `src[0] === ":"`, up to the body or `=>` at depth 0. */
+function returnType(src, arrow = false) {
+  if (!/^\s*:/.test(src)) return "";
+  const start = src.indexOf(":") + 1;
+  let depth = 0;
+  let i = start;
+  // At depth 0 a `{` opens the body only once the type so far is complete; after `:`, `|`, `&`, `<`,
+  // `,`, `(` or `=>` it opens an object-literal type. `=>` ends the type only for an arrow const.
+  const complete = () => {
+    const t = src.slice(start, i).trim();
+    return t !== "" && !/([:|&<,(]|=>)$/.test(t);
+  };
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (src.startsWith("=>", i)) {
+      if (depth === 0 && arrow && complete()) break;
+      i++;
+    } else if ("<([".includes(c)) depth++;
+    else if (">)]".includes(c)) depth--;
+    else if (c === "{") {
+      if (depth === 0 && complete()) break;
+      depth++;
+    } else if (c === "}") depth--;
+    else if (c === ";" && depth === 0) break;
+  }
+  return ": " + src.slice(start, i).trim();
+}
+
+/** One-line declaration of exported `name` in `file`: a signature for functions, else its kind. */
+function declOf(file, name) {
+  const s = stripComments(read(file));
+  const n = name.replace(/\$/g, "\\$");
+  let m = s.match(new RegExp(`export\\s+(?:declare\\s+)?(?:async\\s+)?function\\*?\\s+${n}\\b\\s*(<[^(]*>)?\\s*\\(`));
+  if (m) {
+    const open = m.index + m[0].length - 1;
+    const params = balanced(s, open);
+    return oneLine(`${name}(${params})${returnType(s.slice(open + params.length + 2))}`);
+  }
+  m = s.match(new RegExp(`export\\s+(?:const|let)\\s+${n}\\b\\s*`));
+  if (m) {
+    const rest = s.slice(m.index + m[0].length);
+    if (rest.startsWith(":")) return oneLine(`${name}${rest.slice(0, rest.indexOf("=")).trim()}`);
+    const arrow = rest.match(/^=\s*(?:async\s*)?(<[^(]*>)?\s*\(/);
+    if (arrow) {
+      const open = arrow[0].length - 1;
+      const params = balanced(rest, open);
+      const after = rest.slice(open + params.length + 2);
+      if (/^\s*(:[^=]*)?=>/.test(after) || /^\s*:/.test(after)) return oneLine(`${name}(${params})${returnType(after, true)}`);
+    }
+    return name;
+  }
+  if (new RegExp(`export\\s+(?:abstract\\s+)?class\\s+${n}\\b`).test(s)) return `class ${name}`;
+  if (new RegExp(`export\\s+enum\\s+${n}\\b`).test(s)) return `enum ${name}`;
+  return name;
+}
+
+/**
+ * Public surface of a file, following re-exports: [{ name, type, file, decl }]. `file` is where the
+ * name is declared, so a reader opens that file and not the index.
+ */
+function exportsOf(file, seen = new Set()) {
+  if (!file || seen.has(file) || !existsSync(file)) return [];
+  seen.add(file);
+  const s = stripComments(read(file));
+  const imported = new Map();
+  for (const m of s.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+["']([^"']+)["']/g)) {
+    for (const raw of m[1].split(",")) {
+      const [orig, alias] = raw.trim().replace(/^type\s+/, "").split(/\s+as\s+/).map((x) => x?.trim());
+      if (orig) imported.set(alias ?? orig, { orig, spec: m[2] });
+    }
+  }
+  const out = [];
+  const add = (name, type, src, orig = name) => {
+    const target = src && src !== file ? exportsOf(src, new Set(seen)).find((e) => e.name === orig) : null;
+    if (target) out.push({ ...target, name });
+    else out.push({ name, type, file: src ?? file, decl: type ? name : src ? declOf(src, orig).replace(orig, name) : name });
+  };
+  for (const m of s.matchAll(/export\s+(type\s+)?\{([^}]*)\}(?:\s*from\s+["']([^"']+)["'])?/g)) {
+    const from = m[3] ? resolveTs(file, m[3]) : null;
     for (const raw of m[2].split(",")) {
       const t = raw.trim();
       if (!t) continue;
-      const isType = Boolean(m[1]) || t.startsWith("type ");
-      const name = t.replace(/^type\s+/, "").split(/\s+as\s+/).pop().trim();
-      (isType ? types : values).push(name);
+      const type = Boolean(m[1]) || t.startsWith("type ");
+      const [orig, alias] = t.replace(/^type\s+/, "").split(/\s+as\s+/).map((x) => x.trim());
+      if (from) add(alias ?? orig, type, from, orig);
+      else if (imported.has(orig)) {
+        const imp = imported.get(orig);
+        add(alias ?? orig, type, imp.spec.startsWith(".") ? resolveTs(file, imp.spec) : null, imp.orig);
+      } else add(alias ?? orig, type, file, orig);
     }
   }
-  for (const m of s.matchAll(/export\s+(?:declare\s+)?(?:async\s+)?(const|let|function\*?|class|enum|type|interface)\s+([A-Za-z0-9_$]+)/g)) {
-    (m[1] === "type" || m[1] === "interface" ? types : values).push(m[2]);
+  for (const m of s.matchAll(/export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(const|let|function\*?|class|enum|type|interface)\s+([A-Za-z0-9_$]+)/g)) {
+    const type = m[1] === "type" || m[1] === "interface";
+    out.push({ name: m[2], type, file, decl: type ? m[2] : declOf(file, m[2]) });
   }
-  for (const m of s.matchAll(/export\s+\*\s+from\s+["']([^"']+)["']/g)) values.push(`* from ${m[1]}`);
-  return { values: uniqSorted(values), types: uniqSorted(types) };
+  for (const m of s.matchAll(/export\s+\*\s+from\s+["']([^"']+)["']/g)) out.push(...exportsOf(resolveTs(file, m[1]), seen));
+  const unique = new Map();
+  for (const e of out) if (!unique.has(e.name)) unique.set(e.name, e);
+  return [...unique.values()].sort((a, b) => byName(a.name, b.name));
+}
+
+/** Events a module subscribes to, as named in its manifest (`{ event: x.name, consumer: … }`). */
+function subscriptionsOf(m) {
+  const p = join(MODULES, m, "manifest.ts");
+  if (!existsSync(p)) return [];
+  return uniqSorted([...stripComments(read(p)).matchAll(/\{\s*event:\s*([A-Za-z0-9_$.]+?)(?:\.name)?\s*,/g)].map((x) => x[1]));
 }
 
 /** HTTP routes declared by controllers under `dir`. */
-function routesIn(dir) {
+function routesIn(base, name) {
   const routes = [];
-  for (const file of walk(dir)) {
+  for (const file of unitFiles(base, name)) {
     const s = stripComments(read(file));
     const ctl = s.match(/@Controller\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)/);
     if (!ctl) continue;
@@ -268,7 +371,7 @@ function renderReadme() {
   L.push("| module | depends on | used by | routes | tables |");
   L.push("|---|---|---|---|---|");
   for (const m of moduleNames) {
-    const r = routesIn(join(MODULES, m)).length;
+    const r = routesIn(MODULES, m).length;
     const t = (tables.get(`${m}.ts`) ?? []).length;
     L.push(`| [${m}](modules/${m}.md) | ${depsOf(`module:${m}`, "module").join(", ") || "—"} | ${usedBy(`module:${m}`, "module").join(", ") || "—"} | ${r} | ${t} |`);
   }
@@ -277,7 +380,7 @@ function renderReadme() {
   L.push("| subsystem | used by modules | depends on kernel | routes |");
   L.push("|---|---|---|---|");
   for (const k of kernelNames) {
-    const r = routesIn(join(KERNEL, k)).length;
+    const r = routesIn(KERNEL, k).length;
     L.push(`| \`${k}\` | ${usedBy(`kernel:${k}`, "module").join(", ") || "—"} | ${depsOf(`kernel:${k}`, "kernel").join(", ") || "—"} | ${r || "—"} |`);
   }
   L.push("\nKernel HTTP routes: [kernel-routes.md](kernel-routes.md). Database: [schema.md](schema.md). Web screens: [web.md](web.md).\n");
@@ -287,7 +390,7 @@ function renderReadme() {
 function renderModule(m) {
   const unit = `module:${m}`;
   const ex = exportsOf(join(MODULES, m, "index.ts"));
-  const routes = routesIn(join(MODULES, m));
+  const routes = routesIn(MODULES, m);
   const own = tables.get(`${m}.ts`) ?? [];
   const L = [HEADER, `# module \`${m}\`\n`, `Source: \`apps/core/src/modules/${m}/\``];
   if (existsSync(join(MODULES, m, "MAP.md"))) L.push(`· Notes: [MAP.md](../../../apps/core/src/modules/${m}/MAP.md)`);
@@ -295,17 +398,41 @@ function renderModule(m) {
   L.push(`- **Depends on modules:** ${list(depsOf(unit, "module"))}`);
   L.push(`- **Used by modules:** ${list(usedBy(unit, "module"))}`);
   L.push(`- **Kernel used:** ${list(depsOf(unit, "kernel"))}`);
-  L.push("\n## Public API (`index.ts`)\n");
-  L.push(`Values: ${list(ex.values)}\n`);
-  L.push(`Types: ${list(ex.types)}\n`);
-  L.push(`## Tables (\`kernel/db/schema/${m}.ts\`)\n`);
-  L.push(own.length ? own.map((t) => `- \`${t.sql}\` (\`${t.name}\`)`).join("\n") : "None under this name.");
-  if (own.length) L.push(`\nReferences tables in: ${list([...(fk.get(`${m}.ts`) ?? [])].sort(byName).map((f) => f.replace(/\.ts$/, "")))}`);
+  const subs = subscriptionsOf(m);
+  if (subs.length) L.push(`- **Subscribes to events:** ${list(subs)}`);
+  // Public API grouped by the file that DECLARES each name, so a reader opens that file, not index.ts.
+  L.push("\n## Public API (`index.ts`), by declaring file\n");
+  const byFile = new Map();
+  for (const e of ex) {
+    const f = rel(e.file).replace(`apps/core/src/modules/${m}/`, "").replace("apps/core/src/", "");
+    if (!byFile.has(f)) byFile.set(f, { values: [], types: [] });
+    byFile.get(f)[e.type ? "types" : "values"].push(e.decl);
+  }
+  if (!byFile.size) L.push("Nothing exported.");
+  for (const f of [...byFile.keys()].sort(byName)) {
+    const { values, types } = byFile.get(f);
+    L.push(`- \`${f}\``);
+    for (const v of values) L.push(`  - \`${v}\``);
+    if (types.length) L.push(`  - types: ${list(types)}`);
+  }
+  L.push(`\n## Tables (\`kernel/db/schema/${m}.ts\`)\n`);
+  L.push(own.length ? list(own.map((t) => t.sql)) : "None under this name.");
+  if (own.length) L.push(`\nForeign keys into: ${list([...(fk.get(`${m}.ts`) ?? [])].sort(byName).map((f) => f.replace(/\.ts$/, "")))}`);
+  // Routes are cheap to grep, so the page names each controller and the URL areas it serves, not every route.
   L.push(`\n## HTTP routes (${routes.length})\n`);
-  if (routes.length) {
-    L.push("| verb | path | controller |\n|---|---|---|");
-    for (const r of routes) L.push(`| ${r.verb} | \`${r.path}\` | \`${r.file.replace(`apps/core/src/modules/${m}/`, "")}\` |`);
-  } else L.push("None.");
+  const byCtl = new Map();
+  for (const r of routes) {
+    const f = r.file.replace(`apps/core/src/modules/${m}/`, "");
+    if (!byCtl.has(f)) byCtl.set(f, []);
+    byCtl.get(f).push(r);
+  }
+  if (!byCtl.size) L.push("None.");
+  for (const f of [...byCtl.keys()].sort(byName)) {
+    const rs = byCtl.get(f);
+    const areas = uniqSorted(rs.map((r) => "/" + r.path.split("/").filter(Boolean).slice(0, 2).join("/")));
+    L.push(`- \`${f}\` — ${rs.length}: ${areas.map((a) => `\`${a}\``).join(", ")}`);
+  }
+  L.push(`\nFull list: \`grep -rnE "@(Get|Post|Put|Patch|Delete)\\(" apps/core/src/modules/${m}\``);
   L.push("");
   return L.join("\n");
 }
@@ -313,13 +440,13 @@ function renderModule(m) {
 function renderKernelRoutes() {
   const L = [HEADER, "# Kernel HTTP routes\n"];
   for (const k of kernelNames) {
-    const routes = routesIn(join(KERNEL, k));
+    const routes = routesIn(KERNEL, k);
     if (!routes.length) continue;
     L.push(`## \`${k}\`\n`, "| verb | path | controller |", "|---|---|---|");
     for (const r of routes) L.push(`| ${r.verb} | \`${r.path}\` | \`${r.file.replace("apps/core/src/kernel/", "")}\` |`);
     L.push("");
   }
-  const other = routesIn(join(CORE, "health"));
+  const other = routesIn(CORE, "health");
   if (other.length) {
     L.push("## `health`\n", "| verb | path | controller |", "|---|---|---|");
     for (const r of other) L.push(`| ${r.verb} | \`${r.path}\` | \`${r.file.replace("apps/core/src/", "")}\` |`);

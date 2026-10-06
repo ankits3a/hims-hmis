@@ -8,57 +8,121 @@ Source: `apps/core/src/modules/aerb/`
 - **Used by modules:** `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `phi`, `resources`, `tokens`
 
-## Public API (`index.ts`)
+## Public API (`index.ts`), by declaring file
 
-Values: `* from ./events`, `AERB_ERROR_CODES`, `AERB_MANAGE`, `AERB_NOTIFY_WITHIN_HOURS`, `AERB_UNLICENSABLE_MODALITIES`, `ANNUAL_LIMIT_MSV`, `AerbError`, `AerbModule`, `DAYS_PER_MONTH`, `DEFAULT_INVESTIGATION_LEVEL_MSV_PER_MONTH`, `DOSE_QUANTITIES`, `DOSE_QUANTITY_COLUMNS`, `DOSE_UNITS`, `DUE_WINDOW_DAYS`, `FIVE_YEAR_AVERAGE_LIMIT_MSV`, `FIVE_YEAR_TOTAL_LIMIT_MSV`, `PREGNANT_WORKER_FOETAL_LIMIT_MSV`, `QA_DEFAULT_INTERVAL_YEARS`, `QA_SWEEP_ACTOR`, `RADIATION_SAFETY_SOURCES`, `STATUTORY_LIMITS`, `activeDeclarations`, `activeLicenceFor`, `aerbHttpStatus`, `aerbManifest`, `aerbPickers`, `appointPerson`, `appointedPerson`, `appointments`, `assertDeviceLicensed`, `attentionList`, `badgeGaps`, `badgeReads`, `badgeRegister`, `changeLicenceStatus`, `closeBadge`, `closeIncident`, `complianceCalendar`, `declarePregnancy`, `doseRegisterRows`, `endAppointment`, `endPregnancyDeclaration`, `fileLicence`, `foetalShare`, `importTldReads`, `incidentRegister`, `investigateIncident`, `investigationLevelFor`, `investigationLevelPerMonth`, `issueBadge`, `licenceRegister`, `mayManage`, `notifyRequiredFor`, `overdueQaFor`, `parseDose`, `parseReportDate`, `patientCumulativeDose`, `pregnancyDeclarations`, `qaDueList`, `qaRegister`, `recordBadgeRead`, `recordDose`, `recordIncident`, `recordIncidentNotification`, `recordQa`, `requireManage`, `setInvestigationLevel`, `splitCsv`, `sweepOverdueQa`, `unlicensedDevices`, `updateIncidentActions`
-
-Types: `AerbDeviceChoice`, `AerbErrorCode`, `AerbLicenceRow`, `AerbPersonRow`, `AerbUserChoice`, `AppointPersonInput`, `AppointmentRow`, `AttentionRow`, `AttentionView`, `BadgeGapRow`, `BadgeReadRow`, `BadgeRegisterRow`, `CalendarRow`, `CalendarState`, `CumulativeDose`, `DeclarePregnancyInput`, `DoseQuantity`, `DoseRegisterRow`, `FileLicenceInput`, `IncidentRow`, `IssueBadgeInput`, `LicenceRegisterRow`, `PregnancyDeclarationRow`, `QaDueRow`, `QaDueState`, `QaRecordRow`, `QaRegisterRow`, `QaSweepResult`, `RecordDoseInput`, `RecordIncidentInput`, `RecordQaInput`, `RecordQaOutcome`, `RecordReadInput`, `RecordReadOutcome`, `TldImportInput`, `TldImportReport`, `TldImportRow`
+- `access.ts`
+  - `AERB_MANAGE`
+  - `mayManage(exec: Db | Tx, actor: Actor): Promise<boolean>`
+  - `requireManage(exec: Db | Tx, actor: Actor, systemActorMessage: string): Promise<void>`
+- `aerb.module.ts`
+  - `class AerbModule`
+- `attention.ts`
+  - `attentionList(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<AttentionRow[]>`
+  - types: `AttentionRow`, `AttentionView`
+- `badges.ts`
+  - `STATUTORY_LIMITS`
+  - `badgeGaps(db: Db, opts: { onDate?: string; staleDays?: number } = {}): Promise<BadgeGapRow[]>`
+  - `badgeReads(db: Db, opts: { badgeId?: string } = {}): Promise<BadgeReadRow[]>`
+  - `badgeRegister(db: Db, opts: { onDate?: string } = {}): Promise<BadgeRegisterRow[]>`
+  - `closeBadge(tx: Tx, actor: Actor, badgeId: string, status: "returned" | "lost", onDate: string): Promise<void>`
+  - `investigationLevelPerMonth(exec: Db | Tx): Promise<number>`
+  - `issueBadge(tx: Tx, actor: Actor, input: IssueBadgeInput): Promise<{ badgeId: string }>`
+  - `recordBadgeRead(tx: Tx, actor: Actor, input: RecordReadInput): Promise<RecordReadOutcome>`
+  - `setInvestigationLevel(tx: Tx, actor: Actor, perMonthMsv: number): Promise<void>`
+  - types: `BadgeGapRow`, `BadgeReadRow`, `BadgeRegisterRow`, `IssueBadgeInput`, `RecordReadInput`, `RecordReadOutcome`
+- `calendar.ts`
+  - `DUE_WINDOW_DAYS`
+  - `complianceCalendar(db: Db, opts: { onDate?: string; includeOk?: boolean } = {}): Promise<CalendarRow[]>`
+  - types: `CalendarRow`, `CalendarState`
+- `dose.ts`
+  - `doseRegisterRows(db: Db, actor: Actor, opts: { from?: string; to?: string; overDrlOnly?: boolean; limit?: number } = {}): Promise<DoseRegis…`
+  - `patientCumulativeDose(db: Db, actor: Actor, patientId: string, opts: { months?: number; now?: Date } = {}): Promise<CumulativeDose>`
+  - `recordDose(tx: Tx, actor: Actor, input: RecordDoseInput): Promise<{ doseRecordId: string }>`
+  - types: `CumulativeDose`, `DoseRegisterRow`, `RecordDoseInput`
+- `errors.ts`
+  - `AERB_ERROR_CODES`
+  - `class AerbError`
+  - `aerbHttpStatus(code: AerbErrorCode): number`
+  - types: `AerbErrorCode`
+- `events.ts`
+  - `AERB_EVENTS`
+  - `aerbIncidentRecorded`
+  - `aerbLicenceFiled`
+  - `aerbLicenceStatusChanged`
+  - `doseLimitWarning`
+- `incidents.ts`
+  - `AERB_NOTIFY_WITHIN_HOURS`
+  - `closeIncident(tx: Tx, actor: Actor, id: string, input: { closureNote?: string | null }, opts: { now?: Date } = {}): Promise<void>`
+  - `incidentRegister(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<{ rows: IncidentRow[]; canManage: boolean }>`
+  - `investigateIncident(tx: Tx, actor: Actor, id: string, input: { rootCause: string; correctiveActions: readonly AerbIncidentAction[] }, opts:…`
+  - `notifyRequiredFor(kind: AerbIncidentKind, significantlyAboveIntended: boolean): boolean`
+  - `recordIncident(tx: Tx, actor: Actor, input: RecordIncidentInput, opts: { now?: Date } = {}): Promise<{ incidentId: string; incidentNo: stri…`
+  - `recordIncidentNotification(tx: Tx, actor: Actor, id: string, input: { notifiedOn: string; notificationRef: string }, opts: { now?: Date } =…`
+  - `updateIncidentActions(tx: Tx, actor: Actor, id: string, actions: readonly AerbIncidentAction[]): Promise<void>`
+  - types: `IncidentRow`, `RecordIncidentInput`
+- `licences.ts`
+  - `activeLicenceFor(exec: Db | Tx, deviceResourceId: string, onDate: string): Promise<AerbLicenceRow | null>`
+  - `appointPerson(tx: Tx, actor: Actor, input: AppointPersonInput): Promise<{ personId: string }>`
+  - `appointedPerson(exec: Db | Tx, personRole: AerbPersonRole, onDate: string): Promise<AerbPersonRow | null>`
+  - `assertDeviceLicensed(exec: Db | Tx, deviceResourceId: string, onDate: string): Promise<{ licenceId: string; licenceNo: string }>`
+  - `changeLicenceStatus(tx: Tx, actor: Actor, licenceId: string, to: "active" | "suspended" | "surrendered", opts: { reason?: string | null; de…`
+  - `endAppointment(tx: Tx, actor: Actor, personId: string): Promise<void>`
+  - `fileLicence(tx: Tx, actor: Actor, input: FileLicenceInput): Promise<{ licenceId: string }>`
+  - types: `AerbLicenceRow`, `AerbPersonRow`, `AppointPersonInput`, `FileLicenceInput`
+- `limits.ts`
+  - `ANNUAL_LIMIT_MSV`
+  - `DAYS_PER_MONTH`
+  - `DEFAULT_INVESTIGATION_LEVEL_MSV_PER_MONTH`
+  - `FIVE_YEAR_AVERAGE_LIMIT_MSV`
+  - `FIVE_YEAR_TOTAL_LIMIT_MSV`
+  - `PREGNANT_WORKER_FOETAL_LIMIT_MSV`
+  - `QA_DEFAULT_INTERVAL_YEARS`
+  - `RADIATION_SAFETY_SOURCES`
+  - `investigationLevelFor(perMonthMsv: number, periodStart: string, periodEnd: string): number`
+- `manifest.ts`
+  - `aerbManifest: ModuleManifest`
+- `pregnancy.ts`
+  - `activeDeclarations(db: Db | Tx, opts: { onDate?: string } = {}): Promise<PregnancyDeclarationRow[]>`
+  - `declarePregnancy(tx: Tx, actor: Actor, input: DeclarePregnancyInput, opts: { now?: Date } = {}): Promise<{ declarationId: string }>`
+  - `endPregnancyDeclaration(tx: Tx, actor: Actor, declarationId: string, input: { onDate: string; reason: string }): Promise<void>`
+  - `foetalShare(read: { periodStart: string; periodEnd: string; hp10: number }, decl: { declaredOn: string; endedOn: string | null }): number`
+  - `pregnancyDeclarations(db: Db | Tx, opts: { onDate?: string; activeOnly?: boolean } = {}): Promise<PregnancyDeclarationRow[]>`
+  - types: `DeclarePregnancyInput`, `PregnancyDeclarationRow`
+- `qa.ts`
+  - `QA_SWEEP_ACTOR: Actor`
+  - `overdueQaFor(exec: Db | Tx, deviceResourceId: string, asOf: string): Promise<QaDueRow[]>`
+  - `qaDueList(db: Db | Tx, opts: { onDate?: string; deviceResourceId?: string } = {}): Promise<QaDueRow[]>`
+  - `qaRegister(db: Db, opts: { deviceResourceId?: string } = {}): Promise<QaRegisterRow[]>`
+  - `recordQa(tx: Tx, actor: Actor, kinds: readonly ResourceKindDecl[], input: RecordQaInput, opts: { now?: Date } = {}): Promise<RecordQaOutcom…`
+  - `sweepOverdueQa(db: Db, kinds: readonly ResourceKindDecl[], now: Date = new Date()): Promise<QaSweepResult>`
+  - types: `QaDueRow`, `QaDueState`, `QaRecordRow`, `QaRegisterRow`, `QaSweepResult`, `RecordQaInput`, `RecordQaOutcome`
+- `read.ts`
+  - `AERB_UNLICENSABLE_MODALITIES: readonly string[]`
+  - `aerbPickers(db: Db): Promise<{ devices: AerbDeviceChoice[]; users: AerbUserChoice[] }>`
+  - `appointments(db: Db, opts: { onDate?: string; includeEnded?: boolean } = {}): Promise<AppointmentRow[]>`
+  - `licenceRegister(db: Db, opts: { includeInactive?: boolean } = {}): Promise<LicenceRegisterRow[]>`
+  - `unlicensedDevices(db: Db, onDate: string): Promise<{ deviceResourceId: string; code: string; name: string; modality: string }[]>`
+  - types: `AerbDeviceChoice`, `AerbUserChoice`, `AppointmentRow`, `LicenceRegisterRow`
+- `tld-import.ts`
+  - `importTldReads(tx: Tx, actor: Actor, input: TldImportInput): Promise<TldImportReport>`
+  - `parseDose(raw: string): { value: number; note: string | null } | null`
+  - `parseReportDate(raw: string): string | null`
+  - `splitCsv(text: string): string[][]`
+  - types: `TldImportInput`, `TldImportReport`, `TldImportRow`
+- `units.ts`
+  - `DOSE_QUANTITIES`
+  - `DOSE_QUANTITY_COLUMNS: Readonly<Record<DoseQuantity, "doseCtdivol" | "doseDlp" | "doseDap" | "fluoroSeconds" | "doseAgd">>`
+  - `DOSE_UNITS: Readonly<Record<DoseQuantity, string>>`
+  - types: `DoseQuantity`
 
 ## Tables (`kernel/db/schema/aerb.ts`)
 
-- `aerb_incidents` (`aerbIncidents`)
-- `aerb_licences` (`aerbLicences`)
-- `aerb_persons` (`aerbPersons`)
-- `aerb_pregnancy_declarations` (`aerbPregnancyDeclarations`)
-- `aerb_qa_records` (`qaRecords`)
-- `aerb_settings` (`aerbSettings`)
-- `aerb_tld_badges` (`aerbTldBadges`)
-- `aerb_tld_reads` (`aerbTldReads`)
-- `radiation_dose_register` (`doseRegister`)
+`aerb_incidents`, `aerb_licences`, `aerb_persons`, `aerb_pregnancy_declarations`, `aerb_qa_records`, `aerb_settings`, `aerb_tld_badges`, `aerb_tld_reads`, `radiation_dose_register`
 
-References tables in: `auth`, `patients`, `resources`
+Foreign keys into: `auth`, `patients`, `resources`
 
 ## HTTP routes (30)
 
-| verb | path | controller |
-|---|---|---|
-| GET | `/aerb/attention` | `aerb.controller.ts` |
-| POST | `/aerb/badges/:id/close` | `aerb.controller.ts` |
-| POST | `/aerb/badges/import` | `aerb.controller.ts` |
-| POST | `/aerb/badges/reads` | `aerb.controller.ts` |
-| GET | `/aerb/badges` | `aerb.controller.ts` |
-| POST | `/aerb/badges` | `aerb.controller.ts` |
-| GET | `/aerb/calendar` | `aerb.controller.ts` |
-| GET | `/aerb/doses/patient/:patientId` | `aerb.controller.ts` |
-| GET | `/aerb/doses` | `aerb.controller.ts` |
-| POST | `/aerb/incidents/:id/actions` | `aerb.controller.ts` |
-| POST | `/aerb/incidents/:id/close` | `aerb.controller.ts` |
-| POST | `/aerb/incidents/:id/investigate` | `aerb.controller.ts` |
-| POST | `/aerb/incidents/:id/notify` | `aerb.controller.ts` |
-| GET | `/aerb/incidents` | `aerb.controller.ts` |
-| POST | `/aerb/incidents` | `aerb.controller.ts` |
-| POST | `/aerb/licences/:id/status` | `aerb.controller.ts` |
-| GET | `/aerb/licences/gaps` | `aerb.controller.ts` |
-| GET | `/aerb/licences` | `aerb.controller.ts` |
-| POST | `/aerb/licences` | `aerb.controller.ts` |
-| POST | `/aerb/persons/:id/end` | `aerb.controller.ts` |
-| GET | `/aerb/persons` | `aerb.controller.ts` |
-| POST | `/aerb/persons` | `aerb.controller.ts` |
-| GET | `/aerb/pickers` | `aerb.controller.ts` |
-| POST | `/aerb/pregnancy/:id/end` | `aerb.controller.ts` |
-| GET | `/aerb/pregnancy` | `aerb.controller.ts` |
-| POST | `/aerb/pregnancy` | `aerb.controller.ts` |
-| GET | `/aerb/qa/due` | `aerb.controller.ts` |
-| GET | `/aerb/qa` | `aerb.controller.ts` |
-| POST | `/aerb/qa` | `aerb.controller.ts` |
-| POST | `/aerb/settings/investigation-level` | `aerb.controller.ts` |
+- `aerb.controller.ts` — 30: `/aerb/attention`, `/aerb/badges`, `/aerb/calendar`, `/aerb/doses`, `/aerb/incidents`, `/aerb/licences`, `/aerb/persons`, `/aerb/pickers`, `/aerb/pregnancy`, `/aerb/qa`, `/aerb/settings`
+
+Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/aerb`
