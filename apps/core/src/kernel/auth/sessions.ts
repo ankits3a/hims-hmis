@@ -4,6 +4,9 @@ import { authSessions, users } from "../db/schema";
 import { randomToken, sha256Hex } from "../crypto";
 import { verifyPassword, verifyPinByUsername, resolveBadge } from "./identity";
 import type { AppConfig } from "../config";
+import { withTx } from "../db/client";
+import { claimPhone } from "./devices";
+import type { DeviceClaim } from "./devices";
 import type { Db } from "../db/client";
 
 export type LiveSession = {
@@ -18,6 +21,8 @@ export type LiveSession = {
    * session to still resolve. The refusal is `AuthGuard`'s, which knows the route (`guards.ts`).
    */
   mustChangePassword: boolean;
+  /** Mobile M6a — the phone this session was opened on (`auth_devices.id`), null for a browser. */
+  deviceRowId: string | null;
 };
 
 export async function createSession(
@@ -25,6 +30,7 @@ export async function createSession(
   cfg: AppConfig,
   userId: string,
   terminalId?: string,
+  deviceRowId?: string,
 ): Promise<{ token: string; sessionId: string }> {
   const token = randomToken();
   const sessionId = newId();
@@ -35,6 +41,7 @@ export async function createSession(
     userId,
     terminalId: terminalId ?? null,
     expiresAt,
+    deviceRowId: deviceRowId ?? null,
   });
   return { token, sessionId };
 }
@@ -67,6 +74,7 @@ export async function findLiveSession(db: Db, token: string): Promise<LiveSessio
       terminalId: authSessions.terminalId,
       secondFactorAt: authSessions.secondFactorAt,
       mustChangePassword: users.mustChangePassword,
+      deviceRowId: authSessions.deviceRowId,
     })
     .from(authSessions)
     .innerJoin(users, eq(users.id, authSessions.userId))
@@ -172,12 +180,23 @@ function incomingTerminal(outgoing: string | null | undefined, asserted: string)
 export async function loginWithPassword(
   db: Db,
   cfg: AppConfig,
-  input: { username: string; password: string; terminalId?: string },
-): Promise<{ token: string } | null> {
+  input: { username: string; password: string; terminalId?: string; device?: DeviceClaim; clientIp?: string | null },
+): Promise<{ token: string; phone?: { userId: string; deviceRowId: string; bound: boolean; replacedSessionIds: string[] } } | null> {
   const verified = await verifyPassword(db, input.username, input.password);
   if (!verified) return null;
-  const { token } = await createSession(db, cfg, verified.userId, input.terminalId);
-  return { token };
+  const device = input.device;
+  if (device === undefined) {
+    const { token } = await createSession(db, cfg, verified.userId, input.terminalId);
+    return { token };
+  }
+  // MOBILE M6a — the staff app's sign-in names its phone. The phone claims its place and the session
+  // is opened on it in ONE transaction; `PhoneLimitError` (the third phone) leaves no session behind.
+  // It is decided only here, AFTER the password is verified (`devices.ts`).
+  return withTx(db, async (tx) => {
+    const phone = await claimPhone(tx, verified.userId, device, input.clientIp ?? null);
+    const { token } = await createSession(tx, cfg, verified.userId, input.terminalId, phone.deviceRowId);
+    return { token, phone: { userId: verified.userId, ...phone } };
+  });
 }
 
 /**

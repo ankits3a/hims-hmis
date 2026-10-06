@@ -245,6 +245,51 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
   the month screen); asking for leave (the web has no screen for it either).
 - **Unverified on a phone:** `tel:` hand-off to the dialler, the sheet above the keyboard.
 
+### 3f. M6a as built (2026-10-06) — the phones a person is signed in on
+
+Owner, 2026-10-06: the app goes to everyone at once, on PERSONAL phones, for some months. So the half of M6 that matters
+now — device control — was built first; push is its own decision (below).
+
+- **Server (migration 0178, additive):** `auth_devices` (one row per person + app install: what the phone says it is,
+  first / last seen, last IP) and `auth_sessions.device_row_id`. The app's sign-in carries
+  `device: { deviceId, model, os, appVersion }` (`kernel/auth/devices.ts`); a browser sends none and nothing changes for
+  it. The id is a LABEL the app makes up at install — never a credential; the server grants nothing for it.
+  - **One session per phone:** a phone that signs in again ends its own earlier sessions (`auth.session_revoked`,
+    `phone_signed_in_again`).
+  - **The cap — DECIDED: 2 phones per person** (`PHONES_PER_USER`). The third is refused AFTER the password verifies
+    (409 `phone_limit_reached`, naming the phones that hold the places); it is not a failed attempt and is evented
+    (`auth.phone_limit_refused`). An expired session frees its place by itself. A per-person override is not built.
+  - **Admin:** `GET /admin/users/:id/phones` and `POST /admin/users/:id/phones/:phoneId/sign-out`
+    (`auth.users.manage`). Sign-out ends that phone's sessions in one transaction — the app's next call is a 401 —
+    and touches nothing else: password, PIN, the person's browser and other phone stand. Evented
+    (`auth.phone_signed_out`, actor = the administrator). Deactivating a person or resetting their password already
+    ended every session, phones included; that is unchanged.
+  - **Last seen** is stamped when the app asks `GET /auth/me` (every open and unlock).
+- **Web:** `/admin/users` → **Phones** on each row (`admin-user-phones.tsx`): model, OS, build, signed in since, last
+  opened, IP, and "Sign out this phone".
+- **App:** `src/device.ts` (the id lives in the secure store under its own key, so logging out does not make the phone
+  look new; model and OS come from the platform — no IMEI, no advertising id, no extra native module); the sign-in sends
+  the claim; a signed-out phone returns to sign-in on its next call with a sentence that says an administrator may have
+  done it; the third phone is told which phones hold the places; **This phone and my account** (`app/account.tsx`):
+  who is signed in and since when, the build, the server, the update check, log out.
+- **Unverified on a phone:** what `Platform.constants` reports as the model on real handsets.
+
+**Open owner decisions (M6b and after):**
+
+1. **Push notifications.** `expo-notifications` on Android delivers through Firebase Cloud Messaging: it needs a
+   Firebase project and a `google-services.json` in the build (a Google account decision — no Play Store is involved),
+   and every alert's wake-up passes through Google. Options:
+   - **(a) FCM** — the standard; reliable when the app is closed; the payload can be a bare "open HMIS" with no patient
+     text, the app then reads the alert from our server. *Recommended* if the hospital accepts a Google project.
+   - **(b) In-app only** — no third party: alerts show while the app is open (a poll, as the queue screens do today);
+     nothing reaches a phone in a pocket. Zero setup; weakest.
+   - **(c) Self-hosted push (ntfy / UnifiedPush)** — no Google, but a second app or a persistent connection on every
+     phone, battery cost, and one more server to run. Not recommended for personal phones.
+2. **Screenshots.** Blocking screenshots and the recent-apps preview (`FLAG_SECURE`) is one line per build, but it also
+   stops staff sending a screenshot to IT when something breaks. Not built; say which way.
+3. **The cap.** Two phones per person is the default; say if it should be one, or lifted for named people.
+4. **Hospital-owned phones (later, owner):** when they arrive, the Phones list is how personal phones are retired.
+
 ## 4. Verification without an emulator
 
 1. **Behaviour:** jest-expo plus `@testing-library/react-native`, with mocked fetch, SecureStore and LocalAuthentication.

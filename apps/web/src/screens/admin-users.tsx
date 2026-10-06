@@ -11,6 +11,7 @@ import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
+import { UserPhones } from "./admin-user-phones";
 import { SubmitButton } from "../components/submit-button";
 import {
   adminErrorCode, adminErrorMessage, assignRole, createUser, deactivateUser, listRoles, listUsers,
@@ -110,6 +111,8 @@ export function AdminUsers(): React.ReactElement {
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingReset | null>(null);
   const [resetValue, setResetValue] = useState("");
+  /** Mobile M6a — whose phones the panel is showing (`admin-user-phones.tsx`). */
+  const [phonesOf, setPhonesOf] = useState<WireAdminUser | null>(null);
 
   const users = useQuery({ queryKey: ["admin", "users"], queryFn: listUsers });
   /**
@@ -412,6 +415,8 @@ export function AdminUsers(): React.ReactElement {
         )}
       </DeskModal>
 
+      <UserPhones user={phonesOf} onClose={() => setPhonesOf(null)} />
+
       <section style={{ display: "flex", flexDirection: "column", gap: 9 }}>
         <h2 className="tag" style={{ margin: 0 }}>{t("adminUsers.listTitle")}</h2>
         {users.data === undefined ? (
@@ -546,6 +551,14 @@ export function AdminUsers(): React.ReactElement {
                   </td>
                   <td style={{ whiteSpace: "nowrap", padding: "9px 0", borderBottom: "1px solid var(--line)" }}>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    <button
+                      type="button"
+                      className="sec" style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
+                      data-testid={`admin-phones-${u.username}`}
+                      onClick={() => { setRowError(null); setNotice(null); setPhonesOf(u); }}
+                    >
+                      {t("adminUsers.phones.open")}
+                    </button>
                     <button
                       type="button"
                       className="sec" style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}

@@ -63,6 +63,26 @@ export function resetPassword(id: string, newPassword: string): Promise<{ sessio
   return api("POST", `/admin/users/${id}/password-reset`, { newPassword });
 }
 
+/**
+ * Mobile M6a — a phone the staff app has signed in on for this person (`auth_devices`). What the
+ * phone SAYS it is (`model`, `osVersion`, `appVersion`) is untrusted text; `signedIn` is whether it
+ * holds a live session now.
+ */
+export type WireUserPhone = {
+  id: string; model: string | null; osVersion: string | null; appVersion: string | null;
+  firstSeenAt: string; lastSeenAt: string; lastIp: string | null; signedIn: boolean; signedInSince: string | null;
+};
+
+/** `limit` is how many phones one person may be signed in on at once. */
+export function listUserPhones(id: string): Promise<{ limit: number; phones: WireUserPhone[] }> {
+  return api("GET", `/admin/users/${id}/phones`);
+}
+
+/** Ends every session opened on that ONE phone. The password, PIN and other sessions stand. */
+export function signOutUserPhone(id: string, phoneId: string): Promise<{ sessionsRevoked: number }> {
+  return api("POST", `/admin/users/${id}/phones/${phoneId}/sign-out`);
+}
+
 /** Revokes NOTHING and forces NO password change — the two flows differ, deliberately (Q3). */
 export function resetPin(id: string, newPin: string): Promise<void> {
   return api("POST", `/admin/users/${id}/pin-reset`, { newPin });

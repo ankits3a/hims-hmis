@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import * as LocalAuthentication from "expo-local-authentication";
 import { Platform } from "react-native";
 import { api, ApiError, NetworkError, xhrPost } from "./api";
+import { deviceClaim } from "./device";
 import { tokenStore } from "./storage";
 import type { EffectivePermissions } from "./seats";
 
@@ -22,7 +23,7 @@ export type SessionState =
   | { status: "signedOut"; note?: "expired" }
   | { status: "locked" }
   | { status: "mustChange" }
-  | { status: "signedIn"; me: Me; username: string };
+  | { status: "signedIn"; me: Me; username: string; since: string | null };
 
 type Session = {
   state: SessionState;
@@ -63,13 +64,14 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
   const [state, setState] = useState<SessionState>({ status: "loading" });
   const [token, setToken] = useState<string | null>(null);
   const [username, setUsername] = useState("");
+  const [since, setSince] = useState<string | null>(null);
 
   /** Ask the server who this token is. Every outcome lands in exactly one state. */
   const resolve = useCallback(
-    async (tok: string, username: string): Promise<void> => {
+    async (tok: string, username: string, since: string | null): Promise<void> => {
       try {
         const me = await api<Me>("GET", "/auth/me", { token: tok, fetcher });
-        setState({ status: "signedIn", me, username });
+        setState({ status: "signedIn", me, username, since });
       } catch (e) {
         if (e instanceof ApiError && e.status === 403 && e.code === "password_change_required") {
           setState({ status: "mustChange" });
@@ -96,12 +98,13 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
       }
       setToken(stored.token);
       setUsername(stored.username);
+      setSince(stored.since ?? null);
       if (await biometricReady()) {
         setState({ status: "locked" });
         return;
       }
       try {
-        await resolve(stored.token, stored.username);
+        await resolve(stored.token, stored.username, stored.since ?? null);
       } catch {
         setState({ status: "locked" });
       }
@@ -110,14 +113,18 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
 
   const login = useCallback(
     async (username: string, password: string) => {
+      // M6a — the sign-in names this phone, so an administrator can see it and sign it out (src/device.ts).
+      const device = await deviceClaim();
       const { token: tok } = await api<{ token: string }>("POST", "/auth/login", {
-        body: { username: username.trim(), password },
+        body: { username: username.trim(), password, ...(device === null ? {} : { device }) },
         fetcher,
       });
-      await tokenStore.set({ token: tok, username: username.trim() });
+      const now = new Date().toISOString();
+      await tokenStore.set({ token: tok, username: username.trim(), since: now });
       setToken(tok);
       setUsername(username.trim());
-      await resolve(tok, username.trim());
+      setSince(now);
+      await resolve(tok, username.trim(), now);
     },
     [fetcher, resolve],
   );
@@ -128,17 +135,17 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
       const r = await LocalAuthentication.authenticateAsync({ disableDeviceFallback: false });
       if (!r.success) return false;
     }
-    await resolve(token, username);
+    await resolve(token, username, since);
     return true;
-  }, [token, username, resolve]);
+  }, [token, username, since, resolve]);
 
   const changePassword = useCallback(
     async (currentPassword: string, newPassword: string) => {
       if (token === null) throw new ApiError(401, "no_session", null);
       await api<void>("POST", "/auth/change-password", { token, body: { currentPassword, newPassword }, fetcher });
-      await resolve(token, username);
+      await resolve(token, username, since);
     },
-    [token, username, fetcher, resolve],
+    [token, username, since, fetcher, resolve],
   );
 
   const forgetAndSignIn = useCallback(async () => {

@@ -7,6 +7,13 @@ import { useSession } from "../session";
 import { color, space, type } from "../theme";
 import { Band, Button, Field, Note, Tag } from "../ui";
 
+/** The models of the phones that hold the places, as the refusal carries them (untrusted text). */
+function phoneLimit(body: unknown): (string | null)[] {
+  const phones = body !== null && typeof body === "object" ? (body as { phones?: unknown }).phones : undefined;
+  if (!Array.isArray(phones)) return [];
+  return phones.map((p) => (p !== null && typeof p === "object" && typeof (p as { model?: unknown }).model === "string" ? ((p as { model: string }).model).slice(0, 80) : null));
+}
+
 /** The web sign-in's human half, on a phone: same words, same palette, same refusals. */
 export function LoginScreen({ expired }: { expired?: boolean }) {
   const { t } = useI18n();
@@ -25,7 +32,12 @@ export function LoginScreen({ expired }: { expired?: boolean }) {
     } catch (e) {
       // 401 and 429 both mean "not with these" to the person at the counter; the server keeps
       // the difference (throttle) to itself on purpose.
-      setError(e instanceof NetworkError ? t("mobile.network") : e instanceof ApiError ? t("login.failed") : t("mobile.network"));
+      // M6a — the one refusal that is NOT "wrong password": the password was right, and other phones
+      // hold every place. Only the server says so, and only after it has verified the password.
+      const limit = e instanceof ApiError && e.status === 409 && e.code === "phone_limit_reached" ? phoneLimit(e.body) : null;
+      setError(limit !== null
+        ? t("mobile.phoneLimit", { count: limit.length, phones: limit.map((m) => m ?? t("mobile.phoneLimitUnknown")).join(", ") })
+        : e instanceof NetworkError ? t("mobile.network") : e instanceof ApiError ? t("login.failed") : t("mobile.network"));
       setBusy(false);
     }
   };

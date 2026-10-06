@@ -7,14 +7,17 @@ import * as SecureStore from "expo-secure-store";
  * is held in memory and gone on reload.
  */
 const KEY = "hmis.session";
-export type Stored = { token: string; username: string };
+/** `since` — when this phone signed in (ISO), for the Account screen; absent on a session stored by an older build. */
+export type Stored = { token: string; username: string; since?: string };
 let memory: string | null = null;
 
 function parse(raw: string | null): Stored | null {
   if (raw === null) return null;
   try {
     const v = JSON.parse(raw) as Partial<Stored>;
-    return typeof v.token === "string" ? { token: v.token, username: typeof v.username === "string" ? v.username : "" } : null;
+    return typeof v.token === "string"
+      ? { token: v.token, username: typeof v.username === "string" ? v.username : "", ...(typeof v.since === "string" ? { since: v.since } : {}) }
+      : null;
   } catch {
     return null;
   }

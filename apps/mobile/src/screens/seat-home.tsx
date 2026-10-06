@@ -91,6 +91,11 @@ export function SeatHome() {
             <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
           </Pressable>
         ))}
+        <Pressable testID="account-open" accessibilityRole="button" onPress={() => router.push("/account")}
+          style={({ pressed }) => ({ minHeight: TOUCH, flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, backgroundColor: pressed ? color.wash : color.card })}>
+          <Text style={[type.body, { color: color.ink, fontWeight: "600", flex: 1 }]}>{t("mobile.account.open")}</Text>
+          <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
+        </Pressable>
         <View style={{ marginTop: space.md, gap: 6 }}>
           <Tag tone="faint">{`HMIS ${t("login.product")}`}</Tag>
           <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.md }}>
