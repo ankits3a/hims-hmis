@@ -18,7 +18,7 @@ const API_BASE: Record<typeof ENV, string> = {
 const UPDATE_FEED: Record<typeof ENV, string> = {
   development: process.env.EXPO_PUBLIC_UPDATE_FEED ?? "https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.json",
   preview: "https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.json",
-  // Not served yet — the production rollout is plan §7. Until it is, the check finds nothing and says nothing.
+  // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
 const VERSION = "0.4.0";
