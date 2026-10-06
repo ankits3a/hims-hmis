@@ -19,10 +19,12 @@ import type { Eye, TaperStep } from "./eye-line";
 */
 import type {
   WirePatientSummary, WireDangerFlag, WireBenchState, WireEscalationState, WireBenchRow, WireVitalKey, WirePreStage, WireVitalsPostBody, WireEscalationReading,
+  WireVisitOnBench,
 } from "../../../../packages/contracts/src/vitals-entry";
 export type {
   WirePatientSummary, WireDangerFlag, WireBenchState, WireEscalationState, WireBenchRow, WireRange, WireVitalKey, WireBandKey, WirePreStage,
   WireBandConfig, WireDangerRanges, WireReadingSource, WireReading, WireBpReading, WireReadings, WireUnlockReason, WireVitalsPostBody, WireEscalationReading,
+  WireVisitOnBench,
 } from "../../../../packages/contracts/src/vitals-entry";
 export { UNLOCK_REASONS } from "../../../../packages/contracts/src/vitals-entry";
 
@@ -739,6 +741,11 @@ export function fetchBench(filter: { departmentId?: string; doctorId?: string; s
   if (filter.departmentId !== undefined) qs.set("departmentId", filter.departmentId);
   if (filter.doctorId !== undefined) qs.set("doctorId", filter.doctorId);
   return api("GET", `/opd/bench?${qs.toString()}`);
+}
+
+/** Owner 2026-10-06 — why a typed or scanned visit number is not on today's bench (`opd.queue.read`, the bench's own door). */
+export function locateVisitOnBench(visitNo: string, serviceDate: string): Promise<WireVisitOnBench> {
+  return api("GET", `/opd/bench/locate?visitNo=${encodeURIComponent(visitNo)}&serviceDate=${serviceDate}`);
 }
 
 /** `opd.vitals.history.read` — the last chart, the band and the carry candidates, nothing else (VD-1 D6). */

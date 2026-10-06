@@ -12,9 +12,10 @@ import { refusalText, vitalsApi, type VitalsApi, type WireVitalsSaveResult } fro
 import { CaptureCore } from "../vitals/capture";
 import { heldFirstTake, holdFirstTake, releaseFirstTake, useDangerProtocol, type Protocol } from "../vitals/protocol";
 import {
-  REST_MINUTES, bandFor, classifyDoor, flagOf, humanDate, isElevated, istClock, matchOnBench, rangesFrom, readingFrom, todayIst,
+  REST_MINUTES, ambiguousMessage, bandFor, flagOf, humanDate, isElevated, istClock, matchOnBench, missMessage, rangesFrom, readingFrom,
+  resolveDoor, todayIst,
 } from "../vitals/rules";
-import type { Take, TileKey, Tiles, WireBenchRow, WireDangerFlag, WirePreStage } from "../vitals/rules";
+import type { Take, TileKey, Tiles, WireBenchRow, WireDangerFlag, WirePreStage, WireVisitOnBench } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
 
 /**
@@ -65,14 +66,17 @@ function useBench(api: VitalsApi, serviceDate: string) {
   const [asOf, setAsOf] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   const [callable, setCallable] = useState<number | null>(null);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<WireBenchRow[] | null> => {
+    let fresh: WireBenchRow[] | null = null;
     try {
       const r = await api.bench(serviceDate);
+      fresh = r.items;
       setRows(r.items); setAsOf(Date.now()); setFailed(false);
     } catch {
       setFailed(true);
     }
     api.summary(serviceDate).then((s) => setCallable(s.items.reduce((n, d) => n + d.waitingVitalsCount, 0))).catch(() => undefined);
+    return fresh;
   }, [api, serviceDate]);
   useEffect(() => {
     void refresh();
@@ -150,7 +154,9 @@ function ProtocolPanel({ p, doctorName, rerun, t }: { p: Protocol; doctorName: s
 function Details({ api, row, pre, failed, t }: { api: VitalsApi; row: WireBenchRow; pre: WirePreStage | null; failed: boolean; t: T }) {
   return (
     <View testID="session" style={s.details}>
-      {row.patient !== null && !row.patient.restricted && <Text style={s.small}>{row.patient.uhid}</Text>}
+      <Text testID="who-ids" style={s.small}>
+        {[row.patient !== null && !row.patient.restricted ? row.patient.uhid : null, row.visitNo ?? null].filter((x) => x !== null).join(" · ")}
+      </Text>
       {failed && <Text testID="prestage-failed" style={s.small}>{t("vitalsBay.session.noHistory")}</Text>}
       {pre !== null && (
         <View testID="prestage" style={{ gap: 6 }}>
@@ -290,17 +296,29 @@ export function VitalsBay() {
     if (takenRef.current?.encounterId === row.encounterId) clearDesk();
   }, [t, refresh, clearDesk]);
 
+  /**
+   * ONE RESOLVER for whatever was typed or scanned (`resolveDoor`, shared with the web bay): a token
+   * (`4`, `#4`, `ORT-4`), a UHID, the visit number the slip prints and the prescription's QR carries,
+   * a printed e-prescription's code, or a patient card. A miss says what was understood, and for a
+   * visit number asks the server why (owner 2026-10-06).
+   */
   const identify = useCallback(async (text: string) => {
-    const door = classifyDoor(text);
-    if (door === null) return;
+    const r = resolveDoor(allRows, text);
+    if (r.outcome === "empty") return;
     setError(null);
-    if (door.kind === "scan") {
+    if (r.outcome === "row") { take(r.row); return; }
+    if (r.outcome === "ambiguous") {
+      const m = ambiguousMessage(r.door, r.rows);
+      setError(t(`vitalsBay.identify.miss.${m.key}`, m.vars));
+      return;
+    }
+    if (r.outcome === "verify") {
       setBusy(true);
       try {
-        const verdict = await api.verifyQr(door.payload);
+        const verdict = await api.verifyQr(r.payload);
         if (!verdict.ok) { setError(t(`vitalsBay.identify.scanFailed.${verdict.reason}`)); return; }
         const row = matchOnBench(allRows, { kind: "patient", patientId: verdict.patient.id });
-        if (row === null) { setError(t("vitalsBay.identify.notOnBench", { who: verdict.patient.uhid })); return; }
+        if (row === null) { setError(t("vitalsBay.identify.miss.uhid", { uhid: verdict.patient.uhid })); return; }
         take(row);
       } catch {
         setError(t("vitalsBay.identify.scanUnavailable"));
@@ -309,10 +327,26 @@ export function VitalsBay() {
       }
       return;
     }
-    const row = matchOnBench(allRows, door);
-    if (row === null) { setError(t("vitalsBay.identify.notOnBench", { who: text.trim() })); return; }
-    take(row);
-  }, [allRows, t, take, api]);
+    let why: WireVisitOnBench | null = null;
+    if (r.door.kind === "visit") {
+      setBusy(true);
+      try {
+        why = await api.locateVisit(r.door.visitNo, today);
+        if (why.onBench) {
+          // The server has them on the bench and this list does not yet: read it again, then take.
+          const fresh = await refresh();
+          const row = fresh === null ? null : matchOnBench(fresh, { kind: "encounter", encounterId: why.encounterId });
+          if (row !== null) { take(row); return; }
+        }
+      } catch {
+        why = null; // the plain sentence still names the visit number
+      } finally {
+        setBusy(false);
+      }
+    }
+    const m = missMessage(r.door, why);
+    setError(t(`vitalsBay.identify.miss.${m.key}`, m.vars));
+  }, [allRows, t, take, api, today, refresh]);
 
   const dueCount = rows.filter((r) => r.recallDue || r.escalation === "escalated" || r.escalation === "recheck_demanded").length;
 
@@ -494,7 +528,7 @@ export function VitalsBay() {
           </Pressable>
         </Pressable>
       </Modal>
-      <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setRaw(data.startsWith("q1.") ? "" : data); void identify(data); }} />
+      <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setRaw(/^(q1|rx1)\./.test(data) ? "" : data); void identify(data); }} />
     </View>
   );
 }

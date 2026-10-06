@@ -1,6 +1,6 @@
 import type {
   WireBenchRow, WireBenchState, WireDangerFlag, WireEscalationReading, WireEscalationState, WirePreStage,
-  WireVitalKey, WireVitalsPostBody,
+  WireVisitOnBench, WireVitalKey, WireVitalsPostBody,
 } from "./rules";
 
 /**
@@ -33,6 +33,9 @@ export function vitalsApi(call: Call) {
   return {
     bench: (serviceDate: string, doctorId?: string) =>
       call<{ items: WireBenchRow[] }>("GET", `/opd/bench?serviceDate=${serviceDate}${doctorId === undefined ? "" : `&doctorId=${enc(doctorId)}`}`),
+    /** Why a typed or scanned visit number is not on today's bench (owner 2026-10-06). */
+    locateVisit: (visitNo: string, serviceDate: string) =>
+      call<WireVisitOnBench>("GET", `/opd/bench/locate?visitNo=${enc(visitNo)}&serviceDate=${serviceDate}`),
     summary: (serviceDate: string) => call<{ items: WireQueueSummary[] }>("GET", `/opd/queues/summary?serviceDate=${serviceDate}`),
     preStage: (encounterId: string) => call<WirePreStage>("GET", `/opd/visits/${enc(encounterId)}/prestage`),
     postVitals: (encounterId: string, body: WireVitalsPostBody) => call<WireVitalsSaveResult>("POST", `/opd/visits/${enc(encounterId)}/vitals`, body),

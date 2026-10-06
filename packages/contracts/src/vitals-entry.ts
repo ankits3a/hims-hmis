@@ -40,6 +40,8 @@ export type WireBenchState = "resting" | "away";
 export type WireEscalationState = "none" | "recheck_demanded" | "escalated" | "cancelled";
 export type WireBenchRow = {
   encounterId: string; entryId: string; tokenNo: number; seq: number;
+  /** What the paper says (owner 2026-10-06): the visit number, and the code the token is printed with (`ORT-4`). Optional: an older server sends neither. */
+  visitNo?: string; departmentCode?: string | null;
   doctorId: string; doctorName: string; serviceDate: string;
   patient: WirePatientSummary | null;
   benchState: WireBenchState | null;
@@ -125,32 +127,163 @@ export function todayIst(at: Date = new Date()): string {
   return new Date(Math.floor((at.getTime() + IST_OFFSET_MS) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
 }
 
-// ——— the three doors (token, UHID, card scan), resolved on the bench ———
+// ——— the doors: whatever was typed or scanned, resolved on the bench ———
 
+/**
+ * OWNER 2026-10-06 — *"searching or scanning the visit id isn't enabling me to select the patient"*.
+ * He typed `V2610060001`, the Encounter ID printed on every slip and prescription, for a patient
+ * who WAS on the bench; it was read as a UHID and the bay said "not on this bench".
+ *
+ * WHAT THE PAPER ACTUALLY CARRIES (measured in the renderers, not assumed):
+ *   - prescription sheet (kernel/printing/render.ts)  QR = the bare visit number, `V2610060001`
+ *   - thermal token slip (same file)                  no scannable code (`barField` is a picture);
+ *                                                     text: the token as `<dept code>-<n>`, the visit number
+ *   - token slip drawn by the web, and the patient card   QR = `q1.<patientId>.<uhid>.<ver>.<sig>`
+ *   - printed e-prescription (opd/prescriptions.ts)   QR = `rx1.<rxId>.<encounterId>.<ver>.<sig>`
+ *
+ * Every one of them, and everything a person types from them, lands in ONE box and is read here.
+ * A card (`q1.`) is the only payload that must be verified by the server before it is trusted; the
+ * rest are a lookup in the bench the server already sent, which grants nothing a tap on the row
+ * would not.
+ */
 export type Door =
-  | { kind: "token"; tokenNo: number }
+  | { kind: "token"; tokenNo: number; departmentCode?: string }
   | { kind: "uhid"; uhid: string }
+  | { kind: "visit"; visitNo: string }
+  | { kind: "encounter"; encounterId: string }
   | { kind: "scan"; payload: string };
 
-/** Digits are a token; a card payload starts `q1.` (`patients/qr.ts:15`); everything else is a UHID. */
-export function classifyDoor(raw: string): Door | null {
-  const s = raw.trim();
-  if (s === "") return null;
-  if (/^\d{1,6}$/.test(s)) return { kind: "token", tokenNo: Number(s) };
-  if (s.startsWith("q1.")) return { kind: "scan", payload: s };
-  return { kind: "uhid", uhid: s.toUpperCase() };
+const VISIT_RE = /^V\d{6,}$/;
+/** A visit number as typed or scanned: any case, spaces tolerated — the server's `normalizeVisitNo`. */
+export function normalizeVisitNo(raw: string): string {
+  return raw.replace(/\s+/g, "").toUpperCase();
 }
 
-export function matchOnBench(
-  rows: readonly WireBenchRow[],
-  by: { kind: "token"; tokenNo: number } | { kind: "uhid"; uhid: string } | { kind: "patient"; patientId: string },
-): WireBenchRow | null {
-  for (const r of rows) {
-    if (by.kind === "token" && r.tokenNo === by.tokenNo) return r;
-    if (by.kind === "uhid" && r.patient !== null && r.patient.uhid.toUpperCase() === by.uhid) return r;
-    if (by.kind === "patient" && r.patient !== null && r.patient.id === by.patientId) return r;
+/** Every reading of the text, most likely first. `classifyDoor` is the first; the rest are fallbacks. */
+export function doorsOf(raw: string): Door[] {
+  const s = raw.trim();
+  if (s === "") return [];
+  if (s.startsWith("q1.")) return [{ kind: "scan", payload: s }];
+  if (s.startsWith("rx1.")) {
+    const encounterId = s.split(".")[2];
+    return encounterId === undefined || encounterId === "" ? [] : [{ kind: "encounter", encounterId }];
   }
-  return null;
+  const compact = normalizeVisitNo(s);
+  const uhid: Door = { kind: "uhid", uhid: compact };
+  let m = /^#?(\d{1,6})$/.exec(compact);
+  if (m !== null) return [{ kind: "token", tokenNo: Number(m[1]) }, uhid];
+  if (VISIT_RE.test(compact)) return [{ kind: "visit", visitNo: compact }, uhid];
+  // The slip prints the token with its department: `ORT-4`, or `T-4` when the desk had no code.
+  m = /^([A-Z]{1,5})[-#]?(\d{1,4})$/.exec(compact);
+  if (m !== null) {
+    const token: Door = m[1] === "T" ? { kind: "token", tokenNo: Number(m[2]) } : { kind: "token", tokenNo: Number(m[2]), departmentCode: m[1]! };
+    return [token, uhid];
+  }
+  // A scanner app that wraps the code in a sentence or a link still carries the visit number in it.
+  m = /(?:^|[^A-Z0-9])(V\d{10})(?:$|[^A-Z0-9])/.exec(s.toUpperCase());
+  if (m !== null) return [{ kind: "visit", visitNo: m[1]! }];
+  return [uhid];
+}
+
+/** How the text is READ — what an error names back ("visit V2610060001 is not on today's bench"). */
+export function classifyDoor(raw: string): Door | null {
+  return doorsOf(raw)[0] ?? null;
+}
+
+/** `U00110049` typed as `u00110049`, or as its digits alone (`110049`, `00110049`). */
+function uhidIs(rowUhid: string, typed: string): boolean {
+  const a = rowUhid.toUpperCase();
+  if (a === typed) return true;
+  if (!/^\d+$/.test(typed)) return false;
+  const digits = a.replace(/^\D+/, "");
+  return /^\d+$/.test(digits) && Number(digits) === Number(typed);
+}
+
+type By = Exclude<Door, { kind: "scan" }> | { kind: "patient"; patientId: string };
+
+/** Every bench row the reading names. Tokens are per doctor's queue, so a bare number can name several. */
+export function benchMatches(rows: readonly WireBenchRow[], by: By): WireBenchRow[] {
+  return rows.filter((r) => {
+    switch (by.kind) {
+      case "token": return r.tokenNo === by.tokenNo && (by.departmentCode === undefined || (r.departmentCode ?? "").toUpperCase() === by.departmentCode);
+      case "uhid": return r.patient !== null && uhidIs(r.patient.uhid, by.uhid);
+      case "visit": return r.visitNo !== undefined && r.visitNo.toUpperCase() === by.visitNo;
+      case "encounter": return r.encounterId === by.encounterId;
+      case "patient": return r.patient !== null && r.patient.id === by.patientId;
+    }
+  });
+}
+
+export function matchOnBench(rows: readonly WireBenchRow[], by: By): WireBenchRow | null {
+  return benchMatches(rows, by)[0] ?? null;
+}
+
+export type DoorResult =
+  /** Exactly one person on the bench. */
+  | { outcome: "row"; row: WireBenchRow; door: Door }
+  /** A card: the server verifies it, then `matchOnBench(rows, { kind: "patient", … })`. */
+  | { outcome: "verify"; payload: string }
+  /** A bare token number that more than one doctor's queue holds — never guessed. */
+  | { outcome: "ambiguous"; door: Extract<Door, { kind: "token" }>; rows: WireBenchRow[] }
+  /** Nobody. `door` is how the text was read, so the refusal can say what was understood. */
+  | { outcome: "miss"; door: Door }
+  | { outcome: "empty" };
+
+/** THE ONE RESOLVER — the web bay and the phone both call this with what was typed or scanned. */
+export function resolveDoor(rows: readonly WireBenchRow[], raw: string): DoorResult {
+  const doors = doorsOf(raw);
+  const first = doors[0];
+  if (first === undefined) return { outcome: "empty" };
+  if (first.kind === "scan") return { outcome: "verify", payload: first.payload };
+  for (const door of doors) {
+    if (door.kind === "scan") continue;
+    const hits = benchMatches(rows, door);
+    if (hits.length === 1) return { outcome: "row", row: hits[0]!, door };
+    if (hits.length > 1) {
+      // Rows of ONE visit seen twice are one person; anything else is a real ambiguity.
+      if (hits.every((h) => h.encounterId === hits[0]!.encounterId)) return { outcome: "row", row: hits[0]!, door };
+      if (door.kind === "token") return { outcome: "ambiguous", door, rows: hits };
+      return { outcome: "row", row: hits[0]!, door };
+    }
+  }
+  return { outcome: "miss", door: first };
+}
+
+/** The token as the slip prints it — `ORT-4`, or `#4` when the bench sent no department code. */
+export function tokenText(door: Extract<Door, { kind: "token" }>): string {
+  return door.departmentCode === undefined ? `#${String(door.tokenNo)}` : `${door.departmentCode}-${String(door.tokenNo)}`;
+}
+
+/** Why a visit number is not on today's bench — `GET /opd/bench/locate` (opd/bench.ts `locateVisit`). */
+export type WireVisitOnBench =
+  | { onBench: true; visitNo: string; encounterId: string }
+  | { onBench: false; visitNo: string; reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued"; serviceDate?: string };
+
+/**
+ * WHAT TO SAY when nobody on the bench answers — the i18n key under `vitalsBay.identify.miss` and
+ * its values. It names what was UNDERSTOOD (a token, a visit, a UHID), and for a visit number the
+ * server's reason when there is one. Pure, so the counter PC and the phone cannot word it apart.
+ */
+export function missMessage(door: Door, why: WireVisitOnBench | null = null): { key: string; vars: Record<string, string> } {
+  switch (door.kind) {
+    case "token": return { key: "token", vars: { token: tokenText(door) } };
+    case "visit":
+      if (why !== null && !why.onBench) {
+        return { key: `visit.${why.reason}`, vars: { visitNo: door.visitNo, date: why.serviceDate === undefined ? "" : humanDate(why.serviceDate) } };
+      }
+      return { key: "visit.plain", vars: { visitNo: door.visitNo } };
+    case "encounter": return { key: "prescription", vars: {} };
+    case "uhid": return { key: "uhid", vars: { uhid: door.uhid } };
+    case "scan": return { key: "uhid", vars: { uhid: "" } };
+  }
+}
+
+/** A bare token that several doctors' queues hold: the refusal shows how the slip spells one of them. */
+export function ambiguousMessage(door: Extract<Door, { kind: "token" }>, rows: readonly WireBenchRow[]): { key: string; vars: Record<string, string> } {
+  const coded = rows.find((r) => r.departmentCode !== undefined && r.departmentCode !== null && r.departmentCode !== "");
+  return coded === undefined
+    ? { key: "ambiguousPlain", vars: { token: tokenText(door), count: String(rows.length) } }
+    : { key: "ambiguous", vars: { token: tokenText(door), count: String(rows.length), example: `${coded.departmentCode!}-${String(door.tokenNo)}` } };
 }
 
 // ——— the tiles: takes, parsers, gate mirrors, the wire body ———

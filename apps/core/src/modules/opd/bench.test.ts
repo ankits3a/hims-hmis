@@ -2,8 +2,8 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { events, opdQueueEntries } from "../../kernel/db/schema";
-import { listBench, setBenchState } from "./bench";
-import { openVisit } from "./encounters";
+import { listBench, locateVisit, setBenchState } from "./bench";
+import { abandonVisit, openVisit } from "./encounters";
 import { listQueue } from "./queue";
 import { recordVitals } from "./vitals";
 import type { Db } from "../../kernel/db/client";
@@ -123,5 +123,37 @@ describe("VD-1 T4 — the bench, the recall, and the held turn", () => {
     const set = await setBenchState(db, vd.actor, enc, { state: "resting", restMinutes: 5 }, MON);
     expect(set.vitalsDone).toBe(true); // read, not assumed
     expect(set.benchState).toBe("resting");
+  });
+
+  /**
+   * Owner 2026-10-06 — he typed the visit number printed (and QR-coded) on the slip, for a patient
+   * who WAS on the bench, and the bay said "not on this bench": the row carried no visit number.
+   */
+  it("every bench row carries the visit number and the department code the slip prints", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: ramdev.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const [row] = await listBench(db, vd.actor, { serviceDate: "2026-08-17" }, MON);
+    expect(row!.visitNo).toBe(opened.encounter.visitNo);
+    expect(row!.visitNo).toMatch(/^V\d+$/);
+    expect(typeof row!.departmentCode).toBe("string");
+    expect(row!.departmentCode).not.toBe("");
+  });
+
+  it("locates a visit number on today's bench, in any case and with spaces", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId: ramdev.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    const typed = ` ${opened.encounter.visitNo.toLowerCase().replace(/^v/, "v ")} `;
+    expect(await locateVisit(db, { visitNo: typed, serviceDate: "2026-08-17" })).toEqual({ onBench: true, visitNo: opened.encounter.visitNo, encounterId: opened.encounter.id });
+  });
+
+  it("says WHY a visit is not on today's bench: no such visit, another day, withdrawn", async () => {
+    expect(await locateVisit(db, { visitNo: "V9999999999", serviceDate: "2026-08-17" }))
+      .toEqual({ onBench: false, visitNo: "V9999999999", reason: "unknown_visit" });
+
+    const opened = await openVisit(db, clerk.actor, { patientId: ramdev.id, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    expect(await locateVisit(db, { visitNo: opened.encounter.visitNo, serviceDate: "2026-08-18" }))
+      .toEqual({ onBench: false, visitNo: opened.encounter.visitNo, reason: "other_day", serviceDate: "2026-08-17" });
+
+    await abandonVisit(db, clerk.actor, opened.encounter.id, "left before vitals", MON);
+    expect(await locateVisit(db, { visitNo: opened.encounter.visitNo, serviceDate: "2026-08-17" }))
+      .toEqual({ onBench: false, visitNo: opened.encounter.visitNo, reason: "abandoned" });
   });
 });

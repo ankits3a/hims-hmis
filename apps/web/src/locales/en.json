@@ -7245,7 +7245,7 @@
     "allDepartments": "All departments",
     "clearDesk": "Clear desk",
     "phone": {
-      "identify": "token no. · UHID · scan",
+      "identify": "token no. · visit no. · UHID · scan",
       "ask": "ask about the bench or a bump",
       "bench": "Bench · {{count}}",
       "due": "{{count}} due",
@@ -7255,8 +7255,23 @@
     },
     "identify": {
       "label": "Who is in front of you?",
-      "placeholder": "scan the slip, or type the token no. / UHID",
-      "hint": "Scan, token number or UHID — all three start the same lane. ⏎ to begin.",
+      "placeholder": "scan the slip, or type the token no. / visit no. / UHID",
+      "hint": "Scan, token number, visit number or UHID — they all start the same lane. ⏎ to begin.",
+      "miss": {
+        "token": "Token {{token}} is not on today's bench — check the slip, or send them to the front desk",
+        "uhid": "{{uhid}} is not on today's bench — check the slip, or send them to the front desk",
+        "prescription": "That prescription's visit is not on today's bench — send them to the front desk",
+        "ambiguous": "Token {{token}} is on the bench for {{count}} doctors — type it as the slip prints it, like {{example}}, or pick the patient from the bench",
+        "ambiguousPlain": "Token {{token}} is on the bench for {{count}} doctors — pick the patient from the bench",
+        "visit": {
+          "plain": "Visit {{visitNo}} is not on today's bench — check the slip, or send them to the front desk",
+          "unknown_visit": "No visit has the number {{visitNo}} — check it against the slip",
+          "other_day": "Visit {{visitNo}} is from {{date}}, not today — send them to the front desk for today's visit",
+          "abandoned": "Visit {{visitNo}} was withdrawn at the front desk — send them back there",
+          "completed": "Visit {{visitNo}} is already finished — the consultation is done",
+          "not_queued": "Visit {{visitNo}} is not in any doctor's queue — send them to the front desk"
+        }
+      },
       "notOnBench": "{{who}} is not on this bench — check the slip, or send them to the front desk",
       "unknownPatient": "This row has no patient record the bay can read",
       "scanUnavailable": "The scanner check is unavailable — type the token number instead",
