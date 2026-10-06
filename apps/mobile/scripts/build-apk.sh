@@ -102,11 +102,16 @@ BUILT="$APP_DIR/android/app/build/outputs/apk/release/app-release.apk"
 # it nothing is delivered), and Firebase's app id (without it no address is ever issued).
 if [ "$HMIS_PUSH_IN_BUILD" = 1 ]; then
   AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-  "$AAPT" dump permissions "$BUILT" | grep -q "android.permission.POST_NOTIFICATIONS" \
+  # Each dump is read into a variable FIRST: under `pipefail`, `aapt … | grep -q` fails on a MATCH
+  # (grep leaves at the first hit, aapt dies of SIGPIPE) — which refused a perfectly good build.
+  PERMS="$("$AAPT" dump permissions "$BUILT")"
+  MANIFEST="$("$AAPT" dump xmltree "$BUILT" AndroidManifest.xml)"
+  RESOURCES="$("$AAPT" dump resources "$BUILT")"
+  grep -q "android.permission.POST_NOTIFICATIONS" <<<"$PERMS" \
     || { echo "REFUSED: the APK does not declare android.permission.POST_NOTIFICATIONS" >&2; exit 1; }
-  "$AAPT" dump xmltree "$BUILT" AndroidManifest.xml | grep -q "com.google.firebase.MESSAGING_EVENT" \
+  grep -q "com.google.firebase.MESSAGING_EVENT" <<<"$MANIFEST" \
     || { echo "REFUSED: the APK has no Firebase messaging service" >&2; exit 1; }
-  "$AAPT" dump resources "$BUILT" | grep -q "google_app_id" \
+  grep -q "google_app_id" <<<"$RESOURCES" \
     || { echo "REFUSED: the APK carries no Firebase app id (google-services.json was not applied)" >&2; exit 1; }
   echo "notifications: permission, messaging service and Firebase app id are in the APK"
 fi
