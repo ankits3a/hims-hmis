@@ -235,6 +235,38 @@ hmis.crkmch.com {
 		root * /downloads
 		file_server
 	}
+	# OVER-THE-AIR UPDATES for the staff app (owner 2026-10-06: an update "should happen
+	# automatically" — apps/mobile/src/ota.ts, apps/mobile/scripts/publish-ota.sh). A JavaScript
+	# change reaches the phones as a signed bundle in the same folder as the APKs; no expo.dev cloud.
+	#
+	# The app asks ONE address and names its native fingerprint in a header; the folder for that
+	# fingerprint is chosen here, so a bundle never reaches an APK it was not built against. The
+	# header is matched as exactly 40 hex digits before it is ever part of a path. The manifest is a
+	# file the publish script wrote whole — one multipart body carrying the manifest and its
+	# signature — and this boundary is the one it was written with (scripts/ota-manifest.js).
+	# No password, for the reason above: nothing here works without the signature the APK checks.
+	@ota_manifest {
+		path /app/ota/production/manifest
+		header_regexp ota_runtime Expo-Runtime-Version ^[a-f0-9]{40}$
+	}
+	handle @ota_manifest {
+		rewrite * /ota/production/{re.ota_runtime.0}/manifest
+		header Content-Type "multipart/mixed; boundary=hmis-ota"
+		header expo-protocol-version 1
+		header expo-sfv-version 0
+		# Asked on every app start; a cached answer hides a new bundle.
+		header Cache-Control "private, max-age=0"
+		root * /downloads
+		file_server
+	}
+	# Every file is named by its own SHA-256, so a name never changes meaning.
+	@ota_file path_regexp ^/app/ota/production/[a-f0-9]{40}/files/[a-f0-9]{64}\.[A-Za-z0-9]+$
+	handle @ota_file {
+		uri strip_prefix /app
+		header Cache-Control "public, max-age=31536000, immutable"
+		root * /downloads
+		file_server
+	}
 	handle /app/* {
 		respond 404
 	}

@@ -115,6 +115,18 @@ if [ "$HMIS_PUSH_IN_BUILD" = 1 ]; then
     || { echo "REFUSED: the APK carries no Firebase app id (google-services.json was not applied)" >&2; exit 1; }
   echo "notifications: permission, messaging service and Firebase app id are in the APK"
 fi
+# OVER-THE-AIR UPDATES (owner 2026-10-06). The APK names its own native fingerprint; the feed repeats
+# it, and scripts/publish-ota.sh sends a bundle only to that fingerprint. A build that was given the
+# certificate and came out without a fingerprint would silently never update — refused here instead.
+RUNTIME="$(unzip -p "$BUILT" assets/fingerprint 2>/dev/null || true)"
+if [ -r "$APP_DIR/ota/certificate-$ENV_NAME.pem" ]; then
+  [[ "$RUNTIME" =~ ^[a-f0-9]{40}$ ]] \
+    || { echo "REFUSED: the APK carries no native fingerprint (assets/fingerprint) — over-the-air updates would never reach it" >&2; exit 1; }
+  echo "over-the-air updates: IN this build (runtime $RUNTIME)"
+else
+  RUNTIME=""
+  echo "over-the-air updates: NOT in this build — no ota/certificate-$ENV_NAME.pem (BUILDING.md, Over-the-air updates)"
+fi
 mkdir -p "$OUT_DIR"
 cp "$BUILT" "$OUT_DIR/$NAME"
 echo "$VC" > "$COUNTER"
@@ -128,9 +140,9 @@ ln -sfn "$NAME" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.apk"
 # rename, so a phone never reads of a build whose APK is not yet in place. `HMIS_RELEASE_NOTES` is
 # the one line the update prompt shows ("Doctor's OPD line; new icon").
 SUM=$(cut -d' ' -f1 "$OUT_DIR/$NAME.sha256")
-HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD HMIS_RELEASE_NOTES="${HMIS_RELEASE_NOTES:-}" node -e '
+HMIS_RUNTIME="$RUNTIME" HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD HMIS_RELEASE_NOTES="${HMIS_RELEASE_NOTES:-}" node -e '
   const [vc, version, apk, sha256, out] = process.argv.slice(1);
-  const body = { versionCode: Number(vc), versionName: version, apk, sha256, builtAt: new Date().toISOString(), notes: process.env.HMIS_RELEASE_NOTES || "", notifications: process.env.HMIS_PUSH_IN_BUILD === "1" };
+  const body = { versionCode: Number(vc), versionName: version, apk, sha256, builtAt: new Date().toISOString(), notes: process.env.HMIS_RELEASE_NOTES || "", notifications: process.env.HMIS_PUSH_IN_BUILD === "1", ...(process.env.HMIS_RUNTIME ? { runtimeVersion: process.env.HMIS_RUNTIME } : {}) };
   require("fs").writeFileSync(out + ".tmp", JSON.stringify(body, null, 2) + "\n");
   require("fs").renameSync(out + ".tmp", out);
 ' "$VC" "$VERSION" "$NAME" "$SUM" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.json"

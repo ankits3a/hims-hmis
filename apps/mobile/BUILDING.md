@@ -122,6 +122,65 @@ On staging, Caddy serves exactly `/app/hmis-staff-*-latest.json` without the bas
 one); the APK and the folder listing stay behind it. Production serves its feed at
 `https://hmis.crkmch.com/app/hmis-staff-production-latest.json`, with `Cache-Control: no-store`.
 
+## Over-the-air updates (owner 2026-10-06: "it should happen automatically")
+
+Two kinds of change, two roads:
+
+| The change | How it reaches a phone | What the person does |
+|---|---|---|
+| JavaScript — screens, words, rules, fixes | `scripts/publish-ota.sh <env>` → the app fetches it by itself | nothing |
+| Native — a new native module, a permission, an Expo upgrade, the Firebase file | `scripts/build-apk.sh <env>` → "Update available" in the app | downloads and installs the APK |
+
+```
+apps/mobile/scripts/publish-ota.sh staging
+apps/mobile/scripts/publish-ota.sh production
+```
+
+**Which road a change needs is not a judgement.** Every APK carries its native fingerprint
+(`runtimeVersion: { policy: "fingerprint" }`, `fingerprint.config.js`), and `build-apk.sh` writes it
+into the feed as `runtimeVersion`. `publish-ota.sh` computes the fingerprint of the checkout and
+refuses, by name, when it is not the newest APK's: that change needs an APK. The version name and
+the versionCode are not in the fingerprint, so an ordinary rebuild does not strand a bundle.
+
+**What is served** (no expo.dev cloud; the same folder and the same caddy as the APKs):
+
+```
+<folder>/ota/<env>/<fingerprint>/manifest          one multipart body: the manifest and its signature
+<folder>/ota/<env>/<fingerprint>/files/<sha256>.*  the bundle and every asset, named by checksum
+```
+
+The app asks `…/app/ota/<env>/manifest` with its fingerprint in the `expo-runtime-version` header;
+caddy picks the folder (`@ota_manifest` in `docker/prod/Caddyfile` and `Caddyfile.uat`, pinned by
+`apps/core/test/caddyfile-hardening.test.ts`). A phone whose fingerprint has no folder gets a 404 and
+keeps running what it has.
+
+**When the phone takes it** (`src/ota.ts`): fetched at every cold start and, while the app stays
+open, at most every fifteen minutes from the home screen. It is applied on the home screen only —
+never on a seat, where a restart would lose a half-typed entry. "Check for update" at the foot of
+the home screen fetches and applies at once. The foot then reads "Updated automatically · <time>".
+A bundle that crashes on start is abandoned by expo-updates, which goes back to the last one that ran.
+
+**Signing.** A phone runs a bundle only when it is signed by the key whose public certificate is in
+its APK (`ota/certificate-<env>.pem`, committed). The private halves live beside the APK keystores,
+never in the repo:
+
+```
+/root/.config/hmis/android/ota-staging-private-key.pem
+/root/.config/hmis/android/ota-production-private-key.pem
+```
+
+Made once per environment:
+
+```
+npx expo-updates codesigning:generate --key-output-directory <tmp>/k --certificate-output-directory <tmp>/c \
+  --certificate-validity-duration-years 20 --certificate-common-name "CRKMCH HMIS staff app OTA (<env>)"
+```
+
+then `private-key.pem` → the path above (mode 600) and `certificate.pem` → `ota/certificate-<env>.pem`.
+An APK built while the certificate is absent carries no over-the-air updates at all (the build says
+so). Losing a private key costs one APK round — a new pair, a new build — not an uninstall. Add the
+two files to the signing-key backup (`backup-signing-keys.sh`).
+
 ## Notifications (plan M6b)
 
 Notifications go through Firebase Cloud Messaging. Two files, both the owner's, both on this server only:

@@ -201,7 +201,8 @@
       "latest": "This is the latest version ({{version}}).",
       "failed": "Could not check for an update just now.",
       "howTo": "The download opens in the browser. Tap the file when it finishes, then Install — your sign-in stays.",
-      "version": "Version {{version}} · build {{code}}"
+      "version": "Version {{version}} · build {{code}}",
+      "ota": "Updated automatically · {{when}} UTC"
     },
     "counter": {
       "step": {

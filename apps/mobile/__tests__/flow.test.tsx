@@ -23,7 +23,7 @@ jest.mock("expo-local-authentication", () => ({
   authenticateAsync: jest.fn(async () => ({ success: true })),
 }));
 const mockPush = jest.fn();
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a), back: jest.fn() }) }));
+jest.mock("expo-router", () => ({ useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a), back: jest.fn() }), useFocusEffect: jest.fn() }));
 
 type Route = (init: RequestInit | undefined) => { status: number; body?: unknown };
 
