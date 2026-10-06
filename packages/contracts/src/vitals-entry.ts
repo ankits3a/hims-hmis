@@ -1,0 +1,568 @@
+/**
+ * THE VITALS DESK'S READING RULES — one copy, read by the web bay (apps/web/src/screens/vitals-bay*)
+ * and by the phone app (apps/mobile/src/vitals). Owner 2026-10-06: "build the next mobile app
+ * screen, vitals bay"; the plan's rule is one parser, two screens.
+ *
+ * PURE: no React, no DOM, no fetch, no imports. Both apps import THIS SOURCE FILE by path (the web
+ * through Vite, the phone through Metro's `watchFolders`), so it is deliberately NOT exported from
+ * `index.ts` — nothing here needs the built `dist`, and nothing here may grow a dependency.
+ *
+ * The server stays the authority for every rule (`apps/core/src/modules/opd/vitals-rules.ts`):
+ * these are the mirrors that stop a typist before the round trip.
+ */
+
+// ——— the wire shapes the desk reads and writes (moved from apps/web/src/lib/opd-api.ts) ———
+
+export type WirePatientSummary = {
+  requestedId: string; id: string; uhid: string; name: string | null; alias: string | null;
+  restricted: boolean; administrativeGender: string; dob: string | null;
+  /**
+   * FD-25 — present ONLY on `GET /opd/appointments?needsRebooking=true&contact=true`, and null on a
+   * restricted row. Optional because it is absent from every other read of this shape: a display
+   * surface has never needed a contact number and still does not. See the server type for why this
+   * is a second narrow surface rather than a widening of `PatientSummary`.
+   */
+  phone?: string | null;
+};
+
+// VD-1 T1 — `muacCm` appended, because the SERVER can now emit it: a supplied MUAC under six is
+// flagged at the zone it breached (11.5 SAM, 12.5 MAM). Widened here in the same task that made
+// the server able to send it — a wire union narrower than its producer is a type that lies, and it
+// lies silently until the first child is measured.
+// VD-1 CLOSE / F1 — `severity` appended for the same reason `muacCm` was in T1: the SERVER can now
+// emit it, and a wire union narrower than its producer is a type that lies until the first case
+// arrives. `danger` moves the queue; `notice` reaches the doctor and does not — a paediatric fever
+// is flagged ahead of the call without seating a toddler ahead of a stroke. Optional so every flag
+// already persisted reads back unchanged; absent means `danger`, which is the shipped meaning.
+export type WireDangerFlag = { vital: "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm"; value: number; bound: "min" | "max"; limit: number; severity?: "danger" | "notice" };
+
+export type WireBenchState = "resting" | "away";
+export type WireEscalationState = "none" | "recheck_demanded" | "escalated" | "cancelled";
+export type WireBenchRow = {
+  encounterId: string; entryId: string; tokenNo: number; seq: number;
+  doctorId: string; doctorName: string; serviceDate: string;
+  patient: WirePatientSummary | null;
+  benchState: WireBenchState | null;
+  recallAt: string | null;
+  vitalsDone: boolean;
+  vitalsId: string | null;
+  escalation: WireEscalationState;
+  cancelMsRemaining: number;
+  recallDue: boolean;
+};
+
+export type WireRange = { min?: number; max?: number };
+export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm";
+export type WireBandKey = "infant" | "child_1_5" | "child_6_12" | "adult";
+export type WirePreStage = {
+  patientId: string;
+  ageYears: number | null;
+  band: WireBandKey;
+  /** CLOSE pass 1 — the band's limits travel with the pre-stage; the bay mirrors nothing from `GET /opd/config` (a permission `vitals_desk` does not hold). */
+  ranges: Partial<Record<WireVitalKey, WireRange>>;
+  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
+  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
+  muacBands: { samUnderCm: number; mamUnderCm: number };
+  /** The patient is confidential to this actor: the band is answered, the history is not. */
+  sealed: boolean;
+  required: WireVitalKey[];
+  notRoutine: WireVitalKey[];
+  /**
+   * FD-32 / owner ruling 2026-09-13 — *"A symbol to symbolize in the vital dashboard that the user
+   * has not yet paid."* The LEDGER's answer, not the draft's: false on an unconfigured hospital,
+   * which has no fee policy to warn about. `feeBypass` is the front desk's waiver carried as the
+   * clerk's own sentence, so each desk shows WHY rather than a bare icon — and it never clears
+   * `feeUnpaid`, because a bypass waives the ORDER of payment and not the fee.
+   */
+  feeUnpaid: boolean;
+  feeBypass: { by: string; reason: string; at: string } | null;
+  last: {
+    vitalsId: string; recordedAt: string; serviceDate: string;
+    heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
+    pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null; muacCm: number | null;
+  } | null;
+  carryCandidates: WireVitalKey[];
+  expectedFlags: WireDangerFlag[];
+};
+
+export type WireBandConfig = {
+  key: WireBandKey; upToAgeYears: number | null;
+  required: WireVitalKey[]; notRoutine: WireVitalKey[];
+  ranges: Partial<Record<WireVitalKey, WireRange>>;
+  noticeRanges: Partial<Record<WireVitalKey, WireRange>>;
+};
+/** `GET /opd/config`'s `dangerRanges`, typed at last — the bay's client-side mirrors read it; the server stays the authority. */
+export type WireDangerRanges = {
+  weightRequiredUnderYears: number;
+  bands: WireBandConfig[];
+  gates: { adultWeightFloorKg: number; heightDeltaCm: number; spo2ProbeFloorPct: number };
+  muacBands: { samUnderCm: number; mamUnderCm: number };
+};
+export type WireReadingSource = "typed" | "device" | "counted";
+export type WireReading = { takes: number[]; source: WireReadingSource; held?: number[]; note?: string };
+export type WireBpReading = { takes: [number, number][]; source: WireReadingSource; held?: number[]; note?: string };
+export type WireReadings = Partial<Record<Exclude<WireVitalKey, "sbp" | "dbp">, WireReading>> & { bp?: WireBpReading };
+export const UNLOCK_REASONS = ["yearly_remeasure_due", "patient_disputes_old_value", "posture_or_device_changed", "surgical_or_limb_change"] as const;
+export type WireUnlockReason = (typeof UNLOCK_REASONS)[number];
+export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & {
+  notes?: string | null;
+  readings?: WireReadings;
+  contextChips?: { key: string; question: string; answer: string }[];
+  carriedForward?: WireVitalKey[];
+  emergency?: boolean;
+  overrides?: Partial<Record<WireVitalKey, string>>;
+  unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
+};
+
+export type WireEscalationReading = Partial<Record<Exclude<WireVitalKey, "heightCm" | "weightKg">, number>>;
+
+// ——— the hospital clock ———
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const DAY_MS = 86_400_000;
+/** The IST calendar date ('YYYY-MM-DD') of an instant — fixed +05:30, no DST, no Intl. */
+export function todayIst(at: Date = new Date()): string {
+  return new Date(Math.floor((at.getTime() + IST_OFFSET_MS) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
+}
+
+// ——— the three doors (token, UHID, card scan), resolved on the bench ———
+
+export type Door =
+  | { kind: "token"; tokenNo: number }
+  | { kind: "uhid"; uhid: string }
+  | { kind: "scan"; payload: string };
+
+/** Digits are a token; a card payload starts `q1.` (`patients/qr.ts:15`); everything else is a UHID. */
+export function classifyDoor(raw: string): Door | null {
+  const s = raw.trim();
+  if (s === "") return null;
+  if (/^\d{1,6}$/.test(s)) return { kind: "token", tokenNo: Number(s) };
+  if (s.startsWith("q1.")) return { kind: "scan", payload: s };
+  return { kind: "uhid", uhid: s.toUpperCase() };
+}
+
+export function matchOnBench(
+  rows: readonly WireBenchRow[],
+  by: { kind: "token"; tokenNo: number } | { kind: "uhid"; uhid: string } | { kind: "patient"; patientId: string },
+): WireBenchRow | null {
+  for (const r of rows) {
+    if (by.kind === "token" && r.tokenNo === by.tokenNo) return r;
+    if (by.kind === "uhid" && r.patient !== null && r.patient.uhid.toUpperCase() === by.uhid) return r;
+    if (by.kind === "patient" && r.patient !== null && r.patient.id === by.patientId) return r;
+  }
+  return null;
+}
+
+// ——— the tiles: takes, parsers, gate mirrors, the wire body ———
+
+export type TileKey = "bp" | "pulse" | "spo2" | "tempC" | "rr" | "weightKg" | "heightCm" | "muacCm";
+export const TILE_KEYS: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm"];
+const SCALAR_TILES: readonly Exclude<TileKey, "bp">[] = ["pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm"];
+
+export type Take = number | [number, number];
+export type Tile = {
+  takes: Take[];
+  held: number[];
+  source: "typed" | "device" | "counted";
+  /** D7 — a carried value: shown from the last chart, sent as `carriedForward` unless unlocked. */
+  carried: number | null;
+  unlockReason: WireUnlockReason | null;
+  override: string | null;
+};
+export type Tiles = Record<TileKey, Tile>;
+
+export function emptyTiles(): Tiles {
+  const t = {} as Tiles;
+  for (const k of TILE_KEYS) t[k] = { takes: [], held: [], source: "typed", carried: null, unlockReason: null, override: null };
+  return t;
+}
+
+/** The tiles a band asks for, in the wire's vocabulary folded to the screen's (sbp+dbp → bp). */
+export function tileSetFor(pre: WirePreStage | null): { required: TileKey[]; notRoutine: TileKey[] } {
+  const fold = (keys: readonly WireVitalKey[]): TileKey[] => {
+    const out: TileKey[] = [];
+    for (const k of keys) {
+      const tk: TileKey = k === "sbp" || k === "dbp" ? "bp" : k;
+      if (!out.includes(tk)) out.push(tk);
+    }
+    return out;
+  };
+  if (pre === null) return { required: ["bp", "pulse", "spo2", "weightKg", "heightCm"], notRoutine: [] };
+  return { required: fold(pre.required), notRoutine: fold(pre.notRoutine) };
+}
+
+export const EMERGENCY_TILES: readonly TileKey[] = ["bp", "pulse", "spo2"];
+
+/**
+ * The order the typing lane walks: the clinical order the tray is laid in (cuff, probe, thermometer,
+ * then the scale and the tape), the lead vital pulled to the front (per-patient autofocus). MUAC is
+ * a tile only where the band asks for it — "required under six, meaningless over it" (VD-1 D5).
+ * A not-routine BP stays on the tray, collapsed: recorded when the doctor asks, never demanded.
+ */
+export function tileOrder(lead: TileKey | null, set: { required: TileKey[]; notRoutine: TileKey[] }): TileKey[] {
+  const base = TILE_KEYS.filter((k) => k !== "muacCm" || set.required.includes(k));
+  if (lead === null || !base.includes(lead)) return base;
+  return [lead, ...base.filter((k) => k !== lead)];
+}
+
+export function leadTileFor(pre: WirePreStage | null): TileKey {
+  const first = pre?.expectedFlags[0]?.vital;
+  if (first !== undefined) return first === "sbp" || first === "dbp" ? "bp" : first;
+  return pre !== null && pre.band !== "adult" ? "tempC" : "bp";
+}
+
+/*
+  OWNER 2026-10-05 — A PHONE'S NUMBER PAD HAS NO "/". The field opens the decimal pad on purpose
+  (no letters), and Gboard's offers "-" "," "." and space while iOS's offers "." — so any one of
+  them, or "/", separates the two numbers: 150/90 = 150-90 = 150,90 = 150.90 = 150 90.
+*/
+const BP_RE = /^(\d{2,3})\s*[/,.\- ]\s*(\d{2,3})$/;
+
+/*
+  OWNER 2026-10-05 — °F OR °C, SENSED FROM THE NUMBER. The two plausible bands do not overlap
+  (25–45 °C is 77–113 °F), so the number alone says which scale it is in and no unit switch is
+  needed. The chart keeps °C, so a fever flag reads the converted value. Anything between or
+  outside the bands is refused — the server's own plausibility bound is 25–45 °C.
+*/
+const TEMP_C: readonly [number, number] = [25, 45];
+const TEMP_F: readonly [number, number] = [77, 113];
+const round1 = (n: number): number => Math.round(n * 10) / 10;
+
+/** A typed temperature, read: which scale it was in, and both readings (to one decimal). */
+export function tempNote(raw: string): { unit: "C" | "F"; f: number; c: number } | null {
+  const s = raw.trim();
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const n = Number(s);
+  if (n >= TEMP_C[0] && n <= TEMP_C[1]) return { unit: "C", c: n, f: round1(n * 9 / 5 + 32) };
+  if (n >= TEMP_F[0] && n <= TEMP_F[1]) return { unit: "F", f: n, c: round1((n - 32) * 5 / 9) };
+  return null;
+}
+
+export function parseTake(key: TileKey, raw: string): Take | null {
+  const s = raw.trim();
+  if (s === "") return null;
+  if (key === "bp") {
+    const m = BP_RE.exec(s);
+    if (m === null) return null;
+    const sys = Number(m[1]), dia = Number(m[2]);
+    return sys > dia ? [sys, dia] : null;   // 80-120 is the numbers swapped, not a reading
+  }
+  if (key === "tempC") return tempNote(s)?.c ?? null;
+  return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
+}
+
+/** Why `parseTake` said no — the i18n key under `vitalsBay.capture`. */
+export function takeError(key: TileKey, raw: string): "bpBoth" | "bpOrder" | "tempUnit" | "notANumber" {
+  if (key === "bp") return BP_RE.test(raw.trim()) ? "bpOrder" : "bpBoth";
+  if (key === "tempC" && /^\d+(\.\d+)?$/.test(raw.trim())) return "tempUnit";
+  return "notANumber";
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** `31-Aug-2026` — the seat-pass ruling for dates on staff screens (EXECUTE prompt, ruling 9). */
+export function humanDate(serviceDate: string): string {
+  const [y, m, d] = serviceDate.split("-");
+  const month = MONTHS[Number(m) - 1];
+  return month === undefined ? serviceDate : `${d}-${month}-${y}`;
+}
+
+/**
+ * Just the month, for the tile's delta line. The seat-pass ruling ("31-Aug-2026") governs dates a
+ * clerk reads as dates; a delta is read as a comparison — "Jun 132/84 → +26/+12" — and a full date
+ * inside it crowds out the numbers that are the point of the line.
+ */
+export function monthLabel(serviceDate: string): string {
+  return MONTHS[Number(serviceDate.split("-")[1]) - 1] ?? serviceDate;
+}
+
+/** HH:MM on the hospital's clock (IST, fixed +05:30), from an ISO instant. */
+export function istClock(iso: string): string {
+  const d = new Date(new Date(iso).getTime() + 330 * 60_000);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+}
+
+export function operative(tile: Tile): Take | null {
+  return tile.takes.length === 0 ? null : tile.takes[tile.takes.length - 1]!;
+}
+
+export function bandFor(ranges: WireDangerRanges | null, bandKey: WirePreStage["band"] | null): WireBandConfig | null {
+  if (ranges === null || bandKey === null) return null;
+  return ranges.bands.find((b) => b.key === bandKey) ?? null;
+}
+
+/**
+ * CLOSE pass 1 CRITICAL — the mirrors' limits come from the PRE-STAGE, which carries this
+ * patient's band with its ranges, the gate numbers and the MUAC zones (`opd.vitals.history.read`,
+ * a permission the desk holds). `GET /opd/config` is `opd.masters.read`, which it does not.
+ */
+export function rangesFrom(pre: WirePreStage | null): WireDangerRanges | null {
+  if (pre === null || pre.gates === undefined) return null;
+  return {
+    weightRequiredUnderYears: 18,
+    bands: [{ key: pre.band, upToAgeYears: null, required: pre.required, notRoutine: pre.notRoutine, ranges: pre.ranges, noticeRanges: pre.noticeRanges }],
+    gates: pre.gates, muacBands: pre.muacBands,
+  };
+}
+
+/** The tile's tint: the server's `evaluateVitals`, mirrored, for a single value. */
+export function flagOf(key: TileKey, take: Take, band: WireBandConfig | null, ranges: WireDangerRanges | null): "danger" | "notice" | "sam" | "mam" | null {
+  if (band === null) return null;
+  if (key === "muacCm" && ranges !== null && typeof take === "number") {
+    if (take < ranges.muacBands.samUnderCm) return "sam";
+    if (take < ranges.muacBands.mamUnderCm) return "mam";
+    return null;
+  }
+  const checks: [WireVitalKey, number][] = key === "bp" && Array.isArray(take)
+    ? [["sbp", take[0]], ["dbp", take[1]]]
+    : typeof take === "number" ? [[key as WireVitalKey, take]] : [];
+  for (const [k, v] of checks) {
+    if (band.notRoutine.includes(k)) continue;
+    const r = band.ranges[k];
+    if (r !== undefined && ((r.min !== undefined && v < r.min) || (r.max !== undefined && v > r.max))) return "danger";
+  }
+  for (const [k, v] of checks) {
+    if (band.notRoutine.includes(k)) continue;
+    const n = band.noticeRanges[k];
+    if (n !== undefined && ((n.min !== undefined && v < n.min) || (n.max !== undefined && v > n.max))) return "notice";
+  }
+  return null;
+}
+
+export type Mirror =
+  | { kind: "slipped_digit"; key: "weightKg"; value: number; suggestion: number | null }
+  | { kind: "shrinking_adult"; key: "heightCm"; value: number; last: number }
+  | { kind: "probe_error"; key: "spo2"; value: number };
+
+/** `sanityGates` + `holdProbeErrors`, mirrored for ONE take as it is committed. */
+export function mirrorFor(key: TileKey, take: Take, ageYears: number | null, ranges: WireDangerRanges | null, last: WirePreStage["last"], tile: Tile): Mirror | null {
+  if (ranges === null || typeof take !== "number") return null;
+  const g = ranges.gates;
+  const isChild = ageYears !== null && ageYears < 13;
+  if (key === "weightKg" && tile.override === null && !isChild && take < g.adultWeightFloorKg) {
+    const shifted = Math.round(take * 100) / 10;
+    return { kind: "slipped_digit", key, value: take, suggestion: shifted >= 30 && shifted <= 150 ? shifted : null };
+  }
+  if (key === "heightCm" && tile.override === null && last !== null && last.heightCm !== null && Math.abs(take - last.heightCm) >= g.heightDeltaCm) {
+    return { kind: "shrinking_adult", key, value: take, last: last.heightCm };
+  }
+  // pass 2 / F4 — a confirmed 68 does not switch the hold OFF: a later slip to 40 is held again
+  if (key === "spo2" && take < g.spo2ProbeFloorPct && !tile.takes.includes(take)) return { kind: "probe_error", key, value: take };
+  return null;
+}
+
+export type TakeSource = "typed" | "device" | "counted";
+export type GateContext = { ageYears: number | null; ranges: WireDangerRanges | null; last: WirePreStage["last"] };
+
+/**
+ * ONE take against the tiles as they stand, plus the gate it trips — the pure half of the bay's
+ * `commit`. It is pure because the save commits every still-typed tile in one pass, and each of
+ * those must see the tiles the one before it produced: `tiles` in a callback's closure is a render
+ * old by the second key, and a loop over the setter would chart the last number only.
+ */
+export function applyTake(tiles: Tiles, key: TileKey, source: TakeSource, take: Take, ctx: GateContext): { tiles: Tiles; mirror: Mirror | null } {
+  const tile = tiles[key];
+  const m = mirrorFor(key, take, ctx.ageYears, ctx.ranges, ctx.last, tile);
+  if (m !== null && m.kind === "probe_error") {
+    // held OUT of the chart until it survives a re-clip: the number is kept, not charted
+    return { tiles: { ...tiles, [key]: { ...tile, held: [...tile.held, m.value], source } }, mirror: m };
+  }
+  if (m !== null) return { tiles, mirror: m };
+  return { tiles: { ...tiles, [key]: { ...tile, takes: [...tile.takes, take], source, carried: null } }, mirror: null };
+}
+
+export function missingFor(tiles: Tiles, required: TileKey[], emergency: boolean): TileKey[] {
+  const need = emergency ? EMERGENCY_TILES : required;
+  return need.filter((k) => operative(tiles[k]) === null && tiles[k].carried === null);
+}
+
+export function buildBody(tiles: Tiles, opts: { emergency: boolean; chips: { key: string; question: string; answer: string }[] }): WireVitalsPostBody {
+  const readings: WireReadings = {};
+  const body: WireVitalsPostBody = { emergency: opts.emergency, contextChips: opts.chips };
+  const carriedForward: WireVitalKey[] = [];
+  const unlockReasons: NonNullable<WireVitalsPostBody["unlockReasons"]> = {};
+  const overrides: NonNullable<WireVitalsPostBody["overrides"]> = {};
+  const bp = tiles.bp;
+  if (bp.takes.length > 0) {
+    readings.bp = { takes: bp.takes.filter((t): t is [number, number] => Array.isArray(t)), source: bp.source };
+    if (bp.held.length > 0) readings.bp.held = bp.held;
+  }
+  for (const k of SCALAR_TILES) {
+    const t = tiles[k];
+    const takes = t.takes.filter((x): x is number => typeof x === "number");
+    if (takes.length > 0) {
+      readings[k] = { takes, source: t.source };
+      if (t.held.length > 0) readings[k]!.held = t.held;
+    }
+    // a held value with no surviving take is NOT sent: the wire needs one take, and the save is
+    // refused as incomplete before it is built (a held-only SpO₂ stays in the tile, not the log)
+    if (t.carried !== null && takes.length === 0) {
+      carriedForward.push(k);
+      body[k] = t.carried;
+    }
+    if (t.unlockReason !== null) unlockReasons[k] = t.unlockReason;
+    if (t.override !== null) overrides[k] = t.override;
+  }
+  if (bp.override !== null) { overrides.sbp = bp.override; overrides.dbp = bp.override; }
+  body.readings = readings;
+  if (carriedForward.length > 0) body.carriedForward = carriedForward;
+  if (Object.keys(unlockReasons).length > 0) body.unlockReasons = unlockReasons;
+  if (Object.keys(overrides).length > 0) body.overrides = overrides;
+  return body;
+}
+
+/** The questions asked while the cuff inflates, in the words a nurse uses at the bay. */
+export const CONTEXT_CHIPS = [
+  { key: "fasting", question: "khali pet?", yes: "fasting", no: "not fasting" },
+  { key: "bp_med_taken", question: "BP ki dawa li?", yes: "BP medicine taken today", no: "BP medicine not taken today" },
+  { key: "just_climbed_stairs", question: "abhi seedhi chadh kar aaye?", yes: "just climbed stairs", no: "rested" },
+] as const;
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ * FD-25 — THE THREE THINGS AN ARTBOARD TILE SAYS THAT THE SHIPPED TILE DID NOT
+ * ═══════════════════════════════════════════════════════════════════════════════════════════════
+ *
+ * The build spec's charge against `vitals-bay-capture.tsx:474-539` was precise: "a generic bordered
+ * grid with no big value, no source pill, no delta, no ✎ and no range label". Three of those five
+ * are DERIVATIONS, not styling, and a wrong derivation looks exactly like a right one on a monitor
+ * across a bay — which is why they are pure functions with tests rather than JSX.
+ *
+ * None of them changes a single byte that reaches the server. `buildBody` is untouched.
+ */
+
+/**
+ * WHERE THE NUMBER CAME FROM. A nurse reading a chart later cannot tell a typed 68 from a monitor's
+ * 68, and the two are not equally trustworthy: a cuff that has slipped reports confidently.
+ *
+ * `RODE THE CUFF` is not decoration. An oscillometric cuff returns a pulse with the pressure — one
+ * capture, two vitals (the build spec's own words for the PULSE tile) — so a device-sourced pulse
+ * was never independently counted, and that is worth saying on the tile where somebody might
+ * otherwise read agreement between two instruments as corroboration.
+ */
+export type SourcePill = "auto" | "typed" | "counted" | "rodeCuff";
+export function sourcePillOf(k: TileKey, source: Tile["source"]): SourcePill {
+  if (source === "device") return k === "pulse" ? "rodeCuff" : "auto";
+  return source === "counted" ? "counted" : "typed";
+}
+
+/**
+ * THE BAND'S OWN LIMITS, top-right in mono. `preStage.ranges` is per-band and server-sent (the bay
+ * holds no `GET /opd/config` permission), so an infant tile shows an infant's range and the nurse
+ * never has to remember which band the patient is in — the tile says it.
+ *
+ * BP folds two wire keys into one tile, so it prints two ranges. A range with one bound prints the
+ * bound it has: `≥ 90` is the whole truth about SpO₂ and inventing an upper limit would be a lie.
+ */
+export function rangeLabelOf(k: TileKey, pre: WirePreStage | null): string | null {
+  if (pre === null) return null;
+  const one = (key: WireVitalKey): string | null => {
+    const r = pre.ranges[key];
+    if (r === undefined) return null;
+    if (r.min !== undefined && r.max !== undefined) return `${String(r.min)}–${String(r.max)}`;
+    if (r.min !== undefined) return `≥ ${String(r.min)}`;
+    if (r.max !== undefined) return `≤ ${String(r.max)}`;
+    return null;
+  };
+  if (k === "bp") {
+    const sys = one("sbp");
+    const dia = one("dbp");
+    if (sys === null && dia === null) return null;
+    return `${sys ?? "—"} / ${dia ?? "—"}`;
+  }
+  return one(k);
+}
+
+/**
+ * THE DELTA — "Jun 132/84 → +26/+12", gold when |Δsys| > 15 or |Δdia| > 10.
+ *
+ * ═══ WHY THIS IS THE MOST CLINICALLY LOAD-BEARING LINE ON THE TILE ═══
+ *
+ * A single 158/96 is a number. A 158/96 that was 132/84 in June is a TREND, and the difference
+ * between those two readings is the difference between "slightly high, common, recheck sometime"
+ * and "this person's pressure has moved 26 points since we last saw them". The bay already fetches
+ * `preStage.last` — the previous chart, in full — and the shipped tile showed none of it.
+ *
+ * The thresholds are the build spec's and they are asymmetric on purpose: systolic wanders more
+ * than diastolic across a day, a cuff and a season, so 15/10 marks the point where the movement is
+ * more likely the patient than the measurement.
+ *
+ * ═══ WHY IT RETURNS PARTS AND NOT A SENTENCE ═══
+ *
+ * The month is the only localisable fragment, and a pure function that formats it would either pin
+ * English into a Hindi desk or take `t` as an argument and stop being testable. So the caller
+ * formats the date and this returns everything else assembled.
+ */
+export type TileDelta = { serviceDate: string; from: string; delta: string; hot: boolean };
+
+const signed = (n: number): string => (n > 0 ? `+${String(n)}` : String(n));
+/* One decimal only where the vital actually has one — a temperature moves by 0.4, a weight by 1.5. */
+export function tileDeltaOf(k: TileKey, tile: Tile, pre: WirePreStage | null): TileDelta | null {
+  const last = pre?.last;
+  if (last === null || last === undefined) return null;
+  const op = operative(tile);
+  if (op === null) return null;
+
+  if (k === "bp") {
+    if (!Array.isArray(op) || last.sbp === null || last.dbp === null) return null;
+    const dSys = round1(op[0] - last.sbp);
+    const dDia = round1(op[1] - last.dbp);
+    return {
+      serviceDate: last.serviceDate,
+      from: `${String(last.sbp)}/${String(last.dbp)}`,
+      delta: `${signed(dSys)}/${signed(dDia)}`,
+      hot: Math.abs(dSys) > 15 || Math.abs(dDia) > 10,
+    };
+  }
+  if (Array.isArray(op)) return null;
+  const was = last[k];
+  if (was === null || was === undefined) return null;
+  return { serviceDate: last.serviceDate, from: String(was), delta: signed(round1(op - was)), hot: false };
+}
+
+// ——— the danger protocol's pure half ———
+
+export const REST_MINUTES = 5;
+
+/**
+ * "Elevated but not dangerous": inside the band, but within 20 / 10 mmHg of its ceiling, or 20 mmHg
+ * above the last chart's systolic. DECIDED here (a threshold, not money): the standard corporate-OPD
+ * rest-and-recheck trigger, and the server never sees it — it is the bay's offer, not a chart fact.
+ */
+export function isElevated(take: Take, band: WireBandConfig | null, last: WirePreStage["last"]): boolean {
+  if (!Array.isArray(take) || band === null || band.notRoutine.includes("sbp")) return false;
+  const [s, d] = take;
+  const sMax = band.ranges.sbp?.max; const dMax = band.ranges.dbp?.max;
+  if (sMax !== undefined && s > sMax) return false;
+  if (dMax !== undefined && d > dMax) return false;
+  if (sMax !== undefined && s >= sMax - 20) return true;
+  if (dMax !== undefined && d >= dMax - 10) return true;
+  if (last !== null && last.sbp !== null && s >= last.sbp + 20) return true;
+  return false;
+}
+
+/** The numbers on the tiles right now, in the wire's vocabulary, for the protocol's routes. */
+/**
+ * The same reading, taken off a SAVED chart instead of the tiles — what an amendment has to hand
+ * the protocol. A corrected BP is the answer to "the other arm, now" as surely as a second take
+ * typed at the bay is, and the server judges both by the same rule.
+ */
+export function readingFromVitals(v: Record<"sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm", number | null>): WireEscalationReading {
+  const r: WireEscalationReading = {};
+  if (v.sbp !== null && v.dbp !== null) { r.sbp = v.sbp; r.dbp = v.dbp; }
+  for (const k of ["pulse", "rr", "spo2", "tempC", "muacCm"] as const) {
+    const x = v[k];
+    if (typeof x === "number") r[k] = x;
+  }
+  return r;
+}
+
+export function readingFrom(tiles: Tiles): WireEscalationReading {
+  const r: WireEscalationReading = {};
+  const bp = operative(tiles.bp);
+  if (Array.isArray(bp)) { r.sbp = bp[0]; r.dbp = bp[1]; }
+  for (const k of ["pulse", "rr", "spo2", "tempC", "muacCm"] as const) {
+    const v = operative(tiles[k]);
+    if (typeof v === "number") r[k] = v;
+  }
+  return r;
+}

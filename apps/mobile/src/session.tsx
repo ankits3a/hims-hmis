@@ -32,6 +32,11 @@ type Session = {
   logout: () => Promise<void>;
   forgetAndSignIn: () => Promise<void>;
   token: string | null;
+  /**
+   * A signed call for a screen: the session's token and transport, and ONE place where a session
+   * the server has ended (401) returns the phone to sign-in instead of failing screen by screen.
+   */
+  call: <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown) => Promise<T>;
 };
 
 const Ctx = createContext<Session | null>(null);
@@ -145,9 +150,25 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
     await forgetAndSignIn();
   }, [token, fetcher, forgetAndSignIn]);
 
+  const call = useCallback(
+    async <T,>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> => {
+      try {
+        return await api<T>(method, path, { token, body, fetcher });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) {
+          await tokenStore.clear();
+          setToken(null);
+          setState({ status: "signedOut", note: "expired" });
+        }
+        throw e;
+      }
+    },
+    [token, fetcher],
+  );
+
   const value = useMemo(
-    () => ({ state, login, unlock, changePassword, logout, forgetAndSignIn, token }),
-    [state, login, unlock, changePassword, logout, forgetAndSignIn, token],
+    () => ({ state, login, unlock, changePassword, logout, forgetAndSignIn, token, call }),
+    [state, login, unlock, changePassword, logout, forgetAndSignIn, token, call],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

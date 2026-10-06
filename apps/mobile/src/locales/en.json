@@ -46,7 +46,31 @@
     "usePassword": "Sign in with password instead",
     "signedInAs": "Signed in as {{name}}",
     "back": "Back",
-    "unlockFailed": "Not confirmed. Tap Unlock to try again."
+    "unlockFailed": "Not confirmed. Tap Unlock to try again.",
+    "vitals": {
+      "scan": "Scan",
+      "scanTitle": "Scan the card or slip",
+      "scanHint": "Hold the code inside the frame. It reads by itself.",
+      "scanAsk": "The camera is needed to scan a patient card.",
+      "scanAllow": "Allow the camera",
+      "scanDenied": "The camera is switched off for HMIS. Allow it in the phone’s settings, or type the token number.",
+      "scanCancel": "Cancel",
+      "begin": "Begin",
+      "asOf": "as of {{time}}",
+      "stale": "No connection — the bench is shown as of {{time}}",
+      "retry": "Try again",
+      "saveNetwork": "Not saved — the server could not be reached. Nothing was sent. Check the internet and press Save again.",
+      "alreadyCharted": "Vitals are already saved for this visit. To correct a saved chart, use the vitals bay on a computer for now.",
+      "requiredLegend": "* needed before this chart can be saved",
+      "done": "Done",
+      "doctorFilter": "Doctor",
+      "next": "Next",
+      "letGo": "Let go",
+      "back": "Back",
+      "tapToTake": "Tap a patient to take them",
+      "protocolWorking": "Asking the server…",
+      "loadingPatient": "Reading this visit…"
+    }
   },
   "screen": {
     "vitals": {
@@ -73,5 +97,227 @@
       "title": "My duties",
       "hint": "Your duties this month, swaps and covers."
     }
+  },
+  "vitalsBay": {
+    "title": "Vitals bay",
+    "clearDesk": "Clear desk",
+    "phone": {
+      "identify": "token no. · UHID · scan",
+      "bench": "Bench · {{count}}",
+      "due": "{{count}} due",
+      "close": "Close",
+      "show": "Details",
+      "hide": "Hide"
+    },
+    "identify": {
+      "label": "Who is in front of you?",
+      "placeholder": "scan the slip, or type the token no. / UHID",
+      "hint": "Scan, token number or UHID — all three start the same lane. ⏎ to begin.",
+      "notOnBench": "{{who}} is not on this bench — check the slip, or send them to the front desk",
+      "unknownPatient": "This row has no patient record the bay can read",
+      "scanUnavailable": "The scanner check is unavailable — type the token number instead",
+      "scanFailed": {
+        "malformed": "That scan is not a patient card",
+        "invalid_signature": "That card did not verify — a copied or edited code",
+        "stale_version": "That card was reissued — ask for the new one",
+        "unknown_patient": "That card belongs to no patient on file"
+      },
+      "saving": "A save is still on its way — wait for the ✓ before taking the next person",
+      "next": "Next patient"
+    },
+    "valve": {
+      "bench": "bench {{count}}",
+      "callable": "callable {{count}}",
+      "why": "this bench is the doctors' wait time"
+    },
+    "bench": {
+      "title": "The bench",
+      "empty": "Bench clear — nobody waiting",
+      "failed": "The bench could not be read — the list may be stale",
+      "unknownPatient": "(no record)",
+      "restricted": "(restricted)",
+      "recallAt": "resting · recall {{time}}",
+      "state": {
+        "waiting": "waiting",
+        "resting": "resting",
+        "due": "recall due",
+        "away": "away — turn held",
+        "done": "✓ with doctor",
+        "escalated": "class 0 — escalated",
+        "recheck": "other arm, now"
+      },
+      "valveNote": "The valve: every minute a patient waits here is a minute a doctor waits downstream."
+    },
+    "allergy": {
+      "title": "Allergies",
+      "none": "Nothing on file — ask the patient",
+      "add": "Record an allergy",
+      "substance": "Substance",
+      "reaction": "Reaction (optional)",
+      "severity": "Severity",
+      "mild": "Mild",
+      "moderate": "Moderate",
+      "severe": "Severe",
+      "save": "Save",
+      "cancel": "Cancel",
+      "failed": "Not saved — try again"
+    },
+    "session": {
+      "empty": "Nobody in hand — scan, or type a token number or UHID",
+      "band": "Band",
+      "age": "{{years}} y",
+      "required": "Required",
+      "notRoutine": "Not routine",
+      "firstVisit": "No history — first visit",
+      "last": "Last chart {{date}}:",
+      "carry": "Carried forward, locked until a reason: {{vitals}}",
+      "noHistory": "No history to show for this visit",
+      "sealed": "Confidential record — the band is known, the history is sealed at this desk",
+      "expectedFlags_one": "{{count}} expected flag from history",
+      "expectedFlags_other": "{{count}} expected flags from history",
+      "title": "On the stool",
+      "dignity": "This screen faces you. The patient display shows a token and a direction — never a weight, never a number."
+    },
+    "band": {
+      "infant": "Infant",
+      "child_1_5": "Child 1–5",
+      "child_6_12": "Child 6–12",
+      "adult": "Adult"
+    },
+    "vital": {
+      "heightCm": "Height",
+      "weightKg": "Weight",
+      "sbp": "SBP",
+      "dbp": "DBP",
+      "pulse": "Pulse",
+      "rr": "RR",
+      "spo2": "SpO₂",
+      "tempC": "Temp",
+      "muacCm": "MUAC"
+    },
+    "tile": {
+      "bp": "BP",
+      "pulse": "Pulse",
+      "spo2": "SpO₂",
+      "tempC": "Temp",
+      "rr": "RR",
+      "weightKg": "Weight",
+      "heightCm": "Height",
+      "muacCm": "MUAC"
+    },
+    "unit": {
+      "bp": "mmHg",
+      "pulse": "/min",
+      "spo2": "%",
+      "tempC": "°C",
+      "rr": "/min",
+      "weightKg": "kg",
+      "heightCm": "cm",
+      "muacCm": "cm"
+    },
+    "capture": {
+      "notRoutine": "not routine",
+      "fromDevice": "device",
+      "carriedLocked": "carried forward — locked until a reason",
+      "bpBoth": "BP needs both numbers — type 150-90 or 150/90",
+      "bpOrder": "The top number is the bigger one — type it as 150-90",
+      "tempUnit": "Type the temperature in °C (like 37.2) or °F (like 99.0)",
+      "readsBp": "reads {{sys}}/{{dia}} mmHg",
+      "readsTempF": "{{f}} °F = {{c}} °C",
+      "readsTempC": "{{c}} °C",
+      "tempTypedF": "typed {{f}} °F",
+      "notANumber": "That is not a number",
+      "deviceSilent": "No reading from the device — type it",
+      "readDevice": "read device",
+      "held": "held out of the chart: {{values}}",
+      "missing": "Still needed: {{tiles}}",
+      "feeGate": "Not billed yet — the counter has not taken this visit's fee. Bill it at the counter, or press “Save & send NOW (emergency)” if this cannot wait.",
+      "save": "Save & send",
+      "saveNow": "Save & send NOW (emergency)",
+      "keys": "{{typed}} keys · {{device}} device reads",
+      "tint": {
+        "danger": "outside band — danger",
+        "notice": "outside band — the doctor is told ahead of the call",
+        "sam": "SAM — severe; its own emergency lane",
+        "mam": "MAM — nutrition counter flagged"
+      },
+      "rrNudge": "RR {{value}} in under fifteen seconds? Charted — but count it:",
+      "rrCount": "count 15 s",
+      "rrCounting": "counting… {{seconds}} s — watch the chest",
+      "rrCounted": "fifteen seconds done — type the count",
+      "source": {
+        "auto": "AUTO",
+        "typed": "TYPED",
+        "counted": "COUNTED",
+        "rodeCuff": "RODE THE CUFF"
+      },
+      "reenter": "Re-enter {{tile}}",
+      "delta": "{{month}} {{from}} → {{delta}}",
+      "weightQuiet": "🔇 never said aloud — it's on the slip"
+    },
+    "gate": {
+      "slippedDigit": "{{value}} kg on an adult — a slipped digit becomes a chart fact in one keystroke",
+      "shrinkingAdult": "height {{value}} against {{last}} — re-measure once before it becomes true",
+      "probeError": "SpO₂ read {{value}}% — held OUT of the chart. A talking patient at {{value}}% is a probe problem until proven otherwise; re-clip and take it again",
+      "fix": "It was {{value}}",
+      "retake": "Take it again",
+      "confirm": "It is real — chart it",
+      "confirmProbe": "It is real — the patient IS that low. Chart it and send"
+    },
+    "unlock": {
+      "label": "Reason to re-measure",
+      "pick": "re-measure? pick the reason",
+      "serverLocked": "The server holds this value locked — pick a reason to change it",
+      "was": "old value kept beside the new one: {{value}}",
+      "reason": {
+        "yearly_remeasure_due": "yearly re-measure due",
+        "patient_disputes_old_value": "patient disputes the old value",
+        "posture_or_device_changed": "posture / device changed",
+        "surgical_or_limb_change": "surgical or limb change"
+      }
+    },
+    "chips": {
+      "fasting": "khali pet?",
+      "bp_med_taken": "BP ki dawa li?",
+      "just_climbed_stairs": "abhi seedhi chadh kar aaye?",
+      "yes": "yes",
+      "no": "no"
+    },
+    "saved": {
+      "title": "Saved {{who}} — sent to {{doctor}}'s board",
+      "amended": "Amended {{who}} — {{doctor}}'s board refreshed",
+      "feeWaived": "Saved without a bill — emergency. The fee is still due: the counter and the doctor are both shown this.",
+      "danger": "DANGER flagged: {{vitals}}",
+      "notice": "Told the doctor ahead of the call: {{vitals}}",
+      "dismiss": "dismiss"
+    },
+    "protocol": {
+      "otherArm": "Danger reading — the OTHER ARM, now. Rest is refused at danger numbers.",
+      "calmed": "The other arm is inside the band — both readings go to the doctor as a pair, the board does not move.",
+      "escalated": "Went NOW as class 0 (was class {{from}}) — {{doctor}}'s screen flashed. Do not send them alone.",
+      "cancel": "CANCEL",
+      "committed": "cancel window closed — class 0 stands. Reversing now is a supervisor action, not a keystroke.",
+      "cancelled": "Cancelled — back to class {{from}}. The chart keeps the reading.",
+      "again": "Danger reading — take it AGAIN, now, before anything else. Rest is refused at danger numbers.",
+      "rerunAsk": "A cancelled bump is not re-run by the agent. This reading is danger again —",
+      "rerunGo": "run the protocol again"
+    },
+    "rest": {
+      "offer": "Elevated, not dangerous — {{minutes}} minutes on the rest chairs, no chai, no phone-pacing. Recall at {{time}}; the first reading is held.",
+      "go": "Rest {{minutes}} min",
+      "sent": "To the rest chairs: {{who}} — recall at {{time}}. The desk is clear.",
+      "heldFirst": "First reading held from the bench: {{value}} — take the second, both go as a pair."
+    },
+    "doctor": "Doctor",
+    "allDoctors": "All doctors on the bench"
+  },
+  "unpaid": {
+    "title": "This patient has not paid the consultation fee yet.",
+    "notPaid": "NOT PAID",
+    "bypassed": "PASSED WITHOUT PAYING"
+  },
+  "opdConsult": {
+    "allergyBlocks": "blocks {{list}}",
+    "allergyUnknown": "Saved as written — the prescription check knows no rule for this, so it will not warn on it."
   }
 }

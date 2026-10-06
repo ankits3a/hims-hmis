@@ -35,12 +35,39 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
 | # | Screen | Acceptance |
 |---|---|---|
 | **M0** ✅ | Scaffold, sign-in, forced password change, fingerprint unlock, seat home, logout, en/hi | 38 jest tests; walk shots read |
-| M1 | **Vitals bay** | Bench list for my doctor. Capture BP with `/ - , .` or a space as separator, `inputMode` decimal, plausibility. Temperature sensed as °F or °C by band and charted in °C. Temperature optional; BP optional under 13. Danger flags and server prestage refusals shown in board words. Parser shared with web (#491) |
+| **M1** ✅ | **Vitals bay** (built 2026-10-06, see §3a) | Bench with a doctor filter; three doors (token, UHID, camera scan of a card). Capture BP with `/ - , .` or a space as separator, plausibility, the gate mirrors. Temperature sensed as °F or °C by band and charted in °C. Temperature optional; BP optional under 13 (the server's `requiredFor`). Danger protocol (other arm, class 0, cancel window), rest chairs, emergency save, fee gate in board words. Rules shared with web (#491) as ONE file |
 | M2 | **Slip desk** with `expo-camera` | Scan the slip QR, read back the patient, capture, then the auto-crop step: detected quad, draggable corners, homography warp. Uses #490's module, run on the JS thread with a 480px downscale, or with `expo-image-manipulator` for the warp. Same upload path and size cap as web |
 | M3 | **Doctor OPD queue + patient summary** | My queue now, call next, the patient's vitals/allergies/history card. Read-only consult notes; prescribing stays on the web until a doctor-desk board exists for phone |
 | M4 | **Desk One essentials** | Search by name/UHID/phone, register (minimal fields), token, collect with Cash or UPI. Money writes never queued offline |
 | M5 | **Roster** On-now and My duties | The boards' phone layouts (D6) |
 | M6 | Push and devices | `expo-notifications`. The server registers a device push token per session and sends existing alert kinds (roster flags, unpaid-token door, lab criticals). Devices are bound to sessions, with an admin "sign this phone out" |
+
+### 3a. M1 as built (2026-10-06)
+
+- **One rules file, two screens (DECIDED).** The plan named a new `packages/clinical-input` package. Built
+  instead as ONE source file, `packages/contracts/src/vitals-entry.ts`: pure TypeScript, no imports, not in
+  the contracts index. The web bay imports it by path (Vite bundles source; the server image already copies
+  `packages/contracts`, so the Dockerfile is untouched). The phone imports the same path: `metro.config.js`
+  watches the folder, and `nodeModulesPaths` lets Babel's helpers resolve for a file outside the app.
+  `apps/web/src/screens/vitals-bay-capture.tsx` re-exports it, so no web import changed.
+  `apps/mobile/__tests__/vitals-rules.test.ts` fails if either side grows its own parser.
+- **Same server routes, same guards:** `/opd/bench`, `/opd/queues/summary`, `/opd/visits/:id/prestage`,
+  `/vitals`, `/escalation{,/recheck,/escalate,/cancel}`, `/bench-state`, `/patients/qr/verify`,
+  `/patients/:id/allergies`, `/opd/cds/complete/allergen`.
+- **Keyboards:** the BP tile opens the phone pad (`phone-pad`: digits with `- , . /`), every other tile the
+  decimal pad. Android's decimal pad accepts no separator but ".", which is why BP differs.
+- **Deferred, with the reason:**
+  - *Amending a saved chart* — a correction with a reason and a trail is a second screen's worth of work;
+    a charted row says "use the vitals bay on a computer for now".
+  - *The serial device lane* — the web has no real driver either (`nullDriver`); nothing to port.
+  - *The ask bar / copilot* — every screen gets it together, later.
+  - *Realtime push* — the bench is re-read every 5 s while the app is in front; the web treats the push
+    as a hint and the poll as the truth too.
+  - *The first BP held across a rest* lives in memory: closing the app in those five minutes means
+    retyping the pair (the recall itself is the server's).
+  - *IBM Plex fonts and the CRK app icon* — still the system font and Expo's icon.
+  - *A slip's visit-number QR* — the bench row carries no visit number, so only a patient card (`q1.…`),
+    a token number or a UHID resolves; same as the web bay.
 
 **Offline rule (all milestones):** cached reads show their age ("as of 10:42"). A clinical or money write is never queued silently. With no network the button says so and stays disabled.
 
