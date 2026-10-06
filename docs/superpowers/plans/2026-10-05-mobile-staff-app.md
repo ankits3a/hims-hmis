@@ -36,7 +36,7 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
 |---|---|---|
 | **M0** ✅ | Scaffold, sign-in, forced password change, fingerprint unlock, seat home, logout, en/hi | 38 jest tests; walk shots read |
 | **M1** ✅ | **Vitals bay** (built 2026-10-06, see §3a) | Bench with a doctor filter; three doors (token, UHID, camera scan of a card). Capture BP with `/ - , .` or a space as separator, plausibility, the gate mirrors. Temperature sensed as °F or °C by band and charted in °C. Temperature optional; BP optional under 13 (the server's `requiredFor`). Danger protocol (other arm, class 0, cancel window), rest chairs, emergency save, fee gate in board words. Rules shared with web (#491) as ONE file |
-| M2 | **Slip desk** with `expo-camera` | Scan the slip QR, read back the patient, capture, then the auto-crop step: detected quad, draggable corners, homography warp. Uses #490's module, run on the JS thread with a 480px downscale, or with `expo-image-manipulator` for the warp. Same upload path and size cap as web |
+| **M2** ✅ | **Slip desk** (built 2026-10-06, see §3b) | Find the visit (scan, visit number, token as printed, UHID, name), the server's read-back and "check the person", full-screen camera with a lamp, the crop step (page found, four draggable corners with a loupe, Reset, Retake), perspective-straightened page, kind + note, file against the visit with progress; never queued. Detector and warp arithmetic shared with web (#490) |
 | M3 | **Doctor OPD queue + patient summary** | My queue now, call next, the patient's vitals/allergies/history card. Read-only consult notes; prescribing stays on the web until a doctor-desk board exists for phone |
 | M4 | **Desk One essentials** | Search by name/UHID/phone, register (minimal fields), token, collect with Cash or UPI. Money writes never queued offline |
 | M5 | **Roster** On-now and My duties | The boards' phone layouts (D6) |
@@ -74,6 +74,38 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
   alone), a visit number (any case, spaces, wrapped in text), the prescription sheet's QR (the bare visit
   number), a printed e-prescription's QR (`rx1.…`) and a patient card (`q1.…`, server-verified); a miss
   names what was understood, and `GET /opd/bench/locate` gives a visit's reason. Web and phone both use it.
+
+### 3b. M2 as built (2026-10-06)
+
+- **Same routes, same guards as the web desk:** `/opd/slips/today`, `/opd/visits/by-number/:visitNo`, `/opd/slips/find`,
+  `/patients/qr/verify`, `POST /patients/:id/documents` (1.5 MB refusal). A record the caller may not see answers as
+  "no such visit" and is absent from the list — the server's rule; the phone adds nothing.
+- **Shared, one copy:** `packages/contracts/src/doc-crop/{geometry,detect}.ts` (moved from `apps/web/src/lib/doc-crop`,
+  which now re-exports them) and `packages/contracts/src/slip-desk.ts` (size budget, wire shapes, `slipDoor`).
+  `slipDoor` sits on the vitals bay's `resolveDoor`, so the visit number, the token as printed (`ORT-4`), a UHID, a
+  printed e-prescription's QR and a patient card all resolve — and every road ends at the SERVER's read-back.
+  The web desk uses it too. Today's slip rows gained `tokenNo` and `departmentCode` (additive).
+- **Pixels on a phone — DECIDED: Skia.** React Native has no canvas. Considered: a pure-JS JPEG codec (seconds per page
+  in Hermes), a cloud service (no), and `@shopify/react-native-skia` — the engine Android draws with, compiled in by
+  prebuild: decode, read pixels, draw through a 3×3 perspective matrix, encode JPEG, all native. Skia only EXECUTES;
+  `detectDocument`, `homography`, `pageAspect` and `flatSize` (shared) decide. Every Skia call is guarded: if it fails
+  on some phone, finding answers "not found" and flattening falls back to a plain cut to the corners' rectangle
+  (`expo-image-manipulator`), and the screen says the page was not straightened.
+- **Resolution:** the camera's full photo is kept at up to 2560 px for cropping (the web works on 1600); only the
+  straightened page is brought down to 1600 px and inside 1.4 MB, stepping JPEG quality 82→40.
+- **Detection speed — measured on the build server, NOT on a phone:** the detector is plain JavaScript and Hermes has
+  no JIT. With the JIT on (a browser): 90 ms at 480 px, 40 ms at 320 px. With it off: 2.0 s at 480 px, 0.85 s at
+  320 px, 0.55 s at 256 px. At 320 px all four test photographs are still found (corners within 0.4% of the long edge
+  of the 480 px answer); at 256 px the lamp-lit one is lost. So the phone looks at a **320 px** copy. If a real phone
+  is still too slow, the next step is to move the grey/blur/threshold passes into Skia, or a native detector.
+- **Deferred, with the reason:**
+  - *Tap-to-focus* — expo-camera exposes no focus point; the rear camera focuses continuously. Needs another camera
+    library (react-native-vision-camera) if the owner's phone hunts.
+  - *Choose a photo from the gallery* — the web's fallback for a desk with no camera; a phone has one.
+  - *Arrow-key nudging of a corner, keyboard shortcuts* — keyboard affordances of the counter PC.
+  - *The "clocks running" panel* — the waiting minutes are on each row instead.
+- **Not verified without a phone:** the camera preview and capture, the lamp, Skia at runtime (decode, pixel read,
+  warp, JPEG), detection speed in Hermes, the loupe under a real thumb, upload progress on mobile data.
 
 **Offline rule (all milestones):** cached reads show their age ("as of 10:42"). A clinical or money write is never queued silently. With no network the button says so and stays disabled.
 

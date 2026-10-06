@@ -20,7 +20,7 @@ const config: ExpoConfig = {
   // that held this id was written by `eas init` run from /opt/hmis, whose package name is "hmis".
   slug: "hmis",
   scheme: "hmis",
-  version: "0.2.1",
+  version: "0.3.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
@@ -48,7 +48,7 @@ const config: ExpoConfig = {
     [
       // The vitals bay's scan door reads a patient card or slip. No microphone, no recording.
       "expo-camera",
-      { cameraPermission: "HMIS uses the camera to scan a patient card or slip.", recordAudioAndroid: false },
+      { cameraPermission: "HMIS uses the camera to scan a patient card or slip, and to photograph a slip.", recordAudioAndroid: false },
     ],
   ],
   extra: {

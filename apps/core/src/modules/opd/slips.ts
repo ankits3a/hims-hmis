@@ -58,6 +58,9 @@ export type SlipDayRow = {
   patient: PatientSummary;
   doctorCode: string | null;
   roomName: string | null;
+  /** Owner 2026-10-06 — the token as the slip prints it (`<departmentCode>-<tokenNo>`); the desk may type that instead of the visit number. */
+  tokenNo: number | null;
+  departmentCode: string | null;
   state: SlipState;
   /** When the consultation finished — the waiting clock starts here. */
   consultDoneAt: Date | null;
@@ -78,10 +81,11 @@ export type SlipDay = {
 type Context = {
   doctorCode: Map<string, string>;
   departmentName: Map<string, string>;
+  departmentCode: Map<string, string>;
   /** encounterId → room name, from the newest queue entry's session. */
   roomName: Map<string, string>;
   /** encounterId → the newest queue entry's status and done time. */
-  entry: Map<string, { status: string; doneAt: Date | null }>;
+  entry: Map<string, { status: string; doneAt: Date | null; tokenNo: number }>;
 };
 
 /** The doctor, department and room for a set of encounters — one query per table, never per row. */
@@ -93,10 +97,10 @@ async function contextFor(db: Db, encounters: readonly EncounterRow[]): Promise<
   const doctors = doctorIds.length === 0 ? [] : await db
     .select({ id: opdDoctors.id, code: opdDoctors.code }).from(opdDoctors).where(inArray(opdDoctors.id, doctorIds));
   const departments = departmentIds.length === 0 ? [] : await db
-    .select({ id: opdDepartments.id, name: opdDepartments.name }).from(opdDepartments).where(inArray(opdDepartments.id, departmentIds));
+    .select({ id: opdDepartments.id, name: opdDepartments.name, code: opdDepartments.code }).from(opdDepartments).where(inArray(opdDepartments.id, departmentIds));
   const entries = encounterIds.length === 0 ? [] : await db
     .select({
-      encounterId: opdQueueEntries.encounterId, status: opdQueueEntries.status, doneAt: opdQueueEntries.doneAt,
+      encounterId: opdQueueEntries.encounterId, status: opdQueueEntries.status, doneAt: opdQueueEntries.doneAt, tokenNo: opdQueueEntries.tokenNo,
       roomName: resources.name,
     })
     .from(opdQueueEntries)
@@ -105,15 +109,16 @@ async function contextFor(db: Db, encounters: readonly EncounterRow[]): Promise<
     .where(inArray(opdQueueEntries.encounterId, encounterIds))
     .orderBy(asc(opdQueueEntries.seq));
 
-  const entry = new Map<string, { status: string; doneAt: Date | null }>();
+  const entry = new Map<string, { status: string; doneAt: Date | null; tokenNo: number }>();
   const roomName = new Map<string, string>();
   for (const r of entries) { // ascending seq ⇒ the newest entry is the last write
-    entry.set(r.encounterId, { status: r.status, doneAt: r.doneAt });
+    entry.set(r.encounterId, { status: r.status, doneAt: r.doneAt, tokenNo: r.tokenNo });
     if (r.roomName !== null) roomName.set(r.encounterId, r.roomName);
   }
   return {
     doctorCode: new Map(doctors.map((d) => [d.id, d.code])),
     departmentName: new Map(departments.map((d) => [d.id, d.name])),
+    departmentCode: new Map(departments.map((d) => [d.id, d.code])),
     roomName,
     entry,
   };
@@ -182,6 +187,8 @@ export async function slipDay(db: Db, actor: Actor, now: Date = new Date()): Pro
       encounterId: e.id, patientId: e.patientId, visitNo: e.visitNo, patient,
       doctorCode: e.doctorId === null ? null : ctx.doctorCode.get(e.doctorId) ?? null,
       roomName: ctx.roomName.get(e.id) ?? null,
+      tokenNo: ctx.entry.get(e.id)?.tokenNo ?? null,
+      departmentCode: e.departmentId === null ? null : ctx.departmentCode.get(e.departmentId) ?? null,
       state,
       consultDoneAt: ctx.entry.get(e.id)?.doneAt ?? e.consultCompletedAt ?? null,
       filedAt: newest?.capturedAt ?? null,
