@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
@@ -452,6 +454,52 @@ it("SHELL-UX: the Menu button opens the places and a navigation closes them", as
   act(() => { screen.getByRole("link", { name: "Dues" }).click(); });
   await waitFor(() => { expect(nav).not.toHaveClass("open"); });
   expect(menu).toHaveAttribute("aria-expanded", "false");
+});
+
+/**
+ * A PHONE'S HEADER IS ONE ROW (owner's phone, 2026-10-05: the header took two rows, then a banner and
+ * the patient strip, a quarter of the screen before the work). At ≤700 px the identity row keeps the
+ * mark, Menu, search and the bell; who is signed in, the language, the theme and Log out show at the
+ * top of the opened Menu. jsdom lays nothing out, so this pins the three things the stylesheet hangs
+ * on — the header's `menu-open` class, the search button's name once its sentence is hidden, and the
+ * rules themselves — and the browser walk is what looked.
+ */
+it("phone header: the opened Menu is marked on the header, where the account controls show", async () => {
+  renderShell(["patients.merge", "billing.invoice.read"]);
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+  const menu = await screen.findByRole("button", { name: "Menu" });
+  const header = menu.closest("header");
+  expect(header).not.toBeNull();
+  expect(header).not.toHaveClass("menu-open");
+  // One of each, in the identity row — the Menu shows these, it does not copy them.
+  expect(screen.getAllByRole("button", { name: "Log out" })).toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: "हिन्दी" })).toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: "Theme" })).toHaveLength(1);
+
+  act(() => { menu.click(); });
+  expect(header).toHaveClass("menu-open");
+  act(() => { menu.click(); });
+  expect(header).not.toHaveClass("menu-open");
+});
+
+it("phone header: the search button keeps its name when only its icon is drawn", async () => {
+  renderShell(["patients.merge"]);
+  await act(async () => { await router.navigate({ to: "/merge" }); });
+  const find = await screen.findByRole("button", { name: "Search — the cursor starts here" });
+  expect(find).toHaveAttribute("aria-label", "Search — the cursor starts here");
+  expect(find.querySelector("svg.ico")).not.toBeNull();
+});
+
+it("phone header: the stylesheet folds the account controls into the Menu at 700 px, and only there", () => {
+  const css = readFileSync(join(__dirname, "styles", "shell.css"), "utf8");
+  const at = css.indexOf("@media (max-width: 700px)");
+  expect(at).toBeGreaterThan(-1);
+  const phone = css.slice(at);
+  expect(phone).toMatch(/\.shell \.top \.util[^{]*\{[^}]*display: none/);
+  expect(phone).toMatch(/\.shell\.menu-open \.top \.util[^{]*\{[^}]*display: inline-flex/);
+  expect(phone).toMatch(/\.shell\.menu-open \.top \.util[^{]*\{[^}]*min-height: 44px/);
+  // Nothing above the phone block hides them: a desktop keeps its row.
+  expect(css.slice(0, at)).not.toMatch(/\.util[^{]*\{[^}]*display: none/);
 });
 
 /**

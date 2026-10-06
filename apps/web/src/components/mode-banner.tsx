@@ -53,7 +53,7 @@ export function ModeBanner(): React.ReactElement | null {
       data-testid="mode-banner"
       data-mode={data.mode}
       role="status"
-      className={`no-print w-full border-b px-4 py-2 text-sm font-medium ${MODE_TONE[data.mode]}`}
+      className={`shell-mode no-print w-full border-b px-4 py-2 text-sm font-medium ${MODE_TONE[data.mode]}`}
     >
       <span data-testid="mode-banner-word">{t(`opsMode.mode.${data.mode}`)}</span>
       {data.note !== null && data.note !== "" && (
