@@ -3,15 +3,18 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import Index from "../app/index";
 import { I18nProvider } from "../src/i18n";
 import { SessionProvider } from "../src/session";
+import { _forgetDeviceForTests } from "../src/device";
 
 jest.mock("expo-secure-store", () => {
-  let v: string | null = null;
+  // Keyed, like the real store: the session and the phone's own id (M6a) live under different keys.
+  const store = new Map<string, string>();
   return {
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 0,
-    getItemAsync: jest.fn(async () => v),
-    setItemAsync: jest.fn(async (_k: string, val: string) => { v = val; }),
-    deleteItemAsync: jest.fn(async () => { v = null; }),
-    __reset: () => { v = null; },
+    getItemAsync: jest.fn(async (k: string) => store.get(k) ?? null),
+    setItemAsync: jest.fn(async (k: string, val: string) => { store.set(k, val); }),
+    deleteItemAsync: jest.fn(async (k: string) => { store.delete(k); }),
+    __reset: () => { store.clear(); },
+    __get: (k: string) => store.get(k) ?? null,
   };
 });
 jest.mock("expo-local-authentication", () => ({
@@ -19,7 +22,8 @@ jest.mock("expo-local-authentication", () => ({
   isEnrolledAsync: jest.fn(async () => false),
   authenticateAsync: jest.fn(async () => ({ success: true })),
 }));
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }));
+const mockPush = jest.fn();
+jest.mock("expo-router", () => ({ useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a), back: jest.fn() }) }));
 
 type Route = (init: RequestInit | undefined) => { status: number; body?: unknown };
 
@@ -61,7 +65,74 @@ async function signIn(username = "asha.devi", password = "correct horse") {
 }
 
 describe("sign-in flow", () => {
-  beforeEach(() => (jest.requireMock("expo-secure-store") as { __reset: () => void }).__reset());
+  beforeEach(() => {
+    (jest.requireMock("expo-secure-store") as { __reset: () => void }).__reset();
+    _forgetDeviceForTests();
+    mockPush.mockClear();
+  });
+
+  /*
+    ═══ M6a — THIS PHONE (owner 2026-10-06: staff use personal phones) ═══
+  */
+  it("the sign-in names this phone: an id made once per install, what the phone says it is, and the build — never a secret", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const { fetcher } = server({
+      "POST /auth/login": (init) => { bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>); return { status: 200, body: { token: "t1" } }; },
+      "GET /auth/me": () => ({ status: 200, body: ME }),
+      "POST /auth/logout": () => ({ status: 204 }),
+    });
+    await mount(fetcher);
+    await signIn();
+    await fireEvent.press(await screen.findByTestId("logout"));
+    await signIn();
+    await screen.findByTestId("seat-vitals");
+    expect(bodies).toHaveLength(2);
+    const first = bodies[0]!.device as { deviceId: string; appVersion: string };
+    // The shape the server's `deviceClaimSchema` accepts.
+    expect(first.deviceId).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+    expect(first.appVersion).toMatch(/^\d+\.\d+\.\d+ \(\d+\)$/);
+    expect(Object.keys(bodies[0]!).sort()).toEqual(["device", "password", "username"]);
+    // Logging out clears the session, NOT the phone's id: the second sign-in is the same phone.
+    expect((bodies[1]!.device as { deviceId: string }).deviceId).toBe(first.deviceId);
+    const store = jest.requireMock("expo-secure-store") as { __get: (k: string) => string | null };
+    expect(store.__get("hmis.device")).toBe(first.deviceId);
+    // The session remembers when this phone signed in, for the Account screen.
+    expect(typeof (JSON.parse(store.__get("hmis.session")!) as { since?: string }).since).toBe("string");
+  });
+
+  it("the third phone is told so in words — which phones hold the places, and who can free one — not 'wrong password'", async () => {
+    const { fetcher } = server({
+      "POST /auth/login": () => ({ status: 409, body: { code: "phone_limit_reached", message: "x", limit: 2, phones: [{ model: "Redmi Note 12", lastSeenAt: "2026-10-06T05:00:00.000Z" }, { model: null, lastSeenAt: "2026-10-05T05:00:00.000Z" }] } }),
+    });
+    await mount(fetcher);
+    await signIn();
+    const said = await screen.findByTestId("login-error");
+    expect(said).toHaveTextContent("You are already signed in on 2 other phones (Redmi Note 12, a phone). Ask the administrator to sign one out — Users, then Phones — and sign in again.");
+    expect(screen.getByTestId("username")).toBeTruthy();
+  });
+
+  it("a phone the administrator signed out returns to sign-in when it is next opened, says why it might be, and drops the dead token", async () => {
+    const store = jest.requireMock("expo-secure-store") as { setItemAsync: (k: string, v: string) => Promise<void>; __get: (k: string) => string | null };
+    await store.setItemAsync("hmis.session", JSON.stringify({ token: "t-signed-out", username: "asha.devi", since: "2026-10-06T03:30:00.000Z" }));
+    // The server no longer knows this token: every call with it is a 401.
+    const { fetcher, calls } = server({ "GET /auth/me": () => ({ status: 401, body: { message: "Unauthorized" } }) });
+    await mount(fetcher);
+    expect(await screen.findByTestId("expired")).toHaveTextContent("You are signed out — your session ended, or an administrator signed this phone out. Sign in again.");
+    expect(calls).toEqual(["GET /auth/me"]);
+    expect(store.__get("hmis.session")).toBeNull();
+    expect(screen.getByTestId("username")).toBeTruthy();
+  });
+
+  it("the home screen leads to 'This phone and my account'", async () => {
+    const { fetcher } = server({
+      "POST /auth/login": () => ({ status: 200, body: { token: "t1" } }),
+      "GET /auth/me": () => ({ status: 200, body: ME }),
+    });
+    await mount(fetcher);
+    await signIn();
+    await fireEvent.press(await screen.findByTestId("account-open"));
+    expect(mockPush).toHaveBeenCalledWith("/account");
+  });
 
   it("signs in and offers only the screens the role allows", async () => {
     const { fetcher, calls } = server({

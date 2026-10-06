@@ -34,7 +34,7 @@
     "wrongCurrent": "The current password is wrong",
     "policy": "The new password does not meet the rule above",
     "network": "The server could not be reached. Check the phone’s internet and try again.",
-    "expired": "Your session ended. Sign in again.",
+    "expired": "You are signed out — your session ended, or an administrator signed this phone out. Sign in again.",
     "staging": "STAGING · test data only",
     "seatTitle": "Your screens",
     "seatHint": "Only the screens your role allows are shown.",
@@ -465,6 +465,23 @@
           "12": "Dec"
         }
       }
+    },
+    "phoneLimit": "You are already signed in on {{count}} other phones ({{phones}}). Ask the administrator to sign one out — Users, then Phones — and sign in again.",
+    "phoneLimitUnknown": "a phone",
+    "account": {
+      "open": "This phone and my account",
+      "title": "This phone",
+      "signedInAs": "Signed in as {{name}}",
+      "since": "since {{when}}",
+      "sinceUnknown": "The sign-in time was not kept by the older build that opened this session.",
+      "phone": "Phone",
+      "phoneUnknown": "Not reported by this phone",
+      "app": "App",
+      "appLine": "HMIS {{version}} (build {{code}})",
+      "server": "Server",
+      "lost": "If this phone is lost or changes hands, tell the administrator: they can sign this phone out without changing your password.",
+      "limit": "You can be signed in on two phones at a time.",
+      "logout": "Log out of this phone"
     }
   },
   "screen": {
