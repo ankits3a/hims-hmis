@@ -70,7 +70,10 @@ export type OpdErrorCode =
   // Owner 2026-10-05 — "Wrong department — move patient". A move to the department the visit is
   // already in is the same-department "change the doctor" (400); a visit with a bill that still
   // stands is a credit note first (409 by the `_state_conflict` rule).
-  | "move_same_department" | "visit_billed_state_conflict";
+  | "move_same_department" | "visit_billed_state_conflict"
+  // 2026-10-06 — a completion that would drop prescription lines written and never issued
+  // (production 2026-09-23). 409 by the `_state_conflict` rule: issue or clear them, then complete.
+  | "rx_unissued_state_conflict";
 
 export class OpdError extends Error {
   constructor(

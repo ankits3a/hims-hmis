@@ -202,6 +202,199 @@
       "failed": "Could not check for an update just now.",
       "howTo": "The download opens in the browser. Tap the file when it finishes, then Install — your sign-in stays.",
       "version": "Version {{version}} · build {{code}}"
+    },
+    "counter": {
+      "step": {
+        "find": "Find",
+        "register": "Register",
+        "person": "Patient",
+        "seat": "Seat",
+        "bill": "Bill",
+        "done": "Done"
+      },
+      "sealed": "SEALED RECORD",
+      "justRegistered": "NEW",
+      "reading": "Reading…",
+      "cardRefused": "This card could not be verified — search by name, mobile or UHID instead.",
+      "moved": "Moved to {{dept}} — new token {{token}}. New slips print at the counter.",
+      "moveNetwork": "Not moved — the server could not be reached. Nothing was changed and nothing was collected. Check the internet and press the button again.",
+      "registerNetwork": "Not registered — the server could not be reached. Nothing was sent. Check the internet and press Register again.",
+      "seatUnknown": "No answer came back, so it is NOT known whether the visit was opened. Nothing is repeated: press Check and try again — the server answers with the visit it already made, or makes it once.",
+      "settleUnknown": "No answer came back, so it is NOT known whether the bill was made. Do not take the money twice. Press Check and try again — the server is asked first, and the same bill is never made a second time.",
+      "settleInProgress": "The server is still finishing the first request. Wait a moment and press Check and try again.",
+      "find": {
+        "title": "Who is at the desk?",
+        "hint": "Name, mobile or UHID",
+        "scan": "Scan card",
+        "go": "Find",
+        "none": "Nobody on file matches. Check the spelling or the number — or register a new patient.",
+        "new": "New patient",
+        "noRegister": "This login cannot register a new patient — send them to the registration counter.",
+        "foot": "Search first — most patients are already on file.",
+        "match": {
+          "uhid": "UHID matches",
+          "mobile": "mobile matches",
+          "name": "name matches",
+          "onFile": "on file"
+        }
+      },
+      "reg": {
+        "title": "New patient",
+        "name": "Full name",
+        "sex": "Sex",
+        "sex_male": "Male",
+        "sex_female": "Female",
+        "sex_other": "Other",
+        "age": "Age or date of birth",
+        "ageHint": "34  or  14/03/1986",
+        "phone": "Mobile (optional)",
+        "address": "Address (optional)",
+        "guardianTitle": "Guardian — needed for a patient under 18",
+        "guardianWhy": "A minor's registration must name a guardian. Messages and bills go to them.",
+        "guardianName": "Guardian's name",
+        "guardianRel": "Relationship",
+        "guardianPhone": "Guardian's mobile (optional)",
+        "rel": {
+          "father": "Father",
+          "mother": "Mother",
+          "spouse": "Spouse",
+          "sibling": "Brother / sister",
+          "legal_guardian": "Legal guardian",
+          "other": "Other"
+        },
+        "gap": {
+          "sex": "Choose the sex.",
+          "age": "Type the age in years, or the date of birth as day/month/year.",
+          "phone": "A mobile number is 10 digits and starts with 6, 7, 8 or 9.",
+          "guardian": "Write the guardian's name and choose the relationship."
+        },
+        "rest": "ABHA, insurance and the other details are added at the counter computer or from the patient's profile.",
+        "submit": "Register",
+        "dupTitle_one": "{{count}} patient on file looks the same",
+        "dupTitle_other": "{{count}} patients on file look the same",
+        "dupWhy": "Is it one of these? Taking the existing record avoids a second file for one person.",
+        "dupTake": "This is them",
+        "dupAnyway": "None of these — register as new"
+      },
+      "person": {
+        "openToday": "Already open today",
+        "openThis": "Open this visit",
+        "referral": "referral",
+        "linked_one": "Shares a contact number · {{count}} patient",
+        "linked_other": "Shares a contact number · {{count}} patients",
+        "history": "Their visits",
+        "noHistory": "No earlier visit on file.",
+        "seat": "Open a visit",
+        "another": "Open another visit",
+        "noOpen": "This login cannot open a visit."
+      },
+      "seat": {
+        "complaint": "What brings them in?",
+        "complaintHint": "In the patient's words — it goes to the doctor",
+        "pickDept": "Department",
+        "pickDoctor": "Doctor",
+        "stale": "No connection — the board shown may be old.",
+        "noBoard": "No doctor is on today's board yet. A supervisor opens the day's sessions at the computer.",
+        "deptWait_one": "{{count}} waiting",
+        "deptWait_other": "{{count}} waiting",
+        "deptShut": "nobody today",
+        "waiting_one": "{{count}} waiting",
+        "waiting_other": "{{count}} waiting",
+        "about": "about {{min}} min",
+        "room": "Room {{room}}",
+        "away": "on leave today",
+        "notToday": "not sitting today",
+        "anchor": "Last seen by {{doctor}} on {{seen}}. With the same doctor today this is a {{kind}} visit.",
+        "anchorLong": "Last seen by {{doctor}} on {{seen}} ({{kind}} with them today) — but their line is about {{min}} min. The shortest line is picked; tap {{doctor}} to keep the same doctor.",
+        "anchorAway": "Last seen by {{doctor}} on {{seen}} — not sitting today.",
+        "sawLast": "saw them last",
+        "pickFirst": "Pick the department and the doctor",
+        "go": "Open the visit with {{doctor}}",
+        "again": "Check and try again"
+      },
+      "bill": {
+        "token": "Token",
+        "paid": "PAID",
+        "unpaid": "UNPAID",
+        "free": "FREE",
+        "joining": "Taking the position in the line…",
+        "heldF2": "The place in the line is taken. The token slip is released when the bill is settled.",
+        "heldF3": "No token yet — it is given once the bill is settled.",
+        "tokenOnSlip": "The token is the one on the patient's slip.",
+        "title": "Consultation fee",
+        "quoteFailed": "The fee could not be read from the server.",
+        "elsewhere": "The fee is collected at the billing counter — this login does not take money.",
+        "nothingFeesOff": "Nothing to collect — the consultation fee is switched off.",
+        "nothing": "Nothing to collect on this visit.",
+        "freeReview": "Review visit — free till {{till}}.",
+        "freeReferral": "Referral visit — free till {{till}}.",
+        "gst": "GST",
+        "rounding": "Rounding",
+        "toCollect": "To collect",
+        "collected": "Collected",
+        "leaveUnpaid": "Leave it unpaid — the billing counter collects",
+        "already": "Already billed on {{no}} — nothing more to collect for this visit's fee.",
+        "how": "Paid by",
+        "collect": "Collect {{amount}} · {{mode}}",
+        "again": "Check and try again",
+        "done": "Done"
+      },
+      "cash": {
+        "none": "No cash session is open on this login",
+        "why": "Money is taken only inside a cash session — it is what the drawer is counted against at the end of the shift. Open one here, or at the billing computer.",
+        "float": "Opening float in the drawer (₹)",
+        "open": "Open my cash session",
+        "floatBad": "Type the float as rupees — 0 if the drawer is empty."
+      },
+      "paper": {
+        "title": "Paper",
+        "where": "Slips print at the counter's printer — the server sends them there, not this phone.",
+        "waiting": "Printing {{n}} of {{of}}…",
+        "printed": "The slips have printed.",
+        "didNot": "Did not print: {{docs}}.",
+        "again": "Print again",
+        "againDoc": "Print the {{doc}} again",
+        "sentAgain": "The {{doc}} was sent to the printer again.",
+        "refused": "That paper could not be printed again from this login.",
+        "job": {
+          "queued": "waiting for the printer",
+          "claimed": "at the printer",
+          "printed": "printed",
+          "failed": "did not print",
+          "cancelled": "cancelled"
+        }
+      },
+      "doc": {
+        "opd_token_slip": "token slip",
+        "opd_prescription": "prescription sheet",
+        "opd_payment_receipt": "payment receipt",
+        "vitals_slip": "vitals slip",
+        "pharmacy_bill": "pharmacy bill",
+        "pharmacy_labels": "medicine labels",
+        "opd_glasses_rx": "glasses prescription"
+      },
+      "status": {
+        "registered": "registered",
+        "waiting": "waiting",
+        "in_consultation": "with the doctor",
+        "awaiting_results": "waiting for results",
+        "completed": "seen",
+        "abandoned": "cancelled"
+      },
+      "card": {
+        "title": "Visit",
+        "paper": "Paper for this visit",
+        "noPaper": "No paper was printed for this visit.",
+        "bills": "Bills",
+        "noBills": "No bill on this visit.",
+        "noMove": "This visit cannot be moved from the desk — once the doctor has seen the patient, the doctor refers them."
+      },
+      "done": {
+        "title": "Done",
+        "next": "Next patient",
+        "receipt": "Bill {{no}} · receipt {{receipt}} · {{amount}} by {{mode}}",
+        "billed": "Bill {{no}} · {{amount}}"
+      }
     }
   },
   "screen": {
@@ -684,5 +877,63 @@
     "refillTimes": "Pharmacy: bought {{n}} times on this prescription · last {{date}}, {{days}} days (due {{due}})",
     "refillNoDays": "Pharmacy: bought on {{date}}",
     "refillNone": "Pharmacy: not bought at this hospital's pharmacy"
+  },
+  "registrationCounter": {
+    "move": {
+      "open": "Wrong department? Move patient",
+      "title": "Move the patient to the right department",
+      "explain": "This visit is cancelled and a new one opens in the department you pick, with that department's token. The OPD report follows by itself.",
+      "from": "From",
+      "toDept": "To department",
+      "toDoctor": "Doctor",
+      "noTargets": "No other department has a doctor on today's board.",
+      "waiting_one": "{{count}} waiting",
+      "waiting_other": "{{count}} waiting",
+      "now": "Now",
+      "after": "In {{dept}}",
+      "free": "Free",
+      "feesOff": "Free (consultation fee switched off)",
+      "vt": {
+        "new": "New",
+        "revisit": "Revisit",
+        "renewal": "Renewal"
+      },
+      "reasonHint": "Why — e.g. booked in Orthopaedics by mistake, patient needs medicine",
+      "reasonRequired": "Write why the patient is being moved — it is recorded.",
+      "pickBoth": "Pick the department and the doctor first.",
+      "slips": "The old token is cancelled on the board; a new token and prescription sheet print for the new department.",
+      "submit": "Move to {{dept}}",
+      "submitBare": "Move patient",
+      "cancel": "Leave it",
+      "billed": "A bill is already issued, so the patient cannot be moved from the desk: raise a credit note on it in the Billing office first, then move the patient.",
+      "billedNo": "Bill {{no}} stands against this visit. Raise a credit note on it in the Billing office first, then move the patient.",
+      "done": "moved from {{from}} to {{to}} — new token {{token}}; new slips print",
+      "refused": "move REFUSED",
+      "apptCross": "Different department — moving the booking from {{from}} to {{to}}. Say why:",
+      "money": {
+        "zeroBill": "The ₹0 bill {{no}} is corrected and the new visit gets its own — nothing to collect.",
+        "transfer": "{{paid}} paid on bill {{no}} moves to the new visit — no refund, nothing more to collect.",
+        "lower": "{{paid}} was paid; the consultation costs {{fee}} there. {{left}} stays as the patient's credit — refund it from Refunds if they want cash.",
+        "higher": "{{paid}} was paid; the consultation costs {{fee}} there. Collect {{diff}} now:",
+        "differsDesk": "The fee is different there ({{paid}} paid, {{fee}} there) — the billing counter makes this move.",
+        "office": {
+          "other_services": "Bill {{no}} carries more than the consultation — the Billing office corrects it first, then the patient is moved.",
+          "on_credit": "Bill {{no}} is on credit — the Billing office settles it first, then the patient is moved.",
+          "part_paid": "Bill {{no}} is only part paid — the Billing office settles it first, then the patient is moved.",
+          "several_bills": "This visit carries more than one bill — the Billing office corrects them first, then the patient is moved."
+        },
+        "mode": {
+          "cash": "Cash",
+          "upi": "UPI",
+          "card": "Card"
+        },
+        "refHint": "UPI / card reference",
+        "refRequired": "Write the UPI or card reference first.",
+        "submitCollect": "Collect {{diff}} and move to {{dept}}",
+        "doneTransfer": "payment moved to bill {{bill}}",
+        "doneCredit": "{{amount}} kept as the patient's credit",
+        "doneCollected": "{{amount}} collected"
+      }
+    }
   }
 }

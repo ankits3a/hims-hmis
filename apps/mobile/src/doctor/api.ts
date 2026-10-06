@@ -10,7 +10,7 @@ import type {
  * `lab.results.read`, `radiology.reports.read`) and behind `requireTreatingDoctor` for every act on
  * a visit. Nothing here decides who is callable, who is held for the bill, or who may be completed.
  */
-export type Call = <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown) => Promise<T>;
+export type Call = <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown, idempotencyKey?: string) => Promise<T>;
 
 export type WireVisitVitals = {
   id: string; heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;

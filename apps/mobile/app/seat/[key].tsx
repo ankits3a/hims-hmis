@@ -2,6 +2,7 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { View } from "react-native";
 import { Text } from "../../src/text";
 import { useI18n } from "../../src/i18n";
+import { DeskOne } from "../../src/screens/desk-one";
 import { DoctorQueue } from "../../src/screens/doctor-queue";
 import { SlipDesk } from "../../src/screens/slip-desk";
 import { VitalsBay } from "../../src/screens/vitals-bay";
@@ -22,6 +23,7 @@ export default function SeatScreen() {
   if (seat.key === "vitals") return <VitalsBay />;
   if (seat.key === "slips") return <SlipDesk />;
   if (seat.key === "consult") return <DoctorQueue />;
+  if (seat.key === "counter") return <DeskOne />;
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band />
