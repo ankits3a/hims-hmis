@@ -231,3 +231,24 @@
   .sd-card-gd { font-size: 11.5px; color: #9a6208; margin-top: 4px; font-weight: 600; }
   .st-lane:has(.sd-card) { background: var(--paper); border-bottom: 0; padding: 14px 16px 0; }
 }
+
+/* ── the crop step (owner 2026-10-05): the page found, its corners draggable ── */
+.sd-crop { display: flex; flex-direction: column; gap: 8px; }
+.sd-crop-say { margin: 0; font-size: 13px; color: var(--dim); }
+.sd-crop-say.found { color: var(--green); }
+.sd-crop-say.none { color: #9a5b00; }
+.sd-crop-frame { background: #26332f; border-radius: 8px; padding: 18px; display: flex; justify-content: center; overflow: hidden; touch-action: none; }
+.sd-crop-stage { position: relative; max-width: 100%; user-select: none; -webkit-user-select: none; }
+.sd-crop-stage img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; -webkit-user-drag: none; }
+.sd-crop-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.sd-crop-stage .shade { fill: rgba(10, 22, 19, .55); }
+.sd-crop-stage .edge { fill: none; stroke: var(--mint); stroke-width: 2.5; }
+.sd-crop-h { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; padding: 0; border: 0; background: transparent; cursor: grab; touch-action: none; display: flex; align-items: center; justify-content: center; z-index: 2; }
+.sd-crop-h span { width: 22px; height: 22px; border-radius: 50%; background: rgba(255, 255, 255, .92); border: 3px solid var(--mint); box-shadow: 0 1px 4px rgba(0, 0, 0, .45); }
+.sd-crop-h[data-held="true"] { cursor: grabbing; }
+.sd-crop-h[data-held="true"] span { transform: scale(1.15); }
+.sd-crop-h:focus-visible span { outline: 3px solid #fff; outline-offset: 2px; }
+.sd-crop-loupe { position: absolute; width: 96px; height: 96px; margin: -150px 0 0 -48px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); background-repeat: no-repeat; background-color: #26332f; pointer-events: none; z-index: 3; }
+.sd-crop-loupe.below { margin-top: 54px; }
+.sd-crop-loupe::after { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid var(--mint); border-radius: 50%; }
+@media (max-width: 640px) { .sd-crop-frame { padding: 14px 10px; } }
