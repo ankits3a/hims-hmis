@@ -114,4 +114,4 @@ export function useDebounced(value: string, ms: number): string {
  * Hindi."* A service whose PRICE is zero — a fee switched off — prints its amount this way, in Hindi
  * whatever language the screen is in. A discounted line is not this: its price was not zero.
  */
-export const SAMAJ_SEVA_AMOUNT = "₹0 (समाज सेवा छूट)";
+export { SAMAJ_SEVA_AMOUNT } from "../../../../packages/contracts/src/desk-counter";

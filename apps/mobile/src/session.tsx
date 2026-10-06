@@ -35,8 +35,10 @@ type Session = {
   /**
    * A signed call for a screen: the session's token and transport, and ONE place where a session
    * the server has ended (401) returns the phone to sign-in instead of failing screen by screen.
+   * `idempotencyKey` rides as the web's `Idempotency-Key` header — for the two writes that must
+   * never happen twice (a visit, a bill): a retry with the SAME key is answered, not repeated.
    */
-  call: <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown) => Promise<T>;
+  call: <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown, idempotencyKey?: string) => Promise<T>;
   /**
    * A signed POST that reports how much of the body has left the phone (0–1) — for a photograph on
    * a slow connection. Same errors as `call` (`ApiError`, `NetworkError`), same 401 handling.
@@ -158,9 +160,9 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
   }, [token, fetcher, forgetAndSignIn]);
 
   const call = useCallback(
-    async <T,>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> => {
+    async <T,>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown, idempotencyKey?: string): Promise<T> => {
       try {
-        return await api<T>(method, path, { token, body, fetcher });
+        return await api<T>(method, path, { token, body, fetcher, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) });
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
           await tokenStore.clear();

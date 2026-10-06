@@ -122,6 +122,6 @@ export const s = StyleSheet.create({
   btn: { minHeight: TOUCH + 4, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingHorizontal: space.lg },
   btnPrimary: { backgroundColor: color.green, borderWidth: 1, borderColor: color.green },
   btnSecondary: { backgroundColor: color.card, borderWidth: 1, borderColor: color.greenLine },
-  btnText: { fontSize: 16, fontWeight: "700" },
+  btnText: { fontSize: 16, fontWeight: "700", textAlign: "center" },
   note: { borderWidth: 1, borderRadius: radius.md, padding: space.md, marginBottom: space.lg },
 });

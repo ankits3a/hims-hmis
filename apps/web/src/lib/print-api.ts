@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { paperState } from "../../../../packages/contracts/src/desk-counter";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -171,22 +172,16 @@ export function printSummary(jobs: WirePrintJob[]): {
 
     A DOCUMENT HAS ONE CURRENT STATE and it is the newest row's. Grouping by document and taking the
     latest `createdAt` is the whole fix: two rows for one slip are two ATTEMPTS at one thing, not
-    two things.
+    two things. (The grouping is `paperState` in packages/contracts/src/desk-counter.ts since
+    2026-10-06 — the phone's Desk One reads the same rule.)
   */
-  const latestPerDocument = new Map<string, WirePrintJob>();
-  for (const job of jobs) {
-    const held = latestPerDocument.get(job.document);
-    if (held === undefined || job.createdAt > held.createdAt) latestPerDocument.set(job.document, job);
-  }
-  const current = [...latestPerDocument.values()];
+  const { current, failed, pending } = paperState(jobs);
 
-  const failed = current.filter((j) => j.status === "failed");
   if (failed.length > 0) {
     /* De-duplicated by construction now: one entry per document, so one name per document. */
     const names = failed.map((j) => PRINT_DOCUMENT_LABEL[j.document] ?? j.document).join(" and ");
     return { state: "failed", text: `The ${names} did not print.`, failed };
   }
-  const pending = current.filter((j) => j.status === "queued" || j.status === "claimed");
   if (pending.length > 0) {
     return { state: "waiting", text: `Printing ${String(pending.length)} of ${String(current.length)}…`, failed: [] };
   }

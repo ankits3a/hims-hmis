@@ -33,11 +33,13 @@ export function codeOf(body: unknown): string {
 export async function api<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
-  opts: { token?: string | null; body?: unknown; fetcher?: Fetcher; base?: string } = {},
+  opts: { token?: string | null; body?: unknown; fetcher?: Fetcher; base?: string; idempotencyKey?: string } = {},
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  // The web's own header (`lib/api.ts`): the server answers a REPLAY of a key with the first answer, never a second write.
+  if (opts.idempotencyKey !== undefined) headers["Idempotency-Key"] = opts.idempotencyKey;
   let res: Response;
   try {
     res = await (opts.fetcher ?? fetch)(`${opts.base ?? API_BASE}${path}`, {
