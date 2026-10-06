@@ -1,10 +1,11 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { Linking } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
-import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_SEAT, _forgetOfferForTests, statusOf } from "../src/notifications";
-import { noteOf, type PushNote, type PushPermission, type PushPhone } from "../src/push-phone";
+import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
+import { noteOf, permissionOf, type PushNote, type PushPermission, type PushPhone } from "../src/push-phone";
 import { AccountScreen } from "../src/screens/account";
 import { NotificationsScreen } from "../src/screens/notifications";
 import { SeatHome } from "../src/screens/seat-home";
@@ -39,15 +40,34 @@ const ME = (perms: string[]) => ({ actor: { type: "user", id: "u1" }, permission
 const ADDRESS = "fGx1:APA91b-this-phones-fcm-address-0123456789";
 
 type Server = { configured: boolean; registered: boolean; muted: string[]; categories: string[] };
-function server(start: Partial<Server> = {}, perms: string[] = ["roster.read"], opts: { failWrites?: boolean } = {}) {
+type Opts = {
+  failWrites?: boolean;
+  /** What `GET /auth/phone/notifications` does instead of answering: a status, "network" (no signal) or "hang" (never answers). */
+  read?: number | "network" | "hang" | null;
+  /** The session names no phone until `POST /auth/phone/link` succeeds. `link` is that route's status. */
+  unlinked?: boolean; link?: number;
+};
+function server(start: Partial<Server> = {}, perms: string[] = ["roster.read"], opts: Opts = {}) {
   const state: Server = { configured: true, registered: false, muted: [], categories: ["alert", "roster"], ...start };
   const calls: { key: string; body: unknown }[] = [];
+  const o = { ...opts };
   const f = jest.fn(async (url: string, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${url.replace(/^https?:\/\/[^/]+\/api/, "")}`;
     const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
     calls.push({ key, body });
     if (key === "GET /auth/me") return new Response(JSON.stringify(ME(perms)), { status: 200 });
-    if (key === "GET /auth/phone/notifications") return new Response(JSON.stringify(state), { status: 200 });
+    if (key === "POST /auth/phone/link") {
+      if ((o.link ?? 200) !== 200) return new Response(JSON.stringify({ code: o.link === 409 ? "phone_limit_reached" : "x" }), { status: o.link });
+      o.unlinked = false;
+      return new Response(JSON.stringify({ linked: true }), { status: 200 });
+    }
+    if (key === "GET /auth/phone/notifications") {
+      if (o.unlinked === true) return new Response(JSON.stringify({ code: "not_a_phone" }), { status: 409 });
+      if (o.read === "network") throw new TypeError("Network request failed");
+      if (o.read === "hang") return new Promise<Response>(() => undefined);
+      if (typeof o.read === "number") return new Response(JSON.stringify({ message: "x" }), { status: o.read });
+      return new Response(JSON.stringify(state), { status: 200 });
+    }
     if (key === "PUT /auth/phone/notifications") {
       if (opts.failWrites === true) throw new TypeError("Network request failed");
       const b = body as { token?: string; muted?: string[] };
@@ -58,14 +78,15 @@ function server(start: Partial<Server> = {}, perms: string[] = ["roster.read"], 
     if (key === "DELETE /auth/phone/notifications") { state.registered = false; return new Response(JSON.stringify(state), { status: 200 }); }
     return new Response(JSON.stringify({ message: "not_found" }), { status: 404 });
   });
-  return { fetcher: f as unknown as typeof fetch, calls, state, keys: () => calls.map((c) => c.key) };
+  return { fetcher: f as unknown as typeof fetch, calls, state, keys: () => calls.map((c) => c.key), opts: o };
 }
 
 function phone(start: { inBuild?: boolean; permission?: PushPermission; answer?: PushPermission; token?: string | null; openedWith?: string | null } = {}) {
   let permission = start.permission ?? "undetermined";
   const heard: { received?: (n: PushNote) => void; opened?: (l: string) => void; token?: (t: string) => void } = {};
-  const asked = jest.fn(async () => { permission = start.answer ?? "granted"; return permission; });
-  const channels = jest.fn(async (_labels: Record<string, string>) => undefined);
+  const order: string[] = [];
+  const asked = jest.fn(async () => { order.push("ask"); permission = start.answer ?? "granted"; return permission; });
+  const channels = jest.fn(async (_labels: Record<string, string>) => { order.push("channels"); });
   const p: PushPhone = {
     inBuild: start.inBuild ?? true,
     permission: async () => permission,
@@ -77,7 +98,7 @@ function phone(start: { inBuild?: boolean; permission?: PushPermission; answer?:
     onOpened: (cb) => { heard.opened = cb; return () => undefined; },
     openedWith: async () => start.openedWith ?? null,
   };
-  return { p, asked, channels, heard };
+  return { p, asked, channels, heard, order, allowInSettings: () => { permission = "granted"; } };
 }
 
 function Gate({ what }: { what: "home" | "settings" | "account" }) {
@@ -85,10 +106,13 @@ function Gate({ what }: { what: "home" | "settings" | "account" }) {
   if (state.status !== "signedIn") return null;
   return what === "home" ? <SeatHome /> : what === "settings" ? <NotificationsScreen /> : <AccountScreen />;
 }
-async function mount(fetcher: typeof fetch, p: PushPhone, what: "home" | "settings" | "account" = "settings", lang: "en" | "hi" = "en") {
+const CLAIM = { deviceId: "dddddddddddddddddddddddddddddddd", model: "Redmi Note 12", os: "Android 14", appVersion: "0.8.1 (9)" };
+let comeToFront: () => void = () => undefined;
+async function mount(fetcher: typeof fetch, p: PushPhone, what: "home" | "settings" | "account" = "settings", lang: "en" | "hi" = "en", claim: (() => Promise<typeof CLAIM | null>) = async () => CLAIM) {
+  const foreground = (cb: () => void) => { comeToFront = cb; return () => undefined; };
   return await render(
     <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}>
-      <I18nProvider initial={lang}><SessionProvider fetcher={fetcher}><NotificationsProvider phone={p}><Gate what={what} /></NotificationsProvider></SessionProvider></I18nProvider>
+      <I18nProvider initial={lang}><SessionProvider fetcher={fetcher}><NotificationsProvider phone={p} foreground={foreground} claim={claim}><Gate what={what} /></NotificationsProvider></SessionProvider></I18nProvider>
     </SafeAreaProvider>,
   );
 }
@@ -96,19 +120,22 @@ async function mount(fetcher: typeof fetch, p: PushPhone, what: "home" | "settin
 beforeEach(() => {
   mockPush.mockClear();
   _forgetOfferForTests();
-  (jest.requireMock("expo-secure-store") as { __delete: (k: string) => void }).__delete("hmis.push.offer");
+  for (const k of ["hmis.push.offer", "hmis.push.wanted", "hmis.push.received"]) (jest.requireMock("expo-secure-store") as { __delete: (k: string) => void }).__delete(k);
 });
 
 describe("notifications on this phone (M6b)", () => {
-  it("names the five states from three facts, and 'on' needs all three", () => {
+  it("names each state from four facts, and 'on' needs all of them", () => {
     const on = { configured: true, registered: true, muted: [], categories: [] };
-    expect(statusOf(false, on, "granted")).toBe("notInBuild");
-    expect(statusOf(true, null, "granted")).toBe("unknown");
-    expect(statusOf(true, { ...on, configured: false }, "granted")).toBe("serverOff");
-    expect(statusOf(true, on, "denied")).toBe("denied");
-    expect(statusOf(true, { ...on, registered: false }, "granted")).toBe("off");
-    expect(statusOf(true, on, "undetermined")).toBe("off");
-    expect(statusOf(true, on, "granted")).toBe("on");
+    expect(statusOf(false, "ok", on, "granted")).toBe("notInBuild");
+    expect(statusOf(true, "checking", null, "granted")).toBe("unknown");
+    expect(statusOf(true, "unreachable", null, "granted")).toBe("unreachable");
+    expect(statusOf(true, "error", null, "granted")).toBe("serverError");
+    expect(statusOf(true, "notLinked", null, "granted")).toBe("notLinked");
+    expect(statusOf(true, "ok", { ...on, configured: false }, "granted")).toBe("serverOff");
+    expect(statusOf(true, "ok", on, "denied")).toBe("denied");
+    expect(statusOf(true, "ok", { ...on, registered: false }, "granted")).toBe("off");
+    expect(statusOf(true, "ok", on, "undetermined")).toBe("off");
+    expect(statusOf(true, "ok", on, "granted")).toBe("on");
   });
 
   it("a build without the hospital's Firebase project asks the person nothing and the server nothing", async () => {
@@ -172,7 +199,7 @@ describe("notifications on this phone (M6b)", () => {
     const s = server();
     await mount(s.fetcher, phone({ permission: "granted", token: null }).p, "settings");
     await fireEvent.press(await screen.findByTestId("push-enable"));
-    expect(await screen.findByTestId("push-problem")).toHaveTextContent(/could not be given a notification address/);
+    expect(await screen.findByTestId("push-problem")).toHaveTextContent(/Google did not give this phone a notification address/);
     expect(screen.getByTestId("push-status")).toHaveTextContent("Off on this phone");
   });
 
@@ -265,6 +292,145 @@ describe("notifications on this phone (M6b)", () => {
   });
 });
 
+/**
+ * THE OWNER'S PHONE, 2026-10-06 — two faults, both reproduced here before they were fixed.
+ *  (1) "The notification screen says Checking…": an app updated in place kept a session that named
+ *      no phone; the server answered `not_a_phone` and the screen waited for ever.
+ *  (2) "I allowed it in the app settings, the app still says the same": Android 13+ reports
+ *      `denied` before it has ever asked, so the app showed "blocked" without prompting, and it
+ *      never looked at the permission again after the person came back from the settings.
+ */
+describe("never stuck, and never deaf to the phone's settings (owner's phone, 2026-10-06)", () => {
+  it("Android 13+: 'denied, may ask again' is NOT a refusal — only 'may not ask again' is", () => {
+    expect(permissionOf({ status: "denied", canAskAgain: true })).toBe("undetermined"); // a fresh install
+    expect(permissionOf({ status: "denied", canAskAgain: false })).toBe("denied");
+    expect(permissionOf({ status: "undetermined" })).toBe("undetermined");
+    expect(permissionOf({ status: "granted" })).toBe("granted");
+    expect(permissionOf({ status: "denied", granted: true })).toBe("granted");
+  });
+
+  it("'Turn on' makes the notification channels BEFORE it asks — Android 13 shows no prompt to an app with no channel", async () => {
+    const s = server();
+    const ph = phone();
+    await mount(s.fetcher, ph.p, "settings");
+    await fireEvent.press(await screen.findByTestId("push-enable"));
+    await waitFor(() => expect(s.state.registered).toBe(true));
+    expect(ph.order.indexOf("channels")).toBeGreaterThanOrEqual(0);
+    expect(ph.order.indexOf("channels")).toBeLessThan(ph.order.indexOf("ask"));
+  });
+
+  it("blocked in settings → the person allows it there and comes back → the app registers by itself and says On", async () => {
+    const s = server();
+    const ph = phone({ permission: "denied" });
+    await mount(s.fetcher, ph.p, "settings");
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Blocked in this phone’s settings"));
+    const settings = jest.spyOn(Linking, "openSettings").mockResolvedValue(undefined);
+    await fireEvent.press(screen.getByTestId("push-settings")); // goes to Android's settings…
+    expect(settings).toHaveBeenCalled();
+    settings.mockRestore();
+    ph.allowInSettings();                                        // …allows HMIS there…
+    await waitFor(() => { comeToFront(); expect(s.state.registered).toBe(true); }); // …and returns to the app
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent(/^On$/));
+    expect(s.calls.find((c) => c.key === "PUT /auth/phone/notifications")?.body).toEqual({ token: ADDRESS, language: "en" });
+    expect(screen.queryByTestId("push-problem")).toBeNull();
+    expect(ph.asked).not.toHaveBeenCalled(); // no second prompt: the settings were the answer
+  });
+
+  it("'I have allowed it — check again' does the same by hand; while it is still blocked it says so and stays", async () => {
+    const s = server();
+    const ph = phone({ permission: "denied", answer: "denied" });
+    await mount(s.fetcher, ph.p, "settings");
+    await fireEvent.press(await screen.findByTestId("push-allowed"));
+    expect(await screen.findByTestId("push-problem")).toHaveTextContent("The phone did not allow notifications. Nothing was changed.");
+    expect(s.state.registered).toBe(false);
+    ph.allowInSettings();
+    await fireEvent.press(screen.getByTestId("push-allowed"));
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent(/^On$/));
+    expect(s.state.registered).toBe(true);
+  });
+
+  it("coming back to the app does NOT switch notifications on for somebody who never asked for them", async () => {
+    const s = server();
+    const ph = phone({ permission: "granted" });
+    await mount(s.fetcher, ph.p, "settings");
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Off on this phone"));
+    comeToFront();
+    await waitFor(() => expect(s.keys().filter((k) => k === "GET /auth/phone/notifications").length).toBeGreaterThanOrEqual(2));
+    expect(s.keys()).not.toContain("PUT /auth/phone/notifications");
+  });
+
+  it("a session that names no phone is LINKED to this one and carries on — nobody is signed out", async () => {
+    const s = server({}, ["roster.read"], { unlinked: true });
+    await mount(s.fetcher, phone().p, "settings");
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Off on this phone"));
+    expect(s.calls.find((c) => c.key === "POST /auth/phone/link")?.body).toEqual({ device: CLAIM });
+    expect(screen.getByTestId("push-diag-linked")).toHaveTextContent("Yes");
+    expect(screen.getByTestId("push-enable")).toBeTruthy();
+  });
+
+  it("when it cannot be linked it says what to do — and the third phone is told why", async () => {
+    const s = server({}, ["roster.read"], { unlinked: true, link: 409 });
+    await mount(s.fetcher, phone().p, "settings");
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("This phone is not linked to your sign-in"));
+    expect(screen.getByTestId("push-status-why")).toHaveTextContent(/Log out and sign in again/);
+    expect(screen.getByTestId("push-problem")).toHaveTextContent(/already signed in on two other phones/);
+    expect(screen.getByTestId("push-diag-linked")).toHaveTextContent("No");
+    expect(screen.queryByTestId("push-enable")).toBeNull();
+  });
+
+  it("no signal: it says so, and 'Check again' recovers", async () => {
+    const s = server({}, ["roster.read"], { read: "network" });
+    await mount(s.fetcher, phone().p, "settings");
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Could not reach the server"));
+    expect(screen.getByTestId("push-diag-server")).toHaveTextContent("No — no answer");
+    s.opts.read = null;
+    await fireEvent.press(screen.getByTestId("push-retry"));
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Off on this phone"));
+  });
+
+  it("a server error is named as one — never left as 'Checking…'", async () => {
+    for (const code of [404, 500]) {
+      const s = server({}, ["roster.read"], { read: code });
+      const view = await mount(s.fetcher, phone().p, "settings");
+      await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("The server did not answer properly"));
+      expect(screen.getByTestId("push-retry")).toBeTruthy();
+      await view.unmount();
+    }
+  });
+
+  it("a server that never answers is given twelve seconds, then the screen says it could not be reached", async () => {
+    expect(SERVER_TIMEOUT_MS).toBe(12_000);
+    jest.useFakeTimers();
+    try {
+      const s = server({}, ["roster.read"], { read: "hang" });
+      await mount(s.fetcher, phone().p, "settings");
+      await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Checking…"));
+      await act(async () => { await jest.advanceTimersByTimeAsync(SERVER_TIMEOUT_MS + 50); });
+      await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Could not reach the server"));
+    } finally { jest.useRealTimers(); }
+  });
+
+  it("the diagnosis reads Yes all the way down when everything is right, and shows the last test", async () => {
+    const s = server({ registered: true, lastTestAt: "2026-10-06T12:30:00.000Z", lastSentAt: "2026-10-06T12:30:00.000Z" } as Partial<Server>);
+    await mount(s.fetcher, phone({ permission: "granted" }).p, "settings");
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent(/^On$/));
+    for (const line of ["build", "server", "linked", "canSend", "permission", "address", "serverHasIt"]) {
+      expect(screen.getByTestId(`push-diag-${line}`)).toHaveTextContent("Yes");
+    }
+    expect(screen.getByTestId("push-diag-lastTest")).toHaveTextContent("Tuesday 6 October, 18:00");
+    expect(screen.getByTestId("push-diag-lastReceived")).toHaveTextContent("Never");
+  });
+
+  it("Google gives no address: the diagnosis names that link, not the server", async () => {
+    const s = server();
+    await mount(s.fetcher, phone({ permission: "granted", token: null }).p, "settings");
+    await fireEvent.press(await screen.findByTestId("push-enable"));
+    expect(await screen.findByTestId("push-problem")).toHaveTextContent(/Google did not give this phone a notification address/);
+    expect(screen.getByTestId("push-diag-address")).toHaveTextContent("No — Google did not answer");
+    expect(screen.getByTestId("push-diag-server")).toHaveTextContent("Yes");
+  });
+});
+
 describe("the phone and the server use the same words (M6b)", () => {
   const core = readFileSync(join(__dirname, "../../core/src/kernel/push/phone-push.ts"), "utf8");
   const list = (name: string): string[] => JSON.parse((new RegExp(`export const ${name} = (\\[[^\\]]*\\]) as const;`).exec(core)?.[1] ?? "[]")) as string[];
@@ -277,7 +443,7 @@ describe("the phone and the server use the same words (M6b)", () => {
         expect(dict.mobile.push.category[c]).toBeTruthy();
         expect(dict.mobile.push.categoryHint[c]).toBeTruthy();
       }
-      for (const st of ["unknown", "notInBuild", "serverOff", "off", "denied", "on"] as const) {
+      for (const st of ["unknown", "notInBuild", "unreachable", "serverError", "notLinked", "serverOff", "off", "denied", "on"] as const) {
         expect(dict.mobile.push.status[st]).toBeTruthy();
         expect(dict.mobile.push.why[st]).toBeTruthy();
       }

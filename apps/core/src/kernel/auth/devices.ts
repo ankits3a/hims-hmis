@@ -109,6 +109,26 @@ export async function claimPhone(
   return { deviceRowId: existingId, bound: false, replacedSessionIds: replaced.map((r) => r.id) };
 }
 
+/**
+ * ═══ M6b FIX (owner's phone, 2026-10-06) — A SESSION THAT WAS OPENED BEFORE THE APP NAMED ITS PHONE ═══
+ *
+ * An app updated in place keeps its session. A session opened by a build older than 0.7.0 carries
+ * no phone, so the updated app's notification routes answered `not_a_phone` for up to a whole
+ * session lifetime and the administrator's Phones list showed nothing for a person who was
+ * visibly using the app. DECIDED: the app links its phone to the session it ALREADY holds, rather
+ * than being signed out — the person proved who they are when that session was opened, the cap is
+ * the same cap (`claimPhone`), and the act is evented. A session that already names a phone is
+ * left exactly as it is: a session never moves from one phone to another.
+ */
+export async function linkSessionToPhone(
+  tx: Db, session: { sessionId: string; userId: string; deviceRowId: string | null }, claim: DeviceClaim, clientIp: string | null, now: Date = new Date(),
+): Promise<{ deviceRowId: string; linked: boolean; bound: boolean; replacedSessionIds: string[] }> {
+  if (session.deviceRowId !== null) return { deviceRowId: session.deviceRowId, linked: false, bound: false, replacedSessionIds: [] };
+  const phone = await claimPhone(tx, session.userId, claim, clientIp, now);
+  await tx.update(authSessions).set({ deviceRowId: phone.deviceRowId }).where(and(eq(authSessions.id, session.sessionId), eq(authSessions.userId, session.userId)));
+  return { ...phone, linked: true };
+}
+
 /** The app was opened: stamp the phone's last-seen. Cheap, and never a reason for a request to fail. */
 export async function touchPhone(db: Db, deviceRowId: string, clientIp: string | null, now: Date = new Date()): Promise<void> {
   await db.update(authDevices).set({ lastSeenAt: now, ...(clientIp === null ? {} : { lastIp: clientIp }) }).where(eq(authDevices.id, deviceRowId));

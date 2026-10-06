@@ -40,9 +40,10 @@ export type PushPhone = {
 type Content = { title?: string | null; body?: string | null; data?: Record<string, unknown> | null };
 type Notif = { request: { content: Content; trigger?: { remoteMessage?: { data?: Record<string, unknown> | null; notification?: { title?: string | null; body?: string | null } | null } | null } | null } };
 type Sub = { remove(): void };
+type Answer = { status: string; granted?: boolean; canAskAgain?: boolean };
 type Module = {
-  getPermissionsAsync(): Promise<{ status: string }>;
-  requestPermissionsAsync(): Promise<{ status: string }>;
+  getPermissionsAsync(): Promise<Answer>;
+  requestPermissionsAsync(): Promise<Answer>;
   getDevicePushTokenAsync(): Promise<{ data: unknown }>;
   setNotificationChannelAsync(id: string, c: { name: string; importance: number }): Promise<unknown>;
   setNotificationHandler(h: { handleNotification: () => Promise<Record<string, boolean>> }): void;
@@ -86,7 +87,26 @@ function load(): Module | null {
   }
 }
 
-const status = (s: string): PushPermission => (s === "granted" ? "granted" : s === "denied" ? "denied" : "undetermined");
+/**
+ * ANDROID 13+ SAYS "denied" BEFORE IT HAS EVER ASKED (the owner's phone, 2026-10-06: the app went
+ * straight to "blocked in settings" and never showed the system prompt). A fresh install reports
+ * `status: "denied", canAskAgain: true` — which means "not asked yet", not "refused". Only
+ * `canAskAgain: false` is a refusal that the phone's settings alone can undo.
+ */
+export function permissionOf(a: Answer): PushPermission {
+  if (a.granted === true || a.status === "granted") return "granted";
+  if (a.status === "denied" && a.canAskAgain === false) return "denied";
+  return "undetermined";
+}
+
+/** A call into Google that never answers must not leave a screen waiting for ever. */
+export const TOKEN_TIMEOUT_MS = 15_000;
+function within<T>(ms: number, run: Promise<T>, otherwise: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(otherwise), ms);
+    run.then((v) => { clearTimeout(timer); resolve(v); }, () => { clearTimeout(timer); resolve(otherwise); });
+  });
+}
 
 export function devicePush(): PushPhone {
   if (Platform.OS !== "android" || !PUSH_IN_BUILD) return OFF;
@@ -109,9 +129,11 @@ export function devicePush(): PushPhone {
   };
   return {
     inBuild: true,
-    permission: () => safely(async () => status((await N.getPermissionsAsync()).status), "undetermined"),
-    ask: () => safely(async () => status((await N.requestPermissionsAsync()).status), "denied"),
-    token: () => safely(async () => { const t = (await N.getDevicePushTokenAsync()).data; return typeof t === "string" && t !== "" ? t : null; }, null),
+    permission: () => safely(async () => permissionOf(await N.getPermissionsAsync()), "undetermined"),
+    // After the system prompt an unanswered or refused request is a refusal for now; the screen
+    // re-reads the permission whenever the app comes back to the front.
+    ask: () => safely(async () => { const a = await N.requestPermissionsAsync(); return a.granted === true || a.status === "granted" ? "granted" : "denied"; }, "denied"),
+    token: () => within(TOKEN_TIMEOUT_MS, (async () => { const t = (await N.getDevicePushTokenAsync()).data; return typeof t === "string" && t !== "" ? t : null; })(), null),
     channels: (labels) => safely(async () => {
       for (const [id, name] of Object.entries(labels)) await N.setNotificationChannelAsync(id, { name, importance: N.AndroidImportance.HIGH });
     }, undefined),

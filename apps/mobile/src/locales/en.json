@@ -480,7 +480,30 @@
       "kinds": "What this phone is told about",
       "quiet": "HMIS has no quiet hours of its own: your phone’s Do Not Disturb is respected.",
       "bannerFallback": "Something needs you.",
+      "checkAgain": "Check again",
+      "haveAllowed": "I have allowed it — check again",
+      "diag": {
+        "title": "What is working",
+        "how": "Read from the top: the first line that is not Yes is the problem.",
+        "yes": "Yes", "no": "No", "unknown": "Not known yet", "never": "Never",
+        "build": "This app can receive notifications",
+        "server": "Server reached",
+        "linked": "This phone is linked to your sign-in",
+        "canSend": "Hospital server can send notifications",
+        "permission": "This phone allows HMIS notifications",
+        "address": "Google gave this phone an address",
+        "serverHasIt": "Server has this phone’s address",
+        "lastTest": "Last test sent by the administrator",
+        "lastSent": "Last notification sent to this phone",
+        "lastReceived": "Last notification seen by this app while open",
+        "reach": { "checking": "Checking…", "ok": "Yes", "unreachable": "No — no answer", "error": "No — error", "notLinked": "Yes" },
+        "perm": { "granted": "Yes", "denied": "No — blocked in settings", "undetermined": "Not asked yet" },
+        "addr": { "yes": "Yes", "no": "No — Google did not answer", "notAsked": "Not asked yet" }
+      },
       "status": {
+        "unreachable": "Could not reach the server",
+        "serverError": "The server did not answer properly",
+        "notLinked": "This phone is not linked to your sign-in",
         "unknown": "Checking…",
         "notInBuild": "Not set up in this app yet",
         "serverOff": "Not set up at the hospital yet",
@@ -489,11 +512,14 @@
         "on": "On"
       },
       "why": {
+        "unreachable": "No answer in 12 seconds. Check this phone’s internet, then tap Check again.",
+        "serverError": "The server answered with an error. Tap Check again; if it stays, tell the administrator.",
+        "notLinked": "You signed in before this app could name its phone. Log out and sign in again — that links this phone.",
         "unknown": "The server has not answered yet. Open this screen again in a moment.",
         "notInBuild": "This build of the app was made before notifications were set up. An update will bring them.",
         "serverOff": "The hospital has not switched notifications on yet. The bell inside the app works meanwhile.",
         "off": "This phone is not told when something needs you. The bell inside the app still shows it.",
-        "denied": "You chose “Don’t allow” when the phone asked. Only the phone’s own settings can change that.",
+        "denied": "Notifications for HMIS are switched off in this phone’s settings. Open the settings, allow notifications, and come back — the app finishes by itself.",
         "on": "This phone is told when something needs you."
       },
       "category": {
@@ -507,8 +533,10 @@
         "queue": "Patients are waiting for you."
       },
       "problem": {
+        "notAllowed": "The phone has not allowed notifications yet. Tap Turn on again and choose Allow.",
+        "phoneLimit": "You are already signed in on two other phones, so this one could not be linked. Ask the administrator to sign one out.",
         "denied": "The phone did not allow notifications. Nothing was changed.",
-        "noAddress": "This phone could not be given a notification address. Nothing was changed — try again on a working connection.",
+        "noAddress": "Google did not give this phone a notification address. Check the internet and that Google Play services is working, then tap Check again.",
         "notSaved": "That did not reach the server. Nothing was changed — try again."
       }
     },

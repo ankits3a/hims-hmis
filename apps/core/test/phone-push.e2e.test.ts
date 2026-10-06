@@ -72,6 +72,7 @@ describe("mobile M6b — a notification on a staff phone", () => {
   const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
   const state = (token: string) => http().get("/auth/phone/notifications").set(bearer(token));
   const put = (token: string, body: Record<string, unknown>) => http().put("/auth/phone/notifications").set(bearer(token)).send(body);
+  const me = (token: string) => http().get("/auth/me").set(bearer(token));
   const phonesOf = (userId: string) => http().get(`/admin/users/${userId}/phones`).set(bearer(adminToken));
 
   /** A phone signed in for asha with its address handed over. Returns its session token and row id. */
@@ -108,9 +109,10 @@ describe("mobile M6b — a notification on a staff phone", () => {
 
     const phone = (await login("asha", PHONE_A)).body.token as string;
     // This suite runs with no Firebase key: the server says it cannot send, and the phone asks for nothing.
-    expect((await state(phone)).body).toEqual({ configured: false, registered: false, muted: [], categories: ["alert", "roster"] });
+    expect((await state(phone)).body).toEqual({ configured: false, registered: false, muted: [], categories: ["alert", "roster"], addressAt: null, lastSentAt: null, lastTestAt: null });
     const after = await put(phone, { token: TOKEN_A, language: "hi", muted: ["roster"] });
-    expect(after.body).toEqual({ configured: false, registered: true, muted: ["roster"], categories: ["alert", "roster"] });
+    expect(after.body).toMatchObject({ configured: false, registered: true, muted: ["roster"], categories: ["alert", "roster"], lastSentAt: null, lastTestAt: null });
+    expect(typeof after.body.addressAt).toBe("string");
     expect(JSON.stringify(after.body)).not.toContain(TOKEN_A);
     expect((await db.select().from(authDevices))[0]).toMatchObject({ pushToken: TOKEN_A, pushLanguage: "hi", pushMuted: ["roster"] });
 
@@ -284,6 +286,63 @@ describe("mobile M6b — a notification on a staff phone", () => {
     expect(await sendTestPush(db, sender, adminId, a.rowId)).toBeNull(); // not that person's phone
     await http().delete("/auth/phone/notifications").set(bearer(a.token));
     expect(await sendTestPush(db, sender, ashaId, a.rowId)).toBe("no_address");
+  });
+
+  /**
+   * THE OWNER'S PHONE, 2026-10-06. The app was updated in place and kept a session that an older
+   * build had opened WITHOUT naming its phone: the notification screen sat on "Checking…" and the
+   * administrator's Phones list was empty. The app now links the session it already holds.
+   */
+  it("a session opened before the app named its phone is LINKED to it — then it is a phone like any other", async () => {
+    const old = (await login("asha")).body.token as string; // what a build older than 0.7.0 opened: no `device`
+    expect((await state(old)).body).toMatchObject({ code: "not_a_phone" });
+    expect((await phonesOf(ashaId)).body.phones).toEqual([]);
+
+    const link = (token: string, device: Record<string, unknown>) => http().post("/auth/phone/link").set(bearer(token)).send({ device });
+    const linked = await link(old, PHONE_A);
+    expect(linked.status).toBe(200);
+    expect(linked.body).toEqual({ linked: true });
+    expect((await state(old)).status).toBe(200);
+    expect((await put(old, { token: TOKEN_A })).body).toMatchObject({ registered: true });
+    expect((await phonesOf(ashaId)).body.phones).toMatchObject([{ model: "Redmi Note 12", signedIn: true, notifications: true }]);
+    const evented = (await db.select({ name: events.name, payload: events.payload }).from(events)).filter((e) => e.name === "auth.phone_linked");
+    expect(evented).toHaveLength(1);
+    expect(evented[0]!.payload).toMatchObject({ userId: ashaId, bound: true, model: "Redmi Note 12" });
+
+    // Again is a no-op, and a session never moves to ANOTHER phone.
+    expect((await link(old, PHONE_A)).body).toEqual({ linked: false });
+    expect((await link(old, PHONE_B)).body).toEqual({ linked: false });
+    expect(await db.select().from(authDevices)).toHaveLength(1);
+
+    // It is a real phone now: an alert reaches it, and signing it out silences it.
+    const { sender, sent } = fake();
+    await relayAlertToPhones(db, sender, alertFor(ashaId));
+    expect(sent.map((s) => s.token)).toEqual([TOKEN_A]);
+
+    // Bounded input, and nobody links without a session.
+    expect((await link(old, { deviceId: "short" })).status).toBe(400);
+    expect((await http().post("/auth/phone/link").send({ device: PHONE_A })).status).toBe(401);
+  });
+
+  it("linking respects the cap: with two phones signed in, a third session's link is refused and told which phones", async () => {
+    await login("asha", PHONE_A); await login("asha", PHONE_B);
+    const old = (await login("asha")).body.token as string;
+    const refused = await http().post("/auth/phone/link").set(bearer(old)).send({ device: { deviceId: "cccccccccccccccccccccccccccccccc", model: "Vivo Y28" } });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({ code: "phone_limit_reached", limit: PHONES_PER_USER });
+    expect((await me(old)).status).toBe(200); // the session itself is untouched
+  });
+
+  it("the phone's state carries what its own diagnosis shows: when it handed its address over, when it was last sent to, the last test", async () => {
+    const a = await phoneOn(PHONE_A, TOKEN_A);
+    const { sender } = fake();
+    expect((await state(a.token)).body).toMatchObject({ lastSentAt: null, lastTestAt: null });
+    await relayAlertToPhones(db, sender, alertFor(ashaId));
+    const afterAlert = (await state(a.token)).body as { addressAt: string; lastSentAt: string | null; lastTestAt: string | null };
+    expect(typeof afterAlert.lastSentAt).toBe("string");
+    expect(afterAlert.lastTestAt).toBeNull();
+    await sendTestPush(db, sender, ashaId, a.rowId);
+    expect(typeof ((await state(a.token)).body as { lastTestAt: string | null }).lastTestAt).toBe("string");
   });
 
   it(`the cap is unchanged: ${String(PHONES_PER_USER)} phones per person`, () => {

@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import { authDevices, authSessions, phonePushSends } from "../db/schema";
@@ -85,13 +85,23 @@ export type PushState = {
   registered: boolean;
   muted: PushCategory[];
   categories: readonly PushCategory[];
+  /** For the phone's own diagnosis: when it last handed its address over, and when the server last sent it anything / a test. Instants only. */
+  addressAt: string | null;
+  lastSentAt: string | null;
+  lastTestAt: string | null;
 };
 
 export async function pushStateOf(db: Db, deviceRowId: string, configured: boolean): Promise<PushState> {
-  const rows = await db.select({ token: authDevices.pushToken, muted: authDevices.pushMuted }).from(authDevices).where(eq(authDevices.id, deviceRowId));
+  const rows = await db.select({ token: authDevices.pushToken, muted: authDevices.pushMuted, at: authDevices.pushTokenAt }).from(authDevices).where(eq(authDevices.id, deviceRowId));
   const row = rows[0];
   const muted = (row?.muted ?? []).filter((m): m is PushCategory => (PUSH_CATEGORIES as readonly string[]).includes(m));
-  return { configured, registered: row?.token != null, muted, categories: LIVE_PUSH_CATEGORIES };
+  const sends = await db.select({ category: phonePushSends.category, at: phonePushSends.createdAt }).from(phonePushSends)
+    .where(and(eq(phonePushSends.deviceRowId, deviceRowId), eq(phonePushSends.outcome, "sent"))).orderBy(desc(phonePushSends.createdAt)).limit(50);
+  const iso = (d: Date | null | undefined): string | null => (d == null ? null : d.toISOString());
+  return {
+    configured, registered: row?.token != null, muted, categories: LIVE_PUSH_CATEGORIES,
+    addressAt: iso(row?.at), lastSentAt: iso(sends[0]?.at), lastTestAt: iso(sends.find((s) => s.category === "test")?.at),
+  };
 }
 
 /**

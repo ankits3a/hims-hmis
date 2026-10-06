@@ -124,7 +124,7 @@ describe("AdminUsers — the phones a person is signed in on", () => {
     await screen.findByTestId("admin-user-asha");
     expect(callsTo("GET", "/api/admin/users/u-asha/phones")).toHaveLength(0);
     await userEvent.click(screen.getByTestId("admin-phones-asha"));
-    expect(await screen.findByTestId("admin-phones-none")).toHaveTextContent("The staff app has not signed in on any phone for this person.");
+    expect(await screen.findByTestId("admin-phones-none")).toHaveTextContent(/No phone has signed in with the staff app for this person yet\..*app 0\.7\.0 or newer.*log out of the app and sign in again/);
   });
 
   /** MOBILE M6b — notifications on a phone, and the fixed test (owner 2026-10-06). */
@@ -139,7 +139,13 @@ describe("AdminUsers — the phones a person is signed in on", () => {
     expect(await screen.findByTestId("admin-phone-notifications-ph-a")).toHaveTextContent("Notifications on");
     expect(screen.getByTestId("admin-phone-test-ph-a")).toHaveTextContent("Send test notification");
     expect(screen.getByTestId("admin-phone-notifications-ph-q")).toHaveTextContent("Notifications off on this phone");
-    expect(screen.queryByTestId("admin-phone-test-ph-q")).not.toBeInTheDocument();
+    // Owner 2026-10-06: the control is never silently absent. Where a test cannot arrive it is
+    // DISABLED and the line beside it says why and what the person does about it.
+    expect(screen.getByTestId("admin-phone-test-ph-a")).toBeEnabled();
+    expect(screen.getByTestId("admin-phone-test-ph-q")).toBeDisabled();
+    expect(screen.getByTestId("admin-phone-test-why-ph-q")).toHaveTextContent("This phone has not turned notifications on. In the app: This phone → Notifications → Turn on.");
+    expect(screen.queryByTestId("admin-phone-test-why-ph-a")).not.toBeInTheDocument();
+    // A phone that holds no session has nothing to test (and nothing to sign out).
     expect(screen.queryByTestId("admin-phone-test-ph-old")).not.toBeInTheDocument();
   });
 
@@ -151,7 +157,8 @@ describe("AdminUsers — the phones a person is signed in on", () => {
     renderWithProviders(<AdminUsers />);
     await userEvent.click(await screen.findByTestId("admin-phones-asha"));
     expect(await screen.findByTestId("admin-phone-notifications-ph-a")).toHaveTextContent("Notifications are not set up on this server");
-    expect(screen.queryByTestId("admin-phone-test-ph-a")).not.toBeInTheDocument();
+    expect(screen.getByTestId("admin-phone-test-ph-a")).toBeDisabled();
+    expect(screen.getByTestId("admin-phone-test-why-ph-a")).toHaveTextContent("Notifications are not set up on this server, so a test cannot be sent.");
   });
 
   it("sends the test to ONE phone and says what happened — only `sent` is good news", async () => {
