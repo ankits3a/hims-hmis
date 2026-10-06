@@ -9,6 +9,7 @@ import { approvalsManifest } from "../approvals/manifest";
 import { alertsManifest } from "../alerts/manifest";
 import { notifyManifest } from "../notify/manifest";
 import { obligationsManifest } from "../obligations/manifest";
+import { phonePushManifest } from "../push/manifest";
 import { opsManifest } from "../ops/manifest";
 import { patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
@@ -78,6 +79,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   opsManifest,
   notifyManifest,
   obligationsManifest, // PHASE O T1 — worker-only, the `notify` shape
+  phonePushManifest, // MOBILE M6b — worker-only, the `notify` shape
   membershipManifest,
   partnersManifest,
   formularyManifest,
@@ -365,7 +367,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // subscriptions whose one handler (`abdm.care_contexts`) exists solely in `workerConsumers`,
     // and the api serves nothing from the manifest (its callback routes are ABDM's, not a
     // permission's). Installed LAST in the worker, so it is last here.
-    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify", "obligations", "abdm"]);
+    // MOBILE M6b — `phone_push` joins them, the same shape a fourth time: one subscription
+    // (`alert.raised`) whose handler exists solely in `workerConsumers`, no permission and no route
+    // of its own. Installed right after `obligations`, so it sits there here.
+    expect(workerKeys.filter((k) => !allKeys.includes(k))).toEqual(["notify", "obligations", "phone_push", "abdm"]);
 
     // Everything else is shared, and this is the assertion that makes the two lines above a
     // STATEMENT of the difference rather than a licence for any difference at all.
@@ -405,6 +410,6 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
       "pharmacy",
     ]);
-    expect(workerKeys).toHaveLength(18); // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`
+    expect(workerKeys).toHaveLength(19); // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

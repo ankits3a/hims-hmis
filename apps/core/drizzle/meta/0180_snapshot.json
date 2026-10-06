@@ -1,6 +1,6 @@
 {
-  "id": "201c4222-8bcd-4676-bee6-3140ff2d7204",
-  "prevId": "2e2a7e30-2522-4804-917c-157ec5f1b6be",
+  "id": "386b1d4f-3acd-4c9c-baab-ed6bf4758743",
+  "prevId": "201c4222-8bcd-4676-bee6-3140ff2d7204",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6351,6 +6351,66 @@
           "primaryKey": false,
           "notNull": false
         },
+        "completed_via": {
+          "name": "completed_via",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_completed_by": {
+          "name": "paper_completed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_completed_at": {
+          "name": "paper_completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_evidence_kind": {
+          "name": "paper_evidence_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_evidence_id": {
+          "name": "paper_evidence_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_confirmed_by": {
+          "name": "paper_confirmed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_confirmed_at": {
+          "name": "paper_confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_reopened_by": {
+          "name": "paper_reopened_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_reopened_at": {
+          "name": "paper_reopened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_reopen_reason": {
+          "name": "paper_reopen_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "abandoned_at": {
           "name": "abandoned_at",
           "type": "timestamp with time zone",
@@ -6780,6 +6840,12 @@
         "issued_prescription_id": {
           "name": "issued_prescription_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "held_alerts": {
+          "name": "held_alerts",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         }

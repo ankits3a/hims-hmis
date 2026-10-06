@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import type { ExpoConfig } from "expo/config";
 
 /**
@@ -21,7 +23,15 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.7.0";
+const VERSION = "0.8.0";
+/**
+ * M6b — NOTIFICATIONS ARE IN A BUILD ONLY WHEN THE HOSPITAL'S FIREBASE PROJECT IS.
+ * `scripts/build-apk.sh` copies the owner's `google-services.json` beside this file when it exists
+ * and names this app id (BUILDING.md, "Notifications"). Without it the build is the same app with
+ * notifications dormant: `extra.pushInBuild` is false and the app asks the person for nothing.
+ */
+const GOOGLE_SERVICES = "./google-services.json";
+const PUSH_IN_BUILD = process.env.HMIS_PUSH_IN_BUILD === "1" && existsSync(join(__dirname, GOOGLE_SERVICES));
 const VERSION_CODE = Number(process.env.HMIS_VERSION_CODE ?? "1");
 
 const config: ExpoConfig = {
@@ -45,6 +55,7 @@ const config: ExpoConfig = {
       backgroundImage: "./assets/android-icon-background.png",
     },
     predictiveBackGestureEnabled: false,
+    ...(PUSH_IN_BUILD ? { googleServicesFile: GOOGLE_SERVICES } : {}),
   },
   web: { favicon: "./assets/favicon.png", output: "single" },
   plugins: [
@@ -62,6 +73,8 @@ const config: ExpoConfig = {
       "expo-camera",
       { cameraPermission: "HMIS uses the camera to scan a patient card or slip, and to photograph a slip.", recordAudioAndroid: false },
     ],
+    // M6b — the small icon in the tray is the HMIS diamond (alpha only), tinted pine.
+    ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#0E6B4E" }],
   ],
   extra: {
     apiBase: API_BASE[ENV],
@@ -69,6 +82,7 @@ const config: ExpoConfig = {
     updateFeed: UPDATE_FEED[ENV],
     version: VERSION,
     versionCode: VERSION_CODE,
+    pushInBuild: PUSH_IN_BUILD,
     eas: { projectId: "4b8df892-c208-45a4-ad76-52a4551f7188" },
   },
 };

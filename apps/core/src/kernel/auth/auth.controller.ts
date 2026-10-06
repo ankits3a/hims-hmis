@@ -1,6 +1,6 @@
 import {
-  BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, HttpCode,
-  Inject, NotFoundException, Param, Post, Req, Res, UnauthorizedException,
+  BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode,
+  Inject, NotFoundException, Param, Post, Put, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
@@ -35,6 +35,11 @@ import {
   auditLoggedOut, auditLoginFailed, auditPhoneLimitRefused, auditPhoneSignIn, auditSessionOpened, auditTotp, clientContext,
 } from "./auth-audit";
 import { PHONES_PER_USER, PhoneLimitError, deviceClaimSchema, touchPhone } from "./devices";
+import {
+  clearPushToken, pushLanguageSchema, pushMutedSchema, pushStateOf, pushTokenSchema, registerPushToken, setPushPreferences,
+} from "../push/phone-push";
+import type { PushState } from "../push/phone-push";
+import { sharedPhonePushSource } from "../push/sender";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -264,6 +269,59 @@ export class AuthController {
     const session = req.hmisSession;
     if (!session) return;
     await auditLoggedOut(this.db, session, clientContext(req), (tx) => revokeSession(tx, session.sessionId));
+    // Mobile M6b — the person signed out of this phone: it stops being told things. (The sender asks
+    // no phone without a live session anyway; the address simply does not outlive the session.)
+    if (session.deviceRowId !== null) await clearPushToken(this.db, session.deviceRowId);
+  }
+
+  /**
+   * ═══ MOBILE M6b — THIS PHONE'S NOTIFICATIONS (owner 2026-10-06) ═══
+   *
+   * Three routes, all about the phone the CALLING SESSION was opened on and no other — there is no
+   * id in the path to get wrong, and a browser session (no phone) is refused `not_a_phone`. No
+   * permission: like the bell (`alerts`), a person's own phone is theirs by identity.
+   *
+   *   GET     what the app shows: is the server able to send at all, has this phone given an
+   *           address, which categories exist and which are switched off here;
+   *   PUT     the phone hands over or refreshes its address (`token`), says which language its app
+   *           is in, and/or which categories are off;
+   *   DELETE  the person switched notifications off on this phone.
+   *
+   * The address is write-only: nothing here, or anywhere, returns it.
+   */
+  private phoneOf(req: AuthedRequest): string {
+    const deviceRowId = req.hmisSession?.deviceRowId ?? null;
+    if (deviceRowId === null) throw new ConflictException({ code: "not_a_phone" });
+    return deviceRowId;
+  }
+
+  private pushConfigured(): boolean {
+    return sharedPhonePushSource(this.cfg.fcmServiceAccountFile).current() !== null;
+  }
+
+  @Get("phone/notifications")
+  async phoneNotifications(@Req() req: AuthedRequest): Promise<PushState> {
+    return pushStateOf(this.db, this.phoneOf(req), this.pushConfigured());
+  }
+
+  @Put("phone/notifications")
+  async setPhoneNotifications(@Req() req: AuthedRequest, @Body() body: unknown): Promise<PushState> {
+    const deviceRowId = this.phoneOf(req);
+    const parsed = z.object({
+      token: pushTokenSchema.optional(), language: pushLanguageSchema.optional(), muted: pushMutedSchema.optional(),
+    }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const { token, language, muted } = parsed.data;
+    if (token !== undefined) await registerPushToken(this.db, deviceRowId, token);
+    await setPushPreferences(this.db, deviceRowId, { muted, language });
+    return pushStateOf(this.db, deviceRowId, this.pushConfigured());
+  }
+
+  @Delete("phone/notifications")
+  async clearPhoneNotifications(@Req() req: AuthedRequest): Promise<PushState> {
+    const deviceRowId = this.phoneOf(req);
+    await clearPushToken(this.db, deviceRowId);
+    return pushStateOf(this.db, deviceRowId, this.pushConfigured());
   }
 
   /**

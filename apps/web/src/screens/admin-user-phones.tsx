@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { DeskModal } from "../components/desk-modal";
 import { SubmitButton } from "../components/submit-button";
-import { adminErrorCode, adminErrorMessage, listUserPhones, signOutUserPhone } from "../lib/admin-api";
+import { adminErrorCode, adminErrorMessage, listUserPhones, sendTestNotification, signOutUserPhone } from "../lib/admin-api";
 import type { WireAdminUser, WireUserPhone } from "../lib/admin-api";
 import { dayMonthIst, fmtIst } from "../lib/format";
 import { todayIst } from "../lib/opd-api";
@@ -46,6 +46,24 @@ export function UserPhones({ user, onClose }: { user: WireAdminUser | null; onCl
     await qc.invalidateQueries({ queryKey: ["admin", "phones", user.id] });
   };
 
+  /*
+    MOBILE M6b — the fixed test notification, to ONE phone. The server answers WHAT HAPPENED rather
+    than failing, and each answer is a sentence: only `sent` is good news, and it is the only green one.
+  */
+  const sendTest = async (p: WireUserPhone): Promise<void> => {
+    if (user === null) return;
+    setNotice(null); setError(null);
+    try {
+      const { outcome } = await sendTestNotification(user.id, p.id);
+      const said = t(`adminUsers.phones.test.${outcome}`, { model: name(p) });
+      if (outcome === "sent") setNotice(said); else setError(said);
+    } catch (e) {
+      setError(adminErrorCode(e) === "phone_not_found" ? t("adminUsers.phones.phone_not_found") : adminErrorMessage(e));
+    }
+    await qc.invalidateQueries({ queryKey: ["admin", "phones", user.id] });
+  };
+  const configured = q.data?.notificationsConfigured === true;
+
   return (
     <DeskModal
       open={user !== null} onClose={close} titleId="admin-phones-title" testId="admin-phones-panel" width={560}
@@ -71,14 +89,24 @@ export function UserPhones({ user, onClose }: { user: WireAdminUser | null; onCl
                 <span data-testid={`admin-phone-state-${p.id}`} style={{ fontSize: 12, fontWeight: 600, color: p.signedIn ? "var(--green)" : "var(--dim)" }}>
                   {p.signedIn && p.signedInSince !== null ? t("adminUsers.phones.signedIn", { when: when(p.signedInSince) }) : t("adminUsers.phones.signedOut")}
                 </span>
+                <span data-testid={`admin-phone-notifications-${p.id}`} style={{ fontSize: 12, color: "var(--dim)" }}>
+                  {t(!configured ? "adminUsers.phones.notificationsNotSetUp" : p.notifications === true ? "adminUsers.phones.notificationsOn" : "adminUsers.phones.notificationsOff")}
+                </span>
                 <span className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
                   {t("adminUsers.phones.lastSeen", { when: when(p.lastSeenAt) })} · {t("adminUsers.phones.firstSeen", { when: when(p.firstSeenAt) })}{p.lastIp === null ? "" : ` · ${p.lastIp}`}
                 </span>
               </div>
               {p.signedIn && (
-                <SubmitButton plain type="button" className="sec" data-testid={`admin-phone-signout-${p.id}`} onClick={() => signOut(p)}>
-                  {t("adminUsers.phones.signOut")}
-                </SubmitButton>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {configured && p.notifications === true && (
+                    <SubmitButton plain type="button" className="sec" data-testid={`admin-phone-test-${p.id}`} onClick={() => sendTest(p)}>
+                      {t("adminUsers.phones.sendTest")}
+                    </SubmitButton>
+                  )}
+                  <SubmitButton plain type="button" className="sec" data-testid={`admin-phone-signout-${p.id}`} onClick={() => signOut(p)}>
+                    {t("adminUsers.phones.signOut")}
+                  </SubmitButton>
+                </div>
               )}
             </div>
           ))}

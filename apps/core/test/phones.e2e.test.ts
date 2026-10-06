@@ -90,7 +90,7 @@ describe("mobile M6a — the phones a person is signed in on", () => {
     expect(sessions.map((s) => s.deviceRowId)).toEqual([null]);
     expect((await eventsSince(before)).map((e) => e.name)).toEqual(["auth.login_succeeded"]);
     const list = await phonesOf(ashaId).expect(200);
-    expect(list.body).toEqual({ limit: PHONES_PER_USER, phones: [] });
+    expect(list.body).toEqual({ limit: PHONES_PER_USER, notificationsConfigured: false, phones: [] });
   });
 
   it("the app's sign-in binds its phone once: the row, the session on it, `auth.phone_bound` — and the list an administrator reads", async () => {

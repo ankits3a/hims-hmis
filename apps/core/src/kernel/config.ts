@@ -97,6 +97,12 @@ const configSchema = z.object({
   NOTIFY_PROVIDER: notifyProviderSchema.default("console"),
   NOTIFY_PUSH_PROVIDER: notifyPushProviderSchema.default("console"),
   /**
+   * MOBILE M6b — the path of the Firebase service-account key the staff app's notifications are
+   * sent with. OPTIONAL, like every key added here: absent (or a path with no file behind it) the
+   * sender is off, the worker says so once at boot, and nothing else changes (`push/sender.ts`).
+   */
+  HMIS_FCM_SERVICE_ACCOUNT_FILE: z.string().optional(),
+  /**
    * PHASE O T4 — the channel ladder's cadence. A minute, not five: the `now` lane's patience is
    * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
    */
@@ -483,6 +489,8 @@ export type AppConfig = {
   workerNotifyIntervalMs: number;
   notifyProvider: NotifyProvider;
   notifyPushProvider: NotifyPushProvider;
+  /** MOBILE M6b — where the Firebase service-account key is expected, or null. The file may not exist yet. */
+  fcmServiceAccountFile: string | null;
   workerReachIntervalMs: number;
   /**
    * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
@@ -777,6 +785,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workerNotifyIntervalMs: parsed.WORKER_NOTIFY_INTERVAL_MS,
     notifyProvider: parsed.NOTIFY_PROVIDER,
     notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
+    fcmServiceAccountFile: parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE === undefined || parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim() === "" ? null : parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim(),
     workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
     webPushVapid: vapidFrom(parsed),
     notifySms: smsGatewayFrom(parsed),

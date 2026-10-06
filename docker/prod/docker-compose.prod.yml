@@ -101,12 +101,20 @@ services:
     command: ["node", "dist/src/main.js"]
     env_file:
       - .env
+    # MOBILE M6b — where the Firebase key for the staff app's notifications is looked for. The file
+    # is the owner's (deploy.sh step 2 copies it into ./firebase when it exists on the host); with
+    # no file there the api boots normally and an administrator's "send a test" answers
+    # `not_configured`.
+    environment:
+      HMIS_FCM_SERVICE_ACCOUNT_FILE: /run/hmis/firebase/service-account.json
     # The slip desk's photographs. A NAMED VOLUME because the bytes must outlive a container
     # recreate the way pgdata does — a deploy that dropped them would lose every prescription the
     # desk had filed. The image creates /var/lib/hmis/documents owned by `node` so this volume
     # inherits that owner; without that it is root-owned and the API cannot write a single file.
     volumes:
       - hmis_prod_documents:/var/lib/hmis/documents
+      # The DIRECTORY, read-only — never the file (a single-file mount pins an inode; see caddy below).
+      - ./firebase:/run/hmis/firebase:ro
     expose:
       - "3000"
     depends_on:
@@ -144,6 +152,12 @@ services:
     command: ["node", "dist/src/worker.js"]
     env_file:
       - .env
+    # MOBILE M6b — the worker is the process that SENDS a phone its notification (kernel/push).
+    # Same key, same directory mount as the api; absent, it logs one WARN and sends nothing.
+    environment:
+      HMIS_FCM_SERVICE_ACCOUNT_FILE: /run/hmis/firebase/service-account.json
+    volumes:
+      - ./firebase:/run/hmis/firebase:ro
     depends_on:
       db:
         condition: service_healthy

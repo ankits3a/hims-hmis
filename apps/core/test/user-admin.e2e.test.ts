@@ -68,6 +68,8 @@ const ADMIN_ROUTES: [method: "get" | "post" | "delete", path: string, permission
   // ── Mobile M6a — the phones a person is signed in on, and signing one out (`devices.ts`).
   ["get", `/admin/users/${NO_SUCH_USER}/phones`, USERS_MANAGE],
   ["post", `/admin/users/${NO_SUCH_USER}/phones/${NO_SUCH_PHONE}/sign-out`, USERS_MANAGE],
+  // ── Mobile M6b — the fixed test notification to one phone (`kernel/push`).
+  ["post", `/admin/users/${NO_SUCH_USER}/phones/${NO_SUCH_PHONE}/test-notification`, USERS_MANAGE],
   // ── T4's two role routes. A DIFFERENT permission on the SAME base path, which is the whole
   // reason the two controllers are split: `auth.roles.manage` guards changing who holds what,
   // `auth.users.manage` guards the accounts themselves, and leg 4 can now tell them apart with a
@@ -182,7 +184,7 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     expect({
       routes: ADMIN_ROUTES.length,
       distinctPermissions: new Set(ADMIN_ROUTES.map(([, , p]) => p)).size,
-    }).toEqual({ routes: 10, distinctPermissions: 2 });
+    }).toEqual({ routes: 11, distinctPermissions: 2 });
 
     const { token: roleLess } = await mkUser("holds_nothing", null);
     for (const [method, path, permission] of ADMIN_ROUTES) {

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable, text, integer, boolean, timestamp, primaryKey, index, uniqueIndex,
+  pgTable, text, integer, boolean, timestamp, primaryKey, index, uniqueIndex, check,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable(
@@ -121,9 +121,48 @@ export const authDevices = pgTable(
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
     lastIp: text("last_ip"),
+    /**
+     * MOBILE M6b — where a notification for this phone is sent (the FCM registration token the app
+     * was given). NULL = this phone takes none: never asked, declined, or signed out. It is an
+     * ADDRESS and a capability — never logged, never returned by any route, never put in an event.
+     */
+    pushToken: text("push_token"),
+    pushTokenAt: timestamp("push_token_at", { withTimezone: true }),
+    /** The language the phone's app is in; the generic sentence a notification carries is said in it. */
+    pushLanguage: text("push_language").notNull().default("en"),
+    /** The categories this phone's owner switched off on it (`PUSH_CATEGORIES`). Empty = all on. */
+    pushMuted: text("push_muted").array().notNull().default(sql`'{}'`),
   },
   (t) => [
     uniqueIndex("auth_devices_user_device_ux").on(t.userId, t.deviceId),
+  ],
+);
+
+/**
+ * ═══ MOBILE M6b — WHAT WAS SENT TO A PHONE, WITHOUT WHAT IT SAID ═══
+ *
+ * One row per (alert, phone) the sender finished with: `sent` (FCM accepted it) or `gone` (FCM said
+ * the address is dead, and the token was cleared). It is the dedupe unit — a redelivered
+ * `alert.raised` finds the row and sends nothing — the per-person rate limit's count, and the
+ * record an administrator's "send a test" leaves (`alert_id` NULL). It holds a category and a
+ * phone; it holds no title, no body and no token.
+ */
+export const phonePushSends = pgTable(
+  "phone_push_sends",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    deviceRowId: text("device_row_id").notNull().references(() => authDevices.id),
+    /** `alerts.id`, or NULL for an administrator's test. No FK: an alert's retention is its own. */
+    alertId: text("alert_id"),
+    category: text("category").notNull(),
+    outcome: text("outcome").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("phone_push_sends_alert_device_ux").on(t.alertId, t.deviceRowId),
+    index("phone_push_sends_user_at_idx").on(t.userId, t.createdAt),
+    check("phone_push_sends_outcome_ck", sql`${t.outcome} in ('sent', 'gone')`),
   ],
 );
 

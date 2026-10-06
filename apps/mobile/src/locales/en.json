@@ -468,7 +468,54 @@
     },
     "phoneLimit": "You are already signed in on {{count}} other phones ({{phones}}). Ask the administrator to sign one out — Users, then Phones — and sign in again.",
     "phoneLimitUnknown": "a phone",
+    "push": {
+      "title": "Notifications",
+      "offerTitle": "Be told when something needs you",
+      "promise": "A notification only says “open HMIS” and what kind of thing it is. It never shows a patient’s name, number or result — those stay inside the app.",
+      "turnOn": "Turn on notifications",
+      "turnOff": "Turn off on this phone",
+      "notNow": "Not now",
+      "open": "Open",
+      "openSettings": "Open this phone’s settings",
+      "kinds": "What this phone is told about",
+      "quiet": "HMIS has no quiet hours of its own: your phone’s Do Not Disturb is respected.",
+      "bannerFallback": "Something needs you.",
+      "status": {
+        "unknown": "Checking…",
+        "notInBuild": "Not set up in this app yet",
+        "serverOff": "Not set up at the hospital yet",
+        "off": "Off on this phone",
+        "denied": "Blocked in this phone’s settings",
+        "on": "On"
+      },
+      "why": {
+        "unknown": "The server has not answered yet. Open this screen again in a moment.",
+        "notInBuild": "This build of the app was made before notifications were set up. An update will bring them.",
+        "serverOff": "The hospital has not switched notifications on yet. The bell inside the app works meanwhile.",
+        "off": "This phone is not told when something needs you. The bell inside the app still shows it.",
+        "denied": "You chose “Don’t allow” when the phone asked. Only the phone’s own settings can change that.",
+        "on": "This phone is told when something needs you."
+      },
+      "category": {
+        "alert": "Alerts",
+        "roster": "Duty roster",
+        "queue": "Your queue"
+      },
+      "categoryHint": {
+        "alert": "Something is overdue or waiting on you.",
+        "roster": "Somebody flagged the duty board, or a duty of yours is in question.",
+        "queue": "Patients are waiting for you."
+      },
+      "problem": {
+        "denied": "The phone did not allow notifications. Nothing was changed.",
+        "noAddress": "This phone could not be given a notification address. Nothing was changed — try again on a working connection.",
+        "notSaved": "That did not reach the server. Nothing was changed — try again."
+      }
+    },
     "account": {
+      "screenshots": "Screenshots",
+      "screenshotsBlocked": "Blocked in this app, to protect patients",
+      "screenshotsAllowed": "Allowed in this staging build (test data only)",
       "open": "This phone and my account",
       "title": "This phone",
       "signedInAs": "Signed in as {{name}}",
