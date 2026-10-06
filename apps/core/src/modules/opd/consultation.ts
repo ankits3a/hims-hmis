@@ -261,6 +261,22 @@ export function registerConsultStartGuard(key: string, guard: ConsultStartGuard)
 }
 
 /**
+ * Every consult-door verdict for a visit, first refusal first — WITHOUT the doctor's waiver applied.
+ * `startConsultation` reads the registry itself; this is the same question for the one other caller
+ * that closes a visit, the paper road (`paper-consult.ts`), which must not grow a second copy of
+ * "which guards exist".
+ */
+export async function consultDoorRefusal(
+  db: Db | Tx, encounter: EncounterRow,
+): Promise<{ guard: string; code: string; detail?: unknown } | null> {
+  for (const [key, guard] of consultStartGuards) {
+    const verdict = await guard(db, encounter);
+    if (!verdict.ok) return { guard: key, code: verdict.code, detail: verdict.detail };
+  }
+  return null;
+}
+
+/**
  * ═══ FD-32 — THE SAME SHAPE, ONE DESK EARLIER (OWNER RULING 2026-09-13) ═══
  *
  * Owner: *"I can see a patient who got the token but has not been billed yet is visible in vitals
@@ -379,7 +395,7 @@ export async function openUnpaidToken(
 }
 
 /** The encounter's newest queue entry (seq, never id — ledger §3.26) and its session's room: the doctor-day event fields. */
-async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
+export async function entryWhere(tx: Tx, encounterId: string): Promise<{ sessionId: string; roomId: string | null; tokenNo: number }> {
   const entries = await tx
     .select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
     .orderBy(desc(opdQueueEntries.seq)).limit(1);

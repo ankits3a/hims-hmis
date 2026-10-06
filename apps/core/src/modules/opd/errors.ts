@@ -73,7 +73,12 @@ export type OpdErrorCode =
   | "move_same_department" | "visit_billed_state_conflict"
   // 2026-10-06 — a completion that would drop prescription lines written and never issued
   // (production 2026-09-23). 409 by the `_state_conflict` rule: issue or clear them, then complete.
-  | "rx_unissued_state_conflict";
+  | "rx_unissued_state_conflict"
+  // Owner ruling 2026-10-06 — consulted on paper. `paper_consult_not_permitted` is an authorisation
+  // answer (403, beside `transcription_not_permitted`); the `_state_conflict` pair is 409 by rule:
+  // a visit the paper road cannot close or reopen as it stands, and a visit whose prescription the
+  // doctor has already issued on the screen (the desk must not type over it).
+  | "paper_consult_not_permitted" | "paper_consult_state_conflict" | "doctor_rx_exists_state_conflict";
 
 export class OpdError extends Error {
   constructor(

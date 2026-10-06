@@ -191,6 +191,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "nurse",
       "opd_admin",
       "opd_scribe", // FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
+      "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
       "ot_incharge",
       "ot_nurse",
       "owner",
@@ -251,7 +252,7 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(44); // MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(45); // CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

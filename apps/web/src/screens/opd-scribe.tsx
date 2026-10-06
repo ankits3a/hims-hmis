@@ -1,259 +1,427 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api } from "../lib/api";
-import { fetchRxDraft, saveRxDraft } from "../lib/opd-api";
-import type { WireRxDraft, WireRxLine } from "../lib/opd-api";
+import { api, ApiError } from "../lib/api";
+import { checkPaperLines, fetchPaperVisit, transcribePaper } from "../lib/opd-api";
+import { useDebounced } from "../lib/format";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { UnpaidMark } from "../components/unpaid-mark";
+import { PaperSlipPane } from "../components/paper-slip";
+import { EMPTY_LINE, PaperLinesEditor, alertText, cleanLines, incompleteAt, startedLines } from "../components/paper-lines";
+import type { SlipReadback } from "../../../../packages/contracts/src/slip-desk";
+import type {
+  WireAdvisedTest, WireHeldAlert, WirePaperOutcome, WirePriceListRow, WireRxLine, WireTranscription,
+} from "../lib/opd-api";
+import "./paper-consult.css";
 
 /**
- * ═══ THE OPD DOOR — THE PAPER SLIP, TRANSCRIBED (OWNER RULING 2026-09-12) ═══
+ * ═══ THE DESK SCRIBE — THE DOCTOR'S PAPER, TYPED (OWNER RULINGS 2026-09-12 AND 2026-10-06) ═══
  *
- * Owner: *"Sometimes doctors have so tight schedule that they fail to enter his observation on the
- * operating system. They just write manually by pen on the prescription slip. So we must give
- * access to a staff who could enter details on behalf of doctor."* Ruling, same day: **draft then
- * confirm, doctor taps to issue.**
+ * 2026-09-12: *"doctors … just write manually by pen on the prescription slip. So we must give
+ * access to a staff who could enter details on behalf of doctor."* 2026-10-06: *"some of my doctors
+ * … are struggling to type … let's enable it [the Desk Scribe] to type the drugs as well as lab
+ * tests … typing the prescriptions … will mark the patient as Consulted even if the doctor hasn't
+ * … operated dashboard."* And ruling A: the pharmacy may dispense from what is typed here.
  *
- * This seat types what the doctor wrote. It cannot prescribe and the refusal is not this screen's:
- * `requireTreatingDoctor` inside `issuePrescription` is the lock, and it is the same lock every
- * prescription in the hospital passes through. What this screen produces is a DRAFT, which nothing
- * downstream can dispense, print or verify.
+ * SO THIS SEAT NO LONGER WRITES A DRAFT THAT WAITS FOR A TAP. One save:
+ *   · issues the medicines that raise no hard warning (to the pharmacy, in the doctor's name,
+ *     marked "typed from paper");
+ *   · HOLDS any medicine that does raise one, for the doctor — this seat cannot clear a warning and
+ *     the screen says so beside the line before the save, not after;
+ *   · puts the tests where the lab and imaging counters read them;
+ *   · marks the visit consulted.
  *
- * ═══ ONE INPUT, TWO ROADS, NO MODE SWITCH ═══
+ * ═══ THE PAPER IS ON THE SCREEN ═══
  *
- * The owner asked whether the visit QR was enough for a frictionless capture, or whether the staff
- * should type the number. It is one field, because a wedge scanner IS a keyboard that types fast —
- * the house pattern, stated in `vitals-bay.tsx`'s own header for the same reason: "the scan lands in
- * the same box a typed token or UHID lands in". The prescription footer's QR encodes exactly the
- * visit number, so scanning it and typing it put the identical string in this box.
+ * When the slip desk has photographed the page it sits on the left, zoomable, and the scribe types
+ * from it. When nobody has, the pane says so and the scribe types from the paper in their hand.
  *
- * ═══ THE READ-BACK IS THE SAFETY CONTROL, AND IT IS THE SERVER'S ═══
+ * ═══ THE READ-BACK IS STILL THE SAFETY CONTROL, AND IT IS STILL THE SERVER'S ═══
  *
- * Owner: *"we should have read-back of who and which visit it matched before it files."* Nothing is
- * typed against a visit until the server has named the patient — the QR proves nothing about which
- * human is standing there, and a slip filed against the wrong visit is a clinical-record error that
- * is silent afterwards.
+ * Nothing is typed against a visit until the server has named the patient. A prescription typed
+ * against the wrong visit is dispensed to the wrong person.
+ *
+ * ═══ NO MOUSE ═══
+ *
+ * Scan or type the visit → Enter. Tab through a line; Enter adds the next line; ↓↑ pick a
+ * suggestion. Tests: type, Enter picks the first match. Ctrl+Enter saves. Enter on the result
+ * starts the next slip.
  */
 
-type VisitLookup = {
-  encounter: { id: string; visitNo: string; serviceDate: string; status: string; visitType: string; doctorId: string | null };
-  /* FD-32 — the owner's third desk. Same two facts, same component, same derivation. */
-  feeUnpaid?: boolean;
-  feeBypass?: { by: string; reason: string; at: string } | null;
-  patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean; administrativeGender: string; dob: string | null } | null;
-};
+type VisitFee = { feeUnpaid?: boolean; feeBypass?: { by: string; reason: string; at: string } | null };
 
-const EMPTY_LINE: WireRxLine = {
-  drug: "", dose: "", route: "oral", frequency: "OD", durationDays: null, instructions: null, noSubstitution: false,
-};
+const VISIT_NO = /^V\d{6,}$/i;
+const CONSULTED: ReadonlySet<WirePaperOutcome> = new Set<WirePaperOutcome>(["marked", "already_marked", "doctor_completed"]);
+
+function nameOf(back: SlipReadback): string {
+  return back.patient?.name ?? back.patient?.alias ?? back.patient?.uhid ?? "—";
+}
+
+function errorCode(e: unknown): string | null {
+  if (!(e instanceof ApiError)) return null;
+  const body = e.body as { code?: unknown } | null;
+  return body !== null && typeof body === "object" && typeof body.code === "string" ? body.code : null;
+}
 
 export function OpdScribe(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const findRef = useRef<HTMLInputElement | null>(null);
+  const testRef = useRef<HTMLInputElement | null>(null);
+  const nextRef = useRef<HTMLButtonElement | null>(null);
+
   const [typed, setTyped] = useState("");
-  const [held, setHeld] = useState<string | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [notFound, setNotFound] = useState<string | null>(null);
+  const [choices, setChoices] = useState<SlipReadback[] | null>(null);
+  const [back, setBack] = useState<SlipReadback | null>(null);
+
   const [lines, setLines] = useState<WireRxLine[]>([{ ...EMPTY_LINE }]);
+  const [tests, setTests] = useState<WireAdvisedTest[]>([]);
+  const [testQuery, setTestQuery] = useState("");
+  const [testAt, setTestAt] = useState(0);
   const [note, setNote] = useState("");
-  const [saved, setSaved] = useState<WireRxDraft | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [alerts, setAlerts] = useState<Map<number, WireHeldAlert[]>>(new Map());
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ back: SlipReadback; out: WireTranscription } | null>(null);
+  const prefilled = useRef<string | null>(null);
 
-  const visit = useQuery({
-    queryKey: ["scribe", "visit", held ?? ""],
-    queryFn: () => api<VisitLookup>("GET", `/opd/visits/${encodeURIComponent(held!)}`),
-    enabled: held !== null,
+  const encounterId = back?.encounterId ?? null;
+  const state = useQuery({
+    queryKey: ["paper", "visit", encounterId ?? ""],
+    queryFn: () => fetchPaperVisit(encounterId!),
+    enabled: encounterId !== null,
     retry: false,
   });
-  /* What is already pending on this visit — a second scribe may have typed it, or the doctor may
-     have left it there. Shown rather than silently overwritten. */
-  const pending = useQuery({
-    queryKey: ["scribe", "draft", visit.data?.encounter.id ?? ""],
-    queryFn: () => fetchRxDraft(visit.data!.encounter.id),
-    enabled: visit.data !== undefined,
+  const fee = useQuery({
+    queryKey: ["scribe", "fee", encounterId ?? ""],
+    queryFn: () => api<VisitFee>("GET", `/opd/visits/${encodeURIComponent(encounterId!)}`),
+    enabled: encounterId !== null,
+    retry: false,
+  });
+  const services = useQuery({
+    queryKey: ["tariff", "price-list"],
+    queryFn: () => api<{ items: WirePriceListRow[] }>("GET", "/tariff/price-list"),
+    enabled: encounterId !== null,
     retry: false,
   });
 
-  function take(): void {
+  /* The doctor issued this visit's prescription on the screen: the desk types no medicines over it. */
+  const doctorIssued = state.data?.prescription != null && state.data.prescription.transcribedByName === null;
+
+  /*
+    WHAT THIS DESK ALREADY TYPED COMES BACK INTO THE TABLE, ONCE. A second save replaces the first,
+    so a scribe correcting line 2 must see lines 1 and 3 or they would be typed away.
+  */
+  useEffect(() => {
+    const s = state.data;
+    if (s === undefined || prefilled.current === s.encounterId) return;
+    prefilled.current = s.encounterId;
+    const typedBefore = s.prescription !== null && s.prescription.transcribedByName !== null ? s.prescription.lines : [];
+    const heldBefore = s.held?.lines ?? [];
+    const all = [...typedBefore, ...heldBefore];
+    setLines(all.length > 0 ? all : [{ ...EMPTY_LINE }]);
+    setTests(s.advisedTests.filter((x) => x.transcribedBy !== undefined).map((x) => ({ serviceId: x.serviceId, code: x.code, name: x.name, pricePaise: x.pricePaise })));
+    setNote(s.held?.note ?? "");
+  }, [state.data]);
+
+  /* The warnings for what is typed so far — asked for a beat after the typing stops. */
+  const started = useMemo(() => startedLines(lines), [lines]);
+  const checkKey = useDebounced(JSON.stringify(started.map((x) => [x.line.drug.trim(), x.line.medicineId ?? null])), 450);
+  useEffect(() => {
+    if (encounterId === null || doctorIssued) { setAlerts(new Map()); return; }
+    const now = startedLines(lines);
+    if (now.length === 0) { setAlerts(new Map()); return; }
+    let live = true;
+    void checkPaperLines(encounterId, cleanLines(lines))
+      .then((r) => {
+        if (!live) return;
+        /* The server's index is into the STARTED lines; the table's is into every row. */
+        setAlerts(new Map(r.lines.flatMap((x) => (now[x.lineIndex] === undefined ? [] : [[now[x.lineIndex]!.at, x.alerts] as const]))));
+      })
+      .catch(() => { if (live) setAlerts(new Map()); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `checkKey` IS the debounced `lines`
+  }, [checkKey, encounterId, doctorIssued]);
+
+  /* Synchronous, for the reason `PaperLinesEditor` gives: a scanner fires the next slip's number the instant Enter lands. */
+  const reset = (): void => {
+    flushSync(() => {
+      setBack(null); setTyped(""); setNotFound(null); setChoices(null);
+      setLines([{ ...EMPTY_LINE }]); setTests([]); setTestQuery(""); setNote(""); setAlerts(new Map());
+      setError(null); setDone(null);
+    });
+    prefilled.current = null;
+    findRef.current?.focus();
+  };
+
+  const take = (found: SlipReadback): void => {
+    setBack(found); setChoices(null); setNotFound(null); setError(null);
+    setTimeout(() => { document.getElementById("scribe-drug-0")?.focus(); }, 0);
+  };
+
+  async function find(): Promise<void> {
     const v = typed.trim();
-    if (v === "") return;
-    setHeld(v);
-    setSaved(null);
-    setError(null);
+    if (v === "" || looking) return;
+    setLooking(true); setNotFound(null); setChoices(null);
+    try {
+      if (VISIT_NO.test(v.replace(/\s+/g, ""))) {
+        take(await api<SlipReadback>("GET", `/opd/visits/by-number/${encodeURIComponent(v.replace(/\s+/g, "").toUpperCase())}`));
+        return;
+      }
+      /* Not a visit number — a torn slip. Today's visits by name, UHID or mobile, and the scribe picks. */
+      const { items } = await api<{ items: SlipReadback[] }>("GET", `/opd/slips/find?q=${encodeURIComponent(v)}`);
+      if (items.length === 1) take(items[0]!);
+      else if (items.length === 0) setNotFound(v);
+      else setChoices(items);
+    } catch {
+      setNotFound(v);
+    } finally {
+      setLooking(false);
+    }
   }
 
-  function release(): void {
-    setHeld(null); setTyped(""); setLines([{ ...EMPTY_LINE }]); setNote(""); setSaved(null); setError(null);
-  }
+  const matches = useMemo(() => {
+    const q = testQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return (services.data?.items ?? [])
+      .filter((sv) => sv.name.toLowerCase().includes(q) || sv.code.toLowerCase().includes(q))
+      .filter((sv) => !tests.some((x) => x.serviceId === sv.serviceId))
+      .slice(0, 8);
+  }, [services.data, testQuery, tests]);
+  const addTest = (sv: WirePriceListRow): void => {
+    setTests((prev) => [...prev, { serviceId: sv.serviceId, code: sv.code, name: sv.name, pricePaise: sv.pricePaise }]);
+    setTestQuery(""); setTestAt(0);
+    testRef.current?.focus();
+  };
 
-  function patch(i: number, change: Partial<WireRxLine>): void {
-    setLines((prev) => prev.map((l, j) => (j === i ? { ...l, ...change } : l)));
-  }
-
-  const usable = lines.filter((l) => l.drug.trim() !== "");
+  const incomplete = incompleteAt(lines);
+  const usable = cleanLines(lines);
+  const medicines = doctorIssued ? [] : usable;
+  const heldCount = [...alerts.entries()].filter(([, a]) => a.some((x) => x.hard)).length;
+  const nothing = medicines.length === 0 && tests.length === 0;
+  const canSave = back !== null && !busy && !nothing && (doctorIssued || incomplete.length === 0);
 
   async function save(): Promise<void> {
-    const encounterId = visit.data?.encounter.id;
-    if (encounterId === undefined || usable.length === 0 || busy) return;
-    setBusy(true);
-    setError(null);
+    if (back === null || !canSave) return;
+    setBusy(true); setError(null);
     try {
-      const draft = await saveRxDraft(encounterId, {
-        lines: usable.map((l) => ({
-          ...l,
-          drug: l.drug.trim(),
-          dose: l.dose.trim(),
-          instructions: l.instructions === null || l.instructions.trim() === "" ? null : l.instructions.trim(),
-        })),
-        note: note.trim() === "" ? null : note.trim(),
+      const out = await transcribePaper(back.encounterId, {
+        lines: medicines, ...(tests.length === 0 ? {} : { advisedTests: tests }), note: note.trim() === "" ? null : note.trim(),
       });
-      setSaved(draft);
-      await queryClient.invalidateQueries({ queryKey: ["scribe", "draft", encounterId] });
+      setDone({ back, out });
+      void queryClient.invalidateQueries({ queryKey: ["paper"] });
+      void queryClient.invalidateQueries({ queryKey: ["opd", "slips", "today"] });
+      setTimeout(() => nextRef.current?.focus(), 0);
     } catch (e) {
-      /* STATED. A scribe who typed eight lines and saw the form clear would believe it was filed. */
-      setError(e instanceof Error ? e.message : String(e));
+      /* STATED. A scribe who typed eight lines and saw the form clear would believe it was sent. */
+      const code = errorCode(e);
+      setError(code !== null ? t(`paper.refusal.${code}`, { defaultValue: t("paper.refusal.other") }) : t("paper.refusal.other"));
     } finally {
       setBusy(false);
     }
   }
 
-  const who = visit.data?.patient;
-  const name = who === null || who === undefined ? null : (who.restricted ? who.alias : who.name) ?? who.uhid;
+  /* Ctrl+Enter saves from anywhere in the form. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && back !== null && done === null) { e.preventDefault(); void save(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  });
+
+  const s = state.data;
+  const status = s === undefined ? null
+    : s.completedVia === "paper" ? "paper"
+    : s.status === "completed" ? "doctor"
+    : s.status === "in_consultation" ? "with_doctor"
+    : s.status === "abandoned" ? "abandoned" : "open";
 
   return (
-    <PaperScreen testId="opd-scribe">
-      <div style={{ flexGrow: 1, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <ScreenTitle title={t("scribe.title")} route="/opd/scribe" />
+    <PaperScreen testId="opd-scribe" style={{ height: "var(--pp-h)" }}>
+      <div className="pc" style={{ flexGrow: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <div className="pc-top">
+          <ScreenTitle title={t("scribe.title")} subtitle={t("scribe.subtitle")} />
+        </div>
 
-        {held === null ? (
-          <div className="box" style={{ padding: 16, maxWidth: 520 }}>
-            <label htmlFor="scribe-visit" style={{ display: "block", fontSize: 12, color: "var(--dim)", marginBottom: 6 }}>
-              {t("scribe.findVisit")}
-            </label>
-            {/* One box. A wedge scanner types the QR's payload and Enter; a clerk types the same. */}
-            <input
-              id="scribe-visit" data-testid="scribe-visit" autoFocus value={typed}
-              placeholder={t("scribe.findVisitHint")}
-              onChange={(e) => { setTyped(e.target.value); }}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); take(); } }}
-            />
-            <button type="button" className="pri" data-testid="scribe-take" style={{ marginTop: 9 }} onClick={take}>
-              {t("scribe.open")}
-            </button>
-          </div>
-        ) : visit.isPending ? (
-          <p data-testid="scribe-looking">{t("app.loading")}</p>
-        ) : visit.isError ? (
-          <div className="box" style={{ padding: 16, maxWidth: 520 }}>
-            <p data-testid="scribe-not-found" style={{ margin: 0, color: "var(--bad)" }}>{t("scribe.notFound", { id: held })}</p>
-            <button type="button" className="sec" data-testid="scribe-release" style={{ marginTop: 9 }} onClick={release}>
-              {t("scribe.another")}
-            </button>
-          </div>
-        ) : (
-          <>
-            {/*
-              ═══ THE READ-BACK. The owner asked for it by name, and it is the whole safety story:
-              the scribe confirms the human in front of them against what the SERVER resolved.
-            */}
-            <div className="box" data-testid="scribe-readback" style={{ padding: 14, maxWidth: 640 }}>
-              <span className="tag">{t("scribe.matched")}</span>
-              <div style={{ marginTop: 7, display: "flex", flexDirection: "column", gap: 3 }}>
-                <span data-testid="scribe-name" style={{ fontSize: 17, fontWeight: 700 }}>{name ?? "—"}</span>
-                <span className="mo" style={{ fontSize: 12, color: "var(--dim)" }}>
-                  {who?.uhid} · {visit.data?.encounter.visitNo} · {visit.data?.encounter.serviceDate}
-                </span>
+        {back === null ? (
+          <div className="pc-find">
+            <div className="box pc-find-box">
+              <label htmlFor="scribe-visit" className="pc-find-l">{t("scribe.findVisit")}</label>
+              {/* One box. A wedge scanner types the QR's payload and Enter; a clerk types the same. */}
+              <div className="pc-find-row">
+                <input
+                  id="scribe-visit" ref={findRef} data-testid="scribe-visit" className="in" autoFocus autoComplete="off" spellCheck={false}
+                  value={typed} placeholder={t("scribe.findVisitHint")}
+                  onChange={(e) => { setTyped(e.target.value); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void find(); } }}
+                />
+                <button type="button" className="pri" data-testid="scribe-take" disabled={looking} onClick={() => { void find(); }}>
+                  {t("scribe.open")} <span className="kb">⏎</span>
+                </button>
               </div>
-              {/*
-                FD-32 / owner 2026-09-13 — this desk is the LAST one before the patient leaves with
-                their paper, and unlike the bay and the chair it has no gate in front of it. So the
-                mark matters most here: a slip transcribed for a patient who never paid is a job
-                sent to the lab, the imaging room and the pharmacy on an unbilled visit.
-              */}
-              <div style={{ marginTop: 9 }}>
-                <UnpaidMark unpaid={visit.data?.feeUnpaid ?? false} bypass={visit.data?.feeBypass ?? null} />
-              </div>
-              <button type="button" className="sec" data-testid="scribe-release" style={{ marginTop: 9 }} onClick={release}>
-                {t("scribe.notThem")}
+              {notFound !== null && <p data-testid="scribe-not-found" className="pc-bad" role="alert">{t("scribe.notFound", { id: notFound })}</p>}
+              {choices !== null && (
+                <ul className="pc-choices" data-testid="scribe-choices">
+                  {choices.map((c) => (
+                    <li key={c.encounterId}>
+                      <button type="button" onClick={() => { take(c); }}>
+                        <b>{nameOf(c)}</b>
+                        <span className="mo">{c.patient?.uhid ?? "—"} · {c.visitNo}{c.doctorCode != null ? ` · ${c.doctorCode}` : ""}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <ul className="pc-how">
+              <li>{t("scribe.how.type")}</li>
+              <li>{t("scribe.how.held")}</li>
+              <li>{t("scribe.how.consulted")}</li>
+            </ul>
+          </div>
+        ) : done !== null ? (
+          <div className="pc-find">
+            <div className="box pc-done" data-testid="scribe-saved" role="status">
+              <p className="pc-done-h">{t("scribe.done.title", { name: nameOf(done.back) })} <span className="mo">{done.back.visitNo}</span></p>
+              <ul className="pc-done-l">
+                {done.out.prescription !== null && (
+                  <li className="ok" data-testid="scribe-done-sent">{t("scribe.done.sent", { count: done.out.prescription.lineCount })}</li>
+                )}
+                {done.out.held.length > 0 && (
+                  <li className="held" data-testid="scribe-done-held">
+                    {t("scribe.done.held", { count: done.out.held.length })}
+                    <ul>{done.out.held.map((h, i) => <li key={i}><b>{h.line.drug}</b> — {h.alerts.map((a) => alertText(t, a)).join("; ")}</li>)}</ul>
+                  </li>
+                )}
+                {done.out.advisedTests.some((x) => x.transcribedBy !== undefined) && (
+                  <li className="ok" data-testid="scribe-done-tests">{t("scribe.done.tests", { count: done.out.advisedTests.filter((x) => x.transcribedBy !== undefined).length })}</li>
+                )}
+                <li className={CONSULTED.has(done.out.paper.outcome) ? "ok" : "held"} data-testid="scribe-done-paper" data-outcome={done.out.paper.outcome}>
+                  {t(`paper.outcome.${done.out.paper.outcome}`)}
+                </li>
+              </ul>
+              <button type="button" ref={nextRef} className="pri" data-testid="scribe-next" onClick={reset}>
+                {t("scribe.next")} <span className="kb">⏎</span>
               </button>
             </div>
+          </div>
+        ) : (
+          <div className="pc-work">
+            <div className="pc-paper">
+              <PaperSlipPane
+                patientId={back.patientId} encounterId={back.encounterId}
+                {...(s === undefined ? {} : { pages: s.documents.map((d) => ({ id: d.id, capturedAt: d.capturedAt })) })}
+                emptyHint={t("scribe.noPhoto")}
+              />
+            </div>
 
-            {pending.data?.draft != null && saved === null && (
-              <p data-testid="scribe-already-pending" style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>
-                {t("scribe.alreadyPending", { count: pending.data.draft.lines.length })}
-              </p>
-            )}
-
-            {saved !== null ? (
-              /* The confirmation the owner asked for: it is filed, and it is waiting for the doctor. */
-              <div className="box" data-testid="scribe-saved" style={{ padding: 16, maxWidth: 640 }}>
-                <p style={{ margin: 0, fontWeight: 700 }}>{t("scribe.savedTitle", { count: saved.lines.length })}</p>
-                <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--dim)" }}>{t("scribe.savedBody")}</p>
-                <button type="button" className="pri" data-testid="scribe-next" style={{ marginTop: 11 }} onClick={release}>
-                  {t("scribe.next")}
-                </button>
-              </div>
-            ) : (
-              <div className="box" style={{ padding: 16 }}>
-                <span className="tag">{t("scribe.whatIsWritten")}</span>
-                <table data-testid="scribe-lines" style={{ width: "100%", marginTop: 9, borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ fontSize: 10.5, color: "var(--dim)", textAlign: "left" }}>
-                      <th>{t("scribe.drug")}</th><th>{t("scribe.dose")}</th><th>{t("scribe.route")}</th>
-                      <th>{t("scribe.frequency")}</th><th>{t("scribe.days")}</th><th>{t("scribe.instructions")}</th><th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((l, i) => (
-                      <tr key={i} data-testid={`scribe-line-${String(i)}`}>
-                        <td><input data-testid={`scribe-drug-${String(i)}`} value={l.drug} onChange={(e) => { patch(i, { drug: e.target.value }); }} /></td>
-                        <td><input data-testid={`scribe-dose-${String(i)}`} value={l.dose} onChange={(e) => { patch(i, { dose: e.target.value }); }} /></td>
-                        <td><input data-testid={`scribe-route-${String(i)}`} value={l.route} onChange={(e) => { patch(i, { route: e.target.value }); }} /></td>
-                        <td><input data-testid={`scribe-freq-${String(i)}`} value={l.frequency} onChange={(e) => { patch(i, { frequency: e.target.value }); }} /></td>
-                        <td>
-                          <input
-                            data-testid={`scribe-days-${String(i)}`} inputMode="numeric"
-                            value={l.durationDays === null ? "" : String(l.durationDays)}
-                            onChange={(e) => {
-                              const v = e.target.value.trim();
-                              patch(i, { durationDays: v === "" || !/^\d+$/.test(v) ? null : Number(v) });
-                            }}
-                          />
-                        </td>
-                        <td><input data-testid={`scribe-notes-${String(i)}`} value={l.instructions ?? ""} onChange={(e) => { patch(i, { instructions: e.target.value }); }} /></td>
-                        <td>
-                          <button
-                            type="button" className="sec" data-testid={`scribe-drop-${String(i)}`}
-                            onClick={() => { setLines((prev) => (prev.length === 1 ? [{ ...EMPTY_LINE }] : prev.filter((_, j) => j !== i))); }}
-                          >
-                            {t("scribe.remove")}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <button type="button" className="sec" data-testid="scribe-add" style={{ marginTop: 9 }} onClick={() => { setLines((prev) => [...prev, { ...EMPTY_LINE }]); }}>
-                  {t("scribe.addLine")}
-                </button>
-
-                <label htmlFor="scribe-note" style={{ display: "block", marginTop: 13, fontSize: 12, color: "var(--dim)" }}>
-                  {t("scribe.note")}
-                </label>
-                <input id="scribe-note" data-testid="scribe-note" value={note} onChange={(e) => { setNote(e.target.value); }} />
-
-                {error !== null && <p data-testid="scribe-error" style={{ margin: "9px 0 0", color: "var(--bad)", fontSize: 12 }}>{error}</p>}
-
-                <div style={{ marginTop: 13, display: "flex", gap: 7, alignItems: "center" }}>
-                  <button type="button" className="pri" data-testid="scribe-save" disabled={usable.length === 0 || busy} onClick={() => { void save(); }}>
-                    {t("scribe.save")}
-                  </button>
-                  {/* The sentence that keeps this seat honest about what it just did. */}
-                  <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("scribe.notAPrescription")}</span>
+            <div className="pc-type">
+              {/*
+                ═══ THE READ-BACK. The scribe confirms the human whose paper this is against what the
+                SERVER resolved — before a single line is typed.
+              */}
+              <div className="box pc-who" data-testid="scribe-readback">
+                <div className="pc-who-main">
+                  <span className="tag">{t("scribe.matched")}</span>
+                  <b data-testid="scribe-name">{nameOf(back)}</b>
+                  <span className="mo">{back.patient?.uhid ?? "—"} · {back.visitNo}{back.doctorCode != null ? ` · ${back.doctorCode}` : ""}{back.departmentName != null ? ` · ${back.departmentName}` : ""}</span>
+                </div>
+                <div className="pc-who-side">
+                  <UnpaidMark unpaid={fee.data?.feeUnpaid ?? false} bypass={fee.data?.feeBypass ?? null} />
+                  {status !== null && status !== "open" && (
+                    <span className={status === "abandoned" ? "pill rd" : "pill"} data-testid="scribe-status" data-status={status}>{t(`scribe.status.${status}`, { name: s?.paperCompletedByName ?? "—" })}</span>
+                  )}
+                  <button type="button" className="sec" data-testid="scribe-release" onClick={reset}>{t("scribe.notThem")}</button>
                 </div>
               </div>
-            )}
-          </>
+
+              <div className="box pc-card">
+                <div className="pc-card-h">
+                  <h2>{t("scribe.medicines")}</h2>
+                  <span className="pc-hint">{t("scribe.medicinesHint")}</span>
+                </div>
+                {doctorIssued ? (
+                  <p className="pc-note gd" data-testid="scribe-doctor-issued" role="status">{t("scribe.doctorIssued")}</p>
+                ) : (
+                  <PaperLinesEditor idPrefix="scribe" lines={lines} onChange={setLines} alerts={alerts} />
+                )}
+              </div>
+
+              <div className="box pc-card">
+                <div className="pc-card-h">
+                  <h2>{t("scribe.tests")}</h2>
+                  <span className="pc-hint">{t("scribe.testsHint")}</span>
+                </div>
+                <div className="pc-tests">
+                  {tests.map((x) => (
+                    <span key={x.serviceId} className="pc-chip" data-testid={`scribe-test-${x.code}`}>
+                      {x.name}
+                      <button type="button" tabIndex={-1} aria-label={t("scribe.removeTest", { name: x.name })} onClick={() => { setTests((prev) => prev.filter((y) => y.serviceId !== x.serviceId)); }}>×</button>
+                    </span>
+                  ))}
+                  <div className="pc-test-in">
+                    <input
+                      ref={testRef} className="in" data-testid="scribe-test-q" value={testQuery} autoComplete="off"
+                      role="combobox" aria-expanded={matches.length > 0} aria-controls="scribe-test-list" aria-autocomplete="list"
+                      placeholder={services.isError ? t("scribe.testsUnavailable") : t("scribe.testsPlaceholder")}
+                      disabled={services.isError}
+                      onChange={(e) => { setTestQuery(e.target.value); setTestAt(0); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown" && matches.length > 0) { e.preventDefault(); setTestAt((i) => Math.min(matches.length - 1, i + 1)); }
+                        else if (e.key === "ArrowUp" && matches.length > 0) { e.preventDefault(); setTestAt((i) => Math.max(0, i - 1)); }
+                        else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); const m = matches[testAt]; if (m !== undefined) addTest(m); }
+                        else if (e.key === "Escape" && testQuery !== "") { e.stopPropagation(); setTestQuery(""); }
+                        else if (e.key === "Backspace" && testQuery === "" && tests.length > 0) { setTests((prev) => prev.slice(0, -1)); }
+                      }}
+                    />
+                    {matches.length > 0 && (
+                      <ul id="scribe-test-list" role="listbox" className="pc-test-list" data-testid="scribe-test-hits">
+                        {matches.map((m, i) => (
+                          <li key={m.serviceId} role="option" aria-selected={i === testAt}>
+                            <button type="button" tabIndex={-1} className={i === testAt ? "on" : undefined} onClick={() => { addTest(m); }}>
+                              <span>{m.name}</span><span className="mo">{m.code}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="box pc-card">
+                <label htmlFor="scribe-note" className="pc-l">{t("scribe.note")}</label>
+                <input id="scribe-note" className="in" data-testid="scribe-note" value={note} placeholder={t("scribe.noteHint")} onChange={(e) => { setNote(e.target.value); }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {back !== null && done === null && (
+          <div className="pc-dock" data-testid="scribe-dock">
+            <div className="pc-dock-say">
+              {error !== null ? <span className="pc-bad" data-testid="scribe-error" role="alert">{error}</span>
+                : incomplete.length > 0 && !doctorIssued ? <span className="pc-bad" data-testid="scribe-incomplete">{t("scribe.dock.incomplete", { count: incomplete.length })}</span>
+                : nothing ? <span>{t("scribe.dock.nothing")}</span>
+                : (
+                  <span data-testid="scribe-summary">
+                    {[
+                      Math.max(0, medicines.length - heldCount) > 0 ? t("scribe.dock.meds", { count: Math.max(0, medicines.length - heldCount) }) : null,
+                      tests.length > 0 ? t("scribe.dock.tests", { count: tests.length }) : null,
+                    ].filter((x) => x !== null).join(" · ")}
+                    {heldCount > 0 && <b className="pc-held">{medicines.length - heldCount > 0 || tests.length > 0 ? " · " : ""}{t("scribe.dock.held", { count: heldCount })}</b>}
+                  </span>
+                )}
+              <small>{t("scribe.dock.sub")}</small>
+            </div>
+            <button type="button" className="pri" data-testid="scribe-save" disabled={!canSave} onClick={() => { void save(); }}>
+              {busy ? t("scribe.saving") : t("scribe.save")} <span className="kb">Ctrl ⏎</span>
+            </button>
+          </div>
         )}
       </div>
     </PaperScreen>

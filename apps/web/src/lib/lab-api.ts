@@ -144,6 +144,8 @@ export type WireAdvisedLine = {
   serviceId: string; code: string; name: string; pricePaise: number;
   orderable: { container: string; specimenType: string; consentRequired: boolean; sensitive: boolean; requiresFasting: boolean } | null;
   alreadyOrderedItemId: string | null;
+  /** Owner ruling 2026-10-06 — the desk scribe who typed this test from the doctor's paper; null/absent when the doctor advised it on the screen. */
+  typedFromPaperBy?: string | null;
 };
 
 export type WireDeskFindHit = {

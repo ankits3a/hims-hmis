@@ -98,6 +98,22 @@ export const opdManifest: ModuleManifest = {
      */
     "opd.prescription.transcribe",
     /**
+     * ═══ CONSULTED ON PAPER — owner ruling 2026-10-06 ═══
+     *
+     * *"If the Slip Desk or Scribe Desk staff by … clicking a picture of prescription slip or typing
+     * the prescriptions … will mark the patient as Consulted even if the doctor hasn't … operated
+     * dashboard."* Ruling B: **"the slip desk and Desk scribe"**, and nobody else.
+     *
+     * This is the grant that closes a visit from the doctor's paper. It is NOT `patients.update`,
+     * which files the photograph and which the front office, the vitals bay, the lab counter and
+     * MRD all hold: any of them may still file a slip, and only a holder of this closes the visit
+     * by doing so. It is not `opd.prescription.transcribe` either — typing a prescription and
+     * declaring a consultation finished are two acts, and the slip desk does the second without
+     * the first. Asserted INSIDE `markConsultedOnPaperInTx`, never only at a route: the act is
+     * reached through another module's route (`POST /patients/:id/documents`).
+     */
+    "opd.consult.paper",
+    /**
      * THE OPD DAY REPORT — owner request 2026-09-19. The hospital's day, department by department,
      * and each department's patient list, as a screen, a spreadsheet and a printable letterhead.
      * Held by the front-office supervisor, the medical superintendent and the owner. It carries
