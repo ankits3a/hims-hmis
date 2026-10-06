@@ -9,7 +9,7 @@ import {
   events, opdEncounters, opdPrescriptionDrafts, opdPrescriptions, opdQueueEntries, patientAllergies, patientDocuments, workflowInstances,
 } from "../../kernel/db/schema";
 import { captureDocument } from "../patients";
-import { completeConsultation, registerConsultStartGuard, startConsultation } from "./consultation";
+import { completeConsultation, parkConsultation, registerConsultStartGuard, saveConsultNote, startConsultation } from "./consultation";
 import { loadOpdDepartmentReport, loadOpdReport } from "./report";
 import { getEncounter, openVisit } from "./encounters";
 import { registerPaperConsultHook } from "./opd.module";
@@ -193,14 +193,67 @@ describe("consulted on paper — the slip desk, the scribe, the doctor's look an
     expect((await getEncounter(db, enc.id))!.status).toBe("waiting");
   });
 
-  it("a consultation the doctor has OPEN on the screen is not overridden — the paper is attached and the doctor closes it", async () => {
+  /**
+   * ═══ OWNER, 2026-10-06: "Yes, paper close that visit too." ═══
+   *
+   * A visit the doctor STARTED on the screen and never completed is closed by the paper road as
+   * well. What the doctor typed is the part that must survive it: the medicines drafted on the
+   * screen and never issued stay drafted and UNISSUED (the pharmacy gets only what the desk typed),
+   * they are shown to the doctor, and the doctor's own screen — still open on that patient — is
+   * told in a sentence rather than handed a state error.
+   */
+  it("a consultation the doctor STARTED and left open is closed by the slip too — the draft they typed is kept, issued by nobody, and shown to them", async () => {
     const enc = await waiting();
     const opened = (await liveEntries(enc.id))[0]!;
     await callNext(db, dra.actor, opened.sessionId, MON);
     await startConsultation(db, dra.actor, enc.id, MON);
-    const { paper } = await fileSlip(slipDesk, enc);
-    expect(paper).toMatchObject({ outcome: "doctor_consulting", consulted: false });
-    expect((await getEncounter(db, enc.id))!).toMatchObject({ status: "in_consultation", completedVia: null });
+    const DRAFT = [{ drug: "Tab Azithromycin 500", dose: "1 tab", route: "oral", frequency: "OD", durationDays: "3", instructions: "", noSubstitution: false }];
+    await saveConsultNote(db, dra.actor, enc.id, { chiefComplaint: "fever", rxDraft: DRAFT }, MON);
+
+    const { documentId, paper } = await fileSlip(slipDesk, enc);
+    expect(paper).toMatchObject({ outcome: "marked", consulted: true });
+    const after = (await getEncounter(db, enc.id))!;
+    expect(after).toMatchObject({ status: "completed", completedVia: "paper", paperCompletedBy: slipDesk.id, paperEvidenceId: documentId, chiefComplaint: "fever" });
+    expect(after.consultStartedAt).toEqual(MON); // the doctor's own start is not rewritten
+    expect((await liveEntries(enc.id))[0]!.status).toBe("done");
+    expect((await named("consultation.completed_on_paper", enc.id))[0]!.payload).toMatchObject({ fromState: "in_consultation" });
+
+    /* THE DRAFT: still on the visit, word for word; no prescription was issued from it; the doctor's list names it. */
+    expect(after.rxDraft).toEqual(DRAFT);
+    expect(await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, enc.id))).toHaveLength(0);
+    expect(await named("prescription.issued", enc.id)).toHaveLength(0);
+    const mine = await listPaperConsults(db, dra.actor, { scope: "mine" }, MON3);
+    expect(mine.items[0]!.doctorDraft).toEqual([{ drug: "Tab Azithromycin 500", dose: "1 tab", route: "oral", frequency: "OD", durationDays: 3, instructions: null, noSubstitution: false }]);
+
+    /* THE DOCTOR'S SCREEN, STILL OPEN: a sentence about what happened — for the save, the completion and an issue. */
+    for (const act of [
+      () => saveConsultNote(db, dra.actor, enc.id, { chiefComplaint: "fever, cough" }, MON3),
+      () => completeConsultation(db, dra.actor, enc.id, { testsOrderedReturnToday: false }, MON3),
+      () => issuePrescription(db, dra.actor, testCfg, enc.id, { lines: [PARA] }, MON3),
+    ]) {
+      await expect(act()).rejects.toMatchObject({ code: "closed_on_paper_state_conflict", message: expect.stringContaining("marked consulted from your paper prescription") });
+    }
+    /* …and the doctor can still issue what they had drafted, the sanctioned way. */
+    const row = await correctPaperPrescription(db, dra.actor, testCfg, enc.id, { lines: mine.items[0]!.doctorDraft }, MON3);
+    expect(row.prescription).toMatchObject({ version: 1, transcribedByName: null });
+    expect(row.doctorDraft).toEqual([]);
+  });
+
+  it("a PARKED consultation is closed the same way, and the scribe's typing sends ONLY the scribe's lines", async () => {
+    const enc = await waiting();
+    await startConsultation(db, dra.actor, enc.id, MON);
+    await saveConsultNote(db, dra.actor, enc.id, { rxDraft: [{ drug: "Tab Azithromycin 500", dose: "1 tab", route: "oral", frequency: "OD", durationDays: 3, instructions: "", noSubstitution: false }] }, MON);
+    await parkConsultation(db, dra.actor, enc.id, MON);
+
+    const out = await transcribePaper(db, scribe.actor, testCfg, enc.id, { lines: [PARA] }, MON2);
+    expect(out.paper).toMatchObject({ outcome: "marked", consulted: true });
+    const rx = await db.select().from(opdPrescriptions).where(eq(opdPrescriptions.encounterId, enc.id));
+    expect(rx).toHaveLength(1);
+    expect(rx[0]!.lines).toEqual([PARA]); // not the doctor's unissued Azithromycin
+    expect(rx[0]!.transcribedBy).toBe(scribe.id);
+    const entry = (await liveEntries(enc.id))[0]!;
+    expect(entry).toMatchObject({ status: "done", parkedAt: null });
+    expect((await listPaperConsults(db, dra.actor, { scope: "mine" }, MON3)).items[0]!.doctorDraft.map((l) => l.drug)).toEqual(["Tab Azithromycin 500"]);
   });
 
   it("a visit the doctor completed on the screen stays the doctor's: nothing is rewritten", async () => {
@@ -418,8 +471,9 @@ describe("consulted on paper — the slip desk, the scribe, the doctor's look an
   it("the ordinary issue route did NOT widen: a doctor still cannot issue on a completed visit outside the paper correction", async () => {
     const enc = await waiting();
     await fileSlip(slipDesk, enc);
+    /* Refused — and said as what happened (the desk closed it), not as a bare state error. */
     await expect(issuePrescription(db, dra.actor, testCfg, enc.id, { lines: [PARA] }, MON3))
-      .rejects.toMatchObject({ code: "encounter_state_conflict" });
+      .rejects.toMatchObject({ code: "closed_on_paper_state_conflict" });
     await expect(issuePrescription(db, scribe.actor, testCfg, enc.id, { lines: [PARA] }, MON3, "paper_slip"))
       .rejects.toMatchObject({ code: "encounter_state_conflict" });
   });

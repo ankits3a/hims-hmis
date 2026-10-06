@@ -100,6 +100,30 @@ describe("paper consultations — the doctor's own list", () => {
   });
 });
 
+/**
+ * Owner 2026-10-06: "Yes, paper close that visit too." — a visit the doctor started on screen is
+ * closed from paper as well. The medicines they had typed and not issued were sent to nobody; the
+ * list says so, and "Correct it" puts them in the editor so issuing them is one decision away.
+ */
+describe("paper consultations — the draft the doctor left on the screen", () => {
+  it("names the unissued draft on the row, and 'Correct it' carries it into the editor", async () => {
+    const DRAFT_LINE = { drug: "Tab Azithromycin 500", dose: "1 tab", route: "oral", frequency: "OD", durationDays: 3, instructions: null, noSubstitution: false };
+    stub(["opd.consult", "opd.visits.read"], [row({ evidenceKind: "slip_photo", prescription: null, doctorDraft: [DRAFT_LINE] })], {
+      "POST /api/opd/paper/visits/E-1/correction-check": { lines: [] },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<PaperConsults />);
+    const r = await screen.findByTestId("paper-row-V2610060004");
+    expect(within(r).getByTestId("paper-pill-draft")).toHaveTextContent("your unissued draft");
+    await user.click(within(r).getByRole("button", { expanded: false }));
+    const block = within(r).getByTestId("paper-doctor-draft");
+    expect(block).toHaveTextContent("1 medicine you typed on the screen was NOT issued");
+    expect(block).toHaveTextContent("Tab Azithromycin 500");
+    await user.click(within(r).getByTestId("paper-correct"));
+    await waitFor(() => { expect(document.getElementById("fix-E-1-drug-0")).toHaveValue("Tab Azithromycin 500"); });
+  });
+});
+
 describe("paper consultations — the supervisor's list", () => {
   it("every doctor's visits; reopen needs a reason, and can withdraw the typed prescription with it", async () => {
     stub(["opd.queue.transfer", "opd.visits.read"], [row({})], { "POST /api/opd/paper/visits/E-1/reopen": { encounter: {} } });

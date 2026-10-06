@@ -78,7 +78,9 @@ export type OpdErrorCode =
   // answer (403, beside `transcription_not_permitted`); the `_state_conflict` pair is 409 by rule:
   // a visit the paper road cannot close or reopen as it stands, and a visit whose prescription the
   // doctor has already issued on the screen (the desk must not type over it).
-  | "paper_consult_not_permitted" | "paper_consult_state_conflict" | "doctor_rx_exists_state_conflict";
+  | "paper_consult_not_permitted" | "paper_consult_state_conflict" | "doctor_rx_exists_state_conflict"
+  // The doctor's own screen acting on a visit a desk has since closed from paper (409): a sentence, not a fault.
+  | "closed_on_paper_state_conflict";
 
 export class OpdError extends Error {
   constructor(

@@ -44,7 +44,8 @@ function refusal(t: (k: string, o?: Record<string, unknown>) => string, e: unkno
 function Correction({ row, onDone, onCancel }: { row: WirePaperConsult; onDone: () => void; onCancel: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const [lines, setLines] = useState<WireRxLine[]>(() => {
-    const all = [...(row.prescription?.lines ?? []), ...(row.held?.lines ?? [])];
+    /* What the desk typed, what it could not send, and what the doctor had typed on screen and never issued. */
+    const all = [...(row.prescription?.lines ?? []), ...(row.held?.lines ?? []), ...(row.doctorDraft ?? [])];
     return all.length > 0 ? all : [{ ...EMPTY_LINE }];
   });
   const [alerts, setAlerts] = useState<Map<number, WireHeldAlert[]>>(new Map());
@@ -235,6 +236,7 @@ export function PaperConsults(): React.ReactElement {
                     </span>
                     <span className="pcl-pills">
                       {r.held !== null && <span className="pill rd" data-testid="paper-pill-held">{t("paper.list.pillHeld", { count: r.held.lines.length })}</span>}
+                      {(r.doctorDraft ?? []).length > 0 && <span className="pill gd" data-testid="paper-pill-draft">{t("paper.list.pillDraft")}</span>}
                       {r.held === null && r.confirmedAt === null && <span className="pill">{t("paper.list.pillUnseen")}</span>}
                       {r.confirmedAt !== null && <span className="pill gr" data-testid="paper-pill-seen">{t("paper.list.pillSeen", { at: fmtIst(r.confirmedAt) })}</span>}
                     </span>
@@ -264,6 +266,13 @@ export function PaperConsults(): React.ReactElement {
                                   ))}
                                 </ul>
                                 {r.held.note !== null && <p className="pcl-noteline">{t("paper.list.scribeNote", { note: r.held.note })}</p>}
+                              </div>
+                            )}
+                            {(r.doctorDraft ?? []).length > 0 && (
+                              <div className="pcl-block draft" data-testid="paper-doctor-draft">
+                                <h3>{t("paper.list.draftTitle", { count: (r.doctorDraft ?? []).length })}</h3>
+                                <ul>{(r.doctorDraft ?? []).map((l, i) => <li key={i}>{lineText(l)}</li>)}</ul>
+                                <p className="pcl-noteline">{t("paper.list.draftHint")}</p>
                               </div>
                             )}
                             <div className="pcl-block">

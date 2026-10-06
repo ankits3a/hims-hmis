@@ -27,7 +27,7 @@ import { OPD_VISIT_DEF_KEY } from "./workflow-def";
 import type { AppConfig } from "../../kernel/config";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { EncounterDocument, PatientSummary } from "../patients";
-import type { AdvisedTest } from "./consultation";
+import type { AdvisedTest, RxDraftLine } from "./consultation";
 import type { EncounterRow } from "./encounters";
 import type { RxLine } from "./fhir";
 import type { AllergyOverride, IssuedPrescription, RxOverride } from "./prescriptions";
@@ -73,8 +73,13 @@ import type { AllergyOverride, IssuedPrescription, RxOverride } from "./prescrip
  *
  * ═══ WHAT IS DELIBERATELY NOT DONE ═══
  *
- *   · A visit the doctor has already STARTED on the screen is left alone (`doctor_consulting`):
- *     the paper is attached, and the doctor's own completion closes it.
+ *   · A visit the doctor STARTED on the screen and never completed IS closed too — owner, 2026-10-06,
+ *     asked exactly that: *"Yes, paper close that visit too."* (in consultation, parked or not —
+ *     a park is a mark on the queue row, not a state). What the doctor had typed is NOT touched:
+ *     the note stays, and medicines typed on the screen and never issued stay UNISSUED — the paper
+ *     road issues only what the desk typed from the paper, never a draft nobody signed off. The
+ *     doctor's paper list shows those lines ("typed on your screen, not issued"), and the doctor's
+ *     own screen, if still open, is told plainly (`refuseIfClosedOnPaper`).
  *   · No guard is skipped but the money one, and that one is not skipped either — it is RECORDED.
  *     The doctor has already seen the patient; pretending otherwise would keep them "waiting"
  *     forever. So an unsettled fee is written down as seen-before-payment in the desk's name, the
@@ -93,7 +98,7 @@ const TRANSCRIBE_PERMISSION = "opd.prescription.transcribe";
 export const PAPER_FEE_REASON = "Seen by the doctor on paper before the fee was settled — recorded when the paper was filed";
 
 const PAPER_ACTOR: Actor = { type: "system", id: "opd-paper-consult" };
-const CLOSABLE = ["registered", "waiting", "awaiting_results"] as const;
+const CLOSABLE = ["registered", "waiting", "in_consultation", "awaiting_results"] as const;
 type ClosableState = (typeof CLOSABLE)[number];
 
 export type PaperEvidence = { kind: "slip_photo" | "transcription"; id: string };
@@ -105,8 +110,6 @@ export type PaperOutcome =
   | "already_marked"
   /** The doctor completed it on the screen. Nothing to do; the paper is simply on file. */
   | "doctor_completed"
-  /** The doctor has the visit open on the screen; their own completion will close it. */
-  | "doctor_consulting"
   | "not_permitted" | "not_today" | "no_doctor" | "not_in_queue" | "abandoned" | "not_a_consultation"
   /** The consult door refuses for a reason that is not money. `gate` says which. */
   | "gate_refused";
@@ -134,7 +137,6 @@ async function refusalBeforeWrite(
   if (e.type !== "opd") return "not_a_consultation";
   if (e.status === "abandoned") return "abandoned";
   if (e.status === "completed") return e.completedVia === "paper" ? "already_marked" : "doctor_completed";
-  if (e.status === "in_consultation") return "doctor_consulting";
   if (e.serviceDate !== istDate(now)) return "not_today";
   if (e.doctorId === null) return "no_doctor";
   return null;
@@ -167,7 +169,8 @@ export async function markConsultedOnPaperInTx(
     header). Read without the doctor's waiver applied, because what is being decided here is what
     to WRITE about the fee, not whether somebody may start.
   */
-  const refusal = await consultDoorRefusal(tx, current);
+  /* A visit the doctor already started has been through this door on the doctor's own word; it is not asked again. */
+  const refusal = current.status === "in_consultation" ? null : await consultDoorRefusal(tx, current);
   let feeUnsettled = false;
   if (refusal !== null) {
     if (refusal.code !== "fee_unsettled") return verdict(current, "gate_refused", { guard: refusal.guard, code: refusal.code });
@@ -176,7 +179,8 @@ export async function markConsultedOnPaperInTx(
 
   const fromState = current.status as ClosableState;
   const hops: ("waiting" | "in_consultation" | "completed")[] =
-    fromState === "waiting" ? ["in_consultation", "completed"] : ["waiting", "in_consultation", "completed"];
+    fromState === "in_consultation" ? ["completed"]
+      : fromState === "waiting" ? ["in_consultation", "completed"] : ["waiting", "in_consultation", "completed"];
   try {
     for (const to of hops) await transition(tx, current.workflowInstanceId, to, PAPER_ACTOR, { note: "consulted on paper" });
   } catch (e) {
@@ -508,6 +512,12 @@ export type PaperConsultRow = {
   prescription: { id: string; version: number; lines: RxLine[]; issuedAt: Date; transcribedByName: string | null } | null;
   held: { lines: RxLine[]; alerts: HeldAlert[][]; note: string | null; draftedByName: string | null; draftedAt: Date } | null;
   advisedTests: (PaperAdvisedTest & { transcribedByName: string | null })[];
+  /**
+   * Medicines the DOCTOR typed on the consultation screen and never issued, on a visit the paper
+   * road then closed. Kept exactly as typed, issued by nobody; shown to the doctor, who may issue
+   * them through "correct it". Empty when there is no such draft (the usual case).
+   */
+  doctorDraft: RxLine[];
   confirmedAt: Date | null;
   confirmedByName: string | null;
 };
@@ -572,11 +582,31 @@ async function rowsFor(db: Db, actor: Actor, encounters: EncounterRow[]): Promis
       },
       advisedTests: ((Array.isArray(e.advisedTests) ? e.advisedTests : []) as PaperAdvisedTest[])
         .map((t) => ({ ...t, transcribedByName: t.transcribedBy === undefined ? null : names.get(t.transcribedBy) ?? "the desk" })),
+      doctorDraft: unissuedDoctorDraft(e, p === undefined ? [] : (p.lines as RxLine[])),
       confirmedAt: e.paperConfirmedAt,
       confirmedByName: e.paperConfirmedBy === null ? null : names.get(e.paperConfirmedBy) ?? null,
     });
   }
   return out;
+}
+
+/** The consultation screen's drafted rows that name a drug and are on no issued prescription, as lines. */
+function unissuedDoctorDraft(e: EncounterRow, issued: RxLine[]): RxLine[] {
+  const draft = Array.isArray(e.rxDraft) ? (e.rxDraft as RxDraftLine[]) : [];
+  const onPaper = new Set(issued.map((l) => l.drug.trim().toLowerCase()));
+  return draft
+    .filter((r) => typeof r?.drug === "string" && r.drug.trim() !== "" && !onPaper.has(r.drug.trim().toLowerCase()))
+    .map((r) => {
+      const raw = String(r.durationDays ?? "").trim();
+      const days = /^\d+$/.test(raw) ? Number(raw) : null;
+      return {
+        drug: r.drug.trim(), dose: (r.dose ?? "").trim(), route: (r.route ?? "").trim() || "oral", frequency: (r.frequency ?? "").trim(),
+        durationDays: days !== null && days > 0 ? days : null,
+        instructions: (r.instructions ?? "").trim() === "" ? null : r.instructions.trim(),
+        noSubstitution: r.noSubstitution === true,
+        ...(r.medicineId == null ? {} : { medicineId: r.medicineId }),
+      };
+    });
 }
 
 /** True when the visit carries anything that came off paper: closed from it, typed from it, or held. */

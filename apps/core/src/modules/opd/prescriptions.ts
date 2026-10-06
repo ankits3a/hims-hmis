@@ -16,7 +16,7 @@ import {
 } from "./rx-checks";
 import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
-import { requireTreatingDoctor } from "./consultation";
+import { refuseIfClosedOnPaper, requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getEncounter, visitDiagnoses } from "./encounters";
 import { OpdError } from "./errors";
@@ -581,6 +581,7 @@ export async function issuePrescription(
     visit was closed (`paperCorrection`), and the paper road itself (`paperStates`) may issue in any
     state but abandoned.
   */
+  if (authority === "doctor" && opts.paperCorrection !== true) refuseIfClosedOnPaper(encounter);
   const stateOk = authority === "pharmacy_paper"
     || encounter.status === "in_consultation"
     || (authority === "doctor" && opts.paperCorrection === true && encounter.status === "completed")

@@ -122,6 +122,8 @@
 .pcl-block ol, .pcl-block ul { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 22px; }
 .pcl-block.held { background: var(--red-soft); border: 1px solid var(--red-line); border-radius: 8px; padding: 10px 12px; }
 .pcl-block.held h3 { color: var(--red); }
+.pcl-block.draft { background: var(--gold-soft); border: 1px solid var(--gold-line); border-radius: 8px; padding: 10px 12px; }
+.pc .pill.gd { background: var(--gold-soft); color: #9a6208; border-color: var(--gold-line); }
 .pcl-why { display: block; font-size: 12px; color: var(--dim); font-weight: 400; }
 .pcl-by { margin: 0 0 4px; font-size: 12px; color: #9a6208; font-weight: 600; }
 .pcl-noteline { margin: 6px 0 0; font-size: 12px; color: var(--dim); }

@@ -4,7 +4,7 @@ import { getPatientSummaries } from "../patients";
 import { listPriceList } from "../tariff";
 import {
   imagingStudies, labOrderables, opdDepartments, opdDoctors, opdEncounters, orderItems, orders,
-  patients, services,
+  patients, services, users,
 } from "../../kernel/db/schema";
 import { RadiologyError } from "./errors";
 import { activeStudyTypes } from "./study-types";
@@ -73,6 +73,8 @@ export type AdvisedImagingLine = {
   /** An imaging item ALREADY placed for this service on this visit (D3) — shown, never re-ordered. */
   alreadyOrderedItemId: string | null;
   alreadyOrderedOrderNo: string | null;
+  /** Owner ruling 2026-10-06 — the desk scribe who typed this study from the doctor's paper; null when the doctor advised it on the screen. */
+  typedFromPaperBy: string | null;
 };
 
 export type ImagingBookEntry = ImagingOrderable & {
@@ -179,8 +181,14 @@ export async function advisedImagingLines(
     if (p.status !== "cancelled" && !placedFor.has(p.serviceId)) placedFor.set(p.serviceId, { id: p.id, orderNo: p.orderNo });
   }
 
+  const typists = [...new Set(advised.map((a) => (a as AdvisedTest & { transcribedBy?: string }).transcribedBy).filter((x): x is string => typeof x === "string"))];
+  const typistName = new Map(typists.length === 0 ? [] : (await db
+    .select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, typists)))
+    .map((u) => [u.id, u.fullName] as const));
+
   const lines: AdvisedImagingLine[] = [];
   for (const a of advised) {
+    const typedBy = (a as AdvisedTest & { transcribedBy?: string }).transcribedBy;
     const t = byService.get(a.serviceId);
     if (!t && (labClaimed.has(a.serviceId) || !investigation.has(a.serviceId))) continue;
     const already = placedFor.get(a.serviceId) ?? null;
@@ -190,6 +198,7 @@ export async function advisedImagingLines(
       reason: t ? null : book === null ? NO_BOOK_REASON : NOT_IN_BOOK_REASON,
       alreadyOrderedItemId: already?.id ?? null,
       alreadyOrderedOrderNo: already?.orderNo ?? null,
+      typedFromPaperBy: typedBy === undefined ? null : typistName.get(typedBy) ?? "the desk",
     });
   }
   return lines;

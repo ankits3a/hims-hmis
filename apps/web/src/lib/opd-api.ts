@@ -1044,6 +1044,8 @@ export type WirePaperConsult = {
   prescription: { id: string; version: number; lines: WireRxLine[]; issuedAt: string; transcribedByName: string | null } | null;
   held: { lines: WireRxLine[]; alerts: WireHeldAlert[][]; note: string | null; draftedByName: string | null; draftedAt: string } | null;
   advisedTests: WirePaperTest[];
+  /** Medicines the doctor typed on the consultation screen and never issued, on a visit then closed from paper. */
+  doctorDraft?: WireRxLine[];
   confirmedAt: string | null; confirmedByName: string | null;
 };
 

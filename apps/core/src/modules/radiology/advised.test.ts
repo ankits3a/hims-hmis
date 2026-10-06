@@ -128,6 +128,18 @@ describe("imagingDoorFor — the advised imaging lines (18-S RS2 / 18a-iv T1)", 
     expect(ids).toEqual([SVC_CT_HEAD, SVC_XR_KNEE, SVC_PET]);
   });
 
+  /** Owner ruling 2026-10-06 — a study the desk scribe typed from the doctor's paper says whose typing it is; one the doctor advised says nothing. */
+  it("a study typed from the doctor's paper names who typed it", async () => {
+    const before = await imagingDoorFor(db, doctor, VISIT, NOW);
+    expect(before.lines.every((l) => l.typedFromPaperBy === null)).toBe(true);
+    const enc = (await db.select().from(opdEncounters).where(eq(opdEncounters.visitNo, VISIT)))[0]!;
+    const typed = (enc.advisedTests as { serviceId: string }[]).map((t) => (t.serviceId === SVC_XR_KNEE ? { ...t, transcribedBy: doctor.id } : t));
+    await db.update(opdEncounters).set({ advisedTests: typed }).where(eq(opdEncounters.id, enc.id));
+    const view = await imagingDoorFor(db, doctor, VISIT, NOW);
+    expect(view.lines.find((l) => l.serviceId === SVC_XR_KNEE)!.typedFromPaperBy).toEqual(expect.any(String));
+    expect(view.lines.find((l) => l.serviceId === SVC_CT_HEAD)!.typedFromPaperBy).toBeNull();
+  });
+
   it("D6: an investigation the book does not name is shown greyed with a reason, never hidden", async () => {
     const view = await imagingDoorFor(db, doctor, VISIT, NOW);
     const pet = view.lines.find((l) => l.serviceId === SVC_PET)!;

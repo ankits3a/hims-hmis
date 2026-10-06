@@ -261,6 +261,24 @@ export function registerConsultStartGuard(key: string, guard: ConsultStartGuard)
 }
 
 /**
+ * ═══ THE VISIT WAS CLOSED UNDERNEATH THE DOCTOR'S SCREEN (owner ruling 2026-10-06) ═══
+ *
+ * A visit the doctor started and left open can now be closed from their own paper by the slip desk
+ * or the desk scribe. The doctor's screen may still be showing it. Its next save or completion must
+ * not answer "needs in_consultation, not completed" — that reads as a fault. It says what happened
+ * and where what they typed has gone (nowhere: the note and any unissued lines are kept).
+ */
+export function refuseIfClosedOnPaper(encounter: EncounterRow): void {
+  if (encounter.status === "completed" && encounter.completedVia === "paper") {
+    throw new OpdError(
+      "closed_on_paper_state_conflict",
+      "This visit has already been marked consulted from your paper prescription by the desk, so there is nothing left to complete here. What you typed is kept — open “My paper consultations” to check it or issue anything you had not issued.",
+      { encounterId: encounter.id, at: encounter.paperCompletedAt },
+    );
+  }
+}
+
+/**
  * Every consult-door verdict for a visit, first refusal first — WITHOUT the doctor's waiver applied.
  * `startConsultation` reads the registry itself; this is the same question for the one other caller
  * that closes a visit, the paper road (`paper-consult.ts`), which must not grow a second copy of
@@ -488,6 +506,7 @@ export async function parkConsultation(
   const current = await getEncounter(db, encounterId);
   if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   const doctor = await requireTreatingDoctor(db, actor, current);
+  refuseIfClosedOnPaper(current);
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a park needs in_consultation, not ${current.status}`);
   }
@@ -575,6 +594,7 @@ export async function saveConsultNote(
   const current = await getEncounter(db, encounterId);
   if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   await requireTreatingDoctor(db, actor, current);
+  refuseIfClosedOnPaper(current);
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `the consult note needs in_consultation, not ${current.status}`);
   }
@@ -646,6 +666,7 @@ export async function completeConsultation(
   const current = await getEncounter(db, encounterId);
   if (!current) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   const doctor = await requireTreatingDoctor(db, actor, current);
+  refuseIfClosedOnPaper(current);
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a completion needs in_consultation, not ${current.status}`);
   }

@@ -456,7 +456,7 @@ export const consultationResumed = defineEvent("consultation.resumed", MODULE, z
  */
 export const consultationCompletedOnPaper = defineEvent("consultation.completed_on_paper", MODULE, z.object({
   encounterId: id, patientId: id, doctorId: id, serviceDate: isoDate,
-  fromState: z.enum(["registered", "waiting", "awaiting_results"]),
+  fromState: z.enum(["registered", "waiting", "in_consultation", "awaiting_results"]),
   evidenceKind: z.enum(["slip_photo", "transcription"]), evidenceId: id,
   feeUnsettled: z.boolean(),
 }));

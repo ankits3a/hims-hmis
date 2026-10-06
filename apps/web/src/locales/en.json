@@ -9626,6 +9626,10 @@
       "see": "See the slip"
     },
     "list": {
+      "draftTitle_one": "{{count}} medicine you typed on the screen was NOT issued",
+      "draftTitle_other": "{{count}} medicines you typed on the screen were NOT issued",
+      "draftHint": "The desk closed this visit from your paper. These lines were kept as you typed them and sent to nobody — use “Correct it” to issue them, or leave them.",
+      "pillDraft": "your unissued draft",
       "title": "Paper consultations — today",
       "subtitleMine": "Visits a desk closed from your paper. Nothing here holds a patient; held lines wait for you.",
       "subtitleAll": "Every visit closed from a doctor's paper today. Reopen one that was closed on the wrong paper.",
