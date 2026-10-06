@@ -340,6 +340,32 @@ shipped ON, not dormant.
 - **Only a real phone can show:** the system prompt on Android 13+, a notification arriving with the app closed, the
   tray icon, the tap opening the right screen, the banner over a screen, and that a production screenshot is black.
 
+### 3h. M6b fix (2026-10-06, the owner's own phone) — "Checking…" for ever, and deaf to the phone's settings
+
+The owner installed 0.8.0 over an older build and reported two things, both real:
+
+1. **"The notification screen says Checking…", and no test button in the admin panel.** An app updated in place keeps
+   its session; a session opened by a build older than 0.7.0 names no phone, so the notification routes answered
+   `not_a_phone`, the screen treated every non-200 as "still checking", and the Phones list was empty for a person
+   visibly using the app. **DECIDED:** the app LINKS the phone to the session it already holds
+   (`POST /auth/phone/link`, `linkSessionToPhone`) instead of signing the person out — same user, same two-phone cap,
+   evented `auth.phone_linked`; a session that already names a phone is never moved.
+2. **"I allowed it in the app settings; the app still says the same."** Three faults in a row: Android 13+ reports
+   `denied` (with `canAskAgain: true`) before it has ever asked, and the app read that as a refusal; the permission was
+   requested before any notification channel existed, so the system prompt could not appear; and the permission was
+   read once, at sign-in, never again. Now: `permissionOf` (only `canAskAgain: false` is a refusal), channels first,
+   and the whole chain is re-read whenever the app returns to the front and on "I have allowed it — check again" —
+   if the person asked for notifications and the phone now allows them, the address is fetched and handed over with no
+   further tap.
+
+Also: "Checking…" lasts at most 12 s, then names what failed (`unreachable` / `serverError` / `notLinked`, each with
+Check again); Google's address fetch times out at 15 s; the Notifications screen carries a **What is working** block
+(ten lines, top to bottom — the first that is not Yes is the fault); the admin Phones panel always draws **Send test
+notification** for a signed-in phone, disabled with the reason when a test cannot arrive; `build-apk.sh` refuses to
+publish a notifications build whose APK lacks `POST_NOTIFICATIONS`, the Firebase messaging service or the Firebase
+app id. (All three WERE in 0.8.0 — the manifest was not the cause.) Staging's api and worker do get the Firebase key
+(`deploy.sh` step 2 is shared by both targets).
+
 ## 4. Verification without an emulator
 
 1. **Behaviour:** jest-expo plus `@testing-library/react-native`, with mocked fetch, SecureStore and LocalAuthentication.

@@ -319,6 +319,16 @@ export const authPhoneSignedOut = defineEvent(
 export const AUTH_PHONE_EVENTS = [authPhoneBound, authPhoneLimitRefused, authPhoneSignedOut] as const;
 
 /**
+ * M6b fix — a session opened before the app named its phone was LINKED to that phone afterwards
+ * (`devices.ts` `linkSessionToPhone`). `bound` says whether the phone is new to this person.
+ */
+export const authPhoneLinked = defineEvent(
+  "auth.phone_linked",
+  "auth",
+  z.object({ userId: z.string(), deviceRowId: z.string(), sessionId: z.string(), bound: z.boolean(), model: z.string().nullable(), appVersion: z.string().nullable(), ...client }),
+);
+
+/**
  * MOBILE M6b — an ADMINISTRATOR sent the fixed test notification to one phone. `outcome` is what
  * happened (`sent`, `gone`, `no_address`, `not_signed_in`, `not_configured`, `failed`). No text is
  * carried because there is none to carry: the test sentence is a constant. Never the phone's address.

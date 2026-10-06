@@ -98,15 +98,24 @@ export function UserPhones({ user, onClose }: { user: WireAdminUser | null; onCl
               </div>
               {p.signedIn && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {configured && p.notifications === true && (
-                    <SubmitButton plain type="button" className="sec" data-testid={`admin-phone-test-${p.id}`} onClick={() => sendTest(p)}>
-                      {t("adminUsers.phones.sendTest")}
-                    </SubmitButton>
-                  )}
+                  {/*
+                    ALWAYS DRAWN for a signed-in phone (owner 2026-10-06: "I don't see any Send
+                    Notification button"). When a test cannot arrive the button is disabled and the
+                    line beside it says why — a control that is silently absent reads as a missing feature.
+                  */}
+                  <SubmitButton plain type="button" className="sec" data-testid={`admin-phone-test-${p.id}`}
+                    disabled={!configured || p.notifications !== true} onClick={() => sendTest(p)}>
+                    {t("adminUsers.phones.sendTest")}
+                  </SubmitButton>
                   <SubmitButton plain type="button" className="sec" data-testid={`admin-phone-signout-${p.id}`} onClick={() => signOut(p)}>
                     {t("adminUsers.phones.signOut")}
                   </SubmitButton>
                 </div>
+              )}
+              {p.signedIn && (!configured || p.notifications !== true) && (
+                <span data-testid={`admin-phone-test-why-${p.id}`} style={{ flexBasis: "100%", fontSize: 11.5, color: "var(--dim)" }}>
+                  {t(!configured ? "adminUsers.phones.testWhyServer" : "adminUsers.phones.testWhyPhone")}
+                </span>
               )}
             </div>
           ))}

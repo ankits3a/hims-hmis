@@ -95,8 +95,23 @@ export -f build
 export APP_DIR APP_ENV VC HMIS_PUSH_IN_BUILD HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
 "$LOCK" run mobile-apk bash -c build
 
+BUILT="$APP_DIR/android/app/build/outputs/apk/release/app-release.apk"
+# A BUILD THAT SAYS IT CARRIES NOTIFICATIONS MUST BE ABLE TO SHOW ONE (owner's phone, 2026-10-06).
+# Checked on the finished APK, before it is copied anywhere a phone can fetch it: the Android 13+
+# permission (without it the system prompt can never appear), Firebase's messaging service (without
+# it nothing is delivered), and Firebase's app id (without it no address is ever issued).
+if [ "$HMIS_PUSH_IN_BUILD" = 1 ]; then
+  AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+  "$AAPT" dump permissions "$BUILT" | grep -q "android.permission.POST_NOTIFICATIONS" \
+    || { echo "REFUSED: the APK does not declare android.permission.POST_NOTIFICATIONS" >&2; exit 1; }
+  "$AAPT" dump xmltree "$BUILT" AndroidManifest.xml | grep -q "com.google.firebase.MESSAGING_EVENT" \
+    || { echo "REFUSED: the APK has no Firebase messaging service" >&2; exit 1; }
+  "$AAPT" dump resources "$BUILT" | grep -q "google_app_id" \
+    || { echo "REFUSED: the APK carries no Firebase app id (google-services.json was not applied)" >&2; exit 1; }
+  echo "notifications: permission, messaging service and Firebase app id are in the APK"
+fi
 mkdir -p "$OUT_DIR"
-cp "$APP_DIR/android/app/build/outputs/apk/release/app-release.apk" "$OUT_DIR/$NAME"
+cp "$BUILT" "$OUT_DIR/$NAME"
 echo "$VC" > "$COUNTER"
 (cd "$OUT_DIR" && sha256sum "$NAME" > "$NAME.sha256")
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$OUT_DIR/$NAME"

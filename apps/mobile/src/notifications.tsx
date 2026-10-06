@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { AppState, Platform, Pressable, StyleSheet, View } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError } from "./api";
+import { deviceClaim, type DeviceClaim } from "./device";
 import { useI18n } from "./i18n";
 import { devicePush, type PushNote, type PushPermission, type PushPhone } from "./push-phone";
 import { seatsFor, type Seat } from "./seats";
@@ -18,8 +19,11 @@ import { color, radius, space } from "./theme";
  * a UHID or a finding: these are personal phones and a lock screen is read by whoever holds it. The
  * sentence is chosen on the server from a fixed table (kernel/push/phone-push.ts).
  *
- * FIVE STATES, and the screens say which one in words:
+ * THE STATES, and the screens say which one in words. "Checking…" lasts at most twelve seconds:
  *   notInBuild  this APK was built without the hospital's Firebase project — nothing is asked;
+ *   unreachable the server did not answer in time (no signal) — Check again;
+ *   serverError the server answered, but not with this phone's state — Check again;
+ *   notLinked   this session names no phone and could not be linked to this one — sign in again;
  *   serverOff   the server has no Firebase key yet — nothing is asked;
  *   off         could be on; the person has not turned it on (or turned it off);
  *   denied      the person refused the phone's own prompt — only the phone's settings can undo that;
@@ -32,8 +36,33 @@ export const PUSH_CATEGORIES = ["alert", "roster", "queue"] as const;
 /** The server's `link` word → the phone screen it opens. An unknown word, or a screen this person may not open, is home. */
 export const PUSH_LINK_SEAT: Record<string, Seat["key"] | null> = { home: null, onNow: "onNow", myDuties: "myDuties", consult: "consult" };
 
-export type PushStatus = "unknown" | "notInBuild" | "serverOff" | "off" | "denied" | "on";
-type ServerState = { configured: boolean; registered: boolean; muted: string[]; categories: string[] };
+export type PushStatus = "unknown" | "notInBuild" | "unreachable" | "serverError" | "notLinked" | "serverOff" | "off" | "denied" | "on";
+type ServerState = {
+  configured: boolean; registered: boolean; muted: string[]; categories: string[];
+  addressAt?: string | null; lastSentAt?: string | null; lastTestAt?: string | null;
+};
+/** Why the server's answer is missing. `checking` is the only one that is still in flight. */
+type Reach = "checking" | "ok" | "unreachable" | "error" | "notLinked";
+
+/**
+ * WHAT THE OWNER READS OUT WHEN SOMETHING IS WRONG (2026-10-06: "the screen says Checking…" told
+ * nobody which of six things had failed). Each line is one link of the chain, in order; the first
+ * line that is not right is the fault.
+ */
+export type PushDiagnosis = {
+  inBuild: boolean;
+  server: Reach;
+  linked: boolean | null;
+  permission: PushPermission;
+  /** Google gave this phone an address in this run of the app: yes / no / not asked yet. */
+  address: "yes" | "no" | "notAsked";
+  serverHasIt: boolean | null;
+  serverCanSend: boolean | null;
+  lastSentAt: string | null;
+  lastTestAt: string | null;
+  /** The last time a notification reached THIS app while it was open (kept on the phone). */
+  lastReceivedAt: string | null;
+};
 
 type Notifications = {
   status: PushStatus;
@@ -46,6 +75,11 @@ type Notifications = {
   enable: () => Promise<void>;
   disable: () => Promise<void>;
   setMuted: (category: string, muted: boolean) => Promise<void>;
+  /** Ask everything again: the server, the phone's permission, and — if the person wants notifications — the address. */
+  retry: () => Promise<void>;
+  /** The person is about to open the phone's settings to allow notifications: on return, finish the job. */
+  wantOn: () => void;
+  diagnosis: PushDiagnosis;
   /** The home screen may offer to turn notifications on (never asked before, could be on). */
   offer: boolean;
   dismissOffer: () => void;
@@ -53,29 +87,54 @@ type Notifications = {
 
 const Ctx = createContext<Notifications | null>(null);
 const OFFER_KEY = "hmis.push.offer";
-let offerMemory: string | null = null;
+const WANTED_KEY = "hmis.push.wanted";
+const RECEIVED_KEY = "hmis.push.received";
+const kept = new Map<string, string>();
 
-async function offerDismissed(): Promise<boolean> {
-  if (Platform.OS === "web") return offerMemory !== null;
-  try { return (await SecureStore.getItemAsync(OFFER_KEY)) !== null; } catch { return offerMemory !== null; }
-}
-async function rememberOfferDismissed(): Promise<void> {
-  offerMemory = "1";
+async function keep(key: string, value: string): Promise<void> {
+  kept.set(key, value);
   if (Platform.OS === "web") return;
-  try { await SecureStore.setItemAsync(OFFER_KEY, "1"); } catch { /* asked again next time the app starts */ }
+  try { await SecureStore.setItemAsync(key, value); } catch { /* lasts until the app is closed */ }
+}
+async function recall(key: string): Promise<string | null> {
+  if (Platform.OS === "web") return kept.get(key) ?? null;
+  try { return (await SecureStore.getItemAsync(key)) ?? kept.get(key) ?? null; } catch { return kept.get(key) ?? null; }
 }
 
-export function statusOf(inBuild: boolean, server: ServerState | null, permission: PushPermission): PushStatus {
+export function statusOf(inBuild: boolean, reach: Reach, server: ServerState | null, permission: PushPermission): PushStatus {
   if (!inBuild) return "notInBuild";
-  if (server === null) return "unknown";
+  if (reach === "checking") return "unknown";
+  if (reach === "unreachable") return "unreachable";
+  if (reach === "notLinked") return "notLinked";
+  if (reach === "error" || server === null) return "serverError";
   if (!server.configured) return "serverOff";
   if (permission === "denied") return "denied";
   return server.registered && permission === "granted" ? "on" : "off";
 }
 
 const BANNER_MS = 8000;
+/** "Checking…" may last this long and no longer: then the screen says what it could not reach. */
+export const SERVER_TIMEOUT_MS = 12_000;
 
-export function NotificationsProvider({ children, phone: injected }: { children: ReactNode; phone?: PushPhone }) {
+class Timeout extends Error {}
+function inTime<T>(run: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Timeout()), SERVER_TIMEOUT_MS);
+    run.then((v) => { clearTimeout(timer); resolve(v); }, (e: unknown) => { clearTimeout(timer); reject(e instanceof Error ? e : new Error("failed")); });
+  });
+}
+
+function onForeground(cb: () => void): () => void {
+  const sub = AppState.addEventListener("change", (s) => { if (s === "active") cb(); });
+  return () => sub.remove();
+}
+
+export function NotificationsProvider({ children, phone: injected, foreground = onForeground, claim = deviceClaim }: {
+  children: ReactNode; phone?: PushPhone;
+  /** Tests: stand in for "the app came back to the front". */
+  foreground?: (cb: () => void) => () => void;
+  claim?: () => Promise<DeviceClaim | null>;
+}) {
   const { state, call } = useSession();
   const { t, lang } = useI18n();
   const router = useRouter();
@@ -89,55 +148,106 @@ export function NotificationsProvider({ children, phone: injected }: { children:
   const permissions = state.status === "signedIn" ? state.me.permissions : null;
 
   const [server, setServer] = useState<ServerState | null>(null);
+  const [reach, setReach] = useState<Reach>("checking");
   const [permission, setPermission] = useState<PushPermission>("undetermined");
+  const [address, setAddress] = useState<"yes" | "no" | "notAsked">("notAsked");
+  const [received, setReceived] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(true);
   const [banner, setBanner] = useState<PushNote | null>(null);
   const openedOnce = useRef(false);
+  const wanted = useRef(false);
+  const running = useRef(false);
 
   const labels = useMemo(() => Object.fromEntries(PUSH_CATEGORIES.map((c) => [c, t(`mobile.push.category.${c}`)])), [t]);
 
-  /** Hand the server this phone's address (again). Quiet: a failure here is retried the next time the app opens. */
-  const handOver = useCallback(async (token: string): Promise<ServerState | null> => {
+  /**
+   * What the server knows about this phone. A session opened by a build that did not yet name its
+   * phone answers `not_a_phone`: the app then LINKS the phone to the session it already holds
+   * (`POST /auth/phone/link`) and asks again — the person is not signed out for our omission.
+   */
+  const ask = useCallback(async (): Promise<{ reach: Reach; server: ServerState | null; problem?: string }> => {
+    const read = () => inTime(call<ServerState>("GET", "/auth/phone/notifications"));
     try {
-      return await call<ServerState>("PUT", "/auth/phone/notifications", { token, language: lang });
-    } catch {
-      return null;
+      return { reach: "ok", server: await read() };
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.code === "not_a_phone") {
+        const device = await claim();
+        if (device === null) return { reach: "notLinked", server: null };
+        try {
+          await inTime(call("POST", "/auth/phone/link", { device }));
+          return { reach: "ok", server: await read() };
+        } catch (e2) {
+          if (e2 instanceof ApiError && e2.code === "phone_limit_reached") return { reach: "notLinked", server: null, problem: "mobile.push.problem.phoneLimit" };
+          if (e2 instanceof ApiError) return { reach: "notLinked", server: null };
+          return { reach: "unreachable", server: null };
+        }
+      }
+      if (e instanceof ApiError) return { reach: "error", server: null };
+      return { reach: "unreachable", server: null };
     }
-  }, [call, lang]);
+  }, [call, claim]);
 
-  // On sign-in: what does the server know about this phone, and — if the person already said yes on
-  // this phone — refresh the address (Firebase rotates it) and the language.
+  /** Google's address for this phone, handed to the server. Says exactly which half failed. */
+  const register = useCallback(async (): Promise<ServerState | "noAddress" | "notSaved"> => {
+    await phone.channels(labels);
+    const token = await phone.token();
+    if (token === null) { setAddress("no"); return "noAddress"; }
+    setAddress("yes");
+    try {
+      return await inTime(call<ServerState>("PUT", "/auth/phone/notifications", { token, language: lang }));
+    } catch {
+      return "notSaved";
+    }
+  }, [phone, labels, call, lang]);
+
+  /**
+   * THE WHOLE CHAIN, ASKED AGAIN: on sign-in, whenever the app comes back to the front (the person
+   * may just have allowed notifications in the phone's settings), and on "Check again".
+   * If notifications are already on for this phone, or the person asked for them (`wanted`), and the
+   * phone now allows them, the address is fetched and handed over without another tap.
+   */
+  const refresh = useCallback(async (loud: boolean): Promise<void> => {
+    if (!phone.inBuild || running.current) return;
+    running.current = true;
+    if (loud) { setBusy(true); setProblem(null); }
+    try {
+      const perm = await phone.permission();
+      setPermission(perm);
+      const answer = await ask();
+      let seen = answer.server;
+      if (answer.problem !== undefined) setProblem(answer.problem);
+      if (seen !== null && seen.configured && perm === "granted" && (seen.registered || wanted.current)) {
+        const done = await register();
+        if (typeof done === "string") { if (loud || wanted.current) setProblem(`mobile.push.problem.${done}`); } else { seen = done; wanted.current = false; void keep(WANTED_KEY, "0"); setProblem(null); }
+      }
+      setServer(seen);
+      setReach(answer.reach);
+    } finally {
+      running.current = false;
+      if (loud) setBusy(false);
+    }
+  }, [phone, ask, register]);
+
   useEffect(() => {
-    if (!signedIn) { setServer(null); return; }
+    if (!signedIn) { setServer(null); setReach("checking"); return; }
     if (!phone.inBuild) return;
     let gone = false;
     void (async () => {
-      setDismissed(await offerDismissed());
-      const perm = await phone.permission();
-      let seen: ServerState | null = null;
-      try {
-        seen = await call<ServerState>("GET", "/auth/phone/notifications");
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 401) return;
-        seen = null;
-      }
+      const [offer, want, last] = await Promise.all([recall(OFFER_KEY), recall(WANTED_KEY), recall(RECEIVED_KEY)]);
       if (gone) return;
-      setPermission(perm);
-      if (seen !== null && seen.configured && seen.registered && perm === "granted") {
-        await phone.channels(labels);
-        const token = await phone.token();
-        if (token !== null) seen = (await handOver(token)) ?? seen;
-      }
-      if (!gone) setServer(seen);
+      setDismissed(offer !== null);
+      wanted.current = want === "1";
+      setReceived(last);
+      await refresh(false);
     })();
-    return () => { gone = true; };
-    // `labels` and `handOver` change with the language; the language effect below carries that.
+    const off = foreground(() => { void refresh(false); });
+    return () => { gone = true; off(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedIn, phone, call]);
+  }, [signedIn, phone]);
 
-  const status = statusOf(phone.inBuild, server, permission);
+  const status = statusOf(phone.inBuild, reach, server, permission);
 
   // The app's language changed while notifications are on: the next sentence is said in it.
   useEffect(() => {
@@ -155,15 +265,21 @@ export function NotificationsProvider({ children, phone: injected }: { children:
 
   useEffect(() => {
     if (!signedIn || !phone.inBuild) return;
-    const offToken = phone.onToken((token) => { void handOver(token).then((s) => { if (s !== null) setServer(s); }); });
-    const offReceived = phone.onReceived((note) => setBanner(note));
+    const offToken = phone.onToken((token) => {
+      void call<ServerState>("PUT", "/auth/phone/notifications", { token, language: lang }).then((s) => { setAddress("yes"); setServer(s); }, () => undefined);
+    });
+    const offReceived = phone.onReceived((note) => {
+      const at = new Date().toISOString();
+      setReceived(at); void keep(RECEIVED_KEY, at);
+      setBanner(note);
+    });
     const offOpened = phone.onOpened(open);
     if (!openedOnce.current) {
       openedOnce.current = true;
       void phone.openedWith().then((link) => { if (link !== null && link !== "") open(link); });
     }
     return () => { offToken(); offReceived(); offOpened(); };
-  }, [signedIn, phone, handOver, open]);
+  }, [signedIn, phone, call, lang, open]);
 
   useEffect(() => {
     if (banner === null) return;
@@ -171,33 +287,48 @@ export function NotificationsProvider({ children, phone: injected }: { children:
     return () => clearTimeout(timer);
   }, [banner]);
 
+  const wantOn = useCallback(() => { wanted.current = true; void keep(WANTED_KEY, "1"); }, []);
+
+  /**
+   * "Turn on". ORDER MATTERS ON ANDROID 13+: the notification channels are made FIRST — the system's
+   * permission prompt does not appear for an app that has no channel — then the permission is
+   * asked, then Google's address is fetched and handed to the server.
+   */
   const enable = useCallback(async () => {
     setBusy(true);
     setProblem(null);
+    wantOn();
     try {
-      let perm = await phone.permission();
-      if (perm !== "granted") perm = await phone.ask();
-      setPermission(perm);
-      if (perm !== "granted") { setProblem("mobile.push.problem.denied"); return; }
       await phone.channels(labels);
-      const token = await phone.token();
-      if (token === null) { setProblem("mobile.push.problem.noAddress"); return; }
-      const next = await call<ServerState>("PUT", "/auth/phone/notifications", { token, language: lang });
-      setServer(next);
-    } catch {
-      setProblem("mobile.push.problem.notSaved");
+      let perm = await phone.permission();
+      if (perm !== "granted") {
+        const answered = await phone.ask();
+        // Read it back: "denied" here may be a dismissed prompt (ask again later) or a real refusal.
+        perm = answered === "granted" ? "granted" : await phone.permission();
+      }
+      setPermission(perm);
+      if (perm !== "granted") { setProblem(perm === "denied" ? "mobile.push.problem.denied" : "mobile.push.problem.notAllowed"); return; }
+      const answer = await ask();
+      setReach(answer.reach);
+      if (answer.server === null) { setServer(null); if (answer.problem !== undefined) setProblem(answer.problem); return; }
+      if (!answer.server.configured) { setServer(answer.server); return; }
+      const done = await register();
+      if (typeof done === "string") { setServer(answer.server); setProblem(`mobile.push.problem.${done}`); return; }
+      setServer(done);
+      wanted.current = false; void keep(WANTED_KEY, "0");
     } finally {
       setBusy(false);
       setDismissed(true);
-      void rememberOfferDismissed();
+      void keep(OFFER_KEY, "1");
     }
-  }, [phone, labels, call, lang]);
+  }, [phone, labels, ask, register, wantOn]);
 
   const disable = useCallback(async () => {
     setBusy(true);
     setProblem(null);
+    wanted.current = false; void keep(WANTED_KEY, "0");
     try {
-      setServer(await call<ServerState>("DELETE", "/auth/phone/notifications"));
+      setServer(await inTime(call<ServerState>("DELETE", "/auth/phone/notifications")));
     } catch {
       setProblem("mobile.push.problem.notSaved");
     } finally {
@@ -210,18 +341,28 @@ export function NotificationsProvider({ children, phone: injected }: { children:
     const next = muted ? [...new Set([...server.muted, category])] : server.muted.filter((m) => m !== category);
     setProblem(null);
     try {
-      setServer(await call<ServerState>("PUT", "/auth/phone/notifications", { muted: next }));
+      setServer(await inTime(call<ServerState>("PUT", "/auth/phone/notifications", { muted: next })));
     } catch {
       setProblem("mobile.push.problem.notSaved");
     }
   }, [server, call]);
 
-  const dismissOffer = useCallback(() => { setDismissed(true); void rememberOfferDismissed(); }, []);
+  const retry = useCallback(() => refresh(true), [refresh]);
+  const dismissOffer = useCallback(() => { setDismissed(true); void keep(OFFER_KEY, "1"); }, []);
+
+  const diagnosis = useMemo<PushDiagnosis>(() => ({
+    inBuild: phone.inBuild, server: reach,
+    linked: reach === "ok" ? true : reach === "notLinked" ? false : null,
+    permission, address,
+    serverHasIt: server === null ? null : server.registered,
+    serverCanSend: server === null ? null : server.configured,
+    lastSentAt: server?.lastSentAt ?? null, lastTestAt: server?.lastTestAt ?? null, lastReceivedAt: received,
+  }), [phone, reach, permission, address, server, received]);
 
   const value = useMemo<Notifications>(() => ({
-    status, categories: server?.categories ?? [], muted: server?.muted ?? [], busy, problem, enable, disable, setMuted,
+    status, categories: server?.categories ?? [], muted: server?.muted ?? [], busy, problem, enable, disable, setMuted, retry, wantOn, diagnosis,
     offer: signedIn && status === "off" && permission === "undetermined" && !dismissed, dismissOffer,
-  }), [status, server, busy, problem, enable, disable, setMuted, signedIn, permission, dismissed, dismissOffer]);
+  }), [status, server, busy, problem, enable, disable, setMuted, retry, wantOn, diagnosis, signedIn, permission, dismissed, dismissOffer]);
 
   return (
     <Ctx.Provider value={value}>
@@ -244,9 +385,14 @@ export function NotificationsProvider({ children, phone: injected }: { children:
   );
 }
 
+const NO_DIAGNOSIS: PushDiagnosis = {
+  inBuild: false, server: "checking", linked: null, permission: "undetermined", address: "notAsked",
+  serverHasIt: null, serverCanSend: null, lastSentAt: null, lastTestAt: null, lastReceivedAt: null,
+};
 const INERT: Notifications = {
   status: "notInBuild", categories: [], muted: [], busy: false, problem: null,
-  enable: () => Promise.resolve(), disable: () => Promise.resolve(), setMuted: () => Promise.resolve(), offer: false, dismissOffer: () => undefined,
+  enable: () => Promise.resolve(), disable: () => Promise.resolve(), setMuted: () => Promise.resolve(),
+  retry: () => Promise.resolve(), wantOn: () => undefined, diagnosis: NO_DIAGNOSIS, offer: false, dismissOffer: () => undefined,
 };
 
 /** A screen mounted without the provider (older tests, a preview) sees "not in this build" and offers nothing. */
@@ -254,8 +400,8 @@ export function useNotifications(): Notifications {
   return useContext(Ctx) ?? INERT;
 }
 
-/** Tests only: forget that the offer was dismissed. */
-export function _forgetOfferForTests(): void { offerMemory = null; }
+/** Tests only: forget what was kept between runs (the offer, the wish, the last notification). */
+export function _forgetOfferForTests(): void { kept.clear(); }
 
 const s = StyleSheet.create({
   banner: {

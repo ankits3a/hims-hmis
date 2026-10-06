@@ -2332,7 +2332,7 @@
       "open": "Phones",
       "title": "Phones — {{username}}",
       "why": "The phones the staff app is signed in on for this person. Signing a phone out ends its session at once; their password, PIN and other sign-ins are not touched.",
-      "none": "The staff app has not signed in on any phone for this person.",
+      "none": "No phone has signed in with the staff app for this person yet. A phone appears here after they sign in on app 0.7.0 or newer — if they are using an older sign-in, ask them to log out of the app and sign in again.",
       "limit_one": "A person can be signed in on {{count}} phone at a time.",
       "limit_other": "A person can be signed in on {{count}} phones at a time.",
       "unknownModel": "Phone (model not reported)",
@@ -2345,6 +2345,8 @@
       "notificationsOn": "Notifications on",
       "notificationsOff": "Notifications off on this phone",
       "notificationsNotSetUp": "Notifications are not set up on this server",
+      "testWhyPhone": "This phone has not turned notifications on. In the app: This phone → Notifications → Turn on.",
+      "testWhyServer": "Notifications are not set up on this server, so a test cannot be sent.",
       "sendTest": "Send test notification",
       "test": {
         "sent": "A test notification was sent to {{model}}. It says only “Test — this phone can receive HMIS notifications.”",

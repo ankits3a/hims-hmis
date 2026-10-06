@@ -30,11 +30,11 @@ import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decora
 import { users } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
-import { userPasswordChanged } from "./events";
+import { authPhoneLinked, authSessionRevoked, userPasswordChanged } from "./events";
 import {
   auditLoggedOut, auditLoginFailed, auditPhoneLimitRefused, auditPhoneSignIn, auditSessionOpened, auditTotp, clientContext,
 } from "./auth-audit";
-import { PHONES_PER_USER, PhoneLimitError, deviceClaimSchema, touchPhone } from "./devices";
+import { PHONES_PER_USER, PhoneLimitError, deviceClaimSchema, linkSessionToPhone, touchPhone } from "./devices";
 import {
   clearPushToken, pushLanguageSchema, pushMutedSchema, pushStateOf, pushTokenSchema, registerPushToken, setPushPreferences,
 } from "../push/phone-push";
@@ -297,6 +297,49 @@ export class AuthController {
 
   private pushConfigured(): boolean {
     return sharedPhonePushSource(this.cfg.fcmServiceAccountFile).current() !== null;
+  }
+
+  /**
+   * LINK THIS SESSION TO THE PHONE IT IS ON (`linkSessionToPhone` has the reasoning). The app calls
+   * it when one of the routes below answers `not_a_phone`: a session opened by a build that did not
+   * yet name its phone. Idempotent — a session that already names a phone answers `linked: false`
+   * and nothing changes. The third phone is refused exactly as at sign-in.
+   */
+  @Post("phone/link")
+  @HttpCode(200)
+  async linkPhone(@Req() req: AuthedRequest, @Body() body: unknown): Promise<{ linked: boolean }> {
+    const session = req.hmisSession;
+    if (!session) throw new UnauthorizedException();
+    const parsed = z.object({ device: deviceClaimSchema }).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const client = clientContext(req);
+    const claim = parsed.data.device;
+    try {
+      return await withTx(this.db, async (tx) => {
+        const r = await linkSessionToPhone(tx, session, claim, client.ip);
+        if (!r.linked) return { linked: false };
+        const actor: Actor = { type: "user", id: session.userId };
+        await appendEvent(tx, authPhoneLinked.make({
+          actor,
+          payload: { userId: session.userId, deviceRowId: r.deviceRowId, sessionId: session.sessionId, bound: r.bound, model: claim.model ?? null, appVersion: claim.appVersion ?? null, ...client },
+        }));
+        for (const sessionId of r.replacedSessionIds) {
+          await appendEvent(tx, authSessionRevoked.make({ actor, payload: { sessionId, userId: session.userId, reason: "phone_signed_in_again", terminalId: null } }));
+        }
+        return { linked: true };
+      });
+    } catch (e) {
+      if (e instanceof PhoneLimitError) {
+        await auditPhoneLimitRefused(this.db, e.userId, e.phones.length, claim, client);
+        throw new ConflictException({
+          code: "phone_limit_reached",
+          message: `already signed in on ${e.phones.length} phones — an administrator can sign one out`,
+          limit: PHONES_PER_USER,
+          phones: e.phones.map((p) => ({ model: p.model, lastSeenAt: p.lastSeenAt.toISOString() })),
+        });
+      }
+      throw e;
+    }
   }
 
   @Get("phone/notifications")
