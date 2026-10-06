@@ -5,63 +5,19 @@ import type { WireRenderedDocument } from "./print-api";
  * 20-U U5a — the wire contract of `roster-board.controller.ts` (`GET /roster/on-now`), transcribed
  * from `apps/core/src/modules/roster/board.ts` (the `radiology-hod-api.ts` rule: this file describes
  * what the route ships and decides nothing). Instants are ISO strings on the wire.
+ *
+ * The board's and My duties' shapes are ONE file shared with the phone (mobile plan M5):
+ * `packages/contracts/src/roster-board.ts`. They are re-exported here under the same names.
  */
-export type RosterSource = "published" | "pattern" | "static";
+export type {
+  BoardHoleKind, RosterSource, WireBoardDepartment, WireBoardHole, WireBoardPerson, WireBoardPrint, WireBoardRung, WireBoardService,
+  WireBoardUnit, WireCoverCandidate, WireCoverOptions, WireCoverReason, WireCoverRefusal, WireCoverRequest, WireCoverStatus, WireDutyRef,
+  WireMyDuties, WireMyDuty, WireOnNowBoard, WireOpdSitting, WireRosterFlag, WireRosterSelf,
+} from "../../../../packages/contracts/src/roster-board";
+import type {
+  WireCoverOptions, WireCoverRequest, WireMyDuties, WireOnNowBoard, WireRosterSelf,
+} from "../../../../packages/contracts/src/roster-board";
 
-/** `phone` — D6: only a person in the building now carries one (null when none is on file). */
-export type WireBoardPerson = { userId: string; name: string; positionKey: string; positionLabel: string; cadre: string; phone: string | null };
-export type WireBoardRung = { userId: string | null; name: string | null; positionKey: string; positionLabel: string; callTier: number | null };
-export type WireBoardUnit = { teamId: string; code: string; name: string; startsAt: string; endsAt: string };
-export type WireBoardDepartment = {
-  departmentId: string; code: string; name: string; units: number; source: RosterSource; skeleton: boolean;
-  unitOnTake: WireBoardUnit | null; backupUnit: WireBoardUnit | null;
-  inTheBuilding: WireBoardPerson[]; facultyOnCall: WireBoardRung[];
-  /**
-   * 2026-10-04 (owner: only the OPD is live) — who sits in this department's OPD now or later today.
-   * Drawn ONLY where no duty roster is published. Null on the board as it stood; absent from older servers.
-   */
-  inOpd?: WireOpdSitting[] | null;
-};
-export type WireOpdSitting = { userId: string; name: string; designation: string | null; from: string; till: string; now: boolean };
-export type WireBoardService = {
-  positionKey: string; positionLabel: string; cadre: string; source: RosterSource;
-  people: { userId: string; name: string; departmentId: string | null }[];
-};
-export type BoardHoleKind = "no_take_cycle" | "take_gap" | "vacant_slot" | "absent_on_duty" | "skeleton_short";
-export type WireBoardHole = {
-  kind: BoardHoleKind; departmentId: string; departmentName: string; from: string; to: string;
-  positionKey: string | null; positionLabel: string | null; userId: string | null; name: string | null;
-  /** 20-U I5 — `skeleton_short` only: the strike day's uncovered duties, as one line. Null otherwise. */
-  count: number | null;
-};
-/** The reader, for the Doctor Desk header — `month.ts` `rosterSelf`. Null fields: not posted to a unit now. */
-export type WireRosterSelf = {
-  name: string | null; grade: string | null; positionKey: string | null; unitName: string | null; departmentName: string | null;
-};
-export type WireOnNowBoard = {
-  at: string; resolverEnabled: boolean; you: WireRosterSelf;
-  departments: WireBoardDepartment[]; services: WireBoardService[]; holes: WireBoardHole[];
-  /**
-   * 2026-10-04 (owner) — departments whose OPD has doctors but which run no CONFIRMED unit yet
-   * (Paediatrics, sat by guest faculty). Never a row and never a hole. Optional: older servers send none.
-   */
-  departmentsWithoutUnit?: { departmentId: string; code: string; name: string; doctors: number; inOpd?: WireOpdSitting[] }[];
-  /** 20-U U6 (I22) — open "this is wrong" flags. Optional: a board read before U6 carries none. */
-  flags?: WireRosterFlag[];
-  /** 20-U infra — the RECORD of the last scheduled print (20:00 / 08:00 IST). Optional: older servers send none. */
-  lastPrint?: WireBoardPrint | null;
-};
-
-/**
- * 20-U infra (owner 2026-10-04) — `board-print.ts` `lastBoardPrint`. `outcome` is what the server
- * did (`no_printer`: no relay is granted the board's printer, nothing was queued); `copies.printed`
- * is paper a relay REPORTED, never the number queued.
- */
-export type WireBoardPrint = {
-  printId: string; slotAt: string; renderedAt: string; outcome: "queued" | "no_printer"; destinations: string[];
-  copies: { queued: number; printed: number; waiting: number; failed: number };
-  lastPrintedAt: string | null; nextAt: string;
-};
 /** One recorded board sheet as drawn at its instant — the house `{ html, title, page }` shape. */
 export const fetchBoardPrintDocument = (printId: string) =>
   api<WireRenderedDocument>("GET", `/roster/board-prints/${encodeURIComponent(printId)}/document`);
@@ -150,48 +106,6 @@ export const publishUnitMonth = (periodId: string, expectedContentHash: string) 
 /* ═══ 20-U U5c / U6 — my duties, covers and swaps, "this is wrong": `roster-board.controller.ts`'s
  * `/roster/my-duties`, `/roster/duties/:id/cover-options`, `/roster/covers…`, `/roster/flags…`,
  * transcribed from `apps/core/src/modules/roster/{swaps,my-duties}.ts`. ═══ */
-export type WireDutyRef = {
-  assignmentId: string; userId: string | null; positionKey: string; positionLabel: string;
-  startsAt: string; endsAt: string; istDate: string; night: boolean; mode: string | null; kind: string;
-  departmentId: string; teamId: string | null; teamName: string | null;
-};
-export type WireMyDuty = WireDutyRef & { activities: string[]; upcoming: boolean };
-/** `unavailable` is approved leave, said as nothing more (D6); otherwise a validator rule key. */
-export type WireCoverReason = { ruleKey: string; severity: "block" | "warn" | "unavailable"; params: Record<string, unknown> };
-export type WireCoverStatus = "asked" | "accepted" | "declined" | "approved" | "refused" | "withdrawn";
-export type WireCoverRequest = {
-  requestId: string; kind: "cover" | "swap"; status: WireCoverStatus; crossUnit: boolean;
-  owner: { userId: string; name: string }; counterpart: { userId: string; name: string }; requestedBy: { userId: string; name: string };
-  duty: WireDutyRef; give: WireDutyRef | null;
-  note: string | null; requestedAt: string; answeredAt: string | null;
-  decidedBy: { userId: string; name: string } | null; decidedAt: string | null; refusedRule: string | null;
-  check: WireCoverReason | null;
-  youMay: { answer: boolean; approve: boolean; withdraw: boolean };
-};
-export type WireMyDuties = {
-  at: string; days: string[]; you: WireRosterSelf; duties: WireMyDuty[];
-  onTake: null | { teamId: string; name: string; endsAt: string };
-  /** D6: the reader's unit SR on duty NOW, with a number when one is on file. */
-  mySr: null | { userId: string; name: string; phone: string | null };
-  requests: WireCoverRequest[];
-};
-export type WireCoverCandidate = {
-  userId: string; name: string; grade: string; teamId: string; teamName: string; crossUnit: boolean;
-  nextDay: { istDate: string; duty: null | { night: boolean; positionKey: string } };
-  swaps: WireDutyRef[];
-};
-export type WireCoverRefusal = {
-  userId: string; name: string; grade: string; teamId: string; teamName: string;
-  reason: WireCoverReason; near: null | { istDate: string; night: boolean };
-};
-export type WireCoverOptions = {
-  duty: WireDutyRef; ownerName: string; canTake: WireCoverCandidate[]; cannot: WireCoverRefusal[]; openRequestId: string | null;
-};
-export type WireRosterFlag = {
-  flagId: string; departmentId: string | null; user: null | { userId: string; name: string };
-  at: string; note: string; raisedBy: { userId: string; name: string }; raisedAt: string; youMayResolve: boolean;
-};
-
 export const fetchMyDuties = (at?: string) =>
   api<WireMyDuties>("GET", `/roster/my-duties${at === undefined ? "" : `?at=${encodeURIComponent(at)}`}`);
 export const fetchCoverOptions = (assignmentId: string) =>

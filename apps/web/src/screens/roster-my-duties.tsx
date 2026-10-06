@@ -12,6 +12,7 @@ import type {
   WireCoverCandidate, WireCoverOptions, WireCoverReason, WireCoverRefusal, WireCoverRequest, WireDutyRef, WireMyDuties, WireMyDuty,
 } from "../lib/roster-api";
 import { shortUnit, whoFrom } from "./roster-on-now";
+import { coverBuckets, dutyWhatKey, greetingKey, greetingName, requestTone, weekOf } from "../../../../packages/contracts/src/roster-board";
 import { useAuth } from "../lib/auth";
 import "./roster.css";
 
@@ -49,15 +50,8 @@ const hoursOf = (d: { startsAt: string; endsAt: string }, t: T): string => t("ro
 
 /** What a duty IS, in one or two words: "Ward night", "OPD", "Theatre", "Take · 24 hours". */
 export function dutyWhat(d: WireDutyRef & { activities?: string[] }, t: T): string {
-  if (d.kind === "teaching") return t("rosterMyDuties.what.teaching");
-  const hours = (Date.parse(d.endsAt) - Date.parse(d.startsAt)) / 3_600_000;
-  if (hours >= 20) return t("rosterMyDuties.what.take");
-  if (d.night) return t(`rosterMyDuties.night.${d.positionKey}`, { defaultValue: t("rosterMyDuties.night.other") });
-  const acts = d.activities ?? [];
-  if (acts.includes("opd") || acts.includes("special_clinic")) return t("rosterMyDuties.what.opd");
-  if (acts.includes("elective_ot") || acts.includes("minor_ot")) return t("rosterMyDuties.what.ot");
-  if (d.mode === "call") return t("rosterMyDuties.what.call");
-  return acts.length > 0 ? t("rosterMyDuties.what.ward") : t("rosterMyDuties.what.day");
+  const what = dutyWhatKey(d);
+  return what.fallback === undefined ? t(what.key) : t(what.key, { defaultValue: t(what.fallback) });
 }
 
 /** "Saturday night" / "Saturday's duty" — how a request names the duty, as the board does. */
@@ -77,28 +71,12 @@ export function reasonText(r: WireCoverReason, t: T): string {
 }
 
 function greeting(at: string, name: string | null, t: T): string {
-  const h = Number(fmtIst(at).slice(0, 2));
-  const key = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
   // "Dr. Meena Joshi" → "Dr. Meena": the board greets a colleague by first name.
-  const short = name === null ? "" : name.replace(/^((?:dr|mr|mrs|ms|sr|prof)\.?\s+)?(\S+).*$/i, (_m, hon: string | undefined, first: string) => `${hon ?? ""}${first}`);
-  return t(`rosterMyDuties.greeting.${key}`, { name: short });
+  return t(`rosterMyDuties.greeting.${greetingKey(at)}`, { name: greetingName(name) });
 }
 
-type Day = { istDate: string; duty: WireMyDuty | null; rest: null | { until: string } };
-
-/** One entry per day of the week: the day's duty (a night first), or rest after a night, or off. */
-export function weekOf(m: WireMyDuties): Day[] {
-  return m.days.map((istDate) => {
-    const mine = m.duties.filter((d) => d.istDate === istDate && d.kind !== "off");
-    const duty = mine.find((d) => d.night) ?? mine[0] ?? null;
-    const after = m.duties.find((d) => d.night && todayIst(new Date(d.endsAt)) === istDate);
-    return {
-      istDate, duty,
-      // Rest after a night: nobody may roster you for twelve hours after it ends (rest_after_duty).
-      rest: duty === null && after !== undefined ? { until: new Date(Date.parse(after.endsAt) + 12 * 3_600_000).toISOString() } : null,
-    };
-  });
-}
+/** One entry per day of the week — the shared reading rule (`roster-board.ts`). */
+export { weekOf };
 
 export function RosterMyDuties({ at }: Props): React.ReactElement {
   const { t, i18n } = useTranslation();
@@ -156,10 +134,7 @@ function Home({ m, lang, busy, onPick, onAnswer, onWithdraw }: {
     .filter((x): x is string => x !== null && x !== "").join(" · ");
   const meId = actor?.id ?? null;
   // Requests about MY duty (I asked, or my SR asked for me), and ones I have already answered.
-  const mine = m.requests.filter((r) => r.status !== "withdrawn" && r.counterpart.userId !== meId);
-  const answered = m.requests.filter((r) => r.counterpart.userId === meId && r.status !== "asked" && r.status !== "withdrawn");
-  const ofMe = m.requests.filter((r) => r.youMay.answer);
-  const asked = new Set(m.requests.filter((r) => r.status === "asked" || r.status === "accepted").flatMap((r) => [r.duty.assignmentId, ...(r.give === null ? [] : [r.give.assignmentId])]));
+  const { mine, answered, ofMe, asked } = coverBuckets(m.requests, meId);
   const go = (e: React.MouseEvent, to: string): void => {
     if (router === undefined) return;
     e.preventDefault();
@@ -265,7 +240,7 @@ function MyRequestCard({ r, lang, busy, onWithdraw }: { r: WireCoverRequest; lan
   const { t } = useTranslation();
   const duty = dutyName(r.duty, t, lang);
   const name = r.counterpart.name;
-  const tone = r.status === "approved" ? "md-asked-ok" : r.status === "refused" || r.status === "declined" ? "md-asked-bad" : "md-asked";
+  const tone = { ok: "md-asked-ok", bad: "md-asked-bad", open: "md-asked" }[requestTone(r.status)];
   const title = r.kind === "swap" && (r.status === "asked")
     ? t("rosterMyDuties.asked.titleSwap", { name, duty, give: dutyName(r.give!, t, lang) })
     : t(`rosterMyDuties.asked.title_${r.status}`, { name, duty });

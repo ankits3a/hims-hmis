@@ -16,7 +16,13 @@ import type {
   HolidayKind, HolidayPattern, WireAsItStoodBoard, WireAsItStoodChange, WireBoardDepartment, WireBoardHole, WireBoardService,
   WireDeclarationsView, WireOnNowBoard, WireOpdSitting, WireRosterFlag, WireRosterSelf,
 } from "../lib/roster-api";
+import {
+  backupOf, clockNoteOf, flaggablePeople, hasNoTakeCycle, isDaytime, opdFallbackOf, shortUnit, takeTillOf,
+} from "../../../../packages/contracts/src/roster-board";
 import "./roster.css";
+
+/** The board's reading rules are ONE file shared with the phone (mobile plan M5). */
+export { shortUnit };
 
 /**
  * ═══ 20-U U5a — WHO IS ON NOW, THE HOSPITAL'S UNIT BOARD ═══
@@ -47,17 +53,6 @@ const AHEAD_MS = 8 * 3_600_000;
 /** `stood` — 20-U I23: open the board as it stood at that instant (a link an inspection can carry). */
 type Props = { at?: string; stood?: string };
 type T = (k: string, o?: Record<string, unknown>) => string;
-
-/** "General Medicine Unit III" under "General Medicine" reads "Unit III", as the board writes it. */
-export function shortUnit(unitName: string, deptName: string): string {
-  return unitName.startsWith(`${deptName} `) ? unitName.slice(deptName.length + 1) : unitName;
-}
-
-/** Minutes past IST midnight. */
-const istMinutes = (iso: string): number => {
-  const d = new Date(new Date(iso).getTime() + 330 * 60_000);
-  return d.getUTCHours() * 60 + d.getUTCMinutes();
-};
 
 function weekdayOf(iso: string, lang: string, style: "long" | "short" = "long"): string {
   return new Intl.DateTimeFormat(lang.startsWith("hi") ? "hi-IN" : "en-GB", { timeZone: "Asia/Kolkata", weekday: style }).format(new Date(iso));
@@ -102,9 +97,8 @@ export function RosterOnNow({ at, stood }: Props): React.ReactElement {
   // which carries neither — even if a board as it stood ever came back carrying `flags`. A skeleton
   // day is a live board, so its flags and the button still show.
   const readOnly = stoodAt !== null;
-  const unpublishedLive = b === undefined || history !== undefined ? [] : b.departments.filter((d) => d.source !== "published" && d.inOpd != null);
-  const opdFallback = b === undefined || unpublishedLive.length === 0 ? null
-    : unpublishedLive.length === b.departments.length ? "rosterOnNow.opdFallbackAll" : "rosterOnNow.opdFallbackSome";
+  const fallback = b === undefined || history !== undefined ? null : opdFallbackOf(b);
+  const opdFallback = fallback === null ? null : `rosterOnNow.${fallback}`;
 
   return (
     <DoctorDeskFrame
@@ -196,13 +190,13 @@ export function clockLine(iso: string, lang: string): string {
 
 /** What the clock means for who is on take — the board's three sentences, from the data's own take. */
 function clockNote(b: WireOnNowBoard, t: T, lang: string): string {
-  const take = b.departments.find((d) => d.unitOnTake !== null)?.unitOnTake ?? null;
-  if (take === null) return t("rosterOnNow.intro");
+  const note = clockNoteOf(b);
+  if (note.key === "intro") return t("rosterOnNow.intro");
+  const take = note.take;
   const handover = fmtIst(take.endsAt);
   const takeDay = weekdayOf(take.startsAt, lang);
-  const mins = istMinutes(b.at);
-  if (todayIst(new Date(take.startsAt)) !== todayIst(new Date(b.at))) return t("rosterOnNow.noteLate", { day: takeDay, time: handover });
-  if (mins >= 20 * 60) return t("rosterOnNow.noteNight", { day: takeDay, time: handover, next: weekdayOf(take.endsAt, lang) });
+  if (note.key === "noteLate") return t("rosterOnNow.noteLate", { day: takeDay, time: handover });
+  if (note.key === "noteNight") return t("rosterOnNow.noteNight", { day: takeDay, time: handover, next: weekdayOf(take.endsAt, lang) });
   return t("rosterOnNow.noteDay", { day: takeDay, time: fmtIst(take.startsAt) });
 }
 
@@ -211,33 +205,25 @@ function clockNote(b: WireOnNowBoard, t: T, lang: string): string {
  * pieces, each kept whole, so the unit column wraps between them and never inside one: two lines.
  */
 function tillParts(d: WireBoardDepartment, b: WireOnNowBoard, t: T, lang: string): string[] {
-  const u = d.unitOnTake;
+  const u = takeTillOf(d, b.at);
   if (u === null) return [];
-  if (d.units === 1) return [t("rosterOnNow.singleUnit")];
-  const sameDay = todayIst(new Date(u.endsAt)) === todayIst(new Date(b.at));
-  const till = sameDay ? fmtIst(u.endsAt) : `${weekdayOf(u.endsAt, lang, "short")} ${fmtIst(u.endsAt)}`;
+  if (u.single) return [t("rosterOnNow.singleUnit")];
+  const till = u.sameDay ? fmtIst(u.endsAt) : `${weekdayOf(u.endsAt, lang, "short")} ${fmtIst(u.endsAt)}`;
   return [`${t("rosterOnNow.takeOf", { day: weekdayOf(u.startsAt, lang) })} ·`, t("rosterOnNow.tillShort", { time: till })];
 }
 
-function isDaytime(iso: string): boolean {
-  const m = istMinutes(iso);
-  return m >= 8 * 60 && m < 20 * 60;
-}
-
 function backupLine(d: WireBoardDepartment, b: WireOnNowBoard, t: T): string {
-  if (d.backupUnit !== null) return t("rosterOnNow.backup", { unit: shortUnit(d.backupUnit.name, d.name) });
-  if (d.units === 1) {
-    const med = b.departments.find((x) => x.code === "MED" && x.departmentId !== d.departmentId && x.unitOnTake !== null);
-    return med !== undefined ? t("rosterOnNow.coveredBy", { dept: med.name }) : t("rosterOnNow.singleBackup");
-  }
-  return t("rosterOnNow.noBackup");
+  const line = backupOf(d, b);
+  if (line.key === "backup") return t("rosterOnNow.backup", { unit: line.unit });
+  if (line.key === "coveredBy") return t("rosterOnNow.coveredBy", { dept: line.dept });
+  return t(`rosterOnNow.${line.key}`);
 }
 
 function DepartmentRow({ d, b }: { d: WireBoardDepartment; b: WireOnNowBoard }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const published = d.source === "published";
   const u = d.unitOnTake;
-  const noCycle = b.holes.some((h) => h.kind === "no_take_cycle" && h.departmentId === d.departmentId);
+  const noCycle = hasNoTakeCycle(d, b);
   return (
     <div className="ro-row" data-testid={`dept-${d.code}`}>
       <div className="ro-c-dept">
@@ -370,10 +356,7 @@ function WrongFlag({ b }: { b: WireOnNowBoard }): React.ReactElement {
   const depts = b.departments.filter((d) => d.source === "published");
   const [deptId, setDeptId] = useState<string>(depts[0]?.departmentId ?? "");
   const d = depts.find((x) => x.departmentId === deptId);
-  const people = d === undefined ? [] : [
-    ...d.inTheBuilding.map((p) => ({ userId: p.userId, name: p.name })),
-    ...d.facultyOnCall.flatMap((r) => (r.userId === null || r.name === null ? [] : [{ userId: r.userId, name: r.name }])),
-  ].filter((p, i, all) => all.findIndex((x) => x.userId === p.userId) === i);
+  const people = d === undefined ? [] : flaggablePeople(d);
   const [who, setWho] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const shownWho = who !== null ? who : (people[0]?.userId ?? "");
