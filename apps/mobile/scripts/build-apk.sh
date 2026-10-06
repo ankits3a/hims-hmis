@@ -68,4 +68,6 @@ cp "$APP_DIR/android/app/build/outputs/apk/release/app-release.apk" "$OUT_DIR/$N
 echo "$VC" > "$COUNTER"
 (cd "$OUT_DIR" && sha256sum "$NAME" > "$NAME.sha256")
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$OUT_DIR/$NAME"
+# The download link staff phones use always names the newest VERIFIED build of this app id.
+ln -sfn "$NAME" "$OUT_DIR/hmis-staff-$ENV_NAME-latest.apk"
 echo "built $OUT_DIR/$NAME (versionCode $VC)"
