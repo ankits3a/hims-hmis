@@ -19,3 +19,28 @@ describe("theme", () => {
     expect(color[k].toLowerCase().replace(/\s+/g, " ")).toBe(cssValue(cssName[k]));
   });
 });
+
+/**
+ * IBM Plex is applied by `src/text.tsx` — React Native has no app-wide default face. A screen that
+ * imports `Text` or `TextInput` straight from the framework is drawn in the system's face and looks
+ * like a different product; this reads every source file and fails on the first one.
+ */
+describe("typeface", () => {
+  const { readdirSync, statSync } = require("fs") as typeof import("fs");
+  const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
+    const p = join(dir, f);
+    return statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(f) ? [p] : [];
+  });
+  const files = [...walk(join(__dirname, "../src")), ...walk(join(__dirname, "../app"))].filter((f) => !f.endsWith("/src/text.tsx"));
+
+  it("finds the screens", () => {
+    expect(files.length).toBeGreaterThan(20);
+  });
+  it("no screen takes Text or TextInput from react-native", () => {
+    const stray = files.filter((f) => {
+      const m = /import \{([^}]*)\} from "react-native";/.exec(readFileSync(f, "utf8"));
+      return m !== null && m[1]!.split(",").map((n) => n.trim()).some((n) => n === "Text" || n === "TextInput");
+    });
+    expect(stray).toEqual([]);
+  });
+});

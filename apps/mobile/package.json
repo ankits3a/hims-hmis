@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@expo-google-fonts/ibm-plex-mono": "0.4.1",
+    "@expo-google-fonts/ibm-plex-sans": "0.4.1",
     "@expo/metro-runtime": "~57.0.16",
     "@shopify/react-native-skia": "2.6.2",
     "expo": "~57.0.26",
@@ -15,6 +17,7 @@
     "expo-local-authentication": "~57.0.3",
     "expo-router": "~57.0.24",
     "expo-secure-store": "~57.0.4",
+    "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",

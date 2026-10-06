@@ -77,6 +77,18 @@ http://{$HMIS_UAT_SITE}:8080 {
 	# apps/mobile/scripts/build-apk.sh writes to /opt/hmis-context/mobile-apk on the host are
 	# mounted read-only at /downloads (docker-compose.uat.yml) and listed here, behind the same
 	# basic auth as the screens: https://stagehmis.crkmch.com/app/
+	#
+	# `*-latest.json` is served WITHOUT basic auth, and only that: the installed app reads it on
+	# start-up to learn whether a newer build exists (apps/mobile/src/update.ts), and an app cannot
+	# answer a browser's password prompt. It carries a version number, a file name and a checksum —
+	# nothing about a patient, nothing that installs. The APK itself stays behind the prompt.
+	@app_latest path_regexp ^/app/hmis-staff-[a-z]+-latest\.json$
+	handle @app_latest {
+		uri strip_prefix /app
+		header Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
 	handle_path /app/* {
 		basic_auth {
 			uat {$HMIS_UAT_BASIC_AUTH_HASH}

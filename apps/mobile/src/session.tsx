@@ -42,6 +42,8 @@ type Session = {
    * a slow connection. Same errors as `call` (`ApiError`, `NetworkError`), same 401 handling.
    */
   upload: <T>(path: string, body: unknown, onProgress: (fraction: number) => void) => Promise<T>;
+  /** The transport itself, for the one read that is not the API: the update feed (src/update.ts). */
+  fetcher: typeof fetch;
 };
 
 const Ctx = createContext<Session | null>(null);
@@ -190,8 +192,8 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
   );
 
   const value = useMemo(
-    () => ({ state, login, unlock, changePassword, logout, forgetAndSignIn, token, call, upload }),
-    [state, login, unlock, changePassword, logout, forgetAndSignIn, token, call, upload],
+    () => ({ state, login, unlock, changePassword, logout, forgetAndSignIn, token, call, upload, fetcher: fetcher ?? fetch }),
+    [state, login, unlock, changePassword, logout, forgetAndSignIn, token, call, upload, fetcher],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

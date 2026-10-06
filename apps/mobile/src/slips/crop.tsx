@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import { Image, PanResponder, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Image, PanResponder, StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { Text } from "../text";
 import { useI18n } from "../i18n";
 import { color, radius } from "../theme";
 import { isConvex } from "./rules";

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
+import { Text } from "../text";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
