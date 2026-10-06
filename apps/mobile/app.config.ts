@@ -21,7 +21,7 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Not served yet — the production rollout is plan §7. Until it is, the check finds nothing and says nothing.
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 const VERSION_CODE = Number(process.env.HMIS_VERSION_CODE ?? "1");
 
 const config: ExpoConfig = {

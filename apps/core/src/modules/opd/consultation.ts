@@ -593,6 +593,29 @@ export type CompleteConsultationInput = {
 };
 
 /**
+ * How many of the visit's drafted lines name a drug and are on NO issued prescription. A blank
+ * editor row is not a prescription. A draft whose every drug is already on the visit's current
+ * prescription is a clear that was lost (the tab closed between the issue and the clear) — the web
+ * treats it as stale for the same reason — and blocks nothing.
+ */
+async function unissuedDraftRows(db: Db, encounter: EncounterRow): Promise<number> {
+  const draft = Array.isArray(encounter.rxDraft) ? (encounter.rxDraft as { drug?: unknown }[]) : [];
+  const drugs = draft.map((r) => (typeof r?.drug === "string" ? r.drug.trim().toLowerCase() : "")).filter((d) => d !== "");
+  if (drugs.length === 0) return 0;
+  const issued = await db
+    .select({ lines: opdPrescriptions.lines })
+    .from(opdPrescriptions)
+    .where(and(eq(opdPrescriptions.encounterId, encounter.id), eq(opdPrescriptions.status, "active")))
+    .orderBy(desc(opdPrescriptions.version))
+    .limit(1);
+  const onPaper = new Set(
+    (Array.isArray(issued[0]?.lines) ? (issued[0]!.lines as { drug?: unknown }[]) : [])
+      .map((l) => (typeof l?.drug === "string" ? l.drug.trim().toLowerCase() : "")),
+  );
+  return drugs.filter((d) => !onPaper.has(d)).length;
+}
+
+/**
  * §11.1 completion. Either the visit ends (completed, the follow-up window stamped and evented) or it parks
  * in awaiting_results for the same-day return with results — which mints NO completion event, because the
  * consultation has not ended.
@@ -611,6 +634,27 @@ export async function completeConsultation(
     throw new OpdError("encounter_state_conflict", `a completion needs in_consultation, not ${current.status}`);
   }
   assertLeaseFor(current, input.note?.leaseToken, now);
+  /*
+    ═══ PRODUCTION 2026-09-23 — COMPLETE MUST NOT DROP A PRESCRIPTION NOBODY ISSUED (the server's half, 2026-10-06) ═══
+
+    Encounter 01M36K6NZ7676HA11278QK9225 was completed 46 seconds after it started with medicines
+    typed and none issued; the pharmacy never got a ticket. The web closed that on the SCREEN (it
+    issues first, then completes and clears the draft in the same request) and the phone refused on
+    the PHONE. Neither is a guard: a client that completes without a word about the draft could
+    still lose one. So a completion that does NOT say what becomes of the draft is refused while the
+    visit holds written, unissued lines. A completion that DOES carry `note.rxDraft` — the web's
+    road, after issuing — is taken at its word, which is why its issue-then-complete still passes.
+  */
+  if (input.note?.rxDraft === undefined) {
+    const rows = await unissuedDraftRows(db, current);
+    if (rows > 0) {
+      throw new OpdError(
+        "rx_unissued_state_conflict",
+        `${rows} prescription line${rows === 1 ? " was" : "s were"} written and never issued — issue the prescription (or clear the lines) on the consultation screen, then complete`,
+        { rows },
+      );
+    }
+  }
   const cfg = await loadOpdConfig(db);
   const patch = noteColumns(input.note);
 

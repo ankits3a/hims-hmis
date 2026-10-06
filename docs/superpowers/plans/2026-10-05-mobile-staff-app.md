@@ -128,9 +128,12 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
   whatever the doctor saved on the computer is untouched, and the default follow-up is left out of the body so the
   server's own applies (K49). The phone **refuses** to complete while the visit holds prescription rows typed on the
   computer and never issued (`encounter.rxDraft`) — production 2026-09-23: Complete once dropped an unissued
-  prescription. The web closes that by issuing first; the phone cannot issue, so it says where to finish. This guard
-  is the phone's only; the server would accept the completion (a server guard would break the web's own
-  issue-then-complete, which clears the draft in the same request).
+  prescription. The web closes that by issuing first; the phone cannot issue, so it says where to finish.
+  **Since M4 (2026-10-06) this is also the server's guard:** `completeConsultation` refuses
+  `rx_unissued_state_conflict` (409) when the request does not say what becomes of the draft and the visit holds
+  drafted lines that are on no issued prescription. The web's issue-then-complete still passes because it carries
+  `note.rxDraft: null` in the same request; a draft whose every drug is already on the issued prescription (a clear
+  that was lost) blocks nothing.
 - **Starting ahead of the line:** the server lets a doctor start any waiting visit of their own
   (`startConsultation` asks only for `waiting`), so the brief of a patient who is not next offers "Start now, ahead of
   the line", worded as such. There is no "call this token" route, and none was added.
@@ -158,6 +161,60 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
   the basic-auth prompt (an app cannot answer one); the APK and the folder listing stay behind it.
 - **Not verified without a phone:** the fonts and the crest icon as Android draws them, the splash, haptics, the
   update download hand-off to Chrome and the installer, the paper viewer's two-way scroll under a real thumb.
+
+### 3d. M4 as built (2026-10-06)
+
+- **Same routes, same guards as the web's Desk One:** `/patients/search`, `/patients/qr/verify`, `POST /patients`,
+  `/patients/:id` (+ `/linked`), `/opd/patients/:id/timeline`, `/opd/config`, `/opd/departments`, `/opd/queues/summary`,
+  `/roster/doctor-units`, `/opd/continuity`, `/billing/consult-terms`, `POST /opd/walk-in`, `/opd/visits/:id/{join-queue,move-preview,move-department}`,
+  `/billing/visits/:id/fee-quote`, `POST /billing/invoices`, `/billing/sessions{,/current}`, `/billing/invoices?encounterId=`,
+  `/print/jobs`, `/print/reprint`. **No new route.** The seat is offered to `opd.visits.open`; every block inside it asks
+  only what the login's own permissions allow (a front-office login never requests the fee quote or the cash session).
+- **Shared, one copy:** `packages/contracts/src/desk-counter.ts` — moved out of the web's `desk-one/model.ts` (which
+  re-exports every name): the lanes and the token's states, today's open visit, the bill read, the board's wait
+  arithmetic, the token label, an age; out of `session.ts`: the one age-or-date-of-birth box; and new, used by BOTH:
+  what a department-move preview means (`moveFee`, `moveMoneyLine`, `moveMoneyBlocks`, `moveCollectPaise` — the web's
+  move panel now calls them) and a visit's paper (`paperState` — the web's `printSummary` now calls it). The phone's
+  short registration form (`shortFormGaps`, `shortRegisterBody`) keeps the web's rules: a blank box is an omitted key,
+  one of dob/age, a guardian's four authorities always explicit. `counter-rules.test.ts` fails if either side grows a copy.
+- **One thing per screen:** find → (register) → the patient → seat → bill → done, with one primary button in the same
+  place on every stage and the person in hand pinned above.
+- **Money and a visit are never queued, and never made twice — DECIDED:** the two writes carry the web's
+  `Idempotency-Key`. The phone keeps ONE key and ONE body per intent. When an answer is lost it says what is not
+  known, locks the choice (doctor / tender), and the retry (a) for a bill, re-reads the fee quote first — the server's
+  own duplicate guard (`alreadyBilled`) then ends it with nothing re-sent — and (b) re-sends the SAME key and body, so
+  the server replays its first answer. The web mints a fresh key per press and relies on the quote re-read alone;
+  the phone is stricter because mobile data loses answers more often. Three mutants (no re-read, a new key, an
+  unlocked choice) each turn a named test red.
+- **Collecting:** only with `billing.invoice.issue` and an open cash session. With none open the screen says why and
+  offers "Open my cash session" (the web's `POST /billing/sessions`, a float in rupees) — or leaving the fee for the
+  billing counter. A login that does not take money sees the price list's fee and "collected at the billing counter".
+  The cashier's running total is never shown (blind count).
+- **Free:** the server's quote decides; a switched-off fee reads "₹0 (समाज सेवा छूट)" in both languages and the
+  token's stamp says FREE, not PAID — nothing was paid.
+- **Lanes:** all three, off the shared rules — F1 prints at seating stamped UNPAID; F2 holds the slip until the bill;
+  F3 defers the queue join and the phone calls `join-queue` once the money is in.
+- **Paper:** queued by the server in the visit's own transaction for the counter's printer; the phone shows whether it
+  came out and offers "print again" (a new server job). The phone prints nothing itself.
+- **Continuity:** the doctor who saw the patient last is listed first and picked — unless their line is past the
+  web's 20-minute mark, in which case the shortest line stays picked and the note says so.
+- **The visit card and "Wrong department? Move patient":** from the bill stage and from any row of the patient's
+  history; the four money rules are the server's, worded by the shared helpers.
+- **Deferred, with the reason:**
+  - *Appointments (book / reschedule / cancel / check-in)* — the web's appointment seat is slots, a calendar, the
+    re-booking rail and the cross-department reason: its own milestone's worth of screens, not an "essential" of the
+    walk-in counter. A booked patient who arrives is still seated from the counter PC.
+  - *The full registration record* — ABHA (create / verify / scan-and-share), coverage, a sealed record's alias,
+    referrer, photo, allergies told at the desk: entered at the counter PC or the patient's profile. The phone's
+    short form is the fast path only, and says so.
+  - *Coupons, a partner slip, manual discounts, credit, split tenders* — one tender for the server's own total.
+  - *Correcting the visit type, changing the doctor within a department, amending the record* — counter PC.
+  - *The complaint's triage suggestion and red-flag stage* — the complaint is typed and sent to the doctor; the
+    department is chosen by the clerk.
+  - *Closing / counting the cash session* — the drawer is counted at the billing computer.
+  - *The desk agent (ask bar) and the day's own figures* — every screen gets the ask bar together, later.
+- **Not verified without a phone:** the keyboard over the bottom button, the camera scan of a patient card, the
+  haptics, a real lost answer on mobile data.
 
 **Offline rule (all milestones):** cached reads show their age ("as of 10:42"). A clinical or money write is never queued silently. With no network the button says so and stays disabled.
 

@@ -6,6 +6,7 @@ import { previewDepartmentMove } from "../../lib/opd-api";
 import { useAuth } from "../../lib/auth";
 import { SubmitButton } from "../../components/submit-button";
 import { rs, tokenLabel } from "./model";
+import { moveCollectPaise, moveFee, moveMoneyBlocks, moveMoneyLine } from "../../../../../packages/contracts/src/desk-counter";
 import type { WireConsultTerms } from "../../lib/billing-api";
 import type { WireMoveMoney, WireMoveTender, WireVisitType } from "../../lib/opd-api";
 import type { DeptQueue } from "./model";
@@ -28,20 +29,9 @@ export type MovableVisit = {
  * The terms in force only name WHY it is free, or stand in for an older server with no amount.
  */
 function feeOf(vt: WireVisitType, terms: WireConsultTerms | undefined, t: (k: string) => string, serverPaise?: number): string | null {
-  if (serverPaise !== undefined && serverPaise > 0) return rs(serverPaise);
-  if (terms?.consultFeeOff === true) return t("registrationCounter.move.feesOff");
-  if (serverPaise !== undefined) return t("registrationCounter.move.free");
-  if (terms === undefined) return null;
-  const paise = terms.paise[vt];
-  if (paise === null) return vt === "revisit" ? t("registrationCounter.move.free") : null;
-  return paise > 0 ? rs(paise) : t("registrationCounter.move.free");
-}
-
-/** Can the move go ahead from THIS seat, given what it does with the money? */
-function moneyBlocks(money: WireMoveMoney | undefined, maySettle: boolean): boolean {
-  if (money === undefined) return false;
-  if (money.kind === "billing_office") return true;
-  return money.kind === "difference" && !maySettle;
+  const fee = moveFee(vt, terms, serverPaise);
+  if (fee === null) return null;
+  return fee.kind === "amount" ? rs(fee.paise) : t(fee.kind === "feesOff" ? "registrationCounter.move.feesOff" : "registrationCounter.move.free");
 }
 
 /**
@@ -94,8 +84,8 @@ export function MoveDepartmentForm({
   const p = preview.data;
   const money = p?.money;
   const maySettle = p?.maySettleDifference === true;
-  const blocked = moneyBlocks(money, maySettle);
-  const collect = money?.kind === "difference" && maySettle && money.differencePaise > 0 ? money.differencePaise : 0;
+  const blocked = moveMoneyBlocks(money, maySettle);
+  const collect = moveCollectPaise(money, maySettle);
   const feeLine = (vt: WireVisitType, serverPaise?: number) => {
     const fee = feeOf(vt, terms.data, t, serverPaise);
     return fee === null ? vtName(vt) : `${vtName(vt)} · ${fee}`;
@@ -269,35 +259,10 @@ export function MoveDepartmentForm({
 /** Which of the four money rules applies, in the words the clerk acts on. */
 function MoneyLine({ money, maySettle }: { money: WireMoveMoney; maySettle: boolean }): React.ReactElement | null {
   const { t } = useTranslation();
-  const no = money.invoiceNo ?? "";
-  let text: string | null = null;
-  let tone: "ok" | "warn" | "stop" = "ok";
-  switch (money.kind) {
-    case "none":
-      return null;
-    case "zero_bill":
-      text = t("registrationCounter.move.money.zeroBill", { no });
-      break;
-    case "transfer":
-      text = t("registrationCounter.move.money.transfer", { paid: rs(money.paidPaise), no });
-      break;
-    case "difference":
-      if (!maySettle) {
-        text = t("registrationCounter.move.money.differsDesk", { paid: rs(money.paidPaise), fee: rs(money.newFeePaise) });
-        tone = "stop";
-      } else if (money.differencePaise < 0) {
-        text = t("registrationCounter.move.money.lower", { paid: rs(money.paidPaise), fee: rs(money.newFeePaise), left: rs(-money.differencePaise) });
-        tone = "warn";
-      } else {
-        text = t("registrationCounter.move.money.higher", { paid: rs(money.paidPaise), fee: rs(money.newFeePaise), diff: rs(money.differencePaise) });
-        tone = "warn";
-      }
-      break;
-    case "billing_office":
-      text = t(`registrationCounter.move.money.office.${money.billingOfficeReason ?? "several_bills"}`, { no });
-      tone = "stop";
-      break;
-  }
+  const line = moveMoneyLine(money, maySettle);
+  if (line === null) return null;
+  const text = t(line.key, line.vars);
+  const tone = line.tone;
   return (
     <div
       role={tone === "stop" ? "alert" : "status"}

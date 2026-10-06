@@ -32,8 +32,8 @@ import { istClock, todayIst } from "../vitals/rules";
  *                   skipped WITH a reason, started
  *   the brief       ../doctor/brief.tsx — what the desks already entered about the patient
  *   start, park,    the consultation's state moves; a completion from the phone sends NO note, so
- *   resume,         what was saved on the computer is untouched, and it is refused here while a
- *   complete        prescription typed there is still unissued
+ *   resume,         what was saved on the computer is untouched, and it is refused here — and by
+ *   complete        the server since M4 — while a prescription typed there is still unissued
  *
  * Writing the note and an e-prescription stays on the computer: its allergy, interaction and
  * duplicate checks, the coded diagnosis and the stock substitution are that screen's, and a phone
