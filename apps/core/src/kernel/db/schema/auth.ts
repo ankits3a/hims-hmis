@@ -96,6 +96,37 @@ export const roleAssignments = pgTable(
   (t) => [index("role_assignments_user_idx").on(t.userId)],
 );
 
+/**
+ * ═══ MOBILE M6a — THE PHONES A PERSON IS SIGNED IN ON (owner 2026-10-06: staff use PERSONAL phones) ═══
+ *
+ * One row per (person, app install). `device_id` is an identifier the staff app makes up when it is
+ * installed and sends with its sign-in; it is a LABEL, not a credential — nothing is granted for
+ * presenting one, and a session is still a password. What the row buys is the list an administrator
+ * reads in `/admin/users`: which phones hold a session for this person, what they are, when they
+ * were last opened — and one button to end a lost phone's session without resetting the password.
+ *
+ * `model`, `os_version` and `app_version` are what the phone SAYS it is (bounded text, never
+ * trusted). `last_ip` is the client address at the last sign-in or app open (WASA M-05's column,
+ * per phone). The browser's sessions have no row here: `auth_sessions.device_row_id` stays NULL.
+ */
+export const authDevices = pgTable(
+  "auth_devices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    deviceId: text("device_id").notNull(),
+    model: text("model"),
+    osVersion: text("os_version"),
+    appVersion: text("app_version"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastIp: text("last_ip"),
+  },
+  (t) => [
+    uniqueIndex("auth_devices_user_device_ux").on(t.userId, t.deviceId),
+  ],
+);
+
 export const authSessions = pgTable(
   "auth_sessions",
   {
@@ -115,6 +146,8 @@ export const authSessions = pgTable(
      */
     clientIp: text("client_ip"),
     userAgent: text("user_agent"),
+    /** Mobile M6a — the phone this session was opened on (`auth_devices`). NULL for a browser session. */
+    deviceRowId: text("device_row_id").references(() => authDevices.id),
   },
   (t) => [
     uniqueIndex("auth_sessions_token_ux").on(t.tokenHash),

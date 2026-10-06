@@ -31,7 +31,10 @@ import { users } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
 import { userPasswordChanged } from "./events";
-import { auditLoggedOut, auditLoginFailed, auditSessionOpened, auditTotp, clientContext } from "./auth-audit";
+import {
+  auditLoggedOut, auditLoginFailed, auditPhoneLimitRefused, auditPhoneSignIn, auditSessionOpened, auditTotp, clientContext,
+} from "./auth-audit";
+import { PHONES_PER_USER, PhoneLimitError, deviceClaimSchema, touchPhone } from "./devices";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
 
@@ -45,6 +48,8 @@ const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
   terminalId: z.string().min(1).optional(),
+  /** Mobile M6a — the staff app names its phone (`devices.ts`). A browser sends none. */
+  device: deviceClaimSchema.optional(),
 });
 
 /**
@@ -159,7 +164,29 @@ export class AuthController {
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
     await this.refuseIfThrottled(res, "login", parsed.data.username);
-    const result = await loginWithPassword(this.db, this.cfg, parsed.data);
+    const client = clientContext(req);
+    let result: Awaited<ReturnType<typeof loginWithPassword>>;
+    try {
+      result = await loginWithPassword(this.db, this.cfg, { ...parsed.data, clientIp: client.ip });
+    } catch (e) {
+      /*
+        MOBILE M6a — THE THIRD PHONE. The password was RIGHT (the limit is only ever read after it
+        verifies), so this is not a failed attempt: nothing is counted against the throttle, the
+        refusal is evented with the person's id, and the answer says which phones hold the places —
+        to the person who just proved who they are, and to nobody else.
+      */
+      if (e instanceof PhoneLimitError && parsed.data.device !== undefined) {
+        await clearThrottle(this.db, "login", parsed.data.username);
+        await auditPhoneLimitRefused(this.db, e.userId, e.phones.length, parsed.data.device, client);
+        throw new ConflictException({
+          code: "phone_limit_reached",
+          message: `already signed in on ${e.phones.length} phones — an administrator can sign one out`,
+          limit: PHONES_PER_USER,
+          phones: e.phones.map((p) => ({ model: p.model, lastSeenAt: p.lastSeenAt.toISOString() })),
+        });
+      }
+      throw e;
+    }
     if (!result) {
       // The failure is counted AFTER the shipped verification has said no, and the 401 it produces
       // is byte-identical to the one it always produced: the throttle changes what happens on the
@@ -169,12 +196,15 @@ export class AuthController {
       // that username exists. A THROTTLED refusal (above) writes no event on purpose: it runs no
       // verification, and evented it would let one client write unbounded rows into a 120-month
       // table; the edge log carries those 429s with their address.
-      await auditLoginFailed(this.db, "password", parsed.data, clientContext(req));
+      await auditLoginFailed(this.db, "password", parsed.data, client);
       throw new UnauthorizedException();
     }
     await clearThrottle(this.db, "login", parsed.data.username);
-    await auditSessionOpened(this.db, result.token, "password", clientContext(req));
-    return result;
+    await auditSessionOpened(this.db, result.token, "password", client);
+    if (result.phone !== undefined && parsed.data.device !== undefined) {
+      await auditPhoneSignIn(this.db, result.token, result.phone, parsed.data.device, client);
+    }
+    return { token: result.token };
   }
 
   @Public()
@@ -308,7 +338,11 @@ export class AuthController {
    * describe the caller.
    */
   @Get("me")
-  async me(@CurrentActor() actor: Actor): Promise<{ actor: Actor; permissions: EffectivePermissions }> {
+  async me(@CurrentActor() actor: Actor, @Req() req: AuthedRequest): Promise<{ actor: Actor; permissions: EffectivePermissions }> {
+    // Mobile M6a — the staff app asks this each time it is opened or unlocked: that IS "last seen"
+    // for its phone. A browser session has no phone and stamps nothing.
+    const deviceRowId = req.hmisSession?.deviceRowId ?? null;
+    if (deviceRowId !== null) await touchPhone(this.db, deviceRowId, clientContext(req).ip);
     const permissions = actor.type === "user"
       ? await effectivePermissions(this.db, actor.id)
       : { hospital: [], scoped: { department: {}, floor: {} } };

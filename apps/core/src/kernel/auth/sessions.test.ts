@@ -29,6 +29,7 @@ describe("sessions", () => {
     const live = await findLiveSession(db, token);
     expect(live).toEqual({
       sessionId, userId, terminalId: "counter-1", secondFactorAt: null, mustChangePassword: false,
+      deviceRowId: null, // a session opened with no phone claim (mobile M6a) points at none
     });
     expect(await findLiveSession(db, "not-a-token")).toBeNull();
   });

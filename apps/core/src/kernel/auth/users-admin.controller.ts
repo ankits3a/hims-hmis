@@ -12,7 +12,8 @@ import { roleAssignments, rolePermissions, users } from "../db/schema";
 import { createUser, deactivateUser, reactivateUser, setPassword, setPin } from "./identity";
 import { revokeUserSessions } from "./sessions";
 import { checkPassword, checkPin } from "./password-policy";
-import { userCreated, userCredentialReset, userDeactivated, userReactivated } from "./events";
+import { authPhoneSignedOut, authSessionRevoked, userCreated, userCredentialReset, userDeactivated, userReactivated } from "./events";
+import { PHONES_PER_USER, listPhones, signOutPhone } from "./devices";
 import { authManifest } from "./manifest";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../db/client";
@@ -527,6 +528,68 @@ export class UsersAdminController {
           },
         }),
       );
+    });
+  }
+
+  /**
+   * ═══ MOBILE M6a — THE PHONES A PERSON IS SIGNED IN ON (owner 2026-10-06: personal phones) ═══
+   *
+   * What the administrator reads before deciding: each phone the staff app has signed in on for
+   * this person — what it says it is, when it was first and last seen, and whether it holds a
+   * session NOW. Deactivating the person or resetting their password already ends every session,
+   * phones included (above); this list is for the narrower case, one lost phone.
+   */
+  @RequirePermission(USERS_MANAGE, "hospital")
+  @Get(":id/phones")
+  async phones(@Param("id") id: string): Promise<{
+    limit: number;
+    phones: {
+      id: string; model: string | null; osVersion: string | null; appVersion: string | null;
+      firstSeenAt: string; lastSeenAt: string; lastIp: string | null; signedIn: boolean; signedInSince: string | null;
+    }[];
+  }> {
+    return withTx(this.db, async (tx) => {
+      await this.requireUser(tx, id);
+      const phones = await listPhones(tx, id);
+      return {
+        limit: PHONES_PER_USER,
+        phones: phones.map((p) => ({
+          id: p.id, model: p.model, osVersion: p.osVersion, appVersion: p.appVersion,
+          firstSeenAt: p.firstSeenAt.toISOString(), lastSeenAt: p.lastSeenAt.toISOString(), lastIp: p.lastIp,
+          signedIn: p.signedIn, signedInSince: p.signedInSince === null ? null : p.signedInSince.toISOString(),
+        })),
+      };
+    });
+  }
+
+  /**
+   * SIGN ONE PHONE OUT. Every live session opened on that phone ends in this transaction, so the
+   * app's very next call is a 401 and it returns to sign-in. It confers nothing — no credential is
+   * set, so the takeover rule (`assertMayTakeOver`) does not apply, exactly as for deactivate — and
+   * it takes nothing but that phone's session: the person's password, PIN and other sessions stand.
+   * A phone that holds no session answers `sessionsRevoked: 0` and is still evented: the
+   * administrator's act is the record, whatever it found.
+   */
+  @RequirePermission(USERS_MANAGE, "hospital")
+  @Post(":id/phones/:phoneId/sign-out")
+  @HttpCode(200)
+  async signOutPhone(
+    @CurrentActor() actor: Actor,
+    @Param("id") id: string,
+    @Param("phoneId") phoneId: string,
+  ): Promise<{ sessionsRevoked: number }> {
+    return withTx(this.db, async (tx) => {
+      const user = await this.requireUser(tx, id);
+      const ended = await signOutPhone(tx, id, phoneId);
+      if (ended === null) throw new NotFoundException({ code: "phone_not_found" });
+      for (const sessionId of ended.sessionIds) {
+        await appendEvent(tx, authSessionRevoked.make({ actor, payload: { sessionId, userId: id, reason: "phone_signed_out", terminalId: null } }));
+      }
+      await appendEvent(tx, authPhoneSignedOut.make({
+        actor,
+        payload: { userId: id, username: user.username, deviceRowId: phoneId, model: ended.model, sessionsRevoked: ended.sessionIds.length },
+      }));
+      return { sessionsRevoked: ended.sessionIds.length };
     });
   }
 }

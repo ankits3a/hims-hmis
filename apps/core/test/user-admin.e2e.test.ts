@@ -45,6 +45,7 @@ import type { Db } from "../src/kernel/db/client";
 
 const NO_SUCH_USER = "01JZZZZZZZZZZZZZZZZZZZZZZZ";
 const NO_SUCH_ASSIGNMENT = "01JYYYYYYYYYYYYYYYYYYYYYYY";
+const NO_SUCH_PHONE = "01JPPPPPPPPPPPPPPPPPPPPPPP";
 
 /**
  * THE ROUTE → PERMISSION TABLE, TRANSCRIBED FROM THE DECORATORS. Every row is guarded: unlike
@@ -64,6 +65,9 @@ const ADMIN_ROUTES: [method: "get" | "post" | "delete", path: string, permission
   ["post", `/admin/users/${NO_SUCH_USER}/reactivate`, USERS_MANAGE],
   ["post", `/admin/users/${NO_SUCH_USER}/password-reset`, USERS_MANAGE],
   ["post", `/admin/users/${NO_SUCH_USER}/pin-reset`, USERS_MANAGE],
+  // ── Mobile M6a — the phones a person is signed in on, and signing one out (`devices.ts`).
+  ["get", `/admin/users/${NO_SUCH_USER}/phones`, USERS_MANAGE],
+  ["post", `/admin/users/${NO_SUCH_USER}/phones/${NO_SUCH_PHONE}/sign-out`, USERS_MANAGE],
   // ── T4's two role routes. A DIFFERENT permission on the SAME base path, which is the whole
   // reason the two controllers are split: `auth.roles.manage` guards changing who holds what,
   // `auth.users.manage` guards the accounts themselves, and leg 4 can now tell them apart with a
@@ -178,7 +182,7 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     expect({
       routes: ADMIN_ROUTES.length,
       distinctPermissions: new Set(ADMIN_ROUTES.map(([, , p]) => p)).size,
-    }).toEqual({ routes: 8, distinctPermissions: 2 });
+    }).toEqual({ routes: 10, distinctPermissions: 2 });
 
     const { token: roleLess } = await mkUser("holds_nothing", null);
     for (const [method, path, permission] of ADMIN_ROUTES) {
@@ -245,7 +249,7 @@ describe("user administration e2e (HTTP) — auth.users.manage finally guards ro
     // (c) The ROUTER's route→permission map equals the TABLE's, both directions. `ADMIN_ROUTES`
     // carries concrete ids in its paths, so both sides are normalised to Nest's parameter form.
     const normalise = (path: string): string =>
-      path.replace(NO_SUCH_USER, ":id").replace(NO_SUCH_ASSIGNMENT, ":assignmentId");
+      path.replace(NO_SUCH_USER, ":id").replace(NO_SUCH_ASSIGNMENT, ":assignmentId").replace(NO_SUCH_PHONE, ":phoneId");
     const fromTable = ADMIN_ROUTES
       .map(([method, path, permission]) => `${method.toUpperCase()} ${normalise(path)} ${permission}`)
       .sort();

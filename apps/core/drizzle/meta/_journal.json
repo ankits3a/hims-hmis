@@ -1247,6 +1247,13 @@
       "when": 1791135756053,
       "tag": "0177_opd_doctor_designation",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1791294010899,
+      "tag": "0178_auth_devices",
+      "breakpoints": true
     }
   ]
 }
