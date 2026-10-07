@@ -130,7 +130,7 @@ jobs:
       # it is believed. This fails when a PR changes structure (module imports, index.ts exports,
       # routes, tables, web routes) without regenerating. ~1 s, no install needed.
       - run: node tools/arch/gen.mjs --check
-      - run: node --test tools/print-relay/spool.test.mjs
+      - run: node --test tools/print-relay/spool.test.mjs tools/print-relay/platform.test.mjs tools/print-relay/program.test.mjs
         env:
           RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip
 

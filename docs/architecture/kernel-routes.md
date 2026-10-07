@@ -116,9 +116,17 @@
 | verb | path | controller |
 |---|---|---|
 | POST | `/print/claim` | `printing/printing.controller.ts` |
+| POST | `/print/computers/:id/revoke` | `printing/computers.controller.ts` |
+| POST | `/print/computers/:id/test` | `printing/computers.controller.ts` |
+| POST | `/print/computers/codes` | `printing/computers.controller.ts` |
+| GET | `/print/computers/here` | `printing/computers.controller.ts` |
+| GET | `/print/computers` | `printing/computers.controller.ts` |
+| POST | `/print/enrol` | `printing/computers.controller.ts` |
 | POST | `/print/failed` | `printing/printing.controller.ts` |
+| POST | `/print/heartbeat` | `printing/computers.controller.ts` |
 | GET | `/print/jobs/:id/document` | `printing/printing.controller.ts` |
 | POST | `/print/jobs/:id/printed-here` | `printing/printing.controller.ts` |
+| POST | `/print/jobs/:id/send-to-computer` | `printing/computers.controller.ts` |
 | GET | `/print/jobs` | `printing/printing.controller.ts` |
 | POST | `/print/printed` | `printing/printing.controller.ts` |
 | POST | `/print/reprint` | `printing/printing.controller.ts` |

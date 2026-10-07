@@ -191,3 +191,35 @@ export function printSummary(jobs: WirePrintJob[]): {
   }
   return { state: "printed", text: "Slip and sheet printed.", failed: [] };
 }
+
+/* ── THE COUNTER'S OWN PRINT PROGRAM (decision 0047) ─────────────────────────────────────────── */
+
+/** What a desk's browser may link itself to: a name, the printer it reported, and whether it is asking for work. */
+export type WireHereComputer = { id: string; name: string; printer: string | null; alive: boolean };
+export function listComputersHere(): Promise<{ computers: WireHereComputer[] }> {
+  return api("GET", "/print/computers/here");
+}
+
+/** "Print this on the computer I am sitting at." `sent: false` carries why, and the browser prints instead. */
+export function sendJobToComputer(jobId: string, computerId: string): Promise<{ sent: boolean; reason: string | null }> {
+  return api("POST", `/print/jobs/${encodeURIComponent(jobId)}/send-to-computer`, { computerId });
+}
+
+export type WirePrintComputer = {
+  id: string; name: string; printer: string | null; printers: string[]; platform: string | null; appVersion: string | null;
+  lastSeenAt: string | null; alive: boolean; revoked: boolean; createdAt: string;
+};
+export function listPrintComputers(): Promise<{ aliveSeconds: number; computers: WirePrintComputer[] }> {
+  return api("GET", "/print/computers");
+}
+export function issuePrintComputerCode(name: string): Promise<{ code: string; expiresAt: string }> {
+  return api("POST", "/print/computers/codes", { name });
+}
+export function revokePrintComputer(id: string): Promise<{ revoked: boolean }> {
+  return api("POST", `/print/computers/${encodeURIComponent(id)}/revoke`);
+}
+export function testPrintComputer(id: string): Promise<{ jobId: string | null }> {
+  return api("POST", `/print/computers/${encodeURIComponent(id)}/test`);
+}
+/** The installer. Same folder as the staff app's files; on staging it sits behind the staging password. */
+export const PRINT_PROGRAM_DOWNLOAD = "/app/hmis-print-latest-win-x64.zip";

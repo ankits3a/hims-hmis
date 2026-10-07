@@ -88,7 +88,9 @@ export type PrintDocument =
    * `modules/roster/board-print.ts` (renderer registered by the roster module); params are the
    * `roster_board_prints` row id, whose stored sheet is what prints.
    */
-  | "roster_board";
+  | "roster_board"
+  /** Decision 0047 — the test page an administrator sends to one counter's print program. Renderer in `computers.controller.ts`. */
+  | "print_test_page";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -141,6 +143,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   pharmacy_strip_label: "pharmacy_label",
   roster_duty_evidence: "office_a4",
   roster_board: "duty_board_a4",
+  // Born A4 like the prescription sheet, then sent to the one computer it tests (`sendJobToComputer`).
+  print_test_page: "front_desk_a4",
 };
 
 /**
