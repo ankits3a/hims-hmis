@@ -5,7 +5,7 @@ import { CurrentActor } from "../auth/decorators";
 import { istDayString as istDay } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
-import { typesafeClient } from "../inference/typesafe";
+import { chooserFor } from "../inference/openai-decisions";
 import { collectCopilotTools, permissionCheckFor, runTool } from "./catalog";
 import { kernelCopilotTools } from "./kernel-tools";
 import { IdentifierLeak, maskQuestion, rehydrate } from "./mask";
@@ -164,6 +164,9 @@ export class CopilotController {
    * or null when no key is configured — and then `model()` answers alone, exactly as before.
    */
   private chooser() {
-    return typesafeClient(this.cfg.copilotChoice);
+    return chooserFor({
+      order: this.cfg.copilotChooserOrder, typesafe: this.cfg.copilotChoice, decisions: this.cfg.decisions,
+      openaiKeyFile: this.cfg.openaiKeyFile, minConfidence: this.cfg.copilotChoice.minConfidence,
+    });
   }
 }

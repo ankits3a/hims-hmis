@@ -25,7 +25,7 @@ import type { DepartmentMovePreview, DepartmentMoveResult } from "./department-m
 import { continuityDoctorFor } from "./continuity";
 import { suggestDepartments } from "./triage";
 import type { TriageChoice } from "./triage";
-import { typesafeClient } from "../../kernel/inference/typesafe";
+import { chooserFor } from "../../kernel/inference/openai-decisions";
 import type { TriageResult } from "./triage";
 import type { ContinuityAnchor } from "./continuity";
 import type { WalkInDeferredResult, WalkInInput, WalkInResult } from "./walk-in";
@@ -338,7 +338,10 @@ export class OpdVisitsController {
    * null with no key configured — and then `config.triage` answers alone, exactly as before.
    */
   private triageChoice(): TriageChoice | null {
-    const client = typesafeClient(this.config.triageChoice);
+    const client = chooserFor({
+      order: this.config.triageChooserOrder, typesafe: this.config.triageChoice, decisions: this.config.decisions,
+      openaiKeyFile: this.config.openaiKeyFile, minConfidence: this.config.triageChoice.minConfidence,
+    });
     return client === null ? null : { client, minConfidence: this.config.triageChoice.minConfidence };
   }
 

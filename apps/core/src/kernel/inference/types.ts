@@ -134,3 +134,24 @@ export type ChooseResult = {
 export type ChoiceClient = {
   choose(input: ChooseInput): Promise<ChooseResult>;
 };
+
+/**
+ * `predicate()` — THE NARROWEST QUESTION OF ALL: HOW LIKELY IS THIS ONE CONDITION TRUE?
+ *
+ * Owner, 2026-10-07: *"let's try OpenAI Decision API"*. A chooser picks among several; a predicate
+ * is asked one closed yes/no ("does `term` mean Pantoprazole 40 mg tablet?") and returns a
+ * probability and nothing else — the shape the medicine-alias REVIEWER step needs (decision 0051).
+ * Same law as `choose()`: `state` is de-identified by the caller. A provider that has no such
+ * question type does not implement this; TypeSafe's client does not.
+ */
+export type PredicateInput = {
+  state: Record<string, string>;
+  /** The condition, written by the caller, never by the operator. */
+  instructions: string;
+};
+
+export type PredicateResult = { probability: number; model: string };
+
+export type PredicateClient = {
+  predicate(input: PredicateInput): Promise<PredicateResult>;
+};

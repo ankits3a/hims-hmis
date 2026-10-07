@@ -295,6 +295,25 @@ const configSchema = z.object({
   COPILOT_TYPESAFE_MODEL: z.string().min(1).default("jev-1.13.0"),
   COPILOT_TYPESAFE_TIMEOUT_MS: z.coerce.number().int().positive().default(1000),
   COPILOT_TYPESAFE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
+  /**
+   * ═══ A SECOND CHOOSER: OPENAI'S DECISIONS API (owner, 2026-10-07 — "let's try OpenAI Decision API") ═══
+   *
+   * It answers the same closed-set question Jev does, behind the same `ChoiceClient`. Its key is the
+   * FILE `HMIS_OPENAI_KEY_FILE` already names (the one voice notes use); these three say where and
+   * which model. WHO ANSWERS FIRST is the two `*_CHOOSER_ORDER` lists, one per job, and the default
+   * is `typesafe` alone: with nothing set, both jobs run exactly as they did before this block.
+   * `typesafe,openai` asks Jev first and OpenAI when Jev is unsure; `openai,typesafe` the reverse.
+   * A provider with no key is skipped. The chat model stays behind whichever list is chosen.
+   *
+   * TIMEOUT 1.5 s: measured from this box 2026-10-07 over 418 calls — p50 233 ms, p90 384 ms, p99
+   * 1867 ms, max 4138 ms; 6 calls (1.4%) were slower than 1.5 s and would go to the next chooser. See
+   * docs/superpowers/plans/2026-10-07-chooser-evaluation.md for the percentiles behind it.
+   */
+  OPENAI_DECISIONS_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
+  OPENAI_DECISIONS_MODEL: z.string().min(1).default("gpt-6-luna"),
+  OPENAI_DECISIONS_TIMEOUT_MS: z.coerce.number().int().positive().default(1500),
+  TRIAGE_CHOOSER_ORDER: z.string().default("typesafe"),
+  COPILOT_CHOOSER_ORDER: z.string().default("typesafe"),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -528,6 +547,11 @@ export type AppConfig = {
   copilot: { baseUrl: string | null; apiKey: string | null; model: string; timeoutMs: number };
   /** 2026-09-19 — the router's FIRST model, a classifier (TypeSafe). Null key ⇒ skipped, `copilot` above answers. */
   copilotChoice: { baseUrl: string; apiKey: string | null; model: string; timeoutMs: number; minConfidence: number };
+  /** OpenAI's Decisions API as a second chooser; its key is `openaiKeyFile`. */
+  decisions: { baseUrl: string; model: string; timeoutMs: number };
+  /** Who answers first, per job. Default `["typesafe"]` — today's behaviour. */
+  triageChooserOrder: ("typesafe" | "openai")[];
+  copilotChooserOrder: ("typesafe" | "openai")[];
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -769,6 +793,20 @@ function abdmFrom(parsed: {
   return abdm;
 }
 
+/**
+ * `typesafe,openai` → the order choosers are asked in. A name that is not a chooser, a repeat, or an
+ * empty list REFUSES to boot: a typo here would otherwise silently run one job without its first
+ * model, which looks exactly like the model being unsure.
+ */
+function chooserOrderFrom(name: string, raw: string): ("typesafe" | "openai")[] {
+  const out = raw.split(",").map((x) => x.trim().toLowerCase()).filter((x) => x !== "");
+  const bad = out.filter((x) => x !== "typesafe" && x !== "openai");
+  if (out.length === 0 || bad.length > 0 || new Set(out).size !== out.length) {
+    throw new Error(`${name} must be a comma-separated list of typesafe and openai, each at most once (got "${raw}")`);
+  }
+  return out as ("typesafe" | "openai")[];
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env === process.env) loadEnv();
   const parsed = configSchema.parse(env);
@@ -826,6 +864,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       timeoutMs: parsed.COPILOT_TYPESAFE_TIMEOUT_MS,
       minConfidence: parsed.COPILOT_TYPESAFE_MIN_CONFIDENCE,
     },
+    decisions: { baseUrl: parsed.OPENAI_DECISIONS_BASE_URL, model: parsed.OPENAI_DECISIONS_MODEL, timeoutMs: parsed.OPENAI_DECISIONS_TIMEOUT_MS },
+    triageChooserOrder: chooserOrderFrom("TRIAGE_CHOOSER_ORDER", parsed.TRIAGE_CHOOSER_ORDER),
+    copilotChooserOrder: chooserOrderFrom("COPILOT_CHOOSER_ORDER", parsed.COPILOT_CHOOSER_ORDER),
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
