@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0021"
+title: "Fee switches (free / charged), \"₹0 (समाज सेवा छूट)\", and who changes consultation prices"
+description: "Consultation and lab fees each get an on/off switch, free prints as '₹0 (समाज सेवा छूट)', and the billing manager proposes consult prices that the owner approves."
+generated: { by: agent:claude, at: 2026-10-01 }
+verified: []
+status: stable
+ruling: ruled
+tags: [billing, tariff, opd, lab, front-desk, printing]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0021 — Fee switches (free / charged), "₹0 (समाज सेवा छूट)", and who changes consultation prices
 
 - **Date:** 2026-10-01   **Status:** Ruled

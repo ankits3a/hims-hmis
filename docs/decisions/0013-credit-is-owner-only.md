@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0013"
+title: "Only the owner may issue credit, hospital-wide"
+description: "Only the owner may issue credit, anywhere in the hospital and to any payer; no role, cap or tier below the owner."
+generated: { by: agent:claude, at: 2026-09-28 }
+verified: []
+status: stable
+ruling: ruled
+tags: [billing, pharmacy, lab, opd, approvals]
+supersedes: ["0010"]
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0013 — Only the owner may issue credit, hospital-wide
 
 - **Date:** 2026-09-28   **Status:** Ruled

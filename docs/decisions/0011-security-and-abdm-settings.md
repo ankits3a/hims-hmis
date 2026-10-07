@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0011"
+title: "Security (WASA) and ABDM settings: password length, Aadhaar, hosting, SMS, 2FA, ICD-11"
+description: "Password length stays 10, ABHA creation by Aadhaar OTP is allowed, hosting may be anywhere, and MSG91 is the SMS sender."
+generated: { by: agent:claude, at: 2026-09-26 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [security, auth, abdm, hosting, coding]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0011 — Security (WASA) and ABDM settings: password length, Aadhaar, hosting, SMS, 2FA, ICD-11
 
 - **Date:** 2026-09-26   **Status:** Partly open

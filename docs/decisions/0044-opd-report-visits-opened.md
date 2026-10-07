@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0044"
+title: "The OPD report counts the visits the desk opened; \"Booked\" reads \"Appointments\""
+description: "The OPD report gains Visits opened and Left unseen columns that add up, and 'Booked' is renamed 'Appointments'."
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+status: stable
+ruling: ruled
+tags: [opd, reports, front-desk]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-528, resource: "https://github.com/ankits3a/hims-hmis/pull/528", title: "feat(opd-report): Visits opened and Left unseen, Booked reads Appointments, a ? on every column, who opened the visits (owner 2026-10-07)" }
+---
 # 0044 — The OPD report counts the visits the desk opened; "Booked" reads "Appointments"
 
 - **Date:** 2026-10-07   **Status:** Ruled

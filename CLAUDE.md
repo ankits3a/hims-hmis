@@ -77,8 +77,10 @@ Modules import each other only through the other module's `index.ts` (lint-enfor
 - Never emit compiled JS into `src` (`tsc` without `--noEmit` is banned outside `build`).
 - Owner rulings are for money, procurement and law only. Anything else: pick the standard
   Indian-corporate-hospital answer, mark it DECIDED in the phase doc, keep going.
-- Owner rulings live in `docs/decisions/` (indexed in its README). Read the ones for your area
+- Owner rulings live in `docs/decisions/` (listed in its generated `index.md`). Read the ones for your area
   before building; a new ruling is a new numbered file, an old one is only marked Superseded.
+  A new decision is a new file with OKF frontmatter (shape in its README); run `node tools/arch/gen.mjs` to
+  rebuild the index. Never edit `index.md` by hand.
 
 ## Reading budget
 

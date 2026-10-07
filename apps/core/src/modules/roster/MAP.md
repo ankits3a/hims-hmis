@@ -1,3 +1,13 @@
+---
+type: module-notes
+title: "roster — module notes"
+description: "Why and traps of the duty roster: duty periods, unit take and backup cycles, absences, covers and swaps, and the who-is-on readers."
+resource: apps/core/src/modules/roster
+tags: [roster]
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+stale_after: 2027-01-05
+---
 # roster — module notes
 
 Hand-written notes: the WHY and the traps. Signatures, routes and tables are generated in

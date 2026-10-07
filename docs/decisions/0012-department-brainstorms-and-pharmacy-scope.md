@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0012"
+title: "Each remaining department gets its own brainstorm; pharmacy only for now"
+description: "Every remaining department gets its own brainstorm; only pharmacy is in scope now, with no patient GSTIN, no old MRP and no home delivery."
+generated: { by: agent:claude, at: 2026-09-28 }
+verified: []
+status: stable
+ruling: ruled
+tags: [pharmacy, ipd, emergency, insurance-tpa, blood-bank, dialysis, immunisation, ambulance, mortuary]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0012 — Each remaining department gets its own brainstorm; pharmacy only for now
 
 - **Date:** 2026-09-28   **Status:** Ruled

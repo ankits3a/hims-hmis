@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0023"
+title: "A pharmacy return may be kept as the patient's credit"
+description: "A pharmacy return may be kept as patient credit without approval, spent first at the pharmacy desk; cash refunds stay approval-gated."
+generated: { by: agent:claude, at: 2026-10-02 }
+verified: []
+status: stable
+ruling: ruled
+tags: [pharmacy, billing]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0023 — A pharmacy return may be kept as the patient's credit
 
 - **Date:** 2026-10-02   **Status:** Ruled

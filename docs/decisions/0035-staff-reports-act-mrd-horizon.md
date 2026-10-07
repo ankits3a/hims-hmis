@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0035"
+title: "Staff reports: count the act, not the seat; MRD gets its own permission; history horizon by role"
+description: "Staff reports count the act not the seat, the MRD register gets its own permission, and history horizons are set per role."
+generated: { by: agent:claude, at: 2026-09-14 }
+verified: []
+status: stable
+ruling: ruled
+tags: [staff-reports, security, mrd]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0035 — Staff reports: count the act, not the seat; MRD gets its own permission; history horizon by role
 
 - **Date:** 2026-09-14   **Status:** Ruled

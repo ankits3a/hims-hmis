@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0024"
+title: "The 22-unit establishment; OPD screens show the unit; the e-prescription prints the unit, not the doctor; one room per doctor"
+description: "The establishment has 22 units, and a unit doctor's e-prescription prints the unit, not the doctor; a guest doctor prints the Doctor ID only."
+generated: { by: agent:claude, at: 2026-10-04 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [roster, opd, printing, legal]
+supersedes: ["0033"]
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0024 — The 22-unit establishment; OPD screens show the unit; the e-prescription prints the unit, not the doctor; one room per doctor
 
 - **Date:** 2026-10-04   **Status:** Partly open

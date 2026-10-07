@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0025"
+title: "Doctors may prescribe on paper; the slip desk or scribe marks the visit consulted"
+description: "A slip photo or the scribe's typing marks a paper consultation Consulted, and the scribe may type drugs and lab tests from the slip."
+generated: { by: agent:claude, at: 2026-10-06 }
+verified: []
+status: stable
+ruling: ruled
+tags: [opd, pharmacy, lab, radiology, security]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0025 — Doctors may prescribe on paper; the slip desk or scribe marks the visit consulted
 
 - **Date:** 2026-10-06   **Status:** Ruled

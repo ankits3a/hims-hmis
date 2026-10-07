@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0015"
+title: "Radiology: every open decision defaults to what top Indian hospitals do"
+description: "Every open radiology decision (films, CDs, outside reads, GST, prices, safety, PACS) defaults to what top Indian hospitals do."
+generated: { by: agent:claude, at: 2026-09-28 }
+verified: []
+status: stable
+ruling: ruled
+tags: [radiology, billing, printing, radiation-safety, pacs, teleradiology]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0015 — Radiology: every open decision defaults to what top Indian hospitals do
 
 - **Date:** 2026-09-28   **Status:** Ruled

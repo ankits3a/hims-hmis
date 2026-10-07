@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0022"
+title: "Pharmacy \"quick desk mode\" stands down three checks"
+description: "An admin setting, off by default, lets the pharmacy quick desk bill without exactly three checks: paper prescription, pharmacist registration and slip."
+generated: { by: agent:claude, at: 2026-10-02 }
+verified: []
+status: stable
+ruling: ruled
+tags: [pharmacy, legal]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0022 — Pharmacy "quick desk mode" stands down three checks
 
 - **Date:** 2026-10-02   **Status:** Ruled

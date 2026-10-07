@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0029"
+title: "The registration counter is Desk One; agent information sits in the line of sight"
+description: "Desk One is the registration counter design, with agent information kept in the counter's line of sight."
+generated: { by: agent:claude, at: 2026-08-31 }
+verified: []
+status: stable
+ruling: ruled
+tags: [front-desk, web, copilot]
+supersedes: []
+superseded_by: ["0039"]
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0029 — The registration counter is Desk One; agent information sits in the line of sight
 
 - **Date:** 2026-08-31   **Status:** Ruled — copilot placement on counter screens partly superseded by 0039

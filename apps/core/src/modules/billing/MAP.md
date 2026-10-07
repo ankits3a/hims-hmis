@@ -1,3 +1,13 @@
+---
+type: module-notes
+title: "billing — module notes"
+description: "Why and traps of the money ledger: invoices, receipts, allocations, credit notes, refunds, cashier sessions and the day book."
+resource: apps/core/src/modules/billing
+tags: [billing]
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+stale_after: 2027-01-05
+---
 # billing — module notes
 
 Hand-written notes: the WHY and the traps. Signatures, routes and tables are generated in

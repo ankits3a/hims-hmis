@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0047"
+title: "Each counter PC runs its own print program (Windows), enrolled with a one-time code"
+description: "Each counter PC runs its own print program (Windows), enrolled with a one-time code, sending to its own printer."
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [printing, front-desk, admin]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-536, resource: "https://github.com/ankits3a/hims-hmis/pull/536", title: "feat(printing): each counter PC runs its own print program — one-time code, its own destination, a Windows package; dormant until enrolled (owner 2026-10-07)" }
+---
 # 0047 — Each counter PC runs its own print program (Windows), enrolled with a one-time code
 
 - **Date:** 2026-10-07   **Status:** Partly open — built and tested on Linux; **not yet run on a Windows PC**

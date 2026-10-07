@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0020"
+title: "Desk One is back on the menu"
+description: "Desk One returns to the navigation as the first desk item, reversing the FD-25 ruling that kept it off the menu."
+generated: { by: agent:claude, at: 2026-10-01 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [web-shell, front-desk]
+supersedes: ["0031"]
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0020 — Desk One is back on the menu
 
 - **Date:** 2026-10-01   **Status:** Partly open

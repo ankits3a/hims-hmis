@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0004"
+title: "One service is charged once per visit; the patient pays before vitals"
+description: "One service is charged once per visit (a second problem is a second visit), and the patient pays before vitals are taken."
+generated: { by: agent:claude, at: 2026-09-13 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [billing, opd, vitals, front-desk, lab]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0004 — One service is charged once per visit; the patient pays before vitals
 
 - **Date:** 2026-09-13   **Status:** Partly open
