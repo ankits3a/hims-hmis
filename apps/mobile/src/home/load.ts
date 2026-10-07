@@ -5,6 +5,7 @@ import { vitalsApi } from "../vitals/api";
 import { istDay } from "../doctor/rules";
 import type { Call } from "../doctor/api";
 import type { Seat } from "../seats";
+import type { RecordingReport } from "./recorded";
 import type { CountSince, Hospital, Sources, WireApproval, WireBriefLite, WireMyRequest, WirePaperItem, WireTeam } from "./model";
 
 /**
@@ -29,7 +30,7 @@ type SentBack = { items: { recheck?: { askedAt: string } | null }[]; toType?: nu
 
 /** What the header says about the person — theirs to read, from reads they already may make. */
 export type HeaderFacts = { doctor: { displayName: string; departmentName: string | null; unit: string | null } | null; hospitalWide: boolean };
-export type Loaded = { sources: Sources; reached: boolean; header: HeaderFacts; unread: number | null };
+export type Loaded = { sources: Sources; reached: boolean; header: HeaderFacts; unread: number | null; recording: RecordingReport | null };
 
 /** "09:30" on `day` (IST) as an instant. */
 const istAt = (d: string, hhmm: string): number | null => {
@@ -57,7 +58,7 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
   const doctor = doctorApi(call), roster = rosterApi(call), vitals = vitalsApi(call);
 
   const me = seats.includes("consult") ? await soft(() => doctor.me()) : null;
-  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units] = await Promise.all([
+  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units, recording] = await Promise.all([
     me === null ? null : soft(() => doctor.queue(me.id, today)),
     me === null ? null : soft(() => call<Paper>("GET", "/opd/paper/consults?scope=mine")),
     seats.includes("myDuties") ? soft(() => roster.myDuties()) : null,
@@ -79,6 +80,8 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     has("opd.prescription.transcribe") ? soft(() => call<SentBack>("GET", "/opd/paper/sent-back")) : null,
     soft(() => call<{ unreadCount: number }>("GET", "/alerts")),
     me === null ? null : soft(() => doctor.doctorUnits(today)),
+    /* Is today being recorded? The server decides what this login sees (owner 2026-10-07). */
+    soft(() => call<RecordingReport>("GET", "/opd/reports/recording")),
   ]);
 
   /* The front desk's own two: who I seated is still waiting (my report's rows), whose booking is stranded. */
@@ -146,5 +149,5 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     },
     hospitalWide: hospital !== null,
   };
-  return { sources, reached: reached || !offline, header, unread: bell === null ? null : bell.unreadCount };
+  return { sources, reached: reached || !offline, header, unread: bell === null ? null : bell.unreadCount, recording };
 }

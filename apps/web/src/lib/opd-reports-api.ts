@@ -1,4 +1,5 @@
 import { api, apiDownload } from "./api";
+import type { RecordingReport } from "../../../../packages/contracts/src/recording";
 import type { WireRenderedDocument } from "./print-api";
 
 /**
@@ -81,6 +82,11 @@ export type Selection = { period: ReportPeriod; date: string };
 const q = (sel: Selection): string => `?period=${sel.period}&date=${encodeURIComponent(sel.date)}`;
 const base = "/opd/reports/consultations";
 const dept = (id: string): string => `${base}/departments/${encodeURIComponent(id)}`;
+
+/** "Is today being recorded?" — integers only; what a login sees is decided by the server. */
+export function fetchRecording(sel: Selection): Promise<RecordingReport> {
+  return api("GET", `/opd/reports/recording${q(sel)}`);
+}
 
 export function fetchReport(sel: Selection): Promise<OpdReport> {
   return api("GET", `${base}${q(sel)}`);
