@@ -118,6 +118,7 @@
 | POST | `/print/claim` | `printing/printing.controller.ts` |
 | POST | `/print/failed` | `printing/printing.controller.ts` |
 | GET | `/print/jobs/:id/document` | `printing/printing.controller.ts` |
+| POST | `/print/jobs/:id/printed-here` | `printing/printing.controller.ts` |
 | GET | `/print/jobs` | `printing/printing.controller.ts` |
 | POST | `/print/printed` | `printing/printing.controller.ts` |
 | POST | `/print/reprint` | `printing/printing.controller.ts` |

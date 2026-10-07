@@ -5,7 +5,9 @@ import { CurrentActor, RequirePermission } from "../auth/decorators";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { printJobs, users } from "../db/schema";
-import { claimPrintJobs, reportFailed, reportPrinted } from "./claim";
+import { claimPrintJobs, reportFailed, reportPrinted, reportPrintedHere, printedVia } from "./claim";
+import { relayServes } from "./served";
+import type { PrintDestination } from "./enqueue";
 import { agentPrintDestinations } from "../auth/agents";
 import { enqueuePrintJob } from "./enqueue";
 import { withTx } from "../db/client";
@@ -368,7 +370,13 @@ export class PrintingController {
   /* FD-27 — narrowed off `opd.visits.open`; the whole argument is in `modules/opd/manifest.ts`. */
   @RequirePermission("opd.paper.reprint", "hospital")
   async jobsFor(@CurrentActor() actor: Actor, @Query("encounterId") encounterId: string): Promise<{
-    jobs: { id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null; createdAt: string }[];
+    jobs: {
+      id: string; document: string; status: string; attempts: number; lastError: string | null; printedAt: string | null; createdAt: string;
+      /** BROWSER PRINTING (owner 2026-10-07) — is a relay inside the hospital serving this paper's printer? */
+      served: boolean;
+      /** Who put it on paper: the relay, or this counter's own browser. `null` until it is printed. */
+      printedVia: "relay" | "browser" | null;
+    }[];
   }> {
     if (typeof encounterId !== "string" || encounterId.trim() === "") return { jobs: [] };
 
@@ -458,8 +466,19 @@ export class PrintingController {
       const visible = await getPatient(this.db, actor, patientId);
       if (visible === null) return { jobs: [] };
     }
+    /*
+      BROWSER PRINTING (owner 2026-10-07) — the counter asks "is anybody there?" with the question
+      the pharmacy desk already asks (`served.ts`), once per destination, so a browser that has
+      never been told how it prints can decide from rows rather than from a setting.
+    */
+    const served = new Map<string, boolean>();
+    for (const r of rows) {
+      if (!served.has(r.destination)) served.set(r.destination, await relayServes(this.db, r.destination as PrintDestination));
+    }
     return {
       jobs: rows.map((r) => ({
+        served: served.get(r.destination) ?? false,
+        printedVia: printedVia(r),
         /*
           FD-25 — `createdAt` TRAVELS, so the screen does not have to trust this route's ORDER.
 
@@ -649,6 +668,30 @@ export class PrintingController {
       });
     }
     return { html: rendered.html, title: rendered.title, page: rendered.page };
+  }
+
+  /**
+   * ═══ BROWSER PRINTING — THE COUNTER'S OWN PRINTER PUT IT ON PAPER (owner, 2026-10-07) ═══
+   *
+   * *"Right now I have printer attached with each computer at front desk."* With no relay inside the
+   * hospital every job sat `queued` for ever, and the clerk printed a saved PDF by hand. The desk now
+   * prints the SAME rendered document (`GET jobs/:id/document`) on its own printer and says so here,
+   * so the row stops waiting for a relay — a relay installed next month must not print a week of
+   * stale prescriptions — and "who put this on paper, where" stays answerable.
+   *
+   * Same permission and the same §14 decision as the reprint. The disclosure itself was logged when
+   * the document was rendered for this screen (`print.view`); this records only that it reached paper.
+   * A job a relay has claimed or printed is the relay's: this does not touch it (`accepted: false`).
+   */
+  @Post("jobs/:id/printed-here")
+  @RequirePermission("opd.paper.reprint", "hospital")
+  async printedHere(@CurrentActor() actor: Actor, @Param("id") jobId: string): Promise<{ accepted: boolean }> {
+    if (actor.type !== "user") return { accepted: false };
+    const rows = await this.db.select().from(printJobs).where(eq(printJobs.id, jobId));
+    const job = rows[0];
+    if (job === undefined) return { accepted: false };
+    if (job.patientId !== null && (await getPatient(this.db, actor, job.patientId)) === null) return { accepted: false };
+    return { accepted: await reportPrintedHere(this.db, jobId, actor.id) };
   }
 
   /**

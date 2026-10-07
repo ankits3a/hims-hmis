@@ -1,3 +1,4 @@
+import { openPrintingPanel } from "../../components/printing-panel";
 import { useState } from "react";
 import { useDesk } from "./session";
 
@@ -110,6 +111,14 @@ export function Dock({ onLogout }: { onLogout: () => void }): React.ReactElement
           controls live. It is deliberately plain text at the far right, not a button that competes
           with anything a clerk is doing.
         */}
+        <button
+          onClick={openPrintingPanel}
+          className="mo"
+          data-testid="dock-printing"
+          style={{ flexShrink: 0, fontSize: 10.5, color: "var(--agent-dim)", letterSpacing: ".1em" }}
+        >
+          PRINTING
+        </button>
         <button
           onClick={onLogout}
           className="mo"
