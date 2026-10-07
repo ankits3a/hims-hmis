@@ -1,7 +1,9 @@
 import {
   BadRequestException, Body, Controller, ConflictException, ForbiddenException, Get, Inject,
-  NotFoundException, Param, Post, Query,
+  NotFoundException, Param, Post, Query, Req,
 } from "@nestjs/common";
+import { STEP_UP_WINDOW_MS, isMoneyApproval } from "@hmis/contracts";
+import type { AuthedRequest } from "../auth/decorators";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { DB } from "../tokens";
@@ -68,6 +70,26 @@ const worklistQuery = z.object({
 export class ApprovalsController {
   constructor(@Inject(DB) private readonly db: Db) {}
 
+  /**
+   * APP HOME (owner 2026-10-07, decision 0042) — "fingerprint before every money approval".
+   *
+   * A decision that arrives on a PHONE session, on a request that moves money, needs a step-up
+   * (`POST /auth/step-up`) on that same session inside the last two minutes. A browser session has
+   * no phone (`deviceRowId` null) and is untouched: the web inbox decides exactly as before. Every
+   * other check — the approver's role, the requester ≠ approver rule, the note — still runs after
+   * this one; it is an extra door, never a replacement.
+   */
+  private async requireStepUp(req: AuthedRequest, approvalId: string): Promise<void> {
+    const session = req.hmisSession;
+    if (!session || session.deviceRowId === null) return;
+    const row = await getApproval(this.db, approvalId);
+    if (!row || !isMoneyApproval(row.typeKey, row.amountPaise)) return;
+    const at = session.stepUpAt;
+    if (at === null || Date.now() - at.getTime() > STEP_UP_WINDOW_MS) {
+      throw new ForbiddenException({ code: "step_up_required", message: "confirm it is you (fingerprint or password) before a money approval" });
+    }
+  }
+
   // Literal segment declared BEFORE the :id routes — Nest matches in declaration order.
   @RequirePermission("approvals.types.manage", "hospital")
   @Post("types")
@@ -132,9 +154,11 @@ export class ApprovalsController {
     @CurrentActor() actor: Actor,
     @Param("id") id: string,
     @Body() body: unknown,
+    @Req() req: AuthedRequest,
   ): Promise<{ status: "granted" }> {
     const parsed = decisionBody.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    await this.requireStepUp(req, id);
     try {
       return await approveRequest(this.db, actor, { approvalId: id, note: parsed.data.note });
     } catch (e) {
@@ -148,9 +172,11 @@ export class ApprovalsController {
     @CurrentActor() actor: Actor,
     @Param("id") id: string,
     @Body() body: unknown,
+    @Req() req: AuthedRequest,
   ): Promise<{ status: "rejected" }> {
     const parsed = decisionBody.safeParse(body);
     if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    await this.requireStepUp(req, id);
     try {
       return await rejectRequest(this.db, actor, { approvalId: id, note: parsed.data.note });
     } catch (e) {

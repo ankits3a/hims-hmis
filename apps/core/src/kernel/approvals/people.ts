@@ -1,4 +1,5 @@
 import { inArray } from "drizzle-orm";
+import { approvalDueAtMs } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { patients, users } from "../db/schema";
 import { recordPhiAccess } from "../phi/audit";
@@ -34,6 +35,12 @@ export type ApprovalListItem = ApprovalRow & {
   decidedByName: string | null;
   /** Null when the request names no patient, or names an id the patients table does not hold. */
   patient: ApprovalPatient | null;
+  /**
+   * APP HOME (owner 2026-10-07) — when this request is LATE, by its kind (`approvalDueAtMs`: refunds
+   * and discounts 2 h, price changes 24 h). Null for a kind with no deadline. Read by the phone's
+   * home card and the alert sweep; the decision routes do not consult it.
+   */
+  dueAt: Date | null;
 };
 
 /**
@@ -48,6 +55,11 @@ export type ApprovalListItem = ApprovalRow & {
  * records" can be answered. `recordPhiAccess` never throws, so a logging failure never costs the
  * approver their queue.
  */
+export function dueAtOf(r: Pick<ApprovalRow, "typeKey" | "requestedAt">): Date | null {
+  const ms = approvalDueAtMs(r.typeKey, r.requestedAt.getTime());
+  return ms === null ? null : new Date(ms);
+}
+
 export async function withPeople(
   db: Db,
   actor: Actor,
@@ -84,6 +96,7 @@ export async function withPeople(
     return {
       ...r,
       requesterName: nameOf.get(r.requesterId) ?? null,
+      dueAt: dueAtOf(r),
       decidedByName: r.decidedBy === null ? null : (nameOf.get(r.decidedBy) ?? null),
       patient: s === undefined
         ? null

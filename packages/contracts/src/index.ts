@@ -9,3 +9,4 @@ export * from "./rx-eye";
 export * from "./eye-codes";
 export * from "./imaging-coded";
 export * from "./obstetric";
+export * from "./app-home";

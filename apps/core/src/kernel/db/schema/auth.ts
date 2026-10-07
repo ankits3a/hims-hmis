@@ -187,6 +187,12 @@ export const authSessions = pgTable(
     userAgent: text("user_agent"),
     /** Mobile M6a — the phone this session was opened on (`auth_devices`). NULL for a browser session. */
     deviceRowId: text("device_row_id").references(() => authDevices.id),
+    /**
+     * App home (owner 2026-10-07, decision 0042) — when this session last proved the person is at the
+     * phone (fingerprint on the phone, or the password checked here). A money approval decided from a
+     * phone needs one inside `STEP_UP_WINDOW_MS`. NULL until the first step-up; unused by a browser.
+     */
+    stepUpAt: timestamp("step_up_at", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("auth_sessions_token_ux").on(t.tokenHash),

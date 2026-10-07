@@ -24,6 +24,8 @@ export type LiveSession = {
   mustChangePassword: boolean;
   /** Mobile M6a — the phone this session was opened on (`auth_devices.id`), null for a browser. */
   deviceRowId: string | null;
+  /** App home — the last step-up on this session (`auth_sessions.step_up_at`), null when none. */
+  stepUpAt: Date | null;
 };
 
 export async function createSession(
@@ -76,6 +78,7 @@ export async function findLiveSession(db: Db, token: string): Promise<LiveSessio
       secondFactorAt: authSessions.secondFactorAt,
       mustChangePassword: users.mustChangePassword,
       deviceRowId: authSessions.deviceRowId,
+      stepUpAt: authSessions.stepUpAt,
     })
     .from(authSessions)
     .innerJoin(users, eq(users.id, authSessions.userId))
