@@ -19,6 +19,14 @@ tools/lane.sh status            # who else is running tests, free memory, every 
 - A red `main` freezes merges. Whoever pushed the red fixes it, immediately, before anything else.
 - Close the session when the lane closes: `tools/lane.sh drop <name>`. Idle sessions hold the
   box's memory and that is what OOM-kills jest.
+- **Each lane has a handoff, `/opt/hmis-lanes/<name>/HANDOFF.md`** (outside git; `lane.sh new` writes the
+  template, `drop` archives it). Read it first when you start in a lane; overwrite it (≤40 lines) before
+  you stop or when the context grows long. It is what lets the next session resume without re-reading.
+- **One task per session.** Start a new task with `/clear` or a fresh session in its lane, and name the
+  module in the first message. Every turn re-sends the whole conversation; a long mixed session pays
+  for all of it on every turn.
+- **Briefing a subagent:** use `docs/agents/BRIEF.md`. A brief that hands over what is known and asks
+  for a fixed report saves the subagent its re-reading.
 
 ## Verify
 
