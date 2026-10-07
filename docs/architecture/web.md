@@ -42,6 +42,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/opd/consult/$encounterId` | `apps/web/src/screens/opd-consult` |
 | `/opd/desk` | `apps/web/src/screens/opd-desk` |
 | `/opd/display` | `apps/web/src/screens/opd-display` |
+| `/opd/paper-consults` | `apps/web/src/screens/paper-consults` |
 | `/opd/scribe` | `apps/web/src/screens/opd-scribe` |
 | `/opd/slips` | `apps/web/src/screens/slip-capture` |
 | `/opd/vitals` | `apps/web/src/screens/vitals-bay` |

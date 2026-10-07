@@ -6,7 +6,7 @@ Source: `apps/core/src/modules/roster/`
 
 - **Depends on modules:** —
 - **Used by modules:** `opd`, `ot`, `radiology`
-- **Kernel used:** `auth`, `copilot`, `db`, `events`, `modules`, `printing`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `auth`, `copilot`, `db`, `events`, `modules`, `printing`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -288,6 +288,18 @@ Source: `apps/core/src/modules/roster/`
   - `hoursCarried(rows: readonly RosterAssignmentRow[], userId: string, from: Date, to: Date): number`
   - `simulate(exec: Db | Tx, base: string | HypotheticalRoster, deltas: readonly SimulateDelta[] = [], opts: SimulateOptions = {}): Promise<Simu…`
   - types: `Exclusion`, `SimulateDelta`, `SimulateOptions`, `SimulateResult`
+- `staff-notices.ts`
+  - `ROSTER_DUTY_REF_TYPE`
+  - `ROSTER_DUTY_REMINDER_KIND`
+  - `amendmentIsOfCover(exec: Db | Tx, amendmentId: string): Promise<boolean>`
+  - `coverForAlert(exec: Db | Tx, requestId: string): Promise<CoverForAlert | null>`
+  - `dueDutyReminders(exec: Db | Tx, now: Date): Promise<DutyReminder[]>`
+  - `dutyWindowLabel(startsAt: Date, endsAt: Date): string`
+  - `dutyWindowsForAlert(exec: Db | Tx, ids: readonly string[]): Promise<string[]>`
+  - `longReminderAt(startsAt: Date): Date`
+  - `sweepDutyReminders(db: Db, now: Date = new Date()): Promise<number>`
+  - `wantsLongReminder(s: { startsAt: Date; endsAt: Date }): boolean`
+  - types: `CoverForAlert`, `DutyReminder`
 - `swaps.ts`
   - `answerCover(tx: Tx, actor: Actor, requestId: string, accept: boolean): Promise<void>`
   - `coverOptions(exec: Db | Tx, actor: Actor, assignmentId: string): Promise<CoverOptions>`
