@@ -8,13 +8,22 @@ import { z } from "zod";
  * the report to the doctor."*
  *
  * `POST /opd/visits/:encounterId/patient-absent` takes this body; the server decides everything
- * else (revisit only, still waiting for vitals, the fee door unchanged — `opd/patient-absent.ts`).
+ * else (a returning patient only, still waiting for vitals, the fee door unchanged — `opd/patient-absent.ts`).
+ * Owner 2026-10-07: a RENEWAL may send a guardian too; the fee follows the visit type, and an unpaid
+ * visit is refused at the fee door ("take the fee at the counter first").
  * The web bay, Desk One and the doctor's screens read the same list and the same wire shape.
  */
 export const GUARDIAN_RELATIONS = [
   "father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant",
 ] as const;
 export type GuardianRelation = (typeof GUARDIAN_RELATIONS)[number];
+
+/** The visit types a guardian may stand in for: a returning patient (revisit or renewal), never a new one. */
+export const PATIENT_ABSENT_VISIT_TYPES = ["revisit", "renewal"] as const;
+/** True when a visit of this type may be marked "patient not present — guardian with reports". */
+export function guardianMayStandIn(visitType: string | null | undefined): boolean {
+  return visitType !== null && visitType !== undefined && (PATIENT_ABSENT_VISIT_TYPES as readonly string[]).includes(visitType);
+}
 
 /** The longest guardian name the desk may type. Trimmed first; blank means "not given". */
 export const GUARDIAN_NAME_MAX = 80;

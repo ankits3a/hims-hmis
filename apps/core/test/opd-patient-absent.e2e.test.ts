@@ -76,23 +76,23 @@ describe("patient absent — e2e", () => {
 
   const auth = (token: string): [string, string] => ["Authorization", `Bearer ${token}`];
   const http = () => request(app.getHttpServer());
-  const visit = async (name: string, phone: string, revisit: boolean): Promise<string> => {
+  const visit = async (name: string, phone: string, kind: "new" | "revisit" | "renewal"): Promise<string> => {
     const reg = await http().post("/patients").set(...auth(clerk.token))
       .send({ name, sex: "male", phone, ageYears: 60, acknowledgedDuplicates: true }).expect(201);
     const open = await http().post("/opd/visits").set(...auth(clerk.token))
       .send({ patientId: reg.body.patient.id as string, departmentId: deptId, doctorId: dra.doctorId }).expect(201);
     const encounterId = open.body.encounter.id as string;
-    if (revisit) {
+    if (kind !== "new") {
       await http().post(`/opd/visits/${encounterId}/reclassify`).set(...auth(clerk.token))
-        .send({ visitType: "revisit", reason: "seen last month" }).expect(201);
+        .send({ visitType: kind, reason: "seen last month" }).expect(201);
     }
     return encounterId;
   };
   const absent = (encounterId: string, token: string, body: unknown) =>
     http().post(`/opd/visits/${encounterId}/patient-absent`).set(...auth(token)).send(body as object);
 
-  it("either seat's grant admits; a reader is refused at the door; a bad body is 400; a new visit is 409", async () => {
-    const a = await visit("Suresh Prasad", "9000000101", true);
+  it("either seat's grant admits; a reader is refused at the door; a bad body is 400; a renewal is admitted; a new visit is 409", async () => {
+    const a = await visit("Suresh Prasad", "9000000101", "revisit");
     await absent(a, reader.token, { relation: "father" }).expect(403);
     await absent(a, bay.token, { relation: "neighbour" }).expect(400);
     const marked = await absent(a, bay.token, { relation: "father", name: "Ramesh" }).expect(201);
@@ -103,12 +103,12 @@ describe("patient absent — e2e", () => {
     expect(read.body.encounter.status).toBe("waiting");
     expect(read.body.patientAbsent).toMatchObject({ relation: "father", name: "Ramesh", by: bay.id, at: expect.any(String) });
 
-    const b = await visit("Mohan Lal", "9000000102", true);
+    const b = await visit("Mohan Lal", "9000000102", "renewal");
     await absent(b, clerk.token, { relation: "attendant" }).expect(201);
 
-    const c = await visit("Ravi Kumar", "9000000103", false);
+    const c = await visit("Ravi Kumar", "9000000103", "new");
     const refused = await absent(c, clerk.token, { relation: "son" }).expect(409);
-    expect(refused.body.code).toBe("patient_absent_revisit_only");
+    expect(refused.body.code).toBe("patient_absent_returning_only");
     const plain = await http().get(`/opd/visits/${c}`).set(...auth(clerk.token)).expect(200);
     expect(plain.body.patientAbsent).toBeNull();
   });

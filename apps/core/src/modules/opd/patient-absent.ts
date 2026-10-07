@@ -1,5 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS } from "@hmis/contracts";
+import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, guardianMayStandIn } from "@hmis/contracts";
 import type { Actor, GuardianRelation } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
@@ -83,7 +83,7 @@ function cleanInput(input: PatientAbsentInput): { relation: GuardianRelation; na
 const NOT_QUEUED = "this visit has not joined a queue yet — a bill-first visit joins its doctor's day after billing releases its token";
 
 /**
- * Marks a revisit "patient not present — guardian with reports" and sends it to the doctor's line.
+ * Marks a returning visit (revisit or renewal) "patient not present — guardian with reports" and sends it to the doctor's line.
  * IDEMPOTENT: a visit already marked answers with its existing mark and nothing is rewritten.
  */
 export async function markPatientAbsent(
@@ -101,8 +101,8 @@ export async function markPatientAbsent(
   if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   const existing = patientAbsentOf(enc);
   if (existing !== null) return { encounter: enc, patientAbsent: existing, alreadyMarked: true };
-  if (enc.visitType !== "revisit") {
-    throw new OpdError("patient_absent_revisit_only", `visit ${enc.visitNo} is a ${enc.visitType} visit — only a revisit may skip vitals for a guardian`);
+  if (!guardianMayStandIn(enc.visitType)) {
+    throw new OpdError("patient_absent_returning_only", `visit ${enc.visitNo} is a ${enc.visitType} visit — only a returning patient (revisit or renewal) may skip vitals for a guardian`);
   }
   if (enc.status !== "registered") {
     throw new OpdError("encounter_state_conflict", `only a visit still waiting for vitals can skip them, not ${enc.status}`);

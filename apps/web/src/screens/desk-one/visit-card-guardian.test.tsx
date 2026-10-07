@@ -9,8 +9,9 @@ import type { WireTimelineItem } from "../../lib/opd-api";
 /**
  * ═══ OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS, AT THE FRONT DESK ═══
  *
- * The visit card offers "Patient not present — guardian with reports" on TODAY's REVISIT that is
- * still waiting for vitals, and on nothing else. After the confirm it says what happened.
+ * The visit card offers "Patient not present — guardian with reports" on TODAY's REVISIT or RENEWAL
+ * that is still waiting for vitals, and on nothing else (never a new visit). An unpaid renewal is
+ * offered it and the refusal asks for billing (owner 2026-10-07). After the confirm it says what happened.
  */
 const today = todayIst();
 const item = (over: Partial<WireTimelineItem>): WireTimelineItem => ({
@@ -74,5 +75,29 @@ describe("Desk One's visit card — guardian with reports", () => {
     const card = await screen.findByTestId("visit-card");
     await new Promise((r) => setTimeout(r, 50));
     expect(within(card).queryByTestId("visit-card-absent-open")).not.toBeInTheDocument();
+  });
+
+  it("today's registered RENEWAL offers it too; unpaid, the confirm is refused with the billing-first message", async () => {
+    const posted: unknown[] = [];
+    mount({ encounter: encounter({ visitType: "renewal" }), patientAbsent: null, queueEntries: [], vitals: [], prescriptions: [] }, []);
+    const fetchSpy = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const base = fetchSpy.getMockImplementation()!;
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("/patient-absent")) {
+        posted.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ statusCode: 409, code: "consult_gate_refused", message: "this visit has not been billed yet — take the fee at the counter first" }), { status: 409 });
+      }
+      return base(input, init);
+    });
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<VisitCard encounterId="e-9" when={today} visit={item({ visitType: "renewal" })} />);
+    const card = await screen.findByTestId("visit-card");
+    await user.click(await within(card).findByTestId("visit-card-absent-open"));
+    await user.selectOptions(within(card).getByTestId("visit-card-absent-relation"), "father");
+    await user.click(within(card).getByTestId("visit-card-absent-confirm"));
+    await waitFor(() => expect(posted).toEqual([{ relation: "father", name: null }]));
+    expect(await within(card).findByTestId("visit-card-absent-error"))
+      .toHaveTextContent("This visit has not been billed yet — take the fee at the counter first.");
+    expect(within(card).queryByTestId("visit-card-absent-notice")).not.toBeInTheDocument();
   });
 });

@@ -115,14 +115,34 @@ describe("patient absent — a guardian brings a revisit's reports and the visit
     expect(out.patientAbsent).toMatchObject({ relation: "attendant", name: null, by: deskOnly.id });
   });
 
-  it("a NEW visit is refused patient_absent_revisit_only, and nothing moves", async () => {
+  it("a NEW visit is refused patient_absent_returning_only, and nothing moves", async () => {
     const enc = await opened("new");
     await expect(markPatientAbsent(db, bayOnly.actor, enc.id, { relation: "mother" }, MON2))
-      .rejects.toMatchObject({ code: "patient_absent_revisit_only" });
-    const renewal = await opened("renewal");
-    await expect(markPatientAbsent(db, bayOnly.actor, renewal.id, { relation: "mother" }, MON2))
-      .rejects.toMatchObject({ code: "patient_absent_revisit_only" });
+      .rejects.toMatchObject({ code: "patient_absent_returning_only" });
     expect((await getEncounter(db, enc.id))!.status).toBe("registered");
+    expect((await getEncounter(db, enc.id))!.patientAbsentAt).toBeNull();
+  });
+
+  /* Owner 2026-10-07 — a RENEWAL (past the doctor's follow-up window) may also send a guardian; its fee is the renewal's. */
+  it("a paid RENEWAL moves to waiting with the mark, exactly as a revisit does", async () => {
+    const enc = await opened("renewal");
+    const out = await markPatientAbsent(db, deskOnly.actor, enc.id, { relation: "mother", name: "Sita" }, MON2);
+    expect(out.alreadyMarked).toBe(false);
+    expect(out.encounter.status).toBe("waiting");
+    expect(out.patientAbsent).toMatchObject({ relation: "mother", name: "Sita", by: deskOnly.id });
+    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, enc.id));
+    expect(entries.map((e) => e.status)).toEqual(["waiting"]);
+  });
+
+  it("an UNPAID renewal is refused consult_gate_refused (ask for billing), and nothing moves", async () => {
+    unregister = registerVitalsStartGuard("test_fee_gate", () =>
+      Promise.resolve({ ok: false as const, code: "fee_unsettled", detail: { visitType: "renewal" } }));
+    const enc = await opened("renewal");
+    await expect(markPatientAbsent(db, bayOnly.actor, enc.id, { relation: "father" }, MON2))
+      .rejects.toMatchObject({ code: "consult_gate_refused", detail: { code: "fee_unsettled" } });
+    const row = (await getEncounter(db, enc.id))!;
+    expect(row.status).toBe("registered");
+    expect(row.patientAbsentAt).toBeNull();
   });
 
   it("a visit already past registered (vitals taken) is refused encounter_state_conflict", async () => {
