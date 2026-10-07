@@ -88,6 +88,19 @@ from the source and CI keeps it current, so trust it over a grep crawl. After ch
 imports, an `index.ts`, routes, tables or web routes, run `node tools/arch/gen.mjs` and commit the
 result; after a rebase conflict in `docs/architecture/`, regenerate instead of merging by hand.
 
+A module may also have hand-written notes, `apps/core/src/modules/<m>/MAP.md` (flows, invariants,
+traps, callers); its architecture page links it. Read it before changing that module, and update it in
+the same PR when you change a flow or a trap. Cite a file and a symbol, never a line number: `--check`
+fails on a line number or on a file that no longer exists.
+
+**Serena (optional, on demand).** For cross-module reading or a rename, a language-server MCP is
+installed (`serena`, read-only, memory off). Measured 2026-10-07: about a third fewer tokens read,
+sharper citations, but ~2 GB RAM while running and ~4 GB while indexing, so one lane at a time and
+never during someone's jest run. Index and use it in YOUR lane only:
+`cd <lane> && serena project create --language typescript --index`, then start the session with
+`--mcp-config` pointing at `serena start-mcp-server --context claude-code --project <lane>`.
+Its `.serena/` cache is git-ignored; never create it in `/opt/hmis`.
+
 Read the phase doc for your lane and this file. Do not read `EXECUTION-LESSONS.md` (468 KB), the
 plan series index, or the project brief unless a task names a section. Method for closing a
 phase: `docs/superpowers/EXECUTE-METHOD-V3.md` §5A only. Context is re-sent every turn; a big read

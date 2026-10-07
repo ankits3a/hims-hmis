@@ -3,6 +3,7 @@
 # module `billing`
 
 Source: `apps/core/src/modules/billing/`
+· Notes: [MAP.md](../../../apps/core/src/modules/billing/MAP.md)
 
 - **Depends on modules:** `membership`, `opd`, `patients`, `tariff`
 - **Used by modules:** `lab`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`

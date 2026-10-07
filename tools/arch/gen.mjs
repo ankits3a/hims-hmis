@@ -488,7 +488,33 @@ files.set("schema.md", renderSchema());
 files.set("web.md", renderWeb());
 for (const m of moduleNames) files.set(`modules/${m}.md`, renderModule(m));
 
+/**
+ * Hand-written module notes (`modules/<m>/MAP.md`) cannot be generated, but two things in them can be
+ * checked: every file they name must exist, and they may not cite line numbers, which go stale on the
+ * next edit with nothing to notice. A note that names a deleted file fails here instead of misleading.
+ */
+function mapNoteProblems() {
+  const problems = [];
+  for (const m of moduleNames) {
+    const p = join(MODULES, m, "MAP.md");
+    if (!existsSync(p)) continue;
+    const src = read(p);
+    const bases = [join(MODULES, m), MODULES, CORE, join(ROOT, "apps/core"), ROOT];
+    for (const [ref] of src.matchAll(/[\w.-]+(?:\/[\w.-]+)*\.tsx?(?::\d+)?/g)) {
+      if (/:\d+$/.test(ref)) problems.push(`${rel(p)}: cites a line number (${ref}); name the symbol instead`);
+      const file = ref.replace(/:\d+$/, "");
+      if (!bases.some((b) => existsSync(join(b, file)))) problems.push(`${rel(p)}: names ${file}, which does not exist`);
+    }
+  }
+  return uniqSorted(problems);
+}
+
 const check = process.argv.includes("--check");
+const notes = mapNoteProblems();
+if (notes.length) {
+  console.error(`module notes need attention:\n  ${notes.join("\n  ")}`);
+  if (check) process.exit(1);
+}
 if (check) {
   const stale = [];
   for (const [name, body] of files) {
