@@ -91,6 +91,20 @@ if [ -n "$PROD_SSH" ] && [ -r "$FIREBASE_KEY" ]; then
   fi
 fi
 
+# ── the owner's OpenAI key (the doctor's spoken note) follows production's host the same way ─────
+# Same rules as the Firebase key above: root-only at the same path there, never echoed. Absent here
+# is normal — a key the owner placed on production's own host is left exactly as it is.
+OPENAI_KEY="${HMIS_OPENAI_KEY:-/root/.config/hmis/openai/key.txt}"
+if [ -n "$PROD_SSH" ] && [ -r "$OPENAI_KEY" ]; then
+  if [ "$DRY" = 1 ]; then
+    say "WOULD sync the openai key to $PROD_SSH (contents not shown)"
+  else
+    { ssh "${SSH_OPTS[@]}" "$PROD_SSH" "install -d -m 0700 '$(dirname "$OPENAI_KEY")'" \
+        && rsync -a --chmod=F600 -e "ssh ${SSH_OPTS[*]}" "$OPENAI_KEY" "$PROD_SSH:$OPENAI_KEY"; } >/dev/null \
+      || say "the openai key did not sync to $PROD_SSH (production keeps the copy it has); see above"
+  fi
+fi
+
 # ── production: origin/main, once every required check is green ─────────────────────────────────
 deploy_prod() {
   git -C "$REPO" fetch -q origin main

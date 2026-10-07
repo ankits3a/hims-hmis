@@ -23,7 +23,7 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.11.0";
+const VERSION = "0.12.0";
 /**
  * M6b — NOTIFICATIONS ARE IN A BUILD ONLY WHEN THE HOSPITAL'S FIREBASE PROJECT IS.
  * `scripts/build-apk.sh` copies the owner's `google-services.json` beside this file when it exists
@@ -69,10 +69,13 @@ const config: ExpoConfig = {
       { faceIDPermission: "Unlock HMIS with your face or fingerprint." },
     ],
     [
-      // The vitals bay's scan door reads a patient card or slip. No microphone, no recording.
+      // The vitals bay's scan door reads a patient card or slip. The camera records no sound (the microphone is expo-audio's, below).
       "expo-camera",
       { cameraPermission: "HMIS uses the camera to scan a patient card or slip, and to photograph a slip.", recordAudioAndroid: false },
     ],
+    // Phone consult (decision 0048) — the microphone, for the doctor's spoken note ONLY. The clip is sent
+    // to the hospital's server and on to the speech service; nothing is recorded in the background.
+    ["expo-audio", { microphonePermission: "HMIS uses the microphone when a doctor chooses to speak a consultation note.", enableBackgroundRecording: false, enableBackgroundPlayback: false }],
     // M6b — the small icon in the tray is the HMIS diamond (alpha only), tinted pine.
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#0E6B4E" }],
   ],

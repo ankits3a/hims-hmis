@@ -115,6 +115,13 @@ if [ "$HMIS_PUSH_IN_BUILD" = 1 ]; then
     || { echo "REFUSED: the APK carries no Firebase app id (google-services.json was not applied)" >&2; exit 1; }
   echo "notifications: permission, messaging service and Firebase app id are in the APK"
 fi
+# THE DOCTOR'S SPOKEN NOTE NEEDS THE MICROPHONE (phone consult, decision 0048). Checked on every
+# build, with or without notifications: an APK without RECORD_AUDIO can never ask for the microphone,
+# and the consult screen's "Speak instead" would refuse for ever with nothing on screen saying why.
+VOICE_PERMS="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump permissions "$BUILT")"
+grep -q "android.permission.RECORD_AUDIO" <<<"$VOICE_PERMS" \
+  || { echo "REFUSED: the APK does not declare android.permission.RECORD_AUDIO (the expo-audio plugin was not applied)" >&2; exit 1; }
+echo "voice: the microphone permission is in the APK"
 mkdir -p "$OUT_DIR"
 cp "$BUILT" "$OUT_DIR/$NAME"
 echo "$VC" > "$COUNTER"

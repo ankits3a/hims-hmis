@@ -107,6 +107,10 @@ services:
     # `not_configured`.
     environment:
       HMIS_FCM_SERVICE_ACCOUNT_FILE: /run/hmis/firebase/service-account.json
+      # PHONE CONSULT — the OpenAI key the doctor's spoken note is typed with (deploy.sh step 2 copies
+      # it into ./openai when the owner has placed it on the host). Absent, voice is off; the api
+      # still boots and every other consult route works.
+      HMIS_OPENAI_KEY_FILE: /run/hmis/openai/key.txt
     # The slip desk's photographs. A NAMED VOLUME because the bytes must outlive a container
     # recreate the way pgdata does — a deploy that dropped them would lose every prescription the
     # desk had filed. The image creates /var/lib/hmis/documents owned by `node` so this volume
@@ -115,6 +119,7 @@ services:
       - hmis_prod_documents:/var/lib/hmis/documents
       # The DIRECTORY, read-only — never the file (a single-file mount pins an inode; see caddy below).
       - ./firebase:/run/hmis/firebase:ro
+      - ./openai:/run/hmis/openai:ro
     expose:
       - "3000"
     depends_on:

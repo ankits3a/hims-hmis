@@ -161,11 +161,14 @@ export const rxLineBody = z.object({
     timesPerDay: z.number().int().min(1).max(12),
     days: z.number().int().min(1).max(60),
   })).min(2).max(8).nullish(),
+  // Where the line came from (phone consult, decision 0049's review). Stored on the line for audit;
+  // it changes no check and prints nowhere. Absent on every line written before, and on the web's.
+  source: z.enum(["typed", "voice", "search", "set", "repeat"]).nullish(),
 }).refine((l) => (l.taper ?? null) !== null || l.frequency.length <= 100, {
   path: ["frequency"], message: "String must contain at most 100 character(s)",
 });
 // No .min(1) on lines: an empty prescription answers empty_prescription with its OPD code, not a zod 400.
-const prescriptionBody = z.object({
+export const prescriptionBody = z.object({
   lines: z.array(rxLineBody),
   overrides: z.array(z.object({
     lineIndex: z.number().int().nonnegative(), substance: z.string().max(200), reason: z.string().max(500),
@@ -182,6 +185,16 @@ const prescriptionBody = z.object({
   duplicateOverrides: z.array(z.object({
     lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
     moiety: z.string().min(1).max(200).optional(),
+  })).optional(),
+  /**
+   * P24 — the reason for prescribing against a SEVERE drug–disease rule. `issuePrescription` has
+   * read this since P24 and the web consult screen has sent it, but it was never NAMED here, and
+   * zod strips an undeclared key — so the override never arrived and a severe hit could not be
+   * cleared by anyone (found building the phone consult, 2026-10-07).
+   */
+  drugDiseaseOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    moiety: z.string().min(1).max(200), icd10Prefix: z.string().min(1).max(20),
   })).optional(),
 });
 /** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */

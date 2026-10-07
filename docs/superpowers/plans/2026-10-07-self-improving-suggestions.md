@@ -275,6 +275,34 @@ or spoken complaint into an existing concept. Both run offline as proposals firs
 7. A versioned model id, never an alias such as `jev-latest`.
 8. Vendor-down behaviour written and tested: the screen still works.
 
+### 9a. A second chooser to evaluate — OpenAI's Decisions API (owner 2026-10-07: "let's try OpenAI Decision API")
+
+Per OpenAI's docs, 2026-10-07: `POST /v1/decisions`, public beta, only model `gpt-6-luna`. Question types:
+`predicate` (the probability a condition is true), `choice` (one of the supplied values, with `probabilities`
+and `confidence`), `score` (a probability-weighted level index). Text and image input; several independent
+questions per request; a `refusal` answer type exists. Pricing $0.10 per 1M input tokens, no output charge.
+ZDR / HIPAA for eligible customers. Guidance: "Use labeled examples from your application to set thresholds".
+
+Decided by delegation:
+- **A second `ChoiceClient` provider beside TypeSafe's Jev** in `kernel/inference/`, same interface: a closed
+  set in; choice, confidence and probabilities out; a versioned model id as config; a timeout; masked input
+  through the existing choke point; `refusal` handled as "unsure".
+- **A new `predicate` capability on the interface**, for the AI reviewer step of medicine aliases ("does
+  <term> mean <product>?", §7a) and later yes/no checks.
+- **Side-by-side evaluation BEFORE choosing an order**, on the same held-out sets: the 46 triage complaints,
+  the 64 copilot questions (82 with pharmacy), and the new ≥ 200-item Hinglish alias set. Report top-1,
+  accuracy at the confidence line, answer rate, latency p50 / p90 from this server, and cost per 1,000 calls.
+  Primary and fallback are then set per USE by the numbers — a config, not code. Whether it handles Hinglish
+  and north-Indian vocabulary better is the hypothesis to test, not a claim.
+- **Beta caveats:** behaviour and price may change; it is never the only chooser; it has its own kill switch.
+- **Dependency (owner action):** the OpenAI key must also be on this server (staging and building) at
+  `/root/.config/hmis/openai/key.txt` for the evaluation. Today it appears to exist only on the production host.
+
+Not adopted now: the Live voice conversation of the decisions-voice guide (a model listening and speaking
+continuously). It conflicts with standing rulings — no chat, answers shown not spoken, a model never writes or
+speaks the answer — and needs a continuous audio stream. Only the pattern is taken: speech → text → a chooser
+picks among the actions available on the CURRENT screen → the app shows a draft the person taps.
+
 **Candidate later uses**
 
 | Decision | Verdict |
@@ -287,6 +315,7 @@ or spoken complaint into an existing concept. Both run offline as proposals firs
 | Visit type, fee, who may approve | Rule |
 | Danger signs (chest pain, a blue baby) | Rule |
 | Which medicine this doctor usually gives | Count |
+| Voice commands inside the consult screen ("add paracetamol 500 TDS five days" → a draft line to tap) | Chooser, later, with its own eval set |
 | Dose, amount, anything computed | Never a chooser |
 
 ## 10. Coverage — measure before P1

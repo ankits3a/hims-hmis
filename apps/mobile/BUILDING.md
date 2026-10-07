@@ -181,6 +181,24 @@ key is replaceable, the signing keys are not.
 patient's name, number or result (`apps/core/src/kernel/push/phone-push.ts`). The production build also blocks
 screenshots, screen recording and the recent-apps preview (`src/privacy.ts`); the staging build does not.
 
+## The microphone and the spoken note (decisions 0048, 0049)
+
+The doctor's consult screen can record a note of up to 60 seconds (`expo-audio`, 16 kHz mono AAC at
+32 kbit/s, about 240 kB a minute). The clip goes to the hospital's API as base64 JSON
+(`POST /api/opd/visits/:id/consult/voice`), which forwards it to OpenAI and stores nothing.
+
+- `app.config.ts` carries the `expo-audio` plugin with the microphone permission text and no
+  background recording. `scripts/build-apk.sh` refuses an APK that lacks
+  `android.permission.RECORD_AUDIO`.
+- The OpenAI key is NOT in the app. It is a file on the server:
+  `/root/.config/hmis/openai/key.txt` on the build host is carried to the production host by
+  `tools/auto-deploy.sh` and mounted read-only into the API container (`HMIS_OPENAI_KEY_FILE`).
+  Without it the screen says "Voice is not set up" and offers no microphone; nothing else changes.
+- Voice and suggestions are switched in the web: OPD masters → Phone consult. No app update.
+- The web export has no real microphone. Walk the screens with
+  `/opt/hmis-context/mobile-tools/serve-consult.mjs` + `shoot-consult.mjs` (Chromium's fake audio
+  device); the recording itself must be tried on a real phone.
+
 ## Fonts and the icon
 
 IBM Plex Sans and Mono are bundled per weight (`src/fonts.ts`); every screen imports `Text` and `TextInput` from

@@ -77,7 +77,8 @@ function opdStatus(code: OpdErrorCode): number {
   // metadata key, so a second `@RequirePermission` would silently replace the first), and its
   // refusal must read as 403 rather than falling through to the 400 default.
   if (code === "registration_not_permitted" || code === "transcription_not_permitted" || code === "paper_consult_not_permitted"
-    || code === "patient_absent_not_permitted") return 403;
+    || code === "patient_absent_not_permitted" || code === "rx_set_not_permitted") return 403;
+  if (code === "voice_provider_failed") return 503;
   if (code.endsWith("_state_conflict") || code.startsWith("duplicate_") || OPD_CONFLICT_CODES.has(code)) return 409;
   return 400; // invalid_*, vitals_incomplete, reason_required, empty_prescription, … — a client mistake
 }

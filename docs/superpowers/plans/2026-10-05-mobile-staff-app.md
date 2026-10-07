@@ -630,3 +630,22 @@ Owner: *"build the app update with the home screen and the Slip desk '+' pages."
 - **Ordering for the over-the-air lane:** staging is versionCode 13 and production 6 at 0.11.0. The first
   over-the-air-capable APK must be built AFTER this one, from a main that contains it, with a higher
   versionCode in each environment — otherwise phones are offered an older app.
+
+## 3n. App 0.12.0 — the doctor consults on the phone (owner 2026-10-07, decisions 0048 + 0049) — BUILT
+
+- **Screen:** `src/screens/consult.tsx` replaces the brief once a visit is "with you": the patient card, Repeat
+  last / My sets, the "This visit" card, five drawers (`src/consult/sheets.tsx`: Notes with the spoken note,
+  Diagnosis, Medicines, Tests, Advice and follow-up), "I wrote on paper", "Issue and complete". After issuing it
+  returns to My OPD queue with one fading line — no print on the phone (owner).
+- **Draft:** kept on the phone per visit (`src/consult/draft.ts`, chunked SecureStore), cleared at issue, at paper
+  and at sign-out. Offline NEVER queues an issue: the screen says nothing was sent. A lost answer is re-asked of the
+  server before anything is sent twice.
+- **Rules shared with the web:** `packages/contracts/src/phone-consult.ts` (pure, no imports).
+- **Guards (0049 review):** nothing pre-selected; strength · form · class on every row; look-alike names take a
+  second tap; each line carries its source; checks run on the draft; Roman script; two server switches.
+- **Server:** `modules/opd/{rx-sets,consult-voice,consult-guards}.ts`, `opd-phone-consult.controller.ts`,
+  migration `opd_phone_consult` (six tables, 24 standard look-alike pairs).
+- **Web:** `/opd/sets` (read in full, offer to the department, unit head signs) and OPD masters → Phone consult.
+- **DECIDED:** see decision 0048 "Built". **Not done:** auto-structuring a spoken note; the alias tool; a doctor
+  editing a set's lines on the web (a set is built on the phone from a visit).
+- **Tools:** `/opt/hmis-context/mobile-tools/{serve-consult,shoot-consult,sheet}.mjs`.

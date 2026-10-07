@@ -103,6 +103,14 @@ const configSchema = z.object({
    */
   HMIS_FCM_SERVICE_ACCOUNT_FILE: z.string().optional(),
   /**
+   * PHONE CONSULT (decision 0048) — the file holding the hospital's OpenAI API key, used ONLY to
+   * turn a doctor's spoken note into text (`modules/opd/consult-voice.ts`). OPTIONAL like the key
+   * above: absent, or a path with no readable file behind it, voice is off and the app says
+   * "Voice is not set up". The key is read from the file on use and never from the environment, so
+   * it does not ride in `docker inspect` output.
+   */
+  HMIS_OPENAI_KEY_FILE: z.string().optional(),
+  /**
    * PHASE O T4 — the channel ladder's cadence. A minute, not five: the `now` lane's patience is
    * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
    */
@@ -491,6 +499,7 @@ export type AppConfig = {
   notifyPushProvider: NotifyPushProvider;
   /** MOBILE M6b — where the Firebase service-account key is expected, or null. The file may not exist yet. */
   fcmServiceAccountFile: string | null;
+  openaiKeyFile: string | null;
   workerReachIntervalMs: number;
   /**
    * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
@@ -786,6 +795,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     notifyProvider: parsed.NOTIFY_PROVIDER,
     notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
     fcmServiceAccountFile: parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE === undefined || parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim() === "" ? null : parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim(),
+    openaiKeyFile: parsed.HMIS_OPENAI_KEY_FILE === undefined || parsed.HMIS_OPENAI_KEY_FILE.trim() === "" ? null : parsed.HMIS_OPENAI_KEY_FILE.trim(),
     workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
     webPushVapid: vapidFrom(parsed),
     notifySms: smsGatewayFrom(parsed),
