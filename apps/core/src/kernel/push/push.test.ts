@@ -74,7 +74,8 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
     expect(LIVE_PUSH_CATEGORIES).toEqual(["alert", "roster", "queue", "reminder"]);
     expect(categoriesFor("0.8.1 (9)")).toEqual(["alert", "roster", "queue"]);
     expect(categoriesFor(null)).toEqual(["alert", "roster", "queue"]);
-    expect(categoriesFor("0.9.0 (10)")).toContain("reminder");
+    expect(categoriesFor("0.9.0 (11)")).not.toContain("reminder"); // the appointments build has no words for it
+    expect(categoriesFor("0.10.0 (12)")).toContain("reminder");
     expect(categoriesFor("1.0.0")).toContain("reminder");
     // The sentence for a reminder names no duty, no time and no person.
     expect(phoneMessage("reminder", "myDuties", "en")).toEqual({ title: "HMIS", body: "You have a duty coming up. Open HMIS to see it.", data: { category: "reminder", link: "myDuties" } });

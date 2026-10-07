@@ -271,7 +271,7 @@ describe("mobile M6b — a notification on a staff phone", () => {
   it("a build that does not know the reminder switch is not offered it; one that does, is", async () => {
     const old = await phoneOn(PHONE_A, TOKEN_A);
     expect((await state(old.token)).body.categories).toEqual(["alert", "roster", "queue"]);
-    const fresh = await phoneOn({ ...PHONE_B, appVersion: "0.9.0 (10)" }, TOKEN_B);
+    const fresh = await phoneOn({ ...PHONE_B, appVersion: "0.10.0 (12)" }, TOKEN_B);
     expect((await state(fresh.token)).body.categories).toEqual(["alert", "roster", "queue", "reminder"]);
   });
 

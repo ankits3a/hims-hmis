@@ -45,7 +45,7 @@ export const LIVE_PUSH_CATEGORIES: readonly PushCategory[] = ["alert", "roster",
  * simply not offered that switch (it still RECEIVES reminders, on the default channel, and its
  * banner calls an unknown category an alert — `notifications.tsx`).
  */
-export const REMINDER_CATEGORY_SINCE = "0.9.0";
+export const REMINDER_CATEGORY_SINCE = "0.10.0";
 function atLeast(version: string | null, floor: string): boolean {
   if (version === null) return false;
   const [a, b] = [version, floor].map((v) => v.split(".").map((n) => Number.parseInt(n, 10) || 0));
