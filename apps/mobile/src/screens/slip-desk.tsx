@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Text, TextInput } from "../text";
 import * as Haptics from "expo-haptics";
@@ -10,6 +11,7 @@ import { useSession } from "../session";
 import { SlipCamera } from "../slips/camera";
 import { Crop, type CropStatus } from "../slips/crop";
 import { findPage, flatten, normalize, type Flat, type Photo } from "../slips/imaging";
+import { MAX_PAGES, landedUnheard, moveById, paperOf, type PaperSaid } from "../slips/pages";
 import {
   MAX_EDGE, SLIP_KINDS, ageYearsAt, base64Bytes, frameQuad, isConvex, minutesSince, slipDoor, slipOfPatient,
 } from "../slips/rules";
@@ -40,19 +42,34 @@ import { Scanner } from "../vitals/scanner";
  * A record the caller may not see answers exactly as "no such visit" (the server's rule) and is
  * absent from today's list — this screen adds nothing that could reveal it.
  *
+ * SEVERAL PAGES IN ONE GO (owner 2026-10-07 — "after capturing the first image, allow to capture
+ * second image from the same screen, may '+' button would be enough"): the review step holds a strip
+ * of pages. "+" reopens the camera and keeps it open — shoot, shoot, Done — and each of those pages
+ * is cut to the corners that were found, to be fixed from the strip if they are off. A page whose
+ * edges were NOT found is marked and must be opened once before anything is filed. The pages are
+ * sent one after another in the order of the strip, which is the order the server numbers them in.
+ *
  * NEVER QUEUED: a page that does not reach the server stays on screen, photo and crop intact, with
- * the reason and a Try again.
+ * the reason and a Try again. The pages before it ARE filed and the screen says so; a retry after a
+ * lost answer first asks the server what it holds for the visit, so a page is never filed twice.
  */
 const DAY_POLL_MS = 30_000;
 type T = ReturnType<typeof useI18n>["t"];
 type Raw = { photo: Photo; quad: Quad; status: CropStatus };
+/**
+ * One page of the slip in hand. `flat` is the straightened page (null while it is being made, or when
+ * it could not be); `check` — its edges were not found and nobody has looked yet; `docId` — the
+ * server has it.
+ */
+type Page = { id: number; raw: Raw; flat: Flat | null; plainCut: boolean; check: boolean; docId: string | null; paper: string | null };
+type CamMode = { kind: "first" } | { kind: "burst" } | { kind: "replace"; id: number };
 /**
  * Owner ruling 2026-10-06 — a filed prescription slip also marks the visit consulted, when this login
  * is a Slip Desk or Desk Scribe and the visit is today's and still open. The SERVER decides and
  * answers beside the document id; `paper` is that answer's outcome code (null when it said nothing —
  * an older server, or a page that is not the doctor's slip), worded by `paper.outcome.*`.
  */
-type Filed = { back: SlipReadback; kind: SlipKind; at: string; page: number; paper: string | null };
+type Filed = { back: SlipReadback; kind: SlipKind; at: string; page: number; pages: number; paper: string | null };
 const PAPER_CONSULTED = new Set(["marked", "already_marked", "doctor_completed"]);
 
 const nameOf = (p: SlipPatient | null, t: T): string => p?.name ?? p?.alias ?? t("slipCapture.unnamed");
@@ -79,14 +96,21 @@ export function SlipDesk() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [raw, setRaw] = useState<Raw | null>(null);
+  const [pages, setPages] = useState<Page[]>([]);
+  /** The page whose corners are on screen (step 3), and the one the strip shows large (step 4). */
+  const [editing, setEditing] = useState<number | null>(null);
+  const [sel, setSel] = useState<number | null>(null);
+  const [camMode, setCamMode] = useState<CamMode>({ kind: "first" });
+  const [removing, setRemoving] = useState(false);
   const [working, setWorking] = useState(false);
-  const [shot, setShot] = useState<Flat | null>(null);
-  /** The corners were moved but the page could not be straightened on this phone: it was cut to their rectangle. */
-  const [plainCut, setPlainCut] = useState(false);
+  /** The page whose answer was lost on the way back: the next try asks the server before it sends. */
+  const [unheard, setUnheard] = useState<number | null>(null);
+  const nextId = useRef(1);
+  const pagesRef = useRef<Page[]>([]);
+  pagesRef.current = pages;
   const [kind, setKind] = useState<SlipKind>("consult_prescription");
   const [note, setNote] = useState("");
-  const [sending, setSending] = useState<number | null>(null);
+  const [sending, setSending] = useState<{ n: number; f: number } | null>(null);
   const [filed, setFiled] = useState<Filed | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const input = useRef<TextInput | null>(null);
@@ -106,12 +130,13 @@ export function SlipDesk() {
   const counts = day?.counts ?? null;
 
   const take = (back: SlipReadback, how: "qr" | "search"): void => {
-    setResolved(back); setVia(how); setShot(null); setRaw(null); setKind("consult_prescription"); setNote("");
+    setResolved(back); setVia(how); setPages([]); setEditing(null); setSel(null); setUnheard(null); setRemoving(false); setKind("consult_prescription"); setNote("");
     setRefused(null); setError(null); setFiled(null); setHits(null); setText(""); setListOpen(false); setSending(null);
   };
   const clearDesk = (): void => {
-    setResolved(null); setShot(null); setRaw(null); setNote(""); setError(null); setRefused(null); setHits(null); setText(""); setSending(null);
+    setResolved(null); setPages([]); setEditing(null); setSel(null); setUnheard(null); setRemoving(false); setNote(""); setError(null); setRefused(null); setHits(null); setText(""); setSending(null);
   };
+  const patch = (id: number, f: (p: Page) => Page): void => { setPages((ps) => ps.map((p) => (p.id === id ? f(p) : p))); };
 
   const search = useCallback(async (q: string): Promise<void> => {
     if (q.trim().length < 2) { setHits([]); return; }
@@ -161,33 +186,71 @@ export function SlipDesk() {
   }, [items, call, t, search]);
 
   /* ── 3 · the photograph ── */
+  /**
+   * A page shot back-to-back is cut to the corners that were found, without a stop at the crop: the
+   * desk fixes any that are off from the strip. Edges not found → the photo as taken, MARKED.
+   */
+  const autoCrop = async (id: number, photo: Photo): Promise<void> => {
+    let found: Awaited<ReturnType<typeof findPage>> = null;
+    try { found = await findPage(photo); } catch { found = null; }
+    let flat: Flat | null = null;
+    try { flat = await flatten(photo, found === null ? null : found.quad, MAX_EDGE); } catch { flat = null; }
+    patch(id, (p) => (p.raw.photo !== photo ? p : {
+      ...p, flat, plainCut: found !== null && flat !== null && !flat.straightened, check: found === null || flat === null,
+      raw: { photo, quad: found === null ? p.raw.quad : found.quad, status: found === null ? "none" : "found" },
+    }));
+  };
   const onShot = async (p: Photo): Promise<void> => {
-    setCameraOpen(false); setError(null); setShot(null);
+    const mode = camMode;
+    if (mode.kind !== "burst") setCameraOpen(false);
+    else if (pagesRef.current.length >= MAX_PAGES) return;
+    setError(null); setRemoving(false);
+    // The place in the strip is taken at once, so two quick shots keep the order they were taken in.
+    const id = mode.kind === "replace" ? mode.id : nextId.current++;
+    const holder: Photo = p;
+    if (mode.kind !== "replace") {
+      const fresh: Page = { id, raw: { photo: holder, quad: frameQuad(p.width, p.height, 0.04), status: "finding" }, flat: null, plainCut: false, check: false, docId: null, paper: null };
+      pagesRef.current = [...pagesRef.current, fresh];
+      setPages((ps) => [...ps, fresh]);
+    }
     try {
       const photo = await normalize(p);
-      setRaw({ photo, quad: frameQuad(photo.width, photo.height, 0.04), status: "finding" });
+      const raw: Raw = { photo, quad: frameQuad(photo.width, photo.height, 0.04), status: "finding" };
+      patch(id, (pg) => ({ ...pg, raw, flat: null, plainCut: false, check: false }));
+      if (mode.kind === "burst") { setSel(id); await autoCrop(id, photo); return; }
+      setEditing(id); setSel(id);
       const found = await findPage(photo);
-      setRaw((r) => (r === null || r.photo.uri !== photo.uri || r.status !== "finding" ? r
-        : found === null ? { ...r, status: "none" } : { ...r, quad: found.quad, status: "found" }));
+      patch(id, (pg) => (pg.raw.photo !== photo || pg.raw.status !== "finding" ? pg
+        : found === null ? { ...pg, raw: { ...pg.raw, status: "none" } } : { ...pg, raw: { ...pg.raw, quad: found.quad, status: "found" } }));
     } catch {
+      if (mode.kind !== "replace") setPages((ps) => ps.filter((pg) => pg.id !== id));
       setError(t("mobile.slips.camFailed"));
     }
   };
-  const retake = (): void => { setShot(null); setRaw(null); setError(null); setSending(null); setCameraOpen(true); };
-  const resetCrop = (): void => { setRaw((r) => (r === null ? r : { ...r, quad: frameQuad(r.photo.width, r.photo.height) })); };
+  const openCamera = (mode: CamMode): void => { setError(null); setCamMode(mode); setCameraOpen(true); };
+  const current = editing === null ? null : pages.find((p) => p.id === editing) ?? null;
+  const chosen = pages.find((p) => p.id === sel) ?? pages[pages.length - 1] ?? null;
+  const retake = (): void => {
+    const target = current ?? chosen;
+    if (target === null) { openCamera({ kind: "first" }); return; }
+    setSending(null); openCamera({ kind: "replace", id: target.id });
+  };
+  const resetCrop = (): void => { if (current !== null) patch(current.id, (p) => ({ ...p, raw: { ...p.raw, quad: frameQuad(p.raw.photo.width, p.raw.photo.height) } })); };
 
   /** "Use this": corners left on the photo's own edges mean "no crop"; anything else is straightened. */
   const applyCrop = async (): Promise<void> => {
-    if (raw === null || working || !isConvex(raw.quad)) return;
-    const { photo, quad } = raw;
+    if (current === null || working || !isConvex(current.raw.quad)) return;
+    const { photo, quad } = current.raw;
+    const id = current.id;
     const full = frameQuad(photo.width, photo.height);
     const untouched = quad.every((pt, i) => Math.hypot(pt.x - full[i]!.x, pt.y - full[i]!.y) <= Math.max(photo.width, photo.height) * 0.005);
     setWorking(true); setError(null);
     try {
       const flat = await flatten(photo, untouched ? null : quad, MAX_EDGE);
       if (flat === null) { setError(t("slipCapture.tooLarge")); return; }
-      setPlainCut(!untouched && !flat.straightened);
-      setShot(flat);
+      // The desk has now looked at this page's corners: the mark comes off.
+      patch(id, (p) => ({ ...p, flat, plainCut: !untouched && !flat.straightened, check: false }));
+      setSel(id); setEditing(null);
     } catch {
       setError(t("slipCapture.crop.failed"));
     } finally {
@@ -195,31 +258,68 @@ export function SlipDesk() {
     }
   };
 
+  const removeChosen = (): void => {
+    if (chosen === null || chosen.docId !== null) return;
+    const left = pages.filter((p) => p.id !== chosen.id);
+    setPages(left); setSel(left[left.length - 1]?.id ?? null); setRemoving(false); setError(null);
+  };
+  const move = (by: -1 | 1): void => { if (chosen !== null) setPages((ps) => moveById(ps, chosen.id, by)); };
+
   /* ── 4 · file ── */
+  const baseline = resolved?.filed?.length ?? 0;
+  const anyFiled = pages.some((p) => p.docId !== null);
+  const notReady = pages.some((p) => p.docId === null && (p.flat === null || p.check));
   const file = async (): Promise<void> => {
-    if (resolved === null || shot === null || sending !== null) return;
-    setError(null); setSending(0);
-    try {
-      const done = await upload<{ documentId: string; effects?: { "opd.paper"?: { outcome?: string; failed?: boolean } } }>("/patients/" + encodeURIComponent(resolved.patientId) + "/documents", {
-        imageBase64: shot.base64, mimeType: "image/jpeg", kind, encounterId: resolved.encounterId,
-        note: note.trim() === "" ? null : note.trim(),
-      }, (f) => setSending(f));
-      buzz(true);
-      // The confirmation NAMES the patient and the visit: forty slips an hour, and this is which one just landed.
-      const said = done?.effects?.["opd.paper"];
-      const paper = said === undefined ? null : said.failed === true ? "failed" : said.outcome ?? null;
-      setFiled({ back: resolved, kind, at: new Date().toISOString(), page: (resolved.filed?.length ?? 0) + 1, paper });
-      setResolved(null); setShot(null); setRaw(null); setNote(""); setText("");
-      void refreshDay();
-    } catch (e) {
-      buzz(false);
-      // The photo and the crop stay exactly as they are. Nothing is queued.
-      setError(e instanceof NetworkError ? t("mobile.slips.uploadNetwork")
-        : e instanceof ApiError ? t("mobile.slips.uploadRefused", { why: refusalText(e.body, t("slipCapture.failed")) })
-          : t("slipCapture.failed"));
-    } finally {
-      setSending(null);
+    if (resolved === null || pages.length === 0 || sending !== null || notReady) return;
+    setError(null); setRemoving(false);
+    let list = pages;
+    const total = list.length;
+    const mark = (id: number, docId: string, paper: string | null): void => {
+      list = list.map((p) => (p.id === id ? { ...p, docId, paper } : p));
+      setPages(list);
+    };
+    const partial = (): string => {
+      const done = list.filter((p) => p.docId !== null).length;
+      return done === 0 ? "" : ` ${t("mobile.slips.partFiled", { done, total })}`;
+    };
+    for (let i = 0; i < list.length; i++) {
+      const page = list[i]!;
+      if (page.docId !== null || page.flat === null) continue;
+      setSending({ n: i + 1, f: 0 });
+      try {
+        if (unheard === page.id) {
+          // The last try's answer never came back. Ask what the server holds before sending again.
+          const now = await call<SlipReadback>("GET", `/opd/visits/by-number/${encodeURIComponent(resolved.visitNo)}`);
+          if (landedUnheard(baseline, list.filter((p) => p.docId !== null).length, now.filed?.length ?? 0)) {
+            setUnheard(null); mark(page.id, "landed", null);
+            continue;
+          }
+        }
+        const done = await upload<{ documentId: string; effects?: { "opd.paper"?: PaperSaid } }>("/patients/" + encodeURIComponent(resolved.patientId) + "/documents", {
+          imageBase64: page.flat.base64, mimeType: "image/jpeg", kind, encounterId: resolved.encounterId,
+          note: i === 0 && note.trim() !== "" ? note.trim() : null,
+        }, (f) => setSending({ n: i + 1, f }));
+        setUnheard(null);
+        const said = done?.effects?.["opd.paper"];
+        mark(page.id, done?.documentId ?? "filed", said === undefined ? null : said.failed === true ? "failed" : said.outcome ?? null);
+      } catch (e) {
+        buzz(false);
+        if (e instanceof NetworkError) setUnheard(page.id);
+        setSel(page.id);
+        // The photo and the crop stay exactly as they are. Nothing is queued.
+        setError((e instanceof NetworkError ? t("mobile.slips.uploadNetwork")
+          : e instanceof ApiError ? t("mobile.slips.uploadRefused", { why: refusalText(e.body, t("slipCapture.failed")) })
+            : t("slipCapture.failed")) + partial());
+        setSending(null);
+        return;
+      }
     }
+    buzz(true);
+    // The confirmation NAMES the patient and the visit: forty slips an hour, and this is which one just landed.
+    setFiled({ back: resolved, kind, at: new Date().toISOString(), page: baseline + 1, pages: total, paper: paperOf(list.map((p) => p.paper)) });
+    setResolved(null); setPages([]); setEditing(null); setSel(null); setUnheard(null); setNote(""); setText("");
+    setSending(null);
+    void refreshDay();
   };
 
   const addPage = async (): Promise<void> => {
@@ -228,12 +328,12 @@ export function SlipDesk() {
     try { take(await call<SlipReadback>("GET", `/opd/visits/by-number/${encodeURIComponent(prev.visitNo)}`), "qr"); } catch { take(prev, "qr"); }
   };
 
-  const step = resolved === null ? 1 : shot !== null ? 4 : raw !== null ? 3 : 2;
+  const step = resolved === null ? 1 : current !== null ? 3 : pages.length > 0 ? 4 : 2;
   // Each step, and the "Filed against …" line after the last one, starts at the top of the page.
   useEffect(() => { scroller.current?.scrollTo({ y: 0, animated: false }); }, [step, filed]);
   const kindLabel = (k: string): string => ((SLIP_KINDS as readonly string[]).includes(k) ? t(`slipCapture.kinds.${k}`) : k);
   const waiting = items.filter((i) => i.state !== "filed");
-  const pageNo = (resolved?.filed?.length ?? 0) + 1;
+  const pageNo = baseline + 1;
 
   const row = (r: SlipRow, onPress: (() => void) | null) => {
     const age = minutesSince(r.consultDoneAt, now);
@@ -301,8 +401,8 @@ export function SlipDesk() {
   /* The picture gets what the screen has left after the band, the stepper, the card and the dock. */
   const cropMax = Math.max(220, win.height - insets.top - insets.bottom - 430);
 
-  let body: React.ReactNode;
-  let dock: React.ReactNode;
+  let body: ReactNode;
+  let dock: ReactNode;
   if (resolved === null) {
     body = (
       <>
@@ -311,6 +411,7 @@ export function SlipDesk() {
             <Text style={s.filedTitle}>✓ {t("slipCapture.filed", { name: nameOf(filed.back.patient, t) })}</Text>
             <Text style={s.ids}>{filed.back.patient?.uhid ?? "—"} · {filed.back.visitNo}</Text>
             <Text style={s.dim}>{t("slipCapture.filedLine", { kind: kindLabel(filed.kind), at: istClock(filed.at), doctor: filed.back.doctorCode ?? "—" })}</Text>
+            {filed.pages > 1 && <Text testID="slip-filed-pages" style={[s.dim, { fontWeight: "700", color: color.ink }]}>{t("mobile.slips.pagesFiled", { count: filed.pages })}</Text>}
             {filed.paper !== null && (
               <Text testID="slip-paper" style={[s.paper, PAPER_CONSULTED.has(filed.paper) && { color: color.green }]}>{t(`paper.outcome.${filed.paper}`)}</Text>
             )}
@@ -367,17 +468,19 @@ export function SlipDesk() {
       </>
     );
     dock = null;
-  } else if (shot === null && raw !== null) {
+  } else if (current !== null) {
+    const raw = current.raw;
     const usable = isConvex(raw.quad);
+    const at = pages.findIndex((p) => p.id === current.id) + 1;
     body = (
       <>
         <View style={s.strip} testID="slip-readback">
           <Text testID="slip-name" style={s.stripName} numberOfLines={1}>{nameOf(resolved.patient, t)}</Text>
-          <Text style={s.ids} numberOfLines={1}>{resolved.visitNo}</Text>
+          <Text style={s.ids} numberOfLines={1}>{pages.length > 1 ? `${t("mobile.slips.pageN", { n: at, total: pages.length })} · ` : ""}{resolved.visitNo}</Text>
         </View>
         {error !== null && <Note tone="bad" testID="slip-error">{error}</Note>}
         <Crop uri={raw.photo.uri} width={raw.photo.width} height={raw.photo.height} quad={raw.quad} status={raw.status}
-          onQuad={(quad) => setRaw((r) => (r === null ? r : { ...r, quad }))} />
+          onQuad={(quad) => patch(current.id, (p) => ({ ...p, raw: { ...p.raw, quad } }))} />
         <Text style={s.faint}>{usable ? t("mobile.slips.dragHint") : t("slipCapture.crop.crossed")}</Text>
       </>
     );
@@ -390,7 +493,7 @@ export function SlipDesk() {
         <Button testID="slip-crop-use" label={t(working ? "slipCapture.crop.working" : "slipCapture.crop.use")} busy={working} disabled={!usable || raw.status === "finding"} onPress={() => { void applyCrop(); }} />
       </>
     );
-  } else if (shot === null) {
+  } else if (pages.length === 0) {
     body = (
       <>
         {who}
@@ -400,12 +503,16 @@ export function SlipDesk() {
     dock = (
       <>
         <Text style={s.dockLead}>{t("slipCapture.dockCheck", { name: nameOf(resolved.patient, t) })}</Text>
-        <Button testID="slip-camera-open" label={t("slipCapture.openCamera")} onPress={() => { setError(null); setCameraOpen(true); }} />
+        <Button testID="slip-camera-open" label={t("slipCapture.openCamera")} onPress={() => openCamera({ kind: "first" })} />
         <Button testID="slip-not-this" kind="secondary" label={t("mobile.slips.notThis")} onPress={clearDesk} />
       </>
     );
   } else {
-    const shownW = Math.min(win.width - space.lg * 2, (cropMax * shot.width) / shot.height);
+    const shot = chosen?.flat ?? null;
+    const at = chosen === null ? 0 : pages.findIndex((p) => p.id === chosen.id);
+    const shownW = shot === null ? 0 : Math.min(win.width - space.lg * 2, (cropMax * shot.width) / shot.height);
+    const full = pages.length >= MAX_PAGES;
+    const fixed = sending !== null || chosen === null || chosen.docId !== null;
     body = (
       <>
         <View style={s.strip} testID="slip-readback">
@@ -413,17 +520,60 @@ export function SlipDesk() {
           <Text style={s.ids} numberOfLines={1}>{resolved.visitNo}</Text>
         </View>
         <View style={s.card}>
-          <Image testID="slip-preview" source={{ uri: `data:image/jpeg;base64,${shot.base64}` }} accessibilityLabel={t("slipCapture.previewAlt")}
-            style={{ width: shownW - space.md * 2, height: ((shownW - space.md * 2) * shot.height) / shot.width, alignSelf: "center", borderRadius: radius.sm, borderWidth: 1, borderColor: color.line }} resizeMode="contain" />
-          <Text style={s.asOf} testID="slip-page-info">{t("mobile.slips.pageInfo", { w: shot.width, h: shot.height, kb: Math.round(base64Bytes(shot.base64) / 1024) })}</Text>
-          {plainCut && <Note tone="warn" testID="slip-flat-only">{t("mobile.slips.flatOnly")}</Note>}
+          {/* The strip: every page of this slip in the order it will be filed, and the "+" for the next. */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="slip-pages" contentContainerStyle={{ gap: space.sm, paddingVertical: 2 }}>
+            {pages.map((p, i) => (
+              <Pressable key={p.id} testID={`slip-page-${String(i + 1)}`} accessibilityRole="button" accessibilityState={{ selected: chosen?.id === p.id }}
+                accessibilityLabel={t("mobile.slips.pageN", { n: i + 1, total: pages.length })}
+                onPress={() => { setSel(p.id); setRemoving(false); }} style={[s.thumb, chosen?.id === p.id && s.thumbOn, p.check && { borderColor: color.gold }]}>
+                {p.flat !== null
+                  ? <Image source={{ uri: `data:image/jpeg;base64,${p.flat.base64}` }} style={s.thumbImg} resizeMode="cover" />
+                  : <View style={[s.thumbImg, { alignItems: "center", justifyContent: "center" }]}><Text style={s.faint}>…</Text></View>}
+                <Text style={s.thumbNo}>{String(i + 1)}</Text>
+                {p.docId !== null && <Text testID={`slip-page-filed-${String(i + 1)}`} style={s.thumbFiled}>✓</Text>}
+                {p.check && <Text testID={`slip-page-check-${String(i + 1)}`} style={s.thumbCheck} numberOfLines={2}>{t("mobile.slips.checkCorners")}</Text>}
+              </Pressable>
+            ))}
+            <Pressable testID="slip-add" accessibilityRole="button" accessibilityLabel={t("slipCapture.addPage")} disabled={full || sending !== null}
+              onPress={() => openCamera({ kind: "burst" })} style={[s.thumb, s.addTile, (full || sending !== null) && { opacity: 0.45 }]}>
+              <Text style={s.addPlus}>+</Text>
+              <Text style={s.addText} numberOfLines={2}>{t(full ? "mobile.slips.pagesFull" : "slipCapture.addPage", { max: MAX_PAGES })}</Text>
+            </Pressable>
+          </ScrollView>
+          {pages.length > 1 && !anyFiled && chosen !== null && (
+            removing ? (
+              <View style={{ flexDirection: "row", gap: space.sm, alignItems: "center" }}>
+                <Text style={[s.dim, { flex: 1, fontWeight: "700", color: color.ink }]}>{t("mobile.slips.removeAsk", { n: at + 1 })}</Text>
+                <Pressable testID="slip-remove-no" accessibilityRole="button" onPress={() => setRemoving(false)} style={s.mini}><Text style={s.miniText}>{t("mobile.slips.removeNo")}</Text></Pressable>
+                <Pressable testID="slip-remove-yes" accessibilityRole="button" onPress={removeChosen} style={[s.mini, { borderColor: color.redLine }]}><Text style={[s.miniText, { color: color.red }]}>{t("mobile.slips.removeYes")}</Text></Pressable>
+              </View>
+            ) : (
+              <View style={{ flexDirection: "row", gap: space.sm }}>
+                <Pressable testID="slip-move-left" accessibilityRole="button" accessibilityLabel={t("mobile.slips.moveEarlier")} disabled={fixed || at === 0} onPress={() => move(-1)} style={[s.mini, (fixed || at === 0) && { opacity: 0.4 }]}><Text style={s.miniText}>◀</Text></Pressable>
+                <Pressable testID="slip-move-right" accessibilityRole="button" accessibilityLabel={t("mobile.slips.moveLater")} disabled={fixed || at === pages.length - 1} onPress={() => move(1)} style={[s.mini, (fixed || at === pages.length - 1) && { opacity: 0.4 }]}><Text style={s.miniText}>▶</Text></Pressable>
+                <View style={{ flex: 1 }} />
+                <Pressable testID="slip-remove" accessibilityRole="button" disabled={fixed} onPress={() => setRemoving(true)} style={[s.mini, fixed && { opacity: 0.4 }]}><Text style={s.miniText}>{t("mobile.slips.remove")}</Text></Pressable>
+              </View>
+            )
+          )}
+          {shot !== null ? (
+            <>
+              <Image testID="slip-preview" source={{ uri: `data:image/jpeg;base64,${shot.base64}` }} accessibilityLabel={t("slipCapture.previewAlt")}
+                style={{ width: shownW - space.md * 2, height: ((shownW - space.md * 2) * shot.height) / shot.width, alignSelf: "center", borderRadius: radius.sm, borderWidth: 1, borderColor: color.line }} resizeMode="contain" />
+              <Text style={s.asOf} testID="slip-page-info">{pages.length > 1 ? `${t("mobile.slips.pageN", { n: at + 1, total: pages.length })} · ` : ""}{t("mobile.slips.pageInfo", { w: shot.width, h: shot.height, kb: Math.round(base64Bytes(shot.base64) / 1024) })}</Text>
+            </>
+          ) : (
+            <Text style={s.faint} testID="slip-page-working">{t(chosen !== null && chosen.check ? "mobile.slips.pageUnmade" : "mobile.slips.pageWorking")}</Text>
+          )}
+          {chosen !== null && chosen.check && <Note tone="warn" testID="slip-check-note">{t("mobile.slips.checkNote")}</Note>}
+          {chosen !== null && chosen.plainCut && <Note tone="warn" testID="slip-flat-only">{t("mobile.slips.flatOnly")}</Note>}
           <Text style={[s.dim, { fontWeight: "700", color: color.ink }]}>{t("slipCapture.readableQ")}</Text>
           <Text style={s.dim}>{t("slipCapture.readableBody")}</Text>
         </View>
         <View style={s.card}>
           <Tag>{t("slipCapture.kind")}</Tag>
           {SLIP_KINDS.map((k) => (
-            <Pressable key={k} testID={`slip-kind-${k}`} accessibilityRole="radio" accessibilityState={{ selected: kind === k }} onPress={() => setKind(k)} style={[s.opt, kind === k && s.optOn]}>
+            <Pressable key={k} testID={`slip-kind-${k}`} accessibilityRole="radio" accessibilityState={{ selected: kind === k }} disabled={anyFiled} onPress={() => setKind(k)} style={[s.opt, kind === k && s.optOn]}>
               <View style={[s.radio, kind === k && { borderColor: color.green }]}>{kind === k && <View style={s.radioIn} />}</View>
               <View style={{ flex: 1 }}>
                 <Text style={s.optTitle}>{t(`slipCapture.kinds.${k}`)}</Text>
@@ -437,23 +587,30 @@ export function SlipDesk() {
         </View>
       </>
     );
+    const many = pages.length > 1;
+    const left = pages.filter((p) => p.docId === null).length;
     dock = (
       <>
         {error !== null && <Text accessibilityRole="alert" testID="slip-error" style={s.dockError}>{error}</Text>}
         <Text style={s.dockLead}>{t("slipCapture.dockFile", { name: nameOf(resolved.patient, t) })} · {resolved.visitNo}</Text>
-        <Text style={s.dim}>{t("slipCapture.dockFileSub", { kind: kindLabel(kind), n: pageNo })}</Text>
+        <Text style={s.dim}>{many ? t("mobile.slips.dockPages", { kind: kindLabel(kind), from: pageNo, to: pageNo + pages.length - 1 }) : t("slipCapture.dockFileSub", { kind: kindLabel(kind), n: pageNo })}</Text>
+        {notReady && sending === null && <Text testID="slip-not-ready" style={[s.dim, { color: "#8a5a10", fontWeight: "700" }]}>{t(pages.some((p) => p.check) ? "mobile.slips.checkFirst" : "mobile.slips.pagesWorking")}</Text>}
         {sending !== null && (
           <View testID="slip-progress" accessibilityRole="progressbar" style={s.bar}>
-            <View style={[s.barIn, { flex: Math.max(0.04, sending) }]} /><View style={{ flex: 1 - Math.max(0.04, sending) }} />
+            <View style={[s.barIn, { flex: Math.max(0.04, sending.f) }]} /><View style={{ flex: 1 - Math.max(0.04, sending.f) }} />
           </View>
         )}
         <View style={{ flexDirection: "row", gap: space.sm }}>
-          <View style={{ flex: 1 }}><Button testID="slip-retake" kind="secondary" label={t("slipCapture.retake")} disabled={sending !== null} onPress={retake} /></View>
-          {raw !== null && <View style={{ flex: 1.3 }}><Button testID="slip-crop-adjust" kind="secondary" label={t("slipCapture.crop.adjust")} disabled={sending !== null} onPress={() => { setShot(null); setError(null); }} /></View>}
+          <View style={{ flex: 1 }}><Button testID="slip-retake" kind="secondary" label={t("slipCapture.retake")} disabled={fixed} onPress={retake} /></View>
+          <View style={{ flex: 1.3 }}><Button testID="slip-crop-adjust" kind="secondary" label={t("slipCapture.crop.adjust")} disabled={fixed} onPress={() => { if (chosen !== null) { setEditing(chosen.id); setError(null); setRemoving(false); } }} /></View>
         </View>
         <Button testID="slip-file-it"
-          label={sending !== null ? (sending > 0 && sending < 1 ? t("mobile.slips.sending", { pct: Math.round(sending * 100) }) : t("mobile.slips.filing")) : t(error !== null ? "mobile.slips.retry" : "slipCapture.fileIt")}
-          disabled={sending !== null} onPress={() => { void file(); }} />
+          label={sending !== null
+            ? (many ? t("mobile.slips.sendingN", { n: sending.n, total: pages.length, pct: Math.round(sending.f * 100) })
+              : sending.f > 0 && sending.f < 1 ? t("mobile.slips.sending", { pct: Math.round(sending.f * 100) }) : t("mobile.slips.filing"))
+            : error !== null ? t("mobile.slips.retry")
+              : many ? t(anyFiled ? "mobile.slips.fileRest" : "mobile.slips.fileN", { count: left }) : t("slipCapture.fileIt")}
+          disabled={sending !== null || notReady} onPress={() => { void file(); }} />
       </>
     );
   }
@@ -509,7 +666,8 @@ export function SlipDesk() {
         </Pressable>
       </Modal>
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setText(/^(q1|rx1)\./.test(data) ? "" : data); void resolve(data); }} />
-      <SlipCamera open={cameraOpen} onClose={() => setCameraOpen(false)} onShot={(p) => { void onShot(p); }} />
+      <SlipCamera open={cameraOpen} onClose={() => setCameraOpen(false)} onShot={(p) => { void onShot(p); }}
+        burst={camMode.kind === "burst" ? { taken: pages.length, max: MAX_PAGES } : null} />
     </View>
   );
 }
@@ -555,6 +713,17 @@ const s = StyleSheet.create({
   dockError: { fontSize: 13.5, lineHeight: 18, fontWeight: "700", color: color.red },
   bar: { flexDirection: "row", height: 8, borderRadius: 4, backgroundColor: color.wash, overflow: "hidden" },
   barIn: { height: 8, borderRadius: 4, backgroundColor: color.green },
+  thumb: { width: 76, height: 104, borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.wash, overflow: "hidden" },
+  thumbOn: { borderWidth: 3, borderColor: color.green },
+  thumbImg: { width: "100%", height: "100%" },
+  thumbNo: { position: "absolute", left: 4, top: 4, minWidth: 20, textAlign: "center", fontFamily: MONO, fontSize: 12, fontWeight: "800", color: "#fff", backgroundColor: "rgba(19,36,32,.72)", borderRadius: 10, paddingHorizontal: 5, paddingVertical: 1, overflow: "hidden" },
+  thumbFiled: { position: "absolute", right: 4, top: 4, width: 20, textAlign: "center", fontSize: 12, fontWeight: "800", color: "#fff", backgroundColor: color.green, borderRadius: 10, paddingVertical: 1, overflow: "hidden" },
+  thumbCheck: { position: "absolute", left: 0, right: 0, bottom: 0, fontSize: 10.5, lineHeight: 13, fontWeight: "800", textAlign: "center", color: "#3d2a05", backgroundColor: "#ffd866", paddingVertical: 2, paddingHorizontal: 2 },
+  addTile: { alignItems: "center", justifyContent: "center", gap: 2, borderStyle: "dashed", borderWidth: 2, borderColor: color.greenLine, backgroundColor: color.greenSoft, paddingHorizontal: 4 },
+  addPlus: { fontSize: 34, lineHeight: 38, fontWeight: "700", color: color.green },
+  addText: { fontSize: 11.5, lineHeight: 14, fontWeight: "700", textAlign: "center", color: color.green },
+  mini: { minHeight: 44, minWidth: 48, alignItems: "center", justifyContent: "center", paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.card },
+  miniText: { fontSize: 14, fontWeight: "700", color: color.dim },
   closeBtn: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.card },
   closeText: { fontSize: 13.5, fontWeight: "700", color: color.dim },
   scrim: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(19, 36, 32, .35)" },
