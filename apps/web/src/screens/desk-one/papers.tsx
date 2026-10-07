@@ -5,6 +5,9 @@ import {
   fetchPrintDocument, listPrintJobs, openDocumentForPrinting, printSummary, reprintJob,
   PRINT_DOCUMENT_LABEL,
 } from "../../lib/print-api";
+import { printJobsHere, printsHere, reprintHere } from "../../lib/browser-print";
+import { openPrintingPanel, usePrintSetting } from "../../components/printing-panel";
+import { docLabel } from "./print-here";
 import { fetchInvoicePrint, listInvoicesFor } from "../../lib/billing-api";
 import { InvoicePrint } from "../../components/invoice-print";
 import { SubmitButton } from "../../components/submit-button";
@@ -85,6 +88,9 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
   });
 
   const rows = jobs.data?.jobs ?? [];
+  /* BROWSER PRINTING (owner 2026-10-07) — this computer prints its own paper: "print" prints, here, now. */
+  const setting = usePrintSetting();
+  const here = printsHere(setting, rows);
   /*
     NEWEST PER DOCUMENT. A reprint mints a new row rather than reviving the old one, so an encounter
     reprinted three times carries four token-slip rows — and offering four identical buttons would
@@ -123,6 +129,12 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
 
       {/* ═══ THE SLIPS ═══ */}
       <div className="tag" style={{ marginTop: 16 }}>{t("visitCard.papers.printed")}</div>
+      {here && latest.size > 0 ? (
+        <div data-testid="papers-here" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 5, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span>{t("printHere.papers.here")}</span>
+          <button type="button" className="sec" style={{ height: 22 }} onClick={openPrintingPanel}>{t("printHere.status.settings")}</button>
+        </div>
+      ) : null}
       {jobs.isPending ? (
         <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 6 }}>{t("visitCard.papers.readingPrints")}</div>
       ) : latest.size === 0 ? (
@@ -165,7 +177,7 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
                 type="button"
                 className="sec"
                 data-testid={`papers-pdf-${j.document}`}
-                style={{ height: 24, flexShrink: 0 }}
+                style={{ height: 24, flexShrink: 0, order: here ? 2 : 0 }}
                 onClick={async () => {
                   const label = PRINT_DOCUMENT_LABEL[j.document] ?? j.document;
                   const doc = await fetchPrintDocument(j.id);
@@ -184,18 +196,32 @@ export function PapersSheet({ encounterId, when }: { encounterId: string; when: 
               <SubmitButton
                 plain
                 type="button"
-                className="sec"
+                className={here ? "pri" : "sec"}
                 data-testid={`papers-reprint-${j.document}`}
-                style={{ height: 24, flexShrink: 0 }}
+                style={{ height: 24, flexShrink: 0, order: here ? 1 : 0 }}
                 onClick={async () => {
+                  const label = PRINT_DOCUMENT_LABEL[j.document] ?? j.document;
+                  if (here) {
+                    /*
+                      No pop-up and no save-as-PDF detour: a job nobody printed is printed as it is;
+                      one already on paper is a REPRINT (a new row, its own audit) printed here.
+                    */
+                    const r = j.status === "queued" || j.status === "failed" ? (await printJobsHere([j]))[0]! : await reprintHere(j);
+                    await jobs.refetch();
+                    const shown = docLabel(t, j.document);
+                    setNote(r.outcome === "printed" ? t("printHere.papers.printed", { label: shown })
+                      : r.outcome === "gone" ? t("visitCard.papers.gone", { label })
+                      : t("printHere.papers.notPrinted", { label: shown }));
+                    d?.note(r.outcome === "printed" ? `${label} sent to this computer's printer` : `${label} not printed`, r.outcome === "printed" ? "ok" : "warn");
+                    return;
+                  }
                   await reprintJob(j.id);
                   await jobs.refetch();
-                  const label = PRINT_DOCUMENT_LABEL[j.document] ?? j.document;
                   setNote(t("visitCard.papers.queued", { label }));
                   d?.note(`reprint queued — ${label}`, "ok");
                 }}
               >
-                {t("visitCard.papers.again")}
+                {here ? t("printHere.papers.print") : t("visitCard.papers.again")}
               </SubmitButton>
             </div>
           ))}

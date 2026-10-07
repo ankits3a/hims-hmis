@@ -12,6 +12,7 @@ import { applyTheme, setTheme, storedTheme } from "./lib/theme";
 import { istClock, istDateLabel } from "./screens/desk-one/model";
 import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
+import { PrintingPanelHost, openPrintingPanel } from "./components/printing-panel";
 import { ModeBanner } from "./components/mode-banner";
 import { LoginScreen } from "./screens/login";
 import "./styles/paper-pine.css";
@@ -508,6 +509,9 @@ function ShellChrome(): React.ReactElement {
           >
             {theme === "dark" ? t("app.themeLight") : t("app.themeDark")}
           </button>
+          <button type="button" className="util" data-testid="shell-printing" onClick={openPrintingPanel}>
+            {t("printHere.status.settings")}
+          </button>
           <button type="button" className="util" onClick={() => { void logout().then(() => navigate({ to: "/login" })); }}>
             {t("app.logout")}
           </button>
@@ -637,7 +641,8 @@ function Shell(): React.ReactElement {
   );
 }
 
-const rootRoute = createRootRoute({ component: () => <Outlet /> });
+/* The printing panel is this BROWSER's setting, so it is mounted once, above every screen (Desk One has no shell). */
+const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelHost /></> });
 
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginScreen });
 

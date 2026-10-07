@@ -14445,5 +14445,74 @@
       "back": "back to the papers",
       "billNote": "The bill opens as the printed document — the same one the counter prints on the day, from the server's own figures."
     }
+  },
+  "printHere": {
+    "doc": {"opd_prescription": "Prescription sheet", "opd_token_slip": "Token slip", "opd_payment_receipt": "Payment receipt"},
+    "panel": {
+      "title": "Printing on this computer",
+      "close": "Close",
+      "sub": "A printer is attached to a computer, so this choice is kept on this computer only. Other counters keep their own.",
+      "how": "How does paper come out here?",
+      "papers": "What prints at hand over",
+      "twoDialogs": "The sheet is A4 and the slip is a narrow roll, so two papers mean two print windows, one after the other.",
+      "test": "Print a test page",
+      "autoHow": "Print without the window"
+    },
+    "mode": {
+      "auto": {
+        "name": "Decide for me",
+        "sub": "Prints on this computer's printer while no hospital print box is running, and stops by itself the day one is."
+      },
+      "browser": {
+        "name": "This computer's own printer",
+        "sub": "The paper comes out of the printer attached to this computer, at hand over."
+      },
+      "relay": {
+        "name": "The hospital's print box",
+        "sub": "Paper is sent to the print box inside the hospital. Nothing prints from this computer."
+      }
+    },
+    "paper": {
+      "opd_prescription": "Prescription sheet (A4)",
+      "opd_token_slip": "Token slip (needs the small roll printer)",
+      "opd_payment_receipt": "Payment receipt (needs the small roll printer)"
+    },
+    "test": {
+      "title": "HMIS test page",
+      "line1": "If you can read this on paper, this computer prints HMIS papers.",
+      "line2": "The prescription sheet uses the same A4 page.",
+      "printed": "Sent to the printer. Check the page came out.",
+      "no_dialog": "The print window did not open. Check this browser is allowed to print.",
+      "refused": "This browser refused to print."
+    },
+    "help": {
+      "title": "Make hand over print with no window (Windows, once per computer)",
+      "s1": "In Windows Settings → Printers, set the A4 printer as the default printer.",
+      "s2": "Right-click the desktop → New → Shortcut.",
+      "s3": "Paste this as the location (Google Chrome):",
+      "edge": "Or, for Microsoft Edge:",
+      "s4": "Name it “HMIS”, finish, and pin it to the taskbar.",
+      "s5": "Close every Chrome window, then always open HMIS from this shortcut. Hand over now prints straight to the default printer.",
+      "undo": "To undo: open HMIS from the normal Chrome icon instead. The print window comes back."
+    },
+    "status": {
+      "here": "Printing on this computer's printer.",
+      "sending": "{{label}} — sending to this printer…",
+      "sent": "{{label}} sent to this printer.",
+      "notYet": "{{label}} not printed yet.",
+      "gone": "{{label}} is no longer available to print.",
+      "failed": "{{label}} could not be fetched. Check the network and print again.",
+      "print": "Print the {{lower}}",
+      "again": "Print again",
+      "settings": "Printing settings",
+      "waitingJob": "{{label}} is being prepared…",
+      "off": "{{label}} is switched off for this computer."
+    },
+    "papers": {
+      "print": "print",
+      "printed": "{{label}} sent to this computer's printer.",
+      "notPrinted": "{{label}} not printed yet — the print window did not open or close.",
+      "here": "Printing on this computer's printer."
+    }
   }
 }

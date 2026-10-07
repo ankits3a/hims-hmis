@@ -11,6 +11,9 @@ import {
 } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import { listPrintJobs, printSummary, reprintJob, PRINT_DOCUMENT_LABEL } from "../../lib/print-api";
+import { printsHere } from "../../lib/browser-print";
+import { openPrintingPanel, usePrintSetting } from "../../components/printing-panel";
+import { PrintHere } from "./print-here";
 import { dayPartOf } from "../../lib/appointment-view";
 import type { DayPart } from "../../lib/appointment-view";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
@@ -2931,8 +2934,18 @@ function PrintStatus({ encounterId }: { encounterId: string }): React.ReactEleme
     refetchInterval: 3000,
   });
   const [asked, setAsked] = useState<string[]>([]);
+  const setting = usePrintSetting();
+  const { t } = useTranslation();
   const summary = printSummary(jobs.data?.jobs ?? []);
   if (summary.state === "none") return null;
+  /*
+    BROWSER PRINTING (owner 2026-10-07) — no relay serves this counter (or this computer was told to
+    print its own paper): hand-over prints here, and this line says so. Everything below this
+    return is the relay's road, unchanged.
+  */
+  if (printsHere(setting, jobs.data?.jobs ?? [])) {
+    return <PrintHere jobs={jobs.data?.jobs ?? []} setting={setting} onChanged={() => { void jobs.refetch(); }} />;
+  }
 
   const tone = summary.state === "failed" ? "var(--red)" : summary.state === "printed" ? "var(--green)" : "var(--dim)";
   return (
@@ -2952,6 +2965,7 @@ function PrintStatus({ encounterId }: { encounterId: string }): React.ReactEleme
           {asked.includes(job.id) ? "sent again" : `print the ${PRINT_DOCUMENT_LABEL[job.document] ?? job.document} again`}
         </button>
       ))}
+      <button type="button" className="sec" data-testid="print-settings" style={{ height: 24 }} onClick={openPrintingPanel}>{t("printHere.status.settings")}</button>
     </div>
   );
 }
