@@ -19,6 +19,8 @@ import { withPeople } from "./people";
 import type { ApprovalRow } from "./worklist";
 import type { ApprovalListItem } from "./people";
 import type { Db } from "../db/client";
+import { myRequests } from "./overdue";
+import type { MyRequest } from "./overdue";
 
 /** Approvals errors → HTTP, defined once (Plan 03's toHttp convention). Anything unrecognized rethrows: a 500 is a genuine bug, loudly. */
 function toHttp(e: unknown): never {
@@ -138,6 +140,13 @@ export class ApprovalsController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /** What I asked for: mine still pending, and mine decided today. No patient text (app home, decision 0043). */
+  @RequirePermission("approvals.requests.create", "hospital")
+  @Get("mine")
+  async mine(@CurrentActor() actor: Actor): Promise<{ items: MyRequest[] }> {
+    return myRequests(this.db, actor);
   }
 
   @RequirePermission("approvals.requests.read", "hospital")

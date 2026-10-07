@@ -6,7 +6,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { parsed, toHttp } from "./opd-masters.controller";
 import { rxLineBody } from "./opd-queue.controller";
 import {
-  confirmPaperConsult, correctPaperPrescription, listPaperConsults, paperCheck, paperCorrectionCheck, paperVisitState,
+  askPaperRecheck, confirmPaperConsult, correctPaperPrescription, listPaperConsults, listPaperSentBack, resolvePaperRecheck, paperCheck, paperCorrectionCheck, paperVisitState,
   reopenPaperConsult, transcribePaper,
 } from "./paper-consult";
 import type { LineAlerts, PaperConsultRow, TranscribePaperResult } from "./paper-consult";
@@ -46,6 +46,8 @@ const correctBody = z.object({
   reasons: z.array(z.object({ lineIndex: z.number().int().nonnegative(), reason: z.string().max(500) })).max(40).optional(),
 });
 const reopenBody = z.object({ reason: z.string().max(500), voidTranscription: z.boolean().optional() });
+const recheckBody = z.object({ reason: z.string().min(1).max(500) });
+const recheckDoneBody = z.object({ note: z.string().max(500).nullish() });
 const listQuery = z.object({ scope: z.enum(["mine", "all"]).optional(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
 
 @Controller("opd/paper")
@@ -137,6 +139,43 @@ export class OpdPaperController {
       return await correctPaperPrescription(this.db, actor, this.cfg, id, {
         lines: b.lines, ...(b.reasons === undefined ? {} : { reasons: b.reasons }),
       });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** The doctor sends what the desk typed back, with a reason (decision 0043). */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/recheck")
+  @HttpCode(200)
+  async recheck(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<PaperConsultRow> {
+    const b = parsed(recheckBody, body);
+    try {
+      return await askPaperRecheck(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** The desk says it has looked again, without retyping. A retyped save closes the ask by itself. */
+  @RequirePermission("opd.prescription.transcribe", "hospital")
+  @Post("visits/:id/recheck-done")
+  @HttpCode(200)
+  async recheckDone(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<PaperConsultRow> {
+    const b = parsed(recheckDoneBody, body ?? {});
+    try {
+      return await resolvePaperRecheck(this.db, actor, id, b.note ?? null);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** What doctors sent back and nobody has answered — the desk's list and the desk's phone card. */
+  @RequirePermission("opd.prescription.transcribe", "hospital")
+  @Get("sent-back")
+  async sentBack(@CurrentActor() actor: Actor): Promise<{ items: PaperConsultRow[] }> {
+    try {
+      return await listPaperSentBack(this.db, actor);
     } catch (e) {
       toHttp(e);
     }

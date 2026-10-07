@@ -241,9 +241,10 @@ export class RosterBoardController {
   @RequirePermission("roster.read", "hospital")
   async answer(@CurrentActor() actor: Actor, @Param("requestId") requestId: string, @Body() body: unknown): Promise<{ ok: true }> {
     try {
-      const b = (body ?? {}) as { accept?: unknown };
+      const b = (body ?? {}) as { accept?: unknown; note?: unknown };
       if (typeof b.accept !== "boolean") throw new RosterError("invalid_window", "say yes or no — `accept: true` or `accept: false`", {});
-      await withTx(this.db, (tx) => answerCover(tx, actor, requestId, b.accept as boolean));
+      if (b.note !== undefined && b.note !== null && (typeof b.note !== "string" || b.note.length > 500)) throw new RosterError("invalid_window", "a note is text of at most 500 characters", {});
+      await withTx(this.db, (tx) => answerCover(tx, actor, requestId, b.accept as boolean, (b.note as string | null | undefined) ?? null));
       return { ok: true };
     } catch (e) { toHttp(e); }
   }
