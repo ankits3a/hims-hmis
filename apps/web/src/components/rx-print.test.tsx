@@ -281,3 +281,25 @@ it("2026-10-04: Guest Faculty prints the Doctor ID as the Unit Number and a blan
   expect(screen.getByTestId("rx-dept-regn").textContent).toBe("Dept. Regn: ");
   expect(document.body).not.toHaveTextContent("Guest Faculty");
 });
+
+/**
+ * Owner ruling 2026-10-06 — a prescription the desk TYPED from the doctor's paper must not pass for
+ * one the doctor keyed. The print names the desk that typed it and says the signed paper is the
+ * original; a prescription the doctor issued on the screen carries no such line.
+ */
+describe("RxPrint — a transcription says it is one", () => {
+  it("typed from paper: the sheet says who typed it and that the signed paper is the original", () => {
+    renderWithProviders(<RxPrint data={{ ...DATA, transcribedByName: "Priya Kumari" }} />);
+    const note = screen.getByTestId("rx-transcribed");
+    expect(note).toHaveTextContent("Typed from the doctor's paper prescription by Priya Kumari.");
+    expect(note).toHaveTextContent("The paper the doctor signed is the original");
+    /* It is INSIDE the printed document, not a screen-only hint. */
+    expect(note.closest(".print-doc")).not.toBeNull();
+  });
+  it("keyed by the doctor (or an older server that says nothing): no such line", () => {
+    renderWithProviders(<RxPrint data={DATA} />);
+    expect(screen.queryByTestId("rx-transcribed")).not.toBeInTheDocument();
+    renderWithProviders(<RxPrint data={{ ...DATA, transcribedByName: null }} />);
+    expect(screen.queryByTestId("rx-transcribed")).not.toBeInTheDocument();
+  });
+});

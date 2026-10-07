@@ -50,6 +50,11 @@ releases it early, `--status` says what is on it. Only one lane at a time: check
 ask before replacing another lane's staging. Merged work reaches production and staging by itself
 (cron `tools/auto-deploy.sh`, every 10 min, CI-green main only) — never run `deploy.sh` by hand.
 
+**Merging to `main` is the production push, so it waits for the owner (owner rule).** Every change goes
+to staging first; after the owner has looked, ask them: "Did you like it on staging? OK to push to
+production?" Merge only on their yes. A change with nothing to see (docs, CI, tests only): say so, and
+still ask before merging.
+
 ## Files that belong to everyone — coordinate before editing
 
 `kernel/**`, `kernel/db/schema/index.ts`, `app.module.ts`, `worker.module.ts`,
@@ -72,8 +77,16 @@ Modules import each other only through the other module's `index.ts` (lint-enfor
 - Never emit compiled JS into `src` (`tsc` without `--noEmit` is banned outside `build`).
 - Owner rulings are for money, procurement and law only. Anything else: pick the standard
   Indian-corporate-hospital answer, mark it DECIDED in the phase doc, keep going.
+- Owner rulings live in `docs/decisions/` (indexed in its README). Read the ones for your area
+  before building; a new ruling is a new numbered file, an old one is only marked Superseded.
 
 ## Reading budget
+
+**Before exploring code, read `docs/architecture/README.md`, then the page for the module you touch
+(`docs/architecture/modules/<m>.md`: dependencies, public API, routes, tables).** It is generated
+from the source and CI keeps it current, so trust it over a grep crawl. After changing module
+imports, an `index.ts`, routes, tables or web routes, run `node tools/arch/gen.mjs` and commit the
+result; after a rebase conflict in `docs/architecture/`, regenerate instead of merging by hand.
 
 Read the phase doc for your lane and this file. Do not read `EXECUTION-LESSONS.md` (468 KB), the
 plan series index, or the project brief unless a task names a section. Method for closing a

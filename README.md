@@ -1605,6 +1605,20 @@ colleague's shift. Confidential patients are aliased against the reader's own cl
 department read writes `day_report.patients_listed` naming the reader, the day, the department, the
 format and the row count before the rows leave.
 
+**Consulted on paper (owner ruling,
+2026-10-06).** Some doctors write on paper and never open the dashboard, so a patient they have seen
+would sit "waiting" all day. `opd.consult.paper` closes a visit from the doctor's paper — a
+photographed prescription slip filed against it, or the prescription typed from it — and goes to
+exactly two seats, `opd_slip_desk` and `opd_scribe` (the owner's ruling B: "the slip desk and Desk
+scribe"). `opd_slip_desk` is new and is the smallest role that works the slip desk: it reads
+today's visits and the queue, photographs the page (`patients.update`), re-prints a slip, and holds
+no typing, money or result string. `opd_scribe` additionally gains `formulary.read` and
+`tariff.read`, the two reads the doctor's own screen uses to pick a catalogue medicine and to quote
+an advised test, because the scribe now types both. Filing a slip without `opd.consult.paper` still
+files it and closes nothing. A scribe clears no safety warning: a line that raises one is held for
+the treating doctor. A visit closed this way is reopened by the supervisor's existing
+`opd.queue.transfer`.
+
 **The roster (phase R, the owner's "top-class backbone" of
 2026-09-20).** `medical_superintendent` gains `roster.periods.manage`, `roster.periods.publish` and
 `roster.read`; `owner` gains `roster.read`. A roster is a DRAFT until somebody publishes it, and

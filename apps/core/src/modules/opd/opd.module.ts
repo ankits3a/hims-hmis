@@ -16,6 +16,9 @@ import { OpdAdviceController } from "./opd-advice.controller";
 import { OpdCdsController } from "./opd-cds.controller";
 import { OpdQueueController } from "./opd-queue.controller";
 import { OpdVisitsController } from "./opd-visits.controller";
+import { OpdPaperController } from "./opd-paper.controller";
+import { paperHookForDocument } from "./paper-consult";
+import { registerDocumentCapturedHook } from "../patients";
 import { OPD_TOPIC_SPACES, opdTopicRouter } from "./realtime";
 import { registerOpdGlassesPrinting } from "./glasses-print";
 
@@ -47,7 +50,7 @@ class OpdRealtimeRegistrar implements OnModuleInit {
  */
 @Module({
   imports: [RealtimeModule],
-  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController],
+  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController, OpdPaperController],
   providers: [OpdRealtimeRegistrar],
 })
 export class OpdModule implements OnModuleInit {
@@ -61,7 +64,19 @@ export class OpdModule implements OnModuleInit {
     // Board "Ophthal" — the glasses prescription is OPD's paper, drawn here and printed by the
     // kernel's relay (the pharmacy module's shape), so the kernel never reads a section record.
     registerOpdGlassesPrinting();
+    // Owner ruling 2026-10-06 — a photographed prescription slip closes the visit it is filed on.
+    registerPaperConsultHook();
   }
+}
+
+/**
+ * The slip desk files through the patients module (`POST /patients/:id/documents`), which knows
+ * nothing of visits; this hands it the OPD's answer to "and what does that page mean". Exported so
+ * a suite can register it without booting Nest, like the resolver below.
+ */
+export const PAPER_CONSULT_HOOK = "opd.paper";
+export function registerPaperConsultHook(): () => void {
+  return registerDocumentCapturedHook(PAPER_CONSULT_HOOK, (tx, actor, doc, now) => paperHookForDocument(tx, actor, doc, now));
 }
 
 /**

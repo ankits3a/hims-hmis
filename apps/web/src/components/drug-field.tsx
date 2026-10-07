@@ -80,8 +80,15 @@ export function detailOf(h: { name: string; salts: string[]; strength: string | 
 }
 
 export function DrugField({
-  value, onPick, onText, placeholder, inputId,
+  value, onPick, onText, placeholder, inputId, onEnter,
 }: {
+  /**
+   * Owner ruling 2026-10-06 — the desk scribe types all day and never reaches for a mouse. Enter with
+   * NO suggestion highlighted is the caller's (the scribe's table adds a line); with one highlighted
+   * (↓ / ↑) it picks that suggestion, here. Absent, Enter does nothing new and the doctor's screen
+   * behaves as it always has.
+   */
+  onEnter?: () => void;
   value: string;
   /** A row was chosen: the caller sets both the name and the medicine id. */
   onPick: (hit: WireMedicineHit) => void;
@@ -106,6 +113,8 @@ export function DrugField({
    */
   const picked = useRef<string | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
+  /** The suggestion the arrow keys are on; -1 is "none", which is every list as it opens. */
+  const [at, setAt] = useState(-1);
 
   useEffect(() => {
     const q = value.trim();
@@ -122,7 +131,14 @@ export function DrugField({
         .then((items) => {
           if (!live || asked.current !== q) return;
           setHits(items);
-          setOpen(items.length > 0);
+          setAt(-1);
+          /*
+            ONLY UNDER THE CURSOR (browser walk, 2026-10-06). A table that arrives PRE-FILLED — the
+            doctor correcting what the desk typed — mounts three fields with three names, and each
+            one searched and dropped its list open over the rows beneath it, with nobody typing in
+            any of them. The answers are kept; the list opens when the field is the one in hand.
+          */
+          setOpen(items.length > 0 && box.current !== null && box.current.contains(document.activeElement));
         })
         .catch(() => { if (live) setHits([]); })
         .finally(() => { if (live) setBusy(false); });
@@ -147,13 +163,32 @@ export function DrugField({
         placeholder={placeholder}
         onChange={(e) => { onText(e.target.value); }}
         onFocus={() => { if (hits.length > 0) setOpen(true); }}
-        onKeyDown={(e) => { if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); } }}
+        /* The input keeps its plain `textbox` role — every consult suite finds it by that — and names the
+           highlighted suggestion for a screen reader without changing what the field is. */
+        aria-activedescendant={open && at >= 0 && hits[at] !== undefined ? `${inputId}-opt-${hits[at].id}` : undefined}
+        onKeyDown={(e) => {
+          const listed = open && hits.length > 0;
+          if (e.key === "Escape" && open) { e.stopPropagation(); setOpen(false); return; }
+          if (e.key === "ArrowDown" && listed) { e.preventDefault(); setAt((i) => Math.min(hits.length - 1, i + 1)); return; }
+          if (e.key === "ArrowUp" && listed) { e.preventDefault(); setAt((i) => Math.max(-1, i - 1)); return; }
+          if (e.key !== "Enter") return;
+          const hit = listed && at >= 0 ? hits[at] : undefined;
+          if (hit !== undefined) {
+            e.preventDefault();
+            picked.current = hit.name; onPick(hit); setOpen(false); setAt(-1);
+          } else if (onEnter !== undefined) {
+            e.preventDefault();
+            setOpen(false);
+            onEnter();
+          }
+        }}
       />
       {busy && (
         <span className="mo" data-testid={`${inputId}-busy`} style={{ position: "absolute", right: 9, top: 10, fontSize: 10, color: "var(--faint)" }}>…</span>
       )}
       {open && hits.length > 0 && (
         <ul
+          id={`${inputId}-list`}
           data-testid={`${inputId}-hits`}
           style={{
             position: "absolute", zIndex: 20, top: 37, left: 0, right: 0, margin: 0, padding: 0,
@@ -170,14 +205,14 @@ export function DrugField({
             borderRadius: 7, boxShadow: "0 6px 18px rgba(19,36,32,.10)", maxHeight: 292, overflowY: "auto",
           }}
         >
-          {hits.map((h) => (
-            <li key={h.id}>
+          {hits.map((h, i) => (
+            <li key={h.id} id={`${inputId}-opt-${h.id}`} data-on={i === at ? "true" : undefined}>
               <button
-                type="button" data-testid={`${inputId}-hit-${h.id}`}
+                type="button" data-testid={`${inputId}-hit-${h.id}`} tabIndex={-1}
                 onClick={() => { picked.current = h.name; onPick(h); setOpen(false); }}
                 style={{
                   display: "flex", width: "100%", gap: 10, alignItems: "baseline", padding: "7px 10px",
-                  border: 0, borderTop: "1px solid var(--line2)", background: "none", cursor: "pointer",
+                  border: 0, borderTop: "1px solid var(--line2)", background: i === at ? "var(--green-soft)" : "none", cursor: "pointer",
                   textAlign: "left", font: "inherit", color: "inherit",
                 }}
               >

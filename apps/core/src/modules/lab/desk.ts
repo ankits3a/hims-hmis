@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import {
   counterparties, invoiceLines, labItems, labOrderables, labSpecimens, opdDepartments, opdDoctors,
-  opdEncounters, opdQueueEntries, orderItems, orders, patients,
+  opdEncounters, opdQueueEntries, orderItems, orders, patients, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { placeOrder } from "../../kernel/orders/place";
@@ -691,6 +691,13 @@ export type DeskAdvisedLine = {
   orderable: { container: string; specimenType: string; consentRequired: boolean; sensitive: boolean; requiresFasting: boolean } | null;
   /** A lab item ALREADY placed for this service on this visit — the seat shows it, never re-orders it. */
   alreadyOrderedItemId: string | null;
+  /**
+   * Owner ruling 2026-10-06 — set when the desk scribe TYPED this test from the doctor's paper
+   * (`advised_tests[].transcribedBy`): the full name of whoever typed it. Null when the doctor
+   * advised it on the screen. The lab may bill and collect on it either way (ruling A); the seat
+   * says where it came from and offers the photographed slip to check it against.
+   */
+  typedFromPaperBy: string | null;
 };
 
 export type DeskFindHit = {
@@ -730,8 +737,12 @@ async function todaysEncounterFor(exec: Db | Tx, patientId: string, serviceDate:
 }
 
 async function advisedLinesFor(exec: Db | Tx, encounter: EncounterRow): Promise<DeskAdvisedLine[]> {
-  const advised = (encounter.advisedTests ?? []) as AdvisedTest[];
+  const advised = (encounter.advisedTests ?? []) as (AdvisedTest & { transcribedBy?: string })[];
   if (advised.length === 0) return [];
+  const typists = [...new Set(advised.map((a) => a.transcribedBy).filter((x): x is string => typeof x === "string"))];
+  const typistName = new Map(typists.length === 0 ? [] : (await (exec as Db)
+    .select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, typists)))
+    .map((u) => [u.id, u.fullName] as const));
   const items = advisedTestItems(advised);
   const serviceIds = [...new Set(items.map((i) => i.serviceId))];
   const orderables = await (exec as Db)
@@ -755,6 +766,7 @@ async function advisedLinesFor(exec: Db | Tx, encounter: EncounterRow): Promise<
             sensitive: o.sensitive, requiresFasting: o.requiresFasting }
         : null,
       alreadyOrderedItemId: placedFor.get(a.serviceId) ?? null,
+      typedFromPaperBy: a.transcribedBy === undefined ? null : typistName.get(a.transcribedBy) ?? "the desk",
     };
   });
 }

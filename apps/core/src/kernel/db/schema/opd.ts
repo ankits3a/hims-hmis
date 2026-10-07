@@ -508,6 +508,30 @@ export const opdEncounters = pgTable(
     dangerFlagged: boolean("danger_flagged").notNull().default(false), // set by vitals; never auto-cleared in Plan 07
     consultStartedAt: timestamp("consult_started_at", { withTimezone: true }),
     consultCompletedAt: timestamp("consult_completed_at", { withTimezone: true }),
+    /**
+     * ═══ CONSULTED ON PAPER (owner ruling 2026-10-06) ═══
+     *
+     * Some doctors write on paper and never open the dashboard, so a patient they have seen would
+     * sit "waiting" all day. The slip desk filing the photographed prescription, or the desk scribe
+     * typing it, closes the visit. `completed_via` is null for a completion the doctor made on the
+     * screen and `'paper'` for this one; the three columns beside it say on whose word, when, and
+     * on what evidence (`'slip_photo'` → a `patient_documents.id`, `'transcription'` → an
+     * `opd_prescriptions.id` or, for tests alone, the encounter's own id).
+     *
+     * The doctor's look is OPTIONAL and never holds the patient: `paper_confirmed_*` records it when
+     * it happens. A supervisor who finds the wrong visit was closed reopens it with a reason
+     * (`paper_reopen*`), which clears `completed_via` and puts the patient back in the line.
+     */
+    completedVia: text("completed_via"),
+    paperCompletedBy: text("paper_completed_by"),
+    paperCompletedAt: timestamp("paper_completed_at", { withTimezone: true }),
+    paperEvidenceKind: text("paper_evidence_kind"),
+    paperEvidenceId: text("paper_evidence_id"),
+    paperConfirmedBy: text("paper_confirmed_by"),
+    paperConfirmedAt: timestamp("paper_confirmed_at", { withTimezone: true }),
+    paperReopenedBy: text("paper_reopened_by"),
+    paperReopenedAt: timestamp("paper_reopened_at", { withTimezone: true }),
+    paperReopenReason: text("paper_reopen_reason"),
     abandonedAt: timestamp("abandoned_at", { withTimezone: true }),
     abandonReason: text("abandon_reason"),
     openedBy: text("opened_by").notNull(),
@@ -1170,6 +1194,14 @@ export const opdPrescriptionDrafts = pgTable(
      * `issued_by` there is the DOCTOR (it always was), and `drafted_by` here is the scribe.
      */
     issuedPrescriptionId: text("issued_prescription_id"),
+    /**
+     * Owner ruling 2026-10-06 — LINES HELD FOR THE DOCTOR. When the desk scribe types a paper
+     * prescription and a line raises a hard warning (an allergy, a severe interaction, a repeated
+     * salt, a contraindication), the scribe may not clear it: the clean lines are issued and the
+     * rest wait HERE, as the pending draft, with the warnings that held them. Null on an ordinary
+     * FD-30 draft. `HeldAlert[]` (`modules/opd/paper-consult.ts`).
+     */
+    heldAlerts: jsonb("held_alerts"),
   },
   (t) => [
     /**

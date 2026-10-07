@@ -1397,5 +1397,21 @@
       "intern": "Intern",
       "medical_officer": "MO"
     }
+  },
+  "paper": {
+    "outcome": {
+      "marked": "The visit is now marked consulted.",
+      "already_marked": "The visit was already marked consulted from the paper.",
+      "doctor_completed": "The doctor had already completed this visit on the screen.",
+      "doctor_consulting": "Not marked consulted: the doctor has this visit open on the screen and will complete it.",
+      "not_permitted": "Not marked consulted: this login is not a Slip Desk or Desk Scribe.",
+      "not_today": "Not marked consulted: this visit is not from today.",
+      "no_doctor": "Not marked consulted: the visit names no doctor.",
+      "not_in_queue": "Not marked consulted: the patient has no token in the doctor's queue yet.",
+      "abandoned": "Not marked consulted: the visit was abandoned.",
+      "not_a_consultation": "This is not an OPD consultation, so nothing is marked.",
+      "gate_refused": "Not marked consulted: the consultation is blocked for this visit. Ask the supervisor.",
+      "failed": "The page is filed, but the visit could not be marked consulted. Tell the supervisor."
+    }
   }
 }
