@@ -68,6 +68,22 @@ this item):
 - The OPD admin doctors tab names every unit head with no registration number
   (`GET /roster/unit-heads-without-regn`).
 
+## Guardian Name (2026-10-07)
+
+Owner, 2026-10-07: *"Add 'Guardian Name' label & field in the prescription slip print along with name, age and
+other fields"*
+
+- The A4 prescription sheet prints **Guardian Name:** directly under **Name:** (left column: Name · Guardian Name ·
+  UHID · Gender + Age; the right column is unchanged; Address and Unit Number / Dept. Regn each move down one row).
+- **DECIDED — the value:** the guardian whose authority stands on the visit day (`patient_guardians`, active, not
+  past `valid_to`, the oldest link first), with the relation written the Indian way: father or mother → `S/o` / `D/o`
+  by the patient's gender, spouse of a woman → `W/o`, anyone else → `C/o`. With no guardian linked it falls back to
+  the registered father's / husband's name (`patients.father_husband_name`): `S/o` for a man, `C/o` for a woman
+  (the field does not say which of the two it holds, so the sheet does not guess).
+- Nothing recorded → the label prints with a blank value (the Dept. Regn rule). A sealed patient's is blank.
+- One line only; a long name is clipped with an ellipsis. Font sizes are unchanged.
+- Code: `kernel/printing/render.ts` (`renderPrescriptionSheet`, `.c-guard`). No other document carries this header.
+
 ## Open
 
 - **Flagged to the owner (law):** the Indian Medical Council Regulations 2002 (1.4.2) and the telemedicine guidelines
