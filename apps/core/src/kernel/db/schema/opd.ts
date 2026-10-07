@@ -837,9 +837,16 @@ export const opdEncounterDiagnoses = pgTable(
      * client sent, and null on an eye code the doctor has not yet placed — not a gate (no ruling).
      */
     laterality: text("laterality"),
+    /**
+     * Where the committed diagnosis came from (decision 0050, P0): typed, picked from search, a
+     * suggestion tapped, a spoken note, or the desk's reading of the paper. Null on every row written
+     * before, and whenever the client did not say — learning then counts it as typed.
+     */
+    source: text("source"),
   },
   (t) => [
     primaryKey({ columns: [t.encounterId, t.seq] }),
+    check("opd_encounter_diagnoses_source_ck", sql`${t.source} is null or ${t.source} in ('typed', 'search', 'suggested', 'voice', 'paper')`),
     check("opd_encounter_diagnoses_laterality_ck", sql`${t.laterality} is null or ${t.laterality} in ('od', 'os', 'ou')`),
     /** MRD and every claim count by code, so the code is the one thing read across encounters. */
     index("opd_encounter_diagnoses_code_idx").on(t.icd10Code),
@@ -1494,11 +1501,105 @@ export const opdSuggestionEvents = pgTable(
     source: text("source").notNull(),
     outcome: text("outcome").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    /*
+     * Decision 0050, P0 — THE ONE SUGGESTION LOG. The phone consult's three-column counter (0048)
+     * grew into the plan's `cds_suggestion_events` IN PLACE: one table, not two. Every column below
+     * is nullable because the rows written before carry none of them. `encounter_id` is the join to
+     * what the visit finally held and stays; there is NO patient id here and never a patient's name.
+     */
+    /** Which screen's suggestion: `consult_web`, `consult_phone`, `scribe`, `desk`. */
+    surface: text("surface"),
+    doctorId: text("doctor_id"),
+    departmentId: text("department_id"),
+    encounterId: text("encounter_id"),
+    /** `dx:J06`, `tx:viral fever`, `cc:cough+fever` — what the suggestion was FOR. */
+    contextKey: text("context_key"),
+    /** The item itself: a medicine id or normalised name, an ICD code, a test code, a phrase. */
+    itemKey: text("item_key"),
+    /** 0-based position on the screen; null for a row that is not about a position. A `shown` row carries its items here. */
+    rankShown: integer("rank_shown"),
+    items: jsonb("items").$type<string[]>(),
+    /** Whose pattern put it there: personal, dept, hospital, starter, alias — null until P1 ranks. */
+    sourceLevel: text("source_level"),
+    /** One id for the chips drawn together, so a `shown` row and its taps and crosses can be joined. */
+    batchId: text("batch_id"),
   },
   (t) => [
     index("opd_suggestion_events_at_idx").on(t.createdAt),
-    check("opd_suggestion_events_kind_ck", sql`${t.kind} in ('medicine', 'test', 'diagnosis')`),
-    check("opd_suggestion_events_source_ck", sql`${t.source} in ('typed', 'voice', 'search', 'set', 'repeat')`),
-    check("opd_suggestion_events_outcome_ck", sql`${t.outcome} in ('accepted', 'dismissed', 'manual')`),
+    index("opd_suggestion_events_doctor_item_idx").on(t.userId, t.surface, t.contextKey, t.itemKey, t.createdAt),
+    check("opd_suggestion_events_kind_ck", sql`${t.kind} in ('medicine', 'test', 'diagnosis', 'complaint', 'advice', 'dose', 'department', 'alias')`),
+    check("opd_suggestion_events_source_ck", sql`${t.source} in ('typed', 'voice', 'search', 'set', 'repeat', 'suggested', 'paper')`),
+    check("opd_suggestion_events_outcome_ck", sql`${t.outcome} in ('accepted', 'dismissed', 'manual', 'shown', 'edited')`),
+    check("opd_suggestion_events_level_ck", sql`${t.sourceLevel} is null or ${t.sourceLevel} in ('personal', 'dept', 'hospital', 'starter', 'alias')`),
   ],
+);
+
+/**
+ * Decision 0050, P0 — ONE ROW PER ISSUED PRESCRIPTION LINE, in the shape counting needs. Written
+ * INSIDE the issue transaction (`cds-rx-lines.ts`), and for a scribe's transcription the same way: a
+ * typed-from-paper line is the doctor's. The prescription document is untouched — this is a copy for
+ * arithmetic, not the record. `encounter_id` is here; a patient id is not.
+ *
+ * A line whose prescriber is not one of this hospital's doctors is not written (nothing to learn).
+ */
+export const cdsRxLines = pgTable(
+  "cds_rx_lines",
+  {
+    prescriptionId: text("prescription_id").notNull().references(() => opdPrescriptions.id),
+    lineIndex: integer("line_index").notNull(),
+    encounterId: text("encounter_id").notNull(),
+    doctorId: text("doctor_id").notNull(),
+    departmentId: text("department_id"),
+    serviceDate: date("service_date", { mode: "string" }).notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+    /** `dx:J06` when the visit's primary diagnosis is coded, `tx:<words>` when typed, null when none. */
+    dxKey: text("dx_key"),
+    complaintConcepts: jsonb("complaint_concepts").$type<string[]>().notNull().default([]),
+    /** `adult` | `pediatric` — `cds/regimen.ts` `bandFor` on the charted weight, else the age. */
+    band: text("band").notNull(),
+    medicineId: text("medicine_id"),
+    /** The line's drug text, lower-cased and single-spaced: the key when no medicine was picked. */
+    drugKey: text("drug_key").notNull(),
+    /** Sorted formulary salt ids joined by '+', when the medicine resolved; the moiety set. */
+    moietySet: text("moiety_set"),
+    doseRaw: text("dose_raw").notNull(),
+    doseAmount: doublePrecision("dose_amount"),
+    doseUnit: text("dose_unit"),
+    frequencyRaw: text("frequency_raw").notNull(),
+    /** One of the closed set (`@hmis/contracts` RX_FREQUENCIES) or `other`. */
+    frequency: text("frequency").notNull(),
+    durationDays: integer("duration_days"),
+    route: text("route").notNull(),
+    source: text("source"),
+    fromSuggestion: boolean("from_suggestion").notNull().default(false),
+    /** A safety override was recorded against this line — never learned as a default. */
+    hadOverride: boolean("had_override").notNull().default(false),
+    /** Typed by the desk from the doctor's paper. Counts as the doctor's line. */
+    transcribed: boolean("transcribed").notNull().default(false),
+    awareCategory: text("aware_category"),
+    scheduleFlag: text("schedule_flag"),
+    antimicrobialRestricted: boolean("antimicrobial_restricted").notNull().default(false),
+    ndps: boolean("ndps").notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.prescriptionId, t.lineIndex] }),
+    index("cds_rx_lines_doctor_dx_idx").on(t.doctorId, t.dxKey, t.serviceDate),
+    index("cds_rx_lines_dept_dx_idx").on(t.departmentId, t.dxKey, t.serviceDate),
+    check("cds_rx_lines_band_ck", sql`${t.band} in ('adult', 'pediatric')`),
+    check("cds_rx_lines_frequency_ck", sql`${t.frequency} in ('OD', 'BD', 'TDS', 'QID', 'HS', 'SOS', 'STAT', 'other')`),
+  ],
+);
+
+/**
+ * Decision 0050, P0 — each doctor's own switch for the suggestions this system draws from counts.
+ * ON unless the doctor turns it off (DECIDED: these are the doctor's own patterns handed back, not
+ * the copilot's proactive mode of decision 0006, whose two toggles still have no surface to govern).
+ */
+export const cdsDoctorPrefs = pgTable(
+  "cds_doctor_prefs",
+  {
+    userId: text("user_id").primaryKey(),
+    suggestionsOn: boolean("suggestions_on").notNull().default(true),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
 );

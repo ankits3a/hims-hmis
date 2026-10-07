@@ -210,6 +210,22 @@ Each phase is its own PR(s), tests fail-first, web and phone both, English and H
   committed line carries its source; a × writes one dismissal; ranking is unchanged.
 - Risk: changing the frequency field is a UX change for doctors — the owner looks at it on staging first.
 - Owner sees: frequency as chips everywhere; a × on suggestions.
+- **BUILT 2026-10-07** (owner: "start the groundwork (P0) now"; decision
+  [0054](../../decisions/0054-suggestions-groundwork-and-no-child-dose.md), migration 0186). What differs
+  from the lines above, all DECIDED in 0054:
+  - the parsed dose and closed frequency are stored in `cds_rx_lines`, not on the issued line (the signed
+    document is not rewritten; the line gains only `source`);
+  - `cds_suggestion_events` is `opd_suggestion_events` widened in place — one log, not two;
+  - "hidden after three crosses" (a cross counts for 90 days; a tap or typing it resets) is live now,
+    server-side (`hiddenSuggestions`); the graded score stays in P1;
+  - a child: a set or Repeat last brings the medicines without dose, frequency or days;
+  - `cds_doctor_prefs.suggestions_on` (default on) is each doctor's own switch for the chips.
+  - The scribe has no suggestion chips, so it has no ×; its frequency box snaps to the closed set.
+  - STILL OWED from P0: run `scripts/backfill-cds-rx-lines.ts` on production and read its report (0 issued
+    prescriptions there on 2026-10-07, so it has nothing to do yet); the phone has no control for the
+    doctor's own switch (it honours the one set on the web); `suggestionEventId` on a line and the
+    `edited` outcome are not written by any screen yet; the door-slip draft loaded into the web editor is
+    recorded as typed.
 
 **P1 — Own-pattern medicines, diagnosis from complaints, three numbers** (about 7 days; 0–1 migration)
 - §7 rank, dismissal, stewardship and adult dose; naive-Bayes diagnosis chips; complaint completion; live SQL

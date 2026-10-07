@@ -1,5 +1,6 @@
 import type { Call } from "../doctor/api";
 import type { ConsultTest, WireLastLine, WirePrecheck, WireSetBody } from "./rules";
+import type { HiddenItem } from "./signals";
 
 /**
  * The routes the doctor's phone consultation uses. Everything that writes a note, checks a line,
@@ -36,6 +37,11 @@ export type WireConsultVisit = {
   prescriptions: { id: string; status: string }[];
 };
 export type WireIssued = { prescriptionId: string; version: number };
+/** One row of the suggestion log. The visit and the suggestion's key may be named; a patient and a typed word never are. */
+export type WireSignal = {
+  kind: "medicine" | "test" | "diagnosis"; source: string; outcome: "accepted" | "dismissed" | "manual" | "shown";
+  surface?: "consult_phone"; encounterId?: string; contextKey?: string; itemKey?: string; rankShown?: number; items?: string[];
+};
 
 const enc = encodeURIComponent;
 
@@ -61,8 +67,10 @@ export function consultApi(call: Call) {
     retireSet: (id: string) => call<unknown>("DELETE", `/opd/rx-sets/${enc(id)}`),
 
     /** Terms that matched nothing and what became of each suggestion. Never awaited by a screen: a lost one is a lost count. */
-    signals: (body: { misses?: { kind: "medicine" | "test" | "diagnosis"; term: string; stage: "search" | "voice" }[]; suggestions?: { kind: "medicine" | "test" | "diagnosis"; source: string; outcome: "accepted" | "dismissed" | "manual" }[] }) =>
+    signals: (body: { misses?: { kind: "medicine" | "test" | "diagnosis"; term: string; stage: "search" | "voice" }[]; suggestions?: WireSignal[] }) =>
       call<unknown>("POST", "/opd/consult/signals", body),
+    /** This doctor's own switch, the hospital's, and what the doctor has crossed off three times (decision 0050 P0). */
+    suggestionState: () => call<{ on: boolean; hospitalOn: boolean; hidden: HiddenItem[] }>("GET", "/opd/consult/suggestions"),
     voiceStatus: () => call<WireVoiceStatus>("GET", "/opd/consult/voice/status"),
     voice: (id: string, audio: string, mimeType: string, seconds: number) => call<WireVoiceResult>("POST", `/opd/visits/${enc(id)}/consult/voice`, { audio, mimeType, seconds }),
     voiceKept: (voiceId: string, changedChars: number, keptChars: number) => call<unknown>("POST", `/opd/consult/voice/${enc(voiceId)}/kept`, { changedChars, keptChars }),

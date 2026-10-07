@@ -12,8 +12,11 @@ import {
   DAY_CHOICES, FREQUENCIES, MAX_DIAGNOSES, MAX_TESTS, MIN_REASON, REVIEW_CHOICES, addLine, changeLine, changedChars, dosesFor, lineComplete, lineSub,
   lineText,
 } from "./rules";
-import type { ConsultApi, WireAdviceTemplate, WireIcd10Hit, WireMedicineHit, WireMyDiagnosis, WirePriceRow, WireRxSet, WireTestHit, WireVoiceResult, WireVoiceStatus } from "./api";
-import type { ConsultDraft, ConsultLine, LineWarning } from "./rules";
+import type { ConsultApi, WireSignal, WireAdviceTemplate, WireIcd10Hit, WireMedicineHit, WireMyDiagnosis, WirePriceRow, WireRxSet, WireTestHit, WireVoiceResult, WireVoiceStatus } from "./api";
+import type { ConsultDraft, ConsultLine, DxSource, LineWarning } from "./rules";
+import { dxKeyOf } from "./rules";
+import { SUGGEST_DEFAULT, crossOff, notOffered } from "./signals";
+import type { SuggestState } from "./signals";
 import type { VoiceRecorder } from "./recorder";
 
 type T = ReturnType<typeof useI18n>["t"];
@@ -49,6 +52,15 @@ export function Chip({ label, on, onPress, testID, dashed }: { label: string; on
     <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: on === true }} onPress={onPress}
       style={[st.chip, on === true && st.chipOn, dashed === true && { borderStyle: "dashed" }]}>
       <Text style={[st.chipText, on === true && { color: "#f2faf6" }]}>{label}</Text>
+    </Pressable>
+  );
+}
+/** The × beside a suggestion: one tap, at least 40 px, read aloud with the thing it crosses off. */
+export function Cross({ name, onPress, testID }: { name: string; onPress: () => void; testID: string }) {
+  const { t } = useI18n();
+  return (
+    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={t("mobile.consult.dontSuggest", { name })} hitSlop={6} onPress={onPress} style={st.cross}>
+      <Text style={st.crossText}>×</Text>
     </Pressable>
   );
 }
@@ -101,6 +113,8 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
   const [heard, setHeard] = useState<WireVoiceResult | null>(null);
   const [text, setText] = useState("");
   const [taken, setTaken] = useState<string[]>([]);
+  /** "Did you mean" rows the doctor crossed off. A row merely left alone is NOT one of these. */
+  const [crossedOff, setCrossedOff] = useState<string[]>([]);
   /** A look-alike suggestion waits for its second tap. */
   const [lasaAsk, setLasaAsk] = useState<string | null>(null);
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -125,7 +139,7 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
       if (clip === null) { setPhase("idle"); setError(t("mobile.consult.voice.nothingHeard")); return; }
       const out = await api.voice(encounterId, clip.audio, clip.mimeType, clip.seconds);
       if (out.text.trim() === "") { setPhase("idle"); setError(t("mobile.consult.voice.nothingHeard")); return; }
-      setHeard(out); setText(out.text); setTaken([]); setLasaAsk(null); setPhase("heard");
+      setHeard(out); setText(out.text); setTaken([]); setCrossedOff([]); setLasaAsk(null); setPhase("heard");
     } catch (e) {
       setPhase("idle");
       const why = e instanceof ApiError ? (e.body as { detail?: { why?: string } } | null)?.detail?.why : undefined;
@@ -158,10 +172,16 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
     if (kept !== "") patch((d) => ({ ...d, notes: [d.notes.trim(), kept].filter((x) => x !== "").join("\n").slice(0, 4000) }));
     // Counts only: how much was changed, how long the kept text is. Never the words.
     void api.voiceKept(h.voiceId, changedChars(h.text, kept), kept.length).catch(() => undefined);
-    // …and what became of each "did you mean": taken or left. Kinds only.
-    if (h.suggestions.length > 0) {
-      void api.signals({ suggestions: h.suggestions.map((sg) => ({ kind: sg.kind, source: "voice", outcome: taken.includes(sg.kind === "medicine" ? sg.medicineId : sg.serviceId) ? "accepted" as const : "dismissed" as const })).filter((x) => x.kind !== "medicine" || x.outcome === "dismissed") }).catch(() => undefined);
-    }
+    // …and what became of each "did you mean": taken, or CROSSED OFF. One left alone is neither (decision
+    // 0050 P0: not looking is not a dismissal). A taken medicine is counted when the line is issued.
+    const idOf = (sg: WireVoiceResult["suggestions"][number]): string => (sg.kind === "medicine" ? sg.medicineId : sg.serviceId);
+    const told = h.suggestions.flatMap((sg, rankShown): WireSignal[] => {
+      const more = { surface: "consult_phone" as const, encounterId, itemKey: idOf(sg), rankShown };
+      if (crossedOff.includes(idOf(sg))) return [{ kind: sg.kind, source: "voice", outcome: "dismissed" as const, ...more }];
+      if (sg.kind === "test" && taken.includes(idOf(sg))) return [{ kind: sg.kind, source: "voice", outcome: "accepted" as const, ...more }];
+      return [];
+    });
+    if (told.length > 0) void api.signals({ suggestions: told }).catch(() => undefined);
     setHeard(null); setPhase("idle");
   };
 
@@ -191,6 +211,7 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
           const id = sg.kind === "medicine" ? sg.medicineId : sg.serviceId;
           const done = taken.includes(id);
           const asking = lasaAsk === id;
+          if (crossedOff.includes(id)) return null;
           return (
             <View key={`${sg.kind}-${id}`} style={st.hit} testID={`voice-suggest-${String(i)}`}>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -209,6 +230,7 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
               }} style={[st.small, done ? st.smallDone : st.smallOn]}>
                 <Text style={[st.smallText, { color: done ? color.green : "#f2faf6" }]}>{done ? t("mobile.consult.added") : asking ? t("mobile.consult.lasa.yesShort") : t(sg.kind === "medicine" ? "mobile.consult.voice.addMedicine" : "mobile.consult.voice.addTest")}</Text>
               </Pressable>
+              {!done && <Cross testID={`voice-suggest-x-${String(i)}`} name={sg.name} onPress={() => { setLasaAsk(null); setCrossedOff((x) => [...x, id]); }} />}
             </View>
           );
         })}
@@ -251,32 +273,59 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
 
 // ——— 2 · Diagnosis (optional) ———
 
-export function DiagnosisDrawer({ api, draft, patch, onClose }: { api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void }) {
+export function DiagnosisDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFAULT }: {
+  api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void;
+  /** This doctor's three-crosses list. "You use these most" is the doctor's own list and is not behind the switch; a × takes a row off it. */
+  suggest?: SuggestState;
+}) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
   const found = useSearch<WireIcd10Hit>(q, 2, (text) => api.diagnoses(text));
-  const [mine, setMine] = useState<WireMyDiagnosis[]>([]);
-  useEffect(() => { api.myDiagnoses().then(setMine).catch(() => setMine([])); }, [api]);
+  const [all, setMine] = useState<WireMyDiagnosis[]>([]);
+  const [, setTick] = useState(0);
+  const enc = draft.encounterId;
+  const keyOf = (m: { text: string; icd10Code: string | null }): string => dxKeyOf(m.icd10Code, m.text) ?? m.text;
+  useEffect(() => {
+    api.myDiagnoses().then((items) => {
+      setMine(items);
+      const shown = items.filter((m) => !notOffered(suggest, enc, "diagnosis", null, keyOf(m))).map(keyOf);
+      if (shown.length > 0) void api.signals({ suggestions: [{ kind: "diagnosis", source: "suggested", outcome: "shown", surface: "consult_phone", encounterId: enc, items: shown.slice(0, 20) }] }).catch(() => undefined);
+    }).catch(() => setMine([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
+  const mine = all.filter((m) => !notOffered(suggest, enc, "diagnosis", null, keyOf(m)));
   const has = (text: string): boolean => draft.diagnoses.some((d) => d.text.toLowerCase() === text.toLowerCase());
-  const add = (text: string, icd10Code: string | null): void => patch((d) => (has(text) || d.diagnoses.length >= MAX_DIAGNOSES ? d : { ...d, diagnoses: [...d.diagnoses, { text, icd10Code }] }));
+  const add = (text: string, icd10Code: string | null, source: DxSource): void => patch((d) => (has(text) || d.diagnoses.length >= MAX_DIAGNOSES ? d : { ...d, diagnoses: [...d.diagnoses, { text, icd10Code, source }] }));
   const drop = (text: string): void => patch((d) => ({ ...d, diagnoses: d.diagnoses.filter((x) => x.text !== text) }));
-  const row = (text: string, code: string | null, sub: string | null, key: string) => (
-    <Pressable key={key} testID={`dx-${key}`} accessibilityRole="button" onPress={() => (has(text) ? drop(text) : add(text, code))} style={st.hit}>
-      <View style={{ flex: 1, minWidth: 0 }}><Text style={st.hitName}>{text}</Text>{sub !== null && <Text style={st.hitSub}>{sub}</Text>}</View>
-      {code !== null && <Text style={st.code}>{code}</Text>}
-      {has(text) && <Text style={st.tick}>✓</Text>}
-    </Pressable>
+  const told = (m: { text: string; icd10Code: string | null }, rankShown: number, outcome: "accepted" | "dismissed"): void => {
+    void api.signals({ suggestions: [{ kind: "diagnosis", source: "suggested", outcome, surface: "consult_phone", encounterId: enc, itemKey: keyOf(m), rankShown }] }).catch(() => undefined);
+  };
+  /** `offered` is the row's rank among the doctor's most-used — a row the SYSTEM put forward, so it has a ×. */
+  const row = (text: string, code: string | null, sub: string | null, key: string, offered: number | null = null) => (
+    <View key={key} style={st.hit}>
+      <Pressable testID={`dx-${key}`} accessibilityRole="button" style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8 }}
+        onPress={() => {
+          if (has(text)) { drop(text); return; }
+          if (offered !== null) told({ text, icd10Code: code }, offered, "accepted");
+          add(text, code, offered !== null ? "suggested" : "search");
+        }}>
+        <View style={{ flex: 1, minWidth: 0 }}><Text style={st.hitName}>{text}</Text>{sub !== null && <Text style={st.hitSub}>{sub}</Text>}</View>
+        {code !== null && <Text style={st.code}>{code}</Text>}
+        {has(text) && <Text style={st.tick}>✓</Text>}
+      </Pressable>
+      {offered !== null && !has(text) && <Cross testID={`dx-x-${key}`} name={text} onPress={() => { crossOff(enc, "diagnosis", keyOf({ text, icd10Code: code })); told({ text, icd10Code: code }, offered, "dismissed"); setTick((n) => n + 1); }} />}
+    </View>
   );
   return (
     <Drawer testID="dx-drawer" title={t("mobile.consult.diagnosis")} onClose={onClose}>
       <Box testID="dx-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.dxSearch")} maxLength={80} returnKeyType="done"
-        onSubmitEditing={() => { const text = q.trim(); if (text.length >= 3 && found.rows.length === 0) { add(text, null); setQ(""); } }} />
+        onSubmitEditing={() => { const text = q.trim(); if (text.length >= 3 && found.rows.length === 0) { add(text, null, "typed"); setQ(""); } }} />
       {draft.diagnoses.length > 0 && <View style={st.chips}>{draft.diagnoses.map((d) => <Chip key={d.text} testID={`dx-on-${d.text}`} label={`${d.text} ✕`} on onPress={() => drop(d.text)} />)}</View>}
       {q.trim().length < 2 && mine.length > 0 && <Lab>{t("mobile.consult.dxMine")}</Lab>}
-      {q.trim().length < 2 && mine.map((m, i) => row(m.text, m.icd10Code, t("mobile.consult.dxUsed", { count: m.uses }), `mine-${String(i)}`))}
+      {q.trim().length < 2 && mine.map((m, i) => row(m.text, m.icd10Code, t("mobile.consult.dxUsed", { count: m.uses }), `mine-${String(all.indexOf(m))}`, i))}
       {q.trim().length >= 2 && found.rows.map((h) => row(h.description, h.code, null, h.code))}
       {q.trim().length >= 3 && !found.busy && found.rows.length === 0 && found.error === null && (
-        <Pressable testID="dx-free" accessibilityRole="button" onPress={() => { void api.signals({ misses: [{ kind: "diagnosis", term: q.trim(), stage: "search" }] }).catch(() => undefined); add(q.trim(), null); setQ(""); }} style={st.hit}>
+        <Pressable testID="dx-free" accessibilityRole="button" onPress={() => { void api.signals({ misses: [{ kind: "diagnosis", term: q.trim(), stage: "search" }] }).catch(() => undefined); add(q.trim(), null, "typed"); setQ(""); }} style={st.hit}>
           <Text style={st.hitName}>{t("mobile.consult.dxFree", { text: q.trim() })}</Text>
         </Pressable>
       )}
@@ -292,8 +341,10 @@ export function blankLine(): ConsultLine {
   return { drug: "", dose: "", frequency: "", durationDays: null, food: null, instructions: "", route: "oral", medicineId: null, mark: null, was: null };
 }
 
-export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose, startWith }: {
+export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose, startWith, childNoDose = false }: {
   api: ConsultApi; draft: ConsultDraft; patch: Patch; warnings: LineWarning[]; checking: boolean; onClose: () => void;
+  /** A set or a repeat brought a CHILD's medicines without their doses: say so above the lines. */
+  childNoDose?: boolean;
   /** Open straight into the editor for this medicine (a voice suggestion, or "+ add"). */
   startWith?: { medicineId: string | null; name: string } | "new" | null;
 }) {
@@ -396,6 +447,7 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
     <Drawer testID="meds-drawer" title={t("mobile.consult.medicines")} onClose={onClose}
       foot={<Button testID="med-add" kind="secondary" label={t("mobile.consult.addAnother")} onPress={() => setEditing({ index: null, line: blankLine() })} />}>
       {checking && <Text style={st.fine} testID="meds-checking">{t("mobile.consult.checking")}</Text>}
+      {childNoDose && <Note tone="warn" testID="child-no-dose">{t("mobile.consult.childNoDose")}</Note>}
       {draft.lines.map((l, i) => {
         const mine = warnings.filter((w) => w.lineIndex === i);
         return (
@@ -443,21 +495,34 @@ export function warningBody(w: LineWarning, t: T): string {
 
 // ——— 4 · Tests ———
 
-export function TestsDrawer({ api, draft, patch, onClose, suggest = true }: {
+export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFAULT }: {
   api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void;
-  /** The hospital's suggestions switch. Off ⇒ no "often advised with this diagnosis"; search stays. */
-  suggest?: boolean;
+  /** The hospital's switch AND this doctor's own, with the three-crosses list. Off ⇒ no "often advised with this diagnosis"; search stays. */
+  suggest?: SuggestState;
 }) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
   const [list, setList] = useState<WirePriceRow[] | null>(null);
-  const [before, setBefore] = useState<WireTestHit[]>([]);
+  const [offeredAll, setBefore] = useState<WireTestHit[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+  const enc = draft.encounterId;
+  const first = draft.diagnoses[0];
+  /** The diagnosis these tests were offered FOR — what a tap or a cross is counted under. */
+  const context = first === undefined ? null : dxKeyOf(first.icd10Code, first.text);
   useEffect(() => {
     api.priceList().then(setList).catch((e) => { setList([]); setError(says(e, t)); });
-    if (suggest && draft.diagnoses.length > 0) api.testsFor(draft.diagnoses.map((d) => ({ text: d.text, icd10: d.icd10Code }))).then(setBefore).catch(() => setBefore([]));
+    if (suggest.on && draft.diagnoses.length > 0) api.testsFor(draft.diagnoses.map((d) => ({ text: d.text, icd10: d.icd10Code }))).then((items) => {
+      setBefore(items);
+      const shown = items.filter((x) => !notOffered(suggest, enc, "test", context, x.serviceId)).map((x) => x.serviceId);
+      if (shown.length > 0) void api.signals({ suggestions: [{ kind: "test", source: "suggested", outcome: "shown", surface: "consult_phone", encounterId: enc, ...(context === null ? {} : { contextKey: context }), items: shown.slice(0, 20) }] }).catch(() => undefined);
+    }).catch(() => setBefore([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
+  const before = offeredAll.filter((x) => !notOffered(suggest, enc, "test", context, x.serviceId));
+  const told = (serviceId: string, rankShown: number, outcome: "accepted" | "dismissed"): void => {
+    void api.signals({ suggestions: [{ kind: "test", source: "suggested", outcome, surface: "consult_phone", encounterId: enc, ...(context === null ? {} : { contextKey: context }), itemKey: serviceId, rankShown }] }).catch(() => undefined);
+  };
   const has = (id: string): boolean => draft.tests.some((x) => x.serviceId === id);
   const toggle = (x: { serviceId: string; code: string; name: string; pricePaise: number }): void =>
     patch((d) => (has(x.serviceId) ? { ...d, tests: d.tests.filter((y) => y.serviceId !== x.serviceId) } : d.tests.length >= MAX_TESTS ? d : { ...d, tests: [...d.tests, { serviceId: x.serviceId, code: x.code, name: x.name, pricePaise: x.pricePaise }] }));
@@ -472,7 +537,12 @@ export function TestsDrawer({ api, draft, patch, onClose, suggest = true }: {
       <Box testID="test-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.testSearch")} maxLength={60} />
       {draft.tests.length > 0 && <View style={st.chips}>{draft.tests.map((x) => <Chip key={x.serviceId} testID={`test-on-${x.serviceId}`} label={`${x.name} ✕`} on onPress={() => toggle(x)} />)}</View>}
       {needle.length < 2 && before.length > 0 && <Lab>{t("mobile.consult.testsBefore")}</Lab>}
-      {needle.length < 2 && before.length > 0 && <View style={st.chips}>{before.map((x) => <Chip key={x.serviceId} testID={`test-before-${x.serviceId}`} label={x.name} on={has(x.serviceId)} onPress={() => toggle(x)} />)}</View>}
+      {needle.length < 2 && before.length > 0 && <View style={st.chips}>{before.map((x, i) => (
+        <View key={x.serviceId} style={st.offer}>
+          <Chip testID={`test-before-${x.serviceId}`} label={x.name} on={has(x.serviceId)} onPress={() => { if (!has(x.serviceId)) told(x.serviceId, i, "accepted"); toggle(x); }} />
+          {!has(x.serviceId) && <Cross testID={`test-before-x-${x.serviceId}`} name={x.name} onPress={() => { crossOff(enc, "test", x.serviceId); told(x.serviceId, i, "dismissed"); setTick((n) => n + 1); }} />}
+        </View>
+      ))}</View>}
       {hits.map((r) => (
         <Pressable key={r.serviceId} testID={`test-hit-${r.serviceId}`} accessibilityRole="button" onPress={() => toggle(r)} style={st.hit}>
           <View style={{ flex: 1, minWidth: 0 }}><Text style={st.hitName}>{r.name}</Text><Text style={st.hitSub}>{r.code}</Text></View>
@@ -613,6 +683,9 @@ const st = StyleSheet.create({
   k: { width: 92, fontSize: 13, color: color.dim },
   v: { flex: 1, fontSize: 13.5, lineHeight: 19, fontWeight: "700", color: color.ink },
   two: { flexDirection: "row", gap: space.sm },
+  cross: { minWidth: 40, minHeight: 40, alignItems: "center", justifyContent: "center", borderRadius: 999 },
+  crossText: { fontSize: 20, lineHeight: 22, color: color.dim },
+  offer: { flexDirection: "row", alignItems: "center" },
   small: { minHeight: 40, paddingHorizontal: 12, justifyContent: "center", borderRadius: radius.md, borderWidth: 1 },
   smallOn: { backgroundColor: color.green, borderColor: color.green },
   smallDone: { backgroundColor: color.greenSoft, borderColor: color.greenLine },

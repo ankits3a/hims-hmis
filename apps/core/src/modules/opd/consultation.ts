@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, lt } from "drizzle-orm";
 import { isEyeCode } from "@hmis/contracts";
-import type { Actor, Eye } from "@hmis/contracts";
+import type { Actor, DxSource, Eye, RxLineSource } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { isNull } from "drizzle-orm";
@@ -40,7 +40,7 @@ export type AdvisedTest = {
  * One diagnosis as the doctor committed it: their words, the catalogue code if they picked one, and
  * — for an eye code only — which eye (board "Ophthal": ICD-10 has no laterality, so it rides beside).
  */
-export type NoteDiagnosis = { text: string; icd10Code: string | null; laterality?: Eye | null };
+export type NoteDiagnosis = { text: string; icd10Code: string | null; laterality?: Eye | null; source?: DxSource | null };
 
 /**
  * THE TAG SEPARATOR, AND IT IS NOT A COMMA. `tag-field.tsx` learned this on the first realistic
@@ -105,6 +105,7 @@ export type RxDraftLine = {
   drug: string; dose: string; route: string; frequency: string; durationDays: string | number | null;
   instructions: string; noSubstitution: boolean; medicineId?: string | null;
   eye?: "od" | "os" | "ou" | null; taper?: { timesPerDay: number; days: number }[] | null;
+  source?: RxLineSource;
 };
 
 /**
@@ -182,10 +183,21 @@ async function writeDiagnosisRows(
   */
   const rows = diagnosesOf(note);
   if (rows === null) return; // the note said nothing about diagnoses; leave what is there
+  /*
+    Decision 0050, P0 — where each diagnosis came from. The list is replaced whole, and not every
+    screen that saves it says where a row came from (the computer re-saving what the phone picked
+    must not erase "suggested"), and a screen reopened after a reload no longer knows. So the FIRST
+    source a diagnosis was committed with on this visit stands; a later save of the same diagnosis
+    cannot change it.
+  */
+  const had = await tx.select({ text: opdEncounterDiagnoses.text, icd10Code: opdEncounterDiagnoses.icd10Code, source: opdEncounterDiagnoses.source })
+    .from(opdEncounterDiagnoses).where(eq(opdEncounterDiagnoses.encounterId, encounterId));
+  const sourceOf = (d: NoteDiagnosis): string | null =>
+    had.find((h) => h.text === d.text && h.icd10Code === d.icd10Code)?.source ?? d.source ?? null;
   await tx.delete(opdEncounterDiagnoses).where(eq(opdEncounterDiagnoses.encounterId, encounterId));
   if (rows.length === 0) return;
   await tx.insert(opdEncounterDiagnoses).values(rows.map((d, seq) => ({
-    encounterId, seq, text: d.text, icd10Code: d.icd10Code,
+    encounterId, seq, text: d.text, icd10Code: d.icd10Code, source: sourceOf(d),
     /* An eye beside an ear or a chest code means nothing, so it is dropped here, not trusted from the client. */
     laterality: isEyeCode(d.icd10Code) ? d.laterality ?? null : null,
   })));

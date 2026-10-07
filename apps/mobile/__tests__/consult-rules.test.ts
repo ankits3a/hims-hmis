@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { toBase64 } from "../src/consult/recorder";
 import {
   adviceOf, applySet, changeLine, changedChars, emptyDraft, isEmptyDraft, lineComplete, noteBody, overridesOf, parseDraft, repeatLast, setBodyOf,
-  DOSES, dosesFor, lineSignals, linesFrom, unanswered, warningsOf, wireLine,
+  DOSES, FREQUENCIES, RX_FREQUENCIES, childDoseMissing, dosesFor, lineSignals, linesFrom, unanswered, warningsOf, wireLine,
 } from "../src/consult/rules";
 import type { ConsultDraft, ConsultLine, WirePrecheck } from "../src/consult/rules";
 
@@ -18,8 +18,11 @@ describe("phone consult — the reading rules (one file, shared; packages/contra
   it("the phone holds no copy of the rules: its rules module is a re-export of the shared file", () => {
     const src = readFileSync(join(__dirname, "..", "src", "consult", "rules.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").trim();
     expect(src).toBe('export * from "../../../../packages/contracts/src/phone-consult";');
-    // …and the shared file imports nothing, so the phone (outside the workspace) can read it by path.
-    expect(readFileSync(join(__dirname, "..", "..", "..", "packages", "contracts", "src", "phone-consult.ts"), "utf8")).not.toMatch(/^\s*import\s/m);
+    // …and the shared file imports only its pure sibling (decision 0050 P0: the countable line), which imports
+    // nothing — so the phone (outside the workspace) can read both by path.
+    const shared = (f: string): string => readFileSync(join(__dirname, "..", "..", "..", "packages", "contracts", "src", f), "utf8");
+    expect((shared("phone-consult.ts").match(/^\s*(?:import|export \*)\s.*from\s+"([^"]+)"/gm) ?? []).every((l) => l.includes('"./rx-line"'))).toBe(true);
+    expect(shared("rx-line.ts")).not.toMatch(/^\s*import\s/m);
   });
 
   it("a line goes on the wire as the issue route takes it — food and instructions as one sentence, the route defaulted", () => {
@@ -66,6 +69,34 @@ describe("phone consult — the reading rules (one file, shared; packages/contra
     // A reason belongs to the DRUG it was typed for: remove that line and the reason answers nothing.
     expect(unanswered(warningsOf({ ...NONE, allergyMatches: [{ lineIndex: 0, substance: "Penicillin" }] }, [line({ drug: "Ampicillin 250 mg" })]), reasons)).toHaveLength(1);
     expect(warningsOf(null, lines)).toEqual([]);
+  });
+
+  it("NO DOSE FOR A CHILD (owner 2026-10-07): Repeat last and a set bring a child's medicines WITHOUT dose, frequency or days — unfinished, so they cannot be issued", () => {
+    const last = { serviceDate: "2026-09-12", lines: [{ drug: "Paracetamol 250 mg/5 ml Syrup", dose: "5 ml", route: "oral", frequency: "TDS", durationDays: 3, instructions: "after food", medicineId: "m1" }] };
+    const child = repeatLast(draft(), last, 5, "pediatric");
+    expect(child.lines[0]).toMatchObject({ drug: "Paracetamol 250 mg/5 ml Syrup", medicineId: "m1", dose: "", frequency: "", durationDays: null, source: "repeat", food: "after" });
+    expect(lineComplete(child.lines[0]!)).toBe(false);
+    expect(childDoseMissing(child, "pediatric")).toBe(true);
+    // The same tap for an adult copies the line whole, and nothing is said.
+    const adult = repeatLast(draft(), last, 5, "adult");
+    expect(adult.lines[0]).toMatchObject({ dose: "5 ml", frequency: "TDS", durationDays: 3 });
+    expect(childDoseMissing(adult, "adult")).toBe(false);
+    expect(repeatLast(draft(), last, 5).lines[0]!.dose).toBe("5 ml"); // band unknown to an older caller ⇒ as before
+
+    const set = { lines: [{ drug: "Cetirizine 5 mg/5 ml Syrup", dose: "5 ml", route: "oral", frequency: "HS", durationDays: 5, instructions: null }], tests: [], advice: null, reviewDays: null };
+    const typed = { ...draft(), lines: [{ drug: "Zinc", dose: "5 ml", frequency: "OD", durationDays: 14, food: null, instructions: "", route: "oral", medicineId: null, source: "typed" as const }] };
+    const filled = applySet(typed, "Cold", set, () => 0, 7, "pediatric");
+    // What the doctor typed for this child is the doctor's own and is untouched; only what the set brought loses its dose.
+    expect(filled.lines.map((l) => [l.drug, l.dose, l.frequency, l.durationDays])).toEqual([["Zinc", "5 ml", "OD", 14], ["Cetirizine 5 mg/5 ml Syrup", "", "", null]]);
+    // Once the doctor has entered the dose, the notice goes.
+    expect(childDoseMissing({ ...filled, lines: filled.lines.map((l) => ({ ...l, dose: "2.5 ml" })) }, "pediatric")).toBe(false);
+  });
+
+  it("the phone's frequency chips ARE the one closed set, STAT included; a diagnosis says where it came from", () => {
+    expect([...FREQUENCIES]).toEqual([...RX_FREQUENCIES]);
+    expect(FREQUENCIES).toContain("STAT");
+    const d = { ...draft(), diagnoses: [{ text: "Acute URTI", icd10Code: "J06.9", source: "suggested" as const }, { text: "Old row", icd10Code: null }] };
+    expect((noteBody(d, (n) => String(n), { before: "b", after: "a" }, "issued") as { diagnoses: unknown }).diagnoses).toEqual([{ text: "Acute URTI", icd10Code: "J06.9", source: "suggested" }, { text: "Old row", icd10Code: null }]);
   });
 
   it("Repeat last and a set fill the visit; a changed line remembers what it was; a set never adds a drug twice", () => {
@@ -115,7 +146,10 @@ describe("phone consult — the reading rules (one file, shared; packages/contra
     expect(wireLine({ ...base, source: "voice" }, { before: "b", after: "a" })).toMatchObject({ source: "voice" });
     expect("source" in wireLine({ ...base }, { before: "b", after: "a" })).toBe(false);
     expect(lineSignals([{ ...base, source: "search" }, { ...base, source: "voice" }, { ...base, source: "typed" }, { ...base, source: "set" }, { ...base, source: "repeat" }, base]))
-      .toEqual([{ kind: "medicine", source: "search", outcome: "accepted" }, { kind: "medicine", source: "voice", outcome: "accepted" }, { kind: "medicine", source: "typed", outcome: "manual" }]);
+      .toEqual([{ kind: "medicine", source: "search", outcome: "accepted", surface: "consult_phone" }, { kind: "medicine", source: "voice", outcome: "accepted", surface: "consult_phone" }, { kind: "medicine", source: "typed", outcome: "manual", surface: "consult_phone" }]);
+    // Decision 0050 P0: the visit and the catalogue medicine may be named — never a patient, never the typed word.
+    expect(lineSignals([{ ...base, medicineId: "m1", source: "search" }, { ...base, drug: "Zerodol", source: "typed" }], "e13"))
+      .toEqual([{ kind: "medicine", source: "search", outcome: "accepted", surface: "consult_phone", encounterId: "e13", itemKey: "m1" }, { kind: "medicine", source: "typed", outcome: "manual", surface: "consult_phone", encounterId: "e13" }]);
     expect(linesFrom([{ drug: "A", dose: "1", route: "oral", frequency: "OD", durationDays: 1, instructions: null }], "repeat")[0]!.source).toBe("repeat");
   });
 });

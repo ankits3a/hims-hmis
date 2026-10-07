@@ -11,7 +11,7 @@ import {
   unanswered, warningsOf, wireLine,
 } from "../consult/rules";
 import { AdviceDrawer, DiagnosisDrawer, MedicinesDrawer, NotesDrawer, SetsDrawer, type Patch } from "../consult/sheets";
-import { ageSexOf, followUpChoices, rowName, visitKind } from "../doctor/rules";
+import { ageSexOf, ageYearsOn, followUpChoices, rowName, visitKind } from "../doctor/rules";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text } from "../text";
@@ -19,7 +19,9 @@ import { color, radius, space, TOUCH } from "../theme";
 import { Button, MONO, Note } from "../ui";
 import { refusalText } from "../vitals/api";
 import type { ConsultApi, WireConsultVisit, WireRxSet } from "../consult/api";
-import type { ConsultDraft, WireLastLine, WirePrecheck } from "../consult/rules";
+import type { Band, ConsultDraft, WireLastLine, WirePrecheck } from "../consult/rules";
+import { bandOf, childDoseMissing } from "../consult/rules";
+import { SUGGEST_DEFAULT, type SuggestState } from "../consult/signals";
 import type { DoctorApi, WireAllergyRow, WireVisitDetail, WireVisitVitals } from "../doctor/api";
 import type { WireFollowUpConfig, WireQueueEntryView, WireQueuePatient } from "../doctor/rules";
 import { TestsDrawer } from "../consult/sheets";
@@ -94,9 +96,16 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [medStart, setMedStart] = useState<{ medicineId: string | null; name: string } | "new" | null>(null);
   const [precheck, setPrecheck] = useState<WirePrecheck | null>(null);
-  /** The hospital's suggestions switch (a setting, no deploy). Unknown ⇒ on; the server holds the switch either way. */
-  const [suggest, setSuggest] = useState(true);
-  useEffect(() => { api.voiceStatus().then((v) => setSuggest(v.suggestionsEnabled !== false)).catch(() => undefined); }, [api]);
+  /**
+   * Suggestions are offered when the hospital's switch AND this doctor's own are on (decision 0050 P0),
+   * less what the doctor has crossed off three times. Read once as the visit opens — nothing re-ranks
+   * while the doctor is working. Unknown ⇒ on; a server older than the route answers the hospital's switch.
+   */
+  const [suggest, setSuggest] = useState<SuggestState>(SUGGEST_DEFAULT);
+  useEffect(() => {
+    api.suggestionState().then((v) => setSuggest({ on: v.on && v.hospitalOn, hidden: v.hidden }))
+      .catch(() => api.voiceStatus().then((v) => setSuggest({ on: v.suggestionsEnabled !== false, hidden: [] })).catch(() => undefined));
+  }, [api]);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +117,15 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const issueSent = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /**
+   * ADULT OR CHILD, as the server bands it: the charted weight first, else the age. For a child a set
+   * or "Repeat last" brings the medicines WITHOUT dose (owner 2026-10-07) — the doctor enters each.
+   */
+  const bandNow = (): Band => {
+    const w = visit === null ? null : [...visit.vitals].filter((x) => x.status === "active" && x.weightKg !== null).sort((a, b) => (a.recordedAt < b.recordedAt ? 1 : -1))[0]?.weightKg ?? null;
+    const dob = summary !== null && !summary.restricted && typeof summary.dob === "string" && summary.dob !== "" ? summary.dob : null;
+    return bandOf({ ageYears: dob === null ? null : ageYearsOn(dob, now), weightKg: w });
+  };
   const days = useCallback((n: number): string => t("mobile.consult.days", { count: n }), [t]);
   const food = useMemo(() => ({ before: t("mobile.consult.foodBefore"), after: t("mobile.consult.foodAfter") }), [t]);
   const review = useCallback((n: number): string => t("mobile.consult.reviewLine", { count: n }), [t]);
@@ -212,7 +230,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
         await api.issue(encounterId, { lines: wire, ...overridesOf(ws, d.reasons) });
       }
       issueSent.current = true;
-      if (!rxIssued) void api.signals({ suggestions: lineSignals(d.lines) }).catch(() => undefined);
+      if (!rxIssued) void api.signals({ suggestions: lineSignals(d.lines, encounterId) }).catch(() => undefined);
       await api.complete(encounterId, {
         note: noteBody(d, review, food, "issued"),
         testsOrderedReturnToday: d.returnToday === true,
@@ -261,7 +279,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   };
 
   const useSet = (set: WireRxSet): void => {
-    patch((d) => applySet(d, set.name, set.body, (id) => d.tests.find((x) => x.serviceId === id)?.pricePaise ?? 0, Date.now()));
+    patch((d) => applySet(d, set.name, set.body, (id) => d.tests.find((x) => x.serviceId === id)?.pricePaise ?? 0, Date.now(), bandNow()));
     setDrawer(null);
   };
 
@@ -323,7 +341,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
         {offline && <Note tone="warn" testID="consult-offline">{t("mobile.consult.offline")}</Note>}
 
         <View style={s.quick}>
-          <Pressable testID="repeat-last" accessibilityRole="button" disabled={last === null} onPress={() => { if (last !== null) patch((d) => repeatLast(d, last, Date.now())); }} style={[s.quickBtn, last === null && { opacity: 0.5 }]}>
+          <Pressable testID="repeat-last" accessibilityRole="button" disabled={last === null} onPress={() => { if (last !== null) patch((d) => repeatLast(d, last, Date.now(), bandNow())); }} style={[s.quickBtn, last === null && { opacity: 0.5 }]}>
             <Text style={s.quickTitle}>{t("mobile.consult.repeatLast")}</Text>
             <Text style={s.quickSub}>{last === null ? t("mobile.consult.repeatNone") : t("mobile.consult.repeatSub", { date: last.serviceDate, count: last.lines.length })}</Text>
           </Pressable>
@@ -339,6 +357,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
             <Text testID="visit-state" style={s.corner} numberOfLines={1}>{empty ? t("mobile.consult.nothing") : fromLabel ?? t(offline ? "mobile.consult.draftNotSent" : "mobile.consult.draftSaved")}</Text>
           </View>
           {empty && <Text testID="visit-empty" style={s.emptyText}>{t("mobile.consult.emptyHint")}</Text>}
+          {childDoseMissing(draft, bandNow()) && <Note tone="warn" testID="visit-child-no-dose">{t("mobile.consult.childNoDose")}</Note>}
           {(draft.complaints.length > 0 || draft.notes.trim() !== "") && row(t("mobile.consult.five.notes"),
             <Text style={s.lnText}>{[draft.complaints.join(", "), draft.notes.trim()].filter((x) => x !== "").join(". ")}</Text>, "notes", "visit-notes")}
           {draft.diagnoses.length > 0 && row(t("mobile.consult.five.dx"), <>{draft.diagnoses.map((d) => (
@@ -400,8 +419,8 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
         // doctor finishes it, and what was heard stays on the screen meanwhile.
         onAddMedicine={(h) => patch((d) => (d.lines.some((l) => l.medicineId === h.medicineId) ? d : addLine(d, { drug: h.name, dose: "", frequency: "", durationDays: null, food: null, instructions: "", route: "oral", medicineId: h.medicineId, source: "voice" }, Date.now())))}
         onAddTest={(x) => patch((d) => (d.tests.some((y) => y.serviceId === x.serviceId) ? d : { ...d, tests: [...d.tests, x] }))} />}
-      {drawer === "dx" && <DiagnosisDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} />}
-      {drawer === "meds" && <MedicinesDrawer api={api} draft={draft} patch={patch} warnings={warnings} checking={checking} onClose={closeDrawer} startWith={medStart} />}
+      {drawer === "dx" && <DiagnosisDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
+      {drawer === "meds" && <MedicinesDrawer api={api} draft={draft} patch={patch} warnings={warnings} checking={checking} onClose={closeDrawer} startWith={medStart} childNoDose={childDoseMissing(draft, bandNow())} />}
       {drawer === "tests" && <TestsDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
       {drawer === "advice" && <AdviceDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} followChoices={followUpChoices(cfg)} />}
       {drawer === "sets" && <SetsDrawer api={api} onClose={() => setDrawer(null)} onUse={useSet} canSave={draft.lines.some(lineComplete) || draft.tests.length > 0}

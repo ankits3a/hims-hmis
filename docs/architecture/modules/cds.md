@@ -57,7 +57,7 @@ Source: `apps/core/src/modules/cds/`
   - types: `BuiltLine`, `BuiltRegimen`, `DoseVerdict`, `PatientBand`, `PatientFacts`
 - `rx.ts`
   - `durationDaysOf(duration: string | null, sig: string): number | null`
-  - `frequencyOf(sig: string): RxFrequency`
+  - `frequencyOf`
   - `toRxDraft(line: BuiltLine): RxDraftLine`
   - types: `RxDraftLine`
 - `vocabulary.ts`

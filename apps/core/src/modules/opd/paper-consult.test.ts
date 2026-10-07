@@ -8,6 +8,7 @@ import { activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, se
 import {
   events, opdEncounters, opdPrescriptionDrafts, opdPrescriptions, opdQueueEntries, patientAllergies, patientDocuments, workflowInstances,
 } from "../../kernel/db/schema";
+import { cdsRxLines } from "../../kernel/db/schema";
 import { captureDocument } from "../patients";
 import { completeConsultation, parkConsultation, registerConsultStartGuard, saveConsultNote, startConsultation } from "./consultation";
 import { loadOpdDepartmentReport, loadOpdReport } from "./report";
@@ -251,6 +252,9 @@ describe("consulted on paper — the slip desk, the scribe, the doctor's look an
     expect(rx).toHaveLength(1);
     expect(rx[0]!.lines).toEqual([PARA]); // not the doctor's unissued Azithromycin
     expect(rx[0]!.transcribedBy).toBe(scribe.id);
+    // Decision 0050 P0: the desk's typing is the DOCTOR's line in the countable copy — `paper`, transcribed, never a suggestion.
+    const counted = await db.select().from(cdsRxLines).where(eq(cdsRxLines.encounterId, enc.id));
+    expect(counted.map((c) => [c.doctorId, c.source, c.transcribed, c.fromSuggestion])).toEqual([[dra.doctorId, "paper", true, false]]);
     const entry = (await liveEntries(enc.id))[0]!;
     expect(entry).toMatchObject({ status: "done", parkedAt: null });
     expect((await listPaperConsults(db, dra.actor, { scope: "mine" }, MON3)).items[0]!.doctorDraft.map((l) => l.drug)).toEqual(["Tab Azithromycin 500"]);

@@ -26,6 +26,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { prescriptionIssued, rxQrSignatureFailed } from "./events";
 import { getDoctor } from "./masters";
 import { normaliseRxLine, toFhirBundle } from "./fhir";
+import { writeCdsRxLines } from "./cds-rx-lines";
 import { ageYearsAt } from "./time";
 import type { Letterhead } from "./config";
 import type { PrescriptionRow, VisitDiagnosis, VitalsRow } from "./encounters";
@@ -723,6 +724,12 @@ export async function issuePrescription(
       duplicateOverrides: matchedDuplicateOverrides,
       drugDiseaseOverrides: matchedDrugDiseaseOverrides,
       status: "active", issuedBy: actor.id, transcribedBy, issuedAt: now,
+    });
+    /* Decision 0050, P0 — the countable copy, in this transaction: what was issued is what is learned from. */
+    await writeCdsRxLines(tx, {
+      prescriptionId, encounterId, doctorId: doctor?.id ?? null, lines,
+      overrides: [...matchedOverrides, ...matchedInteractionOverrides, ...matchedDuplicateOverrides, ...matchedDrugDiseaseOverrides],
+      transcribed: transcribedBy !== null, issuedAt: now,
     });
     await appendEvent(tx, prescriptionIssued.make({
       actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,

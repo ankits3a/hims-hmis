@@ -9,7 +9,7 @@
  * claim "this field is known to be empty" where the shape means "this field does not apply".
  */
 import { EYE_TEXT, taperDays, taperText } from "@hmis/contracts";
-import type { Eye, TaperStep } from "@hmis/contracts";
+import type { Eye, RxLineSource, TaperStep } from "@hmis/contracts";
 
 /** The identifier system for this hospital's own formulary — a local code system, not a public one. */
 export const FORMULARY_CODE_SYSTEM = "urn:hmis:formulary:medicine";
@@ -43,7 +43,7 @@ export type RxLine = {
    * after a spoken note, from a set, or repeated from the last prescription. Audit only — no check
    * reads it and no print shows it. Optional for ever: older lines and the web's lines lack it.
    */
-  source?: "typed" | "voice" | "search" | "set" | "repeat" | null;
+  source?: RxLineSource | null;
 };
 
 /** od = right, os = left, ou = both — the ophthalmologist's own abbreviations. The vocabulary is shared with the web (`@hmis/contracts` rx-eye). */

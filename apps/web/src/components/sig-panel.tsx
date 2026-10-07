@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EYES, TAPER_MAX_DAYS, TAPER_MAX_STEPS, TAPER_MAX_TIMES, TAPER_MIN_STEPS, TAPER_PRESET } from "../lib/eye-line";
 import type { Eye, TaperStep } from "../lib/eye-line";
+import { RX_FREQUENCIES, RX_FREQUENCY_NOTATION, snapFrequency } from "../../../../packages/contracts/src/rx-line";
 
 /**
  * ═══ THE SIG PANEL — HOW A DRUG IS TAKEN, SAID ONCE ═══
@@ -59,15 +60,9 @@ export type SigPatch = {
 };
 
 /** `1-0-1` is how a prescription is said aloud in an Indian OPD; `BD` is what this system stores. */
-const FREQUENCY_PILLS = [
-  { value: "BD", notation: "1-0-1" },
-  { value: "TDS", notation: "1-1-1" },
-  { value: "OD", notation: "1-0-0" },
-  { value: "QID", notation: "1-1-1-1" },
-  { value: "HS", notation: "0-0-1" },
-  { value: "SOS", notation: null },
-  { value: "STAT", notation: null },
-] as const;
+/* Decision 0050 P0 — the set and its notation are the shared ones (`contracts/rx-line.ts`); only the ORDER on this panel is its own. */
+const FREQUENCY_ORDER = ["BD", "TDS", "OD", "QID", "HS", "SOS", "STAT"] as const satisfies readonly (typeof RX_FREQUENCIES[number])[];
+const FREQUENCY_PILLS = FREQUENCY_ORDER.map((value) => ({ value, notation: RX_FREQUENCY_NOTATION[value] }));
 const FREQUENCY_VALUES: readonly string[] = FREQUENCY_PILLS.map((f) => f.value);
 
 const TIMING_PILLS = ["afterFood", "beforeFood", "withFood", "emptyStomach"] as const;
@@ -321,6 +316,8 @@ export function SigPanel({
             aria-label={t("opdConsult.frequency")} placeholder={t("sigDrawer.frequencyPlaceholder")}
             className="rounded border" style={{ ...BOX, width: 260, maxWidth: "100%" }}
             value={frequency} onChange={(e) => { onPatch({ frequency: e.target.value }); }}
+            /* "1-0-1" or "twice daily" typed here IS one of the taps: leaving the box says so. A sentence stays as typed. */
+            onBlur={() => { const snapped = snapFrequency(frequency); if (snapped !== frequency) { setFreqOpen(false); onPatch({ frequency: snapped }); } }}
           />
         </div>
       )}
