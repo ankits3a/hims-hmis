@@ -505,9 +505,13 @@ describe("the Firebase key for phone notifications (mobile M6b)", () => {
     expect(readFileSync(ENV_EXAMPLE, "utf8")).not.toMatch(/private_key|service_account/);
   });
 
-  /** Runs the block in a scratch directory. `install -g 1000` needs root, so the group flag is dropped — the control flow is what is on trial. */
-  function runBlock(keyThere: boolean): { status: number | null; out: string; dir: string } {
+  /** Runs the block in a scratch directory. Handing a file to gid 1000 needs root, so `numeric_own` is a recorder — the control flow is what is on trial. */
+  function runBlock(keyThere: boolean, alreadyDeployed = false): { status: number | null; out: string; dir: string } {
     const dir = mkdtempSync(join(tmpdir(), "hmis-deploy-firebase-"));
+    if (alreadyDeployed) {
+      spawnSync("mkdir", ["-p", join(dir, "deploy", "firebase")]);
+      writeFileSync(join(dir, "deploy", "firebase", "service-account.json"), "{}");
+    }
     const key = join(dir, "owner", "service-account.json");
     if (keyThere) {
       spawnSync("mkdir", ["-p", join(dir, "owner")]);
@@ -515,7 +519,7 @@ describe("the Firebase key for phone notifications (mobile M6b)", () => {
     }
     const script = [
       "set -euo pipefail",
-      'install() { local a=(); while [ $# -gt 0 ]; do if [ "$1" = "-g" ]; then shift 2; else a+=("$1"); shift; fi; done; command install "${a[@]}"; }',
+      'numeric_own() { printf "OWN %s\\n" "$*"; }',
       firebaseBlock(),
     ].join("\n");
     const r = spawnSync("bash", ["-c", script], { env: { PATH: process.env.PATH ?? "", DEPLOY_DIR: join(dir, "deploy"), HMIS_FIREBASE_KEY: key }, encoding: "utf8" });
@@ -539,7 +543,46 @@ describe("the Firebase key for phone notifications (mobile M6b)", () => {
       expect(readFileSync(join(r.dir, "deploy", "firebase", "service-account.json"), "utf8")).toBe('{"type":"service_account"}');
       expect(r.out).toContain("firebase key installed");
       expect(r.out).not.toContain("service_account");
+      // The directory and the key are both handed to the containers' group by NUMBER.
+      expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "firebase")}\n`);
+      expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "firebase", "service-account.json")}`);
     } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  /**
+   * 2026-10-07 — production's new host (Ubuntu 26.04, uutils coreutils 0.8.0) has no group 1000 and
+   * its `install -g 1000` died with "invalid group: '1000'", failing the first deploy there. No deploy
+   * script may pass a numeric owner or group to `install`, or `chown` to a number without the helper.
+   */
+  it("no deploy script hands ownership to a NUMBER through install -g/-o or a bare chown", () => {
+    const scripts = [DEPLOY_SH, resolve(REPO_ROOT, "docker", "prod", "uat-reset.sh"), resolve(REPO_ROOT, "tools", "auto-deploy.sh"), resolve(REPO_ROOT, "tools", "stage.sh")];
+    for (const file of scripts) {
+      const code = readFileSync(file, "utf8").split("\n").filter((l) => !/^\s*#/.test(l));
+      expect(code.filter((l) => /\binstall\b.*\s-[og]\s+["']?[$0-9]/.test(l))).toEqual([]);
+      // The one chown allowed is the helper's own first try.
+      expect(code.filter((l) => /^\s*chown\s+["']?[$0-9]/.test(l) && l.trim() !== 'chown "$owner" "$@" 2>/dev/null && return 0')).toEqual([]);
+    }
+    expect(deploySource).toMatch(/numeric_own\(\) \{[\s\S]*?chown "\$owner" "\$@"[\s\S]*?os\.chown/);
+  });
+
+  it("a host that never held the key keeps the copy the move brought, and says so", () => {
+    const r = runBlock(false, true);
+    try {
+      expect(r.status).toBe(0);
+      expect(r.out).toContain("stays in use");
+      expect(readFileSync(join(r.dir, "deploy", "firebase", "service-account.json"), "utf8")).toBe("{}");
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("auto-deploy carries the key to production's host root-only and never prints it", () => {
+    const auto = readFileSync(resolve(REPO_ROOT, "tools", "auto-deploy.sh"), "utf8");
+    const start = auto.indexOf('FIREBASE_KEY="${HMIS_FIREBASE_KEY:-/root/.config/hmis/firebase/service-account.json}"');
+    const block = auto.slice(start, auto.indexOf("\nfi\n", start));
+    expect(start).toBeGreaterThan(0);
+    expect(block).toContain("--chmod=F600");
+    expect(block).toContain("install -d -m 0700");
+    expect(block).not.toMatch(/\bcat\b|rsync[^\n]*\s-[a-z]*v|--itemize|set -x/);
+    expect(block).toContain('[ -r "$FIREBASE_KEY" ]'); // absent here sends nothing and removes nothing
   });
 });
 

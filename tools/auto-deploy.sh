@@ -76,6 +76,21 @@ if [ -n "$PROD_SSH" ] && [ -d "$APK_DIR" ]; then
   fi
 fi
 
+# ── the owner's Firebase key follows production's host too ────────────────────────────────────────
+# The key lives outside every moved volume (deploy.sh reads it at $FIREBASE_KEY on the host it runs
+# on). It is copied to the same path there, root-only; its contents are never echoed, here or by
+# rsync (no -v, no --itemize). Absent here is normal: nothing is sent, nothing is removed there.
+FIREBASE_KEY="${HMIS_FIREBASE_KEY:-/root/.config/hmis/firebase/service-account.json}"
+if [ -n "$PROD_SSH" ] && [ -r "$FIREBASE_KEY" ]; then
+  if [ "$DRY" = 1 ]; then
+    say "WOULD sync the firebase key to $PROD_SSH (contents not shown)"
+  else
+    { ssh "${SSH_OPTS[@]}" "$PROD_SSH" "install -d -m 0700 '$(dirname "$FIREBASE_KEY")'" \
+        && rsync -a --chmod=F600 -e "ssh ${SSH_OPTS[*]}" "$FIREBASE_KEY" "$PROD_SSH:$FIREBASE_KEY"; } >/dev/null \
+      || say "the firebase key did not sync to $PROD_SSH (production keeps the copy it has); see above"
+  fi
+fi
+
 # ── production: origin/main, once every required check is green ─────────────────────────────────
 deploy_prod() {
   git -C "$REPO" fetch -q origin main
