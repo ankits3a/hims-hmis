@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { DeskOne } from "../src/screens/desk-one";
+import { todayIst } from "../src/vitals/rules";
 import { SessionProvider, useSession } from "../src/session";
 
 jest.mock("expo-secure-store", () => {
@@ -422,7 +423,8 @@ describe("Desk One on the phone", () => {
   it("today's open visit is offered instead of a second one, and opening it bills what it already carries", async () => {
     const s = world({ routes: {
       "GET /opd/patients/p1/timeline": () => ({ status: 200, body: { items: [
-        { encounterId: "e1", visitNo: "V2610060007", serviceDate: "2026-10-06", status: "registered", visitType: "new", doctorId: "d2", doctorName: "Dr. Nitish Kumar Jha", departmentId: "med", departmentName: "General Medicine" },
+        // TODAY, from the same IST clock the screen reads: a fixed date here turned main red at IST midnight.
+        { encounterId: "e1", visitNo: "V2610060007", serviceDate: todayIst(), status: "registered", visitType: "new", doctorId: "d2", doctorName: "Dr. Nitish Kumar Jha", departmentId: "med", departmentName: "General Medicine" },
       ] } }),
     } });
     await mount(s.fetcher);
