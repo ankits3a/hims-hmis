@@ -520,17 +520,6 @@ export function SlipDesk() {
           <Text style={s.ids} numberOfLines={1}>{resolved.visitNo}</Text>
         </View>
         <View style={s.card}>
-          {shot !== null ? (
-            <>
-              <Image testID="slip-preview" source={{ uri: `data:image/jpeg;base64,${shot.base64}` }} accessibilityLabel={t("slipCapture.previewAlt")}
-                style={{ width: shownW - space.md * 2, height: ((shownW - space.md * 2) * shot.height) / shot.width, alignSelf: "center", borderRadius: radius.sm, borderWidth: 1, borderColor: color.line }} resizeMode="contain" />
-              <Text style={s.asOf} testID="slip-page-info">{pages.length > 1 ? `${t("mobile.slips.pageN", { n: at + 1, total: pages.length })} · ` : ""}{t("mobile.slips.pageInfo", { w: shot.width, h: shot.height, kb: Math.round(base64Bytes(shot.base64) / 1024) })}</Text>
-            </>
-          ) : (
-            <Text style={s.faint} testID="slip-page-working">{t(chosen !== null && chosen.check ? "mobile.slips.pageUnmade" : "mobile.slips.pageWorking")}</Text>
-          )}
-          {chosen !== null && chosen.check && <Note tone="warn" testID="slip-check-note">{t("mobile.slips.checkNote")}</Note>}
-          {chosen !== null && chosen.plainCut && <Note tone="warn" testID="slip-flat-only">{t("mobile.slips.flatOnly")}</Note>}
           {/* The strip: every page of this slip in the order it will be filed, and the "+" for the next. */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="slip-pages" contentContainerStyle={{ gap: space.sm, paddingVertical: 2 }}>
             {pages.map((p, i) => (
@@ -567,6 +556,17 @@ export function SlipDesk() {
               </View>
             )
           )}
+          {shot !== null ? (
+            <>
+              <Image testID="slip-preview" source={{ uri: `data:image/jpeg;base64,${shot.base64}` }} accessibilityLabel={t("slipCapture.previewAlt")}
+                style={{ width: shownW - space.md * 2, height: ((shownW - space.md * 2) * shot.height) / shot.width, alignSelf: "center", borderRadius: radius.sm, borderWidth: 1, borderColor: color.line }} resizeMode="contain" />
+              <Text style={s.asOf} testID="slip-page-info">{pages.length > 1 ? `${t("mobile.slips.pageN", { n: at + 1, total: pages.length })} · ` : ""}{t("mobile.slips.pageInfo", { w: shot.width, h: shot.height, kb: Math.round(base64Bytes(shot.base64) / 1024) })}</Text>
+            </>
+          ) : (
+            <Text style={s.faint} testID="slip-page-working">{t(chosen !== null && chosen.check ? "mobile.slips.pageUnmade" : "mobile.slips.pageWorking")}</Text>
+          )}
+          {chosen !== null && chosen.check && <Note tone="warn" testID="slip-check-note">{t("mobile.slips.checkNote")}</Note>}
+          {chosen !== null && chosen.plainCut && <Note tone="warn" testID="slip-flat-only">{t("mobile.slips.flatOnly")}</Note>}
           <Text style={[s.dim, { fontWeight: "700", color: color.ink }]}>{t("slipCapture.readableQ")}</Text>
           <Text style={s.dim}>{t("slipCapture.readableBody")}</Text>
         </View>
