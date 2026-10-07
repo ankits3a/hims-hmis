@@ -29,6 +29,10 @@ export type WirePrintJob = {
   printedAt: string | null;
   /** FD-25 — so a reprint can be told from the row it replaces without trusting the route's order. */
   createdAt: string;
+  /** BROWSER PRINTING (owner 2026-10-07) — a relay inside the hospital is serving this paper's printer. Absent from an older server. */
+  served?: boolean;
+  /** Who put it on paper: a relay, or a counter's own browser. `null` until printed. */
+  printedVia?: "relay" | "browser" | null;
 };
 
 /** Every job queued for one visit, newest first. Scoped to the patient in hand, never a queue browser. */
