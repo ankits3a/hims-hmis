@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0039"
+title: "Counter and desk screen layout: menu in the header, the patient in hand on the left, one unfiltered list on the right"
+description: "Counter and desk screens put the menu in the header, the patient in hand in the left lane, and an unfiltered patient list on the right."
+generated: { by: agent:claude, at: 2026-09-25 }
+verified: []
+status: stable
+ruling: ruled
+tags: [web, lab, pharmacy, front-desk]
+supersedes: ["0029"]
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0039 — Counter and desk screen layout: menu in the header, the patient in hand on the left, one unfiltered list on the right
 
 - **Date:** 2026-09-25   **Status:** Ruled

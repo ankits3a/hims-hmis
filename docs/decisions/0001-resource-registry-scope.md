@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0001"
+title: "What the resource registry holds, and when master-data change control may start"
+description: "Instrument sets and class/tariff links stay out of the resource registry; master-data change control is its own phase after the IPD cluster and runbook O1."
+generated: { by: agent:claude, at: 2026-08-26 }
+verified: []
+status: stable
+ruling: ruled
+tags: [kernel, opd, ot, ipd]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0001 — What the resource registry holds, and when master-data change control may start
 
 - **Date:** 2026-08-26   **Status:** Ruled

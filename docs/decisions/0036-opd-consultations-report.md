@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0036"
+title: "OPD consultations report: PDF and CSV, \"New\" means new to the hospital, a week is Monday to Saturday"
+description: "The OPD consultations report comes as PDF and CSV, 'New' means new to the hospital, and a week runs Monday to Saturday."
+generated: { by: agent:claude, at: 2026-09-19 }
+verified: []
+status: stable
+ruling: ruled
+tags: [opd, reports, printing]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0036 — OPD consultations report: PDF and CSV, "New" means new to the hospital, a week is Monday to Saturday
 
 - **Date:** 2026-09-19   **Status:** Ruled

@@ -1,3 +1,19 @@
+---
+type: decision
+id: "0043"
+title: "App home, round two: the board built whole — the header, the desks' cards, paper consultations on the phone, \"ask the desk to re-check\""
+description: "The app-home board is built whole: the header, the desks' cards, paper consultations on the phone and 'ask the desk to re-check'."
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+status: stable
+ruling: ruled
+tags: [mobile, opd, approvals, roster, auth]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-526, resource: "https://github.com/ankits3a/hims-hmis/pull/526", title: "feat(home, opd, mobile): app home round two — the header, the desks' cards, paper consultations on the phone, ask the desk to re-check (owner 2026-10-07)" }
+  - { id: pr-521, resource: "https://github.com/ankits3a/hims-hmis/pull/521", title: "feat(mobile, home): the staff app opens on My day — needs you now, approvals from the card behind a fingerprint, 30 days, a team card (owner 2026-10-07)" }
+---
 # 0043 — App home, round two: the board built whole — the header, the desks' cards, paper consultations on the phone, "ask the desk to re-check"
 
 - **Date:** 2026-10-07   **Status:** Ruled (built)

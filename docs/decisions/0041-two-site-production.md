@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0041"
+title: "Two-site production: the hospital's own server is primary, with automatic failover to the cloud"
+description: "The hospital server is the primary production site with automatic failover to a cloud standby; serials skip 20 on an emergency failover."
+generated: { by: agent:claude, at: 2026-10-03 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [hosting, production, billing]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0041 — Two-site production: the hospital's own server is primary, with automatic failover to the cloud
 
 - **Date:** 2026-10-03   **Status:** Partly open

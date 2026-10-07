@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0038"
+title: "Build the whole ABDM connector now, without credentials, and prepare for FT and WASA"
+description: "The whole ABDM connector (M1-M3) is built now without credentials, with Functional Testing and WASA readiness alongside."
+generated: { by: agent:claude, at: 2026-09-25 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [abdm, security, procurement]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0038 — Build the whole ABDM connector now, without credentials, and prepare for FT and WASA
 
 - **Date:** 2026-09-25   **Status:** Partly open

@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0042"
+title: "The staff app opens on \"My day\": what needs you now, approvals from the card, a team card for supervisors"
+description: "The staff app opens on 'My day': urgent and important cards, approvals from the card, 30-day analytics and a team card for supervisors."
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+status: stable
+ruling: ruled
+tags: [mobile, approvals, billing, roster, security]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-521, resource: "https://github.com/ankits3a/hims-hmis/pull/521", title: "feat(mobile, home): the staff app opens on My day — needs you now, approvals from the card behind a fingerprint, 30 days, a team card (owner 2026-10-07)" }
+---
 # 0042 — The staff app opens on "My day": what needs you now, approvals from the card, a team card for supervisors
 
 - **Date:** 2026-10-07   **Status:** Ruled — what was open is closed by 0043

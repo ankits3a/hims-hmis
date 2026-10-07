@@ -1,3 +1,19 @@
+---
+type: decision
+id: "0046"
+title: "OPD vitals: no RR tile, and a guardian with reports may skip the bay on a revisit or renewal"
+description: "OPD vitals show no RR tile; on a revisit or renewal a guardian bringing reports may skip the vitals bay, and the fee follows the visit type (unpaid renewals are asked to bill first)."
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [opd, vitals, front-desk, doctor]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-531, resource: "https://github.com/ankits3a/hims-hmis/pull/531", title: "feat(opd, vitals, desk): no RR in OPD; a guardian with reports may skip the bay on a revisit (owner 2026-10-07)" }
+  - { id: pr-538, resource: "https://github.com/ankits3a/hims-hmis/pull/538", title: "a guardian with reports may skip the bay on a renewal too (owner 2026-10-07)" }
+---
 # 0046 — OPD vitals: no RR tile, and a guardian with reports may skip the bay on a revisit or renewal
 
 - **Date:** 2026-10-07   **Status:** Partly open

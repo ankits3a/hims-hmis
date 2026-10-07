@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0016"
+title: "UX-audit boards approved, with their money and law defaults"
+description: "The UX-audit boards are approved with their defaults: write-off and refund limits, no card balance at the counter, Aadhaar never stored."
+generated: { by: agent:claude, at: 2026-09-28 }
+verified: []
+status: stable
+ruling: ruled
+tags: [billing, membership, partners, patients, front-desk]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0016 — UX-audit boards approved, with their money and law defaults
 
 - **Date:** 2026-09-28   **Status:** Ruled

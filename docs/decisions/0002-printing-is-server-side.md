@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0002"
+title: "Printing is server-side, through a relay inside the hospital"
+description: "The HMIS server submits every document to named printer queues through a relay inside the hospital; no local print agent on counter PCs."
+generated: { by: agent:claude, at: 2026-09-04 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [printing, opd, front-desk, vitals, billing, pharmacy, lab, radiology]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0002 — Printing is server-side, through a relay inside the hospital
 
 - **Date:** 2026-09-04   **Status:** Partly open — "no browser printing" is narrowed by 0045 (the browser is the fallback while no relay serves a counter)

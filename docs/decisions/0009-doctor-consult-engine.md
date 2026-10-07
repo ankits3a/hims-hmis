@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0009"
+title: "The doctor's consult engine: layouts, specialties, coding, stock on the prescription, referral fee"
+description: "Consult layouts are admin defaults with doctor overlays, curated entries, and specialty profiles starting with ophthalmology."
+generated: { by: agent:claude, at: 2026-09-23 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [opd, cds, pharmacy, billing, printing]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0009 — The doctor's consult engine: layouts, specialties, coding, stock on the prescription, referral fee
 
 - **Date:** 2026-09-23   **Status:** Partly open

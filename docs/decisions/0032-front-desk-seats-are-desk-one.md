@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0032"
+title: "The front-desk seats are Desk One; billing keeps every money control"
+description: "The registration and appointment seats are Desk One projected to one stage; /billing keeps every money control in Desk One's frame."
+generated: { by: agent:claude, at: 2026-09-06 }
+verified: []
+status: stable
+ruling: ruled
+tags: [front-desk, billing, web]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0032 — The front-desk seats are Desk One; billing keeps every money control
 
 - **Date:** 2026-09-06   **Status:** Ruled

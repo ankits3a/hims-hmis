@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0006"
+title: "The doctor's copilot: two per-doctor toggles, the doctor always submits"
+description: "Proactive-vs-ask-only and drafting clinical prose are two per-doctor toggles, both off by default; the doctor always confirms and submits."
+generated: { by: agent:claude, at: 2026-09-17 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [opd, cds, copilot]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0006 — The doctor's copilot: two per-doctor toggles, the doctor always submits
 
 - **Date:** 2026-09-17   **Status:** Partly open

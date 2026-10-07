@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0028"
+title: "An unpaid reflex test holds its whole order group's report"
+description: "An unpaid reflex test held the report of every paid order in its order group (superseded: a reflex test is billed on its own bill)."
+generated: { by: agent:claude, at: 2026-08-30 }
+verified: []
+status: deprecated
+ruling: superseded
+tags: [lab, billing]
+supersedes: []
+superseded_by: ["0010"]
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0028 — An unpaid reflex test holds its whole order group's report
 
 - **Date:** 2026-08-30   **Status:** Superseded by 0010 (ruling 9)

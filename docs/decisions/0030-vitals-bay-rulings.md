@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0030"
+title: "Vitals bay: 10-second cancel on auto-bump, serial capture off, a fast typing lane, amend after save"
+description: "Vitals bay: auto-bump with a 10-second cancel, serial capture behind a toggle shipped off, a fast typing lane, and amend after save."
+generated: { by: agent:claude, at: 2026-08-31 }
+verified: []
+status: stable
+ruling: ruled
+tags: [opd, vitals]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0030 — Vitals bay: 10-second cancel on auto-bump, serial capture off, a fast typing lane, amend after save
 
 - **Date:** 2026-08-31   **Status:** Ruled

@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0005"
+title: "DDInter is an internal benchmark only; no dataset is bought"
+description: "DDInter is an internal benchmark and gap specification only, never imported or shown to clinicians, and no interaction dataset is bought."
+generated: { by: agent:claude, at: 2026-09-17 }
+verified: []
+status: stable
+ruling: ruled
+tags: [formulary, cds, pharmacy, legal]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0005 — DDInter is an internal benchmark only; no dataset is bought
 
 - **Date:** 2026-09-17   **Status:** Ruled

@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0037"
+title: "An emergency is charted before billing; an unpaid token waits for the money or the doctor"
+description: "An emergency is charted at the bay before billing, but its unpaid token waits until the bill is paid or the doctor opens it."
+generated: { by: agent:claude, at: 2026-09-20 }
+verified: []
+status: stable
+ruling: ruled
+tags: [opd, vitals, billing, queue-display]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0037 — An emergency is charted before billing; an unpaid token waits for the money or the doctor
 
 - **Date:** 2026-09-20   **Status:** Ruled

@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0027"
+title: "Materials core: the three-slice cut and four procurement rules"
+description: "Materials ships in three plans (14, 14b, 14c), and four procurement rules from the brainstorm are adopted."
+generated: { by: agent:claude, at: 2026-08-27 }
+verified: []
+status: stable
+ruling: ruled
+tags: [materials, procurement, pharmacy, ot]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0027 — Materials core: the three-slice cut and four procurement rules
 
 - **Date:** 2026-08-27   **Status:** Ruled

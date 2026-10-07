@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0008"
+title: "Make the pharmacy ready: full authority over production pharmacy data, minimal screens, loose-tablet pricing"
+description: "The pharmacy is made ready under full authority: minimal in-flow screens, FEFO batch and shelf per line, and loose-tablet pricing."
+generated: { by: agent:claude, at: 2026-09-22 }
+verified: []
+status: stable
+ruling: ruled
+tags: [pharmacy, materials, billing]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0008 — Make the pharmacy ready: full authority over production pharmacy data, minimal screens, loose-tablet pricing
 
 - **Date:** 2026-09-22   **Status:** Ruled

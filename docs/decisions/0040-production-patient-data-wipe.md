@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0040"
+title: "Production patient data was test data: copy it to staging exactly, then wipe it from production"
+description: "Production patient data was test data: it was copied exactly to staging and then every patient-linked row was deleted from production."
+generated: { by: agent:claude, at: 2026-09-30 }
+verified: []
+status: stable
+ruling: ruled
+tags: [data, privacy, staging, production]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0040 — Production patient data was test data: copy it to staging exactly, then wipe it from production
 
 - **Date:** 2026-09-30   **Status:** Ruled

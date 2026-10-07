@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0007"
+title: "Pharmacy desk: P-number at queue time; the doctor authorises dispensing against an allergy"
+description: "A pharmacy ticket gets its P-number when queued, and only the doctor may authorise dispensing against a recorded allergy."
+generated: { by: agent:claude, at: 2026-09-19 }
+verified: []
+status: stable
+ruling: ruled
+tags: [pharmacy]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0007 — Pharmacy desk: P-number at queue time; the doctor authorises dispensing against an allergy
 
 - **Date:** 2026-09-19   **Status:** Ruled

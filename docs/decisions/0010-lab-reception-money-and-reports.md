@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0010"
+title: "Lab reception, collection, bench and report rules"
+description: "No lab token until billed (with emergency, IPD and payer exceptions), no reception discount, and fixed rules for collection, bench and report release."
+generated: { by: agent:claude, at: 2026-09-25 }
+verified: []
+status: stable
+ruling: ruled
+tags: [lab, billing, front-desk, printing]
+supersedes: ["0028"]
+superseded_by: ["0013"]
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0010 — Lab reception, collection, bench and report rules
 
 - **Date:** 2026-09-25   **Status:** Ruled — ruling 12 superseded by 0013

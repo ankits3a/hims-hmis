@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0031"
+title: "FD-25 seat screens: cashier grants, voice scribe UI only, Desk One off the nav"
+description: "The cashier gains four front-desk grants, voice scribe is UI only, and screens 5-6 get no design pass (Desk One off the nav was later reversed)."
+generated: { by: agent:claude, at: 2026-09-04 }
+verified: []
+status: stable
+ruling: ruled
+tags: [front-desk, security, web-shell]
+supersedes: []
+superseded_by: ["0020"]
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0031 — FD-25 seat screens: cashier grants, voice scribe UI only, Desk One off the nav
 
 - **Date:** 2026-09-04   **Status:** Partly superseded — ruling 3 reversed by 0020

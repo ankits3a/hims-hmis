@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0003"
+title: "Diagnostic-only visits carry no consult fee; a confidential patient's reprint carries the alias"
+description: "A diagnostic-only visit never carries a consult fee and is never re-charged; a confidential patient's reprint carries the alias."
+generated: { by: agent:claude, at: 2026-09-05 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [billing, opd, front-desk, lab, printing, patients]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-515, resource: "https://github.com/ankits3a/hims-hmis/pull/515", title: "docs(decisions): the owner's rulings move from private memory into 41 numbered decision records" }
+---
 # 0003 — Diagnostic-only visits carry no consult fee; a confidential patient's reprint carries the alias
 
 - **Date:** 2026-09-05   **Status:** Partly open

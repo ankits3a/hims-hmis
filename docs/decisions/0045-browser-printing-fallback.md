@@ -1,3 +1,18 @@
+---
+type: decision
+id: "0045"
+title: "A counter with no print relay prints on its own printer, from the browser"
+description: "A counter with no print relay prints on its own printer from the browser, as the fallback to server-side printing."
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+status: draft
+ruling: partly-open
+tags: [printing, front-desk, opd]
+supersedes: []
+superseded_by: []
+sources:
+  - { id: pr-530, resource: "https://github.com/ankits3a/hims-hmis/pull/530", title: "feat(printing, desk-one): hand over prints the prescription sheet on the counter's own printer — the browser is the fallback while no relay serves it (owner 2026-10-07)" }
+---
 # 0045 — A counter with no print relay prints on its own printer, from the browser
 
 - **Date:** 2026-10-07   **Status:** Partly open
