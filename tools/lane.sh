@@ -59,6 +59,21 @@ cmd_new() {
   local proj; proj="$(project_dir "$dir")"; mkdir -p "$proj"
   if [ -e "$proj/memory" ] && [ ! -L "$proj/memory" ]; then die "$proj/memory exists and is not a symlink; merge it by hand"; fi
   ln -sfn "$MEMORY_DIR" "$proj/memory"
+  # THE LANE'S HANDOFF — one short file beside the worktree (outside git, so it never dirties a tree or
+  # lands in a PR). A session that starts in this lane reads it first instead of re-deriving where the
+  # work stands; a session that stops updates it. `drop` archives it.
+  local handoff="$LANES_DIR/$name/HANDOFF.md"
+  [ -e "$handoff" ] || cat > "$handoff" <<HANDOFF
+# HANDOFF — lane $name (keep under 40 lines; newest state wins, overwrite rather than append)
+
+- **Goal:** (one line: what the owner asked for, and the date)
+- **State:** (what is done; committed / pushed / PR # / staged / merged)
+- **Next step:** (the one thing the next session does first)
+- **Decisions:** (each with where it is recorded: docs/decisions/NNNN, PR body, owner's words)
+- **Traps hit / failed attempts:** (so nobody repeats them)
+- **Read first:** docs/architecture/modules/<m>.md, apps/core/src/modules/<m>/MAP.md
+- **Verify with:** (the exact commands, under the test lock)
+HANDOFF
   cat <<MSG
 
 lane '$name' is ready
@@ -66,6 +81,7 @@ lane '$name' is ready
   branch   : $branch (from $base)
   test db  : $db (+ _1, _2 per jest worker, created on first run)
   memory   : $proj/memory -> $MEMORY_DIR
+  handoff  : $LANES_DIR/$name/HANDOFF.md (read it first; update it before you stop)
 
 next:  cd $dir && claude
 finish: push the branch, open a PR (gh pr create), let CI gate it, then: tools/lane.sh drop $name
@@ -85,7 +101,16 @@ cmd_drop() {
     fi
     git -C "$MAIN" worktree remove --force "$dir"
   fi
+  # Keep the lane's last handoff: a dropped lane is history, and its traps outlive it.
+  if [ -f "$LANES_DIR/$name/HANDOFF.md" ]; then
+    mkdir -p "$LANES_DIR/.handoff-archive"
+    mv "$LANES_DIR/$name/HANDOFF.md" "$LANES_DIR/.handoff-archive/$name-$(date -u +%Y%m%d%H%M).md"
+  fi
   rmdir "$LANES_DIR/$name" 2>/dev/null || true
+  # A Serena project registered for this lane (CLAUDE.md, "Serena on demand") goes with it.
+  if [ -f "$HOME/.serena/serena_config.yml" ]; then
+    sed -i "\#^- $dir\$#d" "$HOME/.serena/serena_config.yml"
+  fi
   if [ -L "$(project_dir "$dir")/memory" ]; then rm -f "$(project_dir "$dir")/memory"; fi
   git -C "$MAIN" worktree prune
   for suffix in "" _1 _2 _3 _4; do
