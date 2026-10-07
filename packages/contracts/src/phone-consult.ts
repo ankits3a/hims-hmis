@@ -38,6 +38,22 @@ export type ConsultDraft = {
 };
 
 export const DOSES = ["½", "1 tab", "2 tab", "5 ml", "10 ml"] as const;
+/**
+ * The dose chips for THIS medicine: a capsule is not offered "1 tab", a syrup is not offered a
+ * tablet. Read off the name the doctor already picked; an unknown form gets the general chips.
+ */
+export function dosesFor(drug: string): readonly string[] {
+  const d = drug.toLowerCase();
+  if (/\b(syrup|suspension|solution|liquid|elixir|linctus)\b/.test(d)) return ["2.5 ml", "5 ml", "7.5 ml", "10 ml", "15 ml"];
+  if (/\b(capsules?|cap)\b/.test(d)) return ["1 cap", "2 cap"];
+  if (/\b(drops?)\b/.test(d)) return ["1 drop", "2 drops", "5 drops", "10 drops"];
+  if (/\b(injection|inj)\b/.test(d)) return ["1 amp", "1 vial", "1 ml", "2 ml"];
+  if (/\b(ointment|cream|gel|lotion)\b/.test(d)) return ["apply thin layer", "apply locally"];
+  if (/\b(inhaler|rotacap|respule)\b/.test(d)) return ["1 puff", "2 puffs", "1 respule"];
+  if (/\b(sachet|powder)\b/.test(d)) return ["1 sachet"];
+  if (/\b(tablets?|tab)\b/.test(d)) return ["½ tab", "1 tab", "2 tab"];
+  return DOSES;
+}
 export const FREQUENCIES = ["OD", "BD", "TDS", "QID", "HS", "SOS"] as const;
 export const DAY_CHOICES = [3, 5, 7, 10, 15, 30] as const;
 export const REVIEW_CHOICES = [3, 5, 7, 15, 30] as const;

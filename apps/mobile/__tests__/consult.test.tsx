@@ -106,7 +106,7 @@ async function addMedicine(query: string, hitId: string): Promise<void> {
   const input = await screen.findByTestId("med-input");
   await fireEvent.changeText(input, query);
   await fireEvent.press(await screen.findByTestId(`med-hit-${hitId}`));
-  await press("dose-1 tab"); await press("freq-TDS"); await press("days-5");
+  await press(hitId === "m-amox" ? "dose-1 cap" : "dose-1 tab"); await press("freq-TDS"); await press("days-5");
   await press("line-add");
 }
 

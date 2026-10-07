@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { toBase64 } from "../src/consult/recorder";
 import {
   adviceOf, applySet, changeLine, changedChars, emptyDraft, isEmptyDraft, lineComplete, noteBody, overridesOf, parseDraft, repeatLast, setBodyOf,
-  unanswered, warningsOf, wireLine,
+  DOSES, dosesFor, lineSignals, linesFrom, unanswered, warningsOf, wireLine,
 } from "../src/consult/rules";
 import type { ConsultDraft, ConsultLine, WirePrecheck } from "../src/consult/rules";
 
@@ -102,5 +102,20 @@ describe("phone consult — the reading rules (one file, shared; packages/contra
     expect(toBase64(new Uint8Array([65, 66, 67]))).toBe("QUJD");
     expect(toBase64(new Uint8Array([65, 66]))).toBe("QUI=");
     expect(toBase64(new Uint8Array([65]))).toBe("QQ==");
+  });
+  it("the dose chips fit the medicine: a capsule is never offered a tablet, a syrup is offered millilitres", () => {
+    expect(dosesFor("Amoxicillin 500 mg Capsule")).toEqual(["1 cap", "2 cap"]);
+    expect(dosesFor("Paracetamol 500 mg Tablet")).toContain("1 tab");
+    expect(dosesFor("Paracetamol 125 mg/5 ml Syrup")).toContain("5 ml");
+    expect(dosesFor("Zerodol")).toEqual(DOSES);
+  });
+
+  it("where a line came from rides the issue and feeds the meter — picked and heard are accepted, hand-typed is manual, sets and repeats are not counted", () => {
+    const base = { drug: "X", dose: "1 tab", frequency: "OD", durationDays: 5, food: null, instructions: "", route: "oral", medicineId: null };
+    expect(wireLine({ ...base, source: "voice" }, { before: "b", after: "a" })).toMatchObject({ source: "voice" });
+    expect("source" in wireLine({ ...base }, { before: "b", after: "a" })).toBe(false);
+    expect(lineSignals([{ ...base, source: "search" }, { ...base, source: "voice" }, { ...base, source: "typed" }, { ...base, source: "set" }, { ...base, source: "repeat" }, base]))
+      .toEqual([{ kind: "medicine", source: "search", outcome: "accepted" }, { kind: "medicine", source: "voice", outcome: "accepted" }, { kind: "medicine", source: "typed", outcome: "manual" }]);
+    expect(linesFrom([{ drug: "A", dose: "1", route: "oral", frequency: "OD", durationDays: 1, instructions: null }], "repeat")[0]!.source).toBe("repeat");
   });
 });

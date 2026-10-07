@@ -9,7 +9,7 @@ import { Button, MONO, Note } from "../ui";
 import { refusalText } from "../vitals/api";
 import { voiceNotice } from "./draft";
 import {
-  DAY_CHOICES, DOSES, FREQUENCIES, MAX_DIAGNOSES, MAX_TESTS, MIN_REASON, REVIEW_CHOICES, addLine, changeLine, changedChars, lineComplete, lineSub,
+  DAY_CHOICES, FREQUENCIES, MAX_DIAGNOSES, MAX_TESTS, MIN_REASON, REVIEW_CHOICES, addLine, changeLine, changedChars, dosesFor, lineComplete, lineSub,
   lineText,
 } from "./rules";
 import type { ConsultApi, WireAdviceTemplate, WireIcd10Hit, WireMedicineHit, WireMyDiagnosis, WirePriceRow, WireRxSet, WireTestHit, WireVoiceResult, WireVoiceStatus } from "./api";
@@ -57,7 +57,7 @@ const Lab = ({ children }: { children: string }) => <Text style={st.lab}>{childr
 function Box(props: React.ComponentProps<typeof TextInput>) {
   const [focus, setFocus] = useState(false);
   return <TextInput {...props} onFocus={(e) => { setFocus(true); props.onFocus?.(e); }} onBlur={(e) => { setFocus(false); props.onBlur?.(e); }}
-    placeholderTextColor={color.faint} style={[st.box, props.multiline === true && { minHeight: 88, textAlignVertical: "top" }, focus && st.boxFocus, props.style]} />;
+    placeholderTextColor={color.faint} style={[st.box, props.multiline === true && { minHeight: 120, textAlignVertical: "top" }, focus && st.boxFocus, props.style]} />;
 }
 
 /** A search that waits for the typing to pause, and says plainly when the phone has no signal. */
@@ -369,8 +369,8 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
               <Pressable testID="line-change-drug" accessibilityRole="button" hitSlop={8} onPress={() => { set({ drug: "", medicineId: null, source: null }); setQ(""); }}><Text style={st.link}>{t("mobile.consult.change")}</Text></Pressable>
             </View>
             <Lab>{t("mobile.consult.dose")}</Lab>
-            <View style={st.chips}>{DOSES.map((d) => <Chip key={d} testID={`dose-${d}`} label={d} on={l.dose === d} onPress={() => set({ dose: d })} />)}</View>
-            {!(DOSES as readonly string[]).includes(l.dose) && <Box testID="dose-input" value={l.dose} onChangeText={(v) => set({ dose: v })} placeholder={t("mobile.consult.doseOther")} maxLength={100} />}
+            <View style={st.chips}>{dosesFor(l.drug).map((d) => <Chip key={d} testID={`dose-${d}`} label={d} on={l.dose === d} onPress={() => set({ dose: d })} />)}</View>
+            {!dosesFor(l.drug).includes(l.dose) && <Box testID="dose-input" value={l.dose} onChangeText={(v) => set({ dose: v })} placeholder={t("mobile.consult.doseOther")} maxLength={100} />}
             <Lab>{t("mobile.consult.howOften")}</Lab>
             <View style={st.chips}>{FREQUENCIES.map((f) => <Chip key={f} testID={`freq-${f}`} label={f} on={l.frequency === f} onPress={() => set({ frequency: f })} />)}</View>
             <Lab>{t("mobile.consult.daysLabel")}</Lab>
