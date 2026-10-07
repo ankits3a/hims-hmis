@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals, opdVoiceSettings, opdVoiceUsage, users } from "../../kernel/db/schema";
+import { opdDepartments, opdPrescriptions, opdVitals, opdVoiceSettings, opdVoiceUsage, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
 import { OPENAI_SPEECH_MODELS, OpenAiSpeechFailed, SPEECH_MIME_TYPES, openAiKeyFromFile, openAiTranscribe } from "../../kernel/inference/openai-speech";

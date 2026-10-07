@@ -12,7 +12,7 @@ import {
 } from "../../kernel/db/schema";
 import { forgetOpenAiKeyCache } from "../../kernel/inference/openai-speech";
 import { normalizeDrugName } from "../formulary";
-import { ROSTER_POSITIONS, seedRosterPositions } from "../roster/masters";
+import { ROSTER_POSITIONS, seedRosterPositions } from "../roster";
 import { startConsultation } from "./consultation";
 import { getEncounter, openVisit } from "./encounters";
 import { callNext, listQueue } from "./queue";
