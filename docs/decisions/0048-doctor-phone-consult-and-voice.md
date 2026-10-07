@@ -9,7 +9,7 @@ status: draft
 ruling: partly-open
 tags: [mobile, opd, doctor, voice, privacy]
 supersedes: []
-superseded_by: []
+superseded_by: ["0049"]
 sources: []
 ---
 # 0048 — The doctor consults on the phone — one screen, five drawers; voice notes through OpenAI, never Sarvam, no patient name sent
