@@ -161,7 +161,10 @@ describe("app home — the first screen (owner 2026-10-07)", () => {
       "GET /me/brief": { status: 200, body: { totals: { "opd.visitsOpened": 12, "billing.receipts": 14 }, clauses: [], series: [] } },
     });
     await mount(fetcher);
-    expect(await screen.findByTestId("tile-locked")).toHaveTextContent("After your count · 14 receipts");
+    const locked = await screen.findByTestId("tile-locked");
+    expect(locked).toHaveTextContent(/After your count/);
+    expect(locked).toHaveTextContent(/14 receipts/);
+    expect(locked).not.toHaveTextContent(/₹/);
     expect(screen.queryByText(/₹/)).toBeNull();
   });
 

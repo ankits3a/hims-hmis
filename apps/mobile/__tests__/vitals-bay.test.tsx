@@ -230,6 +230,49 @@ describe("the vitals bay on a phone", () => {
     expect((jest.requireMock("expo-haptics") as { notificationAsync: jest.Mock }).notificationAsync).toHaveBeenCalledWith("success");
   });
 
+  /** Owner 2026-10-07 (#531) — the phone bay offers what the web bay offers, on a revisit only. */
+  it("guardian with reports: a revisit skips the bay — who came is asked, the server is told, the desk clears", async () => {
+    const s = server(base({
+      "GET /opd/bench": () => ({ status: 200, body: { items: [row({ visitType: "revisit" }), KID_ROW] } }),
+      "POST /opd/visits/e4/patient-absent": () => ({ status: 201, body: { patientAbsent: { relation: "father", name: "Ramesh", by: "01J", at: "2026-10-07T05:00:00Z" }, alreadyMarked: false } }),
+    }));
+    await mount(s.fetcher);
+    await takeToken("4");
+    await fireEvent.press(screen.getByTestId("patient-absent-open"));
+    expect(screen.getByTestId("patient-absent-dialog")).toHaveTextContent(/The patient did not come — a guardian brought the reports/);
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm")); // nobody chosen yet: nothing is sent
+    expect(s.of("POST /opd/visits/e4/patient-absent")).toHaveLength(0);
+    await fireEvent.press(screen.getByTestId("patient-absent-relation-father"));
+    await fireEvent.changeText(screen.getByTestId("patient-absent-name"), "  Ramesh ");
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor — guardian with reports, vitals not taken\./);
+    expect(s.of("POST /opd/visits/e4/patient-absent")[0]!.body).toEqual({ relation: "father", name: "Ramesh" });
+    expect(s.of("POST /opd/visits/e4/vitals")).toHaveLength(0);
+    expect(await screen.findByTestId("identify")).toBeTruthy(); // the desk is clear
+  });
+
+  it("guardian with reports: not offered on a new visit, and a refusal or a lost send stays on screen", async () => {
+    let mode: "refuse" | "offline" = "refuse";
+    const s = server(base({
+      "GET /opd/bench": () => ({ status: 200, body: { items: [row({ visitType: "new" }), { ...KID_ROW, visitType: "revisit" }] } }),
+      "POST /opd/visits/e7/patient-absent": () => (mode === "offline" ? "offline" : { status: 409, body: { code: "consult_gate_refused", message: "consult_gate_refused" } }),
+    }));
+    await mount(s.fetcher);
+    await takeToken("4");
+    expect(screen.queryByTestId("patient-absent-open")).toBeNull();
+    await fireEvent.press(screen.getByTestId("clear-desk"));
+    await takeToken("7");
+    await fireEvent.press(screen.getByTestId("patient-absent-open"));
+    await fireEvent.press(screen.getByTestId("patient-absent-relation-mother"));
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    expect(await screen.findByTestId("patient-absent-error")).toHaveTextContent(/has not been billed yet/);
+    mode = "offline";
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    await waitFor(() => { expect(screen.getByTestId("patient-absent-error")).toHaveTextContent(/did not reach the server/); });
+    expect(screen.queryByTestId("guardian-banner")).toBeNull();
+    expect(screen.getByTestId("who-name")).toHaveTextContent("Aarav Kumar");
+  });
+
   it("never queues a save: with no network the numbers stay, the line says nothing was sent, and Save works again", async () => {
     let online = false;
     const s = server(base({ "POST /opd/visits/e4/vitals": () => (online ? { status: 201, body: { flags: [] } } : "offline") }));
