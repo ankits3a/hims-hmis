@@ -106,6 +106,34 @@ describe("paper consultations — the doctor's own list", () => {
  * list says so, and "Correct it" puts them in the editor so issuing them is one decision away.
  */
 describe("paper consultations — the draft the doctor left on the screen", () => {
+  it("'ask the desk to re-check': a reason is required and sent; the row then says it is with the desk, and later what the desk said (decision 0043)", async () => {
+    const SENT = row({ recheck: { reason: "Line 1 — I wrote 650, not 500", askedAt: "2026-10-06T06:00:00.000Z", askedByName: "Dr Chandan", doneAt: null, doneByName: null, doneNote: null } });
+    stub(["opd.consult", "opd.visits.read"], [row({})], { "POST /api/opd/paper/visits/E-1/recheck": SENT });
+    const user = userEvent.setup();
+    renderWithProviders(<PaperConsults />);
+    const r = await screen.findByTestId("paper-row-V2610060004");
+    await user.click(within(r).getByRole("button", { expanded: false }));
+    await user.click(within(r).getByTestId("paper-ask-recheck"));
+    expect(within(r).getByTestId("paper-recheck-go")).toBeDisabled(); // no reason, nothing sent
+    await user.type(within(r).getByTestId("paper-recheck-reason"), "Line 1 — I wrote 650, not 500");
+    await user.click(within(r).getByTestId("paper-recheck-go"));
+    await waitFor(() => { expect(posted("/api/opd/paper/visits/E-1/recheck")).toEqual([{ reason: "Line 1 — I wrote 650, not 500" }]); });
+  });
+
+  it("a visit sent back wears it on the row; once the desk has looked, the row says so with the desk's note", async () => {
+    const open = row({ recheck: { reason: "check line 2", askedAt: "2026-10-06T06:00:00.000Z", askedByName: "Dr Chandan", doneAt: null, doneByName: null, doneNote: null } });
+    const done = row({ encounterId: "E-2", visitNo: "V2610060007", recheck: { reason: "check line 2", askedAt: "2026-10-06T06:00:00.000Z", askedByName: "Dr Chandan", doneAt: "2026-10-06T06:20:00.000Z", doneByName: "Priya Kumari", doneNote: "matches the paper" } });
+    stub(["opd.consult", "opd.visits.read"], [open, done]);
+    const user = userEvent.setup();
+    renderWithProviders(<PaperConsults />);
+    expect(within(await screen.findByTestId("paper-row-V2610060004")).getByTestId("paper-pill-sent-back")).toHaveTextContent("sent back to the desk");
+    const d = screen.getByTestId("paper-row-V2610060007");
+    expect(within(d).getByTestId("paper-pill-rechecked")).toBeInTheDocument();
+    await user.click(within(d).getByRole("button", { expanded: false }));
+    expect(within(d).getByTestId("paper-recheck-state")).toHaveTextContent("The desk looked again — Priya Kumari");
+    expect(within(d).getByTestId("paper-recheck-state")).toHaveTextContent("The desk says: matches the paper");
+  });
+
   it("names the unissued draft on the row, and 'Correct it' carries it into the editor", async () => {
     const DRAFT_LINE = { drug: "Tab Azithromycin 500", dose: "1 tab", route: "oral", frequency: "OD", durationDays: 3, instructions: null, noSubstitution: false };
     stub(["opd.consult", "opd.visits.read"], [row({ evidenceKind: "slip_photo", prescription: null, doctorDraft: [DRAFT_LINE] })], {

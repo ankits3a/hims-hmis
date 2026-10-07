@@ -301,7 +301,7 @@ Source: `apps/core/src/modules/roster/`
   - `wantsLongReminder(s: { startsAt: Date; endsAt: Date }): boolean`
   - types: `CoverForAlert`, `DutyReminder`
 - `swaps.ts`
-  - `answerCover(tx: Tx, actor: Actor, requestId: string, accept: boolean): Promise<void>`
+  - `answerCover(tx: Tx, actor: Actor, requestId: string, accept: boolean, noteRaw: string | null = null): Promise<void>`
   - `coverOptions(exec: Db | Tx, actor: Actor, assignmentId: string): Promise<CoverOptions>`
   - `coverRequests(exec: Db | Tx, actor: Actor, opts: { teamId?: string; userId?: string } = {}): Promise<CoverRequestView[]>`
   - `decideCover(tx: Tx, actor: Actor, requestId: string, input: { approve: boolean; note?: string | null }): Promise<CoverDecision>`

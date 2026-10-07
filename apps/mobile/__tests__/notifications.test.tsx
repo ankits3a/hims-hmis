@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { Linking } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
-import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
+import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_CARD, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
 import { noteOf, permissionOf, type PushNote, type PushPermission, type PushPhone } from "../src/push-phone";
 import { AccountScreen } from "../src/screens/account";
 import { NotificationsScreen } from "../src/screens/notifications";
@@ -52,7 +52,8 @@ function server(start: Partial<Server> = {}, perms: string[] = ["roster.read"], 
   const calls: { key: string; body: unknown }[] = [];
   const o = { ...opts };
   const f = jest.fn(async (url: string, init?: RequestInit) => {
-    const key = `${init?.method ?? "GET"} ${url.replace(/^https?:\/\/[^/]+\/api/, "")}`;
+    const key = `${init?.method ?? "GET"} ${url.replace(/^https?:\/\/[^/]+\/api/, "").split("?")[0] ?? ""}`;
+    if (url.includes("/auth/phone/notifications")) knows.push(url.split("?knows=")[1] ?? "");
     const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
     calls.push({ key, body });
     if (key === "GET /auth/me") return new Response(JSON.stringify(ME(perms)), { status: 200 });
@@ -123,6 +124,9 @@ beforeEach(() => {
   for (const k of ["hmis.push.offer", "hmis.push.wanted", "hmis.push.received"]) (jest.requireMock("expo-secure-store") as { __delete: (k: string) => void }).__delete(k);
 });
 
+/** What the phone said it knows, on every read of its notification state (app home round 2: `?knows=`). */
+const knows: string[] = [];
+
 describe("notifications on this phone (M6b)", () => {
   it("names each state from four facts, and 'on' needs all of them", () => {
     const on = { configured: true, registered: true, muted: [], categories: [] };
@@ -148,6 +152,15 @@ describe("notifications on this phone (M6b)", () => {
     expect(ph.asked).not.toHaveBeenCalled();
   });
 
+  it("the phone tells the server which categories it can draw, so 'Approvals' is offered only to a build that has the words", async () => {
+    knows.length = 0;
+    const s2 = server({ configured: true, registered: false, muted: [], categories: [...PUSH_CATEGORIES] });
+    await mount(s2.fetcher, phone().p, "settings");
+    await waitFor(() => expect(knows.length).toBeGreaterThan(0));
+    expect(new Set(knows)).toEqual(new Set([PUSH_CATEGORIES.join(",")]));
+    expect(PUSH_CATEGORIES).toContain("approvals");
+  });
+
   it("a server with no Firebase key yet: said in words, nothing offered, nothing asked", async () => {
     const s = server({ configured: false });
     const ph = phone();
@@ -169,7 +182,7 @@ describe("notifications on this phone (M6b)", () => {
     expect(ph.asked).toHaveBeenCalledTimes(1);
     expect(s.calls.find((c) => c.key === "PUT /auth/phone/notifications")?.body).toEqual({ token: ADDRESS, language: "en" });
     // One Android channel per category, named in the person's language.
-    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue", reminder: "Duty reminders" });
+    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue", reminder: "Duty reminders", approvals: "Approvals" });
     await waitFor(() => expect(screen.queryByTestId("push-offer")).toBeNull());
   });
 
@@ -465,7 +478,7 @@ describe("the phone and the server use the same words (M6b)", () => {
 
   it("categories and links are the server's own lists, and every one has its words in both languages", () => {
     expect([...PUSH_CATEGORIES]).toEqual(list("PUSH_CATEGORIES"));
-    expect(Object.keys(PUSH_LINK_SEAT).sort()).toEqual(list("PUSH_LINKS").sort());
+    expect([...Object.keys(PUSH_LINK_SEAT), ...Object.keys(PUSH_LINK_CARD)].sort()).toEqual(list("PUSH_LINKS").sort());
     for (const dict of [en, hi]) {
       for (const c of PUSH_CATEGORIES) {
         expect(dict.mobile.push.category[c]).toBeTruthy();

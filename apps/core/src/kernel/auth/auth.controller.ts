@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode,
-  Inject, NotFoundException, Param, Post, Put, Req, Res, UnauthorizedException,
+  Inject, NotFoundException, Param, Post, Put, Query, Req, Res, UnauthorizedException,
 } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { eq } from "drizzle-orm";
@@ -28,6 +28,8 @@ import {
 } from "./temp-roles";
 import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decorators";
 import { users } from "../db/schema";
+import { meProfile } from "./profile";
+import type { MeProfile } from "./profile";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
 import { authPhoneLinked, authSessionRevoked, authStepUp, userPasswordChanged } from "./events";
@@ -393,12 +395,12 @@ export class AuthController {
   }
 
   @Get("phone/notifications")
-  async phoneNotifications(@Req() req: AuthedRequest): Promise<PushState> {
-    return pushStateOf(this.db, this.phoneOf(req), this.pushConfigured());
+  async phoneNotifications(@Req() req: AuthedRequest, @Query("knows") knows?: string): Promise<PushState> {
+    return pushStateOf(this.db, this.phoneOf(req), this.pushConfigured(), knows);
   }
 
   @Put("phone/notifications")
-  async setPhoneNotifications(@Req() req: AuthedRequest, @Body() body: unknown): Promise<PushState> {
+  async setPhoneNotifications(@Req() req: AuthedRequest, @Body() body: unknown, @Query("knows") knows?: string): Promise<PushState> {
     const deviceRowId = this.phoneOf(req);
     const parsed = z.object({
       token: pushTokenSchema.optional(), language: pushLanguageSchema.optional(), muted: pushMutedSchema.optional(),
@@ -407,7 +409,7 @@ export class AuthController {
     const { token, language, muted } = parsed.data;
     if (token !== undefined) await registerPushToken(this.db, deviceRowId, token);
     await setPushPreferences(this.db, deviceRowId, { muted, language });
-    return pushStateOf(this.db, deviceRowId, this.pushConfigured());
+    return pushStateOf(this.db, deviceRowId, this.pushConfigured(), knows);
   }
 
   @Delete("phone/notifications")
@@ -489,7 +491,7 @@ export class AuthController {
    * describe the caller.
    */
   @Get("me")
-  async me(@CurrentActor() actor: Actor, @Req() req: AuthedRequest): Promise<{ actor: Actor; permissions: EffectivePermissions }> {
+  async me(@CurrentActor() actor: Actor, @Req() req: AuthedRequest): Promise<{ actor: Actor; permissions: EffectivePermissions; profile: MeProfile | null }> {
     // Mobile M6a — the staff app asks this each time it is opened or unlocked: that IS "last seen"
     // for its phone. A browser session has no phone and stamps nothing.
     const deviceRowId = req.hmisSession?.deviceRowId ?? null;
@@ -497,7 +499,7 @@ export class AuthController {
     const permissions = actor.type === "user"
       ? await effectivePermissions(this.db, actor.id)
       : { hospital: [], scoped: { department: {}, floor: {} } };
-    return { actor, permissions };
+    return { actor, permissions, profile: actor.type === "user" ? await meProfile(this.db, actor.id) : null };
   }
 
   /**

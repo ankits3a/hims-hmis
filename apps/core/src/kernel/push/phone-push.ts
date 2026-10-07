@@ -25,7 +25,7 @@ import type { PhoneMessage, PhonePushSender } from "./fcm";
  * out this phone") and on deactivation and reset — the query is the guard, the clearing is hygiene.
  */
 
-export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder"] as const;
+export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder", "approvals"] as const;
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
 
 /**
@@ -38,7 +38,7 @@ export type PushCategory = (typeof PUSH_CATEGORIES)[number];
  * 09:00" is the first notification a person will want gone, and the only switch that silenced it
  * must not also silence "a colleague asks you to cover tonight".
  */
-export const LIVE_PUSH_CATEGORIES: readonly PushCategory[] = ["alert", "roster", "queue", "reminder"];
+export const LIVE_PUSH_CATEGORIES: readonly PushCategory[] = ["alert", "roster", "queue", "reminder", "approvals"];
 
 /**
  * A build older than this knows three categories and would draw `reminder` as a raw key. It is
@@ -53,7 +53,20 @@ function atLeast(version: string | null, floor: string): boolean {
   return true;
 }
 export function categoriesFor(appVersion: string | null): readonly PushCategory[] {
-  return atLeast(appVersion, REMINDER_CATEGORY_SINCE) ? LIVE_PUSH_CATEGORIES : LIVE_PUSH_CATEGORIES.filter((c) => c !== "reminder");
+  /* `approvals` is offered only to a phone that SAYS it knows it (`knownTo`): no build number separates the ones that do. */
+  const byVersion = LIVE_PUSH_CATEGORIES.filter((c) => c !== "approvals");
+  return atLeast(appVersion, REMINDER_CATEGORY_SINCE) ? byVersion : byVersion.filter((c) => c !== "reminder");
+}
+/**
+ * App home round 2 — the phone names the categories it can draw (`?knows=a,b`), and is offered the
+ * live ones among them. A build that says nothing gets the list its version earned, as before; so an
+ * older app never sees a switch it would print as a raw key, and no version constant has to be
+ * guessed for a build another session cuts.
+ */
+export function knownTo(appVersion: string | null, knows: string | undefined): readonly PushCategory[] {
+  if (knows === undefined || knows.trim() === "") return categoriesFor(appVersion);
+  const said = new Set(knows.split(",").map((k) => k.trim()));
+  return LIVE_PUSH_CATEGORIES.filter((c) => said.has(c));
 }
 
 /**
@@ -69,7 +82,7 @@ export const PUSH_RESERVED_FOR_ASKS = 4;
 const CLOCK_DRIVEN: readonly PushCategory[] = ["queue", "reminder"];
 
 /** Which screen a tap opens. Closed vocabulary; the app maps a word it knows and goes home on one it does not. */
-export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult"] as const;
+export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals"] as const;
 export type PushLink = (typeof PUSH_LINKS)[number];
 
 /** R9's cousin: a phone that buzzes all hour gets muted, and then the one that mattered is silent. */
@@ -97,6 +110,7 @@ const BY_ALERT_KIND: Record<string, { category: PushCategory; link: PushLink }> 
   // §3i — the doctor's own line.
   opd_not_in: { category: "queue", link: "consult" },
   opd_long_wait: { category: "queue", link: "consult" },
+  approval_overdue: { category: "approvals", link: "approvals" },
 };
 export function routeOfAlertKind(kind: string): { category: PushCategory; link: PushLink } {
   return BY_ALERT_KIND[kind] ?? { category: "alert", link: "home" };
@@ -115,6 +129,7 @@ const SENTENCES: Record<PushCategory | "test", Record<"en" | "hi", string>> = {
   roster: { en: "The duty board needs you. Open HMIS to see it.", hi: "ड्यूटी बोर्ड पर आपकी ज़रूरत है। देखने के लिए HMIS खोलें।" },
   queue: { en: "Your OPD queue needs you. Open HMIS to see it.", hi: "आपकी ओपीडी कतार को आपकी ज़रूरत है। देखने के लिए HMIS खोलें।" },
   reminder: { en: "You have a duty coming up. Open HMIS to see it.", hi: "आपकी ड्यूटी आने वाली है। देखने के लिए HMIS खोलें।" },
+  approvals: { en: "An approval is waiting past its time. Open HMIS to decide it.", hi: "एक मंज़ूरी समय से ज़्यादा देर से रुकी है। तय करने के लिए HMIS खोलें।" },
   test: { en: "Test — this phone can receive HMIS notifications.", hi: "जाँच — यह फ़ोन HMIS की सूचनाएँ पा सकता है।" },
 };
 export function phoneMessage(category: PushCategory | "test", link: PushLink, language: string): PhoneMessage {
@@ -135,7 +150,7 @@ export type PushState = {
   lastTestAt: string | null;
 };
 
-export async function pushStateOf(db: Db, deviceRowId: string, configured: boolean): Promise<PushState> {
+export async function pushStateOf(db: Db, deviceRowId: string, configured: boolean, knows?: string): Promise<PushState> {
   const rows = await db.select({ token: authDevices.pushToken, muted: authDevices.pushMuted, at: authDevices.pushTokenAt, appVersion: authDevices.appVersion }).from(authDevices).where(eq(authDevices.id, deviceRowId));
   const row = rows[0];
   const muted = (row?.muted ?? []).filter((m): m is PushCategory => (PUSH_CATEGORIES as readonly string[]).includes(m));
@@ -143,7 +158,7 @@ export async function pushStateOf(db: Db, deviceRowId: string, configured: boole
     .where(and(eq(phonePushSends.deviceRowId, deviceRowId), eq(phonePushSends.outcome, "sent"))).orderBy(desc(phonePushSends.createdAt)).limit(50);
   const iso = (d: Date | null | undefined): string | null => (d == null ? null : d.toISOString());
   return {
-    configured, registered: row?.token != null, muted, categories: categoriesFor(row?.appVersion ?? null),
+    configured, registered: row?.token != null, muted, categories: knownTo(row?.appVersion ?? null, knows),
     addressAt: iso(row?.at), lastSentAt: iso(sends[0]?.at), lastTestAt: iso(sends.find((s) => s.category === "test")?.at),
   };
 }

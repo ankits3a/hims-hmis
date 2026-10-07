@@ -17,6 +17,7 @@
 | POST | `/approvals/:id/approve` | `approvals/approvals.controller.ts` |
 | POST | `/approvals/:id/reject` | `approvals/approvals.controller.ts` |
 | GET | `/approvals/:id` | `approvals/approvals.controller.ts` |
+| GET | `/approvals/mine` | `approvals/approvals.controller.ts` |
 | POST | `/approvals/types` | `approvals/approvals.controller.ts` |
 | GET | `/approvals` | `approvals/approvals.controller.ts` |
 | POST | `/approvals` | `approvals/approvals.controller.ts` |

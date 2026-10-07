@@ -416,14 +416,16 @@ async function lockRequest(tx: Tx, requestId: string): Promise<CoverRequestRow> 
 }
 
 /** STEP 2 — THE PERSON ASKED says yes or no. Only they can, and only while it is still asked. */
-export async function answerCover(tx: Tx, actor: Actor, requestId: string, accept: boolean): Promise<void> {
+export async function answerCover(tx: Tx, actor: Actor, requestId: string, accept: boolean, noteRaw: string | null = null): Promise<void> {
   const r = await lockRequest(tx, requestId);
   await requireRosterAct(tx, actor, "request_cover", { departmentId: r.departmentId });
   if (actor.id !== r.counterpartId) throw new RosterError("cover_not_counterpart", undefined, { requestId });
   if (r.status !== "asked") throw new RosterError("cover_not_open", undefined, { requestId, status: r.status });
   const now = await dbNow(tx);
   const status: RosterCoverStatus = accept ? "accepted" : "declined";
-  await tx.update(rosterCoverRequests).set({ status, answeredAt: now, updatedBy: actor.id, updatedAt: now })
+  /* What they said with it (decision 0043) — kept on the row and shown to whoever asked. Optional here: the web's Yes / No send none. */
+  const answerNote = (noteRaw ?? "").trim() === "" ? null : (noteRaw ?? "").trim().slice(0, 500);
+  await tx.update(rosterCoverRequests).set({ status, answeredAt: now, answerNote, updatedBy: actor.id, updatedAt: now })
     .where(eq(rosterCoverRequests.id, requestId));
   await appendEvent(tx, rosterCoverAnswered.make({
     payload: { requestId, counterpartId: r.counterpartId, answer: accept ? "accepted" : "declined", answeredAt: now.toISOString() },
@@ -562,6 +564,8 @@ export type CoverRequestView = {
   requestedBy: { userId: string; name: string };
   duty: DutyRef; give: DutyRef | null;
   note: string | null; requestedAt: Date; answeredAt: Date | null;
+  /** What the person asked said with their yes or no. */
+  answerNote: string | null;
   decidedBy: { userId: string; name: string } | null; decidedAt: Date | null; refusedRule: string | null;
   /** For a request still open: what the validator says about it NOW (null: nothing stops it). */
   check: CoverReason | null;
@@ -623,7 +627,7 @@ export async function coverRequests(
       owner: person(r.ownerId), counterpart: person(r.counterpartId), requestedBy: person(r.requestedBy),
       duty: dutyRef(duty, positions, teams), give: give === null ? null : dutyRef(give, positions, teams),
       // The note is the parties' and the approver's (it may say why); nobody else reaches this row.
-      note: r.note, requestedAt: r.requestedAt, answeredAt: r.answeredAt,
+      note: r.note, requestedAt: r.requestedAt, answeredAt: r.answeredAt, answerNote: r.answerNote,
       decidedBy: r.decidedBy === null ? null : person(r.decidedBy), decidedAt: r.decidedAt, refusedRule: r.refusedRule,
       check,
       youMay: {

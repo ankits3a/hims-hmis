@@ -11,18 +11,21 @@ import { color, radius, space, TOUCH, type } from "../theme";
 import { APP_VERSION, APP_VERSION_CODE } from "../config";
 import { Band, Button, MONO, Note, Tag } from "../ui";
 import { checkForUpdate, type UpdateAnswer } from "../update";
-import { loadHome } from "../home/load";
+import { loadHome, type HeaderFacts } from "../home/load";
+import { coldOf, homeCache, seenRequests, type ColdHome } from "../home/cache";
+import { onHomeFocus, takeHomeFocus } from "../home/focus";
+import { headerOf } from "../home/profile";
 import { buildHome, rupees, type HomeAction, type HomeModel, type NeedCard, type Sources, type WireApproval } from "../home/model";
-import { ApprovalSheet, clockText } from "../home/sheets";
+import { ApprovalSheet, CoverSheet, clockText } from "../home/sheets";
 import { Spark } from "../home/spark";
 import { rosterApi } from "../roster/api";
-import type { Tone } from "../home/rules";
+import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
 const REFRESH_MS = 30_000;
 /** The last home this phone drew, kept while the app is open — shown with "as of" when the network drops. */
-let lastHome: { sources: Sources; at: number; user: string } | null = null;
-export function _forgetHomeForTests(): void { lastHome = null; }
+let lastHome: { sources: Sources; at: number; user: string; header: HeaderFacts; unread: number | null } | null = null;
+export function _forgetHomeForTests(): void { lastHome = null; void homeCache.clear(); }
 
 const TONE: Record<Tone, { edge: string; bg: string; fg: string }> = {
   red: { edge: color.red, bg: color.redSoft, fg: color.red },
@@ -45,7 +48,13 @@ export function SeatHome() {
   const user = signedIn ? state.me.actor.id : "";
   const permissions = useMemo(() => me?.permissions.hospital ?? [], [me]);
   const seatKeys = useMemo(() => (me === null ? [] : seatsFor(me.permissions).map((s) => s.key)), [me]);
-  const [home, setHome] = useState<{ sources: Sources; at: number } | null>(() => (lastHome !== null && lastHome.user === user ? lastHome : null));
+  const [home, setHome] = useState<{ sources: Sources; at: number; header: HeaderFacts; unread: number | null } | null>(() => (lastHome !== null && lastHome.user === user ? lastHome : null));
+  /** What this phone last drew before it was closed — counts only, shown when nothing can be read (`home/cache.ts`). */
+  const [cold, setCold] = useState<ColdHome | null>(null);
+  const [seen, setSeen] = useState<string[]>([]);
+  const [focus, setFocus] = useState<NeedKind | null>(null);
+  const [cover, setCover] = useState<{ requestId: string; accept: boolean; who: string } | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [open30, setOpen30] = useState(false);
@@ -61,13 +70,24 @@ export function SeatHome() {
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
     if (loaded.reached) {
-      lastHome = { sources: loaded.sources, at: now, user };
+      lastHome = { sources: loaded.sources, at: now, user, header: loaded.header, unread: loaded.unread };
       setHome(lastHome); setOnline(true);
+      void homeCache.save(coldOf(user, now, buildHome({ ...loaded.sources, nowMs: now })));
     } else {
       setOnline(false);
     }
     if (byHand) setRefreshing(false);
   }, [signedIn, call, permissions, seatKeys, user]);
+  useEffect(() => {
+    if (user === "") return;
+    let gone = false;
+    void homeCache.load(user).then((c) => { if (!gone) setCold(c); });
+    void seenRequests.load().then((ids) => { if (!gone) setSeen(ids); });
+    const take = (): void => { const k = takeHomeFocus(); if (k !== null) setFocus(k); };
+    take();
+    const off = onHomeFocus(take);
+    return () => { gone = true; off(); };
+  }, [user]);
   useEffect(() => {
     alive.current = true;
     void refresh();
@@ -75,24 +95,40 @@ export function SeatHome() {
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") void refresh(); });
     return () => { alive.current = false; clearInterval(timer); sub.remove(); };
   }, [refresh]);
-  const model: HomeModel | null = useMemo(() => (home === null ? null : buildHome({ ...home.sources, nowMs: online ? Date.now() : home.at })), [home, online]);
+  const model: HomeModel | null = useMemo(() => (home === null ? null : buildHome({ ...home.sources, seenRequests: seen, nowMs: online ? Date.now() : home.at })), [home, online, seen]);
+  /* A notification about approvals, and exactly one waiting: its sheet opens — the tap said which. */
+  useEffect(() => {
+    if (focus !== "approval" || home === null) return;
+    const waiting = home.sources.approvals ?? [];
+    if (waiting.length === 1 && permissions.includes("approvals.requests.decide")) { setSheet(waiting[0]!); setFocus(null); }
+  }, [focus, home, permissions]);
 
   const act = useCallback(async (a: HomeAction) => {
     setSaid(null);
     if (a.type === "seat") { router.push({ pathname: "/seat/[key]", params: { key: a.key } }); return; }
-    if (a.type === "paper") { setSaid({ tone: "info", text: t("home.paper.onComputer") }); return; }
+    if (a.type === "paper") { router.push("/paper"); return; }
+    if (a.type === "say") { setSaid({ tone: "info", text: t(a.key) }); return; }
+    if (a.type === "seen") { setSeen(await seenRequests.add(a.id, seen)); return; }
     if (a.type === "approval") { setSheet(home?.sources.approvals?.find((x) => x.id === a.id) ?? null); return; }
     if (!online) { setSaid({ tone: "bad", text: t("home.offline.noApproval") }); return; }
-    setBusyCover(a.requestId);
+    /* Yes or no, the answer opens its sheet: a "no" needs a reason the colleague will read (decision 0043). */
+    const asked = home?.sources.duties?.requests.find((r) => r.requestId === a.requestId);
+    setCoverError(null);
+    setCover({ requestId: a.requestId, accept: a.accept, who: asked?.requestedBy.name ?? "" });
+  }, [router, t, home, online, seen]);
+  const sendCover = useCallback(async (note: string) => {
+    if (cover === null) return;
+    setBusyCover(cover.requestId); setCoverError(null);
     try {
-      await rosterApi(call).answerCover(a.requestId, a.accept);
+      await rosterApi(call).answerCover(cover.requestId, cover.accept, note);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-      setSaid({ tone: "info", text: t(a.accept ? "home.cover.accepted" : "home.cover.declined") });
+      setSaid({ tone: "info", text: t(cover.accept ? "home.cover.accepted" : "home.cover.declined") });
+      setCover(null);
       await refresh();
     } catch {
-      setSaid({ tone: "bad", text: t("home.cover.failed") });
+      setCoverError(t("home.cover.failed"));
     } finally { setBusyCover(null); }
-  }, [router, t, home, online, call, refresh]);
+  }, [cover, call, t, refresh]);
 
   const push = useNotifications();
   /*
@@ -116,18 +152,22 @@ export function SeatHome() {
   }, [fetcher]);
   if (state.status !== "signedIn") return null;
   const seats = seatsFor(state.me.permissions);
+  const who = headerOf(state.me.profile, state.username, home?.header ?? null, t);
   const needs = model === null ? [] : showAll ? model.allNeeds : model.needs;
   const badgeOf = (key: string) => model?.work.find((w) => w.key === key) ?? null;
 
   const needCard = (n: NeedCard) => {
     const tone = TONE[n.tone];
+    const what = n.titleVars?.what;
+    const titleVars = typeof what === "string" && what.startsWith("home.kind.") ? { ...n.titleVars, what: t(what, { amount: String(n.titleVars?.amount ?? "") }).replace(/\s{2,}/g, " ").trim() } : n.titleVars;
+    const lit = focus === n.kind;
     return (
-      <View key={n.id} testID={`need-${n.kind}`} accessibilityLabel={n.id}
-        style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderLeftWidth: 4, borderLeftColor: tone.edge, borderRadius: radius.lg, padding: space.md, flexDirection: "row", gap: space.md, alignItems: "center" }}>
+      <View key={n.id} testID={`need-${n.kind}`} accessibilityLabel={n.id} accessibilityState={{ selected: lit }}
+        style={{ backgroundColor: color.card, borderWidth: lit ? 2 : 1, borderColor: lit ? color.green : color.line, borderLeftWidth: 4, borderLeftColor: tone.edge, borderRadius: radius.lg, padding: space.md, flexDirection: "row", gap: space.md, alignItems: "center" }}>
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={{ color: color.ink, fontSize: 15, fontWeight: "600" }}>
             {n.count !== null && <Text style={{ fontFamily: MONO, fontSize: 20, fontWeight: "700" }}>{`${String(n.count)} `}</Text>}
-            {t(n.titleKey, n.titleVars).trim()}
+            {t(n.titleKey, titleVars).trim()}
           </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
             {(n.subKey !== null || (n.subText ?? null) !== null) && (
@@ -165,10 +205,22 @@ export function SeatHome() {
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band
         right={
-          <Pressable onPress={() => void logout()} accessibilityRole="button" hitSlop={8} testID="logout"
-            style={{ minHeight: 32, paddingHorizontal: 10, justifyContent: "center" }}>
-            <Text style={{ color: color.agentFg, fontSize: 13, fontWeight: "600" }}>{t("app.logout")}</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            {/* The bell, as on the board: what the server has told this person, with how many they have not read. */}
+            <Pressable onPress={() => router.push("/alerts")} accessibilityRole="button" accessibilityLabel={t("home.bell.label", { n: home?.unread ?? 0 })} hitSlop={8} testID="home-bell"
+              style={{ minHeight: 32, minWidth: 40, paddingHorizontal: 8, justifyContent: "center", alignItems: "center" }}>
+              <Text style={{ fontSize: 16 }}>🔔</Text>
+              {(home?.unread ?? 0) > 0 && (
+                <View style={{ position: "absolute", top: 0, right: 0, backgroundColor: color.red, borderRadius: 9, minWidth: 18, paddingHorizontal: 4, alignItems: "center" }}>
+                  <Text testID="home-bell-count" style={{ color: "#fff", fontFamily: MONO, fontSize: 10.5, fontWeight: "700" }}>{(home?.unread ?? 0) > 99 ? "99+" : String(home?.unread ?? 0)}</Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable onPress={() => { void homeCache.clear(); void logout(); }} accessibilityRole="button" hitSlop={8} testID="logout"
+              style={{ minHeight: 32, paddingHorizontal: 10, justifyContent: "center" }}>
+              <Text style={{ color: color.agentFg, fontSize: 13, fontWeight: "600" }}>{t("app.logout")}</Text>
+            </Pressable>
+          </View>
         }
       />
       <ScrollView testID="home-scroll" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl }}
@@ -198,13 +250,47 @@ export function SeatHome() {
         )}
         {push.problem !== null && !push.offer && push.status !== "on" && <Note tone="warn" testID="push-home-problem">{t(push.problem)}</Note>}
         <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: space.md }}>
-          <Text style={[type.title, { color: color.ink, flex: 1 }]} numberOfLines={1}>{state.username || state.me.actor.id}</Text>
+          <Text testID="home-name" style={[type.title, { color: color.ink, flex: 1 }]} numberOfLines={1}>{who.name}</Text>
           {home !== null && <Text testID="home-as-of" style={{ fontFamily: MONO, fontSize: 11, color: color.faint }}>{online ? hhmm(home.at) : t("home.asOf", { time: hhmm(home.at) })}</Text>}
+          {home === null && cold !== null && !online && <Text testID="home-as-of" style={{ fontFamily: MONO, fontSize: 11, color: color.faint }}>{t("home.asOf", { time: hhmm(cold.at) })}</Text>}
         </View>
-        <Text style={[type.small, { color: color.dim, fontFamily: MONO }]} testID="signed-in-as">
-          {t("mobile.signedInAs", { name: state.username || state.me.actor.id })}
+        {/* What they are here as — a department and unit, a desk, the hospital. The username stays reachable on the Account screen. */}
+        <Text style={[type.small, { color: color.dim }]} testID="signed-in-as">
+          {who.line ?? t("mobile.signedInAs", { name: state.username || state.me.actor.id })}
         </Text>
-        {!online && <View style={{ marginTop: space.sm }}><Note tone="warn" testID="home-offline">{t(home === null ? "home.offline.nothing" : "home.offline.banner")}</Note></View>}
+        {!online && <View style={{ marginTop: space.sm }}><Note tone="warn" testID="home-offline">{t(home === null && cold === null ? "home.offline.nothing" : "home.offline.banner")}</Note></View>}
+        {/* Cold and offline: the last numbers this phone drew, counts only, and nothing to tap. */}
+        {model === null && cold !== null && !online && (
+          <View testID="home-cold" style={{ gap: space.sm }}>
+            {label("home.now")}
+            {cold.cards.length === 0 ? (
+              <View style={{ backgroundColor: color.card, borderWidth: 1, borderStyle: "dashed", borderColor: color.line, borderRadius: radius.lg, padding: space.lg, alignItems: "center" }}>
+                <Text style={{ color: color.ink, fontSize: 15, fontWeight: "700" }}>{t("home.calm")}</Text>
+              </View>
+            ) : cold.cards.map((c, i) => (
+              <View key={`${c.kind}:${String(i)}`} testID={`cold-${c.kind}`} style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderLeftWidth: 4, borderLeftColor: TONE[c.tone].edge, borderRadius: radius.lg, padding: space.md, gap: 4 }}>
+                <Text style={{ color: color.ink, fontSize: 15, fontWeight: "600" }}>
+                  {c.count !== null && <Text style={{ fontFamily: MONO, fontSize: 20, fontWeight: "700" }}>{`${String(c.count)} `}</Text>}
+                  {t(c.titleKey, { name: "", amount: "", what: "" }).replace(/\s*·\s*$/, "").trim()}
+                </Text>
+                <Text style={{ fontFamily: MONO, fontSize: 11.5, fontWeight: "700", color: TONE[c.tone].fg }}>{clockText(t, clockWords(cold.at, c.sinceMs, c.dueMs))}</Text>
+              </View>
+            ))}
+            {cold.tiles.length > 0 && label("home.day")}
+            {cold.tiles.length > 0 && (
+              <View style={{ flexDirection: "row", gap: space.sm }}>
+                {cold.tiles.map((tile) => (
+                  <View key={tile.key} style={{ flex: 1, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, padding: space.md }}>
+                    {tile.value === null
+                      ? <Text style={{ fontSize: 12.5, fontWeight: "700", color: color.dim, paddingVertical: 5 }}>{t(tile.lockKey ?? "home.tile.afterCount", tile.lockVars)}</Text>
+                      : <Text style={{ fontFamily: MONO, fontWeight: "700", fontSize: tile.value.length > 5 ? 16 : 22, color: color.ink }} numberOfLines={1}>{tile.value}</Text>}
+                    <Text style={{ fontSize: 11.5, color: color.dim, marginTop: 2 }}>{t(tile.labelKey)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
         {said !== null && <View style={{ marginTop: space.sm }}><Note tone={said.tone} testID="home-said">{said.text}</Note></View>}
 
         {model !== null && (
@@ -365,6 +451,10 @@ export function SeatHome() {
           {asked === "yes" && update?.kind === "unknown" && <Text testID="update-unknown" style={[type.small, { color: color.dim }]}>{t("mobile.update.failed")}</Text>}
         </View>
       </ScrollView>
+      {cover !== null && (
+        <CoverSheet who={cover.who} accept={cover.accept} online={online} busy={busyCover !== null} error={coverError}
+          onClose={() => { if (busyCover === null) setCover(null); }} onSend={(note) => { void sendCover(note); }} />
+      )}
       {sheet !== null && home !== null && (
         <ApprovalSheet approval={sheet} call={call} online={online} nowMs={Date.now()} onClose={() => setSheet(null)}
           onDone={(verdict) => {

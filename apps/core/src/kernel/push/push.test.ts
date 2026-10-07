@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fcmSender, loadServiceAccount, signedAssertion } from "./fcm";
-import { LIVE_PUSH_CATEGORIES, PUSH_CATEGORIES, PUSH_LINKS, categoriesFor, phoneMessage, pushTokenSchema, routeOfAlertKind } from "./phone-push";
+import { LIVE_PUSH_CATEGORIES, PUSH_CATEGORIES, PUSH_LINKS, categoriesFor, phoneMessage, pushTokenSchema, routeOfAlertKind, knownTo } from "./phone-push";
 import { describePhonePush, phonePushSource } from "./sender";
 import type { FetchLike } from "./fcm";
 
@@ -51,8 +51,8 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
         }
       }
     }
-    // Five (four categories and the test) × two languages, and not one more sentence whatever the link.
-    expect(sentences.size).toBe(10);
+    // Six (five categories and the test) × two languages, and not one more sentence whatever the link.
+    expect(sentences.size).toBe(12);
     for (const s of sentences) expect(s).toMatch(/HMIS/);
   });
 
@@ -71,7 +71,12 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
     }
     expect(routeOfAlertKind("roster_duty_reminder")).toEqual({ category: "reminder", link: "myDuties" });
     for (const kind of ["opd_not_in", "opd_long_wait"]) expect(routeOfAlertKind(kind)).toEqual({ category: "queue", link: "consult" });
-    expect(LIVE_PUSH_CATEGORIES).toEqual(["alert", "roster", "queue", "reminder"]);
+    expect(LIVE_PUSH_CATEGORIES).toEqual(["alert", "roster", "queue", "reminder", "approvals"]);
+    /* Round 2 (decision 0043): an approval past its time has its own switch, offered only to a phone that SAYS it knows it. */
+    expect(routeOfAlertKind("approval_overdue")).toEqual({ category: "approvals", link: "approvals" });
+    expect(knownTo("0.10.0 (12)", undefined)).toEqual(["alert", "roster", "queue", "reminder"]);
+    expect(knownTo("0.8.1 (9)", "alert,roster,queue,reminder,approvals,madeup")).toEqual(["alert", "roster", "queue", "reminder", "approvals"]);
+    expect(knownTo("0.10.0 (12)", "alert")).toEqual(["alert"]);
     expect(categoriesFor("0.8.1 (9)")).toEqual(["alert", "roster", "queue"]);
     expect(categoriesFor(null)).toEqual(["alert", "roster", "queue"]);
     expect(categoriesFor("0.9.0 (11)")).not.toContain("reminder"); // the appointments build has no words for it

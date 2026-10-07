@@ -640,13 +640,15 @@
         "alert": "Alerts",
         "roster": "Duty roster",
         "queue": "Your queue",
-        "reminder": "Duty reminders"
+        "reminder": "Duty reminders",
+        "approvals": "Approvals"
       },
       "categoryHint": {
         "alert": "Something is overdue or waiting on you.",
         "roster": "A colleague asks you to cover or swap, your request was answered, your duties changed or were published — or somebody flagged the duty board.",
         "queue": "Patients are ready and you are not in, or somebody has waited over 40 minutes.",
-        "reminder": "A duty of yours starts in an hour — and the evening before a night or a 24-hour duty."
+        "reminder": "A duty of yours starts in an hour — and the evening before a night or a 24-hour duty.",
+        "approvals": "A request waiting for your decision has passed its time."
       },
       "problem": {
         "notAllowed": "The phone has not allowed notifications yet. Tap Turn on again and choose Allow.",
@@ -673,6 +675,53 @@
       "lost": "If this phone is lost or changes hands, tell the administrator: they can sign this phone out without changing your password.",
       "limit": "You can be signed in on two phones at a time.",
       "logout": "Log out of this phone"
+    },
+    "paper": {
+      "title": "My paper consultations",
+      "sub": "What the desk filed or typed from your paper today. Held medicines come first. Nothing here holds a patient.",
+      "offline": "No network — the list could not be read.",
+      "cannotRead": "The server would not give this list.",
+      "empty": "Nothing was closed or typed from your paper today.",
+      "pillHeld": "{{n}} held for you",
+      "pillSentBack": "sent back to the desk",
+      "pillRechecked": "desk re-checked",
+      "pillUnseen": "not looked at",
+      "pillSeen": "you looked",
+      "seeSlip": "See the slip · page {{n}}",
+      "sentBackTitle": "Sent back to the desk — waiting for them",
+      "recheckedTitle": "The desk looked again — {{name}}",
+      "youAsked": "You asked: {{reason}}",
+      "deskSays": "The desk says: {{note}}",
+      "heldTitle": "{{n}} medicine(s) held — the desk may not clear the warning",
+      "give": "Give it",
+      "drop": "Do not give",
+      "whyPlaceholder": "Your reason for giving it (recorded)",
+      "saveDecision": "Save my decision",
+      "chooseEach": "Decide each held medicine: give it, or do not give it.",
+      "reasonEach": "A medicine you give despite its warning needs your reason.",
+      "decided": "Saved. What you chose to give has gone to the pharmacy in your name.",
+      "medicines": "MEDICINES",
+      "noMedicines": "No medicine has been sent to the pharmacy from this paper.",
+      "typedBy": "Typed from your paper by {{name}}",
+      "tests": "TESTS",
+      "ask": "Ask the desk to re-check",
+      "askPlaceholder": "What should the desk look at again? (they see this)",
+      "askSend": "Send back to the desk",
+      "cancel": "Cancel",
+      "asked": "Sent back. The desk sees it on its screen and its phone.",
+      "looksRight": "Looks right",
+      "looked": "You looked",
+      "confirmed": "Recorded: you looked and it is right.",
+      "heldFirst": "\"Looks right\" opens once the held medicines are decided.",
+      "notSent": "That did not reach the server — nothing was changed. Try again.",
+      "refused": "The server refused. Nothing was changed."
+    },
+    "alerts": {
+      "title": "Alerts",
+      "offline": "No network — the alerts could not be read.",
+      "cannotRead": "The server would not give your alerts.",
+      "empty": "Nothing has been sent to you.",
+      "unread": "new"
     }
   },
   "screen": {
@@ -1581,7 +1630,19 @@
       "slipsSub": "Waiting at the slip desk",
       "slipsRetake": "{{n}} to photograph again",
       "askedBy": "asked by {{name}}",
-      "gap": "gap on the roster"
+      "gap": "gap on the roster",
+      "deskWaiting": "patients you opened still waiting",
+      "deskWaitingSub": "Seated by you, not yet with a doctor",
+      "rebook": "appointments to re-book",
+      "rebookSub": "The doctor is on leave that day",
+      "myRequest": "Your request · {{what}}",
+      "myRequestPending": "with the approver",
+      "myRequestGranted": "Approved — you can go ahead",
+      "myRequestRejected": "Declined — see the approver's note on the computer",
+      "sentBack": "papers the doctor sent back",
+      "sentBackSub": "A doctor asks the desk to look again",
+      "toType": "papers to type",
+      "toTypeSub": "Photographed, not typed yet"
     },
     "act": {
       "callNext": "Open queue",
@@ -1593,7 +1654,10 @@
       "scan": "Open",
       "scanSlip": "Scan a slip",
       "review": "Review",
-      "see": "See"
+      "see": "See",
+      "rebook": "Re-book",
+      "ok": "OK",
+      "where": "Where?"
     },
     "tile": {
       "seen": "Seen today",
@@ -1609,7 +1673,10 @@
       "collected": "Collected",
       "afterCount": "After your count · {{n}} receipts",
       "approvals": "Approvals",
-      "opdToday": "OPD today"
+      "opdToday": "OPD today",
+      "rechecks": "Re-checks due",
+      "slipsWaiting": "To photograph",
+      "toType": "To type"
     },
     "d30": {
       "title": "Last 30 days",
@@ -1645,9 +1712,6 @@
       "accepted": "You said yes. The roster is updated.",
       "declined": "You said no. They have been told.",
       "failed": "That did not reach the server — nothing was changed. Try again."
-    },
-    "paper": {
-      "onComputer": "Paper consultations open on the computer for now: menu → My paper consultations."
     },
     "sheet": {
       "close": "Close",
@@ -1708,6 +1772,49 @@
       "slips": "{{n}} waiting",
       "nextDuty": "Next duty {{day}}",
       "gaps": "{{n}} gap on the roster"
+    },
+    "say": {
+      "scribe": "Typing is done on the computer: menu → Desk scribe. What the doctors sent back is listed at the top of that screen."
+    },
+    "role": {
+      "hospital": "Hospital · all departments",
+      "owner": "Owner",
+      "medical_superintendent": "Medical Superintendent",
+      "duty_manager": "Duty manager",
+      "billing_manager": "Billing manager",
+      "front_office_supervisor": "OPD supervisor",
+      "pharmacy_incharge": "Pharmacy in-charge",
+      "ot_incharge": "Theatre in-charge",
+      "doctor": "Doctor",
+      "cashier": "Cash counter",
+      "front_office": "Front desk",
+      "vitals_desk": "Vitals bay",
+      "opd_slip_desk": "Slip desk",
+      "opd_scribe": "Desk scribe",
+      "nurse": "Nurse",
+      "pharmacy": "Pharmacy",
+      "pharmacy_assistant": "Pharmacy",
+      "lab_technician": "Laboratory",
+      "radiographer": "Radiology"
+    },
+    "bell": {
+      "label": "Alerts — {{n}} unread"
+    },
+    "cold": {
+      "cover": "Cover request",
+      "approval": "An approval waiting for you",
+      "myRequest": "A request of yours"
+    },
+    "coverSheet": {
+      "yesTitle": "Yes — you will cover for {{name}}",
+      "noTitle": "No — tell {{name}} why",
+      "yesPlaceholder": "A word for them (optional)",
+      "noPlaceholder": "Why not? (they will read this)",
+      "noteNeeded": "Say why — the colleague who asked will read it.",
+      "cancel": "Cancel",
+      "sendYes": "Yes, I will cover",
+      "sendNo": "Send my no",
+      "fine": "Recorded with your name and time. The approver still decides."
     }
   }
 }

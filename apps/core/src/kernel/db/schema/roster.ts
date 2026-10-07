@@ -1407,6 +1407,8 @@ export const rosterCoverRequests = pgTable(
     note: text("note"),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     answeredAt: timestamp("answered_at", { withTimezone: true }),
+    /** What the person asked said with their yes or no (app home, decision 0043) — shown to the asker. */
+    answerNote: text("answer_note"),
     decidedBy: text("decided_by").references(() => users.id),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     refusedRule: text("refused_rule"),

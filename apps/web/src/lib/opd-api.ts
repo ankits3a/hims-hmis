@@ -1047,6 +1047,8 @@ export type WirePaperConsult = {
   /** Medicines the doctor typed on the consultation screen and never issued, on a visit then closed from paper. */
   doctorDraft?: WireRxLine[];
   confirmedAt: string | null; confirmedByName: string | null;
+  /** "Ask the desk to re-check" (decision 0043): open while `doneAt` is null. Absent or null when never asked. */
+  recheck?: { reason: string; askedAt: string; askedByName: string | null; doneAt: string | null; doneByName: string | null; doneNote: string | null } | null;
 };
 
 export type WireTranscription = {
@@ -1073,6 +1075,11 @@ export const checkPaperCorrection = (encounterId: string, lines: WireRxLine[]): 
 export const correctPaperConsult = (
   encounterId: string, body: { lines: WireRxLine[]; reasons?: { lineIndex: number; reason: string }[] },
 ): Promise<WirePaperConsult> => api("POST", `${paperVisit(encounterId)}/correct`, body);
+export const askPaperRecheck = (encounterId: string, reason: string): Promise<WirePaperConsult> =>
+  api("POST", `${paperVisit(encounterId)}/recheck`, { reason });
+export const resolvePaperRecheck = (encounterId: string, note: string | null): Promise<WirePaperConsult> =>
+  api("POST", `${paperVisit(encounterId)}/recheck-done`, { note });
+export const fetchPaperSentBack = (): Promise<{ items: WirePaperConsult[] }> => api("GET", "/opd/paper/sent-back");
 export const reopenPaperConsult = (
   encounterId: string, body: { reason: string; voidTranscription?: boolean },
 ): Promise<unknown> => api("POST", `${paperVisit(encounterId)}/reopen`, body);
