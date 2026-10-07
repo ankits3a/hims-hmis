@@ -1,7 +1,7 @@
 # Self-improving suggestions — plan (2026-10-07)
 
-Decision records: `docs/decisions/0050-self-improving-suggestions.md` and `0051` (the AI reviewer for medicine
-aliases; US FDA labels as the first drug-reference layer). Read them first; they hold the owner's words. This plan is the spec. Nothing here is built. Two independent reviews shaped it; §15 says where they
+Decision records: `docs/decisions/0050-self-improving-suggestions.md`, `0051` (the AI reviewer for medicine
+aliases; US FDA labels as the first drug-reference layer) and `0052` (DDInter major interactions; Indian gap). Read them first; they hold the owner's words. This plan is the spec. Nothing here is built. Two independent reviews shaped it; §15 says where they
 differed and what was chosen.
 
 ## 1. Goal, in the owner's words
@@ -392,12 +392,36 @@ decision (he agreed to these terms; decision 0051).
 **Open:** summarising label text into short, phone-readable text is a model writing clinical text. It is a
 later step and needs the owner's explicit ruling.
 
-### 11a. Indian gap — sources under evaluation
+### 11a. Indian gap — sources in order (owner 2026-10-07: "yes. I will go with your recommendation")
 
 About 480 substances sold only in India and about 680 Indian fixed-dose combinations have no US label. The
 commonest misses: ornidazole, domperidone, ambroxol, serrapeptase, thiocolchicoside, etoricoxib,
 levocetirizine + montelukast, aceclofenac + paracetamol, ofloxacin + ornidazole, pantoprazole + domperidone.
-The owner asked for this to be filled separately; sources are being evaluated.
+
+Sources, used in this order; each entry names its source and date on screen:
+
+1. **Combination banner + approval status.** A combination with no reference of its own shows each
+   component's entry and its CDSCO approval status as a fact. Wording: "No reference exists for this
+   combination. Its parts are shown separately; they do not describe the combined dose."
+2. **NHS Medicines A–Z** through its API (Open Government Licence v3; attribution line shown).
+3. **EMA product information and referral restriction texts** (credit EMA).
+4. **Medsafe New Zealand data sheets**, verbatim only (credit Medsafe; no summarising).
+5. **LiverTox and LactMed sections** (public domain).
+6. **National Formulary of India 2026** — only after the Indian Pharmacopoeia Commission's permission.
+7. **Wikipedia** as a labelled last resort — needs the owner's separate yes.
+8. **A CIMS India licence** for combinations and brands — on a quote.
+
+Wording for any foreign source: "Reference from <source>, <country>, <date>. The product sold in India may
+differ in strength, dose and approved use."
+
+**Owner actions:** two emails — to the IPC for permission to use the National Formulary of India 2026, and to
+CIMS India for a quote.
+
+**Not permitted:** scraping Apollo, 1mg or Medindia; the BNF and Martindale need paid licences; the Indian
+Pharmacopoeia is a quality-standards compendium, not a source of uses or side effects.
+
+**Unverified:** whether the NHS API issues a key to an organisation outside the UK; the contents of NFI 2026
+and the terms of NFI Online; MHRA and TGA reuse terms are unclear, so neither is used.
 
 Stocked items without an exact label (count of stocked items):
 - Nothing at all: diethylcarbamazine (3), carbimazole (3), flunarizine (2), domperidone (2), cloxacillin (2),
@@ -406,6 +430,36 @@ Stocked items without an exact label (count of stocked items):
   ambroxol + guaifenesin; ofloxacin + ornidazole; domperidone + rabeprazole; domperidone + pantoprazole;
   dicycloverine + paracetamol; dicycloverine + mefenamic acid; aceclofenac + paracetamol; two antacid
   combinations; oral rehydration salts; two vitamin and iron combinations.
+
+### 11b. Interactions layer 2 — DDInter, MAJOR only (owner 2026-10-07)
+
+Facts, verified on the owner's file `/opt/hmis-context/cds-bundle/incoming/hmis_clinical_master-owner-2026-10-07.db`
+(sha256 33bf5c5d…); the supplier independently confirmed the template finding:
+
+- `clinical_knowledge`: 6 distinct profiles over 10,303 generics. Never shown, never used. 83% of
+  `prescribing_defaults` read "1-0-1 (BD)".
+- `ddi_interactions_master`: 236,834 pairs, source "DDInter 2.0 (CC BY-NC-SA 4.0)", 1,972 drugs — Major 39,482,
+  Moderate 145,129, Minor 9,808, Unknown 42,415. Guidance text is 4 templates by level. Names are INN/US
+  (acetaminophen). Nothing for domperidone, ornidazole, ambroxol, etoricoxib, aceclofenac, thiocolchicoside or
+  drotaverine. 19% of our 3,283 substances match by exact name before mapping.
+- `drug_disease_contraindications`: 15 hand-written rows (real).
+
+**What is built (about 5 days; 1 migration)**
+- Map DDInter names to our substances with the 337-entry Indian/INN → US synonym map and salt stripping;
+  report the mapped share.
+- Load **MAJOR pairs only** into a separate table. Never mixed into the 400 curated `formulary_interactions`.
+  Curated always wins; a curated "no interaction" or lower severity is not overridden without review.
+- `rx-precheck` shows it as a distinct class, "Reference interaction (DDInter)", with the source. An override
+  needs a reason, as today. Its template guidance text is not shown as advice.
+- Attribution and the share-alike notice are kept with the data.
+- **Before switching on:** replay historical prescription lines and measure warnings per 100 prescriptions.
+  If it would more than double the current rate, it goes to the owner first.
+- A kill switch. Moderate, Minor and Unknown are NOT loaded.
+- The 15 disease contraindication rows: compare with the existing drug–disease checks and propose the missing
+  ones, with their stated mechanism, as a reviewed seed.
+
+**Licence:** DDInter is CC BY-NC-SA 4.0. Treating a hospital's internal clinical use as non-commercial is the
+owner's accepted judgement (decision 0052).
 
 ## 12. Measuring it
 
@@ -460,4 +514,5 @@ version of the desk's learned vocabulary tail, an example set, a hidden-suggesti
   assessment (decision 0048 lists text-model sorting as open). Medicine terms and catalogue rows carry no
   patient data.
 - Summarising FDA label text for the phone (§11) — needs the owner's explicit ruling.
-- The Indian gap's source (§11a).
+- Wikipedia as a last-resort drug reference (§11a) — needs the owner's separate yes.
+- The IPC's permission and the CIMS quote (§11a) — the owner's two emails.
