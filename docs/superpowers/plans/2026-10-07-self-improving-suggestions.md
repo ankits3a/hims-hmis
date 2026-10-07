@@ -1,7 +1,7 @@
 # Self-improving suggestions — plan (2026-10-07)
 
-Decision record: `docs/decisions/0050-self-improving-suggestions.md`. Read it first; it holds the owner's
-words. This plan is the spec. Nothing here is built. Two independent reviews shaped it; §15 says where they
+Decision records: `docs/decisions/0050-self-improving-suggestions.md` and `0051` (the AI reviewer for medicine
+aliases; US FDA labels as the first drug-reference layer). Read them first; they hold the owner's words. This plan is the spec. Nothing here is built. Two independent reviews shaped it; §15 says where they
 differed and what was chosen.
 
 ## 1. Goal, in the owner's words
@@ -24,6 +24,28 @@ front desk staff to point the patient to right department."
 7. **Stewardship cap.** Personal habit never lifts restricted classes above the department's pattern.
 8. **Outside services get no names as data** (0048); a spoken name may travel in audio (0049).
 9. **Chips never jump.** Rank once per context change; never re-rank mid-session from the same session's taps.
+
+## 2a. Three levels of learning
+
+| Level | What changes | Who approves |
+|---|---|---|
+| **1 — Automatic** | Only the ORDER of options that already exist: most-used diagnoses, the medicines this doctor and department pick most. Pure counting (§7). | Nobody. |
+| **2 — Proposed vocabulary** | New words the system did not know: aliases ("pan forty" → Pantoprazole 40 mg), new complaint terms, test-name aliases, the desk's learned vocabulary, new Ask phrasings. | **No person.** A chooser and an AI reviewer must agree, rule checks must pass, and then doctors' own use makes it trusted (§7a). The owner gets a weekly list with a one-tap undo. |
+| **3 — Never learned** | Clinical facts, doses as rules, interactions, money rules, permissions. | Only an owner ruling in `docs/decisions`. |
+
+An outside session advised a named human reviewer for level 2. The owner ruled otherwise: "currently no one
+adds and no one approves. No body has anytime to do it and so I am looking this to be automated using advanced
+AI model", and of a pharmacist reviewer he said he has no hope there and "I would ask AI to get in this". So
+level 2 waits for no person; it is gated by agreement between two models, hard rules, and approval by use.
+
+## 2b. The two-way loop
+
+- **Staff teach the system with no extra work:** corrections to a voice note; a suggestion crossed off or
+  replaced by typing; "didn't understand" in Ask; which search result was picked; saved sets and phrases.
+- **The system helps staff:** better-ordered suggestions; one card, one action; drafts confirmed by a tap;
+  refusals explained; personal shortcuts.
+- **The engine:** signals → patterns found nightly → proposals (versioned, audited) → a weekly scorecard.
+- **Learn only from confirmed outcomes:** the saved prescription, not the first tap.
 
 ## 3. The fallback ladder — Jev as the chooser
 
@@ -144,6 +166,36 @@ with n ≥ 5 — never a computed mg/kg.
   moiety set", never when two targets each hold > 20% of its taps, never H1/X/NDPS.
 - An untrusted alias only ever shows as a suggestion.
 
+## 7a. Level 2 pipeline — chooser, AI reviewer, rules, then use
+
+For a medicine term nothing matched ("pan forty", a brand nickname, a mishearing):
+
+1. **Candidates:** exact match, then trigram candidates from the formulary.
+2. **Chooser — Jev:** a closed set (the candidates plus "none of these"), given the masked term only.
+3. **AI reviewer:** a second, stronger text model (OpenAI, the owner-approved vendor; the model id is a server
+   setting) is asked one closed question per proposal: "does <term> mean <generic · strength · form>? yes / no
+   / unsure", with the top competing candidates shown. It answers only from that set and gives one fixed reason
+   code: name match, strength match, common brand nickname, ambiguous strength, ambiguous form, look-alike
+   risk, not a medicine. It never writes free text into the product. It sees the term and catalogue rows only —
+   no patient data.
+4. **Rule checks:** a single target; a strength in the term, if any, equals the target's; never H1/X/NDPS; not in
+   a look-alike conflict with another formulary name unless the second-tap guard applies.
+5. **Live as a suggestion** only when chooser and reviewer agree, each above its own confidence line, and the
+   rules pass. Disagreement or "unsure" stays in the no-match log, is retried when new evidence arrives, and is
+   never shown.
+6. **Trusted (ranked first)** only by composition-agreeing use by several different doctors (§7).
+7. **Re-audit:** the reviewer re-checks trusted aliases monthly and whenever the formulary changes. It can only
+   DEMOTE; nothing is promoted without use.
+
+**Evaluation before go-live:** a held-out labelled set of at least 200 real Hinglish and brand-nickname terms →
+the correct medicine, built from formulary brand names, common Indian abbreviations and deliberately tricky
+look-alikes. Report precision at the chosen confidence line. Target: zero wrong at the line (abstain instead).
+The measured numbers are stated before it is switched on.
+
+The same pattern — chooser, AI reviewer, rule checks, trust by use — serves new complaint terms and test-name
+aliases with lighter thresholds. A web search by an agent is only for building reference or evaluation
+material, and only with the owner's approval each time.
+
 ## 8. Phases
 
 Each phase is its own PR(s), tests fail-first, web and phone both, English and Hindi.
@@ -168,12 +220,14 @@ Each phase is its own PR(s), tests fail-first, web and phone both, English and H
   71%"; "tapped lines raised a hard warning 0.8% of the time, typed lines 1.1%".
 
 **P2 — Automatic aliases and complaint normalisation through Jev** (about 6 days; 1 migration)
-- `cds_aliases`; the no-match log feeds proposals; offline, `choose()` classifies an unmapped complaint phrase
-  into the EXISTING concept set or picks among trigram candidates plus "none" (closed set, masked);
-  trust rules of §7; LASA second tap from the interim edit-distance rule, then the curated list; a read-only
-  weekly list.
-- Accept: each new Jev use has its eval set and confidence line (§9); an untrusted alias only ever shows as a
-  suggestion with the full name; a two-target alias is never trusted.
+- `cds_aliases`; the no-match log feeds proposals; the §7a pipeline (Jev chooser, AI reviewer, rule checks,
+  trust by use, monthly re-audit that only demotes); `choose()` also classifies an unmapped complaint phrase
+  into the EXISTING concept set; LASA second tap from the interim edit-distance rule, then the curated list; the
+  owner's weekly list with a one-tap undo per item.
+- Accept: the reviewer's 200-item evaluation is reported with zero wrong at the line; each new Jev use has its
+  eval set and confidence line (§9); an alias the two models disagree on is never shown; an untrusted alias
+  only ever shows as a suggestion with the full name; a two-target alias is never trusted; undo removes one
+  alias and is audited.
 
 **P3 — Front desk and Jev** (about 7 days; 1 migration)
 - `POST /opd/triage` returns a `triageId`; walk-in and appointment create carry it; `cds_desk_routing_outcomes`.
@@ -267,22 +321,74 @@ The owner runs this once (counts only, no patient data; the query is `/opt/hmis-
 
 No routing suggestion is linked to a visit today, on either system: there is nothing to count until P3.
 
-## 11. Drug information source — awaiting coverage numbers
+## 11. Drug information — phase D (owner 2026-10-07: "yes add this to the plan")
 
-The in-house clinical-master bundle is template text and is not used (decision 0050). A coverage check of the
-US FDA's public drug labels against the 10,303 generics is running; its report (`scratchpad/fda/REPORT.md` of
-the 2026-10-07 session) is not in yet. This section is filled when it is. Until a real source is loaded, a
-medicine with no information says so.
+The in-house clinical-master bundle is template text and is never used (decision 0050). The first real layer is
+the US FDA's public drug labels. Coverage was measured on 2026-10-07 (report and data:
+`/opt/hmis-context/fda-coverage-2026-10-07/`).
+
+| Measure | Exact US label | Notes |
+|---|---|---|
+| Formulary rows (10,303) | 79.1% (8,150) | 7% more have every component but no combination label; 8.9% have nothing |
+| Stocked items (350) | 90.6% (317) | 17 have nothing |
+| Indian brands (~103,000) | 72.1% | |
+| Single substances | 88.8% | |
+| Combinations | 41.9% | a further 35.3% by components only |
+
+Sections present on covered substances: indications 99%, dosage 99%, warnings 99%, adverse reactions 93%,
+populations 94%, contraindications 92%, patient information 83%, interactions 77%, overdose 77%. A label runs
+to a median of about 42,000 characters; 94 of the best labels are older than 2016.
+
+**What is built (about 6 days; 1 migration)**
+- A separate reference layer per generic — a new table, not the reviewed `formulary_monographs` store, which
+  stays for text a pharmacist wrote and a physician reviewed. Sections: uses, directions, common and serious
+  side effects, warnings and boxed warning, contraindications, interactions (text), pregnancy / lactation /
+  children / elderly, overdose, storage, patient information.
+- Ingestion from the bulk export with name and text matching and the 337-entry Indian/INN → US synonym map
+  (68% of labels lack the `openfda` block, so the search API misses them). A monthly refresh, versioned.
+- Every entry is labelled "US FDA label · <product> · <effective date>" and "reference only — the US product
+  may differ in strength, dose and approved use".
+- It NEVER feeds a dose or a safety check. Safety stays on the 400 curated interactions.
+- A combination covered by components only shows each component's entry and a plain line that the combination
+  itself has no reference.
+- Where nothing exists: "No reference information yet". Never the template bundle.
+- Search over the store is plain text and trigram first.
+
+**Licence and the owner's decision.** openFDA: "Unless otherwise noted, the content, data, documentation, code,
+and related materials on openFDA is public domain and made available with a Creative Commons CC0 1.0 Universal
+dedication." Every response also carries "Do not rely on openFDA to make decisions regarding medical care".
+The text is written by manufacturers. Showing it to clinicians as labelled reference text is the owner's
+decision (he agreed to these terms; decision 0051).
+
+**Open:** summarising label text into short, phone-readable text is a model writing clinical text. It is a
+later step and needs the owner's explicit ruling.
+
+### 11a. Indian gap — sources under evaluation
+
+About 480 substances sold only in India and about 680 Indian fixed-dose combinations have no US label. The
+commonest misses: ornidazole, domperidone, ambroxol, serrapeptase, thiocolchicoside, etoricoxib,
+levocetirizine + montelukast, aceclofenac + paracetamol, ofloxacin + ornidazole, pantoprazole + domperidone.
+The owner asked for this to be filled separately; sources are being evaluated.
+
+Stocked items without an exact label (count of stocked items):
+- Nothing at all: diethylcarbamazine (3), carbimazole (3), flunarizine (2), domperidone (2), cloxacillin (2),
+  ormeloxifene, teneligliptin, fusidic acid, framycetin, betahistine.
+- Components only or in part: levocetirizine + montelukast (2); ambroxol + guaifenesin + levosalbutamol (2);
+  ambroxol + guaifenesin; ofloxacin + ornidazole; domperidone + rabeprazole; domperidone + pantoprazole;
+  dicycloverine + paracetamol; dicycloverine + mefenamic acid; aceclofenac + paracetamol; two antacid
+  combinations; oral rehydration salts; two vitamin and iron combinations.
 
 ## 12. Measuring it
 
-Three headline numbers for the owner, weekly: the share of issued medicines that were tapped, not typed; how
+The weekly scorecard for the owner — corrections % (voice notes), unanswered % (Ask and search), accepted %
+(suggestions) — plus three headline numbers: the share of issued medicines that were tapped, not typed; how
 often the right answer was in the top three; hard-warning rate on tapped lines against typed lines.
 Behind them: × per 100 shown; edited-after-tap per 100 taps; median minutes from consult start to issue;
 top-1 diagnosis hit on TYPED-only diagnoses (the honest one); desk moved or referred per 100 routed; Jev's
 unsure rate; overrides per 100 prescriptions; Watch + Reserve share and steroid share.
 Getting worse — the top-3 hit falls more than 10 points in a week, or tapped lines out-warn typed ones — names
-the surface in the digest. Thresholds in §7 are re-read after the first month's drift report.
+the surface in the digest. The scorecard also carries a spot-check sample of accepted suggestions and newly
+live aliases. Thresholds in §7 are re-read after the first month's drift report.
 
 ## 13. What we will not build
 
@@ -293,7 +399,10 @@ no-match log proves a gap · ranking by acceptance rate.
 ## 14. Kill switches
 
 A server setting per surface (complaints, diagnosis, medicines, dose, tests, desk prior, desk vocabulary tail,
-desk examples, aliases, Jev per use), changed without a deploy.
+desk examples, aliases, the AI reviewer, Jev per use), changed without a deploy.
+
+**Every learned change is versioned and audited, with a one-click rollback of any single change:** an alias, a
+version of the desk's learned vocabulary tail, an example set, a hidden-suggestion state.
 
 ## 15. Where the two reviews differed, and what was chosen
 
@@ -319,4 +428,7 @@ desk examples, aliases, Jev per use), changed without a deploy.
 - Decision 0006's "proactive suggestions default OFF" per doctor: no server-side switch was found. If it is
   only a browser setting, these suggestions must honour a real per-doctor switch before they appear unasked.
 - Whether sending masked complaint phrases to a text model for alias proposals is covered by the privacy
-  assessment (decision 0048 lists text-model sorting as open).
+  assessment (decision 0048 lists text-model sorting as open). Medicine terms and catalogue rows carry no
+  patient data.
+- Summarising FDA label text for the phone (§11) — needs the owner's explicit ruling.
+- The Indian gap's source (§11a).
