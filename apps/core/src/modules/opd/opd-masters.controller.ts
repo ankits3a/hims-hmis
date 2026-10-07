@@ -66,8 +66,8 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
    * 409's meaning, and it is what lets the reception seat offer "add to the visit already open".
    */
   "lab_walkin_already_open",
-  // Owner 2026-10-07 — a guardian-with-reports mark on a visit that is not a revisit (`patient-absent.ts`).
-  "patient_absent_revisit_only",
+  // Owner 2026-10-07 — a guardian-with-reports mark on a NEW visit (`patient-absent.ts`): revisit or renewal only.
+  "patient_absent_returning_only",
 ]);
 
 function opdStatus(code: OpdErrorCode): number {

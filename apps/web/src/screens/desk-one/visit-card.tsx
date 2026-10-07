@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../lib/api";
-import { listDepartments, listQueueSummary, moveVisitDepartment, opdErrorMessage, todayIst } from "../../lib/opd-api";
+import { guardianMayStandIn, listDepartments, listQueueSummary, moveVisitDepartment, opdErrorMessage, todayIst } from "../../lib/opd-api";
 import { GuardianAbsentAction, PatientAbsentNotice } from "../../components/patient-absent";
 import { useAuth } from "../../lib/auth";
 import { useDoctorLabel } from "../../lib/use-doctor-label";
@@ -77,7 +77,7 @@ export function VisitCard({
   });
   const absent = detail.data?.patientAbsent ?? null;
   const mayMarkAbsent = absent === null && detail.data !== undefined
-    && detail.data.encounter.visitType === "revisit" && detail.data.encounter.status === "registered"
+    && guardianMayStandIn(detail.data.encounter.visitType) && detail.data.encounter.status === "registered"
     && detail.data.encounter.serviceDate === today;
 
   const inHand = d !== null && d.s.visit !== null && d.s.visit.encounterId === current.encounterId ? d.s.visit : null;
