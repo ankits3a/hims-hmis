@@ -9519,6 +9519,12 @@
     }
   },
   "scribe": {
+    "sentBack": {
+      "title_one": "{{count}} paper the doctor sent back",
+      "title_other": "{{count}} papers the doctors sent back",
+      "reason": "Doctor asks: {{reason}}",
+      "looked": "I have looked again"
+    },
     "title": "Desk scribe — type the doctor's paper",
     "subtitle": "Medicines and tests typed here go to the pharmacy and the lab, and the visit is marked consulted.",
     "findVisit": "Whose paper is this?",
@@ -9695,6 +9701,17 @@
       "reopenReason": "Why is this visit being reopened? (recorded)",
       "reopenReasonHint": "for example: the slip was filed on the wrong visit",
       "reopenWithdraw": "The prescription typed on this visit was for another patient too — withdraw it from the pharmacy",
+      "askRecheck": "Ask the desk to re-check",
+      "recheckHint": "The desk sees this on its screen and its phone, with your reason. Nothing is held — the pharmacy already has the lines; use \"Correct it\" when a medicine must change now.",
+      "recheckReason": "What should the desk look at again? (they see this)",
+      "recheckReasonHint": "for example: line 1 — I wrote 650 mg, not 500",
+      "recheckGo": "Send back to the desk",
+      "pillSentBack": "sent back to the desk",
+      "pillRechecked": "desk re-checked",
+      "sentBackTitle": "Sent back to the desk — waiting for them",
+      "recheckedTitle": "The desk looked again — {{name}}",
+      "sentBackReason": "You asked: {{reason}}",
+      "recheckedNote": "The desk says: {{note}}",
       "reopenGo": "Reopen the visit"
     }
   },

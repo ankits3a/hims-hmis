@@ -1,4 +1,4 @@
-# 0043 — The OPD report counts the visits the desk opened; "Booked" reads "Appointments"
+# 0044 — The OPD report counts the visits the desk opened; "Booked" reads "Appointments"
 
 - **Date:** 2026-10-07   **Status:** Ruled
 - **Area:** opd, reports, front desk

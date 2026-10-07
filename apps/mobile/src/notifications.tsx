@@ -1,4 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { focusHome } from "./home/focus";
+import type { NeedKind } from "./home/rules";
 import { AppState, Platform, Pressable, StyleSheet, View } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { useRouter } from "expo-router";
@@ -32,9 +34,13 @@ import { color, radius, space } from "./theme";
  * NOTHING IS ASKED UNINVITED. The phone's permission prompt opens only after the person taps
  * "Turn on" under a sentence that says what a notification will and will not contain.
  */
-export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder"] as const;
+export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder", "approvals"] as const;
+/** The phone SAYS which categories it can draw (`?knows=`), so the server offers a switch only for those (app home round 2). */
+const PUSH_ROUTE = `/auth/phone/notifications?knows=${PUSH_CATEGORIES.join(",")}`;
 /** The server's `link` word → the phone screen it opens. An unknown word, or a screen this person may not open, is home. */
 export const PUSH_LINK_SEAT: Record<string, Seat["key"] | null> = { home: null, onNow: "onNow", myDuties: "myDuties", consult: "consult" };
+/** A link that lands on a CARD of the home screen rather than on a screen of its own. */
+export const PUSH_LINK_CARD: Record<string, NeedKind> = { approvals: "approval" };
 
 export type PushStatus = "unknown" | "notInBuild" | "unreachable" | "serverError" | "notLinked" | "serverOff" | "off" | "denied" | "on";
 type ServerState = {
@@ -168,7 +174,7 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
    * (`POST /auth/phone/link`) and asks again — the person is not signed out for our omission.
    */
   const ask = useCallback(async (): Promise<{ reach: Reach; server: ServerState | null; problem?: string }> => {
-    const read = () => inTime(call<ServerState>("GET", "/auth/phone/notifications"));
+    const read = () => inTime(call<ServerState>("GET", PUSH_ROUTE));
     try {
       return { reach: "ok", server: await read() };
     } catch (e) {
@@ -196,7 +202,7 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
     if (token === null) { setAddress("no"); return "noAddress"; }
     setAddress("yes");
     try {
-      return await inTime(call<ServerState>("PUT", "/auth/phone/notifications", { token, language: lang }));
+      return await inTime(call<ServerState>("PUT", PUSH_ROUTE, { token, language: lang }));
     } catch {
       return "notSaved";
     }
@@ -252,11 +258,13 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
   // The app's language changed while notifications are on: the next sentence is said in it.
   useEffect(() => {
     if (status !== "on") return;
-    void call<ServerState>("PUT", "/auth/phone/notifications", { language: lang }).then(setServer, () => undefined);
+    void call<ServerState>("PUT", PUSH_ROUTE, { language: lang }).then(setServer, () => undefined);
     void phone.channels(labels);
   }, [lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const open = useCallback((link: string) => {
+    const card = PUSH_LINK_CARD[link];
+    if (card !== undefined) { focusHome(card); router.push("/"); return; }
     const seat = PUSH_LINK_SEAT[link] ?? null;
     const allowed = seat !== null && permissions !== null && seatsFor(permissions).some((s) => s.key === seat);
     if (allowed) router.push({ pathname: "/seat/[key]", params: { key: seat } });
@@ -266,7 +274,7 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
   useEffect(() => {
     if (!signedIn || !phone.inBuild) return;
     const offToken = phone.onToken((token) => {
-      void call<ServerState>("PUT", "/auth/phone/notifications", { token, language: lang }).then((s) => { setAddress("yes"); setServer(s); }, () => undefined);
+      void call<ServerState>("PUT", PUSH_ROUTE, { token, language: lang }).then((s) => { setAddress("yes"); setServer(s); }, () => undefined);
     });
     const offReceived = phone.onReceived((note) => {
       const at = new Date().toISOString();
@@ -328,7 +336,7 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
     setProblem(null);
     wanted.current = false; void keep(WANTED_KEY, "0");
     try {
-      setServer(await inTime(call<ServerState>("DELETE", "/auth/phone/notifications")));
+      setServer(await inTime(call<ServerState>("DELETE", PUSH_ROUTE)));
     } catch {
       setProblem("mobile.push.problem.notSaved");
     } finally {
@@ -341,7 +349,7 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
     const next = muted ? [...new Set([...server.muted, category])] : server.muted.filter((m) => m !== category);
     setProblem(null);
     try {
-      setServer(await inTime(call<ServerState>("PUT", "/auth/phone/notifications", { muted: next })));
+      setServer(await inTime(call<ServerState>("PUT", PUSH_ROUTE, { muted: next })));
     } catch {
       setProblem("mobile.push.problem.notSaved");
     }

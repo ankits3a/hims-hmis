@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
-  checkPaperCorrection, confirmPaperConsult, correctPaperConsult, fetchPaperConsults, reopenPaperConsult,
+  askPaperRecheck, checkPaperCorrection, confirmPaperConsult, correctPaperConsult, fetchPaperConsults, reopenPaperConsult,
 } from "../lib/opd-api";
 import { fmtIst, useDebounced } from "../lib/format";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
@@ -110,6 +110,36 @@ function Correction({ row, onDone, onCancel }: { row: WirePaperConsult; onDone: 
   );
 }
 
+/** The doctor sends what the desk typed BACK, with a reason — instead of retyping it themselves (decision 0043). */
+function Recheck({ row, onDone, onCancel }: { row: WirePaperConsult; onDone: () => void; onCancel: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function go(): Promise<void> {
+    if (reason.trim().length < 3 || busy) return;
+    setBusy(true); setError(null);
+    try { await askPaperRecheck(row.encounterId, reason.trim()); onDone(); } catch (e) { setError(refusal(t, e)); } finally { setBusy(false); }
+  }
+  return (
+    <div className="pcl-edit" data-testid={`paper-recheck-${row.encounterId}`}>
+      <p className="pc-note">{t("paper.list.recheckHint")}</p>
+      <label className="pc-l" htmlFor={`recheck-${row.encounterId}`}>{t("paper.list.recheckReason")}</label>
+      <input
+        id={`recheck-${row.encounterId}`} className="in" autoFocus value={reason} data-testid="paper-recheck-reason" maxLength={500}
+        placeholder={t("paper.list.recheckReasonHint")}
+        onChange={(e) => { setReason(e.target.value); }}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void go(); } }}
+      />
+      {error !== null && <p className="pc-bad" role="alert">{error}</p>}
+      <div className="pcl-acts">
+        <button type="button" className="pri" disabled={reason.trim().length < 3 || busy} data-testid="paper-recheck-go" onClick={() => { void go(); }}>{t("paper.list.recheckGo")}</button>
+        <button type="button" className="sec" onClick={onCancel}>{t("paper.list.cancel")}</button>
+      </div>
+    </div>
+  );
+}
+
 function Reopen({ row, onDone, onCancel }: { row: WirePaperConsult; onDone: () => void; onCancel: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
@@ -160,7 +190,7 @@ export function PaperConsults(): React.ReactElement {
   const [chosen, setScope] = useState<"mine" | "all" | null>(null);
   const scope: "mine" | "all" = chosen ?? (doctor || !supervisor ? "mine" : "all");
   const [open, setOpen] = useState<string | null>(null);
-  const [mode, setMode] = useState<"view" | "correct" | "reopen">("view");
+  const [mode, setMode] = useState<"view" | "correct" | "reopen" | "recheck">("view");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -238,6 +268,8 @@ export function PaperConsults(): React.ReactElement {
                       {r.held !== null && <span className="pill rd" data-testid="paper-pill-held">{t("paper.list.pillHeld", { count: r.held.lines.length })}</span>}
                       {(r.doctorDraft ?? []).length > 0 && <span className="pill gd" data-testid="paper-pill-draft">{t("paper.list.pillDraft")}</span>}
                       {r.held === null && r.confirmedAt === null && <span className="pill">{t("paper.list.pillUnseen")}</span>}
+                      {r.recheck != null && r.recheck.doneAt === null && <span className="pill gd" data-testid="paper-pill-sent-back">{t("paper.list.pillSentBack")}</span>}
+                      {r.recheck != null && r.recheck.doneAt !== null && <span className="pill gr" data-testid="paper-pill-rechecked">{t("paper.list.pillRechecked")}</span>}
                       {r.confirmedAt !== null && <span className="pill gr" data-testid="paper-pill-seen">{t("paper.list.pillSeen", { at: fmtIst(r.confirmedAt) })}</span>}
                     </span>
                   </button>
@@ -250,6 +282,8 @@ export function PaperConsults(): React.ReactElement {
                       <div className="pcl-typed">
                         {mode === "correct" ? (
                           <Correction row={r} onDone={refresh} onCancel={() => { setMode("view"); }} />
+                        ) : mode === "recheck" ? (
+                          <Recheck row={r} onDone={refresh} onCancel={() => { setMode("view"); }} />
                         ) : mode === "reopen" ? (
                           <Reopen row={r} onDone={() => { setOpen(null); refresh(); }} onCancel={() => { setMode("view"); }} />
                         ) : (
@@ -273,6 +307,13 @@ export function PaperConsults(): React.ReactElement {
                                 <h3>{t("paper.list.draftTitle", { count: (r.doctorDraft ?? []).length })}</h3>
                                 <ul>{(r.doctorDraft ?? []).map((l, i) => <li key={i}>{lineText(l)}</li>)}</ul>
                                 <p className="pcl-noteline">{t("paper.list.draftHint")}</p>
+                              </div>
+                            )}
+                            {r.recheck != null && (
+                              <div className="pcl-block draft" data-testid="paper-recheck-state">
+                                <h3>{t(r.recheck.doneAt === null ? "paper.list.sentBackTitle" : "paper.list.recheckedTitle", { name: r.recheck.doneByName ?? "—" })}</h3>
+                                <p className="pcl-noteline">{t("paper.list.sentBackReason", { reason: r.recheck.reason })}</p>
+                                {r.recheck.doneAt !== null && r.recheck.doneNote !== null && <p className="pcl-noteline">{t("paper.list.recheckedNote", { note: r.recheck.doneNote })}</p>}
                               </div>
                             )}
                             <div className="pcl-block">
@@ -307,6 +348,9 @@ export function PaperConsults(): React.ReactElement {
                                   >{r.confirmedAt !== null ? t("paper.list.looked") : t("paper.list.looksRight")}</button>
                                   <button type="button" className="sec" data-testid="paper-correct" onClick={() => { setMode("correct"); }}>
                                     {r.held !== null ? t("paper.list.decideHeld") : t("paper.list.correct")}
+                                  </button>
+                                  <button type="button" className="sec" data-testid="paper-ask-recheck" onClick={() => { setMode("recheck"); }}>
+                                    {t("paper.list.askRecheck")}
                                   </button>
                                 </>
                               )}

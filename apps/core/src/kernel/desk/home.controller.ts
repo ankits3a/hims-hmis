@@ -36,7 +36,7 @@ export type TeamCard = { date: string; from: string; why: ("role" | "unit_head")
  *
  *   · a supervising ROLE sees the people who hold the roles under it (`TEAM_ROLES`);
  *   · a UNIT HEAD sees the current members of the units they head (`roster_team_memberships`,
- *     `role_in_team = 'unit_head'`).
+ *     `role_in_team = 'head'` — the roster's own word; 'unit_head' is not one, and round 1 asked for it).
  *
  * The caller is never on their own team, and inactive people are not on anybody's.
  */
@@ -54,7 +54,7 @@ export async function teamOf(db: Db, userId: string, now: Date): Promise<{ userI
   }
   const current = and(lte(rosterTeamMemberships.startsAt, now), or(isNull(rosterTeamMemberships.endsAt), gt(rosterTeamMemberships.endsAt, now)));
   const heads = await db.select({ t: rosterTeamMemberships.teamId }).from(rosterTeamMemberships)
-    .where(and(eq(rosterTeamMemberships.userId, userId), eq(rosterTeamMemberships.roleInTeam, "unit_head"), current));
+    .where(and(eq(rosterTeamMemberships.userId, userId), eq(rosterTeamMemberships.roleInTeam, "head"), current));
   if (heads.length > 0) {
     const members = await db.select({ u: rosterTeamMemberships.userId }).from(rosterTeamMemberships)
       .where(and(inArray(rosterTeamMemberships.teamId, heads.map((h) => h.t)), current));

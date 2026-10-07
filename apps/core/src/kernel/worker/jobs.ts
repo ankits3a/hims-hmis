@@ -19,6 +19,7 @@ import type { ChannelAdapter, NotifyChannel } from "../notify/adapters";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
 import { istDayString } from "../approvals/cumulative";
+import { sweepOverdueApprovals } from "../approvals/overdue";
 import { collectDeskProviders } from "../desk/registry";
 import { rollupAll } from "../desk/rollup";
 import { sweepInterfaceHeartbeats } from "../ops/interfaces";
@@ -604,6 +605,7 @@ export function registerAllJobs(
   scheduler.register({
     name: "sweepStaffNotices",
     every: 60_000,
-    run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); },
+    // An approval past its deadline tells its deciders once (decision 0043) — same clock, same job.
+    run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now); },
   });
 }

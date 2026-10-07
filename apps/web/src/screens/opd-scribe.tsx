@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
-import { checkPaperLines, fetchPaperVisit, transcribePaper } from "../lib/opd-api";
+import { checkPaperLines, fetchPaperSentBack, fetchPaperVisit, resolvePaperRecheck, transcribePaper } from "../lib/opd-api";
 import { useDebounced } from "../lib/format";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 import { UnpaidMark } from "../components/unpaid-mark";
@@ -53,6 +53,45 @@ type VisitFee = { feeUnpaid?: boolean; feeBypass?: { by: string; reason: string;
 
 const VISIT_NO = /^V\d{6,}$/i;
 const CONSULTED: ReadonlySet<WirePaperOutcome> = new Set<WirePaperOutcome>(["marked", "already_marked", "doctor_completed"]);
+
+/**
+ * WHAT THE DOCTORS SENT BACK (decision 0043). A doctor read what this desk typed from their paper
+ * and asked for another look, with a reason. It sits here until the desk retypes it (the save is the
+ * answer) or says "I have looked again". Nothing is held meanwhile — the pharmacy already has the lines.
+ */
+function SentBack({ onOpen }: { onOpen: (visitNo: string) => void }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const list = useQuery({ queryKey: ["paper", "sent-back"], queryFn: fetchPaperSentBack, refetchInterval: 30_000 });
+  const [busy, setBusy] = useState<string | null>(null);
+  const items = list.data?.items ?? [];
+  if (items.length === 0) return null;
+  async function looked(id: string): Promise<void> {
+    setBusy(id);
+    try { await resolvePaperRecheck(id, null); } catch { /* the list re-reads and says what stands */ } finally {
+      setBusy(null); void queryClient.invalidateQueries({ queryKey: ["paper"] });
+    }
+  }
+  return (
+    <div className="box pc-find-box" data-testid="scribe-sent-back">
+      <span className="pc-find-l">{t("scribe.sentBack.title", { count: items.length })}</span>
+      <ul className="pc-choices">
+        {items.map((r) => (
+          <li key={r.encounterId} data-testid={`scribe-sent-back-${r.visitNo}`}>
+            <button type="button" onClick={() => { onOpen(r.visitNo); }}>
+              <b>{r.patient.restricted || r.patient.name === null ? (r.patient.alias ?? r.patient.uhid) : r.patient.name}</b>
+              <span className="mo">{r.patient.uhid} · {r.visitNo}{r.doctorCode !== null ? ` · ${r.doctorCode}` : ""}</span>
+              <span className="pc-hint">{t("scribe.sentBack.reason", { reason: r.recheck?.reason ?? "" })}</span>
+            </button>
+            <button type="button" className="sec" disabled={busy === r.encounterId} data-testid={`scribe-looked-${r.visitNo}`} onClick={() => { void looked(r.encounterId); }}>
+              {t("scribe.sentBack.looked")}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function nameOf(back: SlipReadback): string {
   return back.patient?.name ?? back.patient?.alias ?? back.patient?.uhid ?? "—";
@@ -162,8 +201,9 @@ export function OpdScribe(): React.ReactElement {
     setTimeout(() => { document.getElementById("scribe-drug-0")?.focus(); }, 0);
   };
 
-  async function find(): Promise<void> {
-    const v = typed.trim();
+  async function find(): Promise<void> { await findVisit(typed); }
+  async function findVisit(raw: string): Promise<void> {
+    const v = raw.trim();
     if (v === "" || looking) return;
     setLooking(true); setNotFound(null); setChoices(null);
     try {
@@ -277,6 +317,7 @@ export function OpdScribe(): React.ReactElement {
                 </ul>
               )}
             </div>
+            <SentBack onOpen={(visitNo) => { setTyped(visitNo); void findVisit(visitNo); }} />
             <ul className="pc-how">
               <li>{t("scribe.how.type")}</li>
               <li>{t("scribe.how.held")}</li>

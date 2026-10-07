@@ -19,7 +19,7 @@ export function rosterApi(call: Call) {
     coverOptions: (assignmentId: string) => call<WireCoverOptions>("GET", `/roster/duties/${enc(assignmentId)}/cover-options`),
     /** A cover; with `counterpartAssignmentId`, a swap (the duty they give back). */
     askCover: (b: { assignmentId: string; counterpartId: string; counterpartAssignmentId?: string }) => call<{ requestId: string }>("POST", "/roster/covers", b),
-    answerCover: (requestId: string, accept: boolean) => call<{ ok: true }>("POST", `/roster/covers/${enc(requestId)}/answer`, { accept }),
+    answerCover: (requestId: string, accept: boolean, note?: string) => call<{ ok: true }>("POST", `/roster/covers/${enc(requestId)}/answer`, note === undefined || note.trim() === "" ? { accept } : { accept, note: note.trim() }),
     withdrawCover: (requestId: string) => call<{ ok: true }>("POST", `/roster/covers/${enc(requestId)}/withdraw`),
     raiseFlag: (b: { departmentId: string | null; userId: string | null; at: string; note: string }) => call<{ flagId: string }>("POST", "/roster/flags", b),
     resolveFlag: (flagId: string) => call<{ ok: true }>("POST", `/roster/flags/${enc(flagId)}/resolve`),
