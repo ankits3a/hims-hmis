@@ -9,6 +9,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { parsed } from "./opd-masters.controller";
 import { loadOpdDepartmentReport, loadOpdReport, rangeFor } from "./report";
+import { loadRecording } from "./recording";
+import type { RecordingReport } from "./recording";
 import {
   departmentReportCsvRows, fileStem, renderDepartmentReport, renderReport, reportCsvRows,
 } from "./report-render";
@@ -74,6 +76,16 @@ export class OpdReportsController {
       },
     })));
     return report;
+  }
+
+  /**
+   * "Is today being recorded?" (owner 2026-10-07). No permission on the door: WHAT a login sees is
+   * decided inside from the login alone (`loadRecording`) — the desks see the hospital's integers, a
+   * doctor their own, per-doctor names only with the staff figures, and anybody else nothing.
+   */
+  @Get("recording")
+  async recording(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<RecordingReport> {
+    return loadRecording(this.db, actor, this.rangeOf(query));
   }
 
   @RequirePermission("opd.reports.read", "hospital")
