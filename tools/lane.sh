@@ -107,7 +107,7 @@ cmd_drop() {
     mv "$LANES_DIR/$name/HANDOFF.md" "$LANES_DIR/.handoff-archive/$name-$(date -u +%Y%m%d%H%M).md"
   fi
   rmdir "$LANES_DIR/$name" 2>/dev/null || true
-  # A Serena project registered for this lane (CLAUDE.md, "Serena on demand") goes with it.
+  # A Serena project registered for this lane (skill `serena`) goes with it.
   if [ -f "$HOME/.serena/serena_config.yml" ]; then
     sed -i "\#^- $dir\$#d" "$HOME/.serena/serena_config.yml"
   fi
