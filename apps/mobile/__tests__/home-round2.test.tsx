@@ -28,6 +28,17 @@ jest.mock("expo-haptics", () => ({ notificationAsync: jest.fn(async () => undefi
 const mockPush = jest.fn();
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush, back: jest.fn() }) }));
 
+/*
+ * THE CLOCK IS PINNED. A report row carries only an IST "HH:MM" beside the report's date, so "seated 52
+ * minutes ago" is on YESTERDAY's page for the first 52 minutes after IST midnight — and this file went
+ * red on main at 00:00 IST for exactly that long, every night. Only `Date` is pinned (12:30 IST); the
+ * timers stay real, so `findBy…` and `waitFor` wait as they always did.
+ */
+jest.useFakeTimers({
+  now: new Date("2026-10-07T07:00:00.000Z"),
+  doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "requestAnimationFrame", "cancelAnimationFrame", "requestIdleCallback", "cancelIdleCallback", "performance", "hrtime"],
+});
+
 const MIN = 60_000;
 const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * MIN).toISOString();
 type Route = { status: number; body?: unknown } | "offline";
