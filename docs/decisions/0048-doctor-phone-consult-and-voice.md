@@ -14,7 +14,7 @@ sources: []
 ---
 # 0048 — The doctor consults on the phone — one screen, five drawers; voice notes through OpenAI, never Sarvam, no patient name sent
 
-- **Date:** 2026-10-07   **Status:** Partly open — rulings recorded; the design board awaits the owner's approval; the voice comparison trial has not run; nothing is built
+- **Date:** 2026-10-07   **Status:** Partly open — rulings recorded; the design board awaits the owner's approval; the voice trial is skipped by the owner; nothing is built
 - **Area:** mobile staff app, OPD consultation, voice, privacy
 
 ## What the owner saw
@@ -45,10 +45,30 @@ So:
 2. **Voice.** Notes may be spoken. The speech service is OpenAI. **Sarvam is never used.**
 3. **What may leave the hospital for voice.** The audio, and age, gender and vitals. **Never the patient's
    name.** The audio is not stored.
-4. **Trial first.** A small comparison trial runs before voice is built into the screen.
+4. **No trial.** The owner first asked for a small comparison trial, then withdrew it the same day (see below): voice
+   starts in use and is measured there.
 5. **Sets.** Each doctor saves their own sets; the hospital adds a small starter list.
 6. **Printing** happens only when the doctor asks.
 7. **Diagnosis** is optional.
+
+## The trial is skipped (owner, later on 2026-10-07)
+
+> "I don't have sample voice notes so let's skip the trial. let's go ahead without it"
+
+How voice starts instead — **DECIDED by delegation**, the owner may overturn any line:
+
+- OpenAI only. The most accurate speech model first (`gpt-4o-transcribe`); the model name is a server setting, so
+  it can be switched to `gpt-4o-mini-transcribe` (cheaper, faster) or `whisper-1` without an app update.
+- Hints sent with the audio: the formulary's brands and generics, test names, common Hinglish medical words.
+- Context sent: age, gender, vitals, department. Never the name, UHID, phone or address.
+- The audio is streamed to the hospital's server, forwarded, and stored nowhere.
+- The transcript is shown to the doctor for review before it is saved.
+- Medicine and test words are matched back to the catalogue ("pan forty" → Pantoprazole 40 mg) and **offered as a
+  chip, never added as a medicine line by themselves** — the doctor taps it.
+- Measured in use, in place of a trial: per transcript, how many characters the doctor changed before saving (no
+  audio kept), per doctor per week, shown to the owner so the model can be switched on evidence.
+- A cost meter (minutes per day) with a daily cap setting.
+- From the owner: only the OpenAI API key, in `/root/.config/hmis/openai/key.txt` on the server.
 
 ## What this touches that was ruled before
 
@@ -64,7 +84,6 @@ So:
 ## Open
 
 - The design board's approval.
-- The voice trial: which OpenAI model, with or without the hospital's drug and test names as hints.
 - Who signs the hospital starter list; whether a set may hold antibiotics or controlled drugs.
 - The longest voice clip.
 - Whether a spoken note may be sorted into complaint / history / examination by a text model (no names).
