@@ -1540,5 +1540,174 @@
       "needRebooking": "दोबारा बुकिंग चाहिए",
       "nothingToMove": "कुछ भी बदलने की ज़रूरत नहीं। किसी दर्ज छुट्टी ने कोई बुकिंग नहीं रोकी।"
     }
+  },
+  "home": {
+    "now": "अभी आपका इंतज़ार",
+    "all": "सब देखें ({{n}})",
+    "fewer": "कम दिखाएँ",
+    "calm": "अभी कुछ बाकी नहीं",
+    "calmHint": "दोबारा जाँचने के लिए नीचे खींचें।",
+    "day": "मेरा दिन",
+    "work": "मेरा काम",
+    "asOf": "{{time}} तक का",
+    "offline": {
+      "banner": "नेटवर्क नहीं है — पिछले आँकड़े दिख रहे हैं। नेटवर्क आने तक कोई मंज़ूरी नहीं दी जा सकती।",
+      "nothing": "नेटवर्क नहीं है — अभी कुछ पढ़ा नहीं जा सका। दोबारा कोशिश के लिए नीचे खींचें।",
+      "noApproval": "नेटवर्क नहीं है — कुछ भेजा नहीं गया। नेटवर्क आने पर दोबारा कोशिश करें।"
+    },
+    "clock": {
+      "waiting": "{{span}} से इंतज़ार",
+      "dueIn": "{{span}} में देना है",
+      "overdue": "{{span}} देर",
+      "startsIn": "{{span}} में शुरू",
+      "started": "{{span}} पहले शुरू",
+      "hm": "{{h}} घं {{m}} मिनट",
+      "m": "{{m}} मिनट"
+    },
+    "need": {
+      "queue": "आपकी कतार में इंतज़ार",
+      "queueSub": "सबसे लंबा इंतज़ार",
+      "held": "दवा आपके लिए रोकी गई",
+      "heldSub": "चेतावनी जो डेस्क नहीं हटा सकता",
+      "paper": "पर्चे की पुष्टि बाकी",
+      "paperSub": "डेस्क ने आपके पर्चे से टाइप किया",
+      "cover": "कवर का अनुरोध · {{name}}",
+      "swap": "अदला-बदली का अनुरोध · {{name}}",
+      "recheck": "दोबारा जाँच बाकी",
+      "recheckSub": "आराम के बाद दोबारा",
+      "bench": "बेंच पर",
+      "benchSub": "वाइटल्स का इंतज़ार",
+      "slips": "पर्चियाँ फ़ोटो के लिए",
+      "slipsSub": "स्लिप डेस्क पर इंतज़ार",
+      "slipsRetake": "{{n}} की दोबारा फ़ोटो",
+      "askedBy": "{{name}} ने माँगा",
+      "gap": "रोस्टर में ख़ाली जगह"
+    },
+    "act": {
+      "callNext": "कतार खोलें",
+      "decide": "तय करें",
+      "look": "देखें",
+      "yes": "हाँ",
+      "no": "नहीं",
+      "openBench": "बेंच खोलें",
+      "scan": "खोलें",
+      "scanSlip": "पर्ची स्कैन करें",
+      "review": "देखें",
+      "see": "देखें"
+    },
+    "tile": {
+      "seen": "आज देखे",
+      "waiting": "अभी इंतज़ार",
+      "onPaper": "पर्चे पर",
+      "vitals": "वाइटल्स लिए",
+      "visits": "विज़िट खोले",
+      "registered": "पंजीकरण",
+      "appointments": "अपॉइंटमेंट",
+      "receipts": "रसीदें",
+      "bench": "बेंच पर",
+      "slips": "पर्चियाँ दर्ज",
+      "collected": "वसूली",
+      "afterCount": "गिनती के बाद · {{n}} रसीदें",
+      "approvals": "मंज़ूरियाँ",
+      "opdToday": "आज की OPD"
+    },
+    "d30": {
+      "title": "पिछले 30 दिन",
+      "collections": "वसूली · पिछले 30 दिन",
+      "open": "खोलें ▾",
+      "close": "बंद करें ▴",
+      "week": "इस हफ़्ते",
+      "usual": "आपका सामान्य हफ़्ता",
+      "best": "सबसे अच्छा दिन",
+      "total": "30 दिन का जोड़"
+    },
+    "owner": {
+      "byDept": "आज की OPD, विभाग के हिसाब से",
+      "onDuty": "अभी ड्यूटी पर",
+      "nobody": "अभी कोई नहीं"
+    },
+    "team": {
+      "title": "आज मेरी टीम",
+      "people": "{{n}} लोग",
+      "line": "आज {{today}} {{what}} · 30 दिन में {{month}}",
+      "unit": {
+        "opd_consultsCompleted": "परामर्श",
+        "opd_vitalsRecorded": "वाइटल्स",
+        "opd_visitsOpened": "विज़िट",
+        "opd_patientsRegistered": "पंजीकरण",
+        "opd_appointmentsBooked": "अपॉइंटमेंट",
+        "billing_receipts": "रसीदें"
+      },
+      "bars": "पट्टी: आज बनाम हर व्यक्ति का अपना सामान्य दिन।",
+      "nothing": "30 दिन में कुछ नहीं"
+    },
+    "cover": {
+      "accepted": "आपने हाँ कहा। रोस्टर बदल दिया गया है।",
+      "declined": "आपने मना किया। उन्हें बता दिया गया है।",
+      "failed": "यह सर्वर तक नहीं पहुँचा — कुछ नहीं बदला। दोबारा कोशिश करें।"
+    },
+    "paper": {
+      "onComputer": "पर्चे वाले परामर्श अभी कंप्यूटर पर खुलते हैं: मेन्यू → मेरे पर्चे वाले परामर्श।"
+    },
+    "sheet": {
+      "close": "बंद करें",
+      "patient": "मरीज़",
+      "askedBy": "किसने माँगा",
+      "reason": "कारण",
+      "waiting": "घड़ी",
+      "note": "आपकी टिप्पणी (ज़रूरी)",
+      "notePlaceholder": "आपकी टिप्पणी (ज़रूरी) — जैसे: बिलिंग से जाँचा, मंज़ूर",
+      "noteNeeded": "पहले टिप्पणी लिखें — हर फ़ैसले के साथ टिप्पणी जाती है।",
+      "password": "आपका HMIS पासवर्ड",
+      "wrongPassword": "पासवर्ड सही नहीं है। कोई फ़ैसला दर्ज नहीं हुआ।",
+      "stepUpRefused": "सर्वर पुष्टि नहीं कर सका कि यह आप हैं। कोई फ़ैसला दर्ज नहीं हुआ।",
+      "stepUpAgain": "दोबारा पुष्टि करें कि यह आप हैं — पासवर्ड लिखें, फिर फ़ैसला करें।",
+      "notSent": "यह सर्वर तक नहीं पहुँचा — कोई फ़ैसला दर्ज नहीं हुआ। दोबारा कोशिश करें।",
+      "alreadyDecided": "इस पर किसी ने पहले ही फ़ैसला कर दिया है।",
+      "notYours": "यह अनुरोध आपके फ़ैसले का नहीं है।",
+      "failed": "सर्वर ने मना किया। कोई फ़ैसला दर्ज नहीं हुआ।",
+      "approve": "मंज़ूर",
+      "decline": "नामंज़ूर",
+      "approved": "मंज़ूर किया। आपके नाम, समय और टिप्पणी के साथ दर्ज है।",
+      "declined": "नामंज़ूर किया। आपके नाम, समय और टिप्पणी के साथ दर्ज है।",
+      "fineMoney": "पैसे की मंज़ूरी से पहले फ़िंगरप्रिंट माँगा जाता है। आपके नाम, समय और टिप्पणी के साथ दर्ज होगा।",
+      "fine": "आपके नाम, समय और टिप्पणी के साथ दर्ज होगा।"
+    },
+    "kind": {
+      "billing_discount": "छूट {{amount}}",
+      "billing_clearance_discount": "क्लियरेंस छूट {{amount}}",
+      "billing_credit_extension": "उधार की सीमा बढ़ाना",
+      "billing_credit_owner": "उधार {{amount}}",
+      "billing_refund": "रिफ़ंड {{amount}}",
+      "billing_refund_owner": "रिफ़ंड {{amount}} · मैनेजर की सीमा से ऊपर",
+      "billing_recon_charge_owner": "बैंक से कम जमा {{amount}}",
+      "billing_variance": "नकद का अंतर",
+      "lab_release_unpaid": "बिना भुगतान लैब रिपोर्ट {{amount}}",
+      "lab_release_unpaid_owner": "बिना भुगतान लैब रिपोर्ट {{amount}}",
+      "patient_merge": "दो मरीज़ रिकॉर्ड मिलाना",
+      "patient_unmerge": "मरीज़ रिकॉर्ड का मिलान हटाना",
+      "materials_stock_adjustment": "स्टॉक समायोजन",
+      "materials_near_expiry_acceptance": "जल्द एक्सपायर होने वाला स्टॉक स्वीकार",
+      "materials_vendor_bank_change": "वेंडर के बैंक विवरण में बदलाव",
+      "materials_po_approval": "ख़रीद आदेश {{amount}}",
+      "materials_po_approval_owner": "ख़रीद आदेश {{amount}}",
+      "materials_payment_run_approval": "सप्लायर भुगतान {{amount}}",
+      "imaging_definition_publish": "इमेजिंग परिभाषा",
+      "imaging_release_unpaid_owner": "बिना भुगतान इमेजिंग रिपोर्ट {{amount}}",
+      "ot_definition_publish": "ओटी परिभाषा",
+      "ot_deposit_exception": "ओटी जमा में छूट {{amount}}",
+      "tariff_revision": "दाम में बदलाव",
+      "membership_grace_honor": "सदस्यता में रियायत",
+      "pharmacy_restricted_antimicrobial": "प्रतिबंधित एंटीबायोटिक",
+      "pharmacy_discount_incharge": "फ़ार्मेसी छूट {{amount}}",
+      "pharmacy_discount_owner": "फ़ार्मेसी छूट {{amount}}"
+    },
+    "workBadge": {
+      "waiting": "{{n}} इंतज़ार में",
+      "bench": "{{n}} बेंच पर",
+      "slips": "{{n}} इंतज़ार में",
+      "nextDuty": "अगली ड्यूटी {{day}}",
+      "gaps": "रोस्टर में {{n}} ख़ाली जगह"
+    }
   }
 }

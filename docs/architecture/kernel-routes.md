@@ -51,6 +51,7 @@
 | DELETE | `/auth/phone/notifications` | `auth/auth.controller.ts` |
 | GET | `/auth/phone/notifications` | `auth/auth.controller.ts` |
 | PUT | `/auth/phone/notifications` | `auth/auth.controller.ts` |
+| POST | `/auth/step-up` | `auth/auth.controller.ts` |
 | POST | `/auth/switch/badge` | `auth/auth.controller.ts` |
 | POST | `/auth/switch/pin` | `auth/auth.controller.ts` |
 | POST | `/auth/temp-roles` | `auth/auth.controller.ts` |
@@ -72,6 +73,7 @@
 | GET | `/me/desk` | `desk/desk.controller.ts` |
 | GET | `/me/report.csv` | `desk/desk.controller.ts` |
 | GET | `/me/report` | `desk/desk.controller.ts` |
+| GET | `/me/team` | `desk/home.controller.ts` |
 | GET | `/staff/:userId/brief` | `desk/staff.controller.ts` |
 | POST | `/staff/:userId/drill` | `desk/staff.controller.ts` |
 | GET | `/staff/range` | `desk/staff.controller.ts` |

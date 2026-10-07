@@ -550,3 +550,21 @@ commands.
    `/admin/users`) and "sign this phone out" without resetting the password.
 4. **Hospital-owned phones later (owner):** nothing here assumes a personal phone. When the hospital's devices arrive,
    M6's device list is what lets an admin retire the personal ones.
+
+## 3j. App home — "My day" (owner 2026-10-07, decision 0042) — BUILT
+
+The first screen is no longer the list of screens. Top to bottom: **Needs you now** (cards with a clock in words;
+five at most, red first, the oldest clock leading; "See all (n)"), **My day** (three numbers; a cashier's money is
+locked until the drawer is counted; the owner's are the hospital's), **Last 30 days** (a line, this week against the
+usual week, the best day, the total), the owner's lists (OPD today by department, on duty now), a supervisor's **My
+team** card, then **My work** — every screen as before, with a live badge.
+
+- Rules shared with the server: `packages/contracts/src/app-home.ts` (deadlines by kind, tones, ordering, the money
+  test, the team roles). App: `src/home/{model,load,sheets,spark,rules}.ts(x)`, `src/screens/seat-home.tsx`.
+- Server: `dueAt` on `/approvals` rows; `POST /auth/step-up` and the phone-only step-up gate on approve / reject
+  (migration 0181, `auth_sessions.step_up_at`); `GET /me/team`; `series` on `/me/brief` for a month or shorter.
+- Approve or decline from the card: required note, fingerprint (or password) first for money, never offline, never
+  queued. A cover request is answered Yes / No on the card.
+- JavaScript only — no new native module (the line is drawn with Views), so it can travel as an over-the-air bundle.
+- Not built: see decision 0042 "Still open". The last home is kept in memory only (lost when the app is closed).
+- Walk: `/opt/hmis-context/mobile-tools/{serve-home,shoot-home}.mjs`.

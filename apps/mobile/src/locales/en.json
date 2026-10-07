@@ -1540,5 +1540,174 @@
       "needRebooking": "Need rebooking",
       "nothingToMove": "Nothing needs moving. No declared leave has stranded a booking."
     }
+  },
+  "home": {
+    "now": "Needs you now",
+    "all": "See all ({{n}})",
+    "fewer": "Show fewer",
+    "calm": "Nothing needs you right now",
+    "calmHint": "Pull down to check again.",
+    "day": "My day",
+    "work": "My work",
+    "asOf": "as of {{time}}",
+    "offline": {
+      "banner": "No network — showing the last numbers. Nothing can be approved until it is back.",
+      "nothing": "No network — nothing could be read yet. Pull down to try again.",
+      "noApproval": "No network — nothing was sent. Try again when it is back."
+    },
+    "clock": {
+      "waiting": "waiting {{span}}",
+      "dueIn": "due in {{span}}",
+      "overdue": "overdue {{span}}",
+      "startsIn": "starts in {{span}}",
+      "started": "started {{span}} ago",
+      "hm": "{{h}} h {{m}} min",
+      "m": "{{m}} min"
+    },
+    "need": {
+      "queue": "waiting in your queue",
+      "queueSub": "Longest wait",
+      "held": "medicine held for you",
+      "heldSub": "A warning the desk may not clear",
+      "paper": "paper consultations to confirm",
+      "paperSub": "Typed by the desk from your paper",
+      "cover": "Cover request · {{name}}",
+      "swap": "Swap request · {{name}}",
+      "recheck": "re-checks due",
+      "recheckSub": "Recall after rest",
+      "bench": "on the bench",
+      "benchSub": "Waiting for vitals",
+      "slips": "slips to photograph",
+      "slipsSub": "Waiting at the slip desk",
+      "slipsRetake": "{{n}} to photograph again",
+      "askedBy": "asked by {{name}}",
+      "gap": "gap on the roster"
+    },
+    "act": {
+      "callNext": "Open queue",
+      "decide": "Decide",
+      "look": "Look",
+      "yes": "Yes",
+      "no": "No",
+      "openBench": "Open bench",
+      "scan": "Open",
+      "scanSlip": "Scan a slip",
+      "review": "Review",
+      "see": "See"
+    },
+    "tile": {
+      "seen": "Seen today",
+      "waiting": "Waiting now",
+      "onPaper": "On paper",
+      "vitals": "Vitals taken",
+      "visits": "Visits opened",
+      "registered": "Registered",
+      "appointments": "Appointments",
+      "receipts": "Receipts",
+      "bench": "On the bench",
+      "slips": "Slips filed",
+      "collected": "Collected",
+      "afterCount": "After your count · {{n}} receipts",
+      "approvals": "Approvals",
+      "opdToday": "OPD today"
+    },
+    "d30": {
+      "title": "Last 30 days",
+      "collections": "Collections · last 30 days",
+      "open": "Open ▾",
+      "close": "Close ▴",
+      "week": "This week",
+      "usual": "Your usual week",
+      "best": "Best day",
+      "total": "30-day total"
+    },
+    "owner": {
+      "byDept": "OPD today by department",
+      "onDuty": "On duty now",
+      "nobody": "nobody yet"
+    },
+    "team": {
+      "title": "My team today",
+      "people": "{{n}} people",
+      "line": "{{today}} {{what}} today · {{month}} in 30 days",
+      "unit": {
+        "opd_consultsCompleted": "consultations",
+        "opd_vitalsRecorded": "vitals",
+        "opd_visitsOpened": "visits",
+        "opd_patientsRegistered": "registrations",
+        "opd_appointmentsBooked": "appointments",
+        "billing_receipts": "receipts"
+      },
+      "bars": "Bars: today against each person's own usual day.",
+      "nothing": "nothing in 30 days"
+    },
+    "cover": {
+      "accepted": "You said yes. The roster is updated.",
+      "declined": "You said no. They have been told.",
+      "failed": "That did not reach the server — nothing was changed. Try again."
+    },
+    "paper": {
+      "onComputer": "Paper consultations open on the computer for now: menu → My paper consultations."
+    },
+    "sheet": {
+      "close": "Close",
+      "patient": "Patient",
+      "askedBy": "Asked by",
+      "reason": "Reason",
+      "waiting": "Clock",
+      "note": "Your note (required)",
+      "notePlaceholder": "Your note (required) — for example: checked with billing, approved",
+      "noteNeeded": "Write a note first — every decision carries one.",
+      "password": "Your HMIS password",
+      "wrongPassword": "That password is not right. Nothing was decided.",
+      "stepUpRefused": "The server could not confirm it is you. Nothing was decided.",
+      "stepUpAgain": "Confirm it is you again — type your password, then decide.",
+      "notSent": "That did not reach the server — nothing was decided. Try again.",
+      "alreadyDecided": "Somebody has already decided this one.",
+      "notYours": "This request is not yours to decide.",
+      "failed": "The server refused. Nothing was decided.",
+      "approve": "Approve",
+      "decline": "Decline",
+      "approved": "Approved. It is recorded with your name, time and note.",
+      "declined": "Declined. It is recorded with your name, time and note.",
+      "fineMoney": "Fingerprint is asked before a money approval. Recorded with your name, time and note.",
+      "fine": "Recorded with your name, time and note."
+    },
+    "kind": {
+      "billing_discount": "Discount {{amount}}",
+      "billing_clearance_discount": "Clearance discount {{amount}}",
+      "billing_credit_extension": "Credit extension",
+      "billing_credit_owner": "Credit {{amount}}",
+      "billing_refund": "Refund {{amount}}",
+      "billing_refund_owner": "Refund {{amount}} · above the manager's limit",
+      "billing_recon_charge_owner": "Bank short-settlement {{amount}}",
+      "billing_variance": "Cash variance",
+      "lab_release_unpaid": "Lab report released unpaid {{amount}}",
+      "lab_release_unpaid_owner": "Lab report released unpaid {{amount}}",
+      "patient_merge": "Merge two patient records",
+      "patient_unmerge": "Undo a patient merge",
+      "materials_stock_adjustment": "Stock adjustment",
+      "materials_near_expiry_acceptance": "Near-expiry stock accepted",
+      "materials_vendor_bank_change": "Vendor bank details changed",
+      "materials_po_approval": "Purchase order {{amount}}",
+      "materials_po_approval_owner": "Purchase order {{amount}}",
+      "materials_payment_run_approval": "Supplier payment run {{amount}}",
+      "imaging_definition_publish": "Imaging definition",
+      "imaging_release_unpaid_owner": "Imaging report released unpaid {{amount}}",
+      "ot_definition_publish": "Theatre definition",
+      "ot_deposit_exception": "Theatre deposit exception {{amount}}",
+      "tariff_revision": "Price change",
+      "membership_grace_honor": "Membership grace",
+      "pharmacy_restricted_antimicrobial": "Restricted antimicrobial",
+      "pharmacy_discount_incharge": "Pharmacy discount {{amount}}",
+      "pharmacy_discount_owner": "Pharmacy discount {{amount}}"
+    },
+    "workBadge": {
+      "waiting": "{{n}} waiting",
+      "bench": "{{n}} on the bench",
+      "slips": "{{n}} waiting",
+      "nextDuty": "Next duty {{day}}",
+      "gaps": "{{n}} gap on the roster"
+    }
   }
 }
