@@ -291,7 +291,7 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -317,8 +317,8 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "?dengue, review in 48h", icd10Code: null },
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "?dengue, review in 48h", icd10Code: null, source: "typed" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -356,7 +356,7 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -389,7 +389,7 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
       expect(body.diagnoses).toEqual([
-        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9" },
+        { text: "Acute upper respiratory infection, unspecified", icd10Code: "J06.9", source: "search" },
       ]);
     });
   });
@@ -477,8 +477,8 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown } | undefined;
       expect(body?.diagnoses).toEqual([
-        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "od" },
-        { text: "Essential (primary) hypertension", icd10Code: "I10" },
+        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "od", source: "search" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10", source: "search" },
       ]);
     });
     expect(screen.getByTestId("note-diagnosis-tag-0")).toHaveTextContent("Senile nuclear cataract · OD");
@@ -505,8 +505,8 @@ describe("OpdConsult — the diagnosis tags and their ICD-10 codes", () => {
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown } | undefined;
       expect(body?.diagnoses).toEqual([
-        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "os" },
-        { text: "Essential (primary) hypertension", icd10Code: "I10" },
+        { text: "Senile nuclear cataract", icd10Code: "H25.1", laterality: "os", source: "search" },
+        { text: "Essential (primary) hypertension", icd10Code: "I10", source: "search" },
       ]);
     });
   });
@@ -576,7 +576,7 @@ describe("OpdConsult — the ICD-11 code beside the ICD-10 one", () => {
     await user.click(screen.getByRole("heading", { name: "Consultation" }));
     await waitFor(() => {
       const body = bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note").at(-1) as { diagnoses: unknown };
-      expect(body.diagnoses).toEqual([{ text: "Synthetic diagnosis", icd10Code: "X00.1" }]);
+      expect(body.diagnoses).toEqual([{ text: "Synthetic diagnosis", icd10Code: "X00.1", source: "search" }]);
     });
     expect(JSON.stringify(bodiesOf("PUT", "/api/opd/visits/enc-1/consult/note"))).not.toMatch(/icd11|ZZ00/i);
   });
@@ -1519,7 +1519,7 @@ describe("OpdConsult", () => {
     */
     await waitFor(() => expect(bodiesOf("PUT", path).at(-1)).toEqual({
       chiefComplaint: "fever 3d",
-      diagnoses: [{ text: "Acute pharyngitis", icd10Code: null }],
+      diagnoses: [{ text: "Acute pharyngitis", icd10Code: null, source: "typed" }],
       advice: "warm fluids",
     }));
     expect(await screen.findByTestId("note-saved")).toBeInTheDocument();
@@ -1571,6 +1571,8 @@ describe("OpdConsult", () => {
         // PLAN 16a T6 / DD9 — a typed line carries `medicineId: null`, and the assertion is
         // `toEqual` so a field appearing in the body without a decision fails here. It did.
         medicineId: null,
+        // Decision 0050 P0 (0054) — every issued line says where it came from; this one was typed.
+        source: "typed",
       }],
     });
     // §3.19: the form hands back "5"; the BODY must carry the number
@@ -1647,7 +1649,7 @@ describe("OpdConsult", () => {
     const taper = [6, 4, 3, 2, 1].map((n) => ({ timesPerDay: n, days: 7 }));
     const line = {
       drug: "Prednisolone acetate 1% eye drops", dose: "1 drop", route: "eye", frequency: taperText,
-      durationDays: 35, instructions: null, noSubstitution: false, medicineId: null, eye: "od", taper,
+      durationDays: 35, instructions: null, noSubstitution: false, medicineId: null, source: "typed", eye: "od", taper,
     };
     expect(bodiesOf("POST", path)[0]).toEqual({ lines: [line] });
     expect(bodiesOf("POST", "/api/opd/visits/enc-1/rx-precheck")[0]).toEqual({ lines: [line] });
@@ -1686,7 +1688,7 @@ describe("OpdConsult", () => {
     await waitFor(() => expect(callsTo("POST", path)).toHaveLength(1));
     expect(bodiesOf("POST", path)[0]).toEqual({ lines: [{
       drug: "Prednisolone 5 mg tablet", dose: "1 tab", route: "oral", frequency: "OD",
-      durationDays: 5, instructions: null, noSubstitution: false, medicineId: null,
+      durationDays: 5, instructions: null, noSubstitution: false, medicineId: null, source: "typed",
     }] });
   });
 
@@ -3914,9 +3916,10 @@ describe("OpdConsult — the drug typeahead", () => {
     await pickDrug(user);
     const panel = await screen.findByTestId("sig-0-panel");
 
-    // THE MANUAL PATH — the phase doc's own example, `1-0-0 for 4 days`, with no preset involved.
+    // THE MANUAL PATH — a frequency the taps do not offer, for 4 days, with no preset involved. (The phase
+    // doc's own example was `1-0-0`; since decision 0054 that IS a tap — OD — and P26c2 below pins it.)
     await user.click(within(panel).getByTestId("sig-0-freq-other"));
-    await user.keyboard("1-0-0");
+    await user.keyboard("every third day");
     await user.click(within(panel).getByTestId("sig-0-days-other"));
     await user.keyboard("4");
     await user.type(screen.getByLabelText("Instructions"), "alternate days, with milk");
@@ -3927,7 +3930,22 @@ describe("OpdConsult — the drug typeahead", () => {
     const body = bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as {
       lines: { frequency: string; durationDays: number | null; instructions: string | null }[];
     };
-    expect(body.lines[0]).toMatchObject({ frequency: "1-0-0", durationDays: 4, instructions: "alternate days, with milk" });
+    expect(body.lines[0]).toMatchObject({ frequency: "every third day", durationDays: 4, instructions: "alternate days, with milk", source: "search" });
+  });
+
+  it("P26c2 (decision 0054): what is typed into Other but IS one of the closed set — 1-0-0 — is kept as that tap, OD, when the box is left", async () => {
+    mockRoutes(drugRoutes());
+    const user = userEvent.setup();
+    await pickDrug(user);
+    const panel = await screen.findByTestId("sig-0-panel");
+    await user.click(within(panel).getByTestId("sig-0-freq-other"));
+    await user.keyboard("1-0-0");
+    await user.click(within(panel).getByTestId("sig-0-days-5"));
+    await waitFor(() => { expect(within(panel).getByTestId("sig-0-freq-OD")).toHaveAttribute("aria-checked", "true"); });
+    await user.type(screen.getByLabelText("Dose"), "1 tab");
+    await user.click(screen.getByRole("button", { name: "Issue & print" }));
+    await waitFor(() => { expect(callsTo("POST", "/api/opd/visits/enc-1/prescriptions").length).toBeGreaterThan(0); });
+    expect((bodiesOf("POST", "/api/opd/visits/enc-1/prescriptions")[0] as { lines: { frequency: string }[] }).lines[0]!.frequency).toBe("OD");
   });
 
   it("P26d: what the taps wrote is what the prescription POSTs — the timing and the note as one column", async () => {

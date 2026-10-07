@@ -107,7 +107,7 @@ describe("the desk scribe — the doctor's paper, typed", () => {
     const bodies = posted("/api/opd/paper/visits/E-1/transcription");
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toEqual({
-      lines: [{ drug: "Paracetamol 500 mg Tablet", dose: "1 tab", route: "oral", frequency: "TDS", durationDays: 5, instructions: null, noSubstitution: false, medicineId: "M-1" }],
+      lines: [{ drug: "Paracetamol 500 mg Tablet", dose: "1 tab", route: "oral", frequency: "TDS", durationDays: 5, instructions: null, noSubstitution: false, medicineId: "M-1", source: "paper" }],
       advisedTests: [{ serviceId: "S-CBC", code: "LAB-CBC", name: "Complete blood count", pricePaise: 25000 }],
       note: null,
     });

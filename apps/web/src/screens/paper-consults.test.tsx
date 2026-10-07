@@ -94,7 +94,8 @@ describe("paper consultations — the doctor's own list", () => {
     await user.click(screen.getByTestId("paper-correct-save"));
     await waitFor(() => { expect(posted("/api/opd/paper/visits/E-1/correct")).toHaveLength(1); });
     expect(posted("/api/opd/paper/visits/E-1/correct")[0]).toEqual({
-      lines: [LINE_A, LINE_PEN],
+      // Decision 0054 — a line on the paper table was typed from the doctor's paper, whoever corrects it after.
+      lines: [{ ...LINE_A, source: "paper" }, { ...LINE_PEN, source: "paper" }],
       reasons: [{ lineIndex: 1, reason: "the reaction on file was to amoxicillin" }],
     });
   });
