@@ -404,6 +404,48 @@ describe("Owner 2026-10-06 — production serves the staff app's files, and only
     expect(live).toMatch(/header @feed Cache-Control "no-store"/);
   });
 
+  /*
+    Owner 2026-10-06 — an update "should happen automatically": a JavaScript change reaches the phones
+    as a signed bundle from this same folder (apps/mobile/scripts/publish-ota.sh). Two more shapes are
+    admitted, and each is pinned as tightly as the APK's: the runtime header becomes part of a PATH, so
+    it is matched as forty hex digits first; a file is fetched only by its own SHA-256.
+  */
+  for (const [file, env] of [["Caddyfile", "production"], ["Caddyfile.uat", "staging"]] as const) {
+    const text = readFileSync(resolve(REPO_ROOT, "docker", "prod", file), "utf8").split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+
+    it(`${file}: the over-the-air manifest is one address, and the folder is chosen by a header that is forty hex digits and nothing else`, () => {
+      const block = new RegExp(`^\\t@ota_manifest \\{\\n\\t\\tpath /app/ota/${env}/manifest\\n\\t\\theader_regexp ota_runtime Expo-Runtime-Version (\\S+)\\n\\t\\}$`, "m").exec(text);
+      expect(block).not.toBeNull();
+      const header = new RegExp(block![1]!);
+      expect(header.test("88fefc9077e465c4a376b794a3f9b14b5fcfee9d")).toBe(true);
+      for (const bad of ["", "../../etc/caddy", "88fefc9077e465c4a376b794a3f9b14b5fcfee9d/..", "88FEFC9077E465C4A376B794A3F9B14B5FCFEE9D", "88fefc90", "88fefc9077e465c4a376b794a3f9b14b5fcfee9d0"]) {
+        expect([bad, header.test(bad)]).toEqual([bad, false]);
+      }
+      expect(text).toContain(`\t\trewrite * /ota/${env}/{re.ota_runtime.0}/manifest\n`);
+      // The boundary the publish script wrote the body with (apps/mobile/scripts/ota-manifest.js), and protocol v1.
+      const written = /const BOUNDARY = "([^"]+)";/.exec(readFileSync(resolve(REPO_ROOT, "apps", "mobile", "scripts", "ota-manifest.js"), "utf8"));
+      expect(text).toContain(`\t\theader Content-Type "multipart/mixed; boundary=${written![1]}"\n\t\theader expo-protocol-version 1\n`);
+    });
+
+    it(`${file}: an over-the-air file is fetched by its own checksum, under its runtime, and by no other name`, () => {
+      const found = /^\t@ota_file path_regexp (\S+)$/m.exec(text);
+      expect(found).not.toBeNull();
+      const re = new RegExp(found![1]!);
+      const rt = "8".repeat(40), sum = "a".repeat(64);
+      expect(re.test(`/app/ota/${env}/${rt}/files/${sum}.bundle`)).toBe(true);
+      expect(re.test(`/app/ota/${env}/${rt}/files/${sum}.png`)).toBe(true);
+      for (const path of [
+        `/app/ota/${env}/${rt}/manifest`,
+        `/app/ota/${env}/${rt}/files/`,
+        `/app/ota/${env}/${rt}/files/../manifest`,
+        `/app/ota/${env}/${rt}/files/${sum}`,
+        `/app/ota/${env}/${rt}/files/x/${sum}.png`,
+        `/app/ota/${env === "production" ? "staging" : "production"}/${rt}/files/${sum}.png`,
+        `/app/ota/`,
+      ]) expect([path, re.test(path)]).toEqual([path, false]);
+    });
+  }
+
   it("the caddy container mounts the production builds read-only, and staging mounts its own folder", () => {
     expect(prodCompose).toMatch(/^\s+- \/opt\/hmis-context\/mobile-apk-prod:\/downloads:ro$/m);
     expect(uatCompose).toMatch(/^\s+- \/opt\/hmis-context\/mobile-apk:\/downloads:ro$/m);
