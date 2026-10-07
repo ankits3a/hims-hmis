@@ -25,6 +25,11 @@ tools/lane.sh status            # who else is running tests, free memory, every 
 - **One task per session.** Start a new task with `/clear` or a fresh session in its lane, and name the
   module in the first message. Every turn re-sends the whole conversation; a long mixed session pays
   for all of it on every turn.
+- **Spec before build (owner 2026-10-07).** For any feature or behaviour change the owner asks for:
+  ask only what the rulings and the code cannot answer (at most five questions), then write a spec of
+  about ten lines — what it does, who uses it, money rules, edge cases, and **"done means"** checks the
+  owner can try on staging — and build only after the owner says yes. The same checks become the
+  tests and the staging checklist. A bug fix with an obvious correct behaviour skips this.
 - **Briefing a subagent:** use `docs/agents/BRIEF.md`. A brief that hands over what is known and asks
   for a fixed report saves the subagent its re-reading.
 
