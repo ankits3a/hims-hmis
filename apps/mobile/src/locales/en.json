@@ -60,7 +60,13 @@
       "stale": "No connection — the bench is shown as of {{time}}",
       "retry": "Try again",
       "saveNetwork": "Not saved — the server could not be reached. Nothing was sent. Check the internet and press Save again.",
-      "alreadyCharted": "Vitals are already saved for this visit. To correct a saved chart, use the vitals bay on a computer for now.",
+      "alreadyCharted": "Vitals are already saved for this visit.",
+      "amendOpen": "Correct this chart",
+      "amendLeave": "Leave it as saved",
+      "amendNothingSent": "That did not reach the server. Nothing was changed — the saved chart stands. Try again.",
+      "amended": "Corrected for {{who}} — {{changes}}. The old values stay in the trail.",
+      "amendTemp": "°C, or type °F — it is converted",
+      "amendNoChart": "This row has no saved chart to correct.",
       "requiredLegend": "* needed before this chart can be saved",
       "done": "Done",
       "doctorFilter": "Doctor",
@@ -633,12 +639,14 @@
       "category": {
         "alert": "Alerts",
         "roster": "Duty roster",
-        "queue": "Your queue"
+        "queue": "Your queue",
+        "reminder": "Duty reminders"
       },
       "categoryHint": {
         "alert": "Something is overdue or waiting on you.",
-        "roster": "Somebody flagged the duty board, or a duty of yours is in question.",
-        "queue": "Patients are waiting for you."
+        "roster": "A colleague asks you to cover or swap, your request was answered, your duties changed or were published — or somebody flagged the duty board.",
+        "queue": "Patients are ready and you are not in, or somebody has waited over 40 minutes.",
+        "reminder": "A duty of yours starts in an hour — and the evening before a night or a 24-hour duty."
       },
       "problem": {
         "notAllowed": "The phone has not allowed notifications yet. Tap Turn on again and choose Allow.",
@@ -694,6 +702,27 @@
     }
   },
   "vitalsBay": {
+    "amend": {
+      "title": "Amend the chart saved at {{at}}",
+      "hint": "You are working on a copy — nothing changes until you save with a reason. Esc abandons and the saved chart stands untouched.",
+      "was": "was {{value}}",
+      "reason": "Reason for the amendment",
+      "reasonRequired": "An amendment needs a reason — it is the record",
+      "save": "Save amendment ({{count}} changed)",
+      "readFailed": "The saved chart could not be read",
+      "trail": "by {{by}} at {{at}} — the old value stays in the trail",
+      "carried": "carried forward",
+      "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one",
+      "reasonPlaceholder": "or type the reason",
+      "reasonPreset": {
+        "otherArm": "Other arm",
+        "remeasured": "Re-measured",
+        "keyed": "Typing error",
+        "device": "Device misread",
+        "wrongVital": "Wrong vital",
+        "wrongChart": "Wrong chart"
+      }
+    },
     "title": "Vitals bay",
     "clearDesk": "Clear desk",
     "phone": {

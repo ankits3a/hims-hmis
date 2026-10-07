@@ -98,6 +98,24 @@ function linkFor(refType: string | null, refId: string | null): string {
   return "/";
 }
 
+/**
+ * ═══ MOBILE §3i (owner 2026-10-07) — A NOTICE IS NOT AN OBLIGATION, AND THE LADDER LEAVES IT ALONE ═══
+ *
+ * Every kind above is something a person must ANSWER, and the ladder gets louder until they do.
+ * These are things a person is TOLD: a colleague asked for cover (answered on My duties, not by
+ * acknowledging a bell row), the roster was published, a duty starts in an hour, patients are
+ * waiting. None has an "ack" that means anything, so every one would sit unacknowledged for ever —
+ * and four hours later the ladder would relay a reminder for a duty already half done onto WhatsApp
+ * and SMS. They reach the bell and the phone (`kernel/push`); they never climb.
+ *
+ * A closed list, by kind word, for the reason `LANE_BY_KIND` is one: a kind is the only thing an
+ * alert says about itself until the obligation carries a lane (T7).
+ */
+export const NOTICE_KINDS: ReadonlySet<string> = new Set([
+  "roster_cover_asked", "roster_cover_answered", "roster_cover_decided", "roster_duty_changed",
+  "roster_month_published", "roster_duty_reminder", "opd_not_in", "opd_long_wait",
+]);
+
 export function laneOf(kind: string): ReachLane {
   return LANE_BY_KIND[kind] ?? DEFAULT_LANE;
 }
@@ -203,6 +221,7 @@ export async function runReachLadder(db: Db, now: Date = new Date()): Promise<nu
     );
 
   const due = candidates.filter((c) => {
+    if (NOTICE_KINDS.has(c.kind)) return false;
     const lane = laneOf(c.kind);
     return now.getTime() - c.createdAt.getTime() >= LANE_MINUTES[lane] * 60_000;
   });

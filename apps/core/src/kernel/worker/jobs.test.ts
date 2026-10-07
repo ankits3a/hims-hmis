@@ -381,7 +381,7 @@ describe("registerAllJobs threads WORKER_INTERFACE_SWEEP_INTERVAL_MS to the tent
     // nothing. T5 did not read it, and found this file, that file and `alerts.yml`'s three places by
     // going red instead. The tax is identical either way; the difference is whether it is paid once
     // or discovered three times.
-    expect(specs).toHaveLength(25); // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations (every 60 000) // 18-S RS11: +1, sweepOverdueQa (every 3 600 000), read off the red run // PHARMACY P6 (patient messages): +1, runRefillReminders (dailyIst 10:00), read off the red run // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(specs).toHaveLength(26); // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations (every 60 000) // 18-S RS11: +1, sweepOverdueQa (every 3 600 000), read off the red run // PHARMACY P6 (patient messages): +1, runRefillReminders (dailyIst 10:00), read off the red run // PHASE O T4: +1, runReachLadder, read off the red run // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
     expect(specs).toContainEqual(
       expect.objectContaining({ name: "flagLateSurgeons", every: 60_000 }),
     );

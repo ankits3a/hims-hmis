@@ -36,8 +36,9 @@ Source: `apps/core/src/modules/patients/`
   - `captureDocument(tx: Tx, store: DocumentStore, actor: Actor, patientId: string, input: { encounterId?: string | null; kind: DocumentKind; mi…`
   - `documentsForEncounters(db: Db | Tx, encounterIds: readonly string[]): Promise<EncounterDocument[]>`
   - `listDocuments(db: Db, actor: Actor, patientId: string): Promise<CapturedDocument[]>`
+  - `registerDocumentCapturedHook(key: string, hook: DocumentCapturedHook): () => void`
   - `requestDocumentRetake(tx: Tx, actor: Actor, documentId: string, reason: string | null, now: Date = new Date()): Promise<{ documentId: strin…`
-  - types: `EncounterDocument`
+  - types: `DocumentCapturedHook`, `EncounterDocument`
 - `duplicates.ts`
   - `nearMatches(db: Db, actor: Actor, input: Pick<RegisterPatientInput, "name" | "phone">): Promise<DuplicateCandidate[]>`
   - types: `DuplicateCandidate`

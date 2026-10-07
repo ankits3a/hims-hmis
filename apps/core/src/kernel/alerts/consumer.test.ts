@@ -214,6 +214,13 @@ describe("kernel alerts consumer", () => {
       // on the who-is-on board pages the duty manager on duty; its branch and its own suite
       // (`test/roster-flag-alert.e2e.test.ts`) land in the same commit.
       { event: "roster.flag_raised", consumer: ALERTS_CONSUMER },
+      // MOBILE §3i (owner 2026-10-07): eight -> TWELVE, read off the red run. A cover asked of me, the
+      // answer to mine, the decision, and a duty published or moved — each to the people it is about.
+      // Branches in `consumer.ts`, suite in `modules/roster/swaps.test.ts`, same commit.
+      { event: "roster.cover_requested", consumer: ALERTS_CONSUMER },
+      { event: "roster.cover_answered", consumer: ALERTS_CONSUMER },
+      { event: "roster.cover_decided", consumer: ALERTS_CONSUMER },
+      { event: "roster.duty_changed", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -248,6 +255,8 @@ describe("kernel alerts consumer", () => {
           "respond.overdue",
           // 20-U infra (owner 2026-10-04) — a "this is wrong" flag pages the duty manager on duty.
           "roster.flag_raised",
+          // Mobile §3i — a person's own duties.
+          "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
         ],
       },
     ]);

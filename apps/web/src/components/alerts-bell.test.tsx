@@ -236,6 +236,34 @@ describe("AlertsBell", () => {
     expect(screen.queryByTestId("alerts-open-al-2")).not.toBeInTheDocument();
   });
 
+  /** Mobile §3i — a person's own duties and a doctor's own line each have a screen, and the row opens it. */
+  it("opens My duties for a cover or a duty notice, and the doctor's queue for a waiting-line notice", async () => {
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    setToken("tok-1");
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/alerts": {
+        status: 200,
+        body: {
+          items: [
+            alertRow({ id: "al-1", kind: "roster_cover_asked", refType: "roster_cover", refId: "cr-1" }),
+            alertRow({ id: "al-2", kind: "roster_duty_reminder", refType: "roster_duty", refId: "as-1" }),
+            alertRow({ id: "al-3", kind: "opd_not_in", refType: "opd_queue_session", refId: "qs-1" }),
+          ],
+          unreadCount: 3,
+        },
+      },
+    });
+
+    renderWithRouter(<AlertsBell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("alerts-bell-toggle"));
+
+    expect(await screen.findByTestId("alerts-open-al-1")).toHaveAttribute("href", "/roster/my-duties");
+    expect(screen.getByTestId("alerts-open-al-2")).toHaveAttribute("href", "/roster/my-duties");
+    expect(screen.getByTestId("alerts-open-al-3")).toHaveAttribute("href", "/opd/consult");
+  });
+
   it("hand over asks for a staff code and posts it; a cancelled prompt posts nothing", async () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     setToken("tok-1");

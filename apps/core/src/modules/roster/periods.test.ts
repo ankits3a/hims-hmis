@@ -464,6 +464,12 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       // 20-U infra (owner 2026-10-04) — the board's own 20:00/08:00 print.
       boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant a `now` falls after",
       nextBoardSlot: "PURE: the next 08:00/20:00 IST instant after a `now`",
+      // MOBILE §3i (owner 2026-10-07) — the duty reminders.
+      dueDutyReminders: "a `now` — which published duties have a reminder due at this instant; a read",
+      sweepDutyReminders: "a `now` — the scheduler's tick; each bell row it raises is dated by that tick so pacing reads one clock, and no roster row is written",
+      longReminderAt: "pure — a duty's start in, the instant its twelve-hour reminder falls due out (never between 22:00 and 06:00 IST)",
+      wantsLongReminder: "pure — reads a duty's own start and end to say whether it is a night or a take",
+      dutyWindowLabel: "pure — formats a duty's two instants as an IST day and clock for a bell row",
       printBoardIfDue: "a `now` used to ask WHICH print instant is due; the row's and the sheet's `Printed` stamp come from `dbNow`, and `slot_at` is the scheduled instant itself",
       renderBoardSheet: "an `at` (the instant drawn) and the stamp the caller took from the database; writes nothing",
       renderBoardPrintJob: "a `now` used only to REFUSE a sheet older than twelve hours; writes nothing",

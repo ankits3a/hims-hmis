@@ -347,6 +347,14 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     coverRequests: "a read, guarded by `read`, and filtered to the reader's own requests and those they could approve",
     myDutyRows: "a read of the ACTOR's own duties, asked with the actor's own id; guarded by `read`",
     myDuties: "a read — My duties, composed of the reads above; the reader's own and nobody else's",
+    // MOBILE §3i (owner 2026-10-07) — what the bell says about a person's own duties, and the reminder sweep.
+    coverForAlert: "a read — one cover or swap worded for a bell row (staff names, the duty's window, never the note); called from the kernel alerts consumer, no Actor",
+    amendmentIsOfCover: "a read — whether an amendment was applied by an approved cover, so `duty_changed` is not announced twice; no Actor",
+    dutyWindowsForAlert: "a read — the windows of a set of assignment ids, for the consumer's \"your duties changed\" row; no Actor",
+    dueDutyReminders: "a read of the PUBLISHED roster — which duties have a reminder due; called by the scheduler, no Actor",
+    sweepDutyReminders: "the scheduler's tick: it raises BELL ROWS (kernel alerts), never a roster row, and decides nothing about who is on; there is no Actor at 19:00",
+    longReminderAt: "pure arithmetic on an instant",
+    wantsLongReminder: "pure — a duty's own start and end",
     flagForAlert: "a read — one flag's line, department and staff names for the duty manager's bell row; called from the kernel alerts consumer, no Actor",
     // 20-U infra (owner 2026-10-04) — the board prints itself at 20:00 and 08:00 IST.
     boardSlotAtOrBefore: "PURE: which 08:00/20:00 IST instant is due",

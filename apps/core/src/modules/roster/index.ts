@@ -181,3 +181,10 @@ export type { OpdDepartmentUnits, OpdSitting, OpdUnit, OpdUnitDoctor } from "./o
 // 20-U U9 — the copilot's roster tools (who is on, the unit on take, my duties, a cover DRAFT).
 export { DUTY_LOOKAHEAD_DAYS, departmentOf, rosterCopilotTools, whenOf } from "./copilot-tools";
 export type { AskedWhen, RosterToolOptions } from "./copilot-tools";
+
+// MOBILE §3i (owner 2026-10-07) — what the bell says about a person's own duties, and the reminder sweep.
+export {
+  ROSTER_DUTY_REF_TYPE, ROSTER_DUTY_REMINDER_KIND, amendmentIsOfCover, coverForAlert, dueDutyReminders,
+  dutyWindowLabel, dutyWindowsForAlert, longReminderAt, sweepDutyReminders, wantsLongReminder,
+} from "./staff-notices";
+export type { CoverForAlert, DutyReminder } from "./staff-notices";

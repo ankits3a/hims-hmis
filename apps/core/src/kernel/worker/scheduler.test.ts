@@ -22,6 +22,8 @@ import * as radiologyEscalationsMod from "../../modules/radiology/escalations";
 import * as rosterCalendarMod from "../../modules/roster/calendar";
 import * as rosterProposerMod from "../../modules/roster/proposer";
 import * as rosterBoardPrintMod from "../../modules/roster/board-print";
+import * as rosterStaffNoticesMod from "../../modules/roster/staff-notices";
+import * as opdQueueNudgesMod from "../../modules/opd/queue-nudges";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as dispatcherMod from "../events/dispatcher";
@@ -373,6 +375,17 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       return null;
     }),
     /**
+     * MOBILE §3i (owner 2026-10-07) — the staff notices: ONE job, two sweeps, each stubbed on the
+     * module it lives in. Un-stubbed they would read the published roster and today's doctor-days
+     * of a database this CLOCK test must not touch; their behaviour is asserted in
+     * `modules/roster/swaps.test.ts` and `modules/opd/queue-nudges.test.ts`.
+     */
+    jest.spyOn(rosterStaffNoticesMod, "sweepDutyReminders").mockImplementation(async () => {
+      invoked.push("sweepStaffNotices");
+      return 0;
+    }),
+    jest.spyOn(opdQueueNudgesMod, "sweepQueueNudges").mockImplementation(async () => 0),
+    /**
      * PHARMACY P6 (patient messages) — the refill reminders, stubbed on `modules/pharmacy/messages` (the
      * module the index re-exports FROM, the eleventh's rule). Un-stubbed it would read the preferences
      * and dispenses of a database this CLOCK test has no business touching; its behaviour is asserted
@@ -480,6 +493,8 @@ const THE_EIGHTEEN = [
   "sweepImagingEscalations",
   // 20-U infra (owner 2026-10-04) — the TWENTY-FIFTH, `every(60_000)`: the duty board's 20:00/08:00 print.
   "printRosterBoard",
+  // MOBILE §3i (owner 2026-10-07) — the TWENTY-SIXTH, `every(60_000)`: duty reminders and the doctor's "you are not in".
+  "sweepStaffNotices",
 ];
 
 /**

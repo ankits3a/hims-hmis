@@ -6,7 +6,7 @@ Source: `apps/core/src/modules/opd/`
 
 - **Depends on modules:** `billing`, `cds`, `formulary`, `materials`, `patients`, `roster`
 - **Used by modules:** `abdm`, `billing`, `lab`, `pharmacy`, `radiology`
-- **Kernel used:** `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `phi`, `printing`, `realtime`, `report`, `resources`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -61,12 +61,16 @@ Source: `apps/core/src/modules/opd/`
   - `benchStateSet`
   - `consultFeeOverridden`
   - `consultationCompleted`
+  - `consultationCompletedOnPaper`
+  - `consultationPaperConfirmed`
+  - `consultationPaperReopened`
   - `consultationParked`
   - `consultationResumed`
   - `consultationStarted`
   - `dangerFlagSchema`
   - `dayReportPatientsListed`
   - `doctorLeaveScheduled`
+  - `paperPrescriptionTranscribed`
   - `patientCheckedIn`
   - `prescriptionIssued`
   - `queueCalled`
@@ -124,6 +128,17 @@ Source: `apps/core/src/modules/opd/`
   - `nextInQueue(entries: QueueEntryState[], now: Date, policy: QueuePolicy, callsMade: number): QueueEntryState | null`
   - `orderQueue(entries: QueueEntryState[], now: Date, policy: QueuePolicy, callsMade: number): QueueEntryState[]`
   - types: `QueueClass`, `QueueEntryState`, `QueuePolicy`
+- `queue-nudges.ts`
+  - `LONG_WAIT_MIN`
+  - `NOT_IN_AFTER_MIN`
+  - `NOT_IN_MAX_PER_DAY`
+  - `NOT_IN_REPEAT_MIN`
+  - `OPD_LONG_WAIT_KIND`
+  - `OPD_NOT_IN_KIND`
+  - `OPD_QUEUE_REF_TYPE`
+  - `queueNudgesAt(db: Db, now: Date): Promise<QueueNudge[]>`
+  - `sweepQueueNudges(db: Db, now: Date = new Date()): Promise<number>`
+  - types: `QueueNudge`
 - `rx-checks.ts`
   - `isCurrent(durationDays: number | null, issuedAt: Date, now: Date): { current: boolean; assumedCurrent: boolean }`
 - `skip-reasons.ts`
@@ -150,11 +165,12 @@ Source: `apps/core/src/modules/opd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (120)
+## HTTP routes (128)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
 - `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
+- `opd-paper.controller.ts` — 8: `/opd/paper`
 - `opd-queue.controller.ts` — 35: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
 - `opd-reports.controller.ts` — 6: `/opd/reports`
 - `opd-visits.controller.ts` — 39: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`

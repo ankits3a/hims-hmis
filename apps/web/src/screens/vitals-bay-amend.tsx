@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { UNLOCK_REASONS, amendVitals, fetchVitalsRow, opdErrorMessage } from "../lib/opd-api";
-import type { WireBenchRow, WireReadings, WireUnlockReason, WireVitalKey, WireVitals, WireVitalsAmendBody, WireVitalsAmendResult, WireVitalsGate } from "../lib/opd-api";
+import { AMEND_KEYS, AMEND_REASONS, amendedReadings, diffOf } from "../../../../packages/contracts/src/vitals-entry";
+import type { Change } from "../../../../packages/contracts/src/vitals-entry";
+import type { WireBenchRow, WireUnlockReason, WireVitalKey, WireVitals, WireVitalsAmendBody, WireVitalsAmendResult, WireVitalsGate } from "../lib/opd-api";
 import { istClock } from "./vitals-bay-capture";
 
 /**
@@ -28,71 +30,18 @@ import { istClock } from "./vitals-bay-capture";
  * changes needs a preset reason (D7 holds on amend, T0/F1), and a gate the server raises again is
  * answered with the same confirm the first save had.
  */
-export const AMEND_KEYS: readonly WireVitalKey[] = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"];
-
-/**
- * ═══ THE REASONS A VITAL IS ACTUALLY CORRECTED, AS ONE TAP ═══
- *
- * DECIDED (standard Indian corporate-hospital practice; not a money, procurement or law question,
- * so not an owner ruling). A nurse at the bay corrects a chart for a small, closed set of reasons,
- * and making her type one of them every time is the kind of friction that ends in "correction" and
- * "x" being the two most common entries in an audit column. The presets fill the box; anything
- * genuinely different is still typed, and the box stays the source of truth.
- *
- * `text` is stored, and it is ENGLISH ON PURPOSE. The label a nurse reads is translated; the
- * sentence the audit keeps must mean the same thing to whoever opens it later, which a string that
- * silently changes language with the browser does not.
- */
-export const AMEND_REASONS: readonly { key: string; text: string }[] = [
-  { key: "otherArm", text: "Rechecked on the other arm" },
-  { key: "remeasured", text: "Re-measured at the bay" },
-  { key: "keyed", text: "Typing error — wrong number keyed" },
-  { key: "device", text: "Device misread — taken again" },
-  { key: "wrongVital", text: "Entered against the wrong vital" },
-  { key: "wrongChart", text: "Entered on the wrong patient's chart" },
-];
-
-export type Change = { key: WireVitalKey; from: number | null; to: number | null };
-export function diffOf(prior: Pick<WireVitals, WireVitalKey>, next: Pick<WireVitals, WireVitalKey>): Change[] {
-  const out: Change[] = [];
-  for (const k of AMEND_KEYS) {
-    if (prior[k] !== next[k]) out.push({ key: k, from: prior[k], to: next[k] });
-  }
-  return out;
-}
+// The rules of a correction — which scalars, the six preset reasons, the diff and the readings that
+// travel with it — live in the ONE file the phone's bay also imports (mobile §3i, 2026-10-07), so the
+// two bays cannot build a different amendment from the same chart. Re-exported so nothing that
+// imported them from here changes.
+export { AMEND_KEYS, AMEND_REASONS, amendedReadings, diffOf } from "../../../../packages/contracts/src/vitals-entry";
+export type { Change } from "../../../../packages/contracts/src/vitals-entry";
 
 export function activeChart(items: WireVitals[], vitalsId: string | null): WireVitals | null {
   const active = items.filter((v) => v.status === "active");
   return (vitalsId === null ? null : active.find((v) => v.id === vitalsId) ?? null) ?? active[active.length - 1] ?? null;
 }
 
-function isReadings(x: unknown): x is WireReadings {
-  return typeof x === "object" && x !== null;
-}
-
-/** The prior readings with each changed key's OPERATIVE take replaced — the pair, the held values and the source stay. */
-export function amendedReadings(prior: WireVitals, next: Partial<Record<WireVitalKey, number | null>>): WireReadings {
-  const base: WireReadings = isReadings(prior.readings) ? { ...prior.readings } : {};
-  const replace = (takes: number[], value: number): number[] => (takes.length === 0 ? [value] : [...takes.slice(0, -1), value]);
-  for (const k of AMEND_KEYS) {
-    if (k === "sbp" || k === "dbp") continue;
-    const v = next[k];
-    if (v === undefined || v === prior[k]) continue;
-    if (v === null) { delete base[k]; continue; }
-    const r = base[k];
-    base[k] = r === undefined ? { takes: [v], source: "typed" } : { ...r, takes: replace(r.takes, v) };
-  }
-  const s = next.sbp; const d = next.dbp;
-  if ((s !== undefined && s !== prior.sbp) || (d !== undefined && d !== prior.dbp)) {
-    const sbp = s === undefined ? prior.sbp : s; const dbp = d === undefined ? prior.dbp : d;
-    if (sbp === null || dbp === null) delete base.bp;
-    else {
-      const r = base.bp;
-      base.bp = r === undefined ? { takes: [[sbp, dbp]], source: "typed" } : { ...r, takes: r.takes.length === 0 ? [[sbp, dbp]] : [...r.takes.slice(0, -1), [sbp, dbp]] };
-    }
-  }
-  return base;
-}
 
 export type Amended = { result: WireVitalsAmendResult; changes: Change[]; prior: WireVitals };
 

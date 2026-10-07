@@ -169,7 +169,7 @@ describe("notifications on this phone (M6b)", () => {
     expect(ph.asked).toHaveBeenCalledTimes(1);
     expect(s.calls.find((c) => c.key === "PUT /auth/phone/notifications")?.body).toEqual({ token: ADDRESS, language: "en" });
     // One Android channel per category, named in the person's language.
-    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue" });
+    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue", reminder: "Duty reminders" });
     await waitFor(() => expect(screen.queryByTestId("push-offer")).toBeNull());
   });
 
@@ -218,10 +218,11 @@ describe("notifications on this phone (M6b)", () => {
     await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent(/^On$/));
     expect(s.calls.filter((c) => c.key === "PUT /auth/phone/notifications")[0]?.body).toEqual({ token: ADDRESS, language: "en" });
     expect(ph.asked).not.toHaveBeenCalled();
-    // The switches are the server's list of what is raised today — `queue` has no producer yet, so no switch.
+    // The switches are the server's list of what is raised today, and nothing the server did not name.
     expect(screen.getByTestId("push-category-alert")).toBeTruthy();
     expect(screen.getByTestId("push-category-roster")).toBeTruthy();
     expect(screen.queryByTestId("push-category-queue")).toBeNull();
+    expect(screen.queryByTestId("push-category-reminder")).toBeNull();
     await fireEvent(screen.getByTestId("push-category-roster"), "valueChange", false);
     await waitFor(() => expect(s.state.muted).toEqual(["roster"]));
     await fireEvent(screen.getByTestId("push-category-roster"), "valueChange", true);
@@ -230,6 +231,33 @@ describe("notifications on this phone (M6b)", () => {
     await fireEvent.press(screen.getByTestId("push-disable"));
     await waitFor(() => expect(s.keys()).toContain("DELETE /auth/phone/notifications"));
     await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent("Off on this phone"));
+  });
+
+  /** §3i (owner 2026-10-07) — the server now raises four kinds; a reminder is its own switch, so silencing it silences nothing else. */
+  it("a duty reminder and the doctor's queue each have a switch with words — and switching reminders off leaves the roster on", async () => {
+    const s = server({ registered: true, categories: ["alert", "roster", "queue", "reminder"] });
+    await mount(s.fetcher, phone({ permission: "granted" }).p, "settings");
+    await waitFor(() => expect(screen.getByTestId("push-status")).toHaveTextContent(/^On$/));
+    expect(screen.getByTestId("push-categories")).toBeTruthy();
+    expect(screen.getByText("Duty reminders")).toBeTruthy();
+    expect(screen.getByText(/^A duty of yours starts in an hour/)).toBeTruthy();
+    expect(screen.getByText("Your queue")).toBeTruthy();
+    expect(screen.getByText(/^Patients are ready and you are not in/)).toBeTruthy();
+    expect(screen.queryByText(/mobile\.push/)).toBeNull();
+    await fireEvent(screen.getByTestId("push-category-reminder"), "valueChange", false);
+    await waitFor(() => expect(s.state.muted).toEqual(["reminder"]));
+    expect(screen.getByTestId("push-category-roster").props.value).toBe(true);
+    expect(screen.getByTestId("push-category-queue").props.value).toBe(true);
+  });
+
+  it("a reminder that arrives while the app is open is named a reminder and opens My duties", async () => {
+    const ph = phone({ permission: "granted" });
+    await mount(server({ registered: true }).fetcher, ph.p, "home");
+    await waitFor(() => expect(ph.heard.received).toBeDefined());
+    await waitFor(() => ph.heard.received?.({ category: "reminder", link: "myDuties", title: "HMIS", body: "You have a duty coming up. Open HMIS to see it." }));
+    expect(await screen.findByTestId("push-banner-kind")).toHaveTextContent("Duty reminders");
+    await fireEvent.press(screen.getByTestId("push-banner"));
+    expect(mockPush).toHaveBeenCalledWith({ pathname: "/seat/[key]", params: { key: "myDuties" } });
   });
 
   it("the account screen says where notifications stand and whether screenshots are blocked in this build", async () => {

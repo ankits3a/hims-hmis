@@ -14,7 +14,7 @@ import { authManifest } from "../src/kernel/auth/manifest";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { USERS_MANAGE } from "../src/kernel/auth/users-admin.controller";
 import { PHONES_PER_USER } from "../src/kernel/auth/devices";
-import { PUSH_PER_USER_PER_HOUR, relayAlertToPhones, sendTestPush } from "../src/kernel/push/phone-push";
+import { PUSH_PER_USER_PER_HOUR, PUSH_RESERVED_FOR_ASKS, relayAlertToPhones, sendTestPush } from "../src/kernel/push/phone-push";
 import { PHONE_PUSH_FRESH_MS, phonePushConsumer } from "../src/kernel/push/consumer";
 import type { DispatchedEvent } from "../src/kernel/events/subscriptions";
 import { fixedPhonePushSource } from "../src/kernel/push/sender";
@@ -109,9 +109,9 @@ describe("mobile M6b — a notification on a staff phone", () => {
 
     const phone = (await login("asha", PHONE_A)).body.token as string;
     // This suite runs with no Firebase key: the server says it cannot send, and the phone asks for nothing.
-    expect((await state(phone)).body).toEqual({ configured: false, registered: false, muted: [], categories: ["alert", "roster"], addressAt: null, lastSentAt: null, lastTestAt: null });
+    expect((await state(phone)).body).toEqual({ configured: false, registered: false, muted: [], categories: ["alert", "roster", "queue"], addressAt: null, lastSentAt: null, lastTestAt: null });
     const after = await put(phone, { token: TOKEN_A, language: "hi", muted: ["roster"] });
-    expect(after.body).toMatchObject({ configured: false, registered: true, muted: ["roster"], categories: ["alert", "roster"], lastSentAt: null, lastTestAt: null });
+    expect(after.body).toMatchObject({ configured: false, registered: true, muted: ["roster"], categories: ["alert", "roster", "queue"], lastSentAt: null, lastTestAt: null });
     expect(typeof after.body.addressAt).toBe("string");
     expect(JSON.stringify(after.body)).not.toContain(TOKEN_A);
     expect((await db.select().from(authDevices))[0]).toMatchObject({ pushToken: TOKEN_A, pushLanguage: "hi", pushMuted: ["roster"] });
@@ -248,6 +248,31 @@ describe("mobile M6b — a notification on a staff phone", () => {
     const later = new Date(Date.now() + 61 * 60 * 1000);
     await db.update(authSessions).set({ expiresAt: new Date(later.getTime() + 60_000) });
     expect((await relayAlertToPhones(db, sender, alertFor(ashaId), later)).sent).toBe(1);
+  });
+
+  /** MOBILE §3i — the clock-driven kinds repeat; they may not spend the part of the hour a flag needs. */
+  it("a reminder or a queue nudge never starves an ask: the clock-driven categories stop short, and a roster flag still gets through", async () => {
+    await phoneOn(PHONE_A, TOKEN_A);
+    const { sender, sent } = fake();
+    const room = PUSH_PER_USER_PER_HOUR - PUSH_RESERVED_FOR_ASKS;
+    for (let i = 0; i < room; i += 1) await relayAlertToPhones(db, sender, alertFor(ashaId, i % 2 === 0 ? "opd_not_in" : "roster_duty_reminder"));
+    expect(sent).toHaveLength(room);
+    expect(await relayAlertToPhones(db, sender, alertFor(ashaId, "roster_duty_reminder"))).toMatchObject({ sent: 0, limited: true });
+    expect(await relayAlertToPhones(db, sender, alertFor(ashaId, "opd_not_in"))).toMatchObject({ sent: 0, limited: true });
+    // …and what a person must answer still has its four.
+    for (const kind of ["roster_flag", "roster_cover_asked", "escalation", "roster_flag"]) expect((await relayAlertToPhones(db, sender, alertFor(ashaId, kind))).sent).toBe(1);
+    expect(sent).toHaveLength(PUSH_PER_USER_PER_HOUR);
+    expect(await relayAlertToPhones(db, sender, alertFor(ashaId, "roster_flag"))).toMatchObject({ sent: 0, limited: true });
+    expect(sent.map((m) => m.message.data.category)).toEqual([
+      ...Array.from({ length: room }, (_, i) => (i % 2 === 0 ? "queue" : "reminder")), "roster", "roster", "alert", "roster",
+    ]);
+  });
+
+  it("a build that does not know the reminder switch is not offered it; one that does, is", async () => {
+    const old = await phoneOn(PHONE_A, TOKEN_A);
+    expect((await state(old.token)).body.categories).toEqual(["alert", "roster", "queue"]);
+    const fresh = await phoneOn({ ...PHONE_B, appVersion: "0.10.0 (12)" }, TOKEN_B);
+    expect((await state(fresh.token)).body.categories).toEqual(["alert", "roster", "queue", "reminder"]);
   });
 
   it("the consumer relays `alert.raised` — and with no Firebase key it does nothing and is DONE", async () => {
