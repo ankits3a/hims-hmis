@@ -181,6 +181,29 @@ describe("loadConfig — copilotChoice", () => {
   });
 });
 
+/**
+ * 2026-10-07 — OpenAI's Decisions API as a second chooser. The default order is TypeSafe ALONE for
+ * both jobs, so an environment that names none of these keys routes exactly as it did before.
+ */
+describe("loadConfig — the chooser order", () => {
+  it("defaults to typesafe alone for triage and the copilot, with the Decisions endpoint described but unused", () => {
+    const cfg = loadConfig(base);
+    expect(cfg.triageChooserOrder).toEqual(["typesafe"]);
+    expect(cfg.copilotChooserOrder).toEqual(["typesafe"]);
+    expect(cfg.decisions).toEqual({ baseUrl: "https://api.openai.com/v1", model: "gpt-6-luna", timeoutMs: 1500 });
+  });
+
+  it("reads an order per job, trimmed and case-blind", () => {
+    const cfg = loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: " OpenAI , typesafe ", COPILOT_CHOOSER_ORDER: "typesafe,openai" });
+    expect(cfg.triageChooserOrder).toEqual(["openai", "typesafe"]);
+    expect(cfg.copilotChooserOrder).toEqual(["typesafe", "openai"]);
+  });
+
+  it.each(["", "typesafe,grok", "openai,openai", ","])("refuses to boot on the order %p — a typo must not look like an unsure model", (order) => {
+    expect(() => loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: order })).toThrow(/TRIAGE_CHOOSER_ORDER/);
+  });
+});
+
 /** 2026-09-19 — triage's first model (TypeSafe), the same B1 rule: nothing required, off without a key. */
 describe("loadConfig — triageChoice", () => {
   it("resolves from an environment that names none of its keys, with the classifier switched off", () => {
