@@ -5,7 +5,7 @@ import { vitalsApi } from "../vitals/api";
 import { istDay } from "../doctor/rules";
 import type { Call } from "../doctor/api";
 import type { Seat } from "../seats";
-import type { Hospital, Sources, WireApproval, WireBriefLite, WirePaperItem, WireTeam } from "./model";
+import type { CountSince, Hospital, Sources, WireApproval, WireBriefLite, WireMyRequest, WirePaperItem, WireTeam } from "./model";
 
 /**
  * APP HOME — the reads behind the first screen, asked together. Each one is asked only when the
@@ -23,7 +23,21 @@ type Range = { rows: { key: Record<string, string | undefined>; measures: Record
 const MONEY = "billing.collectedPaise";
 const VISITS = "opd.visitsOpened";
 
-export type Loaded = { sources: Sources; reached: boolean };
+type Report = { sections: { key: string; columnKeys: string[]; rows: string[][] }[] };
+type Appointments = { items: { serviceDate: string; status: string }[] };
+type SentBack = { items: { recheck?: { askedAt: string } | null }[]; toType?: number };
+
+/** What the header says about the person — theirs to read, from reads they already may make. */
+export type HeaderFacts = { doctor: { displayName: string; departmentName: string | null; unit: string | null } | null; hospitalWide: boolean };
+export type Loaded = { sources: Sources; reached: boolean; header: HeaderFacts; unread: number | null };
+
+/** "09:30" on `day` (IST) as an instant. */
+const istAt = (d: string, hhmm: string): number | null => {
+  const t = new Date(`${d}T${/^\d{2}:\d{2}$/.test(hhmm) ? hhmm : "00:00"}:00+05:30`).getTime();
+  return Number.isNaN(t) ? null : t;
+};
+/** Still on the hospital's hands: seated, not yet with a doctor. */
+const STILL_WAITING = new Set(["registered", "waiting"]);
 
 const day = (ms: number): string => istDay(new Date(ms).toISOString());
 const addDays = (d: string, n: number): string => new Date(new Date(`${d}T00:00:00Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10);
@@ -43,7 +57,7 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
   const doctor = doctorApi(call), roster = rosterApi(call), vitals = vitalsApi(call);
 
   const me = seats.includes("consult") ? await soft(() => doctor.me()) : null;
-  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts] = await Promise.all([
+  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units] = await Promise.all([
     me === null ? null : soft(() => doctor.queue(me.id, today)),
     me === null ? null : soft(() => call<Paper>("GET", "/opd/paper/consults?scope=mine")),
     seats.includes("myDuties") ? soft(() => roster.myDuties()) : null,
@@ -58,8 +72,35 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     has("staff.reports.read") && seats.includes("onNow") ? soft(() => roster.onNow()) : null,
     has("staff.reports.read") ? soft(() => call<Range>("GET", `/staff/range?from=${today}&to=${today}&groupBy=departmentId`)) : null,
     has("staff.reports.read") ? soft(() => call<Range>("GET", `/staff/range?from=${addDays(today, -29)}&to=${today}&groupBy=day`)) : null,
-    has("staff.reports.read") ? soft(() => call<{ items?: { id: string; name: string }[] } | { id: string; name: string }[]>("GET", "/opd/departments")) : null,
+    has("staff.reports.read") || me !== null ? soft(() => call<{ items?: { id: string; name: string }[] } | { id: string; name: string }[]>("GET", "/opd/departments")) : null,
+    seats.includes("counter") ? soft(() => call<Report>("GET", `/me/report?date=${today}`)) : null,
+    seats.includes("counter") && has("opd.appointments.read") ? soft(() => call<Appointments>("GET", "/opd/appointments?needsRebooking=true")) : null,
+    has("approvals.requests.create") ? soft(() => call<{ items: WireMyRequest[] }>("GET", "/approvals/mine")) : null,
+    has("opd.prescription.transcribe") ? soft(() => call<SentBack>("GET", "/opd/paper/sent-back")) : null,
+    soft(() => call<{ unreadCount: number }>("GET", "/alerts")),
+    me === null ? null : soft(() => doctor.doctorUnits(today)),
   ]);
+
+  /* The front desk's own two: who I seated is still waiting (my report's rows), whose booking is stranded. */
+  let deskWaiting: CountSince | null = null;
+  const visits = report?.sections.find((sec) => sec.key === "opd.myVisits") ?? null;
+  if (visits !== null) {
+    const statusAt = visits.columnKeys.indexOf("report.col.status"), timeAt = visits.columnKeys.indexOf("report.col.time");
+    const waiting = visits.rows.filter((r) => STILL_WAITING.has(r[statusAt === -1 ? r.length - 1 : statusAt] ?? ""));
+    const times = waiting.map((r) => istAt(today, r[timeAt === -1 ? 0 : timeAt] ?? "")).filter((t): t is number => t !== null);
+    deskWaiting = { count: waiting.length, oldestMs: times.length === 0 ? null : Math.min(...times) };
+  }
+  let rebook: CountSince | null = null;
+  if (stranded !== null) {
+    const ahead = stranded.items.filter((a) => a.status === "needs_rebooking" && a.serviceDate >= today);
+    const days = ahead.map((a) => istAt(a.serviceDate, "00:00")).filter((t): t is number => t !== null);
+    rebook = { count: ahead.length, oldestMs: days.length === 0 ? null : Math.min(...days) };
+  }
+  let sentBack: CountSince | null = null;
+  if (sent !== null) {
+    const asked = sent.items.map((i) => (i.recheck == null ? null : new Date(i.recheck.askedAt).getTime())).filter((t): t is number => t !== null && !Number.isNaN(t));
+    sentBack = { count: sent.items.length, oldestMs: asked.length === 0 ? null : Math.min(...asked) };
+  }
 
   const paperItems: WirePaperItem[] | null = paper === null ? null : paper.items.map((p) => ({
     encounterId: p.encounterId, held: p.held !== null && p.held !== undefined, confirmed: p.confirmedAt !== null, since: p.paperCompletedAt,
@@ -94,6 +135,16 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     approvals: approvals?.items ?? null, day: dayBrief, week, month,
     blind, receiptsToday: receipts === null ? null : Number(receipts),
     hospital, onNow, team,
+    deskWaiting, rebook, myRequests: mine?.items ?? null, sentBack, toType: sent?.toType ?? null,
   };
-  return { sources, reached: reached || !offline };
+  const deptList = depts === null ? [] : Array.isArray(depts) ? depts : (depts.items ?? []);
+  const header: HeaderFacts = {
+    doctor: me === null ? null : {
+      displayName: me.displayName,
+      departmentName: deptList.find((d) => d.id === me.departmentId)?.name ?? null,
+      unit: units?.find((u) => u.userId === me.userId)?.short ?? null,
+    },
+    hospitalWide: hospital !== null,
+  };
+  return { sources, reached: reached || !offline, header, unread: bell === null ? null : bell.unreadCount };
 }
