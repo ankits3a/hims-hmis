@@ -568,3 +568,24 @@ team** card, then **My work** — every screen as before, with a live badge.
 - JavaScript only — no new native module (the line is drawn with Views), so it can travel as an over-the-air bundle.
 - Not built: see decision 0042 "Still open". The last home is kept in memory only (lost when the app is closed).
 - Walk: `/opt/hmis-context/mobile-tools/{serve-home,shoot-home}.mjs`.
+
+## 3k. App home, round two (2026-10-07, decision 0043) — the board, finished
+
+Round one left parts of the approved board unbuilt. Closed here:
+
+- **Header:** the person's full name and what they are here as (`/auth/me` → `profile`; `src/home/profile.ts`). A bell
+  with the unread count opens the alerts list (`app/alerts.tsx`).
+- **Front desk cards:** patients I opened still waiting (count, oldest clock), appointments to re-book (due by their
+  day), my own request's status (`GET /approvals/mine`; "OK" is remembered on the phone).
+- **Scribe cards:** papers a doctor sent back (`GET /opd/paper/sent-back`, with `toType`), papers to type. Typing stays
+  on the computer; the card says where.
+- **Paper consultations on the phone** (`app/paper.tsx`, `src/screens/paper-consults.tsx`): held lines first; give with
+  a reason / do not give (the web's `/correct`), "Looks right", "Ask the desk to re-check" (`/recheck`), the slip viewer.
+- **Server, additive (migration 0182):** `paper_recheck_*` on `opd_encounters`, `answer_note` on
+  `roster_cover_requests`; `sweepOverdueApprovals` inside `sweepStaffNotices`; push category `approvals` and link
+  `approvals`; `?knows=` on the phone-notifications routes.
+- **Cover request:** Yes / No open a sheet; "no" needs a reason.
+- **A tap lands on its card** (`src/home/focus.ts`); **the last home is kept across a closed app, counts only**
+  (`src/home/cache.ts`, SecureStore — no new native module).
+- **Still deferred:** long-press app-icon shortcuts (native module → next APK); a phone scribe seat.
+- JavaScript only on the phone. Walk: `/opt/hmis-context/mobile-tools/{serve-home2,shoot-home2}.mjs`.

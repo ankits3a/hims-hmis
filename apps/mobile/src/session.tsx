@@ -16,7 +16,9 @@ import type { EffectivePermissions } from "./seats";
  * enrolled fingerprint the app opens on "Unlock", and only after the phone confirms the person
  * does it use the token. It never replaces the password and never extends a session.
  */
-export type Me = { actor: { type: string; id: string }; permissions: EffectivePermissions };
+/** `profile` — the person's own name and role keys, for a header (server since app home round 2; absent from an older one). */
+export type MeProfile = { username: string; fullName: string | null; roles: string[] };
+export type Me = { actor: { type: string; id: string }; permissions: EffectivePermissions; profile?: MeProfile | null };
 
 export type SessionState =
   | { status: "loading" }

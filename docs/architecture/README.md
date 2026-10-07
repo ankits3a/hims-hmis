@@ -103,7 +103,7 @@ flowchart LR
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, radiology | 48 | 22 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
-| [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, pharmacy, radiology | 128 | 21 |
+| [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, pharmacy, radiology | 131 | 21 |
 | [ot](modules/ot.md) | billing, materials, patients, roster, tariff | radiology | 53 | 12 |
 | [partners](modules/partners.md) | billing, membership, patients, tariff | — | 10 | 7 |
 | [patients](modules/patients.md) | — | abdm, aerb, billing, lab, membership, opd, ot, partners, pharmacy, radiology | 31 | 8 |
@@ -120,7 +120,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | subsystem | used by modules | depends on kernel | routes |
 |---|---|---|---|
 | `alerts` | opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, tokens, workflow | 3 |
-| `approvals` | abdm, aerb, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, tariff | auth, db, events, modules, phi, tokens, workflow | 6 |
+| `approvals` | abdm, aerb, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
 | `auth` | abdm, aerb, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | opd, pharmacy, roster | approvals, auth, config, db, desk, inference, modules, tokens | 1 |

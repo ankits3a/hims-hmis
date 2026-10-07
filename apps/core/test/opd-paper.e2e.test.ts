@@ -158,4 +158,38 @@ describe("consulted on paper — e2e", () => {
     await http().post(`/opd/paper/visits/${b.encounterId}/reopen`).set(...auth(supervisor.token)).send({ reason: "slip was typed on the wrong visit" }).expect(200);
     expect(await statusOf(b.encounterId)).toBe("waiting");
   });
+  it("ask the desk to re-check: the doctor sends it back with a reason, it lands on the desk's list, and a look or a retype answers it", async () => {
+    const c = await waitingVisit("Sanjay Mahto", "9000000003");
+    await http().post(`/opd/paper/visits/${c.encounterId}/transcription`).set(...auth(scribe.token)).send({ lines: [PARA] }).expect(201);
+    /* A photographed slip nobody has typed is counted for the desk's card — a count, and it goes when typed. */
+    const d = await waitingVisit("Lalita Devi", "9000000004");
+    await slip(d.patientId, d.encounterId, slipDesk.token).expect(201);
+    /* Nothing sent back yet. */
+    expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body).toEqual({ items: [], toType: 1 });
+    await http().post(`/opd/paper/visits/${d.encounterId}/transcription`).set(...auth(scribe.token)).send({ lines: [PARA] }).expect(201);
+    expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body.toType).toBe(0);
+    /* The desk cannot send its own work back, a reason is required, and the doctor's list is not the desk's. */
+    await http().post(`/opd/paper/visits/${c.encounterId}/recheck`).set(...auth(scribe.token)).send({ reason: "line 1" }).expect(403);
+    await http().post(`/opd/paper/visits/${c.encounterId}/recheck`).set(...auth(dra.token)).send({ reason: "  " }).expect(409);
+    await http().get("/opd/paper/sent-back").set(...auth(dra.token)).expect(403);
+
+    const asked = await http().post(`/opd/paper/visits/${c.encounterId}/recheck`).set(...auth(dra.token)).send({ reason: "Line 1 — I wrote 650, not 500" }).expect(200);
+    expect(asked.body.recheck).toMatchObject({ reason: "Line 1 — I wrote 650, not 500", doneAt: null });
+    const back = await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200);
+    expect((back.body.items as { encounterId: string }[]).map((r) => r.encounterId)).toEqual([c.encounterId]);
+
+    /* "I have looked again" answers it; a second answer has nothing to answer. */
+    const done = await http().post(`/opd/paper/visits/${c.encounterId}/recheck-done`).set(...auth(scribe.token)).send({ note: "matches the paper — 500" }).expect(200);
+    expect(done.body.recheck).toMatchObject({ doneNote: "matches the paper — 500" });
+    expect(done.body.recheck.doneAt).toEqual(expect.any(String));
+    await http().post(`/opd/paper/visits/${c.encounterId}/recheck-done`).set(...auth(scribe.token)).send({}).expect(409);
+    expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body.items).toEqual([]);
+
+    /* Sent back again — and this time the desk RETYPES it: the save is the answer. */
+    await http().post(`/opd/paper/visits/${c.encounterId}/recheck`).set(...auth(dra.token)).send({ reason: "still wrong" }).expect(200);
+    await http().post(`/opd/paper/visits/${c.encounterId}/transcription`).set(...auth(scribe.token)).send({ lines: [{ ...PARA, dose: "650 mg" }] }).expect(201);
+    expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body.items).toEqual([]);
+    const mine = await http().get("/opd/paper/consults?scope=mine").set(...auth(dra.token)).expect(200);
+    expect((mine.body.items as { encounterId: string; recheck: { doneAt: string } | null }[]).find((r) => r.encounterId === c.encounterId)!.recheck!.doneAt).toEqual(expect.any(String));
+  });
 });

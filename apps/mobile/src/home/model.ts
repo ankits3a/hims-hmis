@@ -23,7 +23,11 @@ export type HomeAction =
   | { type: "seat"; key: Seat["key"] }
   | { type: "approval"; id: string; decide: "open" }
   | { type: "cover"; requestId: string; accept: boolean }
-  | { type: "paper" };
+  | { type: "paper" }
+  /** "I have seen it" on a decided request of my own — the card goes; the phone remembers, nothing is sent. */
+  | { type: "seen"; id: string }
+  /** Work that lives on the computer (the scribe's typing): the card says where, in a sentence. */
+  | { type: "say"; key: string };
 
 export type NeedCard = Need & {
   /** The big figure before the title, when the card is a count. */
@@ -54,6 +58,9 @@ export type WireBriefLite = {
   clauses: { key: string; values: Record<string, string> }[];
   series?: { day: string; facts: Record<string, number> }[];
 };
+export type WireMyRequest = { id: string; typeKey: string; amountPaise: number | null; status: string; requestedAt: string; decidedAt: string | null; dueAt: string | null };
+/** A count and the oldest clock behind it — never a name. */
+export type CountSince = { count: number; oldestMs: number | null };
 export type WirePaperItem = { encounterId: string; held: boolean; confirmed: boolean; since: string | null };
 export type WireTeam = { members: { userId: string; name: string; today: Record<string, number>; month: Record<string, number>; daysWithActivity: number }[] };
 export type Hospital = {
@@ -72,6 +79,15 @@ export type Sources = {
   bench?: WireBenchRow[] | null;
   slips?: { waiting: number; retake: number; filed: number } | null;
   toType?: number | null;
+  /** The front desk: visits I opened that are still waiting, and bookings stranded by a doctor's leave. */
+  deskWaiting?: CountSince | null;
+  rebook?: CountSince | null;
+  /** What I asked for (a discount, a refund) — pending, and decided today. */
+  myRequests?: WireMyRequest[] | null;
+  /** Decided requests this phone has already shown and the person tapped "OK" on. */
+  seenRequests?: readonly string[];
+  /** The scribe: papers a doctor sent back to re-check. */
+  sentBack?: CountSince | null;
   approvals?: WireApproval[] | null;
   day?: WireBriefLite | null;
   week?: WireBriefLite | null;
@@ -218,6 +234,62 @@ export function buildHome(src: Sources): HomeModel {
     }));
   }
 
+  /* ── the front desk: who I seated is still waiting; whose booking a doctor's leave stranded ── */
+  const dw = src.deskWaiting ?? null;
+  if (dw !== null && dw.count > 0) {
+    const since = dw.oldestMs ?? now;
+    cards.push(need("desk_waiting", "today", now, since, null, toneOf(now, since, null, { amberAfterMin: 30, redAfterMin: 60 }), {
+      count: dw.count, titleKey: "home.need.deskWaiting", subKey: "home.need.deskWaitingSub",
+      clock: dw.oldestMs === null ? null : clockWords(now, since, null), actions: [{ labelKey: "home.act.see", primary: false, action: { type: "seat", key: "counter" } }],
+    }));
+  }
+  const rb = src.rebook ?? null;
+  if (rb !== null && rb.count > 0) {
+    const due = rb.oldestMs;
+    cards.push(need("rebook", "today", now, now, due, due === null ? "amber" : toneOf(now, due - 24 * 3_600_000, due), {
+      count: rb.count, titleKey: "home.need.rebook", subKey: "home.need.rebookSub",
+      clock: due === null ? null : clockWords(now, now, due, "due"), actions: [{ labelKey: "home.act.rebook", primary: true, action: { type: "seat", key: "counter" } }],
+    }));
+  }
+
+  /* ── what I asked for: still with the approver, or answered today and not yet seen ── */
+  const seen = new Set(src.seenRequests ?? []);
+  for (const r of src.myRequests ?? []) {
+    const amount = r.amountPaise === null ? "" : rupees(r.amountPaise);
+    const since = ms(r.requestedAt) ?? now;
+    if (r.status === "pending") {
+      const due = ms(r.dueAt);
+      cards.push(need("my_request", r.id, now, since, null, "neutral", {
+        count: null, titleKey: "home.need.myRequest", titleVars: { what: `home.kind.${r.typeKey}`, amount }, subKey: "home.need.myRequestPending",
+        clock: clockWords(now, since, due), actions: [],
+      }));
+    } else if (!seen.has(r.id)) {
+      const granted = r.status === "granted";
+      const at = ms(r.decidedAt) ?? now;
+      cards.push(need("my_request", r.id, now, at, null, granted ? "neutral" : "amber", {
+        count: null, titleKey: "home.need.myRequest", titleVars: { what: `home.kind.${r.typeKey}`, amount },
+        subKey: granted ? "home.need.myRequestGranted" : "home.need.myRequestRejected", clock: null,
+        actions: [{ labelKey: "home.act.ok", primary: false, action: { type: "seen", id: r.id } }],
+      }));
+    }
+  }
+
+  /* ── the scribe: what a doctor sent back, then photographed papers nobody has typed ── */
+  const sb = src.sentBack ?? null;
+  if (sb !== null && sb.count > 0) {
+    const since = sb.oldestMs ?? now;
+    cards.push(need("sent_back", "today", now, since, null, toneOf(now, since, null, { amberAfterMin: 20, redAfterMin: 60 }), {
+      count: sb.count, titleKey: "home.need.sentBack", subKey: "home.need.sentBackSub",
+      clock: sb.oldestMs === null ? null : clockWords(now, since, null), actions: [{ labelKey: "home.act.where", primary: false, action: { type: "say", key: "home.say.scribe" } }],
+    }));
+  }
+  if (typeof src.toType === "number" && src.toType > 0) {
+    cards.push(need("papers_to_type", "today", now, now, null, "neutral", {
+      count: src.toType, titleKey: "home.need.toType", subKey: "home.need.toTypeSub", clock: null,
+      actions: [{ labelKey: "home.act.where", primary: false, action: { type: "say", key: "home.say.scribe" } }],
+    }));
+  }
+
   /* ── approvals waiting on me, each with its own clock ── */
   for (const a of src.approvals ?? []) {
     const since = ms(a.requestedAt) ?? now;
@@ -261,7 +333,10 @@ export function buildHome(src: Sources): HomeModel {
     tiles.push({ key: f.fact, labelKey: f.labelKey, value: String(v) });
   }
   if (bench !== null && tiles.length < 3) tiles.push({ key: "bench", labelKey: "home.tile.bench", value: String(bench.filter((b) => !b.vitalsDone).length) });
+  if (bench !== null && tiles.length < 3) tiles.push({ key: "rechecks", labelKey: "home.tile.rechecks", value: String(bench.filter((b) => b.recallAt !== null && (ms(b.recallAt) ?? Infinity) <= now).length) });
   if (src.slips !== undefined && src.slips !== null && tiles.length < 3) tiles.push({ key: "slips", labelKey: "home.tile.slips", value: String(src.slips.filed) });
+  if (src.slips !== undefined && src.slips !== null && tiles.length < 3) tiles.push({ key: "slipsWaiting", labelKey: "home.tile.slipsWaiting", value: String(src.slips.waiting + src.slips.retake) });
+  if (typeof src.toType === "number" && tiles.length < 3) tiles.push({ key: "toType", labelKey: "home.tile.toType", value: String(src.toType) });
   /* Money: the cashier's own, and it is LOCKED until the drawer is counted. The owner's is the hospital's. */
   const collected = day["billing.collectedPaise"];
   if (src.hospital !== undefined && src.hospital !== null) {

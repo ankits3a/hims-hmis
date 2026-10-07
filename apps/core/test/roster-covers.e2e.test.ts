@@ -110,9 +110,12 @@ describe("roster covers e2e (20-U U5c/U6)", () => {
     const { requestId } = (await http().post("/roster/covers").set(as(meena)).send({ assignmentId: night, counterpartId: rohit.id }).expect(200)).body as { requestId: string };
     // Not before he says yes.
     expect(((await http().post(`/roster/covers/${requestId}/decide`).set(as(ms)).send({ approve: true }).expect(409)).body as { code: string }).code).toBe("cover_not_accepted");
-    await http().post(`/roster/covers/${requestId}/answer`).set(as(rohit)).send({ accept: true }).expect(200);
+    await http().post(`/roster/covers/${requestId}/answer`).set(as(rohit)).send({ accept: true, note: "Yes — I am free that night" }).expect(200);
     const asked = (await http().get("/roster/covers").set(as(ms)).expect(200)).body as CoverRequestView[];
     expect(asked.map((r) => [r.status, r.youMay.approve])).toEqual([["accepted", true]]);
+    /* What he said with it is kept and shown to whoever asked (decision 0043). */
+    expect(asked[0]!.answerNote).toBe("Yes — I am free that night");
+    expect(((await http().get("/roster/covers").set(as(meena)).expect(200)).body as CoverRequestView[])[0]!.answerNote).toBe("Yes — I am free that night");
     expect(((await http().post(`/roster/covers/${requestId}/decide`).set(as(ms)).send({ approve: true }).expect(200)).body as { status: string }).status).toBe("approved");
 
     const was = process.env[ROSTER_RESOLVER_FLAG];

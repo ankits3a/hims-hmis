@@ -473,6 +473,14 @@ export const consultationPaperConfirmed = defineEvent("consultation.paper_confir
   encounterId: id, patientId: id, doctorId: id, serviceDate: isoDate, corrected: z.boolean(),
 }));
 
+/** The doctor sends what the desk typed back with a reason; the desk says it has looked again (decision 0043). */
+export const consultationPaperRecheckAsked = defineEvent("consultation.paper_recheck_asked", MODULE, z.object({
+  encounterId: id, patientId: id, doctorId: id, serviceDate: isoDate,
+}));
+export const consultationPaperRecheckDone = defineEvent("consultation.paper_recheck_done", MODULE, z.object({
+  encounterId: id, patientId: id, serviceDate: isoDate, bySave: z.boolean(),
+}));
+
 /** What one save at the desk scribe's screen did: lines issued, lines held for the doctor, tests advised. */
 export const paperPrescriptionTranscribed = defineEvent("prescription.paper_transcribed", MODULE, z.object({
   encounterId: id, patientId: id, doctorId: id, prescriptionId: id.nullable(),
