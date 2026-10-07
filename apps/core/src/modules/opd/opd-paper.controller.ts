@@ -173,7 +173,7 @@ export class OpdPaperController {
   /** What doctors sent back and nobody has answered — the desk's list and the desk's phone card. */
   @RequirePermission("opd.prescription.transcribe", "hospital")
   @Get("sent-back")
-  async sentBack(@CurrentActor() actor: Actor): Promise<{ items: PaperConsultRow[] }> {
+  async sentBack(@CurrentActor() actor: Actor): Promise<{ items: PaperConsultRow[]; toType: number }> {
     try {
       return await listPaperSentBack(this.db, actor);
     } catch (e) {

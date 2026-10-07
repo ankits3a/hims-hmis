@@ -161,8 +161,13 @@ describe("consulted on paper — e2e", () => {
   it("ask the desk to re-check: the doctor sends it back with a reason, it lands on the desk's list, and a look or a retype answers it", async () => {
     const c = await waitingVisit("Sanjay Mahto", "9000000003");
     await http().post(`/opd/paper/visits/${c.encounterId}/transcription`).set(...auth(scribe.token)).send({ lines: [PARA] }).expect(201);
+    /* A photographed slip nobody has typed is counted for the desk's card — a count, and it goes when typed. */
+    const d = await waitingVisit("Lalita Devi", "9000000004");
+    await slip(d.patientId, d.encounterId, slipDesk.token).expect(201);
     /* Nothing sent back yet. */
-    expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body.items).toEqual([]);
+    expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body).toEqual({ items: [], toType: 1 });
+    await http().post(`/opd/paper/visits/${d.encounterId}/transcription`).set(...auth(scribe.token)).send({ lines: [PARA] }).expect(201);
+    expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body.toType).toBe(0);
     /* The desk cannot send its own work back, a reason is required, and the doctor's list is not the desk's. */
     await http().post(`/opd/paper/visits/${c.encounterId}/recheck`).set(...auth(scribe.token)).send({ reason: "line 1" }).expect(403);
     await http().post(`/opd/paper/visits/${c.encounterId}/recheck`).set(...auth(dra.token)).send({ reason: "  " }).expect(409);
@@ -185,6 +190,6 @@ describe("consulted on paper — e2e", () => {
     await http().post(`/opd/paper/visits/${c.encounterId}/transcription`).set(...auth(scribe.token)).send({ lines: [{ ...PARA, dose: "650 mg" }] }).expect(201);
     expect((await http().get("/opd/paper/sent-back").set(...auth(scribe.token)).expect(200)).body.items).toEqual([]);
     const mine = await http().get("/opd/paper/consults?scope=mine").set(...auth(dra.token)).expect(200);
-    expect(mine.body.items[0].recheck.doneAt).toEqual(expect.any(String));
+    expect((mine.body.items as { encounterId: string; recheck: { doneAt: string } | null }[]).find((r) => r.encounterId === c.encounterId)!.recheck!.doneAt).toEqual(expect.any(String));
   });
 });

@@ -767,13 +767,30 @@ export async function resolvePaperRecheck(
 }
 
 /** The desk's list of what doctors sent back and nobody has answered — every doctor's, today's and yesterday's. */
-export async function listPaperSentBack(db: Db, actor: Actor, now: Date = new Date()): Promise<{ items: PaperConsultRow[] }> {
+export async function listPaperSentBack(db: Db, actor: Actor, now: Date = new Date()): Promise<{ items: PaperConsultRow[]; toType: number }> {
   await requireScribe(db, actor);
   const since = new Date(now.getTime() - 48 * 3_600_000);
   const encounters = await db.select().from(opdEncounters)
     .where(and(isNotNull(opdEncounters.paperRecheckAskedAt), isNull(opdEncounters.paperRecheckDoneAt), gte(opdEncounters.paperRecheckAskedAt, since)))
     .orderBy(asc(opdEncounters.paperRecheckAskedAt)).limit(200);
-  return { items: await rowsFor(db, actor, encounters) };
+  /*
+    PAPERS TO TYPE — a count for the desk's card: today's visits closed from a photographed slip that
+    nobody has typed yet (no prescription typed from paper, nothing held). A count and nothing else.
+  */
+  const photographed = await db.select({ id: opdEncounters.id, advisedTests: opdEncounters.advisedTests }).from(opdEncounters)
+    .where(and(eq(opdEncounters.serviceDate, istDate(now)), eq(opdEncounters.type, "opd"), eq(opdEncounters.completedVia, "paper"), eq(opdEncounters.paperEvidenceKind, "slip_photo")))
+    .limit(DAY_CAP);
+  let toType = 0;
+  if (photographed.length > 0) {
+    const ids = photographed.map((p) => p.id);
+    const typed = new Set((await db.select({ e: opdPrescriptions.encounterId }).from(opdPrescriptions)
+      .where(and(inArray(opdPrescriptions.encounterId, ids), eq(opdPrescriptions.status, "active")))).map((r) => r.e));
+    const held = new Set((await db.select({ e: opdPrescriptionDrafts.encounterId }).from(opdPrescriptionDrafts)
+      .where(and(inArray(opdPrescriptionDrafts.encounterId, ids), eq(opdPrescriptionDrafts.status, "pending")))).map((r) => r.e));
+    toType = photographed.filter((p) => !typed.has(p.id) && !held.has(p.id)
+      && !((Array.isArray(p.advisedTests) ? p.advisedTests : []) as PaperAdvisedTest[]).some((t) => t.transcribedBy !== undefined)).length;
+  }
+  return { items: await rowsFor(db, actor, encounters), toType };
 }
 
 export type CorrectPaperInput = {
