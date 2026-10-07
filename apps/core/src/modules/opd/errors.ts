@@ -85,7 +85,14 @@ export type OpdErrorCode =
   // patient (revisit or renewal) may skip the bay this way (409, listed in `OPD_CONFLICT_CODES`: the request is well formed, the visit
   // is the wrong kind); an account holding neither the bay's nor the desk's grant is refused 403; a
   // relation outside the fixed list or an over-long name is a malformed request (400).
-  | "patient_absent_returning_only" | "patient_absent_not_permitted" | "invalid_patient_absent";
+  | "patient_absent_returning_only" | "patient_absent_not_permitted" | "invalid_patient_absent"
+  // PHONE CONSULT (decision 0048) — a doctor's sets and the hospital's starter sets (`rx-sets.ts`).
+  // Not-found and not-yours answer identically (404). A controlled medicine in a set is a malformed
+  // request (400); signing or editing a department's starter set without being its unit head is 403.
+  | "unknown_rx_set" | "invalid_rx_set" | "rx_set_controlled" | "rx_set_not_permitted"
+  // The spoken note (`consult-voice.ts`). Voice being off, unconfigured or over the day's cap is a
+  // STATE (409, `detail.why`), a clip too long or empty is a malformed request (400).
+  | "voice_unavailable_state_conflict" | "invalid_voice_clip" | "unknown_voice_note" | "voice_provider_failed";
 
 export class OpdError extends Error {
   constructor(

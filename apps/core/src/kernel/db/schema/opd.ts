@@ -1334,3 +1334,95 @@ export const opdConsultLayouts = pgTable(
     check("opd_consult_layouts_version_ck", sql`${t.version} > 0`),
   ],
 );
+
+/**
+ * PHONE CONSULT (decision 0048, owner 2026-10-07) — "My sets" and the hospital's starter sets.
+ *
+ * A set is a bundle a doctor adds in one tap: medicine lines, tests, advice. It holds NO patient
+ * data — it is the doctor's habit about a condition, like an advice template. Applying one only
+ * fills the screen; every line then goes through the visit's own checks for THAT patient.
+ *
+ *   · `scope = 'doctor'`     — one doctor's own (`owner_user_id` set, `department_id` null). Live at once.
+ *   · `scope = 'department'` — the hospital's starter list for one OPD department. It is shown to
+ *     nobody until that department's unit head has SIGNED it (`signed_by`, `signed_at`); an edit
+ *     after signing is a new unsigned row state (the service clears the signature).
+ *
+ * A controlled medicine (Schedule H1, Schedule X, an NDPS moiety) is never stored in a set — the
+ * service refuses it; this table carries no trace of one.
+ */
+export const opdRxSets = pgTable(
+  "opd_rx_sets",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    ownerUserId: text("owner_user_id"),
+    departmentId: text("department_id").references(() => opdDepartments.id),
+    name: text("name").notNull(),
+    /** `{ lines, tests, advice, reviewDays }` — validated by `modules/opd/rx-sets.ts` on every write. */
+    body: jsonb("body").notNull(),
+    signedBy: text("signed_by"),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").notNull(),
+    updatedBy: text("updated_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("opd_rx_sets_scope_ck", sql`${t.scope} in ('doctor', 'department')`),
+    check("opd_rx_sets_owner_ck", sql`(${t.scope} = 'doctor' and ${t.ownerUserId} is not null and ${t.departmentId} is null) or (${t.scope} = 'department' and ${t.departmentId} is not null and ${t.ownerUserId} is null)`),
+    check("opd_rx_sets_signed_ck", sql`(${t.signedBy} is null) = (${t.signedAt} is null)`),
+    index("opd_rx_sets_owner_idx").on(t.ownerUserId),
+    index("opd_rx_sets_department_idx").on(t.departmentId),
+  ],
+);
+
+/**
+ * PHONE CONSULT — the voice meter. ONE ROW PER SPOKEN NOTE, AND IT HOLDS NO WORDS.
+ *
+ * The audio is forwarded and dropped; the transcript goes back to the doctor and is stored nowhere
+ * by this table. What is kept is what the owner asked to measure in place of a trial: how long the
+ * clip was, how long the text was, and — once the doctor saved it — how many characters they had to
+ * change. No encounter, no patient: the meter is about the doctor and the model, not about anybody
+ * who was in the room.
+ */
+export const opdVoiceUsage = pgTable(
+  "opd_voice_usage",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    /** IST calendar day, 'YYYY-MM-DD'. */
+    day: date("day", { mode: "string" }).notNull(),
+    model: text("model").notNull(),
+    seconds: integer("seconds").notNull(),
+    transcriptChars: integer("transcript_chars").notNull(),
+    /** Null until the doctor saves (or discards) what was heard. */
+    changedChars: integer("changed_chars"),
+    keptChars: integer("kept_chars"),
+    ok: boolean("ok").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("opd_voice_usage_user_day_idx").on(t.userId, t.day),
+    index("opd_voice_usage_day_idx").on(t.day),
+    check("opd_voice_usage_seconds_ck", sql`${t.seconds} >= 0`),
+  ],
+);
+
+/** PHONE CONSULT — the voice switches, one row (`id = 'main'`). Absent ⇒ the shipped defaults. */
+export const opdVoiceSettings = pgTable(
+  "opd_voice_settings",
+  {
+    id: text("id").primaryKey(),
+    enabled: boolean("enabled").notNull().default(true),
+    model: text("model").notNull().default("gpt-4o-transcribe"),
+    /** Minutes of audio the whole hospital may send in one IST day. */
+    dailyMinutesCap: integer("daily_minutes_cap").notNull().default(120),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("opd_voice_settings_model_ck", sql`${t.model} in ('gpt-4o-transcribe', 'gpt-4o-mini-transcribe', 'whisper-1')`),
+    check("opd_voice_settings_cap_ck", sql`${t.dailyMinutesCap} >= 0 and ${t.dailyMinutesCap} <= 6000`),
+  ],
+);

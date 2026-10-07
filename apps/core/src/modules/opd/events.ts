@@ -561,3 +561,12 @@ export const dayReportPatientsListed = defineEvent("day_report.patients_listed",
   format: z.enum(["screen", "csv", "document"]),
   rows: z.number().int().nonnegative(),
 }));
+
+/**
+ * PHONE CONSULT (decision 0048) — a spoken note was sent to the speech service. WHO, HOW LONG, WHICH
+ * MODEL — and nothing that was said: no encounter, no patient, no text. The words reach the record
+ * only through the ordinary note route, after the doctor has read them.
+ */
+export const consultVoiceTranscribed = defineEvent("consultation.voice_transcribed", MODULE, z.object({
+  doctorId: id, seconds: z.number().int().nonnegative(), model: z.string().min(1), ok: z.boolean(),
+}));
