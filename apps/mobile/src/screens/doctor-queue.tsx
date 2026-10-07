@@ -12,6 +12,7 @@ import {
 } from "../doctor/rules";
 import type { WireFollowUpConfig, WireQueueDoctor, WireQueueEntryView, WireQueuePatient, WireQueueView, WireSkipReason } from "../doctor/rules";
 import { useI18n } from "../i18n";
+import { guardianWho } from "../vitals/guardian";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
@@ -56,6 +57,9 @@ function Row({ e, t, now, right, below, tone, onPress, testID }: {
   const marks: { text: string; fg: string }[] = [];
   if (e.encounter.dangerFlagged || e.danger) marks.push({ text: t("mobile.doctor.dangerRow"), fg: color.red });
   if (isUnpaid(e)) marks.push({ text: t("mobile.doctor.unpaidRow"), fg: color.red });
+  // Owner 2026-10-07 — the guardian came with the reports; no vitals were taken. The web row's tag, in words.
+  const absent = e.encounter.patientAbsent ?? null;
+  if (absent !== null) marks.push({ text: t("patientAbsent.tag", { who: guardianWho(t, absent) }), fg: "#8a5a10" });
   return (
     <View testID={testID} style={[s.rowCard, tone === "next" && { backgroundColor: color.greenSoft, borderColor: color.greenLine }]}>
       <Pressable testID={`${testID}-open`} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>

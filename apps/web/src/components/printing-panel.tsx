@@ -4,6 +4,8 @@ import {
   HANDOVER_PAPERS, printDocumentHere, printSettingSnapshot, subscribePrintSetting, testPrintDocument, writePrintSetting,
 } from "../lib/browser-print";
 import type { PrintMode, PrintSetting } from "../lib/browser-print";
+import { listComputersHere } from "../lib/print-api";
+import type { WireHereComputer } from "../lib/print-api";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -44,7 +46,24 @@ export function PrintingPanelHost(): React.ReactElement | null {
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen]);
 
+  /*
+    THE PRINT PROGRAM ON THIS COMPUTER (decision 0047). Read when the panel opens and every ten
+    seconds while it is open, so "running / not running" is the program's own last word. `null` =
+    not read yet; `"failed"` = the read was refused (an older server, or a seat without the grant),
+    in which case the section says so and the rest of the panel works as before.
+  */
+  const [computers, setComputers] = useState<WireHereComputer[] | "failed" | null>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    let live = true;
+    const read = (): void => { void listComputersHere().then((r) => { if (live) setComputers(r.computers); }, () => { if (live) setComputers((c) => c ?? "failed"); }); };
+    read();
+    const id = window.setInterval(read, 10_000);
+    return () => { live = false; window.clearInterval(id); };
+  }, [isOpen]);
+
   if (!isOpen) return null;
+  const linked = Array.isArray(computers) ? computers.find((c) => c.id === setting.computerId) ?? null : null;
   const set = (patch: Partial<PrintSetting>): void => writePrintSetting({ ...setting, ...patch });
   const browserish = setting.mode !== "relay";
   const both = setting.papers.opd_prescription === true && setting.papers.opd_token_slip === true;
@@ -77,6 +96,43 @@ export function PrintingPanelHost(): React.ReactElement | null {
             </label>
           ))}
         </fieldset>
+
+        {/* A seat that may not read the list (or an older server) is shown nothing here: the rest of the panel is theirs. */}
+        {computers === "failed" ? null : (
+        <div data-testid="print-program" style={{ margin: "12px 0 0", padding: "10px 12px", border: "1px solid var(--line, #dfe7e1)", borderRadius: 9 }}>
+          <b style={{ display: "block" }}>{t("printHere.program.title")}</b>
+          <span style={{ display: "block", color: "var(--dim, #5c6f66)", fontSize: 12.5, margin: "2px 0 8px" }}>{t("printHere.program.sub")}</span>
+          {computers === null ? <span style={{ fontSize: 12.5, color: "var(--dim, #5c6f66)" }}>{t("printHere.program.loading")}</span> : null}
+          {Array.isArray(computers) && computers.length === 0 && setting.computerId === null ? (
+            <span data-testid="print-program-none" style={{ fontSize: 12.5, color: "var(--dim, #5c6f66)" }}>{t("printHere.program.none")}</span>
+          ) : null}
+          {Array.isArray(computers) && (computers.length > 0 || setting.computerId !== null) ? (
+            <>
+              <select
+                data-testid="print-program-select"
+                aria-label={t("printHere.program.title")}
+                value={linked === null ? "" : linked.id}
+                onChange={(e) => set({ computerId: e.target.value === "" ? null : e.target.value })}
+                style={{ font: "inherit", fontSize: 13, minHeight: 36, padding: "0 8px", borderRadius: 9, border: "1px solid var(--line, #dfe7e1)", background: "var(--card, #fff)", color: "var(--ink, #132420)", maxWidth: "100%" }}
+              >
+                <option value="">{t("printHere.program.notLinked")}</option>
+                {computers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {`${c.name} · ${c.printer ?? t("printHere.program.noPrinter")} · ${t(c.alive ? "printHere.program.connected" : "printHere.program.offline")}`}
+                  </option>
+                ))}
+              </select>
+              {setting.computerId !== null ? (
+                <p role="status" data-testid="print-program-state" style={{ margin: "6px 0 0", fontSize: 12.5, fontWeight: 600, color: linked !== null && linked.alive ? "var(--green, #0e6b4e)" : "var(--gold, #a8650a)" }}>
+                  {linked === null ? t("printHere.program.linkedGone")
+                    : linked.alive ? t("printHere.program.linkedOk", { name: linked.name, printer: linked.printer ?? t("printHere.program.noPrinter") })
+                    : t("printHere.program.linkedOff", { name: linked.name })}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+        )}
 
         <fieldset style={{ border: 0, padding: 0, margin: "12px 0 0", opacity: browserish ? 1 : 0.5 }} disabled={!browserish}>
           <legend style={{ fontWeight: 600, padding: 0, marginBottom: 4 }}>{t("printHere.panel.papers")}</legend>

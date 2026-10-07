@@ -10,6 +10,7 @@ import { color, radius, space, TOUCH, type } from "../theme";
 import { Band, Button, MONO, Note, Tag } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
 import { AmendPanel } from "../vitals/amend";
+import { GuardianAbsentAction } from "../vitals/guardian";
 import { refusalText, vitalsApi, type VitalsApi, type WireVitalsSaveResult } from "../vitals/api";
 import { CaptureCore } from "../vitals/capture";
 import { heldFirstTake, holdFirstTake, releaseFirstTake, useDangerProtocol, type Protocol } from "../vitals/protocol";
@@ -41,7 +42,7 @@ export const BENCH_POLL_MS = 5_000;
 const RANGED: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr"];
 const LAST_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
 type T = ReturnType<typeof useI18n>["t"];
-type Banner = { who: string; doctorName: string; flags: WireDangerFlag[]; rest?: string; feeWaived?: boolean; amended?: string };
+type Banner = { who: string; doctorName: string; flags: WireDangerFlag[]; rest?: string; feeWaived?: boolean; amended?: string; guardian?: boolean };
 type RowState = "escalated" | "recheck" | "due" | "resting" | "away" | "done" | "waiting";
 
 function patientLabel(row: WireBenchRow, t: T): string {
@@ -303,6 +304,18 @@ export function VitalsBay() {
     if (takenRef.current?.encounterId === row.encounterId) clearDesk();
   }, [t, refresh, clearDesk]);
 
+  /**
+   * OWNER 2026-10-07 — the guardian came with the reports: the server moved the revisit to the doctor's
+   * line and stopped listing it on the bench, so the bench re-reads and the desk clears as after a save.
+   */
+  const onGuardian = useCallback((row: WireBenchRow) => {
+    buzz("ok");
+    setBanner({ who: patientLabel(row, t), doctorName: row.doctorName, flags: [], guardian: true });
+    releaseFirstTake(row.encounterId);
+    void refresh();
+    if (takenRef.current?.encounterId === row.encounterId) clearDesk();
+  }, [t, refresh, clearDesk]);
+
   const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
     buzz(result.flags.some((f) => f.severity !== "notice") ? "warn" : "ok");
     setBanner({ who: patientLabel(row, t), doctorName: row.doctorName, flags: result.flags, feeWaived: result.feeWaived === true });
@@ -370,6 +383,8 @@ export function VitalsBay() {
     <View testID="saved-banner" accessibilityRole="alert" style={[s.card, { borderColor: color.greenLine, backgroundColor: color.greenSoft }]}>
       {banner.amended !== undefined ? (
         <Text testID="amended-banner" style={[s.bannerTitle, { color: color.green }]}>✓ {t("mobile.vitals.amended", { who: banner.who, changes: banner.amended })}</Text>
+      ) : banner.guardian === true ? (
+        <Text testID="guardian-banner" style={[s.bannerTitle, { color: color.green }]}>✓ {banner.who} — {t("patientAbsent.done")}</Text>
       ) : banner.rest !== undefined ? (
         <Text testID="rest-banner" style={s.bannerTitle}>{t("vitalsBay.rest.sent", { who: banner.who, time: banner.rest })}</Text>
       ) : (
@@ -463,6 +478,12 @@ export function VitalsBay() {
               {bannerView}
               {who}
               {error !== null && <Note tone="bad" testID="identify-error">{error}</Note>}
+              {rowInHand.visitType === "revisit" && (
+                <GuardianAbsentAction
+                  key={`absent:${deskGen}:${rowInHand.encounterId}`} api={api} encounterId={rowInHand.encounterId}
+                  onDone={() => onGuardian(rowInHand)}
+                />
+              )}
               {held !== null && <Text testID="held-first-take" style={s.small}>{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</Text>}
               <ProtocolPanel p={protocol} doctorName={rowInHand.doctorName} t={t}
                 rerun={rerun === null ? null : () => { const r = rerun; setRerun(null); void protocol.demand(r.reading, r.key); }} />

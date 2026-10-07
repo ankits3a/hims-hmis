@@ -12,6 +12,7 @@ import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { UserPhones } from "./admin-user-phones";
+import { PrintComputers } from "./admin-print-computers";
 import { SubmitButton } from "../components/submit-button";
 import {
   adminErrorCode, adminErrorMessage, assignRole, createUser, deactivateUser, listRoles, listUsers,
@@ -113,6 +114,7 @@ export function AdminUsers(): React.ReactElement {
   const [resetValue, setResetValue] = useState("");
   /** Mobile M6a — whose phones the panel is showing (`admin-user-phones.tsx`). */
   const [phonesOf, setPhonesOf] = useState<WireAdminUser | null>(null);
+  const [printComputers, setPrintComputers] = useState(false);
 
   const users = useQuery({ queryKey: ["admin", "users"], queryFn: listUsers });
   /**
@@ -268,6 +270,10 @@ export function AdminUsers(): React.ReactElement {
   return (
     <PaperScreen testId="admin-users" style={{ padding: "18px 22px", gap: 18 }}>
       <ScreenTitle title={t("adminUsers.title")} route="/admin/users" />
+      {/* Decision 0047 — the counters' print computers are added, watched and removed here. */}
+      <div>
+        <button type="button" className="sec" data-testid="open-print-computers" onClick={() => setPrintComputers(true)}>{t("printComputers.open")}</button>
+      </div>
 
       {/*
         PLAN 11f D2 — the takeover rule's mitigation, unmet, said out loud on the one surface that
@@ -416,6 +422,7 @@ export function AdminUsers(): React.ReactElement {
       </DeskModal>
 
       <UserPhones user={phonesOf} onClose={() => setPhonesOf(null)} />
+      <PrintComputers open={printComputers} onClose={() => setPrintComputers(false)} />
 
       <section style={{ display: "flex", flexDirection: "column", gap: 9 }}>
         <h2 className="tag" style={{ margin: 0 }}>{t("adminUsers.listTitle")}</h2>

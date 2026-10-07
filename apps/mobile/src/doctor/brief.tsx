@@ -3,6 +3,7 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-nat
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError } from "../api";
 import { useI18n } from "../i18n";
+import { guardianWho } from "../vitals/guardian";
 import { Text } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
 import { Button, MONO, Note, Tag } from "../ui";
@@ -244,6 +245,11 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
                 <Text style={[s.sub, { color: color.red }]}>{t("opdConsult.heldWhy", { reason: entry?.encounter.consultFeeOverrideReason ?? entry?.encounter.feeBypassReason ?? "" })}</Text>
               )}
             </View>
+          )}
+          {(entry?.encounter.patientAbsent ?? null) !== null && (
+            <Text testID="brief-patient-absent" accessibilityRole="text" style={[s.sub, { marginTop: space.sm, color: "#8a5a10", fontWeight: "700" }]}>
+              {t("patientAbsent.notice", { who: guardianWho(t, entry?.encounter.patientAbsent ?? { relation: "", name: null }) })}
+            </Text>
           )}
           {(entry?.encounter.dangerFlagged === true || entry?.danger === true) && (
             <Text testID="brief-danger" style={s.danger}>{t("opdConsult.danger").toUpperCase()}</Text>
