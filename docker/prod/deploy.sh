@@ -226,6 +226,22 @@ SERVICES_UP_TIMEOUT="${HMIS_SERVICES_UP_TIMEOUT:-120}"
 die() { printf 'deploy.sh: FATAL: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
+# NUMERIC OWNERSHIP THAT NEEDS NO ACCOUNT ON THE HOST (2026-10-07). The containers run as uids and
+# gids (node 1000, alertmanager 65534) that need not exist in the HOST's /etc/passwd or /etc/group —
+# and on the host production moved to they do not. `install -g 1000` then died with "invalid group:
+# '1000'": Ubuntu 26.04's coreutils are uutils, and its install (0.8.0) looks the number up by name.
+# So ownership is never an `install -g`/`-o` flag here: the file is made, then handed over by number
+# — `chown`, and python3's os.chown if that chown also wants a name.
+numeric_own() {
+  local owner="$1"; shift
+  chown "$owner" "$@" 2>/dev/null && return 0
+  python3 - "$owner" "$@" <<'PY'
+import os, sys
+uid, _, gid = sys.argv[1].partition(":")
+for path in sys.argv[2:]:
+    os.chown(path, int(uid), int(gid) if gid else -1)
+PY
+}
 
 # 11i T3: on UAT the base file is overlaid with `docker-compose.uat.yml`, which resizes the four
 # services UAT runs and puts the five monitoring services behind a profile nothing here enables —
@@ -491,12 +507,18 @@ install -d -m 0750 "$DEPLOY_DIR/log"
 # ABSENT IS NORMAL, and it must never fail a deploy: the directory is still made (the mount needs
 # it), the api and worker boot with notifications OFF and say so once, and nothing else changes.
 FIREBASE_KEY="${HMIS_FIREBASE_KEY:-/root/.config/hmis/firebase/service-account.json}"
-install -d -m 0750 -g 1000 "$DEPLOY_DIR/firebase"
+install -d -m 0750 "$DEPLOY_DIR/firebase"
+numeric_own 0:1000 "$DEPLOY_DIR/firebase"
 if [ -r "$FIREBASE_KEY" ]; then
-  install -m 0440 -g 1000 "$FIREBASE_KEY" "$DEPLOY_DIR/firebase/service-account.json"
+  install -m 0440 "$FIREBASE_KEY" "$DEPLOY_DIR/firebase/service-account.json"
+  numeric_own 0:1000 "$DEPLOY_DIR/firebase/service-account.json"
   echo "    firebase key installed for the api and the worker (phone notifications)"
 else
-  echo "    no firebase key at $FIREBASE_KEY — phone notifications stay off; nothing else is affected"
+  if [ -r "$DEPLOY_DIR/firebase/service-account.json" ]; then
+    echo "    no firebase key at $FIREBASE_KEY — the copy already in $DEPLOY_DIR/firebase stays in use"
+  else
+    echo "    no firebase key at $FIREBASE_KEY — phone notifications stay off; nothing else is affected"
+  fi
 fi
 # The monitoring trees, same directory-mount shape as caddy/ and pgbackrest/ above.
 #
@@ -708,7 +730,7 @@ chmod 600 "$AM_YML" "$AM_PASS"
 # 600 AND ROOT-OWNED WOULD BE 600 AND UNREADABLE: the container runs as uid 65534 and reads both
 # files itself. Ownership is what keeps them off every other account on the box while still being
 # readable by the one process that needs them.
-chown "$ALERTMANAGER_UID:$ALERTMANAGER_UID" "$AM_YML" "$AM_PASS"
+numeric_own "$ALERTMANAGER_UID:$ALERTMANAGER_UID" "$AM_YML" "$AM_PASS"
 unset SMTP_PASSWORD_V AM_TPL
 note "alert routing derived into alertmanager/alertmanager.yml + smtp_password (600, uid $ALERTMANAGER_UID)"
 fi
