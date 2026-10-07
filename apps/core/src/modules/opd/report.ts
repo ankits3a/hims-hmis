@@ -1,5 +1,5 @@
-import { and, eq, gte, inArray, lte, min, ne } from "drizzle-orm";
-import { opdAppointments, opdDepartments, opdDoctors, opdEncounters, patients } from "../../kernel/db/schema";
+import { and, eq, gte, inArray, lte, min } from "drizzle-orm";
+import { opdAppointments, opdDepartments, opdDoctors, opdEncounters, patients, users } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { opdUnitsOn } from "../roster";
 import { loadOpdConfig } from "./config";
@@ -57,7 +57,17 @@ import type { Db } from "../../kernel/db/client";
  *
  * ═══ WHAT IS COUNTED ═══
  *
- *   · **Booked**    — appointments whose slot falls in the period and which stood: `booked`,
+ *   · **Visits opened** (owner, 2026-10-07: *"How would I know how many visits/appointments were
+ *                     opened by front desk?"*) — every visit the desk opened in the period in that
+ *                     department, whatever became of it. It is always
+ *                     `consulted + stillOpen + leftUnseen`; `tally` computes it as that sum and a test
+ *                     holds the identity per department and in the totals.
+ *   · **Left unseen** — a visit that was abandoned: the patient left, or the desk cancelled it. A visit
+ *                     abandoned as a CORRECTION is neither opened nor left: "Wrong department? Move
+ *                     patient" and "change the doctor" abandon one visit and open another for the same
+ *                     person, and counting both would say the desk opened two (`isCorrection`).
+ *   · **Appointments** (`booked` on the wire; the column read "Booked" until 2026-10-07) —
+ *                     appointments whose slot falls in the period and which stood: `booked`,
  *                     `checked_in`, `no_show`. A cancelled, rescheduled-away or needs-rebooking slot
  *                     was not a booking for that day. (The desk brief counts bookings on the day they
  *                     were MADE — a clerk's work; this counts them on the day they are FOR — a
@@ -83,13 +93,21 @@ export type ReportRange = {
 };
 
 export type ReportCounts = {
+  /** Appointments that stood for these days. The wire key stays `booked`; the column reads "Appointments". */
   booked: number;
+  /** Visits the desk opened: always `consulted + stillOpen + leftUnseen`. */
+  opened: number;
   consulted: number;
   new: number;
   revisit: number;
   renewal: number;
   stillOpen: number;
+  /** Abandoned visits that were not a desk correction. */
+  leftUnseen: number;
 };
+
+/** Who opened the visits counted in "Visits opened" — drawn only for a reader allowed staff figures. */
+export type OpenedBy = { name: string; count: number };
 
 export type ReportDepartment = ReportCounts & {
   departmentId: string; code: string; name: string;
@@ -120,6 +138,8 @@ export type OpdReport = ReportRange & {
   patientsConsulted: number;
   newPatients: number;
   excludedSunday: ExcludedSunday | null;
+  /** Null unless the reader may see staff figures (`staff.reports.read`); most visits first. */
+  openedBy: OpenedBy[] | null;
 };
 
 export type ReportPatientRow = {
@@ -146,15 +166,35 @@ export type OpdDepartmentReport = ReportRange & {
   department: ReportDepartment;
   rows: ReportPatientRow[];
   excludedSunday: ExcludedSunday | null;
+  /** As `OpdReport.openedBy`, for this department's visits. */
+  openedBy: OpenedBy[] | null;
 };
 
 const STOOD = ["booked", "checked_in", "no_show"];
-const ZERO: ReportCounts = { booked: 0, consulted: 0, new: 0, revisit: 0, renewal: 0, stillOpen: 0 };
+const ZERO: ReportCounts = { booked: 0, opened: 0, consulted: 0, new: 0, revisit: 0, renewal: 0, stillOpen: 0, leftUnseen: 0 };
 
 type RangeEncounter = {
   visitNo: string; patientId: string; departmentId: string | null; doctorId: string | null;
   status: string; visitType: string; serviceDate: string; consultCompletedAt: Date | null;
+  openedBy: string; openedAt: Date; abandonedAt: Date | null; abandonReason: string | null;
 };
+
+/** What `moveVisitDepartment` writes in front of the clerk's reason (`department-move.ts`). */
+const MOVED_PREFIX = "wrong department";
+
+/**
+ * An abandoned visit that was a desk CORRECTION, not a patient lost: the wrong-department move says so
+ * in its reason, and "change the doctor" abandons a visit and opens the next for the same person on the
+ * same day. Either way the desk opened ONE visit, and the one that stands is the one counted.
+ */
+export function isCorrection(e: RangeEncounter, sameDay: readonly RangeEncounter[]): boolean {
+  if (e.status !== "abandoned") return false;
+  if ((e.abandonReason ?? "").toLowerCase().startsWith(MOVED_PREFIX)) return true;
+  const at = e.abandonedAt;
+  if (at === null) return false;
+  return sameDay.some((o) => o !== e && o.patientId === e.patientId && o.serviceDate === e.serviceDate
+    && o.openedAt.getTime() >= at.getTime());
+}
 
 /**
  * The period the reader asked for, as IST calendar days. Weeks run **Monday to Saturday** (owner,
@@ -264,11 +304,11 @@ async function loadRange(db: Db, range: ReportRange) {
       departmentId: opdEncounters.departmentId, doctorId: opdEncounters.doctorId, status: opdEncounters.status,
       visitType: opdEncounters.visitType, serviceDate: opdEncounters.serviceDate,
       consultCompletedAt: opdEncounters.consultCompletedAt,
+      openedBy: opdEncounters.openedBy, openedAt: opdEncounters.openedAt,
+      abandonedAt: opdEncounters.abandonedAt, abandonReason: opdEncounters.abandonReason,
     }).from(opdEncounters).where(and(
       gte(opdEncounters.serviceDate, range.from), lte(opdEncounters.serviceDate, range.to),
-      ne(opdEncounters.status, "abandoned"),
       eq(opdEncounters.type, "opd"), // 2026-09-30 — a pharmacy visit is no OPD consultation
-
     )),
     db.select({ departmentId: opdAppointments.departmentId, status: opdAppointments.status }).from(opdAppointments)
       .where(and(
@@ -278,7 +318,9 @@ async function loadRange(db: Db, range: ReportRange) {
     loadOpdConfig(db),
   ]);
   const lab = new Set(depts.filter((d) => d.code === LAB_DEPARTMENT_CODE).map((d) => d.id));
-  const visits: RangeEncounter[] = encounters.filter((e) => e.departmentId === null || !lab.has(e.departmentId));
+  const clinical: RangeEncounter[] = encounters.filter((e) => e.departmentId === null || !lab.has(e.departmentId));
+  /* Abandoned visits are read (2026-10-07) so "Left unseen" can be counted; a correction is dropped here. */
+  const visits = clinical.filter((e) => !isCorrection(e, clinical));
   const completed = visits.filter((e) => e.status === "completed");
   const { rootOf, firstOf } = await firstConsultDays(db, completed.map((e) => e.patientId));
   const typeOf = (e: RangeEncounter): PatientType => {
@@ -313,12 +355,35 @@ function tally(
   for (const b of bookings) if (departmentIds.has(b.departmentId)) out.booked += 1;
   for (const e of visits) {
     if (e.departmentId === null || !departmentIds.has(e.departmentId)) continue;
+    if (e.status === "abandoned") { out.leftUnseen += 1; continue; }
     if (e.status !== "completed") { out.stillOpen += 1; continue; }
     out.consulted += 1;
     out[typeOf(e)] += 1;
   }
+  out.opened = out.consulted + out.stillOpen + out.leftUnseen;
   return out;
 }
+
+/**
+ * "Opened by: Asha Devi 12 · Suresh Pillai 9" — the same visits "Visits opened" counts, by who opened
+ * them. Names a person's output, so the CALLER decides whether the reader may have it.
+ */
+async function openedByFor(db: Db, departmentIds: Set<string>, visits: RangeEncounter[]): Promise<OpenedBy[]> {
+  const counts = new Map<string, number>();
+  for (const e of visits) {
+    if (e.departmentId === null || !departmentIds.has(e.departmentId)) continue;
+    counts.set(e.openedBy, (counts.get(e.openedBy) ?? 0) + 1);
+  }
+  if (counts.size === 0) return [];
+  const names = await db.select({ id: users.id, fullName: users.fullName, username: users.username })
+    .from(users).where(inArray(users.id, [...counts.keys()]));
+  const nameOf = new Map(names.map((u) => [u.id, u.fullName.trim() === "" ? u.username : u.fullName]));
+  return [...counts.entries()]
+    .map(([id, count]) => ({ name: nameOf.get(id) ?? "—", count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+export type ReportOptions = { now?: Date; staffFigures?: boolean };
 
 /** 20-U U7 — read-only: which unit held each clinic's OPD on the report's one day. */
 async function unitsFor(db: Db, range: ReportRange): Promise<Map<string, string[]>> {
@@ -335,12 +400,13 @@ function stamp(range: ReportRange, now: Date): { generatedAt: string; provisiona
  * The hospital's period, one row per clinical department. Every active department is listed — a zero
  * is information — and an inactive one only when it still carried visits.
  */
-export async function loadOpdReport(db: Db, range: ReportRange, now: Date = new Date()): Promise<OpdReport> {
+export async function loadOpdReport(db: Db, range: ReportRange, nowOrOptions: Date | ReportOptions = new Date()): Promise<OpdReport> {
+  const { now = new Date(), staffFigures = false }: ReportOptions = nowOrOptions instanceof Date ? { now: nowOrOptions } : nowOrOptions;
   const data = await loadRange(db, range);
   const units = await unitsFor(db, range);
   const departments: ReportDepartment[] = data.depts
     .map((d) => ({ dept: d, counts: tally(new Set([d.id]), data.visits, data.bookings, data.typeOf) }))
-    .filter(({ dept, counts }) => dept.active || counts.booked + counts.consulted + counts.stillOpen > 0)
+    .filter(({ dept, counts }) => dept.active || counts.booked + counts.opened > 0)
     .sort((a, b) => a.dept.name.localeCompare(b.dept.name))
     .map(({ dept, counts }) => ({ departmentId: dept.id, code: dept.code, name: dept.name, units: units.get(dept.id) ?? [], ...counts }));
   const all = new Set(data.depts.map((d) => d.id));
@@ -355,6 +421,7 @@ export async function loadOpdReport(db: Db, range: ReportRange, now: Date = new 
     patientsConsulted: families(consultedHere).size,
     newPatients: families(consultedHere.filter((e) => data.typeOf(e) === "new")).size,
     excludedSunday: await excludedSundayFor(db, range, data.lab),
+    openedBy: staffFigures ? await openedByFor(db, all, data.visits) : null,
   };
 }
 
@@ -398,8 +465,9 @@ export function shortAddress(addressLine: string | null, district: string | null
  * they live as much as who they are. Returns null for a department that does not exist.
  */
 export async function loadOpdDepartmentReport(
-  db: Db, reader: Actor, range: ReportRange, departmentId: string, now: Date = new Date(),
+  db: Db, reader: Actor, range: ReportRange, departmentId: string, nowOrOptions: Date | ReportOptions = new Date(),
 ): Promise<OpdDepartmentReport | null> {
+  const { now = new Date(), staffFigures = false }: ReportOptions = nowOrOptions instanceof Date ? { now: nowOrOptions } : nowOrOptions;
   const data = await loadRange(db, range);
   const dept = data.depts.find((d) => d.id === departmentId);
   if (dept === undefined) return null;
@@ -457,5 +525,6 @@ export async function loadOpdDepartmentReport(
     department: { departmentId: dept.id, code: dept.code, name: dept.name, units: (await unitsFor(db, range)).get(dept.id) ?? [], ...counts },
     rows,
     excludedSunday: await excludedSundayFor(db, range, data.lab),
+    openedBy: staffFigures ? await openedByFor(db, new Set([dept.id]), data.visits) : null,
   };
 }

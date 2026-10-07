@@ -1,6 +1,6 @@
 # Printing the prescription sheet from a counter computer
 
-For a front-desk computer that has its own A4 printer and no hospital print box (decision 0044).
+For a front-desk computer that has its own A4 printer and no hospital print box (decision 0045).
 
 ## What happens with no setup
 

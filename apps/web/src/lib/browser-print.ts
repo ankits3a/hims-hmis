@@ -14,7 +14,7 @@ import type { WirePrintJob, WireRenderedDocument } from "./print-api";
  * using only the prescription slip."*
  *
  * Decision 0002 made printing server-side through a relay inside the hospital, and no relay has
- * been installed, so every job sat `queued`. Decision 0043 keeps the relay as the design and makes
+ * been installed, so every job sat `queued`. Decision 0045 keeps the relay as the design and makes
  * the browser the sanctioned fallback for a counter no relay serves: the SAME server-rendered
  * document (`GET /print/jobs/:id/document`), printed from a hidden frame of this page — no pop-up,
  * no save-as-PDF step — and the job is then told it reached paper here, so a relay installed later

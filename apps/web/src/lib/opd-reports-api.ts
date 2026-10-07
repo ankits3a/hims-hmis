@@ -14,13 +14,20 @@ export type PatientType = "new" | "revisit" | "renewal";
 export type ReportPeriod = "day" | "week" | "month";
 
 export type DayCounts = {
+  /** Appointments that stood for these days — the column reads "Appointments" (it read "Booked" until 2026-10-07). */
   booked: number;
+  /** Visits the desk opened: the server's own `consulted + stillOpen + leftUnseen`. */
+  opened: number;
   consulted: number;
   new: number;
   revisit: number;
   renewal: number;
   stillOpen: number;
+  leftUnseen: number;
 };
+
+/** Who opened the visits — sent only to a reader who holds the staff figures; null to everyone else. */
+export type OpenedBy = { name: string; count: number };
 
 export type DayDepartment = DayCounts & {
   departmentId: string; code: string; name: string;
@@ -41,6 +48,7 @@ export type OpdReport = ReportRange & {
   patientsConsulted: number;
   newPatients: number;
   excludedSunday: ExcludedSunday | null;
+  openedBy: OpenedBy[] | null;
 };
 
 export type DayPatientRow = {
@@ -64,6 +72,7 @@ export type OpdDepartmentReport = ReportRange & {
   department: DayDepartment;
   rows: DayPatientRow[];
   excludedSunday: ExcludedSunday | null;
+  openedBy: OpenedBy[] | null;
 };
 
 /** What the screen holds while the reader chooses: a named period on a day. */

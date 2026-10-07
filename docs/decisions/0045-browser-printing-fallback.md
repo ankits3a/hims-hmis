@@ -1,4 +1,4 @@
-# 0044 — A counter with no print relay prints on its own printer, from the browser
+# 0045 — A counter with no print relay prints on its own printer, from the browser
 
 - **Date:** 2026-10-07   **Status:** Partly open
 - **Area:** printing, front desk, opd

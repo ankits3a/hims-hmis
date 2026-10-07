@@ -1,6 +1,6 @@
 # 0002 — Printing is server-side, through a relay inside the hospital
 
-- **Date:** 2026-09-04   **Status:** Partly open — "no browser printing" is narrowed by 0044 (the browser is the fallback while no relay serves a counter)
+- **Date:** 2026-09-04   **Status:** Partly open — "no browser printing" is narrowed by 0045 (the browser is the fallback while no relay serves a counter)
 - **Area:** printing, opd, front desk, vitals, billing, pharmacy, lab, radiology
 
 ## Decision
