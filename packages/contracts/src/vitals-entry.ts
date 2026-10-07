@@ -43,6 +43,8 @@ export type WireBenchRow = {
   /** What the paper says (owner 2026-10-06): the visit number, and the code the token is printed with (`ORT-4`). Optional: an older server sends neither. */
   visitNo?: string; departmentCode?: string | null;
   doctorId: string; doctorName: string; serviceDate: string;
+  /** Owner 2026-10-07 — "new" | "revisit" | "renewal"; the bay offers "guardian with reports" on a revisit only. Optional: an older server sends none. */
+  visitType?: string;
   patient: WirePatientSummary | null;
   benchState: WireBenchState | null;
   recallAt: string | null;

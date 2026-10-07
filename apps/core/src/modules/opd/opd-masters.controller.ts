@@ -66,6 +66,8 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
    * 409's meaning, and it is what lets the reception seat offer "add to the visit already open".
    */
   "lab_walkin_already_open",
+  // Owner 2026-10-07 — a guardian-with-reports mark on a visit that is not a revisit (`patient-absent.ts`).
+  "patient_absent_revisit_only",
 ]);
 
 function opdStatus(code: OpdErrorCode): number {
@@ -74,7 +76,8 @@ function opdStatus(code: OpdErrorCode): number {
   // `opd.visits.open`; `patients.register` is asserted in the service (the decorator writes one
   // metadata key, so a second `@RequirePermission` would silently replace the first), and its
   // refusal must read as 403 rather than falling through to the 400 default.
-  if (code === "registration_not_permitted" || code === "transcription_not_permitted" || code === "paper_consult_not_permitted") return 403;
+  if (code === "registration_not_permitted" || code === "transcription_not_permitted" || code === "paper_consult_not_permitted"
+    || code === "patient_absent_not_permitted") return 403;
   if (code.endsWith("_state_conflict") || code.startsWith("duplicate_") || OPD_CONFLICT_CODES.has(code)) return 409;
   return 400; // invalid_*, vitals_incomplete, reason_required, empty_prescription, … — a client mistake
 }

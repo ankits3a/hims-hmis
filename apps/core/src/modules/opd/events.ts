@@ -231,6 +231,17 @@ export const vitalsRecorded = defineEvent("vitals.recorded", MODULE, z.object({
   noticeCount: z.number().int().nonnegative().default(0),
 }));
 
+/**
+ * Owner 2026-10-07 — a revisit where the guardian came with the reports and the patient did not.
+ * The visit skipped the bay and joined the doctor's line (`patient-absent.ts`). The guardian's NAME
+ * is on the encounter row only, never in the ledger: `named` says whether one was given.
+ */
+export const visitPatientAbsent = defineEvent("visit.patient_absent", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
+  named: z.boolean(),
+}));
+
 export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, z.object({
   encounterId: id, patientId: id, vitalsId: id, ...where,
   flags: z.array(dangerFlagSchema).min(1),

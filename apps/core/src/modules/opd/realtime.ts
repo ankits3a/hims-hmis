@@ -37,6 +37,9 @@ export const OPD_REALTIME_NAMES = [
   // same topic when the visit still has a doctor-day; an amendment after the token is done carries
   // nulls and simply reaches no queue topic, which is correct rather than a gap.
   "vitals.amended",
+  // Owner 2026-10-07 — the guardian-with-reports revisit skipped the bay: the doctor's line gains a
+  // token and the bench loses one, on the same doctor-day topic a vitals save repaints.
+  "visit.patient_absent",
 ];
 type P = { doctorId?: string; fromDoctorId?: string; toDoctorId?: string; serviceDate?: string; roomId?: string | null; encounterId?: string };
 

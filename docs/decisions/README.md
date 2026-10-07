@@ -52,3 +52,4 @@ in its Status line and names the record that overturned it.
 | 0040 | 2026-09-30 | [Production patient data was test data: copied to staging, wiped from production](0040-production-patient-data-wipe.md) | data, privacy | Ruled |
 | 0041 | 2026-10-03 | [Two-site production: hospital server primary, automatic cloud failover](0041-two-site-production.md) | hosting, production | Partly open |
 | 0042 | 2026-10-07 | [The staff app opens on "My day": approvals from the card, deadlines by kind, a team card for supervisors](0042-app-home-my-day.md) | mobile, approvals, auth | Partly open |
+| 0043 | 2026-10-07 | [OPD vitals: no RR tile, and a guardian with reports may skip the bay on a revisit](0043-opd-rr-hidden-and-guardian-visit.md) | opd, vitals, front desk | Partly open |

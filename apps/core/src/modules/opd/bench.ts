@@ -58,6 +58,8 @@ export type BenchRow = {
   doctorId: string;
   doctorName: string;
   serviceDate: string;
+  /** Owner 2026-10-07 — the bay offers "guardian with reports" on a REVISIT row only (`patient-absent.ts`). */
+  visitType: string;
   patient: PatientSummary | null;
   benchState: BenchState | null;
   recallAt: Date | null;
@@ -167,6 +169,12 @@ export async function listBench(
     const encounter = encounterById.get(entry.encounterId);
     const session = sessionById.get(entry.sessionId);
     if (encounter === undefined || session === undefined) continue;
+    /*
+      Owner 2026-10-07 — a guardian's visit has left the bay: nobody is there to weigh, and the
+      token is already in the doctor's line. Its entry is `waiting` like a charted patient's, so
+      without this it would sit on the bench as a row with no ✓ that no save could ever clear.
+    */
+    if (encounter.patientAbsentAt !== null) continue;
     const doctor = doctorById.get(session.doctorId);
     if (doctor === undefined) continue;
     const state = (entry.benchState ?? null) as BenchState | null;
@@ -176,6 +184,7 @@ export async function listBench(
       encounterId: entry.encounterId, entryId: entry.id, tokenNo: entry.tokenNo, seq: entry.seq,
       visitNo: encounter.visitNo, departmentCode: codeByDepartment.get(doctor.departmentId) ?? null,
       doctorId: doctor.id, doctorName: doctor.displayName, serviceDate: session.serviceDate,
+      visitType: encounter.visitType,
       patient: summaryByPatient.get(encounter.patientId) ?? null,
       benchState: state, recallAt: entry.recallAt,
       vitalsDone: vitalsId !== null, vitalsId,
@@ -259,6 +268,7 @@ export async function setBenchState(
       encounterId, entryId: entry.id, tokenNo: entry.tokenNo, seq: entry.seq,
       visitNo: encounter.visitNo, departmentCode: department?.code ?? null,
       doctorId: doctor.id, doctorName: doctor.displayName, serviceDate: session.serviceDate,
+      visitType: encounter.visitType,
       patient: summary ?? null, benchState: input.state, recallAt,
       // Read, never assumed: a patient can be sent to the chairs AFTER a first chart exists
       // (Ramdev's 172/104 is saved before he sits down), and a row that claimed otherwise would

@@ -10,3 +10,4 @@ export * from "./eye-codes";
 export * from "./imaging-coded";
 export * from "./obstetric";
 export * from "./app-home";
+export * from "./patient-absent";

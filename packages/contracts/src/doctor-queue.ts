@@ -39,6 +39,12 @@ export type WireQueueEntryView = {
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     referredFromEncounterId?: string | null; feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
+    /**
+     * Owner 2026-10-07 — the guardian came with the reports; the patient did not, and no vitals were
+     * taken. Same shape as `WirePatientAbsent` in `patient-absent.ts` (this file imports nothing).
+     * Optional: an older server sends none.
+     */
+    patientAbsent?: { relation: string; name: string | null; by: string; at: string } | null;
   };
   patient: WireQueuePatient | null;
   feeStatus: WireFeeStatus;

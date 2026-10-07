@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { api } from "../../lib/api";
 import { listDepartments, listQueueSummary, moveVisitDepartment, opdErrorMessage, todayIst } from "../../lib/opd-api";
+import { GuardianAbsentAction, PatientAbsentNotice } from "../../components/patient-absent";
 import { useAuth } from "../../lib/auth";
 import { useDoctorLabel } from "../../lib/use-doctor-label";
 import { dayMonthIst } from "../../lib/format";
@@ -9,7 +11,7 @@ import { deptQueues, rs, tokenLabel } from "./model";
 import { MoveDepartmentForm } from "./move-department";
 import { PapersSheet } from "./papers";
 import { useDeskOptional } from "./session";
-import type { WireTimelineItem } from "../../lib/opd-api";
+import type { WirePatientAbsent, WireTimelineItem } from "../../lib/opd-api";
 
 /** Only these move — once the doctor has seen the patient, a move is the doctor's internal referral. */
 const MOVABLE = new Set(["registered", "waiting"]);
@@ -60,9 +62,27 @@ export function VisitCard({
   const doctorLabel = d?.doctorLabel ?? ownLabel;
   const deptList = d !== null ? d.departments : (departments.data?.items ?? []);
 
+  /*
+    OWNER 2026-10-07 — the guardian came with the reports. Whether this visit may skip the bay turns on
+    three facts the desk's own state does not carry (the kind of visit, where it stands now, whether it
+    is already marked), so the card reads the visit itself — `opd.visits.read`, the grant every seat
+    that opens this card holds. A read that fails offers nothing, which is the safe answer.
+  */
+  const detail = useQuery({
+    queryKey: ["d1", "visit-detail", current.encounterId],
+    queryFn: () => api<{ encounter: { status: string; visitType: string; serviceDate: string }; patientAbsent?: WirePatientAbsent | null }>(
+      "GET", `/opd/visits/${encodeURIComponent(current.encounterId)}`),
+    enabled: can("opd.visits.open") || can("opd.vitals.record"),
+    retry: false,
+  });
+  const absent = detail.data?.patientAbsent ?? null;
+  const mayMarkAbsent = absent === null && detail.data !== undefined
+    && detail.data.encounter.visitType === "revisit" && detail.data.encounter.status === "registered"
+    && detail.data.encounter.serviceDate === today;
+
   const inHand = d !== null && d.s.visit !== null && d.s.visit.encounterId === current.encounterId ? d.s.visit : null;
   const v = current.visit;
-  const status = v?.status ?? (inHand !== null ? "registered" : null);
+  const status = detail.data?.encounter.status ?? v?.status ?? (inHand !== null ? "registered" : null);
   const departmentId = v?.departmentId ?? inHand?.departmentId ?? null;
   const departmentName = v?.departmentName ?? inHand?.departmentName ?? null;
   const doctorName = v?.doctorName ?? inHand?.doctorName ?? null;
@@ -103,6 +123,22 @@ export function VisitCard({
         {done === null ? null : (
           <p role="status" data-testid="visit-card-moved" style={{ margin: "10px 0 0", fontSize: 12, fontWeight: 600, color: "var(--green)" }}>{done}</p>
         )}
+
+        {/* ═══ THE GUARDIAN CAME WITH THE REPORTS (owner 2026-10-07) ═══ */}
+        {absent !== null ? (
+          <div style={{ marginTop: 10 }}><PatientAbsentNotice absent={absent} testId="visit-card-absent-notice" /></div>
+        ) : mayMarkAbsent ? (
+          <div style={{ marginTop: 10, display: "flex" }}>
+            <GuardianAbsentAction
+              encounterId={current.encounterId} testId="visit-card-absent"
+              onDone={() => {
+                setDone(t("patientAbsent.done"));
+                void qc.invalidateQueries({ queryKey: ["d1"] });
+                void qc.invalidateQueries({ queryKey: ["opd-timeline"] });
+              }}
+            />
+          </div>
+        ) : null}
 
         {/* ═══ CHANGE DEPARTMENT ═══ */}
         {!can("opd.visits.open") ? null : status === "abandoned" ? (

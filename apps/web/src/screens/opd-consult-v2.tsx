@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
+import { PatientAbsentNotice } from "../components/patient-absent";
 import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import { briefRefill, briefResults, fetchPatientDispenses, fetchPatientImaging, fetchPatientResults, shortDay } from "../lib/brief-history";
@@ -169,6 +170,8 @@ const vtMeaning = (vt: string): string => `opdConsultV2.vt.${vt === "new" || vt 
 type BriefVisit = {
   encounter: { id: string; visitNo: string; patientId: string; visitType: string; referredFromEncounterId?: string | null };
   deskComplaint?: { text: string; by: string; at: string } | null;
+  /** Owner 2026-10-07 — the guardian came with the reports; no vitals were taken. */
+  patientAbsent?: { relation: string; name: string | null } | null;
   vitals: WireVitals[];
 };
 
@@ -250,6 +253,9 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
       <p data-testid="brief-visit-meaning" style={{ margin: "-6px 0 0", fontSize: 13.5, fontWeight: 600, color: vt === "renewal" ? "var(--gold)" : "var(--green)" }}>
         {t(vtMeaning(vt), { date: last?.serviceDate ?? "—" })}
       </p>
+      {visit.data?.patientAbsent != null && (
+        <PatientAbsentNotice absent={visit.data.patientAbsent} testId="brief-patient-absent" />
+      )}
       {reminder.data != null && (
         <p data-testid="brief-reminder" className="pill" style={{ margin: 0, alignSelf: "flex-start", color: "var(--gold)", fontWeight: 600 }}>
           {t("opdConsultV2.reminderLine", { text: reminder.data.text })}
