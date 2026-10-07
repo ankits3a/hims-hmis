@@ -1,7 +1,8 @@
 # Self-improving suggestions — plan (2026-10-07)
 
 Decision records: `docs/decisions/0050-self-improving-suggestions.md`, `0051` (the AI reviewer for medicine
-aliases; US FDA labels as the first drug-reference layer) and `0052` (DDInter major interactions; Indian gap). Read them first; they hold the owner's words. This plan is the spec. Nothing here is built. Two independent reviews shaped it; §15 says where they
+aliases; US FDA labels as the first drug-reference layer) `0052` (DDInter major interactions; Indian gap) and `0053` (no paid drug database; the CRK formulary signed
+by Pharmacology). Read them first; they hold the owner's words. This plan is the spec. Nothing here is built. Two independent reviews shaped it; §15 says where they
 differed and what was chosen.
 
 ## 1. Goal, in the owner's words
@@ -389,8 +390,7 @@ dedication." Every response also carries "Do not rely on openFDA to make decisio
 The text is written by manufacturers. Showing it to clinicians as labelled reference text is the owner's
 decision (he agreed to these terms; decision 0051).
 
-**Open:** summarising label text into short, phone-readable text is a model writing clinical text. It is a
-later step and needs the owner's explicit ruling.
+**Short, phone-readable text** comes from the signed CRK formulary (§11c), never from an unsigned summary.
 
 ### 11a. Indian gap — sources in order (owner 2026-10-07: "yes. I will go with your recommendation")
 
@@ -407,18 +407,29 @@ Sources, used in this order; each entry names its source and date on screen:
 3. **EMA product information and referral restriction texts** (credit EMA).
 4. **Medsafe New Zealand data sheets**, verbatim only (credit Medsafe; no summarising).
 5. **LiverTox and LactMed sections** (public domain).
-6. **National Formulary of India 2026** — only after the Indian Pharmacopoeia Commission's permission.
-7. **Wikipedia** as a labelled last resort — needs the owner's separate yes.
-8. **A CIMS India licence** for combinations and brands — on a quote.
+6. **PubChem** (US NIH) for class, mechanism and description — its own annotations only, cited.
+7. **National Formulary of India 2026** — only after the Indian Pharmacopoeia Commission's permission.
+8. **Wikipedia** as a labelled last resort — needs the owner's separate yes.
+
+A paid CIMS or MIMS licence is NOT taken (owner 2026-10-07: no budget for a drug database; decision 0053). It
+stays noted only as a paid option.
 
 Wording for any foreign source: "Reference from <source>, <country>, <date>. The product sold in India may
 differ in strength, dose and approved use."
 
-**Owner actions:** two emails — to the IPC for permission to use the National Formulary of India 2026, and to
-CIMS India for a quote.
+**Owner action:** one email — to the IPC for permission to use the National Formulary of India 2026, sent to the
+address published on ipc.gov.in (the supplier says lab.ipc@gov.in / ipc@gov.in; unverified — check the site).
 
-**Not permitted:** scraping Apollo, 1mg or Medindia; the BNF and Martindale need paid licences; the Indian
-Pharmacopoeia is a quality-standards compendium, not a source of uses or side effects.
+**Not permitted / not done:** scraping Apollo, 1mg, Netmeds or Medindia, including their JSON-LD (1mg's terms,
+read 2026-10-07, forbid automated scraping and reproduction; Apollo's terms are unread and are the owner's
+legal call — advised against, and unnecessary with a signed formulary). The BNF and Martindale need paid
+licences. The WHO Model Formulary 2008 is all-rights-reserved and old. The Indian Pharmacopoeia is a
+quality-standards compendium, not a source of uses or side effects. The Jan Aushadhi list is names and prices
+only; it may be used as a flag.
+
+**PubChem:** NLM's policy reads "Information that is created by or for the US government on this site is
+within the public domain." Depositor-supplied content can carry its own licence, so only PubChem-authored
+and public-domain annotation sources are used, each cited.
 
 **Unverified:** whether the NHS API issues a key to an organisation outside the UK; the contents of NFI 2026
 and the terms of NFI Online; MHRA and TGA reuse terms are unclear, so neither is used.
@@ -460,6 +471,52 @@ Facts, verified on the owner's file `/opt/hmis-context/cds-bundle/incoming/hmis_
 
 **Licence:** DDInter is CC BY-NC-SA 4.0. Treating a hospital's internal clinical use as non-commercial is the
 owner's accepted judgement (decision 0052).
+
+### 11c. Formulary F — the CRK formulary, signed by Pharmacology (owner 2026-10-07: "yes, Pharmacology department take it on.")
+
+The hospital builds its own formulary. The Pharmacology department of CRK Medical College reviews and signs
+each medicine's entry. This runs after or alongside phase D.
+
+1. **Scope:** about 300 medicines first — the 350 stocked items trimmed by use. No prescription data exists
+   yet, so stock decides first, then the scribe and phone data as it arrives.
+2. **An AI model DRAFTS a short structured entry per generic:** uses; how to take; common side effects; serious
+   side effects (when to stop or see a doctor); warnings and who should not take it; pregnancy and
+   breastfeeding; children; elderly, kidney and liver where the sources say; interactions worth knowing;
+   storage; a two-line patient advice in English and Hindi.
+   - Only from sources we may legally use: openFDA labels; NHS Medicines A–Z; EMA product information and
+     referral restrictions; Medsafe data sheets (read for facts — their text is not copied into a draft beyond
+     short quotations, since Medsafe's permission is for unchanged reproduction); LiverTox / LactMed; PubChem
+     for class and mechanism; NFI only if the IPC permits.
+   - Every statement carries its source reference. No source → the field stays empty and says so.
+   - Never a dose rule or a mg/kg computed by the model.
+   - A combination is drafted from its components with the line "no reference for the combination as a
+     product" and its CDSCO approval status as a fact.
+3. **A faculty reviewer opens the draft beside its sources, edits, and SIGNS:** name, designation, date;
+   audited; versioned. Re-review is due in 12 months or when a source changes. High-alert medicines take a
+   second signature.
+4. **Only signed entries are shown** to doctors, staff and patient-facing surfaces, labelled "CRK Medical
+   College formulary · reviewed by <name>, <date>". Unsigned drafts are visible only to reviewers. Where no
+   signed entry exists the screen shows the labelled source layer (FDA and the rest) or "No reference
+   information yet".
+5. **A reviewer worklist with progress** (a target of 10 a day; counts by status) and a weekly line in the
+   owner's digest.
+6. **Model:** a strong model from the owner-approved vendor (OpenAI; the model id is a setting), not a small
+   local model — the human signature is the safeguard. Inputs are public source texts only; no patient data.
+   Cost is measured on the first 20 drafts and reported.
+7. **Store:** signed entries live in the existing `formulary_monographs` (PRs #443–#445), which was built for
+   exactly this and is empty.
+
+**What exists (read 2026-10-07):** `formulary_monographs` holds jsonb sections `patient`, `prescriber`,
+`nursing`, `affordability` per generic with `status` draft → reviewed, `reviewed_by`, `reviewed_at` and
+`source_version`; an edit makes it a draft again; readers never see a draft; the reviewer cannot be the person
+who last wrote it; `formulary.monograph.review` exists and is held by `medical_superintendent` only.
+**What is added:** the permission granted to the named Pharmacology faculty and residents the owner assigns
+(a role, with the seed-roles counts and README updated); per-statement source references; the reviewer's
+designation; the re-review due date; the second signature for high-alert medicines; the drafting job and its
+worklist; the on-screen label. About 8 days; 1 migration.
+
+This resolves the open item on summarising label text: model-drafted text is allowed ONLY behind a named
+human signature.
 
 ## 12. Measuring it
 
@@ -513,6 +570,6 @@ version of the desk's learned vocabulary tail, an example set, a hidden-suggesti
 - Whether sending masked complaint phrases to a text model for alias proposals is covered by the privacy
   assessment (decision 0048 lists text-model sorting as open). Medicine terms and catalogue rows carry no
   patient data.
-- Summarising FDA label text for the phone (§11) — needs the owner's explicit ruling.
+- Which Pharmacology faculty and residents hold the review permission (§11c) — the owner names them.
 - Wikipedia as a last-resort drug reference (§11a) — needs the owner's separate yes.
-- The IPC's permission and the CIMS quote (§11a) — the owner's two emails.
+- The IPC's permission (§11a) — the owner's one email.

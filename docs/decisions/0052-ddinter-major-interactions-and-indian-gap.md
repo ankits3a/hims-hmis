@@ -9,12 +9,12 @@ status: stable
 ruling: ruled
 tags: [formulary, opd, doctor, pharmacy, safety]
 supersedes: []
-superseded_by: []
+superseded_by: ["0053"]
 sources: []
 ---
 # 0052 — DDInter major interactions as a second layer; the Indian drug-reference gap filled from free, legal sources in order
 
-- **Date:** 2026-10-07   **Status:** Ruled
+- **Date:** 2026-10-07   **Status:** Ruled (the CIMS quote was dropped by 0053)
 - **Area:** formulary, opd, doctor, pharmacy
 
 ## The owner's words (2026-10-07)
