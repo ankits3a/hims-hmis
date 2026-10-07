@@ -8,3 +8,16 @@ import { configure } from "@testing-library/react-native";
 */
 configure({ asyncUtilTimeout: 15_000 });
 jest.setTimeout(60_000);
+
+/*
+  The microphone (expo-audio) and the clip's file (expo-file-system) are native modules with no
+  JavaScript half under jest. The consult screen's own suite replaces the recorder wholesale; every
+  other suite that merely IMPORTS the doctor's line needs these to load.
+*/
+jest.mock("expo-audio", () => ({
+  useAudioRecorder: () => ({ uri: null, prepareToRecordAsync: async () => undefined, record: () => undefined, stop: async () => undefined }),
+  getRecordingPermissionsAsync: async () => ({ granted: false, canAskAgain: true }),
+  requestRecordingPermissionsAsync: async () => ({ granted: false }),
+  setAudioModeAsync: async () => undefined,
+}));
+jest.mock("expo-file-system", () => ({ File: class { arrayBuffer(): Promise<ArrayBuffer> { return Promise.resolve(new ArrayBuffer(0)); } delete(): void { /* nothing */ } } }));

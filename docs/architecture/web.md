@@ -50,6 +50,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/opd/display` | `apps/web/src/screens/opd-display` |
 | `/opd/paper-consults` | `apps/web/src/screens/paper-consults` |
 | `/opd/scribe` | `apps/web/src/screens/opd-scribe` |
+| `/opd/sets` | `apps/web/src/screens/opd-phone-consult` |
 | `/opd/slips` | `apps/web/src/screens/slip-capture` |
 | `/opd/vitals` | `apps/web/src/screens/vitals-bay` |
 | `/opd/vitals/bay` | `(redirect)` |

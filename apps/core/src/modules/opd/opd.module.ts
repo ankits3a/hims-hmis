@@ -13,6 +13,7 @@ import { OpdMastersController } from "./opd-masters.controller";
 import { OpdVocabularyController } from "./opd-vocabulary.controller";
 import { OpdReportsController } from "./opd-reports.controller";
 import { OpdAdviceController } from "./opd-advice.controller";
+import { OpdPhoneConsultController } from "./opd-phone-consult.controller";
 import { OpdCdsController } from "./opd-cds.controller";
 import { OpdQueueController } from "./opd-queue.controller";
 import { OpdVisitsController } from "./opd-visits.controller";
@@ -50,7 +51,7 @@ class OpdRealtimeRegistrar implements OnModuleInit {
  */
 @Module({
   imports: [RealtimeModule],
-  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController, OpdPaperController],
+  controllers: [OpdMastersController, OpdVisitsController, OpdQueueController, OpdCdsController, OpdAdviceController, OpdVocabularyController, OpdReportsController, OpdPaperController, OpdPhoneConsultController],
   providers: [OpdRealtimeRegistrar],
 })
 export class OpdModule implements OnModuleInit {

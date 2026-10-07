@@ -3,6 +3,7 @@ import * as LocalAuthentication from "expo-local-authentication";
 import { Platform } from "react-native";
 import { api, ApiError, NetworkError, xhrPost } from "./api";
 import { deviceClaim } from "./device";
+import { draftStore } from "./consult/draft";
 import { tokenStore } from "./storage";
 import type { EffectivePermissions } from "./seats";
 
@@ -80,7 +81,7 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
           return;
         }
         if (e instanceof ApiError && e.status === 401) {
-          await tokenStore.clear();
+          await tokenStore.clear(); await draftStore.clearAll();
           setToken(null);
           setState({ status: "signedOut", note: "expired" });
           return;
@@ -151,7 +152,7 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
   );
 
   const forgetAndSignIn = useCallback(async () => {
-    await tokenStore.clear();
+    await tokenStore.clear(); await draftStore.clearAll();
     setToken(null);
     setState({ status: "signedOut" });
   }, []);
@@ -174,7 +175,7 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
         return await api<T>(method, path, { token, body, fetcher, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) });
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
-          await tokenStore.clear();
+          await tokenStore.clear(); await draftStore.clearAll();
           setToken(null);
           setState({ status: "signedOut", note: "expired" });
         }
@@ -192,7 +193,7 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
         return await xhrPost<T>(path, token, body, onProgress);
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
-          await tokenStore.clear();
+          await tokenStore.clear(); await draftStore.clearAll();
           setToken(null);
           setState({ status: "signedOut", note: "expired" });
         }
