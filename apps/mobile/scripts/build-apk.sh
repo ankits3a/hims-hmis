@@ -69,6 +69,16 @@ else
   echo "notifications: NOT in this build — no $GOOGLE_SERVICES yet (BUILDING.md, Notifications)"
 fi
 
+# OVER-THE-AIR UPDATES: the native fingerprint is computed ONCE, here, before Gradle writes anything
+# into node_modules, and handed to the build — so the APK carries exactly the value
+# scripts/publish-ota.sh computes from the same commit (fingerprint.config.js).
+RUNTIME_WANTED=""
+if [ -r "$APP_DIR/ota/certificate-$ENV_NAME.pem" ]; then
+  RUNTIME_WANTED="$(cd "$APP_DIR" && APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD npx expo-updates runtimeversion:resolve --platform android 2>/dev/null \
+    | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).runtimeVersion))')"
+  [[ "$RUNTIME_WANTED" =~ ^[a-f0-9]{40}$ ]] || { echo "could not compute the native fingerprint" >&2; exit 1; }
+fi
+
 build() {
   cd "$APP_DIR"
   APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD CI=1 npx expo prebuild --platform android --clean --no-install
@@ -88,11 +98,11 @@ build() {
     echo "android.injected.signing.key.password=$HMIS_KEY_PASSWORD"
   } >> "$props"
   trap 'sed -i "/^android.injected.signing/d" "$APP_DIR/android/gradle.properties" 2>/dev/null || true' EXIT
-  (cd android && APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD nice -n 19 ionice -c3 ./gradlew assembleRelease --no-daemon --max-workers=2)
+  (cd android && EXPO_UPDATES_FINGERPRINT_OVERRIDE="$RUNTIME_WANTED" APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD nice -n 19 ionice -c3 ./gradlew assembleRelease --no-daemon --max-workers=2)
 }
 
 export -f build
-export APP_DIR APP_ENV VC HMIS_PUSH_IN_BUILD HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
+export APP_DIR APP_ENV VC HMIS_PUSH_IN_BUILD RUNTIME_WANTED HMIS_KEYSTORE HMIS_KEY_ALIAS HMIS_STORE_PASSWORD HMIS_KEY_PASSWORD
 "$LOCK" run mobile-apk bash -c build
 
 BUILT="$APP_DIR/android/app/build/outputs/apk/release/app-release.apk"
@@ -120,8 +130,8 @@ fi
 # certificate and came out without a fingerprint would silently never update — refused here instead.
 RUNTIME="$(unzip -p "$BUILT" assets/fingerprint 2>/dev/null || true)"
 if [ -r "$APP_DIR/ota/certificate-$ENV_NAME.pem" ]; then
-  [[ "$RUNTIME" =~ ^[a-f0-9]{40}$ ]] \
-    || { echo "REFUSED: the APK carries no native fingerprint (assets/fingerprint) — over-the-air updates would never reach it" >&2; exit 1; }
+  [ "$RUNTIME" = "$RUNTIME_WANTED" ] \
+    || { echo "REFUSED: the APK's native fingerprint (assets/fingerprint: '$RUNTIME') is not this commit's ($RUNTIME_WANTED) — over-the-air updates would never reach it" >&2; exit 1; }
   echo "over-the-air updates: IN this build (runtime $RUNTIME)"
 else
   RUNTIME=""
