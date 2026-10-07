@@ -2,6 +2,7 @@ import { api, ApiError } from "./api";
 import type { WireMatchLane } from "./patients-api";
 import type { WireContinuityAnchor } from "./walk-in-routing";
 import type { Eye, TaperStep } from "./eye-line";
+import type { RxLineSource } from "../../../../packages/contracts/src/rx-line";
 import type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
 export { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent";
 export type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
@@ -384,12 +385,16 @@ export type WireRxLine = {
   eye?: Eye | null; taper?: TaperStep[] | null;
   /** The catalogue medicine the line was picked as — what the safety checks resolve salts from. Free typing has none. */
   medicineId?: string | null;
+  /** Decision 0050 P0 — typed, searched, suggested, from a set, a repeat, a voice note or the desk's paper. Audit and learning only. */
+  source?: RxLineSource | null;
 };
 
 /** An editor row as typed — blanks allowed; `durationDays` is the box's text. Not a prescription line. */
 export type WireRxDraftLine = {
   drug: string; dose: string; route: string; frequency: string; durationDays: string | number | null;
   instructions: string; noSubstitution: boolean; medicineId?: string | null; eye?: Eye | null; taper?: TaperStep[] | null;
+  /** Decision 0050 P0 — where the row came from; absent on a row typed by hand and on every older draft. */
+  source?: RxLineSource;
 };
 
 export type WirePrescription = {

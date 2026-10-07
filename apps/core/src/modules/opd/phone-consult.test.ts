@@ -344,7 +344,10 @@ describe("phone consult — sets and the spoken note", () => {
       expect(rows.map((r) => [r.kind, r.term, r.stage, r.userId])).toEqual([["medicine", "zerodol sp", "search", dra.userId]]);
       // The columns ARE the promise: there is nowhere for a patient or a visit to be written.
       expect(Object.keys(rows[0]!).sort()).toEqual(["createdAt", "id", "kind", "stage", "term", "userId"]);
-      expect(Object.keys((await db.select().from(opdSuggestionEvents))[0]!).sort()).toEqual(["createdAt", "id", "kind", "outcome", "source", "userId"]);
+      // Decision 0050 P0 widened the suggestion log: it may name the VISIT and the suggestion (learning needs both). Still no patient, and no free text.
+      expect(Object.keys((await db.select().from(opdSuggestionEvents))[0]!).sort()).toEqual([
+        "batchId", "contextKey", "createdAt", "departmentId", "doctorId", "encounterId", "id", "itemKey", "items", "kind", "outcome", "rankShown", "source", "sourceLevel", "surface", "userId",
+      ]);
       const m = await signalsMeter(db, MON);
       expect(m.suggestions).toEqual([{ source: "typed", accepted: 0, dismissed: 0, manual: 1 }, { source: "voice", accepted: 1, dismissed: 1, manual: 0 }]);
       expect(m.misses).toEqual([expect.objectContaining({ kind: "medicine", term: "zerodol sp", times: 1 })]);

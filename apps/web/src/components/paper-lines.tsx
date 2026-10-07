@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { DrugField } from "./drug-field";
 import type { WireHeldAlert, WireRxLine } from "../lib/opd-api";
+import { RX_FREQUENCIES, snapFrequency } from "../../../../packages/contracts/src/rx-line";
 
 /**
  * ═══ THE PRESCRIPTION, TYPED FROM PAPER — ONE EDITOR FOR THE SCRIBE AND THE DOCTOR (owner 2026-10-06) ═══
@@ -29,7 +30,8 @@ export const EMPTY_LINE: WireRxLine = {
   drug: "", dose: "", route: "oral", frequency: "", durationDays: null, instructions: null, noSubstitution: false,
 };
 
-const FREQUENCIES = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT", "Once a week"] as const;
+/* Decision 0050 P0 — the ONE closed set every screen writes (`contracts/rx-line.ts`), and one common "other". */
+const FREQUENCIES = [...RX_FREQUENCIES, "Once a week"] as const;
 const ROUTES = ["oral", "topical", "inhaled", "eye", "ear", "nasal", "IM", "IV", "SC", "rectal", "sublingual"] as const;
 
 /** A line somebody has started: it has a medicine name. Blank editor rows are not lines. */
@@ -46,8 +48,12 @@ export function incompleteAt(lines: WireRxLine[]): number[] {
 export function cleanLines(lines: WireRxLine[]): WireRxLine[] {
   return startedLines(lines).map(({ line }) => ({
     ...line,
-    drug: line.drug.trim(), dose: line.dose.trim(), frequency: line.frequency.trim(), route: line.route.trim(),
+    drug: line.drug.trim(), dose: line.dose.trim(), route: line.route.trim(),
     instructions: line.instructions === null || line.instructions.trim() === "" ? null : line.instructions.trim(),
+    /* The paper said "1-0-1"; the record says BD. Whatever is not plainly one of the set stays as typed. */
+    frequency: snapFrequency(line.frequency),
+    /* Decision 0050 P0 — a line on this table was typed from the doctor's paper, whoever corrects it after. */
+    source: "paper" as const,
   }));
 }
 
@@ -148,7 +154,10 @@ export function PaperLinesEditor({
                 <input
                   className="in" data-testid={`${idPrefix}-freq-${String(i)}`} value={l.frequency} disabled={disabled}
                   list={`${idPrefix}-freqs`} aria-invalid={missFreq} placeholder="BD"
-                  onChange={(e) => { patch(i, { frequency: e.target.value }); }} onKeyDown={onRowKey(i)}
+                  onChange={(e) => { patch(i, { frequency: e.target.value }); }}
+                  /* Leaving the box snaps "1-0-1", "bd", "twice daily" to BD; a sentence of the doctor's own is left alone. */
+                  onBlur={() => { const snapped = snapFrequency(l.frequency); if (snapped !== l.frequency) patch(i, { frequency: snapped }); }}
+                  onKeyDown={onRowKey(i)}
                 />
               </label>
               <label className="pl-c days">

@@ -761,6 +761,8 @@
       "draftSaved": "draft · saved on this phone",
       "draftNotSent": "draft · not sent",
       "emptyHint": "Tap a button below, repeat the last prescription, or use one of your sets.",
+      "childNoDose": "Dose not suggested for a child — enter it.",
+      "dontSuggest": "Don't suggest {{name}}",
       "fromRepeat": "copied from {{date}}",
       "fromSet": "from “{{name}}”",
       "five": {

@@ -11,12 +11,15 @@ import { listRxSets, retireRxSet, saveRxSet, signRxSet } from "./rx-sets";
 import {
   loadVoiceSettings, recordVoiceKept, saveVoiceSettings, transcribeConsultNote, voiceMeter, voiceStatus,
 } from "./consult-voice";
-import { SIGNAL_KINDS, SIGNAL_OUTCOMES, SIGNAL_SOURCES, guardedMedicineSearch, recordSignals } from "./consult-guards";
+import {
+  MISS_KINDS, SIGNAL_KINDS, SIGNAL_OUTCOMES, SIGNAL_SOURCES, SIGNAL_SURFACES, doctorSuggestionsOn, guardedMedicineSearch, hiddenSuggestions, recordSignals,
+  setDoctorSuggestions,
+} from "./consult-guards";
 import { OpdError } from "./errors";
 import { doctorForUser } from "./masters";
 import { parsed, toHttp } from "./opd-masters.controller";
 import type { RxSet } from "./rx-sets";
-import type { GuardedMedicineHit } from "./consult-guards";
+import type { GuardedMedicineHit, HiddenItem } from "./consult-guards";
 import type { TranscribeNoteResult, VoiceMeter, VoiceSettings, VoiceStatus } from "./consult-voice";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -48,9 +51,20 @@ const voiceBody = z.object({
 const keptBody = z.object({ changedChars: z.number().int().nonnegative().max(100_000), keptChars: z.number().int().nonnegative().max(100_000) });
 const searchQuery = z.object({ q: z.string().max(80), limit: z.coerce.number().int().min(1).max(12).optional() });
 const signalsBody = z.object({
-  misses: z.array(z.object({ kind: z.enum(SIGNAL_KINDS), term: z.string().min(1).max(200), stage: z.enum(["search", "voice"]) })).max(20).default([]),
-  suggestions: z.array(z.object({ kind: z.enum(SIGNAL_KINDS), source: z.enum(SIGNAL_SOURCES), outcome: z.enum(SIGNAL_OUTCOMES) })).max(60).default([]),
+  misses: z.array(z.object({ kind: z.enum(MISS_KINDS), term: z.string().min(1).max(200), stage: z.enum(["search", "voice"]) })).max(20).default([]),
+  suggestions: z.array(z.object({
+    kind: z.enum(SIGNAL_KINDS), source: z.enum(SIGNAL_SOURCES), outcome: z.enum(SIGNAL_OUTCOMES),
+    /* Decision 0050, P0 — which suggestion, for what, on which visit. All optional: the 0.12.0 phone sends none. */
+    surface: z.enum(SIGNAL_SURFACES).optional(),
+    encounterId: z.string().min(1).max(64).optional(),
+    contextKey: z.string().min(1).max(200).optional(),
+    itemKey: z.string().min(1).max(200).optional(),
+    rankShown: z.number().int().min(0).max(200).optional(),
+    items: z.array(z.string().min(1).max(200)).max(20).optional(),
+    batchId: z.string().min(1).max(64).optional(),
+  })).max(60).default([]),
 });
+const prefsBody = z.object({ suggestionsOn: z.boolean() });
 const lasaBody = z.object({ nameA: z.string().min(3).max(60), nameB: z.string().min(3).max(60) });
 const settingsBody = z.object({
   enabled: z.boolean().optional(),
@@ -151,7 +165,32 @@ export class OpdPhoneConsultController {
     return { items: await guardedMedicineSearch(this.db, q.q, q.limit ?? 8) };
   }
 
-  /** Terms that matched nothing, and what became of each suggestion. Counts and terms — no patient, no visit. */
+  /**
+   * What this doctor's screens need to know before drawing a suggestion: the doctor's own switch,
+   * the hospital's switch, and the items this doctor has crossed off three times (decision 0050, P0).
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Get("consult/suggestions")
+  async suggestionState(@CurrentActor() actor: Actor): Promise<{ on: boolean; hospitalOn: boolean; hidden: HiddenItem[] }> {
+    if (actor.type !== "user") return { on: false, hospitalOn: false, hidden: [] };
+    const [on, voice, hidden] = await Promise.all([doctorSuggestionsOn(this.db, actor.id), loadVoiceSettings(this.db), hiddenSuggestions(this.db, actor.id)]);
+    return { on, hospitalOn: voice.suggestionsEnabled, hidden };
+  }
+
+  /** The doctor's own switch. Their own row only; nobody sets it for them. */
+  @RequirePermission("opd.consult", "hospital")
+  @Put("consult/suggestions")
+  async setSuggestionState(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ on: boolean }> {
+    const b = parsed(prefsBody, body);
+    try {
+      await setDoctorSuggestions(this.db, actor, b.suggestionsOn);
+      return { on: b.suggestionsOn };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Terms that matched nothing (the term alone — no patient, no visit), and what became of each suggestion (may name the visit; never a patient). */
   @RequirePermission("opd.consult", "hospital")
   @Post("consult/signals")
   async signals(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ misses: number; suggestions: number }> {

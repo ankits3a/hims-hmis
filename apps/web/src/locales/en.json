@@ -10672,6 +10672,11 @@
     "rxFor": "Medicines for {{name}}",
     "rxHead": "MEDICINES FOR {{name}} · STOCK ON EACH",
     "rxFill": "+ Add these {{n}} to the prescription",
+    "sugCross": "Don't suggest {{name}}",
+    "sugTurnOff": "Turn suggestions off",
+    "sugTurnOffHint": "Stops these suggestion chips for you only. You can turn them back on here.",
+    "sugOff": "Suggestions are off for you.",
+    "sugTurnOn": "Turn on",
     "addOwn": "Add “{{term}}” as your own entry",
     "adviceFind": "Find advice — a template or your own line"
   },

@@ -1,7 +1,7 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { LINE_SOURCES, newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
-import { opdLasaPairs, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
+import { cdsDoctorPrefs, opdEncounters, opdLasaPairs, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
 import { medicinesByIds, saltsByIds, searchMedicines } from "../formulary";
 import { OpdError } from "./errors";
 import type { MedicineHit } from "../formulary";
@@ -132,12 +132,26 @@ export async function guardedMedicineSearch(db: Db, q: string, limit: number): P
 
 // ——— the two logs ———
 
-export const SIGNAL_KINDS = ["medicine", "test", "diagnosis"] as const;
-export const SIGNAL_SOURCES = ["typed", "voice", "search", "set", "repeat"] as const;
-export const SIGNAL_OUTCOMES = ["accepted", "dismissed", "manual"] as const;
+export const SIGNAL_KINDS = ["medicine", "test", "diagnosis", "complaint", "advice", "dose", "department", "alias"] as const;
+/** What a "no match" can be about — the three the search boxes serve. */
+export const MISS_KINDS = ["medicine", "test", "diagnosis"] as const;
+export const SIGNAL_SOURCES = LINE_SOURCES;
+/** `accepted` is a tap; `shown` is one row for the chips drawn together; `edited` is a tap the doctor then changed. */
+export const SIGNAL_OUTCOMES = ["accepted", "dismissed", "manual", "shown", "edited"] as const;
+export const SIGNAL_SURFACES = ["consult_web", "consult_phone", "scribe", "desk"] as const;
 export type SignalKind = typeof SIGNAL_KINDS[number];
-export type Miss = { kind: SignalKind; term: string; stage: "search" | "voice" };
-export type SuggestionSignal = { kind: SignalKind; source: typeof SIGNAL_SOURCES[number]; outcome: typeof SIGNAL_OUTCOMES[number] };
+export type Miss = { kind: typeof MISS_KINDS[number]; term: string; stage: "search" | "voice" };
+/**
+ * ONE SUGGESTION EVENT (decision 0050, P0). The first three fields are all the phone consult sent
+ * (0048) and are still all a caller must send. The rest say WHICH suggestion, FOR what, on WHICH
+ * visit — an encounter id, never a patient. `itemKey` and `contextKey` are keys (a medicine id, an
+ * ICD code, a test code, `dx:J06`), kept short; they are not free text about a person.
+ */
+export type SuggestionSignal = {
+  kind: SignalKind; source: typeof SIGNAL_SOURCES[number]; outcome: typeof SIGNAL_OUTCOMES[number];
+  surface?: typeof SIGNAL_SURFACES[number] | undefined; encounterId?: string | undefined; contextKey?: string | undefined; itemKey?: string | undefined;
+  rankShown?: number | undefined; items?: string[] | undefined; batchId?: string | undefined;
+};
 
 /** A term as it is logged: one line, trimmed, lower-case, at most 60 characters; null when there is nothing worth keeping. */
 export function missTerm(raw: string): string | null {
@@ -157,7 +171,23 @@ export async function recordSignals(
 ): Promise<{ misses: number; suggestions: number }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required", "a consultation's signals are a doctor's");
   const misses = await recordMisses(db, actor.id, input.misses, now);
-  const rows = input.suggestions.slice(0, 60).map((s) => ({ id: newId(), userId: actor.id, kind: s.kind, source: s.source, outcome: s.outcome, createdAt: now }));
+  const list = input.suggestions.slice(0, 60);
+  /* The doctor and department are READ from the visit, never taken from the caller. */
+  const encIds = [...new Set(list.map((s) => s.encounterId).filter((x): x is string => x !== undefined))];
+  const encs = encIds.length === 0 ? [] : await db.select({ id: opdEncounters.id, doctorId: opdEncounters.doctorId, departmentId: opdEncounters.departmentId })
+    .from(opdEncounters).where(inArray(opdEncounters.id, encIds));
+  const encById = new Map(encs.map((e) => [e.id, e]));
+  const key = (k: string | undefined): string | null => (k === undefined ? null : k.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 160) || null);
+  const rows = list.map((s) => {
+    const enc = s.encounterId === undefined ? undefined : encById.get(s.encounterId);
+    return {
+      id: newId(), userId: actor.id, kind: s.kind, source: s.source, outcome: s.outcome, createdAt: now,
+      surface: s.surface ?? null, encounterId: enc?.id ?? null, doctorId: enc?.doctorId ?? null, departmentId: enc?.departmentId ?? null,
+      contextKey: key(s.contextKey), itemKey: key(s.itemKey), rankShown: s.rankShown ?? null,
+      items: s.items === undefined ? null : s.items.slice(0, 20).map((i) => key(i)).filter((i): i is string => i !== null),
+      sourceLevel: null, batchId: s.batchId ?? null,
+    };
+  });
   if (rows.length > 0) await db.insert(opdSuggestionEvents).values(rows);
   return { misses, suggestions: rows.length };
 }
@@ -186,4 +216,57 @@ export async function signalsMeter(db: Db, now: Date = new Date()): Promise<Sign
     suggestions: [...by.values()].sort((a, b) => (a.source < b.source ? -1 : 1)),
     misses: ms.map((m) => ({ kind: m.kind, term: m.term, times: Number(m.n), lastAt: new Date(m.last).toISOString() })),
   };
+}
+
+// ——— the cross, counted (decision 0050, P0) ———
+
+/**
+ * "Hide after explicit × three times" (the plan's principle 5). DECIDED for P0: a cross counts for
+ * ninety days — three of the plan's thirty-day half-lives — and three standing crosses hide the item.
+ * The plan's graded form (score · max(0, 1 − d/3), d a decayed sum) is RANKING and arrives with P1;
+ * it reads these same rows.
+ */
+export const HIDE_AFTER = 3;
+export const DISMISS_COUNTS_FOR_DAYS = 90;
+
+export type HiddenItem = { kind: string; contextKey: string | null; itemKey: string };
+
+/**
+ * WHAT THIS DOCTOR HAS CROSSED OFF ENOUGH TO STOP SEEING: for each (kind, context, item), the explicit
+ * crosses in the last ninety days SINCE the doctor last took that item (a tap, or typing it by hand,
+ * resets it); hidden at three. Not looking is not a cross: `shown` rows never count. Nothing is
+ * deleted — a hidden item returns by itself when a cross ages out, and at once when the doctor types it.
+ */
+export async function hiddenSuggestions(db: Db, userId: string, now: Date = new Date()): Promise<HiddenItem[]> {
+  const since = new Date(now.getTime() - DISMISS_COUNTS_FOR_DAYS * 24 * 3600 * 1000);
+  const rows = await db.select({
+    kind: opdSuggestionEvents.kind, contextKey: opdSuggestionEvents.contextKey, itemKey: opdSuggestionEvents.itemKey,
+    outcome: opdSuggestionEvents.outcome,
+  }).from(opdSuggestionEvents).where(and(
+    eq(opdSuggestionEvents.userId, userId), gte(opdSuggestionEvents.createdAt, since), lte(opdSuggestionEvents.createdAt, now),
+    inArray(opdSuggestionEvents.outcome, ["dismissed", "accepted", "manual", "edited"]),
+  )).orderBy(opdSuggestionEvents.createdAt);
+  const d = new Map<string, { item: HiddenItem; crosses: number }>();
+  for (const r of rows) {
+    if (r.itemKey === null) continue;
+    const k = `${r.kind}|${r.contextKey ?? ""}|${r.itemKey}`;
+    if (r.outcome !== "dismissed") { d.delete(k); continue; }
+    const cur = d.get(k) ?? { item: { kind: r.kind, contextKey: r.contextKey, itemKey: r.itemKey }, crosses: 0 };
+    cur.crosses += 1;
+    d.set(k, cur);
+  }
+  return [...d.values()].filter((x) => x.crosses >= HIDE_AFTER).map((x) => x.item);
+}
+
+// ——— each doctor's own switch ———
+
+export async function doctorSuggestionsOn(db: Db, userId: string): Promise<boolean> {
+  const [row] = await db.select({ on: cdsDoctorPrefs.suggestionsOn }).from(cdsDoctorPrefs).where(eq(cdsDoctorPrefs.userId, userId));
+  return row?.on ?? true;
+}
+
+export async function setDoctorSuggestions(db: Db, actor: Actor, on: boolean, now: Date = new Date()): Promise<void> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required", "a doctor's own setting is a doctor's");
+  await db.insert(cdsDoctorPrefs).values({ userId: actor.id, suggestionsOn: on, updatedAt: now })
+    .onConflictDoUpdate({ target: cdsDoctorPrefs.userId, set: { suggestionsOn: on, updatedAt: now } });
 }

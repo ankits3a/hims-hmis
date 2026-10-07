@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { LINE_SOURCES, type DxSource } from "../../../../packages/contracts/src/rx-line";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "../lib/api";
 import { discardRxDraft, fetchRxDraft, issueRxDraft } from "../lib/opd-api";
@@ -43,7 +44,7 @@ import {
 import "./opd-consult.css";
 import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
 import type { WorkRow } from "./opd-consult-v2";
-import { CopilotSuggestions, TermInput } from "./opd-consult-suggest";
+import { CopilotSuggestions, SyndromeHitChips, TermInput } from "./opd-consult-suggest";
 import type { WireExamFinding, WirePatientAbsent } from "../lib/opd-api";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
@@ -170,6 +171,9 @@ function wireRxLine(l: RxLineValues): Record<string, unknown> {
     drug: l.drug.trim(), dose: l.dose.trim(), route: l.route, frequency: l.frequency,
     durationDays: l.durationDays, instructions: orNull(l.instructions),
     noSubstitution: l.noSubstitution, medicineId: l.medicineId,
+    /* Decision 0050 P0 — where the line came from. A fill, a set or a repeat says so itself; otherwise a
+       line that still carries its pick was SEARCHED and one that does not was TYPED. */
+    source: l.source ?? (l.medicineId !== null ? "search" : "typed"),
   };
   if (l.route === "eye") {
     if (l.eye !== undefined && l.eye !== null) wire.eye = l.eye;
@@ -227,6 +231,8 @@ const rxSchemaWith = (m?: RxMessages) => z.object({
          */
         eye: z.enum(["od", "os", "ou"]).nullable().optional(),
         taper: z.array(z.object({ timesPerDay: z.number().int(), days: z.number().int() })).nullable().optional(),
+        /** Decision 0050 P0 — set by a fill (`suggested`) and dropped with the pick when the doctor retypes the drug. */
+        source: z.enum(LINE_SOURCES).nullable().optional(),
       }),
     )
     .min(1),
@@ -271,6 +277,7 @@ function draftRowsOf(lines: RxFormInput["lines"]): WireRxDraftLine[] {
     };
     if (l.eye != null) row.eye = l.eye;
     if (l.taper != null && l.taper.length > 0) row.taper = l.taper;
+    if (l.source != null) row.source = l.source;
     return row;
   });
 }
@@ -284,6 +291,7 @@ function formRowOf(d: WireRxDraftLine | WireRxLine): RxFormInput["lines"][number
     instructions: d.instructions ?? "", noSubstitution: d.noSubstitution === true,
     medicineId: "medicineId" in d ? (d.medicineId ?? null) : null,
     eye: d.eye ?? null, taper: d.taper ?? null,
+    ...(d.source != null ? { source: d.source } : {}),
   };
 }
 
@@ -360,14 +368,17 @@ type TabId = "summary" | "vitals" | "eye" | "paeds" | "complaints" | "exam" | "d
  * code, so every other visit sends exactly the body it always sent. The server drops an eye on a
  * non-eye code anyway; not sending one keeps the two sides saying the same thing.
  */
-function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>, eyeByTerm: Map<string, Eye>): Record<string, unknown> {
+function noteBodyOf(n: NoteState, icdByTerm: Map<string, string>, eyeByTerm: Map<string, Eye>, suggestedDx?: ReadonlySet<string>): Record<string, unknown> {
   return {
     chiefComplaint: orNull(n.chiefComplaint),
     diagnoses: splitTags(n.diagnosis).map((text) => {
       const icd10Code = icdByTerm.get(text.toLowerCase()) ?? null;
+      /* Decision 0050 P0 — where the diagnosis came from: a chip the system offered, the coded search, or
+         the doctor's own words. The server keeps the FIRST source a diagnosis was saved with. */
+      const source: DxSource = suggestedDx?.has(text.toLowerCase()) === true ? "suggested" : icd10Code !== null ? "search" : "typed";
       return isEyeCode(icd10Code)
-        ? { text, icd10Code, laterality: eyeByTerm.get(text.toLowerCase()) ?? null }
-        : { text, icd10Code };
+        ? { text, icd10Code, laterality: eyeByTerm.get(text.toLowerCase()) ?? null, source }
+        : { text, icd10Code, source };
     }),
     advice: orNull(n.advice),
   };
@@ -448,6 +459,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     cleared with it — a few hundred short strings at the very most.
   */
   const icdByTerm = useRef(new Map<string, string>());
+  /** Decision 0050 P0 — the diagnoses added by tapping a suggestion chip in this sitting (lower-cased). */
+  const suggestedDx = useRef(new Set<string>());
   /*
     Which eye each eye-coded tag names, by term, exactly as `icdByTerm` pairs codes — and cleared
     with it in `resetPanel`, for the same reason. A ref for the body; `eyeTick` re-draws the pills.
@@ -880,7 +893,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     rxSavedKey.current = stale ? "stale" : draftKey(restoredRows);
     setRxHydrated((n) => n + 1);
     lastSavedNote.current = JSON.stringify({
-      ...noteBodyOf(next, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(loadedV2, v2On.current),
+      ...noteBodyOf(next, icdByTerm.current, eyeByTerm.current, suggestedDx.current), ...v2BodyOf(loadedV2, v2On.current),
       ...(restoredRows.length > 0 ? { rxDraft: restoredRows } : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rxForm is stable; readOnly re-runs it for the follow/takeover cases
@@ -1143,6 +1156,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       drug: l.rx.drug, dose: l.rx.dose, route: l.rx.route, frequency: l.rx.frequency,
       durationDays: l.rx.durationDays === null ? "" : String(l.rx.durationDays),
       instructions: l.rx.instructions, noSubstitution: l.rx.noSubstitution, medicineId: l.rx.medicineId ?? null,
+      source: "suggested" as const,
     }));
     pendingFillMarks.current = regimen.regimen.lines.map((l) => ({
       shorthand: l.product == null || l.rx.medicineId == null ? null : { strength: l.product.strength, form: l.product.form, code: l.product.code },
@@ -1160,10 +1174,11 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (active === null) return null;
     return (
       <CopilotSuggestions
-        variant={variant} hits={hits}
+        variant={variant} encounterId={active.encounterId} hits={hits}
         diagnoses={splitTags(note.diagnosis).map((text) => ({ text, icd10: icdByTerm.current.get(text.toLowerCase()) ?? null }))}
         onAddDx={(name, icd10) => {
           if (icd10 !== null) icdByTerm.current.set(name.toLowerCase(), icd10);
+          suggestedDx.current.add(name.toLowerCase());
           setNote((n) => (splitTags(n.diagnosis).some((x) => x.toLowerCase() === name.toLowerCase()) ? n : { ...n, diagnosis: joinTags([...splitTags(n.diagnosis), name]) }));
         }}
         advised={advisedTests}
@@ -1220,6 +1235,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
        patient's ICD-10 code to another's identically-worded diagnosis. `resetPanel` has forgotten
        newly-added state before (the T6 allergy fields); this is the line that stops it happening. */
     icdByTerm.current = new Map();
+    suggestedDx.current = new Set();
     eyeByTerm.current = new Map();
     icd11ByCode.current = new Map();
     lastSavedNote.current = JSON.stringify(noteBodyOf(EMPTY_NOTE, new Map(), new Map()));
@@ -1722,7 +1738,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     if (active === null) return;
     setNoteError(null);
     try {
-      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(v2, v2On.current), advisedTests: next, ...leaseBody() });
+      await api("PUT", `/opd/visits/${active.encounterId}/consult/note`, { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current, suggestedDx.current), ...v2BodyOf(v2, v2On.current), advisedTests: next, ...leaseBody() });
       setSavedAt(new Date());
     } catch (e) {
       setNoteError(opdErrorMessage(e));
@@ -1732,7 +1748,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
   const saveNote = async (opts?: { force?: boolean; v2?: V2State }): Promise<void> => {
     if (active === null) return;
     if (readOnly) return; // D17: a read-only tab writes nothing
-    const body = { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current), ...rxDraftPart() };
+    const body = { ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current, suggestedDx.current), ...v2BodyOf(opts?.v2 ?? v2, v2On.current), ...rxDraftPart() };
     const key = JSON.stringify(body);
     if (key === lastSavedNote.current && opts?.force !== true) return;
     setNoteError(null);
@@ -2074,7 +2090,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     }
     const body: Record<string, unknown> = {
       note: {
-        ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current),
+        ...noteBodyOf(note, icdByTerm.current, eyeByTerm.current, suggestedDx.current),
         ...v2BodyOf(v2, v2On.current),
         ...leaseBody(),
         /* Everything written is issued by now (above), so a draft the server still holds is cleared with the visit. */
@@ -3165,22 +3181,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         rather than a dropdown: a dropdown steals the caret and a doctor mid-sentence
                         loses their place. Tapping decides nothing — it opens a card to be read.
                       */}
-                      {hits.length > 0 && (
-                        <div data-testid="cds-hits" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                          <span className="tag" style={{ alignSelf: "center" }}>{t("cds.suggests")}</span>
-                          {hits.map((h) => (
-                            <button
-                              key={h.key} type="button" className="sec" data-testid={`cds-hit-${h.key}`}
-                              style={{ padding: "3px 10px", fontSize: 12 }}
-                              onClick={() => void openRegimen(h.key)}
-                            >
-                              {h.name}
-                              <span className="mo" style={{ marginLeft: 6, fontSize: 10, color: "var(--faint)" }}>{h.icd10 ?? ""}</span>
-                              <Icd11Pill icd11={h.icd11} />
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                      {active !== null && <SyndromeHitChips encounterId={active.encounterId} hits={hits} onOpen={(key) => { void openRegimen(key); }} />}
                       <ErrorLine message={cdsError} />
                       {regimen !== null && (
                         <div data-testid="cds-regimen" className="box" style={{ marginTop: 8, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 9 }}>
@@ -3742,6 +3743,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               placeholder={t("opdConsult.drugPlaceholder")}
                               onText={(text) => {
                                 rxForm.setValue(`lines.${i}.drug`, text, { shouldDirty: true });
+                                /* Retyping the drug makes the line the doctor's own words: the pick and the source go together. */
+                                rxForm.setValue(`lines.${i}.source`, null);
                                 if (rxForm.getValues(`lines.${i}.medicineId`) !== null) {
                                   rxForm.setValue(`lines.${i}.medicineId`, null);
                                   /* The id and the shorthand go together: what is shown must not
@@ -3755,6 +3758,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               onPick={(hit) => {
                                 rxForm.setValue(`lines.${i}.drug`, hit.name, { shouldDirty: true });
                                 rxForm.setValue(`lines.${i}.medicineId`, hit.id);
+                                rxForm.setValue(`lines.${i}.source`, "search");
                                 setShorthand((m) => ({ ...m, [f.id]: { strength: hit.strength, form: hit.form, code: hit.code } }));
                                 setNeedsPick((m) => {
                                   const { [f.id]: dropped, ...rest } = m;

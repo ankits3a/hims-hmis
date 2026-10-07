@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { z } from "zod";
+import { DX_SOURCES, LINE_SOURCES } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -72,6 +73,8 @@ const consultNoteBody = z.object({
     icd10Code: z.string().max(20).nullable(),
     /** Which eye, for an eye code (board "Ophthal"). The server drops it on any other code. */
     laterality: z.enum(["od", "os", "ou"]).nullable().optional(),
+    /** Where the diagnosis came from (decision 0050, P0). Undeclared keys are stripped by zod, so it is named here. */
+    source: z.enum(DX_SOURCES).nullable().optional(),
   })).max(12).nullable().optional(),
   diagnosis: z.string().max(2000).nullable().optional(),
   icd10Code: z.string().max(20).nullable().optional(),
@@ -126,6 +129,8 @@ const consultNoteBody = z.object({
       timesPerDay: z.number().int().min(1).max(12),
       days: z.number().int().min(1).max(60),
     })).max(8).nullish(),
+    /** Decision 0050 P0 — where the row came from rides the draft, so a reload does not turn a suggested line into a searched one. */
+    source: z.enum(LINE_SOURCES).optional(),
   })).max(30).nullable().optional(),
   leaseToken: z.string().min(8).max(64).optional(),
 });
@@ -163,7 +168,7 @@ export const rxLineBody = z.object({
   })).min(2).max(8).nullish(),
   // Where the line came from (phone consult, decision 0049's review). Stored on the line for audit;
   // it changes no check and prints nowhere. Absent on every line written before, and on the web's.
-  source: z.enum(["typed", "voice", "search", "set", "repeat"]).nullish(),
+  source: z.enum(LINE_SOURCES).nullish(),
 }).refine((l) => (l.taper ?? null) !== null || l.frequency.length <= 100, {
   path: ["frequency"], message: "String must contain at most 100 character(s)",
 });

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { doctorApi } from "../src/doctor/api";
 import { draftStore } from "../src/consult/draft";
+import { resetCrossed } from "../src/consult/signals";
 import { I18nProvider } from "../src/i18n";
 import { ConsultScreen } from "../src/screens/consult";
 import { SessionProvider, useSession } from "../src/session";
@@ -203,7 +204,87 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(screen.getByTestId("visit-dx")).toHaveTextContent(/Acute upper respiratory infection\s+J06\.9/);
     await press("issue-complete");
     await waitFor(() => expect(m.onDone).toHaveBeenCalled());
-    expect((w.of("POST /opd/visits/e13/consult/complete")[0]!.body as { note: { diagnoses: unknown } }).note.diagnoses).toEqual([{ text: "Acute upper respiratory infection", icd10Code: "J06.9" }]);
+    expect((w.of("POST /opd/visits/e13/consult/complete")[0]!.body as { note: { diagnoses: unknown } }).note.diagnoses).toEqual([{ text: "Acute upper respiratory infection", icd10Code: "J06.9", source: "suggested" }]);
+    // Decision 0050 P0: what was put in front of the doctor, and that it was taken — with the visit, never the patient.
+    const told = w.of("POST /opd/consult/signals").flatMap((c) => (c.body as { suggestions?: Record<string, unknown>[] }).suggestions ?? []);
+    expect(told).toContainEqual({ kind: "diagnosis", source: "suggested", outcome: "shown", surface: "consult_phone", encounterId: "e13", items: ["dx:J06"] });
+    expect(told).toContainEqual({ kind: "diagnosis", source: "suggested", outcome: "accepted", surface: "consult_phone", encounterId: "e13", itemKey: "dx:J06", rankShown: 0 });
+    expect(JSON.stringify(told)).not.toMatch(/p13|Suresh/);
+  });
+
+  it("EVERY SUGGESTION HAS A × (decision 0050 P0): crossing a most-used diagnosis takes it off, tells the server once, adds nothing — and it stays off when the drawer is opened again", async () => {
+    resetCrossed();
+    const w = world({ "GET /opd/consult/my-diagnoses": () => ({ status: 200, body: { items: [{ text: "Acute upper respiratory infection", icd10Code: "J06.9", uses: 41 }, { text: "Viral fever", icd10Code: "B34.9", uses: 12 }] } }) });
+    await mount(w);
+    await screen.findByTestId("visit-empty");
+    await press("open-dx");
+    await screen.findByTestId("dx-mine-1");
+    expect(screen.getByTestId("dx-x-mine-1").props.accessibilityLabel).toBe("Don't suggest Viral fever");
+    await press("dx-x-mine-1");
+    expect(screen.queryByTestId("dx-mine-1")).toBeNull();
+    expect(screen.getByTestId("dx-mine-0")).toBeTruthy(); // the other row did not move
+    await press("dx-drawer-done");
+    expect(screen.queryByTestId("visit-dx")).toBeNull();
+    await press("open-dx");
+    await screen.findByTestId("dx-mine-0");
+    expect(screen.queryByTestId("dx-mine-1")).toBeNull();
+    const told = w.of("POST /opd/consult/signals").flatMap((c) => (c.body as { suggestions?: Record<string, unknown>[] }).suggestions ?? []);
+    expect(told.filter((x) => x.outcome === "dismissed")).toEqual([{ kind: "diagnosis", source: "suggested", outcome: "dismissed", surface: "consult_phone", encounterId: "e13", itemKey: "dx:B34", rankShown: 1 }]);
+    resetCrossed();
+  });
+
+  it("what this doctor crossed three times is not offered, and the doctor's own switch turns the worked-out tests off", async () => {
+    resetCrossed();
+    const tests = jest.fn(() => ({ status: 200, body: { items: [{ serviceId: "s-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000, mine: 1, hospital: 1 }, { serviceId: "s-crp", code: "CRP", name: "CRP", pricePaise: 40000, mine: 1, hospital: 1 }] } }));
+    const routes = {
+      "GET /opd/cds/suggest/tests": tests,
+      "GET /tariff/price-list": () => ({ status: 200, body: { items: [] } }),
+      "GET /opd/consult/my-diagnoses": () => ({ status: 200, body: { items: [{ text: "Acute upper respiratory infection", icd10Code: "J06.9", uses: 41 }, { text: "Viral fever", icd10Code: "B34.9", uses: 12 }] } }),
+    };
+    const w = world({ ...routes, "GET /opd/consult/suggestions": () => ({ status: 200, body: { on: true, hospitalOn: true, hidden: [{ kind: "diagnosis", contextKey: null, itemKey: "dx:b34" }, { kind: "test", contextKey: "dx:j06", itemKey: "s-crp" }] } }) });
+    const first = await mount(w);
+    await screen.findByTestId("visit-empty");
+    await press("open-dx");
+    await fireEvent.press(await screen.findByTestId("dx-mine-0"));
+    expect(screen.queryByTestId("dx-mine-1")).toBeNull();
+    await press("dx-drawer-done");
+    await press("open-tests");
+    expect(await screen.findByTestId("test-before-s-cbc")).toBeTruthy();
+    expect(screen.queryByTestId("test-before-s-crp")).toBeNull();
+    // A cross on a suggested test is counted under the diagnosis it was offered for.
+    await press("test-before-x-s-cbc");
+    expect(screen.queryByTestId("test-before-s-cbc")).toBeNull();
+    const told = w.of("POST /opd/consult/signals").flatMap((c) => (c.body as { suggestions?: Record<string, unknown>[] }).suggestions ?? []);
+    expect(told).toContainEqual({ kind: "test", source: "suggested", outcome: "dismissed", surface: "consult_phone", encounterId: "e13", contextKey: "dx:J06", itemKey: "s-cbc", rankShown: 0 });
+    await first.unmount();
+
+    resetCrossed(); tests.mockClear();
+    for (const k of [...mockStore.keys()]) if (k.startsWith("hmis.consult.e13")) mockStore.delete(k);
+    const off = world({ ...routes, "GET /opd/consult/suggestions": () => ({ status: 200, body: { on: false, hospitalOn: true, hidden: [] } }) });
+    await mount(off);
+    await screen.findByTestId("visit-empty");
+    await press("open-dx");
+    await fireEvent.press(await screen.findByTestId("dx-mine-0"));
+    await press("dx-drawer-done");
+    await press("open-tests");
+    await screen.findByTestId("tests-drawer");
+    expect(tests).not.toHaveBeenCalled();
+    resetCrossed();
+  });
+
+  it("NO DOSE FOR A CHILD: Repeat last on a child brings the medicines without their doses, says so, and will not issue until the doctor enters them", async () => {
+    const w = world();
+    w.state.visit.vitals[0]!.weightKg = 18;
+    await mount(w);
+    await screen.findByTestId("visit-empty");
+    await waitFor(() => expect(screen.getByTestId("repeat-last")).toHaveTextContent(/2 medicines/));
+    await press("repeat-last");
+    expect(await screen.findByTestId("visit-child-no-dose")).toHaveTextContent("Dose not suggested for a child — enter it.");
+    expect(screen.getByTestId("visit-line-1")).toHaveTextContent(/Metformin 500 mg Tablet/);
+    expect(screen.getByTestId("visit-line-1")).not.toHaveTextContent(/1 tab|BD|30 days/);
+    await press("issue-complete");
+    expect(await screen.findByTestId("child-no-dose")).toBeTruthy();
+    expect(w.of("POST /opd/visits/e13/prescriptions")).toHaveLength(0);
   });
 
   it("Repeat last copies the last prescription in, and every copied line goes through today's check", async () => {
@@ -334,9 +415,10 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     await press("voice-suggest-add-0");
     expect(screen.getByTestId("voice-text").props.value).toBe("Pan 40 subah."); // still here, still editable
     await press("voice-keep");
-    // The test was offered and left: counted as dismissed. The medicine's count comes at issue.
-    await waitFor(() => expect(w.of("POST /opd/consult/signals")).toHaveLength(1));
-    expect(w.of("POST /opd/consult/signals")[0]!.body).toEqual({ suggestions: [{ kind: "test", source: "voice", outcome: "dismissed" }] });
+    // The test was offered and merely LEFT: that is not a cross and tells the server nothing (decision 0050 P0 —
+    // "not looking is not a dismissal"). The medicine's count comes at issue.
+    await waitFor(() => expect(w.of("POST /opd/consult/voice/vx2/kept")).toHaveLength(1));
+    expect(w.of("POST /opd/consult/signals")).toHaveLength(0);
     await press("notes-drawer-done");
     expect(screen.getByTestId("visit-line-0")).toHaveTextContent(/Pantoprazole 40 mg Tablet/);
     // No dose yet: it cannot be issued, and the screen opens the medicines to say so.

@@ -2,13 +2,17 @@
  * PHONE CONSULT (decision 0048, owner 2026-10-07) — the reading rules of the doctor's phone
  * consultation: what a visit's draft is, how it becomes the bodies the consultation routes already
  * take, what a warning needs before a line may be issued, and how much of a spoken note the doctor
- * changed. PURE: no imports, no I/O — the phone reads this file by path (metro.config.js), and the
- * web may too. It decides nothing clinical: every check is the server's, at pre-check and again at
- * issue.
+ * changed. PURE: no I/O, and its one import is the equally pure `rx-line.ts` beside it — the phone
+ * reads both by path (metro.config.js), and the web may too. It decides nothing clinical: every check
+ * is the server's, at pre-check and again at issue.
  */
+import { withoutDoseForChild } from "./rx-line";
+import type { Band, DxSource, RxLineSource } from "./rx-line";
+/* The phone's rules module is ONE re-export of this file, so the line's shared rules ride through it. */
+export * from "./rx-line";
 
 /** Where a line came from. Stored on the issued line for audit; no check reads it, no print shows it. */
-export type LineSource = "typed" | "voice" | "search" | "set" | "repeat";
+export type LineSource = RxLineSource;
 export type ConsultLine = {
   /** Absent on a draft saved before this field existed, and on a line a computer typed. */
   source?: LineSource | null;
@@ -18,7 +22,8 @@ export type ConsultLine = {
   mark?: "changed" | "new" | null; was?: string | null;
 };
 export type ConsultTest = { serviceId: string; code: string; name: string; pricePaise: number };
-export type ConsultDx = { text: string; icd10Code: string | null };
+/** `source` (decision 0050 P0): picked from the doctor's most-used list (`suggested`), from the search, or typed. Absent on an older draft. */
+export type ConsultDx = { text: string; icd10Code: string | null; source?: DxSource | null };
 export type ConsultDraft = {
   v: 1; encounterId: string;
   complaints: string[]; notes: string;
@@ -54,7 +59,7 @@ export function dosesFor(drug: string): readonly string[] {
   if (/\b(tablets?|tab)\b/.test(d)) return ["½ tab", "1 tab", "2 tab"];
   return DOSES;
 }
-export const FREQUENCIES = ["OD", "BD", "TDS", "QID", "HS", "SOS"] as const;
+export const FREQUENCIES = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT"] as const;
 export const DAY_CHOICES = [3, 5, 7, 10, 15, 30] as const;
 export const REVIEW_CHOICES = [3, 5, 7, 15, 30] as const;
 export const MAX_LINES = 30;
@@ -127,12 +132,12 @@ export function noteBody(d: ConsultDraft, review: (n: number) => string, food: {
   return {
     chiefComplaint: d.complaints.length === 0 ? null : d.complaints.join(", "),
     doctorNote: d.notes.trim() === "" ? null : d.notes.trim(),
-    diagnoses: d.diagnoses.length === 0 ? null : d.diagnoses.map((x) => ({ text: x.text, icd10Code: x.icd10Code })),
+    diagnoses: d.diagnoses.length === 0 ? null : d.diagnoses.map((x) => ({ text: x.text, icd10Code: x.icd10Code, ...(x.source === undefined || x.source === null ? {} : { source: x.source }) })),
     advice: adviceOf(d, review),
     advisedTests: d.tests.length === 0 ? null : d.tests.map((t) => ({ serviceId: t.serviceId, code: t.code, name: t.name, pricePaise: t.pricePaise })),
     rxDraft: rx === "issued" ? null : d.lines.map((l) => {
       const w = wireLine(l, food);
-      return { drug: w.drug, dose: w.dose, route: w.route, frequency: w.frequency, durationDays: w.durationDays, instructions: w.instructions ?? "", noSubstitution: false, ...(l.medicineId === null ? {} : { medicineId: l.medicineId }) };
+      return { drug: w.drug, dose: w.dose, route: w.route, frequency: w.frequency, durationDays: w.durationDays, instructions: w.instructions ?? "", noSubstitution: false, ...(l.medicineId === null ? {} : { medicineId: l.medicineId }), ...(w.source === undefined ? {} : { source: w.source }) };
     }),
   };
 }
@@ -212,9 +217,20 @@ export function linesFrom(lines: readonly WireLastLine[], source: LineSource | n
   });
 }
 
-/** "Repeat last": the last prescription's lines, on an otherwise untouched draft. Every one is checked again today. */
-export function repeatLast(d: ConsultDraft, last: { serviceDate: string; lines: readonly WireLastLine[] }, now: number): ConsultDraft {
-  return { ...d, lines: linesFrom(last.lines, "repeat"), from: `repeat:${last.serviceDate}`, reasons: {}, updatedAt: now };
+/**
+ * "Repeat last": the last prescription's lines, on an otherwise untouched draft. Every one is checked again today.
+ *
+ * FOR A CHILD (decision 0050 P0, owner 2026-10-07: "yes on 'no children's doses in the first version'")
+ * the medicines come back WITHOUT dose, frequency or days: last visit's dose was for last visit's
+ * weight. The doctor enters today's; an unfinished line cannot be issued.
+ */
+export function repeatLast(d: ConsultDraft, last: { serviceDate: string; lines: readonly WireLastLine[] }, now: number, band: Band = "adult"): ConsultDraft {
+  return { ...d, lines: withoutDoseForChild(linesFrom(last.lines, "repeat"), band), from: `repeat:${last.serviceDate}`, reasons: {}, updatedAt: now };
+}
+
+/** A child's line that a set or a repeat brought without its dose, and the doctor has not finished yet. */
+export function childDoseMissing(d: ConsultDraft, band: Band): boolean {
+  return band === "pediatric" && d.lines.some((l) => (l.source === "set" || l.source === "repeat") && l.dose.trim() === "");
 }
 
 export type WireSetBody = {
@@ -223,9 +239,10 @@ export type WireSetBody = {
 };
 
 /** A set FILLS the visit: its lines after the ones already there (a drug already on the visit is not added twice), its tests, its advice. */
-export function applySet(d: ConsultDraft, name: string, body: WireSetBody, priceOf: (serviceId: string) => number, now: number): ConsultDraft {
+export function applySet(d: ConsultDraft, name: string, body: WireSetBody, priceOf: (serviceId: string) => number, now: number, band: Band = "adult"): ConsultDraft {
   const have = new Set(d.lines.map((l) => l.drug.trim().toLowerCase()));
-  const add = linesFrom(body.lines, "set").filter((l) => !have.has(l.drug.trim().toLowerCase()));
+  /* A set's doses were written for an adult: for a child the set brings the medicines and the doctor enters each dose. */
+  const add = withoutDoseForChild(linesFrom(body.lines, "set").filter((l) => !have.has(l.drug.trim().toLowerCase())), band);
   const tests = [...d.tests, ...body.tests.filter((t) => !d.tests.some((x) => x.serviceId === t.serviceId)).map((t) => ({ ...t, pricePaise: priceOf(t.serviceId) }))].slice(0, MAX_TESTS);
   const advice = (body.advice ?? "").trim();
   return {
@@ -251,13 +268,16 @@ export function setBodyOf(d: ConsultDraft, food: { before: string; after: string
 /**
  * What became of what was offered, for the meter: a line picked from search or taken from a spoken
  * note is an ACCEPTED suggestion; a line typed by hand is MANUAL. Sets and repeats are the doctor's
- * own earlier writing and are not counted. Kinds and counts only — never a name.
+ * own earlier writing and are not counted. The visit and the catalogue medicine may be named
+ * (decision 0050 P0) — never a patient, and never a typed word.
  */
-export function lineSignals(lines: readonly ConsultLine[]): { kind: "medicine"; source: LineSource; outcome: "accepted" | "manual" }[] {
-  const out: { kind: "medicine"; source: LineSource; outcome: "accepted" | "manual" }[] = [];
+export type LineSignal = { kind: "medicine"; source: LineSource; outcome: "accepted" | "manual"; surface: "consult_phone"; encounterId?: string; itemKey?: string };
+export function lineSignals(lines: readonly ConsultLine[], encounterId?: string): LineSignal[] {
+  const out: LineSignal[] = [];
+  const more = (l: ConsultLine) => ({ surface: "consult_phone" as const, ...(encounterId === undefined ? {} : { encounterId }), ...(l.medicineId === null ? {} : { itemKey: l.medicineId }) });
   for (const l of lines) {
-    if (l.source === "search" || l.source === "voice") out.push({ kind: "medicine", source: l.source, outcome: "accepted" });
-    else if (l.source === "typed") out.push({ kind: "medicine", source: "typed", outcome: "manual" });
+    if (l.source === "search" || l.source === "voice") out.push({ kind: "medicine", source: l.source, outcome: "accepted", ...more(l) });
+    else if (l.source === "typed") out.push({ kind: "medicine", source: "typed", outcome: "manual", ...more(l) });
   }
   return out;
 }
