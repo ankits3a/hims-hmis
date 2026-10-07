@@ -18,12 +18,8 @@ export const GUARDIAN_RELATIONS = [
 ] as const;
 export type GuardianRelation = (typeof GUARDIAN_RELATIONS)[number];
 
-/** The visit types a guardian may stand in for: a returning patient (revisit or renewal), never a new one. */
-export const PATIENT_ABSENT_VISIT_TYPES = ["revisit", "renewal"] as const;
-/** True when a visit of this type may be marked "patient not present — guardian with reports". */
-export function guardianMayStandIn(visitType: string | null | undefined): boolean {
-  return visitType !== null && visitType !== undefined && (PATIENT_ABSENT_VISIT_TYPES as readonly string[]).includes(visitType);
-}
+/** The visit rule lives in a dependency-free file the phone app can import (see its header). */
+export { PATIENT_ABSENT_VISIT_TYPES, guardianMayStandIn } from "./patient-absent-rule";
 
 /** The longest guardian name the desk may type. Trimmed first; blank means "not given". */
 export const GUARDIAN_NAME_MAX = 80;

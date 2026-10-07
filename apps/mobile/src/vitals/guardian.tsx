@@ -40,7 +40,7 @@ export function guardianWho(t: T, absent: { relation: string; name: string | nul
  * and the web screens use (packages/contracts/src/patient-absent.ts; metro.config.js watches it).
  * Owner 2026-10-07: revisits and renewals, never a new visit.
  */
-export { guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent";
+export { guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent-rule";
 
 export function GuardianAbsentAction({ api, encounterId, onDone }: {
   api: VitalsApi; encounterId: string; onDone: (absent: WirePatientAbsent) => void;
