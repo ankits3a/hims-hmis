@@ -71,3 +71,4 @@ Records without ✓ were transcribed by an agent and await the owner's check.
 | 0047 | 2026-10-07 | [Each counter PC runs its own print program (Windows), enrolled with a one-time code](0047-counter-print-program.md) | printing, front-desk, admin | Partly open |  |
 | 0048 | 2026-10-07 | [The doctor consults on the phone — one screen, five drawers; voice notes through OpenAI, never Sarvam, no patient name sent](0048-doctor-phone-consult-and-voice.md) | mobile, opd, doctor, voice, privacy | Partly open — partly superseded by 0049 |  |
 | 0049 | 2026-10-07 | [A name the doctor speaks in a voice note may reach the speech service — accepted and stated plainly](0049-names-spoken-in-voice-notes.md) | opd, doctor, voice, privacy | Ruled |  |
+| 0050 | 2026-10-07 | [Suggestions learn from what doctors and staff do, per doctor; TypeSafe's Jev is the standard chooser](0050-self-improving-suggestions.md) | opd, doctor, front-desk, copilot, formulary, learning | Partly open |  |
