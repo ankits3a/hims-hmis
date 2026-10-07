@@ -217,7 +217,7 @@ export function expandCycle(
 /** The rolling horizon: ninety days is a quarter, which is how far a department plans theatre. */
 export const HORIZON_DAYS = 90;
 
-async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { departmentId: string }> {
+async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { departmentId: string; status: string }> {
   const cycle = (await (exec as Db).select().from(rosterCycles).where(eq(rosterCycles.id, cycleId)))[0];
   if (cycle === undefined) throw new RosterError("unknown_cycle", undefined, { cycleId });
   const entries = await (exec as Db).select().from(rosterCycleEntries)
@@ -227,6 +227,7 @@ async function loadSpec(exec: Db | Tx, cycleId: string): Promise<CycleSpec & { d
     .orderBy(asc(rosterCycleOverlays.sequencePosition));
   return {
     departmentId: cycle.departmentId,
+    status: cycle.status,
     cycleDays: cycle.cycleDays,
     anchorIstDate: cycle.anchorIstDate,
     entries: entries.map((e) => ({
@@ -261,9 +262,17 @@ export async function holidaysBetween(exec: Db | Tx, from: string, to: string): 
  */
 export async function materialiseWindows(
   tx: Tx, actor: Actor, cycleId: string, fromIstDate: string, toIstDate: string,
+  /**
+   * `extend_published_windows` is the nightly job's act (see `policy.ts`). It is honoured only when
+   * the cycle is ALREADY `published`; asked of a draft or a superseded cycle it is judged as
+   * `publish`, which a machine is never allowed — so the allowance cannot be turned into a way to
+   * put an unpublished cycle on the calendar.
+   */
+  requested: "publish" | "extend_published_windows" = "publish",
 ): Promise<{ written: number; superseded: number }> {
   const spec = await loadSpec(tx, cycleId);
-  await requireRosterAct(tx, actor, "publish", { departmentId: spec.departmentId });
+  const act = requested === "extend_published_windows" && spec.status === "published" ? requested : "publish";
+  await requireRosterAct(tx, actor, act, { departmentId: spec.departmentId });
 
   const holidays = await holidaysBetween(tx, fromIstDate, toIstDate);
   const planned = expandCycle(spec, fromIstDate, toIstDate, holidays);
@@ -355,7 +364,7 @@ export async function extendWindows(
       : addIstDays(new Date(last.startsAt.getTime() + IST_OFFSET_MINUTES * MINUTE_MS).toISOString().slice(0, 10), 1);
     const to = addIstDays(todayIstDate, HORIZON_DAYS);
     if (daysBetween(from, to) <= 0) continue;
-    written += (await materialiseWindows(tx, actor, cycle.id, from, to)).written;
+    written += (await materialiseWindows(tx, actor, cycle.id, from, to, "extend_published_windows")).written;
   }
   return { departments: live.length, written };
 }
@@ -570,20 +579,24 @@ export const ROSTER_CALENDAR_ACTIVITIES = ROSTER_ACTIVITIES;
  * The horizon is rolling, so something must roll it. Registered `dailyIst("01:30")`: after IST
  * midnight, so "today" is the day it is extending from, and long before any clinic opens.
  *
- * ═══ WHAT ACTOR A SCHEDULED JOB ACTS AS, AND WHY IT IS NOT `system` ═══
+ * ═══ WHAT ACTOR A SCHEDULED JOB ACTS AS ═══
  *
- * The matrix says `publish` is **`never`** for a `system` actor, and that is right: no scheduled job
- * decides who is on. But this job is not deciding anything — it is **writing down more of what a
- * human already decided**, by re-expanding a cycle that is already `published`. `extendWindows`
- * cannot publish a cycle and cannot reach a draft.
+ * A named `system` actor, as the proposer is (`PROPOSER_ACTOR`). The matrix says `publish` is
+ * **`never`** for a `system` actor, and that stays right: no scheduled job decides who is on. This
+ * job decides nothing — it **writes down more days of what a human already decided**, by
+ * re-expanding a cycle that is already `published` — so it has an act of its own,
+ * `extend_published_windows`, which `materialiseWindows` honours for a published cycle only.
  *
- * So `MATERIALISER_ACTOR` is a `user`-typed actor with a reserved id, exactly as `TIMER_ACTOR` is in
- * `kernel/workflow/timers.ts` — this codebase's established shape for a scheduled act that continues
- * a person's decision rather than making one. It holds no grant of its own, which is why the
- * hospital-scope check in `materialiseWindows` is satisfied by the department's cycle already being
- * published and not by anything this actor carries.
+ * **2026-10-07 — WHAT THIS REPLACED, AND WHAT IT COST.** Until then this was a `user`-typed actor
+ * with a reserved id and no grant, on the written belief that the publish check was "satisfied by
+ * the department's cycle already being published". It never was: `requireRosterAct` asks what the
+ * ACTOR holds. No test ran the job with a published cycle in the database — with none, the loop body
+ * is never entered — so it was green until the first night the hospital had real units, and then
+ * failed nightly on production and staging (6 Oct 2026, 20:00 UTC onward). Nothing was lost: the
+ * horizon is ninety days and `extendWindows` resumes from the last window written, so the next good
+ * run writes every missed day. `window-sweep.test.ts` now runs it through the worker's registration.
  */
-export const MATERIALISER_ACTOR: Actor = { type: "user", id: "roster-materialiser" };
+export const MATERIALISER_ACTOR: Actor = { type: "system", id: "roster-materialiser" };
 
 export async function sweepRosterWindows(db: Db, now: Date): Promise<{ departments: number; written: number }> {
   const todayIst = new Date(now.getTime() + IST_OFFSET_MINUTES * MINUTE_MS).toISOString().slice(0, 10);

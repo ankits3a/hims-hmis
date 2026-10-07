@@ -55,6 +55,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     approve_swap: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
     // 20-U U8 — the duty-evidence report goes to a regulator: a person's act, nobody else's.
     read_evidence: { user: "y", copilot: "n", agent: "n", system: "n", patient: "n" },
+    // 2026-10-07 — the nightly roll-forward of a PUBLISHED cycle: a named job may, an assistant or agent may not.
+    extend_published_windows: { user: "y", copilot: "n", agent: "n", system: "y", patient: "n" },
   };
 
   it("every act × every actor kind is DECLARED — no cell falls through", () => {
@@ -199,7 +201,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     materialiseWindows: { reaches: "requireRosterAct(", why: "writing the windows IS the calendar; at the department's own scope" },
     declareHoliday: { reaches: "requireRosterAct(", why: "`declare` — the MS's act, or a delegate's" },
     extendWindows: { reaches: "materialiseWindows(", why: "the nightly roll-forward, through the checked writer" },
-    sweepRosterWindows: { reaches: "extendWindows(", why: "the scheduler's entry point; see MATERIALISER_ACTOR on why a job is not a `system` actor here" },
+    sweepRosterWindows: { reaches: "extendWindows(", why: "the scheduler's entry point; a named `system` actor whose only act is `extend_published_windows` (see MATERIALISER_ACTOR)" },
     draftCycleFromTemplate: { reaches: "requireRosterAct(", why: "applying a pattern writes the department's own cycle, as a draft" },
     draftCycle: { reaches: "requireRosterAct(", why: "a head writing the department's own weekly cycle, as a draft — as `draftCycleFromTemplate`" },
     // 20-U U5b — the unit's month. Each composes acting exports; none writes a roster table itself.

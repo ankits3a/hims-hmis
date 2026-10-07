@@ -82,6 +82,15 @@ export const ROSTER_ACTS = [
    * authority that publishes a unit's roster is the one that may certify what it held.
    */
   "read_evidence",
+  /**
+   * 2026-10-07 — **rolling an ALREADY-PUBLISHED cycle's duty windows forward**, and nothing else.
+   * The nightly job (`sweepRosterWindows`) decides nothing: it writes down more days of a cycle a
+   * person published. It is its own act because `publish` is `never` for a machine and must stay so;
+   * until this act existed the job borrowed `publish` as a grantless `user` and was refused every
+   * night from the first night the hospital had a cycle. `materialiseWindows` honours it ONLY for a
+   * cycle whose status is `published` — for anything else it asks `publish`, which no job may do.
+   */
+  "extend_published_windows",
 ] as const;
 export type RosterAct = (typeof ROSTER_ACTS)[number];
 
@@ -179,6 +188,9 @@ const MATRIX: Record<RosterAct, Record<RosterActorKind, Cell>> = {
 
   /** A paper that goes to a regulator is a person's act. No copilot, no agent, no job. */
   read_evidence: { user: grant(ROSTER_PUBLISH), copilot: never, agent: never, system: never, patient: never },
+  // The nightly roll-forward: a named `system` job continues a human's published cycle. A person
+  // doing the same by hand needs what publishing needs; no assistant or agent does it at all.
+  extend_published_windows: { user: grant(ROSTER_PUBLISH), copilot: never, agent: never, system: open, patient: never },
 };
 
 export type RosterActVerdict =
