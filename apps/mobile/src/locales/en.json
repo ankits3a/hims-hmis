@@ -2060,5 +2060,40 @@
       "consult_gate_refused": "This visit has not been billed yet — take the fee at the counter first.",
       "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor."
     }
+  },
+  "recorded": {
+    "title": "Recorded today",
+    "titleMine": "Your patients on record",
+    "scopeHospital": "whole hospital",
+    "scopeMine": "your consultations",
+    "nothingYet": "No consultation completed yet today.",
+    "nothingYetMine": "You have not completed a consultation yet today.",
+    "all": "Everything consulted today is on record ({{n}}).",
+    "missing": "Not recorded: {{n}} of {{of}} consulted.",
+    "bar": "{{on}} of {{of}} consultations on record",
+    "line": {
+      "slips": "Slips photographed {{photographed}} of {{of}} consulted · typed {{typed}} · not recorded {{not}}",
+      "scribe": "To type: {{n}} · typed today {{typed}}",
+      "doctor": "Your patients: {{seen}} seen · {{issued}} prescribed on the phone or screen · {{paper}} on paper ({{photographed}} photographed)",
+      "hospital": "{{consulted}} consulted · {{issued}} prescribed on screen · {{photographed}} slips photographed · {{typed}} typed"
+    },
+    "onComputer": "Typing opens on the computer: Desk scribe.",
+    "scan": "Scan a slip",
+    "byDoctor": "See by doctor",
+    "byDoctorHead": "By doctor",
+    "byDepartment": "By department",
+    "row": {
+      "none": "none yet",
+      "missing": "{{n}} not recorded",
+      "all": "all on record",
+      "line": "{{consulted}} consulted · {{issued}} on screen · {{photographed}} photographed · {{typed}} typed"
+    },
+    "note": "On record = the slip was photographed, the desk typed it, or the doctor prescribed on a screen.",
+    "screenNote": "\"On screen\" counts the phone app and the computer together.",
+    "back": "Back",
+    "again": "Check again",
+    "offline": "No network — could not read the count.",
+    "refused": "The server could not answer. Try again.",
+    "noAccess": "There is no recording count for your login."
   }
 }

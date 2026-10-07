@@ -172,4 +172,18 @@ describe("OPD day report e2e", () => {
     await get(`/opd/reports/consultations?date=2026-13-45`, reader.token).expect(400);
     await get(`/opd/reports/consultations?date=yesterday`, reader.token).expect(400);
   });
+
+  /** Owner 2026-10-07 — "show a daily count": the door is the login, and what comes back is decided inside. */
+  it("recording count: refused without a login, integers for a reader and a desk, nothing for a stranger", async () => {
+    await request(app.getHttpServer()).get(`/opd/reports/recording?date=${DATE}`).expect(401);
+    const mine = await get(`/opd/reports/recording?date=${DATE}`, reader.token).expect(200);
+    expect(mine.body).toMatchObject({ scope: "hospital", from: DATE, to: DATE, totals: { opened: 1, consulted: 0, stillOpen: 1, notRecorded: 0 } });
+    expect(mine.body.doctors).toBeNull();
+    // The desk that opens visits sees the same integers and no names; a login with no part in OPD sees nothing.
+    const desk = await get(`/opd/reports/recording?date=${DATE}`, outsider.token).expect(200);
+    expect(desk.body).toMatchObject({ scope: "hospital", doctors: null });
+    const stranger = await mkUser(db, "stranger", []);
+    const out = await get(`/opd/reports/recording?date=${DATE}`, stranger.token).expect(200);
+    expect(out.body).toMatchObject({ scope: "none", totals: null });
+  });
 });

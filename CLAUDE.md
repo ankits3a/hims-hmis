@@ -85,6 +85,10 @@ Modules import each other only through the other module's `index.ts` (lint-enfor
 - A new test must fail first against the code it guards; a fixed review finding is done when the
   suite runs and the count is read, not when it compiles.
 - Never weaken a guard, permission check or audit write to make a test pass.
+- **Approved acceptance checks are locked.** A feature's owner-approved "done means" tests live under an
+  `acceptance/` folder (`apps/core/test/acceptance/<feature>/`, `apps/web/src/acceptance/<feature>/`). Add
+  new ones freely; never edit, delete or rename an approved one — CI fails it (`tools/ci/acceptance-guard.mjs`)
+  unless the owner adds the PR label `owner-approved-checks`. Agents never add that label themselves.
 - Never rewrite pushed history. Never `git checkout` over uncommitted work (a revert is a write).
 - Migrations are irreversible host mutations: additive, one per PR, numbered at rebase time.
 - Never emit compiled JS into `src` (`tsc` without `--noEmit` is banned outside `build`).

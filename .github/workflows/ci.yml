@@ -86,6 +86,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Full history: the acceptance guard below diffs the PR against its base (needs the merge base).
+        with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
@@ -130,6 +132,12 @@ jobs:
       # it is believed. This fails when a PR changes structure (module imports, index.ts exports,
       # routes, tables, web routes) without regenerating. ~1 s, no install needed.
       - run: node tools/arch/gen.mjs --check
+      # LOCKED ACCEPTANCE CHECKS (owner 2026-10-07): a PR that changes, deletes or renames a test under any
+      # `acceptance/` folder fails unless the owner adds the label `owner-approved-checks`. Adding new ones is
+      # free. Here, in the required `static` job, rather than a new job: a new required check name would stall
+      # every open lane until it rebased. After the owner labels a PR, push a commit to re-run.
+      - run: node --test tools/ci/acceptance-guard.test.mjs
+      - run: node tools/ci/acceptance-guard.mjs
       - run: node --test tools/print-relay/spool.test.mjs tools/print-relay/platform.test.mjs tools/print-relay/program.test.mjs
         env:
           RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip

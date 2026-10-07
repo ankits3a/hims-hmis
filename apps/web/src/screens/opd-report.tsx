@@ -1,3 +1,4 @@
+import { RecordingPanel } from "../components/recording-card";
 import { Fragment, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -257,6 +258,8 @@ export function OpdReportScreen({ initial }: { initial?: Selection }): React.Rea
             )}
             <OpenedByLine openedBy={r.openedBy} testId="odr-openedby" />
           </div>
+
+          <RecordingPanel sel={sel} />
 
           <div className="odr-notes" data-testid="odr-notes">
             {COUNT_COLUMNS.map((col) => <p key={col.key}><b>{t(col.label)}</b> — {t(col.hint)}</p>)}
