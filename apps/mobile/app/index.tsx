@@ -1,4 +1,5 @@
 import { ActivityIndicator, View } from "react-native";
+import { useOtaAtRest } from "../src/ota";
 import { ChangePasswordScreen } from "../src/screens/change-password";
 import { LoginScreen } from "../src/screens/login";
 import { SeatHome } from "../src/screens/seat-home";
@@ -9,6 +10,8 @@ import { color } from "../src/theme";
 /** One entry, one state machine (src/session.tsx): every session state has exactly one screen. */
 export default function Index() {
   const { state } = useSession();
+  // A bundle that arrived over the air is taken HERE and only here: the home screen holds nothing half-typed.
+  useOtaAtRest(state.status === "signedIn");
   switch (state.status) {
     case "loading":
       return (

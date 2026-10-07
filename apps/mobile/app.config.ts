@@ -23,7 +23,29 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.10.0";
+/**
+ * OVER-THE-AIR UPDATES (owner 2026-10-06: "it should happen automatically").
+ * A change to screens, words or rules is JavaScript, and JavaScript reaches a phone without a new
+ * APK: the app asks this address at start-up, takes the signed bundle `scripts/publish-ota.sh` put
+ * there, and runs it from the next start (src/ota.ts). No expo.dev cloud — the hospital's own
+ * caddy serves the folder, beside the APKs (BUILDING.md, "Over-the-air updates").
+ *
+ * One address per environment; caddy picks the folder from the `expo-runtime-version` header the
+ * app sends, so a bundle only ever reaches an APK whose NATIVE code it was built against.
+ */
+const OTA_URL: Record<typeof ENV, string> = {
+  development: process.env.EXPO_PUBLIC_OTA_URL ?? "https://stagehmis.crkmch.com/app/ota/staging/manifest",
+  preview: "https://stagehmis.crkmch.com/app/ota/staging/manifest",
+  production: "https://hmis.crkmch.com/app/ota/production/manifest",
+};
+/**
+ * The phone runs a bundle only when it is signed by the key whose PUBLIC certificate is baked into
+ * the APK (the private half lives outside the repo, beside the APK keystores). A build made before
+ * the certificate exists carries no over-the-air updates at all — never unsigned ones.
+ */
+const OTA_CERTIFICATE = `./ota/certificate-${ENV === "production" ? "production" : "staging"}.pem`;
+const OTA_IN_BUILD = existsSync(join(__dirname, OTA_CERTIFICATE));
+const VERSION = "0.11.0";
 /**
  * M6b — NOTIFICATIONS ARE IN A BUILD ONLY WHEN THE HOSPITAL'S FIREBASE PROJECT IS.
  * `scripts/build-apk.sh` copies the owner's `google-services.json` beside this file when it exists
@@ -42,6 +64,20 @@ const config: ExpoConfig = {
   scheme: "hmis",
   version: VERSION,
   orientation: "portrait",
+  // The native fingerprint: it changes exactly when the native side of the app does (a new native
+  // module, a permission, an Expo upgrade) and never for a JavaScript change or a versionCode.
+  runtimeVersion: { policy: "fingerprint" },
+  updates: OTA_IN_BUILD
+    ? {
+        enabled: true,
+        url: OTA_URL[ENV],
+        // Ask at every cold start, never wait for the answer: a ward with no signal opens the app as fast as before.
+        checkAutomatically: "ON_LOAD",
+        fallbackToCacheTimeout: 0,
+        codeSigningCertificate: OTA_CERTIFICATE,
+        codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
+      }
+    : { enabled: false },
   icon: "./assets/icon.png",
   userInterfaceStyle: "light",
   android: {
@@ -83,6 +119,7 @@ const config: ExpoConfig = {
     version: VERSION,
     versionCode: VERSION_CODE,
     pushInBuild: PUSH_IN_BUILD,
+    otaInBuild: OTA_IN_BUILD,
     eas: { projectId: "4b8df892-c208-45a4-ad76-52a4551f7188" },
   },
 };
