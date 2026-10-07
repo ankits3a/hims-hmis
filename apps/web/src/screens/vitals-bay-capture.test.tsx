@@ -57,6 +57,10 @@ const PRE_B: WirePreStage = { patientId: "P-B", ageYears: 61, band: "adult", ran
 const PRE_K: WirePreStage = { patientId: "P-K", ageYears: 4, band: "child_1_5", ranges: { sbp: { min: 75, max: 130 }, dbp: { min: 45, max: 85 }, pulse: { min: 70, max: 150 }, rr: { min: 20, max: 40 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } }, noticeRanges: { tempC: { max: 37.9 } }, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"], last: null, carryCandidates: [], expectedFlags: [], feeUnpaid: false, feeBypass: null };
 
 type Posted = { path: string; body: unknown };
+/** What E-B's pre-stage returns; a test that needs a band requiring RR swaps it (reset after each test). */
+let preBServed: WirePreStage = PRE_B;
+afterEach(() => { preBServed = PRE_B; });
+
 function stubBay(rows: WireBenchRow[], onVitals: (body: unknown, path: string) => Response, posted: Posted[] = []): void {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
@@ -69,7 +73,7 @@ function stubBay(rows: WireBenchRow[], onVitals: (body: unknown, path: string) =
     if (key === "GET /api/opd/departments") return new Response(JSON.stringify({ code: "forbidden" }), { status: 403 });
     if (key === "GET /api/opd/config") return new Response(JSON.stringify({ code: "forbidden" }), { status: 403 });
     if (key === "GET /api/opd/visits/E-A/prestage") return json(PRE_A);
-    if (key === "GET /api/opd/visits/E-B/prestage") return json(PRE_B);
+    if (key === "GET /api/opd/visits/E-B/prestage") return json(preBServed);
     if (key === "GET /api/opd/visits/E-K/prestage") return json(PRE_K);
     if (init?.method === "POST" && path.endsWith("/vitals")) {
       const body = JSON.parse(String(init.body)) as unknown;
@@ -117,8 +121,10 @@ describe("the pure rules mirror the server's", () => {
     expect(tileSetFor(PRE_A).required).toContain("bp");
     expect(leadTileFor(PRE_B)).toBe("bp");     // expected flag on sbp → cuff first
     expect(leadTileFor(PRE_K)).toBe("tempC");  // a child: temperature first
-    expect(tileOrder("bp", tileSetFor(PRE_A))).toEqual(["bp", "pulse", "spo2", "tempC", "rr", "weightKg", "heightCm"]); // no MUAC tile for an adult
-    expect(tileOrder("tempC", tileSetFor(PRE_K))).toEqual(["tempC", "bp", "pulse", "spo2", "rr", "weightKg", "heightCm", "muacCm"]);
+    // OWNER 2026-10-07 — no RR tile in OPD: RR, like MUAC, is a tile only where the band REQUIRES it.
+    expect(tileOrder("bp", tileSetFor(PRE_A))).toEqual(["bp", "pulse", "spo2", "tempC", "weightKg", "heightCm"]); // no MUAC, no RR for an adult
+    expect(tileOrder("tempC", tileSetFor(PRE_K))).toEqual(["tempC", "bp", "pulse", "spo2", "weightKg", "heightCm", "muacCm"]);
+    expect(tileOrder("bp", { required: [...tileSetFor(PRE_A).required, "rr"], notRoutine: [] })).toContain("rr"); // a band that asks for RR still gets it
   });
   it("mirrorFor: the slipped digit, the shrinking adult and the probe error — and the child is above the weight gate", () => {
     const tile = emptyTiles().weightKg;
@@ -277,6 +283,8 @@ describe("VD-2 T5 — the contract pass closed three clauses: 1–8 address a ti
   });
 
   it("an RR committed within fifteen seconds of reaching the tile is charted AND nudged; the counter runs fifteen seconds and the re-take goes as `counted`", async () => {
+    // RR is a tile only for a band that requires it (owner 2026-10-07); this band does.
+    preBServed = { ...PRE_B, required: [...PRE_B.required, "rr"] };
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const posted: Posted[] = [];
@@ -508,9 +516,19 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
  * These two do not type a single ⏎.
  */
 describe("a typed number is a reading whether or not ⏎ was pressed", () => {
-  const TYPED = [["bp", "128/84"], ["pulse", "78"], ["spo2", "97"], ["tempC", "36.8"], ["rr", "16"], ["weightKg", "62"], ["heightCm", "168"]] as const;
+  const TYPED = [["bp", "128/84"], ["pulse", "78"], ["spo2", "97"], ["tempC", "36.8"], ["weightKg", "62"], ["heightCm", "168"]] as const;
 
-  it("the nurse who TABS: seven tiles filled, no ⏎, one click on Save & send — the save carries all seven and never says 'Still needed'", async () => {
+  it("an adult in OPD is given no RR tile (owner 2026-10-07)", async () => {
+    stubBay([ROW_B], () => saved());
+    renderWithProviders(<VitalsBay />);
+    await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("bench-row-121"));
+    await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
+    expect(screen.getByTestId("input-pulse")).toBeInTheDocument();
+    expect(screen.queryByTestId("input-rr")).not.toBeInTheDocument();
+  });
+
+  it("the nurse who TABS: six tiles filled, no ⏎, one click on Save & send — the save carries all six and never says 'Still needed'", async () => {
     const posted: Posted[] = [];
     stubBay([ROW_B], () => saved(), posted);
     renderWithProviders(<VitalsBay />);
@@ -526,7 +544,6 @@ describe("a typed number is a reading whether or not ⏎ was pressed", () => {
     expect(body.readings.pulse!.takes).toEqual([78]);
     expect(body.readings.spo2!.takes).toEqual([97]);
     expect(body.readings.tempC!.takes).toEqual([36.8]);
-    expect(body.readings.rr!.takes).toEqual([16]);
     expect(body.readings.weightKg!.takes).toEqual([62]);
     expect(body.readings.heightCm!.takes).toEqual([168]);
   });
