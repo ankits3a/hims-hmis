@@ -8,7 +8,7 @@ import {
 } from "../lib/opd-reports-api";
 import type { DayCounts, DayDepartment, PatientType, Selection } from "../lib/opd-reports-api";
 import {
-  DayFigures, DownloadButtons, ExcludedSundayNote, PeriodPicker, ProvisionalPill, rangeText, todaySelection,
+  DayFigures, DownloadButtons, ExcludedSundayNote, OpenedByLine, PeriodPicker, ProvisionalPill, rangeText, todaySelection,
   useReportDownloads,
 } from "../components/opd-report-panel";
 import "../styles/paper-pine.css";
@@ -29,12 +29,30 @@ import "./opd-report.css";
 
 const TYPE_KEY: Record<PatientType, string> = { new: "dayReport.new", revisit: "dayReport.revisit", renewal: "dayReport.renewal" };
 
-function Counts({ c, showOpen, total = false }: { c: DayCounts; showOpen: boolean; total?: boolean }): React.ReactElement {
-  const cell = (n: number) => <td className={!total && n === 0 ? "n mo zero" : "n mo"}>{n}</td>;
+/**
+ * The counted columns, in the order the screen, the sheet and the spreadsheet all use. "Still open" and
+ * "Left unseen" are ALWAYS drawn (they were hidden at zero until 2026-10-07): Visits opened is their sum
+ * with Consulted, and a row a reader cannot add up is a row they stop trusting.
+ */
+export const COUNT_COLUMNS = [
+  { key: "booked", label: "dayReport.booked", hint: "dayReport.bookedHint" },
+  { key: "opened", label: "dayReport.opened", hint: "dayReport.openedHint" },
+  { key: "consulted", label: "dayReport.consulted", hint: "dayReport.consultedHint" },
+  { key: "new", label: "dayReport.new", hint: "dayReport.newHint" },
+  { key: "revisit", label: "dayReport.revisit", hint: "dayReport.revisitHint" },
+  { key: "renewal", label: "dayReport.renewal", hint: "dayReport.renewalHint" },
+  { key: "stillOpen", label: "dayReport.col.stillOpen", hint: "dayReport.stillOpenHint" },
+  { key: "leftUnseen", label: "dayReport.leftUnseen", hint: "dayReport.leftUnseenHint" },
+] as const satisfies readonly { key: keyof DayCounts; label: string; hint: string }[];
+
+function Counts({ c, total = false }: { c: DayCounts; total?: boolean }): React.ReactElement {
+  const { t } = useTranslation();
   return (
     <>
-      {cell(c.booked)}{cell(c.consulted)}{cell(c.new)}{cell(c.revisit)}{cell(c.renewal)}
-      {showOpen ? cell(c.stillOpen) : null}
+      {COUNT_COLUMNS.map((col) => (
+        /* `data-label` is the column's name on a phone, where a row is drawn as a card of labelled numbers. */
+        <td key={col.key} data-label={t(col.label)} className={`n mo c-${col.key}${!total && c[col.key] === 0 ? " zero" : ""}`}>{c[col.key]}</td>
+      ))}
     </>
   );
 }
@@ -86,6 +104,7 @@ function Patients({ department, sel, span }: { department: DayDepartment; sel: S
             </table>
           </div>
         ) : null}
+        {list.data === undefined ? null : <OpenedByLine openedBy={list.data.openedBy} testId={`odr-openedby-${department.code}`} />}
       </td>
     </tr>
   );
@@ -96,6 +115,8 @@ export function OpdReportScreen({ initial }: { initial?: Selection }): React.Rea
   const { can } = useAuth();
   const [sel, setSel] = useState<Selection>(initial ?? todaySelection());
   const [open, setOpen] = useState<string | null>(null);
+  /* Which column's "?" is open. One at a time, said in a line above the table so a tap, a click and a key all reach it. */
+  const [hint, setHint] = useState<(typeof COUNT_COLUMNS)[number]["key"] | null>(null);
   /*
     THE URL IS A WAY IN, NOT A ONE-TIME SEED. The dashboard links here with the period it was showing,
     and a reader who follows a second link — or presses Back — must land on THAT period rather than on
@@ -122,8 +143,8 @@ export function OpdReportScreen({ initial }: { initial?: Selection }): React.Rea
   }
 
   const r = report.data;
-  const showOpen = r !== undefined && r.totals.stillOpen > 0;
-  const span = showOpen ? 8 : 7;
+  const span = COUNT_COLUMNS.length + 2;
+  const hinted = COUNT_COLUMNS.find((c) => c.key === hint);
   const pick = (s: Selection): void => { setSel(s); setOpen(null); };
 
   return (
@@ -170,16 +191,25 @@ export function OpdReportScreen({ initial }: { initial?: Selection }): React.Rea
               <p className="bandnote" data-testid="odr-no-departments">{t("dayReport.noDepartments")}</p>
             ) : (
               <div className="odr-scroll">
+                {hinted === undefined ? null : (
+                  <p className="odr-hintline" role="note" aria-live="polite" id="odr-hintline" data-testid="odr-hintline">
+                    <b>{t(hinted.label)}</b> — {t(hinted.hint)}
+                    <button type="button" className="odr-hintclose" onClick={() => setHint(null)} aria-label={t("dayReport.closeHint")}>×</button>
+                  </p>
+                )}
                 <table className="odr-table" data-testid="odr-table">
                   <thead>
                     <tr>
                       <th>{t("dayReport.col.department")}</th>
-                      <th className="n">{t("dayReport.booked")}</th>
-                      <th className="n">{t("dayReport.consulted")}</th>
-                      <th className="n">{t("dayReport.new")}</th>
-                      <th className="n">{t("dayReport.revisit")}</th>
-                      <th className="n">{t("dayReport.renewal")}</th>
-                      {showOpen ? <th className="n">{t("dayReport.col.stillOpen")}</th> : null}
+                      {COUNT_COLUMNS.map((col) => (
+                        <th key={col.key} className={`n c-${col.key}`}>
+                          <span className="odr-th">{t(col.label)}</span>
+                          <button type="button" className={hint === col.key ? "odr-q on" : "odr-q"} title={t(col.hint)}
+                            aria-label={t("dayReport.whatCounts", { column: t(col.label) })} aria-expanded={hint === col.key}
+                            aria-controls="odr-hintline" onClick={() => setHint(hint === col.key ? null : col.key)}
+                            data-testid={`odr-q-${col.key}`}>?</button>
+                        </th>
+                      ))}
                       <th className="act">{t("dayReport.col.download")}</th>
                     </tr>
                   </thead>
@@ -200,7 +230,7 @@ export function OpdReportScreen({ initial }: { initial?: Selection }): React.Rea
                                 <span className="odr-see">{isOpen ? t("dayReport.hidePatients") : t("dayReport.seePatients")}</span>
                               </button>
                             </td>
-                            <Counts c={d} showOpen={showOpen} />
+                            <Counts c={d} />
                             <td className="act">
                               <div className="odr-acts">
                                 <DownloadButtons compact busy={dl.busy} label={d.name}
@@ -218,20 +248,18 @@ export function OpdReportScreen({ initial }: { initial?: Selection }): React.Rea
                   <tfoot>
                     <tr>
                       <td>{t("dayReport.total")}</td>
-                      <Counts c={r.totals} showOpen={showOpen} total />
+                      <Counts c={r.totals} total />
                       <td />
                     </tr>
                   </tfoot>
                 </table>
               </div>
             )}
+            <OpenedByLine openedBy={r.openedBy} testId="odr-openedby" />
           </div>
 
           <div className="odr-notes" data-testid="odr-notes">
-            <p><b>{t("dayReport.new")}</b> — {t("dayReport.newHint")}</p>
-            <p><b>{t("dayReport.revisit")}</b> — {t("dayReport.revisitHint")}</p>
-            <p><b>{t("dayReport.renewal")}</b> — {t("dayReport.renewalHint")}</p>
-            <p><b>{t("dayReport.booked")}</b> — {t("dayReport.bookedHint")}</p>
+            {COUNT_COLUMNS.map((col) => <p key={col.key}><b>{t(col.label)}</b> — {t(col.hint)}</p>)}
             {sel.period === "week" ? <p data-testid="odr-week-rule"><b>{t("dayReport.thisWeek")}</b> — {t("dayReport.weekRule")}</p> : null}
           </div>
         </>

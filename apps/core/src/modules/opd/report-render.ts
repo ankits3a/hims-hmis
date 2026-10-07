@@ -1,6 +1,6 @@
 import { CREST_PNG_DATA_URI } from "../../kernel/printing/crest";
 import type {
-  ExcludedSunday, OpdDepartmentReport, OpdReport, PatientType, ReportCounts, ReportHospital, ReportPeriod, ReportRange,
+  ExcludedSunday, OpdDepartmentReport, OpdReport, OpenedBy, PatientType, ReportCounts, ReportHospital, ReportPeriod, ReportRange,
 } from "./report";
 
 /**
@@ -38,8 +38,17 @@ export const DEFINITIONS: readonly string[] = [
   "New — first consultation at the hospital (no consultation on any earlier day, in any department).",
   "Revisit — a returning patient on the free follow-up of an earlier consultation in this department.",
   "Renewal — a returning patient paying a fresh consultation fee: the follow-up period is over, or it is their first visit to this department.",
-  "Booked — appointments for these days that were not cancelled or moved. Consulted — consultations the doctor completed.",
+  "Appointments — appointments for these days that were not cancelled or moved (this column read \"Booked\" before). It counts appointments, not visits.",
+  "Visits opened — every visit the front desk opened in the department, whatever became of it: Consulted + Still open + Left unseen.",
+  "Consulted — consultations completed, on the doctor's screen or marked from the doctor's paper. Still open — opened and not yet completed.",
+  "Left unseen — a visit closed without a consultation. A visit the desk corrected (wrong department, changed doctor) is counted once, where it ended up.",
 ];
+
+/** `Opened by: Asha Devi 12 · Suresh Pillai 9` — null when the reader may not have staff figures. */
+export function openedByLine(openedBy: OpenedBy[] | null): string | null {
+  if (openedBy === null || openedBy.length === 0) return null;
+  return `Opened by: ${openedBy.map((o) => `${o.name} ${String(o.count)}`).join(" · ")}`;
+}
 
 /** Said only on a weekly sheet, because it is the rule that makes a week shorter than seven days. */
 export const WEEK_DEFINITION = "Week — Monday to Saturday (owner's rule). Sunday is not part of a week.";
@@ -111,7 +120,7 @@ const CSS = `
   .ttl .r { text-align: right; font-size: 11px; color: #444; }
   .ttl .r b { font-size: 13px; color: #1c1c1c; }
   .warn { border: 1px solid #d99a00; background: #fff6dd; color: #6b4a00; padding: 6px 10px; border-radius: 4px; margin-bottom: 10px; font-size: 11px; }
-  .tiles { display: flex; gap: 8px; margin: 4px 0 12px; }
+  .tiles { display: flex; gap: 6px; margin: 4px 0 12px; }
   .tile { flex: 1; border: 1px solid #ddd; border-radius: 6px; padding: 7px 10px; }
   .tile .v { font-size: 19px; font-weight: 800; }
   .tile .l { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: .4px; margin-top: 1px; }
@@ -183,8 +192,15 @@ function page(docTitle: string, body: string): string {
 
 const cell = (n: number, dim = true): string => `<td class="n num${dim && n === 0 ? " dim" : ""}">${String(n)}</td>`;
 
-function countCells(c: ReportCounts, showOpen: boolean): string {
-  return cell(c.booked) + cell(c.consulted) + cell(c.new) + cell(c.revisit) + cell(c.renewal) + (showOpen ? cell(c.stillOpen) : "");
+/** Printed in the screen's order; "Still open" and "Left unseen" always, so a row can be added up. */
+function countCells(c: ReportCounts): string {
+  return cell(c.booked) + cell(c.opened) + cell(c.consulted) + cell(c.new) + cell(c.revisit) + cell(c.renewal)
+    + cell(c.stillOpen) + cell(c.leftUnseen);
+}
+
+function openedByNote(openedBy: OpenedBy[] | null): string {
+  const line = openedByLine(openedBy);
+  return line === null ? "" : `<div class="notes"><b>Opened by:</b> ${esc(line.slice("Opened by: ".length))}</div>`;
 }
 
 /** 20-U U7 — ` · Unit II`, the unit that held the OPD that day; nothing at all when none did. */
@@ -202,21 +218,21 @@ export function fileStem(range: ReportRange, department?: { code: string }): str
 
 /** The hospital's period, department by department, on the letterhead. */
 export function renderReport(r: OpdReport): RenderedReport {
-  const showOpen = r.totals.stillOpen > 0;
   const rows = r.departments.map((d, i) =>
-    `<tr><td class="num">${String(i + 1)}</td><td><b>${esc(d.name)}</b>${unitLine(d.units)}</td>${countCells(d, showOpen)}</tr>`).join("");
+    `<tr><td class="num">${String(i + 1)}</td><td><b>${esc(d.name)}</b>${unitLine(d.units)}</td>${countCells(d)}</tr>`).join("");
   const body = letterhead(r.hospital)
     + title(PERIOD_TITLE[r.period], "Department-wise appointments and consultations", r, r.generatedAt)
     + provisionalNote(r.provisional, r.totals.stillOpen, r.period)
     + sundayNote(r.excludedSunday)
     + `<div class="tiles">${tile(r.totals.consulted, "Consulted", true)}${tile(r.totals.new, "New")}`
-    + `${tile(r.totals.revisit, "Revisit")}${tile(r.totals.renewal, "Renewal")}${tile(r.totals.booked, "Appointments booked")}</div>`
+    + `${tile(r.totals.revisit, "Revisit")}${tile(r.totals.renewal, "Renewal")}${tile(r.totals.opened, "Visits opened")}${tile(r.totals.booked, "Appointments")}</div>`
     + (r.departments.length === 0
       ? `<div class="empty">No OPD department is set up.</div>`
-      : `<table><thead><tr><th style="width:28px">#</th><th>Department</th><th class="n">Booked</th><th class="n">Consulted</th>`
-        + `<th class="n">New</th><th class="n">Revisit</th><th class="n">Renewal</th>${showOpen ? `<th class="n">Still open</th>` : ""}</tr></thead>`
+      : `<table><thead><tr><th style="width:28px">#</th><th>Department</th><th class="n">Appoint&shy;ments</th><th class="n">Visits opened</th><th class="n">Consulted</th>`
+        + `<th class="n">New</th><th class="n">Revisit</th><th class="n">Renewal</th><th class="n">Still open</th><th class="n">Left unseen</th></tr></thead>`
         + `<tbody>${rows}</tbody>`
-        + `<tfoot><tr><td></td><td>Total</td>${countCells(r.totals, showOpen).replace(/ dim/g, "")}</tr></tfoot></table>`)
+        + `<tfoot><tr><td></td><td>Total</td>${countCells(r.totals).replace(/ dim/g, "")}</tr></tfoot></table>`)
+    + openedByNote(r.openedBy)
     + `<div class="notes"><div><b>${String(r.patientsConsulted)}</b> different patient${r.patientsConsulted === 1 ? " was" : "s were"} consulted; `
     + `<b>${String(r.newPatients)}</b> of them came to the hospital for the first time. A patient seen in two departments is counted in each department's row`
     + `${r.from === r.to ? "" : ", and a patient who came on two days is counted on each day"}.</div></div>`
@@ -241,11 +257,12 @@ export function renderDepartmentReport(r: OpdDepartmentReport): RenderedReport {
     + provisionalNote(r.provisional, d.stillOpen, r.period)
     + sundayNote(r.excludedSunday)
     + `<div class="tiles">${tile(d.consulted, "Consulted", true)}${tile(d.new, "New")}${tile(d.revisit, "Revisit")}`
-    + `${tile(d.renewal, "Renewal")}${tile(d.booked, "Booked")}</div>`
+    + `${tile(d.renewal, "Renewal")}${tile(d.opened, "Visits opened")}${tile(d.leftUnseen, "Left unseen")}${tile(d.booked, "Appointments")}</div>`
     + (r.rows.length === 0
       ? `<div class="empty">No consultation was completed in ${esc(d.name)} ${manyDays ? `between ${esc(dayLabel(r.from))} and ${esc(dayLabel(r.to))}` : `on ${esc(dayLabel(r.from))}`}.</div>`
       : `<table><thead><tr><th style="width:26px">#</th>${manyDays ? "<th>Date</th>" : ""}<th>Time</th><th>Patient name</th><th>UHID</th><th>Age</th><th>Sex</th>`
         + `<th>Address</th><th>Type</th><th>Doctor</th></tr></thead><tbody>${rows}</tbody></table>`)
+    + openedByNote(r.openedBy)
     + notes(r.period)
     + `<div class="sign"><div>Checked by (name &amp; signature)</div></div>`;
   const docTitle = fileStem(r, d);
@@ -261,9 +278,15 @@ export function sheetText(value: string): string {
   return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }
 
-const countHeader = ["Booked", "Consulted", "New", "Revisit", "Renewal", "Still open"];
+const countHeader = ["Appointments", "Visits opened", "Consulted", "New", "Revisit", "Renewal", "Still open", "Left unseen"];
 const countRow = (c: ReportCounts): string[] =>
-  [c.booked, c.consulted, c.new, c.revisit, c.renewal, c.stillOpen].map(String);
+  [c.booked, c.opened, c.consulted, c.new, c.revisit, c.renewal, c.stillOpen, c.leftUnseen].map(String);
+
+/** One row per person, so a spreadsheet can sort it; nothing at all for a reader without staff figures. */
+function openedByRows(openedBy: OpenedBy[] | null): string[][] {
+  if (openedBy === null || openedBy.length === 0) return [];
+  return [["Opened by", "Visits opened"], ...openedBy.map((o) => [sheetText(o.name), String(o.count)]), []];
+}
 
 function csvHead(
   hospital: ReportHospital, heading: string, range: ReportRange, provisional: boolean, generatedAt: string,
@@ -302,6 +325,7 @@ export function reportCsvRows(r: OpdReport): string[][] {
     ["Different patients consulted", String(r.patientsConsulted)],
     ["New patients (first time at the hospital)", String(r.newPatients)],
     [],
+    ...openedByRows(r.openedBy),
     ...definitionsFor(r.period).map((d) => [d]),
   ];
 }
@@ -320,6 +344,7 @@ export function departmentReportCsvRows(r: OpdDepartmentReport): string[][] {
       PATIENT_TYPE_LABEL[p.patientType], sheetText(p.doctor),
     ]),
     [],
+    ...openedByRows(r.openedBy),
     ...definitionsFor(r.period).map((line) => [line]),
   ];
 }

@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { todayIst } from "../lib/desk-api";
 import { downloadReportCsv, fetchReport, openReportPdf } from "../lib/opd-reports-api";
-import type { DayCounts, OpdReport, ReportRange, Selection } from "../lib/opd-reports-api";
+import type { DayCounts, OpdReport, OpenedBy, ReportRange, Selection } from "../lib/opd-reports-api";
 import "../screens/opd-report.css";
 
 /**
@@ -86,8 +86,26 @@ export function DayFigures({ counts, testId }: { counts: DayCounts; testId?: str
       {fig(counts.new, t("dayReport.new"), t("dayReport.newHint"), "new")}
       {fig(counts.revisit, t("dayReport.revisit"), t("dayReport.revisitHint"), "revisit")}
       {fig(counts.renewal, t("dayReport.renewal"), t("dayReport.renewalHint"), "renewal")}
+      {fig(counts.opened, t("dayReport.opened"), t("dayReport.openedHint"), "opened")}
       {fig(counts.booked, t("dayReport.booked"), t("dayReport.bookedHint"), "booked")}
     </div>
+  );
+}
+
+/**
+ * "Opened by: Asha Devi 12 · Suresh Pillai 9" (owner, 2026-10-07). The server sends the list only to a
+ * reader who holds the staff figures, so there is nothing to hide here — null draws nothing.
+ */
+export function OpenedByLine({ openedBy, testId }: { openedBy: OpenedBy[] | null; testId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (openedBy === null || openedBy.length === 0) return null;
+  return (
+    <p className="odr-openedby" data-testid={testId}>
+      <b>{t("dayReport.openedBy")}</b>{" "}
+      {openedBy.map((o, i) => (
+        <span key={`${o.name}-${String(i)}`} className="odr-who">{o.name} <span className="mo">{o.count}</span></span>
+      ))}
+    </p>
   );
 }
 
