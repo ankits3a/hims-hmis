@@ -87,6 +87,16 @@ case "$TARGET" in
     echo "deploy.sh: HMIS_TARGET must be 'prod' or 'uat' (got '$TARGET')" >&2; exit 1 ;;
 esac
 
+# OWNER 2026-10-07 — PRODUCTION MOVED TO ITS OWN SERVER. The host it left keeps the old stack, stopped,
+# as a rollback, and a marker file beside it. Starting that stack again would put a second writer on
+# the same pgBackRest stanza and split the hospital's data between two databases. So a production
+# deploy refuses on any host whose deploy directory carries a MOVED-TO-* marker. A deliberate rollback,
+# agreed with the owner, sets HMIS_DEPLOY_HERE_ANYWAY=1.
+if [ "$TARGET" = "prod" ] && compgen -G "$DEPLOY_DIR/MOVED-TO-*" >/dev/null && [ "${HMIS_DEPLOY_HERE_ANYWAY:-0}" != "1" ]; then
+  echo "deploy.sh: production no longer runs on this host ($(basename "$(compgen -G "$DEPLOY_DIR/MOVED-TO-*" | head -1)")) — deploy it there; tools/auto-deploy.sh does, via /etc/hmis/auto-deploy.env" >&2
+  exit 1
+fi
+
 # ════════════════════════════════════════════════════════════════════════════════════════════════
 # PHASE 11i T3 — `HMIS_DEPLOY_ALLOW_DIRTY=1` IS FOR A REHEARSAL, AND A REHEARSAL IS NOT PRODUCTION.
 #
