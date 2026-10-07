@@ -183,6 +183,16 @@ const prescriptionBody = z.object({
     lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
     moiety: z.string().min(1).max(200).optional(),
   })).optional(),
+  /**
+   * P24 — the reason for prescribing against a SEVERE drug–disease rule. `issuePrescription` has
+   * read this since P24 and the web consult screen has sent it, but it was never NAMED here, and
+   * zod strips an undeclared key — so the override never arrived and a severe hit could not be
+   * cleared by anyone (found building the phone consult, 2026-10-07).
+   */
+  drugDiseaseOverrides: z.array(z.object({
+    lineIndex: z.number().int().nonnegative(), reason: z.string().max(500),
+    moiety: z.string().min(1).max(200), icd10Prefix: z.string().min(1).max(20),
+  })).optional(),
 });
 /** The pre-check takes the lines alone: nothing is written, so nothing else is needed. */
 const precheckBody = z.object({ lines: z.array(rxLineBody) });

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { doctorApi, type DoctorApi } from "../doctor/api";
 import { PatientBrief, type BriefGroup } from "../doctor/brief";
+import { ConsultScreen } from "./consult";
 import {
   LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, completionBody, followUpChoices, isUnpaid, longestWait, parkedSince, rowName,
   unissuedRxRows, visitKind, waitMinutes,
@@ -132,6 +133,8 @@ export function DoctorQueue() {
   const [completing, setCompleting] = useState<Open | null>(null);
   const [followUp, setFollowUp] = useState<number | null>(null);
   const [testsOrdered, setTestsOrdered] = useState(false);
+  /** The consultation in hand shows the consult screen; this holds the one visit whose history (the brief) was asked for instead. */
+  const [historyOf, setHistoryOf] = useState<string | null>(null);
 
   const say = useCallback((text: string) => {
     setFlash(text);
@@ -374,6 +377,24 @@ export function DoctorQueue() {
 
   if (open !== null) {
     const { entry, group } = groupOf(open.encounterId);
+    // In consultation: the consult screen (decision 0048). The brief stays one tap away as the patient's history.
+    if (group === "with" && historyOf !== open.encounterId) {
+      return (
+        <View style={{ flex: 1, backgroundColor: color.paper }}>
+          <Band right={back} />
+          {error !== null && !sheetOpen && <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}><Note tone="bad" testID="consult-line-error">{error}</Note></View>}
+          <ConsultScreen
+            doctorApi={api} encounterId={open.encounterId} patientId={open.patientId} tokenNo={open.tokenNo} entry={entry} summary={entry?.patient ?? open.summary} cfg={cfg}
+            onDone={(line) => { setError(null); setOpen(null); say(line); void refresh(); }}
+            onPaper={() => askComplete(open)}
+            onHistory={() => setHistoryOf(open.encounterId)}
+            onPark={() => { void (async () => { if (await act("park", () => api.park(open.encounterId), t("mobile.doctor.parked", { token: open.tokenNo }))) setOpen(null); })(); }}
+            parkBusy={busy !== null}
+          />
+          {sheets}
+        </View>
+      );
+    }
     return (
       <View style={{ flex: 1, backgroundColor: color.paper }}>
         <Band right={back} />
@@ -381,7 +402,7 @@ export function DoctorQueue() {
           api={api} entry={entry} group={group} encounterId={open.encounterId} patientId={open.patientId} summary={entry?.patient ?? open.summary} tokenNo={open.tokenNo}
           isHead={group === "line" && current === null && ordered[0]?.encounterId === open.encounterId}
           busy={busy} error={sheetOpen ? null : error} flash={flash}
-          onBack={() => { setError(null); setOpen(null); }}
+          onBack={() => { setError(null); if (historyOf === open.encounterId) setHistoryOf(null); else setOpen(null); }}
           actions={{
             start: () => startOf(open),
             recall: () => { if (entry !== null) void act("recall", () => api.recall(entry.id), t("mobile.doctor.calledNow", { token: open.tokenNo })); },

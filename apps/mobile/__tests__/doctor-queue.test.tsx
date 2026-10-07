@@ -5,12 +5,13 @@ import { DoctorQueue } from "../src/screens/doctor-queue";
 import { SessionProvider, useSession } from "../src/session";
 
 jest.mock("expo-secure-store", () => {
-  let v: string | null = JSON.stringify({ token: "t1", username: "chandan.kumar" });
+  // Keyed, like the real store: the consult screen keeps a visit's draft beside the session token.
+  const m = new Map<string, string>([["hmis.session", JSON.stringify({ token: "t1", username: "chandan.kumar" })]]);
   return {
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 0,
-    getItemAsync: jest.fn(async () => v),
-    setItemAsync: jest.fn(async (_k: string, val: string) => { v = val; }),
-    deleteItemAsync: jest.fn(async () => { v = null; }),
+    getItemAsync: jest.fn(async (k: string) => m.get(k) ?? null),
+    setItemAsync: jest.fn(async (k: string, val: string) => { m.set(k, val); }),
+    deleteItemAsync: jest.fn(async (k: string) => { m.delete(k); }),
   };
 });
 jest.mock("expo-local-authentication", () => ({
@@ -299,10 +300,10 @@ describe("the doctor's OPD line on a phone", () => {
     });
     await mount(w.fetcher);
     await fireEvent.press(await screen.findByTestId("called-start"));
-    // Started: the brief opens on that patient, with Complete and Park under it.
-    expect(await screen.findByTestId("act-complete")).toBeTruthy();
-    expect(screen.getByTestId("act-park")).toBeTruthy();
-    await fireEvent.press(screen.getByTestId("act-complete"));
+    // Started: the consultation opens on that patient (decision 0048). Paper is one tap, and Park is under the visit.
+    expect(await screen.findByTestId("issue-complete")).toBeTruthy();
+    expect(screen.getByTestId("consult-park")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("wrote-on-paper"));
     expect(await screen.findByTestId("complete-sheet")).toHaveTextContent(/Complete · token 13/);
     expect(screen.getByTestId("follow-default")).toHaveTextContent("7 days (default)");
     await fireEvent.press(screen.getByTestId("complete-go"));
@@ -321,25 +322,34 @@ describe("the doctor's OPD line on a phone", () => {
     });
     await mount(w.fetcher);
     await fireEvent.press(await screen.findByTestId("with-row-13-open"));
-    await fireEvent.press(await screen.findByTestId("act-complete"));
+    await fireEvent.press(await screen.findByTestId("wrote-on-paper"));
     await fireEvent.press(await screen.findByTestId("follow-14"));
     await fireEvent.press(screen.getByTestId("complete-go"));
     await waitFor(() => expect(w.of("POST /opd/visits/e13/consult/complete")).toHaveLength(1));
     expect(w.of("POST /opd/visits/e13/consult/complete")[0]!.body).toEqual({ testsOrderedReturnToday: false, followUpDays: 14 });
   });
 
-  it("REFUSES to complete while a prescription typed on the computer is not issued — and posts nothing", async () => {
+  it("medicines typed on the computer and not issued are SHOWN on the phone — paper asks before dropping them, and nothing completes until the doctor says so", async () => {
     const inside = entry(13, { status: "in_consult" }, { status: "in_consultation" }, { name: "Suresh Prasad" });
     const w = world(queue({ inConsult: [inside], ordered: [] }), {
       "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", {}, { status: "in_consultation", rxDraft: [{ drug: "Metformin 1 g" }, { drug: "" }, { drug: "Telmisartan 40 mg" }] }) }),
+      "PUT /opd/visits/e13/consult/note": () => ({ status: 200, body: { encounter: {} } }),
       "POST /opd/visits/e13/consult/complete": () => ({ status: 201, body: { encounter: {} } }),
     });
     await mount(w.fetcher);
     await fireEvent.press(await screen.findByTestId("with-row-13-open"));
-    await fireEvent.press(await screen.findByTestId("act-complete"));
-    expect(await screen.findByTestId("brief-error")).toHaveTextContent("2 medicines are typed on the computer and not issued. Issue the prescription there, then complete.");
+    // The two named rows are on this visit's card (the blank editor row is not a medicine), each saying what it lacks.
+    expect(await screen.findByTestId("visit-line-1")).toHaveTextContent(/Telmisartan 40 mg/);
+    expect(screen.getByTestId("visit-line-0")).toHaveTextContent(/needs a dose and how often/);
+    await fireEvent.press(screen.getByTestId("wrote-on-paper"));
+    expect(await screen.findByTestId("paper-ask")).toHaveTextContent("2 medicines typed here will NOT be issued — the paper is the prescription. Tap again to go on.");
     expect(screen.queryByTestId("complete-sheet")).toBeNull();
+    expect(w.of("PUT /opd/visits/e13/consult/note")).toHaveLength(0);
     expect(w.of("POST /opd/visits/e13/consult/complete")).toHaveLength(0);
+    // Said twice: the typed rows are withdrawn on the server, then the paper road's own completion opens.
+    await fireEvent.press(screen.getByTestId("wrote-on-paper"));
+    await waitFor(() => expect(w.of("PUT /opd/visits/e13/consult/note")).toHaveLength(1));
+    expect(w.of("PUT /opd/visits/e13/consult/note")[0]!.body).toEqual({ rxDraft: [] });
   });
 
   it("a completion that never reached the server is NOT shown as done: the patient stays with me and the phone says the server was not reached", async () => {
@@ -347,11 +357,11 @@ describe("the doctor's OPD line on a phone", () => {
     const w = world(queue({ inConsult: [inside], ordered: [] }), { "POST /opd/visits/e13/consult/complete": () => "offline" });
     await mount(w.fetcher);
     await fireEvent.press(await screen.findByTestId("with-row-13-open"));
-    await fireEvent.press(await screen.findByTestId("act-complete"));
+    await fireEvent.press(await screen.findByTestId("wrote-on-paper"));
     await fireEvent.press(await screen.findByTestId("complete-go"));
-    expect(await screen.findByTestId("brief-error")).toHaveTextContent(/The server could not be reached/);
-    expect(screen.queryByTestId("brief-flash")).toBeNull();
-    expect(screen.getByTestId("act-complete")).toBeTruthy();
+    expect(await screen.findByTestId("consult-line-error")).toHaveTextContent(/The server could not be reached/);
+    expect(screen.queryByTestId("line-flash")).toBeNull();
+    expect(screen.getByTestId("issue-complete")).toBeTruthy();
   });
 
   it("park and resume: a parked patient is shown as parked, with one way back in", async () => {
@@ -362,11 +372,11 @@ describe("the doctor's OPD line on a phone", () => {
     });
     await mount(w.fetcher);
     await fireEvent.press(await screen.findByTestId("with-row-13-open"));
-    await fireEvent.press(await screen.findByTestId("act-park"));
+    await fireEvent.press(await screen.findByTestId("consult-park"));
     expect(await screen.findByTestId("with-state-13")).toHaveTextContent("Parked just now");
     await fireEvent.press(screen.getByTestId("with-row-13-open"));
     await fireEvent.press(await screen.findByTestId("act-resume"));
-    expect(await screen.findByTestId("act-complete")).toBeTruthy();
+    expect(await screen.findByTestId("issue-complete")).toBeTruthy();
     expect(w.of("POST /opd/visits/e13/consult/resume")).toHaveLength(1);
   });
 
