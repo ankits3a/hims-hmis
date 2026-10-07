@@ -66,6 +66,7 @@ Source: `apps/core/src/modules/opd/`
   - `appointmentRescheduled`
   - `benchStateSet`
   - `consultFeeOverridden`
+  - `consultVoiceTranscribed`
   - `consultationCompleted`
   - `consultationCompletedOnPaper`
   - `consultationPaperConfirmed`
@@ -170,16 +171,17 @@ Source: `apps/core/src/modules/opd/`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-`opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_section_records`, `opd_vitals`
+`opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (132)
+## HTTP routes (147)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
 - `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
 - `opd-paper.controller.ts` — 11: `/opd/paper`
+- `opd-phone-consult.controller.ts` — 15: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
 - `opd-queue.controller.ts` — 35: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
 - `opd-reports.controller.ts` — 6: `/opd/reports`
 - `opd-visits.controller.ts` — 40: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
