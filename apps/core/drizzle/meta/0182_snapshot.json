@@ -1,5 +1,5 @@
 {
-  "id": "5ff47dae-9926-4bc3-8341-02c95971978e",
+  "id": "eafde1fe-2ed6-4c1d-b50b-bcd3052aab7e",
   "prevId": "cd4fb44f-8fce-48e2-9de0-e7a9be02b4fe",
   "version": "7",
   "dialect": "postgresql",
@@ -6417,26 +6417,38 @@
           "primaryKey": false,
           "notNull": false
         },
-        "patient_absent_by": {
-          "name": "patient_absent_by",
+        "paper_recheck_asked_by": {
+          "name": "paper_recheck_asked_by",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "patient_absent_at": {
-          "name": "patient_absent_at",
+        "paper_recheck_asked_at": {
+          "name": "paper_recheck_asked_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
-        "patient_absent_relation": {
-          "name": "patient_absent_relation",
+        "paper_recheck_reason": {
+          "name": "paper_recheck_reason",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "patient_absent_name": {
-          "name": "patient_absent_name",
+        "paper_recheck_done_by": {
+          "name": "paper_recheck_done_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_recheck_done_at": {
+          "name": "paper_recheck_done_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paper_recheck_done_note": {
+          "name": "paper_recheck_done_note",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -43227,6 +43239,12 @@
         "answered_at": {
           "name": "answered_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer_note": {
+          "name": "answer_note",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

@@ -568,3 +568,50 @@ team** card, then **My work** — every screen as before, with a live badge.
 - JavaScript only — no new native module (the line is drawn with Views), so it can travel as an over-the-air bundle.
 - Not built: see decision 0042 "Still open". The last home is kept in memory only (lost when the app is closed).
 - Walk: `/opt/hmis-context/mobile-tools/{serve-home,shoot-home}.mjs`.
+
+## 3k. App home, round two (2026-10-07, decision 0043) — the board, finished
+
+Round one left parts of the approved board unbuilt. Closed here:
+
+- **Header:** the person's full name and what they are here as (`/auth/me` → `profile`; `src/home/profile.ts`). A bell
+  with the unread count opens the alerts list (`app/alerts.tsx`).
+- **Front desk cards:** patients I opened still waiting (count, oldest clock), appointments to re-book (due by their
+  day), my own request's status (`GET /approvals/mine`; "OK" is remembered on the phone).
+- **Scribe cards:** papers a doctor sent back (`GET /opd/paper/sent-back`, with `toType`), papers to type. Typing stays
+  on the computer; the card says where.
+- **Paper consultations on the phone** (`app/paper.tsx`, `src/screens/paper-consults.tsx`): held lines first; give with
+  a reason / do not give (the web's `/correct`), "Looks right", "Ask the desk to re-check" (`/recheck`), the slip viewer.
+- **Server, additive (migration 0182):** `paper_recheck_*` on `opd_encounters`, `answer_note` on
+  `roster_cover_requests`; `sweepOverdueApprovals` inside `sweepStaffNotices`; push category `approvals` and link
+  `approvals`; `?knows=` on the phone-notifications routes.
+- **Cover request:** Yes / No open a sheet; "no" needs a reason.
+- **A tap lands on its card** (`src/home/focus.ts`); **the last home is kept across a closed app, counts only**
+  (`src/home/cache.ts`, SecureStore — no new native module).
+- **Still deferred:** long-press app-icon shortcuts (native module → next APK); a phone scribe seat.
+- JavaScript only on the phone. Walk: `/opt/hmis-context/mobile-tools/{serve-home2,shoot-home2}.mjs`.
+
+## 3l. Slip desk — several pages in one go (owner 2026-10-07) — BUILT
+
+Owner, 2026-10-07: *"when I am capturing opd prescription photo, after capturing the first image, allow to
+capture second image from the same screen, may '+' button would be enough. This will help speed up the work."*
+
+- **The strip.** After the first page is cut ("Use this"), the review shows the pages of this slip in the
+  order they will be filed, and a "+" tile. A page is tapped to see it large; Adjust the crop, Retake, ◀ ▶
+  and Remove (a second tap confirms) act on the page shown.
+- **Back-to-back.** "+" opens the camera and KEEPS it open: shoot, turn the page, shoot, Done. Those pages
+  never stop at the crop — each is cut to the corners that were found. A page whose edges were not found is
+  the photo as taken, marked "check the corners", and nothing is filed until it has been opened once.
+- **DECIDED.** Six pages at most for one slip. One kind for the whole slip; the note rides on the first
+  page. Pages can be moved or removed only until the first of them is filed.
+- **Filing.** One after another, in the strip's order — the order the server numbers pages in (it counts
+  a visit's documents, oldest first; the route takes no page number and no idempotency key, and none was
+  added). A failure stops there: the pages before it stay filed and the line says how many; Try again sends
+  only what is left. After a LOST answer the retry first re-reads the visit (`GET /opd/visits/by-number`)
+  and does not resend a page the server already holds (`src/slips/pages.ts`, `landedUnheard`).
+- **Marked consulted once.** The first prescription page closes the visit; later pages answer
+  "already marked". The filed card says the first (`paperOf`).
+- **Web desk: unchanged.** It keeps "Add a page" after filing; the strip there is a rebuild of its
+  capture step, not a small change.
+- **No server change, no new native module** — JavaScript only, so it can ride an over-the-air bundle.
+- Needs a real phone: the camera staying open between shots, the speed of cutting three pages in a row,
+  the thumbnails' memory on a small phone (each is the page's own JPEG).

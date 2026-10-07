@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -14,7 +14,8 @@ import { consultDoorRefusal, entryWhere, requireTreatingDoctor } from "./consult
 import { getEncounter } from "./encounters";
 import { OpdError } from "./errors";
 import {
-  consultationCompleted, consultationCompletedOnPaper, consultationPaperConfirmed, consultationPaperReopened,
+  consultationCompleted, consultationCompletedOnPaper, consultationPaperConfirmed, consultationPaperRecheckAsked,
+  consultationPaperRecheckDone, consultationPaperReopened,
   consultFeeOverridden, paperPrescriptionTranscribed,
 } from "./events";
 import { normaliseRxLine } from "./fhir";
@@ -479,6 +480,8 @@ export async function transcribePaper(
     db, actor, e.id, { kind: "transcription", id: prescription?.prescriptionId ?? e.id }, now,
   );
 
+  /* A save IS the re-check: what the doctor sent back is answered by typing it again (decision 0043). */
+  await withTx(db, (tx) => closeRecheckInTx(tx, actor, e, null, true, now));
   await withTx(db, (tx) => appendEvent(tx, paperPrescriptionTranscribed.make({
     actor, patientId: e.patientId, encounterId: e.id, correlationId: e.workflowInstanceId,
     payload: {
@@ -520,6 +523,8 @@ export type PaperConsultRow = {
   doctorDraft: RxLine[];
   confirmedAt: Date | null;
   confirmedByName: string | null;
+  /** "Ask the desk to re-check" (decision 0043): open while `doneAt` is null. Null when never asked. */
+  recheck: { reason: string; askedAt: Date; askedByName: string | null; doneAt: Date | null; doneByName: string | null; doneNote: string | null } | null;
 };
 
 async function namesOf(db: Db, ids: readonly (string | null | undefined)[]): Promise<Map<string, string>> {
@@ -551,7 +556,7 @@ async function rowsFor(db: Db, actor: Actor, encounters: EncounterRow[]): Promis
   const tokenBy = new Map(entries.map((q) => [q.encounterId, q.tokenNo] as const));
   const doctorBy = new Map(doctors.map((d) => [d.id, d] as const));
   const names = await namesOf(db, [
-    ...encounters.flatMap((e) => [e.paperCompletedBy, e.paperConfirmedBy]),
+    ...encounters.flatMap((e) => [e.paperCompletedBy, e.paperConfirmedBy, e.paperRecheckAskedBy, e.paperRecheckDoneBy]),
     ...rx.map((p) => p.transcribedBy), ...drafts.map((d) => d.draftedBy),
     ...encounters.flatMap((e) => ((Array.isArray(e.advisedTests) ? e.advisedTests : []) as PaperAdvisedTest[]).map((t) => t.transcribedBy)),
   ]);
@@ -585,6 +590,12 @@ async function rowsFor(db: Db, actor: Actor, encounters: EncounterRow[]): Promis
       doctorDraft: unissuedDoctorDraft(e, p === undefined ? [] : (p.lines as RxLine[])),
       confirmedAt: e.paperConfirmedAt,
       confirmedByName: e.paperConfirmedBy === null ? null : names.get(e.paperConfirmedBy) ?? null,
+      recheck: e.paperRecheckAskedAt === null ? null : {
+        reason: e.paperRecheckReason ?? "", askedAt: e.paperRecheckAskedAt,
+        askedByName: e.paperRecheckAskedBy === null ? null : names.get(e.paperRecheckAskedBy) ?? null,
+        doneAt: e.paperRecheckDoneAt, doneByName: e.paperRecheckDoneBy === null ? null : names.get(e.paperRecheckDoneBy) ?? null,
+        doneNote: e.paperRecheckDoneNote,
+      },
     });
   }
   return out;
@@ -695,6 +706,91 @@ export async function confirmPaperConsult(
   }
   await withTx(db, (tx) => stampConfirmed(tx, actor, e, doctorId, false, now));
   return (await rowsFor(db, actor, [(await getEncounter(db, e.id))!]))[0]!;
+}
+
+/**
+ * ═══ "ASK THE DESK TO RE-CHECK" (app home round 2, decision 0043) ═══
+ *
+ * The doctor reads what the desk typed from their paper and a line is wrong or cannot be right. Until
+ * now their only move was to retype the prescription themselves ("Correct it") — the thing the paper
+ * road exists to spare them. This sends it BACK: a reason, the treating doctor only, one open ask
+ * per visit (asking again replaces the reason). It holds nothing: the patient is long gone and the
+ * pharmacy already has the lines; it is a message with a place to land (the desk's list, the desk's
+ * phone) and a record that it was answered.
+ */
+export async function askPaperRecheck(
+  db: Db, actor: Actor, encounterId: string, reasonRaw: string, now: Date = new Date(),
+): Promise<PaperConsultRow> {
+  const reason = reasonRaw.trim();
+  if (reason === "") throw new OpdError("paper_consult_state_conflict", "say what the desk should look at again");
+  const { e, doctorId } = await doctorsPaperVisit(db, actor, encounterId);
+  await withTx(db, async (tx) => {
+    await tx.update(opdEncounters).set({
+      paperRecheckAskedBy: actor.id, paperRecheckAskedAt: now, paperRecheckReason: reason.slice(0, 500),
+      paperRecheckDoneBy: null, paperRecheckDoneAt: null, paperRecheckDoneNote: null,
+    }).where(eq(opdEncounters.id, e.id));
+    await appendEvent(tx, consultationPaperRecheckAsked.make({
+      actor, patientId: e.patientId, encounterId: e.id, correlationId: e.workflowInstanceId,
+      payload: { encounterId: e.id, patientId: e.patientId, doctorId, serviceDate: e.serviceDate },
+    }));
+  });
+  return (await rowsFor(db, actor, [(await getEncounter(db, e.id))!]))[0]!;
+}
+
+/** Closes an open ask inside the caller's transaction. A visit with no open ask is left exactly as it is. */
+async function closeRecheckInTx(tx: Tx, actor: Actor, e: EncounterRow, note: string | null, bySave: boolean, now: Date): Promise<boolean> {
+  const closed = await tx.update(opdEncounters)
+    .set({ paperRecheckDoneBy: actor.id, paperRecheckDoneAt: now, paperRecheckDoneNote: note })
+    .where(and(eq(opdEncounters.id, e.id), isNotNull(opdEncounters.paperRecheckAskedAt), isNull(opdEncounters.paperRecheckDoneAt)))
+    .returning({ id: opdEncounters.id });
+  if (closed.length === 0) return false;
+  await appendEvent(tx, consultationPaperRecheckDone.make({
+    actor, patientId: e.patientId, encounterId: e.id, correlationId: e.workflowInstanceId,
+    payload: { encounterId: e.id, patientId: e.patientId, serviceDate: e.serviceDate, bySave },
+  }));
+  return true;
+}
+
+/** The desk says "I have looked again" without retyping (the paper was right, or the doctor was told). */
+export async function resolvePaperRecheck(
+  db: Db, actor: Actor, encounterId: string, noteRaw: string | null, now: Date = new Date(),
+): Promise<PaperConsultRow> {
+  await requireScribe(db, actor);
+  const e = await getEncounter(db, encounterId);
+  if (!e) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  const note = (noteRaw ?? "").trim() === "" ? null : (noteRaw ?? "").trim().slice(0, 500);
+  const won = await withTx(db, (tx) => closeRecheckInTx(tx, actor, e, note, false, now));
+  if (!won) throw new OpdError("paper_consult_state_conflict", `visit ${e.visitNo} has nothing sent back to re-check`);
+  const [row] = await rowsFor(db, actor, [(await getEncounter(db, e.id))!]);
+  if (row === undefined) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+  return row;
+}
+
+/** The desk's list of what doctors sent back and nobody has answered — every doctor's, today's and yesterday's. */
+export async function listPaperSentBack(db: Db, actor: Actor, now: Date = new Date()): Promise<{ items: PaperConsultRow[]; toType: number }> {
+  await requireScribe(db, actor);
+  const since = new Date(now.getTime() - 48 * 3_600_000);
+  const encounters = await db.select().from(opdEncounters)
+    .where(and(isNotNull(opdEncounters.paperRecheckAskedAt), isNull(opdEncounters.paperRecheckDoneAt), gte(opdEncounters.paperRecheckAskedAt, since)))
+    .orderBy(asc(opdEncounters.paperRecheckAskedAt)).limit(200);
+  /*
+    PAPERS TO TYPE — a count for the desk's card: today's visits closed from a photographed slip that
+    nobody has typed yet (no prescription typed from paper, nothing held). A count and nothing else.
+  */
+  const photographed = await db.select({ id: opdEncounters.id, advisedTests: opdEncounters.advisedTests }).from(opdEncounters)
+    .where(and(eq(opdEncounters.serviceDate, istDate(now)), eq(opdEncounters.type, "opd"), eq(opdEncounters.completedVia, "paper"), eq(opdEncounters.paperEvidenceKind, "slip_photo")))
+    .limit(DAY_CAP);
+  let toType = 0;
+  if (photographed.length > 0) {
+    const ids = photographed.map((p) => p.id);
+    const typed = new Set((await db.select({ e: opdPrescriptions.encounterId }).from(opdPrescriptions)
+      .where(and(inArray(opdPrescriptions.encounterId, ids), eq(opdPrescriptions.status, "active")))).map((r) => r.e));
+    const held = new Set((await db.select({ e: opdPrescriptionDrafts.encounterId }).from(opdPrescriptionDrafts)
+      .where(and(inArray(opdPrescriptionDrafts.encounterId, ids), eq(opdPrescriptionDrafts.status, "pending")))).map((r) => r.e));
+    toType = photographed.filter((p) => !typed.has(p.id) && !held.has(p.id)
+      && !((Array.isArray(p.advisedTests) ? p.advisedTests : []) as PaperAdvisedTest[]).some((t) => t.transcribedBy !== undefined)).length;
+  }
+  return { items: await rowsFor(db, actor, encounters), toType };
 }
 
 export type CorrectPaperInput = {

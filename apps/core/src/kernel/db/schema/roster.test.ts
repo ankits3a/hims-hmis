@@ -143,7 +143,7 @@ describe("roster — 0108 structure", () => {
     ],
     // 20-U U6 — a cover or a swap, asked and answered BEFORE the amendment that applies it.
     roster_cover_requests: [
-      "amendment_ids", "answered_at", "assignment_id", "counterpart_assignment_id", "counterpart_id",
+      "amendment_ids", "answer_note", "answered_at", "assignment_id", "counterpart_assignment_id", "counterpart_id",
       "counterpart_team_id", "created_at", "created_by", "cross_unit", "decided_at", "decided_by",
       "decision_note", "department_id", "id", "kind", "note", "owner_id", "period_id", "refused_rule",
       "requested_at", "requested_by", "site_id", "status", "team_id", "updated_at", "updated_by",

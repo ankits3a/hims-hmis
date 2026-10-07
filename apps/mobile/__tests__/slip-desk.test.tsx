@@ -40,12 +40,18 @@ const mockImaging = {
   found: { score: 0.9, quad: [{ x: 300, y: 400 }, { x: 2200, y: 380 }, { x: 2300, y: 3000 }, { x: 250, y: 3050 }] as Quad } as { score: number; quad: Quad } | null,
   flattenCalls: [] as { quad: Quad | null; maxEdge: number }[],
   flat: { base64: "QUJD".repeat(2000), width: 1131, height: 1600, straightened: true } as { base64: string; width: number; height: number; straightened: boolean } | null,
+  pages: null as ((n: number) => string) | null,
 };
 jest.mock("../src/slips/imaging", () => ({
   WORK_EDGE: 2560,
   normalize: jest.fn(async () => ({ uri: "file:///work.jpg", width: 1920, height: 2560 })),
   findPage: jest.fn(async () => mockImaging.found),
-  flatten: jest.fn(async (_p: unknown, quad: Quad | null, maxEdge: number) => { mockImaging.flattenCalls.push({ quad, maxEdge }); return mockImaging.flat; }),
+  flatten: jest.fn(async (_p: unknown, quad: Quad | null, maxEdge: number) => {
+    mockImaging.flattenCalls.push({ quad, maxEdge });
+    // `pages`: each page in turn gets bytes of its own, so the ORDER of what is sent can be read.
+    if (mockImaging.pages !== null) { const n = mockImaging.flattenCalls.length; return mockImaging.flat === null ? null : { ...mockImaging.flat, base64: mockImaging.pages(n) }; }
+    return mockImaging.flat;
+  }),
 }));
 
 type Reply = { status: number; body?: unknown } | "offline";
@@ -109,6 +115,7 @@ describe("the slip desk on a phone", () => {
     mockImaging.found = { score: 0.9, quad: [{ x: 300, y: 400 }, { x: 2200, y: 380 }, { x: 2300, y: 3000 }, { x: 250, y: 3050 }] };
     mockImaging.flat = { base64: "QUJD".repeat(2000), width: 1131, height: 1600, straightened: true };
     mockImaging.flattenCalls = [];
+    mockImaging.pages = null;
     (jest.requireMock("../src/slips/imaging") as { normalize: jest.Mock }).normalize.mockClear();
   });
 
@@ -336,6 +343,149 @@ describe("the slip desk on a phone", () => {
     await waitFor(() => expect(screen.getByTestId("slip-crop-use")).not.toBeDisabled());
     await fireEvent.press(screen.getByTestId("slip-crop-use"));
     expect(await screen.findByTestId("slip-flat-only")).toBeTruthy();
+  });
+
+  /**
+   * Owner 2026-10-07 — "after capturing the first image, allow to capture second image from the same
+   * screen, may '+' button would be enough". The strip, the back-to-back camera, and the filing.
+   */
+  describe("several pages in one go", () => {
+    const PAGE = (n: number): string => `PAGE${String(n)}`.repeat(40);
+    async function firstPage(routes: Record<string, Route> = {}) {
+      mockImaging.pages = PAGE;
+      const s = server(base(routes));
+      await mount(s.fetcher);
+      await find("V2610060004");
+      await photograph();
+      await waitFor(() => expect(screen.getByTestId("slip-crop-use")).not.toBeDisabled());
+      await fireEvent.press(screen.getByTestId("slip-crop-use"));
+      await screen.findByTestId("slip-page-1");
+      return s;
+    }
+    /** "+" opens the camera and keeps it open: shoot `n` more, then Done. */
+    async function shootMore(n: number) {
+      await fireEvent.press(screen.getByTestId("slip-add"));
+      for (let i = 0; i < n; i++) {
+        await fireEvent.press(await screen.findByTestId("cam-shoot"));
+        await waitFor(() => expect(screen.getByTestId("cam-done")).toHaveTextContent(new RegExp(`Done · ${String(2 + i)} pages`)));
+      }
+      await fireEvent.press(screen.getByTestId("cam-done"));
+      await waitFor(() => expect(screen.queryByTestId("slip-camera")).toBeNull());
+    }
+
+    it("the review shows the page and a '+' — one page still files exactly as before", async () => {
+      await firstPage();
+      expect(screen.getByTestId("slip-add")).toHaveTextContent(/Add a page/);
+      expect(screen.getByTestId("slip-file-it")).toHaveTextContent("File it");
+      expect(screen.queryByTestId("slip-remove")).toBeNull();
+    });
+
+    it("'+' keeps the camera open: two more pages are shot back-to-back, cut to their corners, and all three are filed in order", async () => {
+      let n = 0;
+      const s = await firstPage({
+        "POST /patients/p4/documents": () => { n += 1; return { status: 201, body: { documentId: `d${String(n)}`, effects: { "opd.paper": { outcome: n === 1 ? "marked" : "already_marked" } } } }; },
+      });
+      await shootMore(2);
+      expect(await screen.findByTestId("slip-page-3")).toBeTruthy();
+      // The pages shot back-to-back never stopped at the crop: each was straightened from the corners found.
+      await waitFor(() => expect(mockImaging.flattenCalls).toHaveLength(3));
+      expect(mockImaging.flattenCalls.map((c) => c.quad)).toEqual([mockImaging.found!.quad, mockImaging.found!.quad, mockImaging.found!.quad]);
+      await waitFor(() => expect(screen.getByTestId("slip-file-it")).toHaveTextContent("File 3 pages"));
+      await fireEvent.changeText(screen.getByTestId("slip-note"), "three sheets");
+      await fireEvent.press(screen.getByTestId("slip-file-it"));
+      expect(await screen.findByTestId("slip-filed")).toHaveTextContent(/Filed against Geeta Devi/);
+      expect(screen.getByTestId("slip-filed-pages")).toHaveTextContent("3 pages filed");
+      const sent = s.of("POST /patients/p4/documents").map((c) => c.body as { imageBase64: string; note: string | null; kind: string; encounterId: string });
+      expect(sent.map((b) => b.imageBase64)).toEqual([PAGE(1), PAGE(2), PAGE(3)]);
+      expect(sent.map((b) => b.note)).toEqual(["three sheets", null, null]);
+      expect(sent.every((b) => b.kind === "consult_prescription" && b.encounterId === "e4")).toBe(true);
+      // The visit was closed ONCE, by the first page; the slip says that, not "already marked".
+      expect(screen.getByTestId("slip-paper")).toHaveTextContent("The visit is now marked consulted.");
+    });
+
+    it("a page can be removed (after a second tap), and moved earlier — the order filed is the order of the strip", async () => {
+      let n = 0;
+      const s = await firstPage({ "POST /patients/p4/documents": () => { n += 1; return { status: 201, body: { documentId: `d${String(n)}` } }; } });
+      await shootMore(2);
+      await waitFor(() => expect(screen.getByTestId("slip-file-it")).toHaveTextContent("File 3 pages"));
+      await fireEvent.press(screen.getByTestId("slip-page-2"));
+      await fireEvent.press(screen.getByTestId("slip-remove"));
+      expect(screen.getByTestId("slip-page-3")).toBeTruthy(); // nothing goes on the first tap
+      await fireEvent.press(screen.getByTestId("slip-remove-yes"));
+      await waitFor(() => expect(screen.queryByTestId("slip-page-3")).toBeNull());
+      expect(screen.getByTestId("slip-file-it")).toHaveTextContent("File 2 pages");
+      // What was page 3 is now the second and last: move it first.
+      await fireEvent.press(screen.getByTestId("slip-page-2"));
+      await fireEvent.press(screen.getByTestId("slip-move-left"));
+      await fireEvent.press(screen.getByTestId("slip-file-it"));
+      await screen.findByTestId("slip-filed");
+      expect(s.of("POST /patients/p4/documents").map((c) => (c.body as { imageBase64: string }).imageBase64)).toEqual([PAGE(3), PAGE(1)]);
+    });
+
+    it("page 2 fails: page 1 stays filed and says so, and Try again sends page 2 only", async () => {
+      let n = 0;
+      const s = await firstPage({
+        "POST /patients/p4/documents": () => { n += 1; return n === 2 ? { status: 503, body: { message: "the document store is not answering" } } : { status: 201, body: { documentId: `d${String(n)}` } }; },
+      });
+      await shootMore(1);
+      await waitFor(() => expect(screen.getByTestId("slip-file-it")).toHaveTextContent("File 2 pages"));
+      await fireEvent.press(screen.getByTestId("slip-file-it"));
+      expect(await screen.findByTestId("slip-error")).toHaveTextContent(/Not filed — .*Filed so far: 1 of 2 pages — those are not sent again\./);
+      expect(screen.getByTestId("slip-page-filed-1")).toBeTruthy();
+      expect(screen.queryByTestId("slip-page-filed-2")).toBeNull();
+      expect(screen.queryByTestId("slip-filed")).toBeNull();
+      expect(screen.getByTestId("slip-file-it")).toHaveTextContent("Try again");
+      await fireEvent.press(screen.getByTestId("slip-file-it"));
+      expect(await screen.findByTestId("slip-filed-pages")).toHaveTextContent("2 pages filed");
+      expect(s.of("POST /patients/p4/documents").map((c) => (c.body as { imageBase64: string }).imageBase64)).toEqual([PAGE(1), PAGE(2), PAGE(2)]);
+    });
+
+    it("a lost answer is not a second copy: the retry asks the server first, and a page that landed is not sent again", async () => {
+      let n = 0;
+      let onFile = 0;
+      const s = await firstPage({
+        // Page 2 REACHES the server and is filed; only its answer is lost on the way back.
+        "POST /patients/p4/documents": () => { n += 1; onFile += 1; return n === 2 ? "offline" : { status: 201, body: { documentId: `d${String(n)}` } }; },
+        "GET /opd/visits/by-number/V2610060004": () => ({ status: 200, body: { ...BACK, filed: Array.from({ length: onFile }, (_, i) => ({ id: `d${String(i + 1)}`, kind: "consult_prescription", capturedAt: "2026-10-06T05:00:00.000Z", retakeRequestedAt: null })) } }),
+      });
+      await shootMore(1);
+      await waitFor(() => expect(screen.getByTestId("slip-file-it")).toHaveTextContent("File 2 pages"));
+      await fireEvent.press(screen.getByTestId("slip-file-it"));
+      expect(await screen.findByTestId("slip-error")).toHaveTextContent(/could not be reached/);
+      await fireEvent.press(screen.getByTestId("slip-file-it"));
+      expect(await screen.findByTestId("slip-filed-pages")).toHaveTextContent("2 pages filed");
+      expect(s.of("POST /patients/p4/documents")).toHaveLength(2); // never a third
+    });
+
+    it("a page whose edges were not found is marked, and nothing is filed until it has been opened once", async () => {
+      const s = await firstPage({ "POST /patients/p4/documents": () => ({ status: 201, body: { documentId: "d" } }) });
+      mockImaging.found = null;
+      await shootMore(1);
+      expect(await screen.findByTestId("slip-page-check-2")).toHaveTextContent("check the corners");
+      expect(screen.getByTestId("slip-file-it")).toBeDisabled();
+      expect(screen.getByTestId("slip-not-ready")).toHaveTextContent(/corners checked first/);
+      await fireEvent.press(screen.getByTestId("slip-file-it"));
+      expect(s.of("POST /patients/p4/documents")).toEqual([]);
+      await fireEvent.press(screen.getByTestId("slip-page-2"));
+      await fireEvent.press(screen.getByTestId("slip-crop-adjust"));
+      await fireEvent.press(await screen.findByTestId("slip-crop-use"));
+      await waitFor(() => expect(screen.queryByTestId("slip-page-check-2")).toBeNull());
+      expect(screen.getByTestId("slip-file-it")).not.toBeDisabled();
+    });
+
+    it("stops at six pages: the camera will not take a seventh and the '+' says why", async () => {
+      await firstPage();
+      await fireEvent.press(screen.getByTestId("slip-add"));
+      for (let i = 0; i < 5; i++) {
+        await fireEvent.press(await screen.findByTestId("cam-shoot"));
+        await waitFor(() => expect(screen.getByTestId("cam-done")).toHaveTextContent(new RegExp(`Done · ${String(2 + i)} pages`)));
+      }
+      expect(screen.getByTestId("cam-count")).toHaveTextContent("6 pages is the most for one slip");
+      expect(screen.getByTestId("cam-shoot")).toBeDisabled();
+      await fireEvent.press(screen.getByTestId("cam-done"));
+      await waitFor(() => expect(screen.getByTestId("slip-add")).toBeDisabled());
+      expect(screen.getByTestId("slip-add")).toHaveTextContent(/6 pages is the most for one slip/);
+    });
   });
 
   it("speaks Hindi", async () => {

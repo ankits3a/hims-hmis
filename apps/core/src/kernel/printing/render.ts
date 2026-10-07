@@ -1,6 +1,6 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import {
-  opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdVitals, patients, users,
+  opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, opdVitals, patientGuardians, patients, users,
 } from "../db/schema";
 import { encounterFeeStatuses } from "../../modules/billing/fee-status";
 /* The FREE branch only — it returns before `previewInvoice`, so a revisit is cheap and a paying
@@ -906,7 +906,7 @@ export async function renderPrescriptionSheet(
   /*
     ═══ OWNER, 2026-10-04 — THE HEADER, FIELD BY FIELD (supersedes the "Doctor ID only" rulings above) ═══
 
-    In this order: Name · UHID · Gender · Age · Address · Unit Number | Encounter ID · Encounter Type ·
+    In this order: Name · Guardian Name (2026-10-07) · UHID · Gender · Age · Address · Unit Number | Encounter ID · Encounter Type ·
     Visit Date · Dept. Regn. The department NAME prints under the crest. NO doctor's name anywhere:
       · Unit Number — the prescriber's unit that day ("Unit I"); a doctor in no unit (Guest Faculty,
         and DECIDED: anyone else in none, e.g. Community Medicine) prints the Doctor ID here instead.
@@ -927,10 +927,38 @@ export async function renderPrescriptionSheet(
   const prescriber = s.doctorUserId === null
     ? { unitNumber: "—", deptRegn: null as string | null }
     : await prescriberPrint(db, { userId: s.doctorUserId, code: s.doctorCode }, { istDate: visitDay, opdDepartmentId: clinic });
-  const home = (await db.select({ addressLine: patients.addressLine, district: patients.district, stateName: patients.stateName, pincode: patients.pincode, sealed: patients.isConfidential })
+  const home = (await db.select({ addressLine: patients.addressLine, district: patients.district, stateName: patients.stateName, pincode: patients.pincode, sealed: patients.isConfidential, fatherHusbandName: patients.fatherHusbandName })
     .from(patients).where(eq(patients.id, s.patientId)))[0];
   const addressText = home === undefined || home.sealed ? "" : [home.addressLine, home.district, home.stateName, home.pincode]
     .map((x) => x?.trim() ?? "").filter((x) => x !== "").join(", ");
+  /*
+    ═══ GUARDIAN NAME — owner, 2026-10-07 ═══
+    *"Add 'Guardian Name' label & field in the prescription slip print along with name, age and other
+    fields."* It sits under Name. The value is the guardian whose authority stands on the visit day
+    (the oldest link first — the one registration made), with the relation written the way an Indian
+    record writes it: a father or mother is S/o or D/o by the patient's gender, a husband W/o, anyone
+    else C/o. With no guardian linked it falls back to the registered father's / husband's name —
+    S/o for a man; a woman's may be either, so the sheet does not guess and prints C/o.
+    Nothing recorded prints the label and a blank value (the Dept. Regn rule), and a sealed patient's
+    is blank too: §14 covers who stands beside them as much as where they live.
+  */
+  const guardianText = home === undefined || home.sealed ? "" : await (async (): Promise<string> => {
+    const male = s.gender.toLowerCase().startsWith("m");
+    const female = s.gender.toLowerCase().startsWith("f");
+    const links = await db.select({ name: patientGuardians.name, relationship: patientGuardians.relationship, validTo: patientGuardians.validTo })
+      .from(patientGuardians)
+      .where(and(eq(patientGuardians.patientId, s.patientId), eq(patientGuardians.status, "active")))
+      .orderBy(asc(patientGuardians.createdAt));
+    const standing = links.find((g) => g.name.trim() !== "" && (g.validTo === null || g.validTo.getTime() > now.getTime()));
+    if (standing !== undefined) {
+      const parent = standing.relationship === "father" || standing.relationship === "mother";
+      const prefix = parent && male ? "S/o" : parent && female ? "D/o"
+        : standing.relationship === "spouse" && female ? "W/o" : "C/o";
+      return `${prefix} ${standing.name.trim()}`;
+    }
+    const registered = home.fatherHusbandName?.trim() ?? "";
+    return registered === "" ? "" : `${male ? "S/o" : "C/o"} ${registered}`;
+  })();
   const ageCell = s.ageYears === null ? "—" : `${s.dobEstimated ? "≈" : ""}${String(s.ageYears)} years`;
   const signatureCaption = "Signature of the treating physician";
   /** Past this many characters the header's address steps down to 10px (two lines at 10.5px hold about 190). */
@@ -965,11 +993,12 @@ export async function renderPrescriptionSheet(
        awkward". The fields were two flex columns, the left one 298px wide, so a real address wrapped
        into six lines while the right column stood half empty. They are now ONE grid over the full
        width beside the crest, placed by the c-* classes (the DOM keeps the owner's order):
-         Name        | Encounter ID
-         UHID        | Encounter Type
-         Gender  Age | Visit Date
+         Name          | Encounter ID
+         Guardian Name | Encounter Type    (owner 2026-10-07 — one line, clipped with an ellipsis)
+         UHID          | Visit Date
+         Gender  Age   |
          Address — the whole width, at most two lines
-         Unit Number | Dept. Regn          (the unit and its head's number, side by side)
+         Unit Number   | Dept. Regn        (the unit and its head's number, side by side)
        Owner, same day, on staging: "every text in the header should be small so that more
        information can fit in". Values 10.5px semibold (600 stays crisp at that size where 700
        fills in on a laser), labels 10px, the long address 10px. */
@@ -979,9 +1008,10 @@ export async function renderPrescriptionSheet(
     .hd .row { display: flex; align-items: baseline; gap: 4px; min-height: 14px; }
     .hd .row .lb { font-size: 10px; flex-shrink: 0; }
     .hd .row .vl { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
-    .hd .c-name { grid-area: 1 / 1; } .hd .c-uhid { grid-area: 2 / 1; } .hd .c-ga { grid-area: 3 / 1; display: flex; gap: 22px; }
-    .hd .c-addr { grid-area: 4 / 1 / 5 / 3; } .hd .c-unit { grid-area: 5 / 1; }
-    .hd .c-enc { grid-area: 1 / 2; } .hd .c-type { grid-area: 2 / 2; } .hd .c-date { grid-area: 3 / 2; } .hd .c-regn { grid-area: 5 / 2; }
+    .hd .c-name { grid-area: 1 / 1; } .hd .c-guard { grid-area: 2 / 1; } .hd .c-uhid { grid-area: 3 / 1; } .hd .c-ga { grid-area: 4 / 1; display: flex; gap: 22px; }
+    .hd .c-addr { grid-area: 5 / 1 / 6 / 3; } .hd .c-unit { grid-area: 6 / 1; }
+    .hd .c-enc { grid-area: 1 / 2; } .hd .c-type { grid-area: 2 / 2; } .hd .c-date { grid-area: 3 / 2; } .hd .c-regn { grid-area: 6 / 2; }
+    .hd .c-guard .vl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
     /* A name wraps to a second line at most; an address too, and a very long one steps down to 10px
        before it is clipped — the pincode is at its END and is the part a clerk needs. */
     .hd .c-name .vl, .hd .c-addr .vl { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
@@ -1079,6 +1109,7 @@ export async function renderPrescriptionSheet(
         </div>
         <div class="f">
           <div class="c-name">${idRow("Name:", esc(s.patientName))}</div>
+          <div class="c-guard">${idRow("Guardian Name:", esc(guardianText))}</div>
           <div class="c-uhid">${idRow("UHID:", `<span class="num">${esc(s.uhid)}</span>`)}</div>
           <div class="c-ga">${idRow("Gender:", esc(genderLetter(s.gender)))}${idRow("Age:", `<span class="num">${esc(ageCell)}</span>`)}</div>
           ${addressText === "" ? "" : `<div class="c-addr${addressText.length > ADDRESS_LONG_CHARS ? " long" : ""}">${idRow("Address:", esc(addressText))}</div>`}

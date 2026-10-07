@@ -16,7 +16,7 @@ import { CREST_PNG_DATA_URI } from "./crest";
 import { qrSvg } from "./qr";
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { agents, breakGlassGrants, opdDepartments, opdDoctors, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patients, phiAccessLog, printJobs, rosterDutyWindows, rosterOfficiating, rosterTeamMemberships, users } from "../db/schema";
+import { agents, breakGlassGrants, opdDepartments, opdDoctors, opdEncounters, opdSectionRecords, opdVitals, patientAllergies, patientGuardians, patients, phiAccessLog, printJobs, rosterDutyWindows, rosterOfficiating, rosterTeamMemberships, users } from "../db/schema";
 import { teamByCode } from "../../modules/roster";
 import { seedConfirmedUnits } from "../../../test/helpers/units";
 /* FD-25 §14 — the fixtures the confidentiality rows need: the grant, the queue row, and the one
@@ -282,8 +282,8 @@ describe("FD-24 T3: rendering the counter's documents", () => {
    * see `renderPrescriptionSheet`'s header for the four deliberate departures from the design.
    */
   describe("the prescription sheet — A4 laser, at the FRONT DESK (R2)", () => {
-    /** Owner 2026-10-04 — the header's order: left column (with Address when there is one), then right. */
-    const NEW_ORDER = ["Name:", "UHID:", "Gender:", "Age:", "Address:", "Unit Number:", "Encounter ID:", "Encounter Type:", "Visit Date:", "Dept. Regn:"] as const;
+    /** Owner 2026-10-04 — the header's order: left column (with Address when there is one), then right. Guardian Name under Name: owner 2026-10-07. */
+    const NEW_ORDER = ["Name:", "Guardian Name:", "UHID:", "Gender:", "Age:", "Address:", "Unit Number:", "Encounter ID:", "Encounter Type:", "Visit Date:", "Dept. Regn:"] as const;
     /** A prior visit with a charted height, on a day deliberately unlike the day it was charted. */
     async function priorChart(
       over: { heightCm?: number | null; weightKg?: number | null; sbp?: number | null; pulse?: number | null } = {},
@@ -518,6 +518,65 @@ describe("FD-24 T3: rendering the counter's documents", () => {
     });
 
     /**
+     * OWNER, 2026-10-07: *"Add 'Guardian Name' label & field in the prescription slip print along
+     * with name, age and other fields."* The row sits under Name. The value is the ACTIVE guardian
+     * with the relation written the way an Indian record writes it (S/o, D/o, W/o, C/o); with no
+     * guardian linked it falls back to the registered father's / husband's name; with neither the
+     * label still prints and the value is blank — the Dept. Regn rule. A sealed patient's is blank.
+     */
+    it("2026-10-07: Guardian Name prints under Name — relation and name, blank when none, never for a sealed patient", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      const pid = row!.patientId;
+      const guardian = (over: { name: string; relationship: string; status?: string; validTo?: Date | null }): Promise<unknown> =>
+        db.insert(patientGuardians).values({ id: newId(), patientId: pid, name: over.name, relationship: over.relationship, status: over.status ?? "active", validTo: over.validTo ?? null, createdBy: "test-clerk" });
+      const blank = `<div class="c-guard"><div class="row"><span class="lb">Guardian Name:</span><span class="vl"></span></div></div>`;
+
+      // Nothing recorded: the label, and nothing after it.
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(blank);
+      expect(doc!.html).toMatch(/\.hd \.c-guard \{ grid-area: 2 \/ 1; \}/);
+
+      // The registered father's / husband's name. A woman's may be either, so the sheet does not guess: C/o.
+      await db.update(patients).set({ fatherHusbandName: "Suresh Arora" }).where(eq(patients.id, pid));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Suresh Arora"));
+
+      // A guardian whose authority has ended is not this visit's guardian.
+      await guardian({ name: "Old Guardian", relationship: "other", status: "ended" });
+      await guardian({ name: "Lapsed Order", relationship: "legal_guardian", validTo: new Date("2026-01-01T00:00:00.000Z") });
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Suresh Arora"));
+
+      // An active guardian outranks the registration field, and the relation is spelled out.
+      await guardian({ name: "Rakesh Arora", relationship: "spouse" });
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "W/o Rakesh Arora"));
+      expect(doc!.html).not.toContain("Old Guardian");
+      expect(doc!.html).not.toContain("Lapsed Order");
+      const at = NEW_ORDER.filter((l) => l !== "Address:").map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));
+      expect(at.every((x, i) => x > 0 && (i === 0 || x > at[i - 1]!))).toBe(true);
+
+      // §14 — the seal covers who stands beside them as much as where they live.
+      await db.update(patients).set({ isConfidential: true }).where(eq(patients.id, pid));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(blank);
+      expect(doc!.html).not.toContain("Rakesh Arora");
+    });
+
+    it("2026-10-07: a father is S/o or D/o by the patient's gender, a mother the same, anyone else C/o", async () => {
+      const [row] = await db.select({ patientId: opdEncounters.patientId }).from(opdEncounters).where(eq(opdEncounters.id, encounterId));
+      await db.insert(patientGuardians).values({ id: newId(), patientId: row!.patientId, name: "Mahesh <Arora>", relationship: "father", createdBy: "test-clerk" });
+      let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "D/o Mahesh &lt;Arora&gt;"));
+      await db.update(patients).set({ administrativeGender: "male" }).where(eq(patients.id, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "S/o Mahesh &lt;Arora&gt;"));
+      await db.update(patientGuardians).set({ relationship: "sibling" }).where(eq(patientGuardians.patientId, row!.patientId));
+      doc = await renderPrescriptionSheet(db, { encounterId }, MON);
+      expect(doc!.html).toContain(field("Guardian Name:", "C/o Mahesh &lt;Arora&gt;"));
+    });
+
+    /**
      * OWNER, 2026-10-05: *"the prescription fields could not hold many information in the header …
      * address field looks awkward as the text isn't fitting up well."* The address takes the whole
      * width beside the crest (it was a 298px column, so a real address ran to six lines); a very long
@@ -528,7 +587,7 @@ describe("FD-24 T3: rendering the counter's documents", () => {
       await db.update(patients).set({ addressLine: "Ward No. 12, Near Hanuman Mandir, Mohalla Purani Bazar, Post Office Road", district: "Sitamarhi", stateName: "Bihar", pincode: "843302" }).where(eq(patients.id, row!.patientId));
       let doc = await renderPrescriptionSheet(db, { encounterId }, MON);
       expect(doc!.html).toContain(`<div class="c-addr"><div class="row">${field("Address:", "Ward No. 12, Near Hanuman Mandir, Mohalla Purani Bazar, Post Office Road, Sitamarhi, Bihar, 843302")}</div></div>`);
-      expect(doc!.html).toMatch(/\.hd \.c-addr \{ grid-area: 4 \/ 1 \/ 5 \/ 3; \}/);
+      expect(doc!.html).toMatch(/\.hd \.c-addr \{ grid-area: 5 \/ 1 \/ 6 \/ 3; \}/);
       expect(doc!.html).toContain(`<div class="c-unit"><div class="row"><span class="lb">Unit Number:</span>`);
       expect(doc!.html).toContain(`<div class="c-regn"><div class="row"><span class="lb">Dept. Regn:</span>`);
       const at = NEW_ORDER.map((label) => doc!.html.indexOf(`<span class="lb">${label}</span>`));

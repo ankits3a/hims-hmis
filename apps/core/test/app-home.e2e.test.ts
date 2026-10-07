@@ -5,7 +5,12 @@ import { eq } from "drizzle-orm";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { approvalTypes, approvals, authSessions, events, roles, users, workflowDefinitions, workflowInstances } from "../src/kernel/db/schema";
+import {
+  alerts, approvalTypes, approvals, authSessions, events, roles, rosterTeamMemberships, rosterTeams, users,
+  workflowDefinitions, workflowInstances,
+} from "../src/kernel/db/schema";
+import { sweepOverdueApprovals } from "../src/kernel/approvals/overdue";
+import { orgDepartmentByCode, ROSTER_POSITIONS, seedOrgDepartments, seedRosterPositions } from "../src/modules/roster/masters";
 import { requireEnv } from "../src/kernel/config";
 import { createUser } from "../src/kernel/auth/identity";
 import { assignRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
@@ -201,6 +206,81 @@ describe("app home — deadlines, the step-up before a money approval, the team 
     expect((other.body.members as { userId: string }[]).map((m) => m.userId)).toEqual([c1]);
     const nobody = await http().get("/me/team").set(bearer((await login("c1")).body.token as string));
     expect(nobody.body.members).toEqual([]);
+  });
+
+  /* ═══ round 2 (decision 0043) ═══ */
+
+  it("a UNIT HEAD's card is the members of the units they head — not another unit's, and not a member's own view", async () => {
+    const { id: hod } = await createUser(db, { username: "hod", fullName: "Dr. Unit Head", password: PW });
+    const { id: sr } = await createUser(db, { username: "sr", fullName: "Dr. Senior Resident", password: PW });
+    const { id: other } = await createUser(db, { username: "oth", fullName: "Dr. Other Unit", password: PW });
+    const by = { createdBy: hod, updatedBy: hod };
+    for (const key of ["doctor", "duty_manager", "radiologist", "pathologist", "anaesthetist", "pharmacy"]) await db.insert(roles).values({ key, title: key }).onConflictDoNothing();
+    await seedOrgDepartments(db); await seedRosterPositions(db);
+    const dep = (await orgDepartmentByCode(db, "MED"))!.id;
+    await db.insert(rosterTeams).values([
+      { id: "t-u1", kind: "clinical_unit", departmentId: dep, code: "MED-U1", name: "Unit I", ...by },
+      { id: "t-u2", kind: "clinical_unit", departmentId: dep, code: "MED-U2", name: "Unit II", ...by },
+    ] as never);
+    const started = new Date(Date.now() - 86_400_000);
+    const member = (id: string, teamId: string, userId: string, roleInTeam: string) =>
+      ({ id, teamId, userId, positionKey: ROSTER_POSITIONS[0]!.key, grade: "assistant_professor", roleInTeam, startsAt: started, ...by });
+    await db.insert(rosterTeamMemberships).values([
+      member("m1", "t-u1", hod, "head"), member("m2", "t-u1", sr, "senior_resident"), member("m3", "t-u2", other, "senior_resident"),
+    ] as never);
+    const now = new Date();
+    expect(await teamOf(db, hod, now)).toEqual({ userIds: [sr], why: ["unit_head"] });
+    expect(await teamOf(db, sr, now)).toEqual({ userIds: [], why: [] });
+    const card = await http().get("/me/team").set(bearer((await login("hod")).body.token as string));
+    expect((card.body.members as { name: string }[]).map((m) => m.name)).toEqual(["Dr. Senior Resident"]);
+  });
+
+  it("the header's facts: /auth/me names the person and the roles they hold — their own, nobody else's", async () => {
+    const me = await http().get("/auth/me").set(bearer((await login("head")).body.token as string));
+    expect(me.status).toBe(200);
+    expect(me.body.profile).toEqual({ username: "head", fullName: "Billing Head", roles: ["billing_head"] });
+  });
+
+  it("what I asked for: the requester sees their own pending and today's decided requests — a status and an amount, no patient", async () => {
+    await db.insert(roles).values({ key: "clerk", title: "clerk" }).onConflictDoNothing();
+    await grantPermissionToRole(db, registry, "clerk", "approvals.requests.create");
+    await assignRole(db, { userId: askerId, roleKey: "clerk", scopeType: "hospital" });
+    const pendingId = await ask("billing_refund", 120_000, 30);
+    const decidedId = await ask("billing_discount", 15_000, 50);
+    await db.update(approvals).set({ status: "granted", decidedBy: headId, decidedAt: new Date() }).where(eq(approvals.id, decidedId));
+    const oldId = await ask("billing_discount", 9_000, 60 * 24 * 3);
+    await db.update(approvals).set({ status: "rejected", decidedBy: headId, decidedAt: new Date(Date.now() - 2 * 86_400_000) }).where(eq(approvals.id, oldId));
+
+    const mine = await http().get("/approvals/mine").set(bearer((await login("asker")).body.token as string));
+    expect(mine.status).toBe(200);
+    const items = mine.body.items as Record<string, unknown>[];
+    expect(items.map((i) => [i.id, i.status]).sort()).toEqual([[decidedId, "granted"], [pendingId, "pending"]].sort());
+    expect(Object.keys(items[0]!).sort()).toEqual(["amountPaise", "decidedAt", "dueAt", "id", "requestedAt", "status", "typeKey"]);
+    /* The approver asked nothing: an empty list, and a person without the grant is stopped at the door. */
+    const heads = await http().get("/approvals/mine").set(bearer((await login("head")).body.token as string));
+    expect(heads.status).toBe(403);
+  });
+
+  it("an approval past its time tells its deciders ONCE — not the asker, not for an old one, not before it is due", async () => {
+    const overdue = await ask("billing_refund", 120_000, 125);       // due at 120 min: 5 minutes over
+    await ask("billing_refund", 50_000, 30);                         // not due yet
+    await ask("billing_refund", 70_000, 60 * 24 * 4);                // over for days: never announced by a first run
+    await assignRole(db, { userId: askerId, roleKey: "billing_head", scopeType: "hospital" }); // the asker could decide — and is still not told
+    const now = new Date();
+    expect(await sweepOverdueApprovals(db, now)).toBe(1);
+    const rows = await db.select().from(alerts);
+    expect(rows.map((r) => [r.userId, r.kind, r.refId])).toEqual([[headId, "approval_overdue", overdue]]);
+    expect(`${rows[0]!.title} ${rows[0]!.body}`).not.toMatch(/₹|\d{3,}|Asha|refund/i); // GC6: the kind of thing and nothing else
+    expect(await sweepOverdueApprovals(db, new Date(now.getTime() + 60_000))).toBe(0); // the second tick
+    expect((await db.select().from(alerts)).length).toBe(1);
+  });
+
+  it("the Approvals notification switch is offered to a phone that says it knows it, and to no other", async () => {
+    const token = (await login("head", PHONE_A)).body.token as string;
+    const old = await http().get("/auth/phone/notifications").set(bearer(token));
+    expect(old.body.categories).not.toContain("approvals");
+    const knows = await http().get("/auth/phone/notifications?knows=alert,roster,queue,reminder,approvals,madeup").set(bearer(token));
+    expect(knows.body.categories).toEqual(["alert", "roster", "queue", "reminder", "approvals"]);
   });
 
   it("the month's brief carries the day-by-day line; the long periods carry none", async () => {

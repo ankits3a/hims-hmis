@@ -121,3 +121,40 @@ export function ApprovalSheet({ approval, call, online, nowMs, onClose, onDone }
     </Modal>
   );
 }
+
+/**
+ * "NO" TO A COVER REQUEST CARRIES A REASON (app home round 2, decision 0043): the colleague who
+ * asked reads it. "Yes" may carry a word too, and needs none. Nothing is sent offline or queued.
+ */
+export function CoverSheet({ who, accept, online, busy, error, onClose, onSend }: {
+  who: string; accept: boolean; online: boolean; busy: boolean; error: string | null; onClose: () => void; onSend: (note: string) => void;
+}) {
+  const { t } = useI18n();
+  const [note, setNote] = useState("");
+  const [need, setNeed] = useState(false);
+  const send = (): void => {
+    if (!accept && note.trim().length < 3) { setNeed(true); return; }
+    onSend(note);
+  };
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose} visible>
+      <Pressable style={{ flex: 1, backgroundColor: "rgba(12,22,19,.45)" }} onPress={onClose} accessibilityLabel={t("home.sheet.close")} />
+      <View testID="cover-sheet" style={{ backgroundColor: color.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: space.lg, gap: space.sm }}>
+        <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: color.line, alignSelf: "center" }} />
+        <Text style={[type.heading, { color: color.ink }]}>{t(accept ? "home.coverSheet.yesTitle" : "home.coverSheet.noTitle", { name: who })}</Text>
+        <TextInput testID="cover-note" value={note} onChangeText={(v) => { setNote(v); setNeed(false); }} multiline maxLength={500}
+          placeholder={t(accept ? "home.coverSheet.yesPlaceholder" : "home.coverSheet.noPlaceholder")} placeholderTextColor={color.faint}
+          accessibilityLabel={t(accept ? "home.coverSheet.yesPlaceholder" : "home.coverSheet.noPlaceholder")}
+          style={{ borderWidth: 1, borderColor: need ? color.red : color.line, borderRadius: radius.md, padding: space.md, minHeight: 64, color: color.ink, backgroundColor: color.paper, fontSize: 15 }} />
+        {need && <Note tone="bad" testID="cover-note-needed">{t("home.coverSheet.noteNeeded")}</Note>}
+        {error !== null && <Note tone="bad" testID="cover-error">{error}</Note>}
+        {!online && <Note tone="warn" testID="cover-offline">{t("home.offline.noApproval")}</Note>}
+        <View style={{ flexDirection: "row", gap: space.sm }}>
+          <View style={{ flex: 1 }}><Button testID="cover-cancel" kind="secondary" label={t("home.coverSheet.cancel")} disabled={busy} onPress={onClose} /></View>
+          <View style={{ flex: 1.6 }}><Button testID="cover-send" label={t(accept ? "home.coverSheet.sendYes" : "home.coverSheet.sendNo")} busy={busy} disabled={busy || !online} onPress={send} /></View>
+        </View>
+        <Text style={[type.small, { color: color.faint }]}>{t("home.coverSheet.fine")}</Text>
+      </View>
+    </Modal>
+  );
+}

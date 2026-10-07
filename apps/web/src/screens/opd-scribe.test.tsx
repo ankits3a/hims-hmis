@@ -44,6 +44,7 @@ function stub(over: Record<string, unknown> = {}): void {
     "GET /api/opd/visits/E-1": { encounter: { id: "E-1" }, feeUnpaid: false, feeBypass: null },
     "GET /api/opd/paper/visits/E-1": PAPER_STATE,
     "GET /api/tariff/price-list": PRICE_LIST,
+    "GET /api/opd/paper/sent-back": { items: [] },
     "GET /api/formulary/medicines/search": { items: [PARA] },
     "POST /api/opd/paper/visits/E-1/check": { lines: [] },
     "POST /api/opd/paper/visits/E-1/transcription": (init?: RequestInit) => {
@@ -237,5 +238,22 @@ describe("the desk scribe — the doctor's paper, typed", () => {
     expect(await screen.findByTestId("scribe-not-found")).toHaveTextContent("V2610069999");
     expect(screen.queryByTestId("scribe-lines")).not.toBeInTheDocument();
     expect(screen.queryByTestId("scribe-save")).not.toBeInTheDocument();
+  });
+
+  it("what a doctor sent back is listed with the reason; a tap opens that visit, and 'I have looked again' answers it (decision 0043)", async () => {
+    const SENT = { ...PAPER_STATE, encounterId: "E-1", visitNo: "V2610060004", patient: { id: "P-1", uhid: "U00110049", name: "Geeta Devi", alias: null, restricted: false }, doctorCode: "DR-0029",
+      recheck: { reason: "Line 1 — I wrote 650, not 500", askedAt: "2026-10-06T06:00:00.000Z", askedByName: "Dr Chandan", doneAt: null, doneByName: null, doneNote: null } };
+    stub({ "GET /api/opd/paper/sent-back": { items: [SENT] }, "POST /api/opd/paper/visits/E-1/recheck-done": SENT });
+    const user = userEvent.setup({ delay: null });
+    renderWithProviders(<OpdScribe />);
+    const box = await screen.findByTestId("scribe-sent-back");
+    expect(box).toHaveTextContent("1 paper the doctor sent back");
+    expect(box).toHaveTextContent("Doctor asks: Line 1 — I wrote 650, not 500");
+    await user.click(screen.getByTestId("scribe-looked-V2610060004"));
+    await waitFor(() => {
+      expect(vi.mocked(fetch).mock.calls.some(([input, init]) => init?.method === "POST" && String(input).includes("/opd/paper/visits/E-1/recheck-done"))).toBe(true);
+    });
+    await user.click(within(screen.getByTestId("scribe-sent-back-V2610060004")).getAllByRole("button")[0]!);
+    expect(await screen.findByTestId("scribe-name")).toHaveTextContent("Geeta Devi");
   });
 });

@@ -91,11 +91,43 @@ describe("OPD day report e2e", () => {
     const csv = await get(`/opd/reports/consultations/csv?date=${DATE}`, reader.token).expect(200);
     expect(csv.headers["content-type"]).toContain("text/csv");
     expect(csv.headers["content-disposition"]).toBe(`attachment; filename="OPD-Day-Report-${DATE}.csv"`);
-    expect(csv.text).toContain("General Medicine,0,0,0,0,0,1");
+    expect(csv.text).toContain("General Medicine,0,1,0,0,0,0,1,0");
+    expect(csv.text).toContain("Appointments,Visits opened,Consulted");
 
     const doc = await get(`/opd/reports/consultations/document?date=${DATE}`, reader.token).expect(200);
     expect(doc.body.title).toBe(`OPD-Day-Report-${DATE}`);
     expect(doc.body.html).toContain("OPD Day Report");
+  });
+
+  /**
+   * Owner, 2026-10-07 — "Opened by: …" names what each clerk did. `opd.reports.read` is the
+   * department's load; a person's output needs `staff.reports.read` as well, on all six routes.
+   */
+  it("names who opened the visits only to a reader who also holds staff.reports.read", async () => {
+    const paths = [
+      `/opd/reports/consultations?date=${DATE}`, `/opd/reports/consultations/csv?date=${DATE}`, `/opd/reports/consultations/document?date=${DATE}`,
+      `/opd/reports/consultations/departments/${deptId}?date=${DATE}`,
+      `/opd/reports/consultations/departments/${deptId}/csv?date=${DATE}`,
+      `/opd/reports/consultations/departments/${deptId}/document?date=${DATE}`,
+    ];
+    for (const path of paths) {
+      const res = await get(path, reader.token).expect(200);
+      expect(res.text).not.toContain("Opened by");
+      expect(res.text).not.toContain("outsider");
+    }
+    expect((await get(paths[0]!, reader.token)).body.openedBy).toBeNull();
+
+    await ensureRole(db, "staff_reader");
+    await grantPermissionToRole(db, registry, "staff_reader", "opd.reports.read");
+    await grantPermissionToRole(db, registry, "staff_reader", "staff.reports.read");
+    const boss = await mkUser(db, "boss", ["staff_reader"]);
+    expect((await get(paths[0]!, boss.token).expect(200)).body.openedBy).toEqual([{ name: expect.any(String), count: 1 }]);
+    for (const path of paths.slice(1)) {
+      const res = await get(path, boss.token).expect(200);
+      // The department's JSON carries the list; the two sheets and the two spreadsheets carry the line.
+      if (path.endsWith(`/departments/${deptId}?date=${DATE}`)) expect(res.body.openedBy).toEqual([{ name: expect.any(String), count: 1 }]);
+      else expect(res.text).toContain("Opened by");
+    }
   });
 
   it("logs a department's patient list BEFORE returning it, naming reader, day, department, format and rows", async () => {

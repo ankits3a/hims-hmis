@@ -1,4 +1,4 @@
-# 0043 — OPD vitals: no RR tile, and a guardian with reports may skip the bay on a revisit
+# 0045 — OPD vitals: no RR tile, and a guardian with reports may skip the bay on a revisit
 
 - **Date:** 2026-10-07   **Status:** Partly open
 - **Area:** opd, vitals, front desk, doctor

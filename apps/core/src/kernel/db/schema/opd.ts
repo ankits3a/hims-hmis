@@ -544,6 +544,18 @@ export const opdEncounters = pgTable(
     patientAbsentAt: timestamp("patient_absent_at", { withTimezone: true }),
     patientAbsentRelation: text("patient_absent_relation"),
     patientAbsentName: text("patient_absent_name"),
+    /**
+     * App home round 2 (owner 2026-10-07, decision 0043) — "ASK THE DESK TO RE-CHECK". The doctor
+     * read what the desk typed from their paper and a line is wrong or unclear: they send it back
+     * with a reason instead of retyping it. Open while `asked_at` is set and `done_at` is not; the
+     * desk's next save (or its own "re-checked") closes it. Never holds the patient or the pharmacy.
+     */
+    paperRecheckAskedBy: text("paper_recheck_asked_by"),
+    paperRecheckAskedAt: timestamp("paper_recheck_asked_at", { withTimezone: true }),
+    paperRecheckReason: text("paper_recheck_reason"),
+    paperRecheckDoneBy: text("paper_recheck_done_by"),
+    paperRecheckDoneAt: timestamp("paper_recheck_done_at", { withTimezone: true }),
+    paperRecheckDoneNote: text("paper_recheck_done_note"),
     abandonedAt: timestamp("abandoned_at", { withTimezone: true }),
     abandonReason: text("abandon_reason"),
     openedBy: text("opened_by").notNull(),

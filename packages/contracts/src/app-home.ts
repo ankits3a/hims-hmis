@@ -135,7 +135,7 @@ export const MAX_NEEDS = 5;
 export type NeedKind =
   | "approval" | "doctor_queue" | "held_medicine" | "paper_confirm" | "cover_request" | "next_duty"
   | "desk_waiting" | "rebook" | "vitals_recheck" | "vitals_bench" | "slips_waiting" | "papers_to_type"
-  | "long_wait" | "roster_gap";
+  | "long_wait" | "roster_gap" | "my_request" | "sent_back";
 
 export type Need = {
   /** Stable within a refresh: `<kind>:<id>`. A notification's link lands on it. */

@@ -19,10 +19,18 @@ import type { Photo } from "./imaging";
  * The picture is taken at the camera's full size: the crop step works on that, and only the final
  * straightened page is brought down to the server's limit.
  *
+ * BACK-TO-BACK (owner 2026-10-07): with `burst` the camera stays open after a shot — the desk turns
+ * the page and shoots again — and "Done" goes back to the strip. Each page is cut to its corners
+ * there; this screen only counts them.
+ *
  * Focus: the rear camera focuses continuously by itself. expo-camera has no tap-to-focus point;
  * that is listed as deferred in the plan (§3b).
  */
-export function SlipCamera({ open, onShot, onClose }: { open: boolean; onShot: (p: Photo) => void; onClose: () => void }) {
+export function SlipCamera({ open, onShot, onClose, burst = null }: {
+  open: boolean; onShot: (p: Photo) => void; onClose: () => void;
+  /** Pages already in the strip, and the most one slip takes. Null: one photo, then the crop. */
+  burst?: { taken: number; max: number } | null;
+}) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const [permission, request] = useCameraPermissions();
@@ -33,9 +41,10 @@ export function SlipCamera({ open, onShot, onClose }: { open: boolean; onShot: (
   if (!open) return null;
   const granted = permission?.granted === true;
   const blocked = permission !== null && !permission.granted && !permission.canAskAgain;
+  const full = burst !== null && burst.taken >= burst.max;
 
   const shoot = async (): Promise<void> => {
-    if (busy) return;
+    if (busy || full) return;
     setBusy(true); setFailed(false);
     try {
       // The browser preview has no camera: a test page may hand over a photo instead (web only).
@@ -43,7 +52,7 @@ export function SlipCamera({ open, onShot, onClose }: { open: boolean; onShot: (
       if (stub !== undefined) { onShot(stub); return; }
       const pic = await cam.current?.takePictureAsync({ quality: 0.92, exif: false });
       if (pic === undefined || pic === null || pic.width === 0 || pic.height === 0) { setFailed(true); return; }
-      setTorch(false);
+      if (burst === null) setTorch(false);
       onShot({ uri: pic.uri, width: pic.width, height: pic.height });
     } catch {
       setFailed(true);
@@ -70,12 +79,27 @@ export function SlipCamera({ open, onShot, onClose }: { open: boolean; onShot: (
                 </Pressable>
               </View>
               <Text style={s.title}>{t("slipCapture.fitCorners")}</Text>
+              {burst !== null && (
+                <Text testID="cam-count" style={s.count}>
+                  {full ? t("mobile.slips.pagesFull", { max: burst.max }) : t("mobile.slips.camNext", { n: burst.taken + 1, taken: burst.taken })}
+                </Text>
+              )}
             </View>
             <View style={[s.bottom, { paddingBottom: Math.max(insets.bottom, space.lg) + space.md }]}>
               {failed && <Text accessibilityRole="alert" testID="cam-failed" style={s.failed}>{t("mobile.slips.camFailed")}</Text>}
-              <Pressable testID="cam-shoot" accessibilityRole="button" accessibilityLabel={t("slipCapture.capture")} disabled={busy} onPress={() => { void shoot(); }} style={[s.shutter, busy && { opacity: 0.5 }]}>
-                <View style={s.shutterIn} />
-              </Pressable>
+              <View style={s.shootRow}>
+                <View style={s.side} />
+                <Pressable testID="cam-shoot" accessibilityRole="button" accessibilityLabel={t(burst === null ? "slipCapture.capture" : "mobile.slips.camNextPage")} disabled={busy || full} onPress={() => { void shoot(); }} style={[s.shutter, (busy || full) && { opacity: 0.5 }]}>
+                  <View style={s.shutterIn}>{burst !== null && <Text style={s.plus}>+</Text>}</View>
+                </Pressable>
+                <View style={s.side}>
+                  {burst !== null && (
+                    <Pressable testID="cam-done" accessibilityRole="button" onPress={onClose} style={s.done}>
+                      <Text style={s.doneText}>{t("mobile.slips.camDone", { count: burst.taken })}</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
             </View>
           </>
         ) : (
@@ -108,7 +132,13 @@ const s = StyleSheet.create({
   chipText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   bottom: { position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center", gap: space.md, paddingTop: space.lg, backgroundColor: "rgba(0,0,0,.45)" },
   shutter: { width: 84, height: 84, borderRadius: 42, borderWidth: 5, borderColor: "#fff", alignItems: "center", justifyContent: "center" },
-  shutterIn: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#fff" },
+  shutterIn: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
+  count: { color: "#ffd866", fontSize: 14, fontWeight: "700", textAlign: "center" },
+  shootRow: { flexDirection: "row", alignItems: "center", alignSelf: "stretch", paddingHorizontal: space.md },
+  side: { flex: 1, alignItems: "flex-end" },
+  plus: { fontSize: 34, lineHeight: 38, fontWeight: "700", color: "#132420", textAlign: "center" },
+  done: { minHeight: 52, justifyContent: "center", paddingHorizontal: 16, borderRadius: 26, backgroundColor: color.mint },
+  doneText: { color: "#0b1a15", fontSize: 15, fontWeight: "800" },
   failed: { color: "#fff", backgroundColor: color.red, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, fontSize: 14, fontWeight: "700" },
   ask: { flex: 1, backgroundColor: color.agent, padding: space.xl, gap: space.lg },
   askTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
