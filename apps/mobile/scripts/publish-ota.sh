@@ -39,7 +39,10 @@ fi
 trap 'rm -f "$APP_DIR/google-services.json"' EXIT
 
 field() { node -e 'const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))[process.argv[2]];console.log(v===undefined?"":v)' "$FEED" "$1"; }
-APK_RUNTIME="$(field runtimeVersion)"
+# The newest APK's fingerprint, unless an OLDER APK still on phones is named: a bundle is for every
+# phone whose native side it fits, not only for the newest build (staging 2026-10-07: build 12 was
+# made from main, without over-the-air updates, an hour after build 11 was installed with them).
+APK_RUNTIME="${HMIS_OTA_APK_RUNTIME:-$(field runtimeVersion)}"
 VC="$(field versionCode)"
 [ -n "$APK_RUNTIME" ] || { echo "REFUSED: the newest $ENV_NAME APK was built before over-the-air updates — build one first (scripts/build-apk.sh $ENV_NAME)" >&2; exit 3; }
 
