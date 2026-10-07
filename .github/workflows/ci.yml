@@ -125,6 +125,11 @@ jobs:
       # cannot exist makes the skip deterministic and makes this comment true: 13 of 15 gate in CI,
       # all 15 gate on the build host, and nothing in a required check launches a browser.
       # Gating the other two would need a pinned browser, not the image's — that is its own change.
+      # The architecture map (docs/architecture/) is GENERATED from the source tree, so agents and
+      # people read ~2 KB per module instead of crawling the code. A stale map is worse than none:
+      # it is believed. This fails when a PR changes structure (module imports, index.ts exports,
+      # routes, tables, web routes) without regenerating. ~1 s, no install needed.
+      - run: node tools/arch/gen.mjs --check
       - run: node --test tools/print-relay/spool.test.mjs
         env:
           RELAY_CHROMIUM: /nonexistent-chromium-ci-forces-the-skip
