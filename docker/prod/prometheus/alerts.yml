@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices"
           } > 300
         for: 2m
         labels:
@@ -136,6 +136,9 @@ groups:
           # 20-U infra: the duty board's 20:00/08:00 print. A job that never ran prints nothing,
           # and the wall keeps a sheet older than the twelve hours the board promises.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="printRosterBoard"})
+          # Mobile §3i: duty reminders and "patients are waiting and you are not in". A sweep that
+          # never ran reminds nobody, and the doctor who is out is the one person who is not told.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepStaffNotices"})
         for: 5m
         labels:
           severity: critical

@@ -5,8 +5,10 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { counterApi, newIntentKey } from "../counter/api";
+import { BookAppointment, DeskAppointments, PatientAppointments, dayWord, whoOf } from "../counter/appointments";
+import { slotClock } from "../counter/appointment-rules";
 import type {
-  CounterApi, TenderMode, WireCashSession, WireDepartment, WireDoctorSummary, WireFeeQuote, WireIssueBody, WireIssued, WireLinked, WireMoveResult,
+  CounterApi, TenderMode, WireAppointment, WireCashSession, WireCheckIn, WireDepartment, WireMasterDoctor, WireDoctorSummary, WireFeeQuote, WireIssueBody, WireIssued, WireLinked, WireMoveResult,
   WirePatientHit, WirePrintJob,
 } from "../counter/api";
 import { MoveDepartment, Pill } from "../counter/move";
@@ -39,6 +41,8 @@ import { Scanner } from "../vitals/scanner";
  *              opens the visit, classifies it (new / revisit / renewal) and gives the token
  *   bill       the server's own quote, line by line; a free visit says "₹0 (समाज सेवा छूट)";
  *              cash / UPI / card only with a cash session open and the billing permission
+ *   book       a future appointment, a booked patient's check-in (the booking BECOMES the visit and
+ *              the desk goes on to the bill), a move, a cancel — `../counter/appointments.tsx`
  *   paper      the slips are queued by the SERVER for the counter's printer inside the visit's own
  *              transaction; the phone shows whether they came out and can ask again
  *
@@ -140,18 +144,28 @@ export function DeskOne() {
   const [jobs, setJobs] = useState<WirePrintJob[] | null>(null);
   const [moving, setMoving] = useState(false);
 
+  // ——— appointments (owner 2026-10-07): the patient's own bookings, the booking flow, the desk's lists ———
+  const [masterDoctors, setMasterDoctors] = useState<WireMasterDoctor[]>([]);
+  const [apptVersion, setApptVersion] = useState(0);
+  const [booking, setBooking] = useState<{ moving: WireAppointment | null; preset?: { doctorId?: string; date?: string } } | null>(null);
+  const [deskList, setDeskList] = useState(false);
+
   const mayRegister = can("patients.register");
   const mayOpen = can("opd.visits.open");
   const mayQuote = can("billing.invoice.read");
   const mayCollect = can("billing.invoice.issue");
   const maySession = can("billing.session.own");
   const mayPaper = can("opd.paper.reprint");
+  const mayApptRead = can("opd.appointments.read");
+  const mayApptManage = mayApptRead && can("opd.appointments.manage");
 
   // ——— boot: the lane, the departments, the label beside each doctor, the price list. All optional reads. ———
   useEffect(() => {
     api.config().then((c) => setLane(laneOf(c)), () => undefined);
     api.departments().then((d) => setDepartments(d.items.filter((x) => x.active)), () => undefined);
     api.consultTerms().then(setTerms, () => undefined);
+    // The doctor master names a booking's doctor on any day — today's board only knows who sits today.
+    if (can("opd.appointments.read")) api.doctors().then((r) => setMasterDoctors(r.items), () => undefined);
     if (can("roster.read")) {
       api.doctorUnits(today).then((u) => setUnits(Object.fromEntries(u.map((x) => [x.userId, x.short]))), () => undefined);
     }
@@ -205,7 +219,11 @@ export function DeskOne() {
     setLinked(null); setTimeline(null);
     api.linked(id).then((l) => setLinked(l), () => undefined);
     api.timeline(id).then((r) => setTimeline(r.items), () => setTimeline([]));
-    api.patient(id).then((d) => setPerson((p) => (p?.id !== id ? p : { ...p, phone: d.patient.phone ?? p.phone, dob: d.patient.dob ?? p.dob })), () => undefined);
+    api.patient(id).then((d) => setPerson((p) => (p?.id !== id ? p : {
+      ...p, phone: d.patient.phone ?? p.phone, dob: d.patient.dob ?? p.dob,
+      // A row picked off the day's book carries no sex: the patient's own record supplies it.
+      gender: p.gender === "" ? d.patient.administrativeGender : p.gender,
+    })), () => undefined);
   }, [api]);
 
   const hold = useCallback((p: Person) => {
@@ -342,6 +360,41 @@ export function DeskOne() {
     } finally {
       setBusy(null);
     }
+  };
+
+  // ——— appointments ———
+  const doctorNameOf = useCallback((id: string): string | null => masterDoctors.find((d) => d.id === id)?.displayName ?? null, [masterDoctors]);
+  const deptNameOf = useCallback((id: string): string | null => departments.find((d) => d.id === id)?.name ?? null, [departments]);
+  const holdBooked = (a: WireAppointment): void => {
+    hold({ id: a.patientId, uhid: a.patient?.uhid ?? "", name: whoOf(a, t), phone: a.patient?.phone ?? null, gender: "", dob: null, sealed: false, justRegistered: false });
+  };
+  /** A booked patient has arrived: the booking IS the visit now, and the desk goes on to its bill. */
+  const onCheckedIn = (res: WireCheckIn, a: WireAppointment): void => {
+    const summary = (summaries ?? []).find((x) => x.doctor.id === a.doctorId) ?? null;
+    setVisit({
+      encounterId: res.encounter.id, patientId: res.encounter.patientId, visitNo: res.encounter.visitNo,
+      departmentId: a.departmentId, departmentName: deptNameOf(a.departmentId) ?? "—", departmentCode: codeOf(a.departmentId),
+      doctorName: doctorNameOf(a.doctorId) ?? "—", roomCode: summary?.roomCode ?? null, ahead: summary?.waitingCount ?? 0, waitMin: summary === null ? 0 : waitMinutes(summary),
+      tokenNo: res.tokenNo, visitType: res.visitType, joining: false, joinError: null,
+    });
+    setQuote(null); setQuoteState("none"); setIssued(null); setJobs(null); settleIntent.current = null; setSettleUnknown(false);
+    setError(null); setFlash(t("mobile.counter.appt.checkedIn")); setStage("bill");
+    setApptVersion((n) => n + 1);
+    api.timeline(res.encounter.patientId).then((r) => setTimeline(r.items), () => undefined);
+  };
+  /** The check-in's answer was lost but it HAD landed: open the visit the server already made. Nothing is re-sent. */
+  const onAlreadyCheckedIn = (encounterId: string, a: WireAppointment): void => {
+    api.timeline(a.patientId).then((r) => {
+      setTimeline(r.items);
+      const v = openVisitsToday(r.items, today).find((x) => x.encounterId === encounterId);
+      if (v !== undefined) { adopt(v); setFlash(t("mobile.counter.appt.checkedIn")); }
+      setApptVersion((n) => n + 1);
+    }, () => setApptVersion((n) => n + 1));
+  };
+  const onBooked = (a: WireAppointment, kind: "booked" | "moved"): void => {
+    setBooking(null);
+    setApptVersion((n) => n + 1);
+    setFlash(t(kind === "booked" ? "mobile.counter.appt.bookedFlash" : "mobile.counter.appt.movedFlash", { when: `${dayWord(a.serviceDate, t)} ${slotClock(a.slotStart)}` }));
   };
 
   const adopt = (v: OpenVisit): void => {
@@ -595,6 +648,7 @@ export function DeskOne() {
             {mayRegister
               ? <Button testID="counter-new" kind="secondary" label={t("mobile.counter.find.new")} onPress={startRegister} />
               : <Text style={[type.small, { color: color.faint }]} testID="counter-noregister">{t("mobile.counter.find.noRegister")}</Text>}
+            {mayApptRead && <Button testID="appts-open" kind="secondary" label={t("mobile.counter.appt.open")} onPress={() => setDeskList(true)} />}
           </>
         )}
 
@@ -690,6 +744,15 @@ export function DeskOne() {
                 ))}
               </View>
             )}
+            {mayApptRead && (
+              <PatientAppointments
+                api={api} patientId={person.id} today={today} version={apptVersion} mayManage={mayApptManage} mayCheckIn={mayOpen}
+                doctorName={doctorNameOf} deptName={deptNameOf}
+                onMove={(a) => setBooking({ moving: a })} onCheckedIn={onCheckedIn} onAlreadyCheckedIn={onAlreadyCheckedIn}
+                onSaid={(text) => { setFlash(text); setApptVersion((n) => n + 1); }}
+              />
+            )}
+            {mayApptManage && <Button testID="person-book" kind="secondary" label={t("mobile.counter.appt.book")} onPress={() => { setError(null); setBooking({ moving: null }); }} />}
             <View style={{ gap: space.sm }} testID="history">
               <Tag>{t("mobile.counter.person.history")}</Tag>
               {timeline === null ? <Text style={[type.small, { color: color.dim }]}>{t("mobile.counter.reading")}</Text>
@@ -951,6 +1014,20 @@ export function DeskOne() {
           api={api} queues={queues} labelOf={labelOf} terms={terms}
           visit={{ encounterId: visit.encounterId, departmentId: visit.departmentId, departmentName: visit.departmentName, doctorName: visit.doctorName, tokenText }}
           onMoved={onMovedHeld} onClose={() => setMoving(false)}
+        />
+      )}
+      {deskList && (
+        <DeskAppointments
+          api={api} today={today} mayManage={mayApptManage}
+          onPick={(a) => { setDeskList(false); holdBooked(a); }}
+          onRebook={(a) => { setDeskList(false); holdBooked(a); setBooking({ moving: a, preset: { doctorId: a.doctorId } }); }}
+          onClose={() => setDeskList(false)}
+        />
+      )}
+      {booking !== null && person !== null && (
+        <BookAppointment
+          api={api} person={{ id: person.id, name: person.name }} today={today} departments={departments} labelOf={labelOf} terms={terms}
+          moving={booking.moving} preset={booking.preset} onDone={onBooked} onClose={() => setBooking(null)}
         />
       )}
       {card !== null && (

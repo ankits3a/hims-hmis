@@ -197,6 +197,8 @@ const THE_EIGHTEEN = [
   "sweepImagingEscalations",
   /** 20-U infra (owner 2026-10-04) — `every(60_000)`: the duty board prints itself at 20:00 and 08:00 IST. */
   "printRosterBoard",
+  /** MOBILE §3i (owner 2026-10-07) — `every(60_000)`: duty reminders, and "patients are waiting and you are not in". */
+  "sweepStaffNotices",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -423,6 +425,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
           "notification.failed", "ops.mode_changed", "respond.overdue", "roster.flag_raised",
+          // MOBILE §3i (owner 2026-10-07): NINTH to TWELFTH — a person's own duties reach their own
+          // bell (a cover asked / answered / decided, a duty published or moved). Read off the red run.
+          "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
         ].sort()],
         [
           "kernel.notify",

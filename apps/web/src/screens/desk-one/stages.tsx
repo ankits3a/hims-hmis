@@ -11,6 +11,8 @@ import {
 } from "../../lib/opd-api";
 import { DELAY_HIGHLIGHT_MINUTES, proposeWalkIn } from "../../lib/walk-in-routing";
 import { listPrintJobs, printSummary, reprintJob, PRINT_DOCUMENT_LABEL } from "../../lib/print-api";
+import { dayPartOf } from "../../lib/appointment-view";
+import type { DayPart } from "../../lib/appointment-view";
 import type { WireDoctorSummary, WireSlot } from "../../lib/opd-api";
 import {
   ageOf, bookableToday, etaClock, initialsOf, rs, seatHasStage, sexLetter, tokenLabel, vitalsAhead, waitMinutes,
@@ -1558,16 +1560,11 @@ function slotClock(iso: string): string {
  * evening from 17:00. Each card says how many of its slots are free, so a full morning is seen
  * before it is opened, and a part with no session cannot be tapped.
  */
-type DayPart = "morning" | "noon" | "evening";
 const DAY_PARTS: readonly { part: DayPart; label: string; hours: string }[] = [
   { part: "morning", label: "Morning", hours: "before 12:00" },
   { part: "noon", label: "Noon", hours: "12:00 – 17:00" },
   { part: "evening", label: "Evening", hours: "after 17:00" },
 ];
-function dayPartOf(iso: string): DayPart {
-  const hour = Number.parseInt(slotClock(iso).slice(0, 2), 10);
-  return hour < 12 ? "morning" : hour < 17 ? "noon" : "evening";
-}
 /** Sunrise, the sun overhead, sunset: one sun, a horizon and which way it is going. */
 function DayPartIcon({ part }: { part: DayPart }): React.ReactElement {
   const sun = part === "evening" ? "#e0662d" : part === "morning" ? "#f0a321" : "#f2b705";

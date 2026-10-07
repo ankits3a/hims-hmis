@@ -195,6 +195,50 @@ describe("SlipCapture", () => {
   });
 
   /**
+   * ═══ OWNER RULING 2026-10-06 — THE FILED PAGE SAYS WHAT IT DID TO THE VISIT ═══
+   *
+   * *"clicking a picture of prescription slip … will mark the patient as Consulted."* The server
+   * decides (the desk's grant, the day, the visit's state) and answers beside the document id; the
+   * desk must be TOLD — "marked consulted", or exactly why not — because a slip desk that cannot
+   * see the difference will believe every patient it photographed has left the doctor's line.
+   */
+  async function fileWith(effects: unknown): Promise<void> {
+    stubFetch({
+      "GET /api/opd/visits/by-number/V2609140007": VISIT,
+      "POST /api/patients/p-1/documents": { documentId: "doc-9", effects },
+    });
+    renderWithProviders(<SlipCapture />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Visit number"), "V2609140007{Enter}");
+    await screen.findByTestId("slip-readback");
+    await user.upload(screen.getByTestId("slip-file"), new File([Uint8Array.from([0x89, 0x50, 0x4e, 0x47])], "slip.png", { type: "image/png" }));
+    await acceptCrop(user);
+    await user.click(screen.getByTestId("slip-file-it"));
+    await screen.findByTestId("slip-filed");
+  }
+
+  it("P1: a slip that closed the visit says so — the patient is consulted, in words", async () => {
+    await fileWith({ "opd.paper": { outcome: "marked", consulted: true, encounterId: "enc-1", visitNo: "V2609140007" } });
+    const said = screen.getByTestId("slip-paper");
+    expect(said).toHaveTextContent("The visit is now marked consulted.");
+    expect(said).toHaveAttribute("data-outcome", "marked");
+    expect(said.className).toContain("ok");
+  });
+
+  it("P2: a slip filed by a seat without the grant is FILED and says the visit was not marked, and why", async () => {
+    await fileWith({ "opd.paper": { outcome: "not_permitted", consulted: false, encounterId: "enc-1", visitNo: "V2609140007" } });
+    const said = screen.getByTestId("slip-paper");
+    expect(said).toHaveTextContent("Not marked consulted: this login is not a Slip Desk or Desk Scribe.");
+    expect(said.className).not.toContain("ok");
+    expect(screen.getByTestId("slip-filed")).toHaveTextContent("Asha Devi");
+  });
+
+  it("P3: an older server, or a page that is not the doctor's slip, says nothing about consultation at all", async () => {
+    await fileWith(undefined);
+    expect(screen.queryByTestId("slip-paper")).not.toBeInTheDocument();
+  });
+
+  /**
    * ═══ THE TWO ROWS A BROWSER WALK WROTE, 2026-09-15 ═══
    *
    * Driven in real Chromium with a synthetic camera, `/opd/slips` opened the camera, showed an

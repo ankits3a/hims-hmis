@@ -377,6 +377,8 @@ export type WireRxLine = {
   durationDays: number | null; instructions: string | null; noSubstitution: boolean;
   /** The ophthal line. Absent on every line written before it and on every non-eye line. */
   eye?: Eye | null; taper?: TaperStep[] | null;
+  /** The catalogue medicine the line was picked as — what the safety checks resolve salts from. Free typing has none. */
+  medicineId?: string | null;
 };
 
 /** An editor row as typed — blanks allowed; `durationDays` is the box's text. Not a prescription line. */
@@ -410,6 +412,12 @@ export type WireRxPrint = {
     diagnoses?: { text: string; icd10Code: string | null; laterality: Eye | null }[];
   };
   vitals: WireVitals | null; lines: WireRxLine[]; qrPayload: string; version: number; issuedAt: string;
+  /**
+   * Owner ruling 2026-10-06 — who typed this prescription from the doctor's paper, or null/absent
+   * when the doctor keyed it. The print says so, so a transcription never passes for a
+   * doctor-signed e-prescription.
+   */
+  transcribedByName?: string | null;
 };
 
 export type WireTimelineItem = {
@@ -1002,6 +1010,72 @@ export function issueRxDraft(
 ): Promise<{ prescriptionId: string; version: number; draftId: string }> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/prescription-draft/issue`, overrides);
 }
+
+// ——— Consulted on paper (owner ruling 2026-10-06) ———
+
+/**
+ * What a filed slip or a typed prescription did to the visit. `consulted` is true when the visit
+ * stands consulted afterwards, whoever made it so; `outcome` says which case this was, and the
+ * screens word each one (`paper.outcome.*`) rather than showing a tick that could mean any of them.
+ */
+export type WirePaperOutcome =
+  | "marked" | "already_marked" | "doctor_completed" | "doctor_consulting"
+  | "not_permitted" | "not_today" | "no_doctor" | "not_in_queue" | "abandoned" | "not_a_consultation" | "gate_refused";
+export type WirePaperVerdict = {
+  outcome: WirePaperOutcome; consulted: boolean; encounterId: string; visitNo: string;
+  gate?: { guard: string; code: string };
+};
+
+export type WireHeldAlert = {
+  kind: "allergy" | "interaction" | "duplicate" | "drug_disease";
+  hard: boolean; text: string;
+  substance?: string; saltPair?: [string, string]; moiety?: string; icd10Prefix?: string;
+};
+export type WireLineAlerts = { lineIndex: number; alerts: WireHeldAlert[] };
+export type WirePaperTest = WireAdvisedTest & { transcribedBy?: string; transcribedByName?: string | null };
+
+export type WirePaperConsult = {
+  encounterId: string; visitNo: string; serviceDate: string; status: string;
+  patient: { id: string; uhid: string; name: string | null; alias: string | null; restricted: boolean; administrativeGender?: string; dob?: string | null };
+  doctorId: string | null; doctorCode: string | null; doctorName: string | null;
+  tokenNo: number | null;
+  completedVia: string | null; paperCompletedAt: string | null; paperCompletedByName: string | null; evidenceKind: string | null;
+  documents: { id: string; encounterId: string; kind: string; capturedAt: string; capturedBy: string; retakeRequestedAt?: string | null }[];
+  prescription: { id: string; version: number; lines: WireRxLine[]; issuedAt: string; transcribedByName: string | null } | null;
+  held: { lines: WireRxLine[]; alerts: WireHeldAlert[][]; note: string | null; draftedByName: string | null; draftedAt: string } | null;
+  advisedTests: WirePaperTest[];
+  /** Medicines the doctor typed on the consultation screen and never issued, on a visit then closed from paper. */
+  doctorDraft?: WireRxLine[];
+  confirmedAt: string | null; confirmedByName: string | null;
+};
+
+export type WireTranscription = {
+  encounterId: string; visitNo: string; paper: WirePaperVerdict;
+  prescription: { prescriptionId: string; version: number; lineCount: number } | null;
+  held: { line: WireRxLine; alerts: WireHeldAlert[] }[];
+  advisedTests: WirePaperTest[];
+};
+
+const paperVisit = (encounterId: string): string => `/opd/paper/visits/${encodeURIComponent(encounterId)}`;
+
+export const fetchPaperVisit = (encounterId: string): Promise<WirePaperConsult> => api("GET", paperVisit(encounterId));
+export const checkPaperLines = (encounterId: string, lines: WireRxLine[]): Promise<{ lines: WireLineAlerts[] }> =>
+  api("POST", `${paperVisit(encounterId)}/check`, { lines });
+export const transcribePaper = (
+  encounterId: string, body: { lines: WireRxLine[]; advisedTests?: WireAdvisedTest[]; note?: string | null },
+): Promise<WireTranscription> => api("POST", `${paperVisit(encounterId)}/transcription`, body);
+export const fetchPaperConsults = (scope: "mine" | "all"): Promise<{ date: string; scope: "mine" | "all"; items: WirePaperConsult[] }> =>
+  api("GET", `/opd/paper/consults?scope=${scope}`);
+export const confirmPaperConsult = (encounterId: string): Promise<WirePaperConsult> =>
+  api("POST", `${paperVisit(encounterId)}/confirm`, {});
+export const checkPaperCorrection = (encounterId: string, lines: WireRxLine[]): Promise<{ lines: WireLineAlerts[] }> =>
+  api("POST", `${paperVisit(encounterId)}/correction-check`, { lines });
+export const correctPaperConsult = (
+  encounterId: string, body: { lines: WireRxLine[]; reasons?: { lineIndex: number; reason: string }[] },
+): Promise<WirePaperConsult> => api("POST", `${paperVisit(encounterId)}/correct`, body);
+export const reopenPaperConsult = (
+  encounterId: string, body: { reason: string; voidTranscription?: boolean },
+): Promise<unknown> => api("POST", `${paperVisit(encounterId)}/reopen`, body);
 
 // ——— Consult v2 (owner, 2026-09-23) ———
 

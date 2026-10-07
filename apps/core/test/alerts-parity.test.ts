@@ -182,10 +182,13 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // `every(60_000)`, so leg 1a, and an `absent()` term: a print that never ran is a wall
         // carrying a sheet older than the board promises.
         "printRosterBoard",
+        // Mobile §3i (owner 2026-10-07) — the twenty-sixth: duty reminders and the doctor's "you are
+        // not in" nudge. `every(60_000)`, so leg 1a, and an `absent()` term.
+        "sweepStaffNotices",
       ].sort(),
     );
-    expect(registered).toHaveLength(25); // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(25); // no job registered twice
+    expect(registered).toHaveLength(26); // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(26); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

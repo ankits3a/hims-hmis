@@ -68,6 +68,18 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
         </header>
 
         {/*
+          Owner ruling 2026-10-06 — A TRANSCRIPTION SAYS IT IS ONE. When the desk typed this from the
+          doctor's paper, the sheet must not pass for a prescription the doctor keyed and the QR
+          authenticated as theirs: it names the desk that typed it and says the signed paper is the
+          original. Printed, not only shown — the pharmacist reads the paper copy.
+        */}
+        {data.transcribedByName != null && (
+          <p data-testid="rx-transcribed" className="rounded border border-neutral-400 px-2 py-1 text-xs font-semibold">
+            {t("paper.printNote", { name: data.transcribedByName })}
+          </p>
+        )}
+
+        {/*
           THE PRESCRIBER IS THE DOCTOR ID, AND ONLY THAT — owner rulings 2026-09-06 ("As a medical
           Institution with college, there's no need of mentioning Dr. Name and their registration
           number. Only Dr. ID is required.") and 2026-09-28 ("Prescription print: Doctor ID only").

@@ -60,7 +60,13 @@
       "stale": "No connection — the bench is shown as of {{time}}",
       "retry": "Try again",
       "saveNetwork": "Not saved — the server could not be reached. Nothing was sent. Check the internet and press Save again.",
-      "alreadyCharted": "Vitals are already saved for this visit. To correct a saved chart, use the vitals bay on a computer for now.",
+      "alreadyCharted": "Vitals are already saved for this visit.",
+      "amendOpen": "Correct this chart",
+      "amendLeave": "Leave it as saved",
+      "amendNothingSent": "That did not reach the server. Nothing was changed — the saved chart stands. Try again.",
+      "amended": "Corrected for {{who}} — {{changes}}. The old values stay in the trail.",
+      "amendTemp": "°C, or type °F — it is converted",
+      "amendNoChart": "This row has no saved chart to correct.",
       "requiredLegend": "* needed before this chart can be saved",
       "done": "Done",
       "doctorFilter": "Doctor",
@@ -395,6 +401,97 @@
         "next": "Next patient",
         "receipt": "Bill {{no}} · receipt {{receipt}} · {{amount}} by {{mode}}",
         "billed": "Bill {{no}} · {{amount}}"
+      },
+      "appt": {
+        "open": "Appointments today",
+        "book": "Book an appointment",
+        "theirs": "Their appointments",
+        "none": "Nothing booked ahead.",
+        "readFailed": "Could not read the appointments. Check the connection and try again.",
+        "today": "Today",
+        "stranded": "The doctor is on leave that day — this booking needs a new time.",
+        "checkIn": "Check in — they have arrived",
+        "checkAgain": "Check again",
+        "checkInUnknown": "No answer came back — it is NOT known whether the check-in went through. Nothing more is sent until you tap Check again; the server is read first.",
+        "cancel": "Cancel",
+        "cancelUnknown": "No answer came back — it is NOT known whether the booking was cancelled. Tap Check again; the server is read first.",
+        "cancelled": "Booking for {{when}} cancelled. The slot is back on the board.",
+        "move": "Move",
+        "rebook": "Re-book",
+        "bookTitle": "Book an appointment",
+        "department": "DEPARTMENT",
+        "doctor": "DOCTOR",
+        "doctorsFailed": "Could not read the doctors.",
+        "sits": "Sits {{days}}",
+        "sitsNever": "No OPD timetable on file",
+        "day": {
+          "title": "DAY",
+          "more": "More dates — the next 8 weeks",
+          "leave": "{{doctor}} is on leave on {{day}}.",
+          "leaveWhy": "{{doctor}} is on leave on {{day}} — {{reason}}.",
+          "noSession": "{{doctor}} does not sit on {{day}}. Sits {{days}}.",
+          "leaveShort": "on leave",
+          "noneShort": "no OPD"
+        },
+        "when": "{{day}} — MORNING, NOON OR EVENING?",
+        "noSlots": "{{doctor}} has no slots on {{day}}. Pick another day.",
+        "part": {
+          "morning": "Morning",
+          "noon": "Noon",
+          "evening": "Evening",
+          "none": "no session",
+          "full": "full",
+          "free_one": "{{count}} free",
+          "free_other": "{{count}} free"
+        },
+        "confirm": "CHECK BEFORE YOU BOOK",
+        "room": "Room {{room}}",
+        "noteHint": "Note for the day (optional)",
+        "feeLater": "Nothing is collected now. The consultation fee is taken when the patient checks in.",
+        "feeOff": "Nothing is collected now. Consultation is free at present: {{amount}}.",
+        "pickFirst": "Pick a time",
+        "go": "Book {{time}} · {{day}}",
+        "goMove": "Move to {{time}} · {{day}}",
+        "leaveIt": "Leave it where it is",
+        "bookUnknown": "No answer came back — it is NOT known whether the booking was made. Your choice is kept. Tap Check again: the server is read first, and nothing is booked twice.",
+        "moveUnknown": "No answer came back — it is NOT known whether the booking was moved. Your choice is kept. Tap Check again: the server is read first, and nothing is moved twice.",
+        "booked": "Booked",
+        "moved": "Moved",
+        "tell": "Tell the patient the day and the time. Nothing is printed or sent for a booking.",
+        "doneClose": "Done",
+        "bookedFlash": "Booked for {{when}}.",
+        "movedFlash": "Booking moved to {{when}}.",
+        "checkedIn": "Checked in — the booking is now today's visit.",
+        "deskTitle": "Appointments",
+        "tabToday": "Today",
+        "counts": "{{arrived}} arrived · {{toArrive}} to arrive · {{missed}} missed",
+        "asOf": "as of {{time}}",
+        "search": "Name or UHID",
+        "allDoctors": "All doctors",
+        "noneToday": "No appointments today.",
+        "noMatch": "Nobody matches.",
+        "state": {
+          "booked": "TO ARRIVE",
+          "waiting": "ARRIVED",
+          "missed": "MISSED",
+          "cancelled": "CANCELLED",
+          "needs_rebooking": "RE-BOOK",
+          "seen": "SEEN",
+          "in_consult": "WITH DOCTOR"
+        },
+        "rebookCount_one": "{{count}} booking to move — the doctor is on leave",
+        "rebookCount_other": "{{count}} bookings to move — the doctor is on leave",
+        "was": "was {{when}} · {{doctor}}",
+        "call": "Call",
+        "wd": {
+          "0": "Sun",
+          "1": "Mon",
+          "2": "Tue",
+          "3": "Wed",
+          "4": "Thu",
+          "5": "Fri",
+          "6": "Sat"
+        }
       }
     },
     "roster": {
@@ -486,7 +583,10 @@
       "diag": {
         "title": "What is working",
         "how": "Read from the top: the first line that is not Yes is the problem.",
-        "yes": "Yes", "no": "No", "unknown": "Not known yet", "never": "Never",
+        "yes": "Yes",
+        "no": "No",
+        "unknown": "Not known yet",
+        "never": "Never",
         "build": "This app can receive notifications",
         "server": "Server reached",
         "linked": "This phone is linked to your sign-in",
@@ -497,9 +597,23 @@
         "lastTest": "Last test sent by the administrator",
         "lastSent": "Last notification sent to this phone",
         "lastReceived": "Last notification seen by this app while open",
-        "reach": { "checking": "Checking…", "ok": "Yes", "unreachable": "No — no answer", "error": "No — error", "notLinked": "Yes" },
-        "perm": { "granted": "Yes", "denied": "No — blocked in settings", "undetermined": "Not asked yet" },
-        "addr": { "yes": "Yes", "no": "No — Google did not answer", "notAsked": "Not asked yet" }
+        "reach": {
+          "checking": "Checking…",
+          "ok": "Yes",
+          "unreachable": "No — no answer",
+          "error": "No — error",
+          "notLinked": "Yes"
+        },
+        "perm": {
+          "granted": "Yes",
+          "denied": "No — blocked in settings",
+          "undetermined": "Not asked yet"
+        },
+        "addr": {
+          "yes": "Yes",
+          "no": "No — Google did not answer",
+          "notAsked": "Not asked yet"
+        }
       },
       "status": {
         "unreachable": "Could not reach the server",
@@ -526,12 +640,14 @@
       "category": {
         "alert": "Alerts",
         "roster": "Duty roster",
-        "queue": "Your queue"
+        "queue": "Your queue",
+        "reminder": "Duty reminders"
       },
       "categoryHint": {
         "alert": "Something is overdue or waiting on you.",
-        "roster": "Somebody flagged the duty board, or a duty of yours is in question.",
-        "queue": "Patients are waiting for you."
+        "roster": "A colleague asks you to cover or swap, your request was answered, your duties changed or were published — or somebody flagged the duty board.",
+        "queue": "Patients are ready and you are not in, or somebody has waited over 40 minutes.",
+        "reminder": "A duty of yours starts in an hour — and the evening before a night or a 24-hour duty."
       },
       "problem": {
         "notAllowed": "The phone has not allowed notifications yet. Tap Turn on again and choose Allow.",
@@ -587,6 +703,27 @@
     }
   },
   "vitalsBay": {
+    "amend": {
+      "title": "Amend the chart saved at {{at}}",
+      "hint": "You are working on a copy — nothing changes until you save with a reason. Esc abandons and the saved chart stands untouched.",
+      "was": "was {{value}}",
+      "reason": "Reason for the amendment",
+      "reasonRequired": "An amendment needs a reason — it is the record",
+      "save": "Save amendment ({{count}} changed)",
+      "readFailed": "The saved chart could not be read",
+      "trail": "by {{by}} at {{at}} — the old value stays in the trail",
+      "carried": "carried forward",
+      "stale": "This chart was amended elsewhere while you were typing — re-open it from the bench to correct the current one",
+      "reasonPlaceholder": "or type the reason",
+      "reasonPreset": {
+        "otherArm": "Other arm",
+        "remeasured": "Re-measured",
+        "keyed": "Typing error",
+        "device": "Device misread",
+        "wrongVital": "Wrong vital",
+        "wrongChart": "Wrong chart"
+      }
+    },
     "title": "Vitals bay",
     "clearDesk": "Clear desk",
     "phone": {
@@ -1097,6 +1234,17 @@
         "doneCredit": "{{amount}} kept as the patient's credit",
         "doneCollected": "{{amount}} collected"
       }
+    },
+    "book": {
+      "alreadyBooked": "{{name}} already has {{count}} booking that day",
+      "alreadyBookedHint": "book a second only if it is genuinely a second appointment",
+      "moving": "Moving {{who}} — was {{was}}",
+      "movingHint": "choose the new slot above, or leave it where it is",
+      "cancelWhy": "The slot goes back on the board straight away and somebody else can take it. Say why — it is recorded against the booking.",
+      "cancelReasonHint": "why? e.g. patient rang to cancel, travelling",
+      "cancelReasonRequired": "Say why the appointment is being cancelled.",
+      "cancelConfirm": "cancel the appointment",
+      "cancelAbort": "keep it"
     }
   },
   "roster": {
@@ -1368,6 +1516,30 @@
       "jr3": "JR-3",
       "intern": "Intern",
       "medical_officer": "MO"
+    }
+  },
+  "paper": {
+    "outcome": {
+      "marked": "The visit is now marked consulted.",
+      "already_marked": "The visit was already marked consulted from the paper.",
+      "doctor_completed": "The doctor had already completed this visit on the screen.",
+      "doctor_consulting": "Not marked consulted: the doctor has this visit open on the screen and will complete it.",
+      "not_permitted": "Not marked consulted: this login is not a Slip Desk or Desk Scribe.",
+      "not_today": "Not marked consulted: this visit is not from today.",
+      "no_doctor": "Not marked consulted: the visit names no doctor.",
+      "not_in_queue": "Not marked consulted: the patient has no token in the doctor's queue yet.",
+      "abandoned": "Not marked consulted: the visit was abandoned.",
+      "not_a_consultation": "This is not an OPD consultation, so nothing is marked.",
+      "gate_refused": "Not marked consulted: the consultation is blocked for this visit. Ask the supervisor.",
+      "failed": "The page is filed, but the visit could not be marked consulted. Tell the supervisor."
+    }
+  },
+  "appointmentSeat": {
+    "rail": {
+      "restricted": "restricted record",
+      "noPhone": "no number on file",
+      "needRebooking": "Need rebooking",
+      "nothingToMove": "Nothing needs moving. No declared leave has stranded a booking."
     }
   }
 }

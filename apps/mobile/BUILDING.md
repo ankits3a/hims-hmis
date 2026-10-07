@@ -142,6 +142,12 @@ into the feed as `runtimeVersion`. `publish-ota.sh` computes the fingerprint of 
 refuses, by name, when it is not the newest APK's: that change needs an APK. The version name and
 the versionCode are not in the fingerprint, so an ordinary rebuild does not strand a bundle.
 
+Both scripts run `npm ci` first: the fingerprint reads `node_modules`, and only the lockfile's own
+tree gives the same value twice. Staging versionCode 11 was built on a tree that had grown by hand
+and carries `277de723…`, which no clean checkout computes; `ota/runtime-aliases.json` records it as
+the clean `da9b26a5…` so that one APK can still be updated. The record stops matching by itself when
+the native side changes; delete the entry once a newer staging APK is out.
+
 **What is served** (no expo.dev cloud; the same folder and the same caddy as the APKs):
 
 ```

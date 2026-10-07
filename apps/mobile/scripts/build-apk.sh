@@ -74,6 +74,10 @@ fi
 # scripts/publish-ota.sh computes from the same commit (fingerprint.config.js).
 RUNTIME_WANTED=""
 if [ -r "$APP_DIR/ota/certificate-$ENV_NAME.pem" ]; then
+  # The fingerprint reads node_modules. An install that grew by hand (`expo install` on top of an older
+  # tree) fingerprinted differently from the lockfile's own, and versionCode 11 went out with a value
+  # no clean checkout computes (2026-10-07) — so node_modules is made the lockfile's first.
+  (cd "$APP_DIR" && npm ci --no-audit --no-fund >/dev/null 2>&1)
   RUNTIME_WANTED="$(cd "$APP_DIR" && APP_ENV=$APP_ENV HMIS_VERSION_CODE=$VC HMIS_PUSH_IN_BUILD=$HMIS_PUSH_IN_BUILD npx expo-updates runtimeversion:resolve --platform android 2>/dev/null \
     | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).runtimeVersion))')"
   [[ "$RUNTIME_WANTED" =~ ^[a-f0-9]{40}$ ]] || { echo "could not compute the native fingerprint" >&2; exit 1; }

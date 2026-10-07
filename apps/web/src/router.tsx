@@ -42,6 +42,7 @@ import { VitalsBay } from "./screens/vitals-bay";
 import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
 import { OpdScribe } from "./screens/opd-scribe";
+import { PaperConsults } from "./screens/paper-consults";
 import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
@@ -222,6 +223,13 @@ const NAV: readonly NavEntry[] = [
   { to: "/opd/display", label: "nav.opdDisplay", permission: "opd.display.read", group: "opd" },
   // FD-30 / owner ruling 2026-09-12 — the OPD door: the paper slip, transcribed for the doctor's tap.
   { to: "/opd/scribe", label: "nav.opdScribe", permission: "opd.prescription.draft", group: "opd" },
+  /*
+    Owner ruling 2026-10-06 — consulted on paper. ONE screen, two readers, so two entries on two
+    grants: the doctor's own list (the optional look, and the held lines only they can release) and
+    the supervisor's (every doctor's, with "reopen"). The screen decides which list a login gets.
+  */
+  { to: "/opd/paper-consults", label: "nav.paperConsults", permission: "opd.consult", group: "opd" },
+  { to: "/opd/paper-consults", label: "nav.paperConsultsAll", permission: "opd.queue.transfer", group: "opd" },
   { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue", group: "billing" },
   { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read", group: "billing" },
   { to: "/billing/session", label: "nav.billingSession", permission: "billing.session.own", group: "billing" },
@@ -523,7 +531,9 @@ function ShellChrome(): React.ReactElement {
         }}
       >
         {NAV_GROUPS.map((group) => {
-          const entries = NAV.filter((e) => e.group === group && navVisible(e, can));
+          /* One link per screen: a path listed under two grants (paper consultations) shows once to a login holding both. */
+          const entries = NAV.filter((e) => e.group === group && navVisible(e, can))
+            .filter((e, i, all) => all.findIndex((x) => x.to === e.to) === i);
           if (entries.length === 0) return null;
           /* A group of one is a place, not a list: it stays a link even when the bar folds. */
           const fold = folded && entries.length > 1;
@@ -1536,6 +1546,13 @@ const opdScribeRoute = createRoute({
   component: OpdScribe,
 });
 
+/** Owner ruling 2026-10-06 — the day's visits closed from the doctor's paper: the doctor's look, the supervisor's reopen. */
+const paperConsultsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/paper-consults",
+  component: PaperConsults,
+});
+
 const opdDisplayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/display",
@@ -1728,7 +1745,7 @@ export const router = createRouter({
     changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
+      opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and

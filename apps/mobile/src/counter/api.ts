@@ -79,6 +79,25 @@ export type WireMoveResult = {
 };
 export type WireDoctorUnit = { userId: string; short: string };
 
+// ——— appointments (the web's `/opd/slots` and `/opd/appointments…`; `opd.appointments.read` / `.manage`) ———
+export type WireMasterDoctor = { id: string; userId: string; displayName: string; departmentId: string; active: boolean; designation?: string | null };
+export type WireRoom = { id: string; code: string; name: string; active: boolean };
+export type WireSchedule = { id: string; doctorId: string; weekday: number; startTime: string; endTime: string; roomId: string; validFrom: string; validTo: string | null; active: boolean };
+export type WireLeave = { id: string; doctorId: string; fromDate: string; toDate: string; reason: string; status: "scheduled" | "cancelled" };
+export type WireSlot = { start: string; end: string; roomId: string; scheduleId: string; booked: boolean; past: boolean };
+export type WireAppointment = {
+  id: string; appointmentNo?: string | null; patientId: string; doctorId: string; departmentId: string; serviceDate: string;
+  slotStart: string; slotEnd: string;
+  status: "booked" | "checked_in" | "cancelled" | "no_show" | "needs_rebooking" | "rescheduled";
+  note: string | null; encounterId: string | null; rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null;
+  /** present on the list route, absent on the write routes' bare row */
+  patient?: { id?: string; uhid?: string | null; name?: string | null; alias?: string | null; phone?: string | null; administrativeGender?: string | null; dob?: string | null } | null;
+};
+export type WireCheckIn = {
+  encounter: { id: string; visitNo: string; patientId: string; status: string; visitType: MoveVisitType; departmentId: string | null; doctorId: string | null };
+  tokenNo: number | null; sessionId: string | null; roomId: string | null; visitType: MoveVisitType;
+};
+
 const enc = encodeURIComponent;
 
 /** One key per intent. Not a secret and not a uuid by law — only unique per actor and route (`billing/idempotency.ts`). */
@@ -124,6 +143,24 @@ export function counterApi(call: Call) {
     cashSession: () => call<{ session: WireCashSession | null }>("GET", "/billing/sessions/current"),
     openCashSession: (floatPaise: number) => call<WireCashSession>("POST", "/billing/sessions", { floatPaise }),
     invoices: (encounterId: string) => call<{ items: WireInvoiceRow[] }>("GET", `/billing/invoices?encounterId=${enc(encounterId)}`),
+
+    // ——— appointments. No fee is taken at booking (the web's rule): the visit, and its bill, begin at check-in. ———
+    doctors: () => call<{ items: WireMasterDoctor[] }>("GET", "/opd/doctors"),
+    rooms: () => call<{ items: WireRoom[] }>("GET", "/opd/rooms"),
+    schedules: (doctorId: string) => call<{ items: WireSchedule[] }>("GET", `/opd/doctors/${enc(doctorId)}/schedules`),
+    leaves: (doctorId: string, from: string, to: string) => call<{ items: WireLeave[] }>("GET", `/opd/leaves?doctorId=${enc(doctorId)}&from=${enc(from)}&to=${enc(to)}&status=scheduled`),
+    slots: (doctorId: string, date: string) => call<{ slots: WireSlot[] }>("GET", `/opd/slots?doctorId=${enc(doctorId)}&date=${enc(date)}`),
+    /** Every appointment this patient holds or held — the list the lost-answer re-read settles against. */
+    patientAppointments: async (patientId: string) => (await call<{ items: WireAppointment[] }>("GET", `/opd/appointments?patientId=${enc(patientId)}`)).items,
+    dayAppointments: async (serviceDate: string) => (await call<{ items: WireAppointment[] }>("GET", `/opd/appointments?serviceDate=${enc(serviceDate)}`)).items,
+    /** The one read that carries telephone numbers; the server records each disclosure with its reason. */
+    needsRebooking: async () => (await call<{ items: WireAppointment[] }>("GET", "/opd/appointments?needsRebooking=true&contact=true")).items,
+    book: (body: { patientId: string; doctorId: string; slotStart: string; note?: string }) => call<{ appointment: WireAppointment }>("POST", "/opd/appointments", body),
+    reschedule: (appointmentId: string, body: { slotStart: string; doctorId?: string; reason?: string }) =>
+      call<{ from: WireAppointment; to: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/reschedule`, body),
+    cancelAppointment: (appointmentId: string, reason: string) => call<{ appointment: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/cancel`, { reason }),
+    /** An arrival: the booking BECOMES the visit (the walk-in's own answer shape). */
+    checkIn: (appointmentId: string) => call<WireCheckIn>("POST", `/opd/appointments/${enc(appointmentId)}/check-in`),
 
     // ——— the paper (queued by the server inside the visit's own transaction; the phone only asks) ———
     printJobs: (encounterId: string) => call<{ jobs: WirePrintJob[] }>("GET", `/print/jobs?encounterId=${enc(encounterId)}`),

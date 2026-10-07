@@ -45,7 +45,7 @@ const OTA_URL: Record<typeof ENV, string> = {
  */
 const OTA_CERTIFICATE = `./ota/certificate-${ENV === "production" ? "production" : "staging"}.pem`;
 const OTA_IN_BUILD = existsSync(join(__dirname, OTA_CERTIFICATE));
-const VERSION = "0.9.0";
+const VERSION = "0.11.0";
 /**
  * M6b — NOTIFICATIONS ARE IN A BUILD ONLY WHEN THE HOSPITAL'S FIREBASE PROJECT IS.
  * `scripts/build-apk.sh` copies the owner's `google-services.json` beside this file when it exists

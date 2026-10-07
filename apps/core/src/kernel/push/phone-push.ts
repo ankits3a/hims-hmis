@@ -25,15 +25,48 @@ import type { PhoneMessage, PhonePushSender } from "./fcm";
  * out this phone") and on deactivation and reset — the query is the guard, the clearing is hygiene.
  */
 
-export const PUSH_CATEGORIES = ["alert", "roster", "queue"] as const;
+export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder"] as const;
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
 
 /**
- * The categories something RAISES today. `queue` ("your patients are waiting") has no alert kind
- * behind it yet (plan §3g, later) — the phone is told this list and offers a switch only for these,
- * so nobody is shown a switch that controls nothing.
+ * The categories something RAISES today — the phone is told this list and offers a switch only for
+ * these, so nobody is shown a switch that controls nothing. §3i (2026-10-07) made all four live:
+ * `queue` ("patients are waiting and you are not in") and `reminder` (a duty an hour / twelve hours
+ * ahead) now have alert kinds behind them.
+ *
+ * `reminder` IS ITS OWN SWITCH, NOT A FIFTH THING UNDER `roster`: a daily "your duty starts at
+ * 09:00" is the first notification a person will want gone, and the only switch that silenced it
+ * must not also silence "a colleague asks you to cover tonight".
  */
-export const LIVE_PUSH_CATEGORIES: readonly PushCategory[] = ["alert", "roster"];
+export const LIVE_PUSH_CATEGORIES: readonly PushCategory[] = ["alert", "roster", "queue", "reminder"];
+
+/**
+ * A build older than this knows three categories and would draw `reminder` as a raw key. It is
+ * simply not offered that switch (it still RECEIVES reminders, on the default channel, and its
+ * banner calls an unknown category an alert — `notifications.tsx`).
+ */
+export const REMINDER_CATEGORY_SINCE = "0.10.0";
+function atLeast(version: string | null, floor: string): boolean {
+  if (version === null) return false;
+  const [a, b] = [version, floor].map((v) => v.split(".").map((n) => Number.parseInt(n, 10) || 0));
+  for (let i = 0; i < 3; i += 1) { if ((a![i] ?? 0) !== (b![i] ?? 0)) return (a![i] ?? 0) > (b![i] ?? 0); }
+  return true;
+}
+export function categoriesFor(appVersion: string | null): readonly PushCategory[] {
+  return atLeast(appVersion, REMINDER_CATEGORY_SINCE) ? LIVE_PUSH_CATEGORIES : LIVE_PUSH_CATEGORIES.filter((c) => c !== "reminder");
+}
+
+/**
+ * ═══ A FLAG IS NEVER STARVED BY A REMINDER ═══
+ *
+ * Twelve an hour is one budget across every kind, because the phone does not know which subsystem
+ * is calling. But two of the four categories repeat on a clock (`reminder`, `queue`), and a doctor
+ * who is out with a full line could spend the hour's twelve on "patients are waiting" and then not
+ * hear "the roster is wrong, you are on call NOW". So the clock-driven categories may use only the
+ * first `PUSH_PER_USER_PER_HOUR - PUSH_RESERVED_FOR_ASKS`; the rest is kept for `alert` and `roster`.
+ */
+export const PUSH_RESERVED_FOR_ASKS = 4;
+const CLOCK_DRIVEN: readonly PushCategory[] = ["queue", "reminder"];
 
 /** Which screen a tap opens. Closed vocabulary; the app maps a word it knows and goes home on one it does not. */
 export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult"] as const;
@@ -54,6 +87,16 @@ export const pushMutedSchema = z.array(z.enum(PUSH_CATEGORIES)).max(PUSH_CATEGOR
  */
 const BY_ALERT_KIND: Record<string, { category: PushCategory; link: PushLink }> = {
   roster_flag: { category: "roster", link: "onNow" },
+  // §3i — a person's own duties open My duties, where the request is answered and the roster read.
+  roster_cover_asked: { category: "roster", link: "myDuties" },
+  roster_cover_answered: { category: "roster", link: "myDuties" },
+  roster_cover_decided: { category: "roster", link: "myDuties" },
+  roster_duty_changed: { category: "roster", link: "myDuties" },
+  roster_month_published: { category: "roster", link: "myDuties" },
+  roster_duty_reminder: { category: "reminder", link: "myDuties" },
+  // §3i — the doctor's own line.
+  opd_not_in: { category: "queue", link: "consult" },
+  opd_long_wait: { category: "queue", link: "consult" },
 };
 export function routeOfAlertKind(kind: string): { category: PushCategory; link: PushLink } {
   return BY_ALERT_KIND[kind] ?? { category: "alert", link: "home" };
@@ -71,6 +114,7 @@ const SENTENCES: Record<PushCategory | "test", Record<"en" | "hi", string>> = {
   alert: { en: "Something needs you. Open HMIS to see it.", hi: "कुछ आपका ध्यान चाहता है। देखने के लिए HMIS खोलें।" },
   roster: { en: "The duty board needs you. Open HMIS to see it.", hi: "ड्यूटी बोर्ड पर आपकी ज़रूरत है। देखने के लिए HMIS खोलें।" },
   queue: { en: "Your OPD queue needs you. Open HMIS to see it.", hi: "आपकी ओपीडी कतार को आपकी ज़रूरत है। देखने के लिए HMIS खोलें।" },
+  reminder: { en: "You have a duty coming up. Open HMIS to see it.", hi: "आपकी ड्यूटी आने वाली है। देखने के लिए HMIS खोलें।" },
   test: { en: "Test — this phone can receive HMIS notifications.", hi: "जाँच — यह फ़ोन HMIS की सूचनाएँ पा सकता है।" },
 };
 export function phoneMessage(category: PushCategory | "test", link: PushLink, language: string): PhoneMessage {
@@ -92,14 +136,14 @@ export type PushState = {
 };
 
 export async function pushStateOf(db: Db, deviceRowId: string, configured: boolean): Promise<PushState> {
-  const rows = await db.select({ token: authDevices.pushToken, muted: authDevices.pushMuted, at: authDevices.pushTokenAt }).from(authDevices).where(eq(authDevices.id, deviceRowId));
+  const rows = await db.select({ token: authDevices.pushToken, muted: authDevices.pushMuted, at: authDevices.pushTokenAt, appVersion: authDevices.appVersion }).from(authDevices).where(eq(authDevices.id, deviceRowId));
   const row = rows[0];
   const muted = (row?.muted ?? []).filter((m): m is PushCategory => (PUSH_CATEGORIES as readonly string[]).includes(m));
   const sends = await db.select({ category: phonePushSends.category, at: phonePushSends.createdAt }).from(phonePushSends)
     .where(and(eq(phonePushSends.deviceRowId, deviceRowId), eq(phonePushSends.outcome, "sent"))).orderBy(desc(phonePushSends.createdAt)).limit(50);
   const iso = (d: Date | null | undefined): string | null => (d == null ? null : d.toISOString());
   return {
-    configured, registered: row?.token != null, muted, categories: LIVE_PUSH_CATEGORIES,
+    configured, registered: row?.token != null, muted, categories: categoriesFor(row?.appVersion ?? null),
     addressAt: iso(row?.at), lastSentAt: iso(sends[0]?.at), lastTestAt: iso(sends.find((s) => s.category === "test")?.at),
   };
 }
@@ -173,7 +217,7 @@ export async function relayAlertToPhones(
   const result: RelayResult = { sent: 0, gone: 0, skipped: 0, limited: false };
   if (phones.length === 0) return result;
   const done = await db.select({ deviceRowId: phonePushSends.deviceRowId }).from(phonePushSends).where(eq(phonePushSends.alertId, alert.id));
-  let budget = PUSH_PER_USER_PER_HOUR - (await sentInLastHour(db, alert.userId, now));
+  let budget = PUSH_PER_USER_PER_HOUR - (CLOCK_DRIVEN.includes(category) ? PUSH_RESERVED_FOR_ASKS : 0) - (await sentInLastHour(db, alert.userId, now));
   let failure: unknown = null;
   for (const phone of phones) {
     if (done.some((d) => d.deviceRowId === phone.deviceRowId)) { result.skipped += 1; continue; }

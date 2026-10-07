@@ -443,6 +443,43 @@ export const consultationResumed = defineEvent("consultation.resumed", MODULE, z
   parkedAt: iso, parkedMs: z.number().int().nonnegative(),
 }));
 
+/**
+ * ═══ CONSULTED ON PAPER (owner ruling 2026-10-06) ═══
+ *
+ * *"If the Slip Desk or Scribe Desk staff by performing either clicking a picture of prescription
+ * slip or typing the prescriptions … will mark the patient as Consulted even if the doctor hasn't
+ * marked or has not operated dashboard."* `consultation.completed` is still appended for such a
+ * visit — every reader of a completion keeps counting it — and this event beside it is the audit's
+ * own: WHO at which desk closed it, from which state, on what evidence, and whether the fee was
+ * still unpaid when they did. The workflow moves themselves are made by the application's own
+ * actor (no desk holds the doctor's transition), so this event is where the person's name lives.
+ */
+export const consultationCompletedOnPaper = defineEvent("consultation.completed_on_paper", MODULE, z.object({
+  encounterId: id, patientId: id, doctorId: id, serviceDate: isoDate,
+  fromState: z.enum(["registered", "waiting", "in_consultation", "awaiting_results"]),
+  evidenceKind: z.enum(["slip_photo", "transcription"]), evidenceId: id,
+  feeUnsettled: z.boolean(),
+}));
+
+/** A supervisor found the wrong visit closed from paper and put the patient back in the line. */
+export const consultationPaperReopened = defineEvent("consultation.paper_reopened", MODULE, z.object({
+  encounterId: id, patientId: id, doctorId: id.nullable(), serviceDate: isoDate,
+  reason: z.string().min(1), toState: z.enum(["registered", "waiting"]),
+  voidedPrescriptionId: id.nullable(),
+}));
+
+/** The doctor's optional look at what the desk filed or typed — never a gate on the patient. */
+export const consultationPaperConfirmed = defineEvent("consultation.paper_confirmed", MODULE, z.object({
+  encounterId: id, patientId: id, doctorId: id, serviceDate: isoDate, corrected: z.boolean(),
+}));
+
+/** What one save at the desk scribe's screen did: lines issued, lines held for the doctor, tests advised. */
+export const paperPrescriptionTranscribed = defineEvent("prescription.paper_transcribed", MODULE, z.object({
+  encounterId: id, patientId: id, doctorId: id, prescriptionId: id.nullable(),
+  issuedLines: z.number().int().nonnegative(), heldLines: z.number().int().nonnegative(),
+  advisedTests: z.number().int().nonnegative(),
+}));
+
 export const prescriptionIssued = defineEvent("prescription.issued", MODULE, z.object({
   // null only for an OUTSIDE doctor's paper prescription entered at the pharmacy desk (2026-09-30).
   prescriptionId: id, encounterId: id, patientId: id, doctorId: id.nullable(),

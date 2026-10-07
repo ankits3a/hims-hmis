@@ -45,8 +45,18 @@ VC="$(field versionCode)"
 
 cd "$APP_DIR"
 export APP_ENV HMIS_PUSH_IN_BUILD HMIS_VERSION_CODE="$VC"
+# The fingerprint reads node_modules, so node_modules is exactly the lockfile's — as it is in a build.
+npm ci --no-audit --no-fund >/dev/null 2>&1
 RESOLVED="$(npx expo-updates runtimeversion:resolve --platform android 2>/dev/null)"
 RUNTIME="$(node -e 'console.log(JSON.parse(process.argv[1]).runtimeVersion)' "$RESOLVED")"
+# ONE recorded exception per APK that was fingerprinted on a tree that was not the lockfile's
+# (ota/runtime-aliases.json; BUILDING.md): "the APK that calls itself X is natively the commit whose
+# fingerprint is Y". It stops matching by itself the moment the native side really changes.
+ALIAS="$(node -e 'const a=JSON.parse(require("fs").readFileSync("ota/runtime-aliases.json","utf8"));console.log((a[process.argv[1]]||{})[process.argv[2]]||"")' "$ENV_NAME" "$APK_RUNTIME")"
+if [ "$RUNTIME" != "$APK_RUNTIME" ] && [ -n "$ALIAS" ] && [ "$ALIAS" = "$RUNTIME" ]; then
+  echo "runtime $APK_RUNTIME is recorded as this checkout's $RUNTIME (ota/runtime-aliases.json)"
+  RUNTIME="$APK_RUNTIME"
+fi
 if [ "$RUNTIME" != "$APK_RUNTIME" ]; then
   echo "REFUSED: the native side changed since the newest $ENV_NAME APK (APK $APK_RUNTIME, this checkout $RUNTIME)." >&2
   echo "         This change needs a new APK: scripts/build-apk.sh $ENV_NAME" >&2

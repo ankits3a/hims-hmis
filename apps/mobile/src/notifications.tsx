@@ -32,7 +32,7 @@ import { color, radius, space } from "./theme";
  * NOTHING IS ASKED UNINVITED. The phone's permission prompt opens only after the person taps
  * "Turn on" under a sentence that says what a notification will and will not contain.
  */
-export const PUSH_CATEGORIES = ["alert", "roster", "queue"] as const;
+export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder"] as const;
 /** The server's `link` word → the phone screen it opens. An unknown word, or a screen this person may not open, is home. */
 export const PUSH_LINK_SEAT: Record<string, Seat["key"] | null> = { home: null, onNow: "onNow", myDuties: "myDuties", consult: "consult" };
 

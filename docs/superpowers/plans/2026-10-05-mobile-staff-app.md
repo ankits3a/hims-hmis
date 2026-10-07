@@ -201,9 +201,7 @@ M0 is built in lane `mobile-m0`. This document is the contract for M1 onwards.
 - **The visit card and "Wrong department? Move patient":** from the bill stage and from any row of the patient's
   history; the four money rules are the server's, worded by the shared helpers.
 - **Deferred, with the reason:**
-  - *Appointments (book / reschedule / cancel / check-in)* — the web's appointment seat is slots, a calendar, the
-    re-booking rail and the cross-department reason: its own milestone's worth of screens, not an "essential" of the
-    walk-in counter. A booked patient who arrives is still seated from the counter PC.
+  - *Appointments* — built 2026-10-07, see §3i.
   - *The full registration record* — ABHA (create / verify / scan-and-share), coverage, a sealed record's alias,
     referrer, photo, allergies told at the desk: entered at the counter PC or the patient's profile. The phone's
     short form is the fast path only, and says so.
@@ -365,6 +363,98 @@ notification** for a signed-in phone, disabled with the reason when a test canno
 publish a notifications build whose APK lacks `POST_NOTIFICATIONS`, the Firebase messaging service or the Firebase
 app id. (All three WERE in 0.8.0 — the manifest was not the cause.) Staging's api and worker do get the Firebase key
 (`deploy.sh` step 2 is shared by both targets).
+
+### 3i. Appointments on the phone's Desk One, as built (2026-10-07)
+
+- **Same routes, same guards as the web's appointment stage:** `GET /opd/doctors`, `/opd/rooms`, `/opd/doctors/:id/schedules`,
+  `/opd/leaves` (all `opd.masters.read`), `GET /opd/slots` and `GET /opd/appointments` (`opd.appointments.read`),
+  `POST /opd/appointments{,/:id/reschedule,/:id/cancel}` (`opd.appointments.manage`), `POST /opd/appointments/:id/check-in`
+  (`opd.visits.open`). **No new route, no server change.** The blocks appear only for a login that holds the read; book /
+  move / cancel only with the manage permission.
+- **Shared, one copy:** `packages/contracts/src/appointment-book.ts` — the web's `lib/appointment-view.ts` moved here
+  (it re-exports every name) plus `dayPartOf` out of `desk-one/stages.tsx`; new and pure: `partCounts`, `dayOffer` /
+  `sittingWeekdays` (the server's `slotsForDate` order: a scheduled leave closes the day whatever the timetable says),
+  `bookedAlready` / `movedAlready`. `appointment-rules.test.ts` fails if either side grows a copy.
+- **Book:** department → doctor (unit beside the name, "Sits Mon, Wed, Fri") → day → morning / noon / evening with the
+  free count → slot → confirm. The 14-day strip (8 weeks behind "More dates") only EXPLAINS a closed day — leave with its
+  reason, or a weekday the doctor does not sit; the server's slot list stays the judge. The first open day is picked; a day
+  the screen picked that has nothing free is stepped past, a day the clerk tapped never is.
+- **No fee at booking — the web takes none.** The visit and its bill begin at check-in; the screen says so, and reads
+  "₹0 (समाज सेवा छूट)" when consultation is switched off. **Nothing is printed or sent for a booking** (the web sends
+  nothing either) — the done screen tells the clerk to say the day and time.
+- **Check-in:** today's booking becomes the visit (`OpenVisitResult`) and the desk goes to its normal bill stage.
+- **Move / cancel:** the same grid with the booking marked; a doctor of another department asks why first (owner
+  2026-10-05) and sends the reason; cancel is two acts and a reason.
+- **The desk's lists:** today's book (counts, state words — "missed" is the clock's answer — doctor filter, search; a row
+  takes the patient in hand) and the bookings a leave has stranded, today forward. The telephone numbers
+  (`contact=true`, one audited disclosure each) are read only when that list is opened; Call dials, Re-book opens the move.
+- **Never twice, never queued — DECIDED:** these routes take no idempotency key, so a lost answer is settled by READING:
+  the patient's appointments are re-read first; if the write landed it is shown and nothing is sent; only otherwise is the
+  same request sent again. Until then the choice is locked. Four mutants (no read before re-send, an unlocked choice, a
+  check-in re-sent unread, no cross-department reason) each turn a named test red.
+- **Deferred, with the reason:** hospital holidays on the day strip (the server's slot rule does not consult the roster's
+  holiday list, so neither does the phone — a holiday with a timetable still offers slots, as on the web); "one-tap
+  re-book suggestions" (the web has none); the appointment slip / SMS / WhatsApp (the web sends none); the doctor's whole
+  day-book for a future date and the leave banner of the web's appointment seat; the week view of `/opd/appointments`.
+- **Not verified without a phone:** the keyboard over the reason box, the Call hand-off to the dialler, a real lost answer.
+
+### 3j. Notices built (2026-10-07) — the kinds §3g could not wire, and a chart corrected on the phone
+
+Owner, 2026-10-07, after the test notification arrived on his own phone: *"notification is working. Now move ahead."*
+§3g ended on three things nothing raised. They are raised now — as BELL ROWS first (the web bell shows staff names and
+duty windows), and the phone relay carries each with no edit of its own. The phone is still told a fixed sentence and
+two closed words; `phoneMessage` still takes no alert.
+
+**From roster events** (`kernel/alerts/consumer.ts`, four new subscriptions on `kernel.alerts`; the readers are
+`modules/roster/staff-notices.ts`). Each is told to the people it is ABOUT, never to whoever did it:
+
+| Kind | Raised by | Who is told | Opens |
+|---|---|---|---|
+| `roster_cover_asked` | `roster.cover_requested` | the colleague asked | My duties |
+| `roster_cover_answered` | `roster.cover_answered` | the duty's owner, and whoever asked on their behalf | My duties |
+| `roster_cover_decided` | `roster.cover_decided` | both parties and the asker; a withdrawal is not told to whoever withdrew | My duties |
+| `roster_duty_changed` | `roster.duty_changed` with an amendment | the person whose published duties moved — NOT when the amendment is an approved cover's (decided already said it) | My duties |
+| `roster_month_published` | `roster.duty_changed` on a publish | each person with a duty on the published month | My duties |
+
+The requester's note is never read (V9). **Not built:** telling the APPROVER that an accepted cover waits for them —
+resolving "who may approve this" is `requireRosterAct`'s question asked backwards; it is the next thing to add.
+
+**From the clock** (`kernel/alerts/notices.ts` `raiseNotice`; ONE scheduler job, `sweepStaffNotices`, every minute).
+Nothing happened at these instants, so no event exists to echo; the sweep raises the row under a key that stands
+where the event id stands, and the same unique pair absorbs a second tick.
+
+- `roster_duty_reminder` (`sweepDutyReminders`) — **DECIDED:** one reminder an hour before ANY duty, and one twelve
+  hours before a NIGHT or a 12-hour-plus duty (a start at or after 18:00, before 06:00, or a take). The twelve-hour one is
+  never due between 22:00 and 06:00 IST: it moves EARLIER, to 21:00 that evening. A tick up to 30 minutes late still
+  sends; later than that it is dropped. A person already on a duty that runs into the next is not reminded of it.
+  Published (`effective`) rows only.
+- `opd_not_in` (`modules/opd/queue-nudges.ts`) — a patient has been READY (vitals done) for **10 minutes** and the
+  doctor's day is `not_started` or `out`. Repeats at most every **20 minutes**, at most **6** a doctor-day, and stops
+  the moment the doctor steps in (the predicate is re-read every tick). Counts and minutes only.
+- `opd_long_wait` — a ready patient has waited over **40 minutes**: once per doctor-day, to a doctor who is in too.
+- **Vitals bay / slip desk: nothing wired, on purpose.** Candidates looked at and left: "a rested patient's recall is
+  due" (the bench already turns the row gold in front of the person at the bay) and "N slips waiting to be
+  photographed" (a count that is never zero in clinic hours). Both would be noise to the one person already looking.
+
+**Categories** (`kernel/push/phone-push.ts`): `alert`, `roster`, `queue`, and a new `reminder` — its own switch, so the
+first notification a person will want gone can be silenced without silencing "a colleague asks you to cover tonight".
+All four are live; a build older than 0.10.0 is not offered the `reminder` switch it has no words for (it still receives
+reminders). **A flag is never starved:** `queue` and `reminder` repeat on a clock, so they may use only the first 8 of
+the hour's 12 (`PUSH_RESERVED_FOR_ASKS = 4`); the rest is kept for `alert` and `roster`.
+
+**None of these climbs the reach ladder** (`notify/reach.ts` `NOTICE_KINDS`): a notice has no acknowledgement that means
+anything, and four hours later the ladder would have relayed a reminder for a duty half done onto WhatsApp and SMS.
+
+**Web bell:** `roster_cover` / `roster_duty` rows open `/roster/my-duties`, `opd_queue_session` rows open `/opd/consult`.
+
+**Amend a saved chart on the phone** (owed since M1 — "use the computer for now"): `src/vitals/amend.tsx`, on the web
+bay's own two routes (`GET /opd/vitals/:id`, `POST …/amend`, `opd.vitals.record`) and its own rules — which now live
+in the shared `packages/contracts/src/vitals-entry.ts` (`AMEND_KEYS`, `AMEND_REASONS`, `diffOf`, `amendedReadings`; the
+web file re-exports them). A copy of the chart, the six preset reasons or a typed one (required), a carried-forward
+value needs its re-measure reason, a gate the server raises again is confirmed there, temperature may be typed in °F.
+Never queued: a correction that did not reach the server stays on screen and says the saved chart stands.
+
+**App 0.10.0** (0.9.0 was the appointments build, §3i). No migration; no new permission.
 
 ## 4. Verification without an emulator
 

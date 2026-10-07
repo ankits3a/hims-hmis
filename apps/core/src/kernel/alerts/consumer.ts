@@ -11,7 +11,10 @@ import { escalationTriggered, respondOverdue } from "../workflow/events";
 import { approvalRequested } from "../approvals/events";
 import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radiology/events";
 import { usersHoldingRole } from "../workflow/roles";
-import { dutyManagersAt, escalationRecipients, flagForAlert, rosterFlagRaised } from "../../modules/roster";
+import {
+  ROSTER_DUTY_REF_TYPE, amendmentIsOfCover, coverForAlert, dutyManagersAt, dutyWindowsForAlert, escalationRecipients, flagForAlert,
+  rosterCoverAnswered, rosterCoverDecided, rosterCoverRequested, rosterDutyChanged, rosterFlagRaised,
+} from "../../modules/roster";
 import { alertRaised } from "./events";
 import type { Db } from "../db/client";
 import type { DispatchedEvent, Handler } from "../events/subscriptions";
@@ -147,6 +150,22 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === rosterFlagRaised.name) {
       await handleRosterFlagRaised(db, e);
+      return;
+    }
+    if (e.name === rosterCoverRequested.name) {
+      await handleRosterCoverRequested(db, e);
+      return;
+    }
+    if (e.name === rosterCoverAnswered.name) {
+      await handleRosterCoverAnswered(db, e);
+      return;
+    }
+    if (e.name === rosterCoverDecided.name) {
+      await handleRosterCoverDecided(db, e);
+      return;
+    }
+    if (e.name === rosterDutyChanged.name) {
+      await handleRosterDutyChanged(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -539,5 +558,109 @@ async function handleRosterFlagRaised(db: Db, e: DispatchedEvent): Promise<void>
       + "fix the roster by an amendment, then mark the flag dealt with.",
     refType: ROSTER_FLAG_REF_TYPE,
     refId: payload.flagId,
+  });
+}
+
+/**
+ * ═══ MOBILE §3i (owner 2026-10-07) — A PERSON'S OWN DUTIES, ON THEIR OWN BELL ═══
+ *
+ * Four roster facts, each told to the people it is ABOUT and never to whoever did it:
+ *
+ *  · asked     → the colleague asked (`roster_cover_asked`);
+ *  · answered  → the owner of the duty, and whoever asked on their behalf (`roster_cover_answered`);
+ *  · decided   → both parties and the asker — approved, refused, or withdrawn (minus whoever
+ *                withdrew it) (`roster_cover_decided`);
+ *  · changed   → the person whose published duties moved (`roster_duty_changed`), or — on a
+ *                publish — the person who now has a month to read (`roster_month_published`). An
+ *                amendment an approved cover applied is NOT announced again: `decided` said it.
+ *
+ * STAFF NAMES AND DUTY WINDOWS ONLY — a duty concerns no patient, so GC6 has nothing to strip, and
+ * the requester's NOTE is deliberately not read (V9: it is the row's, not a surface's). The phone
+ * is told none of this text: `phone-push.ts` picks a fixed sentence by category.
+ *
+ * NONE OF THESE CLIMBS THE REACH LADDER (`notify/reach.ts` `NOTICE_KINDS`): they are notices, and
+ * the act that answers one happens on My duties, not by acknowledging a bell row.
+ */
+export const ALERT_KIND_ROSTER_COVER_ASKED = "roster_cover_asked";
+export const ALERT_KIND_ROSTER_COVER_ANSWERED = "roster_cover_answered";
+export const ALERT_KIND_ROSTER_COVER_DECIDED = "roster_cover_decided";
+export const ALERT_KIND_ROSTER_DUTY_CHANGED = "roster_duty_changed";
+export const ALERT_KIND_ROSTER_MONTH_PUBLISHED = "roster_month_published";
+const ROSTER_COVER_REF_TYPE = "roster_cover";
+
+async function coverOrThrow(db: Db, requestId: string, eventName: string) {
+  const c = await coverForAlert(db, requestId);
+  if (c === null) throw new Error(`alerts consumer: ${eventName} names cover request ${requestId}, which does not exist`);
+  return c;
+}
+const uniq = (ids: readonly (string | null)[], not: readonly (string | null)[] = []): string[] =>
+  [...new Set(ids.filter((i): i is string => i !== null))].filter((i) => !not.includes(i));
+const wordOf = (kind: string): string => (kind === "swap" ? "swap" : "cover");
+
+async function handleRosterCoverRequested(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterCoverRequested.payloadSchema.parse(e.payload);
+  const c = await coverOrThrow(db, p.requestId, e.name);
+  await raiseAlerts(db, e, uniq([c.counterpartId], [c.requestedBy]), {
+    kind: ALERT_KIND_ROSTER_COVER_ASKED,
+    title: c.kind === "swap" ? `${c.ownerName} asks to swap a duty with you` : `${c.ownerName} asks you to cover a duty`,
+    body: `${c.duty}${c.give === null ? "" : ` — for yours on ${c.give}`}${c.departmentName === null ? "" : ` · ${c.departmentName}`}. Open My duties to say yes or no.`,
+    refType: ROSTER_COVER_REF_TYPE, refId: c.requestId,
+  });
+}
+
+async function handleRosterCoverAnswered(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterCoverAnswered.payloadSchema.parse(e.payload);
+  const c = await coverOrThrow(db, p.requestId, e.name);
+  const yes = p.answer === "accepted";
+  await raiseAlerts(db, e, uniq([c.ownerId, c.requestedBy], [c.counterpartId]), {
+    kind: ALERT_KIND_ROSTER_COVER_ANSWERED,
+    title: `${c.counterpartName} said ${yes ? "yes" : "no"} to the ${wordOf(c.kind)}`,
+    body: yes
+      ? `${c.duty}. It now waits for approval; your duty is still yours until it is approved.`
+      : `${c.duty}. The duty is still yours — open My duties to ask somebody else.`,
+    refType: ROSTER_COVER_REF_TYPE, refId: c.requestId,
+  });
+}
+
+async function handleRosterCoverDecided(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterCoverDecided.payloadSchema.parse(e.payload);
+  const c = await coverOrThrow(db, p.requestId, e.name);
+  const word = wordOf(c.kind);
+  // A withdrawal is the one decision a PARTY makes, so the one who made it is not told about it.
+  const recipients = uniq([c.ownerId, c.counterpartId, c.requestedBy], p.status === "withdrawn" ? [c.lastActorId] : []);
+  const text = p.status === "approved"
+    ? { title: `The ${word} is approved`, body: `${c.duty}: ${c.counterpartName} now does it${c.give === null ? "" : `, and ${c.ownerName} does ${c.give}`}. My duties shows the roster as it now stands.` }
+    : p.status === "refused"
+      ? { title: `The ${word} was not approved`, body: `${c.duty} stays with ${c.ownerName}.${p.ruleKey === null ? "" : " A roster rule would have been broken."} Open My duties for the reason.` }
+      : { title: `The ${word} request was withdrawn`, body: `${c.duty} stays with ${c.ownerName}. Nothing changes for you.` };
+  await raiseAlerts(db, e, recipients, { kind: ALERT_KIND_ROSTER_COVER_DECIDED, ...text, refType: ROSTER_COVER_REF_TYPE, refId: c.requestId });
+}
+
+async function handleRosterDutyChanged(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterDutyChanged.payloadSchema.parse(e.payload);
+  if (p.amendmentId === null) {
+    // A PUBLISH: the month (or its new version) is now the roster. One row per person who is on it.
+    const windows = await dutyWindowsForAlert(db, p.added);
+    if (windows.length === 0) return; // days off only — nothing to turn up for
+    await raiseAlerts(db, e, [p.userId], {
+      kind: ALERT_KIND_ROSTER_MONTH_PUBLISHED,
+      title: "Your duty roster is published",
+      body: `${windows.length} ${windows.length === 1 ? "duty" : "duties"}; the first is ${windows[0]}. Open My duties to see them all.`,
+      refType: ROSTER_DUTY_REF_TYPE, refId: p.periodId,
+    });
+    return;
+  }
+  if (await amendmentIsOfCover(db, p.amendmentId)) return;
+  const [added, removed] = [await dutyWindowsForAlert(db, p.added), await dutyWindowsForAlert(db, p.removed)];
+  if (added.length === 0 && removed.length === 0) return;
+  const parts = [
+    ...(added.length === 0 ? [] : [`Now yours: ${added.slice(0, 3).join("; ")}${added.length > 3 ? ` and ${added.length - 3} more` : ""}.`]),
+    ...(removed.length === 0 ? [] : [`No longer yours: ${removed.slice(0, 3).join("; ")}${removed.length > 3 ? ` and ${removed.length - 3} more` : ""}.`]),
+  ];
+  await raiseAlerts(db, e, [p.userId], {
+    kind: ALERT_KIND_ROSTER_DUTY_CHANGED,
+    title: "Your duties changed",
+    body: `${parts.join(" ")} Open My duties.`,
+    refType: ROSTER_DUTY_REF_TYPE, refId: p.amendmentId,
   });
 }

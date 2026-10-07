@@ -84,3 +84,10 @@ export type { OpdReleaseDiagnosis, OpdReleaseVisit } from "./abdm-release";
 // ── ABDM S3 — a request for a patient's records from OTHER facilities rides the consult's own guard:
 //    the encounter's treating doctor, resolved from opd_doctors.user_id (D5), never from a role ──
 export { requireTreatingDoctor } from "./consultation";
+
+// MOBILE §3i (owner 2026-10-07) — "patients are waiting and you are not in", and the 40-minute crossing.
+export {
+  LONG_WAIT_MIN, NOT_IN_AFTER_MIN, NOT_IN_MAX_PER_DAY, NOT_IN_REPEAT_MIN, OPD_LONG_WAIT_KIND, OPD_NOT_IN_KIND,
+  OPD_QUEUE_REF_TYPE, queueNudgesAt, sweepQueueNudges,
+} from "./queue-nudges";
+export type { QueueNudge } from "./queue-nudges";
