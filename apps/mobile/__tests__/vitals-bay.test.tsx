@@ -251,10 +251,11 @@ describe("the vitals bay on a phone", () => {
     expect(await screen.findByTestId("identify")).toBeTruthy(); // the desk is clear
   });
 
-  it("guardian with reports: not offered on a new visit, and a refusal or a lost send stays on screen", async () => {
+  // Owner 2026-10-07 — a RENEWAL (past the follow-up window) is offered too, and an unpaid one asks for billing.
+  it("guardian with reports: not offered on a new visit; an unpaid renewal is offered and asked to bill first; a lost send stays on screen", async () => {
     let mode: "refuse" | "offline" = "refuse";
     const s = server(base({
-      "GET /opd/bench": () => ({ status: 200, body: { items: [row({ visitType: "new" }), { ...KID_ROW, visitType: "revisit" }] } }),
+      "GET /opd/bench": () => ({ status: 200, body: { items: [row({ visitType: "new" }), { ...KID_ROW, visitType: "renewal" }] } }),
       "POST /opd/visits/e7/patient-absent": () => (mode === "offline" ? "offline" : { status: 409, body: { code: "consult_gate_refused", message: "consult_gate_refused" } }),
     }));
     await mount(s.fetcher);

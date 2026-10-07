@@ -50,7 +50,7 @@
 
 ## Still open
 
-- The mobile staff app does not offer the mark; the doctor's phone does not show the tag.
+- The phone vitals bay offers the mark (revisit and renewal, the same shared rule as the web); whether the doctor's phone shows the tag is not yet confirmed.
 
 ## Why
 
