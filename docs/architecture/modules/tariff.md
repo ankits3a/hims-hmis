@@ -3,6 +3,7 @@
 # module `tariff`
 
 Source: `apps/core/src/modules/tariff/`
+· Notes: [MAP.md](../../../apps/core/src/modules/tariff/MAP.md)
 
 - **Depends on modules:** —
 - **Used by modules:** `billing`, `lab`, `membership`, `ot`, `partners`, `pharmacy`, `radiology`
