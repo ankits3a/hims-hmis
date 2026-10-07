@@ -9,6 +9,7 @@ import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
 import { Band, Button, MONO, Note, Tag } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
+import { AmendPanel } from "../vitals/amend";
 import { refusalText, vitalsApi, type VitalsApi, type WireVitalsSaveResult } from "../vitals/api";
 import { CaptureCore } from "../vitals/capture";
 import { heldFirstTake, holdFirstTake, releaseFirstTake, useDangerProtocol, type Protocol } from "../vitals/protocol";
@@ -16,7 +17,7 @@ import {
   REST_MINUTES, ambiguousMessage, bandFor, flagOf, humanDate, isElevated, istClock, matchOnBench, missMessage, rangesFrom, readingFrom,
   resolveDoor, todayIst,
 } from "../vitals/rules";
-import type { Take, TileKey, Tiles, WireBenchRow, WireDangerFlag, WirePreStage, WireVisitOnBench } from "../vitals/rules";
+import type { Change, Take, TileKey, Tiles, WireBenchRow, WireDangerFlag, WirePreStage, WireVisitOnBench } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
 
 /**
@@ -40,7 +41,7 @@ export const BENCH_POLL_MS = 5_000;
 const RANGED: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr"];
 const LAST_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
 type T = ReturnType<typeof useI18n>["t"];
-type Banner = { who: string; doctorName: string; flags: WireDangerFlag[]; rest?: string; feeWaived?: boolean };
+type Banner = { who: string; doctorName: string; flags: WireDangerFlag[]; rest?: string; feeWaived?: boolean; amended?: string };
 type RowState = "escalated" | "recheck" | "due" | "resting" | "away" | "done" | "waiting";
 
 function patientLabel(row: WireBenchRow, t: T): string {
@@ -202,6 +203,11 @@ export function VitalsBay() {
   const [busy, setBusy] = useState(false);
   const [deskGen, setDeskGen] = useState(0);
   const [banner, setBanner] = useState<Banner | null>(null);
+  /** The saved chart of the row in hand is open for correction (§3i) — closed again whenever the desk clears. */
+  const [amending, setAmending] = useState(false);
+  /** A banner is news: the desk list is brought back to its top so the nurse reads it (a correction is saved from the foot of a long form). */
+  const deskScroll = useRef<ScrollView>(null);
+  useEffect(() => { if (banner !== null) deskScroll.current?.scrollTo({ y: 0, animated: false }); }, [banner]);
   const [saving, setSaving] = useState(false);
   const [benchOpen, setBenchOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -243,7 +249,7 @@ export function VitalsBay() {
   }, [t, saving]);
 
   const clearDesk = useCallback(() => {
-    setTaken(null); setError(null); setRestOffer(null); setRerun(null); setWhoOpen(false); setRaw("");
+    setTaken(null); setError(null); setRestOffer(null); setRerun(null); setWhoOpen(false); setRaw(""); setAmending(false);
     setDeskGen((g) => g + 1);
   }, []);
 
@@ -287,6 +293,15 @@ export function VitalsBay() {
       setRestBusy(false);
     }
   }, [rowInHand, restOffer, api, refresh, clearDesk, t]);
+
+  /** A correction landed: say WHAT changed (vital names and numbers of the chart the nurse just typed), and clear the desk. */
+  const onAmended = useCallback((changes: Change[], row: WireBenchRow) => {
+    buzz("ok");
+    const said = changes.map((c) => `${t(`vitalsBay.vital.${c.key}`)} ${c.from ?? "—"} → ${c.to ?? "—"}`).join(", ");
+    setBanner({ who: patientLabel(row, t), doctorName: row.doctorName, flags: [], amended: said });
+    void refresh();
+    if (takenRef.current?.encounterId === row.encounterId) clearDesk();
+  }, [t, refresh, clearDesk]);
 
   const onSaved = useCallback((result: WireVitalsSaveResult, row: WireBenchRow) => {
     buzz(result.flags.some((f) => f.severity !== "notice") ? "warn" : "ok");
@@ -353,7 +368,9 @@ export function VitalsBay() {
 
   const bannerView = banner === null ? null : (
     <View testID="saved-banner" accessibilityRole="alert" style={[s.card, { borderColor: color.greenLine, backgroundColor: color.greenSoft }]}>
-      {banner.rest !== undefined ? (
+      {banner.amended !== undefined ? (
+        <Text testID="amended-banner" style={[s.bannerTitle, { color: color.green }]}>✓ {t("mobile.vitals.amended", { who: banner.who, changes: banner.amended })}</Text>
+      ) : banner.rest !== undefined ? (
         <Text testID="rest-banner" style={s.bannerTitle}>{t("vitalsBay.rest.sent", { who: banner.who, time: banner.rest })}</Text>
       ) : (
         <Text style={[s.bannerTitle, { color: color.green }]}>✓ {t("vitalsBay.saved.title", { who: banner.who, doctor: banner.doctorName })}</Text>
@@ -459,7 +476,7 @@ export function VitalsBay() {
           }
         />
       ) : (
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
+        <ScrollView ref={deskScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
           {bannerView}
           {rowInHand === null ? (
             <View style={s.card}>
@@ -481,7 +498,16 @@ export function VitalsBay() {
             <>
               {who}
               {error !== null && <Note tone="bad" testID="identify-error">{error}</Note>}
-              {pending ? <Text style={s.faint}>{t("mobile.vitals.loadingPatient")}</Text> : <Note tone="info" testID="already-charted">{t("mobile.vitals.alreadyCharted")}</Note>}
+              {pending ? <Text style={s.faint}>{t("mobile.vitals.loadingPatient")}</Text> : amending && rowInHand.vitalsId !== null ? (
+                <AmendPanel api={api} vitalsId={rowInHand.vitalsId} onAmended={(c) => onAmended(c, rowInHand)} onLeave={() => setAmending(false)} />
+              ) : (
+                <>
+                  <Note tone="info" testID="already-charted">{t("mobile.vitals.alreadyCharted")}</Note>
+                  {rowInHand.vitalsId === null
+                    ? <Text style={s.faint}>{t("mobile.vitals.amendNoChart")}</Text>
+                    : <Button testID="amend-open" kind="secondary" label={t("mobile.vitals.amendOpen")} onPress={() => { setError(null); setAmending(true); }} />}
+                </>
+              )}
             </>
           )}
           {rowInHand === null && (

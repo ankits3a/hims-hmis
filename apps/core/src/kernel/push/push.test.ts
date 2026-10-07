@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fcmSender, loadServiceAccount, signedAssertion } from "./fcm";
-import { LIVE_PUSH_CATEGORIES, PUSH_CATEGORIES, PUSH_LINKS, phoneMessage, pushTokenSchema, routeOfAlertKind } from "./phone-push";
+import { LIVE_PUSH_CATEGORIES, PUSH_CATEGORIES, PUSH_LINKS, categoriesFor, phoneMessage, pushTokenSchema, routeOfAlertKind } from "./phone-push";
 import { describePhonePush, phonePushSource } from "./sender";
 import type { FetchLike } from "./fcm";
 
@@ -51,8 +51,8 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
         }
       }
     }
-    // Four categories × two languages, and not one more sentence whatever the link.
-    expect(sentences.size).toBe(8);
+    // Five (four categories and the test) × two languages, and not one more sentence whatever the link.
+    expect(sentences.size).toBe(10);
     for (const s of sentences) expect(s).toMatch(/HMIS/);
   });
 
@@ -62,6 +62,22 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
     expect(routeOfAlertKind("escalation")).toEqual({ category: "alert", link: "home" });
     expect(routeOfAlertKind("a_kind_added_next_year")).toEqual({ category: "alert", link: "home" });
     for (const c of LIVE_PUSH_CATEGORIES) expect(PUSH_CATEGORIES).toContain(c);
+  });
+
+  /** MOBILE §3i — each new kind files under a switch a person can find, and a tap opens where it is answered. */
+  it("a person's own duties open My duties; the doctor's line opens the queue; a reminder is its own switch", () => {
+    for (const kind of ["roster_cover_asked", "roster_cover_answered", "roster_cover_decided", "roster_duty_changed", "roster_month_published"]) {
+      expect(routeOfAlertKind(kind)).toEqual({ category: "roster", link: "myDuties" });
+    }
+    expect(routeOfAlertKind("roster_duty_reminder")).toEqual({ category: "reminder", link: "myDuties" });
+    for (const kind of ["opd_not_in", "opd_long_wait"]) expect(routeOfAlertKind(kind)).toEqual({ category: "queue", link: "consult" });
+    expect(LIVE_PUSH_CATEGORIES).toEqual(["alert", "roster", "queue", "reminder"]);
+    expect(categoriesFor("0.8.1 (9)")).toEqual(["alert", "roster", "queue"]);
+    expect(categoriesFor(null)).toEqual(["alert", "roster", "queue"]);
+    expect(categoriesFor("0.9.0 (10)")).toContain("reminder");
+    expect(categoriesFor("1.0.0")).toContain("reminder");
+    // The sentence for a reminder names no duty, no time and no person.
+    expect(phoneMessage("reminder", "myDuties", "en")).toEqual({ title: "HMIS", body: "You have a duty coming up. Open HMIS to see it.", data: { category: "reminder", link: "myDuties" } });
   });
 
   it("bounds what a phone may hand over as its address", () => {

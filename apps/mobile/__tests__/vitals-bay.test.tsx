@@ -292,6 +292,107 @@ describe("the vitals bay on a phone", () => {
     expect(await screen.findByTestId("identify-error")).toHaveTextContent("That card did not verify — a copied or edited code");
   });
 
+  /* ═══ §3i (owner 2026-10-07) — a saved chart is corrected on the phone, on the web bay's own routes and rules ═══ */
+
+  const CHART = {
+    id: "v1", recordedAt: "2026-10-06T06:10:00.000Z", recordedByName: "Asha Devi", status: "active", emergency: false, notes: null,
+    heightCm: 158, weightKg: 62, sbp: 150, dbp: 90, pulse: 88, rr: null, spo2: 97, tempC: null, muacCm: null,
+    readings: { bp: { takes: [[150, 90]], source: "typed" }, pulse: { takes: [88], source: "typed" }, heightCm: { takes: [158], source: "typed" } },
+    contextChips: [], carriedForward: ["heightCm"],
+  };
+  const charted = (extra: Record<string, Route> = {}) => server(base({
+    "GET /opd/bench": () => ({ status: 200, body: { items: [row({ vitalsDone: true, vitalsId: "v1" })] } }),
+    "GET /opd/vitals/v1": () => ({ status: 200, body: { vitals: CHART } }),
+    ...extra,
+  }));
+  const openAmend = async (s: ReturnType<typeof server>) => {
+    await mount(s.fetcher);
+    await fireEvent.press(await screen.findByTestId("bench-row-4"));
+    await fireEvent.press(await screen.findByTestId("amend-open"));
+    await screen.findByTestId("amend-fields");
+  };
+
+  it("amend: a copy of the saved chart, nothing sent without a reason, and the correction carries the readings and what was carried", async () => {
+    const s = charted({ "POST /opd/vitals/v1/amend": () => ({ status: 201, body: { vitals: { ...CHART, id: "v2", sbp: 140 }, flags: [], superseded: "v1" } }) });
+    await openAmend(s);
+    expect(screen.getByTestId("amend-sbp").props.value).toBe("150");
+    expect(screen.getByTestId("amend-save")).toBeDisabled(); // nothing changed yet
+    await fireEvent.changeText(screen.getByTestId("amend-sbp"), "140");
+    expect(screen.getByTestId("amend-was-sbp")).toHaveTextContent("was 150");
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    expect(await screen.findByTestId("amend-error")).toHaveTextContent("An amendment needs a reason — it is the record");
+    expect(s.of("POST /opd/vitals/v1/amend")).toHaveLength(0);
+
+    await fireEvent.press(screen.getByTestId("amend-reason-otherArm"));
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    await waitFor(() => expect(s.of("POST /opd/vitals/v1/amend")).toHaveLength(1));
+    expect(s.of("POST /opd/vitals/v1/amend")[0]!.body).toMatchObject({
+      sbp: 140, dbp: 90, pulse: 88, heightCm: 158, rr: null, tempC: null,
+      reason: "Rechecked on the other arm", emergency: false,
+      readings: { bp: { takes: [[140, 90]], source: "typed" }, pulse: { takes: [88], source: "typed" } },
+      carriedForward: ["heightCm"],
+    });
+    expect(await screen.findByTestId("amended-banner")).toHaveTextContent(/Corrected for Geeta Devi — SBP 150 → 140/);
+    expect(screen.queryByTestId("amend")).toBeNull();
+  });
+
+  it("amend: a correction that does not reach the server stays on screen and says the saved chart stands — then goes on a second tap", async () => {
+    let up = false;
+    const s = charted({ "POST /opd/vitals/v1/amend": () => (up ? { status: 201, body: { vitals: { ...CHART, id: "v2", pulse: 78 }, flags: [], superseded: "v1" } } : "offline") });
+    await openAmend(s);
+    await fireEvent.changeText(screen.getByTestId("amend-pulse"), "78");
+    await fireEvent.changeText(screen.getByTestId("amend-reason"), "counted again for a full minute");
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    expect(await screen.findByTestId("amend-error")).toHaveTextContent(/Nothing was changed — the saved chart stands/);
+    expect(screen.getByTestId("amend-pulse").props.value).toBe("78");
+    expect(screen.queryByTestId("amended-banner")).toBeNull();
+    up = true;
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    expect(await screen.findByTestId("amended-banner")).toBeTruthy();
+    expect(s.of("POST /opd/vitals/v1/amend").map((c) => (c.body as { reason: string }).reason)).toEqual(["counted again for a full minute", "counted again for a full minute"]);
+  });
+
+  it("amend: a carried value needs its own re-measure reason, a gate the server raises is confirmed here, and °F is read for the temperature", async () => {
+    let n = 0;
+    const s = charted({
+      "POST /opd/vitals/v1/amend": () => {
+        n += 1;
+        return n === 1
+          ? { status: 422, body: { code: "vitals_gate", message: "held", detail: { gates: [{ key: "heightCm", kind: "shrinking_adult", value: 150, message: "height 150 against 158 — re-measure once before it becomes true" }] } } }
+          : { status: 201, body: { vitals: { ...CHART, id: "v2", heightCm: 150, tempC: 38.5 }, flags: [], superseded: "v1" } };
+      },
+    });
+    await openAmend(s);
+    await fireEvent.changeText(screen.getByTestId("amend-heightCm"), "150");
+    await fireEvent.changeText(screen.getByTestId("amend-tempC"), "101.3");
+    await fireEvent.press(screen.getByTestId("amend-reason-remeasured"));
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    // Height was CARRIED FORWARD: the phone asks for the re-measure reason before it sends anything.
+    expect(await screen.findByTestId("amend-unlock-heightCm")).toBeTruthy();
+    expect(s.of("POST /opd/vitals/v1/amend")).toHaveLength(0);
+    await fireEvent.press(screen.getByTestId("amend-unlock-heightCm-yearly_remeasure_due"));
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    await fireEvent.press(await screen.findByTestId("amend-gate-confirm-heightCm"));
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    expect(await screen.findByTestId("amended-banner")).toBeTruthy();
+    const sent = s.of("POST /opd/vitals/v1/amend").map((c) => c.body as Record<string, unknown>);
+    expect(sent[0]).toMatchObject({ heightCm: 150, tempC: 38.5, unlockReasons: { heightCm: "yearly_remeasure_due" }, carriedForward: [] });
+    expect(sent[0]!.overrides).toBeUndefined();
+    expect(sent[1]).toMatchObject({ overrides: { heightCm: "confirmed_after_remeasure" } });
+  });
+
+  it("amend: a temperature that is neither °C nor °F is refused before anything is sent; 'Leave it' sends nothing", async () => {
+    const s = charted();
+    await openAmend(s);
+    await fireEvent.changeText(screen.getByTestId("amend-tempC"), "60");
+    await fireEvent.press(screen.getByTestId("amend-reason-keyed"));
+    await fireEvent.press(screen.getByTestId("amend-save"));
+    expect(await screen.findByTestId("amend-error")).toHaveTextContent(/°C \(like 37.2\) or °F/);
+    await fireEvent.press(screen.getByTestId("amend-leave"));
+    expect(await screen.findByTestId("already-charted")).toBeTruthy();
+    expect(s.calls.filter((c) => c.key.startsWith("POST"))).toHaveLength(0);
+  });
+
   it("shows the unpaid mark and the saved chart's note on a row already charted", async () => {
     const s = server(base({
       "GET /opd/bench": () => ({ status: 200, body: { items: [row({ vitalsDone: true, vitalsId: "v1" })] } }),

@@ -17,6 +17,11 @@ export type WireEscalationView = {
 export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
 /** Only what the phone reads off a saved chart: the flags, and whether the save waived the fee. */
 export type WireVitalsSaveResult = { flags: WireDangerFlag[]; feeWaived?: boolean };
+/** A saved chart, as far as a correction reads it: the nine scalars, the readings beside them, and what was carried. */
+export type WireChart = Record<WireVitalKey, number | null> & {
+  id: string; recordedAt: string; recordedByName?: string; readings: unknown; contextChips: unknown; carriedForward?: string[];
+  notes: string | null; emergency: boolean; status: "active" | "superseded";
+};
 export type WireQueueSummary = { waitingVitalsCount: number };
 export type WireQrVerifyResult =
   | { ok: true; patient: { id: string; uhid: string; name: string } }
@@ -45,6 +50,10 @@ export function vitalsApi(call: Call) {
     cancelEscalation: (encounterId: string) => call<WireEscalationView>("POST", `/opd/visits/${enc(encounterId)}/escalation/cancel`, {}),
     setBenchState: (encounterId: string, body: { state: WireBenchState | null; restMinutes?: number; note?: string }) =>
       call<WireBenchRow>("POST", `/opd/visits/${enc(encounterId)}/bench-state`, body),
+    /** The saved chart a nurse may correct (`opd.vitals.record` — she who may amend may read). */
+    chart: (vitalsId: string) => call<{ vitals: WireChart }>("GET", `/opd/vitals/${enc(vitalsId)}`),
+    amend: (vitalsId: string, body: WireVitalsPostBody & { reason: string }) =>
+      call<{ vitals: WireChart; flags: WireDangerFlag[]; superseded: string }>("POST", `/opd/vitals/${enc(vitalsId)}/amend`, body),
     verifyQr: (payload: string) => call<WireQrVerifyResult>("POST", "/patients/qr/verify", { payload }),
     allergies: (patientId: string) => call<{ items: WireAllergy[] }>("GET", `/patients/${enc(patientId)}/allergies`),
     addAllergy: (patientId: string, body: {

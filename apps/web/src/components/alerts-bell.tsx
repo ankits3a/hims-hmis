@@ -44,6 +44,12 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   approval: (refId) => ({ to: "/approvals", search: { focus: refId } }),
   // 20-U infra (owner 2026-10-04) — a "this is wrong" flag is shown and resolved on the board.
   roster_flag: () => ({ to: "/roster/on-now", search: {} }),
+  // Mobile §3i (owner 2026-10-07) — a cover asked or answered, a duty moved, published or about to
+  // start: all of it is read, and answered, on My duties.
+  roster_cover: () => ({ to: "/roster/my-duties", search: {} }),
+  roster_duty: () => ({ to: "/roster/my-duties", search: {} }),
+  // "Patients are waiting and you are not in" — the doctor's own line.
+  opd_queue_session: () => ({ to: "/opd/consult", search: {} }),
 };
 
 function deepLinkFor(a: WireAlert): { to: string; search: Record<string, string> } | null {

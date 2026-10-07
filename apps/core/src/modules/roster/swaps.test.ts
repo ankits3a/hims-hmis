@@ -1,9 +1,9 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { confirmSeededUnits } from "../../../test/helpers/units";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import {
-  permissions, roleAssignments, rolePermissions, roles, rosterAmendments, rosterAssignments,
+  alerts, events, permissions, roleAssignments, rolePermissions, roles, rosterAmendments, rosterAssignments,
   rosterCoverRequests, rosterTeamMemberships, users, orgDepartments,
 } from "../../kernel/db/schema";
 import { ROSTER_MANAGE, ROSTER_PUBLISH, ROSTER_READ } from "./policy";
@@ -18,6 +18,9 @@ import { onNowBoard } from "./board";
 import { RosterError } from "./errors";
 import { answerCover, coverOptions, coverRequests, decideCover, requestCover, withdrawCover } from "./swaps";
 import { myDuties, openFlags, raiseFlag, resolveFlag } from "./my-duties";
+import { alertsConsumer } from "../../kernel/alerts/consumer";
+import { dueDutyReminders, longReminderAt, sweepDutyReminders, wantsLongReminder } from "./staff-notices";
+import type { DispatchedEvent } from "../../kernel/events/subscriptions";
 import type { Db } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 
@@ -271,5 +274,106 @@ describe("roster — covers and swaps (20-U U6)", () => {
     await withTx(db, (tx) => resolveFlag(tx, ms, flagId));
     expect(await openFlags(db, reader)).toEqual([]);
     expect((await refusal(withTx(db, (tx) => raiseFlag(tx, reader, { departmentId: MED, at: new Date(), note: "   " })))).code).toBe("invalid_window");
+  });
+
+  /* ═══════════ MOBILE §3i (owner 2026-10-07) — a person's own duties reach their own bell ═══════════ */
+
+  /** Every event of these names appended so far, in order, as the dispatcher would hand them over. */
+  const dispatched = async (...names: string[]): Promise<DispatchedEvent[]> =>
+    (await db.select().from(events).orderBy(asc(events.seq))).filter((r) => names.includes(r.name)).map((r) => ({
+      seq: Number(r.seq), eventId: r.eventId, name: r.name, payload: r.payload,
+      patientId: r.patientId, correlationId: r.correlationId, occurredAt: r.occurredAt,
+    }));
+  const deliver = async (...names: string[]): Promise<void> => {
+    const handle = alertsConsumer(db);
+    for (const e of await dispatched(...names)) { await handle(e); await handle(e); } // at-least-once: every one twice
+  };
+  const bell = async (kind: string) => (await db.select().from(alerts).where(eq(alerts.kind, kind))).map((a) => ({ to: a.userId, title: a.title, body: a.body ?? "" }));
+
+  it("a cover ASKED of me rings my bell and nobody else's — once, however often it is delivered, and never with the note", async () => {
+    await withTx(db, (tx) => requestCover(tx, meena, { assignmentId: meenaNight, counterpartId: ROHIT, note: "my father is in ICU" }));
+    await deliver("roster.cover_requested");
+    const rows = await bell("roster_cover_asked");
+    expect(rows.map((r) => r.to)).toEqual([ROHIT]);
+    expect(rows[0]!.title).toBe("Dr. Meena Joshi asks you to cover a duty");
+    expect(rows[0]!.body).toContain("10 Nov, 20:00–08:00 IST");
+    expect(JSON.stringify(rows)).not.toContain("ICU");
+  });
+
+  it("the ANSWER goes back to the person whose duty it is — not to the one who gave it", async () => {
+    const { requestId } = await ask(meena, ROHIT);
+    await withTx(db, (tx) => answerCover(tx, rohit, requestId, true));
+    await deliver("roster.cover_answered");
+    const rows = await bell("roster_cover_answered");
+    expect(rows.map((r) => r.to)).toEqual([MEENA]);
+    expect(rows[0]!.title).toBe("Dr. Rohit Bansal said yes to the cover");
+  });
+
+  it("an APPROVAL tells both people once — the amendment it applied is not announced again as 'your duties changed'", async () => {
+    const { requestId } = await ask(meena, ROHIT);
+    await withTx(db, (tx) => answerCover(tx, rohit, requestId, true));
+    await withTx(db, (tx) => decideCover(tx, head2, requestId, { approve: true }));
+    await deliver("roster.cover_decided", "roster.duty_changed");
+    expect((await bell("roster_cover_decided")).map((r) => r.to).sort()).toEqual([MEENA, ROHIT].sort());
+    expect((await bell("roster_cover_decided"))[0]!.title).toBe("The cover is approved");
+    expect(await bell("roster_duty_changed")).toEqual([]);
+  });
+
+  it("a WITHDRAWAL tells the colleague who was asked, and not the person who withdrew it", async () => {
+    const { requestId } = await ask(meena, ROHIT);
+    await withTx(db, (tx) => withdrawCover(tx, meena, requestId));
+    await deliver("roster.cover_decided");
+    expect((await bell("roster_cover_decided")).map((r) => [r.to, r.title])).toEqual([[ROHIT, "The cover request was withdrawn"]]);
+  });
+
+  it("a PUBLISHED month tells each person on it, once; an amendment by the office tells only the person it moved", async () => {
+    await deliver("roster.duty_changed");
+    expect((await bell("roster_month_published")).map((r) => r.to).sort()).toEqual([KAVITA, MEENA, ROHIT, SANDEEP].sort());
+    expect(await bell("roster_duty_changed")).toEqual([]);
+
+    await withTx(db, (tx) => amend(tx, ms, P2, {
+      kind: "correction", reason: "extra list", requestedBy: MS,
+      open: [{ userId: ROHIT, positionKey: "ward_jr", departmentId: MED, teamId: U2, mode: "presence", kind: "duty", startsAt: ist("2026-11-11T10:00"), endsAt: ist("2026-11-11T14:00") }],
+    }));
+    await deliver("roster.duty_changed");
+    const changed = await bell("roster_duty_changed");
+    expect(changed.map((r) => r.to)).toEqual([ROHIT]);
+    expect(changed[0]!.body).toContain("Now yours: 11 Nov, 10:00–14:00 IST.");
+    expect(await bell("roster_month_published")).toHaveLength(4); // nobody was told about the month again
+  });
+
+  it("the twelve-hour reminder is for a night or a take, and is never due between 22:00 and 06:00 — it moves EARLIER, to 21:00", () => {
+    const hhmm = (d: Date) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 16);
+    expect(hhmm(longReminderAt(ist("2026-11-10T20:00")))).toBe("2026-11-10T08:00"); // twelve hours, untouched
+    expect(hhmm(longReminderAt(ist("2026-11-11T08:00")))).toBe("2026-11-10T20:00"); // a take: the evening before
+    expect(hhmm(longReminderAt(ist("2026-11-11T10:30")))).toBe("2026-11-10T21:00"); // 22:30 → 21:00 the same evening
+    expect(hhmm(longReminderAt(ist("2026-11-11T14:00")))).toBe("2026-11-10T21:00"); // 02:00 → 21:00 the evening BEFORE
+    expect(hhmm(longReminderAt(ist("2026-11-11T17:59")))).toBe("2026-11-10T21:00"); // 05:59 → still earlier, never 06:00
+    expect(wantsLongReminder({ startsAt: ist("2026-11-10T20:00"), endsAt: ist("2026-11-11T08:00") })).toBe(true);
+    expect(wantsLongReminder({ startsAt: ist("2026-11-11T08:00"), endsAt: ist("2026-11-12T08:00") })).toBe(true);
+    expect(wantsLongReminder({ startsAt: ist("2026-11-11T10:00"), endsAt: ist("2026-11-11T14:00") })).toBe(false);
+  });
+
+  it("reminders come from the PUBLISHED roster: one an hour ahead, one twelve hours ahead of a night — each raised once, and not after its moment", async () => {
+    const lead = async (at: string) => (await dueDutyReminders(db, ist(at))).map((r) => `${r.userId === MEENA ? "meena" : r.userId === KAVITA ? "kavita" : "other"}:${r.lead}`).sort();
+    expect(await lead("2026-11-10T08:05")).toEqual(["meena:12h"]);
+    expect(await lead("2026-11-10T08:31")).toEqual([]); // half an hour late is too late
+    expect(await lead("2026-11-10T19:10")).toEqual(["meena:1h"]);
+    expect(await lead("2026-11-11T09:02")).toEqual(["kavita:1h"]); // a four-hour list: the hour, never the twelve
+    expect(await lead("2026-11-10T22:00")).toEqual([]);
+
+    expect(await sweepDutyReminders(db, ist("2026-11-10T19:10"))).toBe(1);
+    expect(await sweepDutyReminders(db, ist("2026-11-10T19:11"))).toBe(0); // the next tick raises nothing
+    const rows = await bell("roster_duty_reminder");
+    expect(rows).toEqual([{ to: MEENA, title: "Your duty starts at 20:00 IST", body: expect.stringContaining("General Medicine · 10 Nov, 20:00–08:00 IST") }]);
+    expect((await db.select().from(events).where(eq(events.name, "alert.raised"))).length).toBe(1);
+  });
+
+  it("a person already on a duty that runs into the next one is not reminded of it", async () => {
+    // The day shift before Meena's own night, written as the published row it would be (the rule under test is the reminder's, not the validator's).
+    const night = await live(meenaNight);
+    await db.insert(rosterAssignments).values({ ...night, id: "01ASSIGN0000000000MEENADAY", startsAt: ist("2026-11-10T08:00"), endsAt: ist("2026-11-10T20:00") });
+    expect((await dueDutyReminders(db, ist("2026-11-10T19:10"))).filter((r) => r.userId === MEENA)).toEqual([]);
+    expect((await dueDutyReminders(db, ist("2026-11-10T07:10"))).filter((r) => r.userId === MEENA).map((r) => r.lead)).toEqual(["1h"]); // the day shift itself is
   });
 });

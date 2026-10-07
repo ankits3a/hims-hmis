@@ -137,6 +137,17 @@ describe("runReachLadder", () => {
 
   // ————————————————————————————— what stops it —————————————————————————————
 
+  /** MOBILE §3i — a notice has no ack that means anything, so the ladder must never start on one. */
+  it("a NOTICE (a duty reminder, a cover asked, patients waiting) never climbs — at any age", async () => {
+    for (const kind of ["roster_duty_reminder", "roster_cover_asked", "roster_month_published", "opd_not_in", "opd_long_wait"]) {
+      await seedAlert(asha, { kind, minutesAgo: 600 });
+    }
+    expect(await runReachLadder(db, NOW)).toBe(0);
+    // …and an ordinary `can_wait` alert of the same age still does.
+    await seedAlert(asha, { kind: "something_else", minutesAgo: 600 });
+    expect(await runReachLadder(db, NOW)).toBe(1);
+  });
+
   it("an ACK stops it and a READ does not — that is why T3 made them different columns", async () => {
     await seedAlert(asha, { minutesAgo: 30, ackKind: "owned" });
     // Bala's is merely READ, which is the state this job exists to escalate past.

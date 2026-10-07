@@ -366,6 +366,64 @@ publish a notifications build whose APK lacks `POST_NOTIFICATIONS`, the Firebase
 app id. (All three WERE in 0.8.0 — the manifest was not the cause.) Staging's api and worker do get the Firebase key
 (`deploy.sh` step 2 is shared by both targets).
 
+### 3i. Notices built (2026-10-07) — the kinds §3g could not wire, and a chart corrected on the phone
+
+Owner, 2026-10-07, after the test notification arrived on his own phone: *"notification is working. Now move ahead."*
+§3g ended on three things nothing raised. They are raised now — as BELL ROWS first (the web bell shows staff names and
+duty windows), and the phone relay carries each with no edit of its own. The phone is still told a fixed sentence and
+two closed words; `phoneMessage` still takes no alert.
+
+**From roster events** (`kernel/alerts/consumer.ts`, four new subscriptions on `kernel.alerts`; the readers are
+`modules/roster/staff-notices.ts`). Each is told to the people it is ABOUT, never to whoever did it:
+
+| Kind | Raised by | Who is told | Opens |
+|---|---|---|---|
+| `roster_cover_asked` | `roster.cover_requested` | the colleague asked | My duties |
+| `roster_cover_answered` | `roster.cover_answered` | the duty's owner, and whoever asked on their behalf | My duties |
+| `roster_cover_decided` | `roster.cover_decided` | both parties and the asker; a withdrawal is not told to whoever withdrew | My duties |
+| `roster_duty_changed` | `roster.duty_changed` with an amendment | the person whose published duties moved — NOT when the amendment is an approved cover's (decided already said it) | My duties |
+| `roster_month_published` | `roster.duty_changed` on a publish | each person with a duty on the published month | My duties |
+
+The requester's note is never read (V9). **Not built:** telling the APPROVER that an accepted cover waits for them —
+resolving "who may approve this" is `requireRosterAct`'s question asked backwards; it is the next thing to add.
+
+**From the clock** (`kernel/alerts/notices.ts` `raiseNotice`; ONE scheduler job, `sweepStaffNotices`, every minute).
+Nothing happened at these instants, so no event exists to echo; the sweep raises the row under a key that stands
+where the event id stands, and the same unique pair absorbs a second tick.
+
+- `roster_duty_reminder` (`sweepDutyReminders`) — **DECIDED:** one reminder an hour before ANY duty, and one twelve
+  hours before a NIGHT or a 12-hour-plus duty (a start at or after 18:00, before 06:00, or a take). The twelve-hour one is
+  never due between 22:00 and 06:00 IST: it moves EARLIER, to 21:00 that evening. A tick up to 30 minutes late still
+  sends; later than that it is dropped. A person already on a duty that runs into the next is not reminded of it.
+  Published (`effective`) rows only.
+- `opd_not_in` (`modules/opd/queue-nudges.ts`) — a patient has been READY (vitals done) for **10 minutes** and the
+  doctor's day is `not_started` or `out`. Repeats at most every **20 minutes**, at most **6** a doctor-day, and stops
+  the moment the doctor steps in (the predicate is re-read every tick). Counts and minutes only.
+- `opd_long_wait` — a ready patient has waited over **40 minutes**: once per doctor-day, to a doctor who is in too.
+- **Vitals bay / slip desk: nothing wired, on purpose.** Candidates looked at and left: "a rested patient's recall is
+  due" (the bench already turns the row gold in front of the person at the bay) and "N slips waiting to be
+  photographed" (a count that is never zero in clinic hours). Both would be noise to the one person already looking.
+
+**Categories** (`kernel/push/phone-push.ts`): `alert`, `roster`, `queue`, and a new `reminder` — its own switch, so the
+first notification a person will want gone can be silenced without silencing "a colleague asks you to cover tonight".
+All four are live; a build older than 0.9.0 is not offered the `reminder` switch it has no words for (it still receives
+reminders). **A flag is never starved:** `queue` and `reminder` repeat on a clock, so they may use only the first 8 of
+the hour's 12 (`PUSH_RESERVED_FOR_ASKS = 4`); the rest is kept for `alert` and `roster`.
+
+**None of these climbs the reach ladder** (`notify/reach.ts` `NOTICE_KINDS`): a notice has no acknowledgement that means
+anything, and four hours later the ladder would have relayed a reminder for a duty half done onto WhatsApp and SMS.
+
+**Web bell:** `roster_cover` / `roster_duty` rows open `/roster/my-duties`, `opd_queue_session` rows open `/opd/consult`.
+
+**Amend a saved chart on the phone** (owed since M1 — "use the computer for now"): `src/vitals/amend.tsx`, on the web
+bay's own two routes (`GET /opd/vitals/:id`, `POST …/amend`, `opd.vitals.record`) and its own rules — which now live
+in the shared `packages/contracts/src/vitals-entry.ts` (`AMEND_KEYS`, `AMEND_REASONS`, `diffOf`, `amendedReadings`; the
+web file re-exports them). A copy of the chart, the six preset reasons or a typed one (required), a carried-forward
+value needs its re-measure reason, a gate the server raises again is confirmed there, temperature may be typed in °F.
+Never queued: a correction that did not reach the server stays on screen and says the saved chart stands.
+
+**App 0.9.0.** No migration; no new permission.
+
 ## 4. Verification without an emulator
 
 1. **Behaviour:** jest-expo plus `@testing-library/react-native`, with mocked fetch, SecureStore and LocalAuthentication.

@@ -70,5 +70,17 @@ export const alertsManifest: ModuleManifest = {
     // it. The one-edit rule for the eighth time: `handleRosterFlagRaised` lands in `consumer.ts` in
     // THIS commit, or every flag lands in the escalation parser and fails the delivery.
     { event: "roster.flag_raised", consumer: "kernel.alerts" },
+    // MOBILE §3i (owner 2026-10-07, "now move ahead") — A PERSON'S OWN DUTIES REACH THEIR OWN BELL.
+    // A cover or swap asked of me, the answer to mine, the decision on it, and a duty that was
+    // published or moved: four roster facts that until now changed a screen nobody had open. Each
+    // raises for the PEOPLE THE FACT IS ABOUT, never for whoever did it, and the phone relay
+    // (`kernel.phone_push`) carries each to a pocket with no edit of its own.
+    //
+    // The one-edit rule for the ninth to twelfth time: the four branches are in `consumer.ts` in
+    // THIS commit, or every one of these lands in the escalation parser and fails the delivery.
+    { event: "roster.cover_requested", consumer: "kernel.alerts" },
+    { event: "roster.cover_answered", consumer: "kernel.alerts" },
+    { event: "roster.cover_decided", consumer: "kernel.alerts" },
+    { event: "roster.duty_changed", consumer: "kernel.alerts" },
   ],
 };

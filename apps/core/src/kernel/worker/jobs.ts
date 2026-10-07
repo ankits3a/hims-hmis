@@ -7,6 +7,7 @@ import { runDueTimers } from "../workflow/timers";
 import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
+import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
 import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
 import { collectOrderKinds } from "../orders/kinds";
@@ -29,7 +30,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
-import { printBoardIfDue, runMonthlyProposals, sweepRosterWindows } from "../../modules/roster";
+import { printBoardIfDue, runMonthlyProposals, sweepDutyReminders, sweepRosterWindows } from "../../modules/roster";
 
 // D9/step 2: the daily jobs' clock instants are CODE CONSTANTS beside their registration, not
 // deployment knobs — design decisions from the roadmap (2026-08-12 owner decision Q4), not
@@ -591,5 +592,18 @@ export function registerAllJobs(
     name: "printRosterBoard",
     every: 60_000,
     run: async (now) => { await printBoardIfDue(db, now); },
+  });
+  /**
+   * MOBILE §3i (owner 2026-10-07) — THE NOTICES ONLY A CLOCK CAN RAISE. A duty that starts in an
+   * hour (and, for a night or a take, twelve hours ahead), and "patients are ready and you are not
+   * in". Nothing happened at those instants, so no event exists for the alerts consumer to echo;
+   * this reads the published roster and today's doctor-days every minute and raises what is due,
+   * each under a key that absorbs a second tick (`kernel/alerts/notices.ts`). ONE job for both, for
+   * the reason `printRosterBoard` is one: a name in the scheduler census per sweep, not per sentence.
+   */
+  scheduler.register({
+    name: "sweepStaffNotices",
+    every: 60_000,
+    run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); },
   });
 }
