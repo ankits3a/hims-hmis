@@ -14540,7 +14540,6 @@
       "title": "The print program on this computer",
       "sub": "If HMIS Print is installed on this computer, choose it here once. Papers then print by themselves, with no print window. When the program is off, this window prints as before.",
       "loading": "Looking for print programs…",
-      "failed": "The list of print programs could not be read.",
       "none": "No computer has the print program yet. An administrator adds one in Users → Print computers.",
       "notLinked": "No print program on this computer",
       "connected": "connected",

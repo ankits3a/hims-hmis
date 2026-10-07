@@ -176,7 +176,7 @@ export async function revokeComputer(tx: Tx, id: string, revokedBy: string, now:
   return row;
 }
 
-export type SendOutcome = "sent" | "offline" | "not_sendable" | "unknown_computer";
+export type SendOutcome = "sent" | "offline" | "no_printer" | "not_sendable" | "unknown_computer";
 
 /**
  * "Print this on the computer I am sitting at." Only a job nobody holds (`queued`, `failed`) and
@@ -193,6 +193,9 @@ export async function sendJobToComputer(
   const computer = await getComputer(tx, input.computerId);
   if (computer === null) return { outcome: "unknown_computer", document: null, from: null };
   if (!computerAlive(computer, now)) return { outcome: "offline", document: null, from: null };
+  // Running, but nobody has chosen its printer yet (or the program has not reported one): a paper
+  // sent now would be claimed and failed three times. The browser prints it instead.
+  if (computer.printer === null || computer.printer.trim() === "") return { outcome: "no_printer", document: null, from: null };
   const dest = counterDestination(computer.id);
   const rows = await tx.select({ document: printJobs.document, destination: printJobs.destination, status: printJobs.status })
     .from(printJobs).where(eq(printJobs.id, input.jobId));

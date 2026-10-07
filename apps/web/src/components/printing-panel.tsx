@@ -97,11 +97,12 @@ export function PrintingPanelHost(): React.ReactElement | null {
           ))}
         </fieldset>
 
+        {/* A seat that may not read the list (or an older server) is shown nothing here: the rest of the panel is theirs. */}
+        {computers === "failed" ? null : (
         <div data-testid="print-program" style={{ margin: "12px 0 0", padding: "10px 12px", border: "1px solid var(--line, #dfe7e1)", borderRadius: 9 }}>
           <b style={{ display: "block" }}>{t("printHere.program.title")}</b>
           <span style={{ display: "block", color: "var(--dim, #5c6f66)", fontSize: 12.5, margin: "2px 0 8px" }}>{t("printHere.program.sub")}</span>
           {computers === null ? <span style={{ fontSize: 12.5, color: "var(--dim, #5c6f66)" }}>{t("printHere.program.loading")}</span> : null}
-          {computers === "failed" ? <span data-testid="print-program-failed" style={{ fontSize: 12.5, color: "var(--dim, #5c6f66)" }}>{t("printHere.program.failed")}</span> : null}
           {Array.isArray(computers) && computers.length === 0 && setting.computerId === null ? (
             <span data-testid="print-program-none" style={{ fontSize: 12.5, color: "var(--dim, #5c6f66)" }}>{t("printHere.program.none")}</span>
           ) : null}
@@ -131,6 +132,7 @@ export function PrintingPanelHost(): React.ReactElement | null {
             </>
           ) : null}
         </div>
+        )}
 
         <fieldset style={{ border: 0, padding: 0, margin: "12px 0 0", opacity: browserish ? 1 : 0.5 }} disabled={!browserish}>
           <legend style={{ fontWeight: 600, padding: 0, marginBottom: 4 }}>{t("printHere.panel.papers")}</legend>

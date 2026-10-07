@@ -47,7 +47,8 @@ export function PrintComputers({ open, onClose }: { open: boolean; onClose: () =
       await testPrintComputer(c.id);
       setNotice(t("printComputers.testSent", { name: c.name }));
     } catch (e) {
-      setError(adminErrorCode(e) === "print_computer_offline" ? t("printComputers.testOffline", { name: c.name }) : adminErrorMessage(e));
+      const code = adminErrorCode(e);
+      setError(code === "print_computer_offline" ? t("printComputers.testOffline", { name: c.name }) : code === "print_computer_no_printer" ? t("printComputers.noPrinter") : adminErrorMessage(e));
     }
     await refresh();
   };
@@ -89,7 +90,7 @@ export function PrintComputers({ open, onClose }: { open: boolean; onClose: () =
                 </span>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <SubmitButton plain type="button" className="sec" data-testid={`print-computer-test-${c.id}`} disabled={!c.alive} onClick={() => test(c)}>
+                <SubmitButton plain type="button" className="sec" data-testid={`print-computer-test-${c.id}`} disabled={!c.alive || c.printer === null} onClick={() => test(c)}>
                   {t("printComputers.test")}
                 </SubmitButton>
                 <SubmitButton plain type="button" className="sec" data-testid={`print-computer-remove-${c.id}`} onClick={() => remove(c)}>

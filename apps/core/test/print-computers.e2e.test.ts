@@ -63,9 +63,11 @@ describe("decision 0047: a counter's own print program", () => {
     return { auth: { authorization: `Bearer ${user.token}` }, userId: user.id };
   }
 
-  async function enrolOne(admin: { authorization: string }, name = "Front desk 1"): Promise<{ computerId: string; agentKey: string; destination: string; code: string }> {
+  async function enrolOne(admin: { authorization: string }, name = "Front desk 1", printer: string | null = "HP LaserJet M1005"): Promise<{ computerId: string; agentKey: string; destination: string; code: string }> {
     const issued = await http().post("/print/computers/codes").set(admin).send({ name }).expect(201);
     const enrolled = await http().post("/print/enrol").send({ code: issued.body.code, platform: "win32", appVersion: "1.0.0" }).expect(201);
+    // A program reports its printer when it starts; a computer with none is never sent a paper.
+    if (printer !== null) await http().post("/print/heartbeat").set("x-agent-key", enrolled.body.agentKey).send({ printer, printers: [printer] }).expect(201);
     return { ...enrolled.body, code: issued.body.code } as { computerId: string; agentKey: string; destination: string; code: string };
   }
 
@@ -135,7 +137,7 @@ describe("decision 0047: a counter's own print program", () => {
     const admin = await signIn(["auth.users.manage"]);
     const pc = await enrolOne(admin.auth);
     const here = await http().get("/print/computers/here").set(desk.auth).expect(200);
-    expect(here.body.computers).toEqual([{ id: pc.computerId, name: "Front desk 1", printer: null, alive: true }]);
+    expect(here.body.computers).toEqual([{ id: pc.computerId, name: "Front desk 1", printer: "HP LaserJet M1005", alive: true }]);
     await http().get("/print/computers/here").expect(401);
   });
 
@@ -204,6 +206,16 @@ describe("decision 0047: a counter's own print program", () => {
       const roll = await http().post(`/print/jobs/${slip.id}/send-to-computer`).set(desk.auth).send({ computerId: pc.computerId }).expect(201);
       expect(roll.body).toMatchObject({ sent: false, reason: "not_sendable" });
     }
+    // A program that is running but has no printer chosen is not sent a paper either.
+    const bare = await enrolOne(admin.auth, "No printer yet", null);
+    const { jobId: second } = await (async () => {
+      const rows = await db.select().from(printJobs).where(eq(printJobs.encounterId, encounterId));
+      const again = await http().post("/print/reprint").set(desk.auth).send({ jobId: rows.find((r) => r.document === "opd_prescription")!.id, reason: "second copy" }).expect(201);
+      return { jobId: String(again.body.id) };
+    })();
+    const noPrinter = await http().post(`/print/jobs/${second}/send-to-computer`).set(desk.auth).send({ computerId: bare.computerId }).expect(201);
+    expect(noPrinter.body).toEqual({ sent: false, reason: "no_printer", destination: null });
+
     const unknown = await http().post(`/print/jobs/${jobId}/send-to-computer`).set(desk.auth).send({ computerId: "nope" }).expect(201);
     expect(unknown.body).toMatchObject({ sent: false, reason: "unknown_computer" });
   });
@@ -247,6 +259,11 @@ describe("decision 0047: a counter's own print program", () => {
     await db.update(printComputers).set({ lastSeenAt: new Date(Date.now() - (PRINT_COMPUTER_ALIVE_SECONDS + 5) * 1000) });
     const off = await http().post(`/print/computers/${pc.computerId}/test`).set(admin.auth).expect(409);
     expect(off.body.code).toBe("print_computer_offline");
+    const bare = await enrolOne(admin.auth, "No printer yet", null);
+    const none = await http().post(`/print/computers/${bare.computerId}/test`).set(admin.auth).expect(409);
+    expect(none.body.code).toBe("print_computer_no_printer");
+    // Nothing was queued for a browser to pick up by mistake.
+    expect((await db.select().from(printJobs)).filter((j) => j.document === "print_test_page" && j.status === "queued")).toHaveLength(0);
   });
 
   it("one counter's program being alive is NOT evidence that the site relay serves the front desk", async () => {

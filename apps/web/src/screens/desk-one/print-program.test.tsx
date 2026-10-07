@@ -182,7 +182,7 @@ describe("decision 0047 — this computer's own print program", () => {
     expect(readPrintSetting().computerId).toBeNull();
   });
 
-  it("the panel: a linked program that was removed says so; a seat that may not read the list is told, and the rest still works", async () => {
+  it("the panel: a linked program that was removed says so; a seat that may not read the list is shown no program section, and the rest still works", async () => {
     writePrintSetting({ ...DEFAULT_PRINT_SETTING, computerId: "GONE" });
     stubFetch({ "GET /api/print/computers/here": { computers: [] } });
     const first = renderWithProviders(<PrintingPanelHost />);
@@ -194,7 +194,7 @@ describe("decision 0047 — this computer's own print program", () => {
     stubFetch({});
     renderWithProviders(<PrintingPanelHost />);
     act(() => { openPrintingPanel(); });
-    expect(await screen.findByTestId("print-program-failed")).toBeInTheDocument();
-    expect(screen.getByTestId("print-mode-auto")).toBeChecked();
+    expect(await screen.findByTestId("print-mode-auto")).toBeChecked();
+    await waitFor(() => { expect(screen.queryByTestId("print-program")).not.toBeInTheDocument(); });
   });
 });

@@ -147,6 +147,7 @@ export class PrintComputersController implements OnModuleInit {
     const computer = await getComputer(this.db, id);
     if (computer === null) throw new NotFoundException("no such print computer");
     if (!computerAlive(computer)) throw new ConflictException({ code: "print_computer_offline", message: `${computer.name} has not asked for work in the last ${String(PRINT_COMPUTER_ALIVE_SECONDS)} seconds` });
+    if (computer.printer === null || computer.printer.trim() === "") throw new ConflictException({ code: "print_computer_no_printer", message: `${computer.name} has no printer chosen yet — choose one on that computer's HMIS Print page` });
     return await withTx(this.db, async (tx) => {
       const jobId = await enqueuePrintJob(tx, {
         document: "print_test_page",
