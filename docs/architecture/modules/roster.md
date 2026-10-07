@@ -3,6 +3,7 @@
 # module `roster`
 
 Source: `apps/core/src/modules/roster/`
+· Notes: [MAP.md](../../../apps/core/src/modules/roster/MAP.md)
 
 - **Depends on modules:** —
 - **Used by modules:** `opd`, `ot`, `radiology`
