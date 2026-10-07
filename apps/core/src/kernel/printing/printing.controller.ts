@@ -7,6 +7,7 @@ import { newId } from "@hmis/contracts";
 import { printJobs, users } from "../db/schema";
 import { claimPrintJobs, reportFailed, reportPrinted, reportPrintedHere, printedVia } from "./claim";
 import { relayServes } from "./served";
+import { touchComputer } from "./computers";
 import type { PrintDestination } from "./enqueue";
 import { agentPrintDestinations } from "../auth/agents";
 import { enqueuePrintJob } from "./enqueue";
@@ -167,6 +168,8 @@ export class PrintingController {
         refusedDestinations,
       });
     }
+    // A counter's own print program is alive for as long as it asks for work (decision 0047).
+    await touchComputer(this.db, relayId);
     const jobs = await claimPrintJobs(this.db, {
       relayId,
       destinations,

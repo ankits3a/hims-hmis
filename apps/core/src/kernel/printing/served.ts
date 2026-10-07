@@ -42,6 +42,10 @@ export async function relayServes(db: Db | Tx, destination: PrintDestination, no
     .from(printJobs)
     .where(and(
       isNotNull(printJobs.claimedAt),
+      // A counter's own program (decision 0047) claims only `counter:<id>:a4`. It is evidence about
+      // ONE computer, never that the site's relay is running — or every other counter would stop
+      // printing from its browser the day the first program was installed.
+      sql`${printJobs.destination} not like 'counter:%'`,
       or(
         and(eq(printJobs.destination, destination), gt(printJobs.claimedAt, servedSince)),
         gt(printJobs.claimedAt, aliveSince),
