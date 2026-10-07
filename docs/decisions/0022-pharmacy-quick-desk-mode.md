@@ -1,6 +1,6 @@
 # 0022 — Pharmacy "quick desk mode" stands down three checks
 
-- **Date:** 2026-10-02   **Status:** Partly open
+- **Date:** 2026-10-02   **Status:** Ruled
 - **Area:** pharmacy, legal
 
 ## Decision
@@ -15,9 +15,10 @@
   - `pharmacist_not_registered` (verify and scheduled hand-over only);
   - `slip_not_confirmed` (bill).
 - Everything else stays: permissions, Schedule X / narcotic refusal on paper, allergy and interaction refusals, H1
-  prescriber rules, the H1 register write, and "refunds/returns/authorisations still need a registered pharmacist".
-- Later the same day (recorded with 0023): "refunds allowed without registration in quick desk mode". This
-  contradicts the previous line for refunds; the later statement is what was built into PR #440. See Open.
+  prescriber rules, the H1 register write, and "returns/authorisations still need a registered pharmacist".
+- **Refunds in quick desk mode do NOT need a registered pharmacist.** The first wording on 2026-10-02 said they did;
+  a later statement that day said they did not, and PR #440 built the later one. The owner confirmed it on
+  2026-10-07: "Refund doesn't need a registered pharmacist."
 
 ## Why
 
@@ -29,8 +30,3 @@ The owner wants counter staff to bill from a physical prescription without cerem
 - Built as `pharmacy_settings.quick_desk` (migration 0166, one row), changed under `pharmacy.licences.manage`,
   audited by `pharmacy_settings.changed`. The switch is at Pharmacy office → Law → Desk mode (PR #440).
 - Do not "fix" the bypass as a defect, and do not widen it to other checks without a new ruling.
-
-## Open
-
-- The sources disagree on whether a refund in quick desk mode needs a registered pharmacist (see above). Confirm
-  with the owner which one stands.

@@ -44,7 +44,7 @@ this item):
   - head's number not entered → blank (no placeholder).
 - **Encounter ID:** `visit_no`. **Encounter Type:** OPD. **Visit Date:** the OPD visit day.
 - **Address:** as registered; the row is omitted when empty, and for a sealed (§14) patient.
-- For unit doctors this supersedes the 2026-09-06 "print the Doctor ID only" ruling (recorded outside this folder).
+- For unit doctors this supersedes the 2026-09-06 "print the Doctor ID only" ruling (now recorded as 0033).
 
 **4. Rooms.** One room per doctor, at most 4 rooms per department:
 

@@ -29,5 +29,5 @@ Built as FD-32:
 
 ## Open
 
-- Does the bypass also open the DOCTOR's door? Put to the owner, not answered. Built so it opens the vitals door
-  only; widening it would make the "unpaid consult refused 409" guard unreachable.
+- ~~Does the bypass also open the DOCTOR's door?~~ **Answered by 0037 (2026-09-20): no.** Only payment, or the
+  treating doctor opening the token, releases it. Built that way: the bypass opens the vitals door only.

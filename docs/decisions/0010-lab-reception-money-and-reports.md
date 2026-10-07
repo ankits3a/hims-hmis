@@ -51,6 +51,7 @@ These are money and law rulings, which only the owner makes.
 ## Consequences / how to apply
 
 - Every lab reception screen and any lab billing code follows these rules.
+- Ruling 9 supersedes the 2026-08-30 order-group hold of a paid report (0028).
 - Dashboard: the owner removed the Next card, the tiles and "Needs reception" (the right sidebar already shows
   them); quick actions sit inside the scan card.
 - Screen board: "Lab Reception Counter", https://claude.ai/artifact/Q55XsWxk8h4rpBK7XfhAN2 (synthetic prices, not
