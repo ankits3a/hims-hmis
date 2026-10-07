@@ -152,10 +152,10 @@ describe("OPD report", () => {
     expect(r.departments.map((d) => d.name)).toEqual(["General Medicine", "Paediatrics"]); // no Laboratory
     const med = r.departments.find((d) => d.departmentId === deptId)!;
     const ped = r.departments.find((d) => d.departmentId === dept2Id)!;
-    expect(med).toMatchObject({ booked: 3, consulted: 6, new: 3, revisit: 1, renewal: 2, stillOpen: 1 });
+    expect(med).toMatchObject({ booked: 3, opened: 8, consulted: 6, new: 3, revisit: 1, renewal: 2, stillOpen: 1, leftUnseen: 1 });
     // P3 is `new` to Paediatrics' fee branch and is a RENEWAL here — the whole of the ruling.
-    expect(ped).toMatchObject({ booked: 1, consulted: 2, new: 1, revisit: 0, renewal: 1, stillOpen: 0 });
-    expect(r.totals).toEqual({ booked: 4, consulted: 8, new: 4, revisit: 1, renewal: 3, stillOpen: 1 });
+    expect(ped).toMatchObject({ booked: 1, opened: 2, consulted: 2, new: 1, revisit: 0, renewal: 1, stillOpen: 0, leftUnseen: 0 });
+    expect(r.totals).toEqual({ booked: 4, opened: 10, consulted: 8, new: 4, revisit: 1, renewal: 3, stillOpen: 1, leftUnseen: 1 });
     expect(r.patientsConsulted).toBe(7); // P6 counted once; P5's two records are one person
     expect(r.newPatients).toBe(3); // P1, P6, P10
     expect(r.excludedSunday).toBeNull(); // only a week can exclude one
@@ -165,7 +165,7 @@ describe("OPD report", () => {
     const r = await week(SAT, LATER);
     expect(r).toMatchObject({ period: "week", from: MON, to: SAT, anchor: SAT, provisional: false });
     // Wednesday's first visit + Thursday's follow-up + Friday's day.
-    expect(r.totals).toEqual({ booked: 5, consulted: 10, new: 5, revisit: 2, renewal: 3, stillOpen: 1 });
+    expect(r.totals).toEqual({ booked: 5, opened: 12, consulted: 10, new: 5, revisit: 2, renewal: 3, stillOpen: 1, leftUnseen: 1 });
     expect(r.patientsConsulted).toBe(8); // the day's seven + Nazia
     expect(r.newPatients).toBe(4);       // P1, P6, P10 + Nazia, counted once each
     // Sunday is not in the week, and the week says so rather than being quietly short.
@@ -188,10 +188,61 @@ describe("OPD report", () => {
     const r = await month(SAT, LATER);
     expect(r).toMatchObject({ period: "month", from: "2026-09-01", to: SAT });
     // The week's ten plus Sita's own first visit on the 8th; August's visits are another month.
-    expect(r.totals).toEqual({ booked: 5, consulted: 11, new: 6, revisit: 2, renewal: 3, stillOpen: 1 });
+    // Imran Ali left unseen on the 13th: a second visit the desk opened that nobody consulted.
+    expect(r.totals).toEqual({ booked: 5, opened: 14, consulted: 11, new: 6, revisit: 2, renewal: 3, stillOpen: 1, leftUnseen: 2 });
     expect(r.patientsConsulted).toBe(8);
     expect(r.newPatients).toBe(5); // + Sita, new to the hospital on the 8th
     expect(r.excludedSunday).toBeNull();
+  });
+
+  /**
+   * Owner, 2026-10-07 — "How would I know how many visits/appointments were opened by front desk?"
+   * The answer is a column, and a column that does not add up is worse than none.
+   */
+  it("Visits opened = Consulted + Still open + Left unseen — for every department and the totals, in every period", async () => {
+    for (const r of [await day(DAY), await week(SAT, LATER), await month(SAT, LATER)]) {
+      for (const c of [...r.departments, r.totals]) {
+        expect(c.opened).toBe(c.consulted + c.stillOpen + c.leftUnseen);
+      }
+      const sum = (k: "opened" | "leftUnseen") => r.departments.reduce((n, d) => n + d[k], 0);
+      expect(r.totals.opened).toBe(sum("opened"));
+      expect(r.totals.leftUnseen).toBe(sum("leftUnseen"));
+    }
+    expect((await day(DAY)).totals.opened).toBeGreaterThan(0); // not vacuous
+  });
+
+  it("a visit the desk CORRECTED is counted once: wrong department, or a changed doctor", async () => {
+    const before = (await day(DAY)).departments.find((d) => d.departmentId === deptId)!;
+    const at = new Date(`${DAY}T09:00:00+05:30`);
+    const corrected = async (patientId: string, to: string, reason: string): Promise<void> => {
+      await visit(patientId, deptId, DAY, "new", "abandoned");
+      await db.update(opdEncounters).set({ openedAt: new Date(at.getTime() - 600_000), abandonedAt: at, abandonReason: reason })
+        .where(eq(opdEncounters.visitNo, `V${String(seq).padStart(10, "0")}`));
+      await visit(patientId, to, DAY, "new", "waiting");
+      await db.update(opdEncounters).set({ openedAt: at }).where(eq(opdEncounters.visitNo, `V${String(seq).padStart(10, "0")}`));
+    };
+    await corrected(await patient("Moved Patient"), dept2Id, "wrong department — fever, needs paediatrics");
+    await corrected(await patient("Doctor Changed"), deptId, "doctor changed at the desk before billing");
+
+    const r = await day(DAY);
+    const med = r.departments.find((d) => d.departmentId === deptId)!;
+    const ped = r.departments.find((d) => d.departmentId === dept2Id)!;
+    // Medicine gains ONE visit (the changed doctor's second), nothing left unseen; the moved one is Paediatrics'.
+    expect(med).toMatchObject({ opened: before.opened + 1, leftUnseen: before.leftUnseen, stillOpen: before.stillOpen + 1 });
+    expect(ped).toMatchObject({ opened: 3, leftUnseen: 0, stillOpen: 1 });
+  });
+
+  it("names who opened the visits only when the caller says the reader may have staff figures", async () => {
+    expect((await day(DAY)).openedBy).toBeNull();
+    const r = await loadOpdReport(db, rangeFor("day", DAY), { now: NOW, staffFigures: true });
+    expect(r.openedBy).toEqual([{ name: expect.any(String), count: 10 }]); // the one clerk opened all ten
+    expect(reportCsvRows(r)).toContainEqual(["Opened by", "Visits opened"]);
+    expect(renderReport(r).html).toContain("<b>Opened by:</b>");
+    expect(renderReport(await day(DAY)).html).not.toContain("Opened by");
+    expect(reportCsvRows(await day(DAY)).flat()).not.toContain("Opened by");
+    const dept = (await loadOpdDepartmentReport(db, clerk.actor, rangeFor("day", DAY), deptId, { now: NOW, staffFigures: true }))!;
+    expect(dept.openedBy).toEqual([{ name: expect.any(String), count: 8 }]);
+    expect((await loadOpdDepartmentReport(db, clerk.actor, rangeFor("day", DAY), deptId, NOW))!.openedBy).toBeNull();
   });
 
   it("follows a merge in both directions: history under the survivor, today under the duplicate — and the reverse", async () => {
@@ -227,14 +278,20 @@ describe("OPD report", () => {
     const r = await day(DAY);
     const csv = reportCsvRows(r);
     expect(csv[0]).toEqual(["CRK MEDICAL COLLEGE & HOSPITAL"]);
-    expect(csv).toContainEqual(["General Medicine", "3", "6", "3", "1", "2", "1"]);
-    expect(csv).toContainEqual(["Total", "4", "8", "4", "1", "3", "1"]);
+    expect(csv).toContainEqual(["Department", "Appointments", "Visits opened", "Consulted", "New", "Revisit", "Renewal", "Still open", "Left unseen"]);
+    expect(csv).toContainEqual(["General Medicine", "3", "8", "6", "3", "1", "2", "1", "1"]);
+    expect(csv).toContainEqual(["Total", "4", "10", "8", "4", "1", "3", "1", "1"]);
+    expect(csv.flat().join("|")).not.toContain("Booked|"); // the column was renamed (owner, 2026-10-07)
     const doc = renderReport(r);
     expect(doc.title).toBe(`OPD-Day-Report-${DAY}`);
     expect(doc.html).toContain("CRK MEDICAL COLLEGE &amp; HOSPITAL");
     expect(doc.html).toContain("data:image/png;base64,");
     expect(doc.html).toContain("18-Sep-2026, Friday");
     expect(doc.html).toContain("1 patient is still being seen");
+    expect(doc.html).toContain(">Visits opened</th>");
+    expect(doc.html).toContain(">Left unseen</th>");
+    expect(doc.html).not.toContain(">Booked</th>");
+    expect(doc.html).toContain("<b>Visits opened</b> — every visit the front desk opened"); // the legend under the table
 
     const dept = (await loadOpdDepartmentReport(db, clerk.actor, rangeFor("day", DAY), deptId, NOW))!;
     const rows = departmentReportCsvRows(dept);
@@ -292,8 +349,8 @@ describe("OPD report", () => {
     const r = await day(DAY);
     expect(r.departments.map((d) => [d.name, d.units])).toEqual([["General Medicine", ["Unit II"]], ["Paediatrics", []]]);
     expect(renderReport(r).html).toContain("<b>General Medicine</b><span class=\"unit\"> · Unit II</span>");
-    expect(reportCsvRows(r)).toContainEqual(["General Medicine", "Unit II", "3", "6", "3", "1", "2", "1"]);
-    expect(reportCsvRows(r)).toContainEqual(["Paediatrics", "", "1", "2", "1", "0", "1", "0"]);
+    expect(reportCsvRows(r)).toContainEqual(["General Medicine", "Unit II", "3", "8", "6", "3", "1", "2", "1", "1"]);
+    expect(reportCsvRows(r)).toContainEqual(["Paediatrics", "", "1", "2", "2", "1", "0", "1", "0", "0"]);
 
     const dept = (await loadOpdDepartmentReport(db, clerk.actor, rangeFor("day", DAY), deptId, NOW))!;
     expect(dept.department.units).toEqual(["Unit II"]);

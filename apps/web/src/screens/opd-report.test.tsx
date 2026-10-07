@@ -26,25 +26,25 @@ const SUNDAY = "2026-09-20";
 
 const hospital = { name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR"] };
 const DEPARTMENTS = [
-  { departmentId: "d-med", code: "MED", name: "General Medicine", units: ["Unit II"], booked: 20, consulted: 17, new: 5, revisit: 8, renewal: 4, stillOpen: 2 },
-  { departmentId: "d-ped", code: "PED", name: "Paediatrics", units: [], booked: 6, consulted: 5, new: 2, revisit: 2, renewal: 1, stillOpen: 0 },
+  { departmentId: "d-med", code: "MED", name: "General Medicine", units: ["Unit II"], booked: 20, opened: 21, consulted: 17, new: 5, revisit: 8, renewal: 4, stillOpen: 2, leftUnseen: 2 },
+  { departmentId: "d-ped", code: "PED", name: "Paediatrics", units: [], booked: 6, opened: 5, consulted: 5, new: 2, revisit: 2, renewal: 1, stillOpen: 0, leftUnseen: 0 },
 ];
 const report = (over: Record<string, unknown>) => ({
   period: "day", anchor: TODAY, from: TODAY, to: TODAY, generatedAt: "2026-09-19T12:00:00.000Z", provisional: true,
   hospital, departments: DEPARTMENTS,
-  totals: { booked: 26, consulted: 22, new: 7, revisit: 10, renewal: 5, stillOpen: 2 },
-  patientsConsulted: 21, newPatients: 6, excludedSunday: null, ...over,
+  totals: { booked: 26, opened: 26, consulted: 22, new: 7, revisit: 10, renewal: 5, stillOpen: 2, leftUnseen: 2 },
+  patientsConsulted: 21, newPatients: 6, excludedSunday: null, openedBy: null, ...over,
 });
 const DAY = report({});
 const YESTERDAY_REPORT = report({ anchor: YESTERDAY, from: YESTERDAY, to: YESTERDAY, provisional: false, totals: { ...DAY.totals, consulted: 40, stillOpen: 0 } });
 const WEEK = report({
   period: "week", from: MONDAY, to: TODAY,
-  totals: { booked: 120, consulted: 104, new: 31, revisit: 52, renewal: 21, stillOpen: 2 },
+  totals: { booked: 120, opened: 113, consulted: 104, new: 31, revisit: 52, renewal: 21, stillOpen: 2, leftUnseen: 7 },
   patientsConsulted: 96, newPatients: 29, excludedSunday: { date: SUNDAY, consulted: 3 },
 });
 const MONTH = report({
   period: "month", from: "2026-09-01", to: TODAY,
-  totals: { booked: 402, consulted: 366, new: 98, revisit: 190, renewal: 78, stillOpen: 2 },
+  totals: { booked: 402, opened: 391, consulted: 366, new: 98, revisit: 190, renewal: 78, stillOpen: 2, leftUnseen: 23 },
   patientsConsulted: 330, newPatients: 92,
 });
 const MED_WEEK = {
@@ -56,6 +56,8 @@ const MED_WEEK = {
 };
 
 let seen: string[] = [];
+/** What the SERVER decided this reader may see of who opened the visits; null unless a test says otherwise. */
+let openedBy: { name: string; count: number }[] | null = null;
 function mount(path: string, hospitalPerms: string[]): void {
   const handlers: Record<string, Reply> = {
     "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u1" }, permissions: { hospital: hospitalPerms, scoped: { department: {}, floor: {} } } } },
@@ -75,7 +77,7 @@ function mount(path: string, hospitalPerms: string[]): void {
     seen.push(raw);
     const bare = raw.split("?")[0]!;
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
-    if (bare === "/api/opd/reports/consultations") return json(forPeriod(raw));
+    if (bare === "/api/opd/reports/consultations") return json({ ...(forPeriod(raw) as object), openedBy });
     if (/^\/api\/opd\/reports\/consultations\/departments\/[^/]+$/.test(bare)) return json(MED_WEEK);
     if (bare.endsWith("/csv")) {
       return new Response("a,b\r\n", { status: 200, headers: { "Content-Type": "text/csv", "Content-Disposition": 'attachment; filename="OPD-Week-Report-2026-09-14-to-2026-09-19.csv"' } });
@@ -112,6 +114,7 @@ class FakeWebSocket {
 
 beforeEach(() => {
   seen = [];
+  openedBy = null;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-19T06:00:00.000Z"));
   resetRealtimeClientForTests();
@@ -251,6 +254,68 @@ describe("the department-wise screen", () => {
     await waitFor(() => {
       expect(seen).toContain(`/api/opd/reports/consultations/departments/d-ped/csv?period=week&date=${TODAY}`);
     });
+  });
+
+  /**
+   * Owner, 2026-10-07 — "what does 'Booked' mean?" and "how would I know how many visits were opened by
+   * front desk?" The column is renamed, two columns answer the second question, and every column says
+   * what it counts.
+   */
+  it("reads Appointments (not Booked), and carries Visits opened and Left unseen on every row and the total", async () => {
+    await mountAt(`/reports/opd-day?period=day&date=${TODAY}`, ["opd.reports.read"]);
+    const table = await screen.findByTestId("odr-table");
+    const heads = within(table).getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    expect(heads.map((h) => h.replace("?", ""))).toEqual([
+      "Department", "Appointments", "Visits opened", "Consulted", "New", "Revisit", "Renewal", "Still open", "Left unseen", "Download",
+    ]);
+    expect(table).not.toHaveTextContent("Booked");
+    const med = within(table).getByTestId("odr-row-MED");
+    expect(med.querySelector("td.c-opened")).toHaveTextContent("21");
+    expect(med.querySelector("td.c-leftUnseen")).toHaveTextContent("2");
+    // Still open and Left unseen are drawn even at zero: a row has to add up.
+    const ped = within(table).getByTestId("odr-row-PED");
+    expect(ped.querySelector("td.c-stillOpen")).toHaveTextContent("0");
+    expect(ped.querySelector("td.c-leftUnseen")).toHaveTextContent("0");
+    const foot = table.querySelector("tfoot")!;
+    expect(foot.querySelector("td.c-opened")).toHaveTextContent("26");
+    // A phone draws each number under its column's name, which the cell carries itself.
+    expect(med.querySelector("td.c-opened")).toHaveAttribute("data-label", "Visits opened");
+    expect(screen.getByTestId("odr-figs")).toHaveTextContent("Visits opened");
+  });
+
+  it("every column's ? says what it counts — by click or by keyboard — and the legend prints them all", async () => {
+    await mountAt(`/reports/opd-day?period=day&date=${TODAY}`, ["opd.reports.read"]);
+    await screen.findByTestId("odr-table");
+    expect(screen.queryByTestId("odr-hintline")).toBeNull();
+    const q = screen.getByRole("button", { name: "What “Appointments” counts" });
+    expect(q).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(q);
+    expect(screen.getByTestId("odr-hintline")).toHaveTextContent(/counts appointments, not visits/);
+    expect(q).toHaveAttribute("aria-expanded", "true");
+    // Another column's ? replaces it; the keyboard reaches it like any button.
+    screen.getByTestId("odr-q-opened").focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByTestId("odr-hintline")).toHaveTextContent(/Consulted \+ Still open \+ Left unseen/);
+    await userEvent.click(screen.getByRole("button", { name: "Close the explanation" }));
+    expect(screen.queryByTestId("odr-hintline")).toBeNull();
+    const notes = screen.getByTestId("odr-notes");
+    for (const word of ["Appointments", "Visits opened", "Consulted", "New", "Revisit", "Renewal", "Still open", "Left unseen"]) {
+      expect(within(notes).getByText(word)).toBeInTheDocument();
+    }
+  });
+
+  it("names who opened the visits only when the server sent the list", async () => {
+    await mountAt(`/reports/opd-day?period=day&date=${TODAY}`, ["opd.reports.read"]);
+    await screen.findByTestId("odr-table");
+    expect(screen.queryByTestId("odr-openedby")).toBeNull();
+    expect(document.body).not.toHaveTextContent("Opened by");
+  });
+
+  it("…and draws it, most visits first, for a reader the server trusted with staff figures", async () => {
+    openedBy = [{ name: "Asha Devi", count: 12 }, { name: "Suresh Pillai", count: 9 }];
+    await mountAt(`/reports/opd-day?period=day&date=${TODAY}`, ["opd.reports.read", "staff.reports.read"]);
+    await screen.findByTestId("odr-table");
+    expect(await screen.findByTestId("odr-openedby")).toHaveTextContent("Opened by: Asha Devi 12Suresh Pillai 9");
   });
 
   it("tells a person without the permission why they see nothing", async () => {

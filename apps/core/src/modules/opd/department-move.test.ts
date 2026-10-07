@@ -112,6 +112,10 @@ describe("OPD — move a visit to the right department", () => {
     const after = await loadOpdReport(db, range, MON);
     expect(after.departments.find((d) => d.departmentId === deptId)?.stillOpen ?? 0).toBe(0);
     expect(after.departments.find((d) => d.departmentId === dept2Id)?.stillOpen).toBe(1);
+    // 2026-10-07 — the move is a correction: the desk opened ONE visit, and nobody was left unseen.
+    expect(after.departments.find((d) => d.departmentId === deptId)).toMatchObject({ opened: 0, leftUnseen: 0 });
+    expect(after.departments.find((d) => d.departmentId === dept2Id)).toMatchObject({ opened: 1, leftUnseen: 0 });
+    expect(after.totals).toMatchObject({ opened: 1, leftUnseen: 0 });
   });
 
   it("a checked-in APPOINTMENT moves with the patient, so the report's booked count follows too", async () => {

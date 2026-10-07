@@ -98,3 +98,69 @@
   .dash .odr-figs { gap: 20px; }
   .dash .odr-head { align-items: flex-start; }
 }
+
+/* ═══ 2026-10-07 — eight counted columns, a "?" on each, and who opened the visits ═══ */
+
+.dash .odr-table .n { width: 76px; padding-left: 8px; padding-right: 8px; }
+.dash .odr-table th.n { white-space: normal; line-height: 13px; vertical-align: bottom; }
+.dash .odr-table .c-opened { background: var(--green-soft); }
+.dash .odr-table td.c-opened { color: var(--green); }
+.dash .odr-th { display: inline; }
+.dash .odr-q {
+  display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 4px;
+  border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--dim);
+  font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0; line-height: 1; vertical-align: 1px;
+  position: relative;
+}
+/* A 16px mark with a 32px target: the "?" is small on the eye and fair to a finger. */
+.dash .odr-q::after { content: ""; position: absolute; inset: -8px; }
+.dash .odr-q:hover, .dash .odr-q.on { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.dash .odr-q:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--green-soft); border-color: var(--green); }
+.dash .odr-hintline {
+  margin: 0; padding: 10px 14px; font-size: 12.5px; line-height: 18px; color: var(--ink); background: var(--green-soft);
+  border-bottom: 1px solid var(--line); display: flex; gap: 6px; align-items: flex-start;
+}
+.dash .odr-hintline b { font-weight: 600; white-space: nowrap; }
+.dash .odr-hintclose { margin-left: auto; width: 24px; height: 24px; flex-shrink: 0; font-size: 16px; line-height: 1; color: var(--dim); border-radius: 4px; }
+.dash .odr-hintclose:hover { background: var(--card); color: var(--ink); }
+.dash .odr-openedby { margin: 0; padding: 10px 14px; font-size: 12.5px; color: var(--dim); border-top: 1px solid var(--line2); line-height: 20px; }
+.dash .odr-openedby b { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.dash .odr-who { white-space: nowrap; }
+.dash .odr-who .mo { color: var(--ink); font-weight: 600; }
+.dash .odr-who + .odr-who::before { content: "·"; margin: 0 8px; color: var(--faint); }
+.dash .odr-sub .odr-openedby { padding: 8px 0 0; border-top: none; }
+
+/*
+ * A PHONE DRAWS A ROW AS A CARD. Ten columns do not fit 360px, and a table that scrolls sideways hides
+ * the very column the owner asked for. Each department becomes: its name, a 4 × 2 grid of labelled
+ * numbers (the label is the cell's `data-label`), then its downloads. The page never scrolls sideways.
+ */
+@media (max-width: 760px) {
+  .dash .odr-scroll { overflow-x: visible; }
+  .dash .odr-table, .dash .odr-table tbody, .dash .odr-table tfoot { display: block; width: 100%; }
+  .dash .odr-table thead { display: flex; flex-wrap: wrap; gap: 6px 4px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .dash .odr-table thead tr { display: contents; }
+  .dash .odr-table thead th { display: none; }
+  .dash .odr-table thead th.n { display: inline-flex; align-items: center; width: auto; padding: 2px 4px 2px 0; border: none; background: none; letter-spacing: .06em; }
+  .dash .odr-table tr.odr-row, .dash .odr-table tfoot tr {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 10px 12px; border-bottom: 1px solid var(--line);
+  }
+  .dash .odr-table tr.odr-row > td, .dash .odr-table tfoot tr > td { border: none; padding: 0; background: none; width: auto; }
+  .dash .odr-table tr.odr-row > td:first-child, .dash .odr-table tfoot tr > td:first-child { grid-column: 1 / -1; padding-bottom: 6px; }
+  .dash .odr-table tr.odr-row > td.act { grid-column: 1 / -1; text-align: left; padding-top: 8px; }
+  .dash .odr-table tfoot tr > td:last-child { display: none; }
+  .dash .odr-table td.n { text-align: left; padding: 5px 0; font-size: 17px; display: flex; flex-direction: column-reverse; }
+  .dash .odr-table td.n::after {
+    content: attr(data-label); font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 10.5px; font-weight: 500;
+    color: var(--dim); line-height: 13px; padding-right: 6px;
+  }
+  .dash .odr-table td.c-opened { background: none; }
+  .dash .odr-table tfoot tr { background: var(--wash); border-top: 2px solid var(--ink); }
+  .dash .odr-table tr.odr-row.open { background: var(--green-soft); }
+  .dash .odr-dept { flex-wrap: wrap; row-gap: 2px; text-align: left; }
+  .dash .odr-acts { justify-content: flex-start; }
+  .dash .odr-table tr.odr-sub, .dash .odr-table tr.odr-sub > td { display: block; }
+  .dash .odr-sub > td { padding: 4px 12px 12px; }
+  .dash .odr-sub .odr-scroll { overflow-x: auto; }
+  .dash .odr-figs { gap: 14px 18px; flex-wrap: wrap; }
+}

@@ -6,6 +6,7 @@ import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { contentDisposition, toCsv } from "../../kernel/report/csv";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { parsed } from "./opd-masters.controller";
 import { loadOpdDepartmentReport, loadOpdReport, rangeFor } from "./report";
 import {
@@ -50,11 +51,20 @@ export class OpdReportsController {
     return rangeFor(q.period ?? "day", q.date ?? istDate(new Date()));
   }
 
+  /**
+   * "Opened by" names what each clerk did. It rides only for a reader who already holds the staff
+   * figures (`staff.reports.read`, 07c) — `opd.reports.read` alone is the department's load, not a
+   * person's output — and never for a non-person actor.
+   */
+  private async staffFigures(actor: Actor): Promise<boolean> {
+    return actor.type === "user" && hasPermission(this.db, actor.id, "staff.reports.read", "hospital");
+  }
+
   private async department(
     actor: Actor, query: unknown, departmentId: string, format: "screen" | "csv" | "document",
   ): Promise<OpdDepartmentReport> {
     const range = this.rangeOf(query);
-    const report = await loadOpdDepartmentReport(this.db, actor, range, departmentId);
+    const report = await loadOpdDepartmentReport(this.db, actor, range, departmentId, { staffFigures: await this.staffFigures(actor) });
     if (report === null) throw new NotFoundException({ message: "no such department", code: "unknown_department" });
     await withTx(this.db, (tx) => appendEvent(tx, dayReportPatientsListed.make({
       actor,
@@ -68,14 +78,16 @@ export class OpdReportsController {
 
   @RequirePermission("opd.reports.read", "hospital")
   @Get("consultations")
-  async consultations(@Query() query: unknown): Promise<OpdReport> {
-    return loadOpdReport(this.db, this.rangeOf(query));
+  async consultations(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<OpdReport> {
+    return loadOpdReport(this.db, this.rangeOf(query), { staffFigures: await this.staffFigures(actor) });
   }
 
   @RequirePermission("opd.reports.read", "hospital")
   @Get("consultations/csv")
-  async consultationsCsv(@Query() query: unknown, @Res({ passthrough: true }) res: Response): Promise<string> {
-    const report = await loadOpdReport(this.db, this.rangeOf(query));
+  async consultationsCsv(
+    @CurrentActor() actor: Actor, @Query() query: unknown, @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const report = await loadOpdReport(this.db, this.rangeOf(query), { staffFigures: await this.staffFigures(actor) });
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", contentDisposition(`${fileStem(report)}.csv`));
     return toCsv(reportCsvRows(report));
@@ -83,8 +95,8 @@ export class OpdReportsController {
 
   @RequirePermission("opd.reports.read", "hospital")
   @Get("consultations/document")
-  async consultationsDocument(@Query() query: unknown): Promise<RenderedReport> {
-    return renderReport(await loadOpdReport(this.db, this.rangeOf(query)));
+  async consultationsDocument(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<RenderedReport> {
+    return renderReport(await loadOpdReport(this.db, this.rangeOf(query), { staffFigures: await this.staffFigures(actor) }));
   }
 
   @RequirePermission("opd.reports.read", "hospital")
