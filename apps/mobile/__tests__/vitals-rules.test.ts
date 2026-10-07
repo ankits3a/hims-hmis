@@ -142,3 +142,16 @@ describe("the doors — whatever is typed or scanned resolves on the bench (owne
     expect(resolveDoor(old, "V2610060001")).toMatchObject({ outcome: "miss", door: { kind: "visit" } });
   });
 });
+
+/** The guardian list is restated on the phone (the contract file imports zod); it may never drift. */
+describe("guardian with reports — the phone's list is the contract's", () => {
+  it("has the same relations, in the same order, and the same name bound", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const src = fs.readFileSync(path.join(__dirname, "../../../packages/contracts/src/patient-absent.ts"), "utf8");
+    const list = /GUARDIAN_RELATIONS = \[([^\]]+)\]/.exec(src)![1]!.match(/"([a-z_]+)"/g)!.map((x) => x.slice(1, -1));
+    const { GUARDIAN_RELATIONS, GUARDIAN_NAME_MAX } = require("../src/vitals/guardian") as typeof import("../src/vitals/guardian");
+    expect([...GUARDIAN_RELATIONS]).toEqual(list);
+    expect(GUARDIAN_NAME_MAX).toBe(Number(/GUARDIAN_NAME_MAX = (\d+)/.exec(src)![1]));
+  });
+});

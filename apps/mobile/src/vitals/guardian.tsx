@@ -5,8 +5,20 @@ import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { color, radius, space, TOUCH } from "../theme";
 import { Button, Note } from "../ui";
-import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, type GuardianRelation, type WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
 import { refusalText, type VitalsApi } from "./api";
+
+/**
+ * The fixed list and the name bound of `packages/contracts/src/patient-absent.ts`. That file imports
+ * zod, which this standalone project cannot resolve from outside its own folder (the mobile CI job
+ * installs nothing at the repo root), so the two values are restated here and
+ * `__tests__/vitals-rules.test.ts` fails the day they differ from the contract's.
+ */
+export const GUARDIAN_RELATIONS = [
+  "father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant",
+] as const;
+export type GuardianRelation = (typeof GUARDIAN_RELATIONS)[number];
+export const GUARDIAN_NAME_MAX = 80;
+export type WirePatientAbsent = { relation: GuardianRelation; name: string | null; by: string; at: string };
 
 /**
  * THE GUARDIAN CAME WITH THE REPORTS (owner 2026-10-07) — the phone's twin of the web bay's

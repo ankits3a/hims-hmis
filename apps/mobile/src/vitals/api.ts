@@ -2,7 +2,7 @@ import type {
   WireBenchRow, WireBenchState, WireDangerFlag, WireEscalationReading, WireEscalationState, WirePreStage,
   WireVisitOnBench, WireVitalKey, WireVitalsPostBody,
 } from "./rules";
-import type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
+import type { GuardianRelation, WirePatientAbsent } from "./guardian";
 
 /**
  * The server routes the vitals bay uses — the SAME ones the web bay calls (apps/web/src/lib/opd-api.ts
