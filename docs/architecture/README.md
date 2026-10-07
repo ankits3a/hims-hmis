@@ -121,12 +121,12 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 |---|---|---|---|
 | `alerts` | opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, tokens, workflow | 3 |
 | `approvals` | abdm, aerb, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, tariff | auth, db, events, modules, phi, tokens, workflow | 6 |
-| `auth` | abdm, aerb, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 32 |
+| `auth` | abdm, aerb, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | opd, pharmacy, roster | approvals, auth, config, db, desk, inference, modules, tokens | 1 |
 | `crypto` | abdm, billing, opd, patients | — | — |
 | `db` | abdm, aerb, billing, cds, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
-| `desk` | billing, membership, opd, partners, patients, pharmacy | approvals, auth, db, events, modules, report, tokens, workflow | 8 |
+| `desk` | billing, membership, opd, partners, patients, pharmacy | approvals, auth, db, events, modules, report, tokens, workflow | 9 |
 | `documents` | patients, pharmacy | — | — |
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
 | `events` | abdm, aerb, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |

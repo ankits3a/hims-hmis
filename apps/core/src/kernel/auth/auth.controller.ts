@@ -10,7 +10,7 @@ import { CONFIG, DB } from "../tokens";
 import {
   loginWithPassword, revokeOtherUserSessions, revokeSession, switchWithBadge, switchWithPin,
 } from "./sessions";
-import { setPassword, verifyPassword } from "./identity";
+import { setPassword, verifyPassword, verifyPin } from "./identity";
 import { effectivePermissions } from "./permissions";
 import type { EffectivePermissions } from "./permissions";
 import { checkPassword } from "./password-policy";
@@ -30,7 +30,9 @@ import { CurrentActor, Public, RequirePermission, AuthedRequest } from "./decora
 import { users } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
-import { authPhoneLinked, authSessionRevoked, userPasswordChanged } from "./events";
+import { authPhoneLinked, authSessionRevoked, authStepUp, userPasswordChanged } from "./events";
+import { authSessions } from "../db/schema";
+import { STEP_UP_WINDOW_MS } from "@hmis/contracts";
 import {
   auditLoggedOut, auditLoginFailed, auditPhoneLimitRefused, auditPhoneSignIn, auditSessionOpened, auditTotp, clientContext,
 } from "./auth-audit";
@@ -340,6 +342,54 @@ export class AuthController {
       }
       throw e;
     }
+  }
+
+  /**
+   * APP HOME (owner 2026-10-07, decision 0042) — PROVE THE PERSON IS AT THE PHONE, before a money
+   * approval is decided from it.
+   *
+   * The server cannot check a fingerprint. What it can do is refuse a money decision from a phone
+   * session that has not stepped up in the last two minutes, and record every step-up: `biometric`
+   * says THIS signed-in, linked phone reported its own fingerprint check passed; `password` and
+   * `pin` are checked here (a phone with no fingerprint enrolled). A browser session has no phone
+   * and is refused — the web inbox is not gated by this and never calls it.
+   *
+   * Wrong passwords count against the same throttle as sign-in, so this is not a guessing oracle.
+   */
+  @Post("step-up")
+  @HttpCode(200)
+  async stepUp(@Req() req: AuthedRequest, @Body() body: unknown, @Res({ passthrough: true }) res: Response): Promise<{ ok: true; goodUntil: string }> {
+    const session = req.hmisSession;
+    if (!session) throw new UnauthorizedException();
+    const deviceRowId = this.phoneOf(req);
+    const parsed = z.discriminatedUnion("method", [
+      z.object({ method: z.literal("biometric") }),
+      z.object({ method: z.literal("password"), password: z.string().min(1) }),
+      z.object({ method: z.literal("pin"), pin: z.string().min(1) }),
+    ]).safeParse(body);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues);
+    const client = clientContext(req);
+    const actor: Actor = { type: "user", id: session.userId };
+    const d = parsed.data;
+    let ok = true;
+    if (d.method !== "biometric") {
+      const me = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, session.userId)))[0];
+      if (!me) throw new UnauthorizedException();
+      const kind: ThrottleKind = d.method === "password" ? "login" : "pin";
+      const retryAt = await throttleRetryAt(this.db, kind, me.username, new Date());
+      if (retryAt !== null) throw tooManyAttempts(res, retryAt);
+      ok = d.method === "password"
+        ? (await verifyPassword(this.db, me.username, d.password)) !== null
+        : await verifyPin(this.db, session.userId, d.pin);
+      if (ok) await clearThrottle(this.db, kind, me.username); else await recordThrottleFailure(this.db, kind, me.username, new Date());
+    }
+    const now = new Date();
+    await withTx(this.db, async (tx) => {
+      if (ok) await tx.update(authSessions).set({ stepUpAt: now }).where(eq(authSessions.id, session.sessionId));
+      await appendEvent(tx, authStepUp.make({ actor, payload: { userId: session.userId, sessionId: session.sessionId, deviceRowId, method: d.method, ok, ...client } }));
+    });
+    if (!ok) throw new ForbiddenException({ code: "step_up_refused" });
+    return { ok: true, goodUntil: new Date(now.getTime() + STEP_UP_WINDOW_MS).toISOString() };
   }
 
   @Get("phone/notifications")

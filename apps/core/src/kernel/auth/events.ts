@@ -344,3 +344,15 @@ export const AUTH_AUDIT_EVENTS = [
   authLoginSucceeded, authLoginFailed, authPinSwitched, authBadgeSwitched, authSessionRevoked,
   authLoggedOut, authTotpEnrolled, authTotpConfirmed, authTotpVerified, authTotpFailed,
 ] as const;
+
+/**
+ * APP HOME (owner 2026-10-07, decision 0042) — a phone session proved the person is there before a
+ * money approval: `biometric` is the phone's own fingerprint check (the server cannot verify a
+ * fingerprint; it records that this signed-in phone said so), `password` and `pin` were checked here.
+ * `ok: false` is a wrong password or PIN. Never the secret.
+ */
+export const authStepUp = defineEvent(
+  "auth.step_up",
+  "auth",
+  z.object({ userId: z.string(), sessionId: z.string(), deviceRowId: z.string(), method: z.enum(["biometric", "password", "pin"]), ok: z.boolean(), ...client }),
+);
