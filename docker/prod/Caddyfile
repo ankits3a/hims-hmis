@@ -235,6 +235,24 @@ hmis.crkmch.com {
 		root * /downloads
 		file_server
 	}
+	# HMIS PRINT FOR WINDOWS — the counter's own print program (decision 0047, owner 2026-10-07).
+	# The installer zip, the app bundle an installed program updates from, and the feed that names
+	# both (tools/print-relay/build-windows.sh), from the same read-only folder as the APKs.
+	# Unlisted and with no password, for the APK's reason: a program cannot answer a prompt, and
+	# the zip holds no secret — a computer prints nothing until an administrator's one-time code
+	# enrols it. Only `hmis-print-…` ending .zip or .json; nothing else matches.
+	@print_file path_regexp ^/app/hmis-print-[A-Za-z0-9._-]+\.(zip|json)$
+	handle @print_file {
+		uri strip_prefix /app
+		@print_zip path *.zip
+		header @print_zip Content-Type application/zip
+		header @print_zip Content-Disposition attachment
+		# The feed is read by every installed program; a cached one hides a new version.
+		@print_feed path *.json
+		header @print_feed Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
 	# OVER-THE-AIR UPDATES for the staff app (owner 2026-10-06: an update "should happen
 	# automatically" — apps/mobile/src/ota.ts, apps/mobile/scripts/publish-ota.sh). A JavaScript
 	# change reaches the phones as a signed bundle in the same folder as the APKs; no expo.dev cloud.

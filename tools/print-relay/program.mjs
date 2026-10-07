@@ -319,7 +319,7 @@ async function cmdPrinters(os, out) {
   for (const p of printers) out(`${p.isDefault ? "*" : " "} ${p.name}${p.offline ? "  (offline)" : ""}`);
 }
 
-async function cmdRun(os, paths, out) {
+async function cmdRun(os, paths, out, env) {
   const config = await loadConfig(paths);
   if (config === null) throw new Error("this computer is not set up yet — run the installer and type the code from Admin → Printing");
   const version = await programVersion();
@@ -396,6 +396,14 @@ async function cmdRun(os, paths, out) {
         state.lastOkAt = Date.now();
         state.revoked = false;
       }
+      // An update is waiting and something will start this program again (the installer's
+      // run-hidden loop, or systemd): stop here, between ticks, with nothing half printed. The
+      // launcher swaps the new version in on the way back up. Unsupervised, it waits for a restart.
+      if (state.update?.state === "staged" && env.HMIS_PRINT_SUPERVISED === "1") {
+        log("restarting to start the new version");
+        release();
+        process.exit(0);
+      }
     } catch (e) {
       const msg = String(e);
       // 401/403 on the claim is the administrator's revoke (the agent's kill switch): say so, keep
@@ -431,7 +439,7 @@ export async function main(argv, env = process.env, out = (m) => { console.log(m
     out(config === null ? "Not set up yet." : `${String(config.name)} · printer ${String(configuredPrinter(config))} · ${String(config.serverUrl)} · version ${await programVersion()}`);
     return;
   }
-  if (cmd === "run") { await cmdRun(os, paths, out); return; }
+  if (cmd === "run") { await cmdRun(os, paths, out, env); return; }
   throw new Error(`unknown command ${cmd} — enrol | run | printers | printer | status`);
 }
 

@@ -89,6 +89,17 @@ http://{$HMIS_UAT_SITE}:8080 {
 		root * /downloads
 		file_server
 	}
+	# HMIS PRINT FOR WINDOWS (decision 0047). The feed and the app bundle an installed program
+	# updates from are served WITHOUT basic auth — a program cannot answer a prompt, and they carry
+	# a version, a checksum and the program's own source. The installer zip stays behind the prompt
+	# with everything else under /app/ (it is downloaded by a person in a browser).
+	@print_feed path_regexp ^/app/hmis-print-(windows-latest|app-[0-9.]+)\.json$
+	handle @print_feed {
+		uri strip_prefix /app
+		header Cache-Control "no-store"
+		root * /downloads
+		file_server
+	}
 	# OVER-THE-AIR UPDATES for the staff app (owner 2026-10-06: an update "should happen
 	# automatically" — apps/mobile/src/ota.ts, apps/mobile/scripts/publish-ota.sh). A JavaScript
 	# change reaches the phones as a signed bundle in the same folder as the APKs; no expo.dev cloud.

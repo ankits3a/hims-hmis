@@ -394,6 +394,46 @@ describe("Owner 2026-10-06 — production serves the staff app's files, and only
     expect(live.search(/^\thandle @app_file \{$/m)).toBeLessThan(refuse);
   });
 
+  /**
+   * Decision 0047 — the counter's Windows print program is downloaded and updated from the same
+   * folder. Same shape, pinned the same way: one prefix, two kinds of file, before the 404.
+   */
+  it("admits the print program's zip, app bundle and feed — and nothing else under that prefix", () => {
+    const found = /^\t@print_file path_regexp (\S+)$/m.exec(live);
+    if (found === null) throw new Error("no `@print_file path_regexp` line in docker/prod/Caddyfile");
+    const re = new RegExp(found[1]!);
+    for (const path of [
+      "/app/hmis-print-1.0.0-win-x64.zip",
+      "/app/hmis-print-latest-win-x64.zip",
+      "/app/hmis-print-app-1.0.0.json",
+      "/app/hmis-print-windows-latest.json",
+    ]) expect([path, re.test(path)]).toEqual([path, true]);
+    for (const path of [
+      "/app/hmis-print-1.0.0-win-x64.exe",
+      "/app/hmis-print-a/b.zip",
+      "/app/hmis-print-x.zip.sha256",
+      "/app/other.zip",
+      "/app/hmis-staff-latest.zip",
+      "/app/",
+      "/api/app/hmis-print-windows-latest.json",
+    ]) expect([path, re.test(path)]).toEqual([path, false]);
+    const refuse = live.search(/^\thandle \/app\/\* \{\n\t\trespond 404\n\t\}$/m);
+    expect(live.search(/^\thandle @print_file \{$/m)).toBeGreaterThanOrEqual(0);
+    expect(live.search(/^\thandle @print_file \{$/m)).toBeLessThan(refuse);
+  });
+
+  it("staging serves the print program's feed and app bundle without the password, and only those", () => {
+    const uat = readFileSync(resolve(REPO_ROOT, "docker", "prod", "Caddyfile.uat"), "utf8").split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+    const found = /^\t@print_feed path_regexp (\S+)$/m.exec(uat);
+    if (found === null) throw new Error("no `@print_feed path_regexp` line in docker/prod/Caddyfile.uat");
+    const re = new RegExp(found[1]!);
+    expect(re.test("/app/hmis-print-windows-latest.json")).toBe(true);
+    expect(re.test("/app/hmis-print-app-1.0.12.json")).toBe(true);
+    for (const path of ["/app/hmis-print-1.0.0-win-x64.zip", "/app/hmis-print-app-../x.json", "/app/hmis-staff-staging-latest.json", "/app/hmis-print-app-x.json"]) {
+      expect([path, re.test(path)]).toEqual([path, false]);
+    }
+  });
+
   it("never lists a directory on the production site", () => {
     expect(live).not.toMatch(/file_server\s+browse/);
   });

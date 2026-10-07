@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { fetchPrintDocument, reprintJob } from "./print-api";
+import { fetchPrintDocument, reprintJob, sendJobToComputer } from "./print-api";
 import type { WirePrintJob, WireRenderedDocument } from "./print-api";
 
 /**
@@ -31,12 +31,19 @@ export type PrintSetting = {
   mode: PrintMode;
   /** Which papers this computer prints at hand-over. A document absent here is not printed. */
   papers: Record<string, boolean>;
+  /**
+   * The print program installed on THIS computer (decision 0047), chosen once in the Printing panel.
+   * While it is set and the program is running, a paper owed here is sent to it; the moment it is
+   * not, the browser prints as before. `null` = no program on this computer.
+   */
+  computerId: string | null;
 };
 
 /** The owner has no thermal printer: the sheet prints, the token slip does not, until told otherwise. */
 export const DEFAULT_PRINT_SETTING: PrintSetting = {
   mode: "auto",
   papers: { opd_prescription: true, opd_token_slip: false, opd_payment_receipt: false },
+  computerId: null,
 };
 
 /** The papers a counter can choose, in the order they come off the printer. */
@@ -51,7 +58,11 @@ export function readPrintSetting(): PrintSetting {
     if (raw === null) return DEFAULT_PRINT_SETTING;
     const j = JSON.parse(raw) as Partial<PrintSetting>;
     const mode: PrintMode = j.mode === "relay" || j.mode === "browser" ? j.mode : "auto";
-    return { mode, papers: { ...DEFAULT_PRINT_SETTING.papers, ...(typeof j.papers === "object" && j.papers !== null ? j.papers : {}) } };
+    return {
+      mode,
+      papers: { ...DEFAULT_PRINT_SETTING.papers, ...(typeof j.papers === "object" && j.papers !== null ? j.papers : {}) },
+      computerId: typeof j.computerId === "string" && j.computerId !== "" ? j.computerId : null,
+    };
   } catch {
     return DEFAULT_PRINT_SETTING; // a private window or blocked storage: the default still prints
   }
@@ -164,7 +175,8 @@ export function printDocumentHere(doc: WireRenderedDocument, waitMs = 120_000): 
   });
 }
 
-export type HerePrintResult = { document: string; jobId: string; outcome: FramePrint | "gone" | "error" };
+/** `program` — handed to this computer's own print program; the paper follows without a window. */
+export type HerePrintResult = { document: string; jobId: string; outcome: FramePrint | "gone" | "error" | "program" };
 
 /**
  * Print these jobs on this computer, one after another, and tell the server about each that went.
@@ -193,10 +205,35 @@ export async function printJobsHere(jobs: readonly Pick<WirePrintJob, "id" | "do
  * "Print again" on this computer: a NEW job (the reprint's audit row and reason survive exactly as
  * for a relay), printed here at once and marked — never left `queued` for a relay that is not there.
  */
-export async function reprintHere(job: Pick<WirePrintJob, "id" | "document">): Promise<HerePrintResult> {
+/** The papers a counter's program takes: A4 only — no counter has a roll printer on its PC. */
+const PROGRAM_PAPERS: readonly string[] = ["opd_prescription", "opd_glasses_rx"];
+
+/**
+ * The papers owed on this computer, by the best road it has: its own print program when one is
+ * linked and answers (`sent`), and the browser's print window for everything else — a paper the
+ * program does not take, a program that is switched off, a server too old to know the route. A
+ * setting of `browser` always uses the window: that is what the person chose.
+ */
+export async function printJobsOnThisComputer(
+  jobs: readonly Pick<WirePrintJob, "id" | "document">[],
+  setting: Pick<PrintSetting, "mode" | "computerId">,
+): Promise<HerePrintResult[]> {
+  const out: HerePrintResult[] = [];
+  for (const j of jobs) {
+    if (setting.computerId !== null && setting.mode !== "browser" && PROGRAM_PAPERS.includes(j.document)) {
+      const sent = await sendJobToComputer(j.id, setting.computerId).then((r) => r.sent, () => false);
+      if (sent) { out.push({ document: j.document, jobId: j.id, outcome: "program" }); continue; }
+    }
+    out.push(...(await printJobsHere([j])));
+  }
+  return out;
+}
+
+export async function reprintHere(job: Pick<WirePrintJob, "id" | "document">, setting?: Pick<PrintSetting, "mode" | "computerId">): Promise<HerePrintResult> {
   const again = await reprintJob(job.id);
   if (again.id === null) return { document: job.document, jobId: job.id, outcome: "gone" };
-  const [r] = await printJobsHere([{ id: again.id, document: job.document }]);
+  const next = [{ id: again.id, document: job.document }];
+  const [r] = setting === undefined ? await printJobsHere(next) : await printJobsOnThisComputer(next, setting);
   return r!;
 }
 
