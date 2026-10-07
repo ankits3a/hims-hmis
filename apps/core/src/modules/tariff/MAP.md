@@ -1,3 +1,13 @@
+---
+type: module-notes
+title: "tariff — module notes"
+description: "Why and traps of pricing: the pricing context and adjustment contest, GST, tariff version draft-to-activation, and regulated price clamps."
+resource: apps/core/src/modules/tariff
+tags: [tariff]
+generated: { by: agent:claude, at: 2026-10-07 }
+verified: []
+stale_after: 2027-01-05
+---
 # tariff — module notes
 
 Hand-written notes: the WHY and the traps. Signatures, routes and tables are generated in

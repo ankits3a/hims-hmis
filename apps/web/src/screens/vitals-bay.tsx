@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { completeAllergen, fetchBench, fetchEscalation, fetchPreStage, locateVisitOnBench, setBenchState, todayIst } from "../lib/opd-api";
+import { completeAllergen, fetchBench, fetchEscalation, fetchPreStage, guardianMayStandIn, locateVisitOnBench, setBenchState, todayIst } from "../lib/opd-api";
 import type { WireAllergenHit, WireBenchRow, WireDoctorSummary, WirePreStage, WireVisitOnBench, WireVitalKey, WireVitalsSaveResult } from "../lib/opd-api";
 import { CaptureCore, SavedBannerView, ambiguousMessage, bandFor, flagOf, humanDate, istClock, matchOnBench, missMessage, rangesFrom, readLane, resolveDoor, writeLane } from "./vitals-bay-capture";
 import type { Lane, SavedBanner, Take, TileKey, Tiles } from "./vitals-bay-capture";
@@ -862,11 +862,12 @@ export function VitalsBay(): React.ReactElement {
         <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => { void onAmended(a, rowInHand); }} />
       )}
       {/*
-        OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS. A REVISIT with no chart yet may skip
+        OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS. A REVISIT or RENEWAL (never a new
+        visit) with no chart yet may skip
         the bay: the server moves it to the doctor's line and stops listing it on the bench, so the
         bench re-reads and the desk clears exactly as after a save.
       */}
-      {rowInHand !== null && !rowInHand.vitalsDone && rowInHand.visitType === "revisit" && (
+      {rowInHand !== null && !rowInHand.vitalsDone && guardianMayStandIn(rowInHand.visitType) && (
         <div style={{ marginBottom: 10 }}>
           <GuardianAbsentAction
             key={`${deskGen}:${rowInHand.encounterId}`} encounterId={rowInHand.encounterId}

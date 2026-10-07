@@ -35,6 +35,13 @@ export function guardianWho(t: T, absent: { relation: string; name: string | nul
   return absent.name === null || absent.name === "" ? relation : t("patientAbsent.who", { relation, name: absent.name });
 }
 
+/**
+ * Which visits may be marked "patient not present — guardian with reports": the SAME rule the server
+ * and the web screens use (packages/contracts/src/patient-absent.ts; metro.config.js watches it).
+ * Owner 2026-10-07: revisits and renewals, never a new visit.
+ */
+export { guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent-rule";
+
 export function GuardianAbsentAction({ api, encounterId, onDone }: {
   api: VitalsApi; encounterId: string; onDone: (absent: WirePatientAbsent) => void;
 }) {

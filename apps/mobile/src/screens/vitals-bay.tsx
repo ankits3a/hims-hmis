@@ -10,7 +10,7 @@ import { color, radius, space, TOUCH, type } from "../theme";
 import { Band, Button, MONO, Note, Tag } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
 import { AmendPanel } from "../vitals/amend";
-import { GuardianAbsentAction } from "../vitals/guardian";
+import { GuardianAbsentAction, guardianMayStandIn } from "../vitals/guardian";
 import { refusalText, vitalsApi, type VitalsApi, type WireVitalsSaveResult } from "../vitals/api";
 import { CaptureCore } from "../vitals/capture";
 import { heldFirstTake, holdFirstTake, releaseFirstTake, useDangerProtocol, type Protocol } from "../vitals/protocol";
@@ -478,7 +478,7 @@ export function VitalsBay() {
               {bannerView}
               {who}
               {error !== null && <Note tone="bad" testID="identify-error">{error}</Note>}
-              {rowInHand.visitType === "revisit" && (
+              {guardianMayStandIn(rowInHand.visitType) && (
                 <GuardianAbsentAction
                   key={`absent:${deskGen}:${rowInHand.encounterId}`} api={api} encounterId={rowInHand.encounterId}
                   onDone={() => onGuardian(rowInHand)}

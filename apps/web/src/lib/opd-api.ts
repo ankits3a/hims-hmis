@@ -3,7 +3,7 @@ import type { WireMatchLane } from "./patients-api";
 import type { WireContinuityAnchor } from "./walk-in-routing";
 import type { Eye, TaperStep } from "./eye-line";
 import type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
-export { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS } from "../../../../packages/contracts/src/patient-absent";
+export { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent";
 export type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
 
 /**
