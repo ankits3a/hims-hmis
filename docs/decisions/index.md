@@ -69,3 +69,5 @@ Records without ✓ were transcribed by an agent and await the owner's check.
 | 0045 | 2026-10-07 | [A counter with no print relay prints on its own printer, from the browser](0045-browser-printing-fallback.md) | printing, front-desk, opd | Partly open |  |
 | 0046 | 2026-10-07 | [OPD vitals: no RR tile, and a guardian with reports may skip the bay on a revisit or renewal](0046-opd-rr-hidden-and-guardian-visit.md) | opd, vitals, front-desk, doctor | Partly open |  |
 | 0047 | 2026-10-07 | [Each counter PC runs its own print program (Windows), enrolled with a one-time code](0047-counter-print-program.md) | printing, front-desk, admin | Partly open |  |
+| 0048 | 2026-10-07 | [The doctor consults on the phone — one screen, five drawers; voice notes through OpenAI, never Sarvam, no patient name sent](0048-doctor-phone-consult-and-voice.md) | mobile, opd, doctor, voice, privacy | Partly open — partly superseded by 0049 |  |
+| 0049 | 2026-10-07 | [A name the doctor speaks in a voice note may reach the speech service — accepted and stated plainly](0049-names-spoken-in-voice-notes.md) | opd, doctor, voice, privacy | Ruled |  |
