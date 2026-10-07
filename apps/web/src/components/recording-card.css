@@ -1,0 +1,22 @@
+/* "Recorded today" (owner 2026-10-07). Self-contained: used on My Day and on the OPD report. */
+.rec { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; min-width: 0; color: var(--ink); }
+.rec-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rec-h h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.rec-h span { font-size: 12px; color: var(--dim); }
+.rec-lead { font-size: 14px; font-weight: 600; }
+.rec-lead.bad { color: var(--red); }
+.rec-lead.ok { color: var(--green); }
+.rec-bar { height: 7px; border-radius: 4px; background: var(--wash); overflow: hidden; }
+.rec-bar i { display: block; height: 100%; background: var(--green); border-radius: 4px; }
+.rec-facts { display: flex; flex-wrap: wrap; gap: 5px 14px; font-size: 12.5px; color: var(--dim); }
+.rec-facts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.rec-note { font-size: 12px; color: var(--faint); margin: 0; }
+.rec-act { align-self: flex-start; font-size: 13px; font-weight: 600; color: var(--green); text-decoration: none; border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; background: var(--card); }
+.rec-scroll { overflow-x: auto; }
+.rec-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rec-table th { text-align: right; font-size: 11.5px; font-weight: 600; color: var(--faint); padding: 7px 8px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+.rec-table th:first-child, .rec-table td:first-child { text-align: left; padding-left: 0; }
+.rec-table td { text-align: right; padding: 8px 8px; border-bottom: 1px solid var(--line2); font-variant-numeric: tabular-nums; }
+.rec-table td.bad { color: var(--red); font-weight: 700; }
+.rec-table td.zero { color: var(--faint); }
+.rec-sub { font-size: 12px; font-weight: 600; color: var(--dim); margin: 6px 0 0; text-transform: uppercase; letter-spacing: .06em; }

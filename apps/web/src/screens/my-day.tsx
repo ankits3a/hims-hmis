@@ -5,6 +5,7 @@ import { downloadReportCsv, fetchBrief, fetchDesk, fetchReport, periodsFor, toda
 import type { WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { PaperScreen } from "../components/paper-screen";
+import { RecordingCard } from "../components/recording-card";
 import {
   COL, deskStat, hasCard, longDate, matchesFilter, metricsOf, outcomeTone, rowsOf, shiftDate, statusTone, summariseVisits,
 } from "./my-day-model";
@@ -538,6 +539,7 @@ export function MyDay(): React.ReactElement {
             {!report.isPending && sections.length === 0 ? <p className="myd-empty">{t("myDay.empty")}</p> : null}
           </div>
           <div className="myd-stack">
+            <RecordingCard date={date} />
             <CollectionsCard section={moneySection} blind={blind} receipts={receipts} />
             <WeekCard date={date} blind={blind} />
           </div>

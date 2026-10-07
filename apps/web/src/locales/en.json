@@ -14709,5 +14709,44 @@
     "lasaName": "Name",
     "lasaOther": "Confused with",
     "lasaAdd": "Add pair"
+  },
+  "recording": {
+    "title": "Recorded today",
+    "titleMine": "Your patients on record",
+    "scopeHospital": "whole hospital · OPD",
+    "scopeMine": "your consultations",
+    "panelSub": "is what was prescribed on record?",
+    "nothingYet": "No consultation completed yet today.",
+    "nothingYetMine": "You have not completed a consultation yet today.",
+    "allOnRecord_one": "The 1 consultation today is on record.",
+    "allOnRecord_other": "All {{count}} consultations today are on record.",
+    "notRecorded_one": "1 of {{of}} consultations has no record of what was prescribed.",
+    "notRecorded_other": "{{count}} of {{of}} consultations have no record of what was prescribed.",
+    "barLabel": "{{on}} of {{of}} consultations on record",
+    "f": {
+      "consulted": "consulted",
+      "issued": "prescribed on screen",
+      "photographed": "slips photographed",
+      "typed": "typed by the desk",
+      "toType": "photographed, waiting to be typed",
+      "stillOpen": "still open"
+    },
+    "yours": "Yours: {{consulted}} seen · {{issued}} prescribed on screen · {{paper}} on paper ({{photographed}} photographed) · {{not}} not recorded",
+    "byDoctor": "See by doctor",
+    "byDoctorHead": "By doctor",
+    "byDepartment": "By department",
+    "byDay": "By day",
+    "col": {
+      "doctor": "Doctor",
+      "department": "Department",
+      "day": "Day",
+      "consulted": "Consulted",
+      "issued": "On screen",
+      "photographed": "Paper photographed",
+      "typed": "Typed",
+      "notRecorded": "Not recorded"
+    },
+    "note": "On record = the slip was photographed, the desk typed it, or the doctor prescribed on a screen.",
+    "screenNote": "\"On screen\" counts the phone app and the computer together."
   }
 }
