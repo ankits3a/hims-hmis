@@ -340,6 +340,22 @@ Brainstorm §9's E1–E22 stand and are this phase's tests. Added:
 
 ---
 
+### Found in production, 2026-10-07 — the nightly window sweep was refused every night (PR #522)
+
+`sweepRosterWindows` (daily, 01:30 IST) rolls each published cycle's ninety-day horizon forward. It ran as a
+`user`-typed actor that holds no grant, and `materialiseWindows` asks `publish`, so it failed with
+"you do not hold the permission this needs" on every night after the hospital published its first cycle —
+on production and staging from 6 October. No live window was affected: only the horizon stopped advancing.
+
+DECIDED (engineering, not an owner ruling): the job is a named `system` actor with an act of its own,
+`extend_published_windows`, honoured only for a cycle whose status is `published`. `publish` stays `never`
+for a machine. The next successful run writes every missed day, because the sweep resumes from the last
+window written.
+
+The lesson for every scheduled job in this phase: a test of a job must run it through `registerAllJobs`
+against a database that HAS the rows the job works on. `window-sweep.test.ts` does, and its census leg lists
+every roster job the worker registers — a new roster job is added to that list.
+
 ## 9. Out of scope — named so nobody infers them
 
 Attendance and AEBAS itself (R-071; U8 produces evidence, not attendance) · payroll, duty allowances
