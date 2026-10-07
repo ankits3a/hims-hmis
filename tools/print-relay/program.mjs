@@ -361,7 +361,8 @@ async function cmdRun(os, paths, out, env) {
     setPrinter: async (name) => {
       config.queues = { [config.destination]: name };
       state.printer = name;
-      const { agentKey: _never, ...onDisk } = config;
+      // The key lives in memory and in its own protected file — never in this one.
+      const onDisk = Object.fromEntries(Object.entries(config).filter(([k]) => k !== "agentKey"));
       await writeFile(paths.config, JSON.stringify(onDisk, null, 2), "utf8");
       log(`printer set to ${name}`);
       await heartbeat();

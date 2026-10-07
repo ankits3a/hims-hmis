@@ -266,3 +266,22 @@ stands at a counter that believes it printed.
 **A print failure never blocks the counter** (owner ruling R7). The screen tells the clerk and
 offers a reprint; a patient can be sent to the doctor on a spoken token. A hospital that stops
 taking money because a printer jammed is worse than one that prints late.
+
+## On a counter's Windows PC (decision 0047)
+
+The same relay runs on Windows as **HMIS Print**, one install per counter PC, enrolled with a one-time code
+from *Users → Print computers*. What differs between a Pi and a PC lives in `platform.mjs` and nowhere else
+(Edge instead of chromium, the bundled SumatraPDF instead of `lp`, PowerShell instead of `lpstat`, DPAPI for the
+key). `program.mjs` adds enrolment, a heartbeat, a status page on `127.0.0.1:47600` and the update check;
+`launcher.mjs` applies a staged update before it starts the program.
+
+```bash
+tools/print-relay/build-windows.sh /opt/hmis-context/mobile-apk-prod            # zip + app bundle + feed
+tools/print-relay/build-windows.sh /opt/hmis-context/mobile-apk-prod --auto-update   # …and switch updates on
+node --test tools/print-relay/*.test.mjs   # all three test files
+```
+
+The zip is served at `/app/hmis-print-latest-win-x64.zip`. The owner's steps, and the list of what has not yet
+been verified on a real Windows PC, are in `docs/guides/windows-print-program.md`.
+
+The relay is no longer one file: `relay.mjs` imports `platform.mjs`. Copy both onto a Pi.

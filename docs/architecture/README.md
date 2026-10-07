@@ -137,7 +137,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | 11 |
 | `orders` | lab, pharmacy, radiology | auth, db, episodes, events, modules, phi | — |
 | `phi` | abdm, aerb, billing, lab, opd, patients, pcpndt, pharmacy, radiology | db | — |
-| `printing` | billing, opd, pharmacy, roster | auth, db, phi, tokens | 7 |
+| `printing` | billing, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | 15 |
 | `push` | — | alerts, db, events, modules | — |
 | `realtime` | lab, opd | auth, db, tokens | — |
 | `report` | billing, opd, pharmacy | — | — |

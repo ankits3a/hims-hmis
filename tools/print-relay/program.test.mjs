@@ -214,7 +214,7 @@ test("a staged file changed after it was hashed is refused and the running versi
     assert.match(await applyStagedUpdate({ appDir, nextDir }), /^refused: program\.mjs does not match/);
     assert.equal((await readFile(join(appDir, "VERSION"), "utf8")).trim(), "1.0.0");
     assert.equal(existsSync(nextDir), false);
-    const { "relay.mjs": _gone, ...partial } = V2;
+    const partial = Object.fromEntries(Object.entries(V2).filter(([n]) => n !== "relay.mjs"));
     assert.match(await applyStagedUpdate({ appDir, nextDir: await stage(home, "1.1.0", partial) }), /^refused: the update has no relay\.mjs/);
     assert.match(await applyStagedUpdate({ appDir, nextDir: await stage(home, "1.2.0", V2) }), /^refused: VERSION is not/);
   } finally { await rm(home, { recursive: true, force: true }); }
