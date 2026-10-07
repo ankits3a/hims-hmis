@@ -71,7 +71,7 @@ Source: `apps/core/src/modules/roster/`
   - `istMidnightUtc(istDate: string): Date`
   - `istMinutesOfInstant(at: Date): number`
   - `istWeekday(d: string): number`
-  - `materialiseWindows(tx: Tx, actor: Actor, cycleId: string, fromIstDate: string, toIstDate: string): Promise<{ written: number; superseded: n…`
+  - `materialiseWindows(tx: Tx, actor: Actor, cycleId: string, fromIstDate: string, toIstDate: string, requested: "publish" | "extend_published_…`
   - `publishCycle(tx: Tx, actor: Actor, cycleId: string, effectiveFromIstDate: string): Promise<PublishCycleResult>`
   - `publishedCycleCount(exec: Db | Tx): Promise<number>`
   - `sweepRosterWindows(db: Db, now: Date): Promise<{ departments: number; written: number }>`
