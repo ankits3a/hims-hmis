@@ -8,6 +8,8 @@ import { OPENAI_SPEECH_MODELS, OpenAiSpeechFailed, SPEECH_MIME_TYPES, openAiKeyF
 import { getPatient } from "../patients";
 import { searchMedicines } from "../formulary";
 import { requireTreatingDoctor } from "./consultation";
+import { guardHits, recordMisses, romanise, signalsMeter } from "./consult-guards";
+import type { SignalsMeter } from "./consult-guards";
 import { getEncounter } from "./encounters";
 import { consultVoiceTranscribed } from "./events";
 import { OpdError } from "./errors";
@@ -30,8 +32,10 @@ import type { Db } from "../../kernel/db/client";
  * name, the medicine names this doctor prescribes most, the test names this hospital advises most,
  * and a fixed list of Hinglish clinic words. `hintFor` takes no name, UHID, phone or address — it
  * is not given the patient row at all, only the four facts above — so there is nothing to forget
- * to leave out. THE ONE THING THIS CANNOT PROMISE: a name the doctor SAYS is in the audio. The
- * screen tells them not to; nothing can stop them (recorded in the DPIA and the decision).
+ * to leave out. NO NAME IS SENT AS DATA. A NAME THE DOCTOR SPEAKS TRAVELS IN THE AUDIO — the owner
+ * accepted that on 2026-10-07 (decision 0049) and it is said in those words everywhere: the app's
+ * notice, the privacy assessment, the owner's panel. "Avoid saying the name" is good practice the
+ * screen asks for; it is not a safeguard and nothing here detects or blocks a spoken name.
  *
  * ═══ WHAT IS KEPT ═══
  * No audio, anywhere: the Buffer lives for one request. No transcript: it is returned to the phone
@@ -49,9 +53,14 @@ export const VOICE_MAX_SECONDS = 60;
  * 1 MB JSON body limit (`app.bootstrap.ts`) — 700 kB of audio is ~935 kB of base64 — and is not raised for this.
  */
 export const VOICE_MAX_BYTES = 700_000;
-export const VOICE_DEFAULTS = { enabled: true, model: "gpt-4o-transcribe" as OpenAiSpeechModel, dailyMinutesCap: 120 };
+export const VOICE_DEFAULTS = { enabled: true, suggestionsEnabled: true, model: "gpt-4o-transcribe" as OpenAiSpeechModel, dailyMinutesCap: 120 };
 
-export type VoiceSettings = { enabled: boolean; model: OpenAiSpeechModel; dailyMinutesCap: number };
+/**
+ * TWO SWITCHES, both a setting and neither a deploy: `enabled` stops every clip at the door;
+ * `suggestionsEnabled` stops "did you mean", the most-used diagnoses and the suggested tests while
+ * the spoken note itself keeps working. The owner turns either off from the web in one tap.
+ */
+export type VoiceSettings = { enabled: boolean; suggestionsEnabled: boolean; model: OpenAiSpeechModel; dailyMinutesCap: number };
 export type VoiceStatus = VoiceSettings & {
   /** The key file is readable — set by the owner on the server, never through this API. */
   configured: boolean; maxSeconds: number; usedSecondsToday: number;
@@ -64,7 +73,7 @@ export async function loadVoiceSettings(db: Db): Promise<VoiceSettings> {
   const row = rows[0];
   if (row === undefined) return { ...VOICE_DEFAULTS };
   const model = (OPENAI_SPEECH_MODELS as readonly string[]).includes(row.model) ? row.model as OpenAiSpeechModel : VOICE_DEFAULTS.model;
-  return { enabled: row.enabled, model, dailyMinutesCap: row.dailyMinutesCap };
+  return { enabled: row.enabled, suggestionsEnabled: row.suggestionsEnabled, model, dailyMinutesCap: row.dailyMinutesCap };
 }
 
 export async function saveVoiceSettings(db: Db, actor: Actor, patch: Partial<VoiceSettings>, now: Date = new Date()): Promise<VoiceSettings> {
@@ -157,7 +166,7 @@ const STOP = new Set(("the a an and or of to in on for with is are was were has 
   + "patient fever cough cold pain tablet capsule syrup injection daily days day week weeks month after before food twice thrice once morning evening night mg ml tab cap bukhar khansi dard badan sir gala laal chest clear sugar dawa").split(/\s+/));
 
 export type VoiceSuggestion =
-  | { kind: "medicine"; heard: string; medicineId: string; name: string; form: string; strength: string | null }
+  | { kind: "medicine"; heard: string; medicineId: string; name: string; form: string; strength: string | null; drugClass: string | null; lasa: string | null }
   | { kind: "test"; heard: string; serviceId: string; code: string; name: string; pricePaise: number };
 
 /**
@@ -168,10 +177,13 @@ export type VoiceSuggestion =
  */
 export async function suggestFromTranscript(
   db: Db, text: string, tests: readonly { serviceId: string; code: string; name: string; pricePaise: number }[],
-): Promise<VoiceSuggestion[]> {
+): Promise<{ suggestions: VoiceSuggestion[]; missed: string[] }> {
   const tokens = text.split(/[^A-Za-z0-9.+-]+/).filter((t) => t !== "");
   const out: VoiceSuggestion[] = [];
   const seenMed = new Set<string>();
+  // A word with a strength after it ("Zerodol 100") that the catalogue could not answer: a medicine
+  // was very likely meant. Logged as the term alone, for the alias tool.
+  const missed: string[] = [];
   const asked = new Set<string>();
   for (let i = 0; i < tokens.length && asked.size < 12; i++) {
     const w = tokens[i]!;
@@ -181,10 +193,12 @@ export async function suggestFromTranscript(
     const key = phrase.toLowerCase();
     if (asked.has(key)) continue;
     asked.add(key);
-    const hit = (await searchMedicines(db, phrase, 3)).find((h) => h.prefix);
-    if (hit !== undefined && !seenMed.has(hit.id)) {
-      seenMed.add(hit.id);
-      out.push({ kind: "medicine", heard: phrase, medicineId: hit.id, name: hit.name, form: hit.form, strength: hit.strength });
+    const found = (await searchMedicines(db, phrase, 3)).find((h) => h.prefix);
+    if (found === undefined) { if (phrase !== w) missed.push(phrase); continue; }
+    if (!seenMed.has(found.id)) {
+      seenMed.add(found.id);
+      const hit = (await guardHits(db, [found]))[0]!;
+      out.push({ kind: "medicine", heard: phrase, medicineId: hit.id, name: hit.name, form: hit.form, strength: hit.strength, drugClass: hit.drugClass, lasa: hit.lasa });
     }
   }
   const lower = ` ${text.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
@@ -194,7 +208,7 @@ export async function suggestFromTranscript(
     const heard = name.length >= 3 && lower.includes(` ${name} `) ? t.name : code.length >= 3 && lower.includes(` ${code} `) ? t.code : null;
     if (heard !== null) out.push({ kind: "test", heard, serviceId: t.serviceId, code: t.code, name: t.name, pricePaise: t.pricePaise });
   }
-  return out.slice(0, 10);
+  return { suggestions: out.slice(0, 10), missed: missed.slice(0, 8) };
 }
 
 export type TranscribeNoteInput = { audio: Buffer; mimeType: string; seconds: number };
@@ -258,7 +272,12 @@ export async function transcribeConsultNote(
     }));
   });
   if (!ok) throw new OpdError("voice_provider_failed", "the speech service did not answer — type the note, or try again");
-  return { voiceId, text, suggestions: text === "" ? [] : await suggestFromTranscript(db, text, tests), model: status.model };
+  // One script: whatever the model wrote, the doctor reads Roman and the catalogue is matched in Roman.
+  const roman = romanise(text);
+  if (roman === "" || !status.suggestionsEnabled) return { voiceId, text: roman, suggestions: [], model: status.model };
+  const { suggestions, missed } = await suggestFromTranscript(db, roman, tests);
+  if (actor.type === "user") await recordMisses(db, actor.id, missed.map((term) => ({ kind: "medicine" as const, term, stage: "voice" as const })), now);
+  return { voiceId, text: roman, suggestions, model: status.model };
 }
 
 /** What the doctor did with what was heard: characters changed before saving, and how long the kept text is. Counts only. */
@@ -275,7 +294,7 @@ export type VoiceMeterRow = {
   /** Share of the heard text the doctor changed before saving, 0..1, over the notes they saved; null when none were saved. */
   changedShare: number | null;
 };
-export type VoiceMeter = { status: VoiceStatus; days: { day: string; minutes: number; notes: number }[]; doctors: VoiceMeterRow[] };
+export type VoiceMeter = { status: VoiceStatus; days: { day: string; minutes: number; notes: number }[]; doctors: VoiceMeterRow[]; signals: SignalsMeter };
 
 /** The owner's panel: minutes per day, and per doctor per week how much they had to correct. */
 export async function voiceMeter(db: Db, keyFile: string | null, now: Date = new Date()): Promise<VoiceMeter> {
@@ -304,6 +323,7 @@ export async function voiceMeter(db: Db, keyFile: string | null, now: Date = new
   }
   return {
     status: await voiceStatus(db, keyFile, now),
+    signals: await signalsMeter(db, now),
     days: [...dayMap.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 14).map(([day, v]) => ({ day, minutes: Math.round(v.s / 6) / 10, notes: v.n })),
     doctors: [...docMap.values()].sort((a, b) => (a.weekStart === b.weekStart ? (a.userId < b.userId ? -1 : 1) : a.weekStart < b.weekStart ? 1 : -1))
       .map((m) => ({ userId: m.userId, name: names.get(m.userId) ?? m.userId, weekStart: m.weekStart, notes: m.n, minutes: Math.round(m.s / 6) / 10, changedShare: m.heard === 0 ? null : Math.round((m.changed / m.heard) * 100) / 100 })),

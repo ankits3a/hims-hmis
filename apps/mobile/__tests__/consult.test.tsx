@@ -46,6 +46,7 @@ const VISIT = {
 };
 const PARA = { id: "m-para", name: "Paracetamol 500 mg Tablet", form: "tablet", strength: "500 mg", code: "D0001", routeClass: "systemic", salts: ["paracetamol"], prefix: true, reviewed: true };
 const AMOX = { id: "m-amox", name: "Amoxicillin 500 mg Capsule", form: "capsule", strength: "500 mg", code: "D0002", routeClass: "systemic", salts: ["amoxicillin"], prefix: true, reviewed: true };
+const HYDROX = { id: "m-hz", name: "Hydroxyzine 25 mg Tablet", form: "tablet", strength: "25 mg", code: "D0003", routeClass: "systemic", salts: ["hydroxyzine"], prefix: true, reviewed: true, drugClass: "Antihistamine", lasa: "hydralazine" };
 const CLEAN = { allergyMatches: [], interactions: [], duplicates: [], drugDisease: [], notices: [], unresolvedLineIndexes: [] };
 const SUMMARY = { requestedId: "p13", id: "p13", uhid: "U0011013", name: "Suresh Prasad", alias: null, restricted: false, administrativeGender: "male", dob: "1970-03-11T00:00:00.000Z" };
 
@@ -65,7 +66,8 @@ function world(extra: Record<string, Route> = {}) {
       { id: "s2", scope: "department", name: "URTI — adult", mine: false, signed: true, signedByName: "Dr. Chandan Kumar", signedAt: "2026-10-01T00:00:00.000Z", maySign: false, departmentId: "dep1", departmentName: "General Medicine",
         body: { lines: [], tests: [], advice: "Steam inhalation", reviewDays: null } },
     ] } }),
-    "GET /formulary/medicines/search": (_b, url) => ({ status: 200, body: { items: /q=amox/.test(url) ? [AMOX] : [PARA] } }),
+    "GET /opd/consult/medicines": (_b, url) => ({ status: 200, body: { items: /q=amox/.test(url) ? [AMOX] : /q=hydrox/.test(url) ? [HYDROX] : /q=zzz/.test(url) ? [] : [PARA] } }),
+    "POST /opd/consult/signals": () => ({ status: 201, body: { misses: 0, suggestions: 0 } }),
     "POST /opd/visits/e13/rx-precheck": () => ({ status: 200, body: CLEAN }),
     "PUT /opd/visits/e13/consult/note": () => ({ status: 200, body: { encounter: {} } }),
     "POST /opd/visits/e13/prescriptions": () => { state.visit.prescriptions = [{ id: "rx1", status: "active" }]; return { status: 201, body: { prescriptionId: "rx1", version: 1 } }; },
@@ -140,7 +142,7 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     await press("issue-complete");
     await waitFor(() => expect(m.onDone).toHaveBeenCalledTimes(1));
     const issued = w.of("POST /opd/visits/e13/prescriptions")[0]!.body as { lines: Record<string, unknown>[] };
-    expect(issued.lines).toEqual([{ drug: "Paracetamol 500 mg Tablet", dose: "1 tab", route: "oral", frequency: "TDS", durationDays: 5, instructions: null, noSubstitution: false, medicineId: "m-para" }]);
+    expect(issued.lines).toEqual([{ drug: "Paracetamol 500 mg Tablet", dose: "1 tab", route: "oral", frequency: "TDS", durationDays: 5, instructions: null, noSubstitution: false, medicineId: "m-para", source: "search" }]); // where the line came from rides the issue, for audit
     const done = w.of("POST /opd/visits/e13/consult/complete")[0]!.body as { note: { rxDraft: unknown; diagnoses: unknown }; testsOrderedReturnToday: boolean; followUpDays?: number };
     // The completion NAMES the draft as gone — which is what tells the server nothing was left behind.
     expect(done.note.rxDraft).toBeNull();
@@ -291,7 +293,7 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     await screen.findByTestId("visit-empty");
     await press("open-notes");
     await fireEvent.press(await screen.findByTestId("voice-start"));
-    expect(await screen.findByTestId("voice-notice")).toHaveTextContent(/Do not say the patient's name/);
+    expect(await screen.findByTestId("voice-notice")).toHaveTextContent(/sends no name as data — but a name you say travels in the recording/);
     expect(mockRecorder.start).not.toHaveBeenCalled();
     await press("voice-notice-ok");
     await fireEvent.press(await screen.findByTestId("voice-stop"));
@@ -314,9 +316,12 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(screen.queryByTestId("voice-notice")).toBeNull();
   });
 
-  it("a medicine heard in the note opens the medicine editor when the doctor taps it — it still needs a dose before it is a line", async () => {
+  it("a medicine heard in the note is OFFERED with its strength and class; tapped, it is an unfinished line marked as from voice — and what was heard stays on screen", async () => {
     const w = world({
-      "POST /opd/visits/e13/consult/voice": () => ({ status: 201, body: { voiceId: "vx2", model: "m", text: "Pan 40 subah.", suggestions: [{ kind: "medicine", heard: "Pan 40", medicineId: "m-pan", name: "Pantoprazole 40 mg Tablet", form: "tablet", strength: "40 mg" }] } }),
+      "POST /opd/visits/e13/consult/voice": () => ({ status: 201, body: { voiceId: "vx2", model: "m", text: "Pan 40 subah.", suggestions: [
+        { kind: "medicine", heard: "Pan 40", medicineId: "m-pan", name: "Pantoprazole 40 mg Tablet", form: "tablet", strength: "40 mg", drugClass: "PPI", lasa: null },
+        { kind: "test", heard: "CBC", serviceId: "s-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000 },
+      ] } }),
       "POST /opd/consult/voice/vx2/kept": () => ({ status: 201, body: { ok: true } }),
     });
     mockStore.set("hmis.consult.voice-notice", "1");
@@ -325,9 +330,67 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     await press("open-notes");
     await fireEvent.press(await screen.findByTestId("voice-start"));
     await fireEvent.press(await screen.findByTestId("voice-stop"));
-    await fireEvent.press(await screen.findByTestId("voice-suggest-add-0"));
-    expect(await screen.findByTestId("line-drug")).toHaveTextContent("Pantoprazole 40 mg Tablet");
-    expect(screen.getByTestId("line-add").props.accessibilityState.disabled).toBe(true);
+    expect(await screen.findByTestId("voice-suggest-0")).toHaveTextContent(/40 mg · tablet · PPI/);
+    await press("voice-suggest-add-0");
+    expect(screen.getByTestId("voice-text").props.value).toBe("Pan 40 subah."); // still here, still editable
+    await press("voice-keep");
+    // The test was offered and left: counted as dismissed. The medicine's count comes at issue.
+    await waitFor(() => expect(w.of("POST /opd/consult/signals")).toHaveLength(1));
+    expect(w.of("POST /opd/consult/signals")[0]!.body).toEqual({ suggestions: [{ kind: "test", source: "voice", outcome: "dismissed" }] });
+    await press("notes-drawer-done");
+    expect(screen.getByTestId("visit-line-0")).toHaveTextContent(/Pantoprazole 40 mg Tablet/);
+    // No dose yet: it cannot be issued, and the screen opens the medicines to say so.
+    await press("issue-complete");
+    expect(await screen.findByTestId("line-source-0")).toHaveTextContent("offered from your spoken note");
+    expect(w.of("POST /opd/visits/e13/prescriptions")).toHaveLength(0);
+  });
+
+  it("a look-alike name takes a second tap — “Hydroxyzine — not hydralazine?” — and the row shows strength, form and class", async () => {
+    const w = world();
+    await mount(w);
+    await screen.findByTestId("visit-empty");
+    await press("open-meds");
+    await fireEvent.changeText(await screen.findByTestId("med-input"), "hydrox");
+    expect(await screen.findByTestId("med-hit-sub-m-hz")).toHaveTextContent("25 mg · tablet · Antihistamine");
+    await press("med-hit-m-hz");
+    expect(await screen.findByTestId("lasa-ask")).toHaveTextContent(/Hydroxyzine 25 mg Tablet — not hydralazine\?/);
+    expect(screen.queryByTestId("line-drug")).toBeNull(); // nothing picked on one tap
+    await press("lasa-no");
+    expect(screen.queryByTestId("lasa-ask")).toBeNull();
+    await press("med-hit-m-hz");
+    await press("lasa-yes");
+    expect(await screen.findByTestId("line-drug")).toHaveTextContent("Hydroxyzine 25 mg Tablet");
+  });
+
+  it("a word the hospital's list cannot answer is logged as the term alone, and the hand-typed line says it was typed", async () => {
+    const w = world();
+    await mount(w);
+    await screen.findByTestId("visit-empty");
+    await press("open-meds");
+    await fireEvent.changeText(await screen.findByTestId("med-input"), "zzzodol sp");
+    await fireEvent.press(await screen.findByTestId("med-free"));
+    await waitFor(() => expect(w.of("POST /opd/consult/signals")).toHaveLength(1));
+    expect(w.of("POST /opd/consult/signals")[0]!.body).toEqual({ misses: [{ kind: "medicine", term: "zzzodol sp", stage: "search" }] });
+    await press("dose-1 tab"); await press("freq-BD"); await press("days-3"); await press("line-add");
+    expect(await screen.findByTestId("line-source-0")).toHaveTextContent("typed by hand");
+  });
+
+  it("with the hospital's suggestions switched off, nothing worked-out is offered: no suggested tests", async () => {
+    const tests = jest.fn(() => ({ status: 200, body: { items: [{ serviceId: "s-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000, mine: 1, hospital: 1 }] } }));
+    const w = world({
+      "GET /opd/consult/voice/status": () => ({ status: 200, body: { enabled: true, suggestionsEnabled: false, configured: true, model: "gpt-4o-transcribe", maxSeconds: 60, usedSecondsToday: 0, dailyMinutesCap: 120, why: null } }),
+      "GET /opd/cds/suggest/tests": tests,
+      "GET /tariff/price-list": () => ({ status: 200, body: { items: [] } }),
+      "GET /opd/cds/complete/diagnosis": () => ({ status: 200, body: { items: [] } }),
+    });
+    await mount(w);
+    await screen.findByTestId("visit-empty");
+    await press("open-dx");
+    await fireEvent.press(await screen.findByTestId("dx-mine-0"));
+    await press("dx-drawer-done");
+    await press("open-tests");
+    await screen.findByTestId("tests-drawer");
+    expect(tests).not.toHaveBeenCalled();
   });
 
   it("voice that is not set up says so and offers no microphone", async () => {

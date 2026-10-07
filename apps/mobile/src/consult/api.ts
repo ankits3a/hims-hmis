@@ -4,10 +4,11 @@ import type { ConsultTest, WireLastLine, WirePrecheck, WireSetBody } from "./rul
 /**
  * The routes the doctor's phone consultation uses. Everything that writes a note, checks a line,
  * issues a prescription or completes a visit is the WEB consultation's own route, behind
- * `opd.consult` and `requireTreatingDoctor` — the phone adds no way to do any of them. The four
- * that are new (sets, most-used diagnoses, the voice status and the spoken note) are decision 0048.
+ * `opd.consult` and `requireTreatingDoctor` — the phone adds no way to do any of them. The ones
+ * that are new (sets, most-used diagnoses, the guarded medicine search, the signals, the voice status
+ * and the spoken note) are decisions 0048 and 0049.
  */
-export type WireMedicineHit = { id: string; name: string; form: string; strength: string | null; code: string | null; routeClass: string; salts: string[]; prefix: boolean; reviewed: boolean };
+export type WireMedicineHit = { id: string; name: string; form: string; strength: string | null; code: string | null; routeClass: string; salts: string[]; prefix: boolean; reviewed: boolean; drugClass?: string | null; lasa?: string | null };
 export type WireIcd10Hit = { code: string; description: string };
 export type WireMyDiagnosis = { text: string; icd10Code: string | null; uses: number };
 export type WireComplaintHit = { term: string; mine: number; hospital: number };
@@ -19,11 +20,11 @@ export type WireRxSet = {
   mine: boolean; signed: boolean; signedByName: string | null; signedAt: string | null; maySign: boolean;
 };
 export type WireVoiceStatus = {
-  enabled: boolean; configured: boolean; model: string; maxSeconds: number; usedSecondsToday: number; dailyMinutesCap: number;
+  enabled: boolean; suggestionsEnabled?: boolean; configured: boolean; model: string; maxSeconds: number; usedSecondsToday: number; dailyMinutesCap: number;
   why: "not_configured" | "switched_off" | "cap_reached" | null;
 };
 export type WireVoiceSuggestion =
-  | { kind: "medicine"; heard: string; medicineId: string; name: string; form: string; strength: string | null }
+  | { kind: "medicine"; heard: string; medicineId: string; name: string; form: string; strength: string | null; drugClass?: string | null; lasa?: string | null }
   | { kind: "test"; heard: string; serviceId: string; code: string; name: string; pricePaise: number };
 export type WireVoiceResult = { voiceId: string; text: string; suggestions: WireVoiceSuggestion[]; model: string };
 export type WireConsultVisit = {
@@ -46,7 +47,7 @@ export function consultApi(call: Call) {
     issue: (id: string, body: Record<string, unknown>) => call<WireIssued>("POST", `/opd/visits/${enc(id)}/prescriptions`, body),
     complete: (id: string, body: Record<string, unknown>) => call<unknown>("POST", `/opd/visits/${enc(id)}/consult/complete`, body),
 
-    medicines: async (q: string) => (await call<{ items: WireMedicineHit[] }>("GET", `/formulary/medicines/search?q=${enc(q)}&limit=8`)).items,
+    medicines: async (q: string) => (await call<{ items: WireMedicineHit[] }>("GET", `/opd/consult/medicines?q=${enc(q)}&limit=8`)).items,
     diagnoses: async (q: string) => (await call<{ items: WireIcd10Hit[] }>("GET", `/opd/cds/complete/diagnosis?q=${enc(q)}&limit=8`)).items,
     myDiagnoses: async () => (await call<{ items: WireMyDiagnosis[] }>("GET", "/opd/consult/my-diagnoses")).items,
     complaints: async (q: string) => (await call<{ items: WireComplaintHit[] }>("GET", `/opd/cds/complete/complaint?q=${enc(q)}`)).items,
@@ -59,6 +60,9 @@ export function consultApi(call: Call) {
     saveSet: (name: string, body: WireSetBody) => call<{ setId: string }>("POST", "/opd/rx-sets", { scope: "doctor", name, body }),
     retireSet: (id: string) => call<unknown>("DELETE", `/opd/rx-sets/${enc(id)}`),
 
+    /** Terms that matched nothing and what became of each suggestion. Never awaited by a screen: a lost one is a lost count. */
+    signals: (body: { misses?: { kind: "medicine" | "test" | "diagnosis"; term: string; stage: "search" | "voice" }[]; suggestions?: { kind: "medicine" | "test" | "diagnosis"; source: string; outcome: "accepted" | "dismissed" | "manual" }[] }) =>
+      call<unknown>("POST", "/opd/consult/signals", body),
     voiceStatus: () => call<WireVoiceStatus>("GET", "/opd/consult/voice/status"),
     voice: (id: string, audio: string, mimeType: string, seconds: number) => call<WireVoiceResult>("POST", `/opd/visits/${enc(id)}/consult/voice`, { audio, mimeType, seconds }),
     voiceKept: (voiceId: string, changedChars: number, keptChars: number) => call<unknown>("POST", `/opd/consult/voice/${enc(voiceId)}/kept`, { changedChars, keptChars }),

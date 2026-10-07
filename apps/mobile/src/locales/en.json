@@ -891,11 +891,11 @@
         "nothingHeard": "Nothing was heard. Hold the phone closer and try again, or type the note.",
         "micRefused": "This phone has not allowed HMIS to use the microphone. Allow it in the phone's settings, or type the note.",
         "noticeTitle": "Before you speak",
-        "notice": "Your words are sent to an outside service (OpenAI) to be typed. Do not say the patient's name. The recording is not kept. You read the text before it is saved.",
+        "notice": "Your words are sent to an outside service (OpenAI) to be typed. The app sends no name as data — but a name you say travels in the recording, so avoid saying the patient's name. The recording is not kept. You read the text before it is saved.",
         "sent": "Sent",
         "sentWhat": "Your voice · age, sex, vitals, department · medicine and test names as hints",
-        "neverSent": "Never sent",
-        "neverWhat": "Name, UHID, phone, address",
+        "neverSent": "Not sent as data",
+        "neverWhat": "Name, UHID, phone, address — a name you speak is in the audio",
         "understand": "I understand — start",
         "notNow": "Not now",
         "noticeOnce": "Shown once on this phone.",
@@ -917,7 +917,21 @@
       },
       "paperAsk_one": "{{count}} medicine typed here will NOT be issued — the paper is the prescription. Tap again to go on.",
       "paperAsk_other": "{{count}} medicines typed here will NOT be issued — the paper is the prescription. Tap again to go on.",
-      "paperConfirm": "Yes, paper"
+      "paperConfirm": "Yes, paper",
+      "lasa": {
+        "ask": "{{name}} — not {{other}}?",
+        "body": "These two names are easily confused. Check the one you mean.",
+        "yes": "Yes, {{name}}",
+        "yesShort": "Yes, add it",
+        "no": "Search again"
+      },
+      "source": {
+        "typed": "typed by hand",
+        "voice": "offered from your spoken note",
+        "search": "picked from search",
+        "set": "from a set",
+        "repeat": "repeated from the last visit"
+      }
     }
   },
   "screen": {

@@ -7,7 +7,11 @@
  * issue.
  */
 
+/** Where a line came from. Stored on the issued line for audit; no check reads it, no print shows it. */
+export type LineSource = "typed" | "voice" | "search" | "set" | "repeat";
 export type ConsultLine = {
+  /** Absent on a draft saved before this field existed, and on a line a computer typed. */
+  source?: LineSource | null;
   drug: string; dose: string; frequency: string; durationDays: number | null;
   food: "before" | "after" | null; instructions: string; route: string; medicineId: string | null;
   /** Shown beside a line that came from "Repeat last" or a set and was then changed, or was added new. */
@@ -80,13 +84,14 @@ export function lineComplete(l: ConsultLine): boolean {
 
 /** The line as `POST /opd/visits/:id/prescriptions` and the pre-check take it. */
 export function wireLine(l: ConsultLine, food: { before: string; after: string }): {
-  drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; noSubstitution: boolean; medicineId?: string;
+  drug: string; dose: string; route: string; frequency: string; durationDays: number | null; instructions: string | null; noSubstitution: boolean; medicineId?: string; source?: LineSource;
 } {
   const ins = lineSub(l, food);
   return {
     drug: l.drug.trim(), dose: l.dose.trim(), route: l.route.trim() === "" ? "oral" : l.route.trim(), frequency: l.frequency.trim(),
     durationDays: l.durationDays, instructions: ins === "" ? null : ins, noSubstitution: false,
     ...(l.medicineId === null ? {} : { medicineId: l.medicineId }),
+    ...(l.source === undefined || l.source === null ? {} : { source: l.source }),
   };
 }
 
@@ -184,16 +189,16 @@ function foodOf(instructions: string | null): { food: "before" | "after" | null;
   return { food: null, rest: s };
 }
 
-export function linesFrom(lines: readonly WireLastLine[]): ConsultLine[] {
+export function linesFrom(lines: readonly WireLastLine[], source: LineSource | null = null): ConsultLine[] {
   return lines.slice(0, MAX_LINES).map((l) => {
     const f = foodOf(l.instructions);
-    return { drug: l.drug, dose: l.dose, frequency: l.frequency, durationDays: l.durationDays, food: f.food, instructions: f.rest, route: l.route, medicineId: l.medicineId ?? null, mark: null, was: null };
+    return { drug: l.drug, dose: l.dose, frequency: l.frequency, durationDays: l.durationDays, food: f.food, instructions: f.rest, route: l.route, medicineId: l.medicineId ?? null, mark: null, was: null, source };
   });
 }
 
 /** "Repeat last": the last prescription's lines, on an otherwise untouched draft. Every one is checked again today. */
 export function repeatLast(d: ConsultDraft, last: { serviceDate: string; lines: readonly WireLastLine[] }, now: number): ConsultDraft {
-  return { ...d, lines: linesFrom(last.lines), from: `repeat:${last.serviceDate}`, reasons: {}, updatedAt: now };
+  return { ...d, lines: linesFrom(last.lines, "repeat"), from: `repeat:${last.serviceDate}`, reasons: {}, updatedAt: now };
 }
 
 export type WireSetBody = {
@@ -204,7 +209,7 @@ export type WireSetBody = {
 /** A set FILLS the visit: its lines after the ones already there (a drug already on the visit is not added twice), its tests, its advice. */
 export function applySet(d: ConsultDraft, name: string, body: WireSetBody, priceOf: (serviceId: string) => number, now: number): ConsultDraft {
   const have = new Set(d.lines.map((l) => l.drug.trim().toLowerCase()));
-  const add = linesFrom(body.lines).filter((l) => !have.has(l.drug.trim().toLowerCase()));
+  const add = linesFrom(body.lines, "set").filter((l) => !have.has(l.drug.trim().toLowerCase()));
   const tests = [...d.tests, ...body.tests.filter((t) => !d.tests.some((x) => x.serviceId === t.serviceId)).map((t) => ({ ...t, pricePaise: priceOf(t.serviceId) }))].slice(0, MAX_TESTS);
   const advice = (body.advice ?? "").trim();
   return {
@@ -225,6 +230,20 @@ export function setBodyOf(d: ConsultDraft, food: { before: string; after: string
     advice: [...d.adviceChips, d.adviceText.trim()].filter((x) => x !== "").join(". ") || null,
     reviewDays: d.reviewDays,
   };
+}
+
+/**
+ * What became of what was offered, for the meter: a line picked from search or taken from a spoken
+ * note is an ACCEPTED suggestion; a line typed by hand is MANUAL. Sets and repeats are the doctor's
+ * own earlier writing and are not counted. Kinds and counts only — never a name.
+ */
+export function lineSignals(lines: readonly ConsultLine[]): { kind: "medicine"; source: LineSource; outcome: "accepted" | "manual" }[] {
+  const out: { kind: "medicine"; source: LineSource; outcome: "accepted" | "manual" }[] = [];
+  for (const l of lines) {
+    if (l.source === "search" || l.source === "voice") out.push({ kind: "medicine", source: l.source, outcome: "accepted" });
+    else if (l.source === "typed") out.push({ kind: "medicine", source: "typed", outcome: "manual" });
+  }
+  return out;
 }
 
 /** Changing a line that came from a set or a repeat marks it, and remembers what it was. */

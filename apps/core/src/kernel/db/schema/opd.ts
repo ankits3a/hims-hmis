@@ -1415,6 +1415,11 @@ export const opdVoiceSettings = pgTable(
   {
     id: text("id").primaryKey(),
     enabled: boolean("enabled").notNull().default(true),
+    /**
+     * The second switch (decision 0049's review): "did you mean", the doctor's most-used diagnoses
+     * and the suggested tests. Off ⇒ the phone offers nothing it worked out; typing and search stay.
+     */
+    suggestionsEnabled: boolean("suggestions_enabled").notNull().default(true),
     model: text("model").notNull().default("gpt-4o-transcribe"),
     /** Minutes of audio the whole hospital may send in one IST day. */
     dailyMinutesCap: integer("daily_minutes_cap").notNull().default(120),
@@ -1424,5 +1429,76 @@ export const opdVoiceSettings = pgTable(
   (t) => [
     check("opd_voice_settings_model_ck", sql`${t.model} in ('gpt-4o-transcribe', 'gpt-4o-mini-transcribe', 'whisper-1')`),
     check("opd_voice_settings_cap_ck", sql`${t.dailyMinutesCap} >= 0 and ${t.dailyMinutesCap} <= 6000`),
+  ],
+);
+
+/**
+ * PHONE CONSULT — LOOK-ALIKE / SOUND-ALIKE MEDICINE NAMES. A pair of lower-case name stems
+ * ("hydroxyzine", "hydralazine"): when the doctor picks a medicine whose name or moiety starts with
+ * one, the phone asks "X — not Y?" and takes a second tap. `reviewedBy` null ⇒ the pair came from
+ * the shipped standard list and no pharmacist of this hospital has confirmed it; it still asks.
+ */
+export const opdLasaPairs = pgTable(
+  "opd_lasa_pairs",
+  {
+    id: text("id").primaryKey(),
+    nameA: text("name_a").notNull(),
+    nameB: text("name_b").notNull(),
+    active: boolean("active").notNull().default(true),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("opd_lasa_pairs_pair_uq").on(t.nameA, t.nameB),
+    check("opd_lasa_pairs_order_ck", sql`${t.nameA} < ${t.nameB} and ${t.nameA} = lower(${t.nameA}) and ${t.nameB} = lower(${t.nameB})`),
+    check("opd_lasa_pairs_reviewed_ck", sql`(${t.reviewedBy} is null) = (${t.reviewedAt} is null)`),
+  ],
+);
+
+/**
+ * PHONE CONSULT — A WORD THAT MATCHED NOTHING. A medicine, test or diagnosis term a doctor typed
+ * or spoke that the catalogue could not answer. The TERM only (≤ 60 characters), never a patient,
+ * a visit or the sentence around it. It feeds a later alias tool; nothing reads it to decide care.
+ */
+export const opdTermMisses = pgTable(
+  "opd_term_misses",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    term: text("term").notNull(),
+    /** Where the match was tried: 'search' (typed) or 'voice' (heard). */
+    stage: text("stage").notNull(),
+    userId: text("user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("opd_term_misses_kind_term_idx").on(t.kind, t.term),
+    check("opd_term_misses_kind_ck", sql`${t.kind} in ('medicine', 'test', 'diagnosis')`),
+    check("opd_term_misses_stage_ck", sql`${t.stage} in ('search', 'voice')`),
+    check("opd_term_misses_term_ck", sql`char_length(${t.term}) between 2 and 60`),
+  ],
+);
+
+/**
+ * PHONE CONSULT — WHAT BECAME OF A SUGGESTION. One row per offered thing the doctor took
+ * ('accepted'), left ('dismissed'), or per thing they wrote with no offer at all ('manual').
+ * Kind, source, outcome, doctor, time — no medicine name, no patient.
+ */
+export const opdSuggestionEvents = pgTable(
+  "opd_suggestion_events",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    kind: text("kind").notNull(),
+    source: text("source").notNull(),
+    outcome: text("outcome").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("opd_suggestion_events_at_idx").on(t.createdAt),
+    check("opd_suggestion_events_kind_ck", sql`${t.kind} in ('medicine', 'test', 'diagnosis')`),
+    check("opd_suggestion_events_source_ck", sql`${t.source} in ('typed', 'voice', 'search', 'set', 'repeat')`),
+    check("opd_suggestion_events_outcome_ck", sql`${t.outcome} in ('accepted', 'dismissed', 'manual')`),
   ],
 );

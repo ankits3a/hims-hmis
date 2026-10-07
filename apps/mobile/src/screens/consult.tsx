@@ -7,7 +7,7 @@ import { consultApi } from "../consult/api";
 import { draftStore } from "../consult/draft";
 import { useVoiceRecorder } from "../consult/recorder";
 import {
-  adviceOf, applySet, emptyDraft, isEmptyDraft, issuedCounts, lineComplete, lineSub, lineText, linesFrom, noteBody, overridesOf, repeatLast, setBodyOf,
+  addLine, adviceOf, applySet, emptyDraft, isEmptyDraft, issuedCounts, lineComplete, lineSignals, lineSub, lineText, linesFrom, noteBody, overridesOf, repeatLast, setBodyOf,
   unanswered, warningsOf, wireLine,
 } from "../consult/rules";
 import { AdviceDrawer, DiagnosisDrawer, MedicinesDrawer, NotesDrawer, SetsDrawer, type Patch } from "../consult/sheets";
@@ -94,6 +94,9 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [medStart, setMedStart] = useState<{ medicineId: string | null; name: string } | "new" | null>(null);
   const [precheck, setPrecheck] = useState<WirePrecheck | null>(null);
+  /** The hospital's suggestions switch (a setting, no deploy). Unknown ⇒ on; the server holds the switch either way. */
+  const [suggest, setSuggest] = useState(true);
+  useEffect(() => { api.voiceStatus().then((v) => setSuggest(v.suggestionsEnabled !== false)).catch(() => undefined); }, [api]);
   const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -209,6 +212,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
         await api.issue(encounterId, { lines: wire, ...overridesOf(ws, d.reasons) });
       }
       issueSent.current = true;
+      if (!rxIssued) void api.signals({ suggestions: lineSignals(d.lines) }).catch(() => undefined);
       await api.complete(encounterId, {
         note: noteBody(d, review, food, "issued"),
         testsOrderedReturnToday: d.returnToday === true,
@@ -392,11 +396,13 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
       </View>
 
       {drawer === "notes" && <NotesDrawer api={api} encounterId={encounterId} draft={draft} patch={patch} onClose={closeDrawer} recorder={recorder} deskWords={visit?.deskComplaint?.text ?? null}
-        onAddMedicine={(h) => { setMedStart({ medicineId: h.medicineId, name: h.name }); setDrawer("meds"); }}
+        // A heard medicine becomes a line with no dose yet: it is flagged, it cannot be issued until the
+        // doctor finishes it, and what was heard stays on the screen meanwhile.
+        onAddMedicine={(h) => patch((d) => (d.lines.some((l) => l.medicineId === h.medicineId) ? d : addLine(d, { drug: h.name, dose: "", frequency: "", durationDays: null, food: null, instructions: "", route: "oral", medicineId: h.medicineId, source: "voice" }, Date.now())))}
         onAddTest={(x) => patch((d) => (d.tests.some((y) => y.serviceId === x.serviceId) ? d : { ...d, tests: [...d.tests, x] }))} />}
       {drawer === "dx" && <DiagnosisDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} />}
       {drawer === "meds" && <MedicinesDrawer api={api} draft={draft} patch={patch} warnings={warnings} checking={checking} onClose={closeDrawer} startWith={medStart} />}
-      {drawer === "tests" && <TestsDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} />}
+      {drawer === "tests" && <TestsDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} suggest={suggest} />}
       {drawer === "advice" && <AdviceDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} followChoices={followUpChoices(cfg)} />}
       {drawer === "sets" && <SetsDrawer api={api} onClose={() => setDrawer(null)} onUse={useSet} canSave={draft.lines.some(lineComplete) || draft.tests.length > 0}
         onSave={async (setName) => { await api.saveSet(setName, setBodyOf(draft, food)); setSetsCount((c) => (c === null ? c : { ...c, mine: c.mine + 1 })); }} />}

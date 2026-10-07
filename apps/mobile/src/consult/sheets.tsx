@@ -101,6 +101,8 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
   const [heard, setHeard] = useState<WireVoiceResult | null>(null);
   const [text, setText] = useState("");
   const [taken, setTaken] = useState<string[]>([]);
+  /** A look-alike suggestion waits for its second tap. */
+  const [lasaAsk, setLasaAsk] = useState<string | null>(null);
   const tick = useRef<ReturnType<typeof setInterval> | null>(null);
   const started = useRef(0);
 
@@ -123,7 +125,7 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
       if (clip === null) { setPhase("idle"); setError(t("mobile.consult.voice.nothingHeard")); return; }
       const out = await api.voice(encounterId, clip.audio, clip.mimeType, clip.seconds);
       if (out.text.trim() === "") { setPhase("idle"); setError(t("mobile.consult.voice.nothingHeard")); return; }
-      setHeard(out); setText(out.text); setTaken([]); setPhase("heard");
+      setHeard(out); setText(out.text); setTaken([]); setLasaAsk(null); setPhase("heard");
     } catch (e) {
       setPhase("idle");
       const why = e instanceof ApiError ? (e.body as { detail?: { why?: string } } | null)?.detail?.why : undefined;
@@ -156,6 +158,10 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
     if (kept !== "") patch((d) => ({ ...d, notes: [d.notes.trim(), kept].filter((x) => x !== "").join("\n").slice(0, 4000) }));
     // Counts only: how much was changed, how long the kept text is. Never the words.
     void api.voiceKept(h.voiceId, changedChars(h.text, kept), kept.length).catch(() => undefined);
+    // …and what became of each "did you mean": taken or left. Kinds only.
+    if (h.suggestions.length > 0) {
+      void api.signals({ suggestions: h.suggestions.map((sg) => ({ kind: sg.kind, source: "voice", outcome: taken.includes(sg.kind === "medicine" ? sg.medicineId : sg.serviceId) ? "accepted" as const : "dismissed" as const })).filter((x) => x.kind !== "medicine" || x.outcome === "dismissed") }).catch(() => undefined);
+    }
     setHeard(null); setPhase("idle");
   };
 
@@ -184,18 +190,24 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
         {heard.suggestions.map((sg, i) => {
           const id = sg.kind === "medicine" ? sg.medicineId : sg.serviceId;
           const done = taken.includes(id);
+          const asking = lasaAsk === id;
           return (
             <View key={`${sg.kind}-${id}`} style={st.hit} testID={`voice-suggest-${String(i)}`}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={st.hitName}><Text style={{ fontWeight: "700" }}>{sg.heard}</Text> → {sg.name}</Text>
+                {sg.kind === "medicine" && <Text style={st.hitSub}>{[sg.strength, sg.form, sg.drugClass ?? null].filter((x) => x !== null && x !== "").join(" · ")}</Text>}
                 <Text style={st.hitSub}>{t(sg.kind === "medicine" ? "mobile.consult.voice.fromMedicines" : "mobile.consult.voice.fromTests")}</Text>
+                {asking && sg.kind === "medicine" && <Text testID={`voice-lasa-${String(i)}`} style={[st.hitSub, { color: "#8a5a10", fontWeight: "700" }]}>{t("mobile.consult.lasa.ask", { name: sg.name, other: sg.lasa ?? "" })}</Text>}
               </View>
               <Pressable testID={`voice-suggest-add-${String(i)}`} accessibilityRole="button" disabled={done} onPress={() => {
+                // A look-alike name takes a second tap, on the same button, after the question is shown.
+                if (sg.kind === "medicine" && (sg.lasa ?? null) !== null && !asking) { setLasaAsk(id); return; }
+                setLasaAsk(null);
                 setTaken((x) => [...x, id]);
                 if (sg.kind === "medicine") onAddMedicine({ medicineId: sg.medicineId, name: sg.name });
                 else onAddTest({ serviceId: sg.serviceId, code: sg.code, name: sg.name, pricePaise: sg.pricePaise });
               }} style={[st.small, done ? st.smallDone : st.smallOn]}>
-                <Text style={[st.smallText, { color: done ? color.green : "#f2faf6" }]}>{done ? t("mobile.consult.added") : t(sg.kind === "medicine" ? "mobile.consult.voice.addMedicine" : "mobile.consult.voice.addTest")}</Text>
+                <Text style={[st.smallText, { color: done ? color.green : "#f2faf6" }]}>{done ? t("mobile.consult.added") : asking ? t("mobile.consult.lasa.yesShort") : t(sg.kind === "medicine" ? "mobile.consult.voice.addMedicine" : "mobile.consult.voice.addTest")}</Text>
               </Pressable>
             </View>
           );
@@ -264,7 +276,7 @@ export function DiagnosisDrawer({ api, draft, patch, onClose }: { api: ConsultAp
       {q.trim().length < 2 && mine.map((m, i) => row(m.text, m.icd10Code, t("mobile.consult.dxUsed", { count: m.uses }), `mine-${String(i)}`))}
       {q.trim().length >= 2 && found.rows.map((h) => row(h.description, h.code, null, h.code))}
       {q.trim().length >= 3 && !found.busy && found.rows.length === 0 && found.error === null && (
-        <Pressable testID="dx-free" accessibilityRole="button" onPress={() => { add(q.trim(), null); setQ(""); }} style={st.hit}>
+        <Pressable testID="dx-free" accessibilityRole="button" onPress={() => { void api.signals({ misses: [{ kind: "diagnosis", term: q.trim(), stage: "search" }] }).catch(() => undefined); add(q.trim(), null); setQ(""); }} style={st.hit}>
           <Text style={st.hitName}>{t("mobile.consult.dxFree", { text: q.trim() })}</Text>
         </Pressable>
       )}
@@ -295,6 +307,14 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
   const [q, setQ] = useState("");
   const found = useSearch<WireMedicineHit>(q, 2, (text) => api.medicines(text));
   const [otherDays, setOtherDays] = useState(false);
+  /** A pick whose name is easily confused with another waits here for a second tap. */
+  const [ask, setAsk] = useState<WireMedicineHit | null>(null);
+  const pick = (h: WireMedicineHit): void => { setAsk(null); set({ drug: h.name, medicineId: h.id, route: h.routeClass === "topical" ? "topical" : "oral", source: "search" }); };
+  const typed = (text: string): void => {
+    // Nothing in the hospital's list answered this word: kept for the alias tool, the term alone.
+    void api.signals({ misses: [{ kind: "medicine", term: text, stage: "search" }] }).catch(() => undefined);
+    set({ drug: text, medicineId: null, source: "typed" });
+  };
 
   const set = (p: Partial<ConsultLine>): void => setEditing((e) => (e === null ? e : { ...e, line: { ...e.line, ...p } }));
   const commit = (): void => {
@@ -316,17 +336,27 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
         {!picked ? (
           <>
             <Box testID="med-input" autoFocus value={q} onChangeText={setQ} placeholder={t("mobile.consult.medSearch")} maxLength={80} returnKeyType="done"
-              onSubmitEditing={() => { const text = q.trim(); if (text.length >= 3 && found.rows.length === 0) set({ drug: text, medicineId: null }); }} />
-            {found.rows.map((h) => (
-              <Pressable key={h.id} testID={`med-hit-${h.id}`} accessibilityRole="button" onPress={() => set({ drug: h.name, medicineId: h.id, route: h.routeClass === "topical" ? "topical" : "oral" })} style={st.hit}>
+              onSubmitEditing={() => { const text = q.trim(); if (text.length >= 3 && !found.busy && found.error === null && found.rows.length === 0) typed(text); }} />
+            {ask !== null && (
+              <View testID="lasa-ask" style={[st.alert, st.alertAmber]}>
+                <Text style={[st.alertTitle, { color: "#8a5a10" }]}>{t("mobile.consult.lasa.ask", { name: ask.name, other: ask.lasa ?? "" })}</Text>
+                <Text style={[st.alertBody, { color: "#8a5a10" }]}>{t("mobile.consult.lasa.body")}</Text>
+                <View style={[st.two, { marginTop: 10 }]}>
+                  <View style={{ flex: 1 }}><Button testID="lasa-no" kind="secondary" label={t("mobile.consult.lasa.no")} onPress={() => setAsk(null)} /></View>
+                  <View style={{ flex: 1.3 }}><Button testID="lasa-yes" label={t("mobile.consult.lasa.yes", { name: ask.name.split(" ")[0] ?? ask.name })} onPress={() => pick(ask)} /></View>
+                </View>
+              </View>
+            )}
+            {ask === null && found.rows.map((h) => (
+              <Pressable key={h.id} testID={`med-hit-${h.id}`} accessibilityRole="button" onPress={() => ((h.lasa ?? null) !== null ? setAsk(h) : pick(h))} style={st.hit}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={st.hitName}>{h.name}</Text>
-                  <Text style={st.hitSub}>{[h.form, h.strength, h.salts.slice(0, 3).join(" + ")].filter((x) => x !== null && x !== "").join(" · ")}</Text>
+                  <Text testID={`med-hit-sub-${h.id}`} style={st.hitSub}>{[h.strength, h.form, h.drugClass ?? h.salts.slice(0, 3).join(" + ")].filter((x) => x !== null && x !== "").join(" · ")}</Text>
                 </View>
               </Pressable>
             ))}
             {q.trim().length >= 3 && !found.busy && found.rows.length === 0 && found.error === null && (
-              <Pressable testID="med-free" accessibilityRole="button" onPress={() => set({ drug: q.trim(), medicineId: null })} style={st.hit}>
+              <Pressable testID="med-free" accessibilityRole="button" onPress={() => typed(q.trim())} style={st.hit}>
                 <Text style={st.hitName}>{t("mobile.consult.medFree", { text: q.trim() })}</Text>
               </Pressable>
             )}
@@ -336,7 +366,7 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
           <>
             <View style={st.hit}>
               <Text testID="line-drug" style={[st.hitName, { flex: 1, fontWeight: "700" }]}>{l.drug}</Text>
-              <Pressable testID="line-change-drug" accessibilityRole="button" hitSlop={8} onPress={() => { set({ drug: "", medicineId: null }); setQ(""); }}><Text style={st.link}>{t("mobile.consult.change")}</Text></Pressable>
+              <Pressable testID="line-change-drug" accessibilityRole="button" hitSlop={8} onPress={() => { set({ drug: "", medicineId: null, source: null }); setQ(""); }}><Text style={st.link}>{t("mobile.consult.change")}</Text></Pressable>
             </View>
             <Lab>{t("mobile.consult.dose")}</Lab>
             <View style={st.chips}>{DOSES.map((d) => <Chip key={d} testID={`dose-${d}`} label={d} on={l.dose === d} onPress={() => set({ dose: d })} />)}</View>
@@ -374,6 +404,7 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
               <Text style={st.lineMain}>{lineText(l, days)}</Text>
               {lineSub(l, food) !== "" && <Text style={st.hitSub}>{lineSub(l, food)}</Text>}
               {!lineComplete(l) && <Text style={[st.hitSub, { color: color.red, fontWeight: "700" }]}>{t("mobile.consult.lineIncomplete")}</Text>}
+              {(l.source ?? null) !== null && <Text testID={`line-source-${String(i)}`} style={st.fine}>{t(`mobile.consult.source.${l.source ?? "typed"}`)}</Text>}
             </Pressable>
             {mine.map((w) => (
               <View key={w.key} testID={`warn-${w.kind}-${String(i)}`} style={[st.alert, w.hard ? st.alertRed : st.alertAmber]}>
@@ -412,7 +443,11 @@ export function warningBody(w: LineWarning, t: T): string {
 
 // ——— 4 · Tests ———
 
-export function TestsDrawer({ api, draft, patch, onClose }: { api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void }) {
+export function TestsDrawer({ api, draft, patch, onClose, suggest = true }: {
+  api: ConsultApi; draft: ConsultDraft; patch: Patch; onClose: () => void;
+  /** The hospital's suggestions switch. Off ⇒ no "often advised with this diagnosis"; search stays. */
+  suggest?: boolean;
+}) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
   const [list, setList] = useState<WirePriceRow[] | null>(null);
@@ -420,7 +455,7 @@ export function TestsDrawer({ api, draft, patch, onClose }: { api: ConsultApi; d
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     api.priceList().then(setList).catch((e) => { setList([]); setError(says(e, t)); });
-    if (draft.diagnoses.length > 0) api.testsFor(draft.diagnoses.map((d) => ({ text: d.text, icd10: d.icd10Code }))).then(setBefore).catch(() => setBefore([]));
+    if (suggest && draft.diagnoses.length > 0) api.testsFor(draft.diagnoses.map((d) => ({ text: d.text, icd10: d.icd10Code }))).then(setBefore).catch(() => setBefore([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
   const has = (id: string): boolean => draft.tests.some((x) => x.serviceId === id);
@@ -429,7 +464,11 @@ export function TestsDrawer({ api, draft, patch, onClose }: { api: ConsultApi; d
   const needle = q.trim().toLowerCase();
   const hits = needle.length < 2 || list === null ? [] : list.filter((r) => r.name.toLowerCase().includes(needle) || r.code.toLowerCase().includes(needle)).slice(0, 12);
   return (
-    <Drawer testID="tests-drawer" title={t("mobile.consult.tests")} onClose={onClose}>
+    <Drawer testID="tests-drawer" title={t("mobile.consult.tests")} onClose={() => {
+      // A test the price list could not answer, left in the box as the sheet closes: the term alone.
+      if (needle.length >= 3 && list !== null && list.length > 0 && hits.length === 0) void api.signals({ misses: [{ kind: "test", term: needle, stage: "search" }] }).catch(() => undefined);
+      onClose();
+    }}>
       <Box testID="test-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.testSearch")} maxLength={60} />
       {draft.tests.length > 0 && <View style={st.chips}>{draft.tests.map((x) => <Chip key={x.serviceId} testID={`test-on-${x.serviceId}`} label={`${x.name} ✕`} on onPress={() => toggle(x)} />)}</View>}
       {needle.length < 2 && before.length > 0 && <Lab>{t("mobile.consult.testsBefore")}</Lab>}

@@ -1,5 +1,5 @@
 {
-  "id": "3ee5e586-69be-4dac-8462-c7f7d1cf98f7",
+  "id": "0729bad3-5948-489d-bba7-3b887a5867af",
   "prevId": "0a60485d-1fb4-44da-ab8f-742bbec3ac32",
   "version": "7",
   "dialect": "postgresql",
@@ -6750,6 +6750,94 @@
       },
       "isRLSEnabled": false
     },
+    "public.opd_lasa_pairs": {
+      "name": "opd_lasa_pairs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name_a": {
+          "name": "name_a",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_b": {
+          "name": "name_b",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "opd_lasa_pairs_pair_uq": {
+          "name": "opd_lasa_pairs_pair_uq",
+          "columns": [
+            {
+              "expression": "name_a",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name_b",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "opd_lasa_pairs_order_ck": {
+          "name": "opd_lasa_pairs_order_ck",
+          "value": "\"opd_lasa_pairs\".\"name_a\" < \"opd_lasa_pairs\".\"name_b\" and \"opd_lasa_pairs\".\"name_a\" = lower(\"opd_lasa_pairs\".\"name_a\") and \"opd_lasa_pairs\".\"name_b\" = lower(\"opd_lasa_pairs\".\"name_b\")"
+        },
+        "opd_lasa_pairs_reviewed_ck": {
+          "name": "opd_lasa_pairs_reviewed_ck",
+          "value": "(\"opd_lasa_pairs\".\"reviewed_by\" is null) = (\"opd_lasa_pairs\".\"reviewed_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.opd_patient_reminders": {
       "name": "opd_patient_reminders",
       "schema": "",
@@ -7976,6 +8064,168 @@
       },
       "isRLSEnabled": false
     },
+    "public.opd_suggestion_events": {
+      "name": "opd_suggestion_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "opd_suggestion_events_at_idx": {
+          "name": "opd_suggestion_events_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "opd_suggestion_events_kind_ck": {
+          "name": "opd_suggestion_events_kind_ck",
+          "value": "\"opd_suggestion_events\".\"kind\" in ('medicine', 'test', 'diagnosis')"
+        },
+        "opd_suggestion_events_source_ck": {
+          "name": "opd_suggestion_events_source_ck",
+          "value": "\"opd_suggestion_events\".\"source\" in ('typed', 'voice', 'search', 'set', 'repeat')"
+        },
+        "opd_suggestion_events_outcome_ck": {
+          "name": "opd_suggestion_events_outcome_ck",
+          "value": "\"opd_suggestion_events\".\"outcome\" in ('accepted', 'dismissed', 'manual')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.opd_term_misses": {
+      "name": "opd_term_misses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "term": {
+          "name": "term",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stage": {
+          "name": "stage",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "opd_term_misses_kind_term_idx": {
+          "name": "opd_term_misses_kind_term_idx",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "term",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "opd_term_misses_kind_ck": {
+          "name": "opd_term_misses_kind_ck",
+          "value": "\"opd_term_misses\".\"kind\" in ('medicine', 'test', 'diagnosis')"
+        },
+        "opd_term_misses_stage_ck": {
+          "name": "opd_term_misses_stage_ck",
+          "value": "\"opd_term_misses\".\"stage\" in ('search', 'voice')"
+        },
+        "opd_term_misses_term_ck": {
+          "name": "opd_term_misses_term_ck",
+          "value": "char_length(\"opd_term_misses\".\"term\") between 2 and 60"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.opd_vitals": {
       "name": "opd_vitals",
       "schema": "",
@@ -8236,6 +8486,13 @@
         },
         "enabled": {
           "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "suggestions_enabled": {
+          "name": "suggestions_enabled",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

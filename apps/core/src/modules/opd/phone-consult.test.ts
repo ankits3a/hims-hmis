@@ -7,7 +7,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import {
-  events, formularyMedicineSalts, formularyMedicines, formularySalts, opdRxSets, opdVoiceUsage, orgDepartments,
+  events, formularyMedicineSalts, formularyMedicines, formularySalts, opdLasaPairs, opdRxSets, opdSuggestionEvents, opdTermMisses, opdVoiceUsage, orgDepartments,
   roles, rosterTeamMemberships, rosterTeams,
 } from "../../kernel/db/schema";
 import { forgetOpenAiKeyCache } from "../../kernel/inference/openai-speech";
@@ -22,6 +22,8 @@ import {
   VOICE_MAX_SECONDS, ageBandOf, hintFor, recordVoiceKept, saveVoiceSettings, suggestFromTranscript, transcribeConsultNote,
   voiceMeter, voiceStatus,
 } from "./consult-voice";
+import { classLabel, guardedMedicineSearch, lasaPartner, recordSignals, romanise, signalsMeter } from "./consult-guards";
+import { prescriptionBody, rxLineBody } from "./opd-queue.controller";
 import type { Db } from "../../kernel/db/client";
 
 const MON = new Date("2026-08-17T04:00:00.000Z");
@@ -237,9 +239,9 @@ describe("phone consult — sets and the spoken note", () => {
       const pan = await medicine("Pan 40 Tablet");
       await medicine("Paracetamol 500 mg Tablet");
       const tests = [{ serviceId: "svc-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000 }];
-      const s = await suggestFromTranscript(db, "Teen din se bukhar. Pan 40 subah khali pet. CBC karwa lijiye.", tests);
+      const s = (await suggestFromTranscript(db, "Teen din se bukhar. Pan 40 subah khali pet. CBC karwa lijiye.", tests)).suggestions;
       expect(s).toEqual([
-        { kind: "medicine", heard: "Pan 40", medicineId: pan, name: "Pan 40 Tablet", form: "tablet", strength: null },
+        { kind: "medicine", heard: "Pan 40", medicineId: pan, name: "Pan 40 Tablet", form: "tablet", strength: null, drugClass: null, lasa: null },
         { kind: "test", heard: "CBC", serviceId: "svc-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000 },
       ]);
       const v = await inConsult();
@@ -293,6 +295,96 @@ describe("phone consult — sets and the spoken note", () => {
       expect(hint).toContain("Patient: 50-59 years, male, General Medicine OPD.");
       expect(hint).toContain("Pan 40");
       expect(hintFor.length).toBe(3);
+    });
+  });
+  describe("the guards round a suggestion", () => {
+    async function classed(brand: string, salt: string, drugClass: string | null): Promise<string> {
+      const id = newId();
+      await db.insert(formularyMedicines).values({ id, brandName: brand, nameNormalized: normalizeDrugName(brand), form: "tablet", strengthLabel: "25 mg", createdBy: "t", updatedBy: "t" });
+      const saltId = newId();
+      await db.insert(formularySalts).values({ id: saltId, name: salt, nameNormalized: salt.toLowerCase(), drugClass, createdBy: "t", updatedBy: "t" } as never);
+      await db.insert(formularyMedicineSalts).values({ medicineId: id, saltId, source: "curated" } as never);
+      return id;
+    }
+
+    it("one script: Devanagari comes back Roman, and Roman is left exactly as it was", () => {
+      expect(romanise("Teen din se bukhar, Pan 40")).toBe("Teen din se bukhar, Pan 40");
+      expect(romanise("बुखार")).toBe("Bukhar");
+      expect(romanise("तीन दिन से बुखार और खांसी, Pan 40 खाली पेट।").toLowerCase()).toBe("tin din se bukhar aur khansi, pan 40 khali pet.");
+      expect(romanise("सिर दर्द")).toBe("Sir dard");
+      expect(/[\u0900-\u097F]/.test(romanise("पेशाब में जलन, ३ दिन, ज़ुकाम"))).toBe(false);
+      expect(romanise("३ दिन")).toBe("3 din");
+    });
+
+    it("a search row carries its strength, form and class, and names the look-alike it must be told from", async () => {
+      await db.insert(opdLasaPairs).values({ id: "l1", nameA: "hydralazine", nameB: "hydroxyzine" });
+      const hz = await classed("Hydroxyzine 25 mg Tablet", "Hydroxyzine", "antihistamine");
+      await classed("Pantoprazole 40 mg Tablet", "Pantoprazole", "ppi");
+      const a = await guardedMedicineSearch(db, "hydroxy", 5);
+      expect(a.map((h) => [h.id, h.strength, h.form, h.drugClass, h.lasa])).toEqual([[hz, "25 mg", "tablet", "Antihistamine", "hydralazine"]]);
+      const b = await guardedMedicineSearch(db, "panto", 5);
+      expect(b[0]).toMatchObject({ drugClass: "PPI", lasa: null });
+      // A class nobody recorded is not invented.
+      await medicine("Zincovit Tablet");
+      expect((await guardedMedicineSearch(db, "zincovit", 5))[0]).toMatchObject({ drugClass: null, lasa: null });
+      expect(classLabel(null)).toBeNull();
+      // A retired pair stops asking.
+      await db.update(opdLasaPairs).set({ active: false });
+      expect((await guardedMedicineSearch(db, "hydroxy", 5))[0]!.lasa).toBeNull();
+      expect(lasaPartner([{ a: "cefixime", b: "cefuroxime", reviewed: false }], ["Taxim-O 200", "cefixime"])).toBe("cefuroxime");
+    });
+
+    it("a word that matched nothing is logged as the term alone; what became of a suggestion is counted", async () => {
+      const out = await recordSignals(db, dra.actor, {
+        misses: [{ kind: "medicine", term: "  Zerodol   SP ", stage: "search" }, { kind: "diagnosis", term: "x", stage: "search" }],
+        suggestions: [{ kind: "medicine", source: "voice", outcome: "accepted" }, { kind: "medicine", source: "voice", outcome: "dismissed" }, { kind: "medicine", source: "typed", outcome: "manual" }],
+      }, MON);
+      expect(out).toEqual({ misses: 1, suggestions: 3 });
+      const rows = await db.select().from(opdTermMisses);
+      expect(rows.map((r) => [r.kind, r.term, r.stage, r.userId])).toEqual([["medicine", "zerodol sp", "search", dra.userId]]);
+      // The columns ARE the promise: there is nowhere for a patient or a visit to be written.
+      expect(Object.keys(rows[0]!).sort()).toEqual(["createdAt", "id", "kind", "stage", "term", "userId"]);
+      expect(Object.keys((await db.select().from(opdSuggestionEvents))[0]!).sort()).toEqual(["createdAt", "id", "kind", "outcome", "source", "userId"]);
+      const m = await signalsMeter(db, MON);
+      expect(m.suggestions).toEqual([{ source: "typed", accepted: 0, dismissed: 0, manual: 1 }, { source: "voice", accepted: 1, dismissed: 1, manual: 0 }]);
+      expect(m.misses).toEqual([expect.objectContaining({ kind: "medicine", term: "zerodol sp", times: 1 })]);
+    });
+
+    it("a heard medicine the catalogue cannot answer is logged; the suggestions switch stops every offer and leaves the note working", async () => {
+      await medicine("Pan 40 Tablet");
+      const tests = [{ serviceId: "svc-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000 }];
+      const s = await suggestFromTranscript(db, "Zerodol 100 do baar, Pan 40 subah", tests);
+      expect(s.missed).toEqual(["Zerodol 100"]);
+      expect(s.suggestions.map((x) => x.heard)).toEqual(["Pan 40"]);
+
+      const patient = await mkPatient(db, clerk.actor, { name: "Sita Devi", sex: "female", phone: "9812345670", ageYears: 40 } as never);
+      const enc = (await openVisit(db, clerk.actor, { patientId: patient.id, departmentId: deptId, doctorId: dra.doctorId }, MON)).encounter;
+      await recordVitals(db, vd.actor, enc.id, adultOk, MON);
+      const q = await listQueue(db, dra.actor, dra.doctorId, enc.serviceDate, MON);
+      await callNext(db, dra.actor, q!.session.id, MON);
+      await startConsultation(db, dra.actor, enc.id, MON);
+      const say = (text: string) => (async () => new Response(JSON.stringify({ text }), { status: 200 })) as unknown as typeof fetch;
+      const on = await transcribeConsultNote(db, keyFile, dra.actor, enc.id, { audio: Buffer.from("a"), mimeType: "audio/mp4", seconds: 5 }, { fetcher: say("Zerodol 100, पैन 40 सुबह"), now: MON });
+      expect(/[\u0900-\u097F]/.test(on.text)).toBe(false);
+      expect((await db.select().from(opdTermMisses)).map((r) => [r.term, r.stage])).toEqual([["zerodol 100", "voice"]]);
+
+      await saveVoiceSettings(db, dra.actor, { suggestionsEnabled: false }, MON);
+      const off = await transcribeConsultNote(db, keyFile, dra.actor, enc.id, { audio: Buffer.from("a"), mimeType: "audio/mp4", seconds: 5 }, { fetcher: say("Pan 40 subah"), now: MON });
+      expect(off).toMatchObject({ text: "Pan 40 subah", suggestions: [] });
+      expect((await voiceStatus(db, keyFile, MON))).toMatchObject({ why: null, suggestionsEnabled: false });
+      // …and the other switch stops the clip at the door, with suggestions back on.
+      await saveVoiceSettings(db, dra.actor, { enabled: false, suggestionsEnabled: true }, MON);
+      await expect(transcribeConsultNote(db, keyFile, dra.actor, enc.id, { audio: Buffer.from("a"), mimeType: "audio/mp4", seconds: 5 }, { fetcher: say("x"), now: MON }))
+        .rejects.toMatchObject({ code: "voice_unavailable_state_conflict" });
+    });
+
+    it("the issue body keeps a line's source and the drug–disease answers — zod strips what it is not told about", () => {
+      const line = { ...PARA, noSubstitution: false, source: "voice" };
+      expect(rxLineBody.parse(line)).toMatchObject({ source: "voice" });
+      expect(() => rxLineBody.parse({ ...line, source: "guessed" })).toThrow();
+      const parsedBody = prescriptionBody.parse({ lines: [line], drugDiseaseOverrides: [{ lineIndex: 0, reason: "benefit outweighs, renal dose", moiety: "paracetamol", icd10Prefix: "N18" }] });
+      expect(parsedBody.drugDiseaseOverrides).toHaveLength(1);
+      expect(parsedBody.lines[0]).toMatchObject({ source: "voice" });
     });
   });
 });
