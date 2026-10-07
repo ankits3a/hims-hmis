@@ -18,13 +18,14 @@ import { headerOf } from "../home/profile";
 import { buildHome, rupees, type HomeAction, type HomeModel, type NeedCard, type Sources, type WireApproval } from "../home/model";
 import { ApprovalSheet, CoverSheet, clockText } from "../home/sheets";
 import { Spark } from "../home/spark";
+import { RecordedCard, type RecordingReport } from "../home/recorded";
 import { rosterApi } from "../roster/api";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
 const REFRESH_MS = 30_000;
 /** The last home this phone drew, kept while the app is open — shown with "as of" when the network drops. */
-let lastHome: { sources: Sources; at: number; user: string; header: HeaderFacts; unread: number | null } | null = null;
+let lastHome: { sources: Sources; at: number; user: string; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null } | null = null;
 export function _forgetHomeForTests(): void { lastHome = null; void homeCache.clear(); }
 
 const TONE: Record<Tone, { edge: string; bg: string; fg: string }> = {
@@ -61,7 +62,7 @@ export function SeatHome() {
   const user = signedIn ? state.me.actor.id : "";
   const permissions = useMemo(() => me?.permissions.hospital ?? [], [me]);
   const seatKeys = useMemo(() => (me === null ? [] : seatsFor(me.permissions).map((s) => s.key)), [me]);
-  const [home, setHome] = useState<{ sources: Sources; at: number; header: HeaderFacts; unread: number | null } | null>(() => (lastHome !== null && lastHome.user === user ? lastHome : null));
+  const [home, setHome] = useState<{ sources: Sources; at: number; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null } | null>(() => (lastHome !== null && lastHome.user === user ? lastHome : null));
   /** What this phone last drew before it was closed — counts only, shown when nothing can be read (`home/cache.ts`). */
   const [cold, setCold] = useState<ColdHome | null>(null);
   const [seen, setSeen] = useState<string[]>([]);
@@ -83,7 +84,7 @@ export function SeatHome() {
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
     if (loaded.reached) {
-      lastHome = { sources: loaded.sources, at: now, user, header: loaded.header, unread: loaded.unread };
+      lastHome = { sources: loaded.sources, at: now, user, header: loaded.header, unread: loaded.unread, recording: loaded.recording };
       setHome(lastHome); setOnline(true);
       void homeCache.save(coldOf(user, now, buildHome({ ...loaded.sources, nowMs: now })));
     } else {
@@ -333,6 +334,12 @@ export function SeatHome() {
                 ))}
               </View>
             )}
+
+            <RecordedCard
+              r={home?.recording ?? null} seats={seatKeys} permissions={permissions} t={t}
+              onScan={() => router.push({ pathname: "/seat/[key]", params: { key: "slips" } })}
+              onByDoctor={() => router.push("/recording")}
+            />
 
             {model.hospital !== null && model.hospital.byDepartment.length > 0 && (
               <View testID="home-departments" style={{ backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.sm }}>

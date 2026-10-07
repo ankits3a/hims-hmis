@@ -214,6 +214,7 @@ describe("app home — the first screen (owner 2026-10-07)", () => {
     const { fetcher, sent } = server(OWNER, {
       "GET /approvals": route({ status: 200, body: { items, total: 1 } }),
       "GET /me/brief": route({ status: 404 }), "GET /me/desk": route({ status: 404 }), "GET /me/team": route({ status: 404 }), "GET /roster/my-duties": route({ status: 404 }),
+      "GET /opd/reports/recording": route({ status: 404 }),
       "GET /alerts": route({ status: 200, body: { items: [], unreadCount: 0 } }),
     });
     await mount(fetcher);
