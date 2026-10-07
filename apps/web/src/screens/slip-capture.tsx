@@ -13,7 +13,11 @@ import {
 } from "../../../../packages/contracts/src/slip-desk";
 import type { SlipDay, SlipKind, SlipPatient, SlipReadback } from "../../../../packages/contracts/src/slip-desk";
 import { tokenText } from "../../../../packages/contracts/src/vitals-entry";
+import type { WirePaperOutcome, WirePaperVerdict } from "../lib/opd-api";
 import "./slip-desk.css";
+
+/** The outcomes after which the visit stands consulted — worded in green; the rest say why not, plainly. */
+const PAPER_CONSULTED: ReadonlySet<string> = new Set<WirePaperOutcome>(["marked", "already_marked", "doctor_completed"]);
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -162,7 +166,7 @@ export function SlipCapture(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   /** The number the server did not know — state B's red box and its alert. */
   const [refused, setRefused] = useState<string | null>(null);
-  const [filed, setFiled] = useState<{ back: Readback; kind: Kind; at: string } | null>(null);
+  const [filed, setFiled] = useState<{ back: Readback; kind: Kind; at: string; paper: WirePaperOutcome | "failed" | null } | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [findQ, setFindQ] = useState("");
@@ -383,7 +387,7 @@ export function SlipCapture(): React.ReactElement {
     if (resolved === null || shot === null) return;
     setError(null);
     try {
-      await api("POST", `/patients/${resolved.patientId}/documents`, {
+      const done = await api<{ documentId: string; effects?: { "opd.paper"?: WirePaperVerdict | { failed: true } } }>("POST", `/patients/${resolved.patientId}/documents`, {
         imageBase64: shot,
         mimeType: "image/jpeg",
         kind,
@@ -392,7 +396,11 @@ export function SlipCapture(): React.ReactElement {
       });
       /* The confirmation NAMES the patient. A desk that photographs forty slips an hour needs to see
          which one just landed, not a green tick that could belong to any of them. */
-      setFiled({ back: resolved, kind, at: new Date().toISOString() });
+      /* Owner ruling 2026-10-06 — and it says what the page did to the visit: closed it, found it
+         closed, or left it alone and why. A slip desk must not have to guess whether the patient
+         is still "waiting" on the doctor's screen. */
+      const paper = done.effects?.["opd.paper"];
+      setFiled({ back: resolved, kind, at: new Date().toISOString(), paper: paper === undefined ? null : "failed" in paper ? "failed" : paper.outcome });
       setVisitNo(""); setResolved(null); setShot(null); setRaw(null); setShotSize(null); setNote("");
       void queryClient.invalidateQueries({ queryKey: ["opd", "slips", "today"] });
       setTimeout(() => scanRef.current?.focus(), 0);
@@ -654,6 +662,14 @@ export function SlipCapture(): React.ReactElement {
               <span className="dim">
                 {t("slipCapture.filedLine", { kind: kindLabel(filed.kind), at: fmtIst(filed.at), doctor: filed.back.doctorCode ?? "—" })}
               </span>
+              {filed.paper !== null && (
+                <>
+                  <br />
+                  <span data-testid="slip-paper" data-outcome={filed.paper} className={PAPER_CONSULTED.has(filed.paper) ? "sd-paper ok" : "sd-paper"}>
+                    {t(`paper.outcome.${filed.paper}`)}
+                  </span>
+                </>
+              )}
             </span>
           </div>
         )}

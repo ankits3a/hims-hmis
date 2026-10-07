@@ -244,6 +244,30 @@ describe("the slip desk on a phone", () => {
     expect(screen.getByTestId("slip-visit")).toBeTruthy();
   });
 
+  /**
+   * Owner ruling 2026-10-06 — "clicking a picture of prescription slip … will mark the patient as
+   * Consulted". The server decides and answers beside the document id; the phone says which it was.
+   */
+  async function fileSlipSaying(paper: Record<string, unknown>): Promise<void> {
+    const s = server(base({ "POST /patients/p4/documents": () => ({ status: 201, body: { documentId: "d1", effects: { "opd.paper": paper } } }) }));
+    await mount(s.fetcher);
+    await find("V2610060004");
+    await photograph();
+    await waitFor(() => expect(screen.getByTestId("slip-crop-use")).not.toBeDisabled());
+    await fireEvent.press(screen.getByTestId("slip-crop-use"));
+    await fireEvent.press(await screen.findByTestId("slip-file-it"));
+    await screen.findByTestId("slip-filed");
+  }
+  it("says the visit was marked consulted when the server closed it on this slip", async () => {
+    await fileSlipSaying({ outcome: "marked", consulted: true });
+    expect(screen.getByTestId("slip-paper")).toHaveTextContent("The visit is now marked consulted.");
+  });
+  it("a slip filed by a login that is not a slip desk is still FILED — and says the visit was not marked, and why", async () => {
+    await fileSlipSaying({ outcome: "not_permitted", consulted: false });
+    expect(screen.getByTestId("slip-paper")).toHaveTextContent("Not marked consulted: this login is not a Slip Desk or Desk Scribe.");
+    expect(screen.getByTestId("slip-filed")).toHaveTextContent(/Filed against Geeta Devi/);
+  });
+
   it("never queues: with no network the photo and the crop stay, the line says nothing was sent, and Try again files it", async () => {
     let online = false;
     const s = server(base({ "POST /patients/p4/documents": () => (online ? { status: 201, body: { documentId: "d1" } } : "offline") }));

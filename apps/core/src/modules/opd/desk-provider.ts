@@ -189,8 +189,9 @@ async function myVisitsSection(ctx: DeskProviderCtx): Promise<ReportSection> {
  * the service date, status completed — so the list and the brief's number cannot disagree. A person
  * who is not a doctor gets no section at all rather than an empty one.
  *
- * Outcome is a code the screen words: `referred` when the consult referred the patient on,
- * `prescribed` when a prescription was issued, else `completed`. Names obey the same alias rule as
+ * Outcome is a code the screen words: `paper` when a desk closed the visit from the doctor's paper
+ * (owner ruling 2026-10-06), `referred` when the consult referred the patient on, `prescribed` when
+ * a prescription was issued, else `completed`. Names obey the same alias rule as
  * the visits section: `ctx.reader` decides visibility.
  */
 async function myConsultsSection(ctx: DeskProviderCtx, doctorId: string): Promise<ReportSection> {
@@ -201,6 +202,7 @@ async function myConsultsSection(ctx: DeskProviderCtx, doctorId: string): Promis
       patientId: opdEncounters.patientId,
       visitType: opdEncounters.visitType,
       referralTo: opdEncounters.referralTo,
+      completedVia: opdEncounters.completedVia,
       completedAt: opdEncounters.consultCompletedAt,
       openedAt: opdEncounters.openedAt,
     })
@@ -231,7 +233,10 @@ async function myConsultsSection(ctx: DeskProviderCtx, doctorId: string): Promis
         p?.uhid ?? "—",
         (p?.restricted === true ? p.alias : p?.name) ?? "—",
         r.visitType,
-        r.referralTo !== null && r.referralTo !== "" ? "referred" : prescribed.has(r.id) ? "prescribed" : "completed",
+        // Owner ruling 2026-10-06 — a visit closed from the doctor's paper says so: the doctor reading
+        // their own day sees which consultations a desk closed for them, whatever else was typed.
+        r.completedVia === "paper" ? "paper"
+          : r.referralTo !== null && r.referralTo !== "" ? "referred" : prescribed.has(r.id) ? "prescribed" : "completed",
       ];
     }),
     totals: ["", "", "", "", "", String(rows.length)],

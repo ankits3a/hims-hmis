@@ -252,3 +252,7 @@
 .sd-crop-loupe.below { margin-top: 54px; }
 .sd-crop-loupe::after { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid var(--mint); border-radius: 50%; }
 @media (max-width: 640px) { .sd-crop-frame { padding: 14px 10px; } }
+
+/* Owner ruling 2026-10-06 — what the filed page did to the visit (consulted, or why not). */
+.sd-paper { display: inline-block; margin-top: 4px; font-weight: 600; color: #9a6208; }
+.sd-paper.ok { color: var(--green); }

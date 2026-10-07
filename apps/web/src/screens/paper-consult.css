@@ -1,0 +1,170 @@
+/*
+  CONSULTED ON PAPER — the desk scribe's screen and the doctor's / supervisor's list
+  (owner ruling 2026-10-06). `.pc` = shared frame, `.pl` = the lines editor, `.pcl` = the list.
+  Light cards only (owner: no dark slabs). Phone: one column, the paper above the typing.
+*/
+.pc { background: var(--paper); }
+.pc-top { padding: 16px 22px 12px; display: flex; flex-direction: column; gap: 12px; flex-shrink: 0; }
+.pc .in { width: 100%; height: 36px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); padding: 0 10px; font: inherit; font-size: 13px; color: var(--ink); min-width: 0; }
+.pc .in::placeholder { color: var(--faint); }
+.pc .in:focus { outline: 0; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.pc .in[aria-invalid="true"] { border-color: var(--red-line); background: var(--red-soft); }
+.pc .in:disabled { background: var(--wash); color: var(--dim); }
+.pc-bad { margin: 0; color: var(--red); font-size: 12.5px; font-weight: 600; }
+.pc-note { margin: 0; font-size: 12.5px; line-height: 19px; color: var(--dim); }
+.pc-note.gd { background: var(--gold-soft); border: 1px solid var(--gold-line); border-radius: 7px; padding: 9px 11px; color: var(--ink); }
+.pc-l { display: block; font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+.pc-hint { font-size: 11.5px; color: var(--faint); }
+.pc .pill.gr { background: var(--green-soft); color: var(--green); border-color: var(--green-line); }
+
+/* find */
+.pc-find { padding: 4px 22px 22px; display: flex; flex-direction: column; gap: 16px; max-width: 680px; overflow-y: auto; }
+.pc-find-box { padding: 16px; }
+.pc-find-l { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.pc-find-row { display: flex; gap: 8px; }
+.pc-find-row .in { height: 44px; font-size: 16px; font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.pc-find-row .pri { height: 44px; flex-shrink: 0; }
+.pc-find-box .pc-bad { margin-top: 10px; }
+.pc-choices { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pc-choices button { width: 100%; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.pc-choices button:hover, .pc-choices button:focus-visible { border-color: var(--green); outline: 0; }
+.pc-choices .mo { font-size: 11.5px; color: var(--dim); }
+.pc-how { margin: 0; padding: 0; list-style: none; counter-reset: how; display: flex; flex-direction: column; gap: 9px; font-size: 13px; line-height: 20px; color: var(--dim); }
+.pc-how li { counter-increment: how; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; }
+.pc-how li::before { content: counter(how); width: 24px; height: 24px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-weight: 700; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+
+/* done */
+.pc-done { padding: 18px; }
+.pc-done-h { margin: 0 0 10px; font-size: 16px; font-weight: 700; }
+.pc-done-h .mo { font-size: 12px; font-weight: 400; color: var(--dim); margin-left: 6px; }
+.pc-done-l { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; }
+.pc-done-l > li { padding: 8px 11px; border-radius: 7px; border: 1px solid var(--line); }
+.pc-done-l > li.ok { background: var(--green-soft); border-color: var(--green-line); }
+.pc-done-l > li.held { background: var(--gold-soft); border-color: var(--gold-line); }
+.pc-done-l ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
+.pc-done .pri { height: 42px; }
+
+/* work: the paper left, the typing right */
+.pc-work { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(280px, 38%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 14px; padding: 0 22px 14px; overflow: hidden; }
+.pc-paper { min-height: 0; height: 100%; }
+.pc-type { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
+.pc-who { padding: 11px 14px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.pc-who-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; }
+.pc-who-main b { font-size: 17px; }
+.pc-who-main .mo { font-size: 11.5px; color: var(--dim); overflow-wrap: anywhere; }
+.pc-who-side { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pc-card { padding: 13px 14px; }
+.pc-card-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.pc-card-h h2 { margin: 0; font-size: 14px; }
+
+/* tests */
+.pc-tests { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pc-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 10px; border-radius: 999px; background: var(--green-soft); border: 1px solid var(--green-line); font-size: 12.5px; }
+.pc-chip button { width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: var(--dim); font-size: 15px; line-height: 1; cursor: pointer; }
+.pc-chip button:hover { background: var(--card); color: var(--red); }
+.pc-test-in { position: relative; flex: 1 1 240px; min-width: 200px; }
+.pc-test-list { position: absolute; z-index: 20; top: 39px; left: 0; right: 0; margin: 0; padding: 0; list-style: none; background: var(--card); border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 6px 18px rgba(19, 36, 32, .10); max-height: 280px; overflow-y: auto; }
+.pc-test-list button { width: 100%; display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 0; border-top: 1px solid var(--line2); background: none; font: inherit; font-size: 13px; color: inherit; cursor: pointer; text-align: left; }
+.pc-test-list button.on, .pc-test-list button:hover { background: var(--green-soft); }
+.pc-test-list .mo { font-size: 11px; color: var(--faint); flex-shrink: 0; }
+
+/* dock — light, sticky at the foot */
+.pc-dock { flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 10px 22px; background: var(--card); border-top: 1px solid var(--line); }
+.pc-dock-say { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.pc-dock-say small { font-size: 11px; color: var(--faint); }
+.pc-dock .pri { height: 42px; flex-shrink: 0; }
+.pc-held { color: #9a6208; }
+
+/* ——— the lines editor ——— */
+.pl { display: flex; flex-direction: column; gap: 6px; }
+.pl-head, .pl-cells { display: grid; grid-template-columns: minmax(190px, 3fr) minmax(62px, 1fr) minmax(62px, .9fr) 50px 62px minmax(96px, 1.4fr) 30px; gap: 6px; align-items: start; }
+.pl-head { font-size: 10.5px; color: var(--dim); padding: 0 1px; }
+.pl-l { display: none; }
+.pl-c { display: block; min-width: 0; }
+.pl-row { border-radius: 7px; }
+.pl-row[data-held="true"] { background: var(--red-soft); box-shadow: 0 0 0 4px var(--red-soft); }
+.pl-x { width: 30px; height: 36px; border: 0; background: none; color: var(--faint); font-size: 18px; cursor: pointer; border-radius: 6px; }
+.pl-x:hover { color: var(--red); background: var(--red-soft); }
+.pl-miss { margin: 3px 0 0; font-size: 11.5px; color: var(--red); }
+.pl-alert { margin: 4px 0 0; display: flex; gap: 8px; align-items: baseline; font-size: 12px; line-height: 17px; padding: 5px 9px; border-radius: 6px; background: var(--gold-soft); border: 1px solid var(--gold-line); }
+.pl-alert b { flex-shrink: 0; color: #9a6208; }
+.pl-alert.hard { background: var(--card); border-color: var(--red-line); }
+.pl-alert.hard b { color: var(--red); }
+.pl-reason { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; font-size: 11.5px; color: var(--dim); }
+.pl-add { align-self: flex-start; margin-top: 4px; }
+
+/* ——— the list ——— */
+.pcl-seg { display: inline-flex; gap: 2px; background: var(--wash); border-radius: 8px; padding: 2px; }
+.pcl-seg button { font: inherit; font-size: 12.5px; font-weight: 600; border: 0; background: transparent; color: var(--dim); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.pcl-seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+.pcl-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; max-width: 620px; }
+.pcl-tile { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; display: flex; flex-direction: column; gap: 1px; }
+.pcl-tile b { font-size: 24px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.pcl-tile span { font-size: 12px; color: var(--dim); }
+.pcl-tile.rd { border-color: var(--red-line); background: var(--red-soft); }
+.pcl-tile.rd b { color: var(--red); }
+.pcl-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 22px 22px; display: flex; flex-direction: column; gap: 10px; }
+.pcl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pcl-row { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.pcl-row.open { border-color: var(--green-line); }
+.pc .pcl-list .pcl-head { width: 100%; display: grid; grid-template-columns: 54px minmax(140px, 1.2fr) minmax(0, 1.6fr) auto; gap: 12px; align-items: center; padding: 11px 14px; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.pcl-head:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.pcl-tok { font-size: 15px; font-weight: 600; }
+.pcl-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pcl-name b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcl-name .mo { font-size: 11px; color: var(--faint); overflow-wrap: anywhere; }
+.pcl-how { font-size: 12.5px; color: var(--dim); min-width: 0; }
+.pcl-pills { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.pcl-open { display: grid; grid-template-columns: minmax(260px, 40%) minmax(0, 1fr); gap: 14px; padding: 0 14px 14px; border-top: 1px solid var(--line2); padding-top: 14px; }
+.pcl-paper { height: min(62vh, 620px); min-height: 280px; }
+.pcl-typed { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pcl-block h3 { margin: 0 0 6px; font-size: 13px; }
+.pcl-block ol, .pcl-block ul { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 22px; }
+.pcl-block.held { background: var(--red-soft); border: 1px solid var(--red-line); border-radius: 8px; padding: 10px 12px; }
+.pcl-block.held h3 { color: var(--red); }
+.pcl-block.draft { background: var(--gold-soft); border: 1px solid var(--gold-line); border-radius: 8px; padding: 10px 12px; }
+.pc .pill.gd { background: var(--gold-soft); color: #9a6208; border-color: var(--gold-line); }
+.pcl-why { display: block; font-size: 12px; color: var(--dim); font-weight: 400; }
+.pcl-by { margin: 0 0 4px; font-size: 12px; color: #9a6208; font-weight: 600; }
+.pcl-noteline { margin: 6px 0 0; font-size: 12px; color: var(--dim); }
+.pcl-tests { list-style: disc; }
+.pcl-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pcl-acts .pri, .pcl-acts .sec { height: 38px; }
+.pcl-edit { display: flex; flex-direction: column; gap: 10px; }
+.pcl-check { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; }
+
+/* ——— phone and narrow tablet: one column ——— */
+@media (max-width: 1180px) {
+  .pc-work { grid-template-columns: minmax(240px, 31%) minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .pc-top { padding: 12px 16px 10px; }
+  .pc-find { padding: 4px 16px 18px; }
+  .pc-work { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; padding: 0 16px 12px; overflow-y: auto; }
+  .pc-paper { height: 46vh; min-height: 240px; }
+  .pc-type { overflow: visible; }
+  .pc-dock { padding: 10px 16px; }
+  .pl-head { display: none; }
+  /* Phone: medicine across the top with its × pinned beside it; dose · frequency · days; route · instructions. */
+  .pl-cells { position: relative; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px; gap: 6px; }
+  .pl-c.drug { grid-column: 1 / -1; padding-right: 38px; }
+  .pl-c.notes { grid-column: 2 / -1; }
+  .pl-x { position: absolute; top: 15px; right: 0; height: 40px; }
+  .pl-l { display: block; font-size: 10.5px; color: var(--dim); margin-bottom: 2px; }
+  .pl-row { padding: 8px 0; border-top: 1px solid var(--line2); border-radius: 0; }
+  .pl-row:first-of-type { border-top: 0; }
+  .pc .in { height: 40px; font-size: 16px; }
+  .pcl-body { padding: 0 16px 18px; }
+  .pcl-head { grid-template-columns: 46px minmax(0, 1fr); row-gap: 6px; }
+  .pcl-how, .pcl-pills { grid-column: 1 / -1; justify-content: flex-start; }
+  .pcl-open { grid-template-columns: minmax(0, 1fr); }
+  .pcl-paper { height: 44vh; }
+}
+@media (max-width: 520px) {
+  .pc-find-row { flex-direction: column; }
+  .pc-dock { flex-wrap: wrap; }
+  .pc-dock .pri { width: 100%; }
+  .pcl-tiles { gap: 8px; }
+  .pcl-tile { padding: 8px 10px; }
+  .pcl-tile b { font-size: 20px; }
+}

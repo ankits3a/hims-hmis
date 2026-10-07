@@ -2227,6 +2227,25 @@ describe("OpdConsult", () => {
     expect(callsTo("POST", "/api/opd/queues/sess-1/call-next")).toHaveLength(0);
   });
 
+  /**
+   * Owner 2026-10-06 — the visit was closed from the doctor's paper WHILE this screen had it open.
+   * The completion is refused by the server with a sentence; the screen shows that sentence beside
+   * the button and stays exactly as it was — the patient panel, and everything typed in it.
+   */
+  it("a visit a desk closed from paper underneath this screen answers with a plain sentence, and the panel stays", async () => {
+    const SAID = "This visit has already been marked consulted from your paper prescription by the desk, so there is nothing left to complete here. What you typed is kept — open “My paper consultations” to check it or issue anything you had not issued.";
+    mockRoutes({
+      ...baseRoutes(),
+      "POST /api/opd/visits/enc-1/consult/complete": { status: 409, body: { statusCode: 409, code: "closed_on_paper_state_conflict", message: SAID } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(await screen.findByText(SAID)).toBeInTheDocument();
+    expect(screen.getByTestId("patient-panel")).toBeInTheDocument();
+    expect(screen.queryByText(/encounter_state_conflict|needs in_consultation/)).toBeNull();
+  });
+
   it("the keymap: Ctrl+Enter completes the open consultation — the same body the button posts, with the default follow-up window OMITTED", async () => {
     mockRoutes({
       ...baseRoutes(),
