@@ -98,7 +98,7 @@ function VitalsCard({ vitals, t }: { vitals: WireVisitVitals | null; t: T }) {
 }
 
 /** A filed paper, opened large: zoom with the buttons or a double tap, move it with a finger. */
-function PaperViewer({ api, doc, onClose, t }: { api: DoctorApi; doc: WireDocument; onClose: () => void; t: T }) {
+export function PaperViewer({ api, doc, onClose, t }: { api: DoctorApi; doc: WireDocument; onClose: () => void; t: T }) {
   const insets = useSafeAreaInsets();
   const bytes = useLoad(() => api.document(doc.id), `doc:${doc.id}`);
   const [zoom, setZoom] = useState(1);

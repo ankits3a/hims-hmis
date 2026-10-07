@@ -189,8 +189,18 @@ describe("app home — the first screen (owner 2026-10-07)", () => {
     const card = await screen.findByTestId("need-cover_request");
     expect(card).toHaveTextContent(/Cover request · Dr\. Ritu Kumari/);
     expect(card).toHaveTextContent(/due in 2 h 59 min|due in 3 h 0 min/);
+    /* No: the sheet asks why, and sends nothing until a reason is there (decision 0043). */
+    await fireEvent.press(screen.getByTestId("need-act-cover_request-no"));
+    expect(await screen.findByTestId("cover-sheet")).toHaveTextContent(/No — tell Dr\. Ritu Kumari why/);
+    await fireEvent.press(screen.getByTestId("cover-send"));
+    expect(await screen.findByTestId("cover-note-needed")).toBeTruthy();
+    expect(sent("POST /roster/covers/c1/answer")).toHaveLength(0);
+    await fireEvent.press(screen.getByTestId("cover-cancel"));
+    /* Yes: a word is optional. */
     await fireEvent.press(screen.getByTestId("need-act-cover_request-yes"));
-    await waitFor(() => { expect(sent("POST /roster/covers/c1/answer").map((c) => c.body)).toEqual([{ accept: true }]); });
+    await fireEvent.changeText(await screen.findByTestId("cover-note"), "I am free that night");
+    await fireEvent.press(screen.getByTestId("cover-send"));
+    await waitFor(() => { expect(sent("POST /roster/covers/c1/answer").map((c) => c.body)).toEqual([{ accept: true, note: "I am free that night" }]); });
     expect(await screen.findByTestId("home-said")).toHaveTextContent(/You said yes/);
   });
 
@@ -201,6 +211,7 @@ describe("app home — the first screen (owner 2026-10-07)", () => {
     const { fetcher, sent } = server(OWNER, {
       "GET /approvals": route({ status: 200, body: { items, total: 1 } }),
       "GET /me/brief": route({ status: 404 }), "GET /me/desk": route({ status: 404 }), "GET /me/team": route({ status: 404 }), "GET /roster/my-duties": route({ status: 404 }),
+      "GET /alerts": route({ status: 200, body: { items: [], unreadCount: 0 } }),
     });
     await mount(fetcher);
     await screen.findByTestId("need-approval");
