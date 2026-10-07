@@ -333,7 +333,10 @@ export function buildHome(src: Sources): HomeModel {
     tiles.push({ key: f.fact, labelKey: f.labelKey, value: String(v) });
   }
   if (bench !== null && tiles.length < 3) tiles.push({ key: "bench", labelKey: "home.tile.bench", value: String(bench.filter((b) => !b.vitalsDone).length) });
+  if (bench !== null && tiles.length < 3) tiles.push({ key: "rechecks", labelKey: "home.tile.rechecks", value: String(bench.filter((b) => b.recallAt !== null && (ms(b.recallAt) ?? Infinity) <= now).length) });
   if (src.slips !== undefined && src.slips !== null && tiles.length < 3) tiles.push({ key: "slips", labelKey: "home.tile.slips", value: String(src.slips.filed) });
+  if (src.slips !== undefined && src.slips !== null && tiles.length < 3) tiles.push({ key: "slipsWaiting", labelKey: "home.tile.slipsWaiting", value: String(src.slips.waiting + src.slips.retake) });
+  if (typeof src.toType === "number" && tiles.length < 3) tiles.push({ key: "toType", labelKey: "home.tile.toType", value: String(src.toType) });
   /* Money: the cashier's own, and it is LOCKED until the drawer is counted. The owner's is the hospital's. */
   const collected = day["billing.collectedPaise"];
   if (src.hospital !== undefined && src.hospital !== null) {

@@ -80,7 +80,7 @@ describe("app home round 2 — the header, the desks' own cards, what I asked fo
     expect(headerOf({ username: "c", fullName: "Dr. Chandan Kumar", roles: ["doctor"] }, "c", { doctor: { displayName: "Dr Chandan", departmentName: "General Medicine", unit: "Unit I" }, hospitalWide: false }, tr))
       .toEqual({ name: "Dr. Chandan Kumar", line: "General Medicine · Unit I" });
     expect(headerOf({ username: "o", fullName: "Abhay Kumar", roles: ["owner"] }, "o", { doctor: null, hospitalWide: true }, tr)).toEqual({ name: "Abhay Kumar", line: "Hospital · all departments" });
-    expect(headerOf({ username: "a", fullName: "Asha Devi", roles: ["front_office", "cashier", "admin"] }, "a", { doctor: null, hospitalWide: false }, tr)).toEqual({ name: "Asha Devi", line: "Cash counter · Front desk" });
+    expect(headerOf({ username: "a", fullName: "Asha Devi", roles: ["front_office", "cashier", "admin"] }, "a", { doctor: null, hospitalWide: false }, tr)).toEqual({ name: "Asha Devi", line: "Front desk · Cash counter" });
     expect(headerOf(undefined, "asha.devi", null, tr)).toEqual({ name: "asha.devi", line: null });
     expect(headerOf({ username: "x", fullName: null, roles: ["new_role_key"] }, "x", null, tr).line).toBe("New role key");
   });

@@ -1673,7 +1673,10 @@
       "collected": "Collected",
       "afterCount": "After your count · {{n}} receipts",
       "approvals": "Approvals",
-      "opdToday": "OPD today"
+      "opdToday": "OPD today",
+      "rechecks": "Re-checks due",
+      "slipsWaiting": "To photograph",
+      "toType": "To type"
     },
     "d30": {
       "title": "Last 30 days",

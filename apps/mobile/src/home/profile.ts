@@ -13,7 +13,7 @@ type T = (key: string, vars?: Record<string, string | number>) => string;
  */
 const ROLE_ORDER = [
   "owner", "medical_superintendent", "duty_manager", "billing_manager", "front_office_supervisor", "pharmacy_incharge", "ot_incharge",
-  "doctor", "cashier", "front_office", "vitals_desk", "opd_slip_desk", "opd_scribe", "nurse", "pharmacy", "pharmacy_assistant", "lab_technician", "radiographer",
+  "doctor", "front_office", "cashier", "vitals_desk", "opd_slip_desk", "opd_scribe", "nurse", "pharmacy", "pharmacy_assistant", "lab_technician", "radiographer",
 ] as const;
 
 const words = (key: string): string => key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());

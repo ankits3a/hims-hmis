@@ -1673,7 +1673,10 @@
       "collected": "वसूली",
       "afterCount": "गिनती के बाद · {{n}} रसीदें",
       "approvals": "मंज़ूरियाँ",
-      "opdToday": "आज की OPD"
+      "opdToday": "आज की OPD",
+      "rechecks": "दोबारा जाँच बाकी",
+      "slipsWaiting": "फ़ोटो बाकी",
+      "toType": "टाइप बाकी"
     },
     "d30": {
       "title": "पिछले 30 दिन",

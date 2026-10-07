@@ -1,6 +1,6 @@
 # 0042 — The staff app opens on "My day": what needs you now, approvals from the card, a team card for supervisors
 
-- **Date:** 2026-10-07   **Status:** Partly open
+- **Date:** 2026-10-07   **Status:** Ruled — what was open is closed by 0043
 - **Area:** mobile, approvals, billing, roster, security (auth)
 
 ## Decision
@@ -46,6 +46,8 @@
 - **Nothing is approved offline, and nothing is queued.** The last home stays on screen with "as of HH:MM".
 
 ## Still open
+
+**Closed by decision 0043 (round two), except the long-press shortcuts.** As round one left it:
 
 - An overdue approval raising its own alert (bell and phone category "Approvals") is not built; the card turns red.
 - The front desk's "still waiting" and "to re-book" cards, the scribe's "line the doctor sent back", and paper
