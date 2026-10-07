@@ -61,6 +61,37 @@ export type CapturedDocument = {
  * the insert rolls back the row AND no file was ever written, so nothing is left behind. Bytes
  * first would have left the file and rolled back the row. `G2b` is the row that discriminates.
  */
+/**
+ * ═══ WHAT ELSE A FILED DOCUMENT MEANS — OWNER RULING 2026-10-06 ═══
+ *
+ * A photographed prescription slip is also the evidence that the doctor has seen the patient, and
+ * the OPD closes the visit on it. This module must not know that: it is imported by nearly every
+ * other module and imports none of them. So the OPD hands in a function, exactly as billing hands
+ * the OPD its consult-door verdict (`registerConsultStartGuard`), and this file calls whatever is
+ * registered and passes the answers back beside the document id.
+ *
+ * KEYED, so a second module init in one jest worker replaces rather than double-registers.
+ *
+ * A HOOK NEVER COSTS THE DOCUMENT. Each runs inside its own SAVEPOINT: a hook that throws rolls
+ * back only what the hook wrote, the page stays filed, and the caller is told the hook failed
+ * (`{ failed: true }`) instead of being told the capture did.
+ */
+export type DocumentCapturedHook = (
+  tx: Tx, actor: Actor,
+  doc: { documentId: string; patientId: string; encounterId: string | null; kind: DocumentKind },
+  now: Date,
+) => Promise<unknown>;
+
+const documentCapturedHooks = new Map<string, DocumentCapturedHook>();
+
+/** Registers (or replaces) the hook under `key` and returns the unregister function. */
+export function registerDocumentCapturedHook(key: string, hook: DocumentCapturedHook): () => void {
+  documentCapturedHooks.set(key, hook);
+  return () => {
+    documentCapturedHooks.delete(key);
+  };
+}
+
 export async function captureDocument(
   tx: Tx,
   store: DocumentStore,
@@ -74,7 +105,7 @@ export async function captureDocument(
     note?: string | null;
   },
   now: Date = new Date(),
-): Promise<{ documentId: string }> {
+): Promise<{ documentId: string; effects: Record<string, unknown> }> {
   if (actor.type !== "user") throw new PatientError("user_actor_required");
 
   const ext = ALLOWED_MIME.get(input.mimeType);
@@ -121,7 +152,19 @@ export async function captureDocument(
     capturedAt: now,
   });
   await store.put(key, input.bytes);
-  return { documentId: id };
+
+  const effects: Record<string, unknown> = {};
+  for (const [hookKey, hook] of documentCapturedHooks) {
+    try {
+      const answer = await tx.transaction((sp) => hook(
+        sp, actor, { documentId: id, patientId, encounterId: input.encounterId ?? null, kind: input.kind }, now,
+      ));
+      if (answer !== null && answer !== undefined) effects[hookKey] = answer;
+    } catch (e) {
+      effects[hookKey] = { failed: true, message: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return { documentId: id, effects };
 }
 
 /**

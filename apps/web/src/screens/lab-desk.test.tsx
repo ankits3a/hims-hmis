@@ -124,6 +124,30 @@ it("WITH the collection grant the seat asks, and renders the queue", async () =>
   expect(screen.queryByText(/not shown at this seat/i)).not.toBeInTheDocument();
 });
 
+/**
+ * Owner ruling 2026-10-06 (A) — a test the desk scribe TYPED from the doctor's paper is billable at
+ * this counter exactly as one the doctor advised on the screen, and the seat says whose typing it
+ * is and offers the photographed slip to check it against. A test the doctor advised says neither.
+ */
+it("a test typed from the doctor's paper says who typed it, and the slip is one tap away", async () => {
+  const typed = { ...FARIDA, visit: { ...FARIDA.visit, advised: [
+    { ...FARIDA.visit.advised[0]!, typedFromPaperBy: "Priya Kumari" }, FARIDA.visit.advised[1]!,
+  ] } };
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [typed], labDoctors: [] } },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "GET /api/patients/p-farida/documents": { status: 200, body: { items: [] } },
+  });
+  await findByToken(seen);
+  expect(screen.getByTestId("lab-typed-CBC")).toHaveTextContent("Typed from the doctor's paper prescription by Priya Kumari");
+  expect(screen.queryByTestId("lab-typed-HBA1C")).not.toBeInTheDocument();
+  /* Still billed here by default: ruling A — no doctor's confirmation stands between the paper and the lab. */
+  expect(screen.getByLabelText("billed here CBC")).toBeChecked();
+  await userEvent.click(screen.getByTestId("lab-see-slip"));
+  expect(await screen.findByTestId("paper-slip-none")).toBeInTheDocument();
+});
+
 it("the TOKEN door: one hit is the person, and the consult's Rx lines are on the screen before anybody types", async () => {
   const seen = mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },

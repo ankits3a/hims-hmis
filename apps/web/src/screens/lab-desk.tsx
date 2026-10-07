@@ -14,6 +14,7 @@ import type {
   DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
 } from "../lib/lab-api";
 import { CreditChip } from "../components/patient-credit";
+import { PaperSlipSheet } from "../components/paper-slip";
 
 /**
  * PLAN 17c T1 — **LAB RECEPTION**: Sanjay's seat (design board 1).
@@ -46,7 +47,11 @@ import { CreditChip } from "../components/patient-credit";
  */
 
 type LineSource = "advised" | "added";
-type Line = { orderable: WireOrderable; source: LineSource; onCredit: boolean; alreadyOrderedItemId: string | null };
+type Line = {
+  orderable: WireOrderable; source: LineSource; onCredit: boolean; alreadyOrderedItemId: string | null;
+  /** Owner ruling 2026-10-06 — the desk scribe who typed this test from the doctor's paper, when one did. */
+  typedFromPaperBy?: string | null;
+};
 
 const sexOptions = ["male", "female", "other", "unknown"] as const;
 type RegisterFields = { name: string; phone: string; ageYears: string; sex: (typeof sexOptions)[number] };
@@ -100,6 +105,7 @@ export function LabDesk(): React.ReactElement {
 
   /* ── the order ── */
   const [lines, setLines] = useState<Line[]>([]);
+  const [slipOpen, setSlipOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [consents, setConsents] = useState<Record<string, string>>({});
   const [reflexConsent, setReflexConsent] = useState(false);
@@ -182,7 +188,7 @@ export function LabDesk(): React.ReactElement {
     for (const a of hit.visit?.advised ?? []) {
       const orderable = advisedToOrderable(a);
       if (orderable === null) continue;
-      advised.push({ orderable, source: "advised", onCredit: false, alreadyOrderedItemId: a.alreadyOrderedItemId });
+      advised.push({ orderable, source: "advised", onCredit: false, alreadyOrderedItemId: a.alreadyOrderedItemId, typedFromPaperBy: a.typedFromPaperBy ?? null });
     }
     setLines(advised);
     setReferrerName(hit.visit?.referrerName ?? "");
@@ -442,7 +448,15 @@ export function LabDesk(): React.ReactElement {
 
             {/* ── tests on the prescription ── */}
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold">{t("lab.desk.rxLines")}</h2>
+              <h2 className="text-sm font-semibold">
+                {t("lab.desk.rxLines")}
+                {/* The photographed slip, to check a typed test against the doctor's own hand. */}
+                {selected.visit !== null && lines.some((l) => l.typedFromPaperBy != null) && (
+                  <button type="button" className="ml-2 rounded border border-input px-2 py-0.5 text-xs font-medium" data-testid="lab-see-slip" onClick={() => { setSlipOpen(true); }}>
+                    {t("paper.slip.see")}
+                  </button>
+                )}
+              </h2>
               {selected.visit !== null && selected.visit.advised.some((a) => a.orderable === null) && (
                 <p className="text-xs">{t("lab.desk.notInCatalogue")}: {selected.visit.advised.filter((a) => a.orderable === null).map((a) => a.code).join(", ")}</p>
               )}
@@ -465,7 +479,13 @@ export function LabDesk(): React.ReactElement {
                           <span className="font-medium">{l.orderable.code}</span> · {l.orderable.nameEn}
                           {l.orderable.consentRequired && <span className="ml-1 font-semibold">{t("lab.desk.consentTag")}</span>}
                           {l.orderable.sensitive && <span className="ml-1 font-semibold">{t("lab.desk.sensitiveTag")}</span>}
-                          {l.source === "advised" && <span className="ml-1 text-xs text-muted-foreground">{t("lab.desk.fromRx")}</span>}
+                          {l.source === "advised" && l.typedFromPaperBy == null && <span className="ml-1 text-xs text-muted-foreground">{t("lab.desk.fromRx")}</span>}
+                          {/* Owner ruling 2026-10-06 (A) — typed from the doctor's paper: billable as it stands, and it says whose typing it is. */}
+                          {l.source === "advised" && l.typedFromPaperBy != null && (
+                            <span className="ml-1 text-xs font-semibold" style={{ color: "#9a6208" }} data-testid={`lab-typed-${l.orderable.code}`}>
+                              {t("paper.typedBy", { name: l.typedFromPaperBy })}
+                            </span>
+                          )}
                           {l.orderable.consentRequired && l.alreadyOrderedItemId === null && (
                             <input
                               className="ml-2 rounded border border-input px-2 py-0.5"
@@ -665,6 +685,9 @@ export function LabDesk(): React.ReactElement {
           </section>
         )}
       </section>
+      {slipOpen && selected !== null && selected.visit !== null && (
+        <PaperSlipSheet patientId={selected.patient.id} encounterId={selected.visit.encounterId} onClose={() => { setSlipOpen(false); }} />
+      )}
     </LabStation>
   );
 }

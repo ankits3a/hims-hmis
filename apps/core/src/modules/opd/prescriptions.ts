@@ -5,7 +5,7 @@ import type { Actor } from "@hmis/contracts";
 import { hmacSign, hmacVerify } from "../../kernel/crypto";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals } from "../../kernel/db/schema";
+import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals, users } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
 import {
   listDrugDiseaseFor, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines,
@@ -16,7 +16,7 @@ import {
 } from "./rx-checks";
 import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
-import { requireTreatingDoctor } from "./consultation";
+import { refuseIfClosedOnPaper, requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getEncounter, visitDiagnoses } from "./encounters";
 import { OpdError } from "./errors";
@@ -509,7 +509,21 @@ export type PrescriptionAuthority = "doctor" | "paper_slip" | "pharmacy_paper";
 export async function issuePrescription(
   db: Db, actor: Actor, cfg: AppConfig, encounterId: string, input: IssuePrescriptionInput, now: Date = new Date(),
   authority: PrescriptionAuthority = "doctor",
-  opts: { doctorId?: string; outsidePrescriber?: OutsidePrescriber } = {},
+  opts: {
+    doctorId?: string; outsidePrescriber?: OutsidePrescriber;
+    /**
+     * Owner ruling 2026-10-06 — set ONLY by `transcribePaper` (`paper-consult.ts`), which has already
+     * checked the day, the doctor and the seat's grants. It lets the paper road issue for a visit the
+     * doctor saw on paper and never opened on a screen, in whatever state that left it. The older
+     * `…/prescription-draft/transcribe` route does not pass it and keeps its in-consultation rule.
+     */
+    paperStates?: boolean;
+    /**
+     * Set ONLY by `correctPaperPrescription`: the treating doctor correcting (or clearing a held line
+     * on) a visit that carries paper work and is already closed. `requireTreatingDoctor` still runs.
+     */
+    paperCorrection?: boolean;
+  } = {},
 ): Promise<IssuedPrescription> {
   const encounter = await getEncounter(db, encounterId);
   if (!encounter) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
@@ -549,10 +563,30 @@ export async function issuePrescription(
     if (!signing) throw new OpdError("unknown_doctor", `unknown doctor ${encounter.doctorId}`);
     doctor = signing;
     transcribedBy = actor.id;
+    /*
+      Owner ruling 2026-10-06 — A SCRIBE CLEARS NO WARNING. Clearing an allergy conflict, a severe
+      interaction, a repeated salt or a contraindication is a clinical judgement with a reason
+      recorded against the prescriber. The desk typed the paper; it did not make that judgement, so
+      an override arriving on this road is refused and the line waits for the doctor.
+    */
+    if (input.overrides?.length || input.interactionOverrides?.length || input.duplicateOverrides?.length || input.drugDiseaseOverrides?.length) {
+      throw new OpdError("override_reason_required", "a prescription typed from paper carries no override — the line is held for the doctor");
+    }
   } else {
     doctor = await requireTreatingDoctor(db, actor, encounter);
   }
-  if (authority !== "pharmacy_paper" && encounter.status !== "in_consultation") {
+  /*
+    WHEN A PRESCRIPTION MAY BE ISSUED. In consultation, as always. And (owner ruling 2026-10-06) on a
+    visit the doctor saw ON PAPER: the treating doctor may correct what the desk typed after the
+    visit was closed (`paperCorrection`), and the paper road itself (`paperStates`) may issue in any
+    state but abandoned.
+  */
+  if (authority === "doctor" && opts.paperCorrection !== true) refuseIfClosedOnPaper(encounter);
+  const stateOk = authority === "pharmacy_paper"
+    || encounter.status === "in_consultation"
+    || (authority === "doctor" && opts.paperCorrection === true && encounter.status === "completed")
+    || (authority === "paper_slip" && opts.paperStates === true && encounter.status !== "abandoned");
+  if (!stateOk) {
     throw new OpdError("encounter_state_conflict", `a prescription is issued in consultation, not ${encounter.status}`);
   }
 
@@ -847,6 +881,14 @@ export type RxPrintData = {
   qrPayload: string;
   version: number;
   issuedAt: Date;
+  /**
+   * Owner ruling 2026-10-06 — who TYPED this prescription from the doctor's paper, or null when the
+   * doctor keyed it. A print of a transcription must not pass for a doctor-signed e-prescription:
+   * the renderer says "typed from the doctor's paper prescription by <name>" and that the signed
+   * paper is the original. A staff NAME, never the doctor's (the 2026-09-06 ruling is about the
+   * prescriber; this is the desk that held the keyboard).
+   */
+  transcribedByName: string | null;
 };
 
 /**
@@ -913,5 +955,7 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
     qrPayload: buildRxQrPayload(cfg, { id: row.id, encounterId: row.encounterId, version: row.version }),
     version: row.version,
     issuedAt: row.issuedAt,
+    transcribedByName: row.transcribedBy === null ? null
+      : (await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, row.transcribedBy)))[0]?.fullName ?? "the desk",
   };
 }

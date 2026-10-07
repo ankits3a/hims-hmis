@@ -46,7 +46,14 @@ import { Scanner } from "../vitals/scanner";
 const DAY_POLL_MS = 30_000;
 type T = ReturnType<typeof useI18n>["t"];
 type Raw = { photo: Photo; quad: Quad; status: CropStatus };
-type Filed = { back: SlipReadback; kind: SlipKind; at: string; page: number };
+/**
+ * Owner ruling 2026-10-06 — a filed prescription slip also marks the visit consulted, when this login
+ * is a Slip Desk or Desk Scribe and the visit is today's and still open. The SERVER decides and
+ * answers beside the document id; `paper` is that answer's outcome code (null when it said nothing —
+ * an older server, or a page that is not the doctor's slip), worded by `paper.outcome.*`.
+ */
+type Filed = { back: SlipReadback; kind: SlipKind; at: string; page: number; paper: string | null };
+const PAPER_CONSULTED = new Set(["marked", "already_marked", "doctor_completed"]);
 
 const nameOf = (p: SlipPatient | null, t: T): string => p?.name ?? p?.alias ?? t("slipCapture.unnamed");
 const buzz = (ok: boolean): void => {
@@ -193,13 +200,15 @@ export function SlipDesk() {
     if (resolved === null || shot === null || sending !== null) return;
     setError(null); setSending(0);
     try {
-      await upload("/patients/" + encodeURIComponent(resolved.patientId) + "/documents", {
+      const done = await upload<{ documentId: string; effects?: { "opd.paper"?: { outcome?: string; failed?: boolean } } }>("/patients/" + encodeURIComponent(resolved.patientId) + "/documents", {
         imageBase64: shot.base64, mimeType: "image/jpeg", kind, encounterId: resolved.encounterId,
         note: note.trim() === "" ? null : note.trim(),
       }, (f) => setSending(f));
       buzz(true);
       // The confirmation NAMES the patient and the visit: forty slips an hour, and this is which one just landed.
-      setFiled({ back: resolved, kind, at: new Date().toISOString(), page: (resolved.filed?.length ?? 0) + 1 });
+      const said = done?.effects?.["opd.paper"];
+      const paper = said === undefined ? null : said.failed === true ? "failed" : said.outcome ?? null;
+      setFiled({ back: resolved, kind, at: new Date().toISOString(), page: (resolved.filed?.length ?? 0) + 1, paper });
       setResolved(null); setShot(null); setRaw(null); setNote(""); setText("");
       void refreshDay();
     } catch (e) {
@@ -302,6 +311,9 @@ export function SlipDesk() {
             <Text style={s.filedTitle}>✓ {t("slipCapture.filed", { name: nameOf(filed.back.patient, t) })}</Text>
             <Text style={s.ids}>{filed.back.patient?.uhid ?? "—"} · {filed.back.visitNo}</Text>
             <Text style={s.dim}>{t("slipCapture.filedLine", { kind: kindLabel(filed.kind), at: istClock(filed.at), doctor: filed.back.doctorCode ?? "—" })}</Text>
+            {filed.paper !== null && (
+              <Text testID="slip-paper" style={[s.paper, PAPER_CONSULTED.has(filed.paper) && { color: color.green }]}>{t(`paper.outcome.${filed.paper}`)}</Text>
+            )}
             <View style={{ flexDirection: "row", gap: space.sm }}>
               <View style={{ flex: 1 }}><Button testID="slip-add-page" kind="secondary" label={t("slipCapture.addPage")} onPress={() => { void addPage(); }} /></View>
               <View style={{ flex: 1 }}><Button testID="slip-next" label={t("mobile.slips.nextSlip")} onPress={() => { setFiled(null); input.current?.focus(); }} /></View>
@@ -527,6 +539,7 @@ const s = StyleSheet.create({
   okText: { fontSize: 14.5, lineHeight: 20, fontWeight: "700", color: color.green },
   warnNote: { borderWidth: 1, borderColor: color.goldLine, backgroundColor: color.goldSoft, borderRadius: radius.md, padding: 10, gap: 2 },
   warnText: { fontSize: 14, lineHeight: 19, fontWeight: "700", color: "#8a5a10" },
+  paper: { fontSize: 15, lineHeight: 21, fontWeight: "700", color: "#8a5a10", marginTop: 6 },
   filedTitle: { fontSize: 17, lineHeight: 23, fontWeight: "800", color: color.green },
   row: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg },
   rowName: { fontSize: 16, fontWeight: "700", color: color.ink },

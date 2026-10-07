@@ -140,7 +140,7 @@ const consultCompleteBody = z.object({
   testsOrderedReturnToday: z.boolean(),
   followUpDays: z.number().int().positive().optional(), // anything but the default must be a configured extension
 });
-const rxLineBody = z.object({
+export const rxLineBody = z.object({
   drug: z.string().max(300),
   dose: z.string().max(100),
   route: z.string().max(100),

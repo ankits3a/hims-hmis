@@ -357,6 +357,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    *
    * `patients.update` is granted for one reason the owner named on the same day: an allergy written
    * on the slip in pen must be recordable by the person reading that slip.
+   *
+   * ═══ 2026-10-06 — WHAT CHANGED, AND WHAT DID NOT ═══
+   *
+   * The owner's later ruling (see `opd.consult.paper` below) makes this seat the one that types the
+   * doctor's medicines AND tests and, by doing so, marks the visit consulted — no tap from the
+   * doctor stands between the paper and the pharmacy any more (ruling A). The first bullet above
+   * is therefore read as it was written and no wider: this seat still holds no `opd.consult`, still
+   * cannot start, note or complete a consultation as a doctor, and still names no prescriber (the
+   * visit's own doctor is read from the visit). What it CANNOT do, now stated in code rather than
+   * by absence: clear a safety warning. A typed line that raises one is held for the doctor
+   * (`modules/opd/paper-consult.ts`), and `issuePrescription` refuses any override on this road.
    */
   {
     roleKey: "opd_scribe",
@@ -392,6 +403,46 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
       "orders.place",
       "orders.read",
+      /**
+       * ═══ OWNER RULING 2026-10-06 — THE SCRIBE TYPES THE DRUGS AND THE TESTS, AND THAT CLOSES THE VISIT ═══
+       *
+       * *"We already have 'Desk Scribe' module. Let's enable it to type the drugs as well as lab
+       * tests … will mark the patient as Consulted even if the doctor hasn't … operated dashboard."*
+       *
+       * `opd.consult.paper` is the closing grant (ruling B: the slip desk and the desk scribe).
+       * The two reads beside it are what typing needs and nothing more: `formulary.read` is the
+       * medicine typeahead the doctor's own screen uses, so the scribe picks a catalogue medicine
+       * and the safety checks can see its salts; `tariff.read` is the price list the doctor's
+       * screen snapshots an advised test from. Neither writes anything.
+       */
+      "opd.consult.paper",
+      "formulary.read",
+      "tariff.read",
+    ],
+  },
+  /**
+   * ═══ THE SLIP DESK — OWNER RULING 2026-10-06 (B) ═══
+   *
+   * *"B) Yes, the slip desk and Desk scribe."* — the two seats that may mark a visit consulted from
+   * the doctor's paper. The slip desk had no role of its own: `/opd/slips` opens on
+   * `patients.update`, which the front office, the vitals bay, the lab counter and MRD all hold,
+   * and the owner's ruling is narrower than that. So the seat gets a role, and the role is the
+   * smallest thing that works the desk: find today's visit, read the person back, photograph the
+   * page, re-print a slip — and `opd.consult.paper`, which is the point of it.
+   *
+   * It cannot type a prescription (`opd.prescription.transcribe` is the scribe's), open or abandon a
+   * visit, take money or read a result. A person who does both jobs holds both roles.
+   */
+  {
+    roleKey: "opd_slip_desk",
+    permissions: [
+      "opd.consult.paper",
+      "opd.visits.read",
+      "opd.queue.read",
+      "opd.masters.read",
+      "opd.paper.reprint",
+      "patients.read",
+      "patients.update",
     ],
   },
   {
@@ -2042,6 +2093,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
    * the scribe is not a party to that policy. It is a station on the OPD road, not a signatory.
    */
   opd_scribe: "OPD Door Scribe (paper-slip transcription)",
+  // Owner ruling 2026-10-06 (B) — the seat that photographs the doctor's paper and, by doing so, marks the visit consulted.
+  opd_slip_desk: "OPD Slip Desk (photographs the prescription slip)",
   pharmacy: "Pharmacy (prescription verification)",
   cashier: "Cashier",
   billing_manager: "Billing Manager",
