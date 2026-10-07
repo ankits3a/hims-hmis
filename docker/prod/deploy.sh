@@ -520,6 +520,27 @@ else
     echo "    no firebase key at $FIREBASE_KEY — phone notifications stay off; nothing else is affected"
   fi
 fi
+# PHONE CONSULT (decision 0048) — THE OPENAI KEY THE DOCTOR'S SPOKEN NOTE IS TYPED WITH. Same shape
+# and the same rules as the Firebase key above: the owner supplies it on THIS HOST at
+# $HMIS_OPENAI_KEY, it is in no commit and no image, it is copied here group-readable by the
+# containers' user, and the api mounts the DIRECTORY and re-reads the file by itself.
+#
+# ABSENT IS NORMAL, and it must never fail a deploy: the directory is still made (the mount needs
+# it), voice is OFF and the app says "Voice is not set up", and nothing else changes.
+OPENAI_KEY="${HMIS_OPENAI_KEY:-/root/.config/hmis/openai/key.txt}"
+install -d -m 0750 "$DEPLOY_DIR/openai"
+numeric_own 0:1000 "$DEPLOY_DIR/openai"
+if [ -r "$OPENAI_KEY" ]; then
+  install -m 0440 "$OPENAI_KEY" "$DEPLOY_DIR/openai/key.txt"
+  numeric_own 0:1000 "$DEPLOY_DIR/openai/key.txt"
+  echo "    openai key installed for the api (the doctor's spoken note)"
+else
+  if [ -r "$DEPLOY_DIR/openai/key.txt" ]; then
+    echo "    no openai key at $OPENAI_KEY — the copy already in $DEPLOY_DIR/openai stays in use"
+  else
+    echo "    no openai key at $OPENAI_KEY — voice notes stay off; nothing else is affected"
+  fi
+fi
 # The monitoring trees, same directory-mount shape as caddy/ and pgbackrest/ above.
 #
 # THESE SIX LINES WERE MISSING AND THE WHOLE MONITORING STACK WAS INERT IN PRODUCTION (ledger
