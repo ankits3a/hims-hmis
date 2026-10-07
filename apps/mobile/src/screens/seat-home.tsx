@@ -39,6 +39,19 @@ const hhmm = (ms: number): string => new Date(ms).toLocaleTimeString("en-IN", { 
  * what NEEDS YOU NOW with its clock, how MY DAY is going, the LAST 30 DAYS, then MY WORK — every
  * screen this person's role allows, which is the list this screen used to be and nothing is removed.
  */
+/**
+ * A cashier's Collected before the drawer is counted (blind count, decision 0042): no amount — the
+ * words on one line and the receipt count small under them, so the tile reads like its neighbours.
+ */
+function LockedTile({ t, n, testID }: { t: (key: string, vars?: Record<string, string | number>) => string; n: string | number | undefined; testID?: string }) {
+  return (
+    <View testID={testID} accessible accessibilityLabel={`${t("home.tile.afterCount")} · ${t("home.tile.receiptsCount", { n: n ?? 0 })}`}>
+      <Text style={{ fontSize: 13, lineHeight: 16, fontWeight: "700", color: color.ink }} numberOfLines={2}>{t("home.tile.afterCount")}</Text>
+      <Text style={{ fontFamily: MONO, fontSize: 11, color: color.faint, marginTop: 1 }} numberOfLines={1}>{t("home.tile.receiptsCount", { n: n ?? 0 })}</Text>
+    </View>
+  );
+}
+
 export function SeatHome() {
   const { t } = useI18n();
   const router = useRouter();
@@ -282,7 +295,7 @@ export function SeatHome() {
                 {cold.tiles.map((tile) => (
                   <View key={tile.key} style={{ flex: 1, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, padding: space.md }}>
                     {tile.value === null
-                      ? <Text style={{ fontSize: 12.5, fontWeight: "700", color: color.dim, paddingVertical: 5 }}>{t(tile.lockKey ?? "home.tile.afterCount", tile.lockVars)}</Text>
+                      ? <LockedTile t={t} n={tile.lockVars?.n} />
                       : <Text style={{ fontFamily: MONO, fontWeight: "700", fontSize: tile.value.length > 5 ? 16 : 22, color: color.ink }} numberOfLines={1}>{tile.value}</Text>}
                     <Text style={{ fontSize: 11.5, color: color.dim, marginTop: 2 }}>{t(tile.labelKey)}</Text>
                   </View>
@@ -313,7 +326,7 @@ export function SeatHome() {
                 {model.tiles.map((tile) => (
                   <View key={tile.key} testID={`tile-${tile.key}`} style={{ flex: 1, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, padding: space.md }}>
                     {tile.value === null
-                      ? <Text testID="tile-locked" style={{ fontSize: 12.5, fontWeight: "700", color: color.dim, paddingVertical: 5 }}>{t(tile.lockKey ?? "home.tile.afterCount", tile.lockVars)}</Text>
+                      ? <LockedTile t={t} n={tile.lockVars?.n} testID="tile-locked" />
                       : <Text style={{ fontFamily: MONO, fontWeight: "700", fontSize: tile.value.length > 5 ? 16 : 22, color: color.ink }} numberOfLines={1} adjustsFontSizeToFit>{tile.value}</Text>}
                     <Text style={{ fontSize: 11.5, color: color.dim, marginTop: 2 }}>{t(tile.labelKey)}</Text>
                   </View>

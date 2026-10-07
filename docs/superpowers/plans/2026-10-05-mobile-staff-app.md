@@ -615,3 +615,18 @@ capture second image from the same screen, may '+' button would be enough. This 
 - **No server change, no new native module** — JavaScript only, so it can ride an over-the-air bundle.
 - Needs a real phone: the camera staying open between shots, the speed of cutting three pages in a row,
   the thumbnails' memory on a small phone (each is the page's own JPEG).
+
+## 3m. App 0.11.0 — one ordinary update for what had piled up (owner 2026-10-07)
+
+Owner: *"build the app update with the home screen and the Slip desk '+' pages."* Over-the-air updates
+(PR #512) were still a draft, so 0.11.0 is an ordinary APK behind the "Update available" prompt.
+
+- **Carries:** app home (#521), app home round two (#526), slip desk several pages (#529), and the phone's
+  half of #531 — no RR tile (the shared `tileOrder`), and **"Patient not present — guardian with reports"**
+  on a revisit in hand at the bay (`src/vitals/guardian.tsx`, the web's route, list and sentences), the
+  guardian tag on the doctor's line and the notice in the brief.
+- **Tidied:** the cashier's locked Collected tile reads "After your count" with the receipt count small
+  under it.
+- **Ordering for the over-the-air lane:** staging is versionCode 13 and production 6 at 0.11.0. The first
+  over-the-air-capable APK must be built AFTER this one, from a main that contains it, with a higher
+  versionCode in each environment — otherwise phones are offered an older app.

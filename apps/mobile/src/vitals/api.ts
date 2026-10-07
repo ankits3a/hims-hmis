@@ -2,6 +2,7 @@ import type {
   WireBenchRow, WireBenchState, WireDangerFlag, WireEscalationReading, WireEscalationState, WirePreStage,
   WireVisitOnBench, WireVitalKey, WireVitalsPostBody,
 } from "./rules";
+import type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
 
 /**
  * The server routes the vitals bay uses — the SAME ones the web bay calls (apps/web/src/lib/opd-api.ts
@@ -60,6 +61,9 @@ export function vitalsApi(call: Call) {
       substance: string; reaction?: string; severity: "mild" | "moderate" | "severe"; source: "vitals";
       saltId?: string | null; allergenClass?: string | null;
     }) => call<unknown>("POST", `/patients/${enc(patientId)}/allergies`, body),
+    /** Owner 2026-10-07 — a revisit whose guardian came with the reports skips the bay (`opd/patient-absent.ts`). */
+    markPatientAbsent: (encounterId: string, body: { relation: GuardianRelation; name?: string | null }) =>
+      call<{ patientAbsent: WirePatientAbsent; alreadyMarked: boolean }>("POST", `/opd/visits/${enc(encounterId)}/patient-absent`, body),
     completeAllergen: (q: string) => call<{ items: WireAllergenHit[]; known: boolean }>("GET", `/opd/cds/complete/allergen?q=${enc(q)}`),
   };
 }

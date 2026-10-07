@@ -1698,12 +1698,13 @@
       "bench": "On the bench",
       "slips": "Slips filed",
       "collected": "Collected",
-      "afterCount": "After your count · {{n}} receipts",
+      "afterCount": "After your count",
       "approvals": "Approvals",
       "opdToday": "OPD today",
       "rechecks": "Re-checks due",
       "slipsWaiting": "To photograph",
-      "toType": "To type"
+      "toType": "To type",
+      "receiptsCount": "{{n}} receipts"
     },
     "d30": {
       "title": "Last 30 days",
@@ -1842,6 +1843,37 @@
       "sendYes": "Yes, I will cover",
       "sendNo": "Send my no",
       "fine": "Recorded with your name and time. The approver still decides."
+    }
+  },
+  "patientAbsent": {
+    "action": "Patient not present — guardian with reports",
+    "title": "The patient did not come — a guardian brought the reports",
+    "hint": "Vitals are skipped and the visit goes straight to the doctor. The fee is unchanged.",
+    "relationLabel": "Who came",
+    "nameLabel": "Name (optional)",
+    "confirm": "Send to doctor",
+    "cancel": "Cancel",
+    "sending": "Sending…",
+    "done": "Sent to the doctor — guardian with reports, vitals not taken.",
+    "notice": "Patient absent — guardian ({{who}}) brought reports. Vitals not taken.",
+    "tag": "Guardian ({{who}})",
+    "who": "{{relation}}: {{name}}",
+    "relation": {
+      "father": "Father",
+      "mother": "Mother",
+      "spouse": "Spouse",
+      "son": "Son",
+      "daughter": "Daughter",
+      "brother": "Brother",
+      "sister": "Sister",
+      "other_relative": "Other relative",
+      "attendant": "Attendant"
+    },
+    "errors": {
+      "patient_absent_revisit_only": "Only a revisit can skip vitals for a guardian.",
+      "encounter_state_conflict": "This visit is no longer waiting for vitals.",
+      "consult_gate_refused": "This visit has not been billed yet — take the fee at the counter first.",
+      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor."
     }
   }
 }
