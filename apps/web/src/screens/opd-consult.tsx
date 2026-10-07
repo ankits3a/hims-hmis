@@ -14,6 +14,7 @@ import { EyeSections, eyeSummary, fetchVisitSections } from "./opd-eye-sections"
 import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
+import { PatientAbsentNotice, PatientAbsentTag } from "../components/patient-absent";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import { useDoctorLabel } from "../lib/use-doctor-label";
 import type {
@@ -43,7 +44,7 @@ import "./opd-consult.css";
 import { recallToken, releaseLease, takeLease } from "../lib/opd-api";
 import type { WorkRow } from "./opd-consult-v2";
 import { CopilotSuggestions, TermInput } from "./opd-consult-suggest";
-import type { WireExamFinding } from "../lib/opd-api";
+import type { WireExamFinding, WirePatientAbsent } from "../lib/opd-api";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { ExternalRecordsPanel } from "../components/abdm-external-records";
@@ -99,6 +100,8 @@ type VisitDetail = {
   feeBypass?: { by: string; reason: string; at: string } | null;
   /** The patient's own words from the front desk, who typed them and when (2026-09-23, D15). */
   deskComplaint?: { text: string; by: string; at: string } | null;
+  /** Owner 2026-10-07 — the guardian came with the reports; no vitals were taken. */
+  patientAbsent?: WirePatientAbsent | null;
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
@@ -2365,6 +2368,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
         </span>
       )}
       <VisitTypeBadge visitType={shownVisitType(e.encounter)} size="sm" testId={`queue-visit-type-${e.id}`} />
+      {/* Owner 2026-10-07 — nobody to call into the room: the guardian came with the reports. */}
+      {e.encounter.patientAbsent != null && <PatientAbsentTag absent={e.encounter.patientAbsent} testId={`queue-absent-${e.id}`} />}
       {/*
         CONSULT V2 (owner, 2026-09-23) — the alarm says a called token again on the corridor board; the
         box-and-arrow opens this patient in a new browser tab (D17: only one tab edits at a time).
@@ -2986,6 +2991,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   })()}
                 </div>
               </header>
+              {/* Owner 2026-10-07 — the guardian came with the reports: the doctor reads it before anything else. */}
+              {visit.data?.patientAbsent != null && (
+                <PatientAbsentNotice absent={visit.data.patientAbsent} testId="panel-patient-absent" />
+              )}
               </fieldset>
 
               <div className="cx-work"><WorkStrip rows={workRows} onGo={goToSection} /></div>

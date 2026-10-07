@@ -533,6 +533,18 @@ export const opdEncounters = pgTable(
     paperReopenedAt: timestamp("paper_reopened_at", { withTimezone: true }),
     paperReopenReason: text("paper_reopen_reason"),
     /**
+     * ═══ THE PATIENT DID NOT COME — A GUARDIAN BROUGHT THE REPORTS (owner 2026-10-07) ═══
+     *
+     * A revisit where a relative or attendant comes alone to show the doctor the reports. There is
+     * nobody to weigh, so the vitals bay or the front desk marks it and the visit goes straight to
+     * the doctor's line (`patient-absent.ts`). Who said so and when (`_by`, `_at`), and who came
+     * (`_relation`, one of a fixed list, and an optional `_name`). All four null on every other visit.
+     */
+    patientAbsentBy: text("patient_absent_by"),
+    patientAbsentAt: timestamp("patient_absent_at", { withTimezone: true }),
+    patientAbsentRelation: text("patient_absent_relation"),
+    patientAbsentName: text("patient_absent_name"),
+    /**
      * App home round 2 (owner 2026-10-07, decision 0043) — "ASK THE DESK TO RE-CHECK". The doctor
      * read what the desk typed from their paper and a line is wrong or unclear: they send it back
      * with a reason instead of retyping it. Open while `asked_at` is set and `done_at` is not; the

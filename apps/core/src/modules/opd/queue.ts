@@ -11,6 +11,8 @@ import type { FeeStatusVia } from "../billing";
 import { loadOpdConfig } from "./config";
 import { getEncounter, joinQueueInTx } from "./encounters";
 import { OpdError } from "./errors";
+import { patientAbsentOf } from "./patient-absent";
+import type { PatientAbsent } from "./patient-absent";
 import { queueCalled, queueFeeStatusChanged, queueSkipUndone, queueSkipped } from "./events";
 import { classOf, nextInQueue, orderQueue } from "./queue-engine";
 import type { SkipReason } from "./skip-reasons";
@@ -158,6 +160,8 @@ export type QueueEntryView = QueueEntryRow & {
     feeBypassReason: string | null; consultFeeOverrideReason: string | null;
     /** Owner ruling 2026-09-24 — set when an internal referral opened this visit, so the rail says REFERRAL, not REVISIT. */
     referredFromEncounterId: string | null;
+    /** Owner 2026-10-07 — the guardian came with the reports; the patient did not. Null otherwise (`patient-absent.ts`). */
+    patientAbsent: PatientAbsent | null;
   };
   patient: PatientSummary | null;
   /**
@@ -228,6 +232,7 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
         dangerFlagged: encounter.dangerFlagged, status: encounter.status,
         feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason,
         referredFromEncounterId: encounter.referredFromEncounterId,
+        patientAbsent: patientAbsentOf(encounter),
       },
       patient: summaryByPatient.get(encounter.patientId) ?? null,
       feeStatus: feeStatuses.get(encounter.id) ?? null,

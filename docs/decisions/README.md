@@ -55,3 +55,4 @@ in its Status line and names the record that overturned it.
 | 0043 | 2026-10-07 | [App home, round two: the board built whole — the header, the desks' cards, paper consultations on the phone, "ask the desk to re-check"](0043-app-home-round-two.md) | mobile, opd, approvals, roster | Ruled |
 | 0044 | 2026-10-07 | [The OPD report counts the visits the desk opened; "Booked" reads "Appointments"](0044-opd-report-visits-opened.md) | opd, reports, front desk | Ruled |
 | 0045 | 2026-10-07 | [A counter with no print relay prints on its own printer, from the browser](0045-browser-printing-fallback.md) | printing, front desk | Partly open |
+| 0046 | 2026-10-07 | [OPD vitals: no RR tile, and a guardian with reports may skip the bay on a revisit](0046-opd-rr-hidden-and-guardian-visit.md) | opd, vitals, front desk | Partly open |

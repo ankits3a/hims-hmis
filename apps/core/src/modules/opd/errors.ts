@@ -80,7 +80,12 @@ export type OpdErrorCode =
   // doctor has already issued on the screen (the desk must not type over it).
   | "paper_consult_not_permitted" | "paper_consult_state_conflict" | "doctor_rx_exists_state_conflict"
   // The doctor's own screen acting on a visit a desk has since closed from paper (409): a sentence, not a fault.
-  | "closed_on_paper_state_conflict";
+  | "closed_on_paper_state_conflict"
+  // Owner 2026-10-07 — the guardian came with the reports and the patient did not. Only a REVISIT may
+  // skip the bay this way (409, listed in `OPD_CONFLICT_CODES`: the request is well formed, the visit
+  // is the wrong kind); an account holding neither the bay's nor the desk's grant is refused 403; a
+  // relation outside the fixed list or an over-long name is a malformed request (400).
+  | "patient_absent_revisit_only" | "patient_absent_not_permitted" | "invalid_patient_absent";
 
 export class OpdError extends Error {
   constructor(

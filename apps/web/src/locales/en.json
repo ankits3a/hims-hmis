@@ -14471,6 +14471,37 @@
       "billNote": "The bill opens as the printed document — the same one the counter prints on the day, from the server's own figures."
     }
   },
+  "patientAbsent": {
+    "action": "Patient not present — guardian with reports",
+    "title": "The patient did not come — a guardian brought the reports",
+    "hint": "Vitals are skipped and the visit goes straight to the doctor. The fee is unchanged.",
+    "relationLabel": "Who came",
+    "nameLabel": "Name (optional)",
+    "confirm": "Send to doctor",
+    "cancel": "Cancel",
+    "sending": "Sending…",
+    "done": "Sent to the doctor — guardian with reports, vitals not taken.",
+    "notice": "Patient absent — guardian ({{who}}) brought reports. Vitals not taken.",
+    "tag": "Guardian ({{who}})",
+    "who": "{{relation}}: {{name}}",
+    "relation": {
+      "father": "Father",
+      "mother": "Mother",
+      "spouse": "Spouse",
+      "son": "Son",
+      "daughter": "Daughter",
+      "brother": "Brother",
+      "sister": "Sister",
+      "other_relative": "Other relative",
+      "attendant": "Attendant"
+    },
+    "errors": {
+      "patient_absent_revisit_only": "Only a revisit can skip vitals for a guardian.",
+      "encounter_state_conflict": "This visit is no longer waiting for vitals.",
+      "consult_gate_refused": "This visit has not been billed yet — take the fee at the counter first.",
+      "patient_absent_not_permitted": "Your account may not send a guardian's visit to the doctor."
+    }
+  },
   "printHere": {
     "doc": {"opd_prescription": "Prescription sheet", "opd_token_slip": "Token slip", "opd_payment_receipt": "Payment receipt"},
     "panel": {

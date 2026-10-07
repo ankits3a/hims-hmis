@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
+import { patientAbsentBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -33,6 +34,8 @@ import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
 import { istDate } from "./time";
 import { amendVitals, getVitalsForAmend, listVitals, recordVitals } from "./vitals";
+import { markPatientAbsent, patientAbsentOf } from "./patient-absent";
+import type { PatientAbsent } from "./patient-absent";
 import { BENCH_STATES, listBench, locateVisit, setBenchState } from "./bench";
 import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
 import { preStage } from "./prestage";
@@ -274,6 +277,8 @@ type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
   feeBypass: { by: string; reason: string; at: Date } | null;
   /** What the front desk heard, by whom and when — `null` when nothing was typed (D15). */
   deskComplaint: { text: string; by: string; at: Date } | null;
+  /** Owner 2026-10-07 — the guardian came with the reports and the patient did not (`patient-absent.ts`). */
+  patientAbsent: PatientAbsent | null;
 };
 
 @Controller("opd")
@@ -602,6 +607,7 @@ export class OpdVisitsController {
     return {
       ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)),
       deskComplaint: await deskComplaintFor(this.db, found.encounter),
+      patientAbsent: patientAbsentOf(found.encounter),
     };
   }
 
@@ -699,6 +705,27 @@ export class OpdVisitsController {
       return await recordVitals(this.db, actor, id, scalars, new Date(), {
         readings, contextChips, carriedForward, emergency, overrides, unlockReasons,
       });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * ═══ OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS ═══
+   *
+   * A revisit still waiting for vitals skips the bay and joins the doctor's line (`patient-absent.ts`).
+   * Either the bay's grant or the front desk's admits — the two seats a guardian walks up to. The
+   * decorator writes ONE metadata key, so the second is `alsoAdmits`; the service asserts the pair
+   * itself as well, and every other rule (revisit only, still registered, the fee door) lives there.
+   */
+  @RequirePermission("opd.vitals.record", "hospital", { alsoAdmits: ["opd.visits.open"] })
+  @Post("visits/:id/patient-absent")
+  async postPatientAbsent(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown,
+  ): Promise<{ encounter: EncounterRow; patientAbsent: PatientAbsent; alreadyMarked: boolean }> {
+    const b = parsed(patientAbsentBody, body);
+    try {
+      return await markPatientAbsent(this.db, actor, id, { relation: b.relation, name: b.name ?? null });
     } catch (e) {
       toHttp(e);
     }

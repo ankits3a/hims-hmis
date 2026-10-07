@@ -12,6 +12,7 @@ import { AmendPanel, AmendTrail } from "./vitals-bay-amend";
 import type { Amended } from "./vitals-bay-amend";
 import { activeAllergies, addAllergy, listAllergies, verifyQrScan } from "../lib/patients-api";
 import { UnpaidMark } from "../components/unpaid-mark";
+import { GuardianAbsentAction } from "../components/patient-absent";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { useRealtime } from "../lib/realtime";
@@ -859,6 +860,24 @@ export function VitalsBay(): React.ReactElement {
       <div data-testid="stage">
       {rowInHand !== null && rowInHand.vitalsDone && (
         <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => { void onAmended(a, rowInHand); }} />
+      )}
+      {/*
+        OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS. A REVISIT with no chart yet may skip
+        the bay: the server moves it to the doctor's line and stops listing it on the bench, so the
+        bench re-reads and the desk clears exactly as after a save.
+      */}
+      {rowInHand !== null && !rowInHand.vitalsDone && rowInHand.visitType === "revisit" && (
+        <div style={{ marginBottom: 10 }}>
+          <GuardianAbsentAction
+            key={`${deskGen}:${rowInHand.encounterId}`} encounterId={rowInHand.encounterId}
+            onDone={() => {
+              note(t("patientAbsent.done"), "ok");
+              void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+              void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
+              if (inHandRef.current?.encounterId === rowInHand.encounterId) clearDesk();
+            }}
+          />
+        </div>
       )}
       {rowInHand !== null && !rowInHand.vitalsDone && !pending && (
         <CaptureCore

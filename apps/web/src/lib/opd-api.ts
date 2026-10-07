@@ -2,6 +2,9 @@ import { api, ApiError } from "./api";
 import type { WireMatchLane } from "./patients-api";
 import type { WireContinuityAnchor } from "./walk-in-routing";
 import type { Eye, TaperStep } from "./eye-line";
+import type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
+export { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS } from "../../../../packages/contracts/src/patient-absent";
+export type { GuardianRelation, WirePatientAbsent } from "../../../../packages/contracts/src/patient-absent";
 
 /**
  * The OPD wire contract, shared by all six Plan 07 screens (the plan's File Structure names this file
@@ -200,6 +203,8 @@ export type WireQueueEntryView = WireQueueEntry & {
      * token back in the callable order. Optional on the wire: an older server sends neither.
      */
     feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
+    /** Owner 2026-10-07 — the guardian came with the reports; no vitals. Optional: an older server sends none. */
+    patientAbsent?: WirePatientAbsent | null;
   };
   patient: WirePatientSummary | null;
   /**
@@ -782,6 +787,16 @@ export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrin
 export type WireVitalsSaveResult = { vitals: WireVitals; flags: WireDangerFlag[]; encounter: WireEncounter; feeWaived?: boolean };
 export function postVitals(encounterId: string, body: WireVitalsPostBody): Promise<WireVitalsSaveResult> {
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/vitals`, body);
+}
+
+/**
+ * Owner 2026-10-07 — a REVISIT where the guardian came with the reports: vitals are skipped and the
+ * visit joins the doctor's line (`opd/patient-absent.ts`). The bay's grant or the front desk's.
+ */
+export function markPatientAbsent(
+  encounterId: string, body: { relation: GuardianRelation; name?: string | null },
+): Promise<{ patientAbsent: WirePatientAbsent; alreadyMarked: boolean }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/patient-absent`, body);
 }
 
 // ——— VD-2 T3 — the danger protocol and the bench state, on the wire ———

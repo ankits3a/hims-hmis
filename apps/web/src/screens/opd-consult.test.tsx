@@ -4956,3 +4956,41 @@ describe("Consult v2 — patient history both ways", () => {
     expect(screen.getByTestId("section-history-enc-0")).not.toHaveAttribute("open");
   });
 });
+
+/**
+ * ═══ OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS ═══
+ *
+ * A revisit marked at the bay or the desk reaches the doctor with no vitals. The doctor must read
+ * WHY before calling a patient who is not in the building: a tag on the queue row, and the sentence
+ * on the consultation screen.
+ */
+describe("OpdConsult — a guardian's visit, patient absent", () => {
+  beforeEach(() => { vi.restoreAllMocks(); });
+  const ABSENT = { relation: "father", name: "Ramesh", by: "u-bay", at: "2026-08-18T04:32:00.000Z" };
+
+  it("the queue row wears the guardian tag, and a patient who came wears none", async () => {
+    const guardian = { ...WAIT_B, encounter: { ...(WAIT_B.encounter as Record<string, unknown>), patientAbsent: ABSENT } };
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, ordered: [WAIT_A, guardian] } } });
+    renderWithProviders(<OpdConsult />);
+    const tag = await screen.findByTestId(`queue-absent-${String(WAIT_B.id)}`);
+    expect(tag).toHaveTextContent("Guardian (Father: Ramesh)");
+    expect(tag).toHaveAttribute("title", "Patient absent — guardian (Father: Ramesh) brought reports. Vitals not taken.");
+    expect(screen.queryByTestId(`queue-absent-${String(WAIT_A.id)}`)).not.toBeInTheDocument();
+  });
+
+  it("the consultation screen says the patient is absent and the vitals were not taken", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, vitals: [], patientAbsent: ABSENT } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    expect(await screen.findByTestId("panel-patient-absent"))
+      .toHaveTextContent("Patient absent — guardian (Father: Ramesh) brought reports. Vitals not taken.");
+  });
+
+  it("a visit the patient came to carries no such notice", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, patientAbsent: null } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByTestId("panel-visit-type");
+    expect(screen.queryByTestId("panel-patient-absent")).not.toBeInTheDocument();
+  });
+});

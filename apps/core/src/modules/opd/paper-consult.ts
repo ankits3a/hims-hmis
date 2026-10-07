@@ -906,8 +906,13 @@ export async function reopenPaperConsult(
     const prev = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, current.id))
       .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
     if (!prev) throw new OpdError("paper_consult_state_conflict", `visit ${current.visitNo} has no token to return to`);
-    const hasVitals = (await tx.select({ id: opdVitals.id }).from(opdVitals).where(eq(opdVitals.encounterId, current.id)).limit(1)).length > 0;
-    const toState: "registered" | "waiting" = hasVitals ? "waiting" : "registered";
+    /*
+      Owner 2026-10-07 — a guardian's visit (`patient-absent.ts`) has no chart and never will: it went
+      past the bay on a recorded mark, and reopening it must put it back where that mark put it.
+    */
+    const pastBay = current.patientAbsentAt !== null
+      || (await tx.select({ id: opdVitals.id }).from(opdVitals).where(eq(opdVitals.encounterId, current.id)).limit(1)).length > 0;
+    const toState: "registered" | "waiting" = pastBay ? "waiting" : "registered";
 
     const { instanceId } = await startInstance(tx, OPD_VISIT_DEF_KEY, {
       type: "opd_encounter", id: current.id, patientId: current.patientId, encounterId: current.id,
@@ -932,8 +937,8 @@ export async function reopenPaperConsult(
 
     await tx.insert(opdQueueEntries).values({
       id: newId(), sessionId: prev.sessionId, encounterId: current.id, tokenNo: prev.tokenNo, kind: prev.kind,
-      appointmentAt: prev.appointmentAt, status: hasVitals ? "waiting" : "waiting_vitals",
-      danger: encounter.dangerFlagged, reEntry: prev.reEntry, eligibleAt: hasVitals ? prev.eligibleAt ?? now : null,
+      appointmentAt: prev.appointmentAt, status: pastBay ? "waiting" : "waiting_vitals",
+      danger: encounter.dangerFlagged, reEntry: prev.reEntry, eligibleAt: pastBay ? prev.eligibleAt ?? now : null,
     });
 
     let voidedPrescriptionId: string | null = null;

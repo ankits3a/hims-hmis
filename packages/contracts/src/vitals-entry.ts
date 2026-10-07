@@ -43,6 +43,8 @@ export type WireBenchRow = {
   /** What the paper says (owner 2026-10-06): the visit number, and the code the token is printed with (`ORT-4`). Optional: an older server sends neither. */
   visitNo?: string; departmentCode?: string | null;
   doctorId: string; doctorName: string; serviceDate: string;
+  /** Owner 2026-10-07 — "new" | "revisit" | "renewal"; the bay offers "guardian with reports" on a revisit only. Optional: an older server sends none. */
+  visitType?: string;
   patient: WirePatientSummary | null;
   benchState: WireBenchState | null;
   recallAt: string | null;
@@ -330,10 +332,14 @@ export const EMERGENCY_TILES: readonly TileKey[] = ["bp", "pulse", "spo2"];
  * The order the typing lane walks: the clinical order the tray is laid in (cuff, probe, thermometer,
  * then the scale and the tape), the lead vital pulled to the front (per-patient autofocus). MUAC is
  * a tile only where the band asks for it — "required under six, meaningless over it" (VD-1 D5).
+ * OWNER 2026-10-07 — RR follows the same rule: no OPD band requires it, so the OPD bay shows no RR
+ * tile; a band (or a later ward) that requires RR gets the tile back with no other change.
  * A not-routine BP stays on the tray, collapsed: recorded when the doctor asks, never demanded.
  */
+const ONLY_WHEN_REQUIRED: readonly TileKey[] = ["muacCm", "rr"];
+
 export function tileOrder(lead: TileKey | null, set: { required: TileKey[]; notRoutine: TileKey[] }): TileKey[] {
-  const base = TILE_KEYS.filter((k) => k !== "muacCm" || set.required.includes(k));
+  const base = TILE_KEYS.filter((k) => !ONLY_WHEN_REQUIRED.includes(k) || set.required.includes(k));
   if (lead === null || !base.includes(lead)) return base;
   return [lead, ...base.filter((k) => k !== lead)];
 }
