@@ -104,6 +104,20 @@ describe("createDb — the pool's two limits", () => {
     // module here would drag in the queue. The deploy-parity shape applies: read the seam's text.
     const source = readFileSync(join(__dirname, "../worker/worker.module.ts"), "utf8");
     expect(source).toMatch(/createDb\(cfg\.databaseUrl, \{ defaultMax: DEFAULT_WORKER_POOL_MAX \}\)/);
-    expect(DEFAULT_WORKER_POOL_MAX).toBe(10);
+    expect(DEFAULT_WORKER_POOL_MAX).toBe(24);
+  });
+
+  /**
+   * 2026-10-07 — the twenty-sixth job starved the pool. The scheduler holds ONE client per job in
+   * flight (its advisory lock) and the job needs another to work, so a pool no larger than the
+   * number of interval jobs that share a tick deadlocks until the connect timeout. This reads the
+   * registrations themselves: add an interval job and this number moves with it, or this is red.
+   */
+  it("the worker's pool has room for every interval job's lock AND for the work — read off jobs.ts", () => {
+    const jobs = readFileSync(join(__dirname, "../worker/jobs.ts"), "utf8");
+    const body = jobs.slice(jobs.indexOf("export function registerAllJobs"));
+    const intervalJobs = (body.match(/^\s+every: /gm) ?? []).length;
+    expect(intervalJobs).toBeGreaterThanOrEqual(14); // the scan found them — it cannot pass by matching none
+    expect(DEFAULT_WORKER_POOL_MAX).toBeGreaterThanOrEqual(intervalJobs + 8);
   });
 });
