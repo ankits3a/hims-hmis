@@ -53,5 +53,4 @@ in its Status line and names the record that overturned it.
 | 0041 | 2026-10-03 | [Two-site production: hospital server primary, automatic cloud failover](0041-two-site-production.md) | hosting, production | Partly open |
 | 0042 | 2026-10-07 | [The staff app opens on "My day": approvals from the card, deadlines by kind, a team card for supervisors](0042-app-home-my-day.md) | mobile, approvals, auth | Ruled; closed by 0043 |
 | 0043 | 2026-10-07 | [App home, round two: the board built whole — the header, the desks' cards, paper consultations on the phone, "ask the desk to re-check"](0043-app-home-round-two.md) | mobile, opd, approvals, roster | Ruled |
-| 0042 | 2026-10-07 | [The staff app opens on "My day": approvals from the card, deadlines by kind, a team card for supervisors](0042-app-home-my-day.md) | mobile, approvals, auth | Partly open |
 | 0044 | 2026-10-07 | [The OPD report counts the visits the desk opened; "Booked" reads "Appointments"](0044-opd-report-visits-opened.md) | opd, reports, front desk | Ruled |
