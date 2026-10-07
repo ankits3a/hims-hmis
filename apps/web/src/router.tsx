@@ -44,6 +44,7 @@ import { OpdConsult } from "./screens/opd-consult";
 import { OpdDisplay } from "./screens/opd-display";
 import { OpdScribe } from "./screens/opd-scribe";
 import { PaperConsults } from "./screens/paper-consults";
+import { OpdSets } from "./screens/opd-phone-consult";
 import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
@@ -230,6 +231,8 @@ const NAV: readonly NavEntry[] = [
     the supervisor's (every doctor's, with "reopen"). The screen decides which list a login gets.
   */
   { to: "/opd/paper-consults", label: "nav.paperConsults", permission: "opd.consult", group: "opd" },
+  // Decision 0048 — the doctor's sets and the hospital's starter sets, read in full and signed here.
+  { to: "/opd/sets", label: "nav.opdSets", permission: "opd.consult", group: "opd" },
   { to: "/opd/paper-consults", label: "nav.paperConsultsAll", permission: "opd.queue.transfer", group: "opd" },
   { to: "/billing", label: "nav.billing", permission: "billing.invoice.issue", group: "billing" },
   { to: "/billing/dues", label: "nav.billingDues", permission: "billing.invoice.read", group: "billing" },
@@ -1558,6 +1561,13 @@ const paperConsultsRoute = createRoute({
   component: PaperConsults,
 });
 
+/** Decision 0048 (owner 2026-10-07) — sets for the phone consult: offered to the department, read in full, signed by the unit head. */
+const opdSetsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/opd/sets",
+  component: OpdSets,
+});
+
 const opdDisplayRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/display",
@@ -1750,7 +1760,7 @@ export const router = createRouter({
     changePasswordRoute,
     authedRoute.addChildren([
       indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
-      opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
+      opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and

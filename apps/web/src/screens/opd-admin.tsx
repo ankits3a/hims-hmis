@@ -18,6 +18,7 @@ import { fetchHeadsWithoutRegn } from "../lib/roster-api";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import { ConsultLayoutAdmin } from "./opd-layout";
+import { PhoneConsultAdmin } from "./opd-phone-consult";
 import type { AgentLine } from "../components/agent-dock";
 /*
   ALIASED ON IMPORT so the four tabs' JSX does not churn: the elements are the same five, the paint
@@ -792,7 +793,7 @@ function SchedulesAndLeavesTab({
 export function OpdAdmin(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules" | "vocabulary" | "layout">("departments");
+  const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules" | "vocabulary" | "layout" | "phone">("departments");
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
   const departments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, refetchInterval: POLL_MS });
@@ -853,6 +854,7 @@ export function OpdAdmin(): React.ReactElement {
           ["schedules", t("opdAdmin.tabs.schedules")],
           ["vocabulary", t("opdAdmin.tabs.vocabulary")],
           ["layout", t("opdLayout.adminTab")],
+          ["phone", t("phoneConsult.tab")],
         ] as const}
       />
       {/*
@@ -868,6 +870,8 @@ export function OpdAdmin(): React.ReactElement {
         {tab === "vocabulary" && <VocabularyTab queryClient={queryClient} />}
         {/* Board `Profiles` — the department default of the consult's sections (opd-layout.tsx). */}
         {tab === "layout" && <ConsultLayoutAdmin departments={departmentItems} />}
+        {/* Decisions 0048/0049 — the voice and suggestion switches, the meters, the look-alike pairs. */}
+        {tab === "phone" && <PhoneConsultAdmin />}
       </div>
 
       <AgentDock
