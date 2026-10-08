@@ -41,7 +41,8 @@ export function AccountScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
-      <Band
+      {/* No patient work here: the header's scan button is left off (owner 2026-10-08). */}
+      <Band scan={false}
         right={
           <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8} testID="back"
             style={{ minHeight: 32, paddingHorizontal: 10, justifyContent: "center" }}>

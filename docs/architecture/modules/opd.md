@@ -175,7 +175,7 @@ Source: `apps/core/src/modules/opd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (150)
+## HTTP routes (151)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
@@ -184,7 +184,7 @@ Foreign keys into: `patients`, `resources`
 - `opd-phone-consult.controller.ts` — 17: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
 - `opd-queue.controller.ts` — 35: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
 - `opd-reports.controller.ts` — 7: `/opd/reports`
-- `opd-visits.controller.ts` — 40: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
+- `opd-visits.controller.ts` — 41: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
 - `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/opd`
