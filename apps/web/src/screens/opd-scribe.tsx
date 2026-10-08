@@ -388,7 +388,7 @@ export function OpdScribe(): React.ReactElement {
                 {doctorIssued ? (
                   <p className="pc-note gd" data-testid="scribe-doctor-issued" role="status">{t("scribe.doctorIssued")}</p>
                 ) : (
-                  <PaperLinesEditor idPrefix="scribe" lines={lines} onChange={setLines} alerts={alerts} />
+                  <PaperLinesEditor idPrefix="scribe" lines={lines} onChange={setLines} alerts={alerts} nicknames={{ surface: "scribe", encounterId }} />
                 )}
               </div>
 

@@ -199,6 +199,7 @@ const THE_EIGHTEEN = [
   "printRosterBoard",
   /** MOBILE §3i (owner 2026-10-07) — `every(60_000)`: duty reminders, and "patients are waiting and you are not in". */
   "sweepStaffNotices",
+  "proposeMedicineNicknames",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;

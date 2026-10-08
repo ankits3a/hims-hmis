@@ -20,6 +20,12 @@ Source: `apps/core/src/modules/opd/`
   - `completedVisitIdsOf(db: Db | Tx, patientIds: readonly string[]): Promise<{ encounterId: string; patientId: string }[]>`
   - `completedVisitsForRelease(db: Db | Tx, encounterIds: readonly string[]): Promise<OpdReleaseVisit[]>`
   - types: `OpdReleaseDiagnosis`, `OpdReleaseVisit`
+- `alias-runner.ts`
+  - `runAliasJob(db: Db, config: AppConfig | undefined, now: Date = new Date()): Promise<AliasRunReport>`
+  - `runAliasProposals(db: Db, deps: AliasDeps, caps: AliasRunCaps, now: Date = new Date()): Promise<AliasRunReport>`
+  - types: `AliasRunCaps`, `AliasRunReport`
+- `alias-store.ts`
+  - `aliasDepsFrom(db: Db, config: AppConfig): AliasDeps`
 - `config.ts`
   - `DEFAULT_DEPARTMENTS: { code: string; name: string }[]`
   - `loadOpdConfig(db: Db | Tx): Promise<OpdConfig>`
@@ -60,6 +66,9 @@ Source: `apps/core/src/modules/opd/`
   - types: `EscalationState`, `EscalationView`
 - `events.ts`
   - `admissionRequested`
+  - `aliasRestored`
+  - `aliasRunCompleted`
+  - `aliasUndone`
   - `appointmentBooked`
   - `appointmentCancelled`
   - `appointmentNoShow`
@@ -175,13 +184,13 @@ Source: `apps/core/src/modules/opd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (150)
+## HTTP routes (153)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
 - `opd-masters.controller.ts` — 24: `/opd/config`, `/opd/definition`, `/opd/departments`, `/opd/doctors`, `/opd/layouts`, `/opd/leaves`, `/opd/me`, `/opd/rooms`
 - `opd-paper.controller.ts` — 11: `/opd/paper`
-- `opd-phone-consult.controller.ts` — 17: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
+- `opd-phone-consult.controller.ts` — 20: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
 - `opd-queue.controller.ts` — 35: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
 - `opd-reports.controller.ts` — 7: `/opd/reports`
 - `opd-visits.controller.ts` — 40: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`

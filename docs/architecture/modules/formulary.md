@@ -91,6 +91,11 @@ Source: `apps/core/src/modules/formulary/`
   - `classifyNdpsSalts(tx: Tx, actor: Actor, opts: { apply: boolean }): Promise<NdpsClassificationReport>`
   - `ndpsClassByMedicine(db: Db | Tx, ids: readonly string[]): Promise<Map<string, NdpsClass>>`
   - types: `NdpsClass`, `NdpsClassificationReport`, `NdpsEntry`
+- `prescribing-search.ts`
+  - `medicineHitById(db: Db, id: string): Promise<MedicineHit | null>`
+  - `registerNicknameLookup(fn: NicknameLookup): () => void`
+  - `searchMedicinesForPrescribing(db: Db, query: string, limit = 10): Promise<PrescribingHit[]>`
+  - types: `NicknameLookup`, `NicknameMark`, `PrescribingHit`
 - `products.ts`
   - `MAX_PRODUCT_SPECS`
   - `matchProducts(db: Db | Tx, specs: readonly (ProductSpec | null)[], stockedIds: readonly string[]): Promise<(ProductMatch | null)[]>`

@@ -49,7 +49,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames"
           } > 93600
         for: 5m
         labels:
@@ -139,6 +139,9 @@ groups:
           # Mobile §3i: duty reminders and "patients are waiting and you are not in". A sweep that
           # never ran reminds nobody, and the doctor who is out is the one person who is not told.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepStaffNotices"})
+          # Medicine nicknames (decision 0051): hourly, and it heartbeats whether or not the pipeline
+          # is switched on — so an absent series means the worker never ran it, not that it is off.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="proposeMedicineNicknames"})
         for: 5m
         labels:
           severity: critical

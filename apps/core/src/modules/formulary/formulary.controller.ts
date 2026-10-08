@@ -13,7 +13,8 @@ import { catalogueCensus, medicinesByIds, pageInteractions, pageMedicines, pageS
 import type { CatalogueCensus } from "./reads";
 import { CursorError } from "../../kernel/db/page";
 import { searchMedicines } from "./search";
-import type { MedicineHit } from "./search";
+import { searchMedicinesForPrescribing } from "./prescribing-search";
+import type { PrescribingHit } from "./prescribing-search";
 import { admitStaging, getStagingRow, rejectStaging, searchStaging } from "./staging";
 import { MAX_SUGGESTIONS, suggestDrugs } from "./suggest";
 import type { DrugSuggestion } from "./suggest";
@@ -83,6 +84,8 @@ const monographBody = z.object({
 /** Query flags arrive as strings; never z.coerce.boolean() — it reads "false" as true (§3.19). */
 const flagQuery = z.enum(["true", "false"]).optional();
 const medicineSearchQuery = z.object({ q: z.string().max(120), limit: z.string().max(3).optional() });
+/** `for=rx` — a PRESCRIBING screen is asking (the consult, the desk scribe): a learned nickname may add one row. */
+const prescribingSearchQuery = medicineSearchQuery.extend({ for: z.enum(["rx"]).optional() });
 const activeQuery = z.object({ active: flagQuery });
 /**
  * The three list routes are PAGED — they used to answer with the whole table, and `medicines` did
@@ -265,9 +268,11 @@ export class FormularyController {
    */
   @RequirePermission("formulary.read", "hospital")
   @Get("medicines/search")
-  async searchMedicinesRoute(@Query() query: unknown): Promise<{ items: MedicineHit[] }> {
-    const q = parsed(medicineSearchQuery, query);
-    return { items: await searchMedicines(this.db, q.q, q.limit === undefined ? 10 : Number(q.limit)) };
+  async searchMedicinesRoute(@Query() query: unknown): Promise<{ items: PrescribingHit[] }> {
+    const q = parsed(prescribingSearchQuery, query);
+    const limit = q.limit === undefined ? 10 : Number(q.limit);
+    /* Without `for=rx` this is the catalogue's answer and nothing else — the pharmacy's and the formulary office's searches. */
+    return { items: q.for === "rx" ? await searchMedicinesForPrescribing(this.db, q.q, limit) : await searchMedicines(this.db, q.q, limit) };
   }
 
   @RequirePermission("formulary.read", "hospital")

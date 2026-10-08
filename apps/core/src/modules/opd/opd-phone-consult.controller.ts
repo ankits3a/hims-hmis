@@ -18,6 +18,8 @@ import {
 import { OpdError } from "./errors";
 import { doctorForUser } from "./masters";
 import { parsed, toHttp } from "./opd-masters.controller";
+import { applyAliasUse, listNicknames, restoreNickname, undoNickname } from "./alias-use";
+import type { NicknameList } from "./alias-use";
 import type { RxSet } from "./rx-sets";
 import type { GuardedMedicineHit, HiddenItem } from "./consult-guards";
 import type { TranscribeNoteResult, VoiceMeter, VoiceSettings, VoiceStatus } from "./consult-voice";
@@ -65,6 +67,7 @@ const signalsBody = z.object({
   })).max(60).default([]),
 });
 const prefsBody = z.object({ suggestionsOn: z.boolean() });
+const nicknamesQuery = z.object({ all: z.enum(["0", "1"]).optional() });
 const lasaBody = z.object({ nameA: z.string().min(3).max(60), nameB: z.string().min(3).max(60) });
 const settingsBody = z.object({
   enabled: z.boolean().optional(),
@@ -191,12 +194,59 @@ export class OpdPhoneConsultController {
   }
 
   /** Terms that matched nothing (the term alone — no patient, no visit), and what became of each suggestion (may name the visit; never a patient). */
-  @RequirePermission("opd.consult", "hospital")
+  /*
+    ALSO THE DESK SCRIBE (`opd.prescription.transcribe`). The scribe types the doctor's paper into the
+    same drug field, has sent `surface: "scribe"` here since decision 0054, and was answered 403 every
+    time: it holds no `opd.consult`. This route writes two logs and reads nothing — a typed word with
+    no patient, and what became of a suggestion — so admitting the seat that produces half the typing
+    gives away nothing a transcriber cannot already see.
+  */
+  @RequirePermission("opd.consult", "hospital", { alsoAdmits: ["opd.prescription.transcribe"] })
   @Post("consult/signals")
   async signals(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ misses: number; suggestions: number }> {
     const b = parsed(signalsBody, body);
     try {
-      return await recordSignals(this.db, actor, b);
+      const out = await recordSignals(this.db, actor, b);
+      /* A tap or a cross on a nickname's row: work out, from the log, whether it is now trusted or crossed out. */
+      const nicknames = [...new Set(b.suggestions.filter((s) => s.kind === "alias" && s.itemKey !== undefined).map((s) => s.itemKey as string))];
+      for (const key of nicknames.slice(0, 10)) await applyAliasUse(this.db, key);
+      return out;
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  // ——— the owner's list of learned medicine nicknames (decisions 0051, 0055) ———
+
+  /**
+   * What the automatic pipeline learned, for the person who can take it back. `opd.masters.manage`,
+   * the grant the OPD admin screen already rides — no new permission. It opens with the pipeline
+   * OFF too (`on: false`): the list is then whatever was learned before, and still undoable.
+   */
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Get("consult/nicknames")
+  async nicknames(@Query() query: unknown): Promise<NicknameList> {
+    const q = parsed(nicknamesQuery, query);
+    return listNicknames(this.db, { all: q.all === "1", on: this.cfg.aliases.enabled });
+  }
+
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Post("consult/nicknames/:id/undo")
+  async nicknameUndo(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ ok: true }> {
+    try {
+      await undoNickname(this.db, actor, id);
+      return { ok: true };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.masters.manage", "hospital")
+  @Post("consult/nicknames/:id/restore")
+  async nicknameRestore(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ ok: true }> {
+    try {
+      await restoreNickname(this.db, actor, id);
+      return { ok: true };
     } catch (e) {
       toHttp(e);
     }
