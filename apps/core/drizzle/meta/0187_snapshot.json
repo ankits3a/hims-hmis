@@ -1,6 +1,6 @@
 {
-  "id": "21797503-5232-4841-866d-4e4d40d89e3f",
-  "prevId": "cf1686af-63d0-4974-b5b4-48cb1a8faea0",
+  "id": "cf1686af-63d0-4974-b5b4-48cb1a8faea0",
+  "prevId": "234de3fa-7f75-4775-9ad3-9892fdb4f644",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8931,18 +8931,6 @@
         "temp_c": {
           "name": "temp_c",
           "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "glucose_mg_dl": {
-          "name": "glucose_mg_dl",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "glucose_timing": {
-          "name": "glucose_timing",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
