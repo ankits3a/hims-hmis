@@ -314,6 +314,29 @@ const configSchema = z.object({
   OPENAI_DECISIONS_TIMEOUT_MS: z.coerce.number().int().positive().default(1500),
   TRIAGE_CHOOSER_ORDER: z.string().default("typesafe"),
   COPILOT_CHOOSER_ORDER: z.string().default("typesafe"),
+  /**
+   * ═══ THE AUTOMATIC MEDICINE-ALIAS PIPELINE (decision 0051, plan §7a, §14) — SHIPS OFF ═══
+   *
+   * `ALIAS_PIPELINE_ENABLED` is the kill switch, the `RETENTION_ENABLED` two-string spelling for the
+   * same reason ("false" must never read as true). With it "false" — the default — nothing calls a
+   * model for an alias and nothing builds a client to (`modules/opd/alias-store.ts`). Nothing in the
+   * product reads an alias yet whatever this says.
+   *
+   * WHO CHOOSES is `ALIAS_CHOOSER_ORDER`; unset, it is the chain triage uses. The REVIEWER is always
+   * OpenAI's Decisions endpoint (`OPENAI_DECISIONS_*`, the only client with `predicate()`), so an
+   * order of `openai` alone makes chooser and reviewer one model and the pipeline refuses every
+   * term (`same_model`). The two lines are the STRICT ones the owner chose on 2026-10-08 (decision
+   * 0055) after the 296-term evaluation: a suggestion needs the chooser at or above 0.95 AND the
+   * reviewer at or above 0.9 — the lowest pair with no wrong answer in either pass. At the plan's
+   * first default (0.6) one answer in 103 was wrong.
+   */
+  ALIAS_PIPELINE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  ALIAS_CHOOSER_ORDER: z.string().optional(),
+  ALIAS_CHOOSER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.95),
+  ALIAS_REVIEWER_MIN_PROBABILITY: z.coerce.number().gt(0.5).max(1).default(0.9),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -552,6 +575,8 @@ export type AppConfig = {
   /** Who answers first, per job. Default `["typesafe"]` — today's behaviour. */
   triageChooserOrder: ("typesafe" | "openai")[];
   copilotChooserOrder: ("typesafe" | "openai")[];
+  /** Decision 0051 — the medicine-alias pipeline. `enabled` is FALSE unless an operator says otherwise. */
+  aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -867,6 +892,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     decisions: { baseUrl: parsed.OPENAI_DECISIONS_BASE_URL, model: parsed.OPENAI_DECISIONS_MODEL, timeoutMs: parsed.OPENAI_DECISIONS_TIMEOUT_MS },
     triageChooserOrder: chooserOrderFrom("TRIAGE_CHOOSER_ORDER", parsed.TRIAGE_CHOOSER_ORDER),
     copilotChooserOrder: chooserOrderFrom("COPILOT_CHOOSER_ORDER", parsed.COPILOT_CHOOSER_ORDER),
+    aliases: {
+      enabled: parsed.ALIAS_PIPELINE_ENABLED,
+      chooserOrder: chooserOrderFrom("ALIAS_CHOOSER_ORDER", parsed.ALIAS_CHOOSER_ORDER ?? parsed.TRIAGE_CHOOSER_ORDER),
+      chooserLine: parsed.ALIAS_CHOOSER_MIN_CONFIDENCE,
+      reviewerLine: parsed.ALIAS_REVIEWER_MIN_PROBABILITY,
+    },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
