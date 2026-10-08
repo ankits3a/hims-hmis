@@ -56,7 +56,7 @@ describe("app.config.ts — the iPhone half", () => {
     const plugins = (configFor({ APP_ENV: "production" }).plugins ?? []) as (string | [string, Record<string, unknown>])[];
     const of = (name: string): Record<string, unknown> => { const p = plugins.find((x) => Array.isArray(x) && x[0] === name); return Array.isArray(p) ? p[1] : {}; };
     expect(of("expo-camera").cameraPermission).toBe("HMIS uses the camera to photograph prescription slips and scan patient codes.");
-    expect(of("expo-audio").microphonePermission).toBe("HMIS uses the microphone to record a doctor's spoken note, which is typed by the hospital's server and not stored.");
+    expect(of("expo-audio").microphonePermission).toBe("HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.");
     expect(of("expo-local-authentication").faceIDPermission).toBe("HMIS uses Face ID to unlock the app.");
     expect(of("expo-secure-store").faceIDPermission).toBe("HMIS uses Face ID to unlock the app.");
     expect(of("expo-audio")).toMatchObject({ enableBackgroundRecording: false, enableBackgroundPlayback: false });

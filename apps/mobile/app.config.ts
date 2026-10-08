@@ -42,7 +42,7 @@ const VERSION_CODE = Number(process.env.HMIS_VERSION_CODE ?? "1");
  * tracking, no background mode. Each sentence is handed to the config plugin that owns its key.
  */
 const IOS_CAMERA = "HMIS uses the camera to photograph prescription slips and scan patient codes.";
-const IOS_MICROPHONE = "HMIS uses the microphone to record a doctor's spoken note, which is typed by the hospital's server and not stored.";
+const IOS_MICROPHONE = "HMIS uses the microphone to record a doctor's spoken note. The recording is sent through the hospital's server to a speech-to-text service to be typed, and is not stored.";
 const IOS_FACE_ID = "HMIS uses Face ID to unlock the app.";
 
 const config: ExpoConfig = {
