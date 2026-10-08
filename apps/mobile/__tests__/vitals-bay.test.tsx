@@ -98,6 +98,11 @@ async function takeToken(n: string) {
   await fireEvent.press(screen.getByTestId("begin"));
   await screen.findByTestId("tiles");
 }
+/** OWNER 2026-10-08 — a reading behind "+" is one tap away: open the sheet, tap it. */
+async function add(key: string) {
+  await fireEvent.press(screen.getByTestId("plus-row"));
+  await fireEvent.press(await screen.findByTestId(`plus-add-${key}`));
+}
 async function type(key: string, text: string) {
   await fireEvent.changeText(screen.getByTestId(`input-${key}`), text);
 }
@@ -159,6 +164,7 @@ describe("the vitals bay on a phone", () => {
     await takeToken("4");
     await type("bp", "150-90");
     expect(screen.getByTestId("reads-bp")).toHaveTextContent("reads 150/90 mmHg");
+    await add("tempC");
     await type("tempC", "101.2");
     expect(screen.getByTestId("reads-tempC")).toHaveTextContent("101.2 °F = 38.4 °C");
     await commit("tempC", "101.2");
@@ -170,15 +176,19 @@ describe("the vitals bay on a phone", () => {
     const { fetcher } = server(base());
     await mount(fetcher);
     await takeToken("4");
-    expect(screen.getByTestId("label-bp")).toHaveTextContent("BP *");
-    expect(screen.getByTestId("label-tempC")).toHaveTextContent(/^Temp$/);
+    expect(screen.getByTestId("label-bp")).toHaveTextContent("Blood pressure *");
+    await add("tempC");
+    expect(screen.getByTestId("label-tempC")).toHaveTextContent(/^Temperature$/);
   });
 
   it("asks a child for no BP, and saves the chart without one", async () => {
     const s = server(base({ "POST /opd/visits/e7/vitals": () => ({ status: 201, body: { flags: [] } }) }));
     await mount(s.fetcher);
     await takeToken("7");
-    expect(screen.getByTestId("label-bp")).toHaveTextContent(/^BP$/);
+    expect(screen.queryByTestId("tile-bp")).toBeNull();          // not asked: behind "+", and never starred when brought out
+    await add("bp");
+    expect(screen.getByTestId("label-bp")).toHaveTextContent(/^Blood pressure$/);
+    await fireEvent.press(screen.getByTestId("remove-bp"));
     await type("pulse", "96");
     await type("spo2", "98");
     await type("weightKg", "24");
@@ -195,7 +205,7 @@ describe("the vitals bay on a phone", () => {
     await takeToken("4");
     await type("pulse", "88");
     await fireEvent.press(screen.getByTestId("save"));
-    expect(await screen.findByTestId("missing")).toHaveTextContent("Still needed: BP, SpO₂, Weight");
+    expect(await screen.findByTestId("missing")).toHaveTextContent("Still needed: Blood pressure, SpO₂, Weight");
     expect(s.of("POST /opd/visits/e4/vitals")).toEqual([]);
   });
 
@@ -218,6 +228,7 @@ describe("the vitals bay on a phone", () => {
     await commit("bp", "150-90");
     await type("pulse", "88");
     await type("spo2", "97");
+    await add("tempC");
     await type("tempC", "98.6");
     await type("weightKg", "61.5");
     await fireEvent.press(screen.getByTestId("save"));

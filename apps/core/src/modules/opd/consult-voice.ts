@@ -244,6 +244,7 @@ export async function transcribeConsultNote(
       vit.sbp !== null && vit.dbp !== null ? `BP ${String(vit.sbp)}/${String(vit.dbp)}` : null,
       vit.pulse !== null ? `pulse ${String(vit.pulse)}` : null, vit.spo2 !== null ? `SpO2 ${String(vit.spo2)}` : null,
       vit.tempC !== null ? `temp ${String(vit.tempC)} C` : null, vit.weightKg !== null ? `weight ${String(vit.weightKg)} kg` : null,
+      vit.glucoseMgDl !== null ? `glucose ${String(vit.glucoseMgDl)} mg/dL (${(vit.glucoseTiming ?? "untimed").replace("_", " ")})` : null,
     ].filter((x): x is string => x !== null).join(", ") || null,
     department: dept?.name ?? null,
   };

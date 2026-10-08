@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { VitalsBay } from "./vitals-bay";
 import {
-  buildBody, emptyTiles, takeError, tempNote, flagOf, humanDate, leadTileFor, mirrorFor, missingFor, parseTake, readLane, tileOrder, tileSetFor,
+  buildBody, emptyTiles, takeError, tempNote, flagOf, humanDate, mirrorFor, missingFor, parseTake, readLane, tileSetFor, vitalsLayout,
 } from "./vitals-bay-capture";
 import { renderWithProviders } from "../test-utils";
 import { setToken } from "../lib/api";
@@ -116,15 +116,17 @@ describe("the pure rules mirror the server's", () => {
     expect(parseTake("weightKg", "4.8")).toBe(4.8);
     expect(parseTake("pulse", "7x")).toBeNull();
   });
-  it("tileSetFor folds sbp/dbp to one tile; a 4-year-old requires MUAC and has BP not routine; the lead vital comes from history", () => {
+  it("tileSetFor folds sbp/dbp to one tile; a 4-year-old requires MUAC and has BP not routine; the boxes follow the patient", () => {
     expect(tileSetFor(PRE_K)).toEqual({ required: ["heightCm", "weightKg", "tempC", "spo2", "pulse", "muacCm"], notRoutine: ["bp"] });
     expect(tileSetFor(PRE_A).required).toContain("bp");
-    expect(leadTileFor(PRE_B)).toBe("bp");     // expected flag on sbp → cuff first
-    expect(leadTileFor(PRE_K)).toBe("tempC");  // a child: temperature first
-    // OWNER 2026-10-07 — no RR tile in OPD: RR, like MUAC, is a tile only where the band REQUIRES it.
-    expect(tileOrder("bp", tileSetFor(PRE_A))).toEqual(["bp", "pulse", "spo2", "tempC", "weightKg", "heightCm"]); // no MUAC, no RR for an adult
-    expect(tileOrder("tempC", tileSetFor(PRE_K))).toEqual(["tempC", "bp", "pulse", "spo2", "weightKg", "heightCm", "muacCm"]);
-    expect(tileOrder("bp", { required: [...tileSetFor(PRE_A).required, "rr"], notRoutine: [] })).toContain("rr"); // a band that asks for RR still gets it
+    // OWNER 2026-10-08 — four boxes and a "+": the order and the set are `vitalsLayout`'s (its own book is
+    // apps/mobile/__tests__/vitals-plus-rules.test.ts). These fixtures are bands that still DEMAND SpO₂ and
+    // temperature, so both come up by themselves; RR and MUAC stay boxes only where a band requires them.
+    expect(vitalsLayout(PRE_A).boxes).toEqual(["bp", "pulse", "weightKg", "heightCm", "spo2", "tempC"]); // no MUAC, no RR for an adult
+    expect(vitalsLayout(PRE_K).boxes).toEqual(["weightKg", "heightCm", "pulse", "tempC", "muacCm", "spo2"]); // the scale first for a child; BP behind "+"
+    expect(vitalsLayout(PRE_K).behindPlus).toEqual(["glucoseMgDl", "rr", "bp"]);
+    expect(vitalsLayout({ ...PRE_A, required: [...PRE_A.required, "rr"] }).boxes).toContain("rr"); // a band that asks for RR still gets it
+    expect(vitalsLayout(PRE_B).why.bp).toBe("required");
   });
   it("mirrorFor: the slipped digit, the shrinking adult and the probe error — and the child is above the weight gate", () => {
     const tile = emptyTiles().weightKg;
@@ -223,7 +225,7 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("bench-row-121"));
     await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
-    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+    await user.keyboard("120/80{Enter}70{Enter}70{Enter}168{Enter}98{Enter}36.6{Enter}");   // bp, pulse, weight, height — then this band's SpO₂ and temperature
 
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(posted).toHaveLength(1));
@@ -255,7 +257,7 @@ describe("CLOSE pass 1 — the hypoxic patient, and a chip that was never asked"
     fireEvent.click(chip); expect(chip.getAttribute("data-answer")).toBe("no");
     fireEvent.click(chip); expect(chip.getAttribute("data-answer")).toBe("");
     fireEvent.click(screen.getByTestId("chip-fasting")); fireEvent.click(screen.getByTestId("chip-fasting"));   // asked: no
-    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+    await user.keyboard("120/80{Enter}70{Enter}70{Enter}168{Enter}98{Enter}36.6{Enter}");   // bp, pulse, weight, height — then this band's SpO₂ and temperature
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect((posted[0]!.body as { contextChips: unknown }).contextChips).toEqual([{ key: "fasting", question: "khali pet?", answer: "not fasting" }]);
@@ -271,7 +273,7 @@ describe("VD-2 T5 — the contract pass closed three clauses: 1–8 address a ti
     fireEvent.click(screen.getByTestId("bench-row-118"));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
     (document.activeElement as HTMLElement).blur();
-    fireEvent.keyDown(window, { key: "4" });                      // tile 4 of [bp, pulse, spo2, tempC, rr, weightKg]
+    fireEvent.keyDown(window, { key: "6" });                      // box 6 of [bp, pulse, weightKg, heightCm (carried), spo2, tempC]
     expect(document.activeElement).toBe(screen.getByTestId("input-tempC"));
     await user.keyboard("37.1");                                   // digits inside the tile are the value
     expect((screen.getByTestId("input-tempC") as HTMLInputElement).value).toBe("37.1");
@@ -340,10 +342,9 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     expect(screen.getByTestId("value-bp").textContent).toBe("128/84");
     expect(document.activeElement).toBe(screen.getByTestId("input-pulse"));   // jumped to the next EMPTY tile
     await user.keyboard("78{Enter}");
-    await user.keyboard("97{Enter}");     // spo2
+    await user.keyboard("62{Enter}");     // weightKg — height is carried, so the lane skips it
+    await user.keyboard("97{Enter}");     // spo2 — this fixture's band still demands it
     await user.keyboard("36.8{Enter}");   // tempC
-    await user.keyboard("16{Enter}");     // rr
-    await user.keyboard("62{Enter}");     // weightKg — height is carried, so the lane is done
     expect(screen.getByTestId("keys").textContent).toMatch(/^\d+ keys · 0 device reads/);
     fireEvent.click(screen.getByTestId("chip-fasting"));
     fireEvent.click(screen.getByTestId("save"));
@@ -427,7 +428,7 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     await waitFor(() => expect(screen.getByTestId("bench-row-118")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("bench-row-118"));
     await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
-    await user.keyboard("190/100{Enter}78{Enter}97{Enter}36.8{Enter}16{Enter}62{Enter}");
+    await user.keyboard("190/100{Enter}78{Enter}62{Enter}97{Enter}36.8{Enter}");
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(screen.getByTestId("server-gate-heightCm")).toBeInTheDocument());
     expect(screen.queryByTestId("capture-error")).not.toBeInTheDocument();
@@ -458,9 +459,10 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     fireEvent.click(screen.getByTestId("bench-row-130"));
     await waitFor(() => expect(screen.getByTestId("capture")).toBeInTheDocument());
     expect(screen.getByTestId("tile-muacCm").getAttribute("data-required")).toBe("true");
-    expect(screen.getByTestId("not-routine-bp")).toBeInTheDocument();
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-tempC")));
-    await user.keyboard("38.4{Enter}");
+    // OWNER 2026-10-08 — a not-routine BP is behind "+" now, and a child's lane starts on the scale
+    expect(screen.queryByTestId("tile-bp")).not.toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-weightKg")));
+    await user.click(screen.getByTestId("input-tempC")); await user.keyboard("38.4{Enter}");
     expect(screen.getByTestId("tile-tempC").getAttribute("data-tint")).toBe("notice");
     await user.click(screen.getByTestId("input-muacCm")); await user.keyboard("11.0{Enter}");
     expect(screen.getByTestId("tile-muacCm").getAttribute("data-tint")).toBe("sam");
@@ -469,8 +471,9 @@ describe("VD-2 T2 — the ASSEMBLED bay: the typing lane at speed, the carried l
     // Save & send NOW on a trimmed set: only BP + pulse + SpO₂ are demanded
     fireEvent.click(screen.getByTestId("save-emergency"));
     await waitFor(() => expect(screen.getByTestId("missing")).toBeInTheDocument());
-    expect(screen.getByTestId("missing").textContent).toContain("BP");
+    expect(screen.getByTestId("missing").textContent).toContain("Blood pressure");
     expect(screen.getByTestId("missing").textContent).not.toContain("Height");
+    expect(screen.getByTestId("not-routine-bp")).toBeInTheDocument();   // the cuff the emergency set asked for came up by itself
     await user.click(screen.getByTestId("input-bp")); await user.keyboard("100/60{Enter}");
     await user.click(screen.getByTestId("input-pulse")); await user.keyboard("110{Enter}");
     await user.click(screen.getByTestId("input-spo2")); await user.keyboard("97{Enter}");

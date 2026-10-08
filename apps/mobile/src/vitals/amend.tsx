@@ -5,9 +5,9 @@ import { useI18n } from "../i18n";
 import { ApiError } from "../api";
 import { color, radius, space, TOUCH } from "../theme";
 import { Button, Note } from "../ui";
-import { AMEND_KEYS, AMEND_REASONS, UNLOCK_REASONS, amendedReadings, diffOf, istClock, tempNote } from "./rules";
+import { AMEND_KEYS, AMEND_REASONS, GLUCOSE_TIMINGS, UNLOCK_REASONS, amendedReadings, diffOf, istClock, parseTake, tempNote } from "./rules";
 import { refusalText } from "./api";
-import type { Change, WireUnlockReason, WireVitalKey, WireVitalsPostBody } from "./rules";
+import type { Change, GlucoseTiming, WireUnlockReason, WireVitalKey, WireVitalsPostBody } from "./rules";
 import type { VitalsApi, WireChart, WireVitalsGate } from "./api";
 
 /**
@@ -26,7 +26,7 @@ import type { VitalsApi, WireChart, WireVitalsGate } from "./api";
  * and the chart is corrected in °C.
  */
 type Values = Record<WireVitalKey, string>;
-const text = (n: number | null): string => (n === null ? "" : String(n));
+const text = (n: number | null | undefined): string => (n === null || n === undefined ? "" : String(n));
 
 export function AmendPanel({ api, vitalsId, onAmended, onLeave }: {
   api: VitalsApi; vitalsId: string;
@@ -43,12 +43,15 @@ export function AmendPanel({ api, vitalsId, onAmended, onLeave }: {
   const [overrides, setOverrides] = useState<Partial<Record<WireVitalKey, string>>>({});
   const [locked, setLocked] = useState<WireVitalKey[]>([]);
   const [unlocks, setUnlocks] = useState<Partial<Record<WireVitalKey, WireUnlockReason>>>({});
+  /** Owner 2026-10-08 — when the glucose was taken; corrected like a number, and never sent away from a value. */
+  const [timing, setTiming] = useState<GlucoseTiming | null>(null);
 
   useEffect(() => {
     let live = true;
     api.chart(vitalsId).then((r) => {
       if (!live) return;
       setChart(r.vitals);
+      setTiming(r.vitals.glucoseTiming ?? null);
       setValues(Object.fromEntries(AMEND_KEYS.map((k) => [k, text(r.vitals[k])])) as Values);
     }).catch(() => { if (live) setFailed(true); });
     return () => { live = false; };
@@ -61,12 +64,15 @@ export function AmendPanel({ api, vitalsId, onAmended, onLeave }: {
   const carried = (chart.carriedForward ?? []) as WireVitalKey[];
   const changed = AMEND_KEYS.filter((k) => values[k].trim() !== text(chart[k]));
   const needsReason = changed.filter((k) => carried.includes(k) && unlocks[k] === undefined);
+  const timingMoved = values.glucoseMgDl.trim() !== "" && timing !== (chart.glucoseTiming ?? null) && !changed.includes("glucoseMgDl");
+  const changeCount = changed.length + (timingMoved ? 1 : 0);
 
   /** What the copy reads as: a number, an emptied box (null), or not a number at all. °F is read for the temperature. */
   const read = (k: WireVitalKey): number | null | "bad" => {
     const raw = values[k].trim();
     if (raw === "") return null;
     if (k === "tempC") { const n = tempNote(raw); return n === null ? "bad" : n.c; }
+    if (k === "glucoseMgDl") { const g = parseTake("glucoseMgDl", raw); return typeof g === "number" ? g : "bad"; }
     return /^\d+(\.\d+)?$/.test(raw) ? Number(raw) : "bad";
   };
 
@@ -76,11 +82,13 @@ export function AmendPanel({ api, vitalsId, onAmended, onLeave }: {
     const next: Partial<Record<WireVitalKey, number | null>> = {};
     for (const k of AMEND_KEYS) {
       const v = read(k);
-      if (v === "bad") { setError(`${t(`vitalsBay.vital.${k}`)}: ${t(k === "tempC" ? "vitalsBay.capture.tempUnit" : "vitalsBay.capture.notANumber")}`); return; }
+      if (v === "bad") { setError(`${t(`vitalsBay.vital.${k}`)}: ${t(k === "tempC" ? "vitalsBay.capture.tempUnit" : k === "glucoseMgDl" ? "vitalsBay.capture.glucoseRange" : "vitalsBay.capture.notANumber")}`); return; }
       next[k] = v;
     }
+    const glucose = next.glucoseMgDl ?? null;
+    if (glucose !== null && timing === null) { setError(t("vitalsBay.glucose.timingNeeded")); return; }
     const body: WireVitalsPostBody & { reason: string } = {
-      ...next, reason: reason.trim(), emergency: chart.emergency, notes: chart.notes,
+      ...next, glucoseTiming: glucose === null ? null : timing, reason: reason.trim(), emergency: chart.emergency, notes: chart.notes,
       readings: amendedReadings(chart, next),
       contextChips: Array.isArray(chart.contextChips) ? (chart.contextChips as { key: string; question: string; answer: string }[]) : [],
       carriedForward: carried.filter((k) => !changed.includes(k)),
@@ -119,7 +127,7 @@ export function AmendPanel({ api, vitalsId, onAmended, onLeave }: {
         {AMEND_KEYS.map((k) => {
           const moved = values[k].trim() !== text(chart[k]);
           return (
-            <View key={k} style={s.cell}>
+            <View key={k} style={[s.cell, k === "glucoseMgDl" && { width: "100%" }]}>
               <Text style={s.label}>
                 {t(`vitalsBay.vital.${k}`)}{carried.includes(k) ? ` · ${t("vitalsBay.amend.carried")}` : ""}
               </Text>
@@ -128,7 +136,20 @@ export function AmendPanel({ api, vitalsId, onAmended, onLeave }: {
                 value={values[k]} onChangeText={(v) => { setValues((c) => (c === null ? c : { ...c, [k]: v })); setError(null); }}
                 style={[s.input, moved && { borderColor: color.green, borderWidth: 2 }]}
               />
-              {moved && chart[k] !== null && <Text testID={`amend-was-${k}`} style={s.was}>{t("vitalsBay.amend.was", { value: chart[k] })}</Text>}
+              {moved && chart[k] !== null && chart[k] !== undefined && <Text testID={`amend-was-${k}`} style={s.was}>{t("vitalsBay.amend.was", { value: chart[k] ?? "" })}</Text>}
+              {k === "glucoseMgDl" && (
+                <View testID="amend-glucose-timing" accessibilityLabel={t("vitalsBay.glucose.timingLabel")} style={s.reasons}>
+                  {GLUCOSE_TIMINGS.map((g) => {
+                    const on = timing === g;
+                    return (
+                      <Pressable key={g} testID={`amend-glucose-timing-${g}`} accessibilityRole="button" accessibilityState={{ selected: on }}
+                        onPress={() => { setTiming(on ? null : g); setError(null); }} style={[s.reasonChip, on && s.reasonOn]}>
+                        <Text style={[s.reasonText, on && { color: "#fff" }]}>{t(`vitalsBay.glucose.timing.${g}`)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
               {k === "tempC" && <Text style={s.was}>{t("mobile.vitals.amendTemp")}</Text>}
               {locked.includes(k) && (
                 <View testID={`amend-unlock-${k}`} style={{ gap: 4 }}>
@@ -168,7 +189,7 @@ export function AmendPanel({ api, vitalsId, onAmended, onLeave }: {
         value={reason} onChangeText={(v) => { setReason(v); setError(null); }} style={s.input}
       />
       {error !== null && <Note tone="bad" testID="amend-error">{error}</Note>}
-      <Button testID="amend-save" label={t("vitalsBay.amend.save", { count: changed.length })} busy={busy} disabled={changed.length === 0} onPress={() => { void submit(); }} />
+      <Button testID="amend-save" label={t("vitalsBay.amend.save", { count: changeCount })} busy={busy} disabled={changeCount === 0} onPress={() => { void submit(); }} />
       <Button testID="amend-leave" kind="secondary" label={t("mobile.vitals.amendLeave")} onPress={onLeave} />
     </View>
   );

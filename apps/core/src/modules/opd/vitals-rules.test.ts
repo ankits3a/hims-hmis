@@ -16,7 +16,8 @@ describe("vitals rules (pure)", () => {
   });
   it("missingRequired: the band's list, plus weight under 18", () => {
     // Owner 2026-10-05: temperature is never demanded — the adult list no longer carries it.
-    expect(missingRequired({}, 40, cfg)).toEqual(["heightCm", "weightKg", "sbp", "dbp", "spo2", "pulse"]);
+    // Owner 2026-10-08: nor is SpO₂ — it is behind "+" (vitals-plus.test.ts holds the ruling's own suite).
+    expect(missingRequired({}, 40, cfg)).toEqual(["heightCm", "weightKg", "sbp", "dbp", "pulse"]);
     expect(missingRequired(adultOk, 40, cfg)).toEqual([]);
     // VD-1 T1 / D5 — MUAC joined both under-six bands' required lists, so these two rows moved.
     // The change is the point of the task and is asserted directly below; they are updated here

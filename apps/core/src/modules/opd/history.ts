@@ -59,6 +59,9 @@ export type VitalsHistoryItem = {
   rr: number | null;
   spo2: number | null;
   tempC: number | null;
+  /** Owner 2026-10-08 — finger-prick glucose (mg/dL) and when it was taken; both null on a chart without one. */
+  glucoseMgDl: number | null;
+  glucoseTiming: string | null;
   band: string;
   /** `DangerFlag[]` as persisted — a reading that tripped a rule stays flagged in the history. */
   dangerFlags: unknown;
@@ -151,6 +154,7 @@ export async function patientVitalsHistory(
     serviceDate: r.serviceDate,
     recordedAt: r.v.recordedAt,
     sbp: r.v.sbp, dbp: r.v.dbp, pulse: r.v.pulse, rr: r.v.rr, spo2: r.v.spo2, tempC: r.v.tempC,
+    glucoseMgDl: r.v.glucoseMgDl, glucoseTiming: r.v.glucoseTiming,
     band: r.v.band,
     dangerFlags: r.v.dangerFlags,
     weightKg: r.v.weightKg,

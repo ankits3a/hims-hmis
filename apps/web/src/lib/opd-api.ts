@@ -359,6 +359,8 @@ export type WireVitals = {
   heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
   pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null;
   muacCm: number | null; notes: string | null;
+  /** Owner 2026-10-08 — finger-prick glucose (mg/dL) and when it was taken. Optional: an older server, or an older chart's fixture, sends neither. */
+  glucoseMgDl?: number | null; glucoseTiming?: "fasting" | "random" | "after_food" | null;
   ageYearsAtRecord: number | null; band: "infant" | "child_1_5" | "child_6_12" | "adult";
   dangerFlags: WireDangerFlag[]; recordedBy: string; recordedAt: string;
   /**
@@ -738,6 +740,7 @@ export type WireVitalsHistoryItem = {
   rr: number | null;
   spo2: number | null;
   tempC: number | null;
+  glucoseMgDl?: number | null; glucoseTiming?: string | null;
   band: string;
   dangerFlags: unknown[];
   /** Consult v2 — who took it, and whether it was later corrected. Optional: an older server sends none. */

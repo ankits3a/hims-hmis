@@ -40,7 +40,7 @@ import { BENCH_STATES, listBench, locateVisit, setBenchState } from "./bench";
 import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
 import { preStage } from "./prestage";
 import { READING_SOURCES, UNLOCK_REASONS } from "./vitals-rules";
-import { VITAL_KEYS } from "./config";
+import { GLUCOSE_TIMINGS, VITAL_KEYS } from "./config";
 import type { BenchRow, VisitOnBench } from "./bench";
 import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
@@ -195,6 +195,9 @@ const vitalsBody = z.object({
   tempC: z.number().nullable().optional(),
   /** VD-1 T1 / D5 — required under six, and the reason the bay carries a ₹160 tape. */
   muacCm: z.number().nullable().optional(),
+  /** Owner 2026-10-08 — finger-prick glucose (mg/dL) and when it was taken; one is refused without the other in `checkGlucose`. */
+  glucoseMgDl: z.number().nullable().optional(),
+  glucoseTiming: z.enum(GLUCOSE_TIMINGS).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
 
@@ -222,7 +225,7 @@ const vitalsDetailBody = z.object({
   readings: z.object({
     heightCm: readingBlock.optional(), weightKg: readingBlock.optional(), pulse: readingBlock.optional(),
     rr: readingBlock.optional(), spo2: readingBlock.optional(), tempC: readingBlock.optional(),
-    muacCm: readingBlock.optional(),
+    muacCm: readingBlock.optional(), glucoseMgDl: readingBlock.optional(),
     bp: z.object({
       takes: z.array(z.tuple([z.number(), z.number()])).min(1),
       source: z.enum(READING_SOURCES),

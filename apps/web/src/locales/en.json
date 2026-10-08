@@ -7397,17 +7397,19 @@
       "rr": "RR",
       "spo2": "SpO₂",
       "tempC": "Temp",
-      "muacCm": "MUAC"
+      "muacCm": "MUAC",
+      "glucoseMgDl": "Glucose"
     },
     "tile": {
-      "bp": "BP",
+      "bp": "Blood pressure",
       "pulse": "Pulse",
       "spo2": "SpO₂",
-      "tempC": "Temp",
-      "rr": "RR",
+      "tempC": "Temperature",
+      "rr": "Breathing rate",
       "weightKg": "Weight",
       "heightCm": "Height",
-      "muacCm": "MUAC"
+      "muacCm": "Arm band (MUAC)",
+      "glucoseMgDl": "Glucose"
     },
     "unit": {
       "bp": "mmHg",
@@ -7417,9 +7419,42 @@
       "rr": "/min",
       "weightKg": "kg",
       "heightCm": "cm",
-      "muacCm": "cm"
+      "muacCm": "cm",
+      "glucoseMgDl": "mg/dL"
+    },
+    "plus": {
+      "add": "Add a reading",
+      "close": "Close",
+      "remove": "Remove {{tile}}",
+      "clear": "Clear",
+      "and": " and ",
+      "hint": {
+        "spo2": "oxygen, finger probe · %",
+        "tempC": "°F or °C",
+        "glucoseMgDl": "fasting, random or after food · mg/dL",
+        "rr": "per minute",
+        "bp": "mmHg",
+        "pulse": "per minute",
+        "weightKg": "kg",
+        "heightCm": "cm"
+      },
+      "auto": {
+        "underSix": "Child under six: {{tiles}} are asked.",
+        "child": "Child: {{tiles}} asked for this age.",
+        "protocol": "Asked for this patient: {{tiles}}."
+      }
+    },
+    "glucose": {
+      "timingLabel": "When was it taken?",
+      "timing": {
+        "fasting": "Fasting",
+        "random": "Random",
+        "after_food": "After food"
+      },
+      "timingNeeded": "Choose when it was taken: fasting, random or after food"
     },
     "capture": {
+      "glucoseRange": "Glucose is a whole number from 20 to 600 mg/dL",
       "notRoutine": "not routine",
       "fromDevice": "device",
       "carriedLocked": "carried forward — locked until a reason",

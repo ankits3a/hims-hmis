@@ -257,7 +257,7 @@ describe("VD-2 T3 — story 3: the escalation, through the ASSEMBLED bay", () =>
     await waitFor(() => expect(screen.getByTestId("bench-row-121")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("bench-row-121"));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("input-bp")));
-    await user.keyboard("120/80{Enter}70{Enter}98{Enter}36.6{Enter}16{Enter}70{Enter}168{Enter}");
+    await user.keyboard("120/80{Enter}70{Enter}70{Enter}168{Enter}98{Enter}36.6{Enter}");   // bp, pulse, weight, height — then this band's SpO₂ and temperature
     fireEvent.click(screen.getByTestId("save"));
     await waitFor(() => expect(release).not.toBeNull());
     fireEvent.click(screen.getByTestId("bench-row-125"));

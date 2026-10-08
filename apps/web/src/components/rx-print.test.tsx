@@ -303,3 +303,10 @@ describe("RxPrint — a transcription says it is one", () => {
     expect(screen.queryByTestId("rx-transcribed")).not.toBeInTheDocument();
   });
 });
+
+/* Owner 2026-10-08 — a finger-prick glucose taken at the bay prints with WHEN it was taken, and never with a verdict. */
+it("prints the glucose and its timing at the end of the vitals line, and nothing when none was taken", () => {
+  renderWithProviders(<RxPrint data={{ ...DATA, vitals: { ...DATA.vitals!, glucoseMgDl: 186, glucoseTiming: "after_food" } }} />);
+  expect(screen.getByTestId("rx-vitals")).toHaveTextContent("BP 120/80 · P 72 · SpO₂ 98% · T 37.0 °C · Wt 60 kg · Glucose 186 mg/dL (after food)");
+  expect(screen.getByTestId("rx-vitals")).not.toHaveTextContent(/high|low|normal/i);
+});

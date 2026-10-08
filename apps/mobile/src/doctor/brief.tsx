@@ -89,6 +89,14 @@ function VitalsCard({ vitals, t }: { vitals: WireVisitVitals | null; t: T }) {
             </View>
           );
         })}
+        {vitals.glucoseMgDl != null && (
+          // Owner 2026-10-08 — the bay's finger-prick glucose and when it was taken; no verdict (no threshold is ruled).
+          <View testID="brief-vital-glucose" style={s.tile}>
+            <Text style={s.tileKey}>{t("vitalsBay.tile.glucoseMgDl")}</Text>
+            <Text style={[s.tileValue, { color: color.ink }]}>{vitals.glucoseMgDl}<Text style={s.tileUnit}> mg/dL</Text></Text>
+            {vitals.glucoseTiming != null && <Text style={s.tileUnit}>{t(`vitalsBay.glucose.timing.${vitals.glucoseTiming}`)}</Text>}
+          </View>
+        )}
       </View>
       <Text style={[s.source, { marginTop: space.sm }]}>
         {t("opdConsultV2.vitalsBy", { by: vitals.recordedByName ?? "—", at: istClock(vitals.recordedAt) })}
