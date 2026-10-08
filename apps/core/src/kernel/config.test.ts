@@ -199,6 +199,17 @@ describe("loadConfig — the chooser order", () => {
     expect(cfg.copilotChooserOrder).toEqual(["typesafe", "openai"]);
   });
 
+  it("the medicine-alias pipeline ships OFF, on the plan's lines, choosing with triage's chain unless told otherwise", () => {
+    expect(loadConfig(base).aliases).toEqual({ enabled: false, chooserOrder: ["typesafe"], chooserLine: 0.6, reviewerLine: 0.9 });
+    expect(loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: "openai,typesafe" }).aliases.chooserOrder).toEqual(["openai", "typesafe"]);
+    const on = loadConfig({ ...base, ALIAS_PIPELINE_ENABLED: "true", ALIAS_CHOOSER_ORDER: "typesafe", TRIAGE_CHOOSER_ORDER: "openai", ALIAS_REVIEWER_MIN_PROBABILITY: "0.95" });
+    expect(on.aliases).toEqual({ enabled: true, chooserOrder: ["typesafe"], chooserLine: 0.6, reviewerLine: 0.95 });
+    // "1" is not "true"; a reviewer line at or under a coin toss would call every answer a yes.
+    expect(() => loadConfig({ ...base, ALIAS_PIPELINE_ENABLED: "1" })).toThrow();
+    expect(() => loadConfig({ ...base, ALIAS_REVIEWER_MIN_PROBABILITY: "0.5" })).toThrow();
+    expect(() => loadConfig({ ...base, ALIAS_CHOOSER_ORDER: "jev" })).toThrow(/ALIAS_CHOOSER_ORDER/);
+  });
+
   it.each(["", "typesafe,grok", "openai,openai", ","])("refuses to boot on the order %p — a typo must not look like an unsure model", (order) => {
     expect(() => loadConfig({ ...base, TRIAGE_CHOOSER_ORDER: order })).toThrow(/TRIAGE_CHOOSER_ORDER/);
   });

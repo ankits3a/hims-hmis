@@ -1603,3 +1603,79 @@ export const cdsDoctorPrefs = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
   },
 );
+
+/**
+ * Decision 0051 / plan §7a, phase P2 — A LEARNED ALIAS: a term a doctor typed or spoke ("pan forty")
+ * and the ONE catalogue medicine an automatic pipeline says it means. No person reviews a row: a
+ * chooser picks from formulary candidates, a second model answers one closed question, rules in
+ * code check the rest (`modules/opd/alias-pipeline.ts`). There is NO patient and NO visit here —
+ * the term, a catalogue id, two models' numbers and closed codes; never free text from a model.
+ *
+ *   proposed   — something refused (`refusal` says what). Never shown, never read by a search.
+ *   suggestion — both models agreed above their lines and every rule passed. Shown as a suggestion only.
+ *   trusted    — earned by use (`trustByUse`); demoted — the monthly re-audit took it back;
+ *   undone     — the owner's one-tap undo (`undone_by`, `undone_at`).
+ *
+ * One row per (kind, term): a second target for the same term is a refusal, never a second row.
+ * `kind` allows 'complaint' and 'test' for the later uses of the same pattern; only 'medicine' is written.
+ */
+export const cdsAliases = pgTable(
+  "cds_aliases",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    /** Lower-case, NFC, single-spaced. */
+    term: text("term").notNull(),
+    /** `formulary_medicines.id` — null only on a 'proposed' row whose chooser found no target. */
+    medicineId: text("medicine_id"),
+    state: text("state").notNull(),
+    /** The VERSIONED model id that chose, and how sure it was. */
+    chooserName: text("chooser_name"),
+    chooserConfidence: doublePrecision("chooser_confidence"),
+    reviewerName: text("reviewer_name"),
+    reviewerAnswer: text("reviewer_answer"),
+    reviewerProbability: doublePrecision("reviewer_probability"),
+    reasonCode: text("reason_code"),
+    /** 'pass', the first rule that refused, or 'not_run' when there was no target to check. */
+    ruleResult: text("rule_result").notNull(),
+    /** Why the row is only 'proposed' — the first thing in the pipeline that said no. Null on a live row. */
+    refusal: text("refusal"),
+    /** The target has a look-alike neighbour: a screen must ask for a second tap before using it. */
+    lasaGuard: boolean("lasa_guard").notNull().default(false),
+    distinctDoctors: integer("distinct_doctors").notNull().default(0),
+    taps: integer("taps").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+    /** When the pipeline (or the re-audit) last checked this row. */
+    auditedAt: timestamp("audited_at", { withTimezone: true }),
+    undoneBy: text("undone_by"),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("cds_aliases_kind_term_uq").on(t.kind, t.term),
+    index("cds_aliases_state_idx").on(t.state),
+    check("cds_aliases_kind_ck", sql`${t.kind} in ('medicine', 'complaint', 'test')`),
+    check("cds_aliases_term_ck", sql`char_length(${t.term}) between 2 and 60 and ${t.term} = lower(${t.term})`),
+    check("cds_aliases_state_ck", sql`${t.state} in ('proposed', 'suggestion', 'trusted', 'demoted', 'undone')`),
+    check("cds_aliases_reviewer_answer_ck", sql`${t.reviewerAnswer} is null or ${t.reviewerAnswer} in ('yes', 'no', 'unsure')`),
+    check(
+      "cds_aliases_reason_code_ck",
+      sql`${t.reasonCode} is null or ${t.reasonCode} in ('name_match', 'strength_match', 'brand_nickname', 'ambiguous_strength', 'ambiguous_form', 'lookalike_risk', 'not_a_medicine')`,
+    ),
+    check(
+      "cds_aliases_rule_result_ck",
+      sql`${t.ruleResult} in ('pass', 'not_run', 'multiple_targets', 'strength_mismatch', 'strength_unstated', 'form_mismatch', 'controlled_drug', 'lookalike_conflict', 'same_model')`,
+    ),
+    check(
+      "cds_aliases_refusal_ck",
+      sql`${t.refusal} is null or ${t.refusal} in ('identifier_in_term', 'no_candidates', 'chooser_unavailable', 'chooser_none', 'chooser_below_line', 'reviewer_unavailable', 'reviewer_no', 'reviewer_unsure', 'reviewer_below_line', 'multiple_targets', 'strength_mismatch', 'strength_unstated', 'form_mismatch', 'controlled_drug', 'lookalike_conflict', 'same_model')`,
+    ),
+    /* A row anyone can be SHOWN names its medicine, passed every rule and was refused by nothing. */
+    check(
+      "cds_aliases_live_ck",
+      sql`${t.state} not in ('suggestion', 'trusted') or (${t.medicineId} is not null and ${t.ruleResult} = 'pass' and ${t.refusal} is null and ${t.reviewerAnswer} = 'yes')`,
+    ),
+    check("cds_aliases_undone_ck", sql`(${t.undoneBy} is null) = (${t.undoneAt} is null) and ((${t.state} = 'undone') = (${t.undoneAt} is not null))`),
+    check("cds_aliases_probabilities_ck", sql`(${t.chooserConfidence} is null or ${t.chooserConfidence} between 0 and 1) and (${t.reviewerProbability} is null or ${t.reviewerProbability} between 0 and 1)`),
+  ],
+);
