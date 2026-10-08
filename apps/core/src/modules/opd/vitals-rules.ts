@@ -149,12 +149,20 @@ function present(v: VitalsInput, k: VitalKey): boolean {
  */
 export const EMERGENCY_REQUIRED: readonly VitalKey[] = ["sbp", "dbp", "pulse", "spo2"];
 
-/** The paediatric line the bands already draw (`child_6_12` ends at 13; `sanityGates` uses the same). */
+/**
+ * The paediatric line the bands already draw (`child_6_12` ends at 13; `sanityGates` uses the same).
+ * It is NOT what decides must-fill any more (owner 2026-10-08, below): the two lines that do have
+ * their own names, so moving one of them can never move a band, a range or a gate.
+ */
 export const CHILD_UNDER_YEARS = 13;
+/** Under this age only weight and the arm band are must-fill (the MUAC line the bands already draw at six). */
+export const UNDER_SIX_YEARS = 6;
+/** From this age the cuff is must-fill; below it a BP is recorded, ranged and flagged when typed, never demanded. */
+export const BP_REQUIRED_FROM_YEARS = 18;
 
 /**
  * OWNER 2026-10-05 — what the desk may DEMAND, over whatever the configured band lists: temperature
- * is never mandatory, and a child's (under 13) BP is not either. Both are still recorded, ranged
+ * is never mandatory, and a child's BP is not either (under 13 then; under 18 since 2026-10-08, below). Both are still recorded, ranged
  * and flagged when typed. This sits in code, not in `opd_config.danger_ranges`, because it is the
  * owner's ruling and the configured lists are clinical staff's data — an edited band cannot undo it.
  * Unknown age is the adult tail, as everywhere else.
@@ -163,10 +171,25 @@ export const CHILD_UNDER_YEARS = 13;
  * ordinary save, whatever `opd_config.danger_ranges` lists (the row in production still lists it for
  * every band, and nothing rewrites that row). It is still held below the probe floor, ranged and
  * flagged whenever it IS typed, and the EMERGENCY save still demands it (`EMERGENCY_REQUIRED`).
+ *
+ * OWNER 2026-10-08 — MUST-FILL BY AGE. *"In the vitals screen, I can see height is mandatory field
+ * for 1 year child. and BP is mandatory for a 16yr child. Let's do something for this."* … *"Go with
+ * your suggestions."*
+ *
+ *   under 6             weight, arm band (MUAC)          — height and pulse are on screen, optional
+ *   6 to 17             weight, height, pulse            — blood pressure is on screen, optional
+ *   18+ / age unknown   blood pressure, pulse, weight, height
+ *
+ * Like every line above this only NARROWS the stored band list (the row is not rewritten): a band
+ * edited to ask for less still asks for less. Weight under 18 stays demanded by `missingRequired`.
  */
 export function requiredFor(band: BandConfig, ageYears: number | null): VitalKey[] {
-  const child = ageYears !== null && ageYears < CHILD_UNDER_YEARS;
-  return band.required.filter((k) => k !== "tempC" && k !== "spo2" && !(child && (k === "sbp" || k === "dbp")));
+  const underSix = ageYears !== null && ageYears < UNDER_SIX_YEARS;
+  const noCuff = ageYears !== null && ageYears < BP_REQUIRED_FROM_YEARS;
+  return band.required.filter((k) =>
+    k !== "tempC" && k !== "spo2"
+    && !(noCuff && (k === "sbp" || k === "dbp"))
+    && !(underSix && (k === "heightCm" || k === "pulse")));
 }
 
 /**

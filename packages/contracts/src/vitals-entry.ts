@@ -353,7 +353,10 @@ export const EMERGENCY_TILES: readonly TileKey[] = ["bp", "pulse", "spo2"];
  * A box is on the screen WITHOUT "+" when any of these holds — and only then:
  *   required   the server's protocol for this patient demands it (`WirePreStage.required`: the
  *              routine four for an adult, the arm band under six, whatever a band is edited to ask)
- *   asked      a child's temperature — never mandatory (owner 2026-10-05), always in front of the nurse
+ *   asked      on screen, optional, never starred, never blocking the save (owner 2026-10-08, must-fill
+ *              by age): a child's temperature (never mandatory, owner 2026-10-05); height and pulse
+ *              under six; blood pressure from six to seventeen. The server decides what is REQUIRED
+ *              (`opd/vitals-rules.ts` `requiredFor`); these lines only decide what is SHOWN beside it.
  *   flagged    the last chart was out of range on it (`expectedFlags`), so it is taken again today
  *   missing    a save was refused for want of it — the emergency save's SpO₂ arrives here
  *   value      it already holds a number (a held first BP, a carried height, text still in the box)
@@ -362,6 +365,9 @@ export const EMERGENCY_TILES: readonly TileKey[] = ["bp", "pulse", "spo2"];
  * offered there: "required under six, meaningless over it" (VD-1 D5).
  */
 export const ROUTINE_TILES: readonly TileKey[] = ["bp", "pulse", "weightKg", "heightCm"];
+/** The server's two age lines, mirrored (whole years; an unknown age is an adult, as everywhere). */
+export const UNDER_SIX_YEARS = 6;
+export const BP_REQUIRED_FROM_YEARS = 18;
 /** The order the boxes are laid in: the cuff first for an adult, the scale first for a child (the dose is by weight). */
 const ADULT_ORDER: readonly TileKey[] = ["bp", "pulse", "weightKg", "heightCm", "spo2", "tempC", "glucoseMgDl", "rr", "muacCm"];
 const CHILD_ORDER: readonly TileKey[] = ["weightKg", "heightCm", "pulse", "tempC", "muacCm", "spo2", "glucoseMgDl", "rr", "bp"];
@@ -376,7 +382,7 @@ export type VitalsLayout = {
   behindPlus: TileKey[];
   /** Why each box is there — the first reason that holds, in the order of `BoxWhy`. */
   why: Partial<Record<TileKey, BoxWhy>>;
-  /** Boxes the PROTOCOL brought up beyond the routine four (required or asked) — the amber line names them. */
+  /** What the amber line names: under six, the boxes that MUST be filled; otherwise what the protocol brought up beyond the routine four. */
   auto: TileKey[];
   /** Which sentence the amber line uses. */
   autoWhy: "underSix" | "child" | "protocol" | null;
@@ -395,20 +401,27 @@ export function vitalsLayout(
 ): VitalsLayout {
   const set = tileSetFor(pre);
   const child = pre !== null && pre.band !== "adult";
+  const age = pre === null ? null : pre.ageYears;
+  const underSix = age !== null && age < UNDER_SIX_YEARS;
+  const noCuff = age !== null && age < BP_REQUIRED_FROM_YEARS;
   const asked: TileKey[] = child ? ["tempC"] : [];
+  if (underSix) asked.push("heightCm", "pulse");
+  else if (noCuff) asked.push("bp");
   const flagged = pre === null ? [] : pre.expectedFlags.map((f) => foldVital(f.vital));
   const why: Partial<Record<TileKey, BoxWhy>> = {};
   const mark = (keys: readonly TileKey[], w: BoxWhy): void => { for (const k of keys) why[k] ??= w; };
   mark(set.required, "required"); mark(asked, "asked"); mark(flagged, "flagged");
   mark(state.missing ?? [], "missing"); mark(state.holding ?? [], "value"); mark(state.added ?? [], "added");
   const boxes = (child ? CHILD_ORDER : ADULT_ORDER).filter((k) => why[k] !== undefined);
-  const auto = boxes.filter((k) => (why[k] === "required" || why[k] === "asked") && !ROUTINE_TILES.includes(k));
+  const auto = underSix
+    ? boxes.filter((k) => why[k] === "required")
+    : boxes.filter((k) => (why[k] === "required" || why[k] === "asked") && !ROUTINE_TILES.includes(k));
   return {
     boxes,
     behindPlus: PLUS_ORDER.filter((k) => why[k] === undefined),
     why,
     auto,
-    autoWhy: auto.length === 0 ? null : pre !== null && (pre.band === "infant" || pre.band === "child_1_5") ? "underSix" : child ? "child" : "protocol",
+    autoWhy: auto.length === 0 ? null : underSix ? "underSix" : child ? "child" : "protocol",
   };
 }
 

@@ -34,7 +34,9 @@ const PRE_A: WirePreStage = {
   noticeRanges: {}, gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 }, sealed: false,
   required: ["heightCm", "weightKg", "sbp", "dbp", "pulse"], notRoutine: [], last: null, carryCandidates: [], expectedFlags: [], feeUnpaid: false, feeBypass: null,
 };
-const PRE_K: WirePreStage = { ...PRE_A, patientId: "P-K", ageYears: 3, band: "child_1_5", required: ["heightCm", "weightKg", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"] };
+const PRE_K: WirePreStage = { ...PRE_A, patientId: "P-K", ageYears: 4, band: "child_1_5", required: ["weightKg", "muacCm"], notRoutine: ["sbp", "dbp"] };
+let preK: WirePreStage = PRE_K;
+afterEach(() => { preK = PRE_K; });
 const CHART = {
   id: "V-1", encounterId: "E-A", patientId: "P-A", recordedAt: "2026-10-08T06:10:00.000Z", recordedBy: "u-vd", recordedByName: "Asha Devi", status: "active", emergency: false, notes: null,
   heightCm: 168, weightKg: 71.5, sbp: 148, dbp: 92, pulse: 84, rr: null, spo2: 97, tempC: 37.2, muacCm: null, glucoseMgDl: 186, glucoseTiming: "random",
@@ -55,7 +57,7 @@ function stubBay(rows: WireBenchRow[], posted: Posted[] = []): void {
     if (key === "GET /api/opd/bench") return json({ items: rows });
     if (key === "GET /api/opd/queues/summary") return json({ items: [] });
     if (key === "GET /api/opd/visits/E-A/prestage") return json(preA);
-    if (key === "GET /api/opd/visits/E-K/prestage") return json(PRE_K);
+    if (key === "GET /api/opd/visits/E-K/prestage") return json(preK);
     if (key === "GET /api/opd/vitals/V-1") return json({ vitals: CHART });
     if (init?.method === "POST" && (path.endsWith("/vitals") || path.endsWith("/amend"))) {
       const body = JSON.parse(String(init.body)) as { glucoseMgDl?: number; glucoseTiming?: string };
@@ -209,20 +211,64 @@ describe("frame D — readings that come up by themselves", () => {
     expect(posted[0]!.body).toMatchObject({ emergency: true, readings: { spo2: { takes: [93] } } });
   });
 
-  it("a child under six: temperature and the arm band without '+', the amber line, the arm band required", async () => {
+  /* OWNER 2026-10-08 — "height is mandatory field for 1 year child. and BP is mandatory for a 16yr child. Let's do something for this." */
+  it.each([4, 1])("a %i-year-old: only weight and the arm band are must-fill; height, pulse and temperature are there, optional; it saves on the two", async (age) => {
+    preK = { ...PRE_K, ageYears: age };
     const posted: Posted[] = [];
     stubBay([ROW_A, ROW_K], posted);
     const user = userEvent.setup();
     await take(3);
     expect(boxes()).toEqual(["weightKg", "heightCm", "pulse", "tempC", "muacCm"]);
-    expect(screen.getByTestId("auto-note").textContent).toBe("Child under six: Temperature and Arm band (MUAC) are asked.");
-    expect(screen.getByTestId("tile-muacCm").getAttribute("data-required")).toBe("true");
-    expect(screen.getByTestId("tile-tempC").getAttribute("data-required")).toBe("false");
+    expect(screen.getByTestId("auto-note").textContent).toBe("Child under six: Weight and Arm band (MUAC) must be filled.");
+    const starred = boxes().filter((k) => screen.getByTestId(`tile-${k}`).getAttribute("data-required") === "true");
+    expect(starred).toEqual(["weightKg", "muacCm"]);
     expect(screen.getByTestId("plus-names").textContent).toBe("SpO₂ · Glucose · Breathing rate · Blood pressure");
-    await key(user, "weightKg", "14"); await key(user, "heightCm", "92"); await key(user, "pulse", "100");
+    await key(user, "weightKg", "14");
     fireEvent.click(screen.getByTestId("save"));
     expect(screen.getByTestId("missing").textContent).toContain("Arm band (MUAC)");
     expect(posted).toHaveLength(0);
+    await key(user, "muacCm", "13.4");
+    fireEvent.click(screen.getByTestId("save"));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(Object.keys((posted[0]!.body as { readings: Record<string, unknown> }).readings).sort()).toEqual(["muacCm", "weightKg"]);
+  });
+
+  it.each([[16, "adult", ["bp", "pulse", "weightKg", "heightCm"]], [8, "child_6_12", ["weightKg", "heightCm", "pulse", "tempC", "bp"]]] as const)(
+    "a %i-year-old: the BP box is there, not must-fill; it saves on weight, height and pulse; a missing pulse refuses; a typed BP keeps its flag", async (age, band, expected) => {
+      preA = { ...PRE_A, ageYears: age, band, required: ["heightCm", "weightKg", "pulse"] };
+      const posted: Posted[] = [];
+      stubBay([ROW_A], posted);
+      const user = userEvent.setup();
+      await take(9);
+      expect(boxes()).toEqual([...expected]);
+      expect(screen.getByTestId("tile-bp").getAttribute("data-required")).toBe("false");
+      expect(screen.getByTestId("tile-pulse").getAttribute("data-required")).toBe("true");
+      expect(screen.queryByTestId("remove-bp")).toBeNull();
+      await key(user, "weightKg", "54"); await key(user, "heightCm", "165");
+      fireEvent.click(screen.getByTestId("save"));
+      expect(screen.getByTestId("missing").textContent).toContain("Pulse");
+      expect(screen.getByTestId("missing").textContent).not.toContain("Blood pressure");
+      expect(posted).toHaveLength(0);
+      await key(user, "pulse", "78");
+      fireEvent.click(screen.getByTestId("save"));
+      await waitFor(() => expect(posted).toHaveLength(1));
+      expect((posted[0]!.body as { readings: Record<string, unknown> }).readings.bp).toBeUndefined();
+    });
+
+  it("a 16-year-old's typed BP still wears its danger tint, and the emergency save still demands BP, pulse and SpO₂", async () => {
+    preA = { ...PRE_A, ageYears: 16, required: ["heightCm", "weightKg", "pulse"] };
+    const posted: Posted[] = [];
+    stubBay([ROW_A], posted);
+    const user = userEvent.setup();
+    await take(9);
+    await key(user, "weightKg", "54");
+    fireEvent.click(screen.getByTestId("save-emergency"));
+    await waitFor(() => expect(screen.getByTestId("missing").textContent).toContain("SpO₂"));
+    expect(screen.getByTestId("missing").textContent).toContain("Blood pressure");
+    expect(screen.getByTestId("missing").textContent).toContain("Pulse");
+    expect(posted).toHaveLength(0);
+    await key(user, "bp", "196/124");
+    expect(screen.getByTestId("tile-bp").getAttribute("data-tint")).toBe("danger");
   });
 
   it("a reading the server's protocol requires, or the last chart flagged, is there without '+'", async () => {

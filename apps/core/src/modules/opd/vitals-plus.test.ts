@@ -34,7 +34,7 @@ describe("owner 2026-10-08 — SpO₂ is not demanded on an ordinary save (pure)
     expect(missingRequired({ sbp: 208, dbp: 126, pulse: 104 }, 40, cfg, { emergency: true })).toEqual(["spo2"]);
   });
   it("a child under six still owes the arm band", () => {
-    expect(requiredFor(bandFor(3, cfg), 3)).toEqual(["heightCm", "weightKg", "pulse", "muacCm"]);
+    expect(requiredFor(bandFor(3, cfg), 3)).toEqual(["weightKg", "muacCm"]);   // height and pulse left the list the same day (must-fill by age)
     expect(missingRequired({ heightCm: 92, weightKg: 14, pulse: 100 }, 3, cfg)).toEqual(["muacCm"]);
   });
   it("a vital taken and wholly held out is still owed, though no band demands it", () => {

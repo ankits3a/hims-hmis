@@ -1216,7 +1216,7 @@
         "heightCm": "cm"
       },
       "auto": {
-        "underSix": "Child under six: {{tiles}} are asked.",
+        "underSix": "Child under six: {{tiles}} must be filled.",
         "child": "Child: {{tiles}} asked for this age.",
         "protocol": "Asked for this patient: {{tiles}}."
       }

@@ -162,12 +162,14 @@ describe("owner 2026-10-05 — temperature optional, a child's BP optional", () 
     expect(missingRequired({ ...adultOk, tempC: undefined }, 40, cfg)).toEqual([]);
     expect(evaluateVitals({ ...adultOk, tempC: 39.9 }, bandFor(40, cfg)).map((f) => f.vital)).toEqual(["tempC"]);
   });
-  it("does not require BP under the paediatric line (13 years, the bands' own), and still does from 13", () => {
+  // Owner 2026-10-08 moved the BP line for REQUIREDNESS from 13 to 18 (vitals-must-fill-by-age.test.ts is its book); the band line stays 13.
+  it("does not require BP of a minor (under 18), and still does from 18", () => {
     expect(CHILD_UNDER_YEARS).toBe(13);
     const child = { heightCm: 130, weightKg: 28, pulse: 90, spo2: 98 };
     expect(missingRequired(child, 8, cfg)).toEqual([]);
     expect(missingRequired(child, 12, cfg)).toEqual([]);
-    expect(missingRequired({ ...child, weightKg: 45 }, 13, cfg)).toEqual(["sbp", "dbp"]);
+    expect(missingRequired({ ...child, weightKg: 45 }, 13, cfg)).toEqual([]);
+    expect(missingRequired({ ...child, weightKg: 45 }, 18, cfg)).toEqual(["sbp", "dbp"]);
     expect(missingRequired({ ...adultOk, sbp: undefined, dbp: undefined }, null, cfg)).toEqual(["sbp", "dbp"]); // unknown age → adult
   });
   it("leaves the emergency set alone — an emergency still demands the cuff", () => {

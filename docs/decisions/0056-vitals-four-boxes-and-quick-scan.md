@@ -57,6 +57,25 @@ Board the owner approved: https://claude.ai/artifact/RUJqsX5Yv4fJVyWwnwjVzd
 - **Gestures are shortcuts, never the only way.** Hold a row = the same card. Swipe = one common action
   per screen; never delete, cancel, pay or complete.
 
+## Must-fill by age (owner 2026-10-08)
+
+Owner: *"In the vitals screen, I can see height is mandatory field for 1 year child. and BP is mandatory for a
+16yr child. Let's do something for this."* The table below was proposed and he answered: *"Go with your
+suggestions."*
+
+| Age (whole years) | MUST-FILL | SHOWN without "+", optional |
+|---|---|---|
+| under 6 | Weight, Arm band (MUAC) | Height, Pulse (and Temperature, as before) |
+| 6 to 17 | Weight, Height, Pulse | Blood pressure (and Temperature under 13, as before) |
+| 18 and above, or age unknown | Blood pressure, Pulse, Weight, Height | — (the rest behind "+") |
+
+- The stored protocol row (`opd_config.danger_ranges`) is unchanged; the code layer narrows it
+  (`requiredFor` in `opd/vitals-rules.ts`, with `UNDER_SIX_YEARS` and `BP_REQUIRED_FROM_YEARS`), and the
+  shared screen rule (`vitalsLayout`) shows the optional boxes unstarred.
+- A typed blood pressure keeps the range and flag its age band already had. The emergency save still
+  demands blood pressure, pulse and SpO2 at every age. Weight stays must-fill under 18 for dosing.
+- The amber line for a child under six now reads "Weight and Arm band (MUAC) must be filled."
+
 ## Where it lives
 
 `packages/contracts/src/vitals-entry.ts` (`vitalsLayout`, `GLUCOSE_TIMINGS`), `opd/vitals-rules.ts`

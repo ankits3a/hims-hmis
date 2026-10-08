@@ -186,10 +186,8 @@ describe("the vitals bay on a phone", () => {
     const s = server(base({ "POST /opd/visits/e7/vitals": () => ({ status: 201, body: { flags: [] } }) }));
     await mount(s.fetcher);
     await takeToken("7");
-    expect(screen.queryByTestId("tile-bp")).toBeNull();          // not asked: behind "+", and never starred when brought out
-    await add("bp");
+    // OWNER 2026-10-08 (must-fill by age) — from six to seventeen the BP box is on screen, never starred, never demanded
     expect(screen.getByTestId("label-bp")).toHaveTextContent(/^Blood pressure$/);
-    await fireEvent.press(screen.getByTestId("remove-bp"));
     await type("pulse", "96");
     await type("spo2", "98");
     await type("weightKg", "24");

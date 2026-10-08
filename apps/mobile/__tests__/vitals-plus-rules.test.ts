@@ -19,7 +19,7 @@ const pre = (over: Partial<WirePreStage>): WirePreStage => ({
   last: null, carryCandidates: [], expectedFlags: [], ...over,
 });
 const ADULT = pre({});
-const UNDER_SIX = pre({ ageYears: 3, band: "child_1_5", required: ["heightCm", "weightKg", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"] });
+const UNDER_SIX = pre({ ageYears: 4, band: "child_1_5", required: ["weightKg", "muacCm"], notRoutine: ["sbp", "dbp"] });
 
 describe("the four boxes and the '+' (owner 2026-10-08)", () => {
   it("an adult opens with BP, pulse, weight, height — in that order — and '+' offers SpO₂, temperature, glucose, breathing rate", () => {
@@ -70,16 +70,57 @@ describe("the four boxes and the '+' (owner 2026-10-08)", () => {
     expect(l.behindPlus).not.toContain("spo2");
   });
 
-  it("a child under six: weight, height, pulse, temperature and the arm band come up by themselves; the arm band is required, the temperature asked", () => {
+  it("a child under six: weight and the arm band are must-fill; height, pulse and temperature are on screen, optional (owner 2026-10-08)", () => {
     const l = vitalsLayout(UNDER_SIX);
     expect(l.boxes).toEqual(["weightKg", "heightCm", "pulse", "tempC", "muacCm"]);
-    expect(l.auto).toEqual(["tempC", "muacCm"]);
+    expect(l.why).toMatchObject({ weightKg: "required", muacCm: "required", heightCm: "asked", pulse: "asked", tempC: "asked" });
+    expect(l.auto).toEqual(["weightKg", "muacCm"]);          // the amber line names only what must be filled
     expect(l.autoWhy).toBe("underSix");
-    expect(l.why).toMatchObject({ muacCm: "required", tempC: "asked" });
     expect(l.behindPlus).toEqual(["spo2", "glucoseMgDl", "rr", "bp"]);
-    expect(tileSetFor(UNDER_SIX).required).toContain("muacCm");
-    expect(missingFor(emptyTiles(), tileSetFor(UNDER_SIX).required, false)).toContain("muacCm");
-    expect(vitalsLayout(pre({ ageYears: 8, band: "child_6_12", required: ["heightCm", "weightKg", "pulse"] })).autoWhy).toBe("child");
+    expect(tileSetFor(UNDER_SIX).required).toEqual(["weightKg", "muacCm"]);
+    const t = emptyTiles(); t.weightKg.takes = [9.4];
+    expect(missingFor(t, tileSetFor(UNDER_SIX).required, false)).toEqual(["muacCm"]);
+    t.muacCm.takes = [13.8];
+    expect(missingFor(t, tileSetFor(UNDER_SIX).required, false)).toEqual([]);   // saves with no height and no pulse
+    const one = vitalsLayout(pre({ ageYears: 1, band: "child_1_5", required: ["weightKg", "muacCm"], notRoutine: ["sbp", "dbp"] }));
+    expect(one.boxes).toEqual(l.boxes);
+    expect(vitalsLayout(pre({ ageYears: 0, band: "infant", required: ["weightKg", "muacCm"], notRoutine: ["sbp", "dbp"] })).boxes).toEqual(l.boxes);
+  });
+
+  it("six to seventeen: weight, height and pulse are must-fill; blood pressure is on screen, optional (owner 2026-10-08)", () => {
+    const TEEN = pre({ ageYears: 16, band: "adult", required: ["heightCm", "weightKg", "pulse"] });
+    const sixteen = vitalsLayout(TEEN);
+    expect(sixteen.boxes).toEqual(["bp", "pulse", "weightKg", "heightCm"]);
+    expect(sixteen.why).toMatchObject({ bp: "asked", pulse: "required", weightKg: "required", heightCm: "required" });
+    expect(sixteen.behindPlus).toEqual(["spo2", "tempC", "glucoseMgDl", "rr"]);
+    expect(sixteen.autoWhy).toBeNull();
+    const t = emptyTiles(); t.weightKg.takes = [54]; t.heightCm.takes = [165];
+    expect(missingFor(t, tileSetFor(TEEN).required, false)).toEqual(["pulse"]);
+    t.pulse.takes = [78];
+    expect(missingFor(t, tileSetFor(TEEN).required, false)).toEqual([]);         // saves with no BP
+    expect(missingFor(t, tileSetFor(TEEN).required, true)).toEqual(["bp", "spo2"]); // the emergency save still demands the cuff and SpO₂
+    const eight = vitalsLayout(pre({ ageYears: 8, band: "child_6_12", required: ["heightCm", "weightKg", "pulse"] }));
+    expect(eight.boxes).toEqual(["weightKg", "heightCm", "pulse", "tempC", "bp"]);
+    expect(eight.why).toMatchObject({ bp: "asked", tempC: "asked" });
+    expect(eight.autoWhy).toBe("child");
+    expect(eight.auto).toEqual(["tempC"]);
+    for (const age of [6, 12, 13, 17]) expect(vitalsLayout(pre({ ageYears: age, band: age < 13 ? "child_6_12" : "adult", required: ["heightCm", "weightKg", "pulse"] })).why.bp).toBe("asked");
+  });
+
+  it("eighteen and above, and an unknown age: blood pressure is must-fill, and nothing is merely 'shown'", () => {
+    for (const age of [18, 54, null]) {
+      const l = vitalsLayout(pre({ ageYears: age }));
+      expect(l.boxes).toEqual(["bp", "pulse", "weightKg", "heightCm"]);
+      expect(l.why.bp).toBe("required");
+    }
+    // an OLDER server that still demands BP of a sixteen-year-old is believed: the star follows `required`
+    expect(vitalsLayout(pre({ ageYears: 16 })).why.bp).toBe("required");
+  });
+
+  it("a typed BP on a sixteen-year-old keeps its range flag", () => {
+    const band = { key: "adult" as const, upToAgeYears: null, required: [], notRoutine: [], ranges: { sbp: { min: 90, max: 180 }, dbp: { min: 60, max: 110 } }, noticeRanges: {} };
+    expect(flagOf("bp", [190, 100], band, null)).toBe("danger");
+    expect(flagOf("bp", [120, 80], band, null)).toBeNull();
   });
 
   it("whatever the server's protocol requires comes up without '+', and so does a reading the last chart flagged", () => {

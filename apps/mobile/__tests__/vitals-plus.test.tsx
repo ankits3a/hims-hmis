@@ -75,7 +75,7 @@ const ADULT = {
   last: null, carryCandidates: [], expectedFlags: [],
 };
 const BABY = {
-  ...ADULT, patientId: "p3", ageYears: 3, band: "child_1_5", required: ["heightCm", "weightKg", "pulse", "muacCm"], notRoutine: ["sbp", "dbp"],
+  ...ADULT, patientId: "p3", ageYears: 4, band: "child_1_5", required: ["weightKg", "muacCm"], notRoutine: ["sbp", "dbp"],
   ranges: { pulse: { min: 70, max: 150 }, spo2: { min: 90 }, tempC: { min: 35, max: 39.5 } },
 };
 const BABY_ROW = row({ encounterId: "e3", entryId: "q3", tokenNo: 3, seq: 3, visitNo: "V2610080003", departmentCode: "PED", patient: { requestedId: "p3", id: "p3", uhid: "U00110060", name: "Baby Anshu", alias: null, restricted: false, administrativeGender: "female", dob: null } });
@@ -279,22 +279,68 @@ describe("frame D — readings that come up by themselves", () => {
     expect(s.of(POST)[0]!.body).toMatchObject({ emergency: true, readings: { spo2: { takes: [91] } } });
   });
 
-  it("a child under six: temperature and the arm band are there without '+', the amber line says why, and the arm band is required", async () => {
-    const s = server(base({ "POST /opd/visits/e3/vitals": () => ({ status: 201, body: { vitals: { id: "v3" }, flags: [] } }) }));
+  /* OWNER 2026-10-08 — "height is mandatory field for 1 year child. and BP is mandatory for a 16yr child. Let's do something for this." */
+  it.each([[4, "child_1_5"], [1, "child_1_5"]])("a %i-year-old: only weight and the arm band are starred; height, pulse and temperature are there, unstarred; it saves on the two", async (age, band) => {
+    const s = server(base({
+      "GET /opd/visits/e3/prestage": () => ({ status: 200, body: { ...BABY, ageYears: age, band } }),
+      "POST /opd/visits/e3/vitals": () => ({ status: 201, body: { vitals: { id: "v3" }, flags: [] } }),
+    }));
     await mount(s.fetcher);
     await takeToken("3");
     expect(boxes()).toEqual(["weightKg", "heightCm", "pulse", "tempC", "muacCm"]);
-    expect(screen.getByTestId("auto-note")).toHaveTextContent("Child under six: Temperature and Arm band (MUAC) are asked.");
+    expect(screen.getByTestId("auto-note")).toHaveTextContent("Child under six: Weight and Arm band (MUAC) must be filled.");
+    expect(screen.getByTestId("label-weightKg")).toHaveTextContent("Weight *");
     expect(screen.getByTestId("label-muacCm")).toHaveTextContent("Arm band (MUAC) *");
-    expect(screen.getByTestId("label-tempC")).toHaveTextContent(/^Temperature$/);   // asked, never mandatory (owner 2026-10-05)
+    expect(screen.getByTestId("label-heightCm")).toHaveTextContent(/^Height$/);
+    expect(screen.getByTestId("label-pulse")).toHaveTextContent(/^Pulse$/);
+    expect(screen.getByTestId("label-tempC")).toHaveTextContent(/^Temperature$/);   // never mandatory (owner 2026-10-05)
     expect(screen.getByTestId("plus-names")).toHaveTextContent("SpO₂ · Glucose · Breathing rate · Blood pressure");
-    await commit("weightKg", "14"); await commit("heightCm", "92"); await commit("pulse", "100");
+    await commit("weightKg", "14");
     await fireEvent.press(screen.getByTestId("save"));
-    expect(await screen.findByTestId("missing")).toHaveTextContent(/Arm band \(MUAC\)/);
+    expect(await screen.findByTestId("missing")).toHaveTextContent("Still needed: Arm band (MUAC)");
     expect(s.of("POST /opd/visits/e3/vitals")).toHaveLength(0);
     await commit("muacCm", "13.4");
     await fireEvent.press(screen.getByTestId("save"));
     await waitFor(() => expect(s.of("POST /opd/visits/e3/vitals")).toHaveLength(1));
+    expect(Object.keys((s.of("POST /opd/visits/e3/vitals")[0]!.body as { readings: Record<string, unknown> }).readings).sort()).toEqual(["muacCm", "weightKg"]);
+  });
+
+  it.each([[16, "adult", ["bp", "pulse", "weightKg", "heightCm"]], [8, "child_6_12", ["weightKg", "heightCm", "pulse", "tempC", "bp"]]])(
+    "a %i-year-old: the BP box is there, unstarred; it saves on weight, height and pulse; a missing pulse refuses; a typed BP keeps its flag", async (age, band, expected) => {
+      const s = server(base({
+        "GET /opd/visits/e9/prestage": () => ({ status: 200, body: { ...ADULT, ageYears: age, band, required: ["heightCm", "weightKg", "pulse"] } }),
+        "POST /opd/visits/e9/escalation/recheck": () => ({ status: 201, body: { entryId: "q9", state: "recheck_demanded", escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 } }),
+      }));
+      await mount(s.fetcher);
+      await takeToken("9");
+      expect(boxes()).toEqual(expected);
+      expect(screen.getByTestId("label-bp")).toHaveTextContent(/^Blood pressure$/);
+      expect(screen.getByTestId("label-pulse")).toHaveTextContent("Pulse *");
+      expect(screen.getByTestId("label-heightCm")).toHaveTextContent("Height *");
+      expect(screen.queryByTestId("remove-bp")).toBeNull();          // shown by the rule, not added: it does not go away
+      await commit("weightKg", "54"); await commit("heightCm", "165");
+      await fireEvent.press(screen.getByTestId("save"));
+      expect(await screen.findByTestId("missing")).toHaveTextContent("Still needed: Pulse");
+      expect(s.of(POST)).toHaveLength(0);
+      await commit("pulse", "78");
+      await fireEvent.press(screen.getByTestId("save"));
+      await waitFor(() => expect(s.of(POST)).toHaveLength(1));
+      expect((s.of(POST)[0]!.body as { readings: Record<string, unknown> }).readings.bp).toBeUndefined();
+    });
+
+  it("a 16-year-old's typed BP still wears its danger tint, and the emergency save still demands BP, pulse and SpO₂", async () => {
+    const s = server(base({
+      "GET /opd/visits/e9/prestage": () => ({ status: 200, body: { ...ADULT, ageYears: 16, required: ["heightCm", "weightKg", "pulse"] } }),
+      "POST /opd/visits/e9/escalation/recheck": () => ({ status: 201, body: { entryId: "q9", state: "recheck_demanded", escalatedAt: null, escalatedFromClass: null, escalationBy: null, cancelMsRemaining: 0 } }),
+    }));
+    await mount(s.fetcher);
+    await takeToken("9");
+    await commit("weightKg", "54");
+    await fireEvent.press(screen.getByTestId("save-emergency"));
+    expect(await screen.findByTestId("missing")).toHaveTextContent("Still needed: Blood pressure, Pulse, SpO₂");
+    expect(s.of(POST)).toHaveLength(0);
+    await commit("bp", "196/124");
+    expect(await screen.findByTestId("tint-bp")).toHaveTextContent("outside band — danger");
   });
 
   it("a reading the server's protocol requires, or the last chart flagged, is there without '+'", async () => {
