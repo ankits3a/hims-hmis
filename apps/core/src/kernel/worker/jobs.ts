@@ -28,6 +28,7 @@ import {
   sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
+import { runAliasJob } from "../../modules/opd";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -222,6 +223,15 @@ export function registerAllJobs(
    * handed here is the one the registered job sends through.
    */
   notifyAdapters?: Record<NotifyChannel, ChannelAdapter>,
+  /**
+   * MEDICINE NICKNAMES (decisions 0051, 0055) — the WHOLE config, for the one job that needs the
+   * chooser's and the reviewer's endpoints, the key file and the kill switch
+   * (`proposeMedicineNicknames`, below). A parameter of its own rather than a wider `JobIntervals`:
+   * it is not a cadence, and a census test that registers the grid has no reason to carry model
+   * endpoints. Absent — every test that does not pass it — the job is registered, heartbeats, and
+   * does nothing, which is also exactly what it does with `ALIAS_PIPELINE_ENABLED` off.
+   */
+  aliasConfig?: AppConfig,
 ): void {
   const bus = buildSubscriptionBus(registry, consumers);
 
@@ -607,5 +617,19 @@ export function registerAllJobs(
     every: 60_000,
     // An approval past its deadline tells its deciders once (decision 0043) — same clock, same job.
     run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now); },
+  });
+  /**
+   * MEDICINE NICKNAMES (owner 2026-10-08: "switch ON medicine nicknames") — the words doctors typed
+   * that the catalogue could not answer go through the automatic pipeline, HOURLY (`sweepOverdueQa`'s
+   * cadence and alerting leg: nothing here is urgent, and each word is up to three calls to two
+   * outside providers). OFF by default: with `ALIAS_PIPELINE_ENABLED` false `runAliasJob` builds no
+   * model client and returns before its first query. Its caps (40 a run, 300 a
+   * day) are settings. Registered unconditionally, like the retention sweep: the job exists, beats
+   * and is in every census whether or not the switch is on.
+   */
+  scheduler.register({
+    name: "proposeMedicineNicknames",
+    every: 3_600_000,
+    run: async (now) => { await runAliasJob(db, aliasConfig, now); },
   });
 }

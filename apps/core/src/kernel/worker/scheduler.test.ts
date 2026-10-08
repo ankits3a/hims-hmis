@@ -26,6 +26,7 @@ import * as rosterStaffNoticesMod from "../../modules/roster/staff-notices";
 import * as opdQueueNudgesMod from "../../modules/opd/queue-nudges";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
+import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -399,6 +400,14 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
      * 18-S RS11 T3 — stubbed on `modules/aerb/qa`, the module the index re-exports FROM (the
      * eleventh's rule). Its behaviour is asserted in `modules/aerb/qa-overdue.test.ts`.
      */
+    /**
+     * NICKNAMES (decision 0051) — stubbed on `modules/opd/alias-runner`, the module the index re-exports
+     * FROM. Its behaviour (the switch, the caps, the 30-day retry) is asserted in `modules/opd/alias-live.test.ts`.
+     */
+    jest.spyOn(opdAliasRunnerMod, "runAliasJob").mockImplementation(async () => {
+      invoked.push("proposeMedicineNicknames");
+      return { ran: false };
+    }),
     jest.spyOn(aerbQaMod, "sweepOverdueQa").mockImplementation(async () => {
       invoked.push("sweepOverdueQa");
       return { blocked: [], skipped: [] };
@@ -495,6 +504,8 @@ const THE_EIGHTEEN = [
   "printRosterBoard",
   // MOBILE §3i (owner 2026-10-07) — the TWENTY-SIXTH, `every(60_000)`: duty reminders and the doctor's "you are not in".
   "sweepStaffNotices",
+  // NICKNAMES (decision 0051, owner 2026-10-08) — the TWENTY-SEVENTH, `every(3_600_000)`: unmatched medicine words → proposals. Off by default.
+  "proposeMedicineNicknames",
 ];
 
 /**

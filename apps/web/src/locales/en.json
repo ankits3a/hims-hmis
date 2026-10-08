@@ -9948,7 +9948,11 @@
   },
   "drugField": {
     "unreviewed": "not yet reviewed by pharmacy",
-    "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked."
+    "unreviewedTitle": "A component of this product has not been reviewed by pharmacy, so an allergy class or an interaction on that component cannot be checked.",
+    "nickname": "nickname",
+    "nicknameTitle": "Shown because this hospital has learned that what you typed is a nickname for this medicine. Check the full name before you pick it.",
+    "nicknameAsk": "Other medicines have a similar name. Tap again to pick this one.",
+    "nicknameCross": "Not this medicine"
   },
   "sigDrawer": {
     "frequency": "How often",
@@ -14681,6 +14685,34 @@
     "offer": "Offer to my department as a starter",
     "sign": "I have read every line — sign",
     "retire": "Remove"
+  },
+  "nicknames": {
+    "tab": "Nicknames",
+    "title": "Medicine nicknames",
+    "what": "Words doctors type or say for a medicine — like “pan forty” — that the hospital has learned by itself. Nobody has to approve one. If one is wrong, remove it here.",
+    "on": "Nicknames are ON on this server: new ones are learned every hour and shown to doctors as suggestions.",
+    "off": "Nicknames are OFF on this server: nothing new is learned and none is shown to doctors. You can still remove or put back the ones below.",
+    "counts": "{{suggested}} suggested · {{trusted}} trusted · {{removed}} removed",
+    "rangeLabel": "Which nicknames to list",
+    "week": "Last 7 days",
+    "all": "Show all",
+    "emptyWeek": "Nothing was learned or changed in the last 7 days.",
+    "emptyAll": "No nickname has been learned yet.",
+    "means": "means",
+    "medicineGone": "(this medicine is no longer in the list)",
+    "unused": "Not used yet",
+    "doctors_one": "{{count}} doctor",
+    "doctors_other": "{{count}} doctors",
+    "uses_one": "used once",
+    "uses_other": "used {{count}} times",
+    "undo": "Undo",
+    "restore": "Put back",
+    "state": {
+      "suggested": "Suggested",
+      "trusted": "Trusted",
+      "removed": "Removed",
+      "removedByDoctors": "Removed — doctors crossed it off"
+    }
   },
   "phoneConsult": {
     "tab": "Phone consult",

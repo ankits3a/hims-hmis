@@ -444,6 +444,35 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(await screen.findByTestId("line-drug")).toHaveTextContent("Hydroxyzine 25 mg Tablet");
   });
 
+  it("a learned NICKNAME's row shows the full name and a tag, is picked only by a tap, and a tap or a cross is told against the nickname — never the word", async () => {
+    const PAN = { id: "m-pan40", name: "Pan (pantoprazole sodium) 40 mg gastro-resistant oral tablet", form: "Gastro-resistant oral tablet", strength: "40 mg", code: null, routeClass: "systemic", salts: ["Pantoprazole"], prefix: false, reviewed: true, drugClass: "PPI", lasa: null };
+    const w = world({ "GET /opd/consult/medicines": (_b, url) => ({ status: 200, body: { items: /guard/.test(url) ? [{ ...PAN, alias: { id: "A2", state: "trusted", lasaGuard: true } }] : [{ ...PAN, alias: { id: "A1", state: "suggestion", lasaGuard: false } }] } }) });
+    await mount(w);
+    await screen.findByTestId("visit-empty");
+    await press("open-meds");
+    await fireEvent.changeText(await screen.findByTestId("med-input"), "pan forty");
+    expect(await screen.findByTestId("med-hit-m-pan40")).toHaveTextContent(/Pan \(pantoprazole sodium\) 40 mg gastro-resistant oral tablet/);
+    expect(screen.getByTestId("med-hit-sub-m-pan40")).toHaveTextContent("40 mg · Gastro-resistant oral tablet · PPI");
+    expect(screen.getByTestId("med-nickname-m-pan40")).toHaveTextContent("nickname");
+    expect(screen.queryByTestId("line-drug")).toBeNull(); // nothing is picked for the doctor
+
+    // The cross takes the row away and counts a dismissal against the nickname's id.
+    await press("med-nickname-x-m-pan40");
+    expect(screen.queryByTestId("med-hit-m-pan40")).toBeNull();
+    const sent = (): { suggestions?: Record<string, unknown>[] }[] => w.of("POST /opd/consult/signals").map((c) => c.body as { suggestions?: Record<string, unknown>[] });
+    expect(sent().at(-1)?.suggestions).toEqual([{ kind: "alias", source: "search", outcome: "dismissed", surface: "consult_phone", encounterId: "e13", itemKey: "A1" }]);
+    expect(JSON.stringify(sent())).not.toMatch(/pan forty/i);
+
+    // A nickname whose medicine has a near name asks before it is taken; the tap is then told.
+    await fireEvent.changeText(screen.getByTestId("med-input"), "pan guard");
+    await fireEvent.press(await screen.findByTestId("med-hit-m-pan40"));
+    expect(await screen.findByTestId("lasa-ask")).toHaveTextContent(/40 mg gastro-resistant oral tablet — is this the one\?/);
+    expect(screen.queryByTestId("line-drug")).toBeNull();
+    await press("lasa-yes");
+    expect(await screen.findByTestId("line-drug")).toHaveTextContent("Pan (pantoprazole sodium) 40 mg gastro-resistant oral tablet");
+    expect(sent().at(-1)?.suggestions).toEqual([{ kind: "alias", source: "search", outcome: "accepted", surface: "consult_phone", encounterId: "e13", itemKey: "A2" }]);
+  });
+
   it("a word the hospital's list cannot answer is logged as the term alone, and the hand-typed line says it was typed", async () => {
     const w = world();
     await mount(w);

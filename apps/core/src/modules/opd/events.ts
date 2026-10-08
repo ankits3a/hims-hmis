@@ -570,3 +570,20 @@ export const dayReportPatientsListed = defineEvent("day_report.patients_listed",
 export const consultVoiceTranscribed = defineEvent("consultation.voice_transcribed", MODULE, z.object({
   doctorId: id, seconds: z.number().int().nonnegative(), model: z.string().min(1), ok: z.boolean(),
 }));
+
+/**
+ * MEDICINE NICKNAMES (decisions 0051, 0055) — the hourly runner's summary. COUNTS ONLY: how many
+ * unmatched terms it looked at and what became of them. No term, no medicine, no doctor.
+ */
+export const aliasRunCompleted = defineEvent("alias.run_completed", MODULE, z.object({
+  proposed: z.number().int().nonnegative(), suggestion: z.number().int().nonnegative(),
+  refused: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+}));
+
+/**
+ * The owner's one-tap undo of a learned nickname, and its restore. WHO is the event's actor, WHEN its
+ * time; the payload names the nickname (a typed word, never a patient's) and the medicine it pointed at.
+ */
+const aliasChange = z.object({ aliasId: id, term: z.string().min(1), medicineId: z.string().nullable(), previousState: z.string().min(1) });
+export const aliasUndone = defineEvent("alias.undone", MODULE, aliasChange);
+export const aliasRestored = defineEvent("alias.restored", MODULE, aliasChange);

@@ -1,5 +1,6 @@
 import { IdentifierLeak, assertNoIdentifiers, maskQuestion } from "../../kernel/copilot/mask";
 import type { ChoiceAnswer, ChoiceClient, PredicateClient } from "../../kernel/inference/types";
+import { NDPS_LIST } from "../formulary";
 import type { AliasCandidateRow } from "../formulary";
 import { lasaPartner } from "./consult-guards";
 import type { LasaPair } from "./consult-guards";
@@ -254,16 +255,36 @@ export function strengthAgrees(said: readonly Strength[], targetName: string): b
 // ─────────────────────────────────────────── the rules ───────────────────────────────────────────
 
 /**
- * NEVER A CONTROLLED MEDICINE. The stored flags are asked first (Schedule H1 / X, an NDPS class on
- * a moiety) — and then the NAME, because the flags are not complete: measured on the staging
- * catalogue 2026-10-08, no moiety carries an NDPS class at all and "Morphine sulfate 10 mg oral
- * tablet" has no schedule flag. A name that looks controlled is refused; the stricter reading.
+ * NEVER A CONTROLLED MEDICINE — FOUR NETS, ASKED IN ORDER, AND WHAT EACH ONE CATCHES:
+ *
+ *   schedule   — the product's own flag: Schedule H1 or X (`formulary_medicines.schedule_flag`).
+ *   ndps_class — a moiety the pharmacy has CLASSIFIED (`formulary_salts.ndps_class`).
+ *   ndps_list  — a moiety, or a word of the product's name, on the formulary's cited NDPS list
+ *                (`NDPS_LIST`: morphine, fentanyl, methadone, oxycodone, hydrocodone, codeine,
+ *                ethylmorphine, pethidine, tramadol). This is the net that holds when the flags are
+ *                missing: measured on the staging catalogue 2026-10-08, no moiety carries an NDPS
+ *                class at all and "Morphine sulfate 10 mg oral tablet" has no schedule flag.
+ *   name       — the last net, for what that list deliberately does not name because its Schedule
+ *                entry was not read at source (`formulary/ndps.ts`): the benzodiazepines, the
+ *                barbiturates, zolpidem, ketamine, buprenorphine, pentazocine, tapentadol,
+ *                methylphenidate and the like. A name that LOOKS controlled is refused — the
+ *                stricter reading; a false refusal costs a doctor a few typed letters.
  */
-const LOOKS_CONTROLLED = /(morphin|fentan|methadon|codon|codein|pethidin|meperidin|tramad|tapentad|buprenorph|pentazoc|nalbuph|butorphan|ketamin|azepam|azolam|clobazam|chlordiazepox|zolpid|zopiclon|zaleplon|barbit|methylphenid|amfetamin|amphetamin|modafin|diphenoxyl|propoxyphen|opium|cannab)/i;
+const LOOKS_CONTROLLED = /(meperidin|tapentad|buprenorph|pentazoc|nalbuph|butorphan|ketamin|azepam|azolam|clobazam|chlordiazepox|zolpid|zopiclon|zaleplon|barbit|methylphenid|amfetamin|amphetamin|modafin|diphenoxyl|propoxyphen|opium|cannab)/i;
+const NDPS_MOIETIES: readonly string[] = NDPS_LIST.map((e) => e.moiety.toLowerCase());
 
-export function isControlled(row: Pick<AliasCandidateRow, "name" | "scheduleFlag" | "salts" | "ndps">): boolean {
-  return row.scheduleFlag === "H1" || row.scheduleFlag === "X" || row.ndps || LOOKS_CONTROLLED.test(row.name) || row.salts.some((s) => LOOKS_CONTROLLED.test(s));
+export type ControlledBy = "schedule" | "ndps_class" | "ndps_list" | "name";
+
+export function controlledBy(row: Pick<AliasCandidateRow, "name" | "scheduleFlag" | "salts" | "ndps">): ControlledBy | null {
+  if (row.scheduleFlag === "H1" || row.scheduleFlag === "X") return "schedule";
+  if (row.ndps) return "ndps_class";
+  const words = new Set(row.name.toLowerCase().split(/[^a-z]+/));
+  if (NDPS_MOIETIES.some((m) => words.has(m) || row.salts.some((s) => s === m || s.startsWith(`${m} `)))) return "ndps_list";
+  if (LOOKS_CONTROLLED.test(row.name) || row.salts.some((s) => LOOKS_CONTROLLED.test(s))) return "name";
+  return null;
 }
+
+export const isControlled = (row: Pick<AliasCandidateRow, "name" | "scheduleFlag" | "salts" | "ndps">): boolean => controlledBy(row) !== null;
 
 /** Levenshtein distance, capped: anything past `cap` reads as `cap + 1`. */
 export function editDistance(a: string, b: string, cap = 3): number {
@@ -348,8 +369,17 @@ export function ruleCheck(input: RuleInput): { result: "pass" | AliasRuleCode; l
   if (input.chooserModel !== null && input.chooserModel === input.reviewerModel) return { result: "same_model", lasaGuard: false };
 
   const head = headOf(target.name);
+  /*
+    THE SECOND-TAP FLAG, NARROWED (owner's slice 2, 2026-10-08). It fired on 65 of the 103 answers of
+    the first evaluation. Measured: 28 through a curated look-alike pair, 47 through a near NAME — and
+    every one of those names was a different molecule ("dolo" beside "dole", "rantac" beside
+    "rabtac"); the national list holds 72,000 brand names and most short ones have such a neighbour.
+    What is NOT a look-alike risk is the same brand's own combination ("allegra" beside "allegra m"):
+    a near name counts only when it shares NO moiety with the target.
+  */
+  const shares = (r: AliasCandidateRow): boolean => r.salts.some((x) => target.salts.includes(x));
   const lasaGuard = lasaPartner(input.lasa, callNames(target)) !== null
-    || others.some((r) => { const h = headOf(r.name); return h !== head && editDistance(head, h) <= lookalikeDistance(head); });
+    || others.some((r) => { const h = headOf(r.name); return !shares(r) && h !== head && editDistance(head, h) <= lookalikeDistance(head); });
   return { result: "pass", lasaGuard };
 }
 

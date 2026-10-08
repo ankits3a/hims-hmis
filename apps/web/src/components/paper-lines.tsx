@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { DrugField } from "./drug-field";
+import type { NicknameContext } from "../lib/suggest-signals";
 import type { WireHeldAlert, WireRxLine } from "../lib/opd-api";
 import { RX_FREQUENCIES, snapFrequency } from "../../../../packages/contracts/src/rx-line";
 
@@ -66,8 +67,10 @@ export function alertText(t: TFunction, a: WireHeldAlert): string {
 }
 
 export function PaperLinesEditor({
-  idPrefix, lines, onChange, alerts, reasons, onReason, disabled = false,
+  idPrefix, lines, onChange, alerts, reasons, onReason, disabled = false, nicknames,
 }: {
+  /** Which screen and visit a learned nickname's tap or cross belongs to (decision 0051); absent, the field offers none. */
+  nicknames?: NicknameContext;
   idPrefix: string;
   lines: WireRxLine[];
   onChange: (next: WireRxLine[]) => void;
@@ -132,6 +135,7 @@ export function PaperLinesEditor({
                   }}
                 >
                   <DrugField
+                    {...(nicknames === undefined ? {} : { nicknames })}
                     inputId={`${idPrefix}-drug-${String(i)}`}
                     value={l.drug}
                     placeholder={t("paper.lines.medicineHint")}

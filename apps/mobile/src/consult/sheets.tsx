@@ -360,7 +360,25 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
   const [otherDays, setOtherDays] = useState(false);
   /** A pick whose name is easily confused with another waits here for a second tap. */
   const [ask, setAsk] = useState<WireMedicineHit | null>(null);
-  const pick = (h: WireMedicineHit): void => { setAsk(null); set({ drug: h.name, medicineId: h.id, route: h.routeClass === "topical" ? "topical" : "oral", source: "search" }); };
+  /*
+   * A LEARNED NICKNAME'S ROW (decisions 0051, 0055). The search may answer with one row marked `alias`:
+   * the medicine the hospital has learned the typed nickname means. It shows the product's full name,
+   * a "nickname" tag and a cross; nothing is picked for the doctor. Taken, crossed, or passed over for
+   * another row — each is told to the server against the nickname's id, never the typed word.
+   */
+  const [crossedNick, setCrossedNick] = useState<string[]>([]);
+  const nick = (aliasId: string, outcome: "accepted" | "dismissed" | "manual", pickedId?: string): void => {
+    void api.signals({ suggestions: [{ kind: "alias", source: "search", outcome, surface: "consult_phone", encounterId: draft.encounterId, itemKey: aliasId, ...(pickedId === undefined ? {} : { contextKey: `med:${pickedId}` }) }] }).catch(() => undefined);
+  };
+  const rows = found.rows.filter((h) => h.alias === undefined || !crossedNick.includes(h.alias.id));
+  const pick = (h: WireMedicineHit): void => {
+    const offered = rows.find((r) => r.alias !== undefined);
+    if (h.alias !== undefined) nick(h.alias.id, "accepted");
+    else if (offered?.alias !== undefined) nick(offered.alias.id, "manual", h.id);
+    setAsk(null); set({ drug: h.name, medicineId: h.id, route: h.routeClass === "topical" ? "topical" : "oral", source: "search" });
+  };
+  /** A second tap is asked for a known look-alike pair, and for a nickname whose medicine has a near name. */
+  const needsAsk = (h: WireMedicineHit): boolean => (h.lasa ?? null) !== null || h.alias?.lasaGuard === true;
   const typed = (text: string): void => {
     // Nothing in the hospital's list answered this word: kept for the alias tool, the term alone.
     void api.signals({ misses: [{ kind: "medicine", term: text, stage: "search" }] }).catch(() => undefined);
@@ -387,26 +405,30 @@ export function MedicinesDrawer({ api, draft, patch, warnings, checking, onClose
         {!picked ? (
           <>
             <Box testID="med-input" autoFocus value={q} onChangeText={setQ} placeholder={t("mobile.consult.medSearch")} maxLength={80} returnKeyType="done"
-              onSubmitEditing={() => { const text = q.trim(); if (text.length >= 3 && !found.busy && found.error === null && found.rows.length === 0) typed(text); }} />
+              onSubmitEditing={() => { const text = q.trim(); if (text.length >= 3 && !found.busy && found.error === null && rows.length === 0) typed(text); }} />
             {ask !== null && (
               <View testID="lasa-ask" style={[st.alert, st.alertAmber]}>
-                <Text style={[st.alertTitle, { color: "#8a5a10" }]}>{t("mobile.consult.lasa.ask", { name: ask.name, other: ask.lasa ?? "" })}</Text>
-                <Text style={[st.alertBody, { color: "#8a5a10" }]}>{t("mobile.consult.lasa.body")}</Text>
+                <Text style={[st.alertTitle, { color: "#8a5a10" }]}>{(ask.lasa ?? null) !== null ? t("mobile.consult.lasa.ask", { name: ask.name, other: ask.lasa ?? "" }) : t("mobile.consult.nickname.ask", { name: ask.name })}</Text>
+                <Text style={[st.alertBody, { color: "#8a5a10" }]}>{(ask.lasa ?? null) !== null ? t("mobile.consult.lasa.body") : t("mobile.consult.nickname.askBody")}</Text>
                 <View style={[st.two, { marginTop: 10 }]}>
                   <View style={{ flex: 1 }}><Button testID="lasa-no" kind="secondary" label={t("mobile.consult.lasa.no")} onPress={() => setAsk(null)} /></View>
                   <View style={{ flex: 1.3 }}><Button testID="lasa-yes" label={t("mobile.consult.lasa.yes", { name: ask.name.split(" ")[0] ?? ask.name })} onPress={() => pick(ask)} /></View>
                 </View>
               </View>
             )}
-            {ask === null && found.rows.map((h) => (
-              <Pressable key={h.id} testID={`med-hit-${h.id}`} accessibilityRole="button" onPress={() => ((h.lasa ?? null) !== null ? setAsk(h) : pick(h))} style={st.hit}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={st.hitName}>{h.name}</Text>
-                  <Text testID={`med-hit-sub-${h.id}`} style={st.hitSub}>{[h.strength, h.form, h.drugClass ?? h.salts.slice(0, 3).join(" + ")].filter((x) => x !== null && x !== "").join(" · ")}</Text>
-                </View>
-              </Pressable>
+            {ask === null && rows.map((h) => (
+              <View key={h.id} style={[st.hit, { paddingVertical: 0 }]}>
+                <Pressable testID={`med-hit-${h.id}`} accessibilityRole="button" onPress={() => (needsAsk(h) ? setAsk(h) : pick(h))} style={[st.hit, { flex: 1, minWidth: 0, borderTopWidth: 0 }]}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={st.hitName}>{h.name}</Text>
+                    <Text testID={`med-hit-sub-${h.id}`} style={st.hitSub}>{[h.strength, h.form, h.drugClass ?? h.salts.slice(0, 3).join(" + ")].filter((x) => x !== null && x !== "").join(" · ")}</Text>
+                    {h.alias !== undefined && <Text testID={`med-nickname-${h.id}`} style={st.nickTag}>{t("mobile.consult.nickname.tag")}</Text>}
+                  </View>
+                </Pressable>
+                {h.alias !== undefined && <Cross testID={`med-nickname-x-${h.id}`} name={h.name} onPress={() => { nick(h.alias!.id, "dismissed"); setCrossedNick((x) => [...x, h.alias!.id]); }} />}
+              </View>
             ))}
-            {q.trim().length >= 3 && !found.busy && found.rows.length === 0 && found.error === null && (
+            {q.trim().length >= 3 && !found.busy && rows.length === 0 && found.error === null && (
               <Pressable testID="med-free" accessibilityRole="button" onPress={() => typed(q.trim())} style={st.hit}>
                 <Text style={st.hitName}>{t("mobile.consult.medFree", { text: q.trim() })}</Text>
               </Pressable>
@@ -685,6 +707,7 @@ const st = StyleSheet.create({
   two: { flexDirection: "row", gap: space.sm },
   cross: { minWidth: 40, minHeight: 40, alignItems: "center", justifyContent: "center", borderRadius: 999 },
   crossText: { fontSize: 20, lineHeight: 22, color: color.dim },
+  nickTag: { alignSelf: "flex-start", marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: "hidden", fontSize: 11.5, lineHeight: 16, fontWeight: "700", color: "#8a5a10", backgroundColor: "#fdf3dc" },
   offer: { flexDirection: "row", alignItems: "center" },
   small: { minHeight: 40, paddingHorizontal: 12, justifyContent: "center", borderRadius: radius.md, borderWidth: 1 },
   smallOn: { backgroundColor: color.green, borderColor: color.green },

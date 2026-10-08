@@ -3741,6 +3741,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               {t("opdConsult.drug")}
                             </label>
                             <DrugField
+                              nicknames={{ surface: "consult_web", encounterId: active?.encounterId ?? null }}
                               inputId={`rx-drug-${String(i)}`}
                               value={rxForm.watch(`lines.${i}.drug`)}
                               placeholder={t("opdConsult.drugPlaceholder")}

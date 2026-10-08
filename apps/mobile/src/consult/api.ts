@@ -9,7 +9,9 @@ import type { HiddenItem } from "./signals";
  * that are new (sets, most-used diagnoses, the guarded medicine search, the signals, the voice status
  * and the spoken note) are decisions 0048 and 0049.
  */
-export type WireMedicineHit = { id: string; name: string; form: string; strength: string | null; code: string | null; routeClass: string; salts: string[]; prefix: boolean; reviewed: boolean; drugClass?: string | null; lasa?: string | null };
+export type WireMedicineHit = { id: string; name: string; form: string; strength: string | null; code: string | null; routeClass: string; salts: string[]; prefix: boolean; reviewed: boolean; drugClass?: string | null; lasa?: string | null;
+  /** Decisions 0051/0055 — the hospital has learned that what was typed is a NICKNAME for this medicine. Absent on every ordinary row and while the server's switch is off. */
+  alias?: { id: string; state: "suggestion" | "trusted"; lasaGuard: boolean } };
 export type WireIcd10Hit = { code: string; description: string };
 export type WireMyDiagnosis = { text: string; icd10Code: string | null; uses: number };
 export type WireComplaintHit = { term: string; mine: number; hospital: number };
@@ -39,7 +41,7 @@ export type WireConsultVisit = {
 export type WireIssued = { prescriptionId: string; version: number };
 /** One row of the suggestion log. The visit and the suggestion's key may be named; a patient and a typed word never are. */
 export type WireSignal = {
-  kind: "medicine" | "test" | "diagnosis"; source: string; outcome: "accepted" | "dismissed" | "manual" | "shown";
+  kind: "medicine" | "test" | "diagnosis" | "alias"; source: string; outcome: "accepted" | "dismissed" | "manual" | "shown";
   surface?: "consult_phone"; encounterId?: string; contextKey?: string; itemKey?: string; rankShown?: number; items?: string[];
 };
 

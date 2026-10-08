@@ -2,9 +2,9 @@ import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { LINE_SOURCES, newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { cdsDoctorPrefs, opdEncounters, opdLasaPairs, opdSuggestionEvents, opdTermMisses } from "../../kernel/db/schema";
-import { medicinesByIds, saltsByIds, searchMedicines } from "../formulary";
+import { medicinesByIds, saltsByIds, searchMedicinesForPrescribing } from "../formulary";
+import type { PrescribingHit } from "../formulary";
 import { OpdError } from "./errors";
-import type { MedicineHit } from "../formulary";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -106,14 +106,14 @@ export function classLabel(drugClass: string | null): string | null {
   return CLASS_LABEL[drugClass] ?? drugClass.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
-export type GuardedMedicineHit = MedicineHit & {
+export type GuardedMedicineHit = PrescribingHit & {
   /** The moiety's class as the formulary records it ("PPI"), or null when none is recorded — never guessed. */
   drugClass: string | null;
   /** The look-alike name the phone must ask about before it takes this pick, or null. */
   lasa: string | null;
 };
 
-export async function guardHits(db: Db, hits: readonly MedicineHit[]): Promise<GuardedMedicineHit[]> {
+export async function guardHits(db: Db, hits: readonly PrescribingHit[]): Promise<GuardedMedicineHit[]> {
   if (hits.length === 0) return [];
   const meds = await medicinesByIds(db, hits.map((h) => h.id));
   const saltIds = [...new Set([...meds.values()].flatMap((m) => m.salts.map((s) => s.saltId)))];
@@ -127,7 +127,8 @@ export async function guardHits(db: Db, hits: readonly MedicineHit[]): Promise<G
 
 /** The phone's medicine search: the formulary's own search, each row carrying its class and its look-alike. */
 export async function guardedMedicineSearch(db: Db, q: string, limit: number): Promise<GuardedMedicineHit[]> {
-  return guardHits(db, await searchMedicines(db, q, limit));
+  /* The prescriber's search: the catalogue's answer, plus a learned nickname's medicine when the pipeline is on (`alias-store.ts`). */
+  return guardHits(db, await searchMedicinesForPrescribing(db, q, limit));
 }
 
 // ——— the two logs ———
@@ -188,8 +189,29 @@ export async function recordSignals(
       sourceLevel: null, batchId: s.batchId ?? null,
     };
   });
-  if (rows.length > 0) await db.insert(opdSuggestionEvents).values(rows);
-  return { misses, suggestions: rows.length };
+  /*
+    A NICKNAME'S USE (decision 0051). A tap on a nickname's row is counted ONCE per visit — the same
+    medicine picked twice for one prescription is one use — and only when it names a real visit. The
+    rows are written first; what they MEAN for the nickname (trusted, demoted) is the caller's next
+    step (`alias-use.ts` `applyAliasUse`, called by the route for each nickname the request named).
+  */
+  const aliasTaps = rows.filter((r) => r.kind === "alias" && r.outcome === "accepted");
+  let keep = rows;
+  if (aliasTaps.length > 0) {
+    const had = await db.select({ itemKey: opdSuggestionEvents.itemKey, encounterId: opdSuggestionEvents.encounterId }).from(opdSuggestionEvents)
+      .where(and(eq(opdSuggestionEvents.kind, "alias"), eq(opdSuggestionEvents.outcome, "accepted"),
+        inArray(opdSuggestionEvents.itemKey, aliasTaps.map((r) => r.itemKey ?? "")), inArray(opdSuggestionEvents.encounterId, aliasTaps.map((r) => r.encounterId ?? ""))));
+    const seen = new Set(had.map((h) => `${h.itemKey ?? ""}|${h.encounterId ?? ""}`));
+    keep = rows.filter((r) => {
+      if (r.kind !== "alias" || r.outcome !== "accepted") return true;
+      const k = `${r.itemKey ?? ""}|${r.encounterId ?? ""}`;
+      if (r.itemKey === null || r.encounterId === null || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+  if (keep.length > 0) await db.insert(opdSuggestionEvents).values(keep);
+  return { misses, suggestions: keep.length };
 }
 
 export type SignalsMeter = {
