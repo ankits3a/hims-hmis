@@ -56,7 +56,18 @@ export type WireBenchRow = {
 };
 
 export type WireRange = { min?: number; max?: number };
-export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm";
+// OWNER 2026-10-08 — `glucoseMgDl` appended: a finger-prick capillary glucose, charted behind "+".
+export type WireVitalKey = "heightCm" | "weightKg" | "sbp" | "dbp" | "pulse" | "rr" | "spo2" | "tempC" | "muacCm" | "glucoseMgDl";
+/**
+ * WHEN the glucose was taken. A value without it is not a reading a doctor can use (a fasting 186 and
+ * an after-food 186 are different findings), so the form will not save one without the other and the
+ * server refuses the same body. Stored English keys; the label a nurse reads is translated.
+ */
+export const GLUCOSE_TIMINGS = ["fasting", "random", "after_food"] as const;
+export type GlucoseTiming = (typeof GLUCOSE_TIMINGS)[number];
+/** What a glucometer strip can read, in mg/dL, whole numbers only — the server's own bound. */
+export const GLUCOSE_MIN = 20;
+export const GLUCOSE_MAX = 600;
 export type WireBandKey = "infant" | "child_1_5" | "child_6_12" | "adult";
 export type WirePreStage = {
   patientId: string;
@@ -110,6 +121,8 @@ export const UNLOCK_REASONS = ["yearly_remeasure_due", "patient_disputes_old_val
 export type WireUnlockReason = (typeof UNLOCK_REASONS)[number];
 export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & {
   notes?: string | null;
+  /** Sent with a glucose value, never without one. */
+  glucoseTiming?: GlucoseTiming | null;
   readings?: WireReadings;
   contextChips?: { key: string; question: string; answer: string }[];
   carriedForward?: WireVitalKey[];
@@ -118,7 +131,7 @@ export type WireVitalsPostBody = Partial<Record<WireVitalKey, number | null>> & 
   unlockReasons?: Partial<Record<WireVitalKey, WireUnlockReason>>;
 };
 
-export type WireEscalationReading = Partial<Record<Exclude<WireVitalKey, "heightCm" | "weightKg">, number>>;
+export type WireEscalationReading = Partial<Record<Exclude<WireVitalKey, "heightCm" | "weightKg" | "glucoseMgDl">, number>>;
 
 // ——— the hospital clock ———
 
@@ -290,9 +303,9 @@ export function ambiguousMessage(door: Extract<Door, { kind: "token" }>, rows: r
 
 // ——— the tiles: takes, parsers, gate mirrors, the wire body ———
 
-export type TileKey = "bp" | "pulse" | "spo2" | "tempC" | "rr" | "weightKg" | "heightCm" | "muacCm";
-export const TILE_KEYS: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm"];
-const SCALAR_TILES: readonly Exclude<TileKey, "bp">[] = ["pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm"];
+export type TileKey = "bp" | "pulse" | "spo2" | "tempC" | "rr" | "weightKg" | "heightCm" | "muacCm" | "glucoseMgDl";
+export const TILE_KEYS: readonly TileKey[] = ["bp", "pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm", "glucoseMgDl"];
+const SCALAR_TILES: readonly Exclude<TileKey, "bp">[] = ["pulse", "spo2", "tempC", "rr", "weightKg", "heightCm", "muacCm", "glucoseMgDl"];
 
 export type Take = number | [number, number];
 export type Tile = {
@@ -322,32 +335,110 @@ export function tileSetFor(pre: WirePreStage | null): { required: TileKey[]; not
     }
     return out;
   };
-  if (pre === null) return { required: ["bp", "pulse", "spo2", "weightKg", "heightCm"], notRoutine: [] };
+  // No pre-stage (it failed, or an older server): the routine four. OWNER 2026-10-08 — SpO₂ is not one of them.
+  if (pre === null) return { required: [...ROUTINE_TILES], notRoutine: [] };
   return { required: fold(pre.required), notRoutine: fold(pre.notRoutine) };
 }
 
 export const EMERGENCY_TILES: readonly TileKey[] = ["bp", "pulse", "spo2"];
 
 /**
- * The order the typing lane walks: the clinical order the tray is laid in (cuff, probe, thermometer,
- * then the scale and the tape), the lead vital pulled to the front (per-patient autofocus). MUAC is
- * a tile only where the band asks for it — "required under six, meaningless over it" (VD-1 D5).
- * OWNER 2026-10-07 — RR follows the same rule: no OPD band requires it, so the OPD bay shows no RR
- * tile; a band (or a later ward) that requires RR gets the tile back with no other change.
- * A not-routine BP stays on the tray, collapsed: recorded when the doctor asks, never demanded.
+ * ═══ OWNER 2026-10-08 — FOUR BOXES, AND A "+" FOR THE REST ═══
+ *
+ * *"In the Vitals screen, we should keep BP, Weight, height & Pulse as the primary and add a '+'
+ * icon to add more vitals like RR, Temperature, Glucose"*; then *"Move SpO2 behind '+'. Add Glucose
+ * behind '+'."* ONE function decides which boxes a screen opens with and what the "+" row offers;
+ * the web bay and the phone both call it and neither carries a list of its own.
+ *
+ * A box is on the screen WITHOUT "+" when any of these holds — and only then:
+ *   required   the server's protocol for this patient demands it (`WirePreStage.required`: the
+ *              routine four for an adult, the arm band under six, whatever a band is edited to ask)
+ *   asked      on screen, optional, never starred, never blocking the save (owner 2026-10-08, must-fill
+ *              by age): a child's temperature (never mandatory, owner 2026-10-05); height and pulse
+ *              under six; blood pressure from six to seventeen. The server decides what is REQUIRED
+ *              (`opd/vitals-rules.ts` `requiredFor`); these lines only decide what is SHOWN beside it.
+ *   flagged    the last chart was out of range on it (`expectedFlags`), so it is taken again today
+ *   missing    a save was refused for want of it — the emergency save's SpO₂ arrives here
+ *   value      it already holds a number (a held first BP, a carried height, text still in the box)
+ *   added      the nurse tapped it in the "+" list
+ * Everything else that can be charted at this desk is behind "+", in `PLUS_ORDER`. MUAC is never
+ * offered there: "required under six, meaningless over it" (VD-1 D5).
  */
-const ONLY_WHEN_REQUIRED: readonly TileKey[] = ["muacCm", "rr"];
+export const ROUTINE_TILES: readonly TileKey[] = ["bp", "pulse", "weightKg", "heightCm"];
+/** The server's two age lines, mirrored (whole years; an unknown age is an adult, as everywhere). */
+export const UNDER_SIX_YEARS = 6;
+export const BP_REQUIRED_FROM_YEARS = 18;
+/** The order the boxes are laid in: the cuff first for an adult, the scale first for a child (the dose is by weight). */
+const ADULT_ORDER: readonly TileKey[] = ["bp", "pulse", "weightKg", "heightCm", "spo2", "tempC", "glucoseMgDl", "rr", "muacCm"];
+const CHILD_ORDER: readonly TileKey[] = ["weightKg", "heightCm", "pulse", "tempC", "muacCm", "spo2", "glucoseMgDl", "rr", "bp"];
+/** The "+" list, top to bottom. */
+export const PLUS_ORDER: readonly TileKey[] = ["spo2", "tempC", "glucoseMgDl", "rr", "bp", "pulse", "weightKg", "heightCm"];
 
-export function tileOrder(lead: TileKey | null, set: { required: TileKey[]; notRoutine: TileKey[] }): TileKey[] {
-  const base = TILE_KEYS.filter((k) => !ONLY_WHEN_REQUIRED.includes(k) || set.required.includes(k));
-  if (lead === null || !base.includes(lead)) return base;
-  return [lead, ...base.filter((k) => k !== lead)];
+export type BoxWhy = "required" | "asked" | "flagged" | "missing" | "value" | "added";
+export type VitalsLayout = {
+  /** The boxes on screen, in order. */
+  boxes: TileKey[];
+  /** What the "+" row still offers; empty means the row is not drawn. */
+  behindPlus: TileKey[];
+  /** Why each box is there — the first reason that holds, in the order of `BoxWhy`. */
+  why: Partial<Record<TileKey, BoxWhy>>;
+  /** What the amber line names: under six, the boxes that MUST be filled; otherwise what the protocol brought up beyond the routine four. */
+  auto: TileKey[];
+  /** Which sentence the amber line uses. */
+  autoWhy: "underSix" | "child" | "protocol" | null;
+};
+
+const foldVital = (k: WireVitalKey): TileKey => (k === "sbp" || k === "dbp" ? "bp" : k);
+
+/** The tiles that hold something: a take, a held value, a carried number, or text not yet charted. */
+export function holdingOf(tiles: Tiles, raw: Partial<Record<TileKey, string>> = {}): TileKey[] {
+  return TILE_KEYS.filter((k) => tiles[k].takes.length > 0 || tiles[k].held.length > 0 || tiles[k].carried !== null || (raw[k] ?? "").trim() !== "");
 }
 
-export function leadTileFor(pre: WirePreStage | null): TileKey {
-  const first = pre?.expectedFlags[0]?.vital;
-  if (first !== undefined) return first === "sbp" || first === "dbp" ? "bp" : first;
-  return pre !== null && pre.band !== "adult" ? "tempC" : "bp";
+export function vitalsLayout(
+  pre: WirePreStage | null,
+  state: { added?: readonly TileKey[]; holding?: readonly TileKey[]; missing?: readonly TileKey[] } = {},
+): VitalsLayout {
+  const set = tileSetFor(pre);
+  const child = pre !== null && pre.band !== "adult";
+  const age = pre === null ? null : pre.ageYears;
+  const underSix = age !== null && age < UNDER_SIX_YEARS;
+  const noCuff = age !== null && age < BP_REQUIRED_FROM_YEARS;
+  const asked: TileKey[] = child ? ["tempC"] : [];
+  if (underSix) asked.push("heightCm", "pulse");
+  else if (noCuff) asked.push("bp");
+  const flagged = pre === null ? [] : pre.expectedFlags.map((f) => foldVital(f.vital));
+  const why: Partial<Record<TileKey, BoxWhy>> = {};
+  const mark = (keys: readonly TileKey[], w: BoxWhy): void => { for (const k of keys) why[k] ??= w; };
+  mark(set.required, "required"); mark(asked, "asked"); mark(flagged, "flagged");
+  mark(state.missing ?? [], "missing"); mark(state.holding ?? [], "value"); mark(state.added ?? [], "added");
+  const boxes = (child ? CHILD_ORDER : ADULT_ORDER).filter((k) => why[k] !== undefined);
+  const auto = underSix
+    ? boxes.filter((k) => why[k] === "required")
+    : boxes.filter((k) => (why[k] === "required" || why[k] === "asked") && !ROUTINE_TILES.includes(k));
+  return {
+    boxes,
+    behindPlus: PLUS_ORDER.filter((k) => why[k] === undefined),
+    why,
+    auto,
+    autoWhy: auto.length === 0 ? null : underSix ? "underSix" : child ? "child" : "protocol",
+  };
+}
+
+/**
+ * ON A TWO-COLUMN SCREEN (the phone, and the web bay below 900 px): the boxes that take a whole row.
+ * BP (two numbers) and glucose (three chips) always do; `alsoNeedsRow` adds the screen's own (a
+ * carried height showing its reason picker); and a box that would otherwise sit beside nothing is
+ * widened rather than left next to a hole.
+ */
+export function fullRowBoxes(boxes: readonly TileKey[], alsoNeedsRow: (k: TileKey) => boolean = () => false): TileKey[] {
+  const needs = (k: TileKey | undefined): boolean => k === undefined || k === "bp" || k === "glucoseMgDl" || alsoNeedsRow(k);
+  const out: TileKey[] = [];
+  let col = 0;
+  boxes.forEach((k, i) => {
+    if (needs(k) || (col === 0 && needs(boxes[i + 1]))) { out.push(k); col = 0; } else col = (col + 1) % 2;
+  });
+  return out;
 }
 
 /*
@@ -387,11 +478,18 @@ export function parseTake(key: TileKey, raw: string): Take | null {
     return sys > dia ? [sys, dia] : null;   // 80-120 is the numbers swapped, not a reading
   }
   if (key === "tempC") return tempNote(s)?.c ?? null;
+  if (key === "glucoseMgDl") {
+    // a strip reads whole mg/dL; anything else is a slip of the thumb, said on the box itself
+    if (!/^\d+$/.test(s)) return null;
+    const n = Number(s);
+    return n >= GLUCOSE_MIN && n <= GLUCOSE_MAX ? n : null;
+  }
   return /^\d+(\.\d+)?$/.test(s) ? Number(s) : null;
 }
 
 /** Why `parseTake` said no — the i18n key under `vitalsBay.capture`. */
-export function takeError(key: TileKey, raw: string): "bpBoth" | "bpOrder" | "tempUnit" | "notANumber" {
+export function takeError(key: TileKey, raw: string): "bpBoth" | "bpOrder" | "tempUnit" | "glucoseRange" | "notANumber" {
+  if (key === "glucoseMgDl") return "glucoseRange";
   if (key === "bp") return BP_RE.test(raw.trim()) ? "bpOrder" : "bpBoth";
   if (key === "tempC" && /^\d+(\.\d+)?$/.test(raw.trim())) return "tempUnit";
   return "notANumber";
@@ -511,10 +609,22 @@ export function applyTake(tiles: Tiles, key: TileKey, source: TakeSource, take: 
 
 export function missingFor(tiles: Tiles, required: TileKey[], emergency: boolean): TileKey[] {
   const need = emergency ? EMERGENCY_TILES : required;
-  return need.filter((k) => operative(tiles[k]) === null && tiles[k].carried === null);
+  const missing = need.filter((k) => operative(tiles[k]) === null && tiles[k].carried === null);
+  // OWNER 2026-10-08 — SpO₂ is no longer demanded, and a HELD one is still not skippable: a reading
+  // kept out of the chart (a 45 % on a talking patient) is owed a re-clip, a "it is real", or a
+  // deliberate Clear of the box — never a silent save that loses it. The server refuses the same.
+  for (const k of TILE_KEYS) {
+    if (tiles[k].held.length > 0 && operative(tiles[k]) === null && !missing.includes(k)) missing.push(k);
+  }
+  return missing;
 }
 
-export function buildBody(tiles: Tiles, opts: { emergency: boolean; chips: { key: string; question: string; answer: string }[] }): WireVitalsPostBody {
+/** A glucose value with no timing chosen: the one thing about the glucose box that stops a save. */
+export function glucoseNeedsTiming(tiles: Tiles, timing: GlucoseTiming | null): boolean {
+  return operative(tiles.glucoseMgDl) !== null && timing === null;
+}
+
+export function buildBody(tiles: Tiles, opts: { emergency: boolean; chips: { key: string; question: string; answer: string }[]; glucoseTiming?: GlucoseTiming | null }): WireVitalsPostBody {
   const readings: WireReadings = {};
   const body: WireVitalsPostBody = { emergency: opts.emergency, contextChips: opts.chips };
   const carriedForward: WireVitalKey[] = [];
@@ -543,6 +653,7 @@ export function buildBody(tiles: Tiles, opts: { emergency: boolean; chips: { key
   }
   if (bp.override !== null) { overrides.sbp = bp.override; overrides.dbp = bp.override; }
   body.readings = readings;
+  if (readings.glucoseMgDl !== undefined && opts.glucoseTiming !== undefined && opts.glucoseTiming !== null) body.glucoseTiming = opts.glucoseTiming;
   if (carriedForward.length > 0) body.carriedForward = carriedForward;
   if (Object.keys(unlockReasons).length > 0) body.unlockReasons = unlockReasons;
   if (Object.keys(overrides).length > 0) body.overrides = overrides;
@@ -652,7 +763,9 @@ export function tileDeltaOf(k: TileKey, tile: Tile, pre: WirePreStage | null): T
       hot: Math.abs(dSys) > 15 || Math.abs(dDia) > 10,
     };
   }
-  if (Array.isArray(op)) return null;
+  // NO glucose delta: a fasting value against an after-food one is not a trend, and this version
+  // interprets nothing about glucose (a clinical threshold is an owner ruling not yet made).
+  if (Array.isArray(op) || k === "glucoseMgDl") return null;
   const was = last[k];
   if (was === null || was === undefined) return null;
   return { serviceDate: last.serviceDate, from: String(was), delta: signed(round1(op - was)), hot: false };
@@ -710,7 +823,7 @@ export function readingFrom(tiles: Tiles): WireEscalationReading {
 /* ═══════════════ amend a saved chart — the rules both bays share (mobile §3i, 2026-10-07) ═══════════════ */
 
 /** The scalars a correction may touch, in the order the copy lists them. */
-export const AMEND_KEYS: readonly WireVitalKey[] = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"];
+export const AMEND_KEYS: readonly WireVitalKey[] = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm", "glucoseMgDl"];
 
 /**
  * ═══ THE REASONS A VITAL IS ACTUALLY CORRECTED, AS ONE TAP ═══
@@ -735,12 +848,16 @@ export const AMEND_REASONS: readonly { key: string; text: string }[] = [
 ];
 
 /** What a saved chart must carry for a correction to be built from it — the web's `WireVitals` is one. */
-export type ChartScalars = Record<WireVitalKey, number | null>;
+export type ChartScalars = Record<Exclude<WireVitalKey, "glucoseMgDl">, number | null> & {
+  /** Optional on the wire: a chart from before 2026-10-08, or an older server, carries neither. */
+  glucoseMgDl?: number | null; glucoseTiming?: GlucoseTiming | null;
+};
 export type Change = { key: WireVitalKey; from: number | null; to: number | null };
 export function diffOf(prior: ChartScalars, next: ChartScalars): Change[] {
   const out: Change[] = [];
   for (const k of AMEND_KEYS) {
-    if (prior[k] !== next[k]) out.push({ key: k, from: prior[k], to: next[k] });
+    const from = prior[k] ?? null; const to = next[k] ?? null;
+    if (from !== to) out.push({ key: k, from, to });
   }
   return out;
 }
@@ -756,7 +873,7 @@ export function amendedReadings(prior: ChartScalars & { readings: unknown }, nex
   for (const k of AMEND_KEYS) {
     if (k === "sbp" || k === "dbp") continue;
     const v = next[k];
-    if (v === undefined || v === prior[k]) continue;
+    if (v === undefined || v === (prior[k] ?? null)) continue;
     if (v === null) { delete base[k]; continue; }
     const r = base[k];
     base[k] = r === undefined ? { takes: [v], source: "typed" } : { ...r, takes: replace(r.takes, v) };

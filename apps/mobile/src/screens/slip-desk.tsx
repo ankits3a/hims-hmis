@@ -21,6 +21,8 @@ import { Band, Button, MONO, Note, Tag } from "../ui";
 import { refusalText } from "../vitals/api";
 import { humanDate, istClock, tokenText } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
+import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
+import { SwipeHint, SwipeRow } from "../scan/gestures";
 
 /**
  * THE SLIP DESK, ON A PHONE (plan M2; owner 2026-10-06) — scan, see who it is, photograph, file.
@@ -77,7 +79,7 @@ const buzz = (ok: boolean): void => {
   void Haptics.notificationAsync(ok ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error).catch(() => undefined);
 };
 
-export function SlipDesk() {
+export function SlipDesk({ scanned = null }: { scanned?: Scanned | null } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -85,6 +87,10 @@ export function SlipDesk() {
   const { call, upload } = useSession();
 
   const [day, setDay] = useState<SlipDay | null>(null);
+  /** The row being held: its action card is up. */
+  const [held1, setHeld1] = useState<SlipRow | null>(null);
+  const [scanSaid, setScanSaid] = useState<string | null>(scanned?.banner ?? null);
+  const arrived = useRef(false);
   const [dayFailed, setDayFailed] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -185,6 +191,13 @@ export function SlipDesk() {
     }
   }, [items, call, t, search]);
 
+  // Arrived from a scan: the visit's read-back opens at once — who it is stays on screen before anything is photographed.
+  useEffect(() => {
+    if (scanned === null || scanned.visitNo === null || arrived.current) return;
+    arrived.current = true;
+    void resolve(scanned.visitNo);
+  }, [scanned, resolve]);
+
   /* ── 3 · the photograph ── */
   /**
    * A page shot back-to-back is cut to the corners that were found, without a stop at the crop: the
@@ -228,6 +241,18 @@ export function SlipDesk() {
     }
   };
   const openCamera = (mode: CamMode): void => { setError(null); setCamMode(mode); setCameraOpen(true); };
+  /** Swipe right on a waiting row — "Photograph": the read-back is fetched and the camera opens on it, the two taps a row tap and "Open camera" make. */
+  const photograph = (r: SlipRow): void => {
+    void (async () => {
+      setError(null); setRefused(null);
+      try {
+        take(await call<SlipReadback>("GET", `/opd/visits/by-number/${encodeURIComponent(r.visitNo)}`), "qr");
+        openCamera({ kind: "first" });
+      } catch {
+        setRefused(r.visitNo);
+      }
+    })();
+  };
   const current = editing === null ? null : pages.find((p) => p.id === editing) ?? null;
   const chosen = pages.find((p) => p.id === sel) ?? pages[pages.length - 1] ?? null;
   const retake = (): void => {
@@ -335,7 +360,7 @@ export function SlipDesk() {
   const waiting = items.filter((i) => i.state !== "filed");
   const pageNo = baseline + 1;
 
-  const row = (r: SlipRow, onPress: (() => void) | null) => {
+  const row = (r: SlipRow, onPress: (() => void) | null, swipe = false) => {
     const age = minutesSince(r.consultDoneAt, now);
     const pill = r.state === "retake" ? t("slipCapture.pillRetake") : r.state === "filed" ? t("slipCapture.pillFiled") : t("slipCapture.minutes", { count: age });
     const loud = r.state === "retake" || (r.state === "waiting" && age >= 5);
@@ -350,9 +375,18 @@ export function SlipDesk() {
         <Text style={[s.rowPill, r.state === "retake" && { color: color.red, borderColor: color.redLine }, r.state === "waiting" && loud && { color: "#8a5a10", borderColor: color.goldLine }, r.state === "filed" && { color: color.green, borderColor: color.greenLine }]}>{pill}</Text>
       </>
     );
-    return onPress === null
-      ? <View key={r.encounterId} style={[s.row, { opacity: 0.75 }]}>{body}</View>
-      : <Pressable key={r.encounterId} testID={`slip-row-${r.visitNo}`} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.row, pressed && { backgroundColor: color.wash }]}>{body}</Pressable>;
+    if (onPress === null) return <View key={r.encounterId} style={[s.row, { opacity: 0.75 }]}>{body}</View>;
+    // Press and hold = the action card a scan opens; swipe right (main list only) = "Photograph" (owner 2026-10-08).
+    const hold = (): void => { setListOpen(false); setHeld1(r); };
+    const pressable = (
+      <Pressable key={r.encounterId} testID={`slip-row-${r.visitNo}`} accessibilityRole="button" onPress={onPress} onLongPress={hold}
+        accessibilityActions={[{ name: "longpress", label: t("mobile.scan.more") }]}
+        onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") hold(); }}
+        style={({ pressed }) => [s.row, pressed && { backgroundColor: color.wash }]}>{body}</Pressable>
+    );
+    return swipe
+      ? <SwipeRow key={r.encounterId} testID={`slip-swipe-${r.visitNo}`} label={t("mobile.scan.swipe.photo")} onSwipe={() => photograph(r)}>{pressable}</SwipeRow>
+      : pressable;
   };
 
   const stepper = (
@@ -463,7 +497,8 @@ export function SlipDesk() {
         </View>
         {dayFailed && day === null && <Text style={s.faint} testID="slip-list-unavailable">{t("slipCapture.listUnavailable")}</Text>}
         {day !== null && waiting.length === 0 && <Text style={s.faint} testID="slip-none-waiting">{t(items.length === 0 ? "slipCapture.listEmpty" : "mobile.slips.allFiled")}</Text>}
-        <View style={{ gap: space.sm }}>{waiting.slice(0, 8).map((r) => row(r, () => { void resolve(r.visitNo); }))}</View>
+        <View style={{ gap: space.sm }}>{waiting.slice(0, 8).map((r) => row(r, () => { void resolve(r.visitNo); }, true))}</View>
+        {waiting.length > 0 && <SwipeHint list="slips" />}
         <Text style={s.faint}>{t("slipCapture.clocksNote")}</Text>
       </>
     );
@@ -635,6 +670,7 @@ export function SlipDesk() {
         </Pressable>
       </View>
       {stepper}
+      {scanSaid !== null && <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}><ScannedBanner text={scanSaid} onDismiss={() => setScanSaid(null)} /></View>}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "web" ? undefined : "padding"}>
         {step === 3 ? (
           /* The crop is not scrolled: a finger on a corner must move the corner, never the page. */
@@ -666,6 +702,8 @@ export function SlipDesk() {
         </Pressable>
       </Modal>
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setText(/^(q1|rx1)\./.test(data) ? "" : data); void resolve(data); }} />
+      <HeldCard source={held1 === null ? null : { encounterId: held1.encounterId }} onClose={() => setHeld1(null)}
+        onLocal={(action, visit) => { if (action !== "slip") return false; void resolve(visit.visitNo); return true; }} />
       <SlipCamera open={cameraOpen} onClose={() => setCameraOpen(false)} onShot={(p) => { void onShot(p); }}
         burst={camMode.kind === "burst" ? { taken: pages.length, max: MAX_PAGES } : null} />
     </View>

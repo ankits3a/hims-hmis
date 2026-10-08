@@ -2988,6 +2988,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           <span className={cls((lv.pulse ?? 80) > 100 || (lv.pulse ?? 80) < 50, flagged("pulse"))}>P {lv.pulse ?? "—"}</span>
                           <span className={cls((lv.spo2 ?? 99) < 95, flagged("spo2") || (lv.spo2 ?? 99) < 90)}>SpO₂ {lv.spo2 ?? "—"}%</span>
                           {lv.weightKg != null && <span>{lv.weightKg} kg</span>}
+                          {lv.glucoseMgDl != null && (
+                            <span data-testid="panel-glucose">{t("vitalsBay.tile.glucoseMgDl")} {lv.glucoseMgDl} mg/dL{lv.glucoseTiming == null ? "" : ` · ${t(`vitalsBay.glucose.timing.${lv.glucoseTiming}`)}`}</span>
+                          )}
                           {bmi !== null && <span>BMI {bmi.toFixed(1)}</span>}
                           <span className="more">{t("opdConsultV2.vitals.more")}</span>
                         </button>
@@ -4503,6 +4506,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                           <span>{t("opdConsult.vitalsBp")} {v.sbp ?? "—"}/{v.dbp ?? "—"}</span>
                           <span>{t("opdConsult.vitalsPulse")} {v.pulse ?? "—"}</span>
                           <span>{t("opdConsult.vitalsSpo2")} {v.spo2 ?? "—"}</span>
+                          {v.glucoseMgDl != null && (
+                            <span>{t("vitalsBay.tile.glucoseMgDl")} {v.glucoseMgDl} mg/dL{v.glucoseTiming == null ? "" : ` · ${t(`vitalsBay.glucose.timing.${v.glucoseTiming}`)}`}</span>
+                          )}
                           {Array.isArray(v.dangerFlags) && v.dangerFlags.length > 0 && (
                             <span style={{ color: "var(--red)", fontWeight: 700 }}>{t("opdConsult.flagged")}</span>
                           )}

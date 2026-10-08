@@ -1,5 +1,5 @@
 import type {
-  WireBenchRow, WireBenchState, WireDangerFlag, WireEscalationReading, WireEscalationState, WirePreStage,
+  ChartScalars, WireBenchRow, WireBenchState, WireDangerFlag, WireEscalationReading, WireEscalationState, WirePreStage,
   WireVisitOnBench, WireVitalKey, WireVitalsPostBody,
 } from "./rules";
 import type { GuardianRelation, WirePatientAbsent } from "./guardian";
@@ -18,8 +18,8 @@ export type WireEscalationView = {
 export type WireVitalsGate = { key: WireVitalKey; kind: "slipped_digit" | "shrinking_adult" | "probe_error"; value: number; suggestion?: number; message: string };
 /** Only what the phone reads off a saved chart: the flags, and whether the save waived the fee. */
 export type WireVitalsSaveResult = { flags: WireDangerFlag[]; feeWaived?: boolean };
-/** A saved chart, as far as a correction reads it: the nine scalars, the readings beside them, and what was carried. */
-export type WireChart = Record<WireVitalKey, number | null> & {
+/** A saved chart, as far as a correction reads it: the scalars (glucose and its timing among them since 2026-10-08), the readings beside them, and what was carried. */
+export type WireChart = ChartScalars & {
   id: string; recordedAt: string; recordedByName?: string; readings: unknown; contextChips: unknown; carriedForward?: string[];
   notes: string | null; emergency: boolean; status: "active" | "superseded";
 };

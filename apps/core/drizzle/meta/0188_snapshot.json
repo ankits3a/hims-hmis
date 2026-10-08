@@ -1,6 +1,6 @@
 {
-  "id": "417b11e1-254c-4cc1-a65b-4e8eb9f0ab72",
-  "prevId": "21797503-5232-4841-866d-4e4d40d89e3f",
+  "id": "21797503-5232-4841-866d-4e4d40d89e3f",
+  "prevId": "cf1686af-63d0-4974-b5b4-48cb1a8faea0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4542,12 +4542,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "term_key": {
-          "name": "term_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "medicine_id": {
           "name": "medicine_id",
           "type": "text",
@@ -4687,21 +4681,6 @@
           "columns": [
             {
               "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "cds_aliases_term_key_idx": {
-          "name": "cds_aliases_term_key_idx",
-          "columns": [
-            {
-              "expression": "term_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

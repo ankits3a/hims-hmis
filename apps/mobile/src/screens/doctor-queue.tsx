@@ -13,6 +13,9 @@ import {
 } from "../doctor/rules";
 import type { WireFollowUpConfig, WireQueueDoctor, WireQueueEntryView, WireQueuePatient, WireQueueView, WireSkipReason } from "../doctor/rules";
 import { useI18n } from "../i18n";
+import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
+import { SwipeHint, SwipeRow } from "../scan/gestures";
+import type { ScanAction } from "../scan/model";
 import { guardianWho } from "../vitals/guardian";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
@@ -49,8 +52,10 @@ const buzz = (kind: "ok" | "warn"): void => {
   void Haptics.notificationAsync(kind === "ok" ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
 };
 
-function Row({ e, t, now, right, below, tone, onPress, testID }: {
-  e: WireQueueEntryView; t: T; now: Date; right?: React.ReactNode; below?: React.ReactNode; tone?: "next" | "plain"; onPress: () => void; testID: string;
+function Row({ e, t, now, right, below, tone, onPress, onHold, testID }: {
+  e: WireQueueEntryView; t: T; now: Date; right?: React.ReactNode; below?: React.ReactNode; tone?: "next" | "plain"; onPress: () => void;
+  /** Press and hold: the same action card a scan of this patient opens (owner 2026-10-08). */
+  onHold?: () => void; testID: string;
 }) {
   const name = rowName(e.patient);
   const demo = ageSexOf(e.patient, now);
@@ -63,7 +68,10 @@ function Row({ e, t, now, right, below, tone, onPress, testID }: {
   if (absent !== null) marks.push({ text: t("patientAbsent.tag", { who: guardianWho(t, absent) }), fg: "#8a5a10" });
   return (
     <View testID={testID} style={[s.rowCard, tone === "next" && { backgroundColor: color.greenSoft, borderColor: color.greenLine }]}>
-      <Pressable testID={`${testID}-open`} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>
+      <Pressable testID={`${testID}-open`} accessibilityRole="button" onPress={onPress} onLongPress={onHold}
+        accessibilityActions={onHold === undefined ? undefined : [{ name: "longpress", label: t("mobile.scan.more") }]}
+        onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") onHold?.(); }}
+        style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>
         <Text style={s.rowTok}>{e.tokenNo}</Text>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.rowName} numberOfLines={1}>
@@ -104,7 +112,7 @@ function Sheet({ title, children, onClose, testID }: { title: string; children: 
   );
 }
 
-export function DoctorQueue() {
+export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const { call } = useSession();
@@ -135,6 +143,10 @@ export function DoctorQueue() {
   const [testsOrdered, setTestsOrdered] = useState(false);
   /** The consultation in hand shows the consult screen; this holds the one visit whose history (the brief) was asked for instead. */
   const [historyOf, setHistoryOf] = useState<string | null>(null);
+  /** The row being held: its action card is up. */
+  const [held1, setHeld1] = useState<string | null>(null);
+  const [scanSaid, setScanSaid] = useState<string | null>(scanned?.banner ?? null);
+  const arrived = useRef(false);
 
   const say = useCallback((text: string) => {
     setFlash(text);
@@ -244,6 +256,9 @@ export function DoctorQueue() {
     })();
   };
   const startOf = (e: Open): void => { void act("start", () => api.start(e.encounterId), t("mobile.doctor.started", { token: e.tokenNo })); };
+  const openOf = (e: WireQueueEntryView): Open => ({ encounterId: e.encounterId, patientId: e.encounter.patientId, tokenNo: e.tokenNo, summary: e.patient });
+  /** Swipe right on a row of the line, and "Start consultation" on its card: the brief opens and `startOf` — the Start button's own function — runs. */
+  const startNow = (e: WireQueueEntryView): void => { show(e); startOf(openOf(e)); };
   const askSkip = (e: WireQueueEntryView): void => { setError(null); setSkipReason("absent"); setSkipNote(""); setSkipping(e); };
   const confirmSkip = (): void => {
     const e = skipping;
@@ -294,6 +309,35 @@ export function DoctorQueue() {
       if (ok) setOpen(null);
     })();
   };
+
+  /** "I wrote on paper": the completion sheet. A patient not yet started is started first — the server completes only a consultation in hand. */
+  const paperOf = (e: WireQueueEntryView): void => {
+    show(e);
+    const o = openOf(e);
+    if (inConsult.some((x) => x.encounterId === e.encounterId)) { askComplete(o); return; }
+    void (async () => { if (await act("start", () => api.start(e.encounterId), t("mobile.doctor.started", { token: e.tokenNo }))) askComplete(o); })();
+  };
+  const entryOf = (encounterId: string): WireQueueEntryView | null => groupOf(encounterId).entry;
+  /** An action chosen on the card that this screen does itself. Anything else is another screen's. */
+  const doLocal = (action: ScanAction, encounterId: string): boolean => {
+    const e = entryOf(encounterId);
+    if (e === null) return false;
+    if (action === "brief") { show(e); return true; }
+    if (action === "consult") { if (ordered.some((x) => x.encounterId === encounterId) || current?.encounterId === encounterId) startNow(e); else show(e); return true; }
+    if (action === "paper") { paperOf(e); return true; }
+    return false;
+  };
+
+  // ——— arrived from a scan: the patient opens as soon as the line has been read (nothing is written by arriving) ———
+  useEffect(() => {
+    if (scanned === null || scanned.encounterId === null || arrived.current || !read) return;
+    arrived.current = true;
+    const e = entryOf(scanned.encounterId);
+    if (e !== null && scanned.act === "paper") { paperOf(e); return; }
+    // Somebody else's patient (the brief alone was offered), or one that has left the line: the brief opens, with no act under it.
+    if (e === null) { setOpen({ encounterId: scanned.encounterId, patientId: scanned.patientId, tokenNo: scanned.tokenNo ?? 0, summary: null }); return; }
+    show(e); setHistoryOf(scanned.act === "brief" ? e.encounterId : null);
+  }, [read, scanned]);
 
   const back = (
     <Pressable onPress={() => (open !== null ? setOpen(null) : router.back())} accessibilityRole="button" hitSlop={8} testID="doctor-back"
@@ -382,6 +426,7 @@ export function DoctorQueue() {
       return (
         <View style={{ flex: 1, backgroundColor: color.paper }}>
           <Band right={back} />
+          {scanSaid !== null && <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}><ScannedBanner text={scanSaid} onDismiss={() => setScanSaid(null)} /></View>}
           {error !== null && !sheetOpen && <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}><Note tone="bad" testID="consult-line-error">{error}</Note></View>}
           <ConsultScreen
             doctorApi={api} encounterId={open.encounterId} patientId={open.patientId} tokenNo={open.tokenNo} entry={entry} summary={entry?.patient ?? open.summary} cfg={cfg}
@@ -398,6 +443,7 @@ export function DoctorQueue() {
     return (
       <View style={{ flex: 1, backgroundColor: color.paper }}>
         <Band right={back} />
+        {scanSaid !== null && <View style={{ paddingHorizontal: space.lg, paddingTop: space.md }}><ScannedBanner text={scanSaid} onDismiss={() => setScanSaid(null)} /></View>}
         <PatientBrief
           api={api} entry={entry} group={group} encounterId={open.encounterId} patientId={open.patientId} summary={entry?.patient ?? open.summary} tokenNo={open.tokenNo}
           isHead={group === "line" && current === null && ordered[0]?.encounterId === open.encounterId}
@@ -450,6 +496,7 @@ export function DoctorQueue() {
         {boot === "ready" && stale && (
           <Note tone="warn" testID="line-stale">{asOf === null ? t("mobile.network") : t("mobile.doctor.stale", { time: istClock(new Date(asOf).toISOString()) })}</Note>
         )}
+        {scanSaid !== null && <ScannedBanner text={scanSaid} onDismiss={() => setScanSaid(null)} />}
         {flash !== null && <Text testID="line-flash" style={s.flash}>{flash}</Text>}
         {error !== null && !sheetOpen && <Note tone="bad" testID="line-error">{error}</Note>}
 
@@ -527,7 +574,7 @@ export function DoctorQueue() {
                     const p = parkedSince(e);
                     const min = p === null ? 0 : Math.max(0, Math.floor((now.getTime() - new Date(p).getTime()) / 60_000));
                     return (
-                      <Row key={e.id} e={e} t={t} now={now} testID={`with-row-${e.tokenNo}`} onPress={() => show(e)}
+                      <Row key={e.id} e={e} t={t} now={now} testID={`with-row-${e.tokenNo}`} onPress={() => show(e)} onHold={() => setHeld1(e.encounterId)}
                         right={<Text testID={`with-state-${e.tokenNo}`} style={[s.wait, p !== null && { color: "#8a5a10", fontWeight: "700" }]}>
                           {p === null ? t("mobile.doctor.inConsult") : min === 0 ? t("opdConsult.parkedJustNow") : t("opdConsult.parkedFor", { minutes: min })}
                         </Text>} />
@@ -550,9 +597,12 @@ export function DoctorQueue() {
               <View style={{ gap: space.sm, marginTop: space.sm }}>
                 {ordered.length === 0 && <Text testID="line-empty" style={s.dim}>{t("opdConsult.emptyQueue")}</Text>}
                 {ordered.map((e, i) => (
-                  <Row key={e.id} e={e} t={t} now={now} tone={i === 0 && current === null ? "next" : "plain"} testID={`line-row-${e.tokenNo}`} onPress={() => show(e)}
-                    right={<Wait e={e} now={now} t={t} />} />
+                  <SwipeRow key={e.id} testID={`line-swipe-${e.tokenNo}`} label={t("mobile.scan.swipe.start")} disabled={busy !== null} onSwipe={() => startNow(e)}>
+                    <Row e={e} t={t} now={now} tone={i === 0 && current === null ? "next" : "plain"} testID={`line-row-${e.tokenNo}`} onPress={() => show(e)} onHold={() => setHeld1(e.encounterId)}
+                      right={<Wait e={e} now={now} t={t} />} />
+                  </SwipeRow>
                 ))}
+                {ordered.length > 0 && <SwipeHint list="line" />}
               </View>
             </View>
 
@@ -562,7 +612,7 @@ export function DoctorQueue() {
                 <Text style={[s.meta, { marginTop: 4 }]}>{t("opdConsult.heldQueueHint")}</Text>
                 <View style={{ gap: space.sm, marginTop: space.sm }}>
                   {held.map((e) => (
-                    <Row key={e.id} e={e} t={t} now={now} testID={`held-row-${e.tokenNo}`} onPress={() => show(e)}
+                    <Row key={e.id} e={e} t={t} now={now} testID={`held-row-${e.tokenNo}`} onPress={() => show(e)} onHold={() => setHeld1(e.encounterId)}
                       right={<Wait e={e} now={now} t={t} />}
                       below={<>
                         {(e.encounter.feeBypassReason ?? null) !== null && <Text style={[s.meta, { flex: 1, minWidth: 160 }]}>{t("opdConsult.heldWhy", { reason: e.encounter.feeBypassReason ?? "" })}</Text>}
@@ -599,6 +649,7 @@ export function DoctorQueue() {
         )}
       </ScrollView>
       {sheets}
+      <HeldCard source={held1 === null ? null : { encounterId: held1 }} onClose={() => setHeld1(null)} onLocal={(action, visit) => doLocal(action, visit.encounterId)} />
     </View>
   );
 }

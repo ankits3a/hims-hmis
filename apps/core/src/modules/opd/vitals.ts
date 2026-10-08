@@ -14,7 +14,7 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { vitalsAmended, vitalsDangerFlagged, vitalsRecorded } from "./events";
 import { ageYearsAt } from "./time";
 import {
-  bandFor, checkCarriedLock, evaluateVitals, holdProbeErrors, inputToReadings, missingRequired,
+  bandFor, checkCarriedLock, checkGlucose, evaluateVitals, holdProbeErrors, inputToReadings, missingRequired,
   readingsToInput, sanityGates, UNLOCK_REASONS, validateVitalsRanges,
 } from "./vitals-rules";
 import type { DangerFlag } from "./events";
@@ -265,6 +265,7 @@ export async function recordVitals(
   const readings = detail.readings ?? inputToReadings(input);
   const values: VitalsInput = detail.readings === undefined ? input : { ...input, ...readingsToInput(detail.readings) };
   validateVitalsRanges(values);
+  const glucoseTiming = checkGlucose(values);
   const enc = await getEncounter(db, encounterId);
   if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   /*
@@ -355,7 +356,9 @@ export async function recordVitals(
   const gates = sanityGates(charted, ageYears, cfg.dangerRanges, last, overrides);
   if (gates.length > 0) throw new OpdError("vitals_gate", gates.map((g) => g.message).join("; "), { gates });
 
-  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency, carriedForward });
+  // a SpO₂ that was taken and wholly held below the probe floor is owed a re-clip or an override (see `missingRequired`)
+  const heldOut: VitalKey[] = readings.spo2 !== undefined && heldReadings.spo2 === undefined ? ["spo2"] : [];
+  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency, carriedForward, heldOut });
   if (missing.length > 0) throw new OpdError("vitals_incomplete", `missing: ${missing.join(", ")}`, { missing });
   const flags = evaluateVitals(charted, band, cfg.dangerRanges);
   /**
@@ -385,7 +388,7 @@ export async function recordVitals(
       id: newId(), encounterId, patientId: encounter.patientId,
       heightCm: charted.heightCm ?? null, weightKg: charted.weightKg ?? null, sbp: charted.sbp ?? null, dbp: charted.dbp ?? null,
       pulse: charted.pulse ?? null, rr: charted.rr ?? null, spo2: charted.spo2 ?? null, tempC: charted.tempC ?? null,
-      muacCm: charted.muacCm ?? null, notes: charted.notes ?? null,
+      muacCm: charted.muacCm ?? null, glucoseMgDl: charted.glucoseMgDl ?? null, glucoseTiming, notes: charted.notes ?? null,
       readings: annotate(heldReadings, overrides, detail.unlockReasons ?? {}, last),
       contextChips: detail.contextChips ?? [], carriedForward, emergency,
       ageYearsAtRecord: ageYears, band: band.key, dangerFlags: flags, recordedBy: actor.id, recordedAt: now,
@@ -496,6 +499,7 @@ export async function amendVitals(
   const readings = detail.readings ?? inputToReadings(input);
   const values: VitalsInput = detail.readings === undefined ? input : { ...input, ...readingsToInput(detail.readings) };
   validateVitalsRanges(values);
+  const glucoseTiming = checkGlucose(values);
 
   const cfg = await loadOpdConfig(db);
   const [summary] = await getPatientSummaries(db, actor, [prior.patientId]);
@@ -538,7 +542,9 @@ export async function amendVitals(
   }
   const gates = sanityGates(charted, ageYears, cfg.dangerRanges, before, overrides);
   if (gates.length > 0) throw new OpdError("vitals_gate", gates.map((g) => g.message).join("; "), { gates });
-  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency, carriedForward });
+  // a SpO₂ that was taken and wholly held below the probe floor is owed a re-clip or an override (see `missingRequired`)
+  const heldOut: VitalKey[] = readings.spo2 !== undefined && heldReadings.spo2 === undefined ? ["spo2"] : [];
+  const missing = missingRequired(charted, ageYears, cfg.dangerRanges, { emergency, carriedForward, heldOut });
   if (missing.length > 0) throw new OpdError("vitals_incomplete", `missing: ${missing.join(", ")}`, { missing });
   const flags = evaluateVitals(charted, band, cfg.dangerRanges);
   const dangerFlags = flags.filter((f) => f.severity !== "notice");
@@ -549,7 +555,7 @@ export async function amendVitals(
       id: newId(), encounterId: prior.encounterId, patientId: prior.patientId,
       heightCm: charted.heightCm ?? null, weightKg: charted.weightKg ?? null, sbp: charted.sbp ?? null, dbp: charted.dbp ?? null,
       pulse: charted.pulse ?? null, rr: charted.rr ?? null, spo2: charted.spo2 ?? null, tempC: charted.tempC ?? null,
-      muacCm: charted.muacCm ?? null, notes: charted.notes ?? null,
+      muacCm: charted.muacCm ?? null, glucoseMgDl: charted.glucoseMgDl ?? null, glucoseTiming, notes: charted.notes ?? null,
       readings: annotate(heldReadings, overrides, detail.unlockReasons ?? {}, before),
       contextChips: detail.contextChips ?? prior.contextChips, carriedForward, emergency,
       ageYearsAtRecord: ageYears, band: band.key, dangerFlags: flags,
@@ -608,7 +614,7 @@ export async function amendVitals(
  * new"*, and it is derived so that it cannot drift from the rows it describes.
  */
 export function changedFields(prior: VitalsRow, next: VitalsRow): { field: string; from: number | null; to: number | null }[] {
-  const keys = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
+  const keys = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm", "glucoseMgDl"] as const;
   const out: { field: string; from: number | null; to: number | null }[] = [];
   for (const k of keys) {
     const from = prior[k] ?? null;

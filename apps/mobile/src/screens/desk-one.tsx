@@ -27,6 +27,8 @@ import { Band, Button, MONO, Note, Tag } from "../ui";
 import { refusalText } from "../vitals/api";
 import { todayIst } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
+import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
+import { SEAT_OF } from "../scan/model";
 
 /**
  * DESK ONE, ON A PHONE (plan M4; owner 2026-10-06). The counter's essentials — find or register
@@ -84,7 +86,7 @@ function personLine(p: { gender: string; dob: string | null }): string {
   return [age === "" ? null : (/m$/.test(age) ? age : `${age}y`), sexLetter(p.gender)].filter((x) => x !== null).join(" · ");
 }
 
-export function DeskOne() {
+export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -95,6 +97,12 @@ export function DeskOne() {
   const today = todayIst();
 
   const [stage, setStage] = useState<Stage>("find");
+  /** The patient row being held: its action card is up. No swipe on this screen — its rows lead to money. */
+  const [held1, setHeld1] = useState<string | null>(null);
+  const [scanSaid, setScanSaid] = useState<string | null>(scanned?.banner ?? null);
+  /** What a scan asked this desk to open, until it has been opened: the person first, then (once their visits are read) the visit. */
+  const [want, setWant] = useState<Scanned | null>(scanned);
+  const arriving = useRef<"person" | "visit" | "done">(scanned === null ? "done" : "person");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -409,6 +417,25 @@ export function DeskOne() {
     setError(null); setFlash(null); setStage("bill");
   };
 
+  // ——— arrived from a scan (owner 2026-10-08): the person is held, then the visit the code named is opened. Nothing is written by arriving. ———
+  useEffect(() => {
+    if (want === null || arriving.current !== "person") return;
+    arriving.current = "visit";
+    api.patient(want.patientId).then((d) => {
+      hold({ id: want.patientId, uhid: d.patient.uhid, name: d.patient.name ?? d.patient.alias ?? d.patient.uhid, phone: d.patient.phone, gender: d.patient.administrativeGender, dob: d.patient.dob, sealed: d.patient.name === null, justRegistered: false });
+    }, (e: unknown) => { arriving.current = "done"; setError(said(e, t)); });
+  }, [want, api, hold, t]);
+  useEffect(() => {
+    if (want === null || arriving.current !== "visit" || person?.id !== want.patientId || timeline === null) return;
+    arriving.current = "done";
+    if (want.act === "book") { setBooking({ moving: null }); return; }
+    if (want.act === "newVisit") { if (can("opd.visits.open")) setStage("seat"); return; }
+    const v = openVisits.find((x) => x.encounterId === want.encounterId);
+    if (v === undefined) return; // the visit has ended since: the person's own page says what is open
+    adopt(v);
+    if (want.act === "move") setMoving(true);
+  }, [want, person, timeline, openVisits]);
+
   // ——— bill: the server's quote, the cash session, the paper ———
   const encounterId = visit?.encounterId ?? null;
   const readQuote = useCallback(async (): Promise<WireFeeQuote | null> => {
@@ -617,6 +644,7 @@ export function DeskOne() {
       )}
 
       <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl + 168, gap: space.lg }} keyboardShouldPersistTaps="handled">
+        {scanSaid !== null && <ScannedBanner text={scanSaid} onDismiss={() => setScanSaid(null)} />}
         {flash !== null && <Note tone="info" testID="counter-flash">{flash}</Note>}
 
         {/* ═══ FIND ═══ */}
@@ -635,7 +663,8 @@ export function DeskOne() {
             {error !== null && <Note tone="bad" testID="counter-error">{error}</Note>}
             {hits !== null && hits.length === 0 && <Note tone="info" testID="counter-nohits">{t("mobile.counter.find.none")}</Note>}
             {(hits ?? []).map((h) => (
-              <Pressable key={h.id} testID={`hit-${h.id}`} accessibilityRole="button" onPress={() => holdHit(h)} style={({ pressed }) => [s.rowCard, pressed && { opacity: 0.7 }]}>
+              <Pressable key={h.id} testID={`hit-${h.id}`} accessibilityRole="button" onPress={() => holdHit(h)} onLongPress={() => setHeld1(h.id)}
+                accessibilityActions={[{ name: "longpress", label: t("mobile.scan.more") }]} onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") setHeld1(h.id); }} style={({ pressed }) => [s.rowCard, pressed && { opacity: 0.7 }]}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[type.body, { color: color.ink, fontWeight: "700" }]} numberOfLines={1}>{h.name}<Text style={{ color: color.dim, fontWeight: "400" }}> · {personLine({ gender: h.administrativeGender, dob: h.dob })}</Text></Text>
                   <Text style={[type.small, { color: color.dim, fontFamily: MONO }]} numberOfLines={1}>{[h.uhid, h.phone].filter((x) => x !== null && x !== "").join(" · ")}</Text>
@@ -734,7 +763,8 @@ export function DeskOne() {
               <View style={{ gap: space.sm }} testID="linked">
                 <Tag>{t("mobile.counter.person.linked", { count: linked.total })}</Tag>
                 {linked.items.map((l) => (
-                  <Pressable key={l.id} testID={`linked-${l.id}`} accessibilityRole="button" onPress={() => holdHit(l)} style={({ pressed }) => [s.rowCard, pressed && { opacity: 0.7 }]}>
+                  <Pressable key={l.id} testID={`linked-${l.id}`} accessibilityRole="button" onPress={() => holdHit(l)} onLongPress={() => setHeld1(l.id)}
+                    accessibilityActions={[{ name: "longpress", label: t("mobile.scan.more") }]} onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") setHeld1(l.id); }} style={({ pressed }) => [s.rowCard, pressed && { opacity: 0.7 }]}>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={[type.body, { color: color.ink, fontWeight: "700" }]} numberOfLines={1}>{l.name} · {personLine({ gender: l.administrativeGender, dob: l.dob })}</Text>
                       <Text style={[type.small, { color: color.dim, fontFamily: MONO }]}>{l.uhid}</Text>
@@ -1009,6 +1039,14 @@ export function DeskOne() {
       </View>
 
       <Scanner open={scanning} onRead={onScan} onClose={() => setScanning(false)} />
+      <HeldCard source={held1 === null ? null : { patientId: held1 }} onClose={() => setHeld1(null)}
+        onLocal={(action, v) => {
+          // Everything Desk One owns is done HERE, on the desk already open; another screen's action opens that screen.
+          if (SEAT_OF[action] !== "counter") return false;
+          arriving.current = "person";
+          setWant({ encounterId: v.encounterId, patientId: v.patientId, visitNo: v.visitNo, tokenNo: v.tokenNo, act: action, banner: null });
+          return true;
+        }} />
       {moving && visit !== null && (
         <MoveDepartment
           api={api} queues={queues} labelOf={labelOf} terms={terms}

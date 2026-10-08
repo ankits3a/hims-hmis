@@ -59,6 +59,8 @@
 .vb-phone [data-testid="tiles"] > div > div:first-child { flex-wrap: wrap; }
 /* A carried tile holds a reason picker; it takes the row so the picker reads whole. */
 .vb-phone [data-testid="tiles"] > div:has([data-testid^="carried-"]) { grid-column: 1 / -1; }
+/* Owner 2026-10-08 — the boxes the shared rule gives a whole row (BP, glucose, and one that would sit beside nothing). */
+.vb-phone [data-testid="tiles"] > div[data-row="full"] { grid-column: 1 / -1; }
 .vb-phone [data-testid^="range-"] { white-space: normal !important; }
 .vb-phone [data-testid="amend-fields"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 .vb-phone [data-testid="keys"] { display: none; }

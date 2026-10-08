@@ -72,7 +72,7 @@ function queue(over: Partial<{ ordered: Entry[]; current: Entry | null; inConsul
 }
 
 const VITALS = {
-  id: "v1", heightCm: null, weightKg: 71, sbp: 178, dbp: 106, pulse: 88, rr: 18, spo2: 97, tempC: 37.1, muacCm: null, notes: null,
+  id: "v1", heightCm: null, weightKg: 71, sbp: 178, dbp: 106, pulse: 88, rr: 18, spo2: 97, tempC: 37.1, muacCm: null, notes: null, glucoseMgDl: 186, glucoseTiming: "random",
   dangerFlags: [{ vital: "sbp", value: 178, bound: "max", limit: 160, severity: "notice" }], recordedAt: minsAgo(15), recordedByName: "Sr. Kavita", status: "active", emergency: false,
 };
 const visit = (id: string, over: Record<string, unknown> = {}, enc: Record<string, unknown> = {}) => ({
@@ -235,6 +235,8 @@ describe("the doctor's OPD line on a phone", () => {
     expect(screen.getByTestId("brief-vital-bp")).toHaveTextContent(/178\/106/);
     expect(screen.getByTestId("brief-flag-bp")).toHaveTextContent("HIGH");
     expect(screen.queryByTestId("brief-flag-pulse")).toBeNull();
+    // Owner 2026-10-08 — the bay's finger-prick glucose with when it was taken, and no verdict on it
+    expect(screen.getByTestId("brief-vital-glucose")).toHaveTextContent(/Glucose\s*186 mg\/dL\s*Random/);
     expect(screen.getByTestId("brief-result-0")).toHaveTextContent(/HbA1c 8\.9 %/);
     expect(screen.getByTestId("brief-rx")).toHaveTextContent(/Metformin 1 g/);
     expect(screen.getByTestId("brief-refill")).toHaveTextContent("Pharmacy: not bought at this hospital's pharmacy");

@@ -40,8 +40,10 @@ import { BENCH_STATES, listBench, locateVisit, setBenchState } from "./bench";
 import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
 import { preStage } from "./prestage";
 import { READING_SOURCES, UNLOCK_REASONS } from "./vitals-rules";
-import { VITAL_KEYS } from "./config";
+import { GLUCOSE_TIMINGS, VITAL_KEYS } from "./config";
 import type { BenchRow, VisitOnBench } from "./bench";
+import { scanResolve } from "./scan";
+import type { ScanQuery, ScanResult } from "./scan";
 import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
@@ -195,6 +197,9 @@ const vitalsBody = z.object({
   tempC: z.number().nullable().optional(),
   /** VD-1 T1 / D5 — required under six, and the reason the bay carries a ₹160 tape. */
   muacCm: z.number().nullable().optional(),
+  /** Owner 2026-10-08 — finger-prick glucose (mg/dL) and when it was taken; one is refused without the other in `checkGlucose`. */
+  glucoseMgDl: z.number().nullable().optional(),
+  glucoseTiming: z.enum(GLUCOSE_TIMINGS).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
 
@@ -222,7 +227,7 @@ const vitalsDetailBody = z.object({
   readings: z.object({
     heightCm: readingBlock.optional(), weightKg: readingBlock.optional(), pulse: readingBlock.optional(),
     rr: readingBlock.optional(), spo2: readingBlock.optional(), tempC: readingBlock.optional(),
-    muacCm: readingBlock.optional(),
+    muacCm: readingBlock.optional(), glucoseMgDl: readingBlock.optional(),
     bp: z.object({
       takes: z.array(z.tuple([z.number(), z.number()])).min(1),
       source: z.enum(READING_SOURCES),
@@ -253,6 +258,12 @@ const benchQuery = z.object({
   departmentId: z.string().min(1).optional(),
   doctorId: z.string().min(1).optional(),
   serviceDate: z.string().max(10).optional(),
+});
+/** Owner 2026-10-08 — the phone's quick scan: the READING of a code (the phone's `doorsOf`), never the raw text. */
+const scanQuery = z.object({
+  by: z.enum(["visit", "encounter", "token", "uhid", "patient"]),
+  value: z.string().trim().min(1).max(80),
+  departmentCode: z.string().trim().min(1).max(8).optional(),
 });
 const benchLocateQuery = z.object({ visitNo: z.string().trim().min(1).max(40), serviceDate: z.string().max(10).optional() });
 /** T3 — the reading the bay is asking the SERVER to judge. It asks; the band decides. */
@@ -785,6 +796,31 @@ export class OpdVisitsController {
     const q = parsed(benchLocateQuery, query);
     try {
       return await locateVisit(this.db, { visitNo: q.visitNo, serviceDate: q.serviceDate ?? istDate(new Date()) });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * Owner 2026-10-08 — the phone's quick scan (`scan.ts`): where a scanned or typed code's visit
+   * stands today, and which of the phone's actions this caller holds the permission for. READ ONLY.
+   * `opd.visits.read`, the grant `visits/by-number` already asks for — every desk that might hold the
+   * paper. The answer only decides what is OFFERED; each action route keeps its own guard.
+   */
+  @RequirePermission("opd.visits.read", "hospital")
+  @Get("scan")
+  async scan(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<ScanResult> {
+    const q = parsed(scanQuery, query);
+    let by: ScanQuery;
+    if (q.by === "token") {
+      if (!/^\d{1,6}$/.test(q.value)) throw new BadRequestException("a token is a number");
+      by = { by: "token", tokenNo: Number(q.value), ...(q.departmentCode === undefined ? {} : { departmentCode: q.departmentCode }) };
+    } else if (q.by === "visit") by = { by: "visit", visitNo: q.value };
+    else if (q.by === "encounter") by = { by: "encounter", encounterId: q.value };
+    else if (q.by === "uhid") by = { by: "uhid", uhid: q.value };
+    else by = { by: "patient", patientId: q.value };
+    try {
+      return await scanResolve(this.db, actor, by);
     } catch (e) {
       toHttp(e);
     }
