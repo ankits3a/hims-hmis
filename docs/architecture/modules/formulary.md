@@ -19,6 +19,11 @@ Source: `apps/core/src/modules/formulary/`
 - `adoption.ts`
   - `adoptDecisions(tx: Tx, actor: Actor, resolution: string, items: readonly AdoptionItem[]): Promise<AdoptionReport>`
   - types: `AdoptionItem`, `AdoptionReport`
+- `alias-candidates.ts`
+  - `ALIAS_POOL_SIZE`
+  - `ALIAS_WORD_SIMILARITY`
+  - `aliasCandidatePool(db: Db, words: string, numbers: readonly string[] = [], pool = ALIAS_POOL_SIZE): Promise<AliasCandidateRow[]>`
+  - types: `AliasCandidateRow`
 - `allergy-classes.ts`
   - `adoptAllergyClasses(tx: Tx, actor: Actor, resolution: string, book: readonly AllergyClassEntry[]): Promise<AllergyClassAdoptionReport>`
   - types: `AllergyClassAdoptionReport`, `AllergyClassEntry`
