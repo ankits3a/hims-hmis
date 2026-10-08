@@ -78,7 +78,7 @@ describe("the alias pipeline's database edges", () => {
 
   describe("the kill switch (ALIAS_PIPELINE_ENABLED)", () => {
     it("is OFF by default, and off builds no model client even when both keys are set", () => {
-      expect(cfg().aliases).toEqual({ enabled: false, chooserOrder: ["typesafe"], chooserLine: 0.6, reviewerLine: 0.9 });
+      expect(cfg().aliases).toEqual({ enabled: false, chooserOrder: ["typesafe"], chooserLine: 0.95, reviewerLine: 0.9 });
       const off = aliasDepsFrom(db, cfg({ TRIAGE_TYPESAFE_API_KEY: "k", HMIS_OPENAI_KEY_FILE: "/nonexistent" }));
       expect(off).toMatchObject({ enabled: false, chooser: null, reviewer: null });
     });

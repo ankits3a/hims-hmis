@@ -44,6 +44,8 @@ import * as formulary from "./index";
 
 /** Sorted by `Array.prototype.sort`'s default UTF-16 order, so SCREAMING and Pascal names lead. */
 const SURFACE = [
+  "ALIAS_POOL_SIZE", // decision 0051 — how many catalogue rows the alias pipeline is shown for one term
+  "ALIAS_WORD_SIMILARITY", // decision 0051 — the trigram line a candidate must reach
   "ALLERGY_CLASSES", // P22 — the allergy class vocabulary the prescribing check reads
   "AWARE_LIST", // PHARMACY STAGE D5 — the cited WHO AWaRe 2023 list, by moiety set and route
   "FORMULARY_EVENTS",
@@ -64,6 +66,7 @@ const SURFACE = [
   "adoptDrugDisease", // P24 — what a diagnosis forbids, adopted under a named resolution
   "adoptInteractions", // P21 — interaction pairs adopted under a named resolution
   "adoptTherapeuticClasses", // P23 — therapeutic classes adopted under a named resolution
+  "aliasCandidatePool", // decision 0051 — the rows an unmatched term could mean; offline, never a typeahead
   "allergyClassKeys", // P22 — pure: the classes an allergy record names
   "attestSubstance",
   "brandTitle", // owner 2026-10-04 — pure: a vendor brand in the catalogue's case

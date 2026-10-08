@@ -397,7 +397,7 @@ export type AliasDeps = {
   lasa: () => Promise<readonly LasaPair[]>;
   chooser: ChoiceClient | null;
   reviewer: (ChoiceClient & PredicateClient) | null;
-  /** `ALIAS_CHOOSER_MIN_CONFIDENCE`, default 0.6. */
+  /** `ALIAS_CHOOSER_MIN_CONFIDENCE`, default 0.95 (decision 0055). */
   chooserLine: number;
   /** `ALIAS_REVIEWER_MIN_PROBABILITY`, default 0.9: yes at or above it, no at or below 1 − it, else unsure. */
   reviewerLine: number;

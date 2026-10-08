@@ -46,7 +46,7 @@ if (DB_URL === undefined || DB_URL === "") {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const PACE_MS = Number(process.env.HMIS_EVAL_PACE_MS ?? "150");
 const TIMEOUT_MS = 10_000; // generous on purpose: this MEASURES latency
-const CHOOSER_LINE = Number(process.env.ALIAS_CHOOSER_MIN_CONFIDENCE ?? "0.6");
+const CHOOSER_LINE = Number(process.env.ALIAS_CHOOSER_MIN_CONFIDENCE ?? "0.95");
 const REVIEWER_LINE = Number(process.env.ALIAS_REVIEWER_MIN_PROBABILITY ?? "0.9");
 /** OpenAI's published price for the Decisions endpoint on 2026-10-07 (plan §9a): input tokens only. */
 const OPENAI_USD_PER_M_INPUT = 0.1;

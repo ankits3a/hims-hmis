@@ -325,15 +325,17 @@ const configSchema = z.object({
    * WHO CHOOSES is `ALIAS_CHOOSER_ORDER`; unset, it is the chain triage uses. The REVIEWER is always
    * OpenAI's Decisions endpoint (`OPENAI_DECISIONS_*`, the only client with `predicate()`), so an
    * order of `openai` alone makes chooser and reviewer one model and the pipeline refuses every
-   * term (`same_model`). The two lines are the plan's defaults until an evaluation moves them:
-   * a suggestion needs the chooser at or above 0.6 AND the reviewer at or above 0.9.
+   * term (`same_model`). The two lines are the STRICT ones the owner chose on 2026-10-08 (decision
+   * 0055) after the 296-term evaluation: a suggestion needs the chooser at or above 0.95 AND the
+   * reviewer at or above 0.9 — the lowest pair with no wrong answer in either pass. At the plan's
+   * first default (0.6) one answer in 103 was wrong.
    */
   ALIAS_PIPELINE_ENABLED: z
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
   ALIAS_CHOOSER_ORDER: z.string().optional(),
-  ALIAS_CHOOSER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.6),
+  ALIAS_CHOOSER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.95),
   ALIAS_REVIEWER_MIN_PROBABILITY: z.coerce.number().gt(0.5).max(1).default(0.9),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
