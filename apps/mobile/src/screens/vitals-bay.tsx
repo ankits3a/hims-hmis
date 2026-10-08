@@ -20,6 +20,8 @@ import {
 } from "../vitals/rules";
 import type { Change, Take, TileKey, Tiles, WireBenchRow, WireDangerFlag, WirePreStage, WireVisitOnBench } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
+import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
+import { SwipeHint, SwipeRow } from "../scan/gestures";
 
 /**
  * THE VITALS BAY, ON A PHONE (plan M1; owner 2026-10-06). The web bay's functions, on the same
@@ -89,7 +91,7 @@ function useBench(api: VitalsApi, serviceDate: string) {
   return { rows, asOf, failed, callable, refresh };
 }
 
-function BenchRows({ rows, inHand, onTake, t }: { rows: WireBenchRow[]; inHand: string | null; onTake: (row: WireBenchRow) => void; t: T }) {
+function BenchRows({ rows, inHand, onTake, onHold, t }: { rows: WireBenchRow[]; inHand: string | null; onTake: (row: WireBenchRow) => void; onHold: (row: WireBenchRow) => void; t: T }) {
   const sorted = useMemo(() => [...rows].sort((a, b) => a.seq - b.seq), [rows]);
   if (sorted.length === 0) return <Text testID="bench-empty" style={s.faint}>{t("vitalsBay.bench.empty")}</Text>;
   return (
@@ -99,9 +101,13 @@ function BenchRows({ rows, inHand, onTake, t }: { rows: WireBenchRow[]; inHand: 
         const loud = st === "escalated" || st === "due" || st === "recheck";
         const fg = st === "escalated" || st === "recheck" ? color.red : st === "due" ? "#8a5a10" : color.dim;
         return (
+          // Swipe right = "Open form" (what a tap does); press and hold = the action card a scan opens (owner 2026-10-08).
+          <SwipeRow key={row.entryId} testID={`bench-swipe-${row.tokenNo}`} label={t("mobile.scan.swipe.form")} onSwipe={() => onTake(row)}>
           <Pressable
-            key={row.entryId} testID={`bench-row-${row.tokenNo}`} accessibilityRole="button" accessibilityState={{ selected: row.encounterId === inHand }}
-            onPress={() => onTake(row)}
+            testID={`bench-row-${row.tokenNo}`} accessibilityRole="button" accessibilityState={{ selected: row.encounterId === inHand }}
+            onPress={() => onTake(row)} onLongPress={() => onHold(row)}
+            accessibilityActions={[{ name: "longpress", label: t("mobile.scan.more") }]}
+            onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") onHold(row); }}
             // The row's state is a border AND a word, never colour alone.
             style={({ pressed }) => [s.benchRow, loud && { borderColor: fg, borderWidth: 2 }, (pressed || row.encounterId === inHand) && { backgroundColor: color.wash }]}
           >
@@ -114,6 +120,7 @@ function BenchRows({ rows, inHand, onTake, t }: { rows: WireBenchRow[]; inHand: 
               {st === "resting" && row.recallAt !== null ? t("vitalsBay.bench.recallAt", { time: istClock(row.recallAt) }) : t(`vitalsBay.bench.state.${st}`)}
             </Text>
           </Pressable>
+          </SwipeRow>
         );
       })}
     </View>
@@ -187,7 +194,7 @@ function Details({ api, row, pre, failed, t }: { api: VitalsApi; row: WireBenchR
   );
 }
 
-export function VitalsBay() {
+export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {}) {
   const { t } = useI18n();
   const router = useRouter();
   const { call } = useSession();
@@ -215,6 +222,10 @@ export function VitalsBay() {
   const [whoOpen, setWhoOpen] = useState(false);
   const takenRef = useRef(taken);
   takenRef.current = taken;
+  /** The bench row being held: its action card is up. */
+  const [held1, setHeld1] = useState<WireBenchRow | null>(null);
+  const [scanSaid, setScanSaid] = useState<string | null>(scanned?.banner ?? null);
+  const arrived = useRef(false);
 
   // The row in hand follows the bench: a state another desk changed shows here on the next read.
   const rowInHand = taken === null ? null : (allRows.find((r) => r.encounterId === taken.encounterId) ?? taken);
@@ -249,8 +260,18 @@ export function VitalsBay() {
     setTaken(row);
   }, [t, saving]);
 
+  // Arrived from a scan: the patient is taken off the bench as soon as it has been read — the form opens, nothing is saved.
+  useEffect(() => {
+    if (scanned === null || scanned.encounterId === null || arrived.current || asOf === null) return;
+    arrived.current = true;
+    const row = matchOnBench(allRows, { kind: "encounter", encounterId: scanned.encounterId });
+    if (row !== null) take(row);
+    else setError(t("vitalsBay.identify.miss.visit.plain", { visitNo: scanned.visitNo ?? "" }));
+  }, [scanned, asOf, allRows, take, t]);
+
   const clearDesk = useCallback(() => {
     setTaken(null); setError(null); setRestOffer(null); setRerun(null); setWhoOpen(false); setRaw(""); setAmending(false);
+    setScanSaid(null);
     setDeskGen((g) => g + 1);
   }, []);
 
@@ -379,7 +400,8 @@ export function VitalsBay() {
 
   const dueCount = rows.filter((r) => r.recallDue || r.escalation === "escalated" || r.escalation === "recheck_demanded").length;
 
-  const bannerView = banner === null ? null : (
+  const scanView = scanSaid === null ? null : <ScannedBanner text={scanSaid} onDismiss={() => setScanSaid(null)} />;
+  const bannerView = banner === null ? scanView : (
     <View testID="saved-banner" accessibilityRole="alert" style={[s.card, { borderColor: color.greenLine, backgroundColor: color.greenSoft }]}>
       {banner.amended !== undefined ? (
         <Text testID="amended-banner" style={[s.bannerTitle, { color: color.green }]}>✓ {t("mobile.vitals.amended", { who: banner.who, changes: banner.amended })}</Text>
@@ -547,7 +569,8 @@ export function VitalsBay() {
                 <Tag>{t("vitalsBay.bench.title")}</Tag>
                 {asOf !== null && <Text testID="bench-asof" style={s.asOf}>{t("mobile.vitals.asOf", { time: clock(asOf) })}</Text>}
               </View>
-              <View testID="bench"><BenchRows rows={rows} inHand={null} onTake={take} t={t} /></View>
+              <View testID="bench"><BenchRows rows={rows} inHand={null} onTake={take} onHold={setHeld1} t={t} /></View>
+              {rows.length > 0 && <SwipeHint list="bench" />}
               <Text style={s.faint}>{t("vitalsBay.session.dignity")}</Text>
             </>
           )}
@@ -570,13 +593,15 @@ export function VitalsBay() {
               </Pressable>
             </View>
             <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingVertical: space.md }}>
-              <BenchRows rows={rows} inHand={encounterId} onTake={(r) => { setBenchOpen(false); take(r); }} t={t} />
+              <BenchRows rows={rows} inHand={encounterId} onTake={(r) => { setBenchOpen(false); take(r); }} onHold={(r) => { setBenchOpen(false); setHeld1(r); }} t={t} />
             </ScrollView>
             <Text style={s.faint}>{t("vitalsBay.bench.valveNote")}</Text>
           </Pressable>
         </Pressable>
       </Modal>
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setRaw(/^(q1|rx1)\./.test(data) ? "" : data); void identify(data); }} />
+      <HeldCard source={held1 === null ? null : { encounterId: held1.encounterId }} onClose={() => setHeld1(null)}
+        onLocal={(action) => { if (action !== "vitals" || held1 === null) return false; take(held1); return true; }} />
     </View>
   );
 }

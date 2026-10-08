@@ -44,3 +44,25 @@ export const tokenStore = {
     await SecureStore.deleteItemAsync(KEY);
   },
 };
+
+/**
+ * How many times a one-line hint has been shown ("swipe a row…"), so it can stop after a few.
+ * Not a secret — it shares the secure store only because that is the app's one key-value store.
+ */
+const hintMemory = new Map<string, number>();
+export const hintStore = {
+  /** Counts this showing and returns the new total. A store that cannot be read counts from the phone's memory. */
+  async seen(name: string): Promise<number> {
+    const key = `hmis.hint.${name}`;
+    let n = hintMemory.get(key) ?? 0;
+    if (Platform.OS !== "web") {
+      try { n = Math.max(n, Number(await SecureStore.getItemAsync(key)) || 0); } catch { /* memory count stands */ }
+    }
+    n += 1;
+    hintMemory.set(key, n);
+    if (Platform.OS !== "web") {
+      try { await SecureStore.setItemAsync(key, String(n)); } catch { /* shown once more next time; never fatal */ }
+    }
+    return n;
+  },
+};

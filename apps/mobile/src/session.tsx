@@ -210,6 +210,11 @@ export function SessionProvider({ children, fetcher }: { children: ReactNode; fe
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+/** The session when there is one above — for the shared header, which is also drawn in suites that mount no provider. */
+export function useSessionOptional(): Session | null {
+  return useContext(Ctx);
+}
+
 export function useSession(): Session {
   const v = useContext(Ctx);
   if (v === null) throw new Error("useSession outside SessionProvider");

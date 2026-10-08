@@ -6,6 +6,7 @@ import { ApiError, NetworkError } from "../api";
 import { doctorApi, type WireDocument } from "../doctor/api";
 import { PaperViewer } from "../doctor/brief";
 import { useI18n } from "../i18n";
+import { HeldCard } from "../scan/card";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
@@ -57,6 +58,8 @@ export function PaperConsultsScreen() {
   const [choice, setChoice] = useState<Choice[]>([]);
   const [why, setWhy] = useState<string[]>([]);
   const [viewing, setViewing] = useState<WireDocument | null>(null);
+  /** The row being held: the same action card a scan of this patient opens (owner 2026-10-08). */
+  const [held1, setHeld1] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -118,7 +121,8 @@ export function PaperConsultsScreen() {
           const typedBy = r.prescription?.transcribedByName ?? null;
           return (
             <View key={r.encounterId} testID={`paper-${r.visitNo}`} style={[card, r.held !== null && { borderLeftWidth: 4, borderLeftColor: color.red }]}>
-              <Pressable accessibilityRole="button" accessibilityState={{ expanded: isOpen }} testID={`paper-open-${r.visitNo}`} onPress={() => show(isOpen ? null : r)} style={{ gap: 4 }}>
+              <Pressable accessibilityRole="button" accessibilityState={{ expanded: isOpen }} testID={`paper-open-${r.visitNo}`} onPress={() => show(isOpen ? null : r)} onLongPress={() => setHeld1(r.encounterId)}
+                accessibilityActions={[{ name: "longpress", label: t("mobile.scan.more") }]} onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") setHeld1(r.encounterId); }} style={{ gap: 4 }}>
                 <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.sm }}>
                   {r.tokenNo !== null && <Text style={{ fontFamily: MONO, fontWeight: "700", fontSize: 16, color: color.ink }}>{`#${String(r.tokenNo)}`}</Text>}
                   <Text style={{ flex: 1, fontSize: 15.5, fontWeight: "700", color: color.ink }} numberOfLines={1}>{nameOf(r)}</Text>
@@ -225,6 +229,7 @@ export function PaperConsultsScreen() {
         })}
       </ScrollView>
       {viewing !== null && <PaperViewer api={api} doc={viewing} onClose={() => setViewing(null)} t={t} />}
+      <HeldCard source={held1 === null ? null : { encounterId: held1 }} onClose={() => setHeld1(null)} />
     </View>
   );
 }
