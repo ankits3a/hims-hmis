@@ -6,12 +6,13 @@ import { SessionProvider, useSession } from "../src/session";
 import type { Quad } from "../src/slips/rules";
 
 jest.mock("expo-secure-store", () => {
-  let v: string | null = JSON.stringify({ token: "t1", username: "asha.devi" });
+  // Keyed, like the real store: the swipe hint keeps its count beside the session token.
+  const m = new Map<string, string>([["hmis.session", JSON.stringify({ token: "t1", username: "asha.devi" })]]);
   return {
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 0,
-    getItemAsync: jest.fn(async () => v),
-    setItemAsync: jest.fn(async (_k: string, val: string) => { v = val; }),
-    deleteItemAsync: jest.fn(async () => { v = null; }),
+    getItemAsync: jest.fn(async (k: string) => m.get(k) ?? null),
+    setItemAsync: jest.fn(async (k: string, val: string) => { m.set(k, val); }),
+    deleteItemAsync: jest.fn(async (k: string) => { m.delete(k); }),
   };
 });
 jest.mock("expo-local-authentication", () => ({

@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "../text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
@@ -8,11 +8,11 @@ import { color, radius, space, TOUCH } from "../theme";
 import { Button, MONO } from "../ui";
 import { refusalText, type VitalsApi, type WireVitalsGate, type WireVitalsSaveResult } from "./api";
 import {
-  CONTEXT_CHIPS, TILE_KEYS, UNLOCK_REASONS, applyTake, bandFor, buildBody, emptyTiles, flagOf, leadTileFor, missingFor,
-  monthLabel, operative, parseTake, rangeLabelOf, sourcePillOf, takeError, tempNote, tileDeltaOf, tileOrder, tileSetFor,
+  CONTEXT_CHIPS, GLUCOSE_TIMINGS, TILE_KEYS, UNLOCK_REASONS, applyTake, bandFor, buildBody, emptyTiles, flagOf, fullRowBoxes, glucoseNeedsTiming, holdingOf,
+  missingFor, monthLabel, operative, parseTake, rangeLabelOf, sourcePillOf, takeError, tempNote, tileDeltaOf, tileSetFor, vitalsLayout,
 } from "./rules";
 import type {
-  Mirror, Take, TakeSource, TileKey, Tiles, WireBenchRow, WireDangerRanges, WirePreStage, WireUnlockReason, WireVitalKey,
+  GlucoseTiming, Mirror, Take, TakeSource, TileKey, Tiles, WireBenchRow, WireDangerRanges, WirePreStage, WireUnlockReason, WireVitalKey,
 } from "./rules";
 
 /**
@@ -26,6 +26,8 @@ import type {
  *    fee refusal is drawn exactly where the mirror would have drawn it.
  *  - A save that does not reach the server is NEVER queued: the numbers stay on screen, the line
  *    says nothing was sent, and Save is pressed again (plan, "Offline rule").
+ *  - OWNER 2026-10-08 — four boxes and a "+". WHICH boxes are on screen and what the "+" sheet
+ *    offers is the shared `vitalsLayout` (./rules); this file keeps only what the nurse added.
  */
 type Chip = "yes" | "no" | undefined;
 const blankRaw = (): Record<TileKey, string> => Object.fromEntries(TILE_KEYS.map((k) => [k, ""])) as Record<TileKey, string>;
@@ -54,10 +56,15 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const set = useMemo(() => tileSetFor(preStage), [preStage]);
-  const order = useMemo(() => tileOrder(leadTileFor(preStage), set), [preStage, set]);
   const band = bandFor(ranges, preStage?.band ?? null);
   const [tiles, setTiles] = useState<Tiles>(emptyTiles);
   const [raw, setRaw] = useState<Record<TileKey, string>>(blankRaw);
+  /** The readings the nurse brought out from behind "+", and the sheet that offers them. */
+  const [added, setAdded] = useState<TileKey[]>([]);
+  const [plusOpen, setPlusOpen] = useState(false);
+  /** WHEN the glucose was taken — none pre-selected; a value is not saved without one. */
+  const [glucoseTiming, setGlucoseTiming] = useState<GlucoseTiming | null>(null);
+  const [glucoseError, setGlucoseError] = useState<string | null>(null);
   // What is in the boxes, readable THIS instant: "next" charts a tile and moves the focus in one
   // breath, and the blur that causes must not chart the same number a second time.
   const rawRef = useRef(raw);
@@ -69,7 +76,13 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
   const [serverGates, setServerGates] = useState<WireVitalsGate[]>([]);
   const [lockedByServer, setLockedByServer] = useState<WireVitalKey[]>([]);
   const [missing, setMissing] = useState<TileKey[]>([]);
+  const layout = useMemo(() => vitalsLayout(preStage, { added, holding: holdingOf(tiles, raw), missing }), [preStage, added, tiles, raw, missing]);
+  const order = layout.boxes;
   const [error, setError] = useState<string | null>(null);
+  /** A box's own complaint goes on the box (glucose); every other tile speaks from the save bar, as before. */
+  const complain = useCallback((key: TileKey, message: string): void => {
+    if (key === "glucoseMgDl") setGlucoseError(message); else setError(message);
+  }, []);
   const [tempTyped, setTempTyped] = useState<number | null>(null);
   const [chips, setChips] = useState<Record<string, Chip>>({});
   const [busy, setBusy] = useState(false);
@@ -109,7 +122,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
     const next = emptyTiles();
     if (preStage !== null && preStage.last !== null) {
       for (const k of preStage.carryCandidates) {
-        if (k === "sbp" || k === "dbp") continue;
+        if (k === "sbp" || k === "dbp" || k === "glucoseMgDl") continue;   // only a height is ever carried
         const v = preStage.last[k];
         if (v !== null) next[k].carried = v;
       }
@@ -121,6 +134,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
     putRaw(blankRaw);
     setMirror(null); setServerGates([]); setLockedByServer([]); setMissing([]); setError(null); setChips({}); setTempTyped(null);
     setRrNudge(null); rrFocusedAt.current = null; setUnlocking(null);
+    setAdded([]); setPlusOpen(false); setGlucoseTiming(null); setGlucoseError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `initialTakes` is read once per patient, with the reset
   }, [resetKey, preStage]);
 
@@ -152,8 +166,9 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
     const text = rawRef.current[key];
     if (!opts.demandANumber && text.trim() === "") return true;
     const take = parseTake(key, text);
-    if (take === null) { setError(t(`vitalsBay.capture.${takeError(key, text)}`)); return false; }
+    if (take === null) { complain(key, t(`vitalsBay.capture.${takeError(key, text)}`)); return false; }
     setError(null);
+    if (key === "glucoseMgDl") setGlucoseError(null);
     setMissing((m) => m.filter((k) => k !== key));
     if (key === "tempC") { const n = tempNote(text); setTempTyped(n !== null && n.unit === "F" ? n.f : null); }
     putRaw((r) => ({ ...r, [key]: "" })); // emptied BEFORE the focus moves — see `rawRef`
@@ -165,7 +180,28 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
     const next = commit(key, counted ? "counted" : "typed", take);
     if (next !== null && opts.advance) focusNextEmpty(key, next);
     return next !== null;
-  }, [putRaw, commit, focusNextEmpty, t, rrNudge]);
+  }, [putRaw, commit, focusNextEmpty, t, rrNudge, complain]);
+
+  /** One tap in the "+" sheet: the reading becomes a box and the cursor goes to it. */
+  const addBox = useCallback((key: TileKey) => {
+    setAdded((a) => (a.includes(key) ? a : [...a, key]));
+    setPlusOpen(false);
+    setFocusReq(key);
+  }, []);
+  /** An added box left empty goes back behind "+". */
+  const removeBox = useCallback((key: TileKey) => {
+    setAdded((a) => a.filter((k) => k !== key));
+    if (key === "glucoseMgDl") { setGlucoseTiming(null); setGlucoseError(null); }
+  }, []);
+  /** The value of a reading nobody is required to take, emptied — the only way such a box can then be removed. */
+  const clearBox = useCallback((key: TileKey) => {
+    setTiles((prev) => ({ ...prev, [key]: emptyTiles()[key] }));
+    putRaw((r) => ({ ...r, [key]: "" }));
+    if (key === "glucoseMgDl") { setGlucoseTiming(null); setGlucoseError(null); }
+    if (key === "tempC") setTempTyped(null);
+    setMirror((m) => (m !== null && m.key === key ? null : m));
+    setMissing((m) => m.filter((k) => k !== key));
+  }, [putRaw]);
 
   const resolveMirror = useCallback((action: "confirm" | "fix" | "retake") => {
     if (mirror === null) return;
@@ -215,18 +251,21 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
     if (current !== tiles) setTiles(current);
     if (stop !== null) {
       if (stop.mirror !== null) setMirror({ key: stop.key, m: stop.mirror });
-      else setError(t(`vitalsBay.capture.${takeError(stop.key, stop.text ?? "")}`));
+      else complain(stop.key, t(`vitalsBay.capture.${takeError(stop.key, stop.text ?? "")}`));
       refs.current[stop.key]?.focus();
       return;
     }
     if (flushed.length > 0) setMirror(null);
+    // A glucose with no timing is not a reading a doctor can use: nothing is sent, and the box says so.
+    if (glucoseNeedsTiming(current, glucoseTiming)) { setGlucoseError(t("vitalsBay.glucose.timingNeeded")); return; }
+    setGlucoseError(null);
     const miss = missingFor(current, set.required, emergency);
     if (miss.length > 0) { setMissing(miss); refs.current[miss[0]!]?.focus(); return; }
     setMissing([]); setError(null); setBusy(true); onBusy?.(true);
     const chipList = CONTEXT_CHIPS.filter((c) => chips[c.key] !== undefined)
       .map((c) => ({ key: c.key, question: c.question, answer: chips[c.key] === "yes" ? c.yes : c.no }));
     try {
-      onSaved(await api.postVitals(row.encounterId, buildBody(current, { emergency, chips: chipList })));
+      onSaved(await api.postVitals(row.encounterId, buildBody(current, { emergency, chips: chipList, glucoseTiming })));
     } catch (e) {
       if (e instanceof NetworkError) { setError(t("mobile.vitals.saveNetwork")); return; }
       if (e instanceof ApiError) {
@@ -243,7 +282,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
     } finally {
       setBusy(false); onBusy?.(false);
     }
-  }, [tiles, putRaw, order, gateCtx, onCommitted, t, set.required, chips, row.encounterId, onSaved, onBusy, api]);
+  }, [tiles, putRaw, order, gateCtx, onCommitted, t, set.required, chips, row.encounterId, onSaved, onBusy, api, complain, glucoseTiming]);
 
   const acceptServerGate = useCallback((g: WireVitalsGate, action: "confirm" | "fix") => {
     const key = foldKey(g.key);
@@ -258,11 +297,23 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
 
   const unit = (k: TileKey): string => t(`vitalsBay.unit.${k}`);
   const label = (k: TileKey): string => t(`vitalsBay.tile.${k}`);
+  /** "A, B and C" — the amber line's list. */
+  const listed = (keys: TileKey[]): string => {
+    const names = keys.map(label);
+    return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")}${t("vitalsBay.plus.and")}${names[names.length - 1]!}`;
+  };
+  // Two boxes to a row; which ones take a whole row is the shared rule's (the narrow web bay lays out the same way).
+  const wide = new Set(fullRowBoxes(order, (k) => unlocking === k));
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "web" ? undefined : "padding"}>
       <ScrollView testID="capture" keyboardShouldPersistTaps="handled" contentContainerStyle={c.scroll}>
         {header}
+        {layout.autoWhy !== null && (
+          <View testID="auto-note" style={c.autoNote}>
+            <Text style={c.autoNoteText}>{t(`vitalsBay.plus.auto.${layout.autoWhy}`, { tiles: listed(layout.auto) })}</Text>
+          </View>
+        )}
         <View testID="tiles" style={c.grid}>
           {order.map((k) => {
             const tile = tiles[k];
@@ -279,12 +330,19 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
             const typing = raw[k].trim();
             const reads = (k === "bp" || k === "tempC") && typing !== "" ? parseTake(k, typing) : null;
             const tn = k === "tempC" && reads !== null ? tempNote(typing) : null;
+            const why = layout.why[k];
+            const optional = why === "added" || why === "value";
+            // Anything the protocol does not DEMAND can be emptied again — a held probe error included (the nurse decides: no SpO₂ today).
+            const clearable = why !== undefined && why !== "required";
+            const holds = op !== null || tile.held.length > 0 || typing !== "";
             return (
               <View
                 key={k} testID={`tile-${k}`}
                 accessibilityLabel={tint === null ? undefined : `${label(k)} ${t(`vitalsBay.capture.tint.${tint}`)}`}
                 style={[
-                  c.tile, locked && c.tileWide,
+                  c.tile, wide.has(k) && c.tileWide,
+                  optional && { borderColor: color.greenLine, backgroundColor: color.greenSoft },
+                  layout.auto.includes(k) && { borderColor: color.goldLine },
                   tint !== null && !hot && { borderColor: color.goldLine, backgroundColor: color.goldSoft },
                   hot && { borderColor: color.redLine, backgroundColor: color.redSoft, borderWidth: 2 },
                   isMissing && { borderColor: color.red, borderWidth: 2 },
@@ -295,6 +353,16 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
                     {label(k)}{required ? " *" : ""}
                   </Text>
                   {range !== null && <Text style={c.range} testID={`range-${k}`}>{range}</Text>}
+                  {why === "added" && !holds && (
+                    <Pressable testID={`remove-${k}`} accessibilityRole="button" accessibilityLabel={t("vitalsBay.plus.remove", { tile: label(k) })} hitSlop={10} onPress={() => removeBox(k)} style={c.remove}>
+                      <Text style={c.removeText}>×</Text>
+                    </Pressable>
+                  )}
+                  {clearable && holds && !locked && (
+                    <Pressable testID={`clear-${k}`} accessibilityRole="button" hitSlop={10} onPress={() => clearBox(k)} style={c.remove}>
+                      <Text style={c.clearText}>{t("vitalsBay.plus.clear")}</Text>
+                    </Pressable>
+                  )}
                 </View>
                 {set.notRoutine.includes(k) && <Text style={c.faint} testID={`not-routine-${k}`}>{t("vitalsBay.capture.notRoutine")}</Text>}
 
@@ -339,7 +407,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
                     )}
                     {tint !== null && <Text testID={`tint-${k}`} style={[c.tint, { color: hot ? color.red : "#8a5a10" }]}>{t(`vitalsBay.capture.tint.${tint}`)}</Text>}
                     {tile.held.length > 0 && <Text testID={`held-${k}`} style={c.small}>{t("vitalsBay.capture.held", { values: tile.held.join(", ") })}</Text>}
-                    {tile.unlockReason !== null && k !== "bp" && (
+                    {tile.unlockReason !== null && k !== "bp" && k !== "glucoseMgDl" && (
                       <Text testID={`unlocked-${k}`} style={c.small}>{t("vitalsBay.unlock.was", { value: preStage?.last?.[k] ?? "" })}</Text>
                     )}
                     <TextInput
@@ -349,7 +417,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
                       keyboardType={k === "bp" ? BP_KEYBOARD : "decimal-pad"}
                       inputMode={Platform.OS === "web" ? (k === "bp" ? "tel" : "decimal") : undefined}
                       returnKeyType="next" submitBehavior="submit" autoCorrect={false} autoComplete="off" selectTextOnFocus
-                      placeholder={k === "bp" ? "158-96" : k === "tempC" ? "°F or °C" : ""}
+                      placeholder={k === "bp" ? "158-96" : k === "tempC" ? "°F or °C" : k === "glucoseMgDl" ? "mg/dL" : ""}
                       placeholderTextColor={color.faint}
                       value={raw[k]}
                       onChangeText={(text) => putRaw((r) => ({ ...r, [k]: text }))}
@@ -366,6 +434,24 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
                             ? t("vitalsBay.capture.readsTempF", { f: tn.f, c: tn.c })
                             : t("vitalsBay.capture.readsTempC", { c: reads })}
                       </Text>
+                    )}
+                    {k === "glucoseMgDl" && (
+                      <>
+                        <View testID="glucose-timing" accessibilityLabel={t("vitalsBay.glucose.timingLabel")} style={c.seg}>
+                          {GLUCOSE_TIMINGS.map((g) => {
+                            const on = glucoseTiming === g;
+                            return (
+                              <Pressable
+                                key={g} testID={`glucose-timing-${g}`} accessibilityRole="button" accessibilityState={{ selected: on }}
+                                onPress={() => { setGlucoseTiming(on ? null : g); setGlucoseError(null); }} style={[c.segChip, on && c.segOn]}
+                              >
+                                <Text style={[c.segText, on && { color: "#fff" }]}>{t(`vitalsBay.glucose.timing.${g}`)}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                        {glucoseError !== null && <Text accessibilityRole="alert" testID="glucose-error" style={[c.tint, { color: color.red }]}>{glucoseError}</Text>}
+                      </>
                     )}
                     {k === "weightKg" && <Text testID="weight-quiet" style={c.faint}>{t("vitalsBay.capture.weightQuiet")}</Text>}
                     {k === "rr" && rrNudge !== null && (
@@ -388,6 +474,15 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
             );
           })}
         </View>
+        {layout.behindPlus.length > 0 && (
+          <Pressable testID="plus-row" accessibilityRole="button" onPress={() => setPlusOpen(true)} style={({ pressed }) => [c.plus, pressed && { backgroundColor: color.greenSoft }]}>
+            <View style={c.plusDot}><Text style={c.plusDotText}>+</Text></View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={c.plusTitle}>{t("vitalsBay.plus.add")}</Text>
+              <Text testID="plus-names" style={c.small}>{layout.behindPlus.map(label).join(" · ")}</Text>
+            </View>
+          </Pressable>
+        )}
         <Text style={c.faint}>{t("mobile.vitals.requiredLegend")}</Text>
 
         {mirror !== null && (
@@ -435,6 +530,24 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
         </Pressable>
       </ScrollView>
 
+      <Modal visible={plusOpen} transparent animationType="slide" onRequestClose={() => setPlusOpen(false)}>
+        <Pressable style={c.scrim} testID="plus-scrim" onPress={() => setPlusOpen(false)}>
+          <Pressable style={[c.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) }]} testID="plus-sheet" onPress={() => undefined}>
+            <View style={c.grab} />
+            <Text style={c.sheetTitle}>{t("vitalsBay.plus.add")}</Text>
+            {layout.behindPlus.map((k) => (
+              <Pressable key={k} testID={`plus-add-${k}`} accessibilityRole="button" onPress={() => addBox(k)} style={({ pressed }) => [c.sheetRow, pressed && { backgroundColor: color.wash }]}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={c.sheetName}>{label(k)}</Text>
+                  <Text style={c.small}>{t(`vitalsBay.plus.hint.${k}`)}</Text>
+                </View>
+                <View style={c.sheetDot}><Text style={c.sheetDotText}>+</Text></View>
+              </Pressable>
+            ))}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View style={[c.bar, { paddingBottom: Math.max(insets.bottom, space.md) }]} testID="save-bar">
         {missing.length > 0 && <Text accessibilityRole="alert" testID="missing" style={c.barError}>{t("vitalsBay.capture.missing", { tiles: missing.map(label).join(", ") })}</Text>}
         {error !== null && <Text accessibilityRole="alert" testID="capture-error" style={c.barError}>{error}</Text>}
@@ -474,4 +587,25 @@ const c = StyleSheet.create({
   emergencyText: { fontSize: 14, fontWeight: "700", color: color.red, textAlign: "center" },
   bar: { paddingHorizontal: space.lg, paddingTop: space.md, gap: space.sm, backgroundColor: color.card, borderTopWidth: 1, borderTopColor: color.line },
   barError: { fontSize: 13.5, lineHeight: 18, fontWeight: "700", color: color.red },
+  autoNote: { borderWidth: 1, borderColor: color.goldLine, backgroundColor: color.goldSoft, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 9 },
+  autoNoteText: { fontSize: 13.5, lineHeight: 18, fontWeight: "600", color: "#8a5a10" },
+  remove: { minWidth: 28, minHeight: 24, alignItems: "flex-end", justifyContent: "center" },
+  removeText: { fontSize: 20, lineHeight: 22, fontWeight: "700", color: color.dim },
+  clearText: { fontSize: 12.5, fontWeight: "700", color: color.green },
+  seg: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
+  segChip: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: color.greenLine, backgroundColor: color.card },
+  segOn: { backgroundColor: color.green, borderColor: color.green },
+  segText: { fontSize: 13.5, fontWeight: "600", color: color.green },
+  plus: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: TOUCH + 8, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderStyle: "dashed", borderColor: color.greenLine, borderRadius: radius.lg },
+  plusDot: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: color.green },
+  plusDotText: { fontFamily: MONO, fontSize: 19, lineHeight: 22, fontWeight: "700", color: "#fff" },
+  plusTitle: { fontSize: 15, fontWeight: "700", color: color.green },
+  scrim: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(19, 36, 32, .45)" },
+  sheet: { backgroundColor: color.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingHorizontal: space.lg, paddingTop: space.md },
+  grab: { alignSelf: "center", width: 38, height: 4, borderRadius: 2, backgroundColor: color.line, marginBottom: space.sm },
+  sheetTitle: { fontSize: 17, fontWeight: "700", color: color.ink, marginBottom: 4 },
+  sheetRow: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: 56, paddingVertical: 10, borderTopWidth: 1, borderTopColor: color.line2 },
+  sheetName: { fontSize: 15.5, fontWeight: "600", color: color.ink },
+  sheetDot: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: color.green },
+  sheetDotText: { fontFamily: MONO, fontSize: 18, lineHeight: 21, fontWeight: "700", color: color.green },
 });

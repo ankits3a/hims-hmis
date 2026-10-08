@@ -934,6 +934,87 @@
         "set": "from a set",
         "repeat": "repeated from the last visit"
       }
+    },
+    "scan": {
+      "label": "Scan a patient",
+      "title": "Scan a patient",
+      "hint": "Slip, patient card or printed prescription",
+      "looking": "Looking up…",
+      "denied": "The camera is not allowed for HMIS on this phone. Type the token, UHID or visit number instead.",
+      "typeLabel": "or type token, UHID or visit no.",
+      "typeHolder": "MED-9",
+      "go": "Find",
+      "again": "Scan another",
+      "close": "Close",
+      "more": "More actions",
+      "sealed": "Sealed record",
+      "banner": "Scanned · {{token}} · {{state}}",
+      "nothing": "Nothing for you to do for this patient",
+      "notYourJob": "not your job",
+      "swipeHint": "Swipe right on a row for its most common action",
+      "age": "{{years}} y",
+      "sex": {
+        "male": "Male",
+        "female": "Female"
+      },
+      "swipe": {
+        "start": "Start now",
+        "form": "Open form",
+        "photo": "Photograph"
+      },
+      "act": {
+        "vitals": "Take vitals",
+        "recheck": "Re-check vitals",
+        "slip": "Photograph slip",
+        "consult": "Start consultation",
+        "consultGoOn": "Continue consultation",
+        "brief": "Patient brief",
+        "paper": "I wrote on paper",
+        "collect": "Collect fee",
+        "visit": "See today's visit",
+        "move": "Move to another department",
+        "book": "Book next appointment",
+        "newVisit": "Open a new visit"
+      },
+      "sub": {
+        "fee": "consultation fee",
+        "noCash": "open a cash session first",
+        "retake": "the doctor asked for a clearer photo"
+      },
+      "state": {
+        "registered": "not in a queue yet",
+        "vitals": "waiting for vitals",
+        "vitalsDone": "vitals done",
+        "waiting": "waiting for the doctor",
+        "called": "called by the doctor",
+        "consult": "in consultation",
+        "done": "consultation finished, slip not photographed",
+        "doneFiled": "consultation finished, slip filed",
+        "doneRetake": "consultation finished, slip to be photographed again",
+        "unpaid": "fee not paid",
+        "otherDoctor": "another doctor's patient"
+      },
+      "pick": {
+        "title": "{{count}} patients hold this token today",
+        "body": "Tokens are per doctor. Pick the patient in front of you."
+      },
+      "miss": {
+        "offline": "This could not be looked up",
+        "unreadable": "This code could not be read",
+        "unreadableBody": "Hold the code flat and close, or type the token, UHID or visit number.",
+        "otherDay": "This slip is from {{date}}",
+        "otherDayCompleted": "Visit {{visitNo}} was completed that day. There is no visit open today for this patient.",
+        "otherDayOpen": "Visit {{visitNo}} belongs to that day. There is no visit open today for this patient.",
+        "abandoned": "This visit was cancelled",
+        "abandonedBody": "Visit {{visitNo}} was withdrawn at the front desk today.",
+        "noVisit": "{{who}} has no visit open today",
+        "noVisitBody": "The code is good, but no visit has been opened for this patient today.",
+        "notToday": "Not in today's list",
+        "token": "Token {{token}} is not in today's list. Check the slip.",
+        "visit": "No visit has the number {{visitNo}}. Check it against the slip.",
+        "uhid": "{{uhid}} matches no token, visit or UHID.",
+        "prescription": "That prescription's visit could not be found."
+      }
     }
   },
   "screen": {
@@ -1093,17 +1174,19 @@
       "rr": "RR",
       "spo2": "SpO₂",
       "tempC": "Temp",
-      "muacCm": "MUAC"
+      "muacCm": "MUAC",
+      "glucoseMgDl": "Glucose"
     },
     "tile": {
-      "bp": "BP",
+      "bp": "Blood pressure",
       "pulse": "Pulse",
       "spo2": "SpO₂",
-      "tempC": "Temp",
-      "rr": "RR",
+      "tempC": "Temperature",
+      "rr": "Breathing rate",
       "weightKg": "Weight",
       "heightCm": "Height",
-      "muacCm": "MUAC"
+      "muacCm": "Arm band (MUAC)",
+      "glucoseMgDl": "Glucose"
     },
     "unit": {
       "bp": "mmHg",
@@ -1113,9 +1196,42 @@
       "rr": "/min",
       "weightKg": "kg",
       "heightCm": "cm",
-      "muacCm": "cm"
+      "muacCm": "cm",
+      "glucoseMgDl": "mg/dL"
+    },
+    "plus": {
+      "add": "Add a reading",
+      "close": "Close",
+      "remove": "Remove {{tile}}",
+      "clear": "Clear",
+      "and": " and ",
+      "hint": {
+        "spo2": "oxygen, finger probe · %",
+        "tempC": "°F or °C",
+        "glucoseMgDl": "fasting, random or after food · mg/dL",
+        "rr": "per minute",
+        "bp": "mmHg",
+        "pulse": "per minute",
+        "weightKg": "kg",
+        "heightCm": "cm"
+      },
+      "auto": {
+        "underSix": "Child under six: {{tiles}} must be filled.",
+        "child": "Child: {{tiles}} asked for this age.",
+        "protocol": "Asked for this patient: {{tiles}}."
+      }
+    },
+    "glucose": {
+      "timingLabel": "When was it taken?",
+      "timing": {
+        "fasting": "Fasting",
+        "random": "Random",
+        "after_food": "After food"
+      },
+      "timingNeeded": "Choose when it was taken: fasting, random or after food"
     },
     "capture": {
+      "glucoseRange": "Glucose is a whole number from 20 to 600 mg/dL",
       "notRoutine": "not routine",
       "fromDevice": "device",
       "carriedLocked": "carried forward — locked until a reason",

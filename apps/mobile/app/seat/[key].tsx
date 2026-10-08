@@ -8,6 +8,7 @@ import { RosterMyDuties } from "../../src/screens/roster-my-duties";
 import { RosterOnNow } from "../../src/screens/roster-on-now";
 import { SlipDesk } from "../../src/screens/slip-desk";
 import { VitalsBay } from "../../src/screens/vitals-bay";
+import { scannedFrom } from "../../src/scan/card";
 import { SEATS, seatsFor } from "../../src/seats";
 import { useSession } from "../../src/session";
 import { color, space, type } from "../../src/theme";
@@ -15,17 +16,20 @@ import { Band, Button, Note, Tag } from "../../src/ui";
 
 /** One route per phone screen. Built ones render; the rest hold the plan's placeholder until their milestone. */
 export default function SeatScreen() {
-  const { key } = useLocalSearchParams<{ key: string }>();
+  const params = useLocalSearchParams<{ key: string; act?: string; pid?: string; scan?: string; vno?: string; tno?: string; said?: string }>();
+  const { key } = params;
+  // Opened by a scan or a held row (owner 2026-10-08): the screen is told which visit, and opens on it.
+  const scanned = scannedFrom(params);
   const { t } = useI18n();
   const router = useRouter();
   const { state } = useSession();
   if (state.status !== "signedIn") return <Redirect href="/" />;
   const seat = seatsFor(state.me.permissions).find((s) => s.key === key) ?? null;
   if (seat === null || !SEATS.includes(seat)) return <Redirect href="/" />;
-  if (seat.key === "vitals") return <VitalsBay />;
-  if (seat.key === "slips") return <SlipDesk />;
-  if (seat.key === "consult") return <DoctorQueue />;
-  if (seat.key === "counter") return <DeskOne />;
+  if (seat.key === "vitals") return <VitalsBay scanned={scanned} />;
+  if (seat.key === "slips") return <SlipDesk scanned={scanned} />;
+  if (seat.key === "consult") return <DoctorQueue scanned={scanned} />;
+  if (seat.key === "counter") return <DeskOne scanned={scanned} />;
   if (seat.key === "onNow") return <RosterOnNow />;
   if (seat.key === "myDuties") return <RosterMyDuties />;
   return (

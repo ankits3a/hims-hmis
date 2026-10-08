@@ -15,6 +15,8 @@ export type Call = <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path
 export type WireVisitVitals = {
   id: string; heightCm: number | null; weightKg: number | null; sbp: number | null; dbp: number | null;
   pulse: number | null; rr: number | null; spo2: number | null; tempC: number | null; muacCm: number | null;
+  /** Owner 2026-10-08 — finger-prick glucose (mg/dL) and when it was taken. Optional: an older server sends neither. */
+  glucoseMgDl?: number | null; glucoseTiming?: "fasting" | "random" | "after_food" | null;
   notes: string | null; dangerFlags: WireDangerFlag[]; recordedAt: string; recordedByName?: string;
   status: "active" | "superseded"; emergency?: boolean;
 };

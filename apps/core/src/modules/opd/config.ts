@@ -12,7 +12,10 @@ import type { Db, Tx } from "../../kernel/db/client";
  * neither. MUAC is a first-class vital because it is banded (SAM / MAM / green) and flagged, and a
  * number kept as a note cannot be either.
  */
-export const VITAL_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm"] as const;
+export const VITAL_KEYS = ["heightCm", "weightKg", "sbp", "dbp", "pulse", "rr", "spo2", "tempC", "muacCm", "glucoseMgDl"] as const;
+/** OWNER 2026-10-08 — when a finger-prick glucose was taken; a glucose value is never stored without one. */
+export const GLUCOSE_TIMINGS = ["fasting", "random", "after_food"] as const;
+export type GlucoseTiming = (typeof GLUCOSE_TIMINGS)[number];
 export type VitalKey = (typeof VITAL_KEYS)[number];
 export const BAND_KEYS = ["infant", "child_1_5", "child_6_12", "adult"] as const;
 export type BandKey = (typeof BAND_KEYS)[number];

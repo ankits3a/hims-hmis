@@ -20,7 +20,8 @@ import type { WireRxLine, WireRxPrint, WireVitals } from "../lib/opd-api";
  * component itself has no opinion on that (the TokenSlip precedent).
  */
 
-/** `BP 120/80 · P 72 · SpO₂ 98% · T 37.0 °C · Wt 60 kg` — present parts only, in that order. */
+/** `BP 120/80 · P 72 · SpO₂ 98% · T 37.0 °C · Wt 60 kg · Glucose 186 mg/dL (random)` — present parts only, in that order. */
+const GLUCOSE_WHEN: Record<string, string> = { fasting: "fasting", random: "random", after_food: "after food" };
 function vitalsLine(v: WireVitals | null): string | null {
   if (v === null) return null;
   const parts: string[] = [];
@@ -29,6 +30,11 @@ function vitalsLine(v: WireVitals | null): string | null {
   if (v.spo2 !== null) parts.push(`SpO₂ ${v.spo2}%`);
   if (v.tempC !== null) parts.push(`T ${v.tempC.toFixed(1)} °C`);
   if (v.weightKg !== null) parts.push(`Wt ${v.weightKg} kg`);
+  // Owner 2026-10-08 — the number and WHEN it was taken, and nothing about what it means.
+  if (v.glucoseMgDl !== null && v.glucoseMgDl !== undefined) {
+    const when = GLUCOSE_WHEN[v.glucoseTiming ?? ""];
+    parts.push(`Glucose ${v.glucoseMgDl} mg/dL${when === undefined ? "" : ` (${when})`}`);
+  }
   return parts.length === 0 ? null : parts.join(" · ");
 }
 

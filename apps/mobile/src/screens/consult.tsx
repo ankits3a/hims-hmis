@@ -330,6 +330,9 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
               {vit.spo2 !== null && <Text style={[s.vit, flagged("spo2") && s.vitHi]}>SpO₂ {vit.spo2}</Text>}
               {vit.tempC !== null && <Text style={[s.vit, flagged("tempC") && s.vitHi]}>{t("mobile.consult.temp")} {vit.tempC} °C</Text>}
               {vit.weightKg !== null && <Text style={s.vit}>{vit.weightKg} kg</Text>}
+              {vit.glucoseMgDl != null && (
+                <Text testID="consult-glucose" style={s.vit}>{t("vitalsBay.tile.glucoseMgDl")} {vit.glucoseMgDl} mg/dL{vit.glucoseTiming == null ? "" : ` · ${t(`vitalsBay.glucose.timing.${vit.glucoseTiming}`)}`}</Text>
+              )}
             </View>
           )}
           {(visit?.deskComplaint ?? null) !== null && <Text testID="consult-desk-words" style={s.said}>{t("mobile.consult.toldDesk", { words: visit!.deskComplaint!.text })}</Text>}

@@ -7,6 +7,27 @@ import { color, radius, space } from "../theme";
 import { Button } from "../ui";
 
 /**
+ * THE CAMERA ITSELF, without the sheet around it — the one barcode reader in the app. The modal
+ * below and the header's quick-scan screen (src/screens/scan.tsx) both draw this; mounting it again
+ * (a new `key`) arms it for the next read.
+ */
+export function ScanCamera({ onRead }: { onRead: (data: string) => void }) {
+  const done = useRef(false);
+  return (
+    <CameraView
+      style={StyleSheet.absoluteFill}
+      facing="back"
+      barcodeScannerSettings={{ barcodeTypes: ["qr", "code128", "code39"] }}
+      onBarcodeScanned={(r) => {
+        if (done.current || r.data.trim() === "") return; // one read per opening
+        done.current = true;
+        onRead(r.data.trim());
+      }}
+    />
+  );
+}
+
+/**
  * THE SCAN DOOR. On the counter PC a barcode gun types into the identify box; a phone has a
  * camera. What it reads goes through exactly the same door (`classifyDoor`): a patient card
  * (`q1.…`) is verified by the server before it is trusted, a token number or UHID is looked up on
@@ -15,8 +36,7 @@ import { Button } from "../ui";
 export function Scanner({ open, onRead, onClose }: { open: boolean; onRead: (data: string) => void; onClose: () => void }) {
   const { t } = useI18n();
   const [permission, request] = useCameraPermissions();
-  const done = useRef(false);
-  if (!open) { done.current = false; return null; }
+  if (!open) return null;
   const granted = permission?.granted === true;
   const blocked = permission !== null && !permission.granted && !permission.canAskAgain;
   return (
@@ -26,16 +46,7 @@ export function Scanner({ open, onRead, onClose }: { open: boolean; onRead: (dat
         {granted ? (
           <>
             <View style={s.frame}>
-              <CameraView
-                style={StyleSheet.absoluteFill}
-                facing="back"
-                barcodeScannerSettings={{ barcodeTypes: ["qr", "code128", "code39"] }}
-                onBarcodeScanned={(r) => {
-                  if (done.current || r.data.trim() === "") return; // one read per opening
-                  done.current = true;
-                  onRead(r.data.trim());
-                }}
-              />
+              <ScanCamera onRead={onRead} />
             </View>
             <Text style={s.hint}>{t("mobile.vitals.scanHint")}</Text>
           </>

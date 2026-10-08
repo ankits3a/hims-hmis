@@ -995,6 +995,13 @@ export const opdVitals = pgTable(
     rr: integer("rr"),
     spo2: integer("spo2"),
     tempC: doublePrecision("temp_c"),
+    /**
+     * OWNER 2026-10-08 — finger-prick capillary glucose in mg/dL (a whole number, 20–600) and WHEN it
+     * was taken: 'fasting' | 'random' | 'after_food'. Both null or both set (`checkGlucose`). Not
+     * ranged, not flagged: a clinical threshold is an owner ruling not yet made.
+     */
+    glucoseMgDl: integer("glucose_mg_dl"),
+    glucoseTiming: text("glucose_timing"),
     notes: text("notes"),
     ageYearsAtRecord: integer("age_years_at_record"), // null when DOB unknown (adult band applied)
     band: text("band").notNull(), // 'infant' | 'child_1_5' | 'child_6_12' | 'adult'

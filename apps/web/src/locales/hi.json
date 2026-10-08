@@ -7397,17 +7397,19 @@
       "rr": "RR",
       "spo2": "SpO₂",
       "tempC": "तापमान",
-      "muacCm": "MUAC"
+      "muacCm": "MUAC",
+      "glucoseMgDl": "ग्लूकोज़"
     },
     "tile": {
-      "bp": "BP",
+      "bp": "ब्लड प्रेशर",
       "pulse": "नाड़ी",
       "spo2": "SpO₂",
       "tempC": "तापमान",
-      "rr": "RR",
+      "rr": "साँस की दर",
       "weightKg": "वज़न",
       "heightCm": "ऊँचाई",
-      "muacCm": "MUAC"
+      "muacCm": "बाँह का फीता (MUAC)",
+      "glucoseMgDl": "ग्लूकोज़"
     },
     "unit": {
       "bp": "mmHg",
@@ -7417,9 +7419,42 @@
       "rr": "/मिनट",
       "weightKg": "kg",
       "heightCm": "cm",
-      "muacCm": "cm"
+      "muacCm": "cm",
+      "glucoseMgDl": "mg/dL"
+    },
+    "plus": {
+      "add": "रीडिंग जोड़ें",
+      "close": "बंद करें",
+      "remove": "{{tile}} हटाएँ",
+      "clear": "मिटाएँ",
+      "and": " और ",
+      "hint": {
+        "spo2": "ऑक्सीजन, उँगली का प्रोब · %",
+        "tempC": "°F या °C",
+        "glucoseMgDl": "खाली पेट, रैंडम या खाने के बाद · mg/dL",
+        "rr": "प्रति मिनट",
+        "bp": "mmHg",
+        "pulse": "प्रति मिनट",
+        "weightKg": "kg",
+        "heightCm": "cm"
+      },
+      "auto": {
+        "underSix": "छह साल से छोटा बच्चा: {{tiles}} भरना ज़रूरी है।",
+        "child": "बच्चा: इस उम्र में {{tiles}} पूछे जाते हैं।",
+        "protocol": "इस मरीज़ के लिए ज़रूरी: {{tiles}}।"
+      }
+    },
+    "glucose": {
+      "timingLabel": "कब लिया गया?",
+      "timing": {
+        "fasting": "खाली पेट",
+        "random": "रैंडम",
+        "after_food": "खाने के बाद"
+      },
+      "timingNeeded": "बताएँ कब लिया गया: खाली पेट, रैंडम या खाने के बाद"
     },
     "capture": {
+      "glucoseRange": "ग्लूकोज़ 20 से 600 mg/dL के बीच की पूर्ण संख्या होती है",
       "notRoutine": "रूटीन नहीं",
       "fromDevice": "डिवाइस",
       "carriedLocked": "पिछला मान — कारण बताए बिना लॉक",

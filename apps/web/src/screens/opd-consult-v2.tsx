@@ -238,6 +238,11 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
     { k: t("opdConsultV2.weight"), v: v.weightKg === null ? "—" : `${String(v.weightKg)} kg`, warn: false },
     { k: t("opdConsultV2.temp"), v: v.tempC === null ? "—" : `${String(v.tempC)} °C`, warn: (v.tempC ?? 37) >= 38 },
     { k: "SpO₂", v: v.spo2 === null ? "—" : String(v.spo2), warn: (v.spo2 ?? 99) < 94 },
+    // Owner 2026-10-08 — a finger-prick glucose, shown only when one was taken, with WHEN; never coloured (no threshold is ruled).
+    ...(v.glucoseMgDl == null ? [] : [{
+      k: t("vitalsBay.tile.glucoseMgDl"),
+      v: `${String(v.glucoseMgDl)} mg/dL${v.glucoseTiming == null ? "" : ` · ${t(`vitalsBay.glucose.timing.${v.glucoseTiming}`)}`}`, warn: false,
+    }]),
   ];
 
   return (
@@ -564,7 +569,16 @@ const VITAL_FIELDS: { key: VitalKey; label: string; unit: string }[] = [
   { key: "spo2", label: "SpO₂", unit: "%" }, { key: "tempC", label: "Temp", unit: "°C" }, { key: "rr", label: "RR", unit: "/min" },
   { key: "weightKg", label: "Weight", unit: "kg" }, { key: "heightCm", label: "Height", unit: "cm" },
 ];
-type VitalsLike = Partial<Record<VitalKey, number | null>> & { recordedAt: string; recordedByName?: string; status?: string; amendmentReason?: string | null };
+type VitalsLike = Partial<Record<VitalKey, number | null>> & {
+  recordedAt: string; recordedByName?: string; status?: string; amendmentReason?: string | null;
+  /** Owner 2026-10-08 — the bay's finger-prick glucose and when it was taken: shown here, entered at the bay. */
+  glucoseMgDl?: number | null; glucoseTiming?: string | null;
+};
+/** `Glucose 186 mg/dL (random)` — the number and when, and nothing about what it means (no threshold is ruled). */
+export function glucoseText(v: { glucoseMgDl?: number | null; glucoseTiming?: string | null }): string | null {
+  if (v.glucoseMgDl == null) return null;
+  return `Glucose ${String(v.glucoseMgDl)} mg/dL${v.glucoseTiming == null ? "" : ` (${v.glucoseTiming.replace("_", " ")})`}`;
+}
 
 /** Gold, never red: red is the danger-flag rule's own colour, and this is a glance, not a rule. */
 export function abnormal(v: Partial<Record<VitalKey, number | null>>): Set<VitalKey> {
@@ -579,10 +593,11 @@ export function abnormal(v: Partial<Record<VitalKey, number | null>>): Set<Vital
 
 function readingLine(v: VitalsLike): React.ReactElement {
   const hi = abnormal(v);
-  const parts: [VitalKey | "bp", string][] = [
+  const parts: [VitalKey | "bp" | "glucose", string][] = [
     ["bp", v.sbp == null ? "BP —" : `BP ${String(v.sbp)}/${String(v.dbp ?? "—")}`],
     ["pulse", `P ${String(v.pulse ?? "—")}`], ["spo2", `SpO₂ ${String(v.spo2 ?? "—")}`], ["tempC", `T ${String(v.tempC ?? "—")}`],
     ...(v.weightKg == null ? [] : [["weightKg", `${String(v.weightKg)} kg`] as [VitalKey, string]]),
+    ...(glucoseText(v) === null ? [] : [["glucose", glucoseText(v)!] as [VitalKey | "bp" | "glucose", string]]),
   ];
   return (
     <span className="mo" style={{ display: "inline-flex", gap: 12, flexWrap: "wrap" }}>
@@ -615,7 +630,13 @@ export function VitalsTab({ encounterId, patientId, today, onChanged }: {
     setErr(null); setBusy(true);
     try {
       if (fixing === null) await api("POST", `/opd/visits/${encounterId}/vitals`, values());
-      else await api("POST", `/opd/vitals/${fixing}/amend`, { ...values(), reason: reason.trim() });
+      else {
+        // The correction form has no glucose box: the corrected row's glucose and its timing ride along untouched,
+        // or a doctor fixing a pulse would silently wipe the bay's reading off the new row.
+        const fixed = rows.find((r) => r.id === fixing);
+        const glucose = fixed?.glucoseMgDl == null ? {} : { glucoseMgDl: fixed.glucoseMgDl, glucoseTiming: fixed.glucoseTiming ?? null };
+        await api("POST", `/opd/vitals/${fixing}/amend`, { ...values(), ...glucose, reason: reason.trim() });
+      }
       setFixing(null); setReason("");
       onChanged();
       await history.refetch();
@@ -837,7 +858,7 @@ export function sectionLines(v: PastVisit, s: HistorySection): string[] {
   const e = v.encounter;
   const split = (x: string | null | undefined): string[] => (x ?? "").split(" · ").map((y) => y.trim()).filter((y) => y !== "");
   switch (s) {
-    case "vitals": return v.vitals.filter((x) => x.status !== "superseded").map((x) => `BP ${String(x.sbp ?? "—")}/${String(x.dbp ?? "—")} · P ${String(x.pulse ?? "—")} · SpO₂ ${String(x.spo2 ?? "—")} · T ${String(x.tempC ?? "—")}${x.weightKg == null ? "" : ` · ${String(x.weightKg)} kg`}`);
+    case "vitals": return v.vitals.filter((x) => x.status !== "superseded").map((x) => `BP ${String(x.sbp ?? "—")}/${String(x.dbp ?? "—")} · P ${String(x.pulse ?? "—")} · SpO₂ ${String(x.spo2 ?? "—")} · T ${String(x.tempC ?? "—")}${x.weightKg == null ? "" : ` · ${String(x.weightKg)} kg`}${glucoseText(x) === null ? "" : ` · ${glucoseText(x)!}`}`);
     case "complaints": return [...split(e.chiefComplaint), ...(v.deskComplaint == null ? [] : [`(desk) ${v.deskComplaint.text}`])];
     case "exam": return (e.examination ?? []).map((f) => `${f.group}: ${f.text}`);
     case "dx": return v.diagnoses.length > 0

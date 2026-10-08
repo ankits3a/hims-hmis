@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { OpdError } from "./errors";
-import type { BandConfig, DangerRangesConfig, VitalKey } from "./config";
+import type { BandConfig, DangerRangesConfig, GlucoseTiming, VitalKey } from "./config";
 import type { DangerFlag } from "./events";
 
 /**
@@ -15,6 +15,13 @@ export type VitalsInput = {
   pulse?: number | null; rr?: number | null; spo2?: number | null; tempC?: number | null;
   /** VD-1 T1 / D5 — required under six, meaningless over it, banded SAM / MAM / green. */
   muacCm?: number | null;
+  /**
+   * OWNER 2026-10-08 — finger-prick capillary glucose, mg/dL, a whole number 20–600, with WHEN it was
+   * taken. Recorded and returned; never ranged, flagged or interpreted (a clinical threshold is an
+   * owner ruling not yet made).
+   */
+  glucoseMgDl?: number | null;
+  glucoseTiming?: GlucoseTiming | null;
   notes?: string | null;
 };
 
@@ -33,7 +40,7 @@ export type ReadingSource = (typeof READING_SOURCES)[number];
 /** Every vital measured on its own, keyed as it is stored. BP is not here — it is `bp` below. */
 export type ScalarReadingKey = Exclude<VitalKey, "sbp" | "dbp">;
 export const SCALAR_READING_KEYS: readonly ScalarReadingKey[] =
-  ["heightCm", "weightKg", "pulse", "rr", "spo2", "tempC", "muacCm"];
+  ["heightCm", "weightKg", "pulse", "rr", "spo2", "tempC", "muacCm", "glucoseMgDl"];
 
 export type Reading = { takes: number[]; source: ReadingSource; held?: number[]; note?: string };
 /** ONE measurement with TWO numbers. A take is `[systolic, diastolic]`; a pair of takes is a rest-and-recheck. */
@@ -109,13 +116,15 @@ const RANGED: readonly (keyof BandConfig["ranges"])[] = ["sbp", "dbp", "pulse", 
  * The order every screen renders and `missingRequired` reports in. `muacCm` is appended for the
  * reason `VITAL_KEYS` appends it — the two lists must agree, and a test asserts they do.
  */
-const ORDER: readonly VitalKey[] = ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse", "rr", "muacCm"];
+const ORDER: readonly VitalKey[] = ["heightCm", "weightKg", "sbp", "dbp", "tempC", "spo2", "pulse", "rr", "muacCm", "glucoseMgDl"];
 
 const PLAUSIBLE: Record<VitalKey, [number, number]> = {
   heightCm: [20, 250], weightKg: [0.3, 400], sbp: [30, 300], dbp: [10, 200], pulse: [10, 300], rr: [2, 100], spo2: [0, 100], tempC: [25, 45],
   // Wide on purpose: this is the "is it a number at all" envelope, not the clinical band. A MUAC
   // of 4.5 is refused here; a MUAC of 11.0 is accepted here and flagged SAM by evaluateVitals.
   muacCm: [4, 60],
+  // What a glucometer strip reads. Here the envelope IS the accepted range (owner 2026-10-08).
+  glucoseMgDl: [20, 600],
 };
 
 /** The band whose EXCLUSIVE upper bound the age is below; unknown age → the adult tail. */
@@ -140,19 +149,62 @@ function present(v: VitalsInput, k: VitalKey): boolean {
  */
 export const EMERGENCY_REQUIRED: readonly VitalKey[] = ["sbp", "dbp", "pulse", "spo2"];
 
-/** The paediatric line the bands already draw (`child_6_12` ends at 13; `sanityGates` uses the same). */
+/**
+ * The paediatric line the bands already draw (`child_6_12` ends at 13; `sanityGates` uses the same).
+ * It is NOT what decides must-fill any more (owner 2026-10-08, below): the two lines that do have
+ * their own names, so moving one of them can never move a band, a range or a gate.
+ */
 export const CHILD_UNDER_YEARS = 13;
+/** Under this age only weight and the arm band are must-fill (the MUAC line the bands already draw at six). */
+export const UNDER_SIX_YEARS = 6;
+/** From this age the cuff is must-fill; below it a BP is recorded, ranged and flagged when typed, never demanded. */
+export const BP_REQUIRED_FROM_YEARS = 18;
 
 /**
  * OWNER 2026-10-05 — what the desk may DEMAND, over whatever the configured band lists: temperature
- * is never mandatory, and a child's (under 13) BP is not either. Both are still recorded, ranged
+ * is never mandatory, and a child's BP is not either (under 13 then; under 18 since 2026-10-08, below). Both are still recorded, ranged
  * and flagged when typed. This sits in code, not in `opd_config.danger_ranges`, because it is the
  * owner's ruling and the configured lists are clinical staff's data — an edited band cannot undo it.
  * Unknown age is the adult tail, as everywhere else.
+ *
+ * OWNER 2026-10-08 — *"Move SpO2 behind '+'."* SpO₂ joins temperature: no band may demand it on an
+ * ordinary save, whatever `opd_config.danger_ranges` lists (the row in production still lists it for
+ * every band, and nothing rewrites that row). It is still held below the probe floor, ranged and
+ * flagged whenever it IS typed, and the EMERGENCY save still demands it (`EMERGENCY_REQUIRED`).
+ *
+ * OWNER 2026-10-08 — MUST-FILL BY AGE. *"In the vitals screen, I can see height is mandatory field
+ * for 1 year child. and BP is mandatory for a 16yr child. Let's do something for this."* … *"Go with
+ * your suggestions."*
+ *
+ *   under 6             weight, arm band (MUAC)          — height and pulse are on screen, optional
+ *   6 to 17             weight, height, pulse            — blood pressure is on screen, optional
+ *   18+ / age unknown   blood pressure, pulse, weight, height
+ *
+ * Like every line above this only NARROWS the stored band list (the row is not rewritten): a band
+ * edited to ask for less still asks for less. Weight under 18 stays demanded by `missingRequired`.
  */
 export function requiredFor(band: BandConfig, ageYears: number | null): VitalKey[] {
-  const child = ageYears !== null && ageYears < CHILD_UNDER_YEARS;
-  return band.required.filter((k) => k !== "tempC" && !(child && (k === "sbp" || k === "dbp")));
+  const underSix = ageYears !== null && ageYears < UNDER_SIX_YEARS;
+  const noCuff = ageYears !== null && ageYears < BP_REQUIRED_FROM_YEARS;
+  return band.required.filter((k) =>
+    k !== "tempC" && k !== "spo2"
+    && !(noCuff && (k === "sbp" || k === "dbp"))
+    && !(underSix && (k === "heightCm" || k === "pulse")));
+}
+
+/**
+ * OWNER 2026-10-08 — a glucose value carries its timing, and a timing carries a value. Whole mg/dL
+ * only: 186.5 is not something a strip says. A timing sent with no value is dropped, not stored.
+ */
+export function checkGlucose(v: VitalsInput): GlucoseTiming | null {
+  const g = v.glucoseMgDl;
+  if (g === undefined || g === null) return null;
+  if (!Number.isInteger(g)) throw new OpdError("invalid_vitals", "glucoseMgDl must be a whole number of mg/dL", { vital: "glucoseMgDl", value: g });
+  const timing = v.glucoseTiming ?? null;
+  if (timing === null) {
+    throw new OpdError("invalid_vitals", "a glucose value needs its timing: fasting, random or after_food", { vital: "glucoseTiming", value: null });
+  }
+  return timing;
 }
 
 /**
@@ -164,7 +216,7 @@ export function missingRequired(
   v: VitalsInput,
   ageYears: number | null,
   cfg: DangerRangesConfig,
-  opts: { emergency?: boolean; carriedForward?: readonly VitalKey[] } = {},
+  opts: { emergency?: boolean; carriedForward?: readonly VitalKey[]; heldOut?: readonly VitalKey[] } = {},
 ): VitalKey[] {
   const need = new Set<VitalKey>();
   if (opts.emergency === true) {
@@ -174,6 +226,14 @@ export function missingRequired(
     if (ageYears !== null && ageYears < cfg.weightRequiredUnderYears) need.add("weightKg");
   }
   for (const k of opts.carriedForward ?? []) need.delete(k);
+  /*
+   * OWNER 2026-10-08 — SpO₂ IS NO LONGER DEMANDED, AND A HELD ONE IS STILL NOT SKIPPABLE. Until the
+   * ruling, "you cannot chart a probe error and you cannot skip it" was enforced by accident: SpO₂
+   * was required, so a reading held entirely below the probe floor left the chart incomplete. Now
+   * it is stated: a vital that was TAKEN and wholly held out (`heldOut`) is owed a re-clip or a
+   * named override, exactly as before — otherwise the 45 % would vanish from chart and log alike.
+   */
+  for (const k of opts.heldOut ?? []) need.add(k);
   return ORDER.filter((k) => need.has(k) && !present(v, k));
 }
 
