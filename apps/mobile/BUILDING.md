@@ -1,8 +1,14 @@
-# Building the staff Android app on this server
+# Building the staff app
 
-Owner ruling, 2026-10-05: **no Play Store and no App Store, ever.** The app is built here, signed
-with our own key, and installed on staff phones from a download link. expo.dev's cloud builder is
-not used (`eas.json` stays only as a record of the profiles).
+**Android** (owner ruling, 2026-10-05: no Play Store): the app is built on this server, signed with
+our own key, and installed on staff phones from a download link. expo.dev's cloud builder is not
+used for Android. Everything below, up to "iPhone (EAS)", is about Android.
+
+**iPhone** (owner, 2026-10-08: about 100 iPhone users; Organisation Apple account; keep it unlisted;
+use EAS): an iPhone cannot install an app from a download link, so the iPhone app is built by EAS
+(expo.dev's Mac in the cloud) and given out through the App Store as an **Unlisted** app. See
+"iPhone (EAS)" at the foot of this file. `eas.json` holds the profiles EAS reads; its Android lines
+are a record only.
 
 ## Build
 
@@ -204,3 +210,116 @@ The doctor's consult screen can record a note of up to 60 seconds (`expo-audio`,
 IBM Plex Sans and Mono are bundled per weight (`src/fonts.ts`); every screen imports `Text` and `TextInput` from
 `src/text.tsx`, not from `react-native`, or its text is drawn in the system face. The icon, adaptive icon and splash
 are the CRK crest, rendered from `docs/design/2026-08-29-opd-counter-flow-v2/crk-logo.png`.
+
+## iPhone (EAS)
+
+What the iPhone app is: the same screens and the same sign-in as the Android app, talking to the
+same server. What differs in this first version:
+
+| | Android | iPhone |
+|---|---|---|
+| Notifications | on, when the build carries Firebase | **off** — the Notifications screen says "Not set up in this app yet" and nothing is asked |
+| Updates | the app offers a new APK itself | the App Store updates the app; the app has no "Check for update" |
+| Screenshots (production) | blocked | not blocked; the app is hidden in the app switcher |
+| The lock | fingerprint | Face ID or Touch ID |
+
+### The steps, in order
+
+1. **Open a terminal in this app's folder — never the repository's top folder.** Until the iPhone
+   work is merged that is `/opt/hmis-lanes/ios-setup/hmis/apps/mobile`. Why: run from the top
+   folder, `eas` does not find this app, writes a new `app.json` there with somebody else's app id,
+   and that stray file stops the next production deploy (it happened on 2026-10-08).
+2. Sign in to Expo: `npx eas-cli@latest login` — the Expo account's e-mail and password.
+3. Build: `npx eas-cli@latest build --platform ios --profile production`
+   - **"Do you want to log in to your Apple account?"** — Yes. EAS needs it once, to make the signing
+     certificate. Type the Apple ID (the e-mail of the hospital's Organisation developer account)
+     and its password.
+   - **The 6-digit code** — Apple sends it to the iPhone or Mac already signed in with that Apple ID
+     (or by SMS). It is Apple's second step of sign-in; type it in the terminal. EAS does not keep
+     the password.
+   - **Team** — choose the Organisation, not a personal team.
+   - **"Generate a new Apple Distribution Certificate?"** and **"Generate a new Apple Provisioning
+     Profile?"** — Yes to both. EAS keeps them and reuses them for every later build.
+   - **If it asks to set up Push Notifications** — No. This version sends none to iPhones.
+   - The bundle identifier it shows must be `com.crkmch.hmis`. If it shows anything else, stop: the
+     command is running in the wrong folder.
+   - The build runs on Expo's Mac (about 15–25 minutes). The terminal prints a link to watch it.
+     EAS counts the build number itself; nothing in this folder needs editing between builds.
+4. Send it to Apple: `npx eas-cli@latest submit --platform ios --latest`
+   - It asks for the Apple ID again, and offers to make an App Store Connect API key — Yes.
+   - The first time, it offers to create the app in App Store Connect. Name: **HMIS Staff**.
+   - The build appears in App Store Connect → the app → TestFlight after Apple has processed it
+     (10–30 minutes). Install it from TestFlight on one iPhone and sign in before going further.
+5. Fill in App Store Connect (<https://appstoreconnect.apple.com> → Apps → HMIS Staff):
+   - **Name** HMIS Staff. **Primary category** Medical. **Price** Free.
+   - **Privacy Policy URL** — Apple requires one. **There is no privacy-policy page in this
+     repository or on the hospital's site yet**; one has to be written and published first.
+   - **App Privacy** — what the app really collects (read from the code), all "linked to the
+     person", all for "App functionality", none used for tracking:
+     - *User ID* — the staff member's sign-in name.
+     - *Device ID* — an id the app makes up when installed, sent at sign-in with the phone's model
+       and iOS version, so an administrator can see and sign out a lost phone. Not the phone's
+       serial or advertising id.
+     - *Photos* — photographs of prescription slips, taken in the app and sent to the hospital's
+       server. The app never reads the phone's photo library.
+     - *Audio data* — a doctor's spoken note, up to 60 seconds, sent to the hospital's server to be
+       typed. The server passes the clip to a speech service (OpenAI) and keeps no copy; nothing
+       stays on the phone.
+     - *Health* — staff type and read patients' clinical details in the app. If Apple's form asks,
+       this is health data handled by the app, for app functionality.
+     - **No tracking, no advertising, no analytics, no location, no contacts.**
+   - **Export compliance** is already answered inside the build (standard HTTPS only).
+   - **App Review Information → Sign-in required** — see the next section.
+   - **Version Release** — choose **"Manually release this version"**, so an approved app does not
+     appear in the public App Store before Apple has made it unlisted.
+6. Press **Add for Review**.
+
+### The sign-in for Apple's reviewer — the owner's choice, not made here
+
+Apple's reviewer must be able to sign in. The production build talks to production
+(`hmis.crkmch.com`); a demo user on the staging server cannot sign in to it. Two honest ways:
+
+- **A reviewer account on production, limited to a demo department.** Apple reviews exactly the
+  build staff will use. Cost: a shared password and made-up patients live in the real hospital
+  database (they show in registers, reports and the audit trail until cleaned up), and the account
+  must be switched off after each review.
+- **Submit a build that points at staging.** The reviewer sees test data only and production is
+  untouched. Cost: the reviewed build is not the build staff use — a second build pointing at
+  production has to be submitted and reviewed afterwards, and a reviewer may ask why — and it
+  needs a small change here first (today only the staging app id talks to staging).
+
+Either way: the account must work at any hour (reviewers are not in India), and the review notes
+should say that this is a hospital's internal staff app, that every screen is behind sign-in, and
+which role the demo account holds.
+
+### Making it Unlisted (after the first approval)
+
+1. Wait for the status **"Pending Developer Release"** (approved, not released — step 5 above).
+2. Signed in as the Account Holder, fill in Apple's form:
+   <https://developer.apple.com/contact/request/unlisted-app/> — choose HMIS Staff and say it is for
+   the hospital's own staff.
+3. Apple answers by e-mail (usually a few days). App Store Connect → Pricing and Availability then
+   shows the distribution method **Unlisted App** and a link.
+4. Release the version. The app cannot be found by searching the App Store; staff install it from
+   the link, which the owner shares himself, as with the Android link.
+
+Every later version: steps 3, 4 and 6 again. It stays unlisted.
+
+### A test build for a few iPhones, without the App Store
+
+`npx eas-cli@latest build --platform ios --profile preview` makes the **staging** app
+(`com.crkmch.hmis.staging`, talks to stagehmis). Apple lets it run only on iPhones registered
+beforehand with `npx eas-cli@latest device:create`, at most 100 a year — for trying a change, not
+for giving the app to staff.
+
+### What is in the configuration
+
+- `app.config.ts`, `ios`: the two bundle identifiers (the same strings as Android's app ids),
+  iPhone only (no iPad layout), and the three sentences iOS shows when the app first asks for the
+  camera, the microphone and Face ID. No photo library, no location, no background mode.
+- `withoutApplePush` in the same file removes the push entitlement, so the first build needs no
+  Apple push key. Turning iPhone notifications on later is separate work: the server sends through
+  Firebase only.
+- `eas.json`: `production.ios` (App Store), `preview.ios` (registered iPhones), Node 22.
+- This server cannot build an iPhone app (that needs a Mac). `npx expo prebuild --platform ios`
+  does run here and is how the configuration was checked — in a scratch copy; never commit `ios/`.

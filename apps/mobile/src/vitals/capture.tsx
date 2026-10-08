@@ -37,8 +37,14 @@ const showTake = (x: Take): string => (Array.isArray(x) ? `${x[0]}/${x[1]}` : St
   A BP is two numbers with a separator between them, and Android's decimal pad refuses every
   separator but ".". The phone pad carries "-", "," and "/" (and RN's Android key listener lets
   them through), so that is the BP tile's keyboard; every other tile is a plain decimal pad.
+  An iPhone's phone pad has no "/" at all (only "+", "*", "#" behind a second key), and its decimal
+  pad has only "."; "numbers and punctuation" opens on the digits with "/", "-", "," and "." on the
+  same page — every separator the shared parser takes (packages/contracts vitals-entry, BP_RE).
 */
-const BP_KEYBOARD = Platform.OS === "ios" ? "numbers-and-punctuation" : "phone-pad";
+export function bpKeyboard(os: string): "numbers-and-punctuation" | "phone-pad" {
+  return os === "ios" ? "numbers-and-punctuation" : "phone-pad";
+}
+const BP_KEYBOARD = bpKeyboard(Platform.OS);
 /* The browser's own focus ring is switched off in the web export, so a screenshot shows the app's ring. */
 const NO_OUTLINE = Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : null;
 

@@ -10,7 +10,7 @@ import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
 import { APP_VERSION, APP_VERSION_CODE } from "../config";
 import { Band, Button, MONO, Note, Tag } from "../ui";
-import { checkForUpdate, type UpdateAnswer } from "../update";
+import { checkForUpdate, updatesFromFeed, type UpdateAnswer } from "../update";
 import { loadHome, type HeaderFacts } from "../home/load";
 import { coldOf, homeCache, seenRequests, type ColdHome } from "../home/cache";
 import { onHomeFocus, takeHomeFocus } from "../home/focus";
@@ -462,10 +462,10 @@ export function SeatHome() {
           <Tag tone="faint">{`HMIS ${t("login.product")}`}</Tag>
           <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.md }}>
             <Text testID="app-version" style={[type.small, { color: color.faint, fontFamily: MONO }]}>{t("mobile.update.version", { version: APP_VERSION, code: APP_VERSION_CODE })}</Text>
-            <Pressable testID="update-check" accessibilityRole="button" hitSlop={8} disabled={asked === "checking"} onPress={() => { void checkNow(); }}
+            {updatesFromFeed() && <Pressable testID="update-check" accessibilityRole="button" hitSlop={8} disabled={asked === "checking"} onPress={() => { void checkNow(); }}
               style={{ minHeight: 36, justifyContent: "center" }}>
               <Text style={{ color: color.green, fontSize: 13, fontWeight: "700" }}>{t(asked === "checking" ? "mobile.update.checking" : "mobile.update.check")}</Text>
-            </Pressable>
+            </Pressable>}
           </View>
           {asked === "yes" && update?.kind === "latest" && <Text testID="update-latest" style={[type.small, { color: color.dim }]}>{t("mobile.update.latest", { version: APP_VERSION })}</Text>}
           {asked === "yes" && update?.kind === "unknown" && <Text testID="update-unknown" style={[type.small, { color: color.dim }]}>{t("mobile.update.failed")}</Text>}

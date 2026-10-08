@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { ExpoConfig } from "expo/config";
+import { withEntitlementsPlist } from "expo/config-plugins";
 
 /**
  * One app, three builds (eas.json profiles). APP_ENV picks the API the build talks to; nothing
@@ -34,6 +35,16 @@ const GOOGLE_SERVICES = "./google-services.json";
 const PUSH_IN_BUILD = process.env.HMIS_PUSH_IN_BUILD === "1" && existsSync(join(__dirname, GOOGLE_SERVICES));
 const VERSION_CODE = Number(process.env.HMIS_VERSION_CODE ?? "1");
 
+/**
+ * iPHONE (owner 2026-10-08: about 100 iPhone users; built by EAS, distributed as an Unlisted app).
+ * What iOS shows the person the FIRST time the app reaches for each of these. Exactly what the app
+ * uses and nothing else: no photo library (no screen picks from the gallery), no location, no
+ * tracking, no background mode. Each sentence is handed to the config plugin that owns its key.
+ */
+const IOS_CAMERA = "HMIS uses the camera to photograph prescription slips and scan patient codes.";
+const IOS_MICROPHONE = "HMIS uses the microphone to record a doctor's spoken note, which is typed by the hospital's server and not stored.";
+const IOS_FACE_ID = "HMIS uses Face ID to unlock the app.";
+
 const config: ExpoConfig = {
   name: ENV === "production" ? "HMIS" : "HMIS Staging",
   // `slug` must match the EAS project the owner created (projectId below); the stray app.json
@@ -57,26 +68,32 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     ...(PUSH_IN_BUILD ? { googleServicesFile: GOOGLE_SERVICES } : {}),
   },
+  ios: {
+    // The same two ids as Android, so the staging and the production app install side by side.
+    bundleIdentifier: ENV === "production" ? "com.crkmch.hmis" : "com.crkmch.hmis.staging",
+    supportsTablet: false,
+    // `buildNumber` is EAS's to count (eas.json: appVersionSource remote + autoIncrement).
+    // The app speaks HTTPS only and carries no cryptography of its own: no export paperwork per build.
+    infoPlist: { ITSAppUsesNonExemptEncryption: false },
+  },
   web: { favicon: "./assets/favicon.png", output: "single" },
   plugins: [
     "expo-router",
     "expo-font",
     // The crest on paper while the app starts — the same mark the token slip and the prescription print.
     ["expo-splash-screen", { image: "./assets/splash-icon.png", imageWidth: 140, resizeMode: "contain", backgroundColor: "#F4F7F4" }],
-    "expo-secure-store",
-    [
-      "expo-local-authentication",
-      { faceIDPermission: "Unlock HMIS with your face or fingerprint." },
-    ],
+    ["expo-secure-store", { faceIDPermission: IOS_FACE_ID }],
+    ["expo-local-authentication", { faceIDPermission: IOS_FACE_ID }],
     [
       // The vitals bay's scan door reads a patient card or slip. The camera records no sound (the microphone is expo-audio's, below).
       "expo-camera",
-      { cameraPermission: "HMIS uses the camera to scan a patient card or slip, and to photograph a slip.", recordAudioAndroid: false },
+      { cameraPermission: IOS_CAMERA, recordAudioAndroid: false },
     ],
     // Phone consult (decision 0048) — the microphone, for the doctor's spoken note ONLY. The clip is sent
     // to the hospital's server and on to the speech service; nothing is recorded in the background.
-    ["expo-audio", { microphonePermission: "HMIS uses the microphone when a doctor chooses to speak a consultation note.", enableBackgroundRecording: false, enableBackgroundPlayback: false }],
-    // M6b — the small icon in the tray is the HMIS diamond (alpha only), tinted pine.
+    ["expo-audio", { microphonePermission: IOS_MICROPHONE, enableBackgroundRecording: false, enableBackgroundPlayback: false }],
+    // M6b — the small icon in the tray is the HMIS diamond (alpha only), tinted pine. Android only in
+    // this version: see `withoutApplePush` at the foot of this file.
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#0E6B4E" }],
   ],
   extra: {
@@ -90,4 +107,18 @@ const config: ExpoConfig = {
   },
 };
 
-export default config;
+/**
+ * NOTIFICATIONS ON iPHONE ARE DORMANT IN THIS VERSION. The expo-notifications plugin writes the
+ * `aps-environment` entitlement into every iPhone build, which makes Apple demand a push key before
+ * the first build can be signed. The server sends through Firebase only and no iPhone is ever given
+ * an address (src/push-phone.ts returns "not in this build" off Android), so the entitlement is
+ * taken back out. A mod registered here runs AFTER the plugins' own, so it sees what they wrote.
+ * Android is untouched: this is an iOS-only mod.
+ */
+const withoutApplePush = (c: ExpoConfig): ExpoConfig =>
+  withEntitlementsPlist(c, (m) => {
+    delete m.modResults["aps-environment"];
+    return m;
+  });
+
+export default withoutApplePush(config);

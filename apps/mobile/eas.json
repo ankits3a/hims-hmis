@@ -10,13 +10,15 @@
     "preview": {
       "distribution": "internal",
       "env": { "APP_ENV": "preview" },
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk" },
+      "ios": { "simulator": false, "node": "22.23.2" }
     },
     "production": {
       "env": { "APP_ENV": "production" },
       "autoIncrement": true,
-      "android": { "buildType": "app-bundle" }
+      "android": { "buildType": "app-bundle" },
+      "ios": { "distribution": "store", "node": "22.23.2" }
     }
   },
-  "submit": { "production": {} }
+  "submit": { "production": { "ios": {} } }
 }

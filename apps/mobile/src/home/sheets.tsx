@@ -4,6 +4,7 @@ import * as LocalAuthentication from "expo-local-authentication";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { biometricReady } from "../session";
+import { fineMoneyKey, useBiometricWord } from "../biometric";
 import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
 import { Button, MONO, Note } from "../ui";
@@ -51,6 +52,7 @@ export function ApprovalSheet({ approval, call, online, nowMs, onClose, onDone }
   approval: WireApproval; call: Call; online: boolean; nowMs: number; onClose: () => void; onDone: (verdict: "approved" | "declined") => void;
 }) {
   const { t } = useI18n();
+  const lock = useBiometricWord();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<null | "approve" | "reject">(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export function ApprovalSheet({ approval, call, online, nowMs, onClose, onDone }
           <View style={{ flex: 1 }}><Button testID="approval-decline" kind="secondary" label={t("home.sheet.decline")} busy={busy === "reject"} disabled={busy !== null || !online} onPress={() => { void decide("reject"); }} /></View>
           <View style={{ flex: 1.6 }}><Button testID="approval-approve" label={t("home.sheet.approve")} busy={busy === "approve"} disabled={busy !== null || !online} onPress={() => { void decide("approve"); }} /></View>
         </View>
-        <Text testID="approval-fine" style={[type.small, { color: color.faint }]}>{money ? t("home.sheet.fineMoney") : t("home.sheet.fine")}</Text>
+        <Text testID="approval-fine" style={[type.small, { color: color.faint }]}>{money ? t(fineMoneyKey(lock)) : t("home.sheet.fine")}</Text>
       </View>
     </Modal>
   );
