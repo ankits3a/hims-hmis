@@ -1633,6 +1633,12 @@ export const cdsAliases = pgTable(
     kind: text("kind").notNull(),
     /** Lower-case, NFC, single-spaced. */
     term: text("term").notNull(),
+    /**
+     * The term with its spoken numbers written as digits ("pan forty" → "pan 40"; `readTerm(term).digits`).
+     * What a typed search is compared with, so "pan forty" and "pan 40" find the same nickname. Null on a
+     * row written before the search read this table; such a row is simply never found.
+     */
+    termKey: text("term_key"),
     /** `formulary_medicines.id` — null only on a 'proposed' row whose chooser found no target. */
     medicineId: text("medicine_id"),
     state: text("state").notNull(),
@@ -1661,6 +1667,7 @@ export const cdsAliases = pgTable(
   (t) => [
     uniqueIndex("cds_aliases_kind_term_uq").on(t.kind, t.term),
     index("cds_aliases_state_idx").on(t.state),
+    index("cds_aliases_term_key_idx").on(t.termKey),
     check("cds_aliases_kind_ck", sql`${t.kind} in ('medicine', 'complaint', 'test')`),
     check("cds_aliases_term_ck", sql`char_length(${t.term}) between 2 and 60 and ${t.term} = lower(${t.term})`),
     check("cds_aliases_state_ck", sql`${t.state} in ('proposed', 'suggestion', 'trusted', 'demoted', 'undone')`),

@@ -91,3 +91,11 @@ export {
   OPD_QUEUE_REF_TYPE, queueNudgesAt, sweepQueueNudges,
 } from "./queue-nudges";
 export type { QueueNudge } from "./queue-nudges";
+
+/**
+ * MEDICINE NICKNAMES (decisions 0051, 0055) — the worker's door: the pipeline's dependencies from
+ * the server's settings (no model client while the switch is off) and the hourly runner.
+ */
+export { aliasDepsFrom } from "./alias-store";
+export { runAliasJob, runAliasProposals } from "./alias-runner";
+export type { AliasRunCaps, AliasRunReport } from "./alias-runner";

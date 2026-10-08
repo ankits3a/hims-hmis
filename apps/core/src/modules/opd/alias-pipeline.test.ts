@@ -2,7 +2,7 @@ import { InferenceUnavailable } from "../../kernel/inference/types";
 import type { ChoiceClient, ChooseInput, PredicateClient, PredicateInput } from "../../kernel/inference/types";
 import type { AliasCandidateRow } from "../formulary";
 import {
-  compositionKey, editDistance, formClassOf, headOf, isControlled, proposeAlias, readTerm, shownCandidates, spokenNumber, strengthAgrees, strengthsInName, trustByUse,
+  compositionKey, controlledBy, editDistance, formClassOf, headOf, isControlled, proposeAlias, readTerm, shownCandidates, spokenNumber, strengthAgrees, strengthsInName, trustByUse,
 } from "./alias-pipeline";
 import type { AliasDeps, AliasProposal, AliasReasonCode } from "./alias-pipeline";
 import type { LasaPair } from "./consult-guards";
@@ -224,6 +224,25 @@ describe("the medicine-alias pipeline (decision 0051)", () => {
       expect(isControlled(target)).toBe(true);
       const p = ran(await proposeAlias(fakes([target], { confidence: 1, probability: 1 }).deps, term));
       expect(p).toMatchObject({ state: "proposed", medicineId: target.id, refusal: "controlled_drug", ruleResult: "controlled_drug" });
+    });
+
+    it("says WHICH net caught a controlled medicine: the flag, the stored class, the cited NDPS list, then the name", () => {
+      expect(controlledBy(ALPRAX)).toBe("schedule");
+      expect(controlledBy(TRAMADOL)).toBe("ndps_class");
+      // Morphine is on the formulary's cited NDPS list; the staging catalogue gives it no flag and no class.
+      expect(controlledBy(MORPHINE)).toBe("ndps_list");
+      expect(controlledBy(row("m_feb", "Febrex (fentanyl citrate) 50 mcg injection", { salts: [], scheduleFlag: null }))).toBe("ndps_list");
+      // A benzodiazepine is not on that list (its Schedule entry was not read at source): the name is the last net.
+      expect(controlledBy(row("m_clz", "Clonotril (clonazepam) 0.5 mg oral tablet", { salts: ["clonazepam"], scheduleFlag: null }))).toBe("name");
+      expect(controlledBy(PAN40)).toBeNull();
+    });
+
+    it("the second-tap flag is for a DIFFERENT medicine with a near name, not the same brand's combination", async () => {
+      const ALLEGRA = row("m_all", "Allegra (fexofenadine) 120 mg oral tablet", { salts: ["fexofenadine"] });
+      const ALLEGRA_M = row("m_allm", "Allegra M (fexofenadine and montelukast) 120 mg + 10 mg oral tablet", { salts: ["fexofenadine", "montelukast"], tier: 1 });
+      const ALLERT = row("m_alt", "Allegro (almotriptan) 120 mg oral tablet", { salts: ["almotriptan"], tier: 0, similarity: 0.7 });
+      expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRA_M]).deps, "allegra 120"))).toMatchObject({ state: "suggestion", medicineId: "m_all", lasaGuard: false });
+      expect(ran(await proposeAlias(fakes([ALLEGRA, ALLEGRA_M, ALLERT]).deps, "allegra 120"))).toMatchObject({ state: "suggestion", medicineId: "m_all", lasaGuard: true });
     });
 
     it("a second product holding more than a fifth of the chooser's belief is a second target", async () => {

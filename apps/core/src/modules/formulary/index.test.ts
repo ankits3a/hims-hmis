@@ -90,6 +90,7 @@ const SURFACE = [
   "listInteractionsAmong",
   "matchProducts", // the CDS regimen fill: a composition to one stocked-or-generic product, exact
   "medicineExists",
+  "medicineHitById", // decisions 0051/0055 — one catalogue row in the search's own shape, for a learned nickname's medicine
   "medicineIdsByBrandNames",
   "medicinesByBrandPrefix", // owner 2026-10-04 — a vendor price list's brand stem, read for the pharmacy's import
   "medicinesByIds",
@@ -103,6 +104,7 @@ const SURFACE = [
   "parseComposition", // pure: a vendor's composition column into moieties and strengths
   "projectSubstances",
   "refreshRankSignals",
+  "registerNicknameLookup", // decisions 0051/0055 — OPD registers its nickname reader with the prescriber's search
   "rejectStaging",
   "renalDoseFor",
   "resolveDrugTexts",
@@ -115,6 +117,7 @@ const SURFACE = [
   "saveMonograph",
   "searchGenerics", // the monograph curation door's typeahead
   "searchMedicines",
+  "searchMedicinesForPrescribing", // decisions 0051/0055 — the catalogue's answer plus a learned nickname's row
   "searchStaging",
   "suggestDrugs",
   "suggestMoieties",

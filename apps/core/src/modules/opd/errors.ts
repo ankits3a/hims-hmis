@@ -20,6 +20,8 @@ export type OpdErrorCode =
   // deliberately also what a doctor gets for another doctor's row: not-found and not-yours must
   // answer identically, or the code becomes a way to probe whose template an id belongs to.
   | "unknown_advice_template" | "advice_template_incomplete" | "advice_keyword_invalid"
+  // Decision 0051 — the owner's list of learned medicine nicknames; 404 by the `unknown_` rule.
+  | "unknown_nickname"
   | "unknown_complaint_concept" | "complaint_term_invalid" | "complaint_term_already_mapped"
   | "call_conflict" | "unknown_queue_entry" | "queue_entry_state_conflict" | "invalid_transfer"
   | "invalid_vitals" | "vitals_incomplete"

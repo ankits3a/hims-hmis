@@ -1,4 +1,8 @@
-import { Injectable, Module, OnModuleInit } from "@nestjs/common";
+import { Inject, Injectable, Module, OnModuleInit } from "@nestjs/common";
+import { CONFIG } from "../../kernel/tokens";
+import type { AppConfig } from "../../kernel/config";
+import { registerNicknameLookup } from "../formulary";
+import { nicknameLookupFor } from "./alias-store";
 // PLAN 17 PHASE 0 T3 — the registry moved to the kernel; billing re-exports the same names.
 import { registerEncounterResolver } from "../../kernel/episodes/encounter-resolvers";
 import { registerFeeStatusHook } from "../billing";
@@ -55,7 +59,12 @@ class OpdRealtimeRegistrar implements OnModuleInit {
   providers: [OpdRealtimeRegistrar],
 })
 export class OpdModule implements OnModuleInit {
+  constructor(@Inject(CONFIG) private readonly config: AppConfig) {}
+
   onModuleInit(): void {
+    // Decisions 0051/0055 — the prescriber's medicine search asks OPD for a learned nickname. The
+    // lookup answers null, and reads nothing, while ALIAS_PIPELINE_ENABLED is off.
+    registerNicknameLookup(nicknameLookupFor(this.config));
     registerOpdEncounterResolver();
     registerOpdCareContextProvider();
     // RC-1 T3 / D2 — the board flip: billing settles, OPD narrates. The registry is keyed, so a

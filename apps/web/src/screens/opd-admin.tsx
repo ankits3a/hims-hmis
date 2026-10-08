@@ -19,6 +19,7 @@ import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import { ConsultLayoutAdmin } from "./opd-layout";
 import { PhoneConsultAdmin } from "./opd-phone-consult";
+import { NicknamesAdmin } from "./opd-nicknames";
 import type { AgentLine } from "../components/agent-dock";
 /*
   ALIASED ON IMPORT so the four tabs' JSX does not churn: the elements are the same five, the paint
@@ -793,7 +794,7 @@ function SchedulesAndLeavesTab({
 export function OpdAdmin(): React.ReactElement {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules" | "vocabulary" | "layout" | "phone">("departments");
+  const [tab, setTab] = useState<"departments" | "rooms" | "doctors" | "schedules" | "vocabulary" | "layout" | "phone" | "nicknames">("departments");
   const [agentLog, setAgentLog] = useState<AgentLine[]>([]);
 
   const departments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, refetchInterval: POLL_MS });
@@ -855,6 +856,7 @@ export function OpdAdmin(): React.ReactElement {
           ["vocabulary", t("opdAdmin.tabs.vocabulary")],
           ["layout", t("opdLayout.adminTab")],
           ["phone", t("phoneConsult.tab")],
+          ["nicknames", t("nicknames.tab")],
         ] as const}
       />
       {/*
@@ -872,6 +874,8 @@ export function OpdAdmin(): React.ReactElement {
         {tab === "layout" && <ConsultLayoutAdmin departments={departmentItems} />}
         {/* Decisions 0048/0049 — the voice and suggestion switches, the meters, the look-alike pairs. */}
         {tab === "phone" && <PhoneConsultAdmin />}
+        {/* Decisions 0051/0055 — what the automatic pipeline learned, and the owner's one-tap undo. */}
+        {tab === "nicknames" && <NicknamesAdmin />}
       </div>
 
       <AgentDock

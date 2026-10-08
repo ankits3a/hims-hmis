@@ -324,11 +324,19 @@ export type WireMedicineHit = {
    * no drug class and no interaction pairs, and the field says so beside the name.
    */
   reviewed: boolean;
+  /**
+   * Decisions 0051/0055 — this row is here because the hospital has LEARNED that what was typed is a
+   * nickname for it ("pan forty"). Absent on every ordinary row, and on every row while the server's
+   * nickname switch is off. `id` is what a tap or a cross on the row is counted against;
+   * `lasaGuard` asks the field for a second tap before it takes the pick.
+   */
+  alias?: { id: string; state: "suggestion" | "trusted"; lasaGuard: boolean };
 };
 
-export const searchMedicines = async (q: string, limit = 10): Promise<WireMedicineHit[]> =>
+/** `rx` — a PRESCRIBING field is asking (the consult, the desk scribe): a learned nickname may add one row. */
+export const searchMedicines = async (q: string, limit = 10, rx = false): Promise<WireMedicineHit[]> =>
   (await api<{ items: WireMedicineHit[] }>(
-    "GET", `/formulary/medicines/search?q=${encodeURIComponent(q)}&limit=${String(limit)}`,
+    "GET", `/formulary/medicines/search?q=${encodeURIComponent(q)}&limit=${String(limit)}${rx ? "&for=rx" : ""}`,
   )).items;
 
 /** GAP CLOSURE A2 — the law's class of a medicine, set from the item master (`formulary.manage`). */

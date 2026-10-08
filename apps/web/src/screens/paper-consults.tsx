@@ -95,6 +95,7 @@ function Correction({ row, onDone, onCancel }: { row: WirePaperConsult; onDone: 
       <p className="pc-note">{t("paper.list.correctHint")}</p>
       <PaperLinesEditor
         idPrefix={`fix-${row.encounterId}`} lines={lines} onChange={setLines} alerts={alerts}
+        nicknames={{ surface: "consult_web", encounterId: row.encounterId }}
         reasons={reasons} onReason={(at, r) => { setReasons((m) => new Map(m).set(at, r)); }}
       />
       {error !== null && <p className="pc-bad" role="alert" data-testid="paper-correct-error">{error}</p>}

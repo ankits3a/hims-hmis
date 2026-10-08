@@ -337,6 +337,12 @@ const configSchema = z.object({
   ALIAS_CHOOSER_ORDER: z.string().optional(),
   ALIAS_CHOOSER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.95),
   ALIAS_REVIEWER_MIN_PROBABILITY: z.coerce.number().gt(0.5).max(1).default(0.9),
+  /**
+   * The hourly runner's two caps (`modules/opd/alias-runner.ts`): unmatched terms it sends to the
+   * models in one run, and in one IST day. Each term is at most three provider calls.
+   */
+  ALIAS_RUN_MAX_TERMS: z.coerce.number().int().min(1).max(500).default(40),
+  ALIAS_DAILY_MAX_TERMS: z.coerce.number().int().min(1).max(5000).default(300),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -576,7 +582,7 @@ export type AppConfig = {
   triageChooserOrder: ("typesafe" | "openai")[];
   copilotChooserOrder: ("typesafe" | "openai")[];
   /** Decision 0051 — the medicine-alias pipeline. `enabled` is FALSE unless an operator says otherwise. */
-  aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number };
+  aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number; perRun: number; perDay: number };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -897,6 +903,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       chooserOrder: chooserOrderFrom("ALIAS_CHOOSER_ORDER", parsed.ALIAS_CHOOSER_ORDER ?? parsed.TRIAGE_CHOOSER_ORDER),
       chooserLine: parsed.ALIAS_CHOOSER_MIN_CONFIDENCE,
       reviewerLine: parsed.ALIAS_REVIEWER_MIN_PROBABILITY,
+      perRun: parsed.ALIAS_RUN_MAX_TERMS,
+      perDay: parsed.ALIAS_DAILY_MAX_TERMS,
     },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,

@@ -920,6 +920,11 @@
       "paperAsk_one": "{{count}} medicine typed here will NOT be issued — the paper is the prescription. Tap again to go on.",
       "paperAsk_other": "{{count}} medicines typed here will NOT be issued — the paper is the prescription. Tap again to go on.",
       "paperConfirm": "Yes, paper",
+      "nickname": {
+        "tag": "nickname",
+        "ask": "{{name}} — is this the one?",
+        "askBody": "Shown because of a nickname the hospital learned. Other medicines have a similar name; check the full name."
+      },
       "lasa": {
         "ask": "{{name}} — not {{other}}?",
         "body": "These two names are easily confused. Check the one you mean.",
