@@ -2216,5 +2216,159 @@
     "offline": "No network — could not read the count.",
     "refused": "The server could not answer. Try again.",
     "noAccess": "There is no recording count for your login."
+  },
+  "owner": {
+    "today": "Today",
+    "notLoaded": "This part did not load",
+    "byDoctor": "By doctor",
+    "tile": {
+      "money": "Money",
+      "opd": "OPD",
+      "recorded": "Recorded",
+      "appointments": "Appointments",
+      "pharmacy": "Pharmacy",
+      "staff": "Staff",
+      "learning": "Learning"
+    },
+    "sub": {
+      "missing": "{{n}} missing",
+      "allIn": "all recorded",
+      "noneYet": "none yet",
+      "rebook": "{{n}} to rebook",
+      "lowStock": "{{n}} low stock",
+      "bills": "bills today",
+      "gap": "{{n}} gap",
+      "gaps": "{{n}} gaps",
+      "onLeave": "{{n}} on leave",
+      "onDuty": "on duty now",
+      "nicknames": "new nicknames",
+      "learningOff": "switched off"
+    },
+    "period": {
+      "today": "Today",
+      "week": "Week",
+      "month": "Month",
+      "custom": "Custom"
+    },
+    "vs": {
+      "today": "vs same day last week",
+      "week": "vs last week to date",
+      "month": "vs last month to date",
+      "none": "Nothing to compare with yet"
+    },
+    "custom": {
+      "from": "From",
+      "to": "To",
+      "hint": "YYYY-MM-DD",
+      "show": "Show",
+      "bad_date": "Write dates as YYYY-MM-DD",
+      "order": "To is before From",
+      "too_long": "At most 92 days",
+      "future": "Not after today"
+    },
+    "month": {
+      "jan": "Jan",
+      "feb": "Feb",
+      "mar": "Mar",
+      "apr": "Apr",
+      "may": "May",
+      "jun": "Jun",
+      "jul": "Jul",
+      "aug": "Aug",
+      "sep": "Sep",
+      "oct": "Oct",
+      "nov": "Nov",
+      "dec": "Dec"
+    },
+    "money": {
+      "collected": "Collected",
+      "month": "Month so far",
+      "vsMonth": "vs {{month}}",
+      "lastMonthWas": "{{month}}: {{amount}}",
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card",
+      "cashiers": "Cashiers",
+      "drawer": {
+        "open": "open · not counted",
+        "exact": "counted · exact",
+        "short": "counted · short {{amount}}",
+        "excess": "counted · excess {{amount}}"
+      },
+      "refunds": "Refunds",
+      "paid": "{{n}} paid",
+      "discounts": "Discounts",
+      "letThrough": "Let through unpaid"
+    },
+    "recorded": {
+      "head": "On record",
+      "of": "{{on}} of {{of}}",
+      "notRecorded": "{{n}} not recorded",
+      "onScreen": "On screen",
+      "typed": "Paper, typed",
+      "photoOnly": "Paper, photo only",
+      "missing": "Not recorded",
+      "none": "No count for this login"
+    },
+    "appointments": {
+      "head": "Appointments",
+      "came": "Came",
+      "toCome": "To come",
+      "missed": "Missed",
+      "rebook": "Need rebooking",
+      "cancelled": "Cancelled",
+      "cameOf": "{{n}} came"
+    },
+    "pharmacy": {
+      "sales": "Sales",
+      "bills": "Bills",
+      "each": "{{amount}} each",
+      "billsN": "{{n}} bills",
+      "split": {
+        "dispense": "Prescriptions",
+        "walk_in": "Walk-in sales",
+        "downtime": "Entered after downtime"
+      },
+      "served": "Prescriptions served",
+      "stock": "Stock",
+      "now": "as it stands now",
+      "low": "Low stock",
+      "expiring": "Expiring in 60 days",
+      "asked": "Out of stock, asked for"
+    },
+    "staff": {
+      "title": "Staff today",
+      "onDuty": "On duty now",
+      "onLeave": "On leave today",
+      "nobody": "Nobody on leave",
+      "gaps": "Roster gaps",
+      "noGaps": "No gap in the next 24 hours",
+      "waiting": "Waiting",
+      "cover": "Cover requests",
+      "leaveAsked": "Leave requests",
+      "noAttendance": "No attendance record yet"
+    },
+    "learning": {
+      "title": "Learning this week",
+      "on": "Nickname learning is on",
+      "off": "Nickname learning is switched off",
+      "nicknames": "Nicknames",
+      "none": "Nothing new this week",
+      "undo": "Undo",
+      "putBack": "Put back",
+      "trusted": "trusted",
+      "doctor": "1 doctor",
+      "doctors": "{{n}} doctors",
+      "removed": "removed",
+      "crossedOff": "removed · crossed off",
+      "tapped": "Suggestions tapped",
+      "misses": "Words not understood",
+      "notSaved": "Not saved — try again"
+    },
+    "opd": {
+      "head": "OPD visits",
+      "byDept": "By department",
+      "none": "No visits in these days"
+    }
   }
 }
