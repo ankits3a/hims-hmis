@@ -9,9 +9,9 @@ import { events, invoiceLines, invoices, opdAppointments, opdEncounters, opdQueu
 import { invoiceSettlement } from "../billing";
 import { bookAppointment, rescheduleAppointment } from "./appointments";
 import { completeConsultation, startConsultation } from "./consultation";
-import { openVisit, visitTypeIn } from "./encounters";
+import { moveEncounter, openVisit, visitTypeIn } from "./encounters";
 import { markConsultedOnPaper } from "./paper-consult";
-import { issuePrescription } from "./prescriptions";
+import { getPrescriptionPrint, issuePrescription } from "./prescriptions";
 import { listQueue, queueFeeStatusHook } from "./queue";
 import { openDueTeleVisits, recordTeleAdvance, teleDeskMarks } from "./tele";
 import { recordTeleOutcome, startTeleCall } from "./tele-call";
@@ -96,6 +96,8 @@ describe("opd tele-call — the call, the outcome, the guards and the bill (slic
     await recordTeleOutcome(db, dra.actor, encounterId, "spoke", T0940);
     const issued = await issuePrescription(db, dra.actor, testCfg, encounterId, { lines: LINES }, T0940);
     expect(issued.prescriptionId).toMatch(/\S/);
+    // SLICE 5 — the print says it was a tele-consultation
+    expect((await getPrescriptionPrint(db, testCfg, dra.actor, issued.prescriptionId)).encounter.tele).toBe(true);
     const done = await completeConsultation(db, dra.actor, encounterId, { testsOrderedReturnToday: false }, T0950);
     expect(done.encounter.status).toBe("completed");
     // …and the free follow-up window starts as a normal visit's does
@@ -104,9 +106,17 @@ describe("opd tele-call — the call, the outcome, the guards and the bill (slic
 
   it("an in-person visit is never asked about a call: it completes as it always did, and the tele routes refuse it", async () => {
     const walk = await openVisit(db, clerk.actor, { patientId: p2.id, departmentId: deptId, doctorId: dra.doctorId }, T0931);
-    await db.update(opdEncounters).set({ status: "waiting" }).where(eq(opdEncounters.id, walk.encounter.id));
+    const vd = await mkUser(db, "tc_vd", ["vitals_desk"]);
+    await withTx(db, (tx) => moveEncounter(tx, vd.actor, walk.encounter, "waiting", {}, T0931));
+    await db.update(opdQueueEntries).set({ status: "waiting", eligibleAt: T0931 }).where(eq(opdQueueEntries.encounterId, walk.encounter.id));
     await expect(startTeleCall(db, dra.actor, walk.encounter.id, T0935)).rejects.toMatchObject({ code: "not_a_tele_visit" });
     await expect(recordTeleOutcome(db, dra.actor, walk.encounter.id, "spoke", T0935)).rejects.toMatchObject({ code: "not_a_tele_visit" });
+    // …and its prescription prints as it always did: no tele line
+    await startConsultation(db, dra.actor, walk.encounter.id, T0935);
+    await expect(startTeleCall(db, dra.actor, walk.encounter.id, T0935)).rejects.toMatchObject({ code: "not_a_tele_visit" });
+    const rx = await issuePrescription(db, dra.actor, testCfg, walk.encounter.id, { lines: LINES }, T0940);
+    expect((await getPrescriptionPrint(db, testCfg, dra.actor, rx.prescriptionId)).encounter.tele).toBe(false);
+    expect((await completeConsultation(db, dra.actor, walk.encounter.id, { testsOrderedReturnToday: false }, T0950)).encounter.status).toBe("completed");
   });
 
   it("CALL: the treating doctor is handed the number — only here — and the first call is stamped once; another doctor is refused", async () => {

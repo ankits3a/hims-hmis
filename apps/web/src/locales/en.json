@@ -1503,6 +1503,7 @@
   },
   "rx": {
     "unitNumber": "Unit Number",
+    "tele": "Tele-consultation · patient not examined",
     "deptRegn": "Dept. Regn",
     "doctorId": "Doctor ID",
     "uhid": "UHID",

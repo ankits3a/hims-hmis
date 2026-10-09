@@ -425,6 +425,8 @@ export type WireRxPrint = {
    */
   doctor: { unitNumber?: string; deptRegn?: string | null; code?: string | null; departmentName: string | null; unit?: string | null };
   encounter: {
+    /** Owner 2026-10-09 — a tele-call's prescription prints one boxed line saying nobody examined the patient. Optional: an older server sends none. */
+    tele?: boolean;
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
     /** PLAN 07d T5 — advised tests with the price AS OF the service date (DD4, E-9). */
