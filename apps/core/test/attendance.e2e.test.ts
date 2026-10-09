@@ -16,6 +16,7 @@ import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { orgDepartmentByCode, ROSTER_POSITIONS, seedOrgDepartments, seedRosterPositions } from "../src/modules/roster/masters";
 import { attendanceManifest, bioattendSignature, syncAttendance } from "../src/modules/attendance";
 import { forgetAttendanceSecrets } from "../src/modules/attendance/secrets";
+import { aadhaarHash, verhoeffValid } from "../src/modules/attendance/aadhaar";
 import { addDays, istDate, previousMonth } from "../src/modules/attendance/ist";
 import { STUB_AADHAAR_KEY, STUB_API_KEY, STUB_WEBHOOK_SECRET, createBioattendStub } from "../scripts/bioattend-stub";
 import type { NestExpressApplication } from "@nestjs/platform-express";
@@ -314,6 +315,110 @@ describe("staff attendance e2e (HTTP)", () => {
         expect((await http().post(`/admin/users/${target}/identity`).send({ aadhaar: AADHAAR })).status).toBe(401);
         expect((await http().post("/admin/users/01JZZZZZZZZZZZZZZZZZZZZZZZ/identity").set(admin).send({ mobile: "9876501234" })).status).toBe(404);
         expect((await http().post(`/admin/users/${target}/identity`).set(admin).send({ aadhaar: AADHAAR, extra: 1 })).body).toEqual({ code: "bad_body" });
+      });
+    });
+
+    /**
+     * "ADD YOUR AADHAAR" (owner 2026-10-09) — the signed-in person's own number, by `/me/identity`.
+     * No id in the path: whoever is signed in is whose record it is.
+     */
+    describe("a person's own Aadhaar (/me/identity)", () => {
+      /** Valid Aadhaar numbers no machine person holds — made here so no test number is invented by hand. */
+      const freshAadhaar = (from: number): string => {
+        const held = new Set(stub.fixture.staff.map((s) => s.aadhaar_hash));
+        for (let n = from; ; n++) {
+          const d = String(n);
+          if (/^[2-9]\d{11}$/.test(d) && verhoeffValid(d) && !held.has(aadhaarHash(d, STUB_AADHAAR_KEY))) return d;
+        }
+      };
+      let me: string;
+      let mine: { Authorization: string };
+      beforeEach(async () => {
+        me = await mk("a.kumar", "Dr A Kumar");
+        mine = await token("a.kumar");
+      });
+
+      it("needsAadhaar is true before, false after; the machine's number LINKS the person and the number is then locked", async () => {
+        await pull();
+        expect((await http().get("/me/identity").set(mine).expect(200)).body).toEqual({ aadhaarConfigured: true, aadhaar: null, attendance: "not_linked", needsAadhaar: true });
+        const saved = await http().post("/me/identity").set(mine).send({ aadhaar: AADHAAR });
+        expect([saved.status, saved.body]).toEqual([200, { aadhaarConfigured: true, aadhaar: "XXXX XXXX 0124", attendance: "linked", needsAadhaar: false }]);
+        expect((await db.select().from(attStaff).where(eq(attStaff.pin, "304")))[0]).toMatchObject({ userId: me, linkSource: "aadhaar" });
+        expect((await http().get("/me/identity").set(mine)).body.needsAadhaar).toBe(false);
+        // Linked: a wrong link is the administrator's to mend, never the person's to re-point.
+        const again = await http().post("/me/identity").set(mine).send({ aadhaar: freshAadhaar(234567890200) });
+        expect([again.status, again.body]).toEqual([409, { code: "aadhaar_locked" }]);
+        expect((await db.select().from(users).where(eq(users.id, me)))[0]!.aadhaarLast4).toBe("0124");
+      });
+
+      it("a number the machine does not hold is kept, not linked — and the sticker is answered", async () => {
+        await pull();
+        const n = freshAadhaar(234567890200);
+        const res = await http().post("/me/identity").set(mine).send({ aadhaar: n });
+        expect(res.body).toEqual({ aadhaarConfigured: true, aadhaar: `XXXX XXXX ${n.slice(-4)}`, attendance: "not_linked", needsAadhaar: false });
+      });
+
+      it("TWO LOGINS GIVING ONE NUMBER LINK NEITHER — the existing two-matches rule, through this route", async () => {
+        const other = await mk("b.kumar", "B Kumar");
+        const theirs = await token("b.kumar");
+        await http().post("/me/identity").set(mine).send({ aadhaar: AADHAAR }).expect(200);
+        await http().post("/me/identity").set(theirs).send({ aadhaar: "2345-6789-0124" }).expect(200);
+        await pull(); // the machine's list arrives after both said the same number
+        expect((await db.select().from(attStaff).where(eq(attStaff.pin, "304")))[0]).toMatchObject({ userId: null, needsAttention: "aadhaar_shared" });
+        for (const who of [mine, theirs]) expect((await http().get("/me/identity").set(who)).body).toMatchObject({ attendance: "two_matches", needsAadhaar: false });
+        expect(other).not.toBe(me);
+      });
+
+      it("the record is the caller's own: no id in the path, an extra key is refused, and only the caller's row moves", async () => {
+        const other = await mk("b.kumar", "B Kumar");
+        expect((await http().post("/me/identity").set(mine).send({ aadhaar: AADHAAR, userId: other })).body).toEqual({ code: "bad_body" });
+        expect((await http().post(`/me/identity/${other}`).set(mine).send({ aadhaar: AADHAAR })).status).toBe(404);
+        await http().post("/me/identity").set(mine).send({ aadhaar: AADHAAR }).expect(200);
+        const rows = await db.select({ id: users.id, last4: users.aadhaarLast4 }).from(users).where(sql`${users.id} in (${me}, ${other})`);
+        expect(new Map(rows.map((r) => [r.id, r.last4]))).toEqual(new Map([[me, "0124"], [other, null]]));
+        expect((await http().get("/me/identity")).status).toBe(401);
+        expect((await http().post("/me/identity").send({ aadhaar: AADHAAR })).status).toBe(401);
+        expect((await http().post("/me/identity").set(mine).send({ aadhaar: "" })).body).toEqual({ code: "bad_body" });
+      });
+
+      it("the event is the person's own and carries no digit; an invalid number is refused by its rule", async () => {
+        const res = await http().post("/me/identity").set(mine).send({ aadhaar: "2345 6789 0125" });
+        expect([res.status, res.body.code, res.body.problem]).toEqual([400, "aadhaar_invalid", "bad_check_digit"]);
+        expect(JSON.stringify(res.body)).not.toMatch(/\d{4}/);
+        await http().post("/me/identity").set(mine).send({ aadhaar: AADHAAR }).expect(200);
+        const rows = await db.select().from(events).where(eq(events.name, "attendance.user_identity_changed"));
+        expect(rows.map((e) => ({ actorType: e.actorType, actorId: e.actorId, payload: e.payload }))).toEqual([
+          { actorType: "user", actorId: me, payload: { userId: me, username: "a.kumar", field: "aadhaar", change: "set" } },
+        ]);
+        expect(JSON.stringify(rows.map((e) => e.payload))).not.toMatch(/2345|6789|0124/);
+      });
+
+      it("no key on this host: the sticker is not drawn and a save is refused as the admin route refuses it", async () => {
+        rmSync(secretFile("aadhaar-key.txt"));
+        forgetAttendanceSecrets();
+        expect((await http().get("/me/identity").set(mine)).body).toEqual({ aadhaarConfigured: false, aadhaar: null, attendance: "not_linked", needsAadhaar: false });
+        const res = await http().post("/me/identity").set(mine).send({ aadhaar: AADHAAR });
+        expect([res.status, res.body.code]).toEqual([409, "aadhaar_key_not_configured"]);
+      });
+
+      it("a machine account (modality_bridge / lab_bridge) is never asked and may not save", async () => {
+        await db.insert(roles).values({ key: "modality_bridge", title: "Modality bridge" }).onConflictDoNothing();
+        const bridge = await mk("pacs.bridge", "PACS bridge");
+        await assignRole(db, { userId: bridge, roleKey: "modality_bridge", scopeType: "hospital" });
+        const t = await token("pacs.bridge");
+        expect((await http().get("/me/identity").set(t)).body.needsAadhaar).toBe(false);
+        expect((await http().post("/me/identity").set(t).send({ aadhaar: AADHAAR })).body).toMatchObject({ code: "not_a_person" });
+        expect((await db.select().from(users).where(eq(users.id, bridge)))[0]!.aadhaarHash).toBeNull();
+      });
+
+      it("five saves a day, then 429 — and the refused sixth stores nothing", async () => {
+        let from = 234567890200;
+        const numbers: string[] = [];
+        for (let i = 0; i < 6; i++) { const n = freshAadhaar(from); numbers.push(n); from = Number(n) + 1; }
+        for (const n of numbers.slice(0, 5)) await http().post("/me/identity").set(mine).send({ aadhaar: n }).expect(200);
+        const sixth = await http().post("/me/identity").set(mine).send({ aadhaar: numbers[5] });
+        expect([sixth.status, sixth.body]).toEqual([429, { code: "too_many_attempts" }]);
+        expect((await db.select().from(users).where(eq(users.id, me)))[0]!.aadhaarLast4).toBe(numbers[4]!.slice(-4));
       });
     });
 
