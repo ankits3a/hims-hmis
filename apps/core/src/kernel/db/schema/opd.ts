@@ -1749,7 +1749,7 @@ export const opdFlowBaselines = pgTable(
   },
   (t) => [
     uniqueIndex("opd_flow_baselines_cell_uq").on(t.scope, t.leg, t.weekday, t.hour),
-    check("opd_flow_baselines_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor')`),
+    check("opd_flow_baselines_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')`),
     check("opd_flow_baselines_weekday_ck", sql`${t.weekday} between -1 and 6`),
     check("opd_flow_baselines_hour_ck", sql`${t.hour} = -1 or ${t.hour} between 0 and 23`),
   ],
@@ -1797,9 +1797,9 @@ export const opdFlowFindings = pgTable(
   (t) => [
     uniqueIndex("opd_flow_findings_live_uq").on(t.findingKey).where(sql`${t.state} <> 'resolved'`),
     index("opd_flow_findings_state_idx").on(t.state),
-    check("opd_flow_findings_type_ck", sql`${t.type} in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression')`),
+    check("opd_flow_findings_type_ck", sql`${t.type} in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression', 'consult_up')`),
     check("opd_flow_findings_state_ck", sql`${t.state} in ('open', 'dismissed', 'resolved')`),
-    check("opd_flow_findings_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor')`),
+    check("opd_flow_findings_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')`),
     check("opd_flow_findings_dismissed_ck", sql`(${t.state} = 'dismissed') = (${t.dismissedAt} is not null) and (${t.dismissedBy} is null) = (${t.dismissedAt} is null)`),
     check("opd_flow_findings_tried_ck", sql`(${t.triedBy} is null) = (${t.triedAt} is null)`),
     check("opd_flow_findings_note_ck", sql`${t.note} is null or ${t.note} in ('returned', 'returned_worse')`),

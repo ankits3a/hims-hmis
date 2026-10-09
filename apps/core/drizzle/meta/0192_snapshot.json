@@ -52474,7 +52474,7 @@
       "checkConstraints": {
         "opd_flow_baselines_leg_ck": {
           "name": "opd_flow_baselines_leg_ck",
-          "value": "\"opd_flow_baselines\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor')"
+          "value": "\"opd_flow_baselines\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')"
         },
         "opd_flow_baselines_weekday_ck": {
           "name": "opd_flow_baselines_weekday_ck",
@@ -52697,7 +52697,7 @@
       "checkConstraints": {
         "opd_flow_findings_type_ck": {
           "name": "opd_flow_findings_type_ck",
-          "value": "\"opd_flow_findings\".\"type\" in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression')"
+          "value": "\"opd_flow_findings\".\"type\" in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression', 'consult_up')"
         },
         "opd_flow_findings_state_ck": {
           "name": "opd_flow_findings_state_ck",
@@ -52705,7 +52705,7 @@
         },
         "opd_flow_findings_leg_ck": {
           "name": "opd_flow_findings_leg_ck",
-          "value": "\"opd_flow_findings\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor')"
+          "value": "\"opd_flow_findings\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')"
         },
         "opd_flow_findings_dismissed_ck": {
           "name": "opd_flow_findings_dismissed_ck",

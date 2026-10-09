@@ -68,7 +68,7 @@ describe("the waits — who reads, who acts, and no name in the payload", () => 
     const now = Date.now();
     const today = istDayOf(now);
     await insertVisits(db, { patientId: p.id, doctorId: dr.doctorId, by: ids.desk }, Array.from({ length: 6 }, (_, i) => ({
-      departmentId: deptId, serviceDate: today, openedAt: new Date(Math.max(now - (60 + 5 * i) * 60_000, Date.parse(`${today}T00:01:00+05:30`))), a: 2, b: 3,
+      departmentId: deptId, serviceDate: today, openedAt: new Date(Math.max(now - (60 + 5 * i) * 60_000, Date.parse(`${today}T00:01:00+05:30`))), a: 2, b: 3, c: 7,
     })));
     findingA = newId(); findingB = newId();
     const row = (fid: string, hourFrom: number) => ({
@@ -90,6 +90,10 @@ describe("the waits — who reads, who acts, and no name in the payload", () => 
     }
     const owner = (await get("/opd/reports/flow?period=today&groupBy=department", "owner")).body;
     expect(owner.hospital.deskToDoctor).toEqual({ n: 6, avg: 5, median: 5, p90: 5 });
+    /* In consultation — Start → Complete, its own row; the department carries it too (owner 2026-10-09). */
+    expect(owner.hospital.consult).toEqual({ n: 6, avg: 7, median: 7, p90: 7 });
+    expect(owner.groups[0].cell.consult).toEqual({ n: 6, avg: 7, median: 7, p90: 7 });
+    expect(owner.previous).toMatchObject({ consult: { n: 0, avg: null } });
     expect(owner.previous).toMatchObject({ deskToDoctor: { n: 0, avg: null } });
     expect(owner.groups).toHaveLength(1);
     expect(owner.findings.map((f: { id: string }) => f.id).sort()).toEqual([findingA, findingB].sort());

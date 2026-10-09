@@ -13,7 +13,7 @@ import type { Call } from "../doctor/api";
  * THE "WAIT" PAGE (owner 2026-10-09: "how much time … from registration desk to Vital desk and then …
  * from vitals to getting consulted … per department … day, week, month, custom … comparison").
  *
- * Three numbers (Avg minutes) with the like period before; departments ranked with the hospital's line;
+ * Three waits and the time IN consultation (Avg minutes, the last never added to the waits) with the like period before; departments ranked with the hospital's line;
  * a by-hour strip 08–20 for a chosen leg; weekdays; "To improve" — the nightly learning's findings, each
  * in a FIXED template filled with its numbers, with × and "Tried it"; and "Fixed" with the minutes won.
  *
@@ -78,7 +78,7 @@ function Line({ label, value, sub, testID, first, bold }: { label: string; value
 function Chip({ label, on, onPress, testID }: { label: string; on: boolean; onPress: () => void; testID: string }) {
   return (
     <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={onPress}
-      style={{ flex: 1, minHeight: 36, borderRadius: 999, borderWidth: 1, borderColor: on ? color.ink : color.line, backgroundColor: on ? color.ink : color.card, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
+      style={{ flexGrow: 1, flexBasis: "45%", minHeight: 36, borderRadius: 999, borderWidth: 1, borderColor: on ? color.ink : color.line, backgroundColor: on ? color.ink : color.card, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
       <Text style={{ fontSize: 12, fontWeight: "700", color: on ? "#f2faf6" : color.ink }} numberOfLines={1}>{label}</Text>
     </Pressable>
   );
@@ -121,7 +121,7 @@ export function WaitBody({ d, vs, t, call }: { d: WaitData; vs: string | null; t
           const s = r.hospital[l];
           const delta = waitDelta(s, r.previous?.[l], t);
           return (
-            <View key={l} testID={`wait-leg-${l}`} style={{ paddingVertical: 7, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: color.line2 }}>
+            <View key={l} testID={`wait-leg-${l}`} style={{ paddingVertical: 7, borderTopWidth: i === 0 ? 0 : l === "consult" ? 2 : 1, borderTopColor: l === "consult" ? color.line : color.line2 }}>
               <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.sm }}>
                 <Text style={{ fontSize: 15, color: color.ink, flex: 1, fontWeight: l === "deskToDoctor" ? "700" : "400" }} numberOfLines={1}>{t(`owner.wait.${l}`)}</Text>
                 <Text testID={`wait-leg-value-${l}`} style={{ fontFamily: MONO, fontSize: 24, lineHeight: 30, fontWeight: "700", color: color.ink }} numberOfLines={1}>{mins(s)}</Text>
@@ -183,11 +183,19 @@ export function WaitBody({ d, vs, t, call }: { d: WaitData; vs: string | null; t
       )}
 
       <Section title={t("owner.wait.byDept")} testID="wait-departments">
-        <View testID="wait-dept-hospital"><Line first bold label={t("owner.wait.hospital")} value={mins(r.hospital.deskToDoctor)} /><Bar part={r.hospital.deskToDoctor.avg} of={topDept} /></View>
+        <View testID="wait-dept-hospital">
+          <Line first bold label={t("owner.wait.hospital")} value={mins(r.hospital.deskToDoctor)} sub={r.hospital.consult.avg === null ? null : `${t("owner.wait.consult")} ${mins(r.hospital.consult)}`} />
+          <Bar part={r.hospital.deskToDoctor.avg} of={topDept} />
+        </View>
         {depts.map((g) => (
           <View key={g.key} testID={`wait-dept-${g.key}`}>
             <Line label={g.name ?? "—"} value={mins(g.cell.deskToDoctor)}
               sub={g.cell.deskToDoctor.avg === null ? t("owner.wait.few") : `${t("owner.wait.deskToVitals")} ${mins(g.cell.deskToVitals)} · ${t("owner.wait.vitalsToDoctor")} ${mins(g.cell.vitalsToDoctor)}`} />
+            {g.cell.consult.avg !== null && (
+              <Text testID={`wait-dept-consult-${g.key}`} style={{ fontSize: 12, color: color.dim, marginTop: -6, marginBottom: 4 }} numberOfLines={1}>
+                {`${t("owner.wait.consult")} ${mins(g.cell.consult)}`}
+              </Text>
+            )}
             <Bar part={g.cell.deskToDoctor.avg} of={topDept} />
           </View>
         ))}
@@ -195,8 +203,8 @@ export function WaitBody({ d, vs, t, call }: { d: WaitData; vs: string | null; t
 
       {d.hour !== null && (
         <Section title={t("owner.wait.byHour")} testID="wait-hours">
-          <View style={{ flexDirection: "row", gap: 6, paddingVertical: 6 }}>
-            {FLOW_LEGS.map((l) => <Chip key={l} testID={`wait-hour-leg-${l}`} label={t(`owner.wait.${l}`)} on={leg === l} onPress={() => setLeg(l)} />)}
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, paddingVertical: 6 }}>
+            {FLOW_LEGS.map((l) => <Chip key={l} testID={`wait-hour-leg-${l}`} label={t(l === "consult" ? "owner.wait.consultShort" : `owner.wait.${l}`)} on={leg === l} onPress={() => setLeg(l)} />)}
           </View>
           <View testID="wait-hour-strip" style={{ flexDirection: "row", alignItems: "flex-end", height: 104, gap: 2, paddingTop: 4 }}>
             {hours.map((g) => {

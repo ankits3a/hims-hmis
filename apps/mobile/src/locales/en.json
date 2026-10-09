@@ -2559,6 +2559,8 @@
       "deskToVitals": "Desk → vitals",
       "vitalsToDoctor": "Vitals → doctor",
       "deskToDoctor": "Desk → doctor",
+      "consult": "In consultation",
+      "consultShort": "Consult",
       "minutes": "{{n}} min",
       "patients": "{{n}} patients",
       "few": "Fewer than 5 patients",
@@ -2597,13 +2599,15 @@
         "bay_peak": "Slow vitals {{day}} {{from}}–{{to}}",
         "doctor_start_late": "Slow first hour {{day}}",
         "dept_outlier": "Long wait for the doctor",
-        "week_regression": "This week {{pct}}% slower"
+        "week_regression": "This week {{pct}}% slower",
+        "consult_up": "Consults {{pct}}% longer this week"
       },
       "try": {
         "bay_peak": "Add one person at the bay {{from}}–{{to}} {{day}}",
         "doctor_start_late": "Start consultations on time {{day}} at {{from}}:00",
         "dept_outlier": "Review doctor slots: {{pct}}% over the hospital",
-        "week_regression": "Check staff on duty against last month"
+        "week_regression": "Check staff on duty against last month",
+        "consult_up": "Check consult load and slots"
       }
     }
   },

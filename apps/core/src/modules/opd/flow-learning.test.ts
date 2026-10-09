@@ -63,6 +63,9 @@ describe("OPD — the waits from the tables, and what the nightly learning remem
     expect(r.hospital.vitalsToDoctor).toEqual({ n: 7, avg: 20, median: 20, p90: 20 });
     expect(r.hospital.deskToDoctor).toEqual({ n: 6, avg: 30, median: 30, p90: 30 });
     expect(r.drops).toEqual({ guardian: 1, left: 2, paperNoStart: 1, reEntry: 1, outOfRange: 1 });
+    /* In consultation (5 min each): only the visits the doctor completed on a screen — both paper-closed
+       visits are out (the desk stamped the instants), and it is never added into desk → doctor. */
+    expect(r.hospital.consult).toEqual({ n: 7, avg: 5, median: 5, p90: 5 });
     expect(r.groups.map((g) => [g.key, g.name, g.cell.deskToDoctor.n])).toEqual([[deptId, "General Medicine", 6]]);
     /* No patient, no doctor, no clerk — in any field, at any depth. */
     const json = JSON.stringify(r);

@@ -43,7 +43,7 @@ const NOW = Date.parse("2026-10-09T10:00:00+05:30"); // a Friday
 const clock = (): number => NOW;
 
 const STAT = (avg: number | null, n = 40) => ({ n, avg, median: avg, p90: avg === null ? null : avg + 10 });
-const CELL = (a: number | null, b: number | null) => ({ deskToVitals: STAT(a), vitalsToDoctor: STAT(b), deskToDoctor: STAT(a === null || b === null ? null : a + b) });
+const CELL = (a: number | null, b: number | null, c: number | null = a === null ? null : 8) => ({ deskToVitals: STAT(a), vitalsToDoctor: STAT(b), deskToDoctor: STAT(a === null || b === null ? null : a + b), consult: STAT(c) });
 const FINDING: FlowFinding = {
   id: "f1", type: "bay_peak", departmentId: "dep1", department: "General Medicine", leg: "deskToVitals", weekday: 0, hourFrom: 10, hourTo: 12,
   observed: 32, baseline: 18, patients: 10, minutesLost: 140, firstSeen: "2026-10-05", lastSeen: "2026-10-09", state: "open",
@@ -56,8 +56,8 @@ function report(over: Partial<FlowReport> = {}): FlowReport {
     hospital: CELL(9, 15), previous: { from: "2026-10-02", to: "2026-10-02", ...CELL(8, 13) },
     groups: [
       { key: "dep2", name: "Orthopaedics", cell: CELL(14, 22) },
-      { key: "dep1", name: "General Medicine", cell: CELL(9, 15) },
-      { key: "dep3", name: "ENT", cell: { deskToVitals: STAT(null, 3), vitalsToDoctor: STAT(null, 3), deskToDoctor: STAT(null, 3) } },
+      { key: "dep1", name: "General Medicine", cell: CELL(9, 15, 11) },
+      { key: "dep3", name: "ENT", cell: { deskToVitals: STAT(null, 3), vitalsToDoctor: STAT(null, 3), deskToDoctor: STAT(null, 3), consult: STAT(null, 3) } },
     ],
     drops: { guardian: 2, left: 1, paperNoStart: 0, reEntry: 0, outOfRange: 1 },
     findings: [FINDING, { ...FINDING, id: "f2", type: "dept_outlier", leg: "vitalsToDoctor", weekday: null, hourFrom: null, hourTo: null, department: "Orthopaedics", observed: 22, baseline: 14, minutesLost: 90 }],
@@ -135,7 +135,7 @@ describe("the Wait page", () => {
     expect(text("wait-leg-sub-deskToVitals")).toBe("40 patients · ▲ 1 min · vs same day last week");
     /* Ranked as the server sent them, the hospital first; a department under the floor says so. */
     const depts = screen.getByTestId("wait-departments");
-    expect(textOf(depts as unknown as Host)).toMatch(/^By department · desk → doctorHospital24Orthopaedics36.*General Medicine24.*ENT—Fewer than 5 patients$/);
+    expect(textOf(depts as unknown as Host)).toMatch(/^By department · desk → doctorHospital24In consultation 8Orthopaedics36.*In consultation 8General Medicine24.*In consultation 11ENT—Fewer than 5 patients$/);
     expect(screen.getAllByTestId(/^wait-hour-\d\d$/).map((n) => n.props.testID)).toEqual(HOURS.map((h) => `wait-hour-${h.key}`));
     expect(text("wait-hour-08")).toBe("508");
     expect(text("wait-hour-20")).toBe("—20");
@@ -147,6 +147,20 @@ describe("the Wait page", () => {
     /* Waits are told in ink, never in red or green; red is only a finding card's border. */
     for (const l of ["deskToVitals", "vitalsToDoctor", "deskToDoctor"]) expect(screen.getByTestId(`wait-leg-value-${l}`)).toHaveStyle({ color: "#132420" });
     expect(screen.getByTestId("wait-finding-f1")).toHaveStyle({ borderColor: "#b23a30" });
+  });
+
+  it("In consultation (Start → Complete) is its own row — after the three waits, never added into desk → doctor — and in departments and hours", async () => {
+    const { fetcher } = server(OWNER, flowStub({ hospital: CELL(9, 15, 12), previous: { from: "2026-10-02", to: "2026-10-02", ...CELL(8, 13, 10) } }));
+    await mount(fetcher, <OwnerPage page="wait" now={clock} />);
+    await screen.findByTestId("wait-head");
+    expect(screen.getAllByTestId(/^wait-leg-[a-zA-Z]+$/).map((n) => n.props.testID)).toEqual(["wait-leg-deskToVitals", "wait-leg-vitalsToDoctor", "wait-leg-deskToDoctor", "wait-leg-consult"]);
+    expect(text("wait-leg-consult")).toBe("In consultation1240 patients · ▲ 2 min · vs same day last week");
+    expect(text("wait-leg-value-deskToDoctor")).toBe("24"); // 9 + 15, the 12 is not in it
+    expect(text("wait-dept-consult-dep1")).toBe("In consultation 11");
+    expect(screen.queryByTestId("wait-dept-consult-dep3")).toBeNull(); // under the floor: nothing
+    await fireEvent.press(screen.getByTestId("wait-hour-leg-consult"));
+    expect(text("wait-hour-leg-consult")).toBe("Consult");
+    expect(text("wait-hour-08")).toBe("808");
   });
 
   it("Week and Month are asked on the server's clock and compared like with like; Custom spells its days and compares with nothing", async () => {

@@ -20,6 +20,12 @@ import type { Db, Tx } from "../../kernel/db/client";
  *                       → the visit's FIRST `opd_vitals.recorded_at` (an amendment later is not a wait)
  *   B  Vitals → doctor  that first save → `opd_encounters.consult_started_at`
  *   C  Desk → doctor    A + B, for a visit that has both
+ *   D  In consultation  `consult_started_at` → `consult_completed_at` — a DURATION, not a wait, and never
+ *                       part of C. The same visits as My pace (`pace.ts`): completed ON A SCREEN
+ *                       (`status = 'completed'`, `completed_via` null). A paper-closed visit is left out
+ *                       without a drop count — the desk stamped both instants when it filed the slip. A
+ *                       parked consultation is one span. Under 0 or over `FLOW_MAX_WAIT_MIN`: only D
+ *                       is dropped (`outOfRange`). A re-entry's D is kept — start to completion is real.
  *
  * WHICH VISITS. OPD consultations only: `type = 'opd'`, not a pharmacy visit and not a lab walk-in.
  * There is no tele-call or channel column on the visit on this branch, so nothing more can be told
@@ -45,6 +51,10 @@ export type FlowVisit = {
   openedAt: Date;
   vitalsAt: Date | null;
   startedAt: Date | null;
+  /** `consult_completed_at` — read only for a visit completed on a screen (`screenCompleted`). */
+  completedAt: Date | null;
+  /** `status = 'completed'` and `completed_via` null: the doctor pressed Complete. */
+  screenCompleted: boolean;
   guardian: boolean;
   left: boolean;
   paperNoStart: boolean;
@@ -85,6 +95,10 @@ export function legsOf(v: FlowVisit): VisitLegs {
   if (a !== null) out.legs.deskToVitals = a;
   if (b !== null) out.legs.vitalsToDoctor = b;
   if (a !== null && b !== null) out.legs.deskToDoctor = { min: a.min + b.min, at: v.openedAt };
+  if (v.screenCompleted && v.startedAt !== null && v.completedAt !== null) {
+    const m = minutesBetween(v.startedAt, v.completedAt);
+    if (inRange(m)) out.legs.consult = { min: m, at: v.startedAt }; else out.drop ??= "outOfRange";
+  }
   return out;
 }
 
@@ -134,7 +148,8 @@ export function istHour(at: Date): number {
 /** Every OPD consultation visit with a service day in `from`..`to`, as the instants the legs need. */
 export async function loadFlowVisits(db: Db | Tx, range: DayRange): Promise<FlowVisit[]> {
   const res = await db.execute(sql`
-    select e.department_id, e.service_date::text as service_date, e.opened_at, e.consult_started_at,
+    select e.department_id, e.service_date::text as service_date, e.opened_at, e.consult_started_at, e.consult_completed_at,
+           (e.status = 'completed' and e.completed_via is null) as screen_completed,
            (e.patient_absent_at is not null) as guardian,
            (e.status = 'abandoned' or e.abandoned_at is not null
               or exists (select 1 from opd_queue_entries q where q.encounter_id = e.id and q.status = 'left')) as left_line,
@@ -155,6 +170,8 @@ export async function loadFlowVisits(db: Db | Tx, range: DayRange): Promise<Flow
     openedAt: at(r["opened_at"])!,
     vitalsAt: at(r["vitals_at"]),
     startedAt: at(r["consult_started_at"]),
+    completedAt: at(r["consult_completed_at"]),
+    screenCompleted: r["screen_completed"] === true,
     guardian: r["guardian"] === true,
     left: r["left_line"] === true,
     paperNoStart: r["paper_no_start"] === true,
@@ -223,7 +240,7 @@ function groupsOf(visits: readonly VisitLegs[], ask: FlowAsk, names: Map<string,
   }
   if (ask.groupBy === "hour") {
     const out: FlowGroup[] = [];
-    /* Each leg falls in the hour it STARTED: A and C at the desk, B at the vitals save. */
+    /* Each leg falls in the hour it STARTED: A and C at the desk, B at the vitals save, D at Start consultation. */
     for (let h = FLOW_FIRST_HOUR; h <= FLOW_LAST_HOUR; h += 1) {
       out.push({ key: String(h).padStart(2, "0"), name: null, cell: cellOf(visits, (leg, v) => istHour(v.legs[leg]!.at) === h) });
     }
@@ -232,8 +249,8 @@ function groupsOf(visits: readonly VisitLegs[], ask: FlowAsk, names: Map<string,
   return [];
 }
 
-const LEG_OF_DB: Record<string, FlowLeg> = { desk_vitals: "deskToVitals", vitals_doctor: "vitalsToDoctor", desk_doctor: "deskToDoctor" };
-export const DB_LEG: Record<FlowLeg, string> = { deskToVitals: "desk_vitals", vitalsToDoctor: "vitals_doctor", deskToDoctor: "desk_doctor" };
+const LEG_OF_DB: Record<string, FlowLeg> = { desk_vitals: "deskToVitals", vitals_doctor: "vitalsToDoctor", desk_doctor: "deskToDoctor", consult: "consult" };
+export const DB_LEG: Record<FlowLeg, string> = { deskToVitals: "desk_vitals", vitalsToDoctor: "vitals_doctor", deskToDoctor: "desk_doctor", consult: "consult" };
 
 type FindingRow = typeof opdFlowFindings.$inferSelect;
 export function findingView(r: FindingRow, names: Map<string, string>): FlowFinding {

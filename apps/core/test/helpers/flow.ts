@@ -15,6 +15,8 @@ export type FixtureVisit = {
   a?: number | null;
   /** Minutes from that save to the consult start; null — not started. */
   b?: number | null;
+  /** Minutes from the consult start to Complete (default 5) — also when a paper filing stamps both. */
+  c?: number;
   /** A second (amended) vitals row this many minutes after the first — it must not move leg A. */
   amendAfter?: number;
   guardian?: boolean;
@@ -42,7 +44,7 @@ export async function insertVisits(db: Db, ctx: { patientId: string; doctorId: s
     ids.push(id);
     const vitalsAt = v.a === null || v.a === undefined ? null : plus(v.openedAt, v.a);
     const startedAt = vitalsAt === null || v.b === null || v.b === undefined ? null : plus(vitalsAt, v.b);
-    const filed = startedAt === null ? null : plus(startedAt, 5);
+    const filed = startedAt === null ? null : plus(startedAt, v.c ?? 5);
     encounters.push({
       id, visitNo: `VF${String(seq).padStart(9, "0")}`, patientId: ctx.patientId, workflowInstanceId: `wf-${id}`,
       type: v.type ?? "opd", status: v.abandoned === true ? "abandoned" : startedAt !== null ? "completed" : "waiting",

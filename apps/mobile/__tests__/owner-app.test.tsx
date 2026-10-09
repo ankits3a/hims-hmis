@@ -127,7 +127,7 @@ const LEARNING = {
   ],
 };
 const STAT = (avg: number | null, n = 40) => ({ n, avg, median: avg, p90: avg === null ? null : avg + 10 });
-const CELL = (a: number | null, b: number | null) => ({ deskToVitals: STAT(a), vitalsToDoctor: STAT(b), deskToDoctor: STAT(a === null || b === null ? null : a + b) });
+const CELL = (a: number | null, b: number | null) => ({ deskToVitals: STAT(a), vitalsToDoctor: STAT(b), deskToDoctor: STAT(a === null || b === null ? null : a + b), consult: STAT(a === null ? null : 8) });
 const FINDING = { id: "f1", type: "bay_peak", departmentId: "dep1", department: "General Medicine", leg: "deskToVitals", weekday: 0, hourFrom: 10, hourTo: 12, observed: 32, baseline: 18, patients: 10, minutesLost: 140, firstSeen: "2026-10-05", lastSeen: "2026-10-09", state: "open", triedOn: null, before: null, after: null, resolvedOn: null, minutesWon: null };
 /** Today's waits as the tile reads them: desk → doctor 24 minutes, two findings open. */
 const FLOW_TODAY = {

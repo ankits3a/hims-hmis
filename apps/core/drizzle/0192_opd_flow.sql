@@ -10,7 +10,7 @@ CREATE TABLE "opd_flow_baselines" (
 	"window_from" date NOT NULL,
 	"window_to" date NOT NULL,
 	"computed_at" timestamp with time zone NOT NULL,
-	CONSTRAINT "opd_flow_baselines_leg_ck" CHECK ("opd_flow_baselines"."leg" in ('desk_vitals', 'vitals_doctor', 'desk_doctor')),
+	CONSTRAINT "opd_flow_baselines_leg_ck" CHECK ("opd_flow_baselines"."leg" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')),
 	CONSTRAINT "opd_flow_baselines_weekday_ck" CHECK ("opd_flow_baselines"."weekday" between -1 and 6),
 	CONSTRAINT "opd_flow_baselines_hour_ck" CHECK ("opd_flow_baselines"."hour" = -1 or "opd_flow_baselines"."hour" between 0 and 23)
 );
@@ -43,9 +43,9 @@ CREATE TABLE "opd_flow_findings" (
 	"note" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "opd_flow_findings_type_ck" CHECK ("opd_flow_findings"."type" in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression')),
+	CONSTRAINT "opd_flow_findings_type_ck" CHECK ("opd_flow_findings"."type" in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression', 'consult_up')),
 	CONSTRAINT "opd_flow_findings_state_ck" CHECK ("opd_flow_findings"."state" in ('open', 'dismissed', 'resolved')),
-	CONSTRAINT "opd_flow_findings_leg_ck" CHECK ("opd_flow_findings"."leg" in ('desk_vitals', 'vitals_doctor', 'desk_doctor')),
+	CONSTRAINT "opd_flow_findings_leg_ck" CHECK ("opd_flow_findings"."leg" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')),
 	CONSTRAINT "opd_flow_findings_dismissed_ck" CHECK (("opd_flow_findings"."state" = 'dismissed') = ("opd_flow_findings"."dismissed_at" is not null) and ("opd_flow_findings"."dismissed_by" is null) = ("opd_flow_findings"."dismissed_at" is null)),
 	CONSTRAINT "opd_flow_findings_tried_ck" CHECK (("opd_flow_findings"."tried_by" is null) = ("opd_flow_findings"."tried_at" is null)),
 	CONSTRAINT "opd_flow_findings_note_ck" CHECK ("opd_flow_findings"."note" is null or "opd_flow_findings"."note" in ('returned', 'returned_worse'))

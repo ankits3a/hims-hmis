@@ -39,3 +39,9 @@ in place that keeps learning these metrics and show suggestions to improve the m
    `FLOW_FINDINGS_ENABLED` (default true) switches the learning; it calls no outside service.
 6. `doctor_start_late` reads "the first hour" as the 60 minutes from the department's first vitals save of the day — it
    never names a doctor. `bay_peak` uses fixed two-hour windows (08–10 … 18–20) so a finding keeps its key night to night.
+7. **In consultation** (owner, same day, added after 1–6): Start consultation → Complete
+   (`consult_started_at` → `consult_completed_at`) is a fourth row, `consult`. It is a duration, not a wait, and is
+   never added into desk → doctor. Same visits as My pace: completed on a screen (`status = 'completed'`,
+   `completed_via` null); paper-closed visits are left out (the desk stamped both instants); a parked consult is one
+   span; < 0 or > 480 min drops that row only. It has baselines like the waits and one finding type, `consult_up`
+   (this week's median ≥ 1.25× the four weeks before, n ≥ 30, a department or the hospital — never a doctor).

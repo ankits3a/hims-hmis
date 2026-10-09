@@ -42,6 +42,13 @@ export const WEEK_REGRESSION_MIN_N = 30;
 export const WEEK_DAYS = 7;
 export const WEEK_REGRESSION_BASE_DAYS = 28;
 
+/**
+ * consult_up — this week's time IN consultation (start → Complete) against the four weeks before, per
+ * department and for the hospital. Same window and floor as week_regression. Never per doctor.
+ */
+export const CONSULT_UP_RATIO = 1.25;
+export const CONSULT_UP_MIN_N = 30;
+
 /** improved — an open finding whose numbers sit within 1.1× its baseline for two weeks is resolved. */
 export const RESOLVE_RATIO = 1.1;
 export const RESOLVE_DAYS = 14;

@@ -14,12 +14,15 @@ import { FLOW_MAX_WAIT_MIN } from "./flow-rules";
 const at = (day: string, hhmm: string): Date => new Date(`${day}T${hhmm}:00+05:30`);
 const plus = (d: Date, min: number): Date => new Date(d.getTime() + min * 60_000);
 
-function visit(o: Partial<FlowVisit> & { day: string; desk: string; a?: number | null; b?: number | null; dept?: string | null }): FlowVisit {
+function visit(o: Partial<FlowVisit> & { day: string; desk: string; a?: number | null; b?: number | null; c?: number | null; dept?: string | null }): FlowVisit {
   const openedAt = at(o.day, o.desk);
   const vitalsAt = o.a === null || o.a === undefined ? null : plus(openedAt, o.a);
   const startedAt = vitalsAt === null || o.b === null || o.b === undefined ? null : plus(vitalsAt, o.b);
+  /* `c`: minutes from Start consultation to Complete; given, the visit was completed on a screen unless told otherwise. */
+  const completedAt = startedAt === null || o.c === null || o.c === undefined ? null : plus(startedAt, o.c);
   return {
     departmentId: o.dept === undefined ? "D1" : o.dept, serviceDate: o.day, openedAt, vitalsAt, startedAt,
+    completedAt, screenCompleted: o.screenCompleted ?? completedAt !== null,
     guardian: o.guardian ?? false, left: o.left ?? false, paperNoStart: o.paperNoStart ?? false, reEntry: o.reEntry ?? false,
   };
 }
@@ -53,6 +56,36 @@ describe("a visit's legs — from three stored instants", () => {
       [null, FLOW_MAX_WAIT_MIN, 0, FLOW_MAX_WAIT_MIN], // both edges are in
     ]);
     expect(dropsOf(vs)).toEqual({ guardian: 1, left: 1, paperNoStart: 1, reEntry: 1, outOfRange: 2 });
+  });
+});
+
+describe("in consultation — Start consultation → Complete, a duration and never a wait (owner 2026-10-09)", () => {
+  const DAY = "2026-10-05";
+  it("a screen-completed visit has it; paper-closed, under 0 and over the max do not — and only that leg goes", () => {
+    const vs = [
+      visit({ day: DAY, desk: "10:00", a: 12, b: 20, c: 9 }),
+      visit({ day: DAY, desk: "10:00", a: 12, b: 20, c: 9, screenCompleted: false }), // the desk stamped both instants from paper
+      visit({ day: DAY, desk: "10:00", a: 12, b: 20, c: -3 }),
+      visit({ day: DAY, desk: "10:00", a: 12, b: 20, c: FLOW_MAX_WAIT_MIN + 1 }),
+      visit({ day: DAY, desk: "10:00", a: 12, b: 20, c: FLOW_MAX_WAIT_MIN }),
+      visit({ day: DAY, desk: "10:00", a: 12, b: 20, c: 9, reEntry: true }), // the second start → Complete is real
+    ].map(legsOf);
+    expect(vs.map((v) => [v.legs.consult?.min ?? null, v.legs.deskToDoctor?.min ?? null, v.drop])).toEqual([
+      [9, 32, null],
+      [null, 32, null],
+      [null, 32, "outOfRange"],
+      [null, 32, "outOfRange"],
+      [FLOW_MAX_WAIT_MIN, 32, null],
+      [9, null, "reEntry"],
+    ]);
+    /* It starts at Start consultation (the by-hour strip), and desk → doctor never includes it. */
+    expect(vs[0]!.legs.consult!.at).toEqual(plus(at(DAY, "10:00"), 32));
+  });
+
+  it("is a column of every cell, with the same floor", () => {
+    const five = Array.from({ length: 5 }, (_, i) => legsOf(visit({ day: DAY, desk: "10:00", a: 10, b: 10, c: 6 + i })));
+    expect(cellOf(five).consult).toEqual({ n: 5, avg: 8, median: 8, p90: 10 });
+    expect(cellOf(five.slice(0, 4)).consult).toEqual({ n: 4, avg: null, median: null, p90: null });
   });
 });
 
@@ -104,12 +137,12 @@ const TODAY = "2026-10-09";
 const FRIDAY = mondayIndex(TODAY);
 const DESK_TIMES = ["10:00", "10:30", "11:00", "11:30", "13:00", "14:00", "15:00", "16:00"];
 
-/** 42 days of an ordinary department: eight visits a day, desk → vitals 10, vitals → doctor 12. */
-function background(o: { dept?: string; days?: number; perDay?: readonly string[]; a?: (day: string, desk: string) => number; b?: (day: string, desk: string) => number } = {}): VisitLegs[] {
+/** 42 days of an ordinary department: eight visits a day, desk → vitals 10, vitals → doctor 12, in consultation 8. */
+function background(o: { dept?: string; days?: number; perDay?: readonly string[]; a?: (day: string, desk: string) => number; b?: (day: string, desk: string) => number; c?: (day: string) => number } = {}): VisitLegs[] {
   const out: VisitLegs[] = [];
   for (let i = 0; i < (o.days ?? 42); i += 1) {
     const day = addDayIso(TODAY, -i);
-    for (const desk of o.perDay ?? DESK_TIMES) out.push(legsOf(visit({ dept: o.dept ?? "D1", day, desk, a: o.a?.(day, desk) ?? 10, b: o.b?.(day, desk) ?? 12 })));
+    for (const desk of o.perDay ?? DESK_TIMES) out.push(legsOf(visit({ dept: o.dept ?? "D1", day, desk, a: o.a?.(day, desk) ?? 10, b: o.b?.(day, desk) ?? 12, c: o.c?.(day) ?? 8 })));
   }
   return out;
 }
@@ -163,6 +196,17 @@ describe("findings — each type fires on a fixture built for it and is silent j
     expect(types(thisWeek(18))).toEqual(["week_regression:D1:null:null", "week_regression:hospital:null:null"]);
     expect(findCandidates(thisWeek(18), TODAY)[0]).toMatchObject({ leg: "deskToDoctor", observed: 28, baseline: 22, patients: 56 });
     expect(types(thisWeek(17.4))).toEqual([]); // 27.4 < 1.25 × 22 = 27.5
+  });
+
+  it("consult_up: this week's in-consultation median ≥ 25 % over the four weeks before, n ≥ 30 — department and hospital, never a doctor", () => {
+    const longer = (c: number) => background({ c: (day) => (day > addDayIso(TODAY, -7) ? c : 8) });
+    expect(types(longer(10))).toEqual(["consult_up:D1:null:null", "consult_up:hospital:null:null"]);
+    const f = findCandidates(longer(10), TODAY)[0]!;
+    expect(f).toMatchObject({ leg: "consult", observed: 10, baseline: 8, patients: 56 });
+    expect(JSON.stringify(f)).not.toMatch(/doctor(Id|Name)/);
+    expect(types(longer(9.9))).toEqual([]); // 9.9 < 1.25 × 8 = 10
+    /* the waits are untouched by it: desk → doctor stays 22 */
+    expect(cellOf(longer(10)).deskToDoctor.median).toBe(22);
   });
 });
 

@@ -12,10 +12,15 @@
  *   deskToVitals    `opd_encounters.opened_at` → the visit's FIRST `opd_vitals.recorded_at`
  *   vitalsToDoctor  that first save → `opd_encounters.consult_started_at`
  *   deskToDoctor    the two added, for a visit that has both
+ *
+ * AND ONE DURATION, NOT A WAIT (owner 2026-10-09, added after the three):
+ *   consult         `consult_started_at` → `consult_completed_at`, for a visit the doctor completed ON A
+ *                   SCREEN (`status = 'completed'`, `completed_via` null) — the same rule as My pace.
+ *                   It is never added into `deskToDoctor`.
  */
 
-export type FlowLeg = "deskToVitals" | "vitalsToDoctor" | "deskToDoctor";
-export const FLOW_LEGS: readonly FlowLeg[] = ["deskToVitals", "vitalsToDoctor", "deskToDoctor"];
+export type FlowLeg = "deskToVitals" | "vitalsToDoctor" | "deskToDoctor" | "consult";
+export const FLOW_LEGS: readonly FlowLeg[] = ["deskToVitals", "vitalsToDoctor", "deskToDoctor", "consult"];
 
 /** A cell is shown only when this many visits are in it; below it the figures are null ("—"). */
 export const FLOW_MIN_N = 5;
@@ -52,8 +57,8 @@ export type FlowGroup = {
   cell: FlowCell;
 };
 
-export type FindingType = "bay_peak" | "doctor_start_late" | "dept_outlier" | "week_regression";
-export const FINDING_TYPES: readonly FindingType[] = ["bay_peak", "doctor_start_late", "dept_outlier", "week_regression"];
+export type FindingType = "bay_peak" | "doctor_start_late" | "dept_outlier" | "week_regression" | "consult_up";
+export const FINDING_TYPES: readonly FindingType[] = ["bay_peak", "doctor_start_late", "dept_outlier", "week_regression", "consult_up"];
 export type FindingState = "open" | "dismissed" | "resolved";
 
 /** What the phone shows of one finding: numbers and codes only — the words are the phone's fixed templates. */

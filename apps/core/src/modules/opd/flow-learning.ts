@@ -8,7 +8,7 @@ import { DB_LEG, istHour, legsOf, loadFlowVisits, medianOf, p90Of } from "./flow
 import type { VisitLegs } from "./flow";
 import {
   BASELINE_DAYS, BAY_PEAK_DAY_MIN_N, BAY_PEAK_HIT_DAYS, BAY_PEAK_LOOK_DAYS, BAY_PEAK_MIN_N, BAY_PEAK_RATIO, BAY_WINDOW_HOURS,
-  BAY_WINDOW_STARTS, DEPT_OUTLIER_MIN_N, DEPT_OUTLIER_RATIO, DISMISS_QUIET_DAYS, DISMISS_RETURN_RATIO, RESOLVE_DAYS, RESOLVE_RATIO,
+  BAY_WINDOW_STARTS, CONSULT_UP_MIN_N, CONSULT_UP_RATIO, DEPT_OUTLIER_MIN_N, DEPT_OUTLIER_RATIO, DISMISS_QUIET_DAYS, DISMISS_RETURN_RATIO, RESOLVE_DAYS, RESOLVE_RATIO,
   START_LATE_DAY_MIN_N, START_LATE_HIT_DAYS, START_LATE_LOOK_DAYS, START_LATE_MIN_N, START_LATE_RATIO, START_LATE_WINDOW_MIN,
   WEEK_DAYS, WEEK_REGRESSION_BASE_DAYS, WEEK_REGRESSION_MIN_N, WEEK_REGRESSION_RATIO,
 } from "./flow-rules";
@@ -142,6 +142,18 @@ export function findCandidates(visits: readonly VisitLegs[], today: string): Can
       push({ type: "week_regression", scope, leg: "deskToDoctor", weekday: null, hourFrom: null, hourTo: null, observed: med(week)!, baseline: b, patients: week.length });
     }
   }
+
+  /* consult_up — this week's in-consultation median ≥ 25 % over the four weeks before, n ≥ 30 in each. A department or the hospital, never a doctor. */
+  for (const scope of ["hospital", ...depts]) {
+    const mine = scope === "hospital" ? visits : visits.filter((v) => v.departmentId === scope);
+    const week = legValues(mine.filter((v) => v.serviceDate >= weekFrom && v.serviceDate <= today), "consult");
+    const base = legValues(mine.filter((v) => v.serviceDate >= baseFrom && v.serviceDate <= baseTo), "consult");
+    if (week.length < CONSULT_UP_MIN_N || base.length < CONSULT_UP_MIN_N) continue;
+    const b = med(base)!;
+    if (b > 0 && med(week)! >= CONSULT_UP_RATIO * b) {
+      push({ type: "consult_up", scope, leg: "consult", weekday: null, hourFrom: null, hourTo: null, observed: med(week)!, baseline: b, patients: week.length });
+    }
+  }
   return out;
 }
 
@@ -158,6 +170,8 @@ export function currentOf(row: Pick<Row, "type" | "scope" | "weekday" | "hourFro
     xs = lastWeekdays(today, row.weekday ?? 0, RESOLVE_DAYS / 7).flatMap((day) => firstHour(recent, day).values);
   } else if (row.type === "dept_outlier") {
     xs = legValues(recent, "vitalsToDoctor");
+  } else if (row.type === "consult_up") {
+    xs = legValues(recent, "consult");
   } else {
     xs = legValues(recent, "deskToDoctor");
   }
