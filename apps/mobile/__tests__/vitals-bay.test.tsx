@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { I18nProvider } from "../src/i18n";
+import { SwipeHint } from "../src/scan/gestures";
 import { VitalsBay } from "../src/screens/vitals-bay";
 import { SessionProvider, useSession } from "../src/session";
 
@@ -248,8 +251,13 @@ describe("the vitals bay on a phone", () => {
     }));
     await mount(s.fetcher);
     await takeToken("4");
+    // Owner 2026-10-09 — off the main view: nothing until "Details" is opened, then a text link.
+    expect(screen.queryByTestId("patient-absent-open")).toBeNull();
+    await fireEvent.press(screen.getByTestId("who-toggle"));
+    expect(screen.getByTestId("patient-absent-open")).toHaveTextContent(/^Guardian with reports ?›$/);
     await fireEvent.press(screen.getByTestId("patient-absent-open"));
-    expect(screen.getByTestId("patient-absent-dialog")).toHaveTextContent(/The patient did not come — a guardian brought the reports/);
+    expect(screen.getByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
+    expect(screen.getByTestId("patient-absent-dialog")).toHaveTextContent(/No vitals\. Fee unchanged\./);
     await fireEvent.press(screen.getByTestId("patient-absent-confirm")); // nobody chosen yet: nothing is sent
     expect(s.of("POST /opd/visits/e4/patient-absent")).toHaveLength(0);
     await fireEvent.press(screen.getByTestId("patient-absent-relation-father"));
@@ -261,18 +269,108 @@ describe("the vitals bay on a phone", () => {
     expect(await screen.findByTestId("identify")).toBeTruthy(); // the desk is clear
   });
 
+  // ——— owner 2026-10-09: "hiding the button from main screen and keeping it inside a long press or swipe left" ———
+  it("swipe LEFT on a bench row — a revisit's or a new visit's — opens 'Who came?' and writes nothing until Send to doctor; a row whose vitals are done has no such swipe", async () => {
+    const s = server(base({
+      "GET /opd/bench": () => ({ status: 200, body: { items: [row({ visitType: "revisit" }), { ...KID_ROW, visitType: "new" }, row({ encounterId: "e3", entryId: "q3", tokenNo: 3, seq: 3, vitalsDone: true, vitalsId: "v3" })] } }),
+      "POST /opd/visits/e4/patient-absent": () => ({ status: 201, body: { patientAbsent: { relation: "son", name: null, by: "01J", at: "2026-10-07T05:00:00Z" }, alreadyMarked: false } }),
+    }));
+    await mount(s.fetcher);
+    const revisit = await screen.findByTestId("bench-swipe-4");
+    expect(revisit.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Guardian with reports" }]);
+    // Owner 2026-10-09 — a NEW visit's row carries it too.
+    expect(screen.getByTestId("bench-swipe-7").props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }, { name: "swipeLeft", label: "Guardian with reports" }]);
+    // A row past the bay (vitals done): right-swipe only, and a left-swipe that somehow arrives does nothing.
+    const done = screen.getByTestId("bench-swipe-3");
+    expect(done.props.accessibilityActions).toEqual([{ name: "swipe", label: "Open form" }]);
+    await fireEvent(done, "accessibilityAction", { nativeEvent: { actionName: "swipeLeft" } });
+    expect(screen.queryByTestId("patient-absent-dialog")).toBeNull();
+    await fireEvent(screen.getByTestId("bench-swipe-7"), "accessibilityAction", { nativeEvent: { actionName: "swipeLeft" } });
+    expect(await screen.findByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
+    await fireEvent.press(screen.getByTestId("patient-absent-cancel"));
+
+    await fireEvent(revisit, "accessibilityAction", { nativeEvent: { actionName: "swipeLeft" } });
+    expect(await screen.findByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
+    expect(s.calls.filter((c) => c.key.startsWith("POST"))).toHaveLength(0); // the gesture alone skips nothing
+    await fireEvent.press(screen.getByTestId("patient-absent-cancel"));
+    expect(screen.queryByTestId("patient-absent-dialog")).toBeNull();
+    expect(s.calls.filter((c) => c.key.startsWith("POST"))).toHaveLength(0);
+
+    await fireEvent(revisit, "accessibilityAction", { nativeEvent: { actionName: "swipeLeft" } });
+    await fireEvent.press(await screen.findByTestId("patient-absent-relation-son"));
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor — guardian with reports, vitals not taken\./);
+    expect(s.of("POST /opd/visits/e4/patient-absent")[0]!.body).toEqual({ relation: "son", name: null });
+    expect(screen.queryByTestId("patient-absent-dialog")).toBeNull();
+  });
+
+  it("the hint under the bench names the two gestures a nurse uses most", async () => {
+    // Shown only the first three times a list is opened, so it is read here under a list name nothing else counts.
+    await render(<I18nProvider><SwipeHint list="bench-fresh" textKey="mobile.scan.benchHint" /></I18nProvider>);
+    expect(await screen.findByTestId("swipe-hint")).toHaveTextContent("Hold a row for more · swipe right to open");
+    expect(readFileSync(join(__dirname, "../src/screens/vitals-bay.tsx"), "utf8")).toContain('<SwipeHint list="bench" textKey="mobile.scan.benchHint" />');
+  });
+
+  it("holding a revisit's row: the action card carries an amber 'Guardian with reports' under Take vitals — and a refusal is said in the sheet", async () => {
+    const scan = (guardianOffer: boolean) => ({ status: 200, body: { outcome: "visit", permitted: ["vitals"], visit: {
+      encounterId: "e4", patientId: "p4", visitNo: "V2610060004", serviceDate: "2026-10-06", tokenNo: 4, departmentCode: "MED", departmentName: "General Medicine",
+      stage: "vitals", vitalsDone: false, slip: "none", feeUnpaid: false, mine: false, guardianOffer,
+      patient: { id: "p4", uhid: "U00110049", name: "Geeta Devi", alias: null, restricted: false, administrativeGender: "female", dob: null },
+    } } });
+    let offer = false;
+    let refuse = true;
+    const s = server(base({
+      "GET /opd/bench": () => ({ status: 200, body: { items: [row({ visitType: "revisit" }), KID_ROW] } }),
+      "GET /opd/scan": () => scan(offer),
+      "POST /opd/visits/e4/patient-absent": () => (refuse
+        ? { status: 409, body: { code: "consult_gate_refused", message: "consult_gate_refused" } }
+        : { status: 201, body: { patientAbsent: { relation: "mother", name: null, by: "01J", at: "2026-10-07T05:00:00Z" }, alreadyMarked: false } }),
+    }));
+    await mount(s.fetcher);
+    // The server does not offer it (vitals already done, or an older server): the card has no such line.
+    await fireEvent(await screen.findByTestId("bench-row-4"), "longPress");
+    expect(await screen.findByTestId("card-next")).toHaveTextContent(/Take vitals/);
+    expect(screen.queryByTestId("card-guardian")).toBeNull();
+    await fireEvent.press(screen.getByTestId("card-scrim"));
+
+    offer = true;
+    await fireEvent(screen.getByTestId("bench-row-4"), "longPress");
+    expect(await screen.findByTestId("card-guardian")).toHaveTextContent(/^Guardian with reports ?›$/);
+    await fireEvent.press(screen.getByTestId("card-guardian"));
+    expect(await screen.findByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
+    expect(screen.queryByTestId("action-card")).toBeNull();
+    expect(s.calls.filter((c) => c.key.startsWith("POST"))).toHaveLength(0);
+    await fireEvent.press(screen.getByTestId("patient-absent-relation-mother"));
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    expect(await screen.findByTestId("patient-absent-error")).toHaveTextContent(/has not been billed yet/);
+    refuse = false;
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor/);
+    expect(screen.queryByTestId("patient-absent-dialog")).toBeNull();
+  });
+
   // Owner 2026-10-07 — a RENEWAL (past the follow-up window) is offered too, and an unpaid one asks for billing.
-  it("guardian with reports: not offered on a new visit; an unpaid renewal is offered and asked to bill first; a lost send stays on screen", async () => {
+  // Owner 2026-10-09 — "not just revisit or renewal but new patient as well": a NEW visit is offered it too.
+  it("guardian with reports: a NEW visit is offered it under Details and sends; an unpaid renewal is asked to bill first; a lost send stays on screen", async () => {
     let mode: "refuse" | "offline" = "refuse";
     const s = server(base({
       "GET /opd/bench": () => ({ status: 200, body: { items: [row({ visitType: "new" }), { ...KID_ROW, visitType: "renewal" }] } }),
       "POST /opd/visits/e7/patient-absent": () => (mode === "offline" ? "offline" : { status: 409, body: { code: "consult_gate_refused", message: "consult_gate_refused" } }),
+      "POST /opd/visits/e4/patient-absent": () => ({ status: 201, body: { patientAbsent: { relation: "son", name: null, by: "01J", at: "2026-10-07T05:00:00Z" }, alreadyMarked: false } }),
     }));
     await mount(s.fetcher);
     await takeToken("4");
-    expect(screen.queryByTestId("patient-absent-open")).toBeNull();
-    await fireEvent.press(screen.getByTestId("clear-desk"));
+    expect(screen.queryByTestId("patient-absent-open")).toBeNull(); // never on the form's main view
+    await fireEvent.press(screen.getByTestId("who-toggle"));
+    await fireEvent.press(await screen.findByTestId("patient-absent-open")); // a NEW visit: offered under Details
+    await fireEvent.press(await screen.findByTestId("patient-absent-relation-son"));
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    expect(await screen.findByTestId("guardian-banner")).toHaveTextContent(/Geeta Devi — Sent to the doctor/);
+    expect(s.of("POST /opd/visits/e4/patient-absent")[0]!.body).toEqual({ relation: "son", name: null });
+    expect(s.of("POST /opd/visits/e4/vitals")).toHaveLength(0);
+    await fireEvent.press(screen.getByTestId("banner-dismiss"));
     await takeToken("7");
+    await fireEvent.press(screen.getByTestId("who-toggle"));
     await fireEvent.press(screen.getByTestId("patient-absent-open"));
     await fireEvent.press(screen.getByTestId("patient-absent-relation-mother"));
     await fireEvent.press(screen.getByTestId("patient-absent-confirm"));

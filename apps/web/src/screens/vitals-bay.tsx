@@ -843,6 +843,26 @@ export function VitalsBay(): React.ReactElement {
       />
     </div>
   );
+  /*
+    OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS. A REVISIT or RENEWAL (never a new visit)
+    with no chart yet may skip the bay: the server moves it to the doctor's line and stops listing it
+    on the bench, so the bench re-reads and the desk clears exactly as after a save.
+    OWNER 2026-10-09 — off the form's main view: it lives in the patient's details (the session
+    column; under "Details" at phone width), one click from the patient in hand.
+  */
+  const guardianAction = rowInHand !== null && !rowInHand.vitalsDone && guardianMayStandIn(rowInHand.visitType) ? (
+    <div style={{ marginTop: 12 }}>
+      <GuardianAbsentAction
+        key={`${deskGen}:${rowInHand.encounterId}`} encounterId={rowInHand.encounterId} short
+        onDone={() => {
+          note(t("patientAbsent.done"), "ok");
+          void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+          void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
+          if (inHandRef.current?.encounterId === rowInHand.encounterId) clearDesk();
+        }}
+      />
+    </div>
+  ) : null;
   const banners = (
     <>
       {banner !== null && <SavedBannerView banner={banner} onDismiss={() => { setBanner(null); setTrail(null); }} />}
@@ -860,25 +880,6 @@ export function VitalsBay(): React.ReactElement {
       <div data-testid="stage">
       {rowInHand !== null && rowInHand.vitalsDone && (
         <AmendPanel key={`${deskGen}:${rowInHand.encounterId}`} row={rowInHand} onAmended={(a) => { void onAmended(a, rowInHand); }} />
-      )}
-      {/*
-        OWNER 2026-10-07 — THE GUARDIAN CAME WITH THE REPORTS. A REVISIT or RENEWAL (never a new
-        visit) with no chart yet may skip
-        the bay: the server moves it to the doctor's line and stops listing it on the bench, so the
-        bench re-reads and the desk clears exactly as after a save.
-      */}
-      {rowInHand !== null && !rowInHand.vitalsDone && guardianMayStandIn(rowInHand.visitType) && (
-        <div style={{ marginBottom: 10 }}>
-          <GuardianAbsentAction
-            key={`${deskGen}:${rowInHand.encounterId}`} encounterId={rowInHand.encounterId}
-            onDone={() => {
-              note(t("patientAbsent.done"), "ok");
-              void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
-              void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
-              if (inHandRef.current?.encounterId === rowInHand.encounterId) clearDesk();
-            }}
-          />
-        </div>
       )}
       {rowInHand !== null && !rowInHand.vitalsDone && !pending && (
         <CaptureCore
@@ -1020,7 +1021,7 @@ export function VitalsBay(): React.ReactElement {
                   {t("vitalsBay.clearDesk")}
                 </button>
                 <div className="vb-who-body" hidden={!whoOpen}>
-                  <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending} />
+                  <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>{guardianAction}</SessionColumn>
                 </div>
               </section>
             )}
@@ -1030,7 +1031,7 @@ export function VitalsBay(): React.ReactElement {
         ) : (
         <div style={{ flexGrow: 1, minHeight: 0, display: "flex", gap: 16, padding: "18px 22px", alignItems: "stretch", flexWrap: "nowrap", minWidth: 0, overflowX: "auto" }}>
           <aside className="box" style={{ width: 294, flexShrink: 0, padding: 14, overflowY: "auto" }}>
-            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending} />
+            <SessionColumn row={rowInHand} preStage={preStage} failed={preFailed} pending={pending}>{guardianAction}</SessionColumn>
           </aside>
 
           <main style={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>

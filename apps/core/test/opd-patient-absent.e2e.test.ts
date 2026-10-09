@@ -107,9 +107,12 @@ describe("patient absent — e2e", () => {
     await absent(b, clerk.token, { relation: "attendant" }).expect(201);
 
     const c = await visit("Ravi Kumar", "9000000103", "new");
-    const refused = await absent(c, clerk.token, { relation: "son" }).expect(409);
-    expect(refused.body.code).toBe("patient_absent_returning_only");
-    const plain = await http().get(`/opd/visits/${c}`).set(...auth(clerk.token)).expect(200);
-    expect(plain.body.patientAbsent).toBeNull();
+    /* Owner 2026-10-09 — a NEW visit is admitted too (it was refused `patient_absent_returning_only`). */
+    const fresh = await absent(c, clerk.token, { relation: "son" }).expect(201);
+    expect(fresh.body).toMatchObject({ alreadyMarked: false, patientAbsent: { relation: "son", name: null } });
+    const marked3 = await http().get(`/opd/visits/${c}`).set(...auth(clerk.token)).expect(200);
+    expect(marked3.body.encounter).toMatchObject({ status: "waiting", visitType: "new" });
+    expect(marked3.body.patientAbsent).toMatchObject({ relation: "son" });
+    expect(marked3.body.vitals).toEqual([]);
   });
 });
