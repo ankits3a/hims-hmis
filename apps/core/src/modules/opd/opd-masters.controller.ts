@@ -66,7 +66,8 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
    * 409's meaning, and it is what lets the reception seat offer "add to the visit already open".
    */
   "lab_walkin_already_open",
-  // Owner 2026-10-07 — a guardian-with-reports mark on a NEW visit (`patient-absent.ts`): revisit or renewal only.
+  // Owner 2026-10-07 — a guardian-with-reports mark on a NEW visit was refused. Owner 2026-10-09: every
+  // visit type is admitted, so this is no longer raised; it stays mapped for the day the rule narrows again.
   "patient_absent_returning_only",
 ]);
 

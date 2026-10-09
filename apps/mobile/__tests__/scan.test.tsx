@@ -339,6 +339,34 @@ describe("a patient row, held or swiped", () => {
     expect(screen.queryByTestId("swipe-hint")).toBeNull();
   });
 
+  it("the scan card offers 'Guardian with reports' when the server says it may be offered — the sheet opens on the card, sends, and says it was sent (owner 2026-10-09)", async () => {
+    const s = server({
+      "GET /auth/me": () => me(DESK), "GET /opd/scan": found(["slip", "collect", "visit", "move", "book", "newVisit"], { guardianOffer: true }),
+      "POST /opd/visits/e9/patient-absent": () => ({ status: 201, body: { patientAbsent: { relation: "son", name: null, by: "u1", at: "2026-10-08T05:00:00Z" }, alreadyMarked: false } }),
+    });
+    await mount(s.fetcher, <ScanScreen />);
+    await typeCode("med-9");
+    // Amber and secondary: never the one large button.
+    expect(await screen.findByTestId("card-next")).not.toHaveTextContent(/Guardian/);
+    expect(screen.getByTestId("card-guardian")).toHaveTextContent(/^Guardian with reports ?›$/);
+    await fireEvent.press(screen.getByTestId("card-guardian"));
+    expect(await screen.findByTestId("patient-absent-dialog")).toHaveTextContent(/Who came\?/);
+    expect(s.of("POST /opd/visits/e9/patient-absent")).toHaveLength(0);
+    await fireEvent.press(screen.getByTestId("patient-absent-relation-son"));
+    await fireEvent.press(screen.getByTestId("patient-absent-confirm"));
+    expect(await screen.findByTestId("patient-absent-sent")).toHaveTextContent(/Sent to the doctor — guardian with reports, vitals not taken\./);
+    expect(s.of("POST /opd/visits/e9/patient-absent")).toHaveLength(1);
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+  });
+
+  it("…and does not offer it when the server does not (a new visit, vitals done, an older server)", async () => {
+    const s = server({ "GET /auth/me": () => me(DESK), "GET /opd/scan": found(["slip", "collect", "visit", "move", "book", "newVisit"], { guardianOffer: false }) });
+    await mount(s.fetcher, <ScanScreen />);
+    await typeCode("med-9");
+    await screen.findByTestId("card-next");
+    expect(screen.queryByTestId("card-guardian")).toBeNull();
+  });
+
   it("the vitals bay opened by a scan takes that patient off the bench and says what was scanned", async () => {
     const bench = { encounterId: "e9", entryId: "q9", tokenNo: 9, seq: 9, visitNo: "V2610080009", departmentCode: "MED", doctorId: "d1", doctorName: "Dr Chandan Kumar", serviceDate: "2026-10-08",
       patient: { requestedId: "p9", ...RAM }, benchState: null, recallAt: null, vitalsDone: false, vitalsId: null, escalation: "none", cancelMsRemaining: 0, recallDue: false };

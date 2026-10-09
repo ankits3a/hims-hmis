@@ -10,6 +10,8 @@ import * as model from "../scan/model";
 import type { ScanAction, ScanPatient, ScanVisit } from "../scan/model";
 import { seatsFor } from "../seats";
 import { useSession } from "../session";
+import { vitalsApi } from "../vitals/api";
+import { GuardianSheet } from "../vitals/guardian";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
 import { Band, MONO } from "../ui";
@@ -67,6 +69,8 @@ export function ScanScreen() {
     setLooked(l);
   }, [api, seats, go]);
 
+  /** "Who came?" for the scanned visit (owner 2026-10-09): opened from the card, on this screen. */
+  const [guardian, setGuardian] = useState<string | null>(null);
   const again = (): void => { seq.current += 1; setLooked(null); setBusy(false); setTyped(""); setRound((n) => n + 1); };
 
   return (
@@ -114,8 +118,12 @@ export function ScanScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
-      {looked !== null && (
+      {guardian !== null && (
+        <GuardianSheet api={vitalsApi(call)} encounterId={guardian} confirmHere onDone={() => undefined} onClose={() => { setGuardian(null); again(); }} />
+      )}
+      {looked !== null && guardian === null && (
         <ActionCard
+          onGuardian={(visit) => setGuardian(visit.encounterId)}
           looked={looked} seats={seats} onClose={again} onAgain={again}
           onPick={(c) => { void find({ encounterId: c.encounterId }); }}
           onAct={(action, visit) => go(action, visit, visit.patient)}

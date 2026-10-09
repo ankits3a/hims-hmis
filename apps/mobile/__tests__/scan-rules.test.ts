@@ -1,4 +1,4 @@
-import { SWIPE_FIRE, SWIPE_REVEAL, isSwipeRight, swipeFires } from "../src/scan/gestures";
+import { SWIPE_FIRE, SWIPE_LEFT_FIRE, SWIPE_LEFT_REVEAL, SWIPE_REVEAL, isSwipeLeft, isSwipeRight, swipeFires, swipeLeftFires } from "../src/scan/gestures";
 import { missView, reachable, readingsOf, scanPlan, stripWords, tokenOf } from "../src/scan/model";
 import type { ScanAction, ScanVisit } from "../src/scan/model";
 
@@ -127,6 +127,13 @@ describe("a miss says why", () => {
 });
 
 describe("a swipe", () => {
+  it("to the LEFT is its own gesture: sideways, leftwards, and as far as a right swipe before it means it (owner 2026-10-09)", () => {
+    expect([isSwipeLeft(-40, 3), isSwipeLeft(40, 3), isSwipeLeft(-40, 60), isSwipeLeft(-8, 0)]).toEqual([true, false, false, false]);
+    expect([isSwipeRight(-40, 3), swipeLeftFires(-(SWIPE_LEFT_FIRE - 1)), swipeLeftFires(-SWIPE_LEFT_FIRE), swipeLeftFires(SWIPE_LEFT_FIRE)]).toEqual([false, false, true, false]);
+    // Its longer label is uncovered whole before it can fire, and it takes at least a right swipe's travel.
+    expect([SWIPE_LEFT_FIRE >= SWIPE_FIRE, SWIPE_LEFT_REVEAL > SWIPE_LEFT_FIRE]).toEqual([true, true]);
+  });
+
   it("is a drag to the right, not a scroll, and fires only past the mark", () => {
     expect(isSwipeRight(30, 4)).toBe(true);
     expect(isSwipeRight(30, 40)).toBe(false);

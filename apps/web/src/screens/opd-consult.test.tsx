@@ -4986,22 +4986,25 @@ describe("OpdConsult — a guardian's visit, patient absent", () => {
   beforeEach(() => { vi.restoreAllMocks(); });
   const ABSENT = { relation: "father", name: "Ramesh", by: "u-bay", at: "2026-08-18T04:32:00.000Z" };
 
-  it("the queue row wears the guardian tag, and a patient who came wears none", async () => {
+  // Owner 2026-10-09 — "avoid too much text": the row is a filled chip without the name, the consultation one short line.
+  it("the queue row wears the guardian chip, and a patient who came wears none", async () => {
     const guardian = { ...WAIT_B, encounter: { ...(WAIT_B.encounter as Record<string, unknown>), patientAbsent: ABSENT } };
     mockRoutes({ ...baseRoutes(), "GET /api/opd/queues": { status: 200, body: { ...QUEUE_VIEW, ordered: [WAIT_A, guardian] } } });
     renderWithProviders(<OpdConsult />);
     const tag = await screen.findByTestId(`queue-absent-${String(WAIT_B.id)}`);
-    expect(tag).toHaveTextContent("Guardian (Father: Ramesh)");
-    expect(tag).toHaveAttribute("title", "Patient absent — guardian (Father: Ramesh) brought reports. Vitals not taken.");
+    expect(tag).toHaveTextContent("Guardian · Father");
+    expect(tag).not.toHaveTextContent(/Ramesh/);
+    expect(tag).toHaveAttribute("title", "Father: Ramesh · reports · no vitals");
     expect(screen.queryByTestId(`queue-absent-${String(WAIT_A.id)}`)).not.toBeInTheDocument();
   });
 
-  it("the consultation screen says the patient is absent and the vitals were not taken", async () => {
+  it("the consultation screen says, in one line above every tab, that only a guardian came", async () => {
     mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, vitals: [], patientAbsent: ABSENT } } });
     const user = userEvent.setup();
     await openPanel(user);
-    expect(await screen.findByTestId("panel-patient-absent"))
-      .toHaveTextContent("Patient absent — guardian (Father: Ramesh) brought reports. Vitals not taken.");
+    const line = await screen.findByTestId("panel-patient-absent");
+    expect(line.textContent).toBe("Guardian only · Father: Ramesh");
+    expect(line.style.whiteSpace).toBe("nowrap");
   });
 
   it("a visit the patient came to carries no such notice", async () => {

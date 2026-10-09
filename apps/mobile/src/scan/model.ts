@@ -25,6 +25,11 @@ export type ScanVisit = {
   encounterId: string; patientId: string; visitNo: string; serviceDate: string;
   tokenNo: number | null; departmentCode: string | null; departmentName: string | null;
   stage: ScanStage; vitalsDone: boolean; slip: "none" | "filed" | "retake"; feeUnpaid: boolean; mine: boolean;
+  /**
+   * Owner 2026-10-09 — the server says "Guardian with reports" may be OFFERED: a revisit or renewal
+   * still waiting for vitals, to the bay's or the desk's grant. Optional: an older server sends none.
+   */
+  guardianOffer?: boolean;
   patient: ScanPatient;
 };
 export type ScanCandidate = Pick<ScanVisit, "encounterId" | "visitNo" | "tokenNo" | "departmentCode" | "departmentName" | "patient">;

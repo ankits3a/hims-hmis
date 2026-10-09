@@ -10,7 +10,7 @@ import { color, radius, space, TOUCH, type } from "../theme";
 import { Band, Button, MONO, Note, Tag } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
 import { AmendPanel } from "../vitals/amend";
-import { GuardianAbsentAction, guardianMayStandIn } from "../vitals/guardian";
+import { GuardianLink, GuardianSheet, guardianMayStandIn } from "../vitals/guardian";
 import { refusalText, vitalsApi, type VitalsApi, type WireVitalsSaveResult } from "../vitals/api";
 import { CaptureCore } from "../vitals/capture";
 import { heldFirstTake, holdFirstTake, releaseFirstTake, useDangerProtocol, type Protocol } from "../vitals/protocol";
@@ -91,7 +91,14 @@ function useBench(api: VitalsApi, serviceDate: string) {
   return { rows, asOf, failed, callable, refresh };
 }
 
-function BenchRows({ rows, inHand, onTake, onHold, t }: { rows: WireBenchRow[]; inHand: string | null; onTake: (row: WireBenchRow) => void; onHold: (row: WireBenchRow) => void; t: T }) {
+/** A guardian may stand in for a returning patient whose vitals are still to be taken — the shared rule; the server decides. */
+const mayStandIn = (row: WireBenchRow): boolean => guardianMayStandIn(row.visitType) && !row.vitalsDone;
+
+function BenchRows({ rows, inHand, onTake, onHold, onGuardian, t }: {
+  rows: WireBenchRow[]; inHand: string | null; onTake: (row: WireBenchRow) => void; onHold: (row: WireBenchRow) => void;
+  /** Swipe LEFT on a revisit or renewal still waiting for vitals: "Who came?" opens. It never skips by itself. */
+  onGuardian: (row: WireBenchRow) => void; t: T;
+}) {
   const sorted = useMemo(() => [...rows].sort((a, b) => a.seq - b.seq), [rows]);
   if (sorted.length === 0) return <Text testID="bench-empty" style={s.faint}>{t("vitalsBay.bench.empty")}</Text>;
   return (
@@ -102,7 +109,8 @@ function BenchRows({ rows, inHand, onTake, onHold, t }: { rows: WireBenchRow[]; 
         const fg = st === "escalated" || st === "recheck" ? color.red : st === "due" ? "#8a5a10" : color.dim;
         return (
           // Swipe right = "Open form" (what a tap does); press and hold = the action card a scan opens (owner 2026-10-08).
-          <SwipeRow key={row.entryId} testID={`bench-swipe-${row.tokenNo}`} label={t("mobile.scan.swipe.form")} onSwipe={() => onTake(row)}>
+          <SwipeRow key={row.entryId} testID={`bench-swipe-${row.tokenNo}`} label={t("mobile.scan.swipe.form")} onSwipe={() => onTake(row)}
+            {...(mayStandIn(row) ? { leftLabel: t("patientAbsent.short"), onSwipeLeft: () => onGuardian(row) } : {})}>
           <Pressable
             testID={`bench-row-${row.tokenNo}`} accessibilityRole="button" accessibilityState={{ selected: row.encounterId === inHand }}
             onPress={() => onTake(row)} onLongPress={() => onHold(row)}
@@ -161,9 +169,11 @@ function ProtocolPanel({ p, doctorName, rerun, t }: { p: Protocol; doctorName: s
   );
 }
 
-function Details({ api, row, pre, failed, t }: { api: VitalsApi; row: WireBenchRow; pre: WirePreStage | null; failed: boolean; t: T }) {
+function Details({ api, row, pre, failed, onGuardian, t }: { api: VitalsApi; row: WireBenchRow; pre: WirePreStage | null; failed: boolean; onGuardian: (row: WireBenchRow) => void; t: T }) {
   return (
     <View testID="session" style={s.details}>
+      {/* Owner 2026-10-09 — off the form's main view: the visible, non-gesture way to "Who came?". */}
+      {mayStandIn(row) && <GuardianLink onPress={() => onGuardian(row)} />}
       <Text testID="who-ids" style={s.small}>
         {[row.patient !== null && !row.patient.restricted ? row.patient.uhid : null, row.visitNo ?? null].filter((x) => x !== null).join(" · ")}
       </Text>
@@ -224,6 +234,11 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
   takenRef.current = taken;
   /** The bench row being held: its action card is up. */
   const [held1, setHeld1] = useState<WireBenchRow | null>(null);
+  /** The row last held — the card closes before "Who came?" answers, and the banner still names the patient. */
+  const heldRow = useRef<WireBenchRow | null>(null);
+  const hold = useCallback((row: WireBenchRow) => { heldRow.current = row; setHeld1(row); }, []);
+  /** "Who came?" is up for this bench row (Details link, or a left swipe). Nothing is written until it is sent. */
+  const [guardianRow, setGuardianRow] = useState<WireBenchRow | null>(null);
   const [scanSaid, setScanSaid] = useState<string | null>(scanned?.banner ?? null);
   const arrived = useRef(false);
 
@@ -457,7 +472,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
           </Text>
         </View>
       )}
-      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} t={t} />}
+      {whoOpen && <Details api={api} row={rowInHand} pre={preStage} failed={pre?.failed === true} onGuardian={setGuardianRow} t={t} />}
     </View>
   );
 
@@ -500,12 +515,6 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
               {bannerView}
               {who}
               {error !== null && <Note tone="bad" testID="identify-error">{error}</Note>}
-              {guardianMayStandIn(rowInHand.visitType) && (
-                <GuardianAbsentAction
-                  key={`absent:${deskGen}:${rowInHand.encounterId}`} api={api} encounterId={rowInHand.encounterId}
-                  onDone={() => onGuardian(rowInHand)}
-                />
-              )}
               {held !== null && <Text testID="held-first-take" style={s.small}>{t("vitalsBay.rest.heldFirst", { value: `${held[0]}/${held[1]}` })}</Text>}
               <ProtocolPanel p={protocol} doctorName={rowInHand.doctorName} t={t}
                 rerun={rerun === null ? null : () => { const r = rerun; setRerun(null); void protocol.demand(r.reading, r.key); }} />
@@ -569,8 +578,8 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
                 <Tag>{t("vitalsBay.bench.title")}</Tag>
                 {asOf !== null && <Text testID="bench-asof" style={s.asOf}>{t("mobile.vitals.asOf", { time: clock(asOf) })}</Text>}
               </View>
-              <View testID="bench"><BenchRows rows={rows} inHand={null} onTake={take} onHold={setHeld1} t={t} /></View>
-              {rows.length > 0 && <SwipeHint list="bench" />}
+              <View testID="bench"><BenchRows rows={rows} inHand={null} onTake={take} onHold={hold} onGuardian={setGuardianRow} t={t} /></View>
+              {rows.length > 0 && <SwipeHint list="bench" textKey="mobile.scan.benchHint" />}
               <Text style={s.faint}>{t("vitalsBay.session.dignity")}</Text>
             </>
           )}
@@ -593,14 +602,18 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
               </Pressable>
             </View>
             <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingVertical: space.md }}>
-              <BenchRows rows={rows} inHand={encounterId} onTake={(r) => { setBenchOpen(false); take(r); }} onHold={(r) => { setBenchOpen(false); setHeld1(r); }} t={t} />
+              <BenchRows rows={rows} inHand={encounterId} onTake={(r) => { setBenchOpen(false); take(r); }} onHold={(r) => { setBenchOpen(false); hold(r); }} onGuardian={(r) => { setBenchOpen(false); setGuardianRow(r); }} t={t} />
             </ScrollView>
             <Text style={s.faint}>{t("vitalsBay.bench.valveNote")}</Text>
           </Pressable>
         </Pressable>
       </Modal>
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setRaw(/^(q1|rx1)\./.test(data) ? "" : data); void identify(data); }} />
+      {guardianRow !== null && (
+        <GuardianSheet api={api} encounterId={guardianRow.encounterId} onDone={() => onGuardian(guardianRow)} onClose={() => setGuardianRow(null)} />
+      )}
       <HeldCard source={held1 === null ? null : { encounterId: held1.encounterId }} onClose={() => setHeld1(null)}
+        onGuardianDone={(visit) => { const r = heldRow.current; if (r !== null && r.encounterId === visit.encounterId) onGuardian(r); }}
         onLocal={(action) => { if (action !== "vitals" || held1 === null) return false; take(held1); return true; }} />
     </View>
   );

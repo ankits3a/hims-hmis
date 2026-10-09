@@ -1,6 +1,6 @@
 import type { WireDangerFlag } from "../vitals/rules";
 import type {
-  WireFollowUpConfig, WirePatientDispense, WirePatientImaging, WirePatientResult, WireQueueDoctor, WireQueueView, WireSkipReason,
+  WireFollowUpConfig, WireLastVisit, WirePatientDispense, WirePatientImaging, WirePatientResult, WireQueueDoctor, WireQueueView, WireSkipReason,
 } from "./rules";
 
 /**
@@ -29,6 +29,8 @@ export type WireVisitDetail = {
   feeUnpaid?: boolean;
   feeBypass?: { by: string; reason: string; at: string } | null;
   deskComplaint?: { text: string; by: string; at: string } | null;
+  /** Owner 2026-10-07 — only a guardian came, with the reports. Optional: an older server sends none. */
+  patientAbsent?: { relation: string; name: string | null; by: string; at: string } | null;
   vitals: WireVisitVitals[];
   prescriptions: { id: string; status: string }[];
 };
@@ -71,6 +73,11 @@ export function doctorApi(call: Call) {
       call<unknown>("POST", `/opd/visits/${enc(encounterId)}/consult/complete`, body),
 
     visit: (encounterId: string) => call<WireVisitDetail>("GET", `/opd/visits/${enc(encounterId)}`),
+    /**
+     * An EARLIER visit, for the "Last visit" card — the same gated, PHI-logged read as `visit` (one
+     * `opd.visit` access row for the visit the doctor is shown), typed to the fields the card reads.
+     */
+    pastVisit: (encounterId: string) => call<WireLastVisit>("GET", `/opd/visits/${enc(encounterId)}`),
     /** A sealed record answers 404 here: restricted mode, never an error on the screen. */
     patient: (patientId: string) => call<{ patient: WirePatientRow }>("GET", `/patients/${enc(patientId)}`),
     allergies: (patientId: string) => call<{ items: WireAllergyRow[] }>("GET", `/patients/${enc(patientId)}/allergies`),
