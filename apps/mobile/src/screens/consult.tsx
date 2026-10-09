@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TeleCallPanel, hasSpoken, isTele } from "../consult/tele-call";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -292,6 +293,9 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const vit: WireVisitVitals | null = visit === null ? null : [...visit.vitals].filter((x) => x.status === "active").sort((a, b) => (a.recordedAt < b.recordedAt ? 1 : -1))[0] ?? null;
   const flagged = (k: string): boolean => vit?.dangerFlags.some((f) => (f as { key?: string }).key === k) === true;
   const empty = isEmptyDraft(draft);
+  // Owner 2026-10-09 — a tele-call is completed, and its prescription issued, only after the doctor has spoken (the server's rule).
+  const tele = isTele(visit?.encounter);
+  const teleLocked = tele && !hasSpoken(visit?.encounter);
   const advice = adviceOf(draft, review);
   const counts = [
     draft.complaints.length > 0 || draft.notes.trim() !== "" ? "✓" : null, draft.diagnoses.length > 0 ? String(draft.diagnoses.length) : null,
@@ -341,6 +345,13 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           </Pressable>
         </View>
 
+        {tele && visit !== null && (
+          <TeleCallPanel
+            api={api} encounterId={encounterId} visit={visit.encounter} slotAt={visit.teleSlotAt}
+            onSpoke={(e) => setVisit((v) => (v === null ? v : { ...v, encounter: { ...v.encounter, ...e } }))}
+            onLeft={onDone}
+          />
+        )}
         {offline && <Note tone="warn" testID="consult-offline">{t("mobile.consult.offline")}</Note>}
 
         <View style={s.quick}>
@@ -406,11 +417,11 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           ))}
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-          <Pressable testID="wrote-on-paper" accessibilityRole="button" disabled={busy !== null} hitSlop={6} onPress={() => { void paper(); }} style={{ minHeight: TOUCH, justifyContent: "center", paddingRight: 4 }}>
+          <Pressable testID="wrote-on-paper" accessibilityRole="button" accessibilityState={{ disabled: busy !== null || teleLocked }} disabled={busy !== null || teleLocked} hitSlop={6} onPress={() => { void paper(); }} style={{ minHeight: TOUCH, justifyContent: "center", paddingRight: 4 }}>
             <Text style={[s.link, { color: paperAsk ? color.red : color.dim, textDecorationLine: "underline" }]}>{t(paperAsk ? "mobile.consult.paperConfirm" : "mobile.consult.paper")}</Text>
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Button testID="issue-complete" busy={busy === "issue"} disabled={empty || busy !== null}
+            <Button testID="issue-complete" busy={busy === "issue"} disabled={empty || busy !== null || teleLocked}
               label={open.length > 0 ? t("mobile.consult.issueBlocked", { count: open.length }) : t(draft.lines.length === 0 ? "mobile.consult.completeOnly" : "mobile.consult.issue")}
               onPress={() => { if (open.length > 0) setDrawer("meds"); else void issue(); }} />
           </View>

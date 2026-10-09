@@ -16,7 +16,7 @@ import {
 } from "./rx-checks";
 import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
-import { refuseIfClosedOnPaper, requireTreatingDoctor } from "./consultation";
+import { refuseIfClosedOnPaper, refuseTeleBeforeSpoke, requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getEncounter, visitDiagnoses } from "./encounters";
 import { OpdError } from "./errors";
@@ -590,6 +590,8 @@ export async function issuePrescription(
   if (!stateOk) {
     throw new OpdError("encounter_state_conflict", `a prescription is issued in consultation, not ${encounter.status}`);
   }
+  // Owner 2026-10-09 — a tele-call's prescription is the doctor's only after they have spoken to the patient.
+  if (authority === "doctor") refuseTeleBeforeSpoke(encounter);
 
   // A tapered line's frequency and duration are the SERVER's, written from its steps before the
   // "every line needs a frequency" check below — so the checks, the stored row and the FHIR

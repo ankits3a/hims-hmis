@@ -236,6 +236,16 @@
       "howTo": "The download opens in the browser. Tap the file when it finishes, then Install — your sign-in stays.",
       "version": "Version {{version}} · build {{code}}"
     },
+    "tele": {
+      "title": "Tele-call",
+      "call": "Call patient",
+      "noAnswer": "No answer",
+      "spoke": "Spoke to patient",
+      "spokeAt": "Spoke · {{time}}",
+      "backInLine": "No answer — back in your line",
+      "toDesk": "No answer twice — sent to desk",
+      "triedOnce": "Tried once — no answer"
+    },
     "counter": {
       "step": {
         "find": "Find",

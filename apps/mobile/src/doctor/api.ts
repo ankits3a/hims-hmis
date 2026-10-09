@@ -25,7 +25,11 @@ export type WireVisitDetail = {
     id: string; visitNo: string; patientId: string; status: string; serviceDate: string; visitType: string;
     chiefComplaint: string | null; diagnosis: string | null; dangerFlagged: boolean;
     consultStartedAt: string | null; rxDraft?: { drug?: unknown }[] | null;
+    /** Owner 2026-10-09 — a tele-call, and the doctor's two answers. Optional: an older server sends none. */
+    consultMode?: string | null; teleOutcome?: string | null; teleOutcomeAt?: string | null; teleNoAnswerCount?: number | null;
   };
+  /** The slot a tele-call was booked for; null or absent on every other visit. */
+  teleSlotAt?: string | null;
   feeUnpaid?: boolean;
   feeBypass?: { by: string; reason: string; at: string } | null;
   deskComplaint?: { text: string; by: string; at: string } | null;

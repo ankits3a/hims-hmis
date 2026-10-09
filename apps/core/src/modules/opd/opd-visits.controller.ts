@@ -48,6 +48,7 @@ import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
 import { recordTeleAdvance, teleDeskMarks, teleFee } from "./tele";
+import { teleSlotOf } from "./tele-call";
 import type { TeleAdvanceResult, TeleDeskMark, TeleFee } from "./tele";
 import { withIdempotency } from "../billing";
 import type { CounterState, EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
@@ -298,12 +299,14 @@ type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry
  */
 type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
   patient: PatientSummary | null;
-  feeUnpaid: boolean;
-  feeBypass: { by: string; reason: string; at: Date } | null;
+  /** Absent — not false — on a tele visit: nothing about its money is ever put on this read (owner 2026-10-09). */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: Date } | null;
   /** What the front desk heard, by whom and when — `null` when nothing was typed (D15). */
   deskComplaint: { text: string; by: string; at: Date } | null;
   /** Owner 2026-10-07 — the guardian came with the reports and the patient did not (`patient-absent.ts`). */
   patientAbsent: PatientAbsent | null;
+  teleSlotAt: Date | null;
 };
 
 @Controller("opd")
@@ -665,9 +668,12 @@ export class OpdVisitsController {
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
     return {
-      ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)),
+      ...found, patient: summary ?? null,
+      ...(found.encounter.consultMode === "tele" ? {} : await feeMarksFor(this.db, found.encounter)),
       deskComplaint: await deskComplaintFor(this.db, found.encounter),
       patientAbsent: patientAbsentOf(found.encounter),
+      // Owner 2026-10-09 — a tele-call's own slot, for the doctor's card. Null on every other visit.
+      teleSlotAt: await teleSlotOf(this.db, found.encounter),
     };
   }
 

@@ -291,6 +291,19 @@ export function refuseIfClosedOnPaper(encounter: EncounterRow): void {
 }
 
 /**
+ * ═══ A TELE-CALL IS NOT A CONSULTATION UNTIL THE DOCTOR HAS SPOKEN TO THE PATIENT (owner 2026-10-09) ═══
+ *
+ * The server's guard, not the screen's: completing the visit and issuing its prescription are both
+ * refused until `tele_outcome` is 'spoke' (`tele.ts` records it). A screen that greys a button is a
+ * courtesy; this is the rule. An in-person visit never reaches the throw.
+ */
+export function refuseTeleBeforeSpoke(encounter: EncounterRow): void {
+  if (encounter.consultMode === "tele" && encounter.teleOutcome !== "spoke") {
+    throw new OpdError("tele_outcome_required", "Call the patient first, then record that you spoke to them", { encounterId: encounter.id });
+  }
+}
+
+/**
  * Every consult-door verdict for a visit, first refusal first — WITHOUT the doctor's waiver applied.
  * `startConsultation` reads the registry itself; this is the same question for the one other caller
  * that closes a visit, the paper road (`paper-consult.ts`), which must not grow a second copy of
@@ -688,6 +701,7 @@ export async function completeConsultation(
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a completion needs in_consultation, not ${current.status}`);
   }
+  refuseTeleBeforeSpoke(current);
   assertLeaseFor(current, input.note?.leaseToken, now);
   /*
     ═══ PRODUCTION 2026-09-23 — COMPLETE MUST NOT DROP A PRESCRIPTION NOBODY ISSUED (the server's half, 2026-10-06) ═══

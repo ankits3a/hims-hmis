@@ -155,6 +155,22 @@ describe("the doctor's OPD line on a phone", () => {
     expect(screen.queryByTestId("line-row-14-slot")).toBeNull();
   });
 
+  it("TELE-CALL: the patient page shows the phone card — Tele-call and the slot — no vitals block, and no money word", async () => {
+    const w = world(queue({ ordered: [entry(13, { position: 1, tele: true, kind: "appointment", appointmentAt: "2026-10-06T05:50:00.000Z", feeStatus: null }, {}, { name: "Meena Kumari" })] }), {
+      "GET /opd/visits/e13": () => {
+        const v = visit("e13", { vitals: [], teleSlotAt: "2026-10-06T05:50:00.000Z" }, { consultMode: "tele", teleOutcome: null, teleNoAnswerCount: 0 }) as Record<string, unknown>;
+        delete v.feeUnpaid; delete v.feeBypass;
+        return { status: 200, body: v };
+      },
+    });
+    await mount(w.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    expect(await screen.findByTestId("brief-tele")).toHaveTextContent(/Tele-call.*11:20/);
+    expect(screen.queryByTestId("brief-vitals-card")).toBeNull();
+    expect(screen.queryByTestId("brief-unpaid")).toBeNull();
+    expect(screen.getByTestId("brief-who")).not.toHaveTextContent(/paid|unpaid|fee|₹/i);
+  });
+
   it("a user with no doctor profile is told so (404 is an answer, not an error) and no line is asked for", async () => {
     const w = world(queue(), { "GET /opd/me/doctor": () => ({ status: 404, body: { message: "no OPD doctor profile for this user", code: "not_a_doctor" } }) });
     await mount(w.fetcher);

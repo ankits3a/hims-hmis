@@ -4254,6 +4254,62 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
 
   const DESK = { text: "pair mein jhunjhuni, raat ko zyada", by: "Anita Sharma", at: "2026-08-18T04:32:00.000Z" };
 
+  it("TELE-CALL (owner 2026-10-09): the panel says Tele-call and the slot; Call patient shows the number to dial; Complete is locked until Spoke to patient — and nothing speaks of money", async () => {
+    let spoke = false;
+    const teleVisit = () => ({
+      ...VISIT, vitals: [], teleSlotAt: "2026-08-18T05:50:00.000Z",
+      encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: spoke ? "spoke" : null, teleOutcomeAt: spoke ? "2026-08-18T06:12:00.000Z" : null, teleNoAnswerCount: 0 },
+    });
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": () => ({ status: 200, body: teleVisit() }),
+      "POST /api/opd/visits/enc-1/tele/call": { status: 200, body: { encounterId: "enc-1", telePhone: "9876543021", callStartedAt: NOW_ISO } },
+      "POST /api/opd/visits/enc-1/tele/outcome": () => { spoke = true; return { status: 200, body: { outcome: "spoke", final: true, encounter: teleVisit().encounter } }; },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const panel = await screen.findByTestId("tele-panel");
+    expect(within(panel).getByTestId("tele-card")).toHaveTextContent("Tele-call");
+    expect(within(panel).getByTestId("tele-slot")).toHaveTextContent("11:20");
+    expect(panel).not.toHaveTextContent(/paid|unpaid|fee|₹|receipt|advance/i);
+    expect(screen.getByTestId("complete-consult")).toBeDisabled();
+    expect(within(panel).queryByTestId("tele-number")).toBeNull(); // the number is not on the screen until it is asked for
+
+    await user.click(within(panel).getByRole("button", { name: "Call patient" }));
+    expect(await within(panel).findByTestId("tele-number")).toHaveTextContent("Dial 9876543021");
+    expect(within(panel).getByRole("button", { name: "No answer" })).toBeEnabled();
+    await user.click(within(panel).getByRole("button", { name: "Spoke to patient" }));
+    expect(await screen.findByTestId("tele-spoke")).toHaveTextContent("Spoke · 11:42");
+    expect(callsTo("POST", "/api/opd/visits/enc-1/tele/outcome")[0]!.body).toBe(JSON.stringify({ outcome: "spoke" }));
+    await waitFor(() => expect(screen.getByTestId("complete-consult")).toBeEnabled());
+    expect(screen.queryByTestId("tele-call")).toBeNull();
+  });
+
+  it("TELE-CALL: 'No answer' takes the visit off the doctor's hands; a visit already tried once says so", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, teleSlotAt: "2026-08-18T05:50:00.000Z", encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: "no_answer", teleNoAnswerCount: 1 } } },
+      "POST /api/opd/visits/enc-1/tele/outcome": { status: 200, body: { outcome: "no_answer", final: true, encounter: {} } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const panel = await screen.findByTestId("tele-panel");
+    expect(within(panel).getByTestId("tele-tried")).toHaveTextContent("Tried once — no answer");
+    await user.click(within(panel).getByRole("button", { name: "No answer" }));
+    await waitFor(() => expect(screen.queryByTestId("tele-panel")).toBeNull());
+    expect(callsTo("POST", "/api/opd/visits/enc-1/tele/outcome")[0]!.body).toBe(JSON.stringify({ outcome: "no_answer" }));
+  });
+
+  it("an in-person consultation has no tele panel, and Complete is not locked by one", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, encounter: { ...ENCOUNTER, status: "in_consultation" } } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByTestId("complete-consult");
+    expect(screen.queryByTestId("tele-panel")).toBeNull();
+    expect(screen.getByTestId("complete-consult")).toBeEnabled();
+  });
+
   it("D1: the desk's words are shown verbatim with who and when — and only the complaints the vocabulary RECOGNISES are offered, as taps", async () => {
     mockRoutes({
       ...baseRoutes(),

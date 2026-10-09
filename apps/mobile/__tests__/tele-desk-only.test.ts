@@ -23,6 +23,11 @@ describe("tele-call money is desk-only", () => {
   it("finds the doctor's files", () => {
     expect(doctorFacing.length).toBeGreaterThanOrEqual(10);
   });
+  it("the doctor's tele-call words carry no money word, in either language", () => {
+    for (const tree of [en, hi] as unknown as { mobile: { tele: Record<string, string> } }[]) {
+      expect(Object.values(tree.mobile.tele).join(" | ")).not.toMatch(/paid|unpaid|fee|₹|rupee|भुगतान|शुल्क|बाकी|जमा/i);
+    }
+  });
   it("none of them imports the desk's pay file, its words, or the desk's mark", () => {
     const bad = doctorFacing.filter((f) => /tele-pay|telePay|teleDesk|advanceQuote|advanceReceipt/.test(readFileSync(f, "utf8")));
     expect(bad).toEqual([]);
@@ -38,13 +43,15 @@ describe("tele-call labels fit one line", () => {
     "mobile.counter.telePay.toPay", "mobile.counter.telePay.paid", "mobile.counter.telePay.paidRefund", "mobile.counter.telePay.nothingToPay",
     "mobile.counter.telePay.collect", "mobile.counter.telePay.confirmFree", "mobile.counter.telePay.paidBy", "mobile.counter.telePay.upiRef",
     "mobile.counter.telePay.received", "mobile.counter.telePay.mode.cash", "mobile.counter.telePay.mode.upi", "mobile.counter.telePay.mode.card",
+    "mobile.tele.title", "mobile.tele.call", "mobile.tele.noAnswer", "mobile.tele.spoke", "mobile.tele.spokeAt", "mobile.tele.backInLine",
+    "mobile.tele.toDesk", "mobile.tele.triedOnce",
   ];
   it.each(LABELS)("%s", (key) => {
     for (const tree of [en, hi] as unknown as Tree[]) {
       const text = at(tree, key);
       expect(typeof text).toBe("string");
       // The widest value a label will carry: a five-figure fee.
-      const shown = (text as string).replace("{{amount}}", "₹10,000");
+      const shown = (text as string).replace("{{amount}}", "₹10,000").replace("{{time}}", "11:42");
       expect(shown.length).toBeLessThanOrEqual(34);
       expect(shown).not.toMatch(/[.!?।]$/);
     }

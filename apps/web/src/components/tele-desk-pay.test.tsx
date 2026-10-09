@@ -103,9 +103,16 @@ describe("tele-call money is desk-only", () => {
     ...walk(join(src, "screens")).filter((f) => /\/(opd-consult[^/]*|opd-phone-consult|paper-consults)\.tsx?$/.test(f)),
     ...walk(join(src, "components", "doctor-desk")),
     join(src, "components", "consult-scribe.tsx"),
+    join(src, "components", "tele-call-panel.tsx"),
   ];
   it("finds the doctor's screens", () => {
     expect(doctorFacing.length).toBeGreaterThanOrEqual(5);
+  });
+  it("the doctor's own tele-call words carry no money word, in either language", () => {
+    for (const lang of ["en", "hi"]) {
+      const tree = JSON.parse(readFileSync(join(src, "locales", `${lang}.json`), "utf8")) as { teleCall: Record<string, string> };
+      expect(Object.values(tree.teleCall).join(" | ")).not.toMatch(/paid|unpaid|fee|₹|rupee|भुगतान|शुल्क|बाकी|जमा/i);
+    }
   });
   it("none of them imports the desk's pay component, its words, or an appointment's advance columns", () => {
     const bad = doctorFacing.filter((f) => /tele-desk-pay|teleDesk|advanceQuote|advanceReceipt|advanceQuotedAt/.test(readFileSync(f, "utf8")));

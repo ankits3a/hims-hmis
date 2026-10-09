@@ -136,6 +136,8 @@ export type WireAppointment = {
 // ——— the encounter spine, the queue, vitals and the e-Rx ———
 
 export type WireEncounter = {
+  /** Owner 2026-10-09 — a tele-call, and the doctor's two answers. Optional: an older server sends none. */
+  consultMode?: string | null; teleOutcome?: string | null; teleOutcomeAt?: string | null; teleNoAnswerCount?: number | null;
   id: string; visitNo: string; patientId: string; type: string; status: OpdVisitStatus; workflowInstanceId: string;
   departmentId: string | null; doctorId: string | null; appointmentId: string | null; serviceDate: string;
   visitType: OpdVisitType; intendedPayer: string; referralSource: string | null; referrerName: string | null;

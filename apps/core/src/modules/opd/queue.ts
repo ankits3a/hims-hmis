@@ -698,6 +698,8 @@ export async function queueFeeStatusHook(
   const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, info.encounterId)))[0];
   // 2026-09-30 — a pharmacy visit (`openPharmacyVisitInTx`) has no fee and no queue: its bill settling moves nothing.
   if (!encounter || encounter.type !== "opd") return;
+  // Owner 2026-10-09 — a tele visit's bill is raised after the call; nothing about its money is ever put on a board or a rail.
+  if (encounter.consultMode === "tele") return;
   /**
    * RC-3 T3 — THE BAIL ON `unsettled` IS GONE, AND THAT IS THE WHOLE OF M3's FIX HERE.
    *

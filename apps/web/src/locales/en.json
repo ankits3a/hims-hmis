@@ -843,6 +843,16 @@
       "cancel": "Cancel"
     }
   },
+  "teleCall": {
+    "call": "Call patient",
+    "dial": "Dial {{phone}}",
+    "noAnswer": "No answer",
+    "spoke": "Spoke to patient",
+    "spokeAt": "Spoke · {{time}}",
+    "backInLine": "No answer — back in your line",
+    "toDesk": "No answer twice — sent to desk",
+    "triedOnce": "Tried once — no answer"
+  },
   "teleDesk": {
     "toPay": "To pay {{amount}}",
     "paid": "Paid",

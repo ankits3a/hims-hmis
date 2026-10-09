@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { TeleCard, isTele } from "../consult/tele-call";
 import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError } from "../api";
@@ -245,6 +246,7 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
               {kind !== null && <Text testID="brief-kind" style={s.sub}>{t(`opdConsultV2.vtShort.${kind}`)}</Text>}
             </View>
           </View>
+          {isTele(v?.encounter) && <View style={{ marginTop: space.sm }}><TeleCard slotAt={v?.teleSlotAt} testID="brief-tele" /></View>}
           {sealed && <Text testID="brief-sealed" style={[s.sub, { marginTop: space.sm, color: "#8a5a10", fontWeight: "700" }]}>{t("opdConsult.restricted")}</Text>}
           {unpaid && (
             <View testID="brief-unpaid" style={s.unpaid}>
@@ -288,11 +290,12 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
             )}
         </Section>
 
-        <Section title={t("mobile.doctor.vitalsTitle")} testID="brief-vitals-card">
+        {/* Owner 2026-10-09 — nobody was at the bay for a tele-call: no vitals block at all. */}
+        {!isTele(v?.encounter) && <Section title={t("mobile.doctor.vitalsTitle")} testID="brief-vitals-card">
           {visit.status === "loading" ? <Text style={s.dimLine}>…</Text>
             : visit.status !== "ok" ? <Text style={s.dimLine}>{t("mobile.doctor.partFailed")}</Text>
             : <VitalsCard vitals={latestVitals} t={t} />}
-        </Section>
+        </Section>}
 
         {!sealed && resultsReadable && (
           <Section title={t("opdConsultV2.sinceThen")} testID="brief-results">

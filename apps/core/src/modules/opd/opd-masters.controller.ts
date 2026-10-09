@@ -37,7 +37,7 @@ import type { Db } from "../../kernel/db/client";
  * cannot do that. The older modules are NOT realigned (gate reports 01–06.2 §4/§5).
  */
 const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
-  "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today", "tele_call_opens_at_slot", "tele_amount_mismatch",
+  "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today", "tele_call_opens_at_slot", "tele_amount_mismatch", "tele_outcome_required",
   "extension_cap_reached", "allergy_conflict", "user_already_doctor", "opd_not_configured", "opd_config_invalid",
   "not_your_patient", "consult_gate_refused",
   // PLAN 16a T5 — the two new hard warnings answer 409 exactly as `allergy_conflict` does, and this
