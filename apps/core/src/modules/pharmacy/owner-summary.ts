@@ -2,6 +2,7 @@ import { and, gte, lt, sql } from "drizzle-orm";
 import type { DayRange, OwnerPharmacy } from "@hmis/contracts";
 import { pharmacyDispenses } from "../../kernel/db/schema";
 import { hasPermission } from "../../kernel/auth/permissions";
+import { istInstantOf } from "./config";
 import { PharmacyError } from "./errors";
 import { reorderAdvice } from "./replenishment";
 import { REPORTS_READ } from "./report-range";
@@ -27,13 +28,13 @@ import type { Db } from "../../kernel/db/client";
  * Superintendent — gets every count and no rupee (owner: "Money page for owner alone").
  */
 const DAY_MS = 86_400_000;
-const IST_OFFSET_MS = 5.5 * 3_600_000;
 const EXPIRING_WITHIN_DAYS = 60;
 
 function window(range: DayRange): { start: Date; end: Date } {
   return {
-    start: new Date(Date.parse(`${range.from}T00:00:00.000Z`) - IST_OFFSET_MS),
-    end: new Date(Date.parse(`${range.to}T00:00:00.000Z`) - IST_OFFSET_MS + DAY_MS),
+    // The module's one IST clock (`config.ts` `istInstantOf`) — test/ist-clock-parity.test.ts pins one site per module.
+    start: istInstantOf(range.from, "00:00"),
+    end: new Date(istInstantOf(range.to, "00:00").getTime() + DAY_MS),
   };
 }
 
