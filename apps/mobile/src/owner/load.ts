@@ -1,5 +1,5 @@
 import { addDayIso, istDayOf, tileDayQuery, type OwnerReads, type OwnerTileKey } from "./model";
-import type { OwnerAppointments, OwnerLearning, OwnerMoney, OwnerPharmacy, StaffToday } from "./model";
+import type { FlowReport, OwnerAppointments, OwnerLearning, OwnerMoney, OwnerPharmacy, StaffToday } from "./model";
 import type { Call } from "../doctor/api";
 
 /**
@@ -23,17 +23,19 @@ export async function loadOwnerReads(
   const today = istDayOf(nowMs);
   const lastWeek = addDayIso(today, -7);
   const q = tileDayQuery(nowMs);
-  const [money, opd, appointments, pharmacy, staff, learning] = await Promise.all([
+  const [money, opd, appointments, pharmacy, staff, learning, wait] = await Promise.all([
     soft(has("money"), () => call<OwnerMoney>("GET", `/billing/reports/owner-money?${q}`)),
     soft(has("opd"), () => call<Range>("GET", `/staff/range?from=${lastWeek}&to=${today}&groupBy=day`)),
     soft(has("appointments"), () => call<OwnerAppointments>("GET", `/opd/reports/appointments-summary?${q}`)),
     soft(has("pharmacy"), () => call<OwnerPharmacy>("GET", `/pharmacy/office/reports/owner-summary?${q}`)),
     soft(has("staff"), () => call<StaffToday>("GET", "/roster/staff-today")),
     soft(has("learning"), () => call<OwnerLearning>("GET", "/opd/reports/learning")),
+    /* Today against the same weekday last week — the server's own clock picks both days. */
+    soft(has("wait"), () => call<FlowReport>("GET", "/opd/reports/flow?period=today")),
   ]);
   const visitsOn = (r: Range, day: string): number => r.rows.find((row) => row.key.day === day)?.measures[VISITS] ?? 0;
   return {
-    money, appointments, pharmacy, staff, learning,
+    money, appointments, pharmacy, staff, learning, wait,
     opd: opd == null ? opd : { today: visitsOn(opd, today), lastWeek: visitsOn(opd, lastWeek) },
   };
 }

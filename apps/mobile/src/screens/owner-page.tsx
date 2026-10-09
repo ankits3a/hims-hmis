@@ -11,11 +11,12 @@ import { rosterApi } from "../roster/api";
 import { onRecord, recordedPercent } from "../../../../packages/contracts/src/recording";
 import type { RecordingCounts, RecordingReport } from "../../../../packages/contracts/src/recording";
 import type { WireOnNowBoard } from "../roster/rules";
+import { WaitBody, type WaitData } from "./owner-wait";
 import {
   arrowCount, arrowPercent, compareKey, dayMonthParts, drawerWords, istDayOf, LIST_CAP, MONEY_PERMISSION, OWNER_PERIODS, pageRange,
   rangeProblem, rangeQuery, rupeesShort,
   type LearningNickname, type OwnerAppointments, type OwnerLearning, type OwnerMoney, type OwnerPeriod, type OwnerPharmacy, type OwnerTileKey,
-  type PageRange, type StaffToday, type TileTone,
+  type FlowReport, type PageRange, type StaffToday, type TileTone,
 } from "../owner/model";
 
 /**
@@ -28,7 +29,7 @@ import {
  * The clock is handed in (`now`), so a test never depends on the day it runs.
  */
 type T = (key: string, vars?: Record<string, string | number>) => string;
-const WITH_PERIOD: readonly OwnerTileKey[] = ["money", "opd", "recorded", "appointments", "pharmacy"];
+const WITH_PERIOD: readonly OwnerTileKey[] = ["money", "opd", "wait", "recorded", "appointments", "pharmacy"];
 const TONE: Record<TileTone, string> = { up: color.green, down: color.red, warn: "#8a5a10", plain: color.dim };
 const VISITS = "opd.visitsOpened";
 type StaffRange = { rows: { key: Record<string, string | undefined>; measures: Record<string, number> }[] };
@@ -37,7 +38,7 @@ type RecordedData = { now: RecordingReport; before: RecordingReport | null };
 type Data =
   | { page: "money"; d: OwnerMoney } | { page: "opd"; d: OpdData } | { page: "recorded"; d: RecordedData }
   | { page: "appointments"; d: OwnerAppointments } | { page: "pharmacy"; d: OwnerPharmacy }
-  | { page: "staff"; d: StaffToday } | { page: "learning"; d: OwnerLearning };
+  | { page: "staff"; d: StaffToday } | { page: "learning"; d: OwnerLearning } | { page: "wait"; d: WaitData };
 
 const card = { backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, paddingHorizontal: space.md, paddingVertical: space.xs } as const;
 const hhmm = (iso: string): string => new Date(new Date(iso).getTime() + 5.5 * 3_600_000).toISOString().slice(11, 16);
@@ -144,6 +145,16 @@ export function OwnerPage({ page, now = Date.now }: { page: OwnerTileKey; now?: 
       else if (page === "pharmacy") next = { page, d: await call<OwnerPharmacy>("GET", `/pharmacy/office/reports/owner-summary?${rangeQuery(r)}`) };
       else if (page === "staff") next = { page, d: await call<StaffToday>("GET", "/roster/staff-today") };
       else if (page === "learning") next = { page, d: await call<OwnerLearning>("GET", "/opd/reports/learning") };
+      else if (page === "wait") {
+        /* A named period is read on the server's own clock, so "today" and what it is compared with are the server's; custom spells its days out. */
+        const q = period === "custom" ? rangeQuery(r, false) : `period=${period}`;
+        const [main, hour, weekday] = await Promise.all([
+          call<FlowReport>("GET", `/opd/reports/flow?${q}&groupBy=department`),
+          call<FlowReport>("GET", `/opd/reports/flow?${q}&groupBy=hour`).catch(() => null),
+          call<FlowReport>("GET", `/opd/reports/flow?${q}&groupBy=weekday`).catch(() => null),
+        ]);
+        next = { page, d: { main, hour, weekday } };
+      }
       else if (page === "recorded") {
         const [cur, before] = await Promise.all([
           call<RecordingReport>("GET", `/opd/reports/recording?${rangeQuery(r, false)}`),
@@ -170,7 +181,7 @@ export function OwnerPage({ page, now = Date.now }: { page: OwnerTileKey; now?: 
     } catch {
       setData(null); setFailed(true);
     }
-  }, [page, periodic, range, call, now]);
+  }, [page, periodic, range, period, call, now]);
   useEffect(() => { void load(); }, [load]);
 
   const applyCustom = (): void => {
@@ -193,10 +204,11 @@ export function OwnerPage({ page, now = Date.now }: { page: OwnerTileKey; now?: 
   };
 
   const vs = periodic ? compareKey(period) : null;
-  const title = t(page === "staff" ? "owner.staff.title" : page === "learning" ? "owner.learning.title" : `owner.tile.${page}`);
+  const title = t(page === "staff" ? "owner.staff.title" : page === "learning" ? "owner.learning.title" : page === "wait" ? "owner.wait.title" : `owner.tile.${page}`);
 
   const body = (): ReactNode => {
     if (data === null || data.page !== page) return null;
+    if (data.page === "wait") return <WaitBody key={`${data.d.main.from}:${data.d.main.to}`} d={data.d} vs={vs} t={t} call={call} />;
     if (data.page === "money") {
       const m = data.d;
       const top = Math.max(m.byMode.cash, m.byMode.upi, m.byMode.card, 1);
