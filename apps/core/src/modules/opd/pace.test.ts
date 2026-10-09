@@ -171,7 +171,12 @@ describe("my pace — read from the visits", () => {
   });
 
   it("the answer for one doctor holds nothing that names or measures another", async () => {
-    await consults(c, 12, 10); await consults(d, 12, 23.7); await consults(e, 12, 31.3);
+    // Dr Deepa averages 23.7 minutes and Dr Esha 31.3 — two numbers that must not come back. Their visits
+    // differ from one another, as real ones do: a median is ONE visit's length, and in a fixture where a
+    // colleague's visits are all alike it would equal their average.
+    await consults(c, 12, 10);
+    await consults(d, 4, 20); await consults(d, 8, 25.55);
+    await consults(e, 6, 30); await consults(e, 6, 32.6);
     const r = await loadMyPace(db, c.actor, "30d", NOW);
     const json = JSON.stringify(r);
     for (const other of [d, e, a, b]) {
@@ -207,7 +212,7 @@ describe("my pace — read from the visits", () => {
   it("the vitals bay has no measure: the in-hand moment is not stored, and none is made up from the saves", async () => {
     const [enc] = await consults(c, 1, 10);
     await db.insert(opdVitals).values(Array.from({ length: 12 }, (_, i) => ({
-      id: newId(), encounterId: enc!, patientId, pulse: 80, recordedBy: nurse.id, recordedAt: new Date(NOW.getTime() - i * 4 * 60_000),
+      id: newId(), encounterId: enc!, patientId, pulse: 80, band: "adult", dangerFlags: [], recordedBy: nurse.id, recordedAt: new Date(NOW.getTime() - i * 4 * 60_000),
     })));
     expect(await loadMyPace(db, nurse.actor, "today", NOW)).toMatchObject({ consultation: null, vitals: null });
   });
