@@ -19,6 +19,7 @@ flowchart LR
   aerb[aerb] --> resources[resources]
   alerts[alerts] --> auth[auth]
   approvals[approvals] --> workflow[workflow]
+  attendance[attendance] --> auth[auth]
   billing[billing] --> patients[patients]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
@@ -35,6 +36,7 @@ flowchart LR
   membership[membership] --> patients[patients]
   notifications[notifications] --> auth[auth]
   notifications[notifications] --> patients[patients]
+  opd[opd] --> billing[billing]
   opd[opd] --> patients[patients]
   opd[opd] --> resources[resources]
   ops[ops] --> auth[auth]
@@ -76,6 +78,7 @@ flowchart LR
 | `aerb.ts` | module aerb | `aerb_incidents`, `aerb_licences`, `aerb_persons`, `aerb_pregnancy_declarations`, `aerb_qa_records`, `aerb_settings`, `aerb_tld_badges`, `aerb_tld_reads`, `radiation_dose_register` |
 | `alerts.ts` | kernel | `alerts` |
 | `approvals.ts` | kernel | `approval_types`, `approvals` |
+| `attendance.ts` | module attendance | `att_days`, `att_holidays`, `att_leaves`, `att_meeting_requests`, `att_on_duty`, `att_punches`, `att_roster`, `att_shifts`, `att_staff`, `att_sync_state` |
 | `auth.ts` | kernel | `agents`, `auth_devices`, `auth_sessions`, `auth_throttle`, `break_glass_grants`, `permissions`, `phone_push_sends`, `role_assignments`, `role_permissions`, `roles`, `sod_pairs`, `temp_role_grants`, `user_totp`, `users` |
 | `billing.ts` | module billing | `allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_vouchers` |
 | `clinical-coding.ts` | kernel | `icd10_codes`, `icd11_map_loads`, `icd11_map_rows` |
@@ -90,7 +93,7 @@ flowchart LR
 | `materials.ts` | module materials | `consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendors` |
 | `membership.ts` | module membership | `coupon_definitions`, `coupon_redemptions`, `covered_members`, `entitlement_counters`, `entitlement_movements`, `holder_book_imports`, `import_quarantine`, `lapsed_restore_checks`, `membership_instances`, `membership_plans`, `patient_match_queue` |
 | `notifications.ts` | kernel | `notifications`, `notify_template_registrations`, `patient_message_preferences` |
-| `opd.ts` | module opd | `cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage` |
+| `opd.ts` | module opd | `cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage` |
 | `ops.ts` | kernel | `config_validation_reports`, `downtime_form_counters`, `downtime_kit_ranges`, `downtime_kits`, `interfaces`, `operating_mode_changes` |
 | `orders.ts` | kernel | `order_item_transitions`, `order_items`, `orders` |
 | `org.ts` | kernel | `org_departments` |

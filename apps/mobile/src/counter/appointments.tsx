@@ -11,11 +11,13 @@ import { refusalText } from "../vitals/api";
 import type { CounterApi, WireAppointment, WireCheckIn, WireDepartment, WireLeave, WireMasterDoctor, WireRoom, WireSchedule, WireSlot } from "./api";
 import {
   DAY_PART_ORDER, bookCounts, bookOrder, bookedAlready, dayOffer, dayPartOf, daysFrom, movedAlready, partCounts, rebookingToday, rowStateOf,
-  sittingWeekdays, slotClock, upcomingOf, weekdayOf,
+  sittingWeekdays, slotClock, telePhoneOf, upcomingOf, weekdayOf,
 } from "./appointment-rules";
 import type { DayOffer, DayPart } from "./appointment-rules";
 import { Pill } from "./move";
 import { SAMAJ_SEVA_AMOUNT } from "./rules";
+import { TeleMark } from "./tele-mark";
+import { TelePay, teleMoneyWord } from "./tele-pay";
 import type { MoveConsultTerms } from "./rules";
 
 /**
@@ -56,11 +58,13 @@ export const MORE_DAYS = 56;
 // THE PATIENT'S OWN BOOKINGS — on the person screen
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-export function PatientAppointments({ api, patientId, today, version, mayManage, mayCheckIn, doctorName, deptName, onMove, onCheckedIn, onAlreadyCheckedIn, onSaid }: {
+export function PatientAppointments({ api, patientId, today, version, mayManage, mayCheckIn, mayCollectAdvance = false, doctorName, deptName, onMove, onCheckedIn, onAlreadyCheckedIn, onSaid }: {
   api: CounterApi; patientId: string; today: string;
   /** Bumped by the desk after any write elsewhere, so this list is read again. */
   version: number;
   mayManage: boolean; mayCheckIn: boolean;
+  /** `billing.receipt.record` — may take a tele-call's fee at this desk. */
+  mayCollectAdvance?: boolean;
   doctorName: (doctorId: string) => string | null; deptName: (departmentId: string) => string | null;
   onMove: (a: WireAppointment) => void;
   onCheckedIn: (res: WireCheckIn, a: WireAppointment) => void;
@@ -168,12 +172,16 @@ export function PatientAppointments({ api, patientId, today, version, mayManage,
         const locked = unknown !== null && unknown.id === a.id;
         return (
           <View key={a.id} testID={`appt-${a.id}`} style={[s.card, stranded && { borderColor: color.goldLine, backgroundColor: color.goldSoft }, isToday && !stranded && { borderColor: color.greenLine, backgroundColor: color.greenSoft }]}>
-            <Text style={[type.body, { color: color.ink, fontWeight: "700" }]}>
-              {isToday ? t("mobile.counter.appt.today") : dayWord(a.serviceDate, t)} · {slotClock(a.slotStart)}
-            </Text>
+            <View style={s.head}>
+              <Text style={[type.body, { color: color.ink, fontWeight: "700" }]}>
+                {isToday ? t("mobile.counter.appt.today") : dayWord(a.serviceDate, t)} · {slotClock(a.slotStart)}
+              </Text>
+              {a.mode === "tele" && <TeleMark testID={`appt-tele-${a.id}`} label={t("mobile.counter.appt.tele")} />}
+            </View>
             <Text style={s.dim} numberOfLines={1}>{[doctorName(a.doctorId), deptName(a.departmentId)].filter((x) => x !== null).join(" · ")}</Text>
             {a.appointmentNo != null && <Text style={[s.dim, { fontFamily: MONO }]}>{a.appointmentNo}</Text>}
             {stranded && <Text style={[type.small, { color: color.gold, fontWeight: "700" }]} testID={`appt-stranded-${a.id}`}>{t("mobile.counter.appt.stranded")}</Text>}
+            <TelePay api={api} appointment={a} mayCollect={mayCollectAdvance} onPaid={() => { void read(); }} />
             {err?.id === a.id && <Note tone="bad" testID={`appt-error-${a.id}`}>{err.text}</Note>}
             {cancelling === a.id ? (
               <View style={{ gap: space.sm, marginTop: space.sm }} testID={`appt-cancel-box-${a.id}`}>
@@ -187,7 +195,8 @@ export function PatientAppointments({ api, patientId, today, version, mayManage,
               </View>
             ) : (
               <View style={{ gap: space.sm, marginTop: space.sm }}>
-                {isToday && !stranded && mayCheckIn && (
+                {/* A tele-call is not checked in at a desk: the card says its slot and its pay state, and the visit opens itself. */}
+                {isToday && !stranded && mayCheckIn && a.mode !== "tele" && (
                   <Button testID={`appt-checkin-${a.id}`} busy={busy === a.id} label={locked ? t("mobile.counter.appt.checkAgain") : t("mobile.counter.appt.checkIn")} onPress={() => { void arrive(a); }} />
                 )}
                 {mayManage && !locked && (
@@ -211,7 +220,8 @@ export function PatientAppointments({ api, patientId, today, version, mayManage,
 
 export function BookAppointment({ api, person, today, departments, labelOf, terms, moving, preset, onDone, onClose }: {
   api: CounterApi;
-  person: { id: string; name: string };
+  /** `phone` is the patient's recorded mobile, when the desk has it — it waits in the tele-call field. */
+  person: { id: string; name: string; phone?: string | null };
   today: string;
   departments: WireDepartment[];
   labelOf: (doctor: { userId: string; designation?: string | null }) => string | null;
@@ -243,6 +253,13 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
   const [picked, setPicked] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
+  /*
+    TELE-CALL (owner 2026-10-09). A NEW booking asks how: in person, as every booking was, or a
+    tele-call, which needs the number the doctor will ring. A move asks nothing — the server
+    carries the mode and the number to the new slot.
+  */
+  const [mode, setMode] = useState<"in_person" | "tele">("in_person");
+  const [telePhone, setTelePhone] = useState(() => telePhoneOf(person.phone) ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unknown, setUnknown] = useState(false);
@@ -346,6 +363,8 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
   const sameDay = theirs.filter((a) => (a.status === "booked" || a.status === "needs_rebooking") && a.serviceDate.slice(0, 10) === date && a.id !== moving?.id);
   const crossDept = moving !== null && doctor !== null && doctor.departmentId !== moving.departmentId;
   const roomCode = slot === null ? null : rooms.find((r) => r.id === slot.roomId)?.code ?? null;
+  const tele = moving === null ? mode === "tele" : moving.mode === "tele";
+  const teleReady = moving !== null || mode !== "tele" || telePhoneOf(telePhone) !== null;
 
   const finish = (a: WireAppointment, kind: "booked" | "moved"): void => {
     setUnknown(false); setError(null); buzz("ok");
@@ -353,7 +372,7 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
   };
 
   const go = async (): Promise<void> => {
-    if (doctor === null || slot === null || busy) return;
+    if (doctor === null || slot === null || busy || !teleReady) return;
     if (crossDept && reason.trim() === "") { setError(t("registrationCounter.move.reasonRequired")); return; }
     setBusy(true); setError(null);
     try {
@@ -365,7 +384,7 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
         if (landed !== null) { finish(landed, moving === null ? "booked" : "moved"); return; }
       }
       if (moving === null) {
-        const r = await api.book({ patientId: person.id, doctorId: doctor.id, slotStart: slot.start, ...(note.trim() === "" ? {} : { note: note.trim() }) });
+        const r = await api.book({ patientId: person.id, doctorId: doctor.id, slotStart: slot.start, ...(note.trim() === "" ? {} : { note: note.trim() }), ...(mode === "tele" ? { mode: "tele" as const, telePhone: telePhoneOf(telePhone) ?? telePhone } : {}) });
         finish(r.appointment, "booked");
       } else {
         const r = await api.reschedule(moving.id, { slotStart: slot.start, doctorId: doctor.id, ...(crossDept ? { reason: reason.trim() } : {}) });
@@ -398,14 +417,17 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
           <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.xl, gap: space.lg }}>
             <View style={[s.card, { alignItems: "center", borderColor: color.greenLine, backgroundColor: color.greenSoft }]}>
               <Text style={[type.heading, { color: color.green }]} testID="book-done-word">{t(done.kind === "booked" ? "mobile.counter.appt.booked" : "mobile.counter.appt.moved")}</Text>
-              <Text style={s.big} testID="book-done-when">{slotClock(done.a.slotStart)}</Text>
+              <View style={s.head}>
+                <Text style={s.big} testID="book-done-when">{slotClock(done.a.slotStart)}</Text>
+                {done.a.mode === "tele" && <TeleMark label={t("mobile.counter.appt.tele")} size={26} />}
+              </View>
               <Text style={[type.heading, { color: color.ink }]}>{dayWord(done.a.serviceDate, t)}</Text>
               <Text style={[type.body, { color: color.ink, fontWeight: "700", marginTop: space.sm, textAlign: "center" }]}>{d?.displayName ?? ""}</Text>
               <Text style={[s.dim, { textAlign: "center" }]}>{[deptNameOf(done.a.departmentId), roomCode === null ? null : t("mobile.counter.appt.room", { room: roomCode })].filter((x) => x !== null && x !== "").join(" · ")}</Text>
               {done.a.appointmentNo != null && <Text style={[s.dim, { fontFamily: MONO, marginTop: 4 }]} testID="book-done-no">{done.a.appointmentNo}</Text>}
             </View>
             <Text style={[type.body, { color: color.ink }]}>{person.name}</Text>
-            <Note tone="info" testID="book-done-fee">{t(terms?.consultFeeOff === true ? "mobile.counter.appt.feeOff" : "mobile.counter.appt.feeLater", { amount: SAMAJ_SEVA_AMOUNT })}</Note>
+            {done.a.mode !== "tele" && <Note tone="info" testID="book-done-fee">{t(terms?.consultFeeOff === true ? "mobile.counter.appt.feeOff" : "mobile.counter.appt.feeLater", { amount: SAMAJ_SEVA_AMOUNT })}</Note>}
             <Text style={s.dim}>{t("mobile.counter.appt.tell")}</Text>
           </ScrollView>
           <View style={[s.bar, { paddingBottom: insets.bottom + space.md }]}>
@@ -574,14 +596,39 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
                 <TextInput testID="book-note" style={s.input} value={note} editable={!unknown} onChangeText={setNote} maxLength={300}
                   placeholder={t("mobile.counter.appt.noteHint")} placeholderTextColor={color.faint} accessibilityLabel={t("mobile.counter.appt.noteHint")} />
               )}
-              <Text style={s.dim} testID="book-fee">{t(terms?.consultFeeOff === true ? "mobile.counter.appt.feeOff" : "mobile.counter.appt.feeLater", { amount: SAMAJ_SEVA_AMOUNT })}</Text>
+              {!tele && <Text style={s.dim} testID="book-fee">{t(terms?.consultFeeOff === true ? "mobile.counter.appt.feeOff" : "mobile.counter.appt.feeLater", { amount: SAMAJ_SEVA_AMOUNT })}</Text>}
+            </View>
+          )}
+          {slot !== null && doctor !== null && date !== null && moving === null && (
+            <View style={s.card} testID="book-how">
+              <Text style={[type.tag, { color: color.dim, fontFamily: MONO }]}>{t("mobile.counter.appt.how")}</Text>
+              <View style={[s.two, { marginTop: 4 }]} accessibilityRole="radiogroup">
+                {(["in_person", "tele"] as const).map((m) => {
+                  const on = mode === m;
+                  return (
+                    <Pressable key={m} testID={`book-mode-${m}`} accessibilityRole="radio" accessibilityState={{ checked: on, disabled: unknown }} disabled={unknown}
+                      onPress={() => { setMode(m); setError(null); }} style={[s.seg, on && { backgroundColor: color.green, borderColor: color.green }]}>
+                      {m === "tele" && <TeleMark size={17} tint={on ? "#f2faf6" : color.blue} />}
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: on ? "#f2faf6" : color.ink }} numberOfLines={1}>{t(m === "tele" ? "mobile.counter.appt.tele" : "mobile.counter.appt.inPerson")}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {mode === "tele" && (
+                <View style={{ gap: 4, marginTop: space.sm }}>
+                  <Text style={s.dim}>{t("mobile.counter.appt.telePhone")}</Text>
+                  <TextInput testID="book-tele-phone" style={[s.input, { fontFamily: MONO }]} value={telePhone} editable={!unknown} onChangeText={(v) => { setTelePhone(v); setError(null); }}
+                    keyboardType="number-pad" maxLength={16} autoCorrect={false} accessibilityLabel={t("mobile.counter.appt.telePhone")} />
+                  {!teleReady && <Text style={s.dim} testID="book-tele-hint">{t("mobile.counter.appt.telePhoneHint")}</Text>}
+                </View>
+              )}
             </View>
           )}
           {error !== null && <Note tone="bad" testID="book-error">{error}</Note>}
         </ScrollView>
 
         <View style={[s.bar, { paddingBottom: insets.bottom + space.md }]}>
-          <Button testID="book-go" busy={busy} disabled={slot === null}
+          <Button testID="book-go" busy={busy} disabled={slot === null || !teleReady}
             label={unknown ? t("mobile.counter.appt.checkAgain") : slot === null ? t("mobile.counter.appt.pickFirst") : t(moving === null ? "mobile.counter.appt.go" : "mobile.counter.appt.goMove", { time: slotClock(slot.start), day: date === null ? "" : dayWord(date, t) })}
             onPress={() => { void go(); }} />
           {!unknown && (
@@ -688,7 +735,10 @@ export function DeskAppointments({ api, today, mayManage, onPick, onRebook, onCl
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={[type.body, { color: color.ink, fontWeight: "700" }]} numberOfLines={1}>{whoOf(a, t)}</Text>
                           <Text style={s.dim} numberOfLines={1}>{nameOfDoctor(a.doctorId)}</Text>
+                          {/* Its own line: beside the doctor's name it was the part that got cut off at 360 px. */}
+                          {teleMoneyWord(a, t) !== null && <Text testID={`desk-appt-money-${a.id}`} style={[type.small, { fontWeight: "700", color: teleMoneyWord(a, t)!.paid ? color.green : color.gold }]} numberOfLines={1}>{teleMoneyWord(a, t)!.text}</Text>}
                         </View>
+                        {a.mode === "tele" && <TeleMark testID={`desk-appt-tele-${a.id}`} label={t("mobile.counter.appt.tele")} />}
                         <Text testID={`desk-appt-state-${a.id}`} style={[s.state, { color: tone(state), borderColor: tone(state) }]}>{t(`mobile.counter.appt.state.${state}`)}</Text>
                       </Pressable>
                     );
@@ -713,8 +763,12 @@ export function DeskAppointments({ api, today, mayManage, onPick, onRebook, onCl
                 const phone = a.patient?.phone ?? null;
                 return (
                   <View key={a.id} style={[s.card, { borderColor: color.goldLine, backgroundColor: color.goldSoft }]} testID={`rebook-${a.id}`}>
-                    <Text style={[type.body, { color: color.ink, fontWeight: "700" }]}>{whoOf(a, t)}</Text>
+                    <View style={s.head}>
+                      <Text style={[type.body, { color: color.ink, fontWeight: "700", flexShrink: 1 }]}>{whoOf(a, t)}</Text>
+                      {a.mode === "tele" && <TeleMark testID={`rebook-tele-${a.id}`} label={t("mobile.counter.appt.tele")} />}
+                    </View>
                     <Text style={s.dim}>{t("mobile.counter.appt.was", { when: `${dayWord(a.serviceDate, t)} ${slotClock(a.slotStart)}`, doctor: nameOfDoctor(a.doctorId) })}</Text>
+                    {teleMoneyWord(a, t) !== null && <Text style={[type.small, { fontWeight: "700", color: teleMoneyWord(a, t)!.paid ? color.green : color.gold }]} testID={`rebook-money-${a.id}`}>{teleMoneyWord(a, t)!.text}</Text>}
                     <Text style={[s.dim, { fontFamily: MONO }]} testID={`rebook-phone-${a.id}`}>{phone ?? t("appointmentSeat.rail.noPhone")}</Text>
                     <View style={[s.two, { marginTop: space.sm }]}>
                       {phone !== null && <View style={{ flex: 1 }}><Button testID={`rebook-call-${a.id}`} kind="secondary" label={t("mobile.counter.appt.call")} onPress={() => { void Linking.openURL(`tel:${phone}`).catch(() => undefined); }} /></View>}
@@ -741,6 +795,8 @@ const s = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: TOUCH + 12, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: space.sm },
   input: { minHeight: TOUCH + 4, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, paddingHorizontal: 14, fontSize: 16, color: color.ink },
   two: { flexDirection: "row", gap: space.sm },
+  head: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  seg: { flex: 1, minHeight: TOUCH, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.card, paddingHorizontal: 6 },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   days: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   day: { width: "23.4%", minHeight: TOUCH + 14, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.card, paddingVertical: 4 },

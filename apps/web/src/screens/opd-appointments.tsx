@@ -19,6 +19,10 @@ import type { PatientPickerHit } from "../components/patient-picker";
 import { TokenSlip } from "../components/token-slip";
 import type { TokenSlipProps } from "../components/token-slip";
 import { PaperScreen } from "../components/paper-screen";
+import { TeleMark } from "../components/tele-mark";
+import { TeleHow, teleHowBody, teleHowFor, teleHowReady } from "../components/tele-how";
+import type { TeleHowValue } from "../components/tele-how";
+import { TeleDeskPay } from "../components/tele-desk-pay";
 import type { QrCardData } from "../components/qr-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -289,6 +293,8 @@ function PatientBookings({
       {items.map((apt) => (
         <div key={apt.id} data-testid="patient-booking-row" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 8 }}>
           <span className="mo" style={{ fontSize: 13, fontWeight: 700 }}>{apt.serviceDate.slice(0, 10)} · {fmtIst(apt.slotStart)}</span>
+          <TeleMark mode={apt.mode} />
+          <TeleDeskPay appointment={apt} compact />
           <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{doctors.find((d) => d.id === apt.doctorId)?.displayName ?? ""}</span>
           <StatusBadge status={apt.status} />
           <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
@@ -359,13 +365,23 @@ function DayTab({
   */
   const [pending, setPending] = useState<WireSlot | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+    TELE-CALL (owner 2026-10-09). The confirmation asks HOW: in person, as every booking was, or a
+    tele-call, which needs the number the doctor will ring. Each confirmation opens on In person
+    with the patient's recorded mobile waiting in the field; the server judges the number again.
+  */
+  const [how, setHow] = useState<TeleHowValue>(teleHowFor(null));
+  const teleReady = teleHowReady(how);
 
   const book = async (slot: WireSlot): Promise<void> => {
     if (patient === null || doctorId === "") return;
     setBookError(null);
     setBusy(true);
     try {
-      await api("POST", "/opd/appointments", { patientId: patient.id, doctorId, slotStart: slot.start });
+      await api("POST", "/opd/appointments", {
+        patientId: patient.id, doctorId, slotStart: slot.start,
+        ...teleHowBody(how),
+      });
       /*
         LOGGED AFTER THE SERVER ANSWERED, never before: a log that narrates intentions lies the
         moment one is refused. The refusal below is logged for the same reason — it is a fact.
@@ -432,7 +448,7 @@ function DayTab({
           <SlotGrid
             slots={slots.data.slots}
             locked={patient === null}
-            onPick={(slot) => { setBookError(null); setPending(slot); }}
+            onPick={(slot) => { setBookError(null); setHow(teleHowFor(patient?.phone)); setPending(slot); }}
           />
         )}
       </div>
@@ -459,15 +475,17 @@ function DayTab({
                       <span className="block">{patientLabel(apt.patient)}</span>
                       <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
                     </td>
-                    <td className="mo">{fmtIst(apt.slotStart)}</td>
+                    <td className="mo" style={{ whiteSpace: "nowrap" }}>{fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} /></td>
                     <td><StatusBadge status={apt.status} /></td>
                     <td>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}>
+                        <TeleDeskPay appointment={apt} />
                         {(apt.status === "booked" || apt.status === "needs_rebooking") && (
                           <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
                         )}
                         {apt.status === "booked" && <CancelDialog appointment={apt} queryClient={queryClient} onNote={onNote} />}
-                        {apt.status === "booked" && (
+                        {/* A tele-call is not checked in at a desk: the row says its slot and its pay state, and the visit opens itself. */}
+                        {apt.status === "booked" && apt.mode !== "tele" && (
                           <CheckInCell
                             appointment={apt}
                             doctorName={doctor?.displayName ?? ""}
@@ -503,10 +521,11 @@ function DayTab({
               <dd className="mo">{fmtIst(pending.start)}</dd>
             </dl>
           )}
+          <TeleHow value={how} onChange={setHow} disabled={busy} />
           <ErrorLine message={bookError} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" className="sec" disabled={busy} onClick={() => { setPending(null); }}>{t("opdAppt.cancel")}</button>
-            <button type="button" className="pri" disabled={busy} onClick={() => { if (pending !== null) void book(pending); }}>
+            <button type="button" className="pri" disabled={busy || !teleReady} onClick={() => { if (pending !== null) void book(pending); }}>
               {t("opdAppt.confirmBooking")}
             </button>
           </div>
@@ -558,8 +577,8 @@ function NeedsRebookingTab(
                     <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
                   </td>
                   <td>{doctorName(apt.doctorId)}</td>
-                  <td className="mo">{fmtIst(apt.slotStart)}</td>
-                  <td><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></td>
+                  <td className="mo" style={{ whiteSpace: "nowrap" }}>{fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} /></td>
+                  <td><div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}><TeleDeskPay appointment={apt} /><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></div></td>
                 </tr>
               ))}
             </tbody>

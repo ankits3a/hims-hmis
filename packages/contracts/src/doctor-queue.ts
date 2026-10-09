@@ -7,7 +7,7 @@
  * changed); the phone reads the same path through `apps/mobile/src/doctor/rules.ts`. A rule changed
  * for the counter PC changes on the phone in the same commit.
  *
- * Nothing here DECIDES anything about a patient: who is callable, who is held for the bill, who may
+ * Nothing here DECIDES anything about a patient: who is callable, who may
  * be started or completed are the server's answers (`opd/queue.ts`, `opd/consultation.ts`). This file
  * only words and orders what the server sent.
  */
@@ -26,7 +26,6 @@ export type WireQueuePatient = {
  */
 export const SKIP_REASONS = ["absent", "stepped_out", "at_billing", "at_investigation", "not_ready", "other"] as const;
 export type WireSkipReason = (typeof SKIP_REASONS)[number];
-export type WireFeeStatus = "free" | "settled" | "credit" | "unsettled" | null;
 export type WireQueueEntryView = {
   id: string; seq: number; sessionId: string; encounterId: string; tokenNo: number;
   kind: "appointment" | "walk_in"; appointmentAt: string | null; status: string;
@@ -36,9 +35,15 @@ export type WireQueueEntryView = {
   parkedAt?: string | null; parkedBy?: string | null;
   skipReason?: WireSkipReason | null; skipNote?: string | null; skippedAt?: string | null;
   position: number | null; queueClass: string | null;
+  /**
+   * Owner 2026-10-09 — a tele-call. The doctor's line shows its slot time (`appointmentAt`) where a
+   * token number sits, and a phone icon; nothing about money ever rides on such a row. Optional: an
+   * older server sends none.
+   */
+  tele?: boolean;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
-    referredFromEncounterId?: string | null; feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
+    referredFromEncounterId?: string | null;
     /**
      * Owner 2026-10-07 — the guardian came with the reports; the patient did not, and no vitals were
      * taken. Same shape as `WirePatientAbsent` in `patient-absent.ts` (this file imports nothing).
@@ -47,16 +52,15 @@ export type WireQueueEntryView = {
     patientAbsent?: { relation: string; name: string | null; by: string; at: string } | null;
   };
   patient: WireQueuePatient | null;
-  feeStatus: WireFeeStatus;
 };
 export type WireQueueDoctor = { id: string; userId: string; displayName: string; code: string; departmentId: string; designation?: string | null };
 export type WireQueueSession = { id: string; doctorId: string; serviceDate: string; roomId: string | null; status: "not_started" | "in" | "out" | "closed" };
 export type WireQueueView = {
   session: WireQueueSession; doctor: WireQueueDoctor; ordered: WireQueueEntryView[];
   current: WireQueueEntryView | null; inConsult: WireQueueEntryView[];
-  left?: WireQueueEntryView[]; heldForPayment?: WireQueueEntryView[];
+  left?: WireQueueEntryView[];
   waitingVitals: number;
-  counts: { waiting: number; called: number; inConsult: number; done: number; left: number; heldForPayment?: number };
+  counts: { waiting: number; called: number; inConsult: number; done: number; left: number };
 };
 
 // ——— a row of the line ———
@@ -136,14 +140,6 @@ export function visitKind(e: Pick<WireQueueEntryView, "encounter">): "new" | "re
   return v === "revisit" || v === "renewal" ? v : "new";
 }
 
-/**
- * UNPAID is said only when the server said `unsettled`. `null` is "no status to report" and is not
- * unpaid (the wire's own note): a row the server declined to characterise is never stamped.
- */
-export function isUnpaid(e: Pick<WireQueueEntryView, "feeStatus">): boolean {
-  return e.feeStatus === "unsettled";
-}
-
 // ——— completing from a phone ———
 
 export type WireFollowUpConfig = { followUpDefaultDays: number; followUpExtensionDays: number[] };
@@ -201,6 +197,30 @@ export function shortDay(isoOrDay: string): string {
 export type BriefResultLine = { what: string; kind: "lab" | "radiology"; day: string; abnormal: boolean };
 export const BRIEF_RESULT_LINES = 6;
 
+type ResultRow = BriefResultLine & { at: string; name: string; value: string | null };
+/** Every row the rule admits, newest first and uncut — `briefResults` and `reportsCard` are two views of it. */
+function resultsSince(lab: readonly WirePatientResult[], imaging: readonly WirePatientImaging[], lastVisitDay: string | null): { rows: ResultRow[]; noneSince: boolean } {
+  const all: ResultRow[] = [
+    ...lab.map((r) => {
+      const value = `${r.value}${r.unit === null || r.unit === "" ? "" : ` ${r.unit}`}`;
+      return {
+        what: `${r.analyteName} ${value}`, name: r.analyteName, value,
+        kind: "lab" as const, at: r.verifiedAt, day: istDay(r.verifiedAt),
+        abnormal: r.flag !== null && r.flag !== "" && r.flag.toUpperCase() !== "N",
+      };
+    }),
+    ...imaging.map((r) => ({
+      what: r.impression === null || r.impression.trim() === "" ? r.studyName : `${r.studyName}: ${r.impression.trim()}`, name: r.studyName, value: null,
+      kind: "radiology" as const, at: r.signedAt, day: istDay(r.signedAt), abnormal: r.criticalCategory !== null,
+    })),
+  ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  if (all.length === 0) return { rows: [], noneSince: false };
+  if (lastVisitDay === null) return { rows: all, noneSince: false };
+  const since = all.filter((l) => l.day >= lastVisitDay);
+  if (since.length === 0) return { rows: [all[0]!], noneSince: true };
+  return { rows: since, noneSince: false };
+}
+
 /**
  * The board's rule for the "since then" list:
  *  · results on or after the last consultation's day, newest first (the board lists an ECG taken on
@@ -215,23 +235,33 @@ export const BRIEF_RESULT_LINES = 6;
 export function briefResults(
   lab: WirePatientResult[], imaging: WirePatientImaging[], lastVisitDay: string | null,
 ): { lines: BriefResultLine[]; noneSince: boolean } {
-  const all: (BriefResultLine & { at: string })[] = [
-    ...lab.map((r) => ({
-      what: `${r.analyteName} ${r.value}${r.unit === null || r.unit === "" ? "" : ` ${r.unit}`}`,
-      kind: "lab" as const, at: r.verifiedAt, day: istDay(r.verifiedAt),
-      abnormal: r.flag !== null && r.flag !== "" && r.flag.toUpperCase() !== "N",
-    })),
-    ...imaging.map((r) => ({
-      what: r.impression === null || r.impression.trim() === "" ? r.studyName : `${r.studyName}: ${r.impression.trim()}`,
-      kind: "radiology" as const, at: r.signedAt, day: istDay(r.signedAt), abnormal: r.criticalCategory !== null,
-    })),
-  ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  const strip = (l: BriefResultLine & { at: string }): BriefResultLine => ({ what: l.what, kind: l.kind, day: l.day, abnormal: l.abnormal });
-  if (all.length === 0) return { lines: [], noneSince: false };
-  if (lastVisitDay === null) return { lines: all.slice(0, BRIEF_RESULT_LINES).map(strip), noneSince: false };
-  const since = all.filter((l) => l.day >= lastVisitDay);
-  if (since.length === 0) return { lines: [strip(all[0]!)], noneSince: true };
-  return { lines: since.slice(0, BRIEF_RESULT_LINES).map(strip), noneSince: false };
+  const { rows, noneSince } = resultsSince(lab, imaging, lastVisitDay);
+  return { lines: rows.slice(0, BRIEF_RESULT_LINES).map((l) => ({ what: l.what, kind: l.kind, day: l.day, abnormal: l.abnormal })), noneSince };
+}
+
+export const REPORT_LINES = 3;
+/** `name` may be cut short on a narrow screen; `rest` (" · 8.9 % · 6 Oct") never is. */
+export type ReportLine = { name: string; rest: string; abnormal: boolean };
+export type ReportsCard = { title: string; lines: ReportLine[]; more: number };
+
+/**
+ * THE "REPORTS" CARD ON THE CONSULT SCREEN OF A GUARDIAN'S VISIT (owner 2026-10-09) — the guardian
+ * came to show reports, so the in-house ones signed since the last visit are in front of the doctor:
+ * "HbA1c · 8.9 % · 6 Oct", three at most, then "+n". The rows are `briefResults`' rows (the patient
+ * page's "since then" block), so the two never disagree. An imaging report has no single value: it
+ * is "ready". Nothing since the last visit ⇒ no card (null). Recorded facts only.
+ */
+export function reportsCard(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  lab: readonly WirePatientResult[], imaging: readonly WirePatientImaging[], lastVisitDay: string | null,
+): ReportsCard | null {
+  const { rows, noneSince } = resultsSince(lab, imaging, lastVisitDay);
+  if (noneSince || rows.length === 0) return null;
+  return {
+    title: t("reports.title"),
+    lines: rows.slice(0, REPORT_LINES).map((r) => ({ name: r.name, rest: ` · ${r.value ?? t("reports.ready")} · ${shortDay(r.day)}`, abnormal: r.abnormal })),
+    more: Math.max(0, rows.length - REPORT_LINES),
+  };
 }
 
 export type BriefRefill =
@@ -253,6 +283,111 @@ export function briefRefill(prescriptionId: string, dispenses: WirePatientDispen
   const lastDay = istDay(last.handedOverAt);
   const dueDay = days === null ? null : istDay(new Date(new Date(`${lastDay}T06:30:00.000Z`).getTime() + days * 86_400_000).toISOString());
   return { kind: "bought", times: mine.length, lastDay, days, dueDay };
+}
+
+// ——— the guardian came alone, and what the doctor recorded last time (owner 2026-10-09) ———
+
+/** `t` as both screens have it: i18next on the web, the phone's own `translate`. A missing key comes back as the key. */
+export type BriefT = (key: string, vars?: Record<string, string | number>) => string;
+export type GuardianBrief = {
+  /** "Guardian only" — the card's title. */
+  title: string;
+  /** "Son: Rakesh", or "Son" when no name was given. The only part that may be cut short (a typed name runs to 80 characters). */
+  who: string;
+  /** " · reports · no vitals" (a new patient's visit: " · new · no vitals") — fixed words, never cut. */
+  tail: string;
+  /** "Guardian only · Son: Rakesh" — the one-line form where the doctor writes. */
+  compact: string;
+  /** "Guardian · Son" — the queue row's chip; the name stays on the card. */
+  chip: string;
+};
+
+/**
+ * ONE wording of "only a guardian came with the reports" for the phone and the web: the boxed card on
+ * the patient page, the one line on the consult screen and the chip on the doctor's line. Display
+ * only — who may skip the bay is `patient-absent-rule.ts` and the server's.
+ */
+export function guardianBrief(t: BriefT, absent: { relation: string; name: string | null }, visitType?: string | null): GuardianBrief {
+  // The desk's own word for who came — or, where that word is too long for one line of a phone
+  // ("Other relative"), the shorter one the doctor's screens use. A relation this build has no word for is shown as sent.
+  const word = (key: string): string | null => { const said = t(key); return said === key ? null : said; };
+  const relation = word(`patientAbsent.cardRelation.${absent.relation}`) ?? word(`patientAbsent.relation.${absent.relation}`) ?? absent.relation;
+  const name = (absent.name ?? "").trim();
+  const who = name === "" ? relation : t("patientAbsent.who", { relation, name });
+  const title = t("patientAbsent.cardTitle");
+  // Owner 2026-10-09 — a NEW patient's guardian may be sent on too; there are no reports from here to
+  // show, so the line says "new" where a returning patient's says "reports".
+  const tail = t(visitType === "new" ? "patientAbsent.cardTailNew" : "patientAbsent.cardTail");
+  return { title, who, tail, compact: t("patientAbsent.compact", { who }), chip: t("patientAbsent.chip", { relation }) };
+}
+
+/** The visit the "Last visit" card is about: the newest COMPLETED visit that is not today's. Null for a first visit. */
+export function lastCompletedVisit<I extends { encounterId: string; serviceDate: string; status: string; openedAt?: string | Date }>(
+  items: readonly I[], currentEncounterId: string,
+): I | null {
+  const at = (i: I): string => `${i.serviceDate} ${i.openedAt === undefined ? "" : new Date(i.openedAt).toISOString()}`;
+  return [...items].filter((i) => i.encounterId !== currentEncounterId && i.status === "completed")
+    .sort((a, b) => (at(a) < at(b) ? 1 : at(a) > at(b) ? -1 : 0))[0] ?? null;
+}
+
+/** The card is for a returning patient: a revisit or a renewal, the two visit types that have a "last time". */
+export function showsLastVisit(visitType: string | null | undefined): boolean {
+  return visitType === "revisit" || visitType === "renewal";
+}
+
+/** That earlier visit as `GET /opd/visits/:id` returns it — only the fields the card reads. */
+export type WireLastVisit = {
+  encounter: { serviceDate: string; chiefComplaint?: string | null; diagnosis?: string | null; advisedTests?: unknown };
+  deskComplaint?: { text: string } | null;
+  prescriptions?: readonly { status: string; lines?: unknown }[] | null;
+};
+export type LastVisitRowKey = "complaint" | "diagnosis" | "tests" | "medicines";
+export const LAST_VISIT_ROWS: readonly LastVisitRowKey[] = ["complaint", "diagnosis", "tests", "medicines"];
+export type LastVisitRow = { key: LastVisitRowKey; label: string; value: string };
+export type LastVisitCard = { title: string; doctor: string | null; rows: LastVisitRow[] };
+/** Two lines of a 360 px phone beside the label column: a list stops here and says "+n" for the rest. */
+export const LAST_VISIT_LIST_CHARS = 44;
+export const LAST_VISIT_EMPTY = "—";
+
+function namesOf(list: unknown, field: string): string[] {
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const x of list as unknown[]) {
+    const v = typeof x === "object" && x !== null ? (x as Record<string, unknown>)[field] : undefined;
+    if (typeof v === "string" && v.trim() !== "" && !out.includes(v.trim())) out.push(v.trim());
+  }
+  return out;
+}
+/** "CBC, HbA1c +2": as many names as fit the two-line budget (always the first), then how many more. */
+export function joinWithMore(names: readonly string[], budget: number = LAST_VISIT_LIST_CHARS): string {
+  if (names.length === 0) return LAST_VISIT_EMPTY;
+  let shown = 1;
+  const textAt = (n: number): string => `${names.slice(0, n).join(", ")}${n < names.length ? ` +${names.length - n}` : ""}`;
+  while (shown < names.length && textAt(shown + 1).length <= budget) shown++;
+  return textAt(shown);
+}
+
+/**
+ * THE "LAST VISIT" CARD (owner 2026-10-09) — what the doctor recorded last time, in four short rows,
+ * built ONCE for the web brief and the phone's patient page. The complaint is the doctor's own; when
+ * the doctor recorded none, the words that visit's front desk typed. Medicines are the issued
+ * prescription's names (no doses — the "on now" block carries those).
+ */
+export function lastVisitCard(t: BriefT, visit: WireLastVisit, doctorName: string | null): LastVisitCard {
+  const text = (x: string | null | undefined): string => (typeof x === "string" && x.trim() !== "" ? x.trim() : "");
+  const complaint = text(visit.encounter.chiefComplaint) || text(visit.deskComplaint?.text);
+  const medicines = (visit.prescriptions ?? []).filter((p) => p.status === "active").flatMap((p) => namesOf(p.lines, "drug"));
+  const value: Record<LastVisitRowKey, string> = {
+    complaint: complaint || LAST_VISIT_EMPTY,
+    diagnosis: text(visit.encounter.diagnosis) || LAST_VISIT_EMPTY,
+    tests: joinWithMore(namesOf(visit.encounter.advisedTests, "name")),
+    medicines: joinWithMore([...new Set(medicines)]),
+  };
+  return {
+    title: t("lastVisit.title", { date: shortDay(visit.encounter.serviceDate) }),
+    doctor: text(doctorName) || null,
+    rows: LAST_VISIT_ROWS.map((key) => ({ key, label: t(`lastVisit.${key}`), value: value[key] })),
+  };
 }
 
 // ——— beside the doctor's name ———
@@ -283,4 +418,10 @@ export function shortDesignation(designation: string | null | undefined): string
 export function besideName(opts: { unit?: string | null; designation?: string | null }): string | null {
   const parts = [opts.unit ?? null, shortDesignation(opts.designation)].filter((x): x is string => x !== null && x !== "");
   return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** A tele-call's slot on the IST clock — "11:20" — the figure the doctor's line prints where a token sits. */
+export function teleSlotClock(iso: string | null | undefined): string {
+  if (iso == null) return "";
+  return new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 }

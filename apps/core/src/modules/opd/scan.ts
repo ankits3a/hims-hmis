@@ -3,9 +3,12 @@ import type { Actor } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { opdDepartments, opdEncounters, opdQueueEntries, opdQueueSessions, opdVitals, patients } from "../../kernel/db/schema";
 import { documentsForEncounters, getPatientSummaries } from "../patients";
+import { guardianMayStandIn } from "@hmis/contracts";
 import { normalizeVisitNo } from "./bench";
 import { doctorForUser } from "./masters";
+import { PATIENT_ABSENT_BAY_PERMISSION, PATIENT_ABSENT_DESK_PERMISSION } from "./patient-absent";
 import { feeMarksFor } from "./prestage";
+import { seesFees } from "./fee-view";
 import { istDate } from "./time";
 import type { PatientSummary } from "../patients";
 import type { EncounterRow } from "./encounters";
@@ -73,6 +76,13 @@ export type ScanVisit = {
   feeUnpaid: boolean;
   /** The caller is this visit's own doctor. */
   mine: boolean;
+  /**
+   * Owner 2026-10-09 — "Guardian with reports" may be OFFERED on the phone's action card: a revisit
+   * or renewal still waiting for vitals, to a caller holding the bay's or the desk's grant — the
+   * very conditions `markPatientAbsent` (patient-absent.ts) checks. An offer only: that route still
+   * decides, and still asks the fee door.
+   */
+  guardianOffer: boolean;
   patient: PatientSummary;
 };
 
@@ -149,14 +159,22 @@ async function visitOf(db: Db, actor: Actor, encounter: EncounterRow, patient: P
   const answered = request !== null && pages.some((d) => d.capturedAt.getTime() > request.retakeRequestedAt!.getTime());
   const fee = await feeMarksFor(db, encounter);
   const doctor = actor.type === "user" ? await doctorForUser(db, actor.id) : null;
+  const guardianOpen = guardianMayStandIn(encounter.visitType) && encounter.status === "registered"
+    && encounter.patientAbsentAt === null && charts.length === 0;
+  const guardianOffer = guardianOpen && actor.type === "user"
+    && (await hasPermission(db, actor.id, PATIENT_ABSENT_BAY_PERMISSION, "hospital")
+      || await hasPermission(db, actor.id, PATIENT_ABSENT_DESK_PERMISSION, "hospital"));
   return {
     encounterId: encounter.id, patientId: encounter.patientId, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate,
     tokenNo: entry?.tokenNo ?? null, departmentCode: department?.code ?? null, departmentName: department?.name ?? null,
     stage: stageOf(encounter, entry),
     vitalsDone: charts.length > 0 || encounter.patientAbsentAt !== null,
     slip: pages.length === 0 ? "none" : request !== null && !answered ? "retake" : "filed",
-    feeUnpaid: fee.feeUnpaid && fee.feeBypass === null,
+    // Owner 2026-10-09 — "Doctor's screens must not show money": a doctor's scan card is never told
+    // the fee is unpaid, unless that person also holds a desk's fee-seeing grant (`fee-view.ts`).
+    feeUnpaid: fee.feeUnpaid && fee.feeBypass === null && (doctor === null || await seesFees(db, actor)),
     mine: doctor !== null && encounter.doctorId === doctor.id,
+    guardianOffer,
     patient,
   };
 }

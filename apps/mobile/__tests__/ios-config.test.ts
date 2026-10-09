@@ -98,8 +98,13 @@ describe("eas.json — the iPhone profiles, with Android's left as they were", (
 
   // 2026-10-08: `eas submit` read the app config with no APP_ENV, took the STAGING id and prepared an
   // "HMIS Staging" app on App Store Connect for a production build. The submit profile names the app.
-  it("names the production app, so a submit can never fall on the staging id; no made-up App Store number", () => {
-    expect(eas.submit.production.ios).toEqual({ bundleIdentifier: "com.crkmch.hmis", appName: "HMIS Staff" });
-    expect(JSON.stringify(eas)).not.toMatch(/ascAppId|appleId|appleTeamId|PLACEHOLDER|YOUR_|<[^>]+>/);
+  // The owner gave the App Store Connect app number and Apple ID on 2026-10-09; the team is Ramarya
+  // Software Services LLP. Real values only — the app-specific password stays in a file, never here.
+  it("names the production app and its real App Store Connect entry, so a submit can never fall on the staging id", () => {
+    expect(eas.submit.production.ios).toEqual({
+      bundleIdentifier: "com.crkmch.hmis", appName: "HMIS Staff",
+      appleId: "ankit.sa3@gmail.com", ascAppId: "6820855786", appleTeamId: "J9YMW2253U",
+    });
+    expect(JSON.stringify(eas)).not.toMatch(/PLACEHOLDER|YOUR_|<[^>]+>|password/i);
   });
 });

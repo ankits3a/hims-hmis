@@ -27,14 +27,34 @@ export function swipeFires(dx: number): boolean {
   return dx >= SWIPE_FIRE;
 }
 
-export function SwipeRow({ label, onSwipe, children, testID, disabled = false }: {
+/**
+ * A swipe to the LEFT (owner 2026-10-09) — a second, rarer shortcut a row may carry. The same
+ * discipline: it only OPENS something that asks before anything is written, and a row that does not
+ * pass one does not move left at all.
+ */
+export function isSwipeLeft(dx: number, dy: number): boolean {
+  return dx < -12 && Math.abs(dx) > Math.abs(dy) * 1.6;
+}
+/** A left swipe travels a little further before it means it: its label is longer, and it must be read whole first. */
+export const SWIPE_LEFT_REVEAL = 156;
+export const SWIPE_LEFT_FIRE = 124;
+export function swipeLeftFires(dx: number): boolean {
+  return dx <= -SWIPE_LEFT_FIRE;
+}
+
+export function SwipeRow({ label, onSwipe, children, testID, disabled = false, leftLabel, onSwipeLeft }: {
   label: string; onSwipe: () => void; children: ReactNode; testID?: string; disabled?: boolean;
+  /** The left swipe, when this row has one: its name on the amber strip, and what it opens. */
+  leftLabel?: string; onSwipeLeft?: () => void;
 }) {
   const x = useRef(new Animated.Value(0)).current;
   const fire = useRef(onSwipe);
   fire.current = onSwipe;
   const off = useRef(disabled);
   off.current = disabled;
+  const fireLeft = useRef(onSwipeLeft);
+  fireLeft.current = onSwipeLeft;
+  const hasLeft = onSwipeLeft !== undefined && leftLabel !== undefined;
   /** True from the moment the row starts to slide until just after it is let go: a slide is never also a tap on the row. */
   const slid = useRef(false);
   const home = (): void => {
@@ -56,10 +76,15 @@ export function SwipeRow({ label, onSwipe, children, testID, disabled = false }:
   }, []);
   const pan = useMemo(() => PanResponder.create({
     // CAPTURE: the row inside is a button, and a sideways drag must reach this before it does.
-    onMoveShouldSetPanResponderCapture: (_, g) => !off.current && isSwipeRight(g.dx, g.dy),
+    onMoveShouldSetPanResponderCapture: (_, g) => !off.current && (isSwipeRight(g.dx, g.dy) || (fireLeft.current !== undefined && isSwipeLeft(g.dx, g.dy))),
     onPanResponderGrant: () => { slid.current = true; },
-    onPanResponderMove: (_, g) => { x.setValue(Math.max(0, Math.min(SWIPE_REVEAL, g.dx))); },
-    onPanResponderRelease: (_, g) => { const go = swipeFires(g.dx); home(); if (go) fire.current(); },
+    onPanResponderMove: (_, g) => { x.setValue(Math.max(fireLeft.current === undefined ? 0 : -SWIPE_LEFT_REVEAL, Math.min(SWIPE_REVEAL, g.dx))); },
+    onPanResponderRelease: (_, g) => {
+      const go = swipeFires(g.dx);
+      const left = fireLeft.current !== undefined && swipeLeftFires(g.dx);
+      home();
+      if (go) fire.current(); else if (left) fireLeft.current?.();
+    },
     onPanResponderTerminate: home,
     // Once the row is sliding, the list under it does not take the finger back.
     onPanResponderTerminationRequest: () => false,
@@ -67,20 +92,29 @@ export function SwipeRow({ label, onSwipe, children, testID, disabled = false }:
   return (
     <View
       testID={testID} style={s.wrap}
-      accessibilityActions={disabled ? [] : [{ name: "swipe", label }]}
-      onAccessibilityAction={(e) => { if (e.nativeEvent.actionName === "swipe" && !disabled) onSwipe(); }}
+      accessibilityActions={disabled ? [] : [{ name: "swipe", label }, ...(hasLeft ? [{ name: "swipeLeft", label: leftLabel }] : [])]}
+      onAccessibilityAction={(e) => {
+        if (disabled) return;
+        if (e.nativeEvent.actionName === "swipe") onSwipe();
+        else if (e.nativeEvent.actionName === "swipeLeft" && hasLeft) onSwipeLeft();
+      }}
     >
       {/* The strip is not there until the row moves: a row with a tinted background must not show it through. */}
       <Animated.View style={[s.under, { opacity: x.interpolate({ inputRange: [0, 6], outputRange: [0, 1], extrapolate: "clamp" }) }]} pointerEvents="none">
         <Text style={s.underText} numberOfLines={2}>{label}</Text>
       </Animated.View>
+      {hasLeft && (
+        <Animated.View style={[s.under, s.underLeft, { opacity: x.interpolate({ inputRange: [-6, 0], outputRange: [1, 0], extrapolate: "clamp" }) }]} pointerEvents="none">
+          <Text style={[s.underText, s.underTextLeft]} numberOfLines={2}>{leftLabel}</Text>
+        </Animated.View>
+      )}
       <Animated.View style={[s.over, { transform: [{ translateX: x }] }]} {...pan.panHandlers} ref={over}>{children}</Animated.View>
     </View>
   );
 }
 
 /** "Swipe right on a row for its most common action" — under a list the first three times it is opened, then never. */
-export function SwipeHint({ list }: { list: string }) {
+export function SwipeHint({ list, textKey = "mobile.scan.swipeHint" }: { list: string; textKey?: string }) {
   const { t } = useI18n();
   const [show, setShow] = useState(false);
   useEffect(() => {
@@ -89,7 +123,7 @@ export function SwipeHint({ list }: { list: string }) {
     return () => { live = false; };
   }, [list]);
   if (!show) return null;
-  return <Text testID="swipe-hint" style={s.hint}>{t("mobile.scan.swipeHint")}</Text>;
+  return <Text testID="swipe-hint" style={s.hint}>{t(textKey)}</Text>;
 }
 
 const s = StyleSheet.create({
@@ -98,5 +132,7 @@ const s = StyleSheet.create({
   // A solid sheet under the row itself, so a row drawn with a tint slides as a card and not as glass.
   over: { backgroundColor: color.card, borderRadius: radius.lg },
   underText: { color: "#f2faf6", fontSize: 14, lineHeight: 18, fontWeight: "800", width: SWIPE_FIRE - 22 },
+  underLeft: { backgroundColor: color.gold, alignItems: "flex-end", paddingLeft: 0, paddingRight: 12 },
+  underTextLeft: { color: color.ink, textAlign: "right", fontSize: 13, lineHeight: 17, width: SWIPE_LEFT_FIRE - 22 },
   hint: { fontSize: 12.5, lineHeight: 18, color: color.faint, textAlign: "center", paddingTop: 2 },
 });

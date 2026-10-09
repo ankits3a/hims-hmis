@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { NetworkError } from "../api";
+import { ALL_READ } from "../attendance/api";
 import { focusHome } from "../home/focus";
 import { useI18n } from "../i18n";
 import { seatsFor, type Seat } from "../seats";
@@ -17,7 +18,7 @@ import { Band, MONO, Note } from "../ui";
  * past its time to its card on the home screen. Titles and bodies are the server's own sentences;
  * they name staff, counts and times, never a patient (the bell's rule since it was built).
  */
-type Alert = { id: string; kind: string; title: string; body: string; createdAt: string; readAt: string | null };
+type Alert = { id: string; kind: string; title: string; body: string; createdAt: string; readAt: string | null; refId?: string | null };
 const SEAT_OF: Record<string, Seat["key"]> = {
   roster_flag: "onNow", roster_cover_asked: "myDuties", roster_cover_answered: "myDuties", roster_cover_decided: "myDuties",
   roster_duty_changed: "myDuties", roster_month_published: "myDuties", roster_duty_reminder: "myDuties", opd_not_in: "consult", opd_long_wait: "consult",
@@ -42,6 +43,9 @@ export function AlertsScreen() {
       void call("POST", `/alerts/${encodeURIComponent(a.id)}/read`).catch(() => undefined);
     }
     if (a.kind === "approval_overdue") { focusHome("approval"); router.push("/"); return; }
+    /* STAFF ATTENDANCE — "Meeting request" opens the requests list; "Request closed" opens the day it was about. */
+    if (a.kind === "attendance_meeting_request") { if (state.me.permissions.hospital.includes(ALL_READ)) router.push({ pathname: "/attendance-staff", params: { tab: "requests" } }); return; }
+    if (a.kind === "attendance_request_closed") { router.push({ pathname: "/attendance", params: a.refId != null && a.refId !== "" ? { request: a.refId } : {} }); return; }
     const seat = SEAT_OF[a.kind];
     if (seat !== undefined && mine.includes(seat)) router.push({ pathname: "/seat/[key]", params: { key: seat } });
   };

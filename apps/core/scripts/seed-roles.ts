@@ -904,6 +904,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * not make the rota (the MS does), for the reason the owner does not write prescriptions.
        */
       "roster.read",
+      /**
+       * OWNER, 2026-10-09 — "nickname-Undo permission for owner role: yes".
+       *
+       * The Learning page in the staff app lists the medicine nicknames the suggestion system learned
+       * this week; taking one back (and putting it back) rides `opd.masters.manage`, the gate the two
+       * routes have carried since they shipped (decisions 0051, 0055). This role did not hold it, so
+       * the owner's own list had no Undo. No existing owner grant means "decide what the suggestion
+       * system has learned", so the routes' gate is NOT widened; the string is granted instead.
+       *
+       * IT OPENS MORE THAN THE UNDO, and that is said here rather than discovered: the same string
+       * guards the rest of OPD masters — departments, rooms, doctors and their schedules and leaves,
+       * the look-alike pairs, the voice settings, the vocabulary map. Acceptable: he is the owner.
+       * `opd.masters.read` is NOT added (nothing on the phone needs it), nor `opd.config.manage`.
+       * The grant is a capability only: seeding it writes one `role_permissions` row, flips no
+       * clinical gate and switches nothing on — nickname learning stays off until its own switch.
+       */
+      "opd.masters.manage",
       // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
       // licensee answers for the register.
       "pharmacy.register.read",
@@ -924,11 +941,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P6 (patient messages) — the owner contracts the SMS / WhatsApp provider, so the owner may
       // record the ids its portals issue and read what was sent. DEFAULT — owner may change.
       "pharmacy.messages.manage",
+      // STAFF ATTENDANCE (owner 2026-10-09: "The owner and College+hospital attandance committe can
+      // access it inside their app") — everyone's attendance from the attendance machine, including
+      // the machine-listed people who have no login here.
+      "attendance.all.read",
     ],
   },
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
+      // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
+      "attendance.all.read",
       // OWNER 2026-10-02 — the physician's review of a drug monograph the pharmacy wrote (Drugs and
       // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
       // reviewer is never the department that wrote the text.
@@ -1904,6 +1928,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
     ],
   },
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — THE ATTENDANCE COMMITTEE. It holds `attendance.all.read`
+   * and NOTHING else: opening the app, one's own attendance and one's own notices need no
+   * permission at all. A meeting request about a "Confirm" day is sent to this role's holders.
+   * NOBODY is assigned to it here or in any seed — the owner assigns its members himself.
+   */
+  { roleKey: "attendance_committee", permissions: ["attendance.all.read"] },
 ];
 
 /**
@@ -2160,6 +2191,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
   antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
   // 18-S RS8b — the title names the separation: the resident's signature is not a final report.
+  attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

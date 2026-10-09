@@ -37,7 +37,7 @@ import type { Db } from "../../kernel/db/client";
  * cannot do that. The older modules are NOT realigned (gate reports 01–06.2 §4/§5).
  */
 const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
-  "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today",
+  "slot_taken", "call_conflict", "doctor_out", "session_closed", "doctor_on_leave", "appointment_not_today", "tele_call_opens_at_slot", "tele_amount_mismatch", "tele_outcome_required", "tele_save_failed",
   "extension_cap_reached", "allergy_conflict", "user_already_doctor", "opd_not_configured", "opd_config_invalid",
   "not_your_patient", "consult_gate_refused",
   // PLAN 16a T5 — the two new hard warnings answer 409 exactly as `allergy_conflict` does, and this
@@ -66,7 +66,8 @@ const OPD_CONFLICT_CODES = new Set<OpdErrorCode>([
    * 409's meaning, and it is what lets the reception seat offer "add to the visit already open".
    */
   "lab_walkin_already_open",
-  // Owner 2026-10-07 — a guardian-with-reports mark on a NEW visit (`patient-absent.ts`): revisit or renewal only.
+  // Owner 2026-10-07 — a guardian-with-reports mark on a NEW visit was refused. Owner 2026-10-09: every
+  // visit type is admitted, so this is no longer raised; it stays mapped for the day the rule narrows again.
   "patient_absent_returning_only",
 ]);
 

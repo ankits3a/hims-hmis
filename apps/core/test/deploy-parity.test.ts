@@ -253,16 +253,19 @@ describe("deploy.sh / compose / prometheus.yml parity (Plan 11d D8)", () => {
       expect(services).toContain("caddy");
     });
 
-    it("reads nine populated config directories out of deploy.sh step 2", () => {
+    it("reads ten populated config directories out of deploy.sh step 2", () => {
       // MOBILE M6b: seven -> EIGHT. `firebase/` is where step 2 copies the owner's Firebase key for
       // the api and the worker. Like `pgbackrest/` and `drill/` it is not a compose SERVICE, so it
       // adds nothing to the restart loop — and needs none: both processes re-read the file by
       // themselves (`kernel/push/sender.ts`). Its own rules are pinned in the M6b block below.
       // PHONE CONSULT: eight -> NINE. `openai/` holds the owner's OpenAI key for the api, on the
       // Firebase key's exact terms (not a service, re-read by the process, pinned in its own block).
-      expect(populatedDirs).toHaveLength(9);
+      // STAFF ATTENDANCE: nine -> TEN. `bioattend/` holds the three bioattend secrets for the api and
+      // the worker, on the same terms (not a service, re-read by the process, pinned in its own block).
+      expect(populatedDirs).toHaveLength(10);
       expect(populatedDirs).toContain("firebase");
       expect(populatedDirs).toContain("openai");
+      expect(populatedDirs).toContain("bioattend");
       // The two that are populated and are NOT services — the reason this leg says "populates"
       // rather than "installs", and the reason it intersects with the compose file at all.
       expect(populatedDirs).toContain("pgbackrest");
@@ -675,6 +678,110 @@ describe("the OpenAI key for the doctor's spoken note (phone consult)", () => {
     expect(block).toContain("--chmod=F600");
     expect(block).not.toMatch(/\bcat\b|rsync[^\n]*\s-[a-z]*v|--itemize|set -x/);
     expect(block).toContain('[ -r "$OPENAI_KEY" ]');
+  });
+});
+
+/**
+ * STAFF ATTENDANCE (owner 2026-10-09) — THE THREE BIOATTEND SECRETS. The OpenAI key's rules, three
+ * files and TWO services: the owner's files on the host, in no commit and no image, copied into
+ * `$DEPLOY_DIR/bioattend/` when they exist, mounted as a DIRECTORY read-only into the api (the read
+ * routes, the webhook, the Aadhaar field) AND the worker (the job that pulls), and an absent file
+ * never fails a deploy.
+ */
+describe("the three bioattend secrets (staff attendance)", () => {
+  const deploySource = readFileSync(DEPLOY_SH, "utf8");
+  const compose = readFileSync(COMPOSE_YML, "utf8");
+  const FILES = ["api-key.txt", "webhook-secret.txt", "aadhaar-key.txt"] as const;
+  const ENV_LINES = [
+    "HMIS_BIOATTEND_API_KEY_FILE: /run/hmis/bioattend/api-key.txt",
+    "HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: /run/hmis/bioattend/webhook-secret.txt",
+    "HMIS_BIOATTEND_AADHAAR_KEY_FILE: /run/hmis/bioattend/aadhaar-key.txt",
+  ];
+  const MOUNT = "- ./bioattend:/run/hmis/bioattend:ro";
+
+  function bioattendBlock(): string {
+    const start = deploySource.indexOf('BIOATTEND_DIR="${HMIS_BIOATTEND_DIR:-');
+    const end = deploySource.indexOf("# (end of the bioattend secrets)", start);
+    if (start < 0 || end < 0) throw new Error("deploy.sh: the bioattend block has moved — this parser is stale");
+    const block = deploySource.slice(start, end);
+    expect(stepTwoBlock(deploySource)).toContain(block);
+    return block;
+  }
+
+  it("the api AND the worker are told the three paths and mount the directory read-only — never a file, never a value", () => {
+    const api = compose.slice(compose.indexOf("\n  api:"), compose.indexOf("\n  worker:"));
+    const worker = compose.slice(compose.indexOf("\n  worker:"), compose.indexOf("\n  caddy:"));
+    for (const service of [api, worker]) {
+      for (const line of ENV_LINES) expect(service).toContain(line);
+      expect(service).toContain(MOUNT);
+    }
+    expect(compose.split(MOUNT)).toHaveLength(3); // those two services and nobody else
+    for (const line of ENV_LINES) expect(compose.split(line)).toHaveLength(3);
+    expect(compose).not.toMatch(/(api-key|webhook-secret|aadhaar-key)\.txt:\/run/); // a single-file bind mount
+    // A secret is never an environment VALUE: `docker inspect` must not be able to print one.
+    expect(compose).not.toMatch(/BIOATTEND_(API_KEY|WEBHOOK_SECRET|AADHAAR_KEY):/);
+    expect(compose).not.toMatch(/bio_[0-9a-f]{16}/);
+    expect(readFileSync(ENV_EXAMPLE, "utf8")).not.toMatch(/bio_[0-9a-f]{16}|BIOATTEND_(API_KEY|WEBHOOK_SECRET|AADHAAR_KEY)=/);
+  });
+
+  function runBlock(there: readonly string[], alreadyDeployed: readonly string[] = []): { status: number | null; out: string; dir: string } {
+    const dir = mkdtempSync(join(tmpdir(), "hmis-deploy-bioattend-"));
+    spawnSync("mkdir", ["-p", join(dir, "owner"), join(dir, "deploy")]);
+    if (alreadyDeployed.length > 0) spawnSync("mkdir", ["-p", join(dir, "deploy", "bioattend")]);
+    for (const f of alreadyDeployed) writeFileSync(join(dir, "deploy", "bioattend", f), `old-${f}`);
+    for (const f of there) writeFileSync(join(dir, "owner", f), `secret-value-of-${f}`);
+    const script = ["set -euo pipefail", 'numeric_own() { printf "OWN %s\\n" "$*"; }', bioattendBlock()].join("\n");
+    const r = spawnSync("bash", ["-c", script], { env: { PATH: process.env.PATH ?? "", DEPLOY_DIR: join(dir, "deploy"), HMIS_BIOATTEND_DIR: join(dir, "owner") }, encoding: "utf8" });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, dir };
+  }
+
+  it("with NO files on the host the step succeeds, makes the directory the mount needs, copies nothing and says attendance stays off", () => {
+    const r = runBlock([]);
+    try {
+      expect(r.status).toBe(0);
+      expect(readdirSync(join(r.dir, "deploy", "bioattend"))).toEqual([]);
+      expect(r.out.match(/stays off; nothing else is affected/g)).toHaveLength(3);
+      expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "bioattend")}\n`);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("with the three files on the host each is copied where both services look, handed over by number, and never printed", () => {
+    const r = runBlock(FILES);
+    try {
+      expect(r.status).toBe(0);
+      for (const f of FILES) {
+        expect(readFileSync(join(r.dir, "deploy", "bioattend", f), "utf8")).toBe(`secret-value-of-${f}`);
+        expect(r.out).toContain(`bioattend ${f} installed`);
+        expect(r.out).toContain(`OWN 0:1000 ${join(r.dir, "deploy", "bioattend", f)}`);
+      }
+      expect(r.out).not.toContain("secret-value-of");
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("each file stands alone: one present is installed, one already deployed is kept, one absent is said to be off", () => {
+    const r = runBlock(["api-key.txt"], ["webhook-secret.txt"]);
+    try {
+      expect(r.status).toBe(0);
+      expect(readdirSync(join(r.dir, "deploy", "bioattend")).sort()).toEqual(["api-key.txt", "webhook-secret.txt"]);
+      expect(readFileSync(join(r.dir, "deploy", "bioattend", "webhook-secret.txt"), "utf8")).toBe("old-webhook-secret.txt");
+      expect(r.out).toContain("bioattend api-key.txt installed");
+      expect(r.out).toContain("no webhook-secret.txt in");
+      expect(r.out).toContain("stays in use");
+      expect(r.out).toMatch(/no aadhaar-key\.txt in .* stays off/);
+    } finally { rmSync(r.dir, { recursive: true, force: true }); }
+  });
+
+  it("auto-deploy carries exactly the three files to production's host root-only, never prints them, and sends nothing when the folder is absent here", () => {
+    const auto = readFileSync(resolve(REPO_ROOT, "tools", "auto-deploy.sh"), "utf8");
+    const start = auto.indexOf('BIOATTEND_DIR="${HMIS_BIOATTEND_DIR:-/root/.config/hmis/bioattend}"');
+    const block = auto.slice(start, auto.indexOf("\nfi\n", start));
+    expect(start).toBeGreaterThan(0);
+    expect(block).toContain("--chmod=D700,F600");
+    expect(block).toContain("install -d -m 0700");
+    for (const f of FILES) expect(block).toContain(`--include='${f}'`);
+    expect(block).toContain("--exclude='*'");
+    expect(block).not.toMatch(/\bcat\b|rsync[^\n]*\s-[a-z]*v|--itemize|set -x|--delete/);
+    expect(block).toContain('[ -d "$BIOATTEND_DIR" ]');
   });
 });
 

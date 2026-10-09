@@ -99,3 +99,7 @@ export type { QueueNudge } from "./queue-nudges";
 export { aliasDepsFrom } from "./alias-store";
 export { runAliasJob, runAliasProposals } from "./alias-runner";
 export type { AliasRunCaps, AliasRunReport } from "./alias-runner";
+
+// The owner's Appointments and Learning pages in the staff app (owner 2026-10-09): counts, read-only.
+export { ownerAppointments, ownerLearning } from "./owner-reads";
+export { runFlowLearning } from "./flow-learning";

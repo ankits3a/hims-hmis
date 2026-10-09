@@ -1331,6 +1331,27 @@
       "when": 1791434931598,
       "tag": "0189_alias_live",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1791540844070,
+      "tag": "0190_tele_call_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1791540845070,
+      "tag": "0191_attendance",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1791540846070,
+      "tag": "0192_opd_flow",
+      "breakpoints": true
     }
   ]
 }

@@ -111,6 +111,31 @@ const configSchema = z.object({
    */
   HMIS_OPENAI_KEY_FILE: z.string().optional(),
   /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — the hospital's attendance system, "bioattend"
+   * (`modules/attendance`). Three secret FILES on the OpenAI key's terms (read on use, re-read when
+   * they change, never an environment value): the API key, the webhook signing secret and the
+   * Aadhaar linking key. With no readable API key the integration is OFF and says so once at boot.
+   * `ATTENDANCE_SYNC_ENABLED` is the master switch, the `RETENTION_ENABLED` two-string spelling —
+   * BOTH it and the key must be there before anything calls bioattend.
+   */
+  BIOATTEND_BASE_URL: z.string().url().default("https://biotime.crkmch.com/api/hmis/v1"),
+  ATTENDANCE_SYNC_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /**
+   * Owner 2026-10-09: a person reading their OWN attendance sees one of four words a day and a
+   * "Checked in" — no times "until our software is out of commissioning". "true" here adds the times
+   * and the day's punches to the self routes, with no app build. Managers' routes never depended on it.
+   */
+  ATTENDANCE_SELF_SHOWS_TIMES: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  HMIS_BIOATTEND_API_KEY_FILE: z.string().optional(),
+  HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: z.string().optional(),
+  HMIS_BIOATTEND_AADHAAR_KEY_FILE: z.string().optional(),
+  /**
    * PHASE O T4 — the channel ladder's cadence. A minute, not five: the `now` lane's patience is
    * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
    */
@@ -343,6 +368,16 @@ const configSchema = z.object({
    */
   ALIAS_RUN_MAX_TERMS: z.coerce.number().int().min(1).max(500).default(40),
   ALIAS_DAILY_MAX_TERMS: z.coerce.number().int().min(1).max(5000).default(300),
+  /**
+   * HOW LONG PATIENTS WAIT (owner 2026-10-09) — the nightly learning of the desk → vitals → doctor waits
+   * (`modules/opd/flow-learning.ts`): baselines, findings from a closed set, and the owner's × / "Tried it".
+   * ON by default — it is arithmetic over stored timestamps and calls no outside service. "false" stops
+   * the nightly run and empties "To improve"; the wait figures themselves are shown either way.
+   */
+  FLOW_FINDINGS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -548,6 +583,8 @@ export type AppConfig = {
   /** MOBILE M6b — where the Firebase service-account key is expected, or null. The file may not exist yet. */
   fcmServiceAccountFile: string | null;
   openaiKeyFile: string | null;
+  /** Staff attendance from bioattend — where to call, the master switch, and the three secret files (paths, never contents). */
+  attendance: { baseUrl: string; syncEnabled: boolean; selfShowsTimes: boolean; apiKeyFile: string | null; webhookSecretFile: string | null; aadhaarKeyFile: string | null };
   workerReachIntervalMs: number;
   /**
    * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
@@ -583,6 +620,8 @@ export type AppConfig = {
   copilotChooserOrder: ("typesafe" | "openai")[];
   /** Decision 0051 — the medicine-alias pipeline. `enabled` is FALSE unless an operator says otherwise. */
   aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number; perRun: number; perDay: number };
+  /** The waits' nightly learning (`FLOW_FINDINGS_ENABLED`, default true). */
+  flowFindings: { enabled: boolean };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -865,6 +904,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
     fcmServiceAccountFile: parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE === undefined || parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim() === "" ? null : parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim(),
     openaiKeyFile: parsed.HMIS_OPENAI_KEY_FILE === undefined || parsed.HMIS_OPENAI_KEY_FILE.trim() === "" ? null : parsed.HMIS_OPENAI_KEY_FILE.trim(),
+    attendance: {
+      baseUrl: parsed.BIOATTEND_BASE_URL.replace(/\/+$/, ""),
+      syncEnabled: parsed.ATTENDANCE_SYNC_ENABLED,
+      selfShowsTimes: parsed.ATTENDANCE_SELF_SHOWS_TIMES,
+      apiKeyFile: pathOrNull(parsed.HMIS_BIOATTEND_API_KEY_FILE),
+      webhookSecretFile: pathOrNull(parsed.HMIS_BIOATTEND_WEBHOOK_SECRET_FILE),
+      aadhaarKeyFile: pathOrNull(parsed.HMIS_BIOATTEND_AADHAAR_KEY_FILE),
+    },
     workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
     webPushVapid: vapidFrom(parsed),
     notifySms: smsGatewayFrom(parsed),
@@ -906,6 +953,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       perRun: parsed.ALIAS_RUN_MAX_TERMS,
       perDay: parsed.ALIAS_DAILY_MAX_TERMS,
     },
+    flowFindings: { enabled: parsed.FLOW_FINDINGS_ENABLED },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,
@@ -924,4 +972,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     receivableCommissionEnabled: parsed.RECEIVABLE_COMMISSION_ENABLED,
     couponIssuanceEnabled: parsed.COUPON_ISSUANCE_ENABLED,
   };
+}
+
+/** An optional path setting: unset or blank is `null`. */
+function pathOrNull(raw: string | undefined): string | null {
+  return raw === undefined || raw.trim() === "" ? null : raw.trim();
 }

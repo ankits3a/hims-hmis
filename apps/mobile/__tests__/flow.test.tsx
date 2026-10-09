@@ -158,7 +158,9 @@ describe("sign-in flow", () => {
     // …and the home's own reads (app home, 2026-10-07): only what this role's screens already read, plus the person's own day — and the day's recording count (2026-10-07), which the server scopes to the login.
     const home = calls.slice(2).filter((c) => !c.startsWith("GET https://"));
     expect(home.map((c) => c.split("?")[0]).sort()).toEqual([
-      "GET /alerts", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/team", "GET /opd/bench", "GET /opd/reports/recording", "GET /roster/my-duties",
+      // STAFF ATTENDANCE (2026-10-09): +1, the person's own attendance card — ONE read, whatever the role.
+      // "Add your Aadhaar" (2026-10-09): +1, `/me/identity` — whether the home draws the card. ONE read, whatever the role.
+      "GET /alerts", "GET /attendance/me", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/identity", "GET /me/team", "GET /opd/bench", "GET /opd/reports/recording", "GET /roster/my-duties",
     ]);
   });
 

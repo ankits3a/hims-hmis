@@ -15,6 +15,7 @@ export const color = {
   green: "#0e6b4e",
   greenSoft: "rgba(14, 107, 78, .08)",
   greenLine: "rgba(14, 107, 78, .35)",
+  blue: "#1f5f8b",
   gold: "#dd8f1c",
   goldSoft: "rgba(221, 143, 28, .10)",
   goldLine: "rgba(221, 143, 28, .45)",
@@ -30,7 +31,7 @@ export const color = {
 /** CSS custom-property name for each token, for the parity test. */
 export const cssName: Record<keyof typeof color, string> = {
   paper: "--paper", card: "--card", ink: "--ink", line: "--line", line2: "--line2", dim: "--dim",
-  faint: "--faint", wash: "--wash", green: "--green", greenSoft: "--green-soft", greenLine: "--green-line",
+  faint: "--faint", wash: "--wash", green: "--green", greenSoft: "--green-soft", greenLine: "--green-line", blue: "--blue",
   gold: "--gold", goldSoft: "--gold-soft", goldLine: "--gold-line", red: "--red", redSoft: "--red-soft",
   redLine: "--red-line", agent: "--agent", agentFg: "--agent-fg", agentDim: "--agent-dim", mint: "--mint",
 };

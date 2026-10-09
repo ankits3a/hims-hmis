@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TeleCallPanel, hasSpoken, isTele } from "../consult/tele-call";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,7 +12,8 @@ import {
   unanswered, warningsOf, wireLine,
 } from "../consult/rules";
 import { AdviceDrawer, DiagnosisDrawer, MedicinesDrawer, NotesDrawer, SetsDrawer, type Patch } from "../consult/sheets";
-import { ageSexOf, ageYearsOn, followUpChoices, rowName, visitKind } from "../doctor/rules";
+import { ageSexOf, ageYearsOn, followUpChoices, guardianBrief, reportsCard, rowName, visitKind } from "../doctor/rules";
+import type { ReportsCard } from "../doctor/rules";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text } from "../text";
@@ -90,6 +92,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
 
   const [draft, setDraft] = useState<ConsultDraft | null>(null);
   const [visit, setVisit] = useState<WireVisitDetail | null>(null);
+  const [reports, setReports] = useState<ReportsCard | null>(null);
   const [allergies, setAllergies] = useState<WireAllergyRow[]>([]);
   const [last, setLast] = useState<{ serviceDate: string; lines: WireLastLine[] } | null>(null);
   const [setsCount, setSetsCount] = useState<{ mine: number; hospital: number } | null>(null);
@@ -154,6 +157,31 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
     return () => { live = false; if (saveTimer.current !== null) clearTimeout(saveTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterId]);
+
+  const guardianNow = visit?.patientAbsent ?? entry?.encounter.patientAbsent ?? null;
+  /*
+    THE REPORTS THE GUARDIAN CAME TO SHOW (owner 2026-10-09) — read only on a guardian's visit, through
+    the three reads the patient page already makes (each gated and logged on its own route): the lab's
+    and radiology's signed results and the timeline that says when the last visit was. A read this
+    login is refused is simply empty; no result since the last visit draws no card.
+  */
+  const isGuardianVisit = guardianNow !== null;
+  useEffect(() => {
+    if (!isGuardianVisit) return;
+    let live = true;
+    const or = <D,>(p: Promise<D>, d: D): Promise<D> => p.catch(() => d);
+    void Promise.all([
+      or(doctorApi.labResults(patientId), { items: [] }), or(doctorApi.imaging(patientId), { items: [] }), or(doctorApi.timeline(patientId), { items: [] }),
+    ]).then(([lab, imaging, timeline]) => {
+      if (!live) return;
+      // "Last visit" exactly as the patient page's results block reads it (doctor/brief.tsx `lastSeen`).
+      const lastSeen = timeline.items.filter((i) => i.encounterId !== encounterId).sort((a, b) => (a.serviceDate < b.serviceDate ? 1 : -1))
+        .find((i) => i.status === "completed" || i.status === "awaiting_results") ?? null;
+      setReports(reportsCard(t, lab.items, imaging.items, lastSeen?.serviceDate ?? null));
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGuardianVisit, encounterId, patientId, t]);
 
   /** Every change is kept on the phone at once (debounced) — the draft is the screen's truth. */
   const patch: Patch = useCallback((next) => {
@@ -292,6 +320,9 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const vit: WireVisitVitals | null = visit === null ? null : [...visit.vitals].filter((x) => x.status === "active").sort((a, b) => (a.recordedAt < b.recordedAt ? 1 : -1))[0] ?? null;
   const flagged = (k: string): boolean => vit?.dangerFlags.some((f) => (f as { key?: string }).key === k) === true;
   const empty = isEmptyDraft(draft);
+  // Owner 2026-10-09 — a tele-call is completed, and its prescription issued, only after the doctor has spoken (the server's rule).
+  const tele = isTele(visit?.encounter);
+  const teleLocked = tele && !hasSpoken(visit?.encounter);
   const advice = adviceOf(draft, review);
   const counts = [
     draft.complaints.length > 0 || draft.notes.trim() !== "" ? "✓" : null, draft.diagnoses.length > 0 ? String(draft.diagnoses.length) : null,
@@ -323,6 +354,10 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
             {kind !== null && <Text style={s.pill}>{t(`opdConsultV2.vtShort.${kind}`)}</Text>}
             {allergies.map((a) => <Text key={a.id} testID="consult-allergy" style={[s.pill, s.pillRed]}>{t("mobile.consult.allergy", { substance: a.substance })}</Text>)}
           </View>
+          {guardianNow !== null && (
+            // Owner 2026-10-09 — only a guardian came with the reports: one line under the chips, where the eye starts.
+            <Text testID="consult-guardian" accessibilityRole="text" numberOfLines={1} style={s.guardian}>{guardianBrief(t, guardianNow).compact}</Text>
+          )}
           {vit !== null && (
             <View style={s.vitals} testID="consult-vitals">
               {vit.sbp !== null && vit.dbp !== null && <Text style={[s.vit, flagged("bp") && s.vitHi]}>BP {vit.sbp}/{vit.dbp}</Text>}
@@ -341,6 +376,28 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           </Pressable>
         </View>
 
+        {guardianNow !== null && reports !== null && (
+          // What the guardian came to show: the in-house results signed since the last visit (the patient page's own rule).
+          <View style={[s.card, { gap: 2 }]} testID="consult-reports">
+            <Text style={s.cardTitle} numberOfLines={1}>{reports.title}</Text>
+            {reports.lines.map((r, i) => (
+              <View key={i} testID={`consult-report-${i}`} style={{ flexDirection: "row" }}>
+                <Text style={[s.report, { flexShrink: 1 }, r.abnormal && s.reportHi]} numberOfLines={1}>{r.name}</Text>
+                {/* No line limit here: it never shrinks, so it never wraps — and a one-line limit makes a browser drop its leading space. */}
+                <Text style={[s.report, { flexShrink: 0 }, r.abnormal && s.reportHi]}>{r.rest}</Text>
+              </View>
+            ))}
+            {reports.more > 0 && <Text testID="consult-reports-more" style={s.reportMore}>+{reports.more}</Text>}
+          </View>
+        )}
+
+        {tele && visit !== null && (
+          <TeleCallPanel
+            api={api} encounterId={encounterId} visit={visit.encounter} slotAt={visit.teleSlotAt}
+            onSpoke={(e) => setVisit((v) => (v === null ? v : { ...v, encounter: { ...v.encounter, ...e } }))}
+            onLeft={onDone}
+          />
+        )}
         {offline && <Note tone="warn" testID="consult-offline">{t("mobile.consult.offline")}</Note>}
 
         <View style={s.quick}>
@@ -406,11 +463,11 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           ))}
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-          <Pressable testID="wrote-on-paper" accessibilityRole="button" disabled={busy !== null} hitSlop={6} onPress={() => { void paper(); }} style={{ minHeight: TOUCH, justifyContent: "center", paddingRight: 4 }}>
+          <Pressable testID="wrote-on-paper" accessibilityRole="button" accessibilityState={{ disabled: busy !== null || teleLocked }} disabled={busy !== null || teleLocked} hitSlop={6} onPress={() => { void paper(); }} style={{ minHeight: TOUCH, justifyContent: "center", paddingRight: 4, opacity: teleLocked ? 0.4 : 1 }}>
             <Text style={[s.link, { color: paperAsk ? color.red : color.dim, textDecorationLine: "underline" }]}>{t(paperAsk ? "mobile.consult.paperConfirm" : "mobile.consult.paper")}</Text>
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Button testID="issue-complete" busy={busy === "issue"} disabled={empty || busy !== null}
+            <Button testID="issue-complete" busy={busy === "issue"} disabled={empty || busy !== null || teleLocked}
               label={open.length > 0 ? t("mobile.consult.issueBlocked", { count: open.length }) : t(draft.lines.length === 0 ? "mobile.consult.completeOnly" : "mobile.consult.issue")}
               onPress={() => { if (open.length > 0) setDrawer("meds"); else void issue(); }} />
           </View>
@@ -450,6 +507,10 @@ const s = StyleSheet.create({
   quickTitle: { fontSize: 14.5, fontWeight: "700", color: color.ink },
   quickSub: { fontSize: 11.5, color: color.dim, marginTop: 1 },
   cardTitle: { fontSize: 15, fontWeight: "700", color: color.ink },
+  report: { fontSize: 14.5, lineHeight: 21, color: color.ink },
+  reportHi: { color: color.red, fontWeight: "700" },
+  reportMore: { fontSize: 13, lineHeight: 19, color: color.dim, fontWeight: "700" },
+  guardian: { alignSelf: "flex-start", maxWidth: "100%", fontSize: 14, lineHeight: 20, fontWeight: "700", color: "#8a5a10", borderWidth: 1.5, borderColor: color.gold, backgroundColor: color.goldSoft, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4, overflow: "hidden" },
   corner: { flexShrink: 1, fontFamily: MONO, fontSize: 11, color: color.faint },
   emptyText: { fontSize: 13.5, lineHeight: 19, color: color.dim, paddingVertical: 6 },
   ln: { flexDirection: "row", gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: color.line2, minHeight: 40 },

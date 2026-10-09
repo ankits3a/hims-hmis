@@ -57,6 +57,18 @@ function priceLine(ctx: PricingContext, line: InvoiceLineInput): PricedLine {
     unitPaise = line.batchUnitPaise;
     regulatedClamp = { boundApplied: "batch_mrp", tariffPaise, mrpPaise: null, ceilingPaise: null, batchUnitPaise: line.batchUnitPaise };
   }
+  // TELE-CALL (owner 2026-10-09) — a line the patient already paid for starts at what was paid, higher
+  // or lower than today's list price. Before the lawful bounds, which still cap it. See `prepaidUnitPaise`.
+  if (line.prepaidUnitPaise !== undefined) {
+    assertPaise(line.prepaidUnitPaise, `line ${line.lineId}: prepaidUnitPaise`);
+    if (line.batchUnitPaise !== undefined) {
+      throw new TariffError("batch_price_not_allowed", `line ${line.lineId}: a line priced from a batch cannot also be priced at a prepaid quote`);
+    }
+    if (line.prepaidUnitPaise !== unitPaise) {
+      unitPaise = line.prepaidUnitPaise;
+      regulatedClamp = { boundApplied: "prepaid_quote", tariffPaise, mrpPaise: null, ceilingPaise: null, prepaidUnitPaise: line.prepaidUnitPaise };
+    }
+  }
   if (svc.regulated) {
     const rp = ctx.regulatedPrices[line.serviceId];
     if (!rp) throw new TariffError("regulated_price_missing", `line ${line.lineId}: ${line.serviceId} is regulated but has no effective MRP/ceiling row`);

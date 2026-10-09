@@ -191,13 +191,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // PHASE R (R1) — appended. Every department will owe the roster rows and it reaches into none
       // of them (D1), so nothing above depends on where it sits.
       "roster",
+      // STAFF ATTENDANCE (owner 2026-10-09) — appended. A leaf: it reads `auth.users` and nothing imports it.
+      "attendance",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(23); // PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(24); // STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(23);
+    expect(registry.all()).toHaveLength(24);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -210,7 +212,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly eight enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly nine enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -329,7 +331,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      install nothing the worker uses and would make the (1b) count say something untrue about
     //      what the worker does.
     const appOnly = allKeys.filter((k) => !workerKeys.includes(k));
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster"]);
+    // (1k) STAFF ATTENDANCE — the TWENTY-FOURTH, `attendance`, APP-ONLY on the roster's terms: it
+    //      declares one permission and no subscription; the worker runs its job (`syncAttendance`)
+    //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

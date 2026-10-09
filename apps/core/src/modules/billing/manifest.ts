@@ -32,7 +32,7 @@ export const billingManifest: ModuleManifest = {
     "billing.recon.upload", "billing.reports.read", "billing.config.write", "billing.eie.mark",
     // OWNER RULING 2026-09-30 — one patient's dues on the profile, for the front desk. It admits
     // `GET /billing/patients/:patientId/dues` ALONGSIDE `billing.invoice.read` (the guard's
-    // `alsoAdmits`) and opens nothing else.
+    // `alsoAdmits`), and since 2026-10-09 the desk's `GET /billing/to-collect`, and opens nothing else.
     "billing.dues.patient.read",
   ],
   // PLAN 11h T4 — invoices by number or by patient, on `billing.invoice.read`.

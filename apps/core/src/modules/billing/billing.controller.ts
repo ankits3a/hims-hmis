@@ -1,4 +1,6 @@
 import { feeSwitchesView, setFeeSwitch } from "./fee-switches";
+import { loadUpiPayee, setUpiPayee, UPI_PAYEE_NAME_MAX } from "./upi";
+import type { UpiPayee } from "./upi";
 import type { FeeSwitchesView } from "./fee-switches";
 import { changeConsultPricesNow, consultPricesView, consultTerms, decideConsultPrices, proposeConsultPrices } from "./consult-prices";
 import type { ConsultPricesView, ConsultTerms } from "./consult-prices";
@@ -87,6 +89,9 @@ const feeQuoteReferralQuery = z
 
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
+import { ownerMoney } from "./owner-money";
+import { rangeProblem } from "@hmis/contracts";
+import type { OwnerMoney } from "@hmis/contracts";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { creditRequestStatus, requestCredit } from "./credit-requests";
 import { MembershipError, membershipHttpStatus } from "../membership";
@@ -96,6 +101,8 @@ import { encounterRefSpellings, getInvoice, invoiceSettlement, issueInvoice, lis
 import { chargeOrphans } from "./daily-close";
 import type { ChargeOrphanRow } from "./daily-close";
 import { collectionWorklist } from "./worklist";
+import { toCollectList } from "./to-collect";
+import type { ToCollectRow } from "./to-collect";
 import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
 import {
@@ -459,6 +466,10 @@ const recountBody = z.object({
 const reconUploadBody = z.object({ csv: z.string(), source: z.enum(["upi", "card"]) });
 const dayQuery = z.object({ day: z.string().max(10).optional() });
 const gstr1Query = z.object({ from: z.string().max(10), to: z.string().max(10) });
+const ownerMoneyQuery = z.object({
+  from: z.string().max(10).optional(), to: z.string().max(10).optional(),
+  cfrom: z.string().max(10).optional(), cto: z.string().max(10).optional(),
+});
 
 // The admin patch. Mirrors config.ts's own `configPatchSchema` at the wire so a bad body is
 // refused HERE, in the ratified shape, before `updateBillingConfig` re-parses it (carried item 1).
@@ -477,6 +488,9 @@ const configPatchBody = z
     chargeRules: z.object({ opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1), revisit: z.string().min(1).optional() }) }),
     degradedTender: z.boolean(),
     caSigned: z.boolean(),
+    // Owner 2026-10-09 — the hospital's UPI id and the name a payer's app shows. Null or blank clears it.
+    upiVpa: z.string().trim().max(110).nullable(),
+    upiPayeeName: z.string().trim().max(UPI_PAYEE_NAME_MAX).nullable(),
   })
   .partial();
 const feeSwitchBody = z.object({ kind: z.enum(FEE_KINDS), off: z.boolean() }).strict();
@@ -541,6 +555,11 @@ type InvoicePrint = {
   settlement: Settlement;
   qrPayload: string;
 };
+
+/** `GET`/`PUT /billing/config` — the config as it always was, plus the hospital's UPI id (owner 2026-10-09). */
+type BillingConfigView = BillingConfig & { upiVpa: string | null; upiPayeeName: string | null };
+const upiView = (p: UpiPayee | null): { upiVpa: string | null; upiPayeeName: string | null } =>
+  ({ upiVpa: p?.vpa ?? null, upiPayeeName: p === null || p.payeeName === "" ? null : p.payeeName });
 
 @Controller("billing")
 export class BillingController {
@@ -632,6 +651,18 @@ export class BillingController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * OWNER 2026-10-09 — "To collect": the visits the desk let through unpaid, today and seven days
+   * back, until the fee is settled (`to-collect.ts`). The cashier's key, and ALSO the front desk's
+   * two (`alsoAdmits`): the seat that grants the bypass is the seat that must not lose sight of it.
+   * No doctor's key admits it. No parameter: the window is the rule, not the caller's choice.
+   */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["opd.visits.open", "billing.dues.patient.read"] })
+  @Get("to-collect")
+  async toCollect(@CurrentActor() actor: Actor): Promise<{ items: ToCollectRow[] }> {
+    return { items: await toCollectList(this.db, actor) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")
@@ -1340,13 +1371,36 @@ export class BillingController {
     }
   }
 
+  /**
+   * THE OWNER'S MONEY PAGE IN THE STAFF APP (owner 2026-10-09) — `owner-money.ts`. Sums and counts for
+   * IST days `from`..`to` (today when absent; at most 92 days, never the future), with the collected
+   * total of a comparison range `cfrom`..`cto` when one is sent. No patient, no document number. The
+   * day book's own gate: the owner and the billing manager hold it, the Medical Superintendent does not.
+   */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("reports/owner-money")
+  async ownerMoneyRoute(@Query() query: unknown): Promise<OwnerMoney> {
+    const q = parsed(ownerMoneyQuery, query);
+    const now = new Date();
+    const today = istDay(now);
+    const from = q.from ?? today, to = q.to ?? today;
+    const bad = rangeProblem(from, to, today)
+      ?? (q.cfrom === undefined && q.cto === undefined ? null : rangeProblem(q.cfrom, q.cto, today));
+    if (bad !== null) throw httpError(400, `the range cannot be read: ${bad}`, "invalid_range");
+    try {
+      return await ownerMoney(this.db, { from, to }, q.cfrom === undefined ? null : { from: q.cfrom, to: q.cto! }, now);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   // ——— configuration (D-17) ———————————————————————————————————————————————————————————————————
 
   @RequirePermission("billing.reports.read", "hospital")
   @Get("config")
-  async config(): Promise<BillingConfig> {
+  async config(): Promise<BillingConfigView> {
     try {
-      return await loadBillingConfig(this.db);
+      return { ...(await loadBillingConfig(this.db)), ...upiView(await loadUpiPayee(this.db)) };
     } catch (e) {
       toHttp(e);
     }
@@ -1354,10 +1408,20 @@ export class BillingController {
 
   @RequirePermission("billing.config.write", "hospital")
   @Put("config")
-  async configPut(@Body() body: unknown): Promise<BillingConfig> {
-    const b = parsed(configPatchBody, body, "invalid_config");
+  async configPut(@Body() body: unknown): Promise<BillingConfigView> {
+    const { upiVpa, upiPayeeName, ...b } = parsed(configPatchBody, body, "invalid_config");
     try {
-      return await withTx(this.db, (tx) => updateBillingConfig(tx, b));
+      return await withTx(this.db, async (tx) => {
+        // The UPI id has its own writer (`upi.ts`); the config patch keeps the shape it always had.
+        if (upiVpa !== undefined || upiPayeeName !== undefined) {
+          const stored = await loadUpiPayee(tx);
+          await setUpiPayee(tx, {
+            vpa: upiVpa === undefined ? stored?.vpa ?? null : upiVpa,
+            payeeName: upiPayeeName === undefined ? stored?.payeeName ?? null : upiPayeeName,
+          });
+        }
+        return { ...(await updateBillingConfig(tx, b)), ...upiView(await loadUpiPayee(tx)) };
+      });
     } catch (e) {
       toHttp(e);
     }

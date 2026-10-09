@@ -12,6 +12,21 @@ export type OpdErrorCode =
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
   | "appointment_state_conflict" | "appointment_not_today"
+  // Owner 2026-10-09 — tele-call. A tele booking with no usable mobile number is a malformed
+  // request (400); the desk's check-in of a tele-call is well formed and the wrong door (409).
+  | "tele_phone_required" | "tele_call_opens_at_slot"
+  // Paying for a tele-call at the desk. Not a tele appointment, or a tender that names no UPI
+  // reference, is a malformed request (400); an amount that is not the quote carries the quote in
+  // `detail.expectedPaise` (409, listed); already paid, or no longer payable, is a state (409 by rule).
+  | "not_a_tele_appointment" | "tele_upi_reference_required" | "tele_amount_mismatch" | "tele_advance_state_conflict"
+  // The doctor's half. A tele visit is completed, and its prescription issued, only after the
+  // doctor records that they SPOKE to the patient (409, listed — the request is well formed and
+  // the call has not happened). Calling or recording an outcome on a visit that is not a tele
+  // visit is a malformed request (400).
+  | "tele_outcome_required" | "not_a_tele_visit"
+  // 'Spoke' could not be recorded because what must be written beside it could not be (409, listed).
+  // The message is the doctor's — neutral, no money word; the cause goes to the log and `tele.bill_failed`.
+  | "tele_save_failed"
   | "unknown_encounter" | "encounter_state_conflict" | "edit_lease_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
   // The co-pilot's syndrome key. A key the knowledge file does not hold is a CLIENT error with a
   // domain name, not a 500 — the screen sends what a previous build's suggest route gave it.

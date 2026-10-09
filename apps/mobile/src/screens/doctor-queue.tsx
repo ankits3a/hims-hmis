@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TeleMark } from "../counter/tele-mark";
 import { AppState, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -8,15 +9,15 @@ import { doctorApi, type DoctorApi } from "../doctor/api";
 import { PatientBrief, type BriefGroup } from "../doctor/brief";
 import { ConsultScreen } from "./consult";
 import {
-  LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, completionBody, followUpChoices, isUnpaid, longestWait, parkedSince, rowName,
+  LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, completionBody, followUpChoices, guardianBrief, longestWait, parkedSince, rowName,
   unissuedRxRows, visitKind, waitMinutes,
 } from "../doctor/rules";
+import { teleSlotClock } from "../doctor/rules";
 import type { WireFollowUpConfig, WireQueueDoctor, WireQueueEntryView, WireQueuePatient, WireQueueView, WireSkipReason } from "../doctor/rules";
 import { useI18n } from "../i18n";
 import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
 import { SwipeHint, SwipeRow } from "../scan/gestures";
 import type { ScanAction } from "../scan/model";
-import { guardianWho } from "../vitals/guardian";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
@@ -31,7 +32,7 @@ import { istClock, todayIst } from "../vitals/rules";
  * visit. Nothing is decided on the phone:
  *
  *   the line        `GET /opd/queues` for MY doctor profile today, re-read every few seconds; the
- *                   order, who is callable, who is held for the bill and who fell out are the
+ *                   order, who is callable and who fell out are the
  *                   server's lists, shown as sent
  *   call / recall   `call-next` takes the engine's head; the called token can be said again,
  *                   skipped WITH a reason, started
@@ -60,19 +61,21 @@ function Row({ e, t, now, right, below, tone, onPress, onHold, testID }: {
   const name = rowName(e.patient);
   const demo = ageSexOf(e.patient, now);
   const kind = visitKind(e);
-  const marks: { text: string; fg: string }[] = [];
+  const marks: { text: string; fg: string; fill?: string; testID?: string }[] = [];
   if (e.encounter.dangerFlagged || e.danger) marks.push({ text: t("mobile.doctor.dangerRow"), fg: color.red });
-  if (isUnpaid(e)) marks.push({ text: t("mobile.doctor.unpaidRow"), fg: color.red });
-  // Owner 2026-10-07 — the guardian came with the reports; no vitals were taken. The web row's tag, in words.
+  // Owner 2026-10-09 — only a guardian came: a FILLED amber chip, "Guardian · Son". The name is on the patient's page.
   const absent = e.encounter.patientAbsent ?? null;
-  if (absent !== null) marks.push({ text: t("patientAbsent.tag", { who: guardianWho(t, absent) }), fg: "#8a5a10" });
+  if (absent !== null) marks.push({ text: guardianBrief(t, absent).chip, fg: color.ink, fill: color.gold, testID: `line-guardian-${e.tokenNo}` });
   return (
-    <View testID={testID} style={[s.rowCard, tone === "next" && { backgroundColor: color.greenSoft, borderColor: color.greenLine }]}>
+    <View testID={testID} style={[s.rowCard, tone === "next" && { backgroundColor: color.greenSoft, borderColor: color.greenLine }, e.tele === true && s.teleRow]}>
       <Pressable testID={`${testID}-open`} accessibilityRole="button" onPress={onPress} onLongPress={onHold}
         accessibilityActions={onHold === undefined ? undefined : [{ name: "longpress", label: t("mobile.scan.more") }]}
         onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") onHold?.(); }}
         style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>
-        <Text style={s.rowTok}>{e.tokenNo}</Text>
+        {e.tele === true
+          // Owner 2026-10-09 — a tele-call: the slot time where the token sits, and a phone ICON (no word).
+          ? <Text testID={`${testID}-slot`} style={s.rowSlot}>{teleSlotClock(e.appointmentAt)}</Text>
+          : <Text style={s.rowTok}>{e.tokenNo}</Text>}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.rowName} numberOfLines={1}>
             {name.text ?? t(name.sealed ? "mobile.doctor.sealed" : "mobile.doctor.noName")}
@@ -82,10 +85,11 @@ function Row({ e, t, now, right, below, tone, onPress, onHold, testID }: {
             <Text style={s.rowLine} numberOfLines={1}>{t(`opdConsultV2.vtShort.${kind}`)}</Text>
             {marks.map((m) => (
               // A mark is a bordered WORD, never colour alone.
-              <Text key={m.text} style={[s.mark, { color: m.fg, borderColor: m.fg }]}>{m.text}</Text>
+              <Text key={m.text} testID={m.testID} numberOfLines={1} style={[s.mark, { color: m.fg, borderColor: m.fill ?? m.fg }, m.fill !== undefined && { backgroundColor: m.fill }]}>{m.text}</Text>
             ))}
           </View>
         </View>
+        {e.tele === true && <TeleMark testID={`${testID}-tele`} label={t("mobile.counter.appt.tele")} size={20} />}
         {right}
       </Pressable>
       {below !== undefined && <View style={s.rowBelow}>{below}</View>}
@@ -136,8 +140,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
   const [skipping, setSkipping] = useState<WireQueueEntryView | null>(null);
   const [skipReason, setSkipReason] = useState<WireSkipReason>("absent");
   const [skipNote, setSkipNote] = useState("");
-  const [opening, setOpening] = useState<WireQueueEntryView | null>(null);
-  const [unpaidReason, setUnpaidReason] = useState("");
   const [completing, setCompleting] = useState<Open | null>(null);
   const [followUp, setFollowUp] = useState<number | null>(null);
   const [testsOrdered, setTestsOrdered] = useState(false);
@@ -215,7 +217,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
   const current = view?.current ?? null;
   const ordered = view?.ordered ?? [];
   const inConsult = view?.inConsult ?? [];
-  const held = view?.heldForPayment ?? [];
   const left = view?.left ?? [];
   const session = view?.session ?? null;
 
@@ -225,8 +226,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
     if (w !== undefined) return { entry: w, group: parkedSince(w) !== null ? "parked" : "with" };
     const o = ordered.find((e) => e.encounterId === encounterId);
     if (o !== undefined) return { entry: o, group: "line" };
-    const h = held.find((e) => e.encounterId === encounterId);
-    if (h !== undefined) return { entry: h, group: "held" };
     const l = left.find((e) => e.encounterId === encounterId);
     if (l !== undefined) return { entry: l, group: "left" };
     return { entry: null, group: "gone" };
@@ -268,16 +267,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
       const ok = await act("skip", () => api.skip(e.id, skipReason, skipNote.trim() === "" ? null : skipNote.trim()), t("mobile.doctor.skipped", { token: e.tokenNo }));
       setSkipping(null);
       if (ok && open?.encounterId === e.encounterId) setOpen(null);
-    })();
-  };
-  const askOpenUnpaid = (e: WireQueueEntryView): void => { setError(null); setUnpaidReason(""); setOpening(e); };
-  const confirmOpenUnpaid = (): void => {
-    const e = opening;
-    if (e === null) return;
-    if (unpaidReason.trim() === "") { setError(t("mobile.doctor.reasonNeeded")); return; }
-    void (async () => {
-      await act("open-unpaid", () => api.openUnpaid(e.encounter.id, unpaidReason.trim()));
-      setOpening(null);
     })();
   };
   /**
@@ -371,19 +360,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
           <Button testID="skip-cancel" kind="secondary" label={t("mobile.doctor.cancel")} onPress={() => setSkipping(null)} />
         </Sheet>
       )}
-      {opening !== null && (
-        <Sheet testID="unpaid-sheet" title={t("opdConsult.openUnpaidTitle", { token: opening.tokenNo })} onClose={() => setOpening(null)}>
-          <Text style={s.sheetHint}>{t("opdConsult.openUnpaidHint")}</Text>
-          <Text style={[s.sheetHint, { color: color.red, fontWeight: "700" }]}>{t("opdConsult.openUnpaidStillOwed")}</Text>
-          <TextInput
-            testID="unpaid-reason" value={unpaidReason} onChangeText={setUnpaidReason} maxLength={500} autoFocus
-            placeholder={t("opdConsult.openUnpaidReason")} placeholderTextColor={color.faint} style={s.input}
-          />
-          {error !== null && <Note tone="bad" testID="sheet-error">{error}</Note>}
-          <Button testID="unpaid-go" label={t("opdConsult.openUnpaidConfirm")} busy={busy === "open-unpaid"} onPress={confirmOpenUnpaid} />
-          <Button testID="unpaid-cancel" kind="secondary" label={t("mobile.doctor.cancel")} onPress={() => setOpening(null)} />
-        </Sheet>
-      )}
       {completing !== null && (
         <Sheet testID="complete-sheet" title={t("mobile.doctor.completeTitle", { token: completing.tokenNo })} onClose={() => setCompleting(null)}>
           <Text style={s.sheetHint}>{t("mobile.doctor.completeHint")}</Text>
@@ -417,7 +393,7 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
       )}
     </>
   );
-  const sheetOpen = skipping !== null || opening !== null || completing !== null;
+  const sheetOpen = skipping !== null || completing !== null;
 
   if (open !== null) {
     const { entry, group } = groupOf(open.encounterId);
@@ -453,7 +429,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
             start: () => startOf(open),
             recall: () => { if (entry !== null) void act("recall", () => api.recall(entry.id), t("mobile.doctor.calledNow", { token: open.tokenNo })); },
             skip: () => { if (entry !== null) askSkip(entry); },
-            openUnpaid: () => { if (entry !== null) askOpenUnpaid(entry); },
             undoSkip: () => { if (entry !== null) void act("undo", () => api.undoSkip(entry.id)); },
             park: () => { void (async () => { if (await act("park", () => api.park(open.encounterId), t("mobile.doctor.parked", { token: open.tokenNo }))) setOpen(null); })(); },
             resume: () => { void act("resume", () => api.resume(open.encounterId)); },
@@ -552,7 +527,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
                     {current.calledAt !== null ? ` · ${t("mobile.doctor.calledAt", { time: istClock(current.calledAt) })}` : ""}
                     {current.callCount > 1 ? ` · ${t("opdConsultV2.recalledTimes", { n: current.callCount - 1 })}` : ""}
                   </Text>
-                  {isUnpaid(current) && <Text style={[s.mark, { color: color.red, borderColor: color.red, alignSelf: "flex-start", marginTop: 6 }]}>{t("mobile.doctor.unpaidRow")}</Text>}
                 </Pressable>
                 <View style={{ gap: space.sm, marginTop: space.md }}>
                   <Button testID="called-start" label={t("opdConsult.start")} busy={busy === "start"} disabled={busy !== null}
@@ -606,25 +580,6 @@ export function DoctorQueue({ scanned = null }: { scanned?: Scanned | null } = {
               </View>
             </View>
 
-            {held.length > 0 && (
-              <View testID="held-group">
-                <Tag>{t("opdConsult.heldQueue", { n: held.length })}</Tag>
-                <Text style={[s.meta, { marginTop: 4 }]}>{t("opdConsult.heldQueueHint")}</Text>
-                <View style={{ gap: space.sm, marginTop: space.sm }}>
-                  {held.map((e) => (
-                    <Row key={e.id} e={e} t={t} now={now} testID={`held-row-${e.tokenNo}`} onPress={() => show(e)} onHold={() => setHeld1(e.encounterId)}
-                      right={<Wait e={e} now={now} t={t} />}
-                      below={<>
-                        {(e.encounter.feeBypassReason ?? null) !== null && <Text style={[s.meta, { flex: 1, minWidth: 160 }]}>{t("opdConsult.heldWhy", { reason: e.encounter.feeBypassReason ?? "" })}</Text>}
-                        <Pressable testID={`held-open-${e.tokenNo}`} accessibilityRole="button" hitSlop={6} onPress={() => askOpenUnpaid(e)} style={s.linkBtn}>
-                          <Text style={s.link}>{t("opdConsult.openUnpaid")}</Text>
-                        </Pressable>
-                      </>} />
-                  ))}
-                </View>
-              </View>
-            )}
-
             {left.length > 0 && (
               <View testID="left-group">
                 <Tag>{t("opdConsult.leftQueue", { n: left.length })}</Tag>
@@ -669,6 +624,8 @@ const s = StyleSheet.create({
   rowCard: { backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: TOUCH + 16, paddingVertical: 10, paddingHorizontal: 14 },
   rowBelow: { borderTopWidth: 1, borderTopColor: color.line2, paddingHorizontal: 14, paddingVertical: 4, flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.md },
+  rowSlot: { fontFamily: MONO, fontSize: 15, fontWeight: "700", color: color.blue, minWidth: 34 },
+  teleRow: { borderColor: color.blue, borderWidth: 2 },
   rowTok: { fontFamily: MONO, fontSize: 22, fontWeight: "700", color: color.ink, minWidth: 34 },
   rowName: { fontSize: 16, lineHeight: 21, fontWeight: "700", color: color.ink },
   rowDemo: { fontSize: 14, fontWeight: "500", color: color.dim },

@@ -14,6 +14,7 @@ import i18next from "./lib/i18n";
 import { AlertsBell } from "./components/alerts-bell";
 import { PrintingPanelHost, openPrintingPanel } from "./components/printing-panel";
 import { ModeBanner } from "./components/mode-banner";
+import { AadhaarSticker } from "./components/aadhaar-sticker";
 import { LoginScreen } from "./screens/login";
 import "./styles/paper-pine.css";
 import "./styles/shell.css";
@@ -615,6 +616,8 @@ function Shell(): React.ReactElement {
       <div className="flex min-h-screen flex-col">
       <ShellChrome />
         <ModeBanner />
+        {/* "Add your Aadhaar" (owner 2026-10-09): drawn only while the server says this person owes one. */}
+        <AadhaarSticker />
         {/*
           PLAN 07b T1 — the patient in hand, directly under the chrome and above every screen, so a
           clerk never has to find the same person twice. It renders nothing when nobody is in hand.

@@ -1593,6 +1593,17 @@ widens how far back the owner may look, never what they may look at, and the pat
 both is harmless: they are a lattice, not a switch, because roles combine and a role-to-horizon
 table would need a `max()` across a person's holdings that nobody writes the first time.
 
+**Nickname undo for the owner (owner ruling,
+2026-10-09).** `owner` gains `opd.masters.manage` — the owner's words: *"nickname-Undo permission for
+owner role: yes"*. The staff app's Learning page lists the medicine nicknames the suggestion system
+learned this week, and taking one back or putting it back (`POST /opd/consult/nicknames/:id/undo`,
+`…/restore`) has been guarded by this string since those routes shipped; the owner's role did not
+hold it, so the owner's own list carried no Undo. The gate on the routes is unchanged. The string
+also opens the rest of OPD masters to the owner (departments, rooms, doctors, schedules and leaves,
+look-alike pairs, voice settings, the vocabulary map) — accepted, because he is the owner. The
+Medical Superintendent's role does not gain it and reads the same list without the button. Seeding
+the grant switches nothing on: nickname learning stays behind its own switch.
+
 **The OPD day report (owner request and ruling,
 2026-09-19).** `front_office_supervisor`, `medical_superintendent` and `owner` gain
 `opd.reports.read`: the hospital's day department by department — appointments booked,
@@ -1647,6 +1658,16 @@ warning can be accepted, with a reason, by a holder of `roster.periods.publish`;
 disabled, and says why, while a blocking finding stands** — the server's publish gate decides, and
 the screen shows its count. No grant changes: anybody with `roster.read` can open the month, and
 drafting and publishing remain the medical superintendent's until a head-of-department role exists.
+
+**Staff attendance (owner ruling, 2026-10-09).** HMIS keeps a copy of the attendance machine's
+records ("bioattend") and one permission guards the whole of it: `attendance.all.read` is everyone's
+attendance, including people on the machine's list who have no login here. `owner`,
+`medical_superintendent` and the new role `attendance_committee` hold it, and the committee role
+holds nothing else. There is deliberately no team permission and none for oneself: a unit head or an
+in-charge sees their own team because the team is computed from who they are, and every signed-in
+person sees their own days — as one word a day (Present, Absent, Leave, Off, Partial, or Confirm for
+a day with a single punch), without times. A request to meet about a Confirm day goes to whoever
+holds `attendance_committee`; nobody is assigned to that role by any seed.
 
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it

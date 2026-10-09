@@ -22,6 +22,7 @@ import { aerbManifest } from "../../modules/aerb";
 import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
 import { rosterManifest } from "../../modules/roster";
+import { attendanceManifest } from "../../modules/attendance";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -181,4 +182,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // department owes it rows and it reaches into none of them. This task: three permissions, no
   // menu, no subscription, no job — the seam ships inert and R5's resolver is its first reader.
   rosterManifest,
+  // STAFF ATTENDANCE (owner 2026-10-09) — appended. One permission (`attendance.all.read`), no menu,
+  // no subscription. API only, the `roster` shape: the worker runs its job and needs no permission to.
+  attendanceManifest,
 ];

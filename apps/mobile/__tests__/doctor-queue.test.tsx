@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { DoctorQueue } from "../src/screens/doctor-queue";
@@ -126,7 +126,7 @@ describe("the doctor's OPD line on a phone", () => {
     const w = world();
     await mount(w.fetcher);
     expect(await screen.findByTestId("line-row-13")).toHaveTextContent(/Suresh Prasad · 56 M/);
-    expect(screen.getByTestId("line-row-13")).toHaveTextContent(/Revisit · free follow-up/);
+    expect(screen.getByTestId("line-row-13")).toHaveTextContent(/Revisit · follow-up/);
     expect(screen.getByTestId("line-row-14")).toHaveTextContent(/Meena Kumari · 33 F/);
     expect(screen.getByTestId("doctor-name")).toHaveTextContent("Dr. Chandan Kumar · Unit I · Asst. Prof.");
     expect(screen.getByTestId("stat-waiting")).toHaveTextContent("2");
@@ -136,6 +136,39 @@ describe("the doctor's OPD line on a phone", () => {
     expect(screen.getByTestId("line-vitals")).toHaveTextContent("2 still at vitals");
     // Only MY profile's line is asked for, for today.
     expect(w.of("GET /opd/queues").length).toBeGreaterThan(0);
+  });
+
+  it("TELE-CALL (owner 2026-10-09): the row shows its SLOT TIME where the token sits and a phone ICON named Tele-call — no word, and never a money mark", async () => {
+    const w = world(queue({ ordered: [
+      entry(13, { position: 1, tele: true, kind: "appointment", appointmentAt: "2026-10-06T05:50:00.000Z", feeStatus: null }, {}, { name: "Meena Kumari", administrativeGender: "female", dob: "1993-01-01T00:00:00.000Z" }),
+      entry(14, { position: 2 }, {}, { name: "Suresh Prasad" }),
+    ] }));
+    await mount(w.fetcher);
+    const tele = await screen.findByTestId("line-row-13");
+    expect(screen.getByTestId("line-row-13-slot")).toHaveTextContent("11:20");
+    expect(within(tele).getByLabelText("Tele-call").props).toMatchObject({ accessibilityRole: "image", testID: "line-row-13-tele" });
+    expect(tele).not.toHaveTextContent(/tele|paid|unpaid|fee|₹/i);
+    expect(tele).not.toHaveTextContent(/^13/);
+    // an ordinary row beside it is exactly what it was
+    expect(screen.getByTestId("line-row-14")).toHaveTextContent(/^14/);
+    expect(screen.queryByTestId("line-row-14-tele")).toBeNull();
+    expect(screen.queryByTestId("line-row-14-slot")).toBeNull();
+  });
+
+  it("TELE-CALL: the patient page shows the phone card — Tele-call and the slot — no vitals block, and no money word", async () => {
+    const w = world(queue({ ordered: [entry(13, { position: 1, tele: true, kind: "appointment", appointmentAt: "2026-10-06T05:50:00.000Z", feeStatus: null }, {}, { name: "Meena Kumari" })] }), {
+      "GET /opd/visits/e13": () => {
+        const v = visit("e13", { vitals: [], teleSlotAt: "2026-10-06T05:50:00.000Z" }, { consultMode: "tele", teleOutcome: null, teleNoAnswerCount: 0 }) as Record<string, unknown>;
+        delete v.feeUnpaid; delete v.feeBypass;
+        return { status: 200, body: v };
+      },
+    });
+    await mount(w.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    expect(await screen.findByTestId("brief-tele")).toHaveTextContent(/Tele-call.*11:20/);
+    expect(screen.queryByTestId("brief-vitals-card")).toBeNull();
+    expect(screen.queryByTestId("brief-unpaid")).toBeNull();
+    expect(screen.getByTestId("brief-who")).not.toHaveTextContent(/paid|unpaid|fee|₹/i);
   });
 
   it("a user with no doctor profile is told so (404 is an answer, not an error) and no line is asked for", async () => {
@@ -203,25 +236,6 @@ describe("the doctor's OPD line on a phone", () => {
     expect(w.of("POST /opd/queues/entries/q13/undo-skip")).toHaveLength(1);
   });
 
-  it("tokens waiting for the bill are listed apart, and the doctor opens one only with a reason", async () => {
-    const held = entry(15, { feeStatus: "unsettled" }, { feeBypassReason: "came by ambulance" }, { name: "Ram Pravesh" });
-    const w = world(queue({ heldForPayment: [held] }), {
-      "POST /opd/visits/e15/consult/open-unpaid": () => ({ status: 201, body: { encounter: {} } }),
-    });
-    await mount(w.fetcher);
-    expect(await screen.findByTestId("held-row-15")).toHaveTextContent(/Ram Pravesh/);
-    expect(screen.getByTestId("held-row-15")).toHaveTextContent(/NOT PAID/);
-    expect(screen.getByTestId("held-group")).toHaveTextContent(/Waiting for the bill \(1\)/);
-    await fireEvent.press(screen.getByTestId("held-open-15"));
-    await fireEvent.press(screen.getByTestId("unpaid-go"));
-    expect(screen.getByTestId("sheet-error")).toHaveTextContent("Write the reason first.");
-    expect(w.of("POST /opd/visits/e15/consult/open-unpaid")).toHaveLength(0);
-    await fireEvent.changeText(screen.getByTestId("unpaid-reason"), "elderly, cannot stand in the queue");
-    await fireEvent.press(screen.getByTestId("unpaid-go"));
-    await waitFor(() => expect(w.of("POST /opd/visits/e15/consult/open-unpaid")).toHaveLength(1));
-    expect(w.of("POST /opd/visits/e15/consult/open-unpaid")[0]!.body).toEqual({ reason: "elderly, cannot stand in the queue" });
-  });
-
   it("the brief: allergy first, the patient's own words, today's vitals with the bay's flag as a word, results since, the last prescription, past visits", async () => {
     const w = world();
     await mount(w.fetcher);
@@ -243,6 +257,133 @@ describe("the doctor's OPD line on a phone", () => {
     expect(screen.getByTestId("brief-visits")).toHaveTextContent(/Type 2 diabetes mellitus/);
     // Today's own visit is not listed among the PAST visits.
     expect(screen.getByTestId("brief-visits")).not.toHaveTextContent(/06-Oct-2026/);
+  });
+
+  // ——— owner 2026-10-09: the guardian came alone, and what the doctor recorded last time ———
+  const GUARDIAN = { relation: "son", name: "Rakesh", by: "asha.devi", at: minsAgo(30) };
+  const LAST = (enc: Record<string, unknown> = {}, over: Record<string, unknown> = {}) => ({
+    encounter: {
+      id: "e0", visitNo: "V2608240007", patientId: "p13", status: "completed", serviceDate: "2026-08-24", visitType: "new",
+      chiefComplaint: "Tingling in both feet · worse at night", diagnosis: "Type 2 diabetes mellitus", dangerFlagged: false, consultStartedAt: null,
+      advisedTests: [{ serviceId: "s1", code: "HBA1C", name: "HbA1c", pricePaise: 40000 }, { serviceId: "s2", code: "LIPID", name: "Lipid profile", pricePaise: 60000 }],
+      ...enc,
+    },
+    deskComplaint: { text: "Pair mein jhunjhuni", by: "Ramesh", at: "2026-08-24T04:00:00.000Z" },
+    vitals: [],
+    prescriptions: [
+      { id: "rx0", status: "active", lines: [{ drug: "Metformin 1 g", dose: "1 tab" }, { drug: "Glimepiride 1 mg", dose: "1 tab" }] },
+      { id: "rxOld", status: "superseded", lines: [{ drug: "Struck-out drug" }] },
+    ],
+    ...over,
+  });
+  const guardianLine = () => queue({ ordered: [entry(13, { position: 1 }, { visitType: "revisit", patientAbsent: GUARDIAN }, { name: "Suresh Prasad" })] });
+
+  it("a guardian-only revisit: a chip on the line, a boxed card under the name, no vitals block, and the last visit as the doctor recorded it", async () => {
+    const w = world(guardianLine(), {
+      "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", { vitals: [], patientAbsent: GUARDIAN }) }),
+      "GET /opd/visits/e0": () => ({ status: 200, body: LAST() }),
+    });
+    await mount(w.fetcher);
+    // The row says who, not the name — the name is on the card.
+    expect(await screen.findByTestId("line-guardian-13")).toHaveTextContent("Guardian · Son");
+    expect(screen.getByTestId("line-row-13")).not.toHaveTextContent(/Rakesh/);
+    await fireEvent.press(screen.getByTestId("line-row-13-open"));
+    const card = await screen.findByTestId("brief-patient-absent");
+    expect(card).toHaveTextContent(/Guardian only/);
+    // Two pieces on one line (the name may give way, the fixed words never): read together they are the brief's sentence.
+    expect(card.props.accessibilityLabel).toBe("Guardian only. Son: Rakesh · reports · no vitals");
+    expect(card).toHaveTextContent(/Son: Rakesh/);
+    expect(card).toHaveTextContent(/· reports · no vitals/);
+    expect(card).not.toHaveTextContent(/Patient absent/);
+    const last = await screen.findByTestId("brief-last-visit");
+    expect(last).toHaveTextContent(/Last visit · 24 Aug/);
+    expect(last).toHaveTextContent(/Dr\. Chandan Kumar/);
+    expect(screen.getByTestId("brief-last-complaint")).toHaveTextContent("ComplaintTingling in both feet · worse at night");
+    expect(screen.getByTestId("brief-last-diagnosis")).toHaveTextContent("DiagnosisType 2 diabetes mellitus");
+    expect(screen.getByTestId("brief-last-tests")).toHaveTextContent("TestsHbA1c, Lipid profile");
+    expect(screen.getByTestId("brief-last-medicines")).toHaveTextContent("MedicinesMetformin 1 g, Glimepiride 1 mg");
+    expect(last).not.toHaveTextContent(/Struck-out|1 tab/);
+    // The card's "no vitals" says it: no heading, no "not charted" line.
+    await waitFor(() => expect(screen.getByTestId("brief-why")).toHaveTextContent(/Pair mein jhunjhuni/));
+    expect(screen.queryByTestId("brief-vitals-card")).toBeNull();
+    expect(screen.queryByTestId("brief-vitals-none")).toBeNull();
+  });
+
+  it("a guardian-only visit that somehow has a chart shows it: a recorded value is never hidden", async () => {
+    const w = world(guardianLine(), { "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", { patientAbsent: GUARDIAN }) }) });
+    await mount(w.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    expect(await screen.findByTestId("brief-patient-absent")).toHaveTextContent(/Guardian only/);
+    expect(await screen.findByTestId("brief-vital-bp")).toHaveTextContent(/178\/106/);
+  });
+
+  it("a NEW patient's guardian visit (owner 2026-10-09): the same boxed card saying 'new', the same chip, no vitals block and no last-visit card", async () => {
+    const w = world(queue({ ordered: [entry(13, { position: 1 }, { visitType: "new", patientAbsent: GUARDIAN }, { name: "Suresh Prasad" })] }), {
+      "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", { vitals: [], patientAbsent: GUARDIAN }, { visitType: "new" }) }),
+      "GET /opd/patients/p13/timeline": () => ({ status: 200, body: { items: [] } }),
+    });
+    await mount(w.fetcher);
+    expect(await screen.findByTestId("line-guardian-13")).toHaveTextContent("Guardian · Son");
+    await fireEvent.press(screen.getByTestId("line-row-13-open"));
+    const card = await screen.findByTestId("brief-patient-absent");
+    expect(card.props.accessibilityLabel).toBe("Guardian only. Son: Rakesh · new · no vitals");
+    expect(card).not.toHaveTextContent(/reports/);
+    await waitFor(() => expect(screen.getByTestId("brief-why")).toHaveTextContent(/Pair mein jhunjhuni/));
+    expect(screen.queryByTestId("brief-vitals-card")).toBeNull();
+    expect(screen.queryByTestId("brief-last-visit")).toBeNull();
+  });
+
+  it("an ordinary revisit with no chart keeps today's line, and has no guardian card", async () => {
+    const w = world(queue(), { "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", { vitals: [] }) }) });
+    await mount(w.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    expect(await screen.findByTestId("brief-vitals-none")).toHaveTextContent("Vitals are not charted for this visit.");
+    expect(screen.queryByTestId("brief-patient-absent")).toBeNull();
+    expect(screen.queryByTestId("line-guardian-13")).toBeNull();
+  });
+
+  it("the last visit's complaint falls back to that visit's front-desk words when the doctor recorded none; empty rows say —", async () => {
+    const w = world(queue(), { "GET /opd/visits/e0": () => ({ status: 200, body: LAST({ chiefComplaint: null, advisedTests: null }, { prescriptions: [] }) }) });
+    await mount(w.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    expect(await screen.findByTestId("brief-last-complaint")).toHaveTextContent("ComplaintPair mein jhunjhuni");
+    expect(screen.getByTestId("brief-last-tests")).toHaveTextContent("Tests—");
+    expect(screen.getByTestId("brief-last-medicines")).toHaveTextContent("Medicines—");
+  });
+
+  it("no last-visit card for a new patient, for a history the login may not read, or for a visit the server will not open", async () => {
+    // A new visit: nothing is even asked for.
+    const fresh = world(queue({ ordered: [entry(13, { position: 1 }, { visitType: "new" }, { name: "Suresh Prasad" })] }), {
+      "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", {}, { visitType: "new" }) }),
+      "GET /opd/visits/e0": () => ({ status: 200, body: LAST() }),
+    });
+    const a = await mount(fresh.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    await waitFor(() => expect(screen.getByTestId("brief-visits")).toHaveTextContent(/Type 2 diabetes mellitus/));
+    expect(screen.queryByTestId("brief-last-visit")).toBeNull();
+    expect(fresh.of("GET /opd/visits/e0")).toHaveLength(0);
+    await a.unmount();
+
+    // The timeline is refused: the same rule that hides "Past visits" hides the card.
+    const hidden = world(queue(), {
+      "GET /opd/patients/p13/timeline": () => ({ status: 403, body: { message: "forbidden" } }),
+      "GET /opd/visits/e0": () => ({ status: 200, body: LAST() }),
+    });
+    const b = await mount(hidden.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    expect(await screen.findByTestId("brief-hidden")).toBeTruthy();
+    expect(screen.queryByTestId("brief-last-visit")).toBeNull();
+    expect(hidden.of("GET /opd/visits/e0")).toHaveLength(0);
+    await b.unmount();
+
+    // The earlier visit answers 404 (sealed, or gone): no card and no error.
+    const sealedVisit = world(queue());
+    await mount(sealedVisit.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    await waitFor(() => expect(sealedVisit.of("GET /opd/visits/e0")).toHaveLength(1));
+    await waitFor(() => expect(screen.getByTestId("brief-visits")).toHaveTextContent(/Type 2 diabetes mellitus/));
+    expect(screen.queryByTestId("brief-last-visit")).toBeNull();
+    expect(screen.queryByTestId("brief-error")).toBeNull();
   });
 
   it("a sealed record shows its alias and no demographics, allergies, prescriptions or papers", async () => {

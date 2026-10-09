@@ -5,3 +5,5 @@
  * (packages/contracts/src/appointment-book.ts; metro.config.js watches it). Nothing is copied.
  */
 export * from "../../../../packages/contracts/src/appointment-book";
+/** Tele-call (owner 2026-10-09): the mode and the ten-digit number rule — the server's own file, no imports. */
+export * from "../../../../packages/contracts/src/tele-call";

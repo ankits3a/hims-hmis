@@ -24,7 +24,7 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.13.0";
+const VERSION = "0.15.2";
 /**
  * M6b — NOTIFICATIONS ARE IN A BUILD ONLY WHEN THE HOSPITAL'S FIREBASE PROJECT IS.
  * `scripts/build-apk.sh` copies the owner's `google-services.json` beside this file when it exists

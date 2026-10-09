@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "../text";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
@@ -42,25 +43,33 @@ export function guardianWho(t: T, absent: { relation: string; name: string | nul
  */
 export { guardianMayStandIn } from "../../../../packages/contracts/src/patient-absent-rule";
 
-export function GuardianAbsentAction({ api, encounterId, onDone }: {
-  api: VitalsApi; encounterId: string; onDone: (absent: WirePatientAbsent) => void;
+/**
+ * "WHO CAME?" — the one sheet (owner 2026-10-09). It is reached from four places and never sits on
+ * the vitals form's main view: the action card (a held row, a scan), "Details" inside the form, and a
+ * left swipe on a bench row. Whichever opened it, NOTHING is written until "Send to doctor".
+ *
+ * `confirmHere`: the vitals bay says what happened in its own banner and clears its desk; any other
+ * screen has no such banner, so the sheet stays up with the one confirmation line and a Close.
+ */
+export function GuardianSheet({ api, encounterId, onDone, onClose, confirmHere = false }: {
+  api: Pick<VitalsApi, "markPatientAbsent">; encounterId: string; onDone: (absent: WirePatientAbsent) => void; onClose: () => void; confirmHere?: boolean;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const [relation, setRelation] = useState<GuardianRelation | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
-  const close = (): void => { setOpen(false); setRelation(null); setName(""); setError(null); };
   const confirm = async (): Promise<void> => {
     if (relation === null || busy) return;
     setBusy(true);
     setError(null);
     try {
       const out = await api.markPatientAbsent(encounterId, { relation, name: name.trim() === "" ? null : name.trim() });
-      close();
       onDone(out.patientAbsent);
+      if (confirmHere) setSent(true); else onClose();
     } catch (e) {
       if (e instanceof NetworkError) setError(t("home.cover.failed"));
       else if (e instanceof ApiError) {
@@ -72,46 +81,64 @@ export function GuardianAbsentAction({ api, encounterId, onDone }: {
     }
   };
 
-  if (!open) {
-    return (
-      <Pressable testID="patient-absent-open" accessibilityRole="button" onPress={() => setOpen(true)} style={s.openBtn}>
-        <Text style={s.openText}>{t("patientAbsent.action")}</Text>
-      </Pressable>
-    );
-  }
   return (
-    <View testID="patient-absent-dialog" accessibilityLabel={t("patientAbsent.title")} style={s.card}>
-      <Text style={s.title}>{t("patientAbsent.title")}</Text>
-      <Text style={s.hint}>{t("patientAbsent.hint")}</Text>
-      <Text style={s.label}>{t("patientAbsent.relationLabel")}</Text>
-      <View style={s.chips}>
-        {GUARDIAN_RELATIONS.map((r) => (
-          <Pressable
-            key={r} testID={`patient-absent-relation-${r}`} accessibilityRole="button" accessibilityState={{ selected: relation === r }}
-            onPress={() => setRelation(r)} style={[s.chip, relation === r && s.chipOn]}
-          >
-            <Text style={[s.chipText, relation === r && { color: "#ffffff" }]}>{t(`patientAbsent.relation.${r}`)}</Text>
-          </Pressable>
-        ))}
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={s.scrim} onPress={busy ? undefined : onClose} accessibilityLabel={t("patientAbsent.cancel")} testID="patient-absent-scrim" />
+      <View style={[s.sheet, { paddingBottom: insets.bottom + space.lg }]}>
+        {sent ? (
+          <View testID="patient-absent-sent" style={{ gap: space.md }}>
+            <Text style={s.sent}>✓ {t("patientAbsent.done")}</Text>
+            <Button testID="patient-absent-close" kind="secondary" label={t("mobile.scan.close")} onPress={onClose} />
+          </View>
+        ) : (
+          <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
+            <View testID="patient-absent-dialog" accessibilityLabel={t("patientAbsent.title")} style={{ gap: space.sm }}>
+              <Text style={s.title} numberOfLines={1}>{t("patientAbsent.title")}</Text>
+              <Text style={s.hint} numberOfLines={1}>{t("patientAbsent.hint")}</Text>
+              <View style={s.chips}>
+                {GUARDIAN_RELATIONS.map((r) => (
+                  <Pressable
+                    key={r} testID={`patient-absent-relation-${r}`} accessibilityRole="button" accessibilityState={{ selected: relation === r }}
+                    onPress={() => setRelation(r)} style={[s.chip, relation === r && s.chipOn]}
+                  >
+                    <Text style={[s.chipText, relation === r && { color: "#ffffff" }]}>{t(`patientAbsent.relation.${r}`)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={s.label}>{t("patientAbsent.nameLabel")}</Text>
+              <TextInput
+                testID="patient-absent-name" value={name} onChangeText={setName} maxLength={GUARDIAN_NAME_MAX}
+                autoCorrect={false} autoComplete="off" accessibilityLabel={t("patientAbsent.nameLabel")} style={s.input}
+              />
+              {error !== null && <Note tone="bad" testID="patient-absent-error">{error}</Note>}
+              <Button testID="patient-absent-confirm" label={busy ? t("patientAbsent.sending") : t("patientAbsent.confirm")} busy={busy} disabled={relation === null} onPress={() => { void confirm(); }} />
+              <Button testID="patient-absent-cancel" kind="secondary" label={t("patientAbsent.cancel")} disabled={busy} onPress={onClose} />
+            </View>
+          </ScrollView>
+        )}
       </View>
-      <Text style={s.label}>{t("patientAbsent.nameLabel")}</Text>
-      <TextInput
-        testID="patient-absent-name" value={name} onChangeText={setName} maxLength={GUARDIAN_NAME_MAX}
-        autoCorrect={false} autoComplete="off" accessibilityLabel={t("patientAbsent.nameLabel")} style={s.input}
-      />
-      {error !== null && <Note tone="bad" testID="patient-absent-error">{error}</Note>}
-      <Button testID="patient-absent-confirm" label={busy ? t("patientAbsent.sending") : t("patientAbsent.confirm")} busy={busy} disabled={relation === null} onPress={() => { void confirm(); }} />
-      <Button testID="patient-absent-cancel" kind="secondary" label={t("patientAbsent.cancel")} disabled={busy} onPress={close} />
-    </View>
+    </Modal>
+  );
+}
+
+/** The visible, non-gesture way in: a text link under "Details" in the vitals form. */
+export function GuardianLink({ onPress }: { onPress: () => void }) {
+  const { t } = useI18n();
+  return (
+    <Pressable testID="patient-absent-open" accessibilityRole="button" hitSlop={6} onPress={onPress} style={s.linkBtn}>
+      <Text style={s.linkText} numberOfLines={1}>{t("patientAbsent.short")} ›</Text>
+    </Pressable>
   );
 }
 
 const s = StyleSheet.create({
-  openBtn: { minHeight: TOUCH, justifyContent: "center", alignSelf: "flex-start", paddingHorizontal: space.md, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, backgroundColor: color.card },
-  openText: { fontSize: 14, fontWeight: "600", color: color.green },
-  card: { gap: space.sm, padding: space.md, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, backgroundColor: color.card },
-  title: { fontSize: 15, fontWeight: "700", color: color.ink },
-  hint: { fontSize: 13, color: color.dim },
+  scrim: { flex: 1, backgroundColor: "rgba(19,36,32,.45)" },
+  sheet: { maxHeight: "88%", backgroundColor: color.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingHorizontal: space.lg, paddingTop: space.lg },
+  sent: { fontSize: 16, lineHeight: 22, fontWeight: "700", color: color.green },
+  linkBtn: { minHeight: 36, justifyContent: "center", alignSelf: "flex-start" },
+  linkText: { fontSize: 14.5, fontWeight: "700", color: "#8a5a10" },
+  title: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: color.ink },
+  hint: { fontSize: 13.5, lineHeight: 19, color: color.dim, marginBottom: space.xs },
   label: { fontSize: 12, color: color.dim, marginTop: 2 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   chip: { minHeight: 40, justifyContent: "center", paddingHorizontal: space.md, borderWidth: 1, borderColor: color.line, borderRadius: 999, backgroundColor: color.card },

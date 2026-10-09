@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
+import { TeleCard, isTele } from "../consult/tele-call";
 import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError } from "../api";
 import { useI18n } from "../i18n";
-import { guardianWho } from "../vitals/guardian";
 import { Text } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
 import { Button, MONO, Note, Tag } from "../ui";
 import { humanDate, istClock } from "../vitals/rules";
 import type { WireDangerFlag } from "../vitals/rules";
 import type { DoctorApi, WireAllergyRow, WireDocument, WireRxHistoryItem, WireTimelineItem, WireVisitDetail, WireVisitVitals } from "./api";
-import { ageSexOf, ageYearsOn, briefRefill, briefResults, isUnpaid, rowName, shortDay, visitKind } from "./rules";
+import { ageSexOf, ageYearsOn, briefRefill, briefResults, guardianBrief, lastCompletedVisit, lastVisitCard, rowName, shortDay, showsLastVisit, visitKind } from "./rules";
 import type { WirePatientDispense, WirePatientImaging, WirePatientResult, WireQueueEntryView, WireQueuePatient } from "./rules";
 
 /**
@@ -155,12 +155,12 @@ function Section({ title, children, testID }: { title: string; children: React.R
 }
 
 export type BriefActions = {
-  start: () => void; recall: () => void; skip: () => void; openUnpaid: () => void; undoSkip: () => void;
+  start: () => void; recall: () => void; skip: () => void; undoSkip: () => void;
   park: () => void; resume: () => void; complete: () => void;
 };
 
 /** Where the row stands in the line the server sent — the parent reads it off the queue view; nothing is re-derived here. */
-export type BriefGroup = "called" | "line" | "held" | "left" | "with" | "parked" | "gone";
+export type BriefGroup = "called" | "line" | "left" | "with" | "parked" | "gone";
 
 export function PatientBrief({ api, entry, group, encounterId, patientId, summary, tokenNo, isHead, busy, error, flash, actions, onBack }: {
   api: DoctorApi;
@@ -220,9 +220,21 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
   const dispenseRows: WirePatientDispense[] = dispenses.status === "ok" ? dispenses.data.items : [];
   const refill = lastRx === null || dispenses.status !== "ok" ? null : briefRefill(lastRx.prescriptionId, dispenseRows);
 
+  // Owner 2026-10-09 — only a guardian came: said in a box under the name, and the chart block is not drawn.
+  const absent = entry?.encounter.patientAbsent ?? v?.patientAbsent ?? null;
+  const guardian = absent === null ? null : guardianBrief(t, absent, entry?.encounter.visitType ?? v?.encounter.visitType);
+  /*
+    WHAT THE DOCTOR RECORDED LAST TIME (owner 2026-10-09) — for a revisit or a renewal. The visit is
+    chosen off the timeline (so a history this login may not read chooses nothing) and read through
+    `GET /opd/visits/:id`, the route that gates a sealed record and logs the read. Refused → no card.
+  */
+  const lastDone = sealed || timeline.status !== "ok" ? null : lastCompletedVisit(timeline.data.items, encounterId);
+  const wantLast = lastDone !== null && showsLastVisit(entry?.encounter.visitType ?? v?.encounter.visitType);
+  const lastRead = useLoad(wantLast ? () => api.pastVisit(lastDone.encounterId) : null, `last:${wantLast ? lastDone.encounterId : ""}`);
+  const lastCard = wantLast && lastRead.status === "ok" ? lastVisitCard(t, lastRead.data, lastDone.doctorName) : null;
+
   const hiddenParts = [allergies, timeline, rx, lab, imaging].some((l) => l.status === "hidden") && !sealed;
   const kind = entry === null ? null : visitKind(entry);
-  const unpaid = (entry !== null && isUnpaid(entry)) || v?.feeUnpaid === true;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
@@ -245,24 +257,40 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
               {kind !== null && <Text testID="brief-kind" style={s.sub}>{t(`opdConsultV2.vtShort.${kind}`)}</Text>}
             </View>
           </View>
+          {isTele(v?.encounter) && <View style={{ marginTop: space.sm }}><TeleCard slotAt={v?.teleSlotAt} testID="brief-tele" /></View>}
           {sealed && <Text testID="brief-sealed" style={[s.sub, { marginTop: space.sm, color: "#8a5a10", fontWeight: "700" }]}>{t("opdConsult.restricted")}</Text>}
-          {unpaid && (
-            <View testID="brief-unpaid" style={s.unpaid}>
-              <Text style={s.unpaidText}>₹ {t("unpaid.notPaid")} — {t("unpaid.title")}</Text>
-              {(entry?.encounter.consultFeeOverrideReason ?? entry?.encounter.feeBypassReason ?? null) !== null && (
-                <Text style={[s.sub, { color: color.red }]}>{t("opdConsult.heldWhy", { reason: entry?.encounter.consultFeeOverrideReason ?? entry?.encounter.feeBypassReason ?? "" })}</Text>
-              )}
-            </View>
-          )}
-          {(entry?.encounter.patientAbsent ?? null) !== null && (
-            <Text testID="brief-patient-absent" accessibilityRole="text" style={[s.sub, { marginTop: space.sm, color: "#8a5a10", fontWeight: "700" }]}>
-              {t("patientAbsent.notice", { who: guardianWho(t, entry?.encounter.patientAbsent ?? { relation: "", name: null }) })}
-            </Text>
-          )}
           {(entry?.encounter.dangerFlagged === true || entry?.danger === true) && (
             <Text testID="brief-danger" style={s.danger}>{t("opdConsult.danger").toUpperCase()}</Text>
           )}
         </View>
+
+        {guardian !== null && (
+          // The allergy box's weight — a border and a tint — in amber: a fact to walk in knowing, not an alarm.
+          <View testID="brief-patient-absent" accessible accessibilityRole="text" accessibilityLabel={`${guardian.title}. ${guardian.who}${guardian.tail}`} style={s.guardian}>
+            <Text style={s.guardianTitle} numberOfLines={1}>{guardian.title}</Text>
+            <View style={{ flexDirection: "row" }}>
+              {/* Only a typed name can be long: it gives way, the fixed words never do. */}
+              <Text style={[s.guardianLine, { flexShrink: 1 }]} numberOfLines={1}>{guardian.who}</Text>
+              {/* The tail's leading space is drawn as a margin: a browser collapses it at the start of a block. */}
+              <Text style={[s.guardianLine, { flexShrink: 0, marginLeft: 4 }]} numberOfLines={1}>{guardian.tail.trimStart()}</Text>
+            </View>
+          </View>
+        )}
+
+        {lastCard !== null && (
+          <View testID="brief-last-visit" style={s.last}>
+            <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: space.sm }}>
+              <Tag>{lastCard.title}</Tag>
+              {lastCard.doctor !== null && <Text style={[s.lineMeta, { flexShrink: 1 }]} numberOfLines={1}>{lastCard.doctor}</Text>}
+            </View>
+            {lastCard.rows.map((r) => (
+              <View key={r.key} testID={`brief-last-${r.key}`} style={s.lastRow}>
+                <Text style={s.lastLabel} numberOfLines={1}>{r.label}</Text>
+                <Text style={[s.line, { flex: 1, minWidth: 0 }]} numberOfLines={2}>{r.value}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {!sealed && (
           <View testID="brief-allergy"
@@ -288,11 +316,15 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
             )}
         </Section>
 
-        <Section title={t("mobile.doctor.vitalsTitle")} testID="brief-vitals-card">
-          {visit.status === "loading" ? <Text style={s.dimLine}>…</Text>
-            : visit.status !== "ok" ? <Text style={s.dimLine}>{t("mobile.doctor.partFailed")}</Text>
-            : <VitalsCard vitals={latestVitals} t={t} />}
-        </Section>
+        {/* A guardian's visit has no chart and the card above says so; a chart that somehow exists is shown as ever.
+            Owner 2026-10-09 — nobody was at the bay for a tele-call: no vitals block at all. */}
+        {!isTele(v?.encounter) && (guardian === null || latestVitals !== null) && (
+          <Section title={t("mobile.doctor.vitalsTitle")} testID="brief-vitals-card">
+            {visit.status === "loading" ? <Text style={s.dimLine}>…</Text>
+              : visit.status !== "ok" ? <Text style={s.dimLine}>{t("mobile.doctor.partFailed")}</Text>
+              : <VitalsCard vitals={latestVitals} t={t} />}
+          </Section>
+        )}
 
         {!sealed && resultsReadable && (
           <Section title={t("opdConsultV2.sinceThen")} testID="brief-results">
@@ -394,9 +426,6 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
             </View>
           </>
         )}
-        {group === "held" && (
-          <Button testID="act-open-unpaid" label={t("opdConsult.openUnpaid")} disabled={busy !== null} onPress={actions.openUnpaid} />
-        )}
         {group === "line" && (
           <>
             {!isHead && <Text style={s.barHint}>{t("mobile.doctor.startAheadHint")}</Text>}
@@ -421,12 +450,16 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
 
 const s = StyleSheet.create({
   card: { backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, padding: space.lg },
+  guardian: { borderWidth: 2, borderColor: color.gold, backgroundColor: color.goldSoft, borderRadius: radius.lg, paddingVertical: space.md, paddingHorizontal: space.lg, gap: 2 },
+  guardianTitle: { fontSize: 16, lineHeight: 22, fontWeight: "700", color: "#8a5a10" },
+  guardianLine: { fontSize: 14.5, lineHeight: 20, color: color.ink },
+  last: { backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, paddingVertical: space.md, paddingHorizontal: space.lg, gap: 4 },
+  lastRow: { flexDirection: "row", gap: space.sm, alignItems: "baseline" },
+  lastLabel: { width: 74, fontSize: 13, lineHeight: 21, color: color.dim },
   token: { fontFamily: MONO, fontSize: 30, fontWeight: "700", color: color.ink },
   name: { fontSize: 20, lineHeight: 25, fontWeight: "700", color: color.ink },
   demo: { fontSize: 16, fontWeight: "500", color: color.dim },
   sub: { ...type.small, color: color.dim, marginTop: 2 },
-  unpaid: { marginTop: space.md, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: color.redLine, backgroundColor: color.redSoft, gap: 4 },
-  unpaidText: { fontSize: 14.5, lineHeight: 20, fontWeight: "700", color: color.red },
   danger: { marginTop: space.md, alignSelf: "flex-start", fontFamily: MONO, fontSize: 12, fontWeight: "700", letterSpacing: 1, color: color.red, borderWidth: 2, borderColor: color.red, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3 },
   dimLine: { ...type.body, color: color.dim },
   words: { fontSize: 17, lineHeight: 24, color: color.ink },

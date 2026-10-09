@@ -60,13 +60,17 @@ describe("Desk One's visit card — guardian with reports", () => {
     expect(within(card).queryByTestId("visit-card-absent-open")).not.toBeInTheDocument();
   });
 
-  it("a NEW visit does not offer it", async () => {
-    mount({ encounter: encounter({ visitType: "new" }), patientAbsent: null, queueEntries: [], vitals: [], prescriptions: [] }, []);
+  // Owner 2026-10-09 — "not just revisit or renewal but new patient as well".
+  it("a NEW visit offers it too, and confirm posts", async () => {
+    const posted: unknown[] = [];
+    mount({ encounter: encounter({ visitType: "new" }), patientAbsent: null, queueEntries: [], vitals: [], prescriptions: [] }, posted);
+    const user = userEvent.setup();
     renderWithProviders(<VisitCard encounterId="e-9" when={today} visit={item({ visitType: "new" })} />);
     const card = await screen.findByTestId("visit-card");
-    await waitFor(() => expect(within(card).getByTestId("visit-card-status")).toBeInTheDocument());
-    await new Promise((r) => setTimeout(r, 50));
-    expect(within(card).queryByTestId("visit-card-absent-open")).not.toBeInTheDocument();
+    await user.click(await within(card).findByTestId("visit-card-absent-open"));
+    await user.selectOptions(within(card).getByTestId("visit-card-absent-relation"), "mother");
+    await user.click(within(card).getByTestId("visit-card-absent-confirm"));
+    await waitFor(() => expect(posted).toEqual([{ relation: "mother", name: null }]));
   });
 
   it("a revisit already past the bay does not offer it", async () => {

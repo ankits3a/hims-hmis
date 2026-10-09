@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
+import { receipts } from "./billing";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -196,6 +197,19 @@ export const opdAppointments = pgTable(
     rescheduledFromId: text("rescheduled_from_id"),
     cancelReason: text("cancel_reason"),
     leaveId: text("leave_id"), // set when needs_rebooking was caused by a leave (cancelling that leave restores 'booked')
+    // Owner 2026-10-09 — HOW the patient is seen, never who booked it (that is `source`): a tele-call
+    // is booked at the counter for a future slot and the doctor rings the number kept beside it.
+    // The number is the one to ring for THIS appointment (10 digits, normalised by the server); the
+    // patient's own record is not rewritten by a booking.
+    mode: text("mode").notNull().default("in_person"), // 'in_person' | 'tele'
+    telePhone: text("tele_phone"),
+    // TELE-CALL, PAID BEFORE THE SLOT (owner 2026-10-09). The desk's quote and the advance receipt
+    // that met it. `advance_quoted_at` set is "covered": a receipt for exactly the quote, or a
+    // ₹0 quote with no receipt at all (a free follow-up). The stamped quote — not today's price
+    // list — is what the slot-time opening honours.
+    advanceReceiptId: text("advance_receipt_id").references(() => receipts.id),
+    advanceQuotePaise: integer("advance_quote_paise"),
+    advanceQuotedAt: timestamp("advance_quoted_at", { withTimezone: true }),
     bookedBy: text("booked_by").notNull(),
     bookedAt: timestamp("booked_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
@@ -220,6 +234,8 @@ export const opdAppointments = pgTable(
     index("opd_appointments_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_appointments_patient_idx").on(t.patientId),
     index("opd_appointments_status_idx").on(t.status),
+    check("opd_appointments_mode_ck", sql`${t.mode} in ('in_person', 'tele')`),
+    check("opd_appointments_tele_phone_ck", sql`${t.mode} <> 'tele' or ${t.telePhone} is not null`),
   ],
 );
 
@@ -544,6 +560,15 @@ export const opdEncounters = pgTable(
     patientAbsentAt: timestamp("patient_absent_at", { withTimezone: true }),
     patientAbsentRelation: text("patient_absent_relation"),
     patientAbsentName: text("patient_absent_name"),
+    // TELE-CALL (owner 2026-10-09). `consult_mode` says how the doctor sees this patient; a tele
+    // visit is opened by the system at its slot, once the desk has been paid, and is closed only
+    // after the doctor records that they spoke. The outcome columns are the doctor's two answers.
+    consultMode: text("consult_mode").notNull().default("in_person"), // 'in_person' | 'tele'
+    teleCallStartedAt: timestamp("tele_call_started_at", { withTimezone: true }),
+    teleOutcome: text("tele_outcome"), // null | 'spoke' | 'no_answer'
+    teleOutcomeAt: timestamp("tele_outcome_at", { withTimezone: true }),
+    teleOutcomeBy: text("tele_outcome_by"),
+    teleNoAnswerCount: integer("tele_no_answer_count").notNull().default(0),
     /**
      * App home round 2 (owner 2026-10-07, decision 0043) — "ASK THE DESK TO RE-CHECK". The doctor
      * read what the desk typed from their paper and a line is wrong or unclear: they send it back
@@ -1691,5 +1716,92 @@ export const cdsAliases = pgTable(
     ),
     check("cds_aliases_undone_ck", sql`(${t.undoneBy} is null) = (${t.undoneAt} is null) and ((${t.state} = 'undone') = (${t.undoneAt} is not null))`),
     check("cds_aliases_probabilities_ck", sql`(${t.chooserConfidence} is null or ${t.chooserConfidence} between 0 and 1) and (${t.reviewerProbability} is null or ${t.reviewerProbability} between 0 and 1)`),
+  ],
+);
+
+/**
+ * ═══ HOW LONG PATIENTS WAIT — THE NIGHTLY LEARNING (owner 2026-10-09) ═══
+ *
+ * "I want a system in place that keeps learning these metrics and show suggestions to improve the
+ * metrics based on analysis." Both tables are written only by `modules/opd/flow-learning.ts`, from
+ * stored timestamps and fixed rules — never by a model (the owner's standing rule: a model never
+ * writes a fact shown as fact). Neither holds a patient or names a member of staff.
+ *
+ * `opd_flow_baselines` — each department's own rolling numbers (and the hospital's), the last 28 days,
+ * per leg, by weekday × hour. `scope` is 'hospital' or an `opd_departments.id` (plain text, house
+ * precedent for a derived table). `weekday` 0 = Monday … 6 = Sunday and `hour` 8..20 IST; −1 in
+ * either means "every". Replaced whole on each run.
+ */
+export const opdFlowBaselines = pgTable(
+  "opd_flow_baselines",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    leg: text("leg").notNull(),
+    weekday: integer("weekday").notNull(),
+    hour: integer("hour").notNull(),
+    n: integer("n").notNull(),
+    medianMin: doublePrecision("median_min"),
+    p90Min: doublePrecision("p90_min"),
+    windowFrom: date("window_from", { mode: "string" }).notNull(),
+    windowTo: date("window_to", { mode: "string" }).notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("opd_flow_baselines_cell_uq").on(t.scope, t.leg, t.weekday, t.hour),
+    check("opd_flow_baselines_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')`),
+    check("opd_flow_baselines_weekday_ck", sql`${t.weekday} between -1 and 6`),
+    check("opd_flow_baselines_hour_ck", sql`${t.hour} = -1 or ${t.hour} between 0 and 23`),
+  ],
+);
+
+/**
+ * `opd_flow_findings` — what the rules found, from a CLOSED set of types (`flow-rules.ts`). One OPEN
+ * or DISMISSED row per `finding_key` (type · scope · leg · weekday · window); a RESOLVED row is history,
+ * and the same pattern coming back opens a new row. "×" (dismiss) and "Tried it" are the only two
+ * human acts, by the owner or the Medical Superintendent, each audited as an event.
+ */
+export const opdFlowFindings = pgTable(
+  "opd_flow_findings",
+  {
+    id: text("id").primaryKey(),
+    findingKey: text("finding_key").notNull(),
+    type: text("type").notNull(),
+    scope: text("scope").notNull(),
+    leg: text("leg").notNull(),
+    weekday: integer("weekday"),
+    hourFrom: integer("hour_from"),
+    hourTo: integer("hour_to"),
+    observedMin: doublePrecision("observed_min").notNull(),
+    baselineMin: doublePrecision("baseline_min").notNull(),
+    patients: integer("patients").notNull(),
+    minutesLost: integer("minutes_lost").notNull(),
+    firstSeen: date("first_seen", { mode: "string" }).notNull(),
+    lastSeen: date("last_seen", { mode: "string" }).notNull(),
+    state: text("state").notNull().default("open"),
+    dismissedBy: text("dismissed_by"),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    /** The observed median when × was pressed — it comes back early only at 20 % worse than this. */
+    dismissedObservedMin: doublePrecision("dismissed_observed_min"),
+    triedBy: text("tried_by"),
+    triedAt: timestamp("tried_at", { withTimezone: true }),
+    beforeMedianMin: doublePrecision("before_median_min"),
+    afterMedianMin: doublePrecision("after_median_min"),
+    resolvedOn: date("resolved_on", { mode: "string" }),
+    minutesWon: integer("minutes_won"),
+    /** A fixed code the engine writes ('returned', 'returned_worse'); never free text from a model. */
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("opd_flow_findings_live_uq").on(t.findingKey).where(sql`${t.state} <> 'resolved'`),
+    index("opd_flow_findings_state_idx").on(t.state),
+    check("opd_flow_findings_type_ck", sql`${t.type} in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression', 'consult_up')`),
+    check("opd_flow_findings_state_ck", sql`${t.state} in ('open', 'dismissed', 'resolved')`),
+    check("opd_flow_findings_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')`),
+    check("opd_flow_findings_dismissed_ck", sql`(${t.state} = 'dismissed') = (${t.dismissedAt} is not null) and (${t.dismissedBy} is null) = (${t.dismissedAt} is null)`),
+    check("opd_flow_findings_tried_ck", sql`(${t.triedBy} is null) = (${t.triedAt} is null)`),
+    check("opd_flow_findings_note_ck", sql`${t.note} is null or ${t.note} in ('returned', 'returned_worse')`),
   ],
 );
