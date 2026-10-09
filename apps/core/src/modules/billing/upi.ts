@@ -47,9 +47,16 @@ export function upiPayUri(payee: UpiPayee, amountPaise: number, note: string): s
   const q = [
     `pa=${encodeURIComponent(payee.vpa)}`,
     ...(payee.payeeName === "" ? [] : [`pn=${encodeURIComponent(payee.payeeName)}`]),
-    `am=${(amountPaise / 100).toFixed(2)}`,
+    `am=${upiAmount(amountPaise)}`,
     "cu=INR",
     `tn=${encodeURIComponent(note)}`,
   ];
   return `upi://pay?${q.join("&")}`;
+}
+
+/** Paise as the UPI `am` field ("250.00"), in integers only — billing does no float arithmetic (billing-purity.test.ts). */
+function upiAmount(amountPaise: number): string {
+  const whole = Math.trunc(amountPaise / 100);
+  const rest = Math.abs(amountPaise % 100);
+  return `${whole}.${String(rest).padStart(2, "0")}`;
 }
