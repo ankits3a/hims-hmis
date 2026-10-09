@@ -21,7 +21,8 @@ import type { EncounterRow } from "./encounters";
  * option to skip the vitals taking process, as the patient didn't come — his guardian came to show
  * the report to the doctor."*
  *
- * WHAT THIS IS. One act: a REVISIT still waiting for the bay is marked "patient not present" with
+ * WHAT THIS IS. One act: a visit (ANY type since the owner's ruling of 2026-10-09 — it was a
+ * returning patient's only) still waiting for the bay is marked "patient not present" with
  * who came (a relation from a fixed list, and an optional name), and the visit makes exactly the
  * move a vitals save makes — `registered → waiting`, the token `waiting_vitals → waiting` with
  * `eligible_at = now` — so the doctor's line holds it like any other charted patient. No vitals row
@@ -42,7 +43,7 @@ import type { EncounterRow } from "./encounters";
  * WHAT IS DELIBERATELY UNCHANGED.
  *   · THE MONEY. The pay-before-vitals door (`vitalsGateVerdict`) is asked exactly as the bay asks it
  *     and refuses with the same code and detail; the front desk's bypass opens it as it always does.
- *     The fee for this kind of visit is the revisit fee — the owner has not ruled otherwise.
+ *     The fee is whatever the visit's own type charges (new, revisit, renewal): this act changes nothing about it.
  *   · THE DOCTOR'S DOOR. `startConsultation` asks only that the visit be `waiting` and that the
  *     consult guards pass; it has never asked for a chart, so nothing there needed widening.
  */
@@ -83,7 +84,7 @@ function cleanInput(input: PatientAbsentInput): { relation: GuardianRelation; na
 const NOT_QUEUED = "this visit has not joined a queue yet — a bill-first visit joins its doctor's day after billing releases its token";
 
 /**
- * Marks a returning visit (revisit or renewal) "patient not present — guardian with reports" and sends it to the doctor's line.
+ * Marks a visit still waiting for vitals (any visit type — owner 2026-10-09) "patient not present — guardian with reports" and sends it to the doctor's line.
  * IDEMPOTENT: a visit already marked answers with its existing mark and nothing is rewritten.
  */
 export async function markPatientAbsent(
@@ -101,6 +102,12 @@ export async function markPatientAbsent(
   if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
   const existing = patientAbsentOf(enc);
   if (existing !== null) return { encounter: enc, patientAbsent: existing, alreadyMarked: true };
+  /*
+    Owner 2026-10-09 — EVERY visit type is admitted ("not just revisit or renewal but new patient as
+    well"). The shared rule is still asked, so a later ruling changes one line in one file; today it
+    refuses nothing, and `patient_absent_returning_only` is no longer raised (the code stays defined
+    for a client that still has words for it).
+  */
   if (!guardianMayStandIn(enc.visitType)) {
     throw new OpdError("patient_absent_returning_only", `visit ${enc.visitNo} is a ${enc.visitType} visit — only a returning patient (revisit or renewal) may skip vitals for a guardian`);
   }

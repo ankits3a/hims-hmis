@@ -8,6 +8,8 @@ import { useSession } from "../session";
 import { Text } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
 import { MONO } from "../ui";
+import { vitalsApi } from "../vitals/api";
+import { GuardianSheet } from "../vitals/guardian";
 import type { Door } from "../vitals/rules";
 import { scanApi, type ScanSource } from "./api";
 import * as model from "./model";
@@ -75,8 +77,8 @@ function Strip({ token, name, line }: { token: string; name: string; line: strin
   );
 }
 
-function Row({ label, sub, kind, onPress, testID }: { label: string; sub?: string; kind: "primary" | "plain" | "off"; onPress?: () => void; testID: string }) {
-  const fg = kind === "primary" ? "#f2faf6" : kind === "off" ? color.faint : color.ink;
+function Row({ label, sub, kind, onPress, testID }: { label: string; sub?: string; kind: "primary" | "plain" | "amber" | "off"; onPress?: () => void; testID: string }) {
+  const fg = kind === "primary" ? "#f2faf6" : kind === "off" ? color.faint : kind === "amber" ? "#8a5a10" : color.ink;
   const body = (
     <>
       <Text style={[s.btnText, { color: fg }]} numberOfLines={2}>
@@ -89,13 +91,13 @@ function Row({ label, sub, kind, onPress, testID }: { label: string; sub?: strin
   if (kind === "off") return <View testID={testID} accessibilityState={{ disabled: true }} style={[s.btn, s.btnOff]}>{body}</View>;
   return (
     <Pressable testID={testID} accessibilityRole="button" onPress={onPress}
-      style={({ pressed }) => [s.btn, kind === "primary" ? s.btnPrimary : s.btnPlain, pressed && { opacity: 0.8 }]}>
+      style={({ pressed }) => [s.btn, kind === "primary" ? s.btnPrimary : kind === "amber" ? s.btnAmber : s.btnPlain, pressed && { opacity: 0.8 }]}>
       {body}
     </Pressable>
   );
 }
 
-export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, onClose }: {
+export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, onClose, onGuardian }: {
   /** `null` while the lookup is on its way. */
   looked: Looked | null;
   seats: readonly ReturnType<typeof seatsFor>[number]["key"][];
@@ -106,6 +108,11 @@ export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, 
   /** "Scan another" — absent when the card was opened by holding a row. */
   onAgain?: () => void;
   onClose: () => void;
+  /**
+   * "Guardian with reports" (owner 2026-10-09): shown — amber, secondary, never the large button —
+   * when the server says it may be offered for this visit. It opens "Who came?"; it skips nothing.
+   */
+  onGuardian?: (visit: ScanVisit) => void;
 }) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -126,9 +133,13 @@ export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, 
     body = (
       <>
         <Strip token={model.tokenOf(o.visit)} name={model.nameOf(o.visit.patient) ?? t("mobile.scan.sealed")} line={model.stripWords(o.visit, permitted, now).map(say).join(" · ")} />
+        {plan.next !== null && offer(plan.next, "primary")}
+        {o.visit.guardianOffer === true && onGuardian !== undefined && (
+          <Row testID="card-guardian" kind="amber" label={t("patientAbsent.short")} onPress={() => onGuardian(o.visit)} />
+        )}
         {plan.next === null
-          ? <Text style={s.nothing} testID="card-nothing">{t("mobile.scan.nothing")}</Text>
-          : <>{offer(plan.next, "primary")}{plan.others.map((x) => offer(x, "plain"))}</>}
+          ? (o.visit.guardianOffer === true && onGuardian !== undefined ? null : <Text style={s.nothing} testID="card-nothing">{t("mobile.scan.nothing")}</Text>)
+          : plan.others.map((x) => offer(x, "plain"))}
         {plan.greyed.map((g) => <Row key={g.labelKey} testID={`card-off-${g.action}`} kind="off" label={t(g.labelKey)} sub={t(g.reasonKey)} />)}
       </>
     );
@@ -190,9 +201,11 @@ export async function look(api: ReturnType<typeof scanApi>, source: ScanSource):
  * already names. `onLocal` lets the screen the row lives on do its own action in place (the
  * doctor's line starts its own patient); anything else opens the screen that owns it.
  */
-export function HeldCard({ source, onClose, onLocal }: {
+export function HeldCard({ source, onClose, onLocal, onGuardianDone }: {
   source: ScanSource | null; onClose: () => void;
   onLocal?: (action: ScanAction, visit: ScanVisit) => boolean;
+  /** The guardian was sent to the doctor from this card: a screen with its own banner says so itself. */
+  onGuardianDone?: (visit: ScanVisit) => void;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -201,6 +214,8 @@ export function HeldCard({ source, onClose, onLocal }: {
   const seats = useMemo(() => (state.status === "signedIn" ? seatsFor(state.me.permissions).map((x) => x.key) : []), [state]);
   const [at, setAt] = useState<ScanSource | null>(source);
   const [looked, setLooked] = useState<Looked | null>(null);
+  /** "Who came?" is up for this visit. It outlives the card that opened it. */
+  const [guardian, setGuardian] = useState<ScanVisit | null>(null);
   useEffect(() => { setAt(source); }, [source]);
   useEffect(() => {
     if (at === null) return;
@@ -209,10 +224,19 @@ export function HeldCard({ source, onClose, onLocal }: {
     void look(api, at).then((l) => { if (live) setLooked(l); });
     return () => { live = false; };
   }, [api, at]);
+  if (guardian !== null) {
+    return (
+      <GuardianSheet
+        api={vitalsApi(call)} encounterId={guardian.encounterId} confirmHere={onGuardianDone === undefined}
+        onDone={() => onGuardianDone?.(guardian)} onClose={() => setGuardian(null)}
+      />
+    );
+  }
   if (source === null || at === null) return null;
   return (
     <ActionCard
       looked={looked} seats={seats} onClose={onClose}
+      onGuardian={(visit) => { setGuardian(visit); onClose(); }}
       onPick={(c) => setAt({ encounterId: c.encounterId })}
       onAct={(action, visit) => {
         onClose();
@@ -238,6 +262,7 @@ const s = StyleSheet.create({
   btn: { minHeight: TOUCH + 4, flexDirection: "row", alignItems: "center", gap: space.md, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
   btnPrimary: { backgroundColor: color.green, borderColor: color.green, minHeight: TOUCH + 10 },
   btnPlain: { backgroundColor: color.card, borderColor: color.line },
+  btnAmber: { backgroundColor: color.goldSoft, borderColor: color.gold, borderWidth: 1.5 },
   btnOff: { backgroundColor: color.wash, borderColor: color.line2 },
   btnText: { flex: 1, fontSize: 16, lineHeight: 21, fontWeight: "700", color: color.ink },
   btnSub: { fontSize: 13, fontWeight: "500" },

@@ -115,12 +115,31 @@ describe("patient absent — a guardian brings a revisit's reports and the visit
     expect(out.patientAbsent).toMatchObject({ relation: "attendant", name: null, by: deskOnly.id });
   });
 
-  it("a NEW visit is refused patient_absent_returning_only, and nothing moves", async () => {
+  /*
+    Owner 2026-10-09 — "we should give this feature to not just revisit or renewal but new patient as
+    well … Let's not complicate much." A NEW visit is admitted exactly as a returning one: the same
+    move, the same mark, no chart, on the doctor's line and off the bench. (It was refused
+    `patient_absent_returning_only` until this ruling.)
+  */
+  it("a NEW visit is admitted and reaches the doctor's line with the mark and no vitals row", async () => {
     const enc = await opened("new");
-    await expect(markPatientAbsent(db, bayOnly.actor, enc.id, { relation: "mother" }, MON2))
-      .rejects.toMatchObject({ code: "patient_absent_returning_only" });
-    expect((await getEncounter(db, enc.id))!.status).toBe("registered");
-    expect((await getEncounter(db, enc.id))!.patientAbsentAt).toBeNull();
+    const out = await markPatientAbsent(db, bayOnly.actor, enc.id, { relation: "mother" }, MON2);
+    expect(out.alreadyMarked).toBe(false);
+    expect(out.encounter).toMatchObject({ status: "waiting", visitType: "new" });
+    expect(out.patientAbsent).toEqual({ relation: "mother", name: null, by: bayOnly.id, at: MON2 });
+    expect(await db.select().from(opdVitals).where(eq(opdVitals.encounterId, enc.id))).toHaveLength(0);
+    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, enc.id));
+    expect(entries.map((e) => e.status)).toEqual(["waiting"]);
+    const audit = await db.select().from(events).where(and(eq(events.name, "visit.patient_absent"), eq(events.encounterId, enc.id)));
+    expect(audit).toHaveLength(1);
+    const q = (await listQueue(db, dra.actor, dra.doctorId, enc.serviceDate, MON2))!;
+    expect(q.ordered.find((e) => e.encounterId === enc.id)!.encounter.patientAbsent).toMatchObject({ relation: "mother", by: bayOnly.id });
+    const bench = await listBench(db, vd.actor, { serviceDate: enc.serviceDate }, MON2);
+    expect(bench.find((b) => b.encounterId === enc.id)).toBeUndefined();
+    // Past the bay it is refused like any other visit — the one refusal about WHICH visit that remains.
+    const taken = await opened("new");
+    await db.update(opdEncounters).set({ status: "waiting" }).where(eq(opdEncounters.id, taken.id));
+    await expect(markPatientAbsent(db, bayOnly.actor, taken.id, { relation: "son" }, MON2)).rejects.toMatchObject({ code: "encounter_state_conflict" });
   });
 
   /* Owner 2026-10-07 — a RENEWAL (past the doctor's follow-up window) may also send a guardian; its fee is the renewal's. */

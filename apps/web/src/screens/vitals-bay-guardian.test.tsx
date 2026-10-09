@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
-describe("the vitals bay — guardian with reports, on a returning visit (revisit or renewal) only", () => {
+describe("the vitals bay — guardian with reports, on any visit still waiting for vitals (owner 2026-10-09)", () => {
   it("a revisit in hand shows the button; confirm posts the relation and name, and the row leaves the bench", async () => {
     let bench: WireBenchRow[] = [REVISIT, NEW];
     const posted: unknown[] = [];
@@ -72,16 +72,22 @@ describe("the vitals bay — guardian with reports, on a returning visit (revisi
     renderWithProviders(<VitalsBay />);
     await waitFor(() => expect(screen.getByTestId("bench-row-31")).toBeInTheDocument());
 
-    /* A NEW visit in hand: no such button. */
+    /* Owner 2026-10-09 — a NEW visit in hand is offered it too. */
     await user.type(screen.getByTestId("identify"), "32{Enter}");
     await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-N"));
-    expect(screen.queryByTestId("patient-absent-open")).not.toBeInTheDocument();
+    expect((await screen.findByTestId("patient-absent-open")).textContent).toBe("Guardian with reports");
 
     /* The revisit: the button, the small form, the post. */
     await user.clear(screen.getByTestId("identify"));
     await user.type(screen.getByTestId("identify"), "31{Enter}");
     await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-R"));
-    await user.click(await screen.findByTestId("patient-absent-open"));
+    /* Owner 2026-10-09 — off the form's main view: a short line in the patient's details column, one click away. */
+    const open = await screen.findByTestId("patient-absent-open");
+    expect(open.textContent).toBe("Guardian with reports");
+    expect(open.closest('[data-testid="session"]')).not.toBeNull();
+    await user.click(open);
+    expect(screen.getByTestId("patient-absent-dialog").textContent).toContain("Who came?");
+    expect(screen.getByTestId("patient-absent-dialog").textContent).toContain("No vitals. Fee unchanged.");
     expect(screen.getByTestId("patient-absent-confirm")).toBeDisabled(); // no relation yet
     await user.selectOptions(screen.getByTestId("patient-absent-relation"), "father");
     await user.type(screen.getByTestId("patient-absent-name"), "Ramesh");
@@ -144,7 +150,7 @@ describe("the vitals bay — guardian with reports, on a returning visit (revisi
 
     await user.type(screen.getByTestId("identify"), "32{Enter}");
     await waitFor(() => expect(screen.getByTestId("session").getAttribute("data-encounter")).toBe("E-N"));
-    expect(screen.queryByTestId("patient-absent-open")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("patient-absent-open")).toBeInTheDocument(); // a new visit: offered (owner 2026-10-09)
 
     await user.clear(screen.getByTestId("identify"));
     await user.type(screen.getByTestId("identify"), "33{Enter}");
