@@ -417,7 +417,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
           ))}
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
-          <Pressable testID="wrote-on-paper" accessibilityRole="button" accessibilityState={{ disabled: busy !== null || teleLocked }} disabled={busy !== null || teleLocked} hitSlop={6} onPress={() => { void paper(); }} style={{ minHeight: TOUCH, justifyContent: "center", paddingRight: 4 }}>
+          <Pressable testID="wrote-on-paper" accessibilityRole="button" accessibilityState={{ disabled: busy !== null || teleLocked }} disabled={busy !== null || teleLocked} hitSlop={6} onPress={() => { void paper(); }} style={{ minHeight: TOUCH, justifyContent: "center", paddingRight: 4, opacity: teleLocked ? 0.4 : 1 }}>
             <Text style={[s.link, { color: paperAsk ? color.red : color.dim, textDecorationLine: "underline" }]}>{t(paperAsk ? "mobile.consult.paperConfirm" : "mobile.consult.paper")}</Text>
           </Pressable>
           <View style={{ flex: 1 }}>

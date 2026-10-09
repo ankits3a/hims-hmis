@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Linking, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from "react-native";
 import { ApiError, NetworkError } from "../api";
 import { TeleMark } from "../counter/tele-mark";
 import { teleSlotClock } from "../doctor/rules";
 import { useI18n } from "../i18n";
 import { Text } from "../text";
-import { color, radius, space, type } from "../theme";
+import { color, radius, space, TOUCH, type } from "../theme";
 import { Button, MONO, Note } from "../ui";
 import { refusalText } from "../vitals/api";
 
@@ -59,7 +59,8 @@ export function TeleCallPanel({ api, encounterId, visit, slotAt, onSpoke, onLeft
     try {
       const r = await api.teleCall(encounterId);
       setPhone(r.telePhone);
-      if (r.telePhone !== null) await Linking.openURL(`tel:${r.telePhone}`).catch(() => undefined);
+      // Not awaited: the dialer is another app, and this screen must stay answerable whatever it does.
+      if (r.telePhone !== null) void Linking.openURL(`tel:${r.telePhone}`).catch(() => undefined);
     } catch (e) {
       setError(said(e));
     } finally {
@@ -91,9 +92,15 @@ export function TeleCallPanel({ api, encounterId, visit, slotAt, onSpoke, onLeft
           {(visit.teleNoAnswerCount ?? 0) > 0 && <Text testID="tele-tried" style={s.tried} numberOfLines={1}>{t("mobile.tele.triedOnce")}</Text>}
           <Button testID="tele-call" label={t("mobile.tele.call")} busy={busy === "call"} disabled={busy !== null} onPress={() => { void call(); }} />
           {phone !== null && <Text testID="tele-number" style={s.number}>{phone}</Text>}
+          {/* Two answers side by side, each ONE line at 360 px — a smaller face than the app's full-width button. */}
           <View style={s.two}>
-            <View style={{ flex: 1 }}><Button testID="tele-no-answer" kind="secondary" label={t("mobile.tele.noAnswer")} busy={busy === "no_answer"} disabled={busy !== null} onPress={() => { void answer("no_answer"); }} /></View>
-            <View style={{ flex: 1 }}><Button testID="tele-spoke-go" kind="secondary" label={t("mobile.tele.spoke")} busy={busy === "spoke"} disabled={busy !== null} onPress={() => { void answer("spoke"); }} /></View>
+            {(["no_answer", "spoke"] as const).map((o) => (
+              <Pressable key={o} testID={o === "spoke" ? "tele-spoke-go" : "tele-no-answer"} accessibilityRole="button" accessibilityState={{ disabled: busy !== null, busy: busy === o }}
+                disabled={busy !== null} onPress={() => { void answer(o); }} style={[s.answer, o === "spoke" && { borderColor: color.green }, busy !== null && { opacity: 0.55 }]}>
+                {busy === o ? <ActivityIndicator color={color.green} />
+                  : <Text style={s.answerText} numberOfLines={1}>{t(o === "spoke" ? "mobile.tele.spoke" : "mobile.tele.noAnswer")}</Text>}
+              </Pressable>
+            ))}
           </View>
         </>
       )}
@@ -108,6 +115,8 @@ const s = StyleSheet.create({
   slot: { fontFamily: MONO, fontSize: 15, fontWeight: "700", color: color.blue },
   panel: { gap: space.sm, backgroundColor: color.card, borderWidth: 2, borderColor: color.blue, borderRadius: radius.lg, padding: space.md },
   two: { flexDirection: "row", gap: space.sm },
+  answer: { flex: 1, minHeight: TOUCH, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.card, paddingHorizontal: 6 },
+  answerText: { fontSize: 14, fontWeight: "700", color: color.green },
   number: { fontFamily: MONO, fontSize: 18, fontWeight: "700", color: color.ink, textAlign: "center" },
   spoke: { ...type.body, fontWeight: "700", color: color.green },
   tried: { ...type.small, fontWeight: "700", color: "#8a5a10" },

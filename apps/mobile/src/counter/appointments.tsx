@@ -733,7 +733,9 @@ export function DeskAppointments({ api, today, mayManage, onPick, onRebook, onCl
                         <Text style={{ fontFamily: MONO, fontSize: 15, fontWeight: "700", color: color.ink, width: 54 }}>{slotClock(a.slotStart)}</Text>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={[type.body, { color: color.ink, fontWeight: "700" }]} numberOfLines={1}>{whoOf(a, t)}</Text>
-                          <Text style={s.dim} numberOfLines={1}>{[nameOfDoctor(a.doctorId), teleMoneyWord(a, t)?.text].filter((x) => x !== undefined && x !== "").join(" · ")}</Text>
+                          <Text style={s.dim} numberOfLines={1}>{nameOfDoctor(a.doctorId)}</Text>
+                          {/* Its own line: beside the doctor's name it was the part that got cut off at 360 px. */}
+                          {teleMoneyWord(a, t) !== null && <Text testID={`desk-appt-money-${a.id}`} style={[type.small, { fontWeight: "700", color: teleMoneyWord(a, t)!.paid ? color.green : color.gold }]} numberOfLines={1}>{teleMoneyWord(a, t)!.text}</Text>}
                         </View>
                         {a.mode === "tele" && <TeleMark testID={`desk-appt-tele-${a.id}`} label={t("mobile.counter.appt.tele")} />}
                         <Text testID={`desk-appt-state-${a.id}`} style={[s.state, { color: tone(state), borderColor: tone(state) }]}>{t(`mobile.counter.appt.state.${state}`)}</Text>
