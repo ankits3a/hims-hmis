@@ -3,6 +3,7 @@ import { newId } from "@hmis/contracts";
 import {
   labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients, users,
 } from "../../kernel/db/schema";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
 import { recordPhiAccess } from "../../kernel/phi/audit";
@@ -97,14 +98,6 @@ export class QuickEntryError extends Error {
   constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
     super(message);
   }
-}
-
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-/** 00:00 IST of `now`'s IST day, as an instant. */
-function istMidnight(now: Date): Date {
-  const ist = new Date(now.getTime() + IST_OFFSET_MS);
-  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - IST_OFFSET_MS);
 }
 
 /** Every active test with its parameters in report order, and every analyte those tests name. */
@@ -206,7 +199,7 @@ export async function quickQueue(
   const waiting = await db.select().from(labQuickReports)
     .where(eq(labQuickReports.status, "waiting")).orderBy(asc(labQuickReports.collectedAt)).limit(300);
   const reported = await db.select().from(labQuickReports)
-    .where(and(eq(labQuickReports.status, "reported"), gte(labQuickReports.reportedAt, istMidnight(now))))
+    .where(and(eq(labQuickReports.status, "reported"), gte(labQuickReports.reportedAt, istDayWindow(now).start)))
     .orderBy(desc(labQuickReports.reportedAt)).limit(300);
   return { waiting: await rowsWithPatients(db, actor, waiting), reportedToday: await rowsWithPatients(db, actor, reported) };
 }
