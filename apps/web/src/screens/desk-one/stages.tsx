@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { TeleDeskPay } from "../../components/tele-desk-pay";
 import { TeleMark } from "../../components/tele-mark";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -1899,6 +1900,7 @@ function FutureTab(): React.ReactElement {
               <span className="mo" style={{ fontSize: 11.5, fontWeight: 600, width: 74 }}>{dayMonthIst(a.serviceDate)}</span>
               <span className="mo" style={{ fontSize: 11.5, width: 52 }}>{slotClock(a.slotStart)}</span>
               <TeleMark mode={a.mode} size={13} />
+              <TeleDeskPay appointment={a} compact />
               <span style={{ fontSize: 11.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>
                 {d.summaries.find((x) => x.doctor.id === a.doctorId)?.doctor.displayName ?? ""}
               </span>
@@ -2184,6 +2186,7 @@ function FutureTab(): React.ReactElement {
             <div data-testid="book-row" className="drow" style={{ background: "var(--card)" }}>
               <span className="mo" style={{ fontSize: 11.5, fontWeight: 600, width: 56 }}>{slotClock(a.slotStart)}</span>
               <TeleMark mode={a.mode} size={13} />
+              <TeleDeskPay appointment={a} compact />
               <span style={{ fontSize: 12, flexGrow: 1, minWidth: 0 }}>
                 {a.patient?.restricted === true
                   ? <span style={{ color: "var(--dim)" }}>{a.patient.alias ?? "restricted record"}</span>

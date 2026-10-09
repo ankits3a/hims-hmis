@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, primaryKey,
 } from "drizzle-orm/pg-core";
+import { receipts } from "./billing";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -202,6 +203,13 @@ export const opdAppointments = pgTable(
     // patient's own record is not rewritten by a booking.
     mode: text("mode").notNull().default("in_person"), // 'in_person' | 'tele'
     telePhone: text("tele_phone"),
+    // TELE-CALL, PAID BEFORE THE SLOT (owner 2026-10-09). The desk's quote and the advance receipt
+    // that met it. `advance_quoted_at` set is "covered": a receipt for exactly the quote, or a
+    // ₹0 quote with no receipt at all (a free follow-up). The stamped quote — not today's price
+    // list — is what the slot-time opening honours.
+    advanceReceiptId: text("advance_receipt_id").references(() => receipts.id),
+    advanceQuotePaise: integer("advance_quote_paise"),
+    advanceQuotedAt: timestamp("advance_quoted_at", { withTimezone: true }),
     bookedBy: text("booked_by").notNull(),
     bookedAt: timestamp("booked_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),

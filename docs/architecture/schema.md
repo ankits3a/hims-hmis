@@ -35,6 +35,7 @@ flowchart LR
   membership[membership] --> patients[patients]
   notifications[notifications] --> auth[auth]
   notifications[notifications] --> patients[patients]
+  opd[opd] --> billing[billing]
   opd[opd] --> patients[patients]
   opd[opd] --> resources[resources]
   ops[ops] --> auth[auth]

@@ -146,6 +146,8 @@ Source: `apps/core/src/modules/billing/`
 - `settlement.ts`
   - `settlementState(netPayablePaise: number, creditedPaise: number, allocatedPaise: number): Settlement`
   - types: `Settlement`, `SettlementState`
+- `tele-advance.ts`
+  - `consultFeeAt(db: Db, input: { patientId: string; visitType: string; at: Date }): Promise<{ feeServiceId: string | null; paise: number }>`
 - `totals.ts`
   - `ROUNDING_RULES`
   - `roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number }`

@@ -428,6 +428,23 @@
         "receipt": "बिल {{no}} · रसीद {{receipt}} · {{amount}} · {{mode}}",
         "billed": "बिल {{no}} · {{amount}}"
       },
+      "telePay": {
+        "toPay": "बाकी {{amount}}",
+        "paid": "भुगतान हुआ",
+        "paidRefund": "{{amount}} जमा · माँगने पर वापसी",
+        "nothingToPay": "कुछ नहीं देना",
+        "collect": "{{amount}} लें",
+        "confirmFree": "पक्का करें",
+        "paidBy": "भुगतान का तरीका",
+        "upiRef": "UPI संदर्भ संख्या",
+        "received": "{{amount}} मिल गए",
+        "unknown": "कोई जवाब नहीं आया। दोबारा दबाएँ: सर्वर उसी अनुरोध का जवाब देगा, पैसा दो बार नहीं लिया जाएगा।",
+        "mode": {
+          "cash": "नकद",
+          "upi": "UPI",
+          "card": "कार्ड"
+        }
+      },
       "appt": {
         "open": "आज की अपॉइंटमेंट",
         "book": "अपॉइंटमेंट बुक करें",

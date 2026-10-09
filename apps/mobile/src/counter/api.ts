@@ -92,6 +92,8 @@ export type WireAppointment = {
   note: string | null; encounterId: string | null; rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null;
   /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
   mode?: "in_person" | "tele"; telePhone?: string | null;
+  /** The desk's money mark on a tele-call (list route only): what it costs, and whether that is met. */
+  teleDesk?: { amountPaise: number | null; covered: boolean } | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: { id?: string; uhid?: string | null; name?: string | null; alias?: string | null; phone?: string | null; administrativeGender?: string | null; dob?: string | null } | null;
 };
@@ -161,6 +163,9 @@ export function counterApi(call: Call) {
     reschedule: (appointmentId: string, body: { slotStart: string; doctorId?: string; reason?: string }) =>
       call<{ from: WireAppointment; to: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/reschedule`, body),
     cancelAppointment: (appointmentId: string, reason: string) => call<{ appointment: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/cancel`, { reason }),
+    /** The desk takes a tele-call's fee: one advance receipt for exactly the quote. ONE key per intent. */
+    teleAdvance: (appointmentId: string, body: { amountPaise: number; tenders?: { mode: TenderMode; amountPaise: number; refText?: string }[] }, key: string) =>
+      call<{ amountPaise: number; receiptNo: string | null }>("POST", `/opd/appointments/${enc(appointmentId)}/advance`, body, key),
     /** An arrival: the booking BECOMES the visit (the walk-in's own answer shape). */
     checkIn: (appointmentId: string) => call<WireCheckIn>("POST", `/opd/appointments/${enc(appointmentId)}/check-in`),
 

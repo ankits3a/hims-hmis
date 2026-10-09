@@ -126,6 +126,9 @@ export type WireAppointment = {
   bookedBy: string; bookedAt: string; updatedBy: string; updatedAt: string;
   /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
   mode?: "in_person" | "tele"; telePhone?: string | null;
+  /** The desk's money mark on a tele-call (list route only): what it costs, and whether that is met. */
+  teleDesk?: { amountPaise: number | null; covered: boolean };
+  advanceReceiptId?: string | null; advanceQuotePaise?: number | null; advanceQuotedAt?: string | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: WirePatientSummary | null;
 };

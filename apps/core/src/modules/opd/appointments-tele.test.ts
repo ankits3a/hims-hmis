@@ -76,12 +76,13 @@ describe("opd appointments — tele-call (slice 1)", () => {
   it("an in-person booking is what it was — the same row, the same event, the same check-in — plus mode 'in_person'", async () => {
     const { appointment } = await book({});
     expect(Object.keys(appointment).sort()).toEqual([
-      "appointmentNo", "bookedAt", "bookedBy", "cancelReason", "departmentId", "doctorId", "encounterId", "id", "leaveId",
+      "advanceQuotePaise", "advanceQuotedAt", "advanceReceiptId", "appointmentNo", "bookedAt", "bookedBy", "cancelReason", "departmentId", "doctorId", "encounterId", "id", "leaveId",
       "mode", "note", "patientId", "rescheduledFromId", "rescheduledToId", "serviceDate", "slotEnd", "slotStart", "source",
       "status", "telePhone", "updatedAt", "updatedBy",
     ]);
     expect({ mode: appointment.mode, telePhone: appointment.telePhone, source: appointment.source, status: appointment.status })
       .toEqual({ mode: "in_person", telePhone: null, source: "desk", status: "booked" });
+    expect({ r: appointment.advanceReceiptId, q: appointment.advanceQuotePaise, at: appointment.advanceQuotedAt }).toEqual({ r: null, q: null, at: null });
     // a number sent with an in-person booking is not kept
     expect((await book({ mode: "in_person", telePhone: "9876543021" }, S1000)).appointment.telePhone).toBeNull();
 

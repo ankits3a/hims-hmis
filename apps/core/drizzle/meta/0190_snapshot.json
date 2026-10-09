@@ -1,5 +1,5 @@
 {
-  "id": "3045ed18-51bc-49e5-98e1-6bbb08d664d3",
+  "id": "52214cbe-0aec-4a63-b2d4-cc0f495fc6a4",
   "prevId": "417b11e1-254c-4cc1-a65b-4e8eb9f0ab72",
   "version": "7",
   "dialect": "postgresql",
@@ -5312,6 +5312,24 @@
           "primaryKey": false,
           "notNull": false
         },
+        "advance_receipt_id": {
+          "name": "advance_receipt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quote_paise": {
+          "name": "advance_quote_paise",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quoted_at": {
+          "name": "advance_quoted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "booked_by": {
           "name": "booked_by",
           "type": "text",
@@ -5483,6 +5501,19 @@
           "tableTo": "opd_departments",
           "columnsFrom": [
             "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "opd_appointments_advance_receipt_id_receipts_id_fk": {
+          "name": "opd_appointments_advance_receipt_id_receipts_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "receipts",
+          "columnsFrom": [
+            "advance_receipt_id"
           ],
           "columnsTo": [
             "id"

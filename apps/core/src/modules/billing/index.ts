@@ -107,4 +107,6 @@ export { registerFeeStatusHook } from "./settle-hooks";
 export { registerBenefitSourceProvider } from "./benefit-sources";
 export type { BenefitSourceArgs, BenefitSourceProvider } from "./benefit-sources";
 export type { FeeStatusHook, FeeStatusVia } from "./settle-hooks";
+// Owner 2026-10-09 — tele-call: the consult fee for a patient on a date, with no visit behind it yet.
+export { consultFeeAt } from "./tele-advance";
 export * from "./events";

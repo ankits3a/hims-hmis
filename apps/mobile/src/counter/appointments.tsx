@@ -17,6 +17,7 @@ import type { DayOffer, DayPart } from "./appointment-rules";
 import { Pill } from "./move";
 import { SAMAJ_SEVA_AMOUNT } from "./rules";
 import { TeleMark } from "./tele-mark";
+import { TelePay, teleMoneyWord } from "./tele-pay";
 import type { MoveConsultTerms } from "./rules";
 
 /**
@@ -57,11 +58,13 @@ export const MORE_DAYS = 56;
 // THE PATIENT'S OWN BOOKINGS — on the person screen
 // ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-export function PatientAppointments({ api, patientId, today, version, mayManage, mayCheckIn, doctorName, deptName, onMove, onCheckedIn, onAlreadyCheckedIn, onSaid }: {
+export function PatientAppointments({ api, patientId, today, version, mayManage, mayCheckIn, mayCollectAdvance = false, doctorName, deptName, onMove, onCheckedIn, onAlreadyCheckedIn, onSaid }: {
   api: CounterApi; patientId: string; today: string;
   /** Bumped by the desk after any write elsewhere, so this list is read again. */
   version: number;
   mayManage: boolean; mayCheckIn: boolean;
+  /** `billing.receipt.record` — may take a tele-call's fee at this desk. */
+  mayCollectAdvance?: boolean;
   doctorName: (doctorId: string) => string | null; deptName: (departmentId: string) => string | null;
   onMove: (a: WireAppointment) => void;
   onCheckedIn: (res: WireCheckIn, a: WireAppointment) => void;
@@ -178,6 +181,7 @@ export function PatientAppointments({ api, patientId, today, version, mayManage,
             <Text style={s.dim} numberOfLines={1}>{[doctorName(a.doctorId), deptName(a.departmentId)].filter((x) => x !== null).join(" · ")}</Text>
             {a.appointmentNo != null && <Text style={[s.dim, { fontFamily: MONO }]}>{a.appointmentNo}</Text>}
             {stranded && <Text style={[type.small, { color: color.gold, fontWeight: "700" }]} testID={`appt-stranded-${a.id}`}>{t("mobile.counter.appt.stranded")}</Text>}
+            <TelePay api={api} appointment={a} mayCollect={mayCollectAdvance} onPaid={() => { void read(); }} />
             {err?.id === a.id && <Note tone="bad" testID={`appt-error-${a.id}`}>{err.text}</Note>}
             {cancelling === a.id ? (
               <View style={{ gap: space.sm, marginTop: space.sm }} testID={`appt-cancel-box-${a.id}`}>
@@ -729,7 +733,7 @@ export function DeskAppointments({ api, today, mayManage, onPick, onRebook, onCl
                         <Text style={{ fontFamily: MONO, fontSize: 15, fontWeight: "700", color: color.ink, width: 54 }}>{slotClock(a.slotStart)}</Text>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={[type.body, { color: color.ink, fontWeight: "700" }]} numberOfLines={1}>{whoOf(a, t)}</Text>
-                          <Text style={s.dim} numberOfLines={1}>{nameOfDoctor(a.doctorId)}</Text>
+                          <Text style={s.dim} numberOfLines={1}>{[nameOfDoctor(a.doctorId), teleMoneyWord(a, t)?.text].filter((x) => x !== undefined && x !== "").join(" · ")}</Text>
                         </View>
                         {a.mode === "tele" && <TeleMark testID={`desk-appt-tele-${a.id}`} label={t("mobile.counter.appt.tele")} />}
                         <Text testID={`desk-appt-state-${a.id}`} style={[s.state, { color: tone(state), borderColor: tone(state) }]}>{t(`mobile.counter.appt.state.${state}`)}</Text>
@@ -761,6 +765,7 @@ export function DeskAppointments({ api, today, mayManage, onPick, onRebook, onCl
                       {a.mode === "tele" && <TeleMark testID={`rebook-tele-${a.id}`} label={t("mobile.counter.appt.tele")} />}
                     </View>
                     <Text style={s.dim}>{t("mobile.counter.appt.was", { when: `${dayWord(a.serviceDate, t)} ${slotClock(a.slotStart)}`, doctor: nameOfDoctor(a.doctorId) })}</Text>
+                    {teleMoneyWord(a, t) !== null && <Text style={[type.small, { fontWeight: "700", color: teleMoneyWord(a, t)!.paid ? color.green : color.gold }]} testID={`rebook-money-${a.id}`}>{teleMoneyWord(a, t)!.text}</Text>}
                     <Text style={[s.dim, { fontFamily: MONO }]} testID={`rebook-phone-${a.id}`}>{phone ?? t("appointmentSeat.rail.noPhone")}</Text>
                     <View style={[s.two, { marginTop: space.sm }]}>
                       {phone !== null && <View style={{ flex: 1 }}><Button testID={`rebook-call-${a.id}`} kind="secondary" label={t("mobile.counter.appt.call")} onPress={() => { void Linking.openURL(`tel:${phone}`).catch(() => undefined); }} /></View>}

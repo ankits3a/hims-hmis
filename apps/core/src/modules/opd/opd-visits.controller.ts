@@ -47,6 +47,9 @@ import type { ScanQuery, ScanResult } from "./scan";
 import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
+import { recordTeleAdvance, teleDeskMarks, teleFee } from "./tele";
+import type { TeleAdvanceResult, TeleDeskMark, TeleFee } from "./tele";
+import { withIdempotency } from "../billing";
 import type { CounterState, EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
 import type { VitalsRowWithRecorder } from "./vitals";
 import type { Slot } from "./slots";
@@ -118,6 +121,13 @@ const appointmentCreateBody = z.object({
   // Owner 2026-10-09 — tele-call. The service judges the number (and names the refusal).
   mode: z.enum(APPOINTMENT_MODES).optional(),
   telePhone: z.string().max(40).optional(),
+});
+/** Owner 2026-10-09 — the desk collects a tele-call's fee. The service judges the amount, the tenders and the UPI reference. */
+const teleAdvanceBody = z.object({
+  amountPaise: z.number().int().min(0),
+  tenders: z.array(z.object({
+    mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().trim().max(80).optional(),
+  })).max(3).optional(),
 });
 const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
@@ -276,7 +286,8 @@ const escalationBody = z.object({
   muacCm: z.number().optional(),
 });
 
-type AppointmentView = AppointmentRow & { patient: PatientSummary | null };
+/** `teleDesk` is the DESK's money mark on a tele-call row (to pay / paid). It exists on this desk route only. */
+type AppointmentView = AppointmentRow & { patient: PatientSummary | null; teleDesk?: TeleDeskMark };
 type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry: QueueEntryRow | null };
 /**
  * FD-32 — the visit read carries the two money marks as well, so the CONSULTATION and the OPD Order
@@ -428,6 +439,38 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await cancelAppointment(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-09 — what a tele-call costs: the in-person fee for that patient, doctor and slot date. Desk only. */
+  @RequirePermission("opd.appointments.manage", "hospital", { alsoAdmits: ["billing.receipt.record"] })
+  @Get("appointments/:id/tele-fee")
+  async teleFeeRoute(@Param("id") id: string): Promise<TeleFee> {
+    try {
+      return await teleFee(this.db, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * The desk takes the fee: one ordinary advance receipt in the acting cashier's open drawer, for
+   * exactly the quote. `Idempotency-Key` is honoured as `POST /billing/receipts` honours it — the
+   * same store, so a retried request is answered, not repeated.
+   */
+  @RequirePermission("billing.receipt.record", "hospital")
+  @Post("appointments/:id/advance")
+  async teleAdvance(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
+  ): Promise<TeleAdvanceResult> {
+    const b = parsed(teleAdvanceBody, body);
+    try {
+      return await withIdempotency(
+        this.db, { actorId: actor.id, route: `POST /opd/appointments/${id}/advance`, key: idemKey }, b,
+        () => recordTeleAdvance(this.db, actor, id, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -964,9 +1007,11 @@ export class OpdVisitsController {
       withContact === undefined ? {} : { withContact },
     );
     const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
+    const marks = await teleDeskMarks(this.db, items);
     return items.map((a) => {
       const patient = byPatient.get(a.patientId) ?? null;
-      return { ...appointmentForList(a, patient, withContact !== undefined), patient };
+      const teleDesk = marks.get(a.id);
+      return { ...appointmentForList(a, patient, withContact !== undefined), patient, ...(teleDesk === undefined ? {} : { teleDesk }) };
     });
   }
 }

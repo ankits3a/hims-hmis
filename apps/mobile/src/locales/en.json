@@ -428,6 +428,23 @@
         "receipt": "Bill {{no}} · receipt {{receipt}} · {{amount}} by {{mode}}",
         "billed": "Bill {{no}} · {{amount}}"
       },
+      "telePay": {
+        "toPay": "To pay {{amount}}",
+        "paid": "Paid",
+        "paidRefund": "Paid {{amount}} · refund on request",
+        "nothingToPay": "Nothing to pay",
+        "collect": "Collect {{amount}}",
+        "confirmFree": "Confirm",
+        "paidBy": "PAID BY",
+        "upiRef": "UPI reference",
+        "received": "Received {{amount}}",
+        "unknown": "No answer came back. Tap again: the server answers the same request, nothing is taken twice.",
+        "mode": {
+          "cash": "Cash",
+          "upi": "UPI",
+          "card": "Card"
+        }
+      },
       "appt": {
         "open": "Appointments today",
         "book": "Book an appointment",

@@ -154,6 +154,8 @@ export async function rescheduleAppointment(
       serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
       source: loaded.source, note: loaded.note, rescheduledFromId: appointmentId,
       mode: loaded.mode, telePhone: loaded.telePhone, // a moved tele-call is still a tele-call, to the same number
+      // …and still PAID: the quote and its receipt move with it (owner 2026-10-09 — "carried to a re-booked slot").
+      advanceReceiptId: loaded.advanceReceiptId, advanceQuotePaise: loaded.advanceQuotePaise, advanceQuotedAt: loaded.advanceQuotedAt,
       bookedBy: actor.id, updatedBy: actor.id,
     }).onConflictDoNothing().returning();
     if (inserted.length === 0) throw new OpdError("slot_taken", `slot ${input.slotStart.toISOString()} for doctor ${doctor.id} is taken`);

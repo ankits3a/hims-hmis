@@ -843,6 +843,26 @@
       "cancel": "Cancel"
     }
   },
+  "teleDesk": {
+    "toPay": "To pay {{amount}}",
+    "paid": "Paid",
+    "paidRefund": "Paid {{amount}} · refund on request",
+    "refundLink": "Billing office",
+    "nothingToPay": "Nothing to pay",
+    "collect": "Collect",
+    "confirmFree": "Confirm",
+    "collectTitle": "Collect {{amount}} for the tele-call",
+    "freeTitle": "Free follow-up — nothing to pay",
+    "paidBy": "Paid by",
+    "upiRef": "UPI reference",
+    "cardRef": "Card slip no. (optional)",
+    "received": "Received {{amount}}",
+    "mode": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    }
+  },
   "opdAppt": {
     "title": "OPD appointments",
     "pickDepartment": "Choose a department",

@@ -843,6 +843,26 @@
       "cancel": "रद्द करें"
     }
   },
+  "teleDesk": {
+    "toPay": "बाकी {{amount}}",
+    "paid": "भुगतान हुआ",
+    "paidRefund": "{{amount}} जमा · माँगने पर वापसी",
+    "refundLink": "बिलिंग कार्यालय",
+    "nothingToPay": "कुछ नहीं देना",
+    "collect": "लें",
+    "confirmFree": "पक्का करें",
+    "collectTitle": "टेली-कॉल के {{amount}} लें",
+    "freeTitle": "मुफ़्त फ़ॉलो-अप — कुछ नहीं देना",
+    "paidBy": "भुगतान का तरीका",
+    "upiRef": "UPI संदर्भ संख्या",
+    "cardRef": "कार्ड पर्ची नं. (वैकल्पिक)",
+    "received": "{{amount}} मिल गए",
+    "mode": {
+      "cash": "नकद",
+      "upi": "UPI",
+      "card": "कार्ड"
+    }
+  },
   "opdAppt": {
     "title": "OPD अपॉइंटमेंट",
     "pickDepartment": "विभाग चुनें",

@@ -572,4 +572,75 @@ describe("appointments on the phone's Desk One", () => {
     await fireEvent.press(await screen.findByTestId("appt-checkin-a2"));
     expect(await screen.findByTestId("appt-error-a2")).toHaveTextContent("Tele-call · opens at slot time");
   });
+
+  // ——— tele-call, slice 2: the desk collects (owner 2026-10-09) ———
+
+  it("TELE PAY: an unpaid tele-call says To pay; the cashier collects exactly that — UPI needs its reference — with one key, and the list is read again", async () => {
+    let paid = false;
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: paid } })],
+      routes: { "POST /opd/appointments/a1/advance": () => { paid = true; return { status: 201, body: { amountPaise: 10_000, receiptNo: "RCT/26-27/000091" } }; } },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    expect(await screen.findByTestId("tele-money-a1")).toHaveTextContent("To pay ₹100");
+    await fireEvent.press(screen.getByTestId("tele-collect-a1"));
+    expect(await screen.findByTestId("tele-pay-title")).toHaveTextContent("Collect ₹100");
+    expect(screen.getByTestId("tele-mode-cash").props.accessibilityState).toMatchObject({ checked: true });
+    await fireEvent.press(screen.getByTestId("tele-mode-upi"));
+    expect(screen.getByTestId("tele-pay-go").props.accessibilityState).toMatchObject({ disabled: true });
+    await fireEvent.changeText(screen.getByTestId("tele-ref"), " 428311907755 ");
+    await fireEvent.press(screen.getByTestId("tele-pay-go"));
+    await waitFor(() => expect(screen.getByTestId("tele-money-a1")).toHaveTextContent(/^Paid$/));
+    const sent = s.of("POST /opd/appointments/a1/advance");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.body).toEqual({ amountPaise: 10_000, tenders: [{ mode: "upi", amountPaise: 10_000, refText: "428311907755" }] });
+    expect(sent[0]!.idem).toMatch(/\S/);
+    expect(screen.queryByTestId("tele-collect-a1")).toBeNull();
+  });
+
+  it("TELE PAY: a refusal is the server's words; a lost answer keeps the SAME key for the second try", async () => {
+    let n = 0;
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } })],
+      routes: { "POST /opd/appointments/a1/advance": () => { n += 1; return n === 1 ? "offline" : { status: 409, body: { code: "no_open_session", message: "Open your cash session first" } }; } },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(await screen.findByTestId("tele-collect-a1"));
+    await fireEvent.press(await screen.findByTestId("tele-pay-go"));
+    expect(await screen.findByTestId("tele-pay-error")).toHaveTextContent(/No answer came back/);
+    await fireEvent.press(screen.getByTestId("tele-pay-go"));
+    await waitFor(() => expect(screen.getByTestId("tele-pay-error")).toHaveTextContent("Open your cash session first"));
+    const sent = s.of("POST /opd/appointments/a1/advance");
+    expect(sent).toHaveLength(2);
+    expect(sent[0]!.body).toEqual({ amountPaise: 10_000, tenders: [{ mode: "cash", amountPaise: 10_000 }] });
+    expect(sent[1]!.idem).toBe(sent[0]!.idem);
+  });
+
+  it("TELE PAY: without the receipt permission the amount is shown and no Collect; in person shows nothing", async () => {
+    const reader = world({ theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } }), appt({ id: "a3", serviceDate: D3, slotStart: at(D3, "04:00"), mode: "in_person" })] });
+    await mount(reader.fetcher);
+    await findAndHold();
+    expect(await screen.findByTestId("tele-money-a1")).toHaveTextContent("To pay ₹100");
+    expect(screen.queryByTestId("tele-collect-a1")).toBeNull();
+    expect(screen.queryByTestId("tele-money-a3")).toBeNull();
+  });
+
+  it("TELE PAY: a free follow-up has nothing to pay and is confirmed with no tender", async () => {
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 0, covered: false } })],
+      routes: { "POST /opd/appointments/a1/advance": () => ({ status: 201, body: { amountPaise: 0, receiptNo: null } }) },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    expect(await screen.findByTestId("tele-money-a1")).toHaveTextContent("Nothing to pay");
+    await fireEvent.press(screen.getByTestId("tele-collect-a1"));
+    await fireEvent.press(await screen.findByTestId("tele-pay-go"));
+    await waitFor(() => expect(s.of("POST /opd/appointments/a1/advance")).toHaveLength(1));
+    expect(s.of("POST /opd/appointments/a1/advance")[0]!.body).toEqual({ amountPaise: 0 });
+  });
 });

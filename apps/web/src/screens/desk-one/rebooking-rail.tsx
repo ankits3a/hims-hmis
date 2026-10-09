@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { TeleDeskPay } from "../../components/tele-desk-pay";
 import { TeleMark } from "../../components/tele-mark";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -138,7 +139,7 @@ export function RebookingRail({
                 </span>
               </span>
               <span className="mo" style={{ fontSize: 10.5, color: "var(--faint)" }}>
-                {dayMonthIst(a.slotStart)} {slotClock(a.slotStart)} <TeleMark mode={a.mode} size={12} />
+                {dayMonthIst(a.slotStart)} {slotClock(a.slotStart)} <TeleMark mode={a.mode} size={12} /> <TeleDeskPay appointment={a} compact />
               </span>
             </button>
           ))}
