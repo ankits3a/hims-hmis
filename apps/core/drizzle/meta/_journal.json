@@ -1331,6 +1331,13 @@
       "when": 1791434931598,
       "tag": "0189_alias_live",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1791554733527,
+      "tag": "0190_vendor_item_rates",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,7 @@ import { fetchControlledToday } from "../../lib/controlled-api";
 import { FormularyAdmin } from "../formulary-admin";
 import { FormularyMonograph } from "../formulary-monograph";
 import { PriceListImport } from "./price-list";
+import { VendorRatesView } from "./vendor-rates";
 import { MaterialsCounts } from "../materials-counts";
 import { MaterialsGrn } from "../materials-grn";
 import { MaterialsItems } from "../materials-items";
@@ -126,6 +127,7 @@ function pageBody(key: string, seed: { n: number; pay?: PayOpen; returns?: Retur
     case "orders": return buy;
     case "reorder": return <PharmacyReorder />;
     case "vendors": return <MaterialsVendors />;
+    case "rates": return <VendorRatesView />;
     case "bills": return <PayView key={`pay-${String(seed.n)}`} {...(seed.pay === undefined ? {} : { initialOpen: seed.pay })} />;
     case "returns": return <ReturnsView key={`ret-${String(seed.n)}`} {...(seed.returns === undefined ? {} : { initialOpen: seed.returns })} />;
     case "grn": return <MaterialsGrn />;
@@ -664,7 +666,15 @@ function PoSheet({ id, canDecide, startRejecting = false, onClose, onDone }: {
                         <td className="py-1 pr-2 text-xs">{l.uom} × {l.multiplier}</td>
                         <td className="py-1 pr-2 text-right">{cell("qty", "w-14")}</td>
                         <td className="py-1 pr-2 text-right">{cell("free", "w-12")}</td>
-                        <td className="py-1 pr-2 text-right">{cell("rate", "w-20")}</td>
+                        <td className="py-1 pr-2 text-right">
+                          {cell("rate", "w-20")}
+                          {/* Owner 2026-10-04 — the vendor's contracted rate beside the line; above it is shown so, for the raiser and the approver. */}
+                          {src?.contractRatePaise != null && (
+                            <div className={`text-xs ${netRate(l) > src.contractRatePaise ? "font-medium text-red-600" : "text-muted-foreground"}`} data-testid={`po-contract-${l.code}`}>
+                              {t(netRate(l) > src.contractRatePaise ? "pharmacyOffice.sheet.aboveContract" : "pharmacyOffice.sheet.contract", { rate: rupees(src.contractRatePaise) })}
+                            </div>
+                          )}
+                        </td>
                         <td className="py-1 pr-2 text-right">{cell("disc", "w-12")}</td>
                         <td className="py-1 pr-2 text-right">{cell("gst", "w-12")}</td>
                         <td className="py-1 pr-2 text-right">{cell("mrp", "w-20")}</td>
@@ -783,6 +793,7 @@ function PlanSheet({ onClose, onMade }: { onClose: () => void; onMade: (n: numbe
                     <span className="flex-1">{l.name} <span className="text-xs text-muted-foreground">{l.code}</span></span>
                     <span>{l.qtyPacks} {l.uom}</span>
                     <span className="tabular-nums">{rupees(l.ratePaise)}</span>
+                    {l.rateSource === "contract" && <span className="rounded bg-emerald-100 px-1 text-xs text-emerald-900" data-testid={`plan-contract-${l.code}`}>{t("pharmacyOffice.plan.contractRate")}</span>}
                     <span className="text-xs text-muted-foreground">{l.reasons.map((r) => t(`pharmacyOffice.plan.reason_${r}`)).join(" · ")}</span>
                   </li>
                 ))}

@@ -18,6 +18,9 @@ const EMPTY_NEEDS: WireOfficeNeeds = { rows: [], sides: ["BUY"], money: null, co
 /** B2 — the Buy side is the header menu's second item now; the office opens on Today. */
 async function openBuy(): Promise<void> {
   await userEvent.click(await screen.findByTestId("office-view-buy"));
+  // Owner 2026-10-04 — a person who raises orders also has Vendor rates on the Buy side, so Buy opens a menu.
+  const drop = screen.queryByTestId("office-drop-buy");
+  if (drop !== null) await userEvent.click(within(drop).getByTestId("office-entry-orders"));
 }
 
 function mock(routes: Record<string, unknown | ((body: unknown) => unknown)>, perms: string[]): Call[] {
@@ -174,6 +177,24 @@ describe("PharmacyOffice (parity P2)", () => {
     const patch = calls.find((c) => c.method === "PATCH")!;
     expect(patch.body).toMatchObject({ lines: [{ itemId: "i-croc", uom: "strip", qtyPacks: 20, ratePaise: 2_600, gstRateBps: 1200 }] });
     expect(calls.findIndex((c) => c.method === "PATCH")).toBeLessThan(calls.findIndex((c) => c.path.endsWith("/submit")));
+  });
+
+  it("a draft line shows the vendor's contracted rate, and says so when it is priced above it (owner 2026-10-04)", async () => {
+    const base = po({ id: "po-2", poNo: "MPO2609240002", status: "draft", approvalId: null, approvalTier: null, approval: null });
+    const draft = { ...base, lines: [{ ...base.lines[0]!, contractRatePaise: 2_400 }] };
+    mock({
+      "GET /pharmacy/office/today": today({ awaitingYou: [] }),
+      "GET /materials/purchase-orders/po-2": { purchaseOrder: draft },
+    }, RAISE);
+    renderWithRouter(<PharmacyOffice />, "/pharmacy/office");
+    await openBuy();
+    await userEvent.click(within(await screen.findByTestId("section-drafts")).getByTestId("po-row-MPO2609240002"));
+    const sheet = await screen.findByTestId("po-sheet");
+    expect(await within(sheet).findByTestId("po-contract-CROC500")).toHaveTextContent("above contract ₹24.00"); // priced at ₹26
+    const rate = within(sheet).getByLabelText("Rate ₹ CROC500");
+    await userEvent.clear(rate);
+    await userEvent.type(rate, "24");
+    expect(within(sheet).getByTestId("po-contract-CROC500")).toHaveTextContent(/^contract ₹24.00$/);
   });
 
   it("the agent's plan is reviewed and a person makes the drafts, giving an unassigned item a vendor", async () => {

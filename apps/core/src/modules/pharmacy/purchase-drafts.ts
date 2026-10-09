@@ -1,11 +1,11 @@
 import {
-  createPurchaseOrder, findStoreByCode, getVendor, itemsByIds, lastPurchaseByItem, lineGstPaise, uomsByItems,
+  contractRatesFor, createPurchaseOrder, findStoreByCode, getVendor, itemsByIds, lastPurchaseByItem, lineGstPaise, uomsByItems, vendorRates,
 } from "../materials";
 import { OPD_PHARMACY_STORE_CODE, PURCHASE_DEFAULT_LEAD_DAYS, istDateOf } from "./config";
 import { PharmacyError } from "./errors";
 import { reorderAdvice } from "./replenishment";
 import { listOpenShortBook } from "./short-book";
-import type { PoView } from "../materials";
+import type { PoView, VendorRateView } from "../materials";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -45,6 +45,11 @@ export type DraftLine = {
   shortBookIds: string[];
   /** The receipt the rate came from, when there is one. */
   lastGrnNo: string | null;
+  /**
+   * Owner 2026-10-04 — where the rate came from: a vendor's rate CONTRACT in force (the cheapest per base unit
+   * among active vendors — it also chooses the vendor), else the LAST paid receipt, else nothing.
+   */
+  rateSource: "contract" | "last" | "none";
 };
 
 export type DraftGroup = {
@@ -104,7 +109,9 @@ export async function planPurchaseDrafts(db: Db, now: Date = new Date()): Promis
   }
 
   const ids = [...need.keys()];
-  const [items, packs, last] = await Promise.all([itemsByIds(db, [...ids, ...alreadyDrafted.keys()]), uomsByItems(db, ids), lastPurchaseByItem(db, ids)]);
+  const [items, packs, last, contracts] = await Promise.all([
+    itemsByIds(db, [...ids, ...alreadyDrafted.keys()]), uomsByItems(db, ids), lastPurchaseByItem(db, ids), contractRatesFor(db, ids, now),
+  ]);
 
   const groups = new Map<string, DraftLine[]>();
   const unassigned: UnassignedLine[] = [];
@@ -112,19 +119,23 @@ export async function planPurchaseDrafts(db: Db, now: Date = new Date()): Promis
     const item = items.get(itemId);
     if (item === undefined || !item.active) continue;
     const bought = last.get(itemId);
+    const contract = contracts.get(itemId)?.[0];
     const largest = [...(packs.get(itemId) ?? [])].sort((a, b) => b.toBaseMultiplier - a.toBaseMultiplier)[0];
-    const uom = bought?.uom ?? largest?.uom ?? item.baseUom;
-    const multiplier = bought?.multiplier ?? largest?.toBaseMultiplier ?? 1;
+    const uom = contract?.uom ?? bought?.uom ?? largest?.uom ?? item.baseUom;
+    const multiplier = contract?.multiplier ?? bought?.multiplier ?? largest?.toBaseMultiplier ?? 1;
     const qtyPacks = Math.max(1, Math.ceil(n.needBase / multiplier));
-    const ratePaise = bought?.ratePaise ?? 0;
-    const gstRateBps = item.gstRateBps ?? 0;
+    const ratePaise = contract?.ratePaise ?? bought?.ratePaise ?? 0;
+    const gstRateBps = contract?.gstRateBps ?? item.gstRateBps ?? 0;
     const line: DraftLine = {
       itemId, code: item.code, name: item.name, baseUom: item.baseUom, uom, multiplier,
       needBase: n.needBase === 0 ? multiplier : n.needBase, qtyPacks, ratePaise, gstRateBps,
-      mrpPaise: bought?.mrpPaise ?? null, lineTotalPaise: qtyPacks * ratePaise,
+      mrpPaise: contract?.mrpPaise ?? bought?.mrpPaise ?? null, lineTotalPaise: qtyPacks * ratePaise,
       reasons: [...n.reasons].sort(), shortBookIds: n.shortBookIds, lastGrnNo: bought?.grnNo ?? null,
+      rateSource: contract !== undefined ? "contract" : bought !== undefined ? "last" : "none",
     };
-    if (bought === undefined) unassigned.push({ ...line, why: "no_history" });
+    // A rate contract in force chooses the vendor (only active vendors' rates are in force at all).
+    if (contract !== undefined) groups.set(contract.vendorId, [...(groups.get(contract.vendorId) ?? []), line]);
+    else if (bought === undefined) unassigned.push({ ...line, why: "no_history" });
     else if (!bought.vendorActive) unassigned.push({ ...line, why: "vendor_inactive" });
     else groups.set(bought.vendorId, [...(groups.get(bought.vendorId) ?? []), line]);
   }
@@ -183,4 +194,52 @@ export async function draftPurchaseOrders(
     }, { source: "agent", now }));
   }
   return drafts;
+}
+
+// ═══════════════════ OWNER 2026-10-04 — AN ORDER FROM A VENDOR'S RATE CONTRACT ═══════════════════
+
+export type RateSheetLine = VendorRateView & {
+  /** The last PAID receipt's rate per this pack, from any vendor — to see the contract against what was paid. */
+  lastPaidPaise: number | null;
+  lastVendorId: string | null;
+};
+
+/** A vendor's contracted items as the office orders from them: the rate, and what was last paid. */
+export async function vendorRateSheet(db: Db, actor: Actor, vendorId: string): Promise<RateSheetLine[]> {
+  const rates = await vendorRates(db, actor, vendorId);
+  const last = await lastPurchaseByItem(db, rates.map((r) => r.itemId));
+  return rates.map((r) => {
+    const b = last.get(r.itemId);
+    const paid = b === undefined ? null : Math.round((b.ratePaise * r.multiplier) / b.multiplier);
+    return { ...r, lastPaidPaise: paid, lastVendorId: b?.vendorId ?? null };
+  });
+}
+
+/**
+ * "Order these from this vendor at its contracted rates." A DRAFT order — every line priced by the server
+ * from the contract in force today, never by the screen — through materials' own `createPurchaseOrder` (its
+ * `materials.po.raise`, its approval tiers). An item without a rate in force from this vendor is refused,
+ * named. `freePacks` is the vendor's scheme or a free first supply: received on the GRN as free goods.
+ */
+export async function orderFromRates(
+  db: Db, actor: Actor, vendorId: string, lines: readonly { itemId: string; qtyPacks: number; freePacks?: number }[], now: Date = new Date(),
+): Promise<PoView> {
+  if (lines.length === 0) throw new PharmacyError("nothing_to_dispense", "no quantities were entered");
+  const store = await findStoreByCode(db, OPD_PHARMACY_STORE_CODE);
+  if (store === undefined) throw new PharmacyError("store_missing", `the OPD pharmacy store ${OPD_PHARMACY_STORE_CODE} does not exist — run seed:pharmacy`);
+  const contracts = await contractRatesFor(db, lines.map((l) => l.itemId), now);
+  const priced = lines.map((l) => ({ l, c: (contracts.get(l.itemId) ?? []).find((x) => x.vendorId === vendorId) }));
+  const missing = priced.filter((x) => x.c === undefined).map((x) => x.l.itemId);
+  if (missing.length > 0) {
+    const names = await itemsByIds(db, missing);
+    throw new PharmacyError("invalid_range", `no rate in force from this vendor for ${missing.map((id) => names.get(id)?.name ?? id).join(", ")} — record the rate first`, { itemIds: missing });
+  }
+  const v = await getVendor(db, vendorId);
+  return createPurchaseOrder(db, actor, {
+    vendorId, storeResourceId: store.id, expectedDate: addDays(istDateOf(now), PURCHASE_DEFAULT_LEAD_DAYS),
+    note: `Ordered at ${v?.tradeName ?? v?.legalName ?? "the vendor"}'s contracted rates.`,
+    lines: priced.map(({ l, c }) => ({
+      itemId: l.itemId, uom: c!.uom, qtyPacks: l.qtyPacks, freePacks: l.freePacks ?? 0, ratePaise: c!.ratePaise, gstRateBps: c!.gstRateBps, mrpPaise: c!.mrpPaise,
+    })),
+  }, { source: "manual", now });
 }
