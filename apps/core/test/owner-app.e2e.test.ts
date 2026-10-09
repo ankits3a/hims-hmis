@@ -1,7 +1,10 @@
 import { Test } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { addDayIso, istDayOf } from "@hmis/contracts";
+import { eq } from "drizzle-orm";
+import { addDayIso, istDayOf, newId } from "@hmis/contracts";
+import { cdsAliases, events, formularyMedicineSalts, formularyMedicines, formularySalts, users } from "../src/kernel/db/schema";
+import { normalizeDrugName } from "../src/modules/formulary";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
@@ -92,11 +95,52 @@ describe("owner app — the reads behind the seven tiles", () => {
     expect(owner.stock).toBeNull();
   });
 
-  it("learning is read-only: neither role may take a nickname back, and the existing gate still says so", async () => {
-    const owner = (await get("/opd/reports/learning", "owner").expect(200)).body;
-    expect(owner).toEqual({ on: false, mayUndo: false, nicknames: [], tapped: null, misses: 0 });
-    const undo = await http().post("/opd/consult/nicknames/x/undo").set("Authorization", `Bearer ${token.ms}`);
-    expect({ status: undo.status, message: undo.body.message }).toEqual({ status: 403, message: "missing permission opd.masters.manage" });
+  /**
+   * OWNER, 2026-10-09: "nickname-Undo permission for owner role: yes". The owner's role holds
+   * `opd.masters.manage` (the gate the two routes already carried — the gate is NOT widened), so the
+   * owner may take a learned nickname back and put it back, and the act is on record in the owner's
+   * name. The Medical Superintendent's role does not hold it and still may not.
+   */
+  it("the owner takes a learned nickname back and puts it back, in their own name; the Medical Superintendent still may not", async () => {
+    const id = newId();
+    const at = new Date();
+    await db.insert(formularySalts).values({ id: "s_panto", name: "Pantoprazole", nameNormalized: "pantoprazole", createdBy: "t", updatedBy: "t" } as never);
+    await db.insert(formularyMedicines).values({
+      id: "m_pan40", brandName: "Pan 40 mg tablet", nameNormalized: normalizeDrugName("Pan 40 mg tablet"), form: "Oral tablet", strengthLabel: "40 mg/",
+      scheduleFlag: "H", code: null, createdBy: "t", updatedBy: "t",
+    } as never);
+    await db.insert(formularyMedicineSalts).values({ medicineId: "m_pan40", saltId: "s_panto", source: "curated" } as never);
+    await db.insert(cdsAliases).values({
+      id, kind: "medicine", term: "pan forty", termKey: "pan 40", medicineId: "m_pan40", state: "suggestion", reviewerAnswer: "yes", ruleResult: "pass",
+      createdAt: at, updatedAt: at, auditedAt: at,
+    });
+    const ownerId = (await db.select({ id: users.id }).from(users).where(eq(users.username, "oa_owner")))[0]!.id;
+
+    const before = (await get("/opd/reports/learning", "owner").expect(200)).body;
+    expect(before).toMatchObject({ on: false, mayUndo: true, tapped: null, misses: 0 });
+    expect(before.nicknames.map((n: { id: string; state: string }) => [n.id, n.state])).toEqual([[id, "suggested"]]);
+    expect((await get("/opd/reports/learning", "ms").expect(200)).body.mayUndo).toBe(false);
+
+    const refused = await http().post(`/opd/consult/nicknames/${id}/undo`).set("Authorization", `Bearer ${token.ms}`);
+    expect({ status: refused.status, message: refused.body.message }).toEqual({ status: 403, message: "missing permission opd.masters.manage" });
+    expect((await db.select().from(cdsAliases).where(eq(cdsAliases.id, id)))[0]!.state).toBe("suggestion");
+
+    const undo = await http().post(`/opd/consult/nicknames/${id}/undo`).set("Authorization", `Bearer ${token.owner}`);
+    expect([200, 201]).toContain(undo.status);
+    const row = (await db.select().from(cdsAliases).where(eq(cdsAliases.id, id)))[0]!;
+    expect({ state: row.state, undoneBy: row.undoneBy }).toEqual({ state: "undone", undoneBy: ownerId });
+    const undone = (await db.select().from(events).where(eq(events.name, "alias.undone")));
+    expect(undone.map((e) => [e.actorId, (e.payload as { aliasId: string }).aliasId])).toEqual([[ownerId, id]]);
+
+    const msBack0 = await http().post(`/opd/consult/nicknames/${id}/restore`).set("Authorization", `Bearer ${token.ms}`);
+    expect(msBack0.status).toBe(403);
+    const back = await http().post(`/opd/consult/nicknames/${id}/restore`).set("Authorization", `Bearer ${token.owner}`);
+    expect([200, 201]).toContain(back.status);
+    expect((await db.select().from(cdsAliases).where(eq(cdsAliases.id, id)))[0]).toMatchObject({ state: "suggestion", undoneBy: null });
+    const restored = (await db.select().from(events).where(eq(events.name, "alias.restored")));
+    expect(restored.map((e) => [e.actorId, (e.payload as { aliasId: string }).aliasId])).toEqual([[ownerId, id]]);
+    const msBack = await http().post(`/opd/consult/nicknames/${id}/restore`).set("Authorization", `Bearer ${token.ms}`);
+    expect({ status: msBack.status, message: msBack.body.message }).toEqual({ status: 403, message: "missing permission opd.masters.manage" });
   });
 
   it("a range is at most 92 days, in order, and never in the future — on every read that takes one", async () => {

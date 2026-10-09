@@ -793,6 +793,19 @@ const OPD_DAY_REPORT_PAIRS: readonly string[] = [
   "owner/opd.reports.read",
 ];
 
+/** The README prose line authorising the 2026-10-09 nickname-undo grant. Quoted, not paraphrased. */
+const NICKNAME_UNDO_README_PROSE =
+  "Nickname undo for the owner (owner ruling,\n2026-10-09)";
+
+/**
+ * OWNER 2026-10-09 — "nickname-Undo permission for owner role: yes". ONE pair: the owner's role gains
+ * the string the two nickname routes already carried. The Medical Superintendent is deliberately not
+ * here — the ruling named the owner's role and no other.
+ */
+const NICKNAME_UNDO_PAIRS: readonly string[] = [
+  "owner/opd.masters.manage",
+];
+
 /** The README prose line authorising the 2026-10-06 paper-consultation grants. Quoted, not paraphrased. */
 const PAPER_CONSULT_README_PROSE =
   "Consulted on paper (owner ruling,\n2026-10-06)";
@@ -977,6 +990,7 @@ const NON_TABLE_PAIRS: readonly string[] = [
   ...PAPER_CONSULT_PAIRS,
   ...HISTORY_HORIZON_PAIRS,
   ...OPD_DAY_REPORT_PAIRS,
+  ...NICKNAME_UNDO_PAIRS,
   ...ROSTER_PAIRS,
   ...ROSTER_BOARD_PAIRS,
   ...ROSTER_FLAGS_PAIRS,
@@ -1427,7 +1441,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       // Group A, 2026-08-26: +4 — tariff.read, the activator key, tariff config, and approval-type
       // governance. `owner` is now the activator for BOTH ceremonies, workflow and price list.
       // Group B then added +3: the invoice, the daybook and the cashier sessions. NOT patients.read.
-      owner: 24, // PHARMACY P6 (patient messages): +1, pharmacy.messages.manage; PHARMACY P6: +1, pharmacy.licences.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +2, pharmacy.reports.read and .margin; approvals spine R1 (MERGE 2026-09-21, read off the red run): +2, approvals.requests.read and .decide; PHASE R (R1): +1, roster.read; OPD day report: +1, opd.reports.read; P19: +1, pharmacy.retail.manage; P17: +2, pharmacy.register.read and .read_sealed; staff-reports T0: +2, staff.reports.read (a defect closed) and .history.full
+      owner: 25, // NICKNAME UNDO (owner 2026-10-09, "nickname-Undo permission for owner role: yes"): +1, opd.masters.manage; PHARMACY P6 (patient messages): +1, pharmacy.messages.manage; PHARMACY P6: +1, pharmacy.licences.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +2, pharmacy.reports.read and .margin; approvals spine R1 (MERGE 2026-09-21, read off the red run): +2, approvals.requests.read and .decide; PHASE R (R1): +1, roster.read; OPD day report: +1, opd.reports.read; P19: +1, pharmacy.retail.manage; P17: +2, pharmacy.register.read and .read_sealed; staff-reports T0: +2, staff.reports.read (a defect closed) and .history.full
       // Group C, 2026-08-26: +2, the break-glass and elevation review desks. The merge lane then
       // added +3 — the approvals pair it is the approverRole for, and the records it decides about.
       // PLAN 07c T9 — 9 → 10 with `staff.reports.read`, for the reason the two review desks moved
@@ -2039,7 +2053,7 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     // 132 -> 134 with FD-25's two: the cashier's seat (owner ruling 2026-09-04), CASHIER_SEAT_PAIRS.
     // It was 136 briefly — two further pairs were granted beyond the ruling and close pass 1 removed
     // them. Measured at 134, never derived from either number.
-    expect(NON_TABLE_PAIRS).toHaveLength(228); // CONSULTED ON PAPER (owner 2026-10-06), read off the failing run: +10, PAPER_CONSULT_PAIRS; 20-U U6, read off the failing run: +1, ROSTER_FLAGS_PAIRS; 20-U U5a, read off the failing run: +5, ROSTER_BOARD_PAIRS; MONOGRAPH REVIEW (owner 2026-10-02): +1; OWNER RULINGS 2026-09-30 (money): +2, DISCOUNT_PAIRS; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +2, FRONT_DESK_DUES_PAIRS;  TRAIN ux-train 2026-09-29: BREAK-GLASS (owner ruling 2026-09-28) +1, re-read off the failing run; STAGE D4: +4, TRAYS_PAIRS; 18-S RS5: +2, radiologist/approvals.requests.read and .decide in RADIOLOGY_PAIRS; 18-S RS3: +1, display/radiology.display.read in RADIOLOGY_PAIRS; STAGE D5: +3, STEWARD_PAIRS; GAP A3b: +1, PHARMACY_CREDIT_PAIRS; STAGE D3: +2, COLDCHAIN_PAIRS; STAGE D2: +2, INCIDENTS_PAIRS; STAGE D1: +2, ADR_PAIRS; PHARMACY P6 (patient messages): +1, PATIENT_MESSAGES_PAIRS; PHARMACY P6: +4, CONTROLLED_PAIRS; parity P5 (Tally): +2, PHARMACY_TALLY_PAIRS; parity P5: +5, PHARMACY_REPORTS_PAIRS; approvals spine (MERGE 2026-09-21, read off the red run): +4, APPROVALS_SPINE_PAIRS; PHASE R (R1): +4, ROSTER_PAIRS; OPD day report: +3, OPD_DAY_REPORT_PAIRS; P19: +3, RETAIL_PAIRS; P17: +4, H1_SEALED_PAIRS; P5: +2, PHARMACY_REFUND_PAIRS; FD-31: +1; FD-30: +15, SCRIBE_PAIRS (the scribe’s 14 + the doctor’s draft key); FD-27: +2, PAPER_REPRINT_PAIRS — the fresh answer FD-25 close pass 1 said this seat would need; FD-25 close pass 1: -2, the two `cashier/opd.visits.*` pairs granted beyond the owner's ruling and removed; 17c owner ruling: +1 (lab_reception/approvals.requests.create); 16c T1: +10, PHARMACY_PAIRS // MERGE 2026-09-15: measured from the failing run
+    expect(NON_TABLE_PAIRS).toHaveLength(229); // NICKNAME UNDO (owner 2026-10-09), read off the failing run: +1, NICKNAME_UNDO_PAIRS; CONSULTED ON PAPER (owner 2026-10-06), read off the failing run: +10, PAPER_CONSULT_PAIRS; 20-U U6, read off the failing run: +1, ROSTER_FLAGS_PAIRS; 20-U U5a, read off the failing run: +5, ROSTER_BOARD_PAIRS; MONOGRAPH REVIEW (owner 2026-10-02): +1; OWNER RULINGS 2026-09-30 (money): +2, DISCOUNT_PAIRS; FRONT-DESK DUES (owner ruling 2026-09-30), read off the failing run: +2, FRONT_DESK_DUES_PAIRS;  TRAIN ux-train 2026-09-29: BREAK-GLASS (owner ruling 2026-09-28) +1, re-read off the failing run; STAGE D4: +4, TRAYS_PAIRS; 18-S RS5: +2, radiologist/approvals.requests.read and .decide in RADIOLOGY_PAIRS; 18-S RS3: +1, display/radiology.display.read in RADIOLOGY_PAIRS; STAGE D5: +3, STEWARD_PAIRS; GAP A3b: +1, PHARMACY_CREDIT_PAIRS; STAGE D3: +2, COLDCHAIN_PAIRS; STAGE D2: +2, INCIDENTS_PAIRS; STAGE D1: +2, ADR_PAIRS; PHARMACY P6 (patient messages): +1, PATIENT_MESSAGES_PAIRS; PHARMACY P6: +4, CONTROLLED_PAIRS; parity P5 (Tally): +2, PHARMACY_TALLY_PAIRS; parity P5: +5, PHARMACY_REPORTS_PAIRS; approvals spine (MERGE 2026-09-21, read off the red run): +4, APPROVALS_SPINE_PAIRS; PHASE R (R1): +4, ROSTER_PAIRS; OPD day report: +3, OPD_DAY_REPORT_PAIRS; P19: +3, RETAIL_PAIRS; P17: +4, H1_SEALED_PAIRS; P5: +2, PHARMACY_REFUND_PAIRS; FD-31: +1; FD-30: +15, SCRIBE_PAIRS (the scribe’s 14 + the doctor’s draft key); FD-27: +2, PAPER_REPRINT_PAIRS — the fresh answer FD-25 close pass 1 said this seat would need; FD-25 close pass 1: -2, the two `cashier/opd.visits.*` pairs granted beyond the owner's ruling and removed; 17c owner ruling: +1 (lab_reception/approvals.requests.create); 16c T1: +10, PHARMACY_PAIRS // MERGE 2026-09-15: measured from the failing run
     expect(nonTable.filter((p) => p.includes("/materials."))).toEqual([]);
     // AMENDED BY PLAN 17 T2 — the guard was written as "no pair whose ROLE is an OT role", and that
     // stopped being the right claim the moment `surgeon` and `ot_incharge` gained lab strings for
@@ -2097,6 +2111,8 @@ describe("seed:roles — README parity, cell for cell (V3)", () => {
     expect(readme).toContain(HISTORY_HORIZON_README_PROSE);
     // The 2026-09-19 OPD day report ruling's own sentence.
     expect(readme).toContain(OPD_DAY_REPORT_README_PROSE);
+    // The 2026-10-09 nickname-undo ruling's own sentence.
+    expect(readme).toContain(NICKNAME_UNDO_README_PROSE);
     // The 2026-10-06 paper-consultation ruling's own sentence.
     expect(readme).toContain(PAPER_CONSULT_README_PROSE);
     // Phase R's own sentence.

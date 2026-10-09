@@ -1593,6 +1593,17 @@ widens how far back the owner may look, never what they may look at, and the pat
 both is harmless: they are a lattice, not a switch, because roles combine and a role-to-horizon
 table would need a `max()` across a person's holdings that nobody writes the first time.
 
+**Nickname undo for the owner (owner ruling,
+2026-10-09).** `owner` gains `opd.masters.manage` — the owner's words: *"nickname-Undo permission for
+owner role: yes"*. The staff app's Learning page lists the medicine nicknames the suggestion system
+learned this week, and taking one back or putting it back (`POST /opd/consult/nicknames/:id/undo`,
+`…/restore`) has been guarded by this string since those routes shipped; the owner's role did not
+hold it, so the owner's own list carried no Undo. The gate on the routes is unchanged. The string
+also opens the rest of OPD masters to the owner (departments, rooms, doctors, schedules and leaves,
+look-alike pairs, voice settings, the vocabulary map) — accepted, because he is the owner. The
+Medical Superintendent's role does not gain it and reads the same list without the button. Seeding
+the grant switches nothing on: nickname learning stays behind its own switch.
+
 **The OPD day report (owner request and ruling,
 2026-09-19).** `front_office_supervisor`, `medical_superintendent` and `owner` gain
 `opd.reports.read`: the hospital's day department by department — appointments booked,
