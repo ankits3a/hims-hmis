@@ -198,6 +198,8 @@ export type WireSkipReason = (typeof SKIP_REASONS)[number];
 export type WireQueueEntryView = WireQueueEntry & {
   position: number | null;
   queueClass: OpdQueueClass | null;
+  /** Owner 2026-10-09 — a tele-call: its slot time sits where a token does, with a phone icon. No money mark ever. */
+  tele?: boolean;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     /** Owner ruling 2026-09-24 — an internal referral opened this visit. Optional: an older server sends none. */

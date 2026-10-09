@@ -266,11 +266,23 @@ export async function listAppointments(
 export async function sweepAppointmentNoShows(db: Db, now: Date = new Date()): Promise<number> {
   const today = istDate(now);
   const candidates = await db
-    .select({ id: opdAppointments.id })
+    .select({ id: opdAppointments.id, mode: opdAppointments.mode, advanceQuotedAt: opdAppointments.advanceQuotedAt })
     .from(opdAppointments)
     .where(and(eq(opdAppointments.status, "booked"), lt(opdAppointments.serviceDate, today)));
   let fired = 0;
   for (const candidate of candidates) {
+    /*
+      Owner 2026-10-09 — "'No answer' by patient: carried to a re-booked slot." A tele-call that was
+      PAID FOR and never opened (its day passed with the slot unreached by the job, or the doctor
+      away) is not a no-show: nobody failed to arrive. It lands on the desk's re-booking list with
+      its payment still on the row; an unpaid one is a no-show, as every booking is.
+    */
+    if (candidate.mode === "tele" && candidate.advanceQuotedAt !== null) {
+      await db.update(opdAppointments)
+        .set({ status: "needs_rebooking", updatedBy: "no-show-sweep", updatedAt: now })
+        .where(and(eq(opdAppointments.id, candidate.id), eq(opdAppointments.status, "booked")));
+      continue;
+    }
     const didFire = await withTx(db, async (tx) => {
       const updated = await tx
         .update(opdAppointments)

@@ -1,5 +1,5 @@
 {
-  "id": "52214cbe-0aec-4a63-b2d4-cc0f495fc6a4",
+  "id": "889a9436-d199-4369-82ce-80afeb1cf102",
   "prevId": "417b11e1-254c-4cc1-a65b-4e8eb9f0ab72",
   "version": "7",
   "dialect": "postgresql",
@@ -7049,6 +7049,44 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "consult_mode": {
+          "name": "consult_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_person'"
+        },
+        "tele_call_started_at": {
+          "name": "tele_call_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome": {
+          "name": "tele_outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_at": {
+          "name": "tele_outcome_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_by": {
+          "name": "tele_outcome_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_no_answer_count": {
+          "name": "tele_no_answer_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "paper_recheck_asked_by": {
           "name": "paper_recheck_asked_by",

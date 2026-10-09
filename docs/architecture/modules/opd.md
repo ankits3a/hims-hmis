@@ -102,6 +102,7 @@ Source: `apps/core/src/modules/opd/`
   - `queueSkipped`
   - `referralIssued`
   - `rxQrSignatureFailed`
+  - `teleVisitsOpened`
   - `visitAbandoned`
   - `visitMovedDepartment`
   - `visitOpened`

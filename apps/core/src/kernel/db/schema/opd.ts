@@ -560,6 +560,15 @@ export const opdEncounters = pgTable(
     patientAbsentAt: timestamp("patient_absent_at", { withTimezone: true }),
     patientAbsentRelation: text("patient_absent_relation"),
     patientAbsentName: text("patient_absent_name"),
+    // TELE-CALL (owner 2026-10-09). `consult_mode` says how the doctor sees this patient; a tele
+    // visit is opened by the system at its slot, once the desk has been paid, and is closed only
+    // after the doctor records that they spoke. The outcome columns are the doctor's two answers.
+    consultMode: text("consult_mode").notNull().default("in_person"), // 'in_person' | 'tele'
+    teleCallStartedAt: timestamp("tele_call_started_at", { withTimezone: true }),
+    teleOutcome: text("tele_outcome"), // null | 'spoke' | 'no_answer'
+    teleOutcomeAt: timestamp("tele_outcome_at", { withTimezone: true }),
+    teleOutcomeBy: text("tele_outcome_by"),
+    teleNoAnswerCount: integer("tele_no_answer_count").notNull().default(0),
     /**
      * App home round 2 (owner 2026-10-07, decision 0043) — "ASK THE DESK TO RE-CHECK". The doctor
      * read what the desk typed from their paper and a line is wrong or unclear: they send it back

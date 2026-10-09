@@ -1293,6 +1293,33 @@ describe("OpdConsult", () => {
     localStorage.clear();
   });
 
+  it("TELE-CALL (owner 2026-10-09): a tele row shows its slot time where the token sits, a phone icon named Tele-call and a blue outline — no word and no money mark", async () => {
+    setToken("tok-1");
+    const TELE = entry({
+      id: "qe-tele", seq: 4, encounterId: "enc-9", tokenNo: 9, position: 1, queueClass: 2, tele: true, kind: "appointment",
+      appointmentAt: "2026-08-18T05:50:00.000Z", feeStatus: null,
+      encounter: { id: "enc-9", patientId: "p-9", visitType: "new", dangerFlagged: false, status: "waiting" },
+      patient: summary("p-9", "HMS0000000090", "Meena Kumari"),
+    });
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
+      "GET /api/opd/me/doctor": DOCTOR,
+      "GET /api/opd/config": CONFIG,
+      "GET /api/opd/queues": { ...QUEUE_VIEW, ordered: [TELE, WAIT_A], current: null, counts: { waiting: 2, called: 0, inConsult: 0, done: 0, left: 0 } },
+    });
+    renderWithProviders(<OpdConsult />);
+    const row = await screen.findByTestId("queue-row-qe-tele");
+    expect(within(row).getByTestId("queue-slot-qe-tele")).toHaveTextContent("11:20");
+    expect(within(row).getByRole("img", { name: "Tele-call" })).toBeInTheDocument();
+    expect(within(row).queryByTestId("queue-token-qe-tele")).toBeNull();
+    expect(row.style.boxShadow).toContain("var(--blue)");
+    expect(row).not.toHaveTextContent(/tele|paid|unpaid|fee|₹/i);
+    const plain = screen.getByTestId("queue-row-qe-a");
+    expect(within(plain).getByTestId("queue-token-qe-a")).toHaveTextContent("6");
+    expect(within(plain).queryByRole("img", { name: "Tele-call" })).toBeNull();
+    expect(plain.style.boxShadow).not.toContain("var(--blue)");
+  });
+
   it("boots on GET /opd/me/doctor — a 404 is the domain answer 'not a doctor' and NO queue read follows; with a profile it renders the queue (position, token, class, danger, re-entry) with the called token highlighted plus the session control, and a queue.called frame refetches", async () => {
     // The clock is pinned so `todayIst()` — which both the screen and this test call — is TODAY.
     expect(todayIst()).toBe(TODAY);

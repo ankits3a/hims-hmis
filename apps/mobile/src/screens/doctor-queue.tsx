@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TeleMark } from "../counter/tele-mark";
 import { AppState, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -11,6 +12,7 @@ import {
   LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, completionBody, followUpChoices, isUnpaid, longestWait, parkedSince, rowName,
   unissuedRxRows, visitKind, waitMinutes,
 } from "../doctor/rules";
+import { teleSlotClock } from "../doctor/rules";
 import type { WireFollowUpConfig, WireQueueDoctor, WireQueueEntryView, WireQueuePatient, WireQueueView, WireSkipReason } from "../doctor/rules";
 import { useI18n } from "../i18n";
 import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
@@ -67,12 +69,15 @@ function Row({ e, t, now, right, below, tone, onPress, onHold, testID }: {
   const absent = e.encounter.patientAbsent ?? null;
   if (absent !== null) marks.push({ text: t("patientAbsent.tag", { who: guardianWho(t, absent) }), fg: "#8a5a10" });
   return (
-    <View testID={testID} style={[s.rowCard, tone === "next" && { backgroundColor: color.greenSoft, borderColor: color.greenLine }]}>
+    <View testID={testID} style={[s.rowCard, tone === "next" && { backgroundColor: color.greenSoft, borderColor: color.greenLine }, e.tele === true && s.teleRow]}>
       <Pressable testID={`${testID}-open`} accessibilityRole="button" onPress={onPress} onLongPress={onHold}
         accessibilityActions={onHold === undefined ? undefined : [{ name: "longpress", label: t("mobile.scan.more") }]}
         onAccessibilityAction={(ev) => { if (ev.nativeEvent.actionName === "longpress") onHold?.(); }}
         style={({ pressed }) => [s.row, pressed && { opacity: 0.7 }]}>
-        <Text style={s.rowTok}>{e.tokenNo}</Text>
+        {e.tele === true
+          // Owner 2026-10-09 — a tele-call: the slot time where the token sits, and a phone ICON (no word).
+          ? <Text testID={`${testID}-slot`} style={s.rowSlot}>{teleSlotClock(e.appointmentAt)}</Text>
+          : <Text style={s.rowTok}>{e.tokenNo}</Text>}
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.rowName} numberOfLines={1}>
             {name.text ?? t(name.sealed ? "mobile.doctor.sealed" : "mobile.doctor.noName")}
@@ -86,6 +91,7 @@ function Row({ e, t, now, right, below, tone, onPress, onHold, testID }: {
             ))}
           </View>
         </View>
+        {e.tele === true && <TeleMark testID={`${testID}-tele`} label={t("mobile.counter.appt.tele")} size={20} />}
         {right}
       </Pressable>
       {below !== undefined && <View style={s.rowBelow}>{below}</View>}
@@ -669,6 +675,8 @@ const s = StyleSheet.create({
   rowCard: { backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: TOUCH + 16, paddingVertical: 10, paddingHorizontal: 14 },
   rowBelow: { borderTopWidth: 1, borderTopColor: color.line2, paddingHorizontal: 14, paddingVertical: 4, flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.md },
+  rowSlot: { fontFamily: MONO, fontSize: 15, fontWeight: "700", color: color.blue, minWidth: 34 },
+  teleRow: { borderColor: color.blue, borderWidth: 2 },
   rowTok: { fontFamily: MONO, fontSize: 22, fontWeight: "700", color: color.ink, minWidth: 34 },
   rowName: { fontSize: 16, lineHeight: 21, fontWeight: "700", color: color.ink },
   rowDemo: { fontSize: 14, fontWeight: "500", color: color.dim },

@@ -36,6 +36,12 @@ export type WireQueueEntryView = {
   parkedAt?: string | null; parkedBy?: string | null;
   skipReason?: WireSkipReason | null; skipNote?: string | null; skippedAt?: string | null;
   position: number | null; queueClass: string | null;
+  /**
+   * Owner 2026-10-09 — a tele-call. The doctor's line shows its slot time (`appointmentAt`) where a
+   * token number sits, and a phone icon; nothing about money ever rides on such a row. Optional: an
+   * older server sends none.
+   */
+  tele?: boolean;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     referredFromEncounterId?: string | null; feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
@@ -283,4 +289,10 @@ export function shortDesignation(designation: string | null | undefined): string
 export function besideName(opts: { unit?: string | null; designation?: string | null }): string | null {
   const parts = [opts.unit ?? null, shortDesignation(opts.designation)].filter((x): x is string => x !== null && x !== "");
   return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** A tele-call's slot on the IST clock — "11:20" — the figure the doctor's line prints where a token sits. */
+export function teleSlotClock(iso: string | null | undefined): string {
+  if (iso == null) return "";
+  return new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 }

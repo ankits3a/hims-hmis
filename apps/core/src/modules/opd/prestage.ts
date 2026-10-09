@@ -143,8 +143,11 @@ function carryCandidatesFor(ageYears: number | null, last: { heightCm: number | 
  * fee policy, which is what stops a commissioning deployment painting every patient red.
  */
 export async function feeMarksFor(
-  db: Db, encounter: { id: string; visitType: string; feeBypassBy: string | null; feeBypassReason: string | null; feeBypassAt: Date | null },
+  db: Db, encounter: { id: string; visitType: string; feeBypassBy: string | null; feeBypassReason: string | null; feeBypassAt: Date | null; consultMode?: string },
 ): Promise<{ feeUnpaid: boolean; feeBypass: { by: string; reason: string; at: Date } | null }> {
+  // Owner 2026-10-09 — a tele visit exists only once it is paid for, and its bill is raised after the
+  // call: no screen is ever told it is unpaid.
+  if (encounter.consultMode === "tele") return { feeUnpaid: false, feeBypass: null };
   const status = (await encounterFeeStatuses(db, [encounter as never])).get(encounter.id);
   return {
     feeUnpaid: status === "unsettled",

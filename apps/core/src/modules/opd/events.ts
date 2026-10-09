@@ -135,6 +135,14 @@ export const queueFeeStatusChanged = defineEvent("queue.fee_status_changed", MOD
   ]),
 }));
 
+/**
+ * Owner 2026-10-09 — the minute job that opens covered tele-calls at their slot. COUNTS ONLY: no
+ * patient, no number, no money. Written only for a tick that found something due.
+ */
+export const teleVisitsOpened = defineEvent("tele.visits_opened", MODULE, z.object({
+  serviceDate: isoDate, due: z.number().int().nonnegative(), opened: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+}));
+
 export const patientCheckedIn = defineEvent("patient.checked_in", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
   kind: z.enum(["arrival", "re_entry"]), // family lifecycle, type in payload (§10.5)

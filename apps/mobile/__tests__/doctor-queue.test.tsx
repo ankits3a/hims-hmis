@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { DoctorQueue } from "../src/screens/doctor-queue";
@@ -136,6 +136,23 @@ describe("the doctor's OPD line on a phone", () => {
     expect(screen.getByTestId("line-vitals")).toHaveTextContent("2 still at vitals");
     // Only MY profile's line is asked for, for today.
     expect(w.of("GET /opd/queues").length).toBeGreaterThan(0);
+  });
+
+  it("TELE-CALL (owner 2026-10-09): the row shows its SLOT TIME where the token sits and a phone ICON named Tele-call — no word, and never a money mark", async () => {
+    const w = world(queue({ ordered: [
+      entry(13, { position: 1, tele: true, kind: "appointment", appointmentAt: "2026-10-06T05:50:00.000Z", feeStatus: null }, {}, { name: "Meena Kumari", administrativeGender: "female", dob: "1993-01-01T00:00:00.000Z" }),
+      entry(14, { position: 2 }, {}, { name: "Suresh Prasad" }),
+    ] }));
+    await mount(w.fetcher);
+    const tele = await screen.findByTestId("line-row-13");
+    expect(screen.getByTestId("line-row-13-slot")).toHaveTextContent("11:20");
+    expect(within(tele).getByLabelText("Tele-call").props).toMatchObject({ accessibilityRole: "image", testID: "line-row-13-tele" });
+    expect(tele).not.toHaveTextContent(/tele|paid|unpaid|fee|₹/i);
+    expect(tele).not.toHaveTextContent(/^13/);
+    // an ordinary row beside it is exactly what it was
+    expect(screen.getByTestId("line-row-14")).toHaveTextContent(/^14/);
+    expect(screen.queryByTestId("line-row-14-tele")).toBeNull();
+    expect(screen.queryByTestId("line-row-14-slot")).toBeNull();
   });
 
   it("a user with no doctor profile is told so (404 is an answer, not an error) and no line is asked for", async () => {

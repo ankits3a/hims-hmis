@@ -445,7 +445,13 @@ export async function startConsultation(
     throw new OpdError("encounter_state_conflict", `a consultation starts from waiting, not ${current.status}`);
   }
   // D8: every registered guard is consulted BEFORE any write. No guard registered ⇒ shipped behaviour.
-  for (const [key, guard] of consultStartGuards) {
+  /*
+    TELE-CALL (owner 2026-10-09). A tele visit EXISTS only because its appointment was covered at
+    the desk — an uncovered one opens no visit, so there is nothing here to hold and nothing to
+    waive. Its bill is raised when the doctor has spoken to the patient (`tele.ts`), so the
+    pay-before-consult guards, which ask for a settled invoice, are not asked of it.
+  */
+  for (const [key, guard] of current.consultMode === "tele" ? [] : consultStartGuards) {
     const verdict = await guard(db, current);
     if (!verdict.ok) {
       /*

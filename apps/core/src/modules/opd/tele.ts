@@ -1,10 +1,13 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import { opdAppointments } from "../../kernel/db/schema";
 import { consultFeeAt, recordReceipt } from "../billing";
 import { listMergedLoserIds, resolvePatientId } from "../patients";
-import { visitTypeIn } from "./encounters";
+import { appendEvent } from "../../kernel/events/append";
+import { openTeleVisitInTx, TELE_OPEN_ACTOR, visitTypeIn } from "./encounters";
+import { teleVisitsOpened } from "./events";
+import { istDate } from "./time";
 import { OpdError } from "./errors";
 import type { AppointmentRow } from "./appointments";
 import type { Db } from "../../kernel/db/client";
@@ -88,6 +91,8 @@ export async function teleDeskMarks(db: Db, rows: readonly AppointmentRow[]): Pr
 export type TeleTender = { mode: "cash" | "upi" | "card"; amountPaise: number; refText?: string };
 export type TeleAdvanceInput = { amountPaise: number; tenders?: TeleTender[] };
 export type TeleAdvanceResult = {
+  /** True when the slot had already been reached and this payment opened the visit in the same request. */
+  opened: boolean;
   appointment: AppointmentRow;
   amountPaise: number;
   receiptId: string | null;
@@ -107,7 +112,7 @@ export async function recordTeleAdvance(
 ): Promise<TeleAdvanceResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   await loadTele(db, appointmentId); // unknown / not tele, before a lock is taken
-  return withTx(db, async (tx) => {
+  const paid = await withTx(db, async (tx) => {
     const a = (await tx.select().from(opdAppointments).where(eq(opdAppointments.id, appointmentId)).for("update"))[0]!;
     if (teleCovered(a)) throw new OpdError("tele_advance_state_conflict", "This tele-call is already paid for", { receiptId: a.advanceReceiptId });
     if (!PAYABLE.includes(a.status)) throw new OpdError("tele_advance_state_conflict", `a ${a.status} appointment cannot be paid for`);
@@ -137,6 +142,102 @@ export async function recordTeleAdvance(
       .set({ advanceReceiptId: receipt?.receiptId ?? null, advanceQuotePaise: quotePaise, advanceQuotedAt: now, updatedBy: actor.id, updatedAt: now })
       .where(and(eq(opdAppointments.id, appointmentId), isNull(opdAppointments.advanceQuotedAt)))
       .returning();
-    return { appointment: stamped[0]!, amountPaise: quotePaise, receiptId: receipt?.receiptId ?? null, receiptNo: receipt?.receiptNo ?? null };
+    return { opened: false, appointment: stamped[0]!, amountPaise: quotePaise, receiptId: receipt?.receiptId ?? null, receiptNo: receipt?.receiptNo ?? null };
   });
+  /*
+    A PAYMENT AFTER THE SLOT OPENS THE VISIT IN THIS REQUEST — the patient is on the telephone to the
+    desk now, and a minute's wait for the job is a minute the doctor's line is wrong. A failure here
+    costs nothing: the money is in, the appointment is covered, and the job opens it on its next tick.
+  */
+  let opened = false;
+  try { opened = (await openTeleVisitFor(db, appointmentId, now)).opened; } catch { opened = false; }
+  if (!opened) return paid;
+  const fresh = (await db.select().from(opdAppointments).where(eq(opdAppointments.id, appointmentId)))[0]!;
+  return { ...paid, opened: true, appointment: fresh };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// OPEN AT THE SLOT — the visit exists only when the slot has come AND the desk has been paid
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Due = a tele-call still `booked`, for today, whose slot has been reached, and which is covered. */
+function dueNow(a: AppointmentRow, now: Date): boolean {
+  return a.mode === "tele" && a.status === "booked" && a.serviceDate === istDate(now)
+    && a.slotStart.getTime() <= now.getTime() && teleCovered(a);
+}
+
+/**
+ * Opens ONE due tele-call's visit. IDEMPOTENT: the appointment is claimed `booked → checked_in`
+ * first, so a second caller (the job racing the desk's payment) claims nothing and opens nothing.
+ * An appointment that is not due — unpaid, early, another day, already opened — answers
+ * `opened: false` and writes nothing: it is absent from every doctor read by construction.
+ */
+export async function openTeleVisitFor(db: Db, appointmentId: string, now: Date = new Date()): Promise<{ opened: boolean; encounterId: string | null }> {
+  const a = (await db.select().from(opdAppointments).where(eq(opdAppointments.id, appointmentId)))[0];
+  if (!a || !dueNow(a, now)) return { opened: false, encounterId: null };
+  const canonical = await resolvePatientId(db, a.patientId);
+  if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${a.patientId}`);
+  const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
+  return withTx(db, async (tx) => {
+    const claimed = await tx.update(opdAppointments)
+      .set({ status: "checked_in", updatedBy: TELE_OPEN_ACTOR.id, updatedAt: now })
+      .where(and(eq(opdAppointments.id, appointmentId), eq(opdAppointments.status, "booked"), isNotNull(opdAppointments.advanceQuotedAt)))
+      .returning({ id: opdAppointments.id });
+    if (claimed.length === 0) return { opened: false, encounterId: null };
+    const result = await openTeleVisitInTx(tx, {
+      patientId: canonical, departmentId: a.departmentId, doctorId: a.doctorId,
+      appointment: { id: appointmentId, slotStart: a.slotStart }, chainIds,
+    }, now);
+    await tx.update(opdAppointments).set({ encounterId: result.encounter.id }).where(eq(opdAppointments.id, appointmentId));
+    return { opened: true, encounterId: result.encounter.id };
+  });
+}
+
+/**
+ * The minute job. Each due appointment is opened in its OWN transaction, so one that cannot open (a
+ * doctor made inactive, a department closed) does not stop the rest; it stays `booked` and is tried
+ * again next tick, and the nightly sweep sends a paid one that never opened to the re-booking list.
+ * The summary event carries counts only, and is written only for a tick that found something due.
+ */
+export async function openDueTeleVisits(db: Db, now: Date = new Date()): Promise<{ due: number; opened: number; failed: number }> {
+  const serviceDate = istDate(now);
+  /*
+    NOTHING TO PAY NEEDS NOBODY. A due tele-call the desk has not touched is priced here; when the
+    answer is ₹0 — a follow-up inside the doctor's free window, or consultation switched off — it is
+    covered by that answer and opens like any other. One that costs anything is left exactly as it
+    is: unpaid, and so absent. A quote that cannot be made is not a zero.
+  */
+  const untouched = await db.select().from(opdAppointments)
+    .where(and(
+      eq(opdAppointments.mode, "tele"), eq(opdAppointments.status, "booked"), eq(opdAppointments.serviceDate, serviceDate),
+      lte(opdAppointments.slotStart, now), isNull(opdAppointments.advanceQuotedAt),
+    ));
+  for (const a of untouched) {
+    let paise: number | null = null;
+    try { paise = await slotQuotePaise(db, a); } catch { paise = null; }
+    if (paise !== 0) continue;
+    await db.update(opdAppointments)
+      .set({ advanceQuotePaise: 0, advanceQuotedAt: now, updatedBy: TELE_OPEN_ACTOR.id, updatedAt: now })
+      .where(and(eq(opdAppointments.id, a.id), eq(opdAppointments.status, "booked"), isNull(opdAppointments.advanceQuotedAt)));
+  }
+  const due = await db.select({ id: opdAppointments.id }).from(opdAppointments)
+    .where(and(
+      eq(opdAppointments.mode, "tele"), eq(opdAppointments.status, "booked"), eq(opdAppointments.serviceDate, serviceDate),
+      lte(opdAppointments.slotStart, now), isNotNull(opdAppointments.advanceQuotedAt),
+    ))
+    .orderBy(asc(opdAppointments.slotStart));
+  let opened = 0; let failed = 0;
+  for (const row of due) {
+    try {
+      if ((await openTeleVisitFor(db, row.id, now)).opened) opened += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  if (due.length > 0) {
+    await withTx(db, (tx) => appendEvent(tx, teleVisitsOpened.make({
+      actor: TELE_OPEN_ACTOR, payload: { serviceDate, due: due.length, opened, failed },
+    })));
+  }
+  return { due: due.length, opened, failed };
 }

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TeleMark } from "../components/tele-mark";
+import { slotClock } from "../lib/appointment-view";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -2369,12 +2371,17 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             : mode === "left"
               ? { opacity: 0.72 }
               : {}),
+        // Owner 2026-10-09 — a tele-call wears a blue outline (the approved board's frame 3); a shape, not only a colour.
+        ...(e.tele === true ? { boxShadow: "inset 0 0 0 2px var(--blue)", borderRadius: 6 } : {}),
       }}
     >
       <span data-testid={`queue-position-${e.id}`} className="mo" style={{ fontSize: 10, color: "var(--faint)" }}>
         {e.position === null ? "—" : t("opdConsult.position", { n: e.position })}
       </span>
-      <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
+      {e.tele === true
+        // The slot time where the token sits, and a phone ICON named "Tele-call" — no word.
+        ? <><span data-testid={`queue-slot-${e.id}`} className="mo" style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>{slotClock(e.appointmentAt ?? "")}</span><TeleMark mode="tele" size={15} /></>
+        : <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>}
       <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
       {/* the danger mark sits WITH the badges and says what it is (owner's walk: a lone ⚠ read as nothing) */}
       {(e.danger || e.encounter.dangerFlagged) && (

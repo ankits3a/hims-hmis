@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
@@ -170,6 +170,12 @@ export type QueueEntryView = QueueEntryRow & {
    * unknown, rendered as nothing.
    */
   feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
+  /**
+   * Owner 2026-10-09 — a tele-call: the doctor's line shows its SLOT TIME (`appointmentAt`) where a
+   * token number sits, and a phone icon. A tele row carries NO money mark of any kind — it is in
+   * this view only because it is covered, and `feeStatus` is always `null` on it.
+   */
+  tele: boolean;
 };
 export type QueueView = {
   session: SessionRow; doctor: DoctorRow; ordered: QueueEntryView[]; current: QueueEntryView | null; inConsult: QueueEntryView[];
@@ -235,7 +241,8 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
         patientAbsent: patientAbsentOf(encounter),
       },
       patient: summaryByPatient.get(encounter.patientId) ?? null,
-      feeStatus: feeStatuses.get(encounter.id) ?? null,
+      feeStatus: encounter.consultMode === "tele" ? null : feeStatuses.get(encounter.id) ?? null,
+      tele: encounter.consultMode === "tele",
     };
   };
 
@@ -534,7 +541,8 @@ export async function boardSnapshot(db: Db, serviceDate: string, roomIds?: strin
       ne(opdQueueSessions.status, "closed"),
       roomIds === undefined ? undefined : inArray(opdQueueSessions.roomId, roomIds),
     ));
-  const entriesBySession = await liveEntriesBySession(db, rows.map((r) => r.session.id));
+  // Owner 2026-10-09 — a tele-call is nobody in the hall: the public board neither counts nor announces it.
+  const entriesBySession = await liveEntriesBySession(db, rows.map((r) => r.session.id), { withoutTele: true });
   /*
     ONE batched hold for the whole board rather than one per session: the TV in the hall polls this,
     and `encounterFeeStatuses` costs the same fixed handful of queries for four hundred tokens as
@@ -771,12 +779,17 @@ export async function queueFeeStatusHook(
 }
 
 /** The live rows of many sessions in one query, grouped. */
-async function liveEntriesBySession(db: Db, sessionIds: string[]): Promise<Map<string, QueueEntryRow[]>> {
+async function liveEntriesBySession(db: Db, sessionIds: string[], opts: { withoutTele?: boolean } = {}): Promise<Map<string, QueueEntryRow[]>> {
   const grouped = new Map<string, QueueEntryRow[]>();
   if (sessionIds.length === 0) return grouped;
   const rows = await db
     .select().from(opdQueueEntries)
-    .where(and(inArray(opdQueueEntries.sessionId, sessionIds), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
+    .where(and(
+      inArray(opdQueueEntries.sessionId, sessionIds), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES]),
+      opts.withoutTele === true
+        ? notInArray(opdQueueEntries.encounterId, db.select({ id: opdEncounters.id }).from(opdEncounters).where(eq(opdEncounters.consultMode, "tele")))
+        : undefined,
+    ))
     .orderBy(asc(opdQueueEntries.seq));
   for (const row of rows) {
     const list = grouped.get(row.sessionId);
