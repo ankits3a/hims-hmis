@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { attendanceTodaySummary } from "../src/attendance/api";
 import { AttendanceManage } from "../src/screens/attendance-manage";
 import { AttendancePerson } from "../src/screens/attendance-person";
+import StaffPage from "../app/attendance-staff";
 import { mount, nowMs, server } from "../testing/attendance";
 
 jest.mock("expo-secure-store", () => {
@@ -16,7 +17,13 @@ jest.mock("expo-secure-store", () => {
 jest.mock("expo-local-authentication", () => ({ hasHardwareAsync: jest.fn(async () => false), isEnrolledAsync: jest.fn(async () => false), authenticateAsync: jest.fn(async () => ({ success: true })) }));
 jest.mock("expo-haptics", () => ({ notificationAsync: jest.fn(async () => undefined), NotificationFeedbackType: { Success: "success" } }));
 const mockPush = jest.fn();
-jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush, back: jest.fn() }) }));
+const mockRedirect = jest.fn();
+let mockParams: Record<string, string> = {};
+jest.mock("expo-router", () => ({
+  useRouter: () => ({ push: mockPush, back: jest.fn() }),
+  useLocalSearchParams: () => mockParams,
+  Redirect: ({ href }: { href: string }) => { mockRedirect(href); return null; },
+}));
 
 const ALL = ["attendance.all.read"];
 const row = (pin: string, name: string, dept: string, status: string | null, firstIn: string | null, hasLogin = true) =>
@@ -152,6 +159,31 @@ describe("staff attendance for those who may see it (board frames 4 and 6)", () 
     expect(s.keys().filter((k) => k.startsWith("GET /attendance"))).toEqual(["GET /attendance/team/today"]);
     fireEvent.press(screen.getByTestId("att-member-u2"));
     expect(mockPush).toHaveBeenCalledWith({ pathname: "/attendance-person", params: { pin: "202", name: "Dr. Anand Rao" } });
+  });
+
+  it.each([[{}], [{ tab: "requests" }], [{ tab: "today" }]])("a PLAIN member of staff opening the manager route %j (an old link) is sent home and NO manager request is made", async (params: Record<string, string>) => {
+    mockRedirect.mockClear();
+    mockParams = params;
+    const s = server(["roster.read"], { "GET /attendance/today": { status: 200, body: TODAY_LIST }, "GET /attendance/requests": { status: 200, body: { status: "open", requests: [] } } });
+    await mount(s.fetcher, <StaffPage />);
+    await waitFor(() => expect(mockRedirect).toHaveBeenCalledWith("/"));
+    expect(screen.queryByTestId("attendance-manage")).toBeNull();
+    expect(s.keys().filter((k) => k.includes(" /attendance"))).toEqual([]);
+    mockParams = {};
+  });
+
+  it("the route lets a committee member in (requests tab from a notice) and a head in with lead=1", async () => {
+    mockParams = { tab: "requests" };
+    const s = server(ALL, { "GET /attendance/requests": { status: 200, body: { status: "open", requests: [queue("r1")] } } });
+    const r = await mount(s.fetcher, <StaffPage />);
+    expect(await screen.findByTestId("att-request-r1")).toBeTruthy();
+    await r.unmount();
+    mockParams = { lead: "1" };
+    const h = server(["roster.read"], { "GET /attendance/team/today": { status: 200, body: { date: "2026-10-14", summary: { total: 0, linked: 0 }, members: [] } } });
+    await mount(h.fetcher, <StaffPage />);
+    expect(await screen.findByTestId("att-team-list")).toBeTruthy();
+    expect(h.keys().filter((k) => k.startsWith("GET /attendance"))).toEqual(["GET /attendance/team/today"]);
+    mockParams = {};
   });
 
   it("somebody who may see everyone AND leads a team gets all three tabs", async () => {
