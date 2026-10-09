@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { TeleMark } from "../components/tele-mark";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, FormProvider, Controller } from "react-hook-form";
@@ -1524,7 +1525,7 @@ export function PatientDetail(): React.ReactElement {
                     {upcoming.map((a) => (
                       <div key={a.id} data-testid="upcoming-row" style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{ flexGrow: 1, minWidth: 0 }}>
-                          <b>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
+                          <b>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b> <TeleMark mode={a.mode} />
                           <div className="s">
                             {[doctorNameOf(a.doctorId), departmentNameOf(a.departmentId), a.status === "needs_rebooking" ? t("profile.upcomingRebook") : null].filter(Boolean).join(" · ")}
                           </div>
@@ -1548,6 +1549,7 @@ export function PatientDetail(): React.ReactElement {
                             style={{ display: "flex", alignItems: "baseline", gap: 10, width: "100%", padding: "8px 0", background: "none", border: 0, textAlign: "left", cursor: "pointer" }}
                           >
                             <b className="mo" style={{ fontSize: 12.5 }}>{dmy(a.serviceDate.slice(0, 10))} · {slotClock(a.slotStart)}</b>
+                            <TeleMark mode={a.mode} />
                             <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{[doctorNameOf(a.doctorId), departmentNameOf(a.departmentId)].filter(Boolean).join(" · ")}</span>
                             <span className={a.status === "cancelled" || a.status === "no_show" ? "pill rd" : a.status === "checked_in" ? "pill on" : "pill"} style={{ height: 20 }}>{t(`opdAppt.status.${a.status}`)}</span>
                             <span aria-hidden style={{ color: "var(--faint)", fontSize: 11 }}>{openAppt === a.id ? "▴" : "▾"}</span>

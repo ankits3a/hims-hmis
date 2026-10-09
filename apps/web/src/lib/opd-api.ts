@@ -124,6 +124,8 @@ export type WireAppointment = {
   source: "desk" | "phone"; note: string | null; encounterId: string | null;
   rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null; leaveId: string | null;
   bookedBy: string; bookedAt: string; updatedBy: string; updatedAt: string;
+  /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
+  mode?: "in_person" | "tele"; telePhone?: string | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: WirePatientSummary | null;
 };

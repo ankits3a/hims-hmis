@@ -200,6 +200,13 @@
 .pp .tbl th { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
 .pp .tbl td { padding: 9px 12px; border-top: 1px solid var(--line2); vertical-align: middle; }
 .pp .tbl tbody tr:hover { background: var(--wash); }
+/* Tele-call (owner 2026-10-09): the two-way "how" switch on the booking confirmation. */
+.pp .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pp .seg button {
+  display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); font-size: 13px; font-weight: 600; white-space: nowrap;
+}
+.pp .seg button[aria-checked="true"] { background: var(--green); border-color: var(--green); color: #f2faf6; }
 .pp .confirm-list { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; align-items: baseline; margin: 4px 0 8px; font-size: 13.5px; }
 
 .d1 .lock { width: 11px; height: 11px; flex-shrink: 0; }

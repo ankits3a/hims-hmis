@@ -874,6 +874,11 @@
     "slotBooked": "बुक",
     "confirmTitle": "यह बुकिंग पक्की करें",
     "confirmBooking": "बुकिंग पक्की करें",
+    "how": "कैसे",
+    "inPerson": "अस्पताल आकर",
+    "tele": "टेली-कॉल",
+    "telePhone": "मरीज़ का फ़ोन",
+    "telePhoneHint": "10 अंकों का मोबाइल नंबर",
     "status": {
       "booked": "बुक",
       "checked_in": "चेक-इन हो गया",

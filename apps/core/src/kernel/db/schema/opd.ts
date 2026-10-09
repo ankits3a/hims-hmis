@@ -196,6 +196,12 @@ export const opdAppointments = pgTable(
     rescheduledFromId: text("rescheduled_from_id"),
     cancelReason: text("cancel_reason"),
     leaveId: text("leave_id"), // set when needs_rebooking was caused by a leave (cancelling that leave restores 'booked')
+    // Owner 2026-10-09 — HOW the patient is seen, never who booked it (that is `source`): a tele-call
+    // is booked at the counter for a future slot and the doctor rings the number kept beside it.
+    // The number is the one to ring for THIS appointment (10 digits, normalised by the server); the
+    // patient's own record is not rewritten by a booking.
+    mode: text("mode").notNull().default("in_person"), // 'in_person' | 'tele'
+    telePhone: text("tele_phone"),
     bookedBy: text("booked_by").notNull(),
     bookedAt: timestamp("booked_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
@@ -220,6 +226,8 @@ export const opdAppointments = pgTable(
     index("opd_appointments_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_appointments_patient_idx").on(t.patientId),
     index("opd_appointments_status_idx").on(t.status),
+    check("opd_appointments_mode_ck", sql`${t.mode} in ('in_person', 'tele')`),
+    check("opd_appointments_tele_phone_ck", sql`${t.mode} <> 'tele' or ${t.telePhone} is not null`),
   ],
 );
 

@@ -874,6 +874,11 @@
     "slotBooked": "Booked",
     "confirmTitle": "Confirm this booking",
     "confirmBooking": "Confirm booking",
+    "how": "How",
+    "inPerson": "In person",
+    "tele": "Tele-call",
+    "telePhone": "Patient's phone",
+    "telePhoneHint": "10-digit mobile number",
     "status": {
       "booked": "Booked",
       "checked_in": "Checked in",

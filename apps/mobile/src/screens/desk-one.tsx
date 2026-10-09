@@ -1064,7 +1064,7 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
       )}
       {booking !== null && person !== null && (
         <BookAppointment
-          api={api} person={{ id: person.id, name: person.name }} today={today} departments={departments} labelOf={labelOf} terms={terms}
+          api={api} person={{ id: person.id, name: person.name, phone: person.phone }} today={today} departments={departments} labelOf={labelOf} terms={terms}
           moving={booking.moving} preset={booking.preset} onDone={onBooked} onClose={() => setBooking(null)}
         />
       )}

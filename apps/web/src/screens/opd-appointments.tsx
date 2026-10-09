@@ -7,7 +7,7 @@ import { api } from "../lib/api";
 import { fetchOpdUnits } from "../lib/roster-api";
 import { useDoctorLabel } from "../lib/use-doctor-label";
 import { listDepartments, listDoctors, listPatientAppointments, listRooms, opdErrorMessage, todayIst } from "../lib/opd-api";
-import { upcomingOf } from "../lib/appointment-view";
+import { telePhoneOf, upcomingOf } from "../lib/appointment-view";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { useCopilot } from "../lib/use-copilot";
@@ -19,6 +19,7 @@ import type { PatientPickerHit } from "../components/patient-picker";
 import { TokenSlip } from "../components/token-slip";
 import type { TokenSlipProps } from "../components/token-slip";
 import { PaperScreen } from "../components/paper-screen";
+import { TeleGlyph, TeleMark } from "../components/tele-mark";
 import type { QrCardData } from "../components/qr-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
@@ -289,6 +290,7 @@ function PatientBookings({
       {items.map((apt) => (
         <div key={apt.id} data-testid="patient-booking-row" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginTop: 8 }}>
           <span className="mo" style={{ fontSize: 13, fontWeight: 700 }}>{apt.serviceDate.slice(0, 10)} · {fmtIst(apt.slotStart)}</span>
+          <TeleMark mode={apt.mode} />
           <span style={{ fontSize: 12.5, color: "var(--dim)", flexGrow: 1, minWidth: 0 }}>{doctors.find((d) => d.id === apt.doctorId)?.displayName ?? ""}</span>
           <StatusBadge status={apt.status} />
           <RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} />
@@ -359,13 +361,24 @@ function DayTab({
   */
   const [pending, setPending] = useState<WireSlot | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+    TELE-CALL (owner 2026-10-09). The confirmation asks HOW: in person, as every booking was, or a
+    tele-call, which needs the number the doctor will ring. Each confirmation opens on In person
+    with the patient's recorded mobile waiting in the field; the server judges the number again.
+  */
+  const [mode, setMode] = useState<"in_person" | "tele">("in_person");
+  const [telePhone, setTelePhone] = useState("");
+  const teleReady = mode !== "tele" || telePhoneOf(telePhone) !== null;
 
   const book = async (slot: WireSlot): Promise<void> => {
     if (patient === null || doctorId === "") return;
     setBookError(null);
     setBusy(true);
     try {
-      await api("POST", "/opd/appointments", { patientId: patient.id, doctorId, slotStart: slot.start });
+      await api("POST", "/opd/appointments", {
+        patientId: patient.id, doctorId, slotStart: slot.start,
+        ...(mode === "tele" ? { mode: "tele", telePhone: telePhoneOf(telePhone) ?? telePhone } : {}),
+      });
       /*
         LOGGED AFTER THE SERVER ANSWERED, never before: a log that narrates intentions lies the
         moment one is refused. The refusal below is logged for the same reason — it is a fact.
@@ -432,7 +445,7 @@ function DayTab({
           <SlotGrid
             slots={slots.data.slots}
             locked={patient === null}
-            onPick={(slot) => { setBookError(null); setPending(slot); }}
+            onPick={(slot) => { setBookError(null); setMode("in_person"); setTelePhone(telePhoneOf(patient?.phone) ?? ""); setPending(slot); }}
           />
         )}
       </div>
@@ -459,7 +472,7 @@ function DayTab({
                       <span className="block">{patientLabel(apt.patient)}</span>
                       <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
                     </td>
-                    <td className="mo">{fmtIst(apt.slotStart)}</td>
+                    <td className="mo" style={{ whiteSpace: "nowrap" }}>{fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} /></td>
                     <td><StatusBadge status={apt.status} /></td>
                     <td>
                       <div className="flex flex-wrap gap-2">
@@ -503,10 +516,33 @@ function DayTab({
               <dd className="mo">{fmtIst(pending.start)}</dd>
             </dl>
           )}
+          <div>
+            <span className="tag" id="book-how">{t("opdAppt.how")}</span>
+            <div className="seg" role="radiogroup" aria-labelledby="book-how" style={{ marginTop: 6 }}>
+              <button type="button" role="radio" aria-checked={mode === "in_person"} data-testid="mode-in_person" disabled={busy} onClick={() => { setMode("in_person"); }}>
+                {t("opdAppt.inPerson")}
+              </button>
+              <button type="button" role="radio" aria-checked={mode === "tele"} data-testid="mode-tele" disabled={busy} onClick={() => { setMode("tele"); }}>
+                <TeleGlyph /> {t("opdAppt.tele")}
+              </button>
+            </div>
+            {mode === "tele" && (
+              <div style={{ marginTop: 10 }}>
+                <label className="tag" htmlFor="book-tele-phone" style={{ display: "block", marginBottom: 5 }}>{t("opdAppt.telePhone")}</label>
+                <input
+                  id="book-tele-phone" className="in mo" type="tel" inputMode="numeric" autoComplete="off" maxLength={16}
+                  data-testid="book-tele-phone" value={telePhone} disabled={busy}
+                  aria-invalid={!teleReady} aria-describedby={teleReady ? undefined : "book-tele-phone-hint"}
+                  onChange={(e) => { setTelePhone(e.target.value); }}
+                />
+                {!teleReady && <p id="book-tele-phone-hint" style={{ fontSize: 12, color: "var(--dim)", margin: "5px 0 0" }}>{t("opdAppt.telePhoneHint")}</p>}
+              </div>
+            )}
+          </div>
           <ErrorLine message={bookError} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button type="button" className="sec" disabled={busy} onClick={() => { setPending(null); }}>{t("opdAppt.cancel")}</button>
-            <button type="button" className="pri" disabled={busy} onClick={() => { if (pending !== null) void book(pending); }}>
+            <button type="button" className="pri" disabled={busy || !teleReady} onClick={() => { if (pending !== null) void book(pending); }}>
               {t("opdAppt.confirmBooking")}
             </button>
           </div>
@@ -558,7 +594,7 @@ function NeedsRebookingTab(
                     <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
                   </td>
                   <td>{doctorName(apt.doctorId)}</td>
-                  <td className="mo">{fmtIst(apt.slotStart)}</td>
+                  <td className="mo" style={{ whiteSpace: "nowrap" }}>{fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} /></td>
                   <td><RescheduleDialog appointment={apt} queryClient={queryClient} onNote={onNote} /></td>
                 </tr>
               ))}

@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { patientAbsentBody } from "@hmis/contracts";
+import { APPOINTMENT_MODES, patientAbsentBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -9,7 +9,7 @@ import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries, PatientError } from "../patients";
 import { findTodaysVisits, requestSlipRetake, slipDay, slipReadback } from "./slips";
 import type { SlipDay, SlipReadback } from "./slips";
-import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
+import { appointmentForList, bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
   abandonVisit, counterState, deskComplaintFor, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
   patientTimeline, reEnterVisit, reclassifyVisit,
@@ -115,6 +115,9 @@ const appointmentCreateBody = z.object({
   slotStart: z.coerce.date(),
   source: z.enum(["desk", "phone"]).optional(),
   note: z.string().max(1000).optional(),
+  // Owner 2026-10-09 — tele-call. The service judges the number (and names the refusal).
+  mode: z.enum(APPOINTMENT_MODES).optional(),
+  telePhone: z.string().max(40).optional(),
 });
 const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
@@ -961,6 +964,9 @@ export class OpdVisitsController {
       withContact === undefined ? {} : { withContact },
     );
     const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
-    return items.map((a) => ({ ...a, patient: byPatient.get(a.patientId) ?? null }));
+    return items.map((a) => {
+      const patient = byPatient.get(a.patientId) ?? null;
+      return { ...appointmentForList(a, patient, withContact !== undefined), patient };
+    });
   }
 }

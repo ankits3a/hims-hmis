@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { DeskOne } from "../src/screens/desk-one";
@@ -483,5 +483,93 @@ describe("appointments on the phone's Desk One", () => {
     expect(await screen.findByTestId("appt-a2")).toHaveTextContent(/आज · 09:30/);
     expect(screen.getByTestId("appt-checkin-a2")).toHaveTextContent("चेक-इन — मरीज़ आ गए हैं");
     expect(screen.getByTestId("person-book")).toHaveTextContent("अपॉइंटमेंट बुक करें");
+  });
+
+  // ——— tele-call, slice 1 (owner 2026-10-09) ———
+
+  it("TELE-CALL: the switch opens on In person; Tele-call asks for the patient's phone on a number pad (pre-filled when known) and Book waits for a real number", async () => {
+    const s = world({ routes: { "POST /opd/appointments": () => ({ status: 201, body: { appointment: appt({ mode: "tele", telePhone: "9876543021" }) } }) } });
+    await mount(s.fetcher);
+    await findAndHold();
+    await toConfirm();
+    expect(screen.getByTestId("book-mode-in_person").props.accessibilityState).toMatchObject({ checked: true });
+    expect(screen.getByTestId("book-mode-tele").props.accessibilityState).toMatchObject({ checked: false });
+    expect(screen.getByTestId("book-mode-tele")).toHaveTextContent("Tele-call");
+    expect(screen.queryByTestId("book-tele-phone")).toBeNull();
+
+    await fireEvent.press(screen.getByTestId("book-mode-tele"));
+    const phone = await screen.findByTestId("book-tele-phone");
+    expect(phone.props.value).toBe("9876543210"); // the patient's recorded mobile
+    expect(phone.props.keyboardType).toBe("number-pad");
+    expect(phone.props.accessibilityLabel).toBe("Patient's phone");
+    // Nothing about money is said on a tele-call booking in this slice.
+    expect(screen.queryByTestId("book-fee")).toBeNull();
+
+    await fireEvent.changeText(phone, "");
+    expect(screen.getByTestId("book-go").props.accessibilityState).toMatchObject({ disabled: true });
+    await fireEvent.press(screen.getByTestId("book-go"));
+    await fireEvent.changeText(screen.getByTestId("book-tele-phone"), "98765 4302");
+    expect(screen.getByTestId("book-go").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(s.of("POST /opd/appointments")).toHaveLength(0);
+
+    await fireEvent.changeText(screen.getByTestId("book-tele-phone"), "+91 98765 43021");
+    expect(screen.getByTestId("book-go").props.accessibilityState).toMatchObject({ disabled: false });
+    await fireEvent.press(screen.getByTestId("book-go"));
+    expect(await screen.findByTestId("book-done-word")).toHaveTextContent("Booked");
+    expect(s.of("POST /opd/appointments")[0]!.body).toEqual({ patientId: "p1", doctorId: "d2", slotStart: at(D1, "04:00"), mode: "tele", telePhone: "9876543021" });
+    expect(within(screen.getByTestId("book-done")).getByLabelText("Tele-call")).toBeTruthy();
+    expect(screen.queryByTestId("book-done-fee")).toBeNull();
+  });
+
+  it("TELE-CALL: back on In person the empty phone no longer blocks, and the booking sent is the one it always was", async () => {
+    const s = world({ routes: { "POST /opd/appointments": () => ({ status: 201, body: { appointment: appt() } }) } });
+    await mount(s.fetcher);
+    await findAndHold();
+    await toConfirm();
+    await fireEvent.press(screen.getByTestId("book-mode-tele"));
+    await fireEvent.changeText(await screen.findByTestId("book-tele-phone"), "");
+    await fireEvent.press(screen.getByTestId("book-mode-in_person"));
+    expect(screen.queryByTestId("book-tele-phone")).toBeNull();
+    expect(screen.getByTestId("book-fee")).toBeTruthy();
+    await fireEvent.press(screen.getByTestId("book-go"));
+    expect(await screen.findByTestId("book-done-word")).toHaveTextContent("Booked");
+    expect(s.of("POST /opd/appointments")[0]!.body).toEqual({ patientId: "p1", doctorId: "d2", slotStart: at(D1, "04:00") });
+    expect(screen.getByTestId("book-done-fee")).toBeTruthy();
+  });
+
+  it("TELE-CALL: the patient's bookings and the desk's day mark a tele-call with an ICON named Tele-call — no word, and nothing on an in-person row", async () => {
+    const ahead = new Date(Date.now() + 2 * 3_600_000);
+    const mk = (id: string, name: string, over: Record<string, unknown>) => appt({
+      id, serviceDate: TODAY, slotStart: ahead.toISOString(), slotEnd: new Date(ahead.getTime() + 15 * 60_000).toISOString(),
+      patient: { id: `p-${id}`, uhid: `U-${id}`, name, alias: null, restricted: false }, patientId: `p-${id}`, ...over,
+    });
+    const s = world({
+      theirs: () => [appt({ id: "a1", mode: "tele", telePhone: null }), appt({ id: "a3", mode: "in_person", telePhone: null, serviceDate: D3, slotStart: at(D3, "04:00") })],
+      day: () => [mk("b1", "Meena Kumari", { mode: "tele" }), mk("b2", "Suresh Prasad", { mode: "in_person", doctorId: "d3" })],
+    });
+    await mount(s.fetcher);
+    await fireEvent.press(await screen.findByTestId("appts-open"));
+    const tele = await screen.findByTestId("desk-appt-b1");
+    expect(within(tele).getByLabelText("Tele-call").props).toMatchObject({ testID: "desk-appt-tele-b1", accessibilityRole: "image" });
+    expect(tele).not.toHaveTextContent(/tele/i);
+    expect(screen.queryByTestId("desk-appt-tele-b2")).toBeNull();
+    await fireEvent.press(screen.getByTestId("desk-appts-close"));
+
+    await findAndHold();
+    const mine = await screen.findByTestId("appt-a1");
+    expect(within(mine).getByLabelText("Tele-call").props).toMatchObject({ testID: "appt-tele-a1", accessibilityRole: "image" });
+    expect(mine).not.toHaveTextContent(/tele/i);
+    expect(screen.queryByTestId("appt-tele-a3")).toBeNull();
+  });
+
+  it("TELE-CALL: the desk's check-in is refused in the server's words beside that booking", async () => {
+    const s = world({
+      theirs: () => [appt({ id: "a2", mode: "tele", serviceDate: TODAY, slotStart: at(TODAY, "18:20"), slotEnd: at(TODAY, "18:29") })],
+      routes: { "POST /opd/appointments/a2/check-in": () => ({ status: 409, body: { code: "tele_call_opens_at_slot", message: "Tele-call · opens at slot time" } }) },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(await screen.findByTestId("appt-checkin-a2"));
+    expect(await screen.findByTestId("appt-error-a2")).toHaveTextContent("Tele-call · opens at slot time");
   });
 });

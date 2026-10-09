@@ -90,6 +90,8 @@ export type WireAppointment = {
   slotStart: string; slotEnd: string;
   status: "booked" | "checked_in" | "cancelled" | "no_show" | "needs_rebooking" | "rescheduled";
   note: string | null; encounterId: string | null; rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null;
+  /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
+  mode?: "in_person" | "tele"; telePhone?: string | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: { id?: string; uhid?: string | null; name?: string | null; alias?: string | null; phone?: string | null; administrativeGender?: string | null; dob?: string | null } | null;
 };
@@ -155,7 +157,7 @@ export function counterApi(call: Call) {
     dayAppointments: async (serviceDate: string) => (await call<{ items: WireAppointment[] }>("GET", `/opd/appointments?serviceDate=${enc(serviceDate)}`)).items,
     /** The one read that carries telephone numbers; the server records each disclosure with its reason. */
     needsRebooking: async () => (await call<{ items: WireAppointment[] }>("GET", "/opd/appointments?needsRebooking=true&contact=true")).items,
-    book: (body: { patientId: string; doctorId: string; slotStart: string; note?: string }) => call<{ appointment: WireAppointment }>("POST", "/opd/appointments", body),
+    book: (body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string }) => call<{ appointment: WireAppointment }>("POST", "/opd/appointments", body),
     reschedule: (appointmentId: string, body: { slotStart: string; doctorId?: string; reason?: string }) =>
       call<{ from: WireAppointment; to: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/reschedule`, body),
     cancelAppointment: (appointmentId: string, reason: string) => call<{ appointment: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/cancel`, { reason }),

@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, inArray, lt, lte } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
-import type { Actor } from "@hmis/contracts";
+import { newId, telePhoneOf } from "@hmis/contracts";
+import type { Actor, AppointmentMode } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
@@ -16,6 +16,29 @@ import type { Db, Tx } from "../../kernel/db/client";
 
 export type AppointmentRow = typeof opdAppointments.$inferSelect;
 export const LIVE_APPOINTMENT_STATUSES = ["booked", "checked_in", "needs_rebooking"] as const;
+
+/**
+ * TELE-CALL (owner 2026-10-09). `mode` says how the patient is seen; a tele-call keeps the number
+ * the doctor will ring, as ten digits. A number sent with an in-person booking is not kept.
+ */
+function modeAndPhone(input: { mode?: AppointmentMode; telePhone?: string | null }): { mode: AppointmentMode; telePhone: string | null } {
+  if ((input.mode ?? "in_person") !== "tele") return { mode: "in_person", telePhone: null };
+  const telePhone = telePhoneOf(input.telePhone);
+  if (telePhone === null) throw new OpdError("tele_phone_required", "Enter the patient's 10-digit mobile number");
+  return { mode: "tele", telePhone };
+}
+
+/**
+ * The row as the LIST route hands it out. `mode` goes to everyone who may read the appointment — it
+ * is what draws the phone icon. The NUMBER is the patient's telephone, so it travels exactly where
+ * the patient's own does on this route: on the audited contact read (`contact=true`, the rebooking
+ * rail), and never for a record the reader may not see.
+ */
+export function appointmentForList<S extends { restricted: boolean }>(
+  row: AppointmentRow, patient: S | null, withContact: boolean,
+): AppointmentRow {
+  return withContact && patient !== null && !patient.restricted ? row : { ...row, telePhone: null };
+}
 
 /** Throws doctor_on_leave when a scheduled leave covers this doctor-day (booking/reschedule; check-in maps needs_rebooking directly). */
 async function assertNotOnLeave(tx: Tx, doctorId: string, serviceDate: string): Promise<void> {
@@ -38,12 +61,16 @@ async function assertNotOnLeave(tx: Tx, doctorId: string, serviceDate: string): 
 export async function bookAppointment(
   db: Db,
   actor: Actor,
-  input: { patientId: string; doctorId: string; slotStart: Date; source?: "desk" | "phone"; note?: string },
+  input: {
+    patientId: string; doctorId: string; slotStart: Date; source?: "desk" | "phone"; note?: string;
+    mode?: AppointmentMode; telePhone?: string | null;
+  },
   now: Date = new Date(),
 ): Promise<{ appointment: AppointmentRow }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   const canonical = await resolvePatientId(db, input.patientId);
   if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${input.patientId}`);
+  const how = modeAndPhone(input);
   return withTx(db, async (tx) => {
     const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
     if (!doctor) throw new OpdError("unknown_doctor");
@@ -64,7 +91,7 @@ export async function bookAppointment(
     const inserted = await tx.insert(opdAppointments).values({
       id: appointmentId, appointmentNo, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
       serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
-      source: input.source ?? "desk", note: input.note ?? null,
+      source: input.source ?? "desk", note: input.note ?? null, mode: how.mode, telePhone: how.telePhone,
       bookedBy: actor.id, updatedBy: actor.id,
     }).onConflictDoNothing().returning();
     if (inserted.length === 0) throw new OpdError("slot_taken", `slot ${input.slotStart.toISOString()} for doctor ${doctor.id} is taken`);
@@ -126,6 +153,7 @@ export async function rescheduleAppointment(
       id: toId, appointmentNo, patientId: loaded.patientId, doctorId: doctor.id, departmentId: doctor.departmentId,
       serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
       source: loaded.source, note: loaded.note, rescheduledFromId: appointmentId,
+      mode: loaded.mode, telePhone: loaded.telePhone, // a moved tele-call is still a tele-call, to the same number
       bookedBy: actor.id, updatedBy: actor.id,
     }).onConflictDoNothing().returning();
     if (inserted.length === 0) throw new OpdError("slot_taken", `slot ${input.slotStart.toISOString()} for doctor ${doctor.id} is taken`);
@@ -187,6 +215,9 @@ export async function checkInAppointment(db: Db, actor: Actor, appointmentId: st
   if (!appt) throw new OpdError("unknown_appointment", `unknown appointment ${appointmentId}`);
   if (appt.status === "needs_rebooking") throw new OpdError("doctor_on_leave", `appointment ${appointmentId} needs rebooking`);
   if (appt.status !== "booked") throw new OpdError("appointment_state_conflict", `cannot check in from ${appt.status}`);
+  // Owner 2026-10-09 — nobody arrives for a tele-call, so the desk's check-in is not its door. The
+  // message is the desk's wording: both counters print a refusal's `message` beside the button.
+  if (appt.mode === "tele") throw new OpdError("tele_call_opens_at_slot", "Tele-call · opens at slot time");
   if (appt.serviceDate !== istDate(now)) throw new OpdError("appointment_not_today", `appointment is for ${appt.serviceDate}, not ${istDate(now)}`);
   const canonical = await resolvePatientId(db, appt.patientId);
   if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${appt.patientId}`);

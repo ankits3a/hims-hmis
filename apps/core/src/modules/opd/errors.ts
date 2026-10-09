@@ -12,6 +12,9 @@ export type OpdErrorCode =
   | "patient_not_found" | "duplicate_suspected" | "registration_not_permitted"
   | "invalid_slot" | "slot_taken" | "slot_in_past" | "doctor_on_leave" | "unknown_appointment"
   | "appointment_state_conflict" | "appointment_not_today"
+  // Owner 2026-10-09 — tele-call. A tele booking with no usable mobile number is a malformed
+  // request (400); the desk's check-in of a tele-call is well formed and the wrong door (409).
+  | "tele_phone_required" | "tele_call_opens_at_slot"
   | "unknown_encounter" | "encounter_state_conflict" | "edit_lease_state_conflict" | "consult_gate_refused" | "unknown_session" | "session_closed" | "doctor_out"
   // The co-pilot's syndrome key. A key the knowledge file does not hold is a CLIENT error with a
   // domain name, not a 500 — the screen sends what a previous build's suggest route gave it.
