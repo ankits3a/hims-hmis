@@ -20,7 +20,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { aadhaarHash, verhoeffValid } from "../src/modules/attendance/aadhaar";
-import { addDays, chunkRange, daysInclusive, isIsoDate, istClock, istDate, monthStart, previousMonth } from "../src/modules/attendance/ist";
+import { addDays, chunkRange, daysInclusive, isIsoDate, istClock, istDate, previousMonth } from "../src/modules/attendance/ist";
 import { bioattendSignature } from "../src/modules/attendance/webhook";
 
 export const STUB_API_KEY = `bio_${"5e".repeat(32)}`;
