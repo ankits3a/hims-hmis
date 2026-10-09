@@ -587,3 +587,14 @@ export const aliasRunCompleted = defineEvent("alias.run_completed", MODULE, z.ob
 const aliasChange = z.object({ aliasId: id, term: z.string().min(1), medicineId: z.string().nullable(), previousState: z.string().min(1) });
 export const aliasUndone = defineEvent("alias.undone", MODULE, aliasChange);
 export const aliasRestored = defineEvent("alias.restored", MODULE, aliasChange);
+
+/**
+ * HOW LONG PATIENTS WAIT (owner 2026-10-09) — the two acts on a finding: × and "Tried it". WHO is the
+ * event's actor (the owner or the Medical Superintendent), WHEN its time; the payload is the finding
+ * and its numbers. No patient, no doctor, no clerk.
+ */
+const flowFindingAct = z.object({
+  findingId: id, type: z.string().min(1), scope: z.string().min(1), observedMin: z.number(), baselineMin: z.number(),
+});
+export const flowFindingDismissed = defineEvent("flow.finding_dismissed", MODULE, flowFindingAct);
+export const flowFindingTried = defineEvent("flow.finding_tried", MODULE, flowFindingAct);

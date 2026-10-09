@@ -28,7 +28,7 @@ import {
   sweepCriticalChaser, sweepImagingEscalations, sweepOverdueFollowups, sweepPeerSample, sweepUnreadWatchman,
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
-import { runAliasJob } from "../../modules/opd";
+import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -229,7 +229,8 @@ export function registerAllJobs(
    * (`proposeMedicineNicknames`, below). A parameter of its own rather than a wider `JobIntervals`:
    * it is not a cadence, and a census test that registers the grid has no reason to carry model
    * endpoints. Absent — every test that does not pass it — the job is registered, heartbeats, and
-   * does nothing, which is also exactly what it does with `ALIAS_PIPELINE_ENABLED` off.
+   * does nothing, which is also exactly what it does with `ALIAS_PIPELINE_ENABLED` off. The waits'
+   * learning reads its switch (`flowFindings.enabled`) from here too; absent, it runs (its default).
    */
   aliasConfig?: AppConfig,
 ): void {
@@ -255,10 +256,24 @@ export function registerAllJobs(
     dailyIst: GUARDIAN_MAJORITY_IST,
     run: async (now) => { await sweepGuardianMajority(db, now); },
   });
+  /*
+    HOW LONG PATIENTS WAIT (owner 2026-10-09) — the waits' nightly learning rides this OPD job at 23:55
+    IST, AFTER the no-shows: the day's visits are done, and riding it adds no job, no census site and no
+    pool client. `FLOW_FINDINGS_ENABLED` (default true) switches it; it calls no outside service. A
+    failure is re-thrown with its own prefix so the heartbeat says which half failed — the no-shows
+    have already been swept by then.
+  */
   scheduler.register({
     name: "sweepAppointmentNoShows",
     dailyIst: APPOINTMENT_NO_SHOWS_IST,
-    run: async (now) => { await sweepAppointmentNoShows(db, now); },
+    run: async (now) => {
+      await sweepAppointmentNoShows(db, now);
+      try {
+        await runFlowLearning(db, aliasConfig?.flowFindings.enabled ?? true, now);
+      } catch (err) {
+        throw new Error(`flow learning: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
   });
   // PLAN 14 T8 / DD14 — the ELEVENTH job. It emits `batch.expiring` at the 90/60/30-day thresholds,
   // ONCE per batch per threshold (idempotent through `stock_batches.expiry_notified_thresholds`),
