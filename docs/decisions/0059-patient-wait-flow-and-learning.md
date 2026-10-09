@@ -1,6 +1,6 @@
 ---
 type: decision
-id: "0058"
+id: "0059"
 title: "How long patients wait: desk → vitals → doctor from stored timestamps, and a nightly learning that suggests from a closed set of fixed templates"
 description: "The owner asked to see the waits from the registration desk to vitals and from vitals to the doctor, hospital-wide and per department, with comparisons, and a system that keeps learning them and suggests improvements. Numbers come from stored timestamps; suggestions are fixed templates filled with numbers; no model writes or calls anything."
 generated: { by: agent:claude, at: 2026-10-09 }
@@ -12,7 +12,7 @@ supersedes: []
 superseded_by: []
 sources: []
 ---
-# 0058 — Patient waits and the learning behind "To improve"
+# 0059 — Patient waits and the learning behind "To improve"
 
 - **Date:** 2026-10-09   **Status:** Decided (owner's ask; the shape below is the standard answer, not a money/law ruling)
 - **Area:** opd, owner app
