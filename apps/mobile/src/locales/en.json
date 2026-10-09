@@ -2407,7 +2407,8 @@
       "appointments": "Appointments",
       "pharmacy": "Pharmacy",
       "staff": "Staff",
-      "learning": "Learning"
+      "learning": "Learning",
+      "wait": "Wait, minutes"
     },
     "sub": {
       "missing": "{{n}} missing",
@@ -2421,7 +2422,10 @@
       "onLeave": "{{n}} on leave",
       "onDuty": "on duty now",
       "nicknames": "new nicknames",
-      "learningOff": "switched off"
+      "learningOff": "switched off",
+      "toFix": "{{n}} to fix",
+      "waitUp": "▲ {{n}} min",
+      "waitDown": "▼ {{n}} min"
     },
     "period": {
       "today": "Today",
@@ -2548,6 +2552,63 @@
       "head": "OPD visits",
       "byDept": "By department",
       "none": "No visits in these days"
+    },
+    "wait": {
+      "title": "How long patients wait",
+      "avg": "Average, minutes",
+      "deskToVitals": "Desk → vitals",
+      "vitalsToDoctor": "Vitals → doctor",
+      "deskToDoctor": "Desk → doctor",
+      "consult": "In consultation",
+      "consultShort": "Consult",
+      "minutes": "{{n}} min",
+      "patients": "{{n}} patients",
+      "few": "Fewer than 5 patients",
+      "up": "▲ {{n}} min",
+      "down": "▼ {{n}} min",
+      "same": "same",
+      "byDept": "By department · desk → doctor",
+      "hospital": "Hospital",
+      "byHour": "By hour",
+      "byWeekday": "By weekday",
+      "toImprove": "To improve",
+      "nothing": "Nothing to fix this week",
+      "off": "Learning is switched off",
+      "fixed": "Fixed",
+      "vsUsual": "{{min}} min vs {{usual}} usual",
+      "dismiss": "Hide",
+      "tried": "Tried it",
+      "triedOn": "Tried on {{day}}",
+      "since": "Since then: {{min}} min",
+      "fixedBy": "Fixed: −{{n}} min",
+      "won": "{{n}} patient-minutes saved",
+      "hidden": "Hidden for 28 days",
+      "notSaved": "Not saved — try again",
+      "dropped": "{{n}} visits left out",
+      "whole": "Whole hospital",
+      "weekday": {
+        "0": "Mon",
+        "1": "Tue",
+        "2": "Wed",
+        "3": "Thu",
+        "4": "Fri",
+        "5": "Sat",
+        "6": "Sun"
+      },
+      "kind": {
+        "bay_peak": "Slow vitals {{day}} {{from}}–{{to}}",
+        "doctor_start_late": "Slow first hour {{day}}",
+        "dept_outlier": "Long wait for the doctor",
+        "week_regression": "This week {{pct}}% slower",
+        "consult_up": "Consults {{pct}}% longer this week"
+      },
+      "try": {
+        "bay_peak": "Add one person at the bay {{from}}–{{to}} {{day}}",
+        "doctor_start_late": "Start consultations on time {{day}} at {{from}}:00",
+        "dept_outlier": "Review doctor slots: {{pct}}% over the hospital",
+        "week_regression": "Check staff on duty against last month",
+        "consult_up": "Check consult load and slots"
+      }
     }
   },
   "pace": {

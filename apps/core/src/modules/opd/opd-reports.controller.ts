@@ -1,11 +1,15 @@
-import { BadRequestException, Controller, Get, Inject, NotFoundException, Param, Query, Res } from "@nestjs/common";
+import {
+  BadRequestException, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, Res,
+} from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
 import { rangeProblem } from "@hmis/contracts";
-import type { OwnerAppointments, OwnerLearning } from "@hmis/contracts";
+import type { FlowReport, OwnerAppointments, OwnerLearning } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import type { AppConfig } from "../../kernel/config";
 import { ownerAppointments, ownerLearning } from "./owner-reads";
+import { flowAskOf, loadFlowReport } from "./flow";
+import { dismissFinding, triedFinding } from "./flow-learning";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { contentDisposition, toCsv } from "../../kernel/report/csv";
@@ -26,7 +30,7 @@ import type { Response } from "express";
 import type { Db } from "../../kernel/db/client";
 
 /**
- * ═══ THE OPD REPORT — SIX READS, ONE PERMISSION ═══
+ * ═══ THE OPD REPORT — SIX READS, ONE PERMISSION ═══ (and the owner pages' reads below it)
  *
  * `opd.reports.read`, held by the front-office supervisor, the medical superintendent and the owner
  * (owner, 2026-09-19). The hospital summary is integers; the department report names patients, and
@@ -145,6 +149,54 @@ export class OpdReportsController {
   @Get("learning")
   async learning(@CurrentActor() actor: Actor): Promise<OwnerLearning> {
     return ownerLearning(this.db, actor, this.cfg.aliases.enabled);
+  }
+
+  /**
+   * HOW LONG PATIENTS WAIT (owner 2026-10-09) — desk → vitals → doctor, hospital-wide or for one
+   * department, grouped by department / day / hour / weekday, with the like period before, and the
+   * findings the nightly learning raised (`flow.ts`, `flow-learning.ts`). Minutes and counts only: no
+   * patient and no member of staff in the payload. `period=today|week|month` is read against the
+   * server's own today; `from`/`to` (+ `cfrom`/`cto`) as the other owner pages.
+   */
+  @RequirePermission("opd.reports.read", "hospital")
+  @Get("flow")
+  async flow(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<FlowReport> {
+    const now = new Date();
+    const asked = flowAskOf(query, now);
+    if (!asked.ok) throw new BadRequestException({ message: `the wait report cannot be read: ${asked.problem}`, code: asked.problem === "bad_group" || asked.problem === "bad_department" ? asked.problem : "invalid_range" });
+    return loadFlowReport(this.db, asked.ask, { mayAct: await this.mayActOnFlow(actor), learning: this.cfg.flowFindings.enabled, now });
+  }
+
+  /**
+   * × and "Tried it" on a finding — the owner and the Medical Superintendent only: the OPD report's
+   * permission AND the unbounded staff history, which together only their two roles hold (the same
+   * pair the phone's tile home is drawn for). A front-office supervisor reads the waits and does not act.
+   */
+  private async mayActOnFlow(actor: Actor): Promise<boolean> {
+    return actor.type === "user" && hasPermission(this.db, actor.id, "staff.reports.history.full", "hospital");
+  }
+
+  private async flowAct(actor: Actor, id: string, act: typeof dismissFinding): Promise<{ ok: true }> {
+    if (!(await this.mayActOnFlow(actor))) throw new ForbiddenException({ message: "only the owner or the Medical Superintendent acts on a finding", code: "permission_denied" });
+    if (!this.cfg.flowFindings.enabled) throw new ConflictException({ message: "the waits' learning is switched off", code: "flow_learning_off" });
+    const r = await act(this.db, actor, id);
+    if (r.ok) return { ok: true };
+    if (r.problem === "unknown_finding") throw new NotFoundException({ message: "no such finding", code: r.problem });
+    throw new ConflictException({ message: `the finding cannot take that: ${r.problem}`, code: r.problem });
+  }
+
+  @RequirePermission("opd.reports.read", "hospital")
+  @Post("flow/findings/:id/dismiss")
+  @HttpCode(200)
+  async dismissFlowFinding(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ ok: true }> {
+    return this.flowAct(actor, id, dismissFinding);
+  }
+
+  @RequirePermission("opd.reports.read", "hospital")
+  @Post("flow/findings/:id/tried")
+  @HttpCode(200)
+  async triedFlowFinding(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ ok: true }> {
+    return this.flowAct(actor, id, triedFinding);
   }
 
   @RequirePermission("opd.reports.read", "hospital")

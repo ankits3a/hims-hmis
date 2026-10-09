@@ -1,6 +1,6 @@
 {
-  "id": "5c70b009-391f-4452-ab9b-97971b92d8b9",
-  "prevId": "a1c56283-a13b-4793-9599-baf79d4b8830",
+  "id": "80be98f6-29e2-4e9b-8963-a90186245c96",
+  "prevId": "5c70b009-391f-4452-ab9b-97971b92d8b9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7405,6 +7405,367 @@
         "opd_encounters_diagnosis_kind_ck": {
           "name": "opd_encounters_diagnosis_kind_ck",
           "value": "\"opd_encounters\".\"diagnosis_kind\" is null or \"opd_encounters\".\"diagnosis_kind\" in ('provisional', 'final')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.opd_flow_baselines": {
+      "name": "opd_flow_baselines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "leg": {
+          "name": "leg",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weekday": {
+          "name": "weekday",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hour": {
+          "name": "hour",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "n": {
+          "name": "n",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "median_min": {
+          "name": "median_min",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "p90_min": {
+          "name": "p90_min",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "window_from": {
+          "name": "window_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "window_to": {
+          "name": "window_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "opd_flow_baselines_cell_uq": {
+          "name": "opd_flow_baselines_cell_uq",
+          "columns": [
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "leg",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "weekday",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "hour",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "opd_flow_baselines_leg_ck": {
+          "name": "opd_flow_baselines_leg_ck",
+          "value": "\"opd_flow_baselines\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')"
+        },
+        "opd_flow_baselines_weekday_ck": {
+          "name": "opd_flow_baselines_weekday_ck",
+          "value": "\"opd_flow_baselines\".\"weekday\" between -1 and 6"
+        },
+        "opd_flow_baselines_hour_ck": {
+          "name": "opd_flow_baselines_hour_ck",
+          "value": "\"opd_flow_baselines\".\"hour\" = -1 or \"opd_flow_baselines\".\"hour\" between 0 and 23"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.opd_flow_findings": {
+      "name": "opd_flow_findings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "finding_key": {
+          "name": "finding_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "leg": {
+          "name": "leg",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weekday": {
+          "name": "weekday",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hour_from": {
+          "name": "hour_from",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hour_to": {
+          "name": "hour_to",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "observed_min": {
+          "name": "observed_min",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "baseline_min": {
+          "name": "baseline_min",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patients": {
+          "name": "patients",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "minutes_lost": {
+          "name": "minutes_lost",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_seen": {
+          "name": "first_seen",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_seen": {
+          "name": "last_seen",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "dismissed_by": {
+          "name": "dismissed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dismissed_at": {
+          "name": "dismissed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dismissed_observed_min": {
+          "name": "dismissed_observed_min",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tried_by": {
+          "name": "tried_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tried_at": {
+          "name": "tried_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "before_median_min": {
+          "name": "before_median_min",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after_median_min": {
+          "name": "after_median_min",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_on": {
+          "name": "resolved_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "minutes_won": {
+          "name": "minutes_won",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "opd_flow_findings_live_uq": {
+          "name": "opd_flow_findings_live_uq",
+          "columns": [
+            {
+              "expression": "finding_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"opd_flow_findings\".\"state\" <> 'resolved'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "opd_flow_findings_state_idx": {
+          "name": "opd_flow_findings_state_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "opd_flow_findings_type_ck": {
+          "name": "opd_flow_findings_type_ck",
+          "value": "\"opd_flow_findings\".\"type\" in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression', 'consult_up')"
+        },
+        "opd_flow_findings_state_ck": {
+          "name": "opd_flow_findings_state_ck",
+          "value": "\"opd_flow_findings\".\"state\" in ('open', 'dismissed', 'resolved')"
+        },
+        "opd_flow_findings_leg_ck": {
+          "name": "opd_flow_findings_leg_ck",
+          "value": "\"opd_flow_findings\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')"
+        },
+        "opd_flow_findings_dismissed_ck": {
+          "name": "opd_flow_findings_dismissed_ck",
+          "value": "(\"opd_flow_findings\".\"state\" = 'dismissed') = (\"opd_flow_findings\".\"dismissed_at\" is not null) and (\"opd_flow_findings\".\"dismissed_by\" is null) = (\"opd_flow_findings\".\"dismissed_at\" is null)"
+        },
+        "opd_flow_findings_tried_ck": {
+          "name": "opd_flow_findings_tried_ck",
+          "value": "(\"opd_flow_findings\".\"tried_by\" is null) = (\"opd_flow_findings\".\"tried_at\" is null)"
+        },
+        "opd_flow_findings_note_ck": {
+          "name": "opd_flow_findings_note_ck",
+          "value": "\"opd_flow_findings\".\"note\" is null or \"opd_flow_findings\".\"note\" in ('returned', 'returned_worse')"
         }
       },
       "isRLSEnabled": false
@@ -29761,6 +30122,174 @@
         "lab_plate_wells_verdict_ck": {
           "name": "lab_plate_wells_verdict_ck",
           "value": "\"lab_plate_wells\".\"verdict\" is null or \"lab_plate_wells\".\"verdict\" in ('non_reactive', 'reactive', 'control_ok', 'control_failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lab_quick_reports": {
+      "name": "lab_quick_reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encounter_no": {
+          "name": "encounter_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tests": {
+          "name": "tests",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'waiting'"
+        },
+        "collected_at": {
+          "name": "collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collected_by": {
+          "name": "collected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lines": {
+          "name": "lines",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "reported_at": {
+          "name": "reported_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reported_by": {
+          "name": "reported_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lab_quick_reports_status_idx": {
+          "name": "lab_quick_reports_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_quick_reports_patient_idx": {
+          "name": "lab_quick_reports_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lab_quick_reports_patient_id_patients_id_fk": {
+          "name": "lab_quick_reports_patient_id_patients_id_fk",
+          "tableFrom": "lab_quick_reports",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lab_quick_reports_status_ck": {
+          "name": "lab_quick_reports_status_ck",
+          "value": "\"lab_quick_reports\".\"status\" in ('waiting', 'reported')"
+        },
+        "lab_quick_reports_reported_ck": {
+          "name": "lab_quick_reports_reported_ck",
+          "value": "(\"lab_quick_reports\".\"status\" = 'reported') = (\"lab_quick_reports\".\"reported_at\" is not null and \"lab_quick_reports\".\"reported_by\" is not null)"
         }
       },
       "isRLSEnabled": false
@@ -52359,367 +52888,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.opd_flow_baselines": {
-      "name": "opd_flow_baselines",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "leg": {
-          "name": "leg",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "weekday": {
-          "name": "weekday",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hour": {
-          "name": "hour",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "n": {
-          "name": "n",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "median_min": {
-          "name": "median_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "p90_min": {
-          "name": "p90_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "window_from": {
-          "name": "window_from",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "window_to": {
-          "name": "window_to",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "computed_at": {
-          "name": "computed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "opd_flow_baselines_cell_uq": {
-          "name": "opd_flow_baselines_cell_uq",
-          "columns": [
-            {
-              "expression": "scope",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "leg",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "weekday",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "hour",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "opd_flow_baselines_leg_ck": {
-          "name": "opd_flow_baselines_leg_ck",
-          "value": "\"opd_flow_baselines\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')"
-        },
-        "opd_flow_baselines_weekday_ck": {
-          "name": "opd_flow_baselines_weekday_ck",
-          "value": "\"opd_flow_baselines\".\"weekday\" between -1 and 6"
-        },
-        "opd_flow_baselines_hour_ck": {
-          "name": "opd_flow_baselines_hour_ck",
-          "value": "\"opd_flow_baselines\".\"hour\" = -1 or \"opd_flow_baselines\".\"hour\" between 0 and 23"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.opd_flow_findings": {
-      "name": "opd_flow_findings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "finding_key": {
-          "name": "finding_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "leg": {
-          "name": "leg",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "weekday": {
-          "name": "weekday",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hour_from": {
-          "name": "hour_from",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hour_to": {
-          "name": "hour_to",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "observed_min": {
-          "name": "observed_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "baseline_min": {
-          "name": "baseline_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "patients": {
-          "name": "patients",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "minutes_lost": {
-          "name": "minutes_lost",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "first_seen": {
-          "name": "first_seen",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_seen": {
-          "name": "last_seen",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'open'"
-        },
-        "dismissed_by": {
-          "name": "dismissed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dismissed_at": {
-          "name": "dismissed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dismissed_observed_min": {
-          "name": "dismissed_observed_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tried_by": {
-          "name": "tried_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tried_at": {
-          "name": "tried_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "before_median_min": {
-          "name": "before_median_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "after_median_min": {
-          "name": "after_median_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_on": {
-          "name": "resolved_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "minutes_won": {
-          "name": "minutes_won",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "opd_flow_findings_live_uq": {
-          "name": "opd_flow_findings_live_uq",
-          "columns": [
-            {
-              "expression": "finding_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"opd_flow_findings\".\"state\" <> 'resolved'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "opd_flow_findings_state_idx": {
-          "name": "opd_flow_findings_state_idx",
-          "columns": [
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "opd_flow_findings_type_ck": {
-          "name": "opd_flow_findings_type_ck",
-          "value": "\"opd_flow_findings\".\"type\" in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression', 'consult_up')"
-        },
-        "opd_flow_findings_state_ck": {
-          "name": "opd_flow_findings_state_ck",
-          "value": "\"opd_flow_findings\".\"state\" in ('open', 'dismissed', 'resolved')"
-        },
-        "opd_flow_findings_leg_ck": {
-          "name": "opd_flow_findings_leg_ck",
-          "value": "\"opd_flow_findings\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor', 'consult')"
-        },
-        "opd_flow_findings_dismissed_ck": {
-          "name": "opd_flow_findings_dismissed_ck",
-          "value": "(\"opd_flow_findings\".\"state\" = 'dismissed') = (\"opd_flow_findings\".\"dismissed_at\" is not null) and (\"opd_flow_findings\".\"dismissed_by\" is null) = (\"opd_flow_findings\".\"dismissed_at\" is null)"
-        },
-        "opd_flow_findings_tried_ck": {
-          "name": "opd_flow_findings_tried_ck",
-          "value": "(\"opd_flow_findings\".\"tried_by\" is null) = (\"opd_flow_findings\".\"tried_at\" is null)"
-        },
-        "opd_flow_findings_note_ck": {
-          "name": "opd_flow_findings_note_ck",
-          "value": "\"opd_flow_findings\".\"note\" is null or \"opd_flow_findings\".\"note\" in ('returned', 'returned_worse')"
-        }
-      },
       "isRLSEnabled": false
     }
   },

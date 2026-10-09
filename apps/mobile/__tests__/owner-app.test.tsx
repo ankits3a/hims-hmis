@@ -126,7 +126,15 @@ const LEARNING = {
     { id: "n4", nickname: "aug six two five", medicine: "Augmentin 625", detail: null, state: "suggested", removedBy: null, doctors: 1, taps: 1, changedAt: "2026-10-06T04:00:00.000Z" },
   ],
 };
-const TILE_ROUTES = ["GET /billing/reports/owner-money", "GET /staff/range", "GET /opd/reports/appointments-summary", "GET /pharmacy/office/reports/owner-summary", "GET /roster/staff-today", "GET /opd/reports/learning"];
+const STAT = (avg: number | null, n = 40) => ({ n, avg, median: avg, p90: avg === null ? null : avg + 10 });
+const CELL = (a: number | null, b: number | null) => ({ deskToVitals: STAT(a), vitalsToDoctor: STAT(b), deskToDoctor: STAT(a === null || b === null ? null : a + b), consult: STAT(a === null ? null : 8) });
+const FINDING = { id: "f1", type: "bay_peak", departmentId: "dep1", department: "General Medicine", leg: "deskToVitals", weekday: 0, hourFrom: 10, hourTo: 12, observed: 32, baseline: 18, patients: 10, minutesLost: 140, firstSeen: "2026-10-05", lastSeen: "2026-10-09", state: "open", triedOn: null, before: null, after: null, resolvedOn: null, minutesWon: null };
+/** Today's waits as the tile reads them: desk → doctor 24 minutes, two findings open. */
+const FLOW_TODAY = {
+  from: "2026-10-09", to: "2026-10-09", groupBy: null, departmentId: null, hospital: CELL(9, 15), previous: { from: "2026-10-02", to: "2026-10-02", ...CELL(8, 13) },
+  groups: [], drops: { guardian: 0, left: 0, paperNoStart: 0, reEntry: 0, outOfRange: 0 }, findings: [FINDING, { ...FINDING, id: "f2", hourFrom: 14, hourTo: 16 }], fixed: [], mayAct: true, learning: true,
+};
+const TILE_ROUTES = ["GET /billing/reports/owner-money", "GET /staff/range", "GET /opd/reports/appointments-summary", "GET /pharmacy/office/reports/owner-summary", "GET /roster/staff-today", "GET /opd/reports/learning", "GET /opd/reports/flow"];
 /** The home's reads, answered for the day the suite runs (the home reads the real clock). */
 function homeRoutes(over: Record<string, Route | ((path: string) => Route)> = {}, pharmacy: unknown = PHARMACY) {
   const today = istDayOf(Date.now());
@@ -138,6 +146,7 @@ function homeRoutes(over: Record<string, Route | ((path: string) => Route)> = {}
     "GET /pharmacy/office/reports/owner-summary": { status: 200, body: pharmacy },
     "GET /roster/staff-today": { status: 200, body: STAFF },
     "GET /opd/reports/learning": { status: 200, body: LEARNING },
+    "GET /opd/reports/flow": { status: 200, body: FLOW_TODAY },
     "GET /approvals": { status: 200, body: { items: [{ id: "a1", typeKey: "billing_refund_owner", amountPaise: 3_200_000, requestedAt: new Date(Date.now() - 600_000).toISOString(), dueAt: null, requesterName: "Asha Devi", requestNote: null, patient: null }] } },
     ...over,
   } as Record<string, Route | ((path: string) => Route)>;
@@ -149,10 +158,10 @@ const tileText = (key: string): [string, string] => [
   textOf(screen.getByTestId(`owner-tile-value-${key}`) as unknown as Host), textOf(screen.getByTestId(`owner-tile-sub-${key}`) as unknown as Host),
 ];
 
-describe("the owner's home — seven tiles", () => {
+describe("the owner's home — eight tiles", () => {
   beforeEach(() => { _forgetHomeForTests(); mockPush.mockClear(); });
 
-  it("the owner sees seven tiles, each with its number from one read, under an untouched 'Needs you now'", async () => {
+  it("the owner sees eight tiles, each with its number from one read, under an untouched 'Needs you now'", async () => {
     const { fetcher, sent } = server(OWNER, homeRoutes());
     await mount(fetcher, <SeatHome />);
     await screen.findByTestId("owner-tiles");
@@ -163,6 +172,8 @@ describe("the owner's home — seven tiles", () => {
     expect(tileText("pharmacy")).toEqual(["₹8,920", "3 low stock"]);
     expect(tileText("staff")).toEqual(["46", "1 gap"]);
     expect(tileText("learning")).toEqual(["4", "switched off"]);
+    expect(tileText("wait")).toEqual(["24", "2 to fix"]);
+    expect(sent("GET /opd/reports/flow")).toEqual(["/opd/reports/flow?period=today"]);
     /* One request per tile; Recorded is the read the home already made for everybody. */
     for (const key of [...TILE_ROUTES, "GET /opd/reports/recording"]) expect({ key, n: sent(key).length }).toEqual({ key, n: 1 });
     const today = istDayOf(Date.now()), lastWeek = addDayIso(today, -7);
@@ -176,12 +187,12 @@ describe("the owner's home — seven tiles", () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: "/owner/[page]", params: { page: "money" } });
   });
 
-  it("the Medical Superintendent sees six — no Money tile, no money asked for, no rupee on the screen", async () => {
+  it("the Medical Superintendent sees seven — no Money tile, no money asked for, no rupee on the screen", async () => {
     const { fetcher, sent } = server(MS, homeRoutes({ "GET /billing/reports/owner-money": { status: 403, body: { message: "missing permission billing.reports.read" } } }, PHARMACY_MS));
     await mount(fetcher, <SeatHome />);
     await screen.findByTestId("owner-tiles");
     expect(screen.queryByTestId("owner-tile-money")).toBeNull();
-    for (const key of ["opd", "recorded", "appointments", "pharmacy", "staff", "learning"]) expect(screen.getByTestId(`owner-tile-${key}`)).toBeTruthy();
+    for (const key of ["opd", "wait", "recorded", "appointments", "pharmacy", "staff", "learning"]) expect(screen.getByTestId(`owner-tile-${key}`)).toBeTruthy();
     expect(sent("GET /billing/reports/owner-money")).toEqual([]);
     /* The pharmacy tile is the bill count for her, with the same exception line. */
     expect(tileText("pharmacy")).toEqual(["41", "3 low stock"]);
@@ -191,8 +202,8 @@ describe("the owner's home — seven tiles", () => {
 
   it("a doctor, a cashier and a supervisor keep the home they had — no tile, and none of the tiles' reads is asked", async () => {
     expect([ownerTilesFor(DOCTOR), ownerTilesFor(CASHIER), ownerTilesFor(SUPERVISOR)]).toEqual([null, null, null]);
-    expect(ownerTilesFor(OWNER)).toEqual(["money", "opd", "recorded", "appointments", "pharmacy", "staff", "learning"]);
-    expect(ownerTilesFor(MS)).toEqual(["opd", "recorded", "appointments", "pharmacy", "staff", "learning"]);
+    expect(ownerTilesFor(OWNER)).toEqual(["money", "opd", "wait", "recorded", "appointments", "pharmacy", "staff", "learning"]);
+    expect(ownerTilesFor(MS)).toEqual(["opd", "wait", "recorded", "appointments", "pharmacy", "staff", "learning"]);
 
     /* The cashier: the same three tiles as before, Collected still locked behind the count. */
     const cashier = server(CASHIER, homeRoutes({
@@ -239,7 +250,8 @@ describe("the owner's home — seven tiles", () => {
     await screen.findByTestId("owner-tiles");
     expect(tileText("recorded")).toEqual(["61 / 70", "9 बाकी"]);
     expect(screen.getByTestId("owner-tile-money")).toHaveTextContent(/पैसा/);
-    for (const key of ["money", "opd", "recorded", "appointments", "pharmacy", "staff", "learning"]) {
+    expect(tileText("wait")).toEqual(["24", "2 सुधारें"]);
+    for (const key of ["money", "opd", "wait", "recorded", "appointments", "pharmacy", "staff", "learning"]) {
       expect(screen.getByTestId(`owner-tile-sub-${key}`).props.numberOfLines).toBe(1);
       expect(screen.getByTestId(`owner-tile-value-${key}`).props.numberOfLines).toBe(1);
     }
@@ -247,18 +259,18 @@ describe("the owner's home — seven tiles", () => {
 });
 
 describe("what the phone keeps of the owner's tiles", () => {
-  const reads: OwnerReads = { money: MONEY as OwnerReads["money"], opd: { today: 74, lastWeek: 68 }, recorded: RECORDING as OwnerReads["recorded"], appointments: APPTS as OwnerReads["appointments"], pharmacy: PHARMACY as OwnerReads["pharmacy"], staff: STAFF, learning: LEARNING as OwnerReads["learning"] };
+  const reads: OwnerReads = { money: MONEY as OwnerReads["money"], opd: { today: 74, lastWeek: 68 }, recorded: RECORDING as OwnerReads["recorded"], appointments: APPTS as OwnerReads["appointments"], pharmacy: PHARMACY as OwnerReads["pharmacy"], staff: STAFF, learning: LEARNING as OwnerReads["learning"], wait: FLOW_TODAY as OwnerReads["wait"] };
   const base = { nowMs: NOW, permissions: OWNER, seats: [], hospital: { byDepartment: [], collectedTodayPaise: null, collections: [] } };
 
   it("a key and a number per tile — no name, no sub-line; and no rupee at all on a phone that is not the owner's", () => {
     const owner = coldOf("u-owner", NOW, buildHome(base), coldOwnerTiles(buildOwnerTiles(ownerTilesFor(OWNER)!, reads)));
-    expect(owner.tiles.map((t) => Object.keys(t).sort())).toEqual(Array.from({ length: 7 }, () => ["key", "labelKey", "value"]));
+    expect(owner.tiles.map((t) => Object.keys(t).sort())).toEqual(Array.from({ length: 8 }, () => ["key", "labelKey", "value"]));
     expect(owner.tiles.find((t) => t.key === "money")?.value).toBe("₹14,300");
-    expect(JSON.stringify(owner)).not.toMatch(/Asha|Sonam|Vivek|Chandan|pan forty|Pantoprazole|Orthopaedics/);
+    expect(JSON.stringify(owner)).not.toMatch(/Asha|Sonam|Vivek|Chandan|pan forty|Pantoprazole|Orthopaedics|General Medicine/);
 
     const msReads: OwnerReads = { ...reads, money: undefined, pharmacy: PHARMACY_MS as OwnerReads["pharmacy"] };
     const ms = coldOf("u-ms", NOW, buildHome({ ...base, permissions: MS }), coldOwnerTiles(buildOwnerTiles(ownerTilesFor(MS)!, msReads)));
-    expect(ms.tiles.map((t) => t.key)).toEqual(["opd", "recorded", "appointments", "pharmacy", "staff", "learning"]);
+    expect(ms.tiles.map((t) => t.key)).toEqual(["opd", "wait", "recorded", "appointments", "pharmacy", "staff", "learning"]);
     expect(JSON.stringify(ms)).not.toMatch(/₹|money|Paise|14,300|8,920/);
   });
 });
@@ -521,7 +533,8 @@ describe("the rules behind the pages", () => {
 describe("the text rule — one line at 360 px", () => {
   /* Letters a reader sees: combining marks (a Devanagari matra) and joiners take no width of their own. */
   const seen = (s: string): number => [...s.normalize("NFC")].filter((ch) => !/\p{M}|\p{Cf}/u.test(ch)).length;
-  const VARS = { n: 99, amount: "₹1,200", month: "Sep", on: 999, of: 999 };
+  /* The waits' templates at their widest: a 480-minute wait, a three-digit percent, the longest weekday. */
+  const VARS = { n: 99, amount: "₹1,200", month: "Sep", on: 999, of: 999, day: "मंगल", from: "18", to: "20", min: 480, usual: 480, pct: 999 };
   const leaves = (node: unknown, pre: string): string[] => Object.entries(node as Record<string, unknown>)
     .flatMap(([k, v]) => (typeof v === "string" ? [`${pre}${k}`] : leaves(v, `${pre}${k}.`)));
 
@@ -533,7 +546,8 @@ describe("the text rule — one line at 360 px", () => {
     for (const lang of ["en", "hi"] as const) {
       for (const key of keys) {
         const text = translate(lang, key, VARS);
-        const budget = key.startsWith("owner.sub.") ? 14 : 34;
+        /* A finding's try-line may run to 60 characters (two lines at 360 px); every other line 34. */
+        const budget = key.startsWith("owner.sub.") ? 14 : key.startsWith("owner.wait.try.") ? 60 : 34;
         if (seen(text) > budget) over.push(`${lang} ${key} (${String(seen(text))}): ${text}`);
       }
     }
@@ -546,6 +560,9 @@ describe("the text rule — one line at 360 px", () => {
       { opd: { today: 0, lastWeek: 9999 }, staff: { ...STAFF, gaps: [], onLeave: Array.from({ length: 99 }, (_, i) => ({ userId: String(i), name: "x" })) }, recorded: { ...RECORDING, totals: { ...C, consulted: 999, notRecorded: 999 } } as OwnerReads["recorded"] },
       { appointments: { ...APPTS, needRebooking: 999 } as OwnerReads["appointments"], pharmacy: { ...PHARMACY, stock: { ...PHARMACY.stock, low: 999 } } as OwnerReads["pharmacy"], learning: { ...LEARNING, on: true } as OwnerReads["learning"] },
       { pharmacy: { ...PHARMACY_MS, stock: null, previous: null } as OwnerReads["pharmacy"], staff: { ...STAFF, gaps: [], onLeave: [] }, recorded: { ...RECORDING, totals: { ...C, consulted: 0, notRecorded: 0 } } as OwnerReads["recorded"] },
+      { wait: { ...FLOW_TODAY, findings: Array.from({ length: 99 }, () => FINDING) } as OwnerReads["wait"] },
+      { wait: { ...FLOW_TODAY, findings: [], hospital: CELL(240, 239), previous: { ...FLOW_TODAY.previous, ...CELL(1, 1) } } as OwnerReads["wait"] },
+      { wait: { ...FLOW_TODAY, findings: [], hospital: CELL(1, 1), previous: { ...FLOW_TODAY.previous, ...CELL(240, 239) } } as OwnerReads["wait"] },
     ];
     for (const lang of ["en", "hi"] as const) {
       for (const reads of worst) {

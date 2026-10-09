@@ -88,6 +88,8 @@ Source: `apps/core/src/modules/opd/`
   - `dangerFlagSchema`
   - `dayReportPatientsListed`
   - `doctorLeaveScheduled`
+  - `flowFindingDismissed`
+  - `flowFindingTried`
   - `paperPrescriptionTranscribed`
   - `patientCheckedIn`
   - `prescriptionIssued`
@@ -119,6 +121,8 @@ Source: `apps/core/src/modules/opd/`
 - `fhir.ts`
   - `EYE_TEXT`
   - types: `Eye`, `RxLine`, `TaperStep`
+- `flow-learning.ts`
+  - `runFlowLearning(db: Db, enabled: boolean, now: Date = new Date()): Promise<FlowLearningReport>`
 - `manifest.ts`
   - `opdManifest: ModuleManifest`
 - `masters.ts`
@@ -185,11 +189,11 @@ Source: `apps/core/src/modules/opd/`
 
 ## Tables (`kernel/db/schema/opd.ts`)
 
-`cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
+`cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage`
 
 Foreign keys into: `billing`, `patients`, `resources`
 
-## HTTP routes (161)
+## HTTP routes (164)
 
 - `opd-advice.controller.ts` — 3: `/opd/advice-templates`
 - `opd-cds.controller.ts` — 8: `/opd/cds`
@@ -198,7 +202,7 @@ Foreign keys into: `billing`, `patients`, `resources`
 - `opd-paper.controller.ts` — 11: `/opd/paper`
 - `opd-phone-consult.controller.ts` — 20: `/opd/consult`, `/opd/rx-sets`, `/opd/visits`
 - `opd-queue.controller.ts` — 37: `/opd/patients`, `/opd/prescriptions`, `/opd/queues`, `/opd/visits`
-- `opd-reports.controller.ts` — 9: `/opd/reports`
+- `opd-reports.controller.ts` — 12: `/opd/reports`
 - `opd-visits.controller.ts` — 43: `/opd/appointments`, `/opd/bench`, `/opd/continuity`, `/opd/patients`, `/opd/scan`, `/opd/slips`, `/opd/slots`, `/opd/triage`, `/opd/visits`, `/opd/vitals`, `/opd/walk-in`
 - `opd-vocabulary.controller.ts` — 5: `/opd/vocabulary`
 
