@@ -78,7 +78,7 @@ export function AttendancePerson({ pin, name, nowMs = Date.now }: { pin: string;
         {failed !== null && <Note tone="warn" testID="att-failed">{t(failed === "offline" ? "attendance.offline" : "attendance.cannotRead")}</Note>}
         {got !== null && view !== "day" && (
           <Counts items={[
-            { key: "present", label: t("attendance.word.present"), value: t("attendance.of", { n: counts.present, of: counts.days }), tone: "green" },
+            { key: "present", label: t("attendance.word.present"), value: t("attendance.of", { n: counts.present, of: counts.days }), tone: "green", wide: true },
             ...(full ? [{ key: "late", label: t("attendance.manage.late"), value: String(late), tone: "amber" as const }] : []),
             { key: "partial", label: t("attendance.word.partial"), value: String(counts.partial), tone: "amber" },
             { key: "absent", label: t("attendance.word.absent"), value: String(counts.absent), tone: "red" },

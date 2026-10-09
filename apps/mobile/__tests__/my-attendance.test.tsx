@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { MyAttendance } from "../src/screens/my-attendance";
 import { WEEK, meRoute, mount, nowMs, server } from "../testing/attendance";
@@ -22,6 +23,18 @@ const request = (over: Record<string, unknown> = {}) => ({ id: "r1", date: "2026
 const TIMED = WEEK.map((d) => ({ ...d, firstIn: ["present", "partial", "confirm"].includes(d.status) ? "08:58" : null, lastOut: d.status === "present" ? "17:05" : null, hoursWorked: d.status === "present" ? 8 : 0 }));
 
 describe("My attendance (board frames 2 and 3)", () => {
+  it("a week that crosses a month names both months; the 'n / m' tile is the wide one (360 px clipped it to '7 /…')", async () => {
+    const s = server([], { "GET /attendance/me": meRoute() });
+    await mount(s.fetcher, <MyAttendance nowMs={nowMs} />);
+    await screen.findByTestId("att-word-2026-10-12");
+    fireEvent.press(screen.getByTestId("att-prev"));
+    await waitFor(() => expect(screen.getByTestId("att-period")).toHaveTextContent("5 – 11 October"));
+    fireEvent.press(screen.getByTestId("att-prev"));
+    await waitFor(() => expect(screen.getByTestId("att-period")).toHaveTextContent(/^28 September – 4 October$/));
+    const basis = (id: string): number => (StyleSheet.flatten(screen.getByTestId(id).props.style) as { flexBasis: number }).flexBasis;
+    expect(basis("att-count-present")).toBeGreaterThanOrEqual(1.5 * basis("att-count-partial"));
+  });
+
   it("WEEK: Monday to Sunday, one word a day, '—' for the days ahead — and no time anywhere", async () => {
     const s = server([], { "GET /attendance/me": meRoute() });
     await mount(s.fetcher, <MyAttendance nowMs={nowMs} />);

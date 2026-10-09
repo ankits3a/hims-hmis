@@ -47,7 +47,10 @@ export function periodTitle(t: T, view: ViewKind, anchor: string): string {
   if (view === "day") return dateLabel(t, anchor);
   if (view === "month") return `${t(`attendance.month.${anchor.slice(5, 7)}`)} ${anchor.slice(0, 4)}`;
   const w = weekOf(anchor);
-  return `${String(Number(w[0]!.slice(8, 10)))} – ${String(Number(w[6]!.slice(8, 10)))} ${t(`attendance.month.${w[6]!.slice(5, 7)}`)}`;
+  const d = (iso: string): string => String(Number(iso.slice(8, 10)));
+  const m = (iso: string): string => t(`attendance.month.${iso.slice(5, 7)}`);
+  // A week that crosses a month names both months: "28 September – 4 October", never "28 – 4 October".
+  return w[0]!.slice(5, 7) === w[6]!.slice(5, 7) ? `${d(w[0]!)} – ${d(w[6]!)} ${m(w[6]!)}` : `${d(w[0]!)} ${m(w[0]!)} – ${d(w[6]!)} ${m(w[6]!)}`;
 }
 
 export function Chips<K extends string>({ items, value, onChange, testID }: { items: readonly { key: K; label: string }[]; value: K; onChange: (k: K) => void; testID: string }) {
@@ -82,12 +85,19 @@ export function PeriodNav({ t, title, onPrev, onNext, canNext }: { t: T; title: 
   );
 }
 
-export function Counts({ items }: { items: readonly { key: string; label: string; value: string; tone: AttendanceTone }[] }) {
+/**
+ * A row of count tiles. A `wide` tile holds "n / m" (up to "28 / 31"): at 360 px five equal tiles
+ * clipped it to "7 /…", so it takes twice the base width and the rest share what is left.
+ */
+export function Counts({ items }: { items: readonly { key: string; label: string; value: string; tone: AttendanceTone; wide?: boolean }[] }) {
+  // Five tiles in 328 px (360 less the gutters): 78 + 4 × 52 + 4 × 6 = 310 — "28 / 31" at 15 px and
+  // "अनुपस्थित" both fit; at 17 px with equal tiles neither did.
+  const tight = items.length >= 5;
   return (
-    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: tight ? 6 : space.sm }}>
       {items.map((c) => (
-        <View key={c.key} testID={`att-count-${c.key}`} style={{ flexGrow: 1, flexBasis: 56, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, paddingVertical: space.sm, paddingHorizontal: space.sm }}>
-          <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 17, fontWeight: "700", color: TONE[c.tone].fg }}>{c.value}</Text>
+        <View key={c.key} testID={`att-count-${c.key}`} style={{ flexGrow: 1, flexBasis: c.wide === true ? 78 : 52, backgroundColor: color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.md, paddingVertical: space.sm, paddingHorizontal: 6 }}>
+          <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: tight ? 15 : 17, fontWeight: "700", color: TONE[c.tone].fg }}>{c.value}</Text>
           <Text numberOfLines={1} style={{ fontSize: 11.5, color: color.dim }}>{c.label}</Text>
         </View>
       ))}

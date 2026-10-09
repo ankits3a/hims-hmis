@@ -100,7 +100,7 @@ export function MyAttendance({ openDay, openRequest, nowMs = Date.now }: { openD
         {linked !== null && view === "week" && (
           <>
             <Counts items={[
-              { key: "present", label: t("attendance.word.present"), value: t("attendance.of", { n: counts.present, of: counts.days }), tone: "green" },
+              { key: "present", label: t("attendance.word.present"), value: t("attendance.of", { n: counts.present, of: counts.days }), tone: "green", wide: true },
               { key: "partial", label: t("attendance.word.partial"), value: String(counts.partial), tone: "amber" },
               ...(counts.confirm > 0 ? [{ key: "confirm", label: t("attendance.word.confirm"), value: String(counts.confirm), tone: "warn" as const }] : []),
             ]} />
