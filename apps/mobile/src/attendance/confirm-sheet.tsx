@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Modal, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { ApiError } from "../api";
 import { Text } from "../text";
 import { color, radius, space, type } from "../theme";
-import { Button, Note } from "../ui";
+import { Button, Note, KeyboardModal } from "../ui";
 import { attendanceApi, type MyRequest } from "./api";
 import { reasonKey } from "./rules";
 import { TONE, dateLabel, type T } from "./views";
@@ -63,7 +63,7 @@ export function ConfirmSheet({ t, call, date, reason, onClose, onChanged }: {
   const active = request !== null && (request.status === "open" || request.status === "seen");
   const closed = request !== null && !active;
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(19,36,32,.45)" }}>
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel={t("attendance.sheet.close")} testID="confirm-sheet-scrim" />
         <View testID="confirm-sheet" style={{ backgroundColor: color.paper, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, paddingBottom: space.xl, gap: space.md }}>
@@ -84,6 +84,6 @@ export function ConfirmSheet({ t, call, date, reason, onClose, onChanged }: {
           <Button testID="confirm-close" kind="secondary" label={t("attendance.sheet.close")} onPress={onClose} />
         </View>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }

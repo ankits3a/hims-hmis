@@ -23,7 +23,7 @@ import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note, Tag } from "../ui";
+import { Band, Button, MONO, Note, Tag, keyboardScrollInsets } from "../ui";
 import { refusalText } from "../vitals/api";
 import { todayIst } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
@@ -672,7 +672,7 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl + 168, gap: space.lg }} keyboardShouldPersistTaps="handled">
+      <ScrollView {...keyboardScrollInsets()} contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl + 168, gap: space.lg }} keyboardShouldPersistTaps="handled">
         {scanSaid !== null && <ScannedBanner text={scanSaid} onDismiss={() => setScanSaid(null)} />}
         {flash !== null && <Note tone="info" testID="counter-flash">{flash}</Note>}
 

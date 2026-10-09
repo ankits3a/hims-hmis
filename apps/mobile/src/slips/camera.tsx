@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
-import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "../text";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useI18n } from "../i18n";
 import { color, radius, space } from "../theme";
-import { Button } from "../ui";
+import { Button, KeyboardModal } from "../ui";
 import type { Photo } from "./imaging";
 
 /**
@@ -62,7 +62,7 @@ export function SlipCamera({ open, onShot, onClose, burst = null }: {
   };
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose} testID="slip-camera" statusBarTranslucent>
+    <KeyboardModal visible animationType="slide" onRequestClose={onClose} testID="slip-camera" statusBarTranslucent>
       <View style={s.wrap}>
         {granted ? (
           <>
@@ -111,7 +111,7 @@ export function SlipCamera({ open, onShot, onClose, burst = null }: {
           </View>
         )}
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

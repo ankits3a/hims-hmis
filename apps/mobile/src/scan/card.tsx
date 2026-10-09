@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useI18n } from "../i18n";
@@ -7,7 +7,7 @@ import { seatsFor } from "../seats";
 import { useSession } from "../session";
 import { Text } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
-import { MONO } from "../ui";
+import { MONO, KeyboardModal, keyboardScroll } from "../ui";
 import { vitalsApi } from "../vitals/api";
 import { GuardianSheet } from "../vitals/guardian";
 import type { Door } from "../vitals/rules";
@@ -175,17 +175,17 @@ export function ActionCard({ looked, seats, onAct, onPick, onNewVisit, onAgain, 
 
   const settled = looked !== null && o !== null;
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.scrim} onPress={onClose} accessibilityLabel={t("mobile.scan.close")} testID="card-scrim" />
       <View style={[s.sheet, { paddingBottom: insets.bottom + space.lg }]} testID="action-card">
         <View style={s.grab} />
-        <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ gap: space.sm }} keyboardShouldPersistTaps="handled">
+        <ScrollView {...keyboardScroll()} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: space.sm }} keyboardShouldPersistTaps="handled">
           {body}
           {settled && onAgain !== undefined && (o.outcome !== "visit") && <Row testID="card-again" kind="plain" label={t("mobile.scan.again")} onPress={onAgain} />}
           {settled && onAgain === undefined && o.outcome !== "visit" && o.outcome !== "ambiguous" && <Row testID="card-close" kind="plain" label={t("mobile.scan.close")} onPress={onClose} />}
         </ScrollView>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

@@ -10,7 +10,7 @@ import { HeldCard } from "../scan/card";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
-import { Band, Button, MONO, Note } from "../ui";
+import { Band, Button, MONO, Note, keyboardScrollInsets } from "../ui";
 
 /**
  * MY PAPER CONSULTATIONS, ON THE PHONE (app home round 2, decision 0043 — owner ruling 2026-10-06
@@ -111,7 +111,7 @@ export function PaperConsultsScreen() {
           <Text style={{ color: color.agentFg, fontSize: 13, fontWeight: "600" }}>{t("mobile.back")}</Text>
         </Pressable>
       } />
-      <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }} keyboardShouldPersistTaps="handled" testID="paper-list">
+      <ScrollView {...keyboardScrollInsets()} contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }} keyboardShouldPersistTaps="handled" testID="paper-list">
         <Text style={[type.title, { color: color.ink }]}>{t("mobile.paper.title")}</Text>
         <Text style={[type.small, { color: color.dim }]}>{t("mobile.paper.sub")}</Text>
         {failed !== null && <Note tone="warn" testID="paper-failed">{t(failed === "offline" ? "mobile.paper.offline" : "mobile.paper.cannotRead")}</Note>}

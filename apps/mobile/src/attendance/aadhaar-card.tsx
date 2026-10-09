@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { ApiError } from "../api";
 import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
-import { Button, Note } from "../ui";
+import { Button, Note, KeyboardModal } from "../ui";
 import { aadhaarTyped, savedNotice, selfRefusal, type SelfIdentity } from "../../../../packages/contracts/src/self-identity";
 import type { T } from "./views";
 import type { Call } from "../doctor/api";
@@ -73,7 +73,7 @@ export function AadhaarSheet({ t, call, onClose, onSaved }: { t: T; call: Call; 
     } finally { setBusy(false); }
   };
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(19,36,32,.45)" }}>
         <Pressable style={{ flex: 1 }} onPress={onClose} accessibilityLabel={t("attendance.aadhaar.cancel")} testID="aadhaar-sheet-scrim" />
         <View testID="aadhaar-sheet" style={{ backgroundColor: color.paper, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, paddingBottom: space.xl, gap: space.md }}>
@@ -88,6 +88,6 @@ export function AadhaarSheet({ t, call, onClose, onSaved }: { t: T; call: Call; 
           <Button testID="aadhaar-cancel" kind="secondary" label={t("attendance.aadhaar.cancel")} onPress={onClose} />
         </View>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }

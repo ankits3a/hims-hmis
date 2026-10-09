@@ -1,11 +1,11 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "../text";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { color, radius, space, TOUCH } from "../theme";
-import { Button, MONO } from "../ui";
+import { Button, MONO, KeyboardModal, keyboardScroll } from "../ui";
 import { refusalText, type VitalsApi, type WireVitalsGate, type WireVitalsSaveResult } from "./api";
 import {
   CONTEXT_CHIPS, GLUCOSE_TIMINGS, TILE_KEYS, UNLOCK_REASONS, applyTake, bandFor, buildBody, emptyTiles, flagOf, fullRowBoxes, glucoseNeedsTiming, holdingOf,
@@ -313,7 +313,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "web" ? undefined : "padding"}>
-      <ScrollView testID="capture" keyboardShouldPersistTaps="handled" contentContainerStyle={c.scroll}>
+      <ScrollView {...keyboardScroll()} testID="capture" keyboardShouldPersistTaps="handled" contentContainerStyle={c.scroll}>
         {header}
         {layout.autoWhy !== null && (
           <View testID="auto-note" style={c.autoNote}>
@@ -536,7 +536,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
         </Pressable>
       </ScrollView>
 
-      <Modal visible={plusOpen} transparent animationType="slide" onRequestClose={() => setPlusOpen(false)}>
+      <KeyboardModal visible={plusOpen} transparent animationType="slide" onRequestClose={() => setPlusOpen(false)}>
         <Pressable style={c.scrim} testID="plus-scrim" onPress={() => setPlusOpen(false)}>
           <Pressable style={[c.sheet, { paddingBottom: Math.max(insets.bottom, space.lg) }]} testID="plus-sheet" onPress={() => undefined}>
             <View style={c.grab} />
@@ -552,7 +552,7 @@ export function CaptureCore({ api, row, preStage, ranges, resetKey, header, onSa
             ))}
           </Pressable>
         </Pressable>
-      </Modal>
+      </KeyboardModal>
 
       <View style={[c.bar, { paddingBottom: Math.max(insets.bottom, space.md) }]} testID="save-bar">
         {missing.length > 0 && <Text accessibilityRole="alert" testID="missing" style={c.barError}>{t("vitalsBay.capture.missing", { tiles: missing.map(label).join(", ") })}</Text>}

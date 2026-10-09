@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppState, StyleSheet, View } from "react-native";
 import { SWITCHER_BLANKED, coveredWhen } from "./privacy";
+import { anyInputFocused } from "./text";
 import { color } from "./theme";
 
 /**
@@ -9,10 +10,11 @@ import { color } from "./theme";
  * cover). It takes no touches and draws nothing at all on Android, on staging or in the browser.
  */
 export function PrivacyCover() {
+  // iOS's AutoFill / Face ID sheets make the app "inactive" mid-typing: src/privacy.ts `coveredWhen`.
   const [covered, setCovered] = useState(false);
   useEffect(() => {
     if (!SWITCHER_BLANKED) return undefined;
-    const sub = AppState.addEventListener("change", (next) => setCovered(coveredWhen(next)));
+    const sub = AppState.addEventListener("change", (next) => setCovered(coveredWhen(next, anyInputFocused())));
     return () => sub.remove();
   }, []);
   if (!covered) return null;

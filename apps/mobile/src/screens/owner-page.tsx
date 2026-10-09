@@ -6,7 +6,7 @@ import { seatsFor } from "../seats";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note } from "../ui";
+import { Band, Button, MONO, Note, keyboardScrollInsets } from "../ui";
 import { rosterApi } from "../roster/api";
 import { onRecord, recordedPercent } from "../../../../packages/contracts/src/recording";
 import type { RecordingCounts, RecordingReport } from "../../../../packages/contracts/src/recording";
@@ -414,7 +414,7 @@ export function OwnerPage({ page, now = Date.now }: { page: OwnerTileKey; now?: 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band right={<Button kind="secondary" label={t("recorded.back")} onPress={() => router.back()} testID="owner-back" />} />
-      <ScrollView testID="owner-scroll" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }} keyboardShouldPersistTaps="handled">
+      <ScrollView {...keyboardScrollInsets()} testID="owner-scroll" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }} keyboardShouldPersistTaps="handled">
         <Text testID="owner-title" style={[type.title, { color: color.ink }]} numberOfLines={1}>{title}</Text>
         {periodic && (
           <View testID="owner-periods" style={{ flexDirection: "row", gap: 6 }}>

@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "../text";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { color, radius, space, TOUCH } from "../theme";
-import { Button, Note } from "../ui";
+import { Button, Note, KeyboardModal, keyboardScroll } from "../ui";
 import { refusalText, type VitalsApi } from "./api";
 
 /**
@@ -82,7 +82,7 @@ export function GuardianSheet({ api, encounterId, onDone, onClose, confirmHere =
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.scrim} onPress={busy ? undefined : onClose} accessibilityLabel={t("patientAbsent.cancel")} testID="patient-absent-scrim" />
       <View style={[s.sheet, { paddingBottom: insets.bottom + space.lg }]}>
         {sent ? (
@@ -91,7 +91,7 @@ export function GuardianSheet({ api, encounterId, onDone, onClose, confirmHere =
             <Button testID="patient-absent-close" kind="secondary" label={t("mobile.scan.close")} onPress={onClose} />
           </View>
         ) : (
-          <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
+          <ScrollView {...keyboardScroll()} style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled">
             <View testID="patient-absent-dialog" accessibilityLabel={t("patientAbsent.title")} style={{ gap: space.sm }}>
               <Text style={s.title} numberOfLines={1}>{t("patientAbsent.title")}</Text>
               <Text style={s.hint} numberOfLines={1}>{t("patientAbsent.hint")}</Text>
@@ -117,7 +117,7 @@ export function GuardianSheet({ api, encounterId, onDone, onClose, confirmHere =
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

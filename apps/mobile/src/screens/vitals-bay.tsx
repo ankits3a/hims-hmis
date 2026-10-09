@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Text, TextInput } from "../text";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -7,7 +7,7 @@ import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note, Tag } from "../ui";
+import { Band, Button, MONO, Note, Tag, KeyboardModal, keyboardScrollInsets } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
 import { AmendPanel } from "../vitals/amend";
 import { GuardianLink, GuardianSheet, guardianMayStandIn } from "../vitals/guardian";
@@ -528,7 +528,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
           }
         />
       ) : (
-        <ScrollView ref={deskScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
+        <ScrollView {...keyboardScrollInsets()} ref={deskScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
           {bannerView}
           {rowInHand === null ? (
             <View style={s.card}>
@@ -586,7 +586,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
         </ScrollView>
       )}
 
-      <Modal visible={benchOpen} transparent animationType="slide" onRequestClose={() => setBenchOpen(false)}>
+      <KeyboardModal visible={benchOpen} transparent animationType="slide" onRequestClose={() => setBenchOpen(false)}>
         <Pressable style={s.scrim} testID="bench-scrim" onPress={() => setBenchOpen(false)}>
           <Pressable style={s.sheet} testID="bench-sheet" onPress={() => undefined}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
@@ -607,7 +607,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
             <Text style={s.faint}>{t("vitalsBay.bench.valveNote")}</Text>
           </Pressable>
         </Pressable>
-      </Modal>
+      </KeyboardModal>
       <Scanner open={scanOpen} onClose={() => setScanOpen(false)} onRead={(data) => { setScanOpen(false); setRaw(/^(q1|rx1)\./.test(data) ? "" : data); void identify(data); }} />
       {guardianRow !== null && (
         <GuardianSheet api={api} encounterId={guardianRow.encounterId} onDone={() => onGuardian(guardianRow)} onClose={() => setGuardianRow(null)} />

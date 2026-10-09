@@ -11,7 +11,7 @@ import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, MONO, Note } from "../ui";
+import { Band, MONO, Note, keyboardScrollInsets } from "../ui";
 
 export type ManageTab = "today" | "team" | "requests";
 const hhmmIst = (iso: string): string => new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
@@ -68,7 +68,7 @@ export function AttendanceManage({ lead = false, tab: startTab }: { lead?: boole
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <BackBand t={t} onBack={() => router.back()} Band={Band} />
-      <ScrollView testID="attendance-manage" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }}>
+      <ScrollView {...keyboardScrollInsets()} testID="attendance-manage" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }}>
         <Text numberOfLines={1} style={[type.title, { color: color.ink }]}>{t(tabs.length === 1 && tab === "team" ? "attendance.manage.team" : "attendance.title")}</Text>
         {tabs.length > 1 && <Chips testID="att-tab" value={tab} onChange={setTab} items={tabs.map((k) => ({ key: k, label: t(`attendance.manage.${k}`) }))} />}
         {tab === "today" && <TodayTab t={t} call={call} onPerson={openPerson} />}

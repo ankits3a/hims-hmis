@@ -18,7 +18,7 @@ import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, keyboardScrollInsets } from "../ui";
 import { refusalText } from "../vitals/api";
 import type { ConsultApi, WireConsultVisit, WireRxSet } from "../consult/api";
 import type { Band, ConsultDraft, WireLastLine, WirePrecheck } from "../consult/rules";
@@ -343,7 +343,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
-      <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: 190, gap: space.md }} keyboardShouldPersistTaps="handled">
+      <ScrollView {...keyboardScrollInsets()} contentContainerStyle={{ padding: space.lg, paddingBottom: 190, gap: space.md }} keyboardShouldPersistTaps="handled">
         <View style={s.card} testID="consult-who">
           <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
             <Text style={s.token}>#{tokenNo}</Text>

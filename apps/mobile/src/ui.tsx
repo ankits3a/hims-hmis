@@ -1,5 +1,5 @@
-import { type ReactNode, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View, type TextInputProps } from "react-native";
+import { type ReactNode, forwardRef, useCallback, useRef, useState } from "react";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View, type ModalProps, type ScrollViewProps, type TextInputProps } from "react-native";
 import { Text, TextInput } from "./text";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -68,17 +68,36 @@ export function Tag({ children, tone = "dim" }: { children: ReactNode; tone?: "d
   return <Text style={[type.tag, { color: tone === "dim" ? color.dim : color.faint, fontFamily: MONO }]}>{children}</Text>;
 }
 
-export function Field({ label, secure, revealLabel, hideLabel, ...rest }: TextInputProps & {
-  label: string; secure?: boolean; revealLabel?: string; hideLabel?: string;
-}) {
+export type FieldProps = TextInputProps & { label: string; secure?: boolean; revealLabel?: string; hideLabel?: string };
+
+/**
+ * A labelled input. iPHONE (owner 2026-10-09: "the keyboard didn't pop up"): the WHOLE bordered row
+ * is the target — a tap on its padding or border focuses the input inside, so the keyboard comes up
+ * wherever the finger lands. The ref reaches the TextInput itself, so a screen can move focus on
+ * ("next" on the username goes to the password).
+ */
+export const Field = forwardRef<TextInput, FieldProps>(function Field({ label, secure, revealLabel, hideLabel, ...rest }, ref) {
   const [shown, setShown] = useState(false);
   const [focus, setFocus] = useState(false);
+  const input = useRef<TextInput | null>(null);
+  const bind = useCallback((node: TextInput | null) => {
+    input.current = node;
+    if (typeof ref === "function") ref(node);
+    else if (ref !== null) ref.current = node;
+  }, [ref]);
   return (
     <View style={{ marginBottom: space.lg }}>
       <Text style={[type.tag, s.label]}>{label}</Text>
-      <View style={[s.input, focus && s.inputFocus]}>
+      <Pressable
+        testID={rest.testID === undefined ? undefined : `${rest.testID}-row`}
+        // The row is only a bigger target; the screen reader still meets the input itself.
+        accessible={false}
+        onPress={() => input.current?.focus()}
+        style={[s.input, focus && s.inputFocus]}
+      >
         <TextInput
           {...rest}
+          ref={bind}
           accessibilityLabel={label}
           secureTextEntry={secure === true && !shown}
           onFocus={(e) => { setFocus(true); rest.onFocus?.(e); }}
@@ -91,9 +110,42 @@ export function Field({ label, secure, revealLabel, hideLabel, ...rest }: TextIn
             <Text style={s.revealText}>{shown ? hideLabel : revealLabel}</Text>
           </Pressable>
         )}
-      </View>
+      </Pressable>
     </View>
   );
+});
+
+/**
+ * KEYBOARD-AWARE SHEETS (owner 2026-10-09: "the input should be modal responsive with keyboard").
+ * A `Modal` is drawn outside the screen's own KeyboardAvoidingView, so on an iPhone the keyboard
+ * would rise over a sheet's input and its Save button. Every Modal in the app is a `KeyboardModal`:
+ * on iOS its content is lifted by the keyboard's height; everywhere else the wrapper is a plain
+ * full-size View (Android resizes the window itself — its behaviour is unchanged).
+ */
+export function KeyboardSheet({ children }: { children?: ReactNode }) {
+  return (
+    <KeyboardAvoidingView testID="keyboard-sheet" behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+      {children}
+    </KeyboardAvoidingView>
+  );
+}
+
+export function KeyboardModal({ children, ...rest }: ModalProps) {
+  return <Modal {...rest}><KeyboardSheet>{children}</KeyboardSheet></Modal>;
+}
+
+/**
+ * Scroll views that hold inputs, iPhone only (Android keeps exactly what it had):
+ * `keyboardScroll()` inside a KeyboardModal / KeyboardAvoidingView — taps reach buttons while the
+ * keyboard is up and a drag pulls it down; `keyboardScrollInsets()` on a bare screen — the same,
+ * and the scroll view also insets itself by the keyboard so the focused input scrolls into view.
+ * (Never both: an inset inside a view that also pads for the keyboard leaves the space twice.)
+ */
+export function keyboardScroll(): Partial<ScrollViewProps> {
+  return Platform.OS === "ios" ? { keyboardShouldPersistTaps: "handled", keyboardDismissMode: "interactive" } : {};
+}
+export function keyboardScrollInsets(): Partial<ScrollViewProps> {
+  return Platform.OS === "ios" ? { ...keyboardScroll(), automaticallyAdjustKeyboardInsets: true } : {};
 }
 
 export function Button({ label, onPress, busy, disabled, kind = "primary", testID }: {

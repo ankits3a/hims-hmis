@@ -16,7 +16,11 @@ import { IS_PRODUCTION } from "./config";
  *   · a sheet drawn by the app cannot cover a panel iOS presents above it (every `Modal`: the
  *     consult drawers, the camera, the booking panel), so the installed screen-capture module's
  *     own switcher cover is asked for as well. It is a guard, not a gate: where it is missing or
- *     fails the app still opens.
+ *     fails the app still opens. (Checked 2026-10-09 against expo-screen-capture 57's
+ *     ScreenCaptureModule.swift: the switcher cover only adds a blur view on willResignActive and
+ *     removes it on didBecomeActive; it never touches the keyboard's first responder or the window.
+ *     `preventScreenCaptureAsync` is the one that re-parents the window into a secure UITextField's
+ *     layer — it is NEVER called on an iPhone.)
  * A screenshot taken on an iPhone is NOT blocked, and the Account screen says so.
  *
  * The STAGING build leaves everything allowed on purpose — it holds test data only, and a
@@ -25,9 +29,17 @@ import { IS_PRODUCTION } from "./config";
 export const SCREENSHOTS_BLOCKED: boolean = IS_PRODUCTION && Platform.OS === "android";
 export const SWITCHER_BLANKED: boolean = IS_PRODUCTION && Platform.OS === "ios";
 
-/** iOS reports "inactive" as the switcher opens and "background" once the app is behind another: both are covered. */
-export function coveredWhen(appState: string): boolean {
-  return SWITCHER_BLANKED && appState !== "active";
+/**
+ * iOS reports "inactive" as the switcher opens and "background" once the app is behind another.
+ * "background" is always covered. "inactive" is ALSO what iOS reports while its own sheet is over a
+ * field being typed in — the password AutoFill list, the Face ID check for it — so with an input
+ * focused (`typing`) the sheet stays off until the app is really behind another (owner 2026-10-09:
+ * the sign-in's keyboard). The switcher's card is taken after "background", which is still covered.
+ */
+export function coveredWhen(appState: string, typing = false): boolean {
+  if (!SWITCHER_BLANKED) return false;
+  if (appState === "background") return true;
+  return appState === "inactive" && !typing;
 }
 
 type ScreenCapture = { preventScreenCaptureAsync(key?: string): Promise<void>; enableAppSwitcherProtectionAsync?(blurIntensity?: number): Promise<void> };

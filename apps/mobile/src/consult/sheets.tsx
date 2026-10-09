@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, KeyboardModal, keyboardScroll } from "../ui";
 import { refusalText } from "../vitals/api";
 import { voiceNotice } from "./draft";
 import {
@@ -29,7 +29,7 @@ export function Drawer({ title, onClose, children, testID, foot }: { title: stri
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={st.scrim}>
         <View style={[st.sheet, { paddingBottom: insets.bottom + space.md }]} testID={testID}>
           <View style={st.grab} />
@@ -39,11 +39,11 @@ export function Drawer({ title, onClose, children, testID, foot }: { title: stri
               <Text style={st.done}>{t("mobile.consult.done")}</Text>
             </Pressable>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.xl, gap: space.md }}>{children}</ScrollView>
+          <ScrollView {...keyboardScroll()} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.xl, gap: space.md }}>{children}</ScrollView>
           {foot !== undefined && <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.sm }}>{foot}</View>}
         </View>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

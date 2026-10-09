@@ -1,10 +1,10 @@
 import { useRef } from "react";
-import { Modal, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Text } from "../text";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useI18n } from "../i18n";
 import { color, radius, space } from "../theme";
-import { Button } from "../ui";
+import { Button, KeyboardModal } from "../ui";
 
 /**
  * THE CAMERA ITSELF, without the sheet around it — the one barcode reader in the app. The modal
@@ -40,7 +40,7 @@ export function Scanner({ open, onRead, onClose }: { open: boolean; onRead: (dat
   const granted = permission?.granted === true;
   const blocked = permission !== null && !permission.granted && !permission.canAskAgain;
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose} testID="scanner">
+    <KeyboardModal visible animationType="slide" onRequestClose={onClose} testID="scanner">
       <View style={s.wrap}>
         <Text style={s.title}>{t("mobile.vitals.scanTitle")}</Text>
         {granted ? (
@@ -59,7 +59,7 @@ export function Scanner({ open, onRead, onClose }: { open: boolean; onRead: (dat
         <View style={{ flex: 1 }} />
         <Button testID="scan-cancel" kind="secondary" label={t("mobile.vitals.scanCancel")} onPress={onClose} />
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 
