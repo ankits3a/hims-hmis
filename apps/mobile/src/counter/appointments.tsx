@@ -195,7 +195,8 @@ export function PatientAppointments({ api, patientId, today, version, mayManage,
               </View>
             ) : (
               <View style={{ gap: space.sm, marginTop: space.sm }}>
-                {isToday && !stranded && mayCheckIn && (
+                {/* A tele-call is not checked in at a desk: the card says its slot and its pay state, and the visit opens itself. */}
+                {isToday && !stranded && mayCheckIn && a.mode !== "tele" && (
                   <Button testID={`appt-checkin-${a.id}`} busy={busy === a.id} label={locked ? t("mobile.counter.appt.checkAgain") : t("mobile.counter.appt.checkIn")} onPress={() => { void arrive(a); }} />
                 )}
                 {mayManage && !locked && (

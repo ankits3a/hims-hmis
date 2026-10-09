@@ -588,7 +588,7 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(JSON.stringify(screen.toJSON())).not.toMatch(/paid|unpaid|fee|₹|receipt|advance/i);
   });
 
-  it("TELE-CALL, no answer: the first sends the patient back to the line with a sentence", async () => {
+  it("TELE-CALL, no answer: the first hands the visit back with a sentence — held aside to retry", async () => {
     const w = teleWorld({}, {
       "POST /opd/visits/e13/tele/outcome": () => ({ status: 200, body: { outcome: "no_answer", final: false, encounter: { status: "waiting", consultMode: "tele", teleOutcome: "no_answer", teleNoAnswerCount: 1 } } }),
     });
@@ -596,7 +596,7 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     await screen.findByTestId("tele-panel");
     expect(screen.queryByTestId("tele-tried")).toBeNull();
     await press("tele-no-answer");
-    await waitFor(() => expect(m.onDone).toHaveBeenCalledWith("No answer — back in your line"));
+    await waitFor(() => expect(m.onDone).toHaveBeenCalledWith("No answer — held aside to retry"));
     expect(w.of("POST /opd/visits/e13/tele/outcome")[0]!.body).toEqual({ outcome: "no_answer" });
   });
 
@@ -606,6 +606,19 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(await screen.findByTestId("tele-tried")).toHaveTextContent("Tried once — no answer");
     await press("tele-no-answer");
     await waitFor(() => expect(m2.onDone).toHaveBeenCalledWith("No answer twice — sent to desk"));
+  });
+
+  it("TELE-CALL, the save fails (fix round): the doctor reads the server's neutral sentence — no money word — stays on the visit, and Complete stays locked", async () => {
+    const w = teleWorld({}, { "POST /opd/visits/e13/tele/outcome": () => ({ status: 409, body: { statusCode: 409, code: "tele_save_failed", message: "Could not save — try again", detail: { encounterId: "e13" } } }) });
+    const m = await mount(w);
+    await screen.findByTestId("tele-panel");
+    await writeNote();
+    await press("tele-spoke-go");
+    expect(await screen.findByTestId("tele-error")).toHaveTextContent(/^Could not save — try again$/);
+    expect(JSON.stringify(screen.toJSON())).not.toMatch(/paid|unpaid|fee|₹|receipt|advance|invoice|bill/i);
+    expect(screen.queryByTestId("tele-spoke")).toBeNull();
+    expect(screen.getByTestId("issue-complete").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(m.onDone).not.toHaveBeenCalled();
   });
 
   it("TELE-CALL: a refusal is the server's words, and the doctor stays on the visit", async () => {

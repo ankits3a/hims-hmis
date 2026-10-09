@@ -235,7 +235,8 @@ export type WireQueueEntryView = WireQueueEntry & {
    * client must never recompute paid-ness from an invoice. `encounterFeeStatuses` is the one
    * projection; a second truth function is a board that can disagree with the gate.
    */
-  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
+  /** ABSENT on a tele-call's row (fix round 2026-10-09): such a row carries no money key at all. */
+  feeStatus?: "free" | "settled" | "credit" | "unsettled" | null;
 };
 
 /**
@@ -688,7 +689,7 @@ export function getSlots(doctorId: string, date: string): Promise<{ slots: WireS
 }
 
 export function bookAppointment(
-  body: { patientId: string; doctorId: string; slotStart: string; note?: string },
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string },
 ): Promise<{ appointment: WireAppointment }> {
   return api("POST", "/opd/appointments", body);
 }

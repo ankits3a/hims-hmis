@@ -590,6 +590,10 @@ describe("OpdAppointments", () => {
     expect(within(tele).getByRole("img", { name: "Tele-call" })).toBeInTheDocument();
     expect(tele).not.toHaveTextContent(/tele/i);
     expect(within(inPerson).queryByRole("img", { name: "Tele-call" })).toBeNull();
+    // fix round — a tele-call is not checked in at a desk: no Check-in button on its row; the in-person row keeps its own
+    expect(within(tele).queryByTestId("checkin-ap-2")).toBeNull();
+    expect(within(tele).queryByRole("button", { name: "Check in" })).toBeNull();
+    expect(within(inPerson).getByTestId("checkin-ap-1")).toBeInTheDocument();
 
     await pickPatient(user);
     const theirs = await screen.findAllByTestId("patient-booking-row");

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { TeleHow, teleHowBody, teleHowFor, teleHowReady } from "../../components/tele-how";
+import type { TeleHowValue } from "../../components/tele-how";
 import { TeleDeskPay } from "../../components/tele-desk-pay";
 import { TeleMark } from "../../components/tele-mark";
 import { useQuery } from "@tanstack/react-query";
@@ -1654,6 +1656,10 @@ function FutureTab(): React.ReactElement {
   });
   /** The slot the clerk has SELECTED and not yet committed — the artboard's "yours". */
   const [picked, setPicked] = useState<string | null>(null);
+  /* Owner 2026-10-09 — a NEW booking asks how the patient is seen; the control is the appointments screen's own. */
+  const [how, setHow] = useState<TeleHowValue>(teleHowFor(null));
+  const personPhone = s.person?.phone ?? null;
+  useEffect(() => { setHow(teleHowFor(personPhone)); }, [picked, personPhone]);
   /** Morning, noon or evening — asked before any slot is drawn. Null until the clerk taps one. */
   const [part, setPart] = useState<DayPart | null>(null);
 
@@ -2118,12 +2124,17 @@ function FutureTab(): React.ReactElement {
             ) : null}
           </div>
         )}
+        {picked === null || moving !== null ? null : (
+          <div style={{ marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line2)", maxWidth: 360 }}>
+            <TeleHow value={how} onChange={setHow} disabled={s.busy === "future"} />
+          </div>
+        )}
         {picked === null ? null : (
           <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 13, paddingTop: 12, borderTop: "1px solid var(--line2)", flexWrap: "wrap" }}>
             <button
               className="pri"
               data-testid={moving === null ? "confirm-slot" : "confirm-move"}
-              disabled={s.busy === "future" || chosen === null}
+              disabled={s.busy === "future" || chosen === null || (moving === null && !teleHowReady(how))}
               onClick={() => {
                 const slot = all.find((x) => x.start === picked);
                 if (slot === undefined || chosen === null) return;
@@ -2135,7 +2146,7 @@ function FutureTab(): React.ReactElement {
                   void move(moving.id, slot.start, crossDept ? moveReason.trim() : undefined);
                   return;
                 }
-                void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName);
+                void d.holdFutureSlot(chosen.doctor.id, slot, deptName, chosen.doctor.displayName, teleHowBody(how));
                 setPicked(null);
               }}
             >
@@ -2233,14 +2244,17 @@ function FutureTab(): React.ReactElement {
                   >
                     {t("registrationCounter.book.cancel")}
                   </button>
-                  <button
-                    className="sec grn"
-                    data-testid={`check-in-${a.id}`}
-                    disabled={arriving !== null}
-                    onClick={() => void arrive(a.id)}
-                  >
-                    {arriving === a.id ? "…" : t("registrationCounter.book.checkIn")}
-                  </button>
+                  {/* A tele-call is not checked in at a desk: the row says its slot and its pay state, and the visit opens itself. */}
+                  {a.mode === "tele" ? null : (
+                    <button
+                      className="sec grn"
+                      data-testid={`check-in-${a.id}`}
+                      disabled={arriving !== null}
+                      onClick={() => void arrive(a.id)}
+                    >
+                      {arriving === a.id ? "…" : t("registrationCounter.book.checkIn")}
+                    </button>
+                  )}
                 </>
               ) : <span style={{ width: 74 }} />}
             </div>

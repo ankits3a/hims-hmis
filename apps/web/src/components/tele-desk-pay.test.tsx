@@ -98,7 +98,7 @@ describe("TeleDeskPay — the desk's money on a tele-call (owner 2026-10-09)", (
     paid.unmount();
     renderWithProviders(<TeleDeskPay appointment={apt({ status: "cancelled", teleDesk: { amountPaise: 10_000, covered: true } })} />);
     expect(screen.getByTestId("tele-paid-ap-2")).toHaveTextContent("Paid ₹100 · refund on request");
-    expect(screen.getByRole("link", { name: "Billing office" })).toHaveAttribute("href", "/billing/office");
+    expect(screen.getByRole("link", { name: "Billing office" })).toHaveAttribute("href", "/billing/office?view=refunds&page=request"); // the refund request page itself
   });
 
   it("a free follow-up has nothing to pay and is confirmed with no tender; an in-person appointment draws nothing", async () => {

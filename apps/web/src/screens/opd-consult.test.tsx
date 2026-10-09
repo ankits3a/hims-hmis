@@ -4301,6 +4301,22 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
     expect(callsTo("POST", "/api/opd/visits/enc-1/tele/outcome")[0]!.body).toBe(JSON.stringify({ outcome: "no_answer" }));
   });
 
+  it("TELE-CALL, the save fails (fix round): the doctor reads the server's neutral sentence — no money word — and Complete stays locked", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, vitals: [], teleSlotAt: "2026-08-18T05:50:00.000Z", encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: null, teleNoAnswerCount: 0 } } },
+      "POST /api/opd/visits/enc-1/tele/outcome": { status: 409, body: { statusCode: 409, code: "tele_save_failed", message: "Could not save — try again", detail: { encounterId: "enc-1" } } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const panel = await screen.findByTestId("tele-panel");
+    await user.click(within(panel).getByRole("button", { name: "Spoke to patient" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/^Could not save — try again$/);
+    expect(panel).not.toHaveTextContent(/paid|unpaid|fee|₹|receipt|advance|invoice|bill/i);
+    expect(screen.queryByTestId("tele-spoke")).toBeNull();
+    expect(screen.getByTestId("complete-consult")).toBeDisabled();
+  });
+
   it("an in-person consultation has no tele panel, and Complete is not locked by one", async () => {
     mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, encounter: { ...ENCOUNTER, status: "in_consultation" } } } });
     const user = userEvent.setup();

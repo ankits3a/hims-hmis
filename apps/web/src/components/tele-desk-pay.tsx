@@ -55,7 +55,7 @@ export function TeleDeskPay({ appointment, compact = false }: { appointment: Wir
     if (gone && paise > 0) {
       return (
         <span data-testid={`tele-paid-${appointment.id}`} style={{ fontSize: size, color: "var(--dim)", whiteSpace: "nowrap" }}>
-          {t("teleDesk.paidRefund", { amount: fmtRupees(paise) })} · <a href="/billing/office" style={{ color: "var(--green)", fontWeight: 600 }}>{t("teleDesk.refundLink")}</a>
+          {t("teleDesk.paidRefund", { amount: fmtRupees(paise) })} · <a href="/billing/office?view=refunds&page=request" style={{ color: "var(--green)", fontWeight: 600 }}>{t("teleDesk.refundLink")}</a>
         </span>
       );
     }

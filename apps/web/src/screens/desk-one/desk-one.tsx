@@ -1051,13 +1051,13 @@ export function DeskOne({ seat = "counter" }: { seat?: Seat } = {}): React.React
 
   /** A slot on a later day. It is held BESIDE today's session and never replaces it. */
   const holdFutureSlot = useCallback(async (
-    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string,
+    doctorId: string, slot: WireSlot, departmentName: string, doctorName: string, tele: { mode?: "tele"; telePhone?: string } = {},
   ) => {
     const person = s.person;
     if (person === null) return;
     patch({ busy: "future", error: null });
     try {
-      const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start });
+      const { appointment } = await bookAppointment({ patientId: person.id, doctorId, slotStart: slot.start, ...tele });
       // The left lane's "upcoming" and the stage's "their bookings" share this key; without the
       // invalidate both answer from a 30 s cache and contradict the booking made a second ago.
       void qc.invalidateQueries({ queryKey: ["d1", "their-appointments", person.id] });

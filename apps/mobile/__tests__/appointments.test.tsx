@@ -562,15 +562,19 @@ describe("appointments on the phone's Desk One", () => {
     expect(screen.queryByTestId("appt-tele-a3")).toBeNull();
   });
 
-  it("TELE-CALL: the desk's check-in is refused in the server's words beside that booking", async () => {
-    const s = world({
-      theirs: () => [appt({ id: "a2", mode: "tele", serviceDate: TODAY, slotStart: at(TODAY, "18:20"), slotEnd: at(TODAY, "18:29") })],
-      routes: { "POST /opd/appointments/a2/check-in": () => ({ status: 409, body: { code: "tele_call_opens_at_slot", message: "Tele-call · opens at slot time" } }) },
-    });
+  it("TELE-CALL: today's tele-call draws NO Check-in button — the card says its slot and its pay state — while an in-person booking today keeps its own", async () => {
+    const s = world({ theirs: () => [
+      appt({ id: "a2", mode: "tele", serviceDate: TODAY, slotStart: at(TODAY, "18:20"), slotEnd: at(TODAY, "18:29"), teleDesk: { amountPaise: 10_000, covered: true } }),
+      appt({ id: "a4", mode: "in_person", serviceDate: TODAY, slotStart: at(TODAY, "18:25"), slotEnd: at(TODAY, "18:29") }),
+    ] });
     await mount(s.fetcher);
     await findAndHold();
-    await fireEvent.press(await screen.findByTestId("appt-checkin-a2"));
-    expect(await screen.findByTestId("appt-error-a2")).toHaveTextContent("Tele-call · opens at slot time");
+    const tele = await screen.findByTestId("appt-a2");
+    expect(screen.queryByTestId("appt-checkin-a2")).toBeNull();
+    expect(tele).toHaveTextContent(/23:50/);
+    expect(screen.getByTestId("tele-money-a2")).toHaveTextContent(/^Paid$/);
+    expect(screen.getByTestId("appt-checkin-a4")).toBeTruthy();
+    expect(s.calls.some((c) => c.key.includes("check-in"))).toBe(false);
   });
 
   // ——— tele-call, slice 2: the desk collects (owner 2026-10-09) ———

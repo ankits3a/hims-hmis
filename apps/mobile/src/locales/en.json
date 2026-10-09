@@ -242,7 +242,7 @@
       "noAnswer": "No answer",
       "spoke": "Spoke to patient",
       "spokeAt": "Spoke · {{time}}",
-      "backInLine": "No answer — back in your line",
+      "backInLine": "No answer — held aside to retry",
       "toDesk": "No answer twice — sent to desk",
       "triedOnce": "Tried once — no answer"
     },
