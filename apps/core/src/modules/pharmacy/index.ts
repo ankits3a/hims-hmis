@@ -85,6 +85,8 @@ export { acceptReturn } from "./returns";
 export type { ReturnInput, ReturnResult } from "./returns";
 /** P7 — the counter's day (doc 16 §8 KPIs, 16f's first strip). Read-only. */
 export { counterSummary } from "./summary";
+// The owner's pharmacy page in the staff app (owner 2026-10-09): totals, read-only.
+export { ownerPharmacy } from "./owner-summary";
 /** P15 — the renewal notice and the arithmetic the census shares with the register screen. */
 export { REGISTRATION_RENEWAL_NOTICE_DAYS } from "./config";
 export { renewalDaysLeft } from "./pharmacists";

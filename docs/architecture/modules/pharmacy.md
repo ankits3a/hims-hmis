@@ -145,6 +145,8 @@ Source: `apps/core/src/modules/pharmacy/`
   - `runRefillReminders(db: Db, now: Date, opts: { leadDays?: number; minSupplyDays?: number; nameDrugs?: boolean } = {}): Promise<RefillRunResu…`
   - `supplyDays(line: Pick<RxLine, "dose" | "frequency">, qtyBase: number): number | null`
   - types: `BillMessageState`, `MessagesOffice`, `PatientMessagesView`, `RefillLine`, `RefillRunResult`
+- `owner-summary.ts`
+  - `ownerPharmacy(db: Db, actor: Actor, range: DayRange, compare: DayRange | null, now: Date = new Date()): Promise<OwnerPharmacy>`
 - `pharmacists.ts`
   - `PHARMACIST_ROLE`
   - `currentRegistration(db: Db | Tx, userId: string, today: string): Promise<PharmacistRegistration | null>`
@@ -252,7 +254,7 @@ Source: `apps/core/src/modules/pharmacy/`
 
 Foreign keys into: `auth`, `billing`, `formulary`, `materials`, `opd`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (182)
+## HTTP routes (183)
 
 - `pharmacy-adr.controller.ts` — 6: `/pharmacy/adr`
 - `pharmacy-cold-chain.controller.ts` — 8: `/pharmacy/cold-chain`
@@ -266,7 +268,7 @@ Foreign keys into: `auth`, `billing`, `formulary`, `materials`, `opd`, `orders`,
 - `pharmacy-office.controller.ts` — 18: `/pharmacy/office`
 - `pharmacy-opening-stock.controller.ts` — 8: `/pharmacy/opening-stock`
 - `pharmacy-pharmacists.controller.ts` — 4: `/pharmacy/pharmacists`
-- `pharmacy-reports.controller.ts` — 19: `/pharmacy/office`
+- `pharmacy-reports.controller.ts` — 20: `/pharmacy/office`
 - `pharmacy-retail.controller.ts` — 18: `/pharmacy/retail`
 - `pharmacy-tally.controller.ts` — 7: `/pharmacy/office`
 - `pharmacy-trays.controller.ts` — 9: `/pharmacy/trays`

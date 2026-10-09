@@ -68,6 +68,8 @@ export { runDailyClose, dayBook, gstr1Summary, chargeOrphans } from "./daily-clo
  * rather than copied: a second arithmetic on a tile is a figure nobody can defend.
  */
 export { cashierDay } from "./desk-provider";
+// The owner's money page in the staff app (owner 2026-10-09): sums and counts, read-only.
+export { drawerState, ownerMoney } from "./owner-money";
 export type { CashierDay } from "./desk-provider";
 export { collectionsBlind, isDrawerSupervisor, liveExpectedCashPaise, listSessions, mayReadExpectedCash } from "./sessions";
 export type { ChargeOrphanRow } from "./daily-close";

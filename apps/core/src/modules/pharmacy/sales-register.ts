@@ -559,6 +559,33 @@ export async function hsnReport(db: Db, actor: Actor, input: ReportInput, now: D
   };
 }
 
+// ═══════════════════════════════════ the period, in totals (the owner's app page) ═══════════════════════════════════
+
+export type SalesSplitRow = { key: SaleSource; bills: number; netPaise: number };
+/**
+ * The period's pharmacy bills as the register reads them (the same `loadPeriod`), folded to totals:
+ * how many bills, their net payable, the refunds issued in the period, and the same by where the sale
+ * came from — a prescription dispensed from the counter's queue, a walk-in sale, a downtime entry.
+ * No row, no patient. The caller has already been gated.
+ */
+export async function pharmacySalesTotals(db: Db, from: string, to: string): Promise<{ bills: number; netPaise: number; refundsPaise: number; split: SalesSplitRow[] }> {
+  const p = await loadPeriod(db, from, to, null);
+  const by = new Map<SaleSource, SalesSplitRow>();
+  for (const h of p.sales) {
+    const key = p.docs.get(h.id)?.source ?? "walk_in";
+    const row = by.get(key) ?? { key, bills: 0, netPaise: 0 };
+    row.bills += 1; row.netPaise += h.netPayablePaise;
+    by.set(key, row);
+  }
+  const order: SaleSource[] = ["dispense", "walk_in", "downtime"];
+  return {
+    bills: p.sales.length,
+    netPaise: p.sales.reduce((n, h) => n + h.netPayablePaise, 0),
+    refundsPaise: p.refunds.reduce((n, r) => n + r.netPaise, 0),
+    split: order.filter((k) => by.has(k)).map((k) => by.get(k)!),
+  };
+}
+
 // ═══════════════════════════════════ the period, for the Tally export ═══════════════════════════════════
 
 /** A B2B buyer: the GSTIN billing recorded on the invoice, and the legal name with it. A B2C bill has none. */

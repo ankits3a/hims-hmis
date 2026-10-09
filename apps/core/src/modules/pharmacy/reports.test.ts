@@ -15,6 +15,7 @@ import { pickDispense } from "./pick";
 import { cancelBilledDispense } from "./refund";
 import { previewRetailSale, recordRetailLicence, sellRetail } from "./retail";
 import { gstr3bReport } from "./gstr3b";
+import { ownerPharmacy } from "./owner-summary";
 import { hsnReport, marginReport, salesRegister } from "./sales-register";
 import { itemCatalogueReport, topSellingItems } from "./office-stock-reports";
 import { verifyDispense } from "./verify";
@@ -163,6 +164,31 @@ describe("the sales register, the margin and the HSN summary (parity P5)", () =>
     const reg = await salesRegister(db, owner.actor, range, MON3);
     expect(reg.margin).toBe(true);
     expect(reg.totals.profitPaise).toBe(m.totals.marginPaise);
+  });
+
+  /**
+   * THE OWNER'S PHARMACY PAGE (owner 2026-10-09) reconciles to the register it is folded from, splits
+   * by where the sale came from, counts the counter's own queue — and hands no rupee to a reader
+   * without the pharmacy's reports (the pharmacist here stands in for the Medical Superintendent).
+   */
+  it("the owner's page: bills and sales are the register's own totals, split by source; no rupee without pharmacy.reports.read", async () => {
+    await aDay();
+    const reg = await salesRegister(db, owner.actor, range, MON3);
+    const page = await ownerPharmacy(db, owner.actor, { from: DAY, to: DAY }, { from: "2026-08-10", to: "2026-08-10" }, MON3);
+    expect({ bills: page.bills, salesPaise: page.salesPaise, refundsPaise: page.refundsPaise })
+      .toEqual({ bills: reg.totals.sales.count, salesPaise: reg.totals.sales.netPaise, refundsPaise: reg.totals.refunds.netPaise });
+    expect(page.split.map((x) => [x.key, x.bills])).toEqual([["dispense", 3], ["walk_in", 1]]);
+    expect(page.split.reduce((n, x) => n + (x.salesPaise ?? 0), 0)).toBe(page.salesPaise);
+    expect(page.previous).toEqual({ from: "2026-08-10", to: "2026-08-10", bills: 0, salesPaise: 0 });
+    expect(page.prescriptions.reached).toBeGreaterThanOrEqual(page.prescriptions.served);
+    expect(page.prescriptions.reached).toBeGreaterThan(0);
+    expect(page.stock).toMatchObject({ low: expect.any(Number), expiring60: expect.any(Number), askedOut: 0, askedNames: [] });
+    expect(JSON.stringify(page)).not.toMatch(/patient|invoiceNo|uhid/i);
+
+    const counts = await ownerPharmacy(db, fx.pharmacist.actor, { from: DAY, to: DAY }, { from: "2026-08-10", to: "2026-08-10" }, MON3);
+    expect(counts.bills).toBe(page.bills);
+    expect([counts.salesPaise, counts.refundsPaise, counts.previous?.salesPaise, ...counts.split.map((x) => x.salesPaise)]).toEqual([null, null, null, null, null]);
+    expect(counts.prescriptions).toEqual(page.prescriptions);
   });
 
   it("without pharmacy.reports.margin: the register has no cost or profit and the margin report is refused; the counter reads neither", async () => {
