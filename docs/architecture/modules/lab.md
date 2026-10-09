@@ -101,7 +101,8 @@ Source: `apps/core/src/modules/lab/`
   - `labNightReleaseReviewed`
   - `labNotifiableFlagged`
   - `labOrderDesked`
-  - `labQuickReportSaved`
+  - `labQuickReported`
+  - `labQuickStarted`
   - `labRecollectionRequested`
   - `labReflexAdded`
   - `labReflexRefused`
@@ -248,14 +249,14 @@ Source: `apps/core/src/modules/lab/`
 
 Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (53)
+## HTTP routes (54)
 
 - `lab-bench.controller.ts` — 8: `/lab/bench`
 - `lab-catalogue.controller.ts` — 7: `/lab/catalogue`
 - `lab-collection.controller.ts` — 5: `/lab/collection`
 - `lab-desk.controller.ts` — 6: `/lab/desk`
 - `lab-instruments.controller.ts` — 4: `/lab/instruments`
-- `lab-quick.controller.ts` — 5: `/lab/quick`
+- `lab-quick.controller.ts` — 6: `/lab/quick`
 - `lab-verify.controller.ts` — 18: `/lab/reports`, `/lab/results`, `/lab/verify`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/lab`

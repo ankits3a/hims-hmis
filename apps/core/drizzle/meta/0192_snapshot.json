@@ -1,5 +1,5 @@
 {
-  "id": "8daf429d-8168-4a03-89b7-f8c73df7f60a",
+  "id": "9c71f9c8-b321-465a-84d6-c9ad4830072f",
   "prevId": "a1c56283-a13b-4793-9599-baf79d4b8830",
   "version": "7",
   "dialect": "postgresql",
@@ -29781,11 +29781,43 @@
           "primaryKey": false,
           "notNull": true
         },
+        "encounter_no": {
+          "name": "encounter_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tests": {
+          "name": "tests",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'waiting'"
+        },
+        "collected_at": {
+          "name": "collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collected_by": {
+          "name": "collected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "lines": {
           "name": "lines",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "summary": {
           "name": "summary",
@@ -29794,11 +29826,17 @@
           "notNull": true,
           "default": "''"
         },
-        "created_by": {
-          "name": "created_by",
+        "reported_at": {
+          "name": "reported_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reported_by": {
+          "name": "reported_by",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -29822,6 +29860,27 @@
         }
       },
       "indexes": {
+        "lab_quick_reports_status_idx": {
+          "name": "lab_quick_reports_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "lab_quick_reports_patient_idx": {
           "name": "lab_quick_reports_patient_idx",
           "columns": [
@@ -29832,7 +29891,7 @@
               "nulls": "last"
             },
             {
-              "expression": "created_at",
+              "expression": "collected_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -29862,7 +29921,16 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "lab_quick_reports_status_ck": {
+          "name": "lab_quick_reports_status_ck",
+          "value": "\"lab_quick_reports\".\"status\" in ('waiting', 'reported')"
+        },
+        "lab_quick_reports_reported_ck": {
+          "name": "lab_quick_reports_reported_ck",
+          "value": "(\"lab_quick_reports\".\"status\" = 'reported') = (\"lab_quick_reports\".\"reported_at\" is not null and \"lab_quick_reports\".\"reported_by\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.lab_reference_ranges": {

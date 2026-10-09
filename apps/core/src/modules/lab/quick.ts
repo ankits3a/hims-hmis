@@ -1,27 +1,32 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
   labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { labQuickReportSaved } from "./events";
+import { displayNameFor } from "../patients";
+import { labQuickReported, labQuickStarted } from "./events";
 import { flagFor, resolveRange } from "./ranges";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RangeRow } from "./ranges";
 
 /**
- * QUICK ENTRY (owner 2026-10-09, decision 0061) — search a patient, type the values, get a flagged
- * report with an editable summary. No order, no bill, no token, no pathologist signature: the owner
- * runs those in other software for now and will bring them here later.
+ * QUICK MODE (owner 2026-10-09, decision 0061) — the lab without bills, tokens or signatures:
+ *
+ *   1. START, at the counter (`lab.desk.operate`): find the patient (visit no., token, UHID, mobile,
+ *      name or card QR — the desk's own finder), choose the tests (the doctor's advised list comes
+ *      ticked), confirm blood is collected, press Start. The row is `waiting`, in the queue.
+ *   2. REPORT, at the bench (`lab.results.enter`): pick the patient from the queue, the form holds
+ *      every parameter of the chosen tests, type the values, edit the drafted summary, save, print.
  *
  * ═══ WHAT IS REUSED AND WHAT IS NOT ═══
  *
  * The catalogue, the range book and `resolveRange`/`flagFor` are the bench's own, so a quick flag
  * and a bench flag for the same value on the same patient are the same flag. The bench's WRITE path
- * (`enterResult`) is not used: it needs an order item, a specimen and a collection time, and it
- * starts the critical ladder and the reflex rules, all of which belong to the ordered workflow.
- * Quick reports live in `lab_quick_reports` and no reader of verified results looks there.
+ * (`enterResult`) is not used: it needs an order item and a specimen, and it starts the critical
+ * ladder and the reflex rules, all of which belong to the ordered workflow. Quick rows live in
+ * `lab_quick_reports` and no reader of verified results looks there.
  */
 
 export type QuickAnalyte = {
@@ -44,23 +49,49 @@ export type QuickLine = {
   value: string; low: string | null; high: string | null; refText: string | null; flag: QuickFlag;
 };
 
-export type QuickReport = {
-  id: string; patientId: string; lines: QuickLine[]; summary: string;
-  createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
+export type QuickChosenTest = { serviceId: string; code: string; nameEn: string };
+
+export type QuickPatient = { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null };
+
+export type QuickRow = {
+  id: string; status: "waiting" | "reported"; patient: QuickPatient; encounterNo: string | null;
+  tests: QuickChosenTest[]; collectedAt: string; collectedBy: string;
+  reportedAt: string | null; reportedBy: string | null;
 };
 
-export type SaveQuickReportInput = {
-  id?: string;
-  patientId: string;
+export type QuickReport = QuickRow & {
+  /** Every parameter of the chosen tests in report order, then any the bench added by hand. */
+  analyteIds: string[];
+  lines: QuickLine[];
+  summary: string;
+};
+
+export type StartQuickInput = {
+  patientId: string; encounterNo: string | null; serviceIds: string[]; bloodCollected: boolean;
+};
+
+export type SaveQuickResultsInput = {
+  id: string;
   lines: { analyteId: string; value: string }[];
   summary: string;
 };
 
+export type QuickEntryErrorCode =
+  | "patient_not_found" | "test_not_found" | "no_tests" | "blood_not_collected"
+  | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found";
+
 export class QuickEntryError extends Error {
-  constructor(readonly code: "patient_not_found" | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found",
-    message: string, readonly detail?: unknown) {
+  constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
     super(message);
   }
+}
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+/** 00:00 IST of `now`'s IST day, as an instant. */
+function istMidnight(now: Date): Date {
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - IST_OFFSET_MS);
 }
 
 /** Every active test with its parameters in report order, and every analyte those tests name. */
@@ -106,15 +137,95 @@ export async function quickRanges(
   });
 }
 
+/** Step 1 — the counter: tests chosen, blood collected, into the queue. */
+export async function startQuick(tx: Tx, actor: Actor, input: StartQuickInput, now: Date = new Date()): Promise<QuickRow> {
+  if (!input.bloodCollected) throw new QuickEntryError("blood_not_collected", "tick “Blood collected” before Start");
+  const serviceIds = [...new Set(input.serviceIds)];
+  if (serviceIds.length === 0) throw new QuickEntryError("no_tests", "add at least one test");
+  await subjectOf(tx, input.patientId);
+  const found = await tx.select({ serviceId: labOrderables.serviceId, code: labOrderables.code, nameEn: labOrderables.nameEn })
+    .from(labOrderables).where(and(inArray(labOrderables.serviceId, serviceIds), eq(labOrderables.active, true)));
+  const byId = new Map(found.map((t) => [t.serviceId, t]));
+  const missing = serviceIds.filter((s) => !byId.has(s));
+  if (missing.length > 0) throw new QuickEntryError("test_not_found", "a chosen test is not in the lab catalogue", { serviceIds: missing });
+  const tests = serviceIds.map((s) => byId.get(s)!);
+
+  const id = newId();
+  await tx.insert(labQuickReports).values({
+    id, patientId: input.patientId, encounterNo: input.encounterNo, tests, status: "waiting",
+    collectedAt: now, collectedBy: actor.id, createdAt: now, updatedBy: actor.id, updatedAt: now,
+  });
+  await appendEvent(tx, labQuickStarted.make({
+    actor, patientId: input.patientId, correlationId: id, occurredAt: now,
+    payload: { quickId: id, testCount: tests.length },
+  }));
+  const [row] = await rowsWithPatients(tx, actor, await tx.select().from(labQuickReports).where(eq(labQuickReports.id, id)));
+  return row!;
+}
+
+async function rowsWithPatients(
+  exec: Db | Tx, actor: Actor, rows: (typeof labQuickReports.$inferSelect)[],
+): Promise<QuickRow[]> {
+  if (rows.length === 0) return [];
+  const people = await exec.select().from(patients).where(inArray(patients.id, [...new Set(rows.map((r) => r.patientId))]));
+  const byId = new Map<string, QuickPatient>();
+  for (const p of people) {
+    byId.set(p.id, {
+      id: p.id, uhid: p.uhid, display: await displayNameFor(exec, actor, p),
+      administrativeGender: p.administrativeGender, dob: p.dob ? p.dob.toISOString().slice(0, 10) : null,
+    });
+  }
+  return rows.map((r) => ({
+    id: r.id, status: r.status as "waiting" | "reported", patient: byId.get(r.patientId)!, encounterNo: r.encounterNo,
+    tests: r.tests as QuickChosenTest[], collectedAt: r.collectedAt.toISOString(), collectedBy: r.collectedBy,
+    reportedAt: r.reportedAt?.toISOString() ?? null, reportedBy: r.reportedBy,
+  }));
+}
+
 /**
- * Create or update a quick report. The server resolves every range and flag itself; the screen's
- * colours are only a preview. A numeric value outside the analyte's absurd envelope is refused —
- * a 92 typed for a haemoglobin of 9.2 is the typo this exists for.
+ * The bench's queue: every row still waiting, oldest first and whatever day it started (a patient
+ * told "come back in two days" is still waiting), then today's reported rows, newest first, for a
+ * reprint.
  */
-export async function saveQuickReport(
-  tx: Tx, actor: Actor, input: SaveQuickReportInput, now: Date = new Date(),
+export async function quickQueue(
+  db: Db, actor: Actor, now: Date = new Date(),
+): Promise<{ waiting: QuickRow[]; reportedToday: QuickRow[] }> {
+  const waiting = await db.select().from(labQuickReports)
+    .where(eq(labQuickReports.status, "waiting")).orderBy(asc(labQuickReports.collectedAt)).limit(300);
+  const reported = await db.select().from(labQuickReports)
+    .where(and(eq(labQuickReports.status, "reported"), gte(labQuickReports.reportedAt, istMidnight(now))))
+    .orderBy(desc(labQuickReports.reportedAt)).limit(300);
+  return { waiting: await rowsWithPatients(db, actor, waiting), reportedToday: await rowsWithPatients(db, actor, reported) };
+}
+
+export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): Promise<QuickReport> {
+  const [r] = await exec.select().from(labQuickReports).where(eq(labQuickReports.id, id));
+  if (!r) throw new QuickEntryError("report_not_found", `no quick report ${id}`);
+  const [row] = await rowsWithPatients(exec, actor, [r]);
+  const tests = r.tests as QuickChosenTest[];
+  const links = tests.length === 0 ? [] : await exec.select().from(labOrderableAnalytes)
+    .where(inArray(labOrderableAnalytes.serviceId, tests.map((t) => t.serviceId)))
+    .orderBy(asc(labOrderableAnalytes.position));
+  const ordered: string[] = [];
+  for (const t of tests) {
+    for (const l of links) if (l.serviceId === t.serviceId && !ordered.includes(l.analyteId)) ordered.push(l.analyteId);
+  }
+  const lines = r.lines as QuickLine[];
+  for (const l of lines) if (!ordered.includes(l.analyteId)) ordered.push(l.analyteId);
+  return { ...row!, analyteIds: ordered, lines, summary: r.summary };
+}
+
+/**
+ * Step 2 — the bench: the values and the summary. The server resolves every range and flag itself;
+ * the screen's colours are only a preview. A numeric value outside the analyte's absurd envelope is
+ * refused — a 92 typed for a haemoglobin of 9.2 is the typo this exists for. Saving again edits it.
+ */
+export async function saveQuickResults(
+  tx: Tx, actor: Actor, input: SaveQuickResultsInput, now: Date = new Date(),
 ): Promise<QuickReport> {
-  const subject = await subjectOf(tx, input.patientId);
+  const [existing] = await tx.select().from(labQuickReports).where(eq(labQuickReports.id, input.id)).for("update");
+  if (!existing) throw new QuickEntryError("report_not_found", `no quick report ${input.id}`);
+  const subject = await subjectOf(tx, existing.patientId);
   const ids = [...new Set(input.lines.map((l) => l.analyteId))];
   const analytes = ids.length === 0 ? [] : await tx.select().from(labAnalytes).where(inArray(labAnalytes.id, ids));
   const analyteById = new Map(analytes.map((a) => [a.id, a]));
@@ -130,9 +241,9 @@ export async function saveQuickReport(
     let flag: QuickFlag = null;
     if (a.resultType === "numeric" || a.resultType === "formula") {
       const n = Number(value);
-      if (!Number.isFinite(n)) throw new QuickEntryError("value_not_numeric", `${a.code}: "${value}" is not a number`, { analyteId: a.id });
+      if (!Number.isFinite(n)) throw new QuickEntryError("value_not_numeric", `${a.nameEn}: “${value}” is not a number`, { analyteId: a.id });
       if ((a.absurdLow !== null && n < Number(a.absurdLow)) || (a.absurdHigh !== null && n > Number(a.absurdHigh))) {
-        throw new QuickEntryError("value_absurd", `${a.code}: ${value} is outside the possible range — check the value`, { analyteId: a.id });
+        throw new QuickEntryError("value_absurd", `${a.nameEn}: ${value} is not possible — check the value`, { analyteId: a.id });
       }
       flag = flagFor(n, range);
     }
@@ -142,50 +253,21 @@ export async function saveQuickReport(
     });
   }
 
-  let id = input.id;
-  if (id !== undefined) {
-    const updated = await tx.update(labQuickReports)
-      .set({ lines, summary: input.summary, updatedBy: actor.id, updatedAt: now })
-      .where(and(eq(labQuickReports.id, id), eq(labQuickReports.patientId, input.patientId)))
-      .returning({ id: labQuickReports.id });
-    if (updated.length === 0) throw new QuickEntryError("report_not_found", `no quick report ${id} for this patient`);
-  } else {
-    id = newId();
-    await tx.insert(labQuickReports).values({
-      id, patientId: input.patientId, lines, summary: input.summary,
-      createdBy: actor.id, createdAt: now, updatedBy: actor.id, updatedAt: now,
-    });
-  }
+  const first = existing.status === "waiting";
+  await tx.update(labQuickReports).set({
+    lines, summary: input.summary, status: "reported",
+    reportedAt: existing.reportedAt ?? now, reportedBy: existing.reportedBy ?? actor.id,
+    updatedBy: actor.id, updatedAt: now,
+  }).where(eq(labQuickReports.id, input.id));
 
-  await appendEvent(tx, labQuickReportSaved.make({
-    actor, patientId: input.patientId, correlationId: id, occurredAt: now,
+  await appendEvent(tx, labQuickReported.make({
+    actor, patientId: existing.patientId, correlationId: input.id, occurredAt: now,
     payload: {
-      reportId: id, lineCount: lines.length,
+      quickId: input.id, lineCount: lines.length,
       abnormalCount: lines.filter((l) => l.flag !== null && l.flag !== "N").length,
-      created: input.id === undefined,
+      edit: !first,
     },
   }));
 
-  return getQuickReport(tx, id);
-}
-
-function toReport(r: typeof labQuickReports.$inferSelect): QuickReport {
-  return {
-    id: r.id, patientId: r.patientId, lines: r.lines as QuickLine[], summary: r.summary,
-    createdBy: r.createdBy, createdAt: r.createdAt.toISOString(),
-    updatedBy: r.updatedBy, updatedAt: r.updatedAt.toISOString(),
-  };
-}
-
-export async function getQuickReport(exec: Db | Tx, id: string): Promise<QuickReport> {
-  const [r] = await exec.select().from(labQuickReports).where(eq(labQuickReports.id, id));
-  if (!r) throw new QuickEntryError("report_not_found", `no quick report ${id}`);
-  return toReport(r);
-}
-
-/** A patient's quick reports, newest first. */
-export async function quickReportsForPatient(exec: Db | Tx, patientId: string): Promise<QuickReport[]> {
-  const rows = await exec.select().from(labQuickReports)
-    .where(eq(labQuickReports.patientId, patientId)).orderBy(desc(labQuickReports.createdAt)).limit(50);
-  return rows.map(toReport);
+  return getQuickReport(tx, actor, input.id);
 }

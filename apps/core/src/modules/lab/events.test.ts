@@ -11,7 +11,7 @@ import { labManifest } from "./manifest";
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
   it("declares twenty-seven events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(28); // 0061: `quick_report_saved`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
+    expect(LAB_EVENTS).toHaveLength(29); // 0061: `quick_started`, `quick_reported`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -37,8 +37,9 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.night_release_reviewed",
       "lab.notifiable_flagged",
       "lab.order_desked",
-      /** Decision 0061 — quick entry: a report keyed with no order, bill or signature. */
-      "lab.quick_report_saved",
+      /** Decision 0061 — quick mode: started at the counter, reported at the bench; no order, bill or signature. */
+      "lab.quick_reported",
+      "lab.quick_started",
       "lab.recollection_requested",
       "lab.reflex_added",
       /** §9.2 F44 — a rule that fired and could not be acted on. Owed since 17b, paid at DD11. */

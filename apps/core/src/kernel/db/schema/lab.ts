@@ -1148,27 +1148,47 @@ export const labPlateWells = pgTable(
 );
 
 /**
- * QUICK ENTRY (owner 2026-10-09, decision 0061) — one row per quick report: a patient, the values a
- * technologist typed, and an editable summary. **Not an order and not a `lab_results` row**, on
- * purpose: quick mode carries no bill, no token and no pathologist signature (those live in other
- * software for now), so nothing here may reach the readers that assume a verified, paid result —
- * ABDM release, INR/platelet/creatinine gates, the delivery interlock. A separate table makes that
- * structural rather than a filter every reader must remember.
+ * QUICK MODE (owner 2026-10-09, decision 0061) — one row per patient visit to the lab in quick
+ * mode. **Started** at the counter (tests chosen, blood collected: `status = 'waiting'`, the row is in
+ * the queue) and **reported** at the bench (values typed, summary edited: `status = 'reported'`).
  *
- * `lines` is a snapshot: the range and flag the server resolved at save time, so a later edit to
- * the range book never rewrites what this report said.
+ * Not an order and not a `lab_results` row, on purpose: quick mode carries no bill, no token and
+ * no pathologist signature (those live in other software for now), so nothing here may reach the
+ * readers that assume a verified, paid result — ABDM release, INR/platelet/creatinine gates, the
+ * delivery interlock. A separate table makes that structural rather than a filter every reader must
+ * remember.
+ *
+ * `tests` is what the counter chose (`{ serviceId, code, nameEn }[]`); `lines` is the bench's
+ * snapshot — the range and flag the server resolved at save, so a later edit to the range book
+ * never rewrites what a printed report said.
  */
 export const labQuickReports = pgTable(
   "lab_quick_reports",
   {
     id: text("id").primaryKey(),
     patientId: text("patient_id").notNull().references(() => patients.id),
-    lines: jsonb("lines").notNull(),
+    /** The OPD visit the slip names, when the counter found the patient by it. */
+    encounterNo: text("encounter_no"),
+    tests: jsonb("tests").notNull(),
+    status: text("status").notNull().default("waiting"),
+    collectedAt: timestamp("collected_at", { withTimezone: true }).notNull(),
+    collectedBy: text("collected_by").notNull(),
+    lines: jsonb("lines").notNull().default(sql`'[]'::jsonb`),
     summary: text("summary").notNull().default(""),
-    createdBy: text("created_by").notNull(),
+    reportedAt: timestamp("reported_at", { withTimezone: true }),
+    reportedBy: text("reported_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("lab_quick_reports_patient_idx").on(t.patientId, t.createdAt)],
+  (t) => [
+    index("lab_quick_reports_status_idx").on(t.status, t.collectedAt),
+    index("lab_quick_reports_patient_idx").on(t.patientId, t.collectedAt),
+    check("lab_quick_reports_status_ck", sql`${t.status} in ('waiting', 'reported')`),
+    /** Reported means someone reported it, and only then. */
+    check(
+      "lab_quick_reports_reported_ck",
+      sql`(${t.status} = 'reported') = (${t.reportedAt} is not null and ${t.reportedBy} is not null)`,
+    ),
+  ],
 );

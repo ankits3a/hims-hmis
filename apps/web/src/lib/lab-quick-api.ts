@@ -1,7 +1,7 @@
 import { api } from "./api";
 
 /**
- * QUICK ENTRY (decision 0061) — the wire contract of `lab-quick.controller.ts`, transcribed. The
+ * QUICK MODE (decision 0061) — the wire contract of `lab-quick.controller.ts`, transcribed. The
  * server resolves every range and flag on save; `previewFlag` below only colours a box while the
  * technologist types, and it is `ranges.ts`'s `flagFor`, line for line, so the colour and the saved
  * flag agree.
@@ -21,19 +21,32 @@ export type QuickLine = {
   analyteId: string; code: string; nameEn: string; unit: string | null;
   value: string; low: string | null; high: string | null; refText: string | null; flag: QuickFlag;
 };
-export type QuickReport = {
-  id: string; patientId: string; lines: QuickLine[]; summary: string;
-  createdBy: string; createdAt: string; updatedBy: string; updatedAt: string;
+export type QuickChosenTest = { serviceId: string; code: string; nameEn: string };
+export type QuickPatient = { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null };
+export type QuickRow = {
+  id: string; status: "waiting" | "reported"; patient: QuickPatient; encounterNo: string | null;
+  tests: QuickChosenTest[]; collectedAt: string; collectedBy: string;
+  reportedAt: string | null; reportedBy: string | null;
 };
-export type SaveQuickReport = { patientId: string; lines: { analyteId: string; value: string }[]; summary: string };
+export type QuickReport = QuickRow & { analyteIds: string[]; lines: QuickLine[]; summary: string };
+export type QuickQueue = { waiting: QuickRow[]; reportedToday: QuickRow[] };
+export type StartQuick = { patientId: string; encounterNo: string | null; serviceIds: string[]; bloodCollected: boolean };
+export type SaveQuickResults = { lines: { analyteId: string; value: string }[]; summary: string };
 
 export const quickCatalogue = (): Promise<QuickCatalogue> => api("GET", "/lab/quick/catalogue");
 export const quickRanges = (patientId: string, analyteIds: readonly string[]): Promise<{ items: QuickRange[] }> =>
   api("GET", `/lab/quick/ranges?patientId=${encodeURIComponent(patientId)}&analyteIds=${analyteIds.map(encodeURIComponent).join(",")}`);
-export const quickReports = (patientId: string): Promise<{ items: QuickReport[] }> =>
-  api("GET", `/lab/quick/reports?patientId=${encodeURIComponent(patientId)}`);
-export const saveQuickReport = (body: SaveQuickReport, id: string | null): Promise<QuickReport> =>
-  id === null ? api("POST", "/lab/quick/reports", body) : api("PUT", `/lab/quick/reports/${encodeURIComponent(id)}`, body);
+export const startQuick = (body: StartQuick): Promise<QuickRow> => api("POST", "/lab/quick/start", body);
+export const quickQueue = (): Promise<QuickQueue> => api("GET", "/lab/quick/queue");
+export const quickReport = (id: string): Promise<QuickReport> => api("GET", `/lab/quick/reports/${encodeURIComponent(id)}`);
+export const saveQuickResults = (id: string, body: SaveQuickResults): Promise<QuickReport> =>
+  api("PUT", `/lab/quick/reports/${encodeURIComponent(id)}`, body);
+
+/** The signed card QR, as `PatientPicker` verifies it. */
+export type QrVerifyResult =
+  | { ok: true; patient: { id: string; uhid: string; name: string; administrativeGender: string; dob: string | null } }
+  | { ok: false; reason: string };
+export const verifyCardQr = (payload: string): Promise<QrVerifyResult> => api("POST", "/patients/qr/verify", { payload });
 
 const num = (s: string | null): number | null => (s === null ? null : Number(s));
 

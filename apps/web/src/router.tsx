@@ -348,7 +348,7 @@ const NAV: readonly NavEntry[] = [
   { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "lab" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab" },
-  { to: "/lab/quick", label: "nav.labQuick", permission: "lab.results.enter", group: "lab" },
+  { to: "/lab/quick", label: "nav.labQuick", permission: "lab.results.enter", group: "lab", anyOf: ["lab.desk.operate"] },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*

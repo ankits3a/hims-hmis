@@ -6,14 +6,15 @@ import {
   events, labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
   registrationConfig, services,
 } from "../../kernel/db/schema";
-import { quickCatalogue, quickRanges, quickReportsForPatient, saveQuickReport } from "./quick";
+import { getQuickReport, quickCatalogue, quickQueue, quickRanges, saveQuickResults, startQuick } from "./quick";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
- * QUICK ENTRY (decision 0061). The flag comes from the same range book and `flagFor` the bench uses,
- * resolved by the patient's sex and age; an absurd value is refused; the report is editable and the
- * event log records each save without carrying a value.
+ * QUICK MODE (decision 0061). Start puts a patient in the queue only with tests and blood collected;
+ * the bench's form holds every parameter of the chosen tests; the flag comes from the same range
+ * book and `flagFor` the bench uses, by the patient's sex and age; an absurd value is refused; a
+ * reported row leaves the waiting list and can be edited; the event log carries no value.
  */
 const ACTOR: Actor = { type: "user", id: "01USER0000000000000000001" } as Actor;
 const ASHA = "01PATIENT0000000000000001";
@@ -26,6 +27,10 @@ describe("lab quick entry", () => {
   let teardown: () => Promise<void>;
   let hb: string;
   let wbc: string;
+
+  const start = (patientId = ASHA, at = NOW) => withTx(db, (tx) => startQuick(tx, ACTOR, {
+    patientId, encounterNo: "V2610090001", serviceIds: [CBC], bloodCollected: true,
+  }, at));
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => { await teardown(); });
@@ -78,51 +83,74 @@ describe("lab quick entry", () => {
     expect([ravi!.low, ravi!.high]).toEqual(["13.0000", "17.0000"]);
   });
 
-  it("saves a report with server-resolved flags: Hb 9.2 is L, WBC 15000 is H, Hb 4 is LL", async () => {
-    const r = await withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      patientId: ASHA, summary: "Hb low", lines: [{ analyteId: hb, value: "9.2" }, { analyteId: wbc, value: "15000" }],
+  it("Start refuses without blood collected or without a test; with both the patient waits in the queue", async () => {
+    await expect(withTx(db, (tx) => startQuick(tx, ACTOR, {
+      patientId: ASHA, encounterNo: null, serviceIds: [CBC], bloodCollected: false,
+    }, NOW))).rejects.toMatchObject({ code: "blood_not_collected" });
+    await expect(withTx(db, (tx) => startQuick(tx, ACTOR, {
+      patientId: ASHA, encounterNo: null, serviceIds: [], bloodCollected: true,
+    }, NOW))).rejects.toMatchObject({ code: "no_tests" });
+    await expect(withTx(db, (tx) => startQuick(tx, ACTOR, {
+      patientId: ASHA, encounterNo: null, serviceIds: ["01SERVICE0000000000000099"], bloodCollected: true,
+    }, NOW))).rejects.toMatchObject({ code: "test_not_found" });
+
+    const row = await start();
+    expect(row).toMatchObject({ status: "waiting", encounterNo: "V2610090001", patient: { uhid: "HMS-00000001-5", display: "Asha Devi" } });
+    const q = await quickQueue(db, ACTOR, NOW);
+    expect(q.waiting.map((r) => r.id)).toEqual([row.id]);
+    expect(q.reportedToday).toEqual([]);
+  });
+
+  it("the bench's form holds every parameter of the chosen tests in report order", async () => {
+    const row = await start();
+    const r = await getQuickReport(db, ACTOR, row.id);
+    expect(r.analyteIds).toEqual([hb, wbc]);
+    expect(r.lines).toEqual([]);
+  });
+
+  it("saving results flags them on the server (Hb 9.2 L, WBC 15000 H, Hb 4 LL) and moves the row to reported", async () => {
+    const row = await start();
+    const r = await withTx(db, (tx) => saveQuickResults(tx, ACTOR, {
+      id: row.id, summary: "Hb low", lines: [{ analyteId: hb, value: "9.2" }, { analyteId: wbc, value: "15000" }],
     }, NOW));
     expect(r.lines.map((l) => [l.code, l.value, l.flag])).toEqual([["HB", "9.2", "L"], ["WBC", "15000", "H"]]);
-    expect(r.summary).toBe("Hb low");
+    expect([r.status, r.summary, r.reportedBy]).toEqual(["reported", "Hb low", ACTOR.id]);
+    const q = await quickQueue(db, ACTOR, NOW);
+    expect([q.waiting.length, q.reportedToday.map((x) => x.id)]).toEqual([0, [row.id]]);
 
-    const crit = await withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      patientId: ASHA, summary: "", lines: [{ analyteId: hb, value: "4" }],
+    const crit = await withTx(db, (tx) => saveQuickResults(tx, ACTOR, {
+      id: row.id, summary: "", lines: [{ analyteId: hb, value: "4" }],
     }, NOW));
     expect(crit.lines[0]!.flag).toBe("LL");
 
-    const logged = await db.select().from(events).where(eq(events.name, "lab.quick_report_saved"));
-    expect(logged).toHaveLength(2);
-    expect(JSON.stringify(logged[0]!.payload)).not.toContain("9.2");
+    const logged = await db.select().from(events).where(eq(events.name, "lab.quick_reported"));
+    expect(logged.map((e) => (e.payload as { edit: boolean }).edit)).toEqual([false, true]);
+    expect(JSON.stringify(logged.map((e) => e.payload))).not.toContain("9.2");
+    expect(await db.select().from(events).where(eq(events.name, "lab.quick_started"))).toHaveLength(1);
   });
 
   it("blank values are dropped; a typo outside the absurd envelope and a non-number are refused", async () => {
-    const r = await withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      patientId: ASHA, summary: "", lines: [{ analyteId: hb, value: "13" }, { analyteId: wbc, value: "  " }],
+    const row = await start();
+    const r = await withTx(db, (tx) => saveQuickResults(tx, ACTOR, {
+      id: row.id, summary: "", lines: [{ analyteId: hb, value: "13" }, { analyteId: wbc, value: "  " }],
     }, NOW));
     expect(r.lines.map((l) => [l.code, l.flag])).toEqual([["HB", "N"]]);
 
-    await expect(withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      patientId: ASHA, summary: "", lines: [{ analyteId: hb, value: "92" }],
+    await expect(withTx(db, (tx) => saveQuickResults(tx, ACTOR, {
+      id: row.id, summary: "", lines: [{ analyteId: hb, value: "92" }],
     }, NOW))).rejects.toMatchObject({ code: "value_absurd" });
-    await expect(withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      patientId: ASHA, summary: "", lines: [{ analyteId: hb, value: "abc" }],
+    await expect(withTx(db, (tx) => saveQuickResults(tx, ACTOR, {
+      id: row.id, summary: "", lines: [{ analyteId: hb, value: "abc" }],
     }, NOW))).rejects.toMatchObject({ code: "value_not_numeric" });
   });
 
-  it("an edit replaces lines and summary; another patient's id cannot reach it", async () => {
-    const r = await withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      patientId: ASHA, summary: "first", lines: [{ analyteId: hb, value: "9.2" }],
-    }, NOW));
-    const edited = await withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      id: r.id, patientId: ASHA, summary: "edited", lines: [{ analyteId: hb, value: "12.5" }],
-    }, NOW));
-    expect([edited.summary, edited.lines[0]!.flag]).toEqual(["edited", "N"]);
-
-    await expect(withTx(db, (tx) => saveQuickReport(tx, ACTOR, {
-      id: r.id, patientId: RAVI, summary: "x", lines: [],
-    }, NOW))).rejects.toMatchObject({ code: "report_not_found" });
-
-    expect(await quickReportsForPatient(db, ASHA)).toHaveLength(1);
-    expect(await db.select().from(labQuickReports)).toHaveLength(1);
+  it("a patient started days ago is still waiting; yesterday's report is not in today's reprint list", async () => {
+    const old = await start(ASHA, new Date(NOW.getTime() - 3 * 86_400_000));
+    const done = await start(RAVI, new Date(NOW.getTime() - 86_400_000));
+    await withTx(db, (tx) => saveQuickResults(tx, ACTOR, { id: done.id, summary: "", lines: [] }, new Date(NOW.getTime() - 86_400_000)));
+    const q = await quickQueue(db, ACTOR, NOW);
+    expect(q.waiting.map((r) => r.id)).toEqual([old.id]);
+    expect(q.reportedToday).toEqual([]);
+    expect(await db.select().from(labQuickReports)).toHaveLength(2);
   });
 });

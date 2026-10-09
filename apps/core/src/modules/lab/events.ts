@@ -285,11 +285,18 @@ export const labNotifiableFlagged = defineEvent("lab.notifiable_flagged", MODULE
 }));
 
 /**
- * QUICK ENTRY (decision 0061) — a quick report was created or edited. Counts only: no value, no
- * analyte name, so the event log answers "who keyed what, when" without carrying the result.
+ * QUICK MODE (decision 0061) — counts and ids only: no value, no analyte name, so the event log
+ * answers "who started / reported what, when" without carrying the result.
+ *
+ * `quick_started`: the counter chose the tests, confirmed blood collected and put the patient in
+ * the queue. `quick_reported`: the bench saved the values (`edit` when it was saved before).
  */
-export const labQuickReportSaved = defineEvent("lab.quick_report_saved", MODULE, z.object({
-  reportId: id, lineCount: z.number().int().min(0), abnormalCount: z.number().int().min(0), created: z.boolean(),
+export const labQuickStarted = defineEvent("lab.quick_started", MODULE, z.object({
+  quickId: id, testCount: z.number().int().min(1),
+}));
+
+export const labQuickReported = defineEvent("lab.quick_reported", MODULE, z.object({
+  quickId: id, lineCount: z.number().int().min(0), abnormalCount: z.number().int().min(0), edit: z.boolean(),
 }));
 
 /**
@@ -306,5 +313,5 @@ export const LAB_EVENTS = [
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
-  labQuickReportSaved,
+  labQuickStarted, labQuickReported,
 ] as const;
