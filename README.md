@@ -1648,6 +1648,16 @@ disabled, and says why, while a blocking finding stands** — the server's publi
 the screen shows its count. No grant changes: anybody with `roster.read` can open the month, and
 drafting and publishing remain the medical superintendent's until a head-of-department role exists.
 
+**Staff attendance (owner ruling, 2026-10-09).** HMIS keeps a copy of the attendance machine's
+records ("bioattend") and one permission guards the whole of it: `attendance.all.read` is everyone's
+attendance, including people on the machine's list who have no login here. `owner`,
+`medical_superintendent` and the new role `attendance_committee` hold it, and the committee role
+holds nothing else. There is deliberately no team permission and none for oneself: a unit head or an
+in-charge sees their own team because the team is computed from who they are, and every signed-in
+person sees their own days — as one word a day (Present, Absent, Leave, Off, Partial, or Confirm for
+a day with a single punch), without times. A request to meet about a Confirm day goes to whoever
+holds `attendance_committee`; nobody is assigned to that role by any seed.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

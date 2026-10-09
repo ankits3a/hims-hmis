@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|syncAttendance"
           } > 300
         for: 2m
         labels:
@@ -142,6 +142,10 @@ groups:
           # Medicine nicknames (decision 0051): hourly, and it heartbeats whether or not the pipeline
           # is switched on — so an absent series means the worker never ran it, not that it is off.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="proposeMedicineNicknames"})
+          # STAFF ATTENDANCE (owner 2026-10-09) — the twenty-eighth, an INTERVAL job (120s), joining
+          # leg 1a. A sync that never started is silent in the worst way: every screen keeps showing
+          # yesterday's attendance as though it were today's.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="syncAttendance"})
         for: 5m
         labels:
           severity: critical

@@ -1,19 +1,27 @@
+import { istDayString } from "../../kernel/approvals/cumulative";
+
 /**
  * IST DATES AS STRINGS. bioattend speaks `YYYY-MM-DD` and `HH:MM` in Asia/Kolkata with no offset, and
  * so does every table and route of this module. The only `Date` in here is the instant "now", turned
  * into an IST calendar date ONCE; every later step is calendar arithmetic on the string (through
  * UTC-midnight, which has no daylight saving and cannot slide a day).
  */
-const IST_OFFSET_MS = 330 * 60_000;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
 
+/** The hospital's one clock (`kernel/approvals/cumulative.ts`) — this module keeps no copy of the offset. */
 export function istDate(now: Date): string {
-  return new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+  return istDayString(now);
+}
+
+/** `HH:MM:SS` on the IST wall clock. */
+export function istClock(now: Date): string {
+  return CLOCK.format(now);
 }
 
 /** `HH:MM` on the IST wall clock. */
 export function istTime(now: Date): string {
-  return new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(11, 16);
+  return istClock(now).slice(0, 5);
 }
 
 export function isIsoDate(s: string): boolean {

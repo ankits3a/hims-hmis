@@ -541,6 +541,34 @@ else
     echo "    no openai key at $OPENAI_KEY — voice notes stay off; nothing else is affected"
   fi
 fi
+# STAFF ATTENDANCE (owner 2026-10-09) — THE THREE BIOATTEND SECRETS: the API key, the webhook signing
+# secret and the Aadhaar linking key. The OpenAI key's shape and rules, three files instead of one:
+# the owner supplies them on THIS HOST under $HMIS_BIOATTEND_DIR, they are in no commit and no image,
+# each is copied here group-readable by the containers' user, and the api AND the worker mount the
+# DIRECTORY and re-read the files by themselves.
+#
+# ABSENT IS NORMAL, and it must never fail a deploy: the directory is still made (the mount needs
+# it), attendance says "not configured", and nothing else changes. A file missing from the owner's
+# folder leaves the copy already deployed in use.
+BIOATTEND_DIR="${HMIS_BIOATTEND_DIR:-/root/.config/hmis/bioattend}"
+install -d -m 0750 "$DEPLOY_DIR/bioattend"
+numeric_own 0:1000 "$DEPLOY_DIR/bioattend"
+install_bioattend_secret() {
+  # $1 = the owner's file on this host, $2 = where the api and the worker look for it.
+  if [ -r "$1" ]; then
+    install -m 0440 "$1" "$2"
+    numeric_own 0:1000 "$2"
+    echo "    bioattend $(basename "$2") installed for the api and the worker (staff attendance)"
+  elif [ -r "$2" ]; then
+    echo "    no $(basename "$1") in $BIOATTEND_DIR — the copy already deployed stays in use"
+  else
+    echo "    no $(basename "$1") in $BIOATTEND_DIR — that part of staff attendance stays off; nothing else is affected"
+  fi
+}
+install_bioattend_secret "$BIOATTEND_DIR/api-key.txt" "$DEPLOY_DIR/bioattend/api-key.txt"
+install_bioattend_secret "$BIOATTEND_DIR/webhook-secret.txt" "$DEPLOY_DIR/bioattend/webhook-secret.txt"
+install_bioattend_secret "$BIOATTEND_DIR/aadhaar-key.txt" "$DEPLOY_DIR/bioattend/aadhaar-key.txt"
+# (end of the bioattend secrets)
 # The monitoring trees, same directory-mount shape as caddy/ and pgbackrest/ above.
 #
 # THESE SIX LINES WERE MISSING AND THE WHOLE MONITORING STACK WAS INERT IN PRODUCTION (ledger

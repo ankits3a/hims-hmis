@@ -20,7 +20,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { aadhaarHash, verhoeffValid } from "../src/modules/attendance/aadhaar";
-import { addDays, chunkRange, daysInclusive, isIsoDate, istDate, monthStart, previousMonth } from "../src/modules/attendance/ist";
+import { addDays, chunkRange, daysInclusive, isIsoDate, istClock, istDate, monthStart, previousMonth } from "../src/modules/attendance/ist";
 import { bioattendSignature } from "../src/modules/attendance/webhook";
 
 export const STUB_API_KEY = `bio_${"5e".repeat(32)}`;
@@ -303,7 +303,7 @@ async function main(): Promise<void> {
   if (hook !== undefined) {
     // `--webhook <url>`: one new punch for pin 304 "now", delivered signed, so a walk can watch it arrive.
     const now = new Date();
-    const p = stub.addPunch("304", `${istDate(now)} ${new Date(now.getTime() + 330 * 60_000).toISOString().slice(11, 19)}`);
+    const p = stub.addPunch("304", `${istDate(now)} ${istClock(now)}`);
     console.log(`  webhook ${hook} -> HTTP ${await postWebhook(hook, stub.signedWebhook([p]))}`);
   }
 }

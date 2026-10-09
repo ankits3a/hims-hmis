@@ -105,6 +105,22 @@ if [ -n "$PROD_SSH" ] && [ -r "$OPENAI_KEY" ]; then
   fi
 fi
 
+# ── the three bioattend secrets (staff attendance) follow production's host the same way ─────────
+# The owner places api-key.txt, webhook-secret.txt and aadhaar-key.txt in this folder on THIS box;
+# they are carried to the same folder there, root-only, never echoed. Absent here is normal: nothing
+# is sent and nothing is removed there. The API key works only FROM production's address.
+BIOATTEND_DIR="${HMIS_BIOATTEND_DIR:-/root/.config/hmis/bioattend}"
+if [ -n "$PROD_SSH" ] && [ -d "$BIOATTEND_DIR" ]; then
+  if [ "$DRY" = 1 ]; then
+    say "WOULD sync the bioattend secrets to $PROD_SSH (contents not shown)"
+  else
+    { ssh "${SSH_OPTS[@]}" "$PROD_SSH" "install -d -m 0700 '$BIOATTEND_DIR'" \
+        && rsync -a --chmod=D700,F600 --include='api-key.txt' --include='webhook-secret.txt' --include='aadhaar-key.txt' --exclude='*' \
+             -e "ssh ${SSH_OPTS[*]}" "$BIOATTEND_DIR/" "$PROD_SSH:$BIOATTEND_DIR/"; } >/dev/null \
+      || say "the bioattend secrets did not sync to $PROD_SSH (production keeps the copies it has); see above"
+  fi
+fi
+
 # ── production: origin/main, once every required check is green ─────────────────────────────────
 deploy_prod() {
   git -C "$REPO" fetch -q origin main

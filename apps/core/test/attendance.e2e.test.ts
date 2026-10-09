@@ -385,7 +385,8 @@ describe("staff attendance e2e (HTTP)", () => {
         // Today: one of three states by the COUNT of today's punches, the word only once checked out — nothing else.
         const punchesToday = stub.fixture.punches.filter((p) => p.pin === "304" && p.ts.startsWith(today)).length;
         expect(Object.keys(res.body.today).sort()).toEqual(["date", "state", "status"]);
-        expect(res.body.today).toEqual({ date: today, state: punchesToday === 0 ? "not_checked_in" : "checked_in", status: null });
+        const out = punchesToday > 0 && punchesToday % 2 === 0; // the stub is shared: earlier tests' punches for today are in the fixture too
+        expect(res.body.today).toEqual({ date: today, state: punchesToday === 0 ? "not_checked_in" : out ? "checked_out" : "checked_in", status: out ? expect.any(String) : null });
         // The planned side: the leave three days out, the roster ahead, the holiday.
         expect(res.body.leaves).toEqual([{ date: addDays(today, 3), reason: "Conference" }]);
         expect((res.body.roster as { date: string }[]).map((r) => r.date)).toEqual(Array.from({ length: 9 }, (_, i) => addDays(today, i - 1)));

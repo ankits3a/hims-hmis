@@ -12,10 +12,11 @@ import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
 import { DeskModal } from "../components/desk-modal";
 import { UserPhones } from "./admin-user-phones";
+import { LINK_COLOUR, UserIdentity } from "./admin-user-identity";
 import { PrintComputers } from "./admin-print-computers";
 import { SubmitButton } from "../components/submit-button";
 import {
-  adminErrorCode, adminErrorMessage, assignRole, createUser, deactivateUser, listRoles, listUsers,
+  adminErrorCode, adminErrorMessage, assignRole, createUser, deactivateUser, listRoles, listUserIdentity, listUsers,
   reactivateUser, resetPassword, resetPin, revokeRole,
 } from "../lib/admin-api";
 import type { WireAdminUser } from "../lib/admin-api";
@@ -115,6 +116,7 @@ export function AdminUsers(): React.ReactElement {
   /** Mobile M6a — whose phones the panel is showing (`admin-user-phones.tsx`). */
   const [phonesOf, setPhonesOf] = useState<WireAdminUser | null>(null);
   const [printComputers, setPrintComputers] = useState(false);
+  const [identityOf, setIdentityOf] = useState<WireAdminUser | null>(null);
 
   const users = useQuery({ queryKey: ["admin", "users"], queryFn: listUsers });
   /**
@@ -123,6 +125,13 @@ export function AdminUsers(): React.ReactElement {
    * delays the screen for the person it is correctly refusing.
    */
   const catalogue = useQuery({ queryKey: ["admin", "roles"], queryFn: listRoles, retry: false });
+  /*
+    STAFF ATTENDANCE (owner 2026-10-09) — each person's mobile, masked Aadhaar and whether the
+    attendance machine's list has been matched to them. A second read beside the roster, and the
+    roster does not wait for it: if it fails, the rows simply carry no attendance word.
+  */
+  const identity = useQuery({ queryKey: ["admin", "users", "identity"], queryFn: listUserIdentity, retry: false });
+  const identityFor = (id: string) => identity.data?.users.find((x) => x.userId === id) ?? null;
   /** Picked role per user id. Per-row because the control is per-row. */
   const [picked, setPicked] = useState<Record<string, string>>({});
 
@@ -422,6 +431,12 @@ export function AdminUsers(): React.ReactElement {
       </DeskModal>
 
       <UserPhones user={phonesOf} onClose={() => setPhonesOf(null)} />
+      <UserIdentity
+        user={identityOf} identity={identityOf === null ? null : identityFor(identityOf.id)}
+        aadhaarConfigured={identity.data?.aadhaarConfigured === true}
+        onClose={() => setIdentityOf(null)}
+        onChanged={(_next, said) => { setNotice(said); void qc.invalidateQueries({ queryKey: ["admin", "users", "identity"] }); }}
+      />
       <PrintComputers open={printComputers} onClose={() => setPrintComputers(false)} />
 
       <section style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -450,6 +465,16 @@ export function AdminUsers(): React.ReactElement {
                     {u.active ? t("adminUsers.active") : t("adminUsers.inactive")}
                     {u.hasPin && <> · {t("adminUsers.hasPin")}</>}
                     {u.mustChangePassword && <> · {t("adminUsers.mustChange")}</>}
+                    {(() => {
+                      /* Words only, on a line of their own: "Attendance linked" / "Not linked" / "Two matches". */
+                      const mine = identityFor(u.id);
+                      if (mine === null) return null;
+                      return (
+                        <span data-testid={`admin-attendance-${u.username}`} style={{ display: "block", marginTop: 3, fontSize: 11, fontWeight: 600, color: LINK_COLOUR[mine.attendance] }}>
+                          {t(`adminUsers.identity.state.${mine.attendance}`)}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td style={{ minWidth: 260, padding: "9px 14px 9px 0", borderBottom: "1px solid var(--line)" }}>
                     {u.roles.length === 0 ? (
@@ -565,6 +590,14 @@ export function AdminUsers(): React.ReactElement {
                       onClick={() => { setRowError(null); setNotice(null); setPhonesOf(u); }}
                     >
                       {t("adminUsers.phones.open")}
+                    </button>
+                    <button
+                      type="button"
+                      className="sec" style={{ padding: "0 8px", height: 24, fontSize: 10.5 }}
+                      data-testid={`admin-identity-${u.username}`}
+                      onClick={() => { setRowError(null); setNotice(null); setIdentityOf(u); }}
+                    >
+                      {t("adminUsers.identity.open")}
                     </button>
                     <button
                       type="button"
