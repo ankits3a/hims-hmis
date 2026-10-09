@@ -348,3 +348,142 @@ describe("AdminUsers", () => {
     expect(inert).toHaveTextContent("grants nothing today");
   });
 });
+
+/**
+ * STAFF ATTENDANCE (owner 2026-10-09) — Mobile and Aadhaar on the Users screen, and the word per
+ * person: "Attendance linked" / "Not linked" / "Two matches".
+ */
+describe("AdminUsers — mobile, Aadhaar and the attendance link", () => {
+  beforeEach(() => { setToken("tok-1"); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  const ROSTER = { status: 200, body: { users: [ASHA, RETIRED], fullAdministrators: 2 } };
+  const identityOf = (over: Record<string, unknown> = {}, configured = true): Reply => ({
+    status: 200,
+    body: {
+      aadhaarConfigured: configured,
+      users: [
+        { userId: "u-asha", mobile: null, aadhaar: null, attendance: "not_linked", ...over },
+        { userId: "u-gone", mobile: "9811100020", aadhaar: null, attendance: "two_matches" },
+      ],
+    },
+  });
+  const open = async (): Promise<HTMLElement> => {
+    await userEvent.click(await screen.findByTestId("admin-identity-asha"));
+    return screen.findByTestId("admin-identity-panel");
+  };
+
+  it("the list says each person's state in words", async () => {
+    mockRoutes({ "GET /api/admin/users": ROSTER, "GET /api/admin/users/identity": identityOf({ attendance: "linked" }) });
+    renderWithProviders(<AdminUsers />);
+    expect(await screen.findByTestId("admin-attendance-asha")).toHaveTextContent("Attendance linked");
+    expect(screen.getByTestId("admin-attendance-gone")).toHaveTextContent("Two matches");
+  });
+
+  it("without the identity read the roster still renders, with no attendance word and no error", async () => {
+    mockRoutes({ "GET /api/admin/users": ROSTER });
+    renderWithProviders(<AdminUsers />);
+    await screen.findByTestId("admin-user-asha");
+    await waitFor(() => expect(callsTo("GET", "/api/admin/users/identity")).toHaveLength(1));
+    expect(screen.queryByTestId("admin-attendance-asha")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("admin-row-error")).not.toBeInTheDocument();
+  });
+
+  it("EMPTY: both boxes are open; saving the mobile posts it alone and says so", async () => {
+    let saved = false;
+    mockRoutes({
+      "GET /api/admin/users": ROSTER,
+      "GET /api/admin/users/identity": () => identityOf(saved ? { mobile: "9876501234", attendance: "linked" } : {}),
+      "POST /api/admin/users/u-asha/identity": () => { saved = true; return { status: 200, body: { userId: "u-asha", mobile: "9876501234", aadhaar: null, attendance: "linked" } }; },
+    });
+    renderWithProviders(<AdminUsers />);
+    const panel = await open();
+    expect(within(panel).getByTestId("admin-identity-state")).toHaveTextContent("Not linked");
+    expect(within(panel).getByTestId("admin-identity-aadhaar")).toBeEnabled();
+    expect(within(panel).getByTestId("admin-identity-aadhaar-hint")).toHaveTextContent("Only the last four are kept here");
+    expect(within(panel).queryByTestId("admin-identity-aadhaar-masked")).not.toBeInTheDocument();
+
+    await userEvent.type(within(panel).getByTestId("admin-identity-mobile"), "9876501234");
+    await userEvent.click(within(panel).getAllByRole("button", { name: "Save" })[0]!);
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/identity")).toEqual([{ body: { mobile: "9876501234" } }]));
+    expect(await screen.findByTestId("admin-notice")).toHaveTextContent("Mobile saved for asha");
+    await waitFor(() => expect(within(panel).getByTestId("admin-identity-state")).toHaveTextContent("Attendance linked"));
+    expect(screen.getByTestId("admin-attendance-asha")).toHaveTextContent("Attendance linked");
+  });
+
+  it("an Aadhaar is typed once: after saving, the box is gone and only XXXX XXXX 0124 with Change and Remove is shown", async () => {
+    let saved = false;
+    mockRoutes({
+      "GET /api/admin/users": ROSTER,
+      "GET /api/admin/users/identity": () => identityOf(saved ? { aadhaar: "XXXX XXXX 0124", attendance: "linked" } : {}),
+      "POST /api/admin/users/u-asha/identity": () => { saved = true; return { status: 200, body: { userId: "u-asha", mobile: null, aadhaar: "XXXX XXXX 0124", attendance: "linked" } }; },
+    });
+    renderWithProviders(<AdminUsers />);
+    const panel = await open();
+    await userEvent.type(within(panel).getByTestId("admin-identity-aadhaar"), "2345 6789 0124");
+    await userEvent.click(within(panel).getAllByRole("button", { name: "Save" })[1]!);
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/identity")).toEqual([{ body: { aadhaar: "2345 6789 0124" } }]));
+    expect(await within(panel).findByTestId("admin-identity-aadhaar-masked")).toHaveTextContent("XXXX XXXX 0124");
+    expect(within(panel).queryByTestId("admin-identity-aadhaar")).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Change" })).toBeEnabled();
+    expect(within(panel).getByTestId("admin-identity-aadhaar-remove")).toBeInTheDocument();
+    // The number is nowhere on the page any more.
+    expect(document.body.textContent).not.toContain("2345 6789");
+    expect(document.body.innerHTML).not.toContain("234567890124");
+  });
+
+  it("SET AND MASKED: Change opens an empty box (never the old number); Remove posts null", async () => {
+    mockRoutes({
+      "GET /api/admin/users": ROSTER,
+      "GET /api/admin/users/identity": identityOf({ mobile: "9876501234", aadhaar: "XXXX XXXX 0124", attendance: "linked" }),
+      "POST /api/admin/users/u-asha/identity": { status: 200, body: { userId: "u-asha", mobile: "9876501234", aadhaar: null, attendance: "linked" } },
+    });
+    renderWithProviders(<AdminUsers />);
+    const panel = await open();
+    expect(within(panel).getByTestId("admin-identity-aadhaar-masked")).toHaveTextContent("XXXX XXXX 0124");
+    expect(within(panel).getByTestId("admin-identity-mobile")).toHaveValue("9876501234");
+    await userEvent.click(within(panel).getByTestId("admin-identity-aadhaar-change"));
+    expect(within(panel).getByTestId("admin-identity-aadhaar")).toHaveValue("");
+    await userEvent.click(within(panel).getByRole("button", { name: "Cancel" }));
+    expect(within(panel).getByTestId("admin-identity-aadhaar-masked")).toBeInTheDocument();
+    await userEvent.click(within(panel).getByTestId("admin-identity-aadhaar-remove"));
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/identity")).toEqual([{ body: { aadhaar: null } }]));
+    expect(await screen.findByTestId("admin-notice")).toHaveTextContent("Aadhaar removed for asha");
+    await userEvent.click(within(panel).getByTestId("admin-identity-mobile-remove"));
+    await waitFor(() => expect(callsTo("POST", "/api/admin/users/u-asha/identity")).toHaveLength(2));
+    expect(callsTo("POST", "/api/admin/users/u-asha/identity")[1]).toEqual({ body: { mobile: null } });
+  });
+
+  it("KEY NOT CONFIGURED: the Aadhaar box is disabled with one line saying so; the mobile still works", async () => {
+    mockRoutes({ "GET /api/admin/users": ROSTER, "GET /api/admin/users/identity": identityOf({}, false) });
+    renderWithProviders(<AdminUsers />);
+    const panel = await open();
+    expect(within(panel).getByTestId("admin-identity-aadhaar")).toBeDisabled();
+    expect(within(panel).getByTestId("admin-identity-aadhaar-hint")).toHaveTextContent("Aadhaar cannot be saved yet: the Aadhaar linking key is not set up on this server.");
+    expect(within(panel).getAllByRole("button", { name: "Save" })[1]).toBeDisabled();
+    expect(within(panel).getByTestId("admin-identity-mobile")).toBeEnabled();
+  });
+
+  it("TWO MATCHES: the panel says so and what to do about it", async () => {
+    mockRoutes({ "GET /api/admin/users": ROSTER, "GET /api/admin/users/identity": identityOf() });
+    renderWithProviders(<AdminUsers />);
+    await userEvent.click(await screen.findByTestId("admin-identity-gone"));
+    const panel = await screen.findByTestId("admin-identity-panel");
+    expect(within(panel).getByTestId("admin-identity-state")).toHaveTextContent("Two matches");
+    expect(within(panel).getByTestId("admin-identity-state")).toHaveTextContent("More than one person shares this mobile or this Aadhaar");
+  });
+
+  it("a refusal is said in words beside the fields, and the number typed stays in the box to be corrected", async () => {
+    mockRoutes({
+      "GET /api/admin/users": ROSTER,
+      "GET /api/admin/users/identity": identityOf(),
+      "POST /api/admin/users/u-asha/identity": { status: 400, body: { code: "aadhaar_invalid", problem: "bad_check_digit", message: "that is not a valid Aadhaar number" } },
+    });
+    renderWithProviders(<AdminUsers />);
+    const panel = await open();
+    await userEvent.type(within(panel).getByTestId("admin-identity-aadhaar"), "2345 6789 0125");
+    await userEvent.click(within(panel).getAllByRole("button", { name: "Save" })[1]!);
+    expect(await within(panel).findByTestId("admin-identity-error")).toHaveTextContent("That is not a valid Aadhaar number. Check the twelve digits.");
+    expect(within(panel).getByTestId("admin-identity-aadhaar")).toHaveValue("2345 6789 0125");
+  });
+});

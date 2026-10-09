@@ -82,7 +82,7 @@ export const PUSH_RESERVED_FOR_ASKS = 4;
 const CLOCK_DRIVEN: readonly PushCategory[] = ["queue", "reminder"];
 
 /** Which screen a tap opens. Closed vocabulary; the app maps a word it knows and goes home on one it does not. */
-export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals"] as const;
+export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals", "attendance", "attendanceRequests"] as const;
 export type PushLink = (typeof PUSH_LINKS)[number];
 
 /** R9's cousin: a phone that buzzes all hour gets muted, and then the one that mattered is silent. */
@@ -111,6 +111,11 @@ const BY_ALERT_KIND: Record<string, { category: PushCategory; link: PushLink }> 
   opd_not_in: { category: "queue", link: "consult" },
   opd_long_wait: { category: "queue", link: "consult" },
   approval_overdue: { category: "approvals", link: "approvals" },
+  // STAFF ATTENDANCE (owner 2026-10-09) — a meeting request opens the committee's requests list; "your
+  // request was closed" opens the person's own attendance. Filed under the general switch: an app
+  // that does not know these two words lands on home, as for any word it does not know.
+  attendance_meeting_request: { category: "alert", link: "attendanceRequests" },
+  attendance_request_closed: { category: "alert", link: "attendance" },
 };
 export function routeOfAlertKind(kind: string): { category: PushCategory; link: PushLink } {
   return BY_ALERT_KIND[kind] ?? { category: "alert", link: "home" };

@@ -97,6 +97,23 @@ export function signOutUserPhone(id: string, phoneId: string): Promise<{ session
 }
 
 /** Revokes NOTHING and forces NO password change — the two flows differ, deliberately (Q3). */
+/**
+ * STAFF ATTENDANCE (owner 2026-10-09) — a person's mobile and Aadhaar, the two things the attendance
+ * machine's list is matched by. The Aadhaar comes back MASKED (`XXXX XXXX 0124`); the server keeps
+ * only a keyed hash and the last four digits, so the number itself can never be read back here.
+ */
+export type AttendanceLinkState = "linked" | "not_linked" | "two_matches";
+export type WireUserIdentity = { userId: string; mobile: string | null; aadhaar: string | null; attendance: AttendanceLinkState };
+
+export function listUserIdentity(): Promise<{ aadhaarConfigured: boolean; users: WireUserIdentity[] }> {
+  return api("GET", "/admin/users/identity");
+}
+
+/** A string sets, `null` removes, an absent key leaves that field alone. */
+export function setUserIdentity(id: string, body: { mobile?: string | null; aadhaar?: string | null }): Promise<WireUserIdentity> {
+  return api("POST", `/admin/users/${id}/identity`, body);
+}
+
 export function resetPin(id: string, newPin: string): Promise<void> {
   return api("POST", `/admin/users/${id}/pin-reset`, { newPin });
 }
