@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
-  LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, briefResults, completionBody, followUpChoices, isUnpaid, longestWait, parkedSince,
+  LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, briefResults, completionBody, followUpChoices, longestWait, parkedSince,
   rowName, unissuedRxRows, visitKind, waitMinutes,
   LAST_VISIT_LIST_CHARS, REPORT_LINES, guardianBrief, reportsCard, joinWithMore, lastCompletedVisit, lastVisitCard, showsLastVisit,
 } from "../src/doctor/rules";
@@ -174,15 +174,11 @@ describe("the doctor's line — one rules file for the web and the phone", () =>
     expect(LONG_WAIT_MINUTES).toBe(40);
   });
 
-  it("says REFERRAL for a visit an internal referral opened, and UNPAID only when the server said unsettled", () => {
+  it("says REFERRAL for a visit an internal referral opened", () => {
     const enc = { id: "e", patientId: "p", visitType: "new", dangerFlagged: false, status: "waiting" };
     expect(visitKind({ encounter: enc })).toBe("new");
     expect(visitKind({ encounter: { ...enc, visitType: "renewal" } })).toBe("renewal");
     expect(visitKind({ encounter: { ...enc, visitType: "revisit", referredFromEncounterId: "e0" } })).toBe("referral");
-    expect(isUnpaid({ feeStatus: "unsettled" })).toBe(true);
-    // `null` is "no status to report" — a row the server declined to characterise is never stamped.
-    expect(isUnpaid({ feeStatus: null })).toBe(false);
-    expect(isUnpaid({ feeStatus: "free" })).toBe(false);
   });
 
   it("reads a parked row only when the server said so in words", () => {

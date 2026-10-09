@@ -1,3 +1,5 @@
+import { isGone, mayReadToCollect } from "../../../../packages/contracts/src/to-collect";
+import type { ToCollectState } from "../../../../packages/contracts/src/to-collect";
 import { ApiError, NetworkError } from "../api";
 import { doctorApi } from "../doctor/api";
 import { rosterApi } from "../roster/api";
@@ -6,6 +8,9 @@ import { istDay } from "../doctor/rules";
 import type { Call } from "../doctor/api";
 import type { Seat } from "../seats";
 import type { RecordingReport } from "./recorded";
+import { loadOwnerReads } from "../owner/load";
+import { ownerTilesFor, type OwnerReads, type OwnerTileKey } from "../owner/model";
+import type { MyPace } from "./pace";
 import type { CountSince, Hospital, Sources, WireApproval, WireBriefLite, WireMyRequest, WirePaperItem, WireTeam } from "./model";
 
 /**
@@ -30,7 +35,9 @@ type SentBack = { items: { recheck?: { askedAt: string } | null }[]; toType?: nu
 
 /** What the header says about the person — theirs to read, from reads they already may make. */
 export type HeaderFacts = { doctor: { displayName: string; departmentName: string | null; unit: string | null } | null; hospitalWide: boolean };
-export type Loaded = { sources: Sources; reached: boolean; header: HeaderFacts; unread: number | null; recording: RecordingReport | null };
+/** The owner's and the Medical Superintendent's tiles (owner 2026-10-09): which ones, and one read each. Null for everybody else. */
+export type OwnerHome = { keys: OwnerTileKey[]; reads: OwnerReads };
+export type Loaded = { sources: Sources; reached: boolean; header: HeaderFacts; unread: number | null; recording: RecordingReport | null; owner: OwnerHome | null; pace: MyPace | null };
 
 /** "09:30" on `day` (IST) as an instant. */
 const istAt = (d: string, hhmm: string): number | null => {
@@ -57,8 +64,12 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
   const today = day(nowMs);
   const doctor = doctorApi(call), roster = rosterApi(call), vitals = vitalsApi(call);
 
+  /* The tile home replaces the two hospital reads below (by department, 30 days of collections) with one read per tile. */
+  const ownerKeys = ownerTilesFor(permissions);
+  const tiles = ownerKeys !== null;
   const me = seats.includes("consult") ? await soft(() => doctor.me()) : null;
-  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units, recording] = await Promise.all([
+  const ownerReads = ownerKeys === null ? null : loadOwnerReads(call, ownerKeys, nowMs);
+  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units, recording, owing, pace] = await Promise.all([
     me === null ? null : soft(() => doctor.queue(me.id, today)),
     me === null ? null : soft(() => call<Paper>("GET", "/opd/paper/consults?scope=mine")),
     seats.includes("myDuties") ? soft(() => roster.myDuties()) : null,
@@ -71,9 +82,9 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     soft(() => call<Desk>("GET", "/me/desk")),
     soft(() => call<WireTeam>("GET", "/me/team")),
     has("staff.reports.read") && seats.includes("onNow") ? soft(() => roster.onNow()) : null,
-    has("staff.reports.read") ? soft(() => call<Range>("GET", `/staff/range?from=${today}&to=${today}&groupBy=departmentId`)) : null,
-    has("staff.reports.read") ? soft(() => call<Range>("GET", `/staff/range?from=${addDays(today, -29)}&to=${today}&groupBy=day`)) : null,
-    has("staff.reports.read") || me !== null ? soft(() => call<{ items?: { id: string; name: string }[] } | { id: string; name: string }[]>("GET", "/opd/departments")) : null,
+    has("staff.reports.read") && !tiles ? soft(() => call<Range>("GET", `/staff/range?from=${today}&to=${today}&groupBy=departmentId`)) : null,
+    has("staff.reports.read") && !tiles ? soft(() => call<Range>("GET", `/staff/range?from=${addDays(today, -29)}&to=${today}&groupBy=day`)) : null,
+    (has("staff.reports.read") && !tiles) || me !== null ? soft(() => call<{ items?: { id: string; name: string }[] } | { id: string; name: string }[]>("GET", "/opd/departments")) : null,
     seats.includes("counter") ? soft(() => call<Report>("GET", `/me/report?date=${today}`)) : null,
     seats.includes("counter") && has("opd.appointments.read") ? soft(() => call<Appointments>("GET", "/opd/appointments?needsRebooking=true")) : null,
     has("approvals.requests.create") ? soft(() => call<{ items: WireMyRequest[] }>("GET", "/approvals/mine")) : null,
@@ -82,6 +93,10 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     me === null ? null : soft(() => doctor.doctorUnits(today)),
     /* Is today being recorded? The server decides what this login sees (owner 2026-10-07). */
     soft(() => call<RecordingReport>("GET", "/opd/reports/recording")),
+    /* Owner 2026-10-09 — "To collect": asked only by a login the route admits; a doctor's phone never calls it. */
+    mayReadToCollect(permissions) ? soft(() => call<{ items: { state: ToCollectState }[] }>("GET", "/billing/to-collect")) : null,
+    /* My pace (owner 2026-10-09): only a doctor has a measure, so only a doctor asks. Desk, cashier, slip desk, scribe: no request. */
+    me === null ? null : soft(() => call<MyPace>("GET", "/me/performance?period=30d")),
   ]);
 
   /* The front desk's own two: who I seated is still waiting (my report's rows), whose booking is stranded. */
@@ -115,7 +130,9 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
   const blind = money !== null && dayBrief !== null && dayBrief.totals["billing.collectedPaise"] === undefined;
 
   let hospital: Hospital | null = null;
-  if (has("staff.reports.read") && (byDept !== null || byDay !== null)) {
+  /* Tiles: the hospital-wide header and the roster-gap card stay; the blocks they replaced carry nothing. */
+  if (tiles) hospital = { byDepartment: [], collectedTodayPaise: null, collections: [] };
+  else if (has("staff.reports.read") && (byDept !== null || byDay !== null)) {
     const list = depts === null ? [] : Array.isArray(depts) ? depts : (depts.items ?? []);
     const nameOf = new Map(list.map((d) => [d.id, d.name] as const));
     const collections = Array.from({ length: 30 }, (_, i) => {
@@ -138,6 +155,8 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     approvals: approvals?.items ?? null, day: dayBrief, week, month,
     blind, receiptsToday: receipts === null ? null : Number(receipts),
     hospital, onNow, team,
+    // Counts and nothing else leave this function: no amount reaches the home model (blind count).
+    toCollect: owing === null ? null : { count: owing.items.length, gone: owing.items.filter(isGone).length },
     deskWaiting, rebook, myRequests: mine?.items ?? null, sentBack, toType: sent?.toType ?? null,
   };
   const deptList = depts === null ? [] : Array.isArray(depts) ? depts : (depts.items ?? []);
@@ -149,5 +168,10 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     },
     hospitalWide: hospital !== null,
   };
-  return { sources, reached: reached || !offline, header, unread: bell === null ? null : bell.unreadCount, recording };
+  let owner: OwnerHome | null = null;
+  if (ownerKeys !== null && ownerReads !== null) {
+    const reads = await ownerReads;
+    owner = { keys: ownerKeys, reads: { ...reads, recorded: recording !== null && recording.totals !== null ? recording : null } };
+  }
+  return { sources, reached: reached || !offline, header, unread: bell === null ? null : bell.unreadCount, recording, owner, pace };
 }

@@ -118,6 +118,7 @@ export {
 export type { DeclareModeInput, RosterModeDeclarationRow } from "./modes";
 // 20-U U5a — who is on now: the hospital's unit board.
 export { BOARD_HORIZON_MS, boardColumn, onNowBoard } from "./board";
+export { staffToday } from "./staff-today";
 export type {
   BoardDepartment, BoardHole, BoardHoleKind, BoardPerson, BoardRung, BoardService, BoardUnit, OnNowBoard,
 } from "./board";

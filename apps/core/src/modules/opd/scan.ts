@@ -8,6 +8,7 @@ import { normalizeVisitNo } from "./bench";
 import { doctorForUser } from "./masters";
 import { PATIENT_ABSENT_BAY_PERMISSION, PATIENT_ABSENT_DESK_PERMISSION } from "./patient-absent";
 import { feeMarksFor } from "./prestage";
+import { seesFees } from "./fee-view";
 import { istDate } from "./time";
 import type { PatientSummary } from "../patients";
 import type { EncounterRow } from "./encounters";
@@ -169,7 +170,9 @@ async function visitOf(db: Db, actor: Actor, encounter: EncounterRow, patient: P
     stage: stageOf(encounter, entry),
     vitalsDone: charts.length > 0 || encounter.patientAbsentAt !== null,
     slip: pages.length === 0 ? "none" : request !== null && !answered ? "retake" : "filed",
-    feeUnpaid: fee.feeUnpaid && fee.feeBypass === null,
+    // Owner 2026-10-09 — "Doctor's screens must not show money": a doctor's scan card is never told
+    // the fee is unpaid, unless that person also holds a desk's fee-seeing grant (`fee-view.ts`).
+    feeUnpaid: fee.feeUnpaid && fee.feeBypass === null && (doctor === null || await seesFees(db, actor)),
     mine: doctor !== null && encounter.doctorId === doctor.id,
     guardianOffer,
     patient,

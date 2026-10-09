@@ -1,6 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { onTestFinished } from "vitest";
 import userEvent from "@testing-library/user-event";
+import i18next from "../lib/i18n";
 import { setToken } from "../lib/api";
 import { todayIst } from "../lib/opd-api";
 import { resetRealtimeClientForTests } from "../lib/realtime";
@@ -1291,6 +1292,33 @@ describe("OpdConsult", () => {
     vi.useRealTimers();
     setToken(null);
     localStorage.clear();
+  });
+
+  it("TELE-CALL (owner 2026-10-09): a tele row shows its slot time where the token sits, a phone icon named Tele-call and a blue outline — no word and no money mark", async () => {
+    setToken("tok-1");
+    const TELE = entry({
+      id: "qe-tele", seq: 4, encounterId: "enc-9", tokenNo: 9, position: 1, queueClass: 2, tele: true, kind: "appointment",
+      appointmentAt: "2026-08-18T05:50:00.000Z", feeStatus: null,
+      encounter: { id: "enc-9", patientId: "p-9", visitType: "new", dangerFlagged: false, status: "waiting" },
+      patient: summary("p-9", "HMS0000000090", "Meena Kumari"),
+    });
+    stubFetch({
+      "GET /api/auth/me": { actor: { type: "user", id: "u-1" } },
+      "GET /api/opd/me/doctor": DOCTOR,
+      "GET /api/opd/config": CONFIG,
+      "GET /api/opd/queues": { ...QUEUE_VIEW, ordered: [TELE, WAIT_A], current: null, counts: { waiting: 2, called: 0, inConsult: 0, done: 0, left: 0 } },
+    });
+    renderWithProviders(<OpdConsult />);
+    const row = await screen.findByTestId("queue-row-qe-tele");
+    expect(within(row).getByTestId("queue-slot-qe-tele")).toHaveTextContent("11:20");
+    expect(within(row).getByRole("img", { name: "Tele-call" })).toBeInTheDocument();
+    expect(within(row).queryByTestId("queue-token-qe-tele")).toBeNull();
+    expect(row.style.boxShadow).toContain("var(--blue)");
+    expect(row).not.toHaveTextContent(/tele|paid|unpaid|fee|₹/i);
+    const plain = screen.getByTestId("queue-row-qe-a");
+    expect(within(plain).getByTestId("queue-token-qe-a")).toHaveTextContent("6");
+    expect(within(plain).queryByRole("img", { name: "Tele-call" })).toBeNull();
+    expect(plain.style.boxShadow).not.toContain("var(--blue)");
   });
 
   it("boots on GET /opd/me/doctor — a 404 is the domain answer 'not a doctor' and NO queue read follows; with a profile it renders the queue (position, token, class, danger, re-entry) with the called token highlighted plus the session control, and a queue.called frame refetches", async () => {
@@ -4110,109 +4138,104 @@ describe("FD-30 — the transcription draft on the doctor's screen", () => {
 });
 
 /**
- * ═══ THE TOKEN WAITING FOR ITS BILL, AND THE DOCTOR'S OWN DOOR (OWNER RULING 2026-09-20) ═══
+ * ═══ THE DOCTOR'S SCREEN SHOWS NO MONEY (OWNER RULING 2026-10-09) ═══
  *
- * Owner: *"the emergency at the bay doesn't open the doctor's door. It waits for bill to be paid
- * until doctor opens the token from his dashboard manually. Currently the doctor have no screen to
- * do it. But we need it to be built."*
+ * Owner: *"make sure that Doctor will not see 'paid' written or marked against any patient name or
+ * id. This is a hospital not a clinic."* · *"Doctor's screens must not show money."* · *"walk-in
+ * rule, a (desk let through → patient shows in doctor's line, no mark)"*.
  *
- * The server holds an unsettled token out of `ordered` — so before this group existed, a patient
- * charted by the bay and stopped by the counter was on NO screen a doctor looks at, which is the
- * same disappearance the `left` group was built for one ruling ago. These three run against that
- * screen and fail on it.
+ * This block used to pin the opposite — the "waiting for the bill" rail, its UNPAID pill and the
+ * "see without payment" dialog (ruling 2026-09-20). They are gone. What is pinned now is a guard
+ * for the future: the line, the brief and the consultation are rendered for a visit the desk let
+ * through unpaid and for one that is plainly unpaid, WITH every money field the server ever sent
+ * still in the payload (the desk's copy of the routes carries them), and the words on the screen
+ * are searched. English and Hindi.
  */
-describe("OpdConsult — the token waiting for its bill", () => {
-  const HELD = entry({
-    id: "qe-held", seq: 4, encounterId: "enc-5", tokenNo: 9, status: "waiting", position: null, queueClass: null,
-    encounter: {
-      id: "enc-5", patientId: "p-5", visitType: "new", dangerFlagged: true, status: "waiting",
-      feeBypassReason: "emergency — vitals taken at the bay before billing; the fee is still due",
-      consultFeeOverrideReason: null,
-    },
-    patient: summary("p-5", "HMS0000000050", "Ramesh Yadav"),
-    feeStatus: "unsettled",
+describe("OpdConsult — nothing about money on the doctor's screen", () => {
+  const BYPASS = "VIP — sent through by the desk without paying";
+  /** Any of these on the screen is a failure. `\b` so that "withheld" or "feet" are not money. */
+  const MONEY_EN = /₹|\b(paid|unpaid|not paid|paying|payment|fees?|held|dues?|bill(s|ed|ing)?)\b/i;
+  const MONEY_HI = /भुगतान|फ़ीस|फीस|शुल्क|बिल|बकाया/;
+  const money = (e: ReturnType<typeof entry>, bypass: string | null): ReturnType<typeof entry> => ({
+    ...e, feeStatus: "unsettled",
+    encounter: { ...(e.encounter as Record<string, unknown>), feeBypassReason: bypass, consultFeeOverrideReason: bypass === null ? null : "old build: seen before the bill" },
+  } as ReturnType<typeof entry>);
+  /** `current` is the visit under test; one more of the same kind waits in the line behind it. */
+  const world = (bypass: string | null): Record<string, Handler> => ({
+    ...baseRoutes(),
+    "GET /api/tariff/price-list": { status: 200, body: { items: [{ serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", category: "procedure", pricePaise: 120000 }] } },
+    "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
+    "GET /api/opd/queues": { status: 200, body: {
+      ...QUEUE_VIEW, current: money(CURRENT, bypass), ordered: [money(WAIT_A, bypass), WAIT_B],
+      // What a server from before the ruling would still send: the doctor's screen draws none of it.
+      heldForPayment: [money(entry({ id: "qe-old", seq: 9, encounterId: "enc-9", tokenNo: 9 }), bypass)],
+      counts: { ...QUEUE_VIEW.counts, heldForPayment: 1 },
+    } },
+    "GET /api/opd/visits/enc-1": { status: 200, body: {
+      ...VISIT, feeUnpaid: true, feeBypass: bypass === null ? null : { by: "u-desk", reason: bypass, at: NOW_ISO },
+      encounter: { ...ENCOUNTER, feeBypassReason: bypass, consultFeeOverrideReason: null },
+    } },
   });
-  const HELD_VIEW = { ...QUEUE_VIEW, heldForPayment: [HELD], counts: { ...QUEUE_VIEW.counts, heldForPayment: 1 } };
-  /** What the server answers AFTER the doctor opens it: held no longer, ordered now, still unpaid. */
-  const RELEASED_VIEW = {
-    ...QUEUE_VIEW,
-    ordered: [...QUEUE_VIEW.ordered, { ...HELD, position: 3, queueClass: 3 }],
-    heldForPayment: [], counts: { ...QUEUE_VIEW.counts, waiting: 3, heldForPayment: 0 },
+  /** Every word on the screen — optionally with ONE element, named by its test id, left out. */
+  const said = (exceptTestId?: string): string => {
+    const body = document.body.cloneNode(true) as HTMLElement;
+    if (exceptTestId !== undefined) body.querySelectorAll(`[data-testid="${exceptTestId}"]`).forEach((el) => { el.remove(); });
+    return [
+      body.textContent ?? "",
+      ...[...body.querySelectorAll("[title],[aria-label],[placeholder]")].flatMap((el) =>
+        ["title", "aria-label", "placeholder"].map((a) => el.getAttribute(a) ?? "")),
+    ].join(" \n ");
   };
 
-  /** The queue read answers HELD until the open lands, then RELEASED — the screen re-reads, never patches. */
-  function withHeld(over: Record<string, Handler> = {}): Record<string, Handler> {
-    let opened = false;
-    return {
-      ...baseRoutes(),
-      "GET /api/opd/queues": () => ({ status: 200, body: opened ? RELEASED_VIEW : HELD_VIEW }),
-      "POST /api/opd/visits/enc-5/consult/open-unpaid": () => {
-        opened = true;
-        return { status: 201, body: { encounter: ENCOUNTER } };
-      },
-      ...over,
-    };
+  for (const [name, bypass] of [["a visit the desk let through unpaid", BYPASS], ["a plainly unpaid visit", null]] as const) {
+    for (const lang of ["en", "hi"] as const) {
+      it(`${name} (${lang}): the line, the brief and the consultation say nothing about money`, async () => {
+        mockRoutes(world(bypass));
+        await act(async () => { await i18next.changeLanguage(lang); });
+        onTestFinished(async () => { await act(async () => { await i18next.changeLanguage("en"); }); });
+        const user = userEvent.setup();
+        renderWithProviders(<OpdConsult />);
+
+        // The line: a let-through patient is an ordinary row, and nothing is listed apart.
+        expect(await screen.findByTestId("queue-row-qe-a")).toBeInTheDocument();
+        await screen.findByTestId("patient-brief");
+        for (const id of ["held-queue", "held-queue-title", "held-row-qe-old", "open-unpaid-qe-old", "open-unpaid-dialog", "unpaid-mark", "unpaid-bypassed"]) {
+          expect(screen.queryByTestId(id)).toBeNull();
+        }
+        expect(said()).not.toMatch(MONEY_EN);
+        expect(said()).not.toMatch(MONEY_HI);
+        expect(said()).not.toContain("sent through by the desk");
+
+        // The consultation: header, allergies, note.
+        await user.click(screen.getByRole("button", { name: i18next.t("opdConsult.start") }));
+        await screen.findByTestId("patient-panel");
+        expect(screen.queryByTestId("unpaid-mark")).toBeNull();
+        expect(screen.queryByTestId("unpaid-bypassed")).toBeNull();
+        expect(said()).not.toMatch(MONEY_EN);
+        expect(said()).not.toMatch(MONEY_HI);
+        expect(said()).not.toContain("sent through by the desk");
+        expect(callsTo("POST", "/api/opd/visits/enc-1/consult/open-unpaid")).toHaveLength(0);
+
+        /*
+          THE ONE EXEMPTION, BY ITS TEST ID. Owner, 2026-10-09, asked whether the advised-tests
+          picker's prices should go too: *"Hide test prices from doctor on website: No."* A test's
+          price is the catalogue's, not a statement about this patient's payment, and the doctor
+          advises with it in view. So `advised-tests` — that element and nothing else — is left out
+          of the search, and it is asserted to still carry its price.
+        */
+        await user.click(screen.getByRole("tab", { name: i18next.t("opdConsultV2.tabs.inv") }));
+        const picker = await screen.findByTestId("advised-tests");
+        await user.type(picker.querySelector("input")!, "ultra");
+        await waitFor(() => { expect(picker.textContent).toMatch(/₹1,200/); });
+        expect(said("advised-tests")).not.toMatch(MONEY_EN);
+        expect(said("advised-tests")).not.toMatch(MONEY_HI);
+
+        // "To collect" is the desk's: the doctor's screen neither draws it nor asks for it.
+        expect(screen.queryByTestId("to-collect")).toBeNull();
+        expect(callsTo("GET", "/api/billing/to-collect")).toHaveLength(0);
+      });
+    }
   }
-
-  it("U1: it is on the rail and NOT in the queue, and it says why it has no bill", async () => {
-    mockRoutes(withHeld());
-    renderWithProviders(<OpdConsult />);
-
-    const row = await screen.findByTestId("held-row-qe-held");
-    expect(within(row).getByText("9")).toBeInTheDocument();
-    expect(within(row).getByText("Ramesh Yadav")).toBeInTheDocument();
-    /* The bay's own sentence, carried two desks: it is what tells the doctor this was an emergency. */
-    expect(screen.getByTestId("held-why-qe-held").textContent).toContain("emergency");
-    expect(screen.getByTestId("held-danger-qe-held")).toBeInTheDocument();
-    expect(screen.getByTestId("held-queue-title").textContent).toContain("1");
-
-    /* NOT in the callable queue — the row the doctor can call is a row the server let them call. */
-    expect(within(screen.getByTestId("consult-queue")).queryByText("Ramesh Yadav")).toBeNull();
-    expect(screen.queryByTestId("queue-row-qe-held")).toBeNull();
-  });
-
-  it("U2: opening it asks for a sentence first, and posts nothing until there is one", async () => {
-    mockRoutes(withHeld());
-    const user = userEvent.setup();
-    renderWithProviders(<OpdConsult />);
-
-    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
-    const dialog = await screen.findByTestId("open-unpaid-dialog");
-    /* Opening the dialog has decided nothing — the same rule the skip dialog carries beside it. */
-    expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(0);
-    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeDisabled();
-
-    await user.type(within(dialog).getByTestId("open-unpaid-reason"), "emergency — chest pain, seeing him now");
-    expect(within(dialog).getByTestId("open-unpaid-confirm")).toBeEnabled();
-    await user.click(within(dialog).getByTestId("open-unpaid-confirm"));
-
-    await waitFor(() => expect(callsTo("POST", "/api/opd/visits/enc-5/consult/open-unpaid")).toHaveLength(1));
-    expect(bodiesOf("POST", "/api/opd/visits/enc-5/consult/open-unpaid")[0]).toEqual({
-      reason: "emergency — chest pain, seeing him now",
-    });
-
-    /* And the rail is REREAD: the group empties and the token is in the queue, still stamped unpaid. */
-    await waitFor(() => expect(screen.queryByTestId("held-row-qe-held")).toBeNull());
-    expect(await screen.findByTestId("queue-row-qe-held")).toBeInTheDocument();
-  });
-
-  it("U3: a refusal lands on the rail, and the token stays where it was", async () => {
-    mockRoutes(withHeld({
-      "POST /api/opd/visits/enc-5/consult/open-unpaid": {
-        status: 409,
-        body: { statusCode: 409, message: "encounter enc-5 is not this doctor's", code: "not_your_patient" },
-      },
-    }));
-    const user = userEvent.setup();
-    renderWithProviders(<OpdConsult />);
-
-    await user.click(await screen.findByTestId("open-unpaid-qe-held"));
-    await user.type(await screen.findByTestId("open-unpaid-reason"), "seeing him now");
-    await user.click(screen.getByTestId("open-unpaid-confirm"));
-
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByTestId("held-row-qe-held")).toBeInTheDocument();
-  });
 });
 
 /**
@@ -4226,6 +4249,78 @@ describe("OpdConsult — the desk complaint and the visit type", () => {
   beforeEach(() => { vi.restoreAllMocks(); });
 
   const DESK = { text: "pair mein jhunjhuni, raat ko zyada", by: "Anita Sharma", at: "2026-08-18T04:32:00.000Z" };
+
+  it("TELE-CALL (owner 2026-10-09): the panel says Tele-call and the slot; Call patient shows the number to dial; Complete is locked until Spoke to patient — and nothing speaks of money", async () => {
+    let spoke = false;
+    const teleVisit = () => ({
+      ...VISIT, vitals: [], teleSlotAt: "2026-08-18T05:50:00.000Z",
+      encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: spoke ? "spoke" : null, teleOutcomeAt: spoke ? "2026-08-18T06:12:00.000Z" : null, teleNoAnswerCount: 0 },
+    });
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": () => ({ status: 200, body: teleVisit() }),
+      "POST /api/opd/visits/enc-1/tele/call": { status: 200, body: { encounterId: "enc-1", telePhone: "9876543021", callStartedAt: NOW_ISO } },
+      "POST /api/opd/visits/enc-1/tele/outcome": () => { spoke = true; return { status: 200, body: { outcome: "spoke", final: true, encounter: teleVisit().encounter } }; },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+
+    const panel = await screen.findByTestId("tele-panel");
+    expect(within(panel).getByTestId("tele-card")).toHaveTextContent("Tele-call");
+    expect(within(panel).getByTestId("tele-slot")).toHaveTextContent("11:20");
+    expect(panel).not.toHaveTextContent(/paid|unpaid|fee|₹|receipt|advance/i);
+    expect(screen.getByTestId("complete-consult")).toBeDisabled();
+    expect(within(panel).queryByTestId("tele-number")).toBeNull(); // the number is not on the screen until it is asked for
+
+    await user.click(within(panel).getByRole("button", { name: "Call patient" }));
+    expect(await within(panel).findByTestId("tele-number")).toHaveTextContent("Dial 9876543021");
+    expect(within(panel).getByRole("button", { name: "No answer" })).toBeEnabled();
+    await user.click(within(panel).getByRole("button", { name: "Spoke to patient" }));
+    expect(await screen.findByTestId("tele-spoke")).toHaveTextContent("Spoke · 11:42");
+    expect(callsTo("POST", "/api/opd/visits/enc-1/tele/outcome")[0]!.body).toBe(JSON.stringify({ outcome: "spoke" }));
+    await waitFor(() => expect(screen.getByTestId("complete-consult")).toBeEnabled());
+    expect(screen.queryByTestId("tele-call")).toBeNull();
+  });
+
+  it("TELE-CALL: 'No answer' takes the visit off the doctor's hands; a visit already tried once says so", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, teleSlotAt: "2026-08-18T05:50:00.000Z", encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: "no_answer", teleNoAnswerCount: 1 } } },
+      "POST /api/opd/visits/enc-1/tele/outcome": { status: 200, body: { outcome: "no_answer", final: true, encounter: {} } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const panel = await screen.findByTestId("tele-panel");
+    expect(within(panel).getByTestId("tele-tried")).toHaveTextContent("Tried once — no answer");
+    await user.click(within(panel).getByRole("button", { name: "No answer" }));
+    await waitFor(() => expect(screen.queryByTestId("tele-panel")).toBeNull());
+    expect(callsTo("POST", "/api/opd/visits/enc-1/tele/outcome")[0]!.body).toBe(JSON.stringify({ outcome: "no_answer" }));
+  });
+
+  it("TELE-CALL, the save fails (fix round): the doctor reads the server's neutral sentence — no money word — and Complete stays locked", async () => {
+    mockRoutes({
+      ...baseRoutes(),
+      "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, vitals: [], teleSlotAt: "2026-08-18T05:50:00.000Z", encounter: { ...ENCOUNTER, status: "in_consultation", consultMode: "tele", teleOutcome: null, teleNoAnswerCount: 0 } } },
+      "POST /api/opd/visits/enc-1/tele/outcome": { status: 409, body: { statusCode: 409, code: "tele_save_failed", message: "Could not save — try again", detail: { encounterId: "enc-1" } } },
+    });
+    const user = userEvent.setup();
+    await openPanel(user);
+    const panel = await screen.findByTestId("tele-panel");
+    await user.click(within(panel).getByRole("button", { name: "Spoke to patient" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/^Could not save — try again$/);
+    expect(panel).not.toHaveTextContent(/paid|unpaid|fee|₹|receipt|advance|invoice|bill/i);
+    expect(screen.queryByTestId("tele-spoke")).toBeNull();
+    expect(screen.getByTestId("complete-consult")).toBeDisabled();
+  });
+
+  it("an in-person consultation has no tele panel, and Complete is not locked by one", async () => {
+    mockRoutes({ ...baseRoutes(), "GET /api/opd/visits/enc-1": { status: 200, body: { ...VISIT, encounter: { ...ENCOUNTER, status: "in_consultation" } } } });
+    const user = userEvent.setup();
+    await openPanel(user);
+    await screen.findByTestId("complete-consult");
+    expect(screen.queryByTestId("tele-panel")).toBeNull();
+    expect(screen.getByTestId("complete-consult")).toBeEnabled();
+  });
 
   it("D1: the desk's words are shown verbatim with who and when — and only the complaints the vocabulary RECOGNISES are offered, as taps", async () => {
     mockRoutes({
@@ -4431,7 +4526,7 @@ describe("Consult v2", () => {
     const brief = await screen.findByTestId("patient-brief");
     await waitFor(() => { expect(within(brief).getByTestId("brief-visit-type")).toHaveAttribute("data-visit-type", "referral"); });
     expect(within(brief).getByTestId("brief-visit-type")).toHaveTextContent("Referral");
-    expect(within(brief).getByTestId("brief-visit-meaning")).toHaveTextContent(/first visit to this department · free within 7 days/);
+    expect(within(brief).getByTestId("brief-visit-meaning")).toHaveTextContent(/Referral · first visit to this department$/);
   });
   it("V2: three columns — the line is OPEN on the brief and FOLDED in the consultation; the copilot is open on both", async () => {
     mockRoutes(routes());

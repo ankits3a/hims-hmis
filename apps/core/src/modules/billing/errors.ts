@@ -1,5 +1,7 @@
 export type BillingErrorCode =
   | "billing_not_configured" | "invalid_paise" | "unsettled_issue_refused"
+  /** Owner 2026-10-09 — the hospital's UPI id or payee name is malformed (400). */
+  | "invalid_upi_id"
   /** FD-27 — a LIVE invoice already charges one of these services on this visit. */
   | "duplicate_invoice_refused"
   | "credit_permission_required" | "credit_approval_required" | "outstanding_cap_exceeded"
@@ -86,7 +88,7 @@ const NOT_FOUND_CODES = new Set<BillingErrorCode>([
 ]);
 const FORBIDDEN_CODES = new Set<BillingErrorCode>(["credit_permission_required", "not_your_session", "move_fee_differs"]);
 /** Client-input refusals. Everything else is a state/ledger conflict and answers 409. */
-const VALIDATION_CODES = new Set<BillingErrorCode>([
+const VALIDATION_CODES = new Set<BillingErrorCode>(["invalid_upi_id", 
   "invalid_paise", "pan_required", "tender_ref_required", "bank_transfer_required",
   "recon_parse_failed", "duplicate_ref", "recount_reason_required",
   /*

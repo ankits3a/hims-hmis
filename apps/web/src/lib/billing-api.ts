@@ -266,6 +266,12 @@ export type WireDueRow = {
   creditExtended: boolean; seq: number;
 };
 
+/** Owner 2026-10-09 — "To collect": the visits the desk let through unpaid, until the fee is settled. */
+export type { WireToCollectRow } from "../../../../packages/contracts/src/to-collect";
+export function fetchToCollect(): Promise<{ items: import("../../../../packages/contracts/src/to-collect").WireToCollectRow[] }> {
+  return api("GET", "/billing/to-collect");
+}
+
 /** The tariff catalogue row the counter's line editor searches (`GET /tariff/services`). */
 export type WireService = {
   id: string; code: string; name: string; category: string;

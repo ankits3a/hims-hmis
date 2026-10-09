@@ -16,7 +16,7 @@ import {
 } from "./rx-checks";
 import { listCodedDiagnoses } from "./diagnosis-history";
 import { loadOpdConfig } from "./config";
-import { refuseIfClosedOnPaper, requireTreatingDoctor } from "./consultation";
+import { refuseIfClosedOnPaper, refuseTeleBeforeSpoke, requireTreatingDoctor } from "./consultation";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { getEncounter, visitDiagnoses } from "./encounters";
 import { OpdError } from "./errors";
@@ -590,6 +590,8 @@ export async function issuePrescription(
   if (!stateOk) {
     throw new OpdError("encounter_state_conflict", `a prescription is issued in consultation, not ${encounter.status}`);
   }
+  // Owner 2026-10-09 — a tele-call's prescription is the doctor's only after they have spoken to the patient.
+  if (authority === "doctor") refuseTeleBeforeSpoke(encounter);
 
   // A tapered line's frequency and duration are the SERVER's, written from its steps before the
   // "every line needs a frequency" check below — so the checks, the stored row and the FHIR
@@ -870,6 +872,13 @@ export type RxPrintData = {
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
     /**
+     * Owner 2026-10-09 — this prescription came out of a TELE-CALL. The sheet prints one boxed line
+     * under the doctor's lines — "Tele-consultation · patient not examined" — because whoever reads
+     * it (a pharmacist, another doctor, a relative) must know nobody examined the patient. False on
+     * every in-person visit, where nothing extra is printed.
+     */
+    tele: boolean;
+    /**
      * PLAN 07d T5 / DD4 — the advised tests, printed as ADVICE. They ride the print payload because
      * the printed slip is where a patient reads them and where they take them to the counter — and
      * `advisedAsOf` is the service date rather than a fresh timestamp, so the sheet says which day's
@@ -953,6 +962,7 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
     encounter: {
       id: encounter.id, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate, diagnosis: encounter.diagnosis, icd10Code: encounter.icd10Code,
       advice: encounter.advice, followUpDays: encounter.followUpDays, chiefComplaint: encounter.chiefComplaint,
+      tele: encounter.consultMode === "tele",
       // Read back verbatim; `[]` when the doctor advised none, so the renderer needs no null branch.
       advisedTests: Array.isArray(encounter.advisedTests) ? (encounter.advisedTests as AdvisedTest[]) : [],
       diagnoses: await visitDiagnoses(db, encounter.id),

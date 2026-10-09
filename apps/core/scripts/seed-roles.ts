@@ -904,6 +904,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * not make the rota (the MS does), for the reason the owner does not write prescriptions.
        */
       "roster.read",
+      /**
+       * OWNER, 2026-10-09 — "nickname-Undo permission for owner role: yes".
+       *
+       * The Learning page in the staff app lists the medicine nicknames the suggestion system learned
+       * this week; taking one back (and putting it back) rides `opd.masters.manage`, the gate the two
+       * routes have carried since they shipped (decisions 0051, 0055). This role did not hold it, so
+       * the owner's own list had no Undo. No existing owner grant means "decide what the suggestion
+       * system has learned", so the routes' gate is NOT widened; the string is granted instead.
+       *
+       * IT OPENS MORE THAN THE UNDO, and that is said here rather than discovered: the same string
+       * guards the rest of OPD masters — departments, rooms, doctors and their schedules and leaves,
+       * the look-alike pairs, the voice settings, the vocabulary map. Acceptable: he is the owner.
+       * `opd.masters.read` is NOT added (nothing on the phone needs it), nor `opd.config.manage`.
+       * The grant is a capability only: seeding it writes one `role_permissions` row, flips no
+       * clinical gate and switches nothing on — nickname learning stays off until its own switch.
+       */
+      "opd.masters.manage",
       // PHARMACY P17 — the Schedule H1 register, and its unredacted copy for an inspector: the
       // licensee answers for the register.
       "pharmacy.register.read",

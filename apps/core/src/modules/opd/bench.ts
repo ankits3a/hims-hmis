@@ -175,6 +175,8 @@ export async function listBench(
       without this it would sit on the bench as a row with no ✓ that no save could ever clear.
     */
     if (encounter.patientAbsentAt !== null) continue;
+    // Owner 2026-10-09 — a tele-call is nobody at the bay: its entry is born `waiting` and is never the bench's.
+    if (encounter.consultMode === "tele") continue;
     const doctor = doctorById.get(session.doctorId);
     if (doctor === undefined) continue;
     const state = (entry.benchState ?? null) as BenchState | null;
