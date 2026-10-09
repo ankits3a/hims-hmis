@@ -1331,6 +1331,13 @@
       "when": 1791434931598,
       "tag": "0189_alias_live",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1791546532448,
+      "tag": "0190_attendance",
+      "breakpoints": true
     }
   ]
 }

@@ -29,6 +29,7 @@ import {
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob } from "../../modules/opd";
+import { syncAttendance } from "../../modules/attendance";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -631,5 +632,19 @@ export function registerAllJobs(
     name: "proposeMedicineNicknames",
     every: 3_600_000,
     run: async (now) => { await runAliasJob(db, aliasConfig, now); },
+  });
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — HMIS's copy of the attendance system ("bioattend"), EVERY
+   * TWO MINUTES: the guide asks for punches every one to five, and 120 s sits inside the interval
+   * alert's 300 s. ONE job for punches, today, the half-hourly reference data and the nightly month
+   * re-read (`modules/attendance/sync.ts` stages them by their own cadences) — a name in the census
+   * per job, not per endpoint. OFF unless the API key file is there AND `ATTENDANCE_SYNC_ENABLED` is
+   * true: until then it beats and makes no call. It reads the whole config the alias job is handed
+   * (the base URL, the switch, the key file's path); absent — a census test — it does nothing.
+   */
+  scheduler.register({
+    name: "syncAttendance",
+    every: 120_000,
+    run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
   });
 }
