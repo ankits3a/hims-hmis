@@ -10,6 +10,7 @@ import type { Seat } from "../seats";
 import type { RecordingReport } from "./recorded";
 import { loadOwnerReads } from "../owner/load";
 import { ownerTilesFor, type OwnerReads, type OwnerTileKey } from "../owner/model";
+import type { MyPace } from "./pace";
 import type { CountSince, Hospital, Sources, WireApproval, WireBriefLite, WireMyRequest, WirePaperItem, WireTeam } from "./model";
 
 /**
@@ -36,7 +37,7 @@ type SentBack = { items: { recheck?: { askedAt: string } | null }[]; toType?: nu
 export type HeaderFacts = { doctor: { displayName: string; departmentName: string | null; unit: string | null } | null; hospitalWide: boolean };
 /** The owner's and the Medical Superintendent's tiles (owner 2026-10-09): which ones, and one read each. Null for everybody else. */
 export type OwnerHome = { keys: OwnerTileKey[]; reads: OwnerReads };
-export type Loaded = { sources: Sources; reached: boolean; header: HeaderFacts; unread: number | null; recording: RecordingReport | null; owner: OwnerHome | null };
+export type Loaded = { sources: Sources; reached: boolean; header: HeaderFacts; unread: number | null; recording: RecordingReport | null; owner: OwnerHome | null; pace: MyPace | null };
 
 /** "09:30" on `day` (IST) as an instant. */
 const istAt = (d: string, hhmm: string): number | null => {
@@ -68,7 +69,7 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
   const tiles = ownerKeys !== null;
   const me = seats.includes("consult") ? await soft(() => doctor.me()) : null;
   const ownerReads = ownerKeys === null ? null : loadOwnerReads(call, ownerKeys, nowMs);
-  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units, recording, owing] = await Promise.all([
+  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units, recording, owing, pace] = await Promise.all([
     me === null ? null : soft(() => doctor.queue(me.id, today)),
     me === null ? null : soft(() => call<Paper>("GET", "/opd/paper/consults?scope=mine")),
     seats.includes("myDuties") ? soft(() => roster.myDuties()) : null,
@@ -94,6 +95,8 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     soft(() => call<RecordingReport>("GET", "/opd/reports/recording")),
     /* Owner 2026-10-09 — "To collect": asked only by a login the route admits; a doctor's phone never calls it. */
     mayReadToCollect(permissions) ? soft(() => call<{ items: { state: ToCollectState }[] }>("GET", "/billing/to-collect")) : null,
+    /* My pace (owner 2026-10-09): only a doctor has a measure, so only a doctor asks. Desk, cashier, slip desk, scribe: no request. */
+    me === null ? null : soft(() => call<MyPace>("GET", "/me/performance?period=30d")),
   ]);
 
   /* The front desk's own two: who I seated is still waiting (my report's rows), whose booking is stranded. */
@@ -170,5 +173,5 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     const reads = await ownerReads;
     owner = { keys: ownerKeys, reads: { ...reads, recorded: recording !== null && recording.totals !== null ? recording : null } };
   }
-  return { sources, reached: reached || !offline, header, unread: bell === null ? null : bell.unreadCount, recording, owner };
+  return { sources, reached: reached || !offline, header, unread: bell === null ? null : bell.unreadCount, recording, owner, pace };
 }
