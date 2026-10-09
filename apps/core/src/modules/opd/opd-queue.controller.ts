@@ -1,4 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import { recordTeleOutcome, startTeleCall } from "./tele-call";
+import type { TeleCall, TeleOutcomeResult } from "./tele-call";
 import { z } from "zod";
 import { DX_SOURCES, LINE_SOURCES } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
@@ -239,6 +241,7 @@ const sectionBody = z.object({ body: z.record(z.string(), z.unknown()), leaseTok
 
 /** A visit row as the doctor's own routes answer it: no bypass, no override (owner 2026-10-09, `fee-view.ts`). */
 type DoctorEncounter = ReturnType<typeof encounterWithoutMoney<EncounterRow>>;
+const teleOutcomeBody = z.object({ outcome: z.enum(["spoke", "no_answer"]) });
 
 @Controller("opd")
 export class OpdQueueController {
@@ -564,6 +567,34 @@ export class OpdQueueController {
     const b = parsed(referBody, body);
     try {
       return await referInternally(this.db, actor, id, b);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * TELE-CALL (owner 2026-10-09). `tele/call` hands the treating doctor the number to dial — the one
+   * place it is handed over, recorded as a contact disclosure — and `tele/outcome` records what came
+   * of the call. Neither answer carries anything about money.
+   */
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/tele/call")
+  @HttpCode(200)
+  async teleCall(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<TeleCall> {
+    try {
+      return await startTeleCall(this.db, actor, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  @RequirePermission("opd.consult", "hospital")
+  @Post("visits/:id/tele/outcome")
+  @HttpCode(200)
+  async teleOutcome(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<TeleOutcomeResult> {
+    const b = parsed(teleOutcomeBody, body);
+    try {
+      return await recordTeleOutcome(this.db, actor, id, b.outcome);
     } catch (e) {
       toHttp(e);
     }

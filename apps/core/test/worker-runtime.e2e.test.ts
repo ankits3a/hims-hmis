@@ -200,6 +200,8 @@ const THE_EIGHTEEN = [
   /** MOBILE §3i (owner 2026-10-07) — `every(60_000)`: duty reminders, and "patients are waiting and you are not in". */
   "sweepStaffNotices",
   "proposeMedicineNicknames",
+  /** TELE-CALL (owner 2026-10-09) — `every(60_000)`: a covered tele appointment becomes a visit at its slot. */
+  "openDueTeleVisits",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;

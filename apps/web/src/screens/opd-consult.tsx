@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TeleCallPanel, teleLockedOf } from "../components/tele-call-panel";
+import { TeleMark } from "../components/tele-mark";
+import { slotClock } from "../lib/appointment-view";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormProvider, useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -100,6 +103,8 @@ type VisitDetail = {
   deskComplaint?: { text: string; by: string; at: string } | null;
   /** Owner 2026-10-07 — the guardian came with the reports; no vitals were taken. */
   patientAbsent?: WirePatientAbsent | null;
+  /** Owner 2026-10-09 — the slot a tele-call was booked for; null or absent on every other visit. */
+  teleSlotAt?: string | null;
   queueEntries: WireQueueEntry[];
   vitals: WireVitals[];
   prescriptions: WirePrescription[];
@@ -2040,8 +2045,10 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
     return key !== "" && key !== issuedRowsKey;
   };
 
+  // Owner 2026-10-09 — a tele-call is completed, and its prescription issued, only after "Spoke to patient" (the server's rule).
+  const teleLocked = teleLockedOf(visit.data?.encounter);
   const complete = async (): Promise<void> => {
-    if (active === null) return;
+    if (active === null || teleLocked) return;
     setCompleteError(null);
     if (rxUnissued()) {
       let issued = false;
@@ -2329,12 +2336,17 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
             : mode === "left"
               ? { opacity: 0.72 }
               : {}),
+        // Owner 2026-10-09 — a tele-call wears a blue outline (the approved board's frame 3); a shape, not only a colour.
+        ...(e.tele === true ? { boxShadow: "inset 0 0 0 2px var(--blue)", borderRadius: 6 } : {}),
       }}
     >
       <span data-testid={`queue-position-${e.id}`} className="mo" style={{ fontSize: 10, color: "var(--faint)" }}>
         {e.position === null ? "—" : t("opdConsult.position", { n: e.position })}
       </span>
-      <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>
+      {e.tele === true
+        // The slot time where the token sits, and a phone ICON named "Tele-call" — no word.
+        ? <><span data-testid={`queue-slot-${e.id}`} className="mo" style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>{slotClock(e.appointmentAt ?? "")}</span><TeleMark mode="tele" size={15} /></>
+        : <span data-testid={`queue-token-${e.id}`} className="mo" style={{ fontSize: 16, fontWeight: 700 }}>{e.tokenNo}</span>}
       <span style={{ flexGrow: 1, minWidth: 0 }}>{patientLabel(e.patient)}</span>
       {/* the danger mark sits WITH the badges and says what it is (owner's walk: a lone ⚠ read as nothing) */}
       {(e.danger || e.encounter.dangerFlagged) && (
@@ -2553,7 +2565,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 {t("opdConsultV2.saveDraft")}
               </button>
               {/* Ctrl+Enter does this too — the Keymap's "commit, a chord because it is the irreversible one". */}
-              <button type="button" className="cx-hbtn pri" data-testid="complete-consult" onClick={() => void complete()}>
+              <button type="button" className="cx-hbtn pri" data-testid="complete-consult" disabled={teleLocked} onClick={() => void complete()}>
                 <span className="cx-full">{rxWaiting ? t("opdConsult.issueAndComplete") : t("opdConsult.complete")}</span>
                 <span className="cx-short" aria-hidden="true">{t("opdConsultV2.completeShort")}</span>
               </button>
@@ -2880,7 +2892,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 )}
 
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                  {latestVitals === null && <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noVitals")}</p>}
+                  {/* A tele-call has no vitals block at all — nobody was at the bay (owner 2026-10-09). */}
+                  {latestVitals === null && visit.data?.encounter.consultMode !== "tele" && <p style={{ margin: 0, fontSize: 12, color: "var(--dim)" }}>{t("opdConsult.noVitals")}</p>}
                   {latestVitals !== null && (() => {
                     const lv = latestVitals;
                     const cls = (warn: boolean, danger: boolean): string => (danger ? "danger" : warn ? "warn" : "");
@@ -2925,6 +2938,14 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                 <GuardianReports
                   patientId={active.patientId}
                   lastVisitDay={timelineItems.find((i) => i.encounterId !== active.encounterId && i.status === "completed")?.serviceDate ?? null}
+                />
+              )}
+              {/* Owner 2026-10-09 — a tele-call: the call, then one of two answers. */}
+              {visit.data !== undefined && active !== null && visit.data.encounter.consultMode === "tele" && (
+                <TeleCallPanel
+                  encounterId={active.encounterId} encounter={visit.data.encounter} slotAt={visit.data.teleSlotAt}
+                  onSpoke={() => { void visit.refetch(); }}
+                  onLeft={(line) => { setAgentLog((l) => logged(l, line, "warn")); setActive(null); resetPanel(); void invalidateQueue(); }}
                 />
               )}
               </fieldset>
@@ -3546,7 +3567,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                       )}
                       <ErrorLine message={draftError} />
                       <div style={{ marginTop: 9, display: "flex", gap: 7, flexWrap: "wrap" }}>
-                        <button type="button" className="pri" data-testid="rx-draft-issue" disabled={draftBusy} onClick={() => { void issueTheDraft(); }}>
+                        <button type="button" className="pri" data-testid="rx-draft-issue" disabled={draftBusy || teleLocked} onClick={() => { void issueTheDraft(); }}>
                           {t("opdConsult.draft.issue")}
                         </button>
                         <button
@@ -3769,7 +3790,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                         <button type="button" className="cx-rxadd" data-testid="rx-add" onClick={() => { setRxOpen(lines.fields.length); lines.append(EMPTY_LINE); }}>
                           <span aria-hidden="true">+ </span>{t("opdConsult.addLine")}
                         </button>
-                        <button type="submit" className="pri">{t("opdConsult.issue")}</button>
+                        <button type="submit" className="pri" disabled={teleLocked}>{t("opdConsult.issue")}</button>
                       </div>
                     </FormKit>
                   </FormProvider>

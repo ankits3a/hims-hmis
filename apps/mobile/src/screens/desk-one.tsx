@@ -809,7 +809,7 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
             )}
             {mayApptRead && (
               <PatientAppointments
-                api={api} patientId={person.id} today={today} version={apptVersion} mayManage={mayApptManage} mayCheckIn={mayOpen}
+                api={api} patientId={person.id} today={today} version={apptVersion} mayManage={mayApptManage} mayCheckIn={mayOpen} mayCollectAdvance={can("billing.receipt.record")}
                 doctorName={doctorNameOf} deptName={deptNameOf}
                 onMove={(a) => setBooking({ moving: a })} onCheckedIn={onCheckedIn} onAlreadyCheckedIn={onAlreadyCheckedIn}
                 onSaid={(text) => { setFlash(text); setApptVersion((n) => n + 1); }}
@@ -1104,7 +1104,7 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
       )}
       {booking !== null && person !== null && (
         <BookAppointment
-          api={api} person={{ id: person.id, name: person.name }} today={today} departments={departments} labelOf={labelOf} terms={terms}
+          api={api} person={{ id: person.id, name: person.name, phone: person.phone }} today={today} departments={departments} labelOf={labelOf} terms={terms}
           moving={booking.moving} preset={booking.preset} onDone={onBooked} onClose={() => setBooking(null)}
         />
       )}

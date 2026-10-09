@@ -843,6 +843,48 @@
       "cancel": "Cancel"
     }
   },
+  "teleCall": {
+    "call": "Call patient",
+    "dial": "Dial {{phone}}",
+    "noAnswer": "No answer",
+    "spoke": "Spoke to patient",
+    "spokeAt": "Spoke · {{time}}",
+    "backInLine": "No answer — held aside to retry",
+    "toDesk": "No answer twice — sent to desk",
+    "triedOnce": "Tried once — no answer"
+  },
+  "upiPayee": {
+    "title": "The hospital's UPI id",
+    "lead": "With an id set, the desk's Collect sheet for a tele-call shows a QR for the exact amount. The cashier still confirms the money and types the reference. Leave it blank to collect at the counter only.",
+    "vpa": "UPI id",
+    "name": "Name shown to the payer",
+    "save": "Save",
+    "saved": "Saved. The desk's Collect sheet now shows the QR.",
+    "cleared": "Cleared. The desk collects at the counter only.",
+    "shape": "A UPI id reads name@bank."
+  },
+  "teleDesk": {
+    "upiQr": "UPI QR code",
+    "upiScan": "Scan to pay",
+    "toPay": "To pay {{amount}}",
+    "paid": "Paid",
+    "paidRefund": "Paid {{amount}} · refund on request",
+    "refundLink": "Billing office",
+    "nothingToPay": "Nothing to pay",
+    "collect": "Collect",
+    "confirmFree": "Confirm",
+    "collectTitle": "Collect {{amount}} for the tele-call",
+    "freeTitle": "Free follow-up — nothing to pay",
+    "paidBy": "Paid by",
+    "upiRef": "UPI reference",
+    "cardRef": "Card slip no. (optional)",
+    "received": "Received {{amount}}",
+    "mode": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    }
+  },
   "opdAppt": {
     "title": "OPD appointments",
     "pickDepartment": "Choose a department",
@@ -874,6 +916,11 @@
     "slotBooked": "Booked",
     "confirmTitle": "Confirm this booking",
     "confirmBooking": "Confirm booking",
+    "how": "How",
+    "inPerson": "In person",
+    "tele": "Tele-call",
+    "telePhone": "Patient's phone",
+    "telePhoneHint": "10-digit mobile number",
     "status": {
       "booked": "Booked",
       "checked_in": "Checked in",
@@ -1458,6 +1505,7 @@
   },
   "rx": {
     "unitNumber": "Unit Number",
+    "tele": "Tele-consultation · patient not examined",
     "deptRegn": "Dept. Regn",
     "doctorId": "Doctor ID",
     "uhid": "UHID",

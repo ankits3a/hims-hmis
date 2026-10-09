@@ -101,6 +101,26 @@ describe("RxPrint", () => {
     expect(container.textContent ?? "").not.toMatch(/sign/i);
   });
 
+  it("TELE-CALL (owner 2026-10-09): a tele prescription prints ONE boxed line under the doctor's lines; an in-person sheet prints nothing of the kind", () => {
+    const tele = renderWithProviders(<RxPrint data={{ ...DATA, encounter: { ...DATA.encounter, tele: true } }} />);
+    const line = screen.getByTestId("rx-tele");
+    expect(line).toHaveTextContent("Tele-consultation · patient not examined");
+    expect(line.className).toContain("border");
+    // under the doctor's lines, above the patient block
+    const doctor = screen.getByTestId("rx-doctor-id");
+    expect(doctor.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(screen.getByTestId("rx-patient-name")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId("rx-tele")).toHaveLength(1);
+    tele.unmount();
+
+    for (const encounter of [DATA.encounter, { ...DATA.encounter, tele: false }]) {
+      const plain = renderWithProviders(<RxPrint data={{ ...DATA, encounter }} />);
+      expect(screen.queryByTestId("rx-tele")).toBeNull();
+      expect(plain.container).not.toHaveTextContent(/tele/i);
+      plain.unmount();
+    }
+  });
+
   it("print isolation: the root carries .print-doc, the print button carries .no-print and calls window.print()", async () => {
     const printSpy = vi.fn();
     vi.stubGlobal("print", printSpy);

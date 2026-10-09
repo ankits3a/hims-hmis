@@ -291,6 +291,19 @@ export function refuseIfClosedOnPaper(encounter: EncounterRow): void {
 }
 
 /**
+ * ═══ A TELE-CALL IS NOT A CONSULTATION UNTIL THE DOCTOR HAS SPOKEN TO THE PATIENT (owner 2026-10-09) ═══
+ *
+ * The server's guard, not the screen's: completing the visit and issuing its prescription are both
+ * refused until `tele_outcome` is 'spoke' (`tele.ts` records it). A screen that greys a button is a
+ * courtesy; this is the rule. An in-person visit never reaches the throw.
+ */
+export function refuseTeleBeforeSpoke(encounter: EncounterRow): void {
+  if (encounter.consultMode === "tele" && encounter.teleOutcome !== "spoke") {
+    throw new OpdError("tele_outcome_required", "Call the patient first, then record that you spoke to them", { encounterId: encounter.id });
+  }
+}
+
+/**
  * Every consult-door verdict for a visit, first refusal first — WITHOUT the doctor's waiver applied.
  * `startConsultation` reads the registry itself; this is the same question for the one other caller
  * that closes a visit, the paper road (`paper-consult.ts`), which must not grow a second copy of
@@ -460,7 +473,13 @@ export async function startConsultation(
     throw new OpdError("encounter_state_conflict", `a consultation starts from waiting, not ${current.status}`);
   }
   // D8: every registered guard is consulted BEFORE any write. No guard registered ⇒ shipped behaviour.
-  for (const [key, guard] of consultStartGuards) {
+  /*
+    TELE-CALL (owner 2026-10-09). A tele visit EXISTS only because its appointment was covered at
+    the desk — an uncovered one opens no visit, so there is nothing here to hold and nothing to
+    waive. Its bill is raised when the doctor has spoken to the patient (`tele.ts`), so the
+    pay-before-consult guards, which ask for a settled invoice, are not asked of it.
+  */
+  for (const [key, guard] of current.consultMode === "tele" ? [] : consultStartGuards) {
     const verdict = await guard(db, current);
     if (!verdict.ok) {
       /*
@@ -713,6 +732,7 @@ export async function completeConsultation(
   if (current.status !== "in_consultation") {
     throw new OpdError("encounter_state_conflict", `a completion needs in_consultation, not ${current.status}`);
   }
+  refuseTeleBeforeSpoke(current);
   assertLeaseFor(current, input.note?.leaseToken, now);
   /*
     ═══ PRODUCTION 2026-09-23 — COMPLETE MUST NOT DROP A PRESCRIPTION NOBODY ISSUED (the server's half, 2026-10-06) ═══

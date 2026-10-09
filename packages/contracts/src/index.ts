@@ -11,4 +11,5 @@ export * from "./imaging-coded";
 export * from "./obstetric";
 export * from "./app-home";
 export * from "./patient-absent";
+export * from "./tele-call";
 export * from "./rx-line";

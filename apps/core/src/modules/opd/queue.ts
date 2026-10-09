@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
@@ -93,7 +93,7 @@ export type QueueEntryView = QueueEntryRow & {
      * doctor or the paper road wrote before 2026-10-09. MONEY FIELDS: the route strips them — and
      * `feeStatus` below — for every caller who holds no fee-seeing permission (`queueWithoutMoney`).
      */
-    feeBypassReason: string | null; consultFeeOverrideReason: string | null;
+    feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
     /** Owner ruling 2026-09-24 — set when an internal referral opened this visit, so the rail says REFERRAL, not REVISIT. */
     referredFromEncounterId: string | null;
     /** Owner 2026-10-07 — the guardian came with the reports; the patient did not. Null otherwise (`patient-absent.ts`). */
@@ -105,7 +105,13 @@ export type QueueEntryView = QueueEntryRow & {
    * (never stored): free · settled · credit · unsettled. `null` when billing is unconfigured —
    * unknown, rendered as nothing.
    */
-  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
+  feeStatus?: "free" | "settled" | "credit" | "unsettled" | null;
+  /**
+   * Owner 2026-10-09 — a tele-call: the doctor's line shows its SLOT TIME (`appointmentAt`) where a
+   * token number sits, and a phone icon. A tele row carries NO money KEY of any kind — `feeStatus`
+   * and the two fee reasons are ABSENT from it, not null: it is in this view only because it is covered.
+   */
+  tele: boolean;
 };
 export type QueueView = {
   session: SessionRow; doctor: DoctorRow; ordered: QueueEntryView[]; current: QueueEntryView | null; inConsult: QueueEntryView[];
@@ -185,17 +191,19 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
 
   const toView = (row: QueueEntryRow, position: number | null, queueClass: QueueClass | null): QueueEntryView => {
     const encounter = encounterById.get(row.encounterId)!;
+    const tele = encounter.consultMode === "tele";
     return {
       ...row, position, queueClass,
       encounter: {
         id: encounter.id, patientId: encounter.patientId, visitType: encounter.visitType,
         dangerFlagged: encounter.dangerFlagged, status: encounter.status,
-        feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason,
+        ...(tele ? {} : { feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason }),
         referredFromEncounterId: encounter.referredFromEncounterId,
         patientAbsent: patientAbsentOf(encounter),
       },
       patient: summaryByPatient.get(encounter.patientId) ?? null,
-      feeStatus: feeStatuses.get(encounter.id) ?? null,
+      ...(tele ? {} : { feeStatus: feeStatuses.get(encounter.id) ?? null }),
+      tele,
     };
   };
 
@@ -480,7 +488,8 @@ export async function boardSnapshot(db: Db, serviceDate: string, roomIds?: strin
       ne(opdQueueSessions.status, "closed"),
       roomIds === undefined ? undefined : inArray(opdQueueSessions.roomId, roomIds),
     ));
-  const entriesBySession = await liveEntriesBySession(db, rows.map((r) => r.session.id));
+  // Owner 2026-10-09 — a tele-call is nobody in the hall: the public board neither counts nor announces it.
+  const entriesBySession = await liveEntriesBySession(db, rows.map((r) => r.session.id), { withoutTele: true });
   return rows
     .map((r): BoardItem => {
       const { nowServing, next, waitingCount } = summarise(entriesBySession.get(r.session.id) ?? [], r.session.callsMade, cfg, now);
@@ -626,6 +635,8 @@ export async function queueFeeStatusHook(
   const encounter = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, info.encounterId)))[0];
   // 2026-09-30 — a pharmacy visit (`openPharmacyVisitInTx`) has no fee and no queue: its bill settling moves nothing.
   if (!encounter || encounter.type !== "opd") return;
+  // Owner 2026-10-09 — a tele visit's bill is raised after the call; nothing about its money is ever put on a board or a rail.
+  if (encounter.consultMode === "tele") return;
   /**
    * RC-3 T3 — THE BAIL ON `unsettled` IS GONE, AND THAT IS THE WHOLE OF M3's FIX HERE.
    *
@@ -707,12 +718,17 @@ export async function queueFeeStatusHook(
 }
 
 /** The live rows of many sessions in one query, grouped. */
-async function liveEntriesBySession(db: Db, sessionIds: string[]): Promise<Map<string, QueueEntryRow[]>> {
+async function liveEntriesBySession(db: Db, sessionIds: string[], opts: { withoutTele?: boolean } = {}): Promise<Map<string, QueueEntryRow[]>> {
   const grouped = new Map<string, QueueEntryRow[]>();
   if (sessionIds.length === 0) return grouped;
   const rows = await db
     .select().from(opdQueueEntries)
-    .where(and(inArray(opdQueueEntries.sessionId, sessionIds), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
+    .where(and(
+      inArray(opdQueueEntries.sessionId, sessionIds), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES]),
+      opts.withoutTele === true
+        ? notInArray(opdQueueEntries.encounterId, db.select({ id: opdEncounters.id }).from(opdEncounters).where(eq(opdEncounters.consultMode, "tele")))
+        : undefined,
+    ))
     .orderBy(asc(opdQueueEntries.seq));
   for (const row of rows) {
     const list = grouped.get(row.sessionId);

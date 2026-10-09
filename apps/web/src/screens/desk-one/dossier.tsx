@@ -1,6 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ToCollect } from "../../components/to-collect";
 import { useTranslation } from "react-i18next";
+import { TeleDeskPay } from "../../components/tele-desk-pay";
+import { TeleMark } from "../../components/tele-mark";
 import { useAuth } from "../../lib/auth";
 import { useQuery } from "@tanstack/react-query";
 import { listPatientAppointments, patientTimeline, todayIst } from "../../lib/opd-api";
@@ -74,6 +76,8 @@ function Upcoming({ patientId }: { patientId: string }): React.ReactElement | nu
               <div key={a.id} data-testid="upcoming-row" style={{ padding: "7px 0", borderBottom: "1px solid var(--line2)" }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span className="mo" style={{ fontSize: 12, fontWeight: 700, color: "var(--green)" }}>{dayMonthIst(a.serviceDate)} · {slotClock(a.slotStart)}</span>
+                  <TeleMark mode={a.mode} size={13} />
+                  <TeleDeskPay appointment={a} compact />
                   {a.status === "needs_rebooking" ? <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--gold)" }}>{t("registrationCounter.upcoming.rebook")}</span> : null}
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{[doc?.displayName, dept].filter((x) => x !== undefined && x !== "").join(" · ")}</div>

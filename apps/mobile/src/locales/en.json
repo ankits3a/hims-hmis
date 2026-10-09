@@ -234,6 +234,16 @@
       "howTo": "The download opens in the browser. Tap the file when it finishes, then Install — your sign-in stays.",
       "version": "Version {{version}} · build {{code}}"
     },
+    "tele": {
+      "title": "Tele-call",
+      "call": "Call patient",
+      "noAnswer": "No answer",
+      "spoke": "Spoke to patient",
+      "spokeAt": "Spoke · {{time}}",
+      "backInLine": "No answer — held aside to retry",
+      "toDesk": "No answer twice — sent to desk",
+      "triedOnce": "Tried once — no answer"
+    },
     "counter": {
       "step": {
         "find": "Find",
@@ -426,6 +436,24 @@
         "receipt": "Bill {{no}} · receipt {{receipt}} · {{amount}} by {{mode}}",
         "billed": "Bill {{no}} · {{amount}}"
       },
+      "telePay": {
+        "upiQr": "UPI QR code",
+        "toPay": "To pay {{amount}}",
+        "paid": "Paid",
+        "paidRefund": "Paid {{amount}} · refund on request",
+        "nothingToPay": "Nothing to pay",
+        "collect": "Collect {{amount}}",
+        "confirmFree": "Confirm",
+        "paidBy": "PAID BY",
+        "upiRef": "UPI reference",
+        "received": "Received {{amount}}",
+        "unknown": "No answer came back. Tap again: the server answers the same request, nothing is taken twice.",
+        "mode": {
+          "cash": "Cash",
+          "upi": "UPI",
+          "card": "Card"
+        }
+      },
       "appt": {
         "open": "Appointments today",
         "book": "Book an appointment",
@@ -471,6 +499,11 @@
         "confirm": "CHECK BEFORE YOU BOOK",
         "room": "Room {{room}}",
         "noteHint": "Note for the day (optional)",
+        "how": "HOW",
+        "inPerson": "In person",
+        "tele": "Tele-call",
+        "telePhone": "Patient's phone",
+        "telePhoneHint": "10-digit mobile number",
         "feeLater": "Nothing is collected now. The consultation fee is taken when the patient checks in.",
         "feeOff": "Nothing is collected now. Consultation is free at present: {{amount}}.",
         "pickFirst": "Pick a time",

@@ -7,6 +7,7 @@ import { runDueTimers } from "../workflow/timers";
 import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
+import { openDueTeleVisits } from "../../modules/opd/tele";
 import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
 import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
@@ -631,5 +632,16 @@ export function registerAllJobs(
     name: "proposeMedicineNicknames",
     every: 3_600_000,
     run: async (now) => { await runAliasJob(db, aliasConfig, now); },
+  });
+  /*
+   * TELE-CALL (owner 2026-10-09) — a covered tele appointment becomes a visit in the doctor's line
+   * when its slot is reached. Every minute, because the slot is a time the patient was promised;
+   * `now` is threaded so the "is it due" comparison is the tick's own. A tick with nothing due
+   * runs one indexed read and writes nothing.
+   */
+  scheduler.register({
+    name: "openDueTeleVisits",
+    every: 60_000,
+    run: async (now) => { await openDueTeleVisits(db, now); },
   });
 }

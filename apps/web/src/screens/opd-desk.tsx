@@ -294,7 +294,7 @@ export function OpdDesk(): React.ReactElement {
         {inHand.queueClass !== null && (
           <span className="od-chip" data-class={inHand.queueClass}>{t(`opd.queueClass.${inHand.queueClass}`)}</span>
         )}
-        {inHand.feeStatus !== null && (
+        {inHand.feeStatus != null && (
           <span className="od-stamp" data-fee={inHand.feeStatus}>{t(`opd.feeStatus.${inHand.feeStatus}`)}</span>
         )}
       </div>
@@ -381,7 +381,7 @@ export function OpdDesk(): React.ReactElement {
                   the server declined to characterise this encounter's fee, which is NOT "unpaid".
                   `free` keeps its own stamp so a ₹0 review visit is not read as a paid one.
                 */}
-                {e.feeStatus !== null && (
+                {e.feeStatus != null && (
                   <span className="od-stamp" data-fee={e.feeStatus} data-testid={`fee-status-${e.id}`}>
                     {t(`opd.feeStatus.${e.feeStatus}`)}
                   </span>
