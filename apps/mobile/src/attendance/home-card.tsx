@@ -65,7 +65,16 @@ export function useAttendanceHome(call: Call, user: string, tick: number, nowMs:
       if (alive.current) setCold(kept?.state ?? null);
     }
   }, [call, user, nowMs]);
-  useEffect(() => { alive.current = true; void load(); return () => { alive.current = false; }; }, [load, tick]);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  // Read once when the screen opens; after that, whenever the home re-reads (its tick moves on).
+  // The home's FIRST tick is the same moment as the opening read, so it is not a second request.
+  const lastTick = useRef<number | null>(null);
+  useEffect(() => {
+    const prev = lastTick.current;
+    lastTick.current = tick;
+    if (prev === null) { void load(); return; }
+    if (prev !== tick && prev !== 0) void load();
+  }, [load, tick]);
   return { me, cold };
 }
 

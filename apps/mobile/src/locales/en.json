@@ -1981,7 +1981,7 @@
       "seen": "Seen",
       "closed": "Closed",
       "resolved_by_correction": "Corrected",
-      "failed": "Not sent. Try again",
+      "failed": "Not sent — try again",
       "tooMany": "Too many open requests",
       "notNeeded": "Already corrected",
       "close": "Close"
@@ -2022,7 +2022,7 @@
       "cancel": "Cancel",
       "ageHours": "{{n}} h",
       "ageDays": "{{n}} d",
-      "failed": "Not saved. Try again"
+      "failed": "Not saved — try again"
     }
   },
   "home": {
