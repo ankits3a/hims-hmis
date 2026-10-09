@@ -20,7 +20,9 @@ export function configureApp(
   express.set("trust proxy", trustOneProxyHop(opts.trustedProxyCidrs ?? DEFAULT_TRUSTED_PROXY_CIDRS));
   // Before the parsers, so even a 400/413 the parser raises carries it.
   app.use(noStore);
-  app.useBodyParser("json", { limit: "1mb" });
+  // `verify` sees the bytes before they are parsed. It keeps them for the signed-webhook paths ONLY
+  // (a signature is over the raw body; re-serialised JSON would not match) and for nothing else.
+  app.useBodyParser("json", { limit: "1mb", verify: keepRawBodyForSignedWebhooks });
   // WASA M-08: NO `urlencoded` parser. Nothing this API serves sends a form body — the SPA, the print
   // relay and ABDM's callbacks all send JSON — and the one that was registered here handed every
   // pre-auth request body to `qs` (`extended: true`), whose DoS advisories were the reachable half of
@@ -30,4 +32,11 @@ export function configureApp(
   // it from the one shared place — a second call site is a second chance to forget.
   express.disable("x-powered-by");
   app.useGlobalFilters(new FrameworkErrorFilter(app.getHttpAdapter()));
+}
+
+/** The paths (as the api sees them, after Caddy strips `/api`) whose handlers verify a signature over the raw body. */
+export const SIGNED_WEBHOOK_PATHS: ReadonlySet<string> = new Set(["/webhooks/bioattend"]);
+
+function keepRawBodyForSignedWebhooks(req: { url?: string; rawBody?: Buffer }, _res: unknown, buf: Buffer): void {
+  if (SIGNED_WEBHOOK_PATHS.has((req.url ?? "").split("?")[0]!)) req.rawBody = buf;
 }

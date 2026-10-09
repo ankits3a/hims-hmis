@@ -136,6 +136,8 @@ function carryCandidatesFor(ageYears: number | null, last: { heightCm: number | 
  * Owner, 2026-09-13: the unpaid symbol belongs on the vitals bay, the consultation AND the OPD
  * Order Desk. Three screens reading three derivations is three chances for one of them to quietly
  * stop warning; this is the derivation, and `preStage` and the visit route both call it.
+ * (Owner 2026-10-09: no longer on the CONSULTATION — a doctor's screen shows no money, and the
+ * visit route sends these marks only to a caller with a fee-seeing permission, `fee-view.ts`.)
  *
  * `feeUnpaid` is FALSE on an unconfigured hospital by construction, because `encounterFeeStatuses`
  * returns an empty map there — the same answer the consult gate gives when it lets
@@ -143,8 +145,11 @@ function carryCandidatesFor(ageYears: number | null, last: { heightCm: number | 
  * fee policy, which is what stops a commissioning deployment painting every patient red.
  */
 export async function feeMarksFor(
-  db: Db, encounter: { id: string; visitType: string; feeBypassBy: string | null; feeBypassReason: string | null; feeBypassAt: Date | null },
+  db: Db, encounter: { id: string; visitType: string; feeBypassBy: string | null; feeBypassReason: string | null; feeBypassAt: Date | null; consultMode?: string },
 ): Promise<{ feeUnpaid: boolean; feeBypass: { by: string; reason: string; at: Date } | null }> {
+  // Owner 2026-10-09 — a tele visit exists only once it is paid for, and its bill is raised after the
+  // call: no screen is ever told it is unpaid.
+  if (encounter.consultMode === "tele") return { feeUnpaid: false, feeBypass: null };
   const status = (await encounterFeeStatuses(db, [encounter as never])).get(encounter.id);
   return {
     feeUnpaid: status === "unsettled",

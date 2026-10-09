@@ -27,6 +27,8 @@ import * as opdQueueNudgesMod from "../../modules/opd/queue-nudges";
 import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
+import * as attendanceSyncMod from "../../modules/attendance/sync";
+import * as opdTeleMod from "../../modules/opd/tele";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -408,6 +410,20 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("proposeMedicineNicknames");
       return { ran: false };
     }),
+    /**
+     * STAFF ATTENDANCE (owner 2026-10-09) — the twenty-ninth, stubbed on `modules/attendance/sync`, the module the index
+     * re-exports FROM. Its behaviour (off = zero calls, the stages, the cursor) is asserted in
+     * `modules/attendance/sync.test.ts`.
+     */
+    jest.spyOn(attendanceSyncMod, "syncAttendance").mockImplementation(async () => {
+      invoked.push("syncAttendance");
+      return { ran: false, why: "not_configured" };
+    }),
+    // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
+    jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
+      invoked.push("openDueTeleVisits");
+      return { due: 0, opened: 0, failed: 0 };
+    }),
     jest.spyOn(aerbQaMod, "sweepOverdueQa").mockImplementation(async () => {
       invoked.push("sweepOverdueQa");
       return { blocked: [], skipped: [] };
@@ -506,6 +522,10 @@ const THE_EIGHTEEN = [
   "sweepStaffNotices",
   // NICKNAMES (decision 0051, owner 2026-10-08) — the TWENTY-SEVENTH, `every(3_600_000)`: unmatched medicine words → proposals. Off by default.
   "proposeMedicineNicknames",
+  // TELE-CALL (owner 2026-10-09) — the TWENTY-EIGHTH, `every(60_000)`: a covered tele appointment becomes a visit at its slot.
+  "openDueTeleVisits",
+  // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
+  "syncAttendance",
 ];
 
 /**

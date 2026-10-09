@@ -5,8 +5,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals, users,
-} from "../../kernel/db/schema";
+  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals, users, opdAppointments } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
 import { encounterFeeStatuses } from "../billing";
@@ -152,6 +151,38 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: Omit<OpenVisitI
 export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult>;
 export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
+  return openVisitCore(tx, actor, input, now, false);
+}
+
+/**
+ * ═══ A TELE-CALL'S VISIT IS OPENED BY THE SYSTEM, AT ITS SLOT (owner 2026-10-09) ═══
+ *
+ * *"Doctor will see the patient name in his queue only when the patient have paid."* Nobody walks up
+ * to a counter for a tele-call, so no user opens its visit: `tele.ts` calls this for an appointment
+ * whose slot has come and whose fee the desk has taken. It is the SAME opening as any other — the
+ * same classifier, so the free follow-up window starts exactly as an in-person visit's does; the
+ * same visit number; a token in the department's own series — with three differences, all of them
+ * about there being no patient in the building:
+ *   · no token slip and no A4 sheet are queued (there is nobody to hand them to);
+ *   · the queue entry is born `waiting`, not `waiting_vitals` — there is nobody to weigh, so the
+ *     bay never holds it — and the visit is moved `registered → waiting` here, by the named system
+ *     actor, the arrangement `patient-absent.ts` uses for the guardian's visit;
+ *   · `consult_mode` is 'tele', which is what every later read keys on.
+ */
+export const TELE_OPEN_ACTOR: Actor = { type: "system", id: "opd-tele-open" };
+export async function openTeleVisitInTx(
+  tx: Tx,
+  input: { patientId: string; departmentId: string; doctorId: string; appointment: { id: string; slotStart: Date }; chainIds: string[] },
+  now: Date,
+): Promise<OpenVisitResult> {
+  const opened = await openVisitCore(tx, TELE_OPEN_ACTOR, input, now, true) as OpenVisitResult;
+  const encounter = await moveEncounter(tx, TELE_OPEN_ACTOR, opened.encounter, "waiting", {}, now);
+  return { ...opened, encounter };
+}
+
+async function openVisitCore(
+  tx: Tx, actor: Actor, input: OpenVisitInput & { chainIds: string[] }, now: Date, tele: boolean,
+): Promise<OpenVisitResult | OpenVisitDeferredResult> {
   await loadOpdConfig(tx); // opd_not_configured before any write
   const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
   if (!doctor) throw new OpdError("unknown_doctor");
@@ -176,6 +207,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
   const [encounter] = await tx.insert(opdEncounters).values({
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
+    ...(tele ? { consultMode: "tele" } : {}),
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
     referredFromEncounterId: input.referredFromEncounterId ?? null,
     // Trimmed, and an empty string is stored as NULL: "" is not a slip, and a blank code reaching
@@ -202,7 +234,7 @@ export async function openVisitInTx(tx: Tx, actor: Actor, input: OpenVisitInput 
     return { encounter: encounter!, queueEntry: null, tokenNo: null, sessionId: null, roomId, visitType, doctorScheduledToday: roomId !== null };
   }
 
-  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId, patientId: input.patientId, visitType }, input.appointment ?? null, actor);
+  const joined = await joinSessionInTx(tx, { id: encounterId, doctorId: doctor.id, serviceDate, departmentId: doctor.departmentId, patientId: input.patientId, visitType }, input.appointment ?? null, actor, tele ? { tele: true, now } : undefined);
   await appendEvent(tx, visitOpened.make({ ...env, payload: {
     ...openedPayload, sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo,
   } }));
@@ -237,6 +269,8 @@ async function joinSessionInTx(
   encounter: { id: string; doctorId: string; serviceDate: string; departmentId: string | null; patientId: string; visitType: VisitType },
   appointment: { id: string; slotStart: Date } | null,
   actor: Actor,
+  /** A tele-call: born `waiting` (no bay), and no paper is queued. See `openTeleVisitInTx`. */
+  tele?: { tele: true; now: Date },
 ): Promise<{ queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null }> {
   const roomId = await roomForDoctorDay(tx, encounter.doctorId, encounter.serviceDate);
   const session = await getOrCreateSession(tx, encounter.doctorId, encounter.serviceDate, roomId);
@@ -247,8 +281,11 @@ async function joinSessionInTx(
   const tokenNo = await allocateToken(tx, encounter.departmentId, encounter.serviceDate);
   const [queueEntry] = await tx.insert(opdQueueEntries).values({
     id: newId(), sessionId: session.id, encounterId: encounter.id, tokenNo,
-    kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null, status: "waiting_vitals",
+    kind: appointment ? "appointment" : "walk_in", appointmentAt: appointment?.slotStart ?? null,
+    ...(tele === undefined ? { status: "waiting_vitals" } : { status: "waiting", eligibleAt: tele.now }),
   }).returning();
+  // Nobody is at the counter to be handed a slip or a sheet.
+  if (tele !== undefined) return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
 
   /*
     ═══ FD-24 T5 — THE PAPER IS QUEUED HERE, AND HERE IS THE ONLY HONEST PLACE FOR IT ═══
@@ -859,6 +896,17 @@ export async function abandonVisit(db: Db, actor: Actor, encounterId: string, re
       .set({ status: "cancelled" })
       .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
       .returning({ id: opdQueueEntries.id });
+    /*
+      TELE-CALL (fix round 2026-10-09) — a tele visit left before the doctor spoke to the patient has
+      consumed nothing: no bill was raised. Its appointment goes back to the desk's re-booking list
+      with the payment still stamped on it, so the money is never stranded on a `checked_in` row
+      nobody can move or cancel.
+    */
+    if (encounter.consultMode === "tele" && encounter.teleOutcome !== "spoke" && encounter.appointmentId !== null) {
+      await tx.update(opdAppointments)
+        .set({ status: "needs_rebooking", updatedBy: actor.id, updatedAt: now })
+        .where(and(eq(opdAppointments.id, encounter.appointmentId), eq(opdAppointments.status, "checked_in")));
+    }
     // C1: a deferred visit has no entry — the abandon still happens; the event carries nulls,
     // exactly as visit.opened does for the same state.
     const located = await newestEntryWhere(tx, encounterId);

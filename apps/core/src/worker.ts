@@ -8,6 +8,7 @@ import { Scheduler, pgLocks } from "./kernel/worker/scheduler";
 import { registerAllJobs } from "./kernel/worker/jobs";
 import { adaptersFor } from "./kernel/notify/adapters";
 import { describePhonePush, phonePushSource } from "./kernel/push/sender";
+import { describeAttendance } from "./modules/attendance";
 import type { AppConfig } from "./kernel/config";
 import type { Db } from "./kernel/db/client";
 import type { ShutdownLog } from "./kernel/worker/worker.module";
@@ -51,6 +52,7 @@ async function bootstrap(): Promise<void> {
   // hospital with no Firebase project is every hospital until the owner makes one.
   const phonePush = describePhonePush(phonePushSource(cfg.fcmServiceAccountFile), cfg.fcmServiceAccountFile);
   console[phonePush.level](phonePush.line);
+  console.log(describeAttendance(cfg.attendance));
 
   // Every Scheduler timer is deliberately unref()'d (a stray un-stopped Scheduler must never
   // hang a jest worker), and this process has no HTTP listener and opens no DB connection

@@ -165,7 +165,6 @@
       "token": "Token {{token}}",
       "sealed": "Restricted record",
       "noName": "Name not on file",
-      "unpaidRow": "NOT PAID",
       "dangerRow": "DANGER",
       "referralRow": "Referral",
       "allergyTitle": "Allergies",
@@ -218,7 +217,6 @@
       "skipGo": "Skip token {{token}}",
       "skipped": "Token {{token}} skipped",
       "cancel": "Cancel",
-      "reasonNeeded": "Write the reason first.",
       "onComputer": "The consultation is written on the screen before this one; this is the patient's history.",
       "retry": "Try again",
       "followUpServerDefault": "Hospital default",
@@ -235,6 +233,16 @@
       "failed": "Could not check for an update just now.",
       "howTo": "The download opens in the browser. Tap the file when it finishes, then Install — your sign-in stays.",
       "version": "Version {{version}} · build {{code}}"
+    },
+    "tele": {
+      "title": "Tele-call",
+      "call": "Call patient",
+      "noAnswer": "No answer",
+      "spoke": "Spoke to patient",
+      "spokeAt": "Spoke · {{time}}",
+      "backInLine": "No answer — held aside to retry",
+      "toDesk": "No answer twice — sent to desk",
+      "triedOnce": "Tried once — no answer"
     },
     "counter": {
       "step": {
@@ -428,6 +436,24 @@
         "receipt": "Bill {{no}} · receipt {{receipt}} · {{amount}} by {{mode}}",
         "billed": "Bill {{no}} · {{amount}}"
       },
+      "telePay": {
+        "upiQr": "UPI QR code",
+        "toPay": "To pay {{amount}}",
+        "paid": "Paid",
+        "paidRefund": "Paid {{amount}} · refund on request",
+        "nothingToPay": "Nothing to pay",
+        "collect": "Collect {{amount}}",
+        "confirmFree": "Confirm",
+        "paidBy": "PAID BY",
+        "upiRef": "UPI reference",
+        "received": "Received {{amount}}",
+        "unknown": "No answer came back. Tap again: the server answers the same request, nothing is taken twice.",
+        "mode": {
+          "cash": "Cash",
+          "upi": "UPI",
+          "card": "Card"
+        }
+      },
       "appt": {
         "open": "Appointments today",
         "book": "Book an appointment",
@@ -473,6 +499,11 @@
         "confirm": "CHECK BEFORE YOU BOOK",
         "room": "Room {{room}}",
         "noteHint": "Note for the day (optional)",
+        "how": "HOW",
+        "inPerson": "In person",
+        "tele": "Tele-call",
+        "telePhone": "Patient's phone",
+        "telePhoneHint": "10-digit mobile number",
         "feeLater": "Nothing is collected now. The consultation fee is taken when the patient checks in.",
         "feeOff": "Nothing is collected now. Consultation is free at present: {{amount}}.",
         "pickFirst": "Pick a time",
@@ -863,7 +894,7 @@
       "adviceHint": "anything else, for example: come back if the fever lasts beyond 3 days",
       "reviewAfter": "Review after",
       "reviewNone": "not needed",
-      "freeWindow": "Free follow-up window",
+      "freeWindow": "Follow-up window",
       "returnToday": "Tests ordered — the patient returns today with the reports (the visit stays open)",
       "returnTodayShort": "Returns today with reports",
       "sets": {
@@ -1365,15 +1396,6 @@
     "undoSkip": "Undo skip",
     "leftQueue": "Left the queue ({{n}})",
     "leftQueueHint": "Three skips takes a token out of the queue. The visit is still open — bring them back and they keep their turn.",
-    "heldQueue": "Waiting for the bill ({{n}})",
-    "heldQueueHint": "Ready for you, but the fee is not paid. They are not called and the hall board does not show them. Pay at the counter, or open one yourself.",
-    "heldWhy": "Sent through without paying: {{reason}}",
-    "openUnpaid": "See without payment",
-    "openUnpaidTitle": "Token {{token}} — see before the bill?",
-    "openUnpaidHint": "This puts the token back in your queue and lets you start the consultation although the fee is unpaid.",
-    "openUnpaidReason": "Why (shown at every desk after this one)",
-    "openUnpaidStillOwed": "The fee is still owed and the bill is still raised — only the order changes.",
-    "openUnpaidConfirm": "Open the token",
     "skipReason": {
       "absent": "Not at the door when called",
       "stepped_out": "Stepped out, back shortly",
@@ -1542,9 +1564,9 @@
     "resumeConsult": "Resume consultation",
     "vtShort": {
       "new": "New patient · first visit",
-      "revisit": "Revisit · free follow-up",
-      "renewal": "Renewal · fresh fee due",
-      "referral": "Referral · free within 7 days"
+      "revisit": "Revisit · follow-up",
+      "renewal": "Renewal · follow-up lapsed",
+      "referral": "Referral · first visit here"
     },
     "sinceThen": "Since then · lab and radiology",
     "noneSince": "none since",
@@ -1924,6 +1946,125 @@
       "nothingToMove": "Nothing needs moving. No declared leave has stranded a booking."
     }
   },
+  "attendance": {
+    "aadhaar": {
+      "card": "Add your Aadhaar to see attendance",
+      "button": "Add Aadhaar",
+      "title": "Your Aadhaar",
+      "label": "Aadhaar number",
+      "hint": "12 digits · only last 4 kept",
+      "save": "Save",
+      "cancel": "Cancel",
+      "linked": "Attendance linked",
+      "saved": "Saved · attendance team will match",
+      "error": {
+        "aadhaar_invalid": "Not a valid Aadhaar",
+        "aadhaar_locked": "Already linked · ask admin",
+        "aadhaar_key_not_configured": "Not set up yet",
+        "too_many_attempts": "Too many tries · try tomorrow",
+        "failed": "Not saved · try again"
+      }
+    },
+    "title": "Attendance",
+    "mine": "My attendance",
+    "notLinked": "Attendance not linked",
+    "state": {
+      "not_checked_in": "Not checked in",
+      "checked_in": "✓ Checked in",
+      "checked_out": "Checked out"
+    },
+    "confirmRow": "⚠ Confirm · {{day}}",
+    "confirmMore": "+{{n}}",
+    "word": {
+      "present": "Present",
+      "absent": "Absent",
+      "leave": "Leave",
+      "off": "Off",
+      "partial": "Partial",
+      "confirm": "Confirm",
+      "unknown": "—"
+    },
+    "view": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    },
+    "previous": "Previous",
+    "next": "Next",
+    "today": "Today",
+    "dayLabel": "{{dow}} {{d}}",
+    "dateLabel": "{{dow}} {{d}} {{month}}",
+    "dow": { "0": "Mon", "1": "Tue", "2": "Wed", "3": "Thu", "4": "Fri", "5": "Sat", "6": "Sun" },
+    "dowLetter": { "0": "M", "1": "T", "2": "W", "3": "T", "4": "F", "5": "S", "6": "S" },
+    "month": {
+      "01": "January", "02": "February", "03": "March", "04": "April", "05": "May", "06": "June",
+      "07": "July", "08": "August", "09": "September", "10": "October", "11": "November", "12": "December"
+    },
+    "of": "{{n}} / {{of}}",
+    "in": "In",
+    "out": "Out",
+    "hours": "Hours",
+    "hoursValue": "{{n}} h",
+    "punches": "Punches",
+    "noPunches": "No punches",
+    "noRecord": "No record",
+    "offline": "No network",
+    "cannotRead": "Could not load",
+    "reason": {
+      "one_punch_only": "Only one punch that day",
+      "other": "Ask the attendance office"
+    },
+    "sheet": {
+      "title": "Confirm this day",
+      "ask": "Request meeting",
+      "open": "Request sent",
+      "seen": "Seen",
+      "closed": "Closed",
+      "resolved_by_correction": "Corrected",
+      "failed": "Not sent — try again",
+      "tooMany": "Too many open requests",
+      "notNeeded": "Already corrected",
+      "close": "Close"
+    },
+    "manage": {
+      "open": "Staff attendance",
+      "hintAll": "Everyone today · requests",
+      "hintTeam": "My team today",
+      "today": "Today",
+      "team": "My team",
+      "requests": "Requests",
+      "asOf": "as of {{time}}",
+      "notConnected": "Machine not connected",
+      "all": "All",
+      "noDept": "No department",
+      "search": "Search by name",
+      "nobody": "Nobody matches",
+      "countIn": "In",
+      "countNotIn": "Not in",
+      "countLate": "Late",
+      "countLeave": "Leave",
+      "notIn": "Not in",
+      "late": "Late",
+      "onePunch": "One punch",
+      "noLogin": "no login",
+      "notLinked": "Not linked",
+      "noTeam": "Nobody in your team yet"
+    },
+    "requests": {
+      "open": "Open",
+      "seen": "Seen",
+      "closed": "Closed",
+      "none": "No requests",
+      "markSeen": "Seen",
+      "close": "Close",
+      "note": "Note (optional)",
+      "confirmClose": "Close request",
+      "cancel": "Cancel",
+      "ageHours": "{{n}} h",
+      "ageDays": "{{n}} d",
+      "failed": "Not saved — try again"
+    }
+  },
   "home": {
     "now": "Needs you now",
     "all": "See all ({{n}})",
@@ -1969,6 +2110,9 @@
       "deskWaitingSub": "Seated by you, not yet with a doctor",
       "rebook": "appointments to re-book",
       "rebookSub": "The doctor is on leave that day",
+      "toCollect": "to collect",
+      "toCollectSub": "Let through unpaid at the desk",
+      "toCollectGone": "{{n}} already seen or gone",
       "myRequest": "Your request · {{what}}",
       "myRequestPending": "with the approver",
       "myRequestGranted": "Approved — you can go ahead",
@@ -2238,6 +2382,20 @@
     "refused": "The server could not answer. Try again.",
     "noAccess": "There is no recording count for your login."
   },
+  "toCollect": {
+    "title": "To collect",
+    "count": "To collect · {{n}}",
+    "none": "Nobody to collect from.",
+    "collect": "Collect",
+    "atCounter": "at the billing counter",
+    "why": "Let through by {{by}}, {{mins}} min ago — {{reason}}",
+    "state": {
+      "done": "seen by the doctor",
+      "left": "left the line",
+      "with_doctor": "with the doctor",
+      "waiting": "waiting"
+    }
+  },
   "owner": {
     "today": "Today",
     "notLoaded": "This part did not load",
@@ -2448,5 +2606,26 @@
         "week_regression": "Check staff on duty against last month"
       }
     }
+  },
+  "pace": {
+    "title": "My pace",
+    "sub": "Avg time per consultation",
+    "min": "{{n}} min",
+    "dept": "Dept",
+    "hospital": "Hospital",
+    "notEnough": "Not enough yet",
+    "none": "—",
+    "period": {
+      "today": "Today",
+      "7d": "7 days",
+      "30d": "30 days"
+    },
+    "count": "{{n}} consultations",
+    "paper": "Paper visits not counted",
+    "back": "Back",
+    "offline": "No network",
+    "refused": "Could not load",
+    "again": "Try again",
+    "noMeasure": "No measure for your login"
   }
 }

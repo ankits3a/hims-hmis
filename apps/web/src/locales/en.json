@@ -843,6 +843,48 @@
       "cancel": "Cancel"
     }
   },
+  "teleCall": {
+    "call": "Call patient",
+    "dial": "Dial {{phone}}",
+    "noAnswer": "No answer",
+    "spoke": "Spoke to patient",
+    "spokeAt": "Spoke · {{time}}",
+    "backInLine": "No answer — held aside to retry",
+    "toDesk": "No answer twice — sent to desk",
+    "triedOnce": "Tried once — no answer"
+  },
+  "upiPayee": {
+    "title": "The hospital's UPI id",
+    "lead": "With an id set, the desk's Collect sheet for a tele-call shows a QR for the exact amount. The cashier still confirms the money and types the reference. Leave it blank to collect at the counter only.",
+    "vpa": "UPI id",
+    "name": "Name shown to the payer",
+    "save": "Save",
+    "saved": "Saved. The desk's Collect sheet now shows the QR.",
+    "cleared": "Cleared. The desk collects at the counter only.",
+    "shape": "A UPI id reads name@bank."
+  },
+  "teleDesk": {
+    "upiQr": "UPI QR code",
+    "upiScan": "Scan to pay",
+    "toPay": "To pay {{amount}}",
+    "paid": "Paid",
+    "paidRefund": "Paid {{amount}} · refund on request",
+    "refundLink": "Billing office",
+    "nothingToPay": "Nothing to pay",
+    "collect": "Collect",
+    "confirmFree": "Confirm",
+    "collectTitle": "Collect {{amount}} for the tele-call",
+    "freeTitle": "Free follow-up — nothing to pay",
+    "paidBy": "Paid by",
+    "upiRef": "UPI reference",
+    "cardRef": "Card slip no. (optional)",
+    "received": "Received {{amount}}",
+    "mode": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    }
+  },
   "opdAppt": {
     "title": "OPD appointments",
     "pickDepartment": "Choose a department",
@@ -874,6 +916,11 @@
     "slotBooked": "Booked",
     "confirmTitle": "Confirm this booking",
     "confirmBooking": "Confirm booking",
+    "how": "How",
+    "inPerson": "In person",
+    "tele": "Tele-call",
+    "telePhone": "Patient's phone",
+    "telePhoneHint": "10-digit mobile number",
     "status": {
       "booked": "Booked",
       "checked_in": "Checked in",
@@ -941,7 +988,6 @@
     },
     "clockLongest": "Longest wait in this line",
     "clockVitals": "Waiting for vitals",
-    "clockHeld": "Held for payment",
     "clockLeft": "Left after the skip cap",
     "clocksIdle": "choose a doctor",
     "clocksSummary": "longest wait {{n}} min · {{vitals}} at vitals",
@@ -1394,15 +1440,6 @@
     "bringBack": "Bring back",
     "leftQueue": "Left the queue ({{n}})",
     "leftQueueHint": "Three skips takes a token out of the queue. The visit is still open — bring them back and they keep their turn.",
-    "heldQueue": "Waiting for the bill ({{n}})",
-    "heldQueueHint": "Ready for you, but the fee is not paid. They are not called and the hall board does not show them. Pay at the counter, or open one yourself.",
-    "heldWhy": "Sent through without paying: {{reason}}",
-    "openUnpaid": "See without payment",
-    "openUnpaidTitle": "Token {{token}} — see before the bill?",
-    "openUnpaidHint": "This puts the token back in your queue and lets you start the consultation although the fee is unpaid.",
-    "openUnpaidReason": "Why (shown at every desk after this one)",
-    "openUnpaidStillOwed": "The fee is still owed and the bill is still raised — only the order changes.",
-    "openUnpaidConfirm": "Open the token",
     "skipReason": {
       "absent": "Not at the door when called",
       "stepped_out": "Stepped out, back shortly",
@@ -1468,6 +1505,7 @@
   },
   "rx": {
     "unitNumber": "Unit Number",
+    "tele": "Tele-consultation · patient not examined",
     "deptRegn": "Dept. Regn",
     "doctorId": "Doctor ID",
     "uhid": "UHID",
@@ -2301,6 +2339,101 @@
     "submit": "Change password (Alt+S)"
   },
   "adminUsers": {
+    "heading": "Users",
+    "list": {
+      "count": "{{n}} people",
+      "newUser": "New user",
+      "search": "Name, username, staff code or mobile",
+      "searchLabel": "Search users",
+      "roleFilter": "Role",
+      "anyRole": "Any role",
+      "filters": "Filters",
+      "colName": "Name",
+      "colSignIn": "Sign-in",
+      "shown": "{{n}} of {{total}} shown",
+      "noMatch": "No one matches",
+      "selectUser": "Select {{name}}",
+      "selectAll": "Select all shown",
+      "openUser": "Open {{name}}",
+      "noRole": "No role",
+      "pinSet": "PIN set",
+      "noPin": "No PIN"
+    },
+    "chip": {
+      "all": "All",
+      "active": "Active",
+      "deactivated": "Deactivated",
+      "noRole": "No role",
+      "passwordDue": "New password due",
+      "notLinked": "Attendance not linked"
+    },
+    "bulk": {
+      "selected": "{{n}} selected",
+      "addRole": "Add role",
+      "deactivate": "Deactivate",
+      "clear": "Clear",
+      "addRoleTitle": "Add a role · {{n}} people",
+      "addedTo": "{{role}} added to {{n}}",
+      "deactivatedN": "{{n}} deactivated",
+      "refusedBy": "{{name}}: {{why}}"
+    },
+    "ask": {
+      "title": "Deactivate {{name}}?",
+      "titleMany": "Deactivate {{n}} people?",
+      "signedOut": "Signed out of phones and all PCs",
+      "rolesKept": "Roles kept",
+      "turnOn": "Turn on again any time",
+      "confirm": "Deactivate",
+      "keep": "Keep active"
+    },
+    "drawer": {
+      "close": "Close",
+      "rolesN": "Roles · {{n}}",
+      "copyFrom": "Copy from another user",
+      "copyPick": "Pick a user",
+      "copyGo": "Copy {{n}} roles",
+      "copyNone": "Nothing new to copy",
+      "copied": "{{n}} roles copied to {{username}} from {{from}}",
+      "remove": "Remove",
+      "addRole": "Add role",
+      "noRoleMatch": "No role matches",
+      "signIn": "Sign-in",
+      "phones": "Phones",
+      "phonesSignedIn": "{{n}} signed in ›",
+      "idTitle": "ID & attendance",
+      "mobile": "Mobile",
+      "aadhaar": "Aadhaar",
+      "attendance": "Attendance",
+      "editIdentity": "Edit mobile or Aadhaar"
+    },
+    "newUser": {
+      "title": "New user",
+      "usernameMade": "Made from name",
+      "usernameTaken": "Already used",
+      "mobilePlaceholder": "10 digits",
+      "mobileHint": "Links attendance",
+      "quick": {
+        "doctor": "Doctor",
+        "vitals_desk": "Vitals desk",
+        "front_office": "Front office",
+        "cashier": "Cashier",
+        "pharmacy": "Pharmacy",
+        "lab_technician": "Lab technician"
+      },
+      "moreRoles": "More roles…",
+      "add": "Add",
+      "copyRoles": "Or copy roles from another user",
+      "firstPassword": "First password",
+      "copy": "Copy",
+      "copied": "Copied",
+      "newOne": "New one",
+      "mustChange": "Must change on first sign-in.",
+      "typeOwn": "Type my own",
+      "useMade": "Use a made one",
+      "pinPlaceholder": "4–6 digits",
+      "create": "Create user",
+      "notSaved": "{{what}} not saved: {{why}}"
+    },
     "title": "Users and access",
     "createTitle": "Add a person",
     "createWhy": "The new account must change this password at first sign-in. A PIN is optional and enables the fast terminal switch.",
@@ -2331,6 +2464,41 @@
     "grantsAccessAuthority": "This role carries authority over access itself: who exists, who may do what, and whose password can be reset. Give it only to someone you would trust with the hospital's accounts.",
     "inertScope": "— grants nothing today; every route requires hospital scope. Revoke and re-assign at hospital scope.",
     "resetPassword": "Reset password",
+    "identity": {
+      "open": "Mobile & Aadhaar",
+      "title": "Mobile and Aadhaar — {{username}}",
+      "why": "The attendance machine's list is matched to a person here by mobile number or by Aadhaar, and by nothing else.",
+      "mobile": "Mobile",
+      "mobileHint": "Ten digits.",
+      "aadhaar": "Aadhaar",
+      "aadhaarHint": "Twelve digits. Only the last four are kept here; the number itself is not stored.",
+      "aadhaarNotConfigured": "Aadhaar cannot be saved yet: the Aadhaar linking key is not set up on this server.",
+      "notSet": "Not set",
+      "save": "Save",
+      "change": "Change",
+      "remove": "Remove",
+      "cancel": "Cancel",
+      "close": "Close",
+      "mobileSaved": "Mobile saved for {{username}}",
+      "mobileRemoved": "Mobile removed for {{username}}",
+      "aadhaarSaved": "Aadhaar saved for {{username}}",
+      "aadhaarRemoved": "Aadhaar removed for {{username}}",
+      "state": {
+        "linked": "Attendance linked",
+        "not_linked": "Not linked",
+        "two_matches": "Two matches"
+      },
+      "stateWhy": {
+        "linked": "This person's attendance comes from the attendance machine.",
+        "not_linked": "Nobody on the attendance machine's list has this mobile or this Aadhaar.",
+        "two_matches": "More than one person shares this mobile or this Aadhaar, so nobody was linked. Add the Aadhaar, or correct the number that is shared."
+      },
+      "error": {
+        "mobile_invalid": "That is not a mobile number. Enter ten digits starting with 6, 7, 8 or 9.",
+        "aadhaar_invalid": "That is not a valid Aadhaar number. Check the twelve digits.",
+        "aadhaar_key_not_configured": "Aadhaar cannot be saved yet: the Aadhaar linking key is not set up on this server."
+      }
+    },
     "phones": {
       "open": "Phones",
       "title": "Phones — {{username}}",
@@ -4130,7 +4298,7 @@
     "consult": {
       "title": "Laboratory results",
       "empty": "No verified laboratory results for this visit.",
-      "unpaidNote": "Results are shown whatever the bill says. The printed report is held separately.",
+      "unpaidNote": "Results are shown here as soon as they are verified. The printed report is issued separately.",
       "unavailable": "Laboratory results could not be loaded — this is NOT a statement that there are none. Retry, or check the laboratory system.",
       "loading": "Loading laboratory results…",
       "provisionalTitle": "Provisional — not yet verified",
@@ -10610,9 +10778,9 @@
     "vitalsBy": "Recorded by {{by}} at {{at}}",
     "vt": {
       "new": "New patient · first visit to this department",
-      "revisit": "Revisit · free follow-up · last seen {{date}}",
-      "renewal": "Renewal · follow-up window lapsed (last seen {{date}}) · fresh fee",
-      "referral": "Referral · first visit to this department · free within 7 days of the referral"
+      "revisit": "Revisit · follow-up · last seen {{date}}",
+      "renewal": "Renewal · follow-up window lapsed (last seen {{date}})",
+      "referral": "Referral · first visit to this department"
     },
     "waitingVertical": "WAITING",
     "whyCame": "Why the patient came · as told at the front desk",
@@ -10647,7 +10815,7 @@
       "doctor": "Doctor",
       "reason": "Reason (at least 3 characters)",
       "note": "Note for the doctor",
-      "feeNote": "The patient joins that doctor's line without registering again. The fee follows the hospital's tariff; the front desk sees the visit as usual.",
+      "feeNote": "The patient joins that doctor's line without registering again; the front desk sees the visit as usual.",
       "send": "Refer",
       "to": "Refer to (doctor / hospital)",
       "letter": "Letter",
@@ -10687,9 +10855,9 @@
     "token": "token {{n}}",
     "vtShort": {
       "new": "New patient · first visit",
-      "revisit": "Revisit · free follow-up",
-      "renewal": "Renewal · fresh fee due",
-      "referral": "Referral · free within 7 days"
+      "revisit": "Revisit · follow-up",
+      "renewal": "Renewal · follow-up lapsed",
+      "referral": "Referral · first visit here"
     },
     "completeShort": "Complete",
     "deskHeard": "Heard at the desk — tap to add:",
@@ -14840,5 +15008,37 @@
     },
     "note": "On record = the slip was photographed, the desk typed it, or the doctor prescribed on a screen.",
     "screenNote": "\"On screen\" counts the phone app and the computer together."
+  },
+  "toCollect": {
+    "title": "To collect",
+    "count": "To collect · {{n}}",
+    "none": "Nobody to collect from.",
+    "collect": "Collect",
+    "atCounter": "at the billing counter",
+    "why": "Let through by {{by}}, {{mins}} min ago — {{reason}}",
+    "state": {
+      "done": "seen by the doctor",
+      "left": "left the line",
+      "with_doctor": "with the doctor",
+      "waiting": "waiting"
+    }
+  },
+  "aadhaarSticker": {
+    "text": "Add your Aadhaar to see attendance",
+    "button": "Add Aadhaar",
+    "title": "Your Aadhaar",
+    "label": "Aadhaar number",
+    "hint": "12 digits · only last 4 kept",
+    "save": "Save",
+    "cancel": "Cancel",
+    "linked": "Attendance linked",
+    "saved": "Saved · attendance team will match",
+    "error": {
+      "aadhaar_invalid": "Not a valid Aadhaar",
+      "aadhaar_locked": "Already linked · ask admin",
+      "aadhaar_key_not_configured": "Not set up yet",
+      "too_many_attempts": "Too many tries · try tomorrow",
+      "failed": "Not saved · try again"
+    }
   }
 }

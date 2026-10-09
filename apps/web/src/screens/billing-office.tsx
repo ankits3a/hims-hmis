@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { UpiPayee } from "./billing-office/upi-payee";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -1396,7 +1397,7 @@ export function BillingOffice(): React.ReactElement {
           <div className="pof-legacy">
             <h1 className="mb-3 text-lg font-semibold">{page === null ? sideName(shown) : pageName(page)}</h1>
             {page !== null && (page.key === "fees"
-              ? <FeeSwitches />
+              ? <><FeeSwitches /><UpiPayee /></>
               : page.key === "prices"
               ? <ConsultPrices />
               : <OfficePages key={page.key} page={page.key} onHand={(id) => go("today", undefined, id)} onGo={(v, pg) => go(v, pg)} />)}

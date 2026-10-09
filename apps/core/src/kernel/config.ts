@@ -111,6 +111,31 @@ const configSchema = z.object({
    */
   HMIS_OPENAI_KEY_FILE: z.string().optional(),
   /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — the hospital's attendance system, "bioattend"
+   * (`modules/attendance`). Three secret FILES on the OpenAI key's terms (read on use, re-read when
+   * they change, never an environment value): the API key, the webhook signing secret and the
+   * Aadhaar linking key. With no readable API key the integration is OFF and says so once at boot.
+   * `ATTENDANCE_SYNC_ENABLED` is the master switch, the `RETENTION_ENABLED` two-string spelling —
+   * BOTH it and the key must be there before anything calls bioattend.
+   */
+  BIOATTEND_BASE_URL: z.string().url().default("https://biotime.crkmch.com/api/hmis/v1"),
+  ATTENDANCE_SYNC_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  /**
+   * Owner 2026-10-09: a person reading their OWN attendance sees one of four words a day and a
+   * "Checked in" — no times "until our software is out of commissioning". "true" here adds the times
+   * and the day's punches to the self routes, with no app build. Managers' routes never depended on it.
+   */
+  ATTENDANCE_SELF_SHOWS_TIMES: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  HMIS_BIOATTEND_API_KEY_FILE: z.string().optional(),
+  HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: z.string().optional(),
+  HMIS_BIOATTEND_AADHAAR_KEY_FILE: z.string().optional(),
+  /**
    * PHASE O T4 — the channel ladder's cadence. A minute, not five: the `now` lane's patience is
    * five minutes, and a sweep that ran every five could spend the whole of it before noticing.
    */
@@ -558,6 +583,8 @@ export type AppConfig = {
   /** MOBILE M6b — where the Firebase service-account key is expected, or null. The file may not exist yet. */
   fcmServiceAccountFile: string | null;
   openaiKeyFile: string | null;
+  /** Staff attendance from bioattend — where to call, the master switch, and the three secret files (paths, never contents). */
+  attendance: { baseUrl: string; syncEnabled: boolean; selfShowsTimes: boolean; apiKeyFile: string | null; webhookSecretFile: string | null; aadhaarKeyFile: string | null };
   workerReachIntervalMs: number;
   /**
    * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
@@ -877,6 +904,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     notifyPushProvider: parsed.NOTIFY_PUSH_PROVIDER,
     fcmServiceAccountFile: parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE === undefined || parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim() === "" ? null : parsed.HMIS_FCM_SERVICE_ACCOUNT_FILE.trim(),
     openaiKeyFile: parsed.HMIS_OPENAI_KEY_FILE === undefined || parsed.HMIS_OPENAI_KEY_FILE.trim() === "" ? null : parsed.HMIS_OPENAI_KEY_FILE.trim(),
+    attendance: {
+      baseUrl: parsed.BIOATTEND_BASE_URL.replace(/\/+$/, ""),
+      syncEnabled: parsed.ATTENDANCE_SYNC_ENABLED,
+      selfShowsTimes: parsed.ATTENDANCE_SELF_SHOWS_TIMES,
+      apiKeyFile: pathOrNull(parsed.HMIS_BIOATTEND_API_KEY_FILE),
+      webhookSecretFile: pathOrNull(parsed.HMIS_BIOATTEND_WEBHOOK_SECRET_FILE),
+      aadhaarKeyFile: pathOrNull(parsed.HMIS_BIOATTEND_AADHAAR_KEY_FILE),
+    },
     workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
     webPushVapid: vapidFrom(parsed),
     notifySms: smsGatewayFrom(parsed),
@@ -937,4 +972,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     receivableCommissionEnabled: parsed.RECEIVABLE_COMMISSION_ENABLED,
     couponIssuanceEnabled: parsed.COUPON_ISSUANCE_ENABLED,
   };
+}
+
+/** An optional path setting: unset or blank is `null`. */
+function pathOrNull(raw: string | undefined): string | null {
+  return raw === undefined || raw.trim() === "" ? null : raw.trim();
 }

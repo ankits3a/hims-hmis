@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Query } from "@nestjs/common";
 import { asc, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { patientAbsentBody } from "@hmis/contracts";
+import { APPOINTMENT_MODES, patientAbsentBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -9,13 +9,14 @@ import { opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries, PatientError } from "../patients";
 import { findTodaysVisits, requestSlipRetake, slipDay, slipReadback } from "./slips";
 import type { SlipDay, SlipReadback } from "./slips";
-import { bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
+import { appointmentForList, bookAppointment, cancelAppointment, checkInAppointment, listAppointments, rescheduleAppointment } from "./appointments";
 import {
   abandonVisit, counterState, deskComplaintFor, getEncounterByVisitNo, getVisit, grantFeeBypass, joinQueue, listVisits, openVisit,
   patientTimeline, reEnterVisit, reclassifyVisit,
 } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import { feeMarksFor } from "./prestage";
+import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
@@ -47,6 +48,10 @@ import type { ScanQuery, ScanResult } from "./scan";
 import type { EscalationView } from "./escalation";
 import type { PreStage } from "./prestage";
 import type { AppointmentRow } from "./appointments";
+import { recordTeleAdvance, teleDeskMarks, teleFee } from "./tele";
+import { teleSlotOf } from "./tele-call";
+import type { TeleAdvanceResult, TeleDeskMark, TeleFee } from "./tele";
+import { withIdempotency } from "../billing";
 import type { CounterState, EncounterRow, JoinQueueResult, OpenVisitResult, QueueEntryRow, TimelineItem, VitalsRow } from "./encounters";
 import type { VitalsRowWithRecorder } from "./vitals";
 import type { Slot } from "./slots";
@@ -115,8 +120,18 @@ const appointmentCreateBody = z.object({
   slotStart: z.coerce.date(),
   source: z.enum(["desk", "phone"]).optional(),
   note: z.string().max(1000).optional(),
+  // Owner 2026-10-09 — tele-call. The service judges the number (and names the refusal).
+  mode: z.enum(APPOINTMENT_MODES).optional(),
+  telePhone: z.string().max(40).optional(),
 });
-const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional() });
+/** Owner 2026-10-09 — the desk collects a tele-call's fee. The service judges the amount, the tenders and the UPI reference. */
+const teleAdvanceBody = z.object({
+  amountPaise: z.number().int().min(0),
+  tenders: z.array(z.object({
+    mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().trim().max(80).optional(),
+  })).max(3).optional(),
+});
+const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional(), telePhone: z.string().max(40).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
 /* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
    clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
@@ -273,23 +288,31 @@ const escalationBody = z.object({
   muacCm: z.number().optional(),
 });
 
-type AppointmentView = AppointmentRow & { patient: PatientSummary | null };
+/** `teleDesk` is the DESK's money mark on a tele-call row (to pay / paid). It exists on this desk route only. */
+type AppointmentView = AppointmentRow & { patient: PatientSummary | null; teleDesk?: TeleDeskMark };
 type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry: QueueEntryRow | null };
 /**
- * FD-32 — the visit read carries the two money marks as well, so the CONSULTATION and the OPD Order
- * Desk wear the owner's warning from the same derivation the vitals bay uses (`feeMarksFor`). On
- * consultation the pair that matters is the BYPASSED one: the fee gate already refuses an unpaid
- * consult, so the patient a doctor actually meets unpaid is the one the front desk waved through —
- * and the doctor should see whose decision that was and why.
+ * FD-32 — the visit read carries the two money marks, from the same derivation the vitals bay uses
+ * (`feeMarksFor`), for the DESKS that read a visit: Desk One's visit card and the paper desks.
+ * Until 2026-10-09 the consultation screen wore them too; the owner ruled that a doctor's screen
+ * shows no money, so they are no longer sent to a caller without a fee-seeing permission.
  */
-type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
+type VisitRead = NonNullable<Awaited<ReturnType<typeof getVisit>>>;
+type VisitDetail = (VisitRead | (Omit<VisitRead, "encounter"> & { encounter: ReturnType<typeof encounterWithoutMoney<VisitRead["encounter"]>> })) & {
   patient: PatientSummary | null;
-  feeUnpaid: boolean;
-  feeBypass: { by: string; reason: string; at: Date } | null;
+  /**
+   * OWNER RULING 2026-10-09 — *"Doctor's screens must not show money."* The two marks, and the
+   * bypass / override columns of the visit row, are sent only to a caller whose own work is the fee
+   * (`fee-view.ts`: the front desk, the cashier, the paper desks). For everyone else — the doctor —
+   * the keys are ABSENT. On a tele visit they are absent for every caller.
+   */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: Date } | null;
   /** What the front desk heard, by whom and when — `null` when nothing was typed (D15). */
   deskComplaint: { text: string; by: string; at: Date } | null;
   /** Owner 2026-10-07 — the guardian came with the reports and the patient did not (`patient-absent.ts`). */
   patientAbsent: PatientAbsent | null;
+  teleSlotAt: Date | null;
 };
 
 @Controller("opd")
@@ -425,6 +448,38 @@ export class OpdVisitsController {
     const b = parsed(reasonBody, body);
     try {
       return await cancelAppointment(this.db, actor, id, b.reason);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** Owner 2026-10-09 — what a tele-call costs: the in-person fee for that patient, doctor and slot date. Desk only. */
+  @RequirePermission("opd.appointments.manage", "hospital", { alsoAdmits: ["billing.receipt.record"] })
+  @Get("appointments/:id/tele-fee")
+  async teleFeeRoute(@Param("id") id: string): Promise<TeleFee> {
+    try {
+      return await teleFee(this.db, id);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * The desk takes the fee: one ordinary advance receipt in the acting cashier's open drawer, for
+   * exactly the quote. `Idempotency-Key` is honoured as `POST /billing/receipts` honours it — the
+   * same store, so a retried request is answered, not repeated.
+   */
+  @RequirePermission("billing.receipt.record", "hospital")
+  @Post("appointments/:id/advance")
+  async teleAdvance(
+    @CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown, @Headers("idempotency-key") idemKey?: string,
+  ): Promise<TeleAdvanceResult> {
+    const b = parsed(teleAdvanceBody, body);
+    try {
+      return await withIdempotency(
+        this.db, { actorId: actor.id, route: `POST /opd/appointments/${id}/advance`, key: idemKey }, b,
+        () => recordTeleAdvance(this.db, actor, id, b),
+      );
     } catch (e) {
       toHttp(e);
     }
@@ -618,11 +673,20 @@ export class OpdVisitsController {
     const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
-    return {
-      ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)),
+    /*
+      Two rulings meet here (owner 2026-10-09). A doctor's read carries no money key (`fee-view.ts`);
+      a TELE visit's read carries none for ANY caller — the desk reads a tele-call's money off the
+      appointment. One stripping path: `encounterWithoutMoney`.
+    */
+    const rest = {
+      patient: summary ?? null,
       deskComplaint: await deskComplaintFor(this.db, found.encounter),
       patientAbsent: patientAbsentOf(found.encounter),
+      // Owner 2026-10-09 — a tele-call's own slot, for the doctor's card. Null on every other visit.
+      teleSlotAt: await teleSlotOf(this.db, found.encounter),
     };
+    if (found.encounter.consultMode !== "tele" && await seesFees(this.db, actor)) return { ...found, ...rest, ...(await feeMarksFor(this.db, found.encounter)) };
+    return { ...found, encounter: encounterWithoutMoney(found.encounter), ...rest };
   }
 
   /**
@@ -961,6 +1025,11 @@ export class OpdVisitsController {
       withContact === undefined ? {} : { withContact },
     );
     const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
-    return items.map((a) => ({ ...a, patient: byPatient.get(a.patientId) ?? null }));
+    const marks = await teleDeskMarks(this.db, items);
+    return items.map((a) => {
+      const patient = byPatient.get(a.patientId) ?? null;
+      const teleDesk = marks.get(a.id);
+      return { ...appointmentForList(a, patient, withContact !== undefined), patient, ...(teleDesk === undefined ? {} : { teleDesk }) };
+    });
   }
 }

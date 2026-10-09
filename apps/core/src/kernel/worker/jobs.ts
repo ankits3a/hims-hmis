@@ -7,6 +7,7 @@ import { runDueTimers } from "../workflow/timers";
 import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
+import { openDueTeleVisits } from "../../modules/opd/tele";
 import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
 import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
@@ -29,6 +30,7 @@ import {
 } from "../../modules/radiology";
 import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
+import { syncAttendance } from "../../modules/attendance";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -646,5 +648,30 @@ export function registerAllJobs(
     name: "proposeMedicineNicknames",
     every: 3_600_000,
     run: async (now) => { await runAliasJob(db, aliasConfig, now); },
+  });
+  /*
+   * TELE-CALL (owner 2026-10-09) — a covered tele appointment becomes a visit in the doctor's line
+   * when its slot is reached. Every minute, because the slot is a time the patient was promised;
+   * `now` is threaded so the "is it due" comparison is the tick's own. A tick with nothing due
+   * runs one indexed read and writes nothing.
+   */
+  scheduler.register({
+    name: "openDueTeleVisits",
+    every: 60_000,
+    run: async (now) => { await openDueTeleVisits(db, now); },
+  });
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — HMIS's copy of the attendance system ("bioattend"), EVERY
+   * TWO MINUTES: the guide asks for punches every one to five, and 120 s sits inside the interval
+   * alert's 300 s. ONE job for punches, today, the half-hourly reference data and the nightly month
+   * re-read (`modules/attendance/sync.ts` stages them by their own cadences) — a name in the census
+   * per job, not per endpoint. OFF unless the API key file is there AND `ATTENDANCE_SYNC_ENABLED` is
+   * true: until then it beats and makes no call. It reads the whole config the alias job is handed
+   * (the base URL, the switch, the key file's path); absent — a census test — it does nothing.
+   */
+  scheduler.register({
+    name: "syncAttendance",
+    every: 120_000,
+    run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
   });
 }

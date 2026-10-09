@@ -1,5 +1,5 @@
 {
-  "id": "5c70b009-391f-4452-ab9b-97971b92d8b9",
+  "id": "3c81dcdf-353f-4c12-b1a3-759436b2cc01",
   "prevId": "417b11e1-254c-4cc1-a65b-4e8eb9f0ab72",
   "version": "7",
   "dialect": "postgresql",
@@ -5299,6 +5299,37 @@
           "primaryKey": false,
           "notNull": false
         },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_person'"
+        },
+        "tele_phone": {
+          "name": "tele_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_receipt_id": {
+          "name": "advance_receipt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quote_paise": {
+          "name": "advance_quote_paise",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quoted_at": {
+          "name": "advance_quoted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "booked_by": {
           "name": "booked_by",
           "type": "text",
@@ -5476,12 +5507,34 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "opd_appointments_advance_receipt_id_receipts_id_fk": {
+          "name": "opd_appointments_advance_receipt_id_receipts_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "receipts",
+          "columnsFrom": [
+            "advance_receipt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "opd_appointments_mode_ck": {
+          "name": "opd_appointments_mode_ck",
+          "value": "\"opd_appointments\".\"mode\" in ('in_person', 'tele')"
+        },
+        "opd_appointments_tele_phone_ck": {
+          "name": "opd_appointments_tele_phone_ck",
+          "value": "\"opd_appointments\".\"mode\" <> 'tele' or \"opd_appointments\".\"tele_phone\" is not null"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.opd_complaint_concepts": {
@@ -6997,6 +7050,44 @@
           "primaryKey": false,
           "notNull": false
         },
+        "consult_mode": {
+          "name": "consult_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_person'"
+        },
+        "tele_call_started_at": {
+          "name": "tele_call_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome": {
+          "name": "tele_outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_at": {
+          "name": "tele_outcome_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_by": {
+          "name": "tele_outcome_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_no_answer_count": {
+          "name": "tele_no_answer_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "paper_recheck_asked_by": {
           "name": "paper_recheck_asked_by",
           "type": "text",
@@ -7302,367 +7393,6 @@
         "opd_encounters_diagnosis_kind_ck": {
           "name": "opd_encounters_diagnosis_kind_ck",
           "value": "\"opd_encounters\".\"diagnosis_kind\" is null or \"opd_encounters\".\"diagnosis_kind\" in ('provisional', 'final')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.opd_flow_baselines": {
-      "name": "opd_flow_baselines",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "leg": {
-          "name": "leg",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "weekday": {
-          "name": "weekday",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "hour": {
-          "name": "hour",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "n": {
-          "name": "n",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "median_min": {
-          "name": "median_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "p90_min": {
-          "name": "p90_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "window_from": {
-          "name": "window_from",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "window_to": {
-          "name": "window_to",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "computed_at": {
-          "name": "computed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "opd_flow_baselines_cell_uq": {
-          "name": "opd_flow_baselines_cell_uq",
-          "columns": [
-            {
-              "expression": "scope",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "leg",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "weekday",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "hour",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "opd_flow_baselines_leg_ck": {
-          "name": "opd_flow_baselines_leg_ck",
-          "value": "\"opd_flow_baselines\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor')"
-        },
-        "opd_flow_baselines_weekday_ck": {
-          "name": "opd_flow_baselines_weekday_ck",
-          "value": "\"opd_flow_baselines\".\"weekday\" between -1 and 6"
-        },
-        "opd_flow_baselines_hour_ck": {
-          "name": "opd_flow_baselines_hour_ck",
-          "value": "\"opd_flow_baselines\".\"hour\" = -1 or \"opd_flow_baselines\".\"hour\" between 0 and 23"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.opd_flow_findings": {
-      "name": "opd_flow_findings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "finding_key": {
-          "name": "finding_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "leg": {
-          "name": "leg",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "weekday": {
-          "name": "weekday",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hour_from": {
-          "name": "hour_from",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hour_to": {
-          "name": "hour_to",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "observed_min": {
-          "name": "observed_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "baseline_min": {
-          "name": "baseline_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "patients": {
-          "name": "patients",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "minutes_lost": {
-          "name": "minutes_lost",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "first_seen": {
-          "name": "first_seen",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_seen": {
-          "name": "last_seen",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'open'"
-        },
-        "dismissed_by": {
-          "name": "dismissed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dismissed_at": {
-          "name": "dismissed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dismissed_observed_min": {
-          "name": "dismissed_observed_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tried_by": {
-          "name": "tried_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tried_at": {
-          "name": "tried_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "before_median_min": {
-          "name": "before_median_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "after_median_min": {
-          "name": "after_median_min",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_on": {
-          "name": "resolved_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "minutes_won": {
-          "name": "minutes_won",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "opd_flow_findings_live_uq": {
-          "name": "opd_flow_findings_live_uq",
-          "columns": [
-            {
-              "expression": "finding_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"opd_flow_findings\".\"state\" <> 'resolved'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "opd_flow_findings_state_idx": {
-          "name": "opd_flow_findings_state_idx",
-          "columns": [
-            {
-              "expression": "state",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "opd_flow_findings_type_ck": {
-          "name": "opd_flow_findings_type_ck",
-          "value": "\"opd_flow_findings\".\"type\" in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression')"
-        },
-        "opd_flow_findings_state_ck": {
-          "name": "opd_flow_findings_state_ck",
-          "value": "\"opd_flow_findings\".\"state\" in ('open', 'dismissed', 'resolved')"
-        },
-        "opd_flow_findings_leg_ck": {
-          "name": "opd_flow_findings_leg_ck",
-          "value": "\"opd_flow_findings\".\"leg\" in ('desk_vitals', 'vitals_doctor', 'desk_doctor')"
-        },
-        "opd_flow_findings_dismissed_ck": {
-          "name": "opd_flow_findings_dismissed_ck",
-          "value": "(\"opd_flow_findings\".\"state\" = 'dismissed') = (\"opd_flow_findings\".\"dismissed_at\" is not null) and (\"opd_flow_findings\".\"dismissed_by\" is null) = (\"opd_flow_findings\".\"dismissed_at\" is null)"
-        },
-        "opd_flow_findings_tried_ck": {
-          "name": "opd_flow_findings_tried_ck",
-          "value": "(\"opd_flow_findings\".\"tried_by\" is null) = (\"opd_flow_findings\".\"tried_at\" is null)"
-        },
-        "opd_flow_findings_note_ck": {
-          "name": "opd_flow_findings_note_ck",
-          "value": "\"opd_flow_findings\".\"note\" is null or \"opd_flow_findings\".\"note\" in ('returned', 'returned_worse')"
         }
       },
       "isRLSEnabled": false
@@ -9879,6 +9609,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "upi_vpa": {
+          "name": "upi_vpa",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upi_payee_name": {
+          "name": "upi_payee_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",

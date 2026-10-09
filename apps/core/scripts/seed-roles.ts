@@ -941,11 +941,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY P6 (patient messages) — the owner contracts the SMS / WhatsApp provider, so the owner may
       // record the ids its portals issue and read what was sent. DEFAULT — owner may change.
       "pharmacy.messages.manage",
+      // STAFF ATTENDANCE (owner 2026-10-09: "The owner and College+hospital attandance committe can
+      // access it inside their app") — everyone's attendance from the attendance machine, including
+      // the machine-listed people who have no login here.
+      "attendance.all.read",
     ],
   },
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
+      // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
+      "attendance.all.read",
       // OWNER 2026-10-02 — the physician's review of a drug monograph the pharmacy wrote (Drugs and
       // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
       // reviewer is never the department that wrote the text.
@@ -1921,6 +1928,13 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
     ],
   },
+  /**
+   * STAFF ATTENDANCE (owner 2026-10-09) — THE ATTENDANCE COMMITTEE. It holds `attendance.all.read`
+   * and NOTHING else: opening the app, one's own attendance and one's own notices need no
+   * permission at all. A meeting request about a "Confirm" day is sent to this role's holders.
+   * NOBODY is assigned to it here or in any seed — the owner assigns its members himself.
+   */
+  { roleKey: "attendance_committee", permissions: ["attendance.all.read"] },
 ];
 
 /**
@@ -2177,6 +2191,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
   antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
   // 18-S RS8b — the title names the separation: the resident's signature is not a final report.
+  attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

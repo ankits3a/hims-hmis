@@ -149,11 +149,18 @@ Source: `apps/core/src/modules/billing/`
 - `settlement.ts`
   - `settlementState(netPayablePaise: number, creditedPaise: number, allocatedPaise: number): Settlement`
   - types: `Settlement`, `SettlementState`
+- `tele-advance.ts`
+  - `consultFeeAt(db: Db, input: { patientId: string; visitType: string; at: Date }): Promise<{ feeServiceId: string | null; paise: number }>`
+  - `issuePrepaidConsultInvoice(tx: Tx, actor: Actor, input: { draftId: string; patientId: string; encounterId: string; visitType: string; recei…`
 - `totals.ts`
   - `ROUNDING_RULES`
   - `roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number }`
   - `totalInvoice(lines: PricedLine[], roundingRule: RoundingRule = "half_up"): InvoiceTotals`
   - types: `InvoiceTotals`, `RoundingRule`, `TaxSummaryRow`
+- `upi.ts`
+  - `loadUpiPayee(db: Db | Tx): Promise<UpiPayee | null>`
+  - `upiPayUri(payee: UpiPayee, amountPaise: number, note: string): string`
+  - types: `UpiPayee`
 - `visit-move.ts`
   - `carryMoneyToMovedVisit(tx: Tx, actor: Actor, input: { from: EncounterRow; to: EncounterRow; reason: string; tenders?: TenderInput[]; }, now…`
   - `maySettleMoveDifference(exec: Db | Tx, actor: Actor): Promise<boolean>`
@@ -167,8 +174,8 @@ Source: `apps/core/src/modules/billing/`
 
 Foreign keys into: `patients`
 
-## HTTP routes (50)
+## HTTP routes (51)
 
-- `billing.controller.ts` — 50: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/reports`, `/billing/sessions`, `/billing/visits`, `/billing/worklist`
+- `billing.controller.ts` — 51: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/reports`, `/billing/sessions`, `/billing/to-collect`, `/billing/visits`, `/billing/worklist`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/billing`

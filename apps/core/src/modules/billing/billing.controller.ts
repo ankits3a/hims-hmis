@@ -1,4 +1,6 @@
 import { feeSwitchesView, setFeeSwitch } from "./fee-switches";
+import { loadUpiPayee, setUpiPayee, UPI_PAYEE_NAME_MAX } from "./upi";
+import type { UpiPayee } from "./upi";
 import type { FeeSwitchesView } from "./fee-switches";
 import { changeConsultPricesNow, consultPricesView, consultTerms, decideConsultPrices, proposeConsultPrices } from "./consult-prices";
 import type { ConsultPricesView, ConsultTerms } from "./consult-prices";
@@ -99,6 +101,8 @@ import { encounterRefSpellings, getInvoice, invoiceSettlement, issueInvoice, lis
 import { chargeOrphans } from "./daily-close";
 import type { ChargeOrphanRow } from "./daily-close";
 import { collectionWorklist } from "./worklist";
+import { toCollectList } from "./to-collect";
+import type { ToCollectRow } from "./to-collect";
 import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
 import {
@@ -484,6 +488,9 @@ const configPatchBody = z
     chargeRules: z.object({ opdConsult: z.object({ new: z.string().min(1), renewal: z.string().min(1), revisit: z.string().min(1).optional() }) }),
     degradedTender: z.boolean(),
     caSigned: z.boolean(),
+    // Owner 2026-10-09 — the hospital's UPI id and the name a payer's app shows. Null or blank clears it.
+    upiVpa: z.string().trim().max(110).nullable(),
+    upiPayeeName: z.string().trim().max(UPI_PAYEE_NAME_MAX).nullable(),
   })
   .partial();
 const feeSwitchBody = z.object({ kind: z.enum(FEE_KINDS), off: z.boolean() }).strict();
@@ -548,6 +555,11 @@ type InvoicePrint = {
   settlement: Settlement;
   qrPayload: string;
 };
+
+/** `GET`/`PUT /billing/config` — the config as it always was, plus the hospital's UPI id (owner 2026-10-09). */
+type BillingConfigView = BillingConfig & { upiVpa: string | null; upiPayeeName: string | null };
+const upiView = (p: UpiPayee | null): { upiVpa: string | null; upiPayeeName: string | null } =>
+  ({ upiVpa: p?.vpa ?? null, upiPayeeName: p === null || p.payeeName === "" ? null : p.payeeName });
 
 @Controller("billing")
 export class BillingController {
@@ -639,6 +651,18 @@ export class BillingController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * OWNER 2026-10-09 — "To collect": the visits the desk let through unpaid, today and seven days
+   * back, until the fee is settled (`to-collect.ts`). The cashier's key, and ALSO the front desk's
+   * two (`alsoAdmits`): the seat that grants the bypass is the seat that must not lose sight of it.
+   * No doctor's key admits it. No parameter: the window is the rule, not the caller's choice.
+   */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["opd.visits.open", "billing.dues.patient.read"] })
+  @Get("to-collect")
+  async toCollect(@CurrentActor() actor: Actor): Promise<{ items: ToCollectRow[] }> {
+    return { items: await toCollectList(this.db, actor) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")
@@ -1374,9 +1398,9 @@ export class BillingController {
 
   @RequirePermission("billing.reports.read", "hospital")
   @Get("config")
-  async config(): Promise<BillingConfig> {
+  async config(): Promise<BillingConfigView> {
     try {
-      return await loadBillingConfig(this.db);
+      return { ...(await loadBillingConfig(this.db)), ...upiView(await loadUpiPayee(this.db)) };
     } catch (e) {
       toHttp(e);
     }
@@ -1384,10 +1408,20 @@ export class BillingController {
 
   @RequirePermission("billing.config.write", "hospital")
   @Put("config")
-  async configPut(@Body() body: unknown): Promise<BillingConfig> {
-    const b = parsed(configPatchBody, body, "invalid_config");
+  async configPut(@Body() body: unknown): Promise<BillingConfigView> {
+    const { upiVpa, upiPayeeName, ...b } = parsed(configPatchBody, body, "invalid_config");
     try {
-      return await withTx(this.db, (tx) => updateBillingConfig(tx, b));
+      return await withTx(this.db, async (tx) => {
+        // The UPI id has its own writer (`upi.ts`); the config patch keeps the shape it always had.
+        if (upiVpa !== undefined || upiPayeeName !== undefined) {
+          const stored = await loadUpiPayee(tx);
+          await setUpiPayee(tx, {
+            vpa: upiVpa === undefined ? stored?.vpa ?? null : upiVpa,
+            payeeName: upiPayeeName === undefined ? stored?.payeeName ?? null : upiPayeeName,
+          });
+        }
+        return { ...(await updateBillingConfig(tx, b)), ...upiView(await loadUpiPayee(tx)) };
+      });
     } catch (e) {
       toHttp(e);
     }
