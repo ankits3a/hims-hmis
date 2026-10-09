@@ -43,6 +43,35 @@ describe("TeleDeskPay — the desk's money on a tele-call (owner 2026-10-09)", (
     expect(posts()[0]!.key).toMatch(/\S/);
   });
 
+  it("UPI QR (slice 6): with the hospital's UPI id set, choosing UPI shows the QR for the exact amount and the id — and the reference is still required; with none, no QR", async () => {
+    const QR = ["1110111", "1000001", "1011101", "0000000", "1011101", "1000001", "1110111"];
+    stubFetch({
+      "GET /api/auth/me": me(["billing.receipt.record"]),
+      "GET /api/opd/appointments/ap-2/tele-fee": { appointmentId: "ap-2", amountPaise: 10_000, covered: false, receiptId: null, upi: { vpa: "crkmch@sbi", payeeName: "CRK Hospital", uri: "upi://pay?pa=crkmch%40sbi", qr: QR } },
+    });
+    const first = renderWithProviders(<TeleDeskPay appointment={apt()} />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Collect" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.queryByTestId("tele-upi")).toBeNull(); // cash is chosen: no QR in the way
+    await user.click(dialog.getByRole("radio", { name: "UPI" }));
+    const qr = await dialog.findByRole("img", { name: "UPI QR code" });
+    expect(qr.getAttribute("viewBox")).toBe("0 0 11 11"); // 7 modules + a quiet zone of 2 on every side
+    expect(qr.querySelector("path")!.getAttribute("d")).toContain("M2 2h3v1h-3z");
+    expect(dialog.getByTestId("tele-upi")).toHaveTextContent("crkmch@sbi");
+    expect(dialog.getByTestId("tele-upi")).toHaveTextContent("₹100");
+    expect(dialog.getByRole("button", { name: "Received ₹100" })).toBeDisabled(); // the reference is what marks it paid
+    first.unmount();
+
+    stubFetch({ "GET /api/auth/me": me(["billing.receipt.record"]), "GET /api/opd/appointments/ap-2/tele-fee": { appointmentId: "ap-2", amountPaise: 10_000, covered: false, receiptId: null, upi: null } });
+    renderWithProviders(<TeleDeskPay appointment={apt()} />);
+    await user.click(await screen.findByRole("button", { name: "Collect" }));
+    const plain = within(await screen.findByRole("dialog"));
+    await user.click(plain.getByRole("radio", { name: "UPI" }));
+    expect(plain.getByLabelText("UPI reference")).toBeInTheDocument();
+    expect(plain.queryByRole("img", { name: "UPI QR code" })).toBeNull();
+  });
+
   it("cash sends one cash tender; a refusal is shown in the server's words and the sheet stays open", async () => {
     stubFetch({ "GET /api/auth/me": me(["billing.receipt.record"]) });
     const base = vi.mocked(fetch);

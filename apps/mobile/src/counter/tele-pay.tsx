@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
@@ -8,6 +8,7 @@ import { color, radius, space, TOUCH, type } from "../theme";
 import { Button, MONO, Note } from "../ui";
 import { refusalText } from "../vitals/api";
 import { newIntentKey } from "./api";
+import { QrRows } from "./qr-rows";
 import type { CounterApi, WireAppointment } from "./api";
 import { rs } from "./rules";
 
@@ -49,6 +50,19 @@ export function TelePay({ api, appointment, mayCollect, onPaid }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(newIntentKey);
+  /*
+    The hospital's UPI id as a QR for exactly this amount — asked for only when the sheet is opened,
+    and drawn only when an id is set. Nothing is sent to anyone: the patient scans it at the desk, and
+    the cashier types the reference the payer's app shows. No id, or no answer: counter collection.
+  */
+  const [upi, setUpi] = useState<{ vpa: string; qr: string[] } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setUpi(null);
+    api.teleFee(appointment.id).then((f) => { if (live) setUpi(f.upi ?? null); }, () => undefined);
+    return () => { live = false; };
+  }, [open, api, appointment.id]);
 
   const word = teleMoneyWord(appointment, t);
   if (word === null) return null;
@@ -102,6 +116,12 @@ export function TelePay({ api, appointment, mayCollect, onPaid }: {
                       );
                     })}
                   </View>
+                  {mode === "upi" && upi !== null && (
+                    <View style={{ gap: 6, alignItems: "center" }} testID="tele-upi">
+                      <QrRows testID="tele-upi-qr" rows={upi.qr} size={220} label={t("mobile.counter.telePay.upiQr")} />
+                      <Text style={[type.small, { color: color.dim, fontFamily: MONO }]} numberOfLines={1}>{upi.vpa}</Text>
+                    </View>
+                  )}
                   {mode === "upi" && (
                     <View style={{ gap: 4 }}>
                       <Text style={[type.small, { color: color.dim }]}>{t("mobile.counter.telePay.upiRef")}</Text>

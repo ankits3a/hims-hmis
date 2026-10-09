@@ -2,7 +2,8 @@ import { and, asc, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import { opdAppointments } from "../../kernel/db/schema";
-import { consultFeeAt, recordReceipt } from "../billing";
+import { encodeQr } from "../../kernel/printing/qr";
+import { consultFeeAt, loadUpiPayee, recordReceipt, upiPayUri } from "../billing";
 import { listMergedLoserIds, resolvePatientId } from "../patients";
 import { appendEvent } from "../../kernel/events/append";
 import { openTeleVisitInTx, TELE_OPEN_ACTOR, visitTypeIn } from "./encounters";
@@ -55,7 +56,27 @@ export type TeleFee = {
   amountPaise: number;
   covered: boolean;
   receiptId: string | null;
+  /**
+   * Owner 2026-10-09 — the hospital's UPI id as a QR for the desk's Collect sheet: present only when
+   * a UPI id is set, the appointment still owes something, and the request fits a QR. `qr` is the
+   * code's rows, '1' a dark module — encoded HERE by the server's own encoder, so the phone and the
+   * counter PC draw the same square and neither needs a library or a network. No link is sent to
+   * anyone: the patient scans it at the desk, or pays any way they like and reads out the reference.
+   */
+  upi: { vpa: string; payeeName: string; uri: string; qr: string[] } | null;
 };
+
+async function upiFor(db: Db, a: AppointmentRow, amountPaise: number): Promise<TeleFee["upi"]> {
+  if (amountPaise <= 0) return null;
+  const payee = await loadUpiPayee(db);
+  if (payee === null) return null;
+  const uri = upiPayUri(payee, amountPaise, a.appointmentNo);
+  try {
+    return { vpa: payee.vpa, payeeName: payee.payeeName, uri, qr: encodeQr(uri).map((row) => row.map((dark) => (dark ? "1" : "0")).join("")) };
+  } catch {
+    return null; // longer than the encoder takes: no QR, counter collection only
+  }
+}
 
 async function loadTele(db: Db, appointmentId: string): Promise<AppointmentRow> {
   const a = (await db.select().from(opdAppointments).where(eq(opdAppointments.id, appointmentId)))[0];
@@ -66,8 +87,9 @@ async function loadTele(db: Db, appointmentId: string): Promise<AppointmentRow> 
 
 export async function teleFee(db: Db, appointmentId: string): Promise<TeleFee> {
   const a = await loadTele(db, appointmentId);
-  if (teleCovered(a)) return { appointmentId, amountPaise: a.advanceQuotePaise ?? 0, covered: true, receiptId: a.advanceReceiptId };
-  return { appointmentId, amountPaise: await slotQuotePaise(db, a), covered: false, receiptId: null };
+  if (teleCovered(a)) return { appointmentId, amountPaise: a.advanceQuotePaise ?? 0, covered: true, receiptId: a.advanceReceiptId, upi: null };
+  const amountPaise = await slotQuotePaise(db, a);
+  return { appointmentId, amountPaise, covered: false, receiptId: null, upi: PAYABLE.includes(a.status) ? await upiFor(db, a, amountPaise) : null };
 }
 
 /**

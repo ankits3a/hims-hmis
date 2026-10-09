@@ -439,6 +439,7 @@
         "billed": "Bill {{no}} · {{amount}}"
       },
       "telePay": {
+        "upiQr": "UPI QR code",
         "toPay": "To pay {{amount}}",
         "paid": "Paid",
         "paidRefund": "Paid {{amount}} · refund on request",

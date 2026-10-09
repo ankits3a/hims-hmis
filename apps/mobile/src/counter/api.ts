@@ -163,6 +163,9 @@ export function counterApi(call: Call) {
     reschedule: (appointmentId: string, body: { slotStart: string; doctorId?: string; reason?: string }) =>
       call<{ from: WireAppointment; to: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/reschedule`, body),
     cancelAppointment: (appointmentId: string, reason: string) => call<{ appointment: WireAppointment }>("POST", `/opd/appointments/${enc(appointmentId)}/cancel`, { reason }),
+    /** What a tele-call costs, and — when the hospital has a UPI id — the QR for exactly that amount (rows of 0/1, encoded by the server). */
+    teleFee: (appointmentId: string) =>
+      call<{ amountPaise: number; covered: boolean; upi: { vpa: string; qr: string[] } | null }>("GET", `/opd/appointments/${enc(appointmentId)}/tele-fee`),
     /** The desk takes a tele-call's fee: one advance receipt for exactly the quote. ONE key per intent. */
     teleAdvance: (appointmentId: string, body: { amountPaise: number; tenders?: { mode: TenderMode; amountPaise: number; refText?: string }[] }, key: string) =>
       call<{ amountPaise: number; receiptNo: string | null }>("POST", `/opd/appointments/${enc(appointmentId)}/advance`, body, key),

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtRupees } from "../lib/format";
 import { opdErrorMessage } from "../lib/opd-api";
 import type { WireAppointment } from "../lib/opd-api";
+import { QrRows } from "./qr-rows";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 /**
@@ -32,6 +33,18 @@ export function TeleDeskPay({ appointment, compact = false }: { appointment: Wir
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [key, setKey] = useState(newKey);
+
+  /*
+    The hospital's UPI id as a QR for exactly this amount — read only when the sheet is opened, and
+    drawn only when an id is set (`upi` is null otherwise: counter collection only). Nothing is sent
+    to anyone: the patient scans it here, and the cashier types the reference the payer's app shows.
+  */
+  const fee = useQuery({
+    queryKey: ["opd", "appointments", "tele-fee", appointment.id],
+    queryFn: () => api<{ upi: { vpa: string; qr: string[] } | null }>("GET", `/opd/appointments/${encodeURIComponent(appointment.id)}/tele-fee`),
+    enabled: open, retry: false,
+  });
+  const upi = fee.data?.upi ?? null;
 
   const mark = appointment.teleDesk;
   if (appointment.mode !== "tele" || mark === undefined) return null;
@@ -95,6 +108,16 @@ export function TeleDeskPay({ appointment, compact = false }: { appointment: Wir
                   </button>
                 ))}
               </div>
+              {mode === "upi" && upi !== null && (
+                <div data-testid="tele-upi" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+                  <QrRows rows={upi.qr} size={148} label={t("teleDesk.upiQr")} testId="tele-upi-qr" />
+                  <div style={{ minWidth: 0 }}>
+                    <div className="tag">{t("teleDesk.upiScan")}</div>
+                    <div className="mo" style={{ fontSize: 12.5, wordBreak: "break-all" }}>{upi.vpa}</div>
+                    <div className="mo" style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>{fmtRupees(amountPaise)}</div>
+                  </div>
+                </div>
+              )}
               {mode !== "cash" && (
                 <div style={{ marginTop: 10 }}>
                   <label className="tag" htmlFor={`tele-ref-${appointment.id}`} style={{ display: "block", marginBottom: 5 }}>{t(mode === "upi" ? "teleDesk.upiRef" : "teleDesk.cardRef")}</label>

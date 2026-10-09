@@ -439,6 +439,7 @@
         "billed": "बिल {{no}} · {{amount}}"
       },
       "telePay": {
+        "upiQr": "UPI QR कोड",
         "toPay": "बाकी {{amount}}",
         "paid": "भुगतान हुआ",
         "paidRefund": "{{amount}} जमा · माँगने पर वापसी",

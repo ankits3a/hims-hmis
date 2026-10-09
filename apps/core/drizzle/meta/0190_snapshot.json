@@ -1,5 +1,5 @@
 {
-  "id": "889a9436-d199-4369-82ce-80afeb1cf102",
+  "id": "3c81dcdf-353f-4c12-b1a3-759436b2cc01",
   "prevId": "417b11e1-254c-4cc1-a65b-4e8eb9f0ab72",
   "version": "7",
   "dialect": "postgresql",
@@ -9609,6 +9609,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "upi_vpa": {
+          "name": "upi_vpa",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upi_payee_name": {
+          "name": "upi_payee_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",

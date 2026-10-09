@@ -853,7 +853,19 @@
     "toDesk": "No answer twice — sent to desk",
     "triedOnce": "Tried once — no answer"
   },
+  "upiPayee": {
+    "title": "The hospital's UPI id",
+    "lead": "With an id set, the desk's Collect sheet for a tele-call shows a QR for the exact amount. The cashier still confirms the money and types the reference. Leave it blank to collect at the counter only.",
+    "vpa": "UPI id",
+    "name": "Name shown to the payer",
+    "save": "Save",
+    "saved": "Saved. The desk's Collect sheet now shows the QR.",
+    "cleared": "Cleared. The desk collects at the counter only.",
+    "shape": "A UPI id reads name@bank."
+  },
   "teleDesk": {
+    "upiQr": "UPI QR code",
+    "upiScan": "Scan to pay",
     "toPay": "To pay {{amount}}",
     "paid": "Paid",
     "paidRefund": "Paid {{amount}} · refund on request",

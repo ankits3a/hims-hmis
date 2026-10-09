@@ -153,6 +153,10 @@ Source: `apps/core/src/modules/billing/`
   - `roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number }`
   - `totalInvoice(lines: PricedLine[], roundingRule: RoundingRule = "half_up"): InvoiceTotals`
   - types: `InvoiceTotals`, `RoundingRule`, `TaxSummaryRow`
+- `upi.ts`
+  - `loadUpiPayee(db: Db | Tx): Promise<UpiPayee | null>`
+  - `upiPayUri(payee: UpiPayee, amountPaise: number, note: string): string`
+  - types: `UpiPayee`
 - `visit-move.ts`
   - `carryMoneyToMovedVisit(tx: Tx, actor: Actor, input: { from: EncounterRow; to: EncounterRow; reason: string; tenders?: TenderInput[]; }, now…`
   - `maySettleMoveDifference(exec: Db | Tx, actor: Actor): Promise<boolean>`

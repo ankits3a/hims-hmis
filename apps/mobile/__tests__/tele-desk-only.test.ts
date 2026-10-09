@@ -42,7 +42,7 @@ describe("tele-call labels fit one line", () => {
     "mobile.counter.appt.how", "mobile.counter.appt.inPerson", "mobile.counter.appt.tele", "mobile.counter.appt.telePhone", "mobile.counter.appt.telePhoneHint",
     "mobile.counter.telePay.toPay", "mobile.counter.telePay.paid", "mobile.counter.telePay.paidRefund", "mobile.counter.telePay.nothingToPay",
     "mobile.counter.telePay.collect", "mobile.counter.telePay.confirmFree", "mobile.counter.telePay.paidBy", "mobile.counter.telePay.upiRef",
-    "mobile.counter.telePay.received", "mobile.counter.telePay.mode.cash", "mobile.counter.telePay.mode.upi", "mobile.counter.telePay.mode.card",
+    "mobile.counter.telePay.upiQr", "mobile.counter.telePay.received", "mobile.counter.telePay.mode.cash", "mobile.counter.telePay.mode.upi", "mobile.counter.telePay.mode.card",
     "mobile.tele.title", "mobile.tele.call", "mobile.tele.noAnswer", "mobile.tele.spoke", "mobile.tele.spokeAt", "mobile.tele.backInLine",
     "mobile.tele.toDesk", "mobile.tele.triedOnce",
   ];

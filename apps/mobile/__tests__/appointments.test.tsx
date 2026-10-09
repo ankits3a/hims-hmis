@@ -643,4 +643,39 @@ describe("appointments on the phone's Desk One", () => {
     await waitFor(() => expect(s.of("POST /opd/appointments/a1/advance")).toHaveLength(1));
     expect(s.of("POST /opd/appointments/a1/advance")[0]!.body).toEqual({ amountPaise: 0 });
   });
+
+  it("UPI QR (slice 6): with the hospital's UPI id set, choosing UPI draws the QR and shows the id — the reference is still what marks it paid; with none, no QR", async () => {
+    const QR = ["1110111", "1000001", "1011101", "0000000", "1011101", "1000001", "1110111"];
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } })],
+      routes: { "GET /opd/appointments/a1/tele-fee": () => ({ status: 200, body: { amountPaise: 10_000, covered: false, upi: { vpa: "crkmch@sbi", qr: QR } } }) },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(await screen.findByTestId("tele-collect-a1"));
+    await screen.findByTestId("tele-pay-title");
+    expect(screen.queryByTestId("tele-upi")).toBeNull(); // cash is chosen: no QR in the way
+    await fireEvent.press(screen.getByTestId("tele-mode-upi"));
+    const qr = await screen.findByTestId("tele-upi-qr");
+    expect(qr.props).toMatchObject({ accessibilityRole: "image", accessibilityLabel: "UPI QR code" });
+    expect(screen.getByTestId("tele-upi")).toHaveTextContent("crkmch@sbi");
+    expect(screen.getByTestId("tele-pay-go").props.accessibilityState).toMatchObject({ disabled: true });
+    expect(s.of("POST /opd/appointments/a1/advance")).toHaveLength(0);
+  });
+
+  it("UPI QR: with no UPI id the sheet has the reference field and no QR", async () => {
+    const s = world({
+      perms: [...CASH_BOOKER, "billing.receipt.record"],
+      theirs: () => [appt({ id: "a1", mode: "tele", teleDesk: { amountPaise: 10_000, covered: false } })],
+      routes: { "GET /opd/appointments/a1/tele-fee": () => ({ status: 200, body: { amountPaise: 10_000, covered: false, upi: null } }) },
+    });
+    await mount(s.fetcher);
+    await findAndHold();
+    await fireEvent.press(await screen.findByTestId("tele-collect-a1"));
+    await fireEvent.press(await screen.findByTestId("tele-mode-upi"));
+    expect(await screen.findByTestId("tele-ref")).toBeTruthy();
+    await waitFor(() => expect(s.of("GET /opd/appointments/a1/tele-fee").length).toBeGreaterThan(0));
+    expect(screen.queryByTestId("tele-upi-qr")).toBeNull();
+  });
 });

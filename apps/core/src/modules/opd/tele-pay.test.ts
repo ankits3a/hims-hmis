@@ -3,7 +3,8 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor, seedBillingBase } from "../../../test/helpers/billing";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { opdAppointments, receiptTenders, receipts } from "../../kernel/db/schema";
+import { billingConfig, opdAppointments, receiptTenders, receipts } from "../../kernel/db/schema";
+import { encodeQr } from "../../kernel/printing/qr";
 import { bookAppointment, cancelAppointment, rescheduleAppointment } from "./appointments";
 import { moveEncounter, openVisit } from "./encounters";
 import { recordTeleAdvance, teleDeskMarks, teleFee } from "./tele";
@@ -50,7 +51,7 @@ describe("opd tele-call — the desk's fee and the advance (slice 2)", () => {
 
   it("quotes the in-person fee for the slot's date; an in-person appointment has no tele fee", async () => {
     const a = await bookTele();
-    expect(await teleFee(db, a.id)).toEqual({ appointmentId: a.id, amountPaise: FEE, covered: false, receiptId: null });
+    expect(await teleFee(db, a.id)).toEqual({ appointmentId: a.id, amountPaise: FEE, covered: false, receiptId: null, upi: null });
     expect((await teleDeskMarks(db, [a])).get(a.id)).toEqual({ amountPaise: FEE, covered: false });
     const walk = (await bookAppointment(db, clerk.actor, { patientId: p1.id, doctorId: dra.doctorId, slotStart: S1000 }, NOW_SUN)).appointment;
     await expect(teleFee(db, walk.id)).rejects.toMatchObject({ code: "not_a_tele_appointment" });
@@ -91,7 +92,7 @@ describe("opd tele-call — the desk's fee and the advance (slice 2)", () => {
     const stamped = await row(a.id);
     expect({ r: stamped.advanceReceiptId, q: stamped.advanceQuotePaise, at: stamped.advanceQuotedAt?.toISOString(), status: stamped.status })
       .toEqual({ r: r.receiptId, q: FEE, at: NOW_SUN.toISOString(), status: "booked" });
-    expect(await teleFee(db, a.id)).toEqual({ appointmentId: a.id, amountPaise: FEE, covered: true, receiptId: r.receiptId });
+    expect(await teleFee(db, a.id)).toEqual({ appointmentId: a.id, amountPaise: FEE, covered: true, receiptId: r.receiptId, upi: null });
     expect((await teleDeskMarks(db, [stamped])).get(a.id)).toEqual({ amountPaise: FEE, covered: true });
 
     await expect(recordTeleAdvance(db, clerk.actor, a.id, cash(FEE), NOW_SUN)).rejects.toMatchObject({ code: "tele_advance_state_conflict" });
@@ -129,5 +130,26 @@ describe("opd tele-call — the desk's fee and the advance (slice 2)", () => {
     const b = await bookTele(S0930);
     await cancelAppointment(db, clerk.actor, b.id, "changed mind", NOW_SUN);
     await expect(recordTeleAdvance(db, clerk.actor, b.id, cash(FEE), NOW_SUN)).rejects.toMatchObject({ code: "tele_advance_state_conflict" });
+  });
+
+  // ——— slice 6: the hospital's UPI id as a QR on the desk's Collect sheet ———
+
+  it("UPI QR: none without a UPI id; with one, the fee carries the payment request — payee, exact amount, the appointment number — and its QR; never once paid, and never for a free one", async () => {
+    await openSessionFor(db, clerk, 0);
+    const a = await bookTele();
+    expect((await teleFee(db, a.id)).upi).toBeNull();
+
+    await db.update(billingConfig).set({ upiVpa: "crkmch@sbi", upiPayeeName: "CRK Medical College & Hospital" }).where(eq(billingConfig.id, "main"));
+    const fee = await teleFee(db, a.id);
+    expect(fee.upi).not.toBeNull();
+    expect(fee.upi!.uri).toBe(`upi://pay?pa=crkmch%40sbi&pn=CRK%20Medical%20College%20%26%20Hospital&am=500.00&cu=INR&tn=${a.appointmentNo}`);
+    expect({ vpa: fee.upi!.vpa, payeeName: fee.upi!.payeeName }).toEqual({ vpa: "crkmch@sbi", payeeName: "CRK Medical College & Hospital" });
+    // the QR is the server's own encoder's answer for exactly that request: a square of 0s and 1s
+    const matrix = encodeQr(fee.upi!.uri);
+    expect(fee.upi!.qr).toEqual(matrix.map((row) => row.map((d) => (d ? "1" : "0")).join("")));
+    expect(fee.upi!.qr.every((row) => row.length === fee.upi!.qr.length && /^[01]+$/.test(row))).toBe(true);
+
+    await recordTeleAdvance(db, clerk.actor, a.id, { amountPaise: FEE, tenders: [{ mode: "upi", amountPaise: FEE, refText: "428311907755" }] }, NOW_SUN);
+    expect((await teleFee(db, a.id)).upi).toBeNull();
   });
 });
