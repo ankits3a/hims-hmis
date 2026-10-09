@@ -44,7 +44,7 @@ jest.mock("expo-router", () => {
  * Every page test hands the screen its clock (`NOW`), so no date here depends on the day the suite
  * runs. The home reads the real clock, and its expectations are derived from that same clock.
  */
-const OWNER = ["approvals.requests.read", "approvals.requests.decide", "staff.reports.read", "staff.reports.history.full", "opd.reports.read", "roster.read", "billing.reports.read", "billing.session.read", "pharmacy.reports.read"];
+const OWNER = ["approvals.requests.read", "approvals.requests.decide", "staff.reports.read", "staff.reports.history.full", "opd.reports.read", "roster.read", "billing.reports.read", "billing.session.read", "pharmacy.reports.read", "opd.masters.manage"];
 const MS = ["approvals.requests.read", "approvals.requests.decide", "staff.reports.read", "staff.reports.history.full", "opd.reports.read", "roster.read", "patients.read"];
 const DOCTOR = ["opd.consult", "opd.queue.read", "opd.queue.operate", "roster.read"];
 const CASHIER = ["billing.session.own", "billing.receipt.record", "billing.invoice.issue"];
@@ -426,6 +426,17 @@ describe("a page behind a tile", () => {
     await screen.findByTestId("owner-nickname-n1");
     expect(screen.queryByTestId("owner-nickname-act-n1")).toBeNull();
     expect(screen.queryByTestId("owner-learning-tapped")).toBeNull(); // nothing acted on: the share is not drawn
+  });
+
+  it("the owner's Learning page shows Undo — the server says who may, and the owner's role now holds the grant (owner 2026-10-09)", async () => {
+    /* `mayUndo` is the server's answer for this login (`opd.masters.manage`); the page draws the button from it and from nothing else. */
+    const { fetcher } = server(OWNER, { "GET /opd/reports/learning": { status: 200, body: { ...LEARNING, mayUndo: true } } });
+    await mount(fetcher, <OwnerPage page="learning" now={clock} />);
+    expect(await screen.findByTestId("owner-nickname-act-n1")).toHaveTextContent("Undo");
+    expect(screen.getByTestId("owner-nickname-act-n2")).toHaveTextContent("Undo");
+    expect(screen.getByTestId("owner-nickname-act-n3")).toHaveTextContent("Put back");
+    expect(OWNER).toContain("opd.masters.manage");
+    expect(MS).not.toContain("opd.masters.manage");
   });
 
   it("a refused undo changes nothing on the screen and says so", async () => {
