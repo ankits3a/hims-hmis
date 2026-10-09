@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
@@ -746,5 +748,49 @@ describe("AdminUsers — mobile, Aadhaar and the attendance link", () => {
     await userEvent.click(within(panel).getAllByRole("button", { name: "Save" })[1]!);
     expect(await within(panel).findByTestId("admin-identity-error")).toHaveTextContent("That is not a valid Aadhaar number. Check the twelve digits.");
     expect(within(panel).getByTestId("admin-identity-aadhaar")).toHaveValue("2345 6789 0125");
+  });
+});
+
+/**
+ * THE DESK AGENT BAR STAYS ON THE FOOT (owner 2026-10-09, production: "fix the scrolling of
+ * /admin/users as the footer (Desk Agent bar) doesn't stick to footer").
+ *
+ * jsdom has no layout, so what is pinned is the two causes the browser walk measured
+ * (`/opt/hmis-context/boards/2026-10-09-users-screen/dock-fix/`): the page was 7,342 px tall at
+ * 1440×900 and a wheel off the list scrolled the bar away into blank paper; and the bar sat 18 px
+ * above the screen's foot.
+ */
+describe("AdminUsers — the Desk Agent bar stays on the foot", () => {
+  beforeEach(() => { setToken("tok-1"); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  /** The declarations of one top-level rule in admin-users.css, comments stripped. */
+  function ruleBody(selector: string): string {
+    const css = readFileSync(resolve(__dirname, "admin-users.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const at = css.indexOf(`${selector} {`);
+    expect(at).toBeGreaterThanOrEqual(0);
+    return css.slice(at, css.indexOf("}", at));
+  }
+
+  it("every row's .sr-only text is held by the rows box: the box is positioned, so its overflow clips them", async () => {
+    mockRoutes({ "GET /api/admin/users": { status: 200, body: { users: [ASHA, RAVI, RETIRED], fullAdministrators: 2 } }, "GET /api/admin/roles": { status: 200, body: CATALOGUE } });
+    renderWithProviders(<AdminUsers />);
+    const rows = await screen.findByTestId("admin-rows");
+    /*
+      `.sr-only` is `position: absolute`. An absolute box is clipped by a scroller's overflow only
+      when the scroller (or something inside it) is its containing block — i.e. is positioned.
+    */
+    expect(rows.querySelectorAll(".sr-only").length).toBeGreaterThan(0);
+    expect(ruleBody(".au .au-rows")).toMatch(/position:\s*relative/);
+  });
+
+  it("has no bottom padding, so the bar is the screen's last box and sits on its foot", async () => {
+    mockRoutes({ "GET /api/admin/users": { status: 200, body: { users: [ASHA], fullAdministrators: 2 } }, "GET /api/admin/roles": { status: 200, body: CATALOGUE } });
+    renderWithProviders(<AdminUsers />);
+    const root = await screen.findByTestId("admin-users");
+    expect(root.style.paddingBottom).toMatch(/^0(px)?$/);
+    // The phone override keeps it too (it is `!important`, so it would otherwise put the padding back).
+    const css = readFileSync(resolve(__dirname, "admin-users.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).toMatch(/\.pp:has\(> \.au\) \{ padding: 14px 16px 0 !important; \}/);
   });
 });
