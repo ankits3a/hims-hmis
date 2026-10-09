@@ -96,8 +96,10 @@ describe("eas.json — the iPhone profiles, with Android's left as they were", (
     for (const p of ["preview", "production"]) expect(String(eas.build[p]!.ios?.node).split(".")[0]).toBe(major);
   });
 
-  it("holds no made-up App Store value: the owner is asked for the app at submit time", () => {
-    expect(eas.submit.production.ios).toEqual({});
+  // 2026-10-08: `eas submit` read the app config with no APP_ENV, took the STAGING id and prepared an
+  // "HMIS Staging" app on App Store Connect for a production build. The submit profile names the app.
+  it("names the production app, so a submit can never fall on the staging id; no made-up App Store number", () => {
+    expect(eas.submit.production.ios).toEqual({ bundleIdentifier: "com.crkmch.hmis", appName: "HMIS Staff" });
     expect(JSON.stringify(eas)).not.toMatch(/ascAppId|appleId|appleTeamId|PLACEHOLDER|YOUR_|<[^>]+>/);
   });
 });

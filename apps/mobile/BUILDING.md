@@ -245,7 +245,8 @@ same server. What differs in this first version:
      command is running in the wrong folder.
    - The build runs on Expo's Mac (about 15–25 minutes). The terminal prints a link to watch it.
      EAS counts the build number itself; nothing in this folder needs editing between builds.
-4. Send it to Apple: `npx eas-cli@latest submit --platform ios --latest`
+4. Send it to Apple: `APP_ENV=production npx eas-cli@latest submit --platform ios --latest`
+   (without `APP_ENV=production` the command reads the staging app id — it did, on 2026-10-08)
    - It asks for the Apple ID again, and offers to make an App Store Connect API key — Yes.
    - The first time, it offers to create the app in App Store Connect. Name: **HMIS Staff**.
    - The build appears in App Store Connect → the app → TestFlight after Apple has processed it

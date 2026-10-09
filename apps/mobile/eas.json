@@ -20,5 +20,5 @@
       "ios": { "distribution": "store", "node": "22.23.2" }
     }
   },
-  "submit": { "production": { "ios": {} } }
+  "submit": { "production": { "ios": { "bundleIdentifier": "com.crkmch.hmis", "appName": "HMIS Staff" } } }
 }
