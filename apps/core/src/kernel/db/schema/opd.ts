@@ -1693,3 +1693,90 @@ export const cdsAliases = pgTable(
     check("cds_aliases_probabilities_ck", sql`(${t.chooserConfidence} is null or ${t.chooserConfidence} between 0 and 1) and (${t.reviewerProbability} is null or ${t.reviewerProbability} between 0 and 1)`),
   ],
 );
+
+/**
+ * ═══ HOW LONG PATIENTS WAIT — THE NIGHTLY LEARNING (owner 2026-10-09) ═══
+ *
+ * "I want a system in place that keeps learning these metrics and show suggestions to improve the
+ * metrics based on analysis." Both tables are written only by `modules/opd/flow-learning.ts`, from
+ * stored timestamps and fixed rules — never by a model (the owner's standing rule: a model never
+ * writes a fact shown as fact). Neither holds a patient or names a member of staff.
+ *
+ * `opd_flow_baselines` — each department's own rolling numbers (and the hospital's), the last 28 days,
+ * per leg, by weekday × hour. `scope` is 'hospital' or an `opd_departments.id` (plain text, house
+ * precedent for a derived table). `weekday` 0 = Monday … 6 = Sunday and `hour` 8..20 IST; −1 in
+ * either means "every". Replaced whole on each run.
+ */
+export const opdFlowBaselines = pgTable(
+  "opd_flow_baselines",
+  {
+    id: text("id").primaryKey(),
+    scope: text("scope").notNull(),
+    leg: text("leg").notNull(),
+    weekday: integer("weekday").notNull(),
+    hour: integer("hour").notNull(),
+    n: integer("n").notNull(),
+    medianMin: doublePrecision("median_min"),
+    p90Min: doublePrecision("p90_min"),
+    windowFrom: date("window_from", { mode: "string" }).notNull(),
+    windowTo: date("window_to", { mode: "string" }).notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("opd_flow_baselines_cell_uq").on(t.scope, t.leg, t.weekday, t.hour),
+    check("opd_flow_baselines_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor')`),
+    check("opd_flow_baselines_weekday_ck", sql`${t.weekday} between -1 and 6`),
+    check("opd_flow_baselines_hour_ck", sql`${t.hour} = -1 or ${t.hour} between 0 and 23`),
+  ],
+);
+
+/**
+ * `opd_flow_findings` — what the rules found, from a CLOSED set of types (`flow-rules.ts`). One OPEN
+ * or DISMISSED row per `finding_key` (type · scope · leg · weekday · window); a RESOLVED row is history,
+ * and the same pattern coming back opens a new row. "×" (dismiss) and "Tried it" are the only two
+ * human acts, by the owner or the Medical Superintendent, each audited as an event.
+ */
+export const opdFlowFindings = pgTable(
+  "opd_flow_findings",
+  {
+    id: text("id").primaryKey(),
+    findingKey: text("finding_key").notNull(),
+    type: text("type").notNull(),
+    scope: text("scope").notNull(),
+    leg: text("leg").notNull(),
+    weekday: integer("weekday"),
+    hourFrom: integer("hour_from"),
+    hourTo: integer("hour_to"),
+    observedMin: doublePrecision("observed_min").notNull(),
+    baselineMin: doublePrecision("baseline_min").notNull(),
+    patients: integer("patients").notNull(),
+    minutesLost: integer("minutes_lost").notNull(),
+    firstSeen: date("first_seen", { mode: "string" }).notNull(),
+    lastSeen: date("last_seen", { mode: "string" }).notNull(),
+    state: text("state").notNull().default("open"),
+    dismissedBy: text("dismissed_by"),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    /** The observed median when × was pressed — it comes back early only at 20 % worse than this. */
+    dismissedObservedMin: doublePrecision("dismissed_observed_min"),
+    triedBy: text("tried_by"),
+    triedAt: timestamp("tried_at", { withTimezone: true }),
+    beforeMedianMin: doublePrecision("before_median_min"),
+    afterMedianMin: doublePrecision("after_median_min"),
+    resolvedOn: date("resolved_on", { mode: "string" }),
+    minutesWon: integer("minutes_won"),
+    /** A fixed code the engine writes ('returned', 'returned_worse'); never free text from a model. */
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("opd_flow_findings_live_uq").on(t.findingKey).where(sql`${t.state} <> 'resolved'`),
+    index("opd_flow_findings_state_idx").on(t.state),
+    check("opd_flow_findings_type_ck", sql`${t.type} in ('bay_peak', 'doctor_start_late', 'dept_outlier', 'week_regression')`),
+    check("opd_flow_findings_state_ck", sql`${t.state} in ('open', 'dismissed', 'resolved')`),
+    check("opd_flow_findings_leg_ck", sql`${t.leg} in ('desk_vitals', 'vitals_doctor', 'desk_doctor')`),
+    check("opd_flow_findings_dismissed_ck", sql`(${t.state} = 'dismissed') = (${t.dismissedAt} is not null) and (${t.dismissedBy} is null) = (${t.dismissedAt} is null)`),
+    check("opd_flow_findings_tried_ck", sql`(${t.triedBy} is null) = (${t.triedAt} is null)`),
+    check("opd_flow_findings_note_ck", sql`${t.note} is null or ${t.note} in ('returned', 'returned_worse')`),
+  ],
+);
