@@ -1,7 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { api } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
 import { materialsErrorText } from "../../lib/materials-api";
 import { PRICE_FIELDS, findHeaderRow, guessColumns, parseDelimited, readXlsx, sampleCsv } from "../../lib/sheet-read";
 import type { Grid, PriceField } from "../../lib/sheet-read";
@@ -31,7 +33,8 @@ type Matched = {
   outer: number;
   packType: PackType; packSize: number; gstRateBps: number; hsnCode: string; mrpPerPackPaise: number | null;
 };
-type Draft = Matched & { pick: string; on: boolean; mrp: string; cold: boolean };
+type Draft = Matched & { pick: string; on: boolean; mrp: string; cold: boolean; listedRatePaise: number | null; rate: string };
+type RateResult = { itemId: string; ok: true; changed: boolean } | { itemId: string; ok: false; code: string; message: string };
 /** What the list's MRP column prices: the pack the counter sells, or the whole packing as the vendor wrote it. */
 type Basis = "pack" | "packing";
 const TWIN = "twin:";
@@ -52,6 +55,17 @@ export function PriceListImport(): React.ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [basis, setBasis] = useState<Basis | null>(null);
+  // Owner 2026-10-04 — step 2: the vendor whose quote this is, so its rates are kept as the vendor's contract.
+  const { can } = useAuth();
+  const keepsRates = can("materials.vendors.manage");
+  const [vendorId, setVendorId] = useState("");
+  const [inclGst, setInclGst] = useState(true);
+  const [rateNote, setRateNote] = useState<string | null>(null);
+  const [rateFailures, setRateFailures] = useState<{ brand: string; message: string }[]>([]);
+  const vendors = useQuery({
+    queryKey: ["pharmacy", "office", "po-vendors"], enabled: keepsRates,
+    queryFn: () => api<{ vendors: { id: string; code: string; name: string }[] }>("GET", "/materials/purchase-vendors"),
+  });
 
   const [skipped, setSkipped] = useState(0);
   const take = (raw: Grid): void => {
@@ -59,7 +73,11 @@ export function PriceListImport(): React.ReactElement {
     const h = findHeaderRow(raw);
     const g = raw.slice(h);
     if (g.length < 2) { setError(P("tooShort")); return; }
-    setSkipped(h); setGrid(g); setCols(guessColumns(g[0]!)); setRows(null); setResults(null); setError(null);
+    const guessed = guessColumns(g[0]!);
+    setSkipped(h); setGrid(g); setCols(guessed); setRows(null); setResults(null); setError(null); setRateNote(null); setRateFailures([]);
+    // A heading that says "incl GST" says how to read the rate; "ex"/"excl"/"without" says the other.
+    const rateHead = guessed.rate === undefined ? "" : (g[0]![guessed.rate] ?? "").toLowerCase();
+    setInclGst(!/\b(ex|excl|excluding|without|w\/o)\b/.test(rateHead));
   };
   const downloadSample = (): void => {
     const url = URL.createObjectURL(new Blob(["\uFEFF" + sampleCsv()], { type: "text/csv;charset=utf-8" }));
@@ -82,16 +100,21 @@ export function PriceListImport(): React.ReactElement {
     setBusy(true); setError(null);
     try {
       const cell = (r: string[], f: PriceField): string | undefined => (cols[f] === undefined ? undefined : r[cols[f]!] ?? "");
-      const body = grid.slice(1).map((r) => ({
+      const kept = grid.slice(1).filter((r) => (cell(r, "brand") ?? "").trim() !== "");
+      const body = kept.map((r) => ({
         brand: cell(r, "brand") ?? "", manufacturer: cell(r, "manufacturer"), composition: cell(r, "composition"),
         pack: cell(r, "pack"), mrp: cell(r, "mrp"), gst: cell(r, "gst"), hsn: cell(r, "hsn"),
-      })).filter((r) => r.brand.trim() !== "");
+      }));
+      const listedRates = kept.map((r) => toPaise(cell(r, "rate") ?? ""));
       const res = await api<{ rows: Matched[] }>("POST", "/pharmacy/opening-stock/price-list/match", { rows: body });
       // A twin the catalogue has in two kinds is not picked for the person: they choose.
       const pickOf = (m: Matched): string => m.best?.medicineId ?? (m.twin !== null && !m.twin.ambiguous ? `${TWIN}${m.twin.medicineId}` : "");
       const anyOuter = res.rows.some((m) => m.outer > 1);
       setBasis(anyOuter ? null : "pack");
-      setRows(res.rows.map((m) => ({ ...m, pick: pickOf(m), on: pickOf(m) !== "" && m.existing === null && m.mrpPerPackPaise !== null, mrp: toRupees(m.mrpPerPackPaise), cold: false })));
+      setRows(res.rows.map((m, i) => {
+        const listedRatePaise = listedRates[i] ?? null;
+        return { ...m, pick: pickOf(m), on: pickOf(m) !== "" && m.existing === null && m.mrpPerPackPaise !== null, mrp: toRupees(m.mrpPerPackPaise), cold: false, listedRatePaise, rate: "" };
+      }));
     } catch (e) {
       setError(materialsErrorText(e, t));
     } finally {
@@ -106,6 +129,17 @@ export function PriceListImport(): React.ReactElement {
     setBasis(b);
     setRows((rs) => (rs ?? []).map((r) => ({ ...r, mrp: toRupees(r.mrpPerPackPaise === null ? null : b === "packing" ? Math.round(r.mrpPerPackPaise / Math.max(1, r.outer)) : r.mrpPerPackPaise) })));
   };
+  /**
+   * The vendor's rate as the contract keeps it: per the pack the counter sells (divided like the MRP when it was
+   * quoted for the whole packing) and before GST (divided out when the quote included it). Typed over, it wins.
+   */
+  const ratePaiseOf = (r: Draft): number | null => {
+    if (r.rate !== "") return toPaise(r.rate);
+    if (r.listedRatePaise === null || basis === null) return null;
+    const perPack = basis === "packing" ? r.listedRatePaise / Math.max(1, r.outer) : r.listedRatePaise;
+    return Math.round(inclGst ? (perPack * 10_000) / (10_000 + r.gstRateBps) : perPack);
+  };
+  const hasRates = cols.rate !== undefined;
   // The worked example and a suggestion: a strip of tablets priced at more than ₹15 a tablet is, in an Indian
   // list, almost always the whole packing's MRP.
   const example = (rows ?? []).find((r) => r.outer > 1 && r.mrpPerPackPaise !== null);
@@ -115,8 +149,14 @@ export function PriceListImport(): React.ReactElement {
   const chosen = (rows ?? []).filter((r) => r.on && r.existing === null);
   const blocked = chosen.filter((r) => !ready(r));
 
+  // Every row already an item and a vendor chosen: there is nothing to create, but the quote can still be kept.
+  const ratesOnly = chosen.length === 0 && hasRates && vendorId !== "" && (rows ?? []).some((r) => r.existing !== null);
   const create = async (): Promise<void> => {
     setBusy(true); setError(null);
+    if (ratesOnly) {
+      try { setResults([]); await saveRates([]); } finally { setBusy(false); }
+      return;
+    }
     try {
       const res = await api<{ results: Result[] }>("POST", "/pharmacy/opening-stock/price-list/import", { rows: chosen.map((r) => ({
         line: r.line, medicineId: r.pick.startsWith(TWIN) ? r.pick.slice(TWIN.length) : r.pick, twin: r.pick.startsWith(TWIN), variant: r.variant,
@@ -124,6 +164,7 @@ export function PriceListImport(): React.ReactElement {
         hsnCode: r.hsnCode, mrpPerPackPaise: toPaise(r.mrp)!, storage: r.cold ? "cold_2_8" : "ambient",
       })) });
       setResults(res.results);
+      await saveRates(res.results);
     } catch (e) {
       setError(materialsErrorText(e, t));
     } finally {
@@ -131,6 +172,27 @@ export function PriceListImport(): React.ReactElement {
     }
   };
 
+  /** The quoted rates of every row that is now an item (made just now, or already one) — as the vendor's contract. */
+  const saveRates = async (made: Result[]): Promise<void> => {
+    if (!hasRates || vendorId === "" || !keepsRates) return;
+    const itemOf = (r: Draft): string | null => r.existing?.itemId ?? (made.find((x) => x.line === r.line && x.ok) as { itemId?: string } | undefined)?.itemId ?? null;
+    const send = (rows ?? []).map((r) => ({ r, itemId: itemOf(r), ratePaise: ratePaiseOf(r) }))
+      .filter((x): x is { r: Draft; itemId: string; ratePaise: number } => x.itemId !== null && x.ratePaise !== null);
+    if (send.length === 0) return;
+    try {
+      const res = await api<{ results: RateResult[] }>("POST", `/materials/vendors/${vendorId}/rates`, {
+        source: P("rateSource"),
+        rates: send.map(({ r, itemId, ratePaise }) => ({
+          itemId, packSize: r.packSize, ratePaise, gstRateBps: r.gstRateBps, mrpPaise: toPaise(r.mrp),
+        })),
+      });
+      const failed = res.results.map((x, i) => ({ x, r: send[i]!.r })).filter(({ x }) => !x.ok);
+      setRateNote(P("ratesSaved", { count: res.results.length - failed.length, vendor: vendors.data?.vendors.find((v) => v.id === vendorId)?.name ?? "" }));
+      setRateFailures(failed.map(({ x, r }) => ({ brand: r.brand, message: x.ok ? "" : x.message })));
+    } catch (e) {
+      setRateNote(materialsErrorText(e, t));
+    }
+  };
   const resultOf = (line: number): Result | undefined => results?.find((x) => x.line === line);
   return (
     <div className="space-y-4" data-testid="price-list">
@@ -226,13 +288,33 @@ export function PriceListImport(): React.ReactElement {
               {basis === null && <p className="m-0 font-medium text-red-600" data-testid="price-basis-needed">{P("basisNeeded")}</p>}
             </fieldset>
           )}
+          {hasRates && (
+            <fieldset className="rounded border p-2 text-xs space-y-1" data-testid="price-rates">
+              <legend className="px-1 text-sm font-semibold">{P("ratesTitle")}</legend>
+              {!keepsRates ? <p className="m-0 text-muted-foreground">{P("ratesNoRight")}</p> : (
+                <>
+                  <label className="flex flex-wrap items-center gap-2">{P("ratesVendor")}
+                    <select className={`${fieldCls} w-auto`} data-testid="price-vendor" value={vendorId} disabled={results !== null} onChange={(e) => setVendorId(e.target.value)}>
+                      <option value="">{P("ratesNoVendor")}</option>
+                      {(vendors.data?.vendors ?? []).map((v) => <option key={v.id} value={v.id}>{v.name} ({v.code})</option>)}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" data-testid="price-incl-gst" checked={inclGst} disabled={results !== null} onChange={(e) => setInclGst(e.target.checked)} />
+                    {P("ratesInclGst")}
+                  </label>
+                  <p className="m-0 text-muted-foreground">{P("ratesHow")}</p>
+                </>
+              )}
+            </fieldset>
+          )}
           <p className="m-0 text-sm" data-testid="price-summary">
             {P("summary", { total: rows.length, matched: rows.filter((r) => r.best !== null).length, twins: rows.filter((r) => r.best === null && r.twin !== null).length, existing: rows.filter((r) => r.existing !== null).length, chosen: chosen.length })}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs [&_td]:px-1.5 [&_td]:py-1 [&_th]:px-1.5 [&_th]:text-left" data-testid="price-rows">
               <thead><tr className="text-muted-foreground">
-                <th>✓</th><th>{P("col.vendor")}</th><th>{P("col.match")}</th><th>{P("col.pack")}</th><th>GST</th><th>HSN</th><th>{P("col.mrp")}</th><th>{P("col.cold")}</th><th>{P("col.result")}</th>
+                <th>✓</th><th>{P("col.vendor")}</th><th>{P("col.match")}</th><th>{P("col.pack")}</th><th>GST</th><th>HSN</th><th>{P("col.mrp")}</th>{hasRates && <th>{P("col.rate")}</th>}<th>{P("col.cold")}</th><th>{P("col.result")}</th>
               </tr></thead>
               <tbody>{rows.map((r) => {
                 const cands = [...(r.best === null ? [] : [r.best]), ...r.alternatives];
@@ -276,6 +358,10 @@ export function PriceListImport(): React.ReactElement {
                     </td>
                     <td><input className={`${fieldCls} w-20`} value={r.hsnCode} aria-label={P("hsn", { brand: r.brand })} onChange={(e) => set(r.line, { hsnCode: e.target.value.replace(/\D/g, "").slice(0, 8) })} /></td>
                     <td><input className={`${fieldCls} w-20 ${r.on && r.existing === null && toPaise(r.mrp) === null ? "border-red-500" : ""}`} inputMode="decimal" aria-label={P("mrp", { brand: r.brand })} data-testid={`price-mrp-${String(r.line)}`} value={r.mrp} onChange={(e) => set(r.line, { mrp: e.target.value })} /></td>
+                    {hasRates && (
+                      <td><input className={`${fieldCls} w-20`} inputMode="decimal" aria-label={P("rate", { brand: r.brand })} data-testid={`price-rate-${String(r.line)}`}
+                        value={r.rate !== "" ? r.rate : toRupees(ratePaiseOf(r))} onChange={(e) => set(r.line, { rate: e.target.value })} /></td>
+                    )}
                     <td><input type="checkbox" aria-label={P("cold", { brand: r.brand })} checked={r.cold} onChange={(e) => set(r.line, { cold: e.target.checked })} /></td>
                     <td data-testid={`price-result-${String(r.line)}`}>
                       {res === undefined ? null : res.ok ? <span className="text-green-700">{P("made", { code: res.code })}</span> : <span className="text-red-600">{res.message}</span>}
@@ -287,11 +373,17 @@ export function PriceListImport(): React.ReactElement {
           </div>
           {blocked.length > 0 && <p className="m-0 text-xs text-red-600" data-testid="price-blocked">{P("blocked", { count: blocked.length })}</p>}
           {results === null ? (
-            <Button type="button" data-testid="price-create" disabled={busy || chosen.length === 0 || blocked.length > 0 || basis === null} onClick={() => void create()}>
-              {busy ? P("working") : P("create", { count: chosen.length })}
+            <Button type="button" data-testid="price-create" disabled={busy || (chosen.length === 0 && !ratesOnly) || blocked.length > 0 || basis === null} onClick={() => void create()}>
+              {busy ? P("working") : ratesOnly ? P("saveRatesOnly") : P("create", { count: chosen.length })}
             </Button>
           ) : (
-            <p className="m-0 text-sm font-medium" data-testid="price-done">{P("done", { made: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length })}</p>
+            <div className="space-y-1">
+              <p className="m-0 text-sm font-medium" data-testid="price-done">{P("done", { made: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length })}</p>
+              {rateNote !== null && <p className="m-0 text-sm" data-testid="price-rates-saved">{rateNote}</p>}
+              {rateFailures.length > 0 && (
+                <ul className="m-0 pl-5 text-xs text-red-600" data-testid="price-rates-failed">{rateFailures.map((f) => <li key={f.brand}>{f.brand}: {f.message}</li>)}</ul>
+              )}
+            </div>
           )}
         </section>
       )}

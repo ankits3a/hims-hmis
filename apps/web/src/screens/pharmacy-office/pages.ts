@@ -23,6 +23,8 @@ export const OFFICE_PAGES: readonly OfficePage[] = [
   { side: "buy", key: "orders", perms: ["materials.po.raise"], was: null },
   { side: "buy", key: "reorder", perms: ["pharmacy.dispense.read"], was: "/pharmacy/reorder" },
   { side: "buy", key: "vendors", perms: ["materials.vendors.manage"], was: "/materials/vendors" },
+  // Owner 2026-10-04 — a vendor's contracted rates, and a draft order at them.
+  { side: "buy", key: "rates", perms: ["materials.po.raise", "materials.vendors.manage"], was: null },
   { side: "pay", key: "bills", perms: ["materials.bills.manage"], was: null },
   { side: "returns", key: "returns", perms: ["materials.returns.manage", "materials.writeoffs.manage", "materials.recall.manage"], was: null },
   { side: "stock", key: "grn", perms: ["materials.stock.read"], was: "/materials/grn" },

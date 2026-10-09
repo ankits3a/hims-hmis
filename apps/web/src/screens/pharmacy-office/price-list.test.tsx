@@ -86,7 +86,7 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
     URL.createObjectURL = real.create; URL.revokeObjectURL = real.revoke; click.mockRestore();
     expect(names).toEqual(["price-list-sample.csv"]);
     const text = await new Promise<string>((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.readAsText(made[0]!); });
-    expect(text).toContain("Manufacturer,Brand Name,Composition,Packing,HSN,GST %,MRP");
+    expect(text).toContain("Manufacturer,Brand Name,Composition,Packing,HSN,GST %,MRP,Rate");
 
     await user.click(screen.getByTestId("price-paste"));
     await user.paste("Shree Ram Pharma\nBrand Name\tPacking\nDolo 650\t15 Tab");
@@ -151,5 +151,50 @@ describe("import a vendor's price list (owner 2026-10-04)", () => {
       { line: 1, medicineId: "m-telmi", twin: true, variant: null, brand: "SAZOTEL-40", packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 10_600, storage: "ambient" },
       { line: 2, medicineId: "m-succ", twin: true, variant: null, brand: "EMOPRED 40", packType: "vial", packSize: 1, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 4800, storage: "ambient" },
     ] }));
+  });
+
+  /* Owner 2026-10-04 — step 2: the list's rate column becomes the vendor's contract, per pack and before GST. */
+  it("keeps the vendor's quoted rates — divided like the MRP, GST taken out — for new items and items already stocked", async () => {
+    const tw = { medicineId: "m-telmi", name: "Telmisartan 40 mg oral tablet", form: "Oral tablet", schedule: "H", salts: ["x"], newName: "Sazotel-40 (telmisartan 40 mg oral tablet)" };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const path = raw.replace(/^.*\/api/, "").split("?")[0]!;
+      if (init?.body !== undefined) posted.push({ path, body: JSON.parse(String(init.body)) });
+      const json = (b: unknown): Response => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (path === "/auth/me") return json({ actor: { type: "user", id: "u" }, permissions: { hospital: ["materials.items.manage", "materials.vendors.manage", "materials.po.raise"], scoped: { department: {}, floor: {} } } });
+      if (path === "/materials/purchase-vendors") return json({ vendors: [{ id: "v-aptus", code: "APTUS", name: "Aptus Drugs" }] });
+      if (path.endsWith("/match")) return json({ rows: [
+        { line: 1, brand: "SAZOTEL-40", manufacturer: "Hauz", composition: "TELMISARTAN 40MG", pack: "10*15", best: null, alternatives: [], existing: null,
+          twin: { ...tw, ambiguous: false, others: [] }, variant: null, outer: 10, packType: "tablet_strip", packSize: 15, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 106_000 },
+        { line: 2, brand: "SEYTRI 1GM", manufacturer: "Hauz", composition: "CEFTRIAXONE 1000MG", pack: "1'S", best: null, alternatives: [], existing: { itemId: "i-sey", code: "SEYTRI1G", name: "Seytri 1 g vial" },
+          twin: null, variant: null, outer: 1, packType: "vial", packSize: 1, gstRateBps: 500, hsnCode: "3004", mrpPerPackPaise: 6_700 },
+      ] });
+      if (path.endsWith("/import")) return json({ results: [{ line: 1, ok: true, itemId: "i-saz", code: "SAZOTEL40", name: "Sazotel-40" }] });
+      if (path === "/materials/vendors/v-aptus/rates") return json({ results: [{ itemId: "i-saz", ok: true, changed: true }, { itemId: "i-sey", ok: true, changed: true }] });
+      return new Response("{}", { status: 404 });
+    }));
+    posted.length = 0;
+    const user = userEvent.setup();
+    renderWithProviders(<PriceListImport />);
+    await user.click(screen.getByTestId("price-paste"));
+    await user.paste("Brand\tComposition\tPacking\tMRP\tRate incl GST\nSAZOTEL-40\tTELMISARTAN 40MG\t10*15\t1060\t310\nSEYTRI 1GM\tCEFTRIAXONE 1000MG\t1'S\t67\t26");
+    await user.click(screen.getByTestId("price-paste-read"));
+    expect(await screen.findByTestId("price-check-col-rate")).toHaveTextContent("Rate incl GST");
+    await user.click(screen.getByTestId("price-match"));
+    await user.selectOptions(await screen.findByTestId("price-vendor"), "v-aptus");
+    expect(screen.getByTestId("price-incl-gst")).toBeChecked(); // the heading said so
+    await user.click(screen.getByTestId("price-basis-packing"));
+    // ₹310 for ten strips including 5% GST: ₹31 a strip, ₹29.52 before GST. One vial at ₹26: ₹24.76.
+    expect(screen.getByTestId("price-rate-1")).toHaveValue("29.52");
+    expect(screen.getByTestId("price-rate-2")).toHaveValue("24.76");
+    await user.click(screen.getByTestId("price-create"));
+    await waitFor(() => expect(posted.find((p) => p.path === "/materials/vendors/v-aptus/rates")?.body).toEqual({
+      source: "Price list import",
+      rates: [
+        { itemId: "i-saz", packSize: 15, ratePaise: 2_952, gstRateBps: 500, mrpPaise: 10_600 },
+        { itemId: "i-sey", packSize: 1, ratePaise: 2_476, gstRateBps: 500, mrpPaise: 6_700 },
+      ],
+    }));
+    expect(await screen.findByTestId("price-rates-saved")).toHaveTextContent("2 rates kept as Aptus Drugs's contract.");
   });
 });

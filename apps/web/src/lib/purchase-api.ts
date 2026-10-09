@@ -23,6 +23,8 @@ export type WirePoLine = {
   /** The rate before the vendor's trade discount, and the discount in basis points; `ratePaise` is the net rate. Absent from an older server. */
   listRatePaise?: number; discountBps?: number;
   lineTotalPaise: number; orderedBase: number; receivedBase: number; freeReceivedBase: number; remainingBase: number;
+  /** Owner 2026-10-04 — this vendor's contracted rate per this pack, ex-GST; null without one. Absent from an older server. */
+  contractRatePaise?: number | null;
 };
 
 export type WirePo = WirePoSummary & {
@@ -48,6 +50,8 @@ export type WireDraftLine = {
   itemId: string; code: string; name: string; baseUom: string; uom: string; multiplier: number; needBase: number; qtyPacks: number;
   ratePaise: number; gstRateBps: number; mrpPaise: number | null; lineTotalPaise: number; reasons: ("reorder" | "short_book")[];
   shortBookIds: string[]; lastGrnNo: string | null;
+  /** Where the rate came from (owner 2026-10-04). Absent from an older server. */
+  rateSource?: "contract" | "last" | "none";
 };
 export type WirePurchasePlan = {
   storeResourceId: string; storeCode: string; expectedDate: string;
