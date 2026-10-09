@@ -53,8 +53,8 @@ Source: `apps/core/src/modules/attendance/`
   - `CONFIRM_REASONS`
   - `DAY_WORDS`
   - `KNOWN_STATUSES`
-  - `dayWord(status: string, hasPunch: boolean): DayWord`
-  - `selfWord(status: string, hasPunch: boolean, date: string, today: string): { status: SelfWord; reason?: ConfirmReason }`
+  - `dayWord`
+  - `selfWord`
   - types: `ConfirmReason`, `DayWord`, `SelfWord`
 - `requests.ts`
   - `NOTICE_MEETING_REQUEST`
