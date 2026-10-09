@@ -26,7 +26,7 @@ import type { StationLink, StationStat } from "../components/station/station-she
 export { useIstClock } from "../components/station/station-shell";
 export type SeatStat = StationStat;
 
-export type LabStationKey = "desk" | "collection" | "bench" | "verify" | "reports";
+export type LabStationKey = "desk" | "collection" | "bench" | "verify" | "reports" | "quick";
 
 /** The five stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const LAB_STATIONS: readonly (Omit<StationLink, "label"> & { key: LabStationKey; labelKey: string })[] = [
@@ -35,6 +35,7 @@ export const LAB_STATIONS: readonly (Omit<StationLink, "label"> & { key: LabStat
   { key: "bench", to: "/lab/bench", labelKey: "nav.labBench", permission: "lab.accession.operate" },
   { key: "verify", to: "/lab/verify", labelKey: "nav.labVerify", permission: "lab.results.verify" },
   { key: "reports", to: "/lab/reports", labelKey: "nav.labReports", permission: "lab.reports.print" },
+  { key: "quick", to: "/lab/quick", labelKey: "nav.labQuick", permission: "lab.results.enter" },
 ];
 
 export function LabStation({

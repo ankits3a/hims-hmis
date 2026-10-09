@@ -79,6 +79,8 @@ export const labManifest: ModuleManifest = {
     { label: "Verify & report", path: "/lab/verify", permission: "lab.results.verify" },
     /** PLAN 17c T5 — the report centre: the counter's seat, on the counter's permission. */
     { label: "Report centre", path: "/lab/reports", permission: "lab.reports.print" },
+    /** Decision 0061 — quick entry: search a patient, type values, an editable flagged report. */
+    { label: "Quick entry", path: "/lab/quick", permission: "lab.results.enter" },
   ],
   permissions: [
     "lab.orders.place",

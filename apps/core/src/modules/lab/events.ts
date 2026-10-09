@@ -285,6 +285,14 @@ export const labNotifiableFlagged = defineEvent("lab.notifiable_flagged", MODULE
 }));
 
 /**
+ * QUICK ENTRY (decision 0061) — a quick report was created or edited. Counts only: no value, no
+ * analyte name, so the event log answers "who keyed what, when" without carrying the result.
+ */
+export const labQuickReportSaved = defineEvent("lab.quick_report_saved", MODULE, z.object({
+  reportId: id, lineCount: z.number().int().min(0), abnormalCount: z.number().int().min(0), created: z.boolean(),
+}));
+
+/**
  * THE CATALOGUE OF THIS MODULE'S EVENTS, in one place, so `events.test.ts` can assert the grammar
  * and the module tag over ALL of them rather than over the ones a reader remembered to list.
  */
@@ -298,4 +306,5 @@ export const LAB_EVENTS = [
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
+  labQuickReportSaved,
 ] as const;

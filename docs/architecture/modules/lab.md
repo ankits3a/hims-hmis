@@ -101,6 +101,7 @@ Source: `apps/core/src/modules/lab/`
   - `labNightReleaseReviewed`
   - `labNotifiableFlagged`
   - `labOrderDesked`
+  - `labQuickReportSaved`
   - `labRecollectionRequested`
   - `labReflexAdded`
   - `labReflexRefused`
@@ -243,17 +244,18 @@ Source: `apps/core/src/modules/lab/`
 
 ## Tables (`kernel/db/schema/lab.ts`)
 
-`lab_analytes`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions`
+`lab_analytes`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions`
 
 Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (48)
+## HTTP routes (53)
 
 - `lab-bench.controller.ts` — 8: `/lab/bench`
 - `lab-catalogue.controller.ts` — 7: `/lab/catalogue`
 - `lab-collection.controller.ts` — 5: `/lab/collection`
 - `lab-desk.controller.ts` — 6: `/lab/desk`
 - `lab-instruments.controller.ts` — 4: `/lab/instruments`
+- `lab-quick.controller.ts` — 5: `/lab/quick`
 - `lab-verify.controller.ts` — 18: `/lab/reports`, `/lab/results`, `/lab/verify`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/lab`

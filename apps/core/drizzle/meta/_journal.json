@@ -1345,6 +1345,13 @@
       "when": 1791540845070,
       "tag": "0191_attendance",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1791567187905,
+      "tag": "0192_lab_quick_reports",
+      "breakpoints": true
     }
   ]
 }
