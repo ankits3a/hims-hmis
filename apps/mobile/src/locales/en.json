@@ -2216,5 +2216,26 @@
     "offline": "No network — could not read the count.",
     "refused": "The server could not answer. Try again.",
     "noAccess": "There is no recording count for your login."
+  },
+  "pace": {
+    "title": "My pace",
+    "sub": "Avg time per consultation",
+    "min": "{{n}} min",
+    "dept": "Dept",
+    "hospital": "Hospital",
+    "notEnough": "Not enough yet",
+    "none": "—",
+    "period": {
+      "today": "Today",
+      "7d": "7 days",
+      "30d": "30 days"
+    },
+    "count": "{{n}} consultations",
+    "paper": "Paper visits not counted",
+    "back": "Back",
+    "offline": "No network",
+    "refused": "Could not load",
+    "again": "Try again",
+    "noMeasure": "No measure for your login"
   }
 }
