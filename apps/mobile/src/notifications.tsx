@@ -265,6 +265,9 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
   const open = useCallback((link: string) => {
     const card = PUSH_LINK_CARD[link];
     if (card !== undefined) { focusHome(card); router.push("/"); return; }
+    /* STAFF ATTENDANCE — the committee's requests list (for those who may open it), and a person's own attendance. */
+    if (link === "attendanceRequests") { if (permissions?.hospital.includes("attendance.all.read") === true) router.push({ pathname: "/attendance-staff", params: { tab: "requests" } }); else router.push("/"); return; }
+    if (link === "attendance") { router.push({ pathname: "/attendance", params: { request: "latest" } }); return; }
     const seat = PUSH_LINK_SEAT[link] ?? null;
     const allowed = seat !== null && permissions !== null && seatsFor(permissions).some((s) => s.key === seat);
     if (allowed) router.push({ pathname: "/seat/[key]", params: { key: seat } });

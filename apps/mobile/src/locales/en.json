@@ -1924,6 +1924,107 @@
       "nothingToMove": "Nothing needs moving. No declared leave has stranded a booking."
     }
   },
+  "attendance": {
+    "title": "Attendance",
+    "mine": "My attendance",
+    "notLinked": "Attendance not linked",
+    "state": {
+      "not_checked_in": "Not checked in",
+      "checked_in": "✓ Checked in",
+      "checked_out": "Checked out"
+    },
+    "confirmRow": "⚠ Confirm · {{day}}",
+    "confirmMore": "+{{n}}",
+    "word": {
+      "present": "Present",
+      "absent": "Absent",
+      "leave": "Leave",
+      "off": "Off",
+      "partial": "Partial",
+      "confirm": "Confirm",
+      "unknown": "—"
+    },
+    "view": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    },
+    "previous": "Previous",
+    "next": "Next",
+    "today": "Today",
+    "dayLabel": "{{dow}} {{d}}",
+    "dateLabel": "{{dow}} {{d}} {{month}}",
+    "dow": { "0": "Mon", "1": "Tue", "2": "Wed", "3": "Thu", "4": "Fri", "5": "Sat", "6": "Sun" },
+    "dowLetter": { "0": "M", "1": "T", "2": "W", "3": "T", "4": "F", "5": "S", "6": "S" },
+    "month": {
+      "01": "January", "02": "February", "03": "March", "04": "April", "05": "May", "06": "June",
+      "07": "July", "08": "August", "09": "September", "10": "October", "11": "November", "12": "December"
+    },
+    "of": "{{n}} / {{of}}",
+    "in": "In",
+    "out": "Out",
+    "hours": "Hours",
+    "hoursValue": "{{n}} h",
+    "punches": "Punches",
+    "noPunches": "No punches",
+    "noRecord": "No record",
+    "offline": "No network",
+    "cannotRead": "Could not load",
+    "reason": {
+      "one_punch_only": "Only one punch that day",
+      "other": "Ask the attendance office"
+    },
+    "sheet": {
+      "title": "Confirm this day",
+      "ask": "Request meeting",
+      "open": "Request sent",
+      "seen": "Seen",
+      "closed": "Closed",
+      "resolved_by_correction": "Corrected",
+      "failed": "Not sent. Try again",
+      "tooMany": "Too many open requests",
+      "notNeeded": "Already corrected",
+      "close": "Close"
+    },
+    "manage": {
+      "open": "Staff attendance",
+      "hintAll": "Everyone today · requests",
+      "hintTeam": "My team today",
+      "today": "Today",
+      "team": "My team",
+      "requests": "Requests",
+      "asOf": "as of {{time}}",
+      "notConnected": "Machine not connected",
+      "all": "All",
+      "noDept": "No department",
+      "search": "Search by name",
+      "nobody": "Nobody matches",
+      "countIn": "In",
+      "countNotIn": "Not in",
+      "countLate": "Late",
+      "countLeave": "Leave",
+      "notIn": "Not in",
+      "late": "Late",
+      "onePunch": "One punch",
+      "noLogin": "no login",
+      "notLinked": "Not linked",
+      "noTeam": "Nobody in your team yet"
+    },
+    "requests": {
+      "open": "Open",
+      "seen": "Seen",
+      "closed": "Closed",
+      "none": "No requests",
+      "markSeen": "Seen",
+      "close": "Close",
+      "note": "Note (optional)",
+      "confirmClose": "Close request",
+      "cancel": "Cancel",
+      "ageHours": "{{n}} h",
+      "ageDays": "{{n}} d",
+      "failed": "Not saved. Try again"
+    }
+  },
   "home": {
     "now": "Needs you now",
     "all": "See all ({{n}})",

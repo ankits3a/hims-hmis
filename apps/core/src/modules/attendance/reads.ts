@@ -1,8 +1,18 @@
 import { and, asc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { attDays, attHolidays, attLeaves, attOnDuty, attPunches, attRoster, attStaff, attSyncState, users } from "../../kernel/db/schema";
+import { CONFIRM_REASONS, DAY_WORDS, KNOWN_STATUSES, dayWord, selfWord } from "@hmis/contracts";
 import { addDays, daysInclusive, isIsoDate } from "./ist";
 import { linkStates, normaliseMobile } from "./linking";
+import type { ConfirmReason, DayWord, SelfWord } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+
+/**
+ * THE WORDS (owner 2026-10-09) live in `packages/contracts/src/attendance-view.ts` — one file the
+ * server and the phone both read, so they cannot disagree about what "Present" is. Re-exported here
+ * for this module's own callers.
+ */
+export { CONFIRM_REASONS, DAY_WORDS, KNOWN_STATUSES, dayWord, selfWord };
+export type { ConfirmReason, DayWord, SelfWord };
 
 /**
  * ═══ WHAT THE READ ROUTES ANSWER — AND WHAT NONE OF THEM EVER DOES ═══
@@ -14,42 +24,8 @@ import type { Db } from "../../kernel/db/client";
  * Dates are IST strings in and out. A `status` bioattend adds after the guide of 2026-10-09 is
  * passed through as it came with `known: false` — "see bioattend", not an error.
  */
-export const KNOWN_STATUSES = [
-  "on_time", "late", "below_min_full", "below_min_half", "single_punch", "absent", "approved_leave", "holiday", "weekly_off",
-  "worked_on_holiday", "worked_on_off_day", "on_call", "on_call_worked", "no_shift",
-] as const;
 const KNOWN: ReadonlySet<string> = new Set(KNOWN_STATUSES);
 export const isKnownStatus = (s: string): boolean => KNOWN.has(s);
-
-/**
- * ═══ THE FIVE WORDS (owner 2026-10-09) ═══
- *
- * "Only Show either Present, Absent, Off, Partial (for half day or few hours on job)." · "late days
- * simply show as Present." · "If the person is on leave then mark 'Leave'". What a person sees of their OWN day is one of these, and nothing else of
- * it — no time, no hours, no "late". Managers' routes keep the machine's own status; their summary
- * carries this tally beside it, so the two screens cannot disagree about who was present.
- *
- *   present   on_time, late, worked_on_holiday, worked_on_off_day, on_call_worked
- *   partial   below_min_full, below_min_half, single_punch
- *   absent    absent
- *   leave     approved_leave
- *   off       weekly_off, holiday, on_call
- *   no_shift  present when the day has any punch, else off
- *   anything bioattend adds later → `unknown` (the app prints "—")
- */
-export const DAY_WORDS = ["present", "absent", "leave", "off", "partial", "unknown"] as const;
-export type DayWord = (typeof DAY_WORDS)[number];
-const WORD_OF: Readonly<Record<string, DayWord>> = {
-  on_time: "present", late: "present", worked_on_holiday: "present", worked_on_off_day: "present", on_call_worked: "present",
-  below_min_full: "partial", below_min_half: "partial", single_punch: "partial",
-  absent: "absent",
-  approved_leave: "leave",
-  weekly_off: "off", holiday: "off", on_call: "off",
-};
-export function dayWord(status: string, hasPunch: boolean): DayWord {
-  if (status === "no_shift") return hasPunch ? "present" : "off";
-  return Object.hasOwn(WORD_OF, status) ? WORD_OF[status]! : "unknown";
-}
 
 export const MAX_READ_DAYS = 92;
 export const MAX_DAYS_AHEAD = 14;
@@ -135,23 +111,8 @@ export async function todayOf(db: Db, pin: string, today: string): Promise<Today
   };
 }
 
-/**
- * ═══ "CONFIRM" (owner 2026-10-09) ═══
- *
- * "Staff who forgets evening punch doesn't stays 'Checked in' till next day; day then reads a warning
- * sign/icon 'Confirm'." A day BEFORE today that the machine calls `single_punch` is shown to its own
- * person as `confirm`, with a fixed reason code — not as `partial`. When bioattend corrects the day
- * the status changes and the word follows by itself. Managers' routes keep the machine's `single_punch`.
- */
-export const CONFIRM_REASONS = ["one_punch_only"] as const;
-export type ConfirmReason = (typeof CONFIRM_REASONS)[number];
-export type SelfWord = DayWord | "confirm";
+/** A person's own "Confirm" days are listed for this many days back, for the home card. */
 export const NEEDS_CONFIRM_DAYS = 31;
-
-export function selfWord(status: string, hasPunch: boolean, date: string, today: string): { status: SelfWord; reason?: ConfirmReason } {
-  if (status === "single_punch" && date < today) return { status: "confirm", reason: "one_punch_only" };
-  return { status: dayWord(status, hasPunch) };
-}
 
 /** A person's OWN day: the word (and why, for `confirm`), and — only with `ATTENDANCE_SELF_SHOWS_TIMES` on — the times. The time keys are ABSENT otherwise, not null. */
 export type SelfDayView = { date: string; status: SelfWord; reason?: ConfirmReason; firstIn?: string | null; lastOut?: string | null; hoursWorked?: number | null };

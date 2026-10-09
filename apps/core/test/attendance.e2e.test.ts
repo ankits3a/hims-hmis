@@ -405,10 +405,10 @@ describe("staff attendance e2e (HTTP)", () => {
       });
 
       it("/attendance/me for an UNLINKED person says so, and why", async () => {
-        expect((await get("new.clerk", "/attendance/me")).body).toEqual({ linked: false, reason: "no_mobile_or_aadhaar", configured: true });
-        expect((await get("m.lal", "/attendance/me")).body).toEqual({ linked: false, reason: "two_matches", configured: true });
+        expect((await get("new.clerk", "/attendance/me")).body).toEqual({ linked: false, reason: "no_mobile_or_aadhaar", configured: true, leadsTeam: false });
+        expect((await get("m.lal", "/attendance/me")).body).toEqual({ linked: false, reason: "two_matches", configured: true, leadsTeam: false });
         await db.update(users).set({ phone: "9000000009" }).where(eq(users.id, ids.unlinked!));
-        expect((await get("new.clerk", "/attendance/me")).body).toEqual({ linked: false, reason: "no_match", configured: true });
+        expect((await get("new.clerk", "/attendance/me")).body).toEqual({ linked: false, reason: "no_match", configured: true, leadsTeam: false });
         expect((await get("new.clerk", "/attendance/me/punches")).body).toEqual({ linked: false, date: today, showsTimes: false, status: null });
         expect((await http().get("/attendance/me")).status).toBe(401);
       });
@@ -494,6 +494,9 @@ describe("staff attendance e2e (HTTP)", () => {
       it("a UNIT HEAD sees exactly their team — its linked members' days in full, an unlinked member by name, nobody else", async () => {
         const todayRes = await get("hod", "/attendance/team/today");
         expect(todayRes.status).toBe(200);
+        // The app learns "I lead a team" from /attendance/me — and a member learns they do not.
+        expect((await get("hod", "/attendance/me")).body.leadsTeam).toBe(true);
+        expect((await get("sr", "/attendance/me")).body.leadsTeam).toBe(false);
         const srToday = stub.fixture.days.find((d) => d.pin === "303" && d.date === today)!;
         expect(todayRes.body.members).toEqual([
           { userId: ids.jr, name: "Dr Junior Unlinked", linked: false, pin: null, today: null },

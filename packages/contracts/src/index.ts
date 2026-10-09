@@ -12,3 +12,4 @@ export * from "./obstetric";
 export * from "./app-home";
 export * from "./patient-absent";
 export * from "./rx-line";
+export * from "./attendance-view";

@@ -20,13 +20,15 @@ import { ApprovalSheet, CoverSheet, clockText } from "../home/sheets";
 import { Spark } from "../home/spark";
 import { RecordedCard, type RecordingReport } from "../home/recorded";
 import { rosterApi } from "../roster/api";
+import { ALL_READ } from "../attendance/api";
+import { AttendanceCard, attendanceCache, useAttendanceHome } from "../attendance/home-card";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
 const REFRESH_MS = 30_000;
 /** The last home this phone drew, kept while the app is open — shown with "as of" when the network drops. */
 let lastHome: { sources: Sources; at: number; user: string; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null } | null = null;
-export function _forgetHomeForTests(): void { lastHome = null; void homeCache.clear(); }
+export function _forgetHomeForTests(): void { lastHome = null; void homeCache.clear(); void attendanceCache.clear(); }
 
 const TONE: Record<Tone, { edge: string; bg: string; fg: string }> = {
   red: { edge: color.red, bg: color.redSoft, fg: color.red },
@@ -109,6 +111,8 @@ export function SeatHome() {
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") void refresh(); });
     return () => { alive.current = false; clearInterval(timer); sub.remove(); };
   }, [refresh]);
+  /* The person's own attendance: one read beside the home's, re-read whenever the home is (`attendance/home-card.tsx`). */
+  const attendance = useAttendanceHome(call, signedIn ? user : "", home?.at ?? 0);
   const model: HomeModel | null = useMemo(() => (home === null ? null : buildHome({ ...home.sources, seenRequests: seen, nowMs: online ? Date.now() : home.at })), [home, online, seen]);
   /* A notification about approvals, and exactly one waiting: its sheet opens — the tap said which. */
   useEffect(() => {
@@ -230,7 +234,7 @@ export function SeatHome() {
                 </View>
               )}
             </Pressable>
-            <Pressable onPress={() => { void homeCache.clear(); void logout(); }} accessibilityRole="button" hitSlop={8} testID="logout"
+            <Pressable onPress={() => { void homeCache.clear(); void attendanceCache.clear(); void logout(); }} accessibilityRole="button" hitSlop={8} testID="logout"
               style={{ minHeight: 32, paddingHorizontal: 10, justifyContent: "center" }}>
               <Text style={{ color: color.agentFg, fontSize: 13, fontWeight: "600" }}>{t("app.logout")}</Text>
             </Pressable>
@@ -272,6 +276,8 @@ export function SeatHome() {
         <Text style={[type.small, { color: color.dim }]} testID="signed-in-as">
           {who.line ?? t("mobile.signedInAs", { name: state.username || state.me.actor.id })}
         </Text>
+        <AttendanceCard t={t} home={attendance} onOpen={() => router.push("/attendance")}
+          onConfirm={(date) => router.push({ pathname: "/attendance", params: { confirm: date } })} />
         {!online && <View style={{ marginTop: space.sm }}><Note tone="warn" testID="home-offline">{t(home === null && cold === null ? "home.offline.nothing" : "home.offline.banner")}</Note></View>}
         {/* Cold and offline: the last numbers this phone drew, counts only, and nothing to tap. */}
         {model === null && cold !== null && !online && (
@@ -453,6 +459,23 @@ export function SeatHome() {
             <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
           </Pressable>
         ))}
+        {/*
+          STAFF ATTENDANCE for those the server lets see it: a holder of `attendance.all.read`, or
+          somebody who leads a team (the server said so in the home card's one read). Nobody else is
+          shown the row, and nothing is asked on their behalf.
+        */}
+        {(permissions.includes(ALL_READ) || attendance.me?.leadsTeam === true) && (
+          <Pressable testID="attendance-manage-open" accessibilityRole="button"
+            onPress={() => router.push({ pathname: "/attendance-staff", params: attendance.me?.leadsTeam === true ? { lead: "1" } : {} })}
+            style={({ pressed }) => ({ minHeight: TOUCH + 24, backgroundColor: pressed ? color.wash : color.card, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, padding: space.lg, marginBottom: space.md, flexDirection: "row", alignItems: "center", gap: space.md })}>
+            <View style={{ width: 8, alignSelf: "stretch", borderRadius: 4, backgroundColor: color.green }} />
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={[type.heading, { color: color.ink }]}>{t("attendance.manage.open")}</Text>
+              <Text numberOfLines={1} style={[type.small, { color: color.dim, marginTop: 2 }]}>{t(permissions.includes(ALL_READ) ? "attendance.manage.hintAll" : "attendance.manage.hintTeam")}</Text>
+            </View>
+            <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
+          </Pressable>
+        )}
         <Pressable testID="account-open" accessibilityRole="button" onPress={() => router.push("/account")}
           style={({ pressed }) => ({ minHeight: TOUCH, flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, backgroundColor: pressed ? color.wash : color.card })}>
           <Text style={[type.body, { color: color.ink, fontWeight: "600", flex: 1 }]}>{t("mobile.account.open")}</Text>

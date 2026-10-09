@@ -58,9 +58,10 @@ function requestHttp(e: unknown): never {
   throw new ConflictException({ code: e.code });
 }
 
+/** `leadsTeam` tells the app whether to offer "My team" — so a person who leads nobody never asks a manager route. */
 export type MeResponse =
-  | { linked: false; reason: UnlinkedReason; configured: boolean }
-  | ({ linked: true; configured: boolean; showsTimes: boolean } & SelfRange);
+  | { linked: false; reason: UnlinkedReason; configured: boolean; leadsTeam: boolean }
+  | ({ linked: true; configured: boolean; leadsTeam: boolean; showsTimes: boolean } & SelfRange);
 export type TeamMemberToday = { userId: string; name: string; linked: boolean; pin: string | null; today: Omit<TodayRow, keyof PersonView | "hasLogin"> | null };
 
 /**
@@ -101,10 +102,11 @@ export class AttendanceController {
     const today = istDate(new Date());
     const { from, to } = rangeOf(q(rangeQuery, query), today);
     const configured = this.configured();
-    if (actor.type !== "user") return { linked: false, reason: "no_match", configured };
+    if (actor.type !== "user") return { linked: false, reason: "no_match", configured, leadsTeam: false };
+    const leadsTeam = (await teamOf(this.db, actor.id, new Date())).userIds.length > 0;
     const person = await personOfUser(this.db, actor.id);
-    if (person === null) return { linked: false, reason: await unlinkedReason(this.db, actor.id), configured };
-    return { linked: true, configured, showsTimes: this.cfg.attendance.selfShowsTimes, ...(await this.selfRange(person, from, to, today)) };
+    if (person === null) return { linked: false, reason: await unlinkedReason(this.db, actor.id), configured, leadsTeam };
+    return { linked: true, configured, leadsTeam, showsTimes: this.cfg.attendance.selfShowsTimes, ...(await this.selfRange(person, from, to, today)) };
   }
 
   /**
