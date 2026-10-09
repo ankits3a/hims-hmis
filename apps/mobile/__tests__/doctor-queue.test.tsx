@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
 import { DoctorQueue } from "../src/screens/doctor-queue";
@@ -126,7 +126,7 @@ describe("the doctor's OPD line on a phone", () => {
     const w = world();
     await mount(w.fetcher);
     expect(await screen.findByTestId("line-row-13")).toHaveTextContent(/Suresh Prasad · 56 M/);
-    expect(screen.getByTestId("line-row-13")).toHaveTextContent(/Revisit · free follow-up/);
+    expect(screen.getByTestId("line-row-13")).toHaveTextContent(/Revisit · follow-up/);
     expect(screen.getByTestId("line-row-14")).toHaveTextContent(/Meena Kumari · 33 F/);
     expect(screen.getByTestId("doctor-name")).toHaveTextContent("Dr. Chandan Kumar · Unit I · Asst. Prof.");
     expect(screen.getByTestId("stat-waiting")).toHaveTextContent("2");
@@ -136,6 +136,39 @@ describe("the doctor's OPD line on a phone", () => {
     expect(screen.getByTestId("line-vitals")).toHaveTextContent("2 still at vitals");
     // Only MY profile's line is asked for, for today.
     expect(w.of("GET /opd/queues").length).toBeGreaterThan(0);
+  });
+
+  it("TELE-CALL (owner 2026-10-09): the row shows its SLOT TIME where the token sits and a phone ICON named Tele-call — no word, and never a money mark", async () => {
+    const w = world(queue({ ordered: [
+      entry(13, { position: 1, tele: true, kind: "appointment", appointmentAt: "2026-10-06T05:50:00.000Z", feeStatus: null }, {}, { name: "Meena Kumari", administrativeGender: "female", dob: "1993-01-01T00:00:00.000Z" }),
+      entry(14, { position: 2 }, {}, { name: "Suresh Prasad" }),
+    ] }));
+    await mount(w.fetcher);
+    const tele = await screen.findByTestId("line-row-13");
+    expect(screen.getByTestId("line-row-13-slot")).toHaveTextContent("11:20");
+    expect(within(tele).getByLabelText("Tele-call").props).toMatchObject({ accessibilityRole: "image", testID: "line-row-13-tele" });
+    expect(tele).not.toHaveTextContent(/tele|paid|unpaid|fee|₹/i);
+    expect(tele).not.toHaveTextContent(/^13/);
+    // an ordinary row beside it is exactly what it was
+    expect(screen.getByTestId("line-row-14")).toHaveTextContent(/^14/);
+    expect(screen.queryByTestId("line-row-14-tele")).toBeNull();
+    expect(screen.queryByTestId("line-row-14-slot")).toBeNull();
+  });
+
+  it("TELE-CALL: the patient page shows the phone card — Tele-call and the slot — no vitals block, and no money word", async () => {
+    const w = world(queue({ ordered: [entry(13, { position: 1, tele: true, kind: "appointment", appointmentAt: "2026-10-06T05:50:00.000Z", feeStatus: null }, {}, { name: "Meena Kumari" })] }), {
+      "GET /opd/visits/e13": () => {
+        const v = visit("e13", { vitals: [], teleSlotAt: "2026-10-06T05:50:00.000Z" }, { consultMode: "tele", teleOutcome: null, teleNoAnswerCount: 0 }) as Record<string, unknown>;
+        delete v.feeUnpaid; delete v.feeBypass;
+        return { status: 200, body: v };
+      },
+    });
+    await mount(w.fetcher);
+    await fireEvent.press(await screen.findByTestId("line-row-13-open"));
+    expect(await screen.findByTestId("brief-tele")).toHaveTextContent(/Tele-call.*11:20/);
+    expect(screen.queryByTestId("brief-vitals-card")).toBeNull();
+    expect(screen.queryByTestId("brief-unpaid")).toBeNull();
+    expect(screen.getByTestId("brief-who")).not.toHaveTextContent(/paid|unpaid|fee|₹/i);
   });
 
   it("a user with no doctor profile is told so (404 is an answer, not an error) and no line is asked for", async () => {
@@ -201,25 +234,6 @@ describe("the doctor's OPD line on a phone", () => {
     await fireEvent.press(await screen.findByTestId("left-undo-13"));
     expect(await screen.findByTestId("line-row-13")).toBeTruthy();
     expect(w.of("POST /opd/queues/entries/q13/undo-skip")).toHaveLength(1);
-  });
-
-  it("tokens waiting for the bill are listed apart, and the doctor opens one only with a reason", async () => {
-    const held = entry(15, { feeStatus: "unsettled" }, { feeBypassReason: "came by ambulance" }, { name: "Ram Pravesh" });
-    const w = world(queue({ heldForPayment: [held] }), {
-      "POST /opd/visits/e15/consult/open-unpaid": () => ({ status: 201, body: { encounter: {} } }),
-    });
-    await mount(w.fetcher);
-    expect(await screen.findByTestId("held-row-15")).toHaveTextContent(/Ram Pravesh/);
-    expect(screen.getByTestId("held-row-15")).toHaveTextContent(/NOT PAID/);
-    expect(screen.getByTestId("held-group")).toHaveTextContent(/Waiting for the bill \(1\)/);
-    await fireEvent.press(screen.getByTestId("held-open-15"));
-    await fireEvent.press(screen.getByTestId("unpaid-go"));
-    expect(screen.getByTestId("sheet-error")).toHaveTextContent("Write the reason first.");
-    expect(w.of("POST /opd/visits/e15/consult/open-unpaid")).toHaveLength(0);
-    await fireEvent.changeText(screen.getByTestId("unpaid-reason"), "elderly, cannot stand in the queue");
-    await fireEvent.press(screen.getByTestId("unpaid-go"));
-    await waitFor(() => expect(w.of("POST /opd/visits/e15/consult/open-unpaid")).toHaveLength(1));
-    expect(w.of("POST /opd/visits/e15/consult/open-unpaid")[0]!.body).toEqual({ reason: "elderly, cannot stand in the queue" });
   });
 
   it("the brief: allergy first, the patient's own words, today's vitals with the bay's flag as a word, results since, the last prescription, past visits", async () => {

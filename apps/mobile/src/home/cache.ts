@@ -23,14 +23,19 @@ export type ColdHome = { user: string; at: number; cards: ColdCard[]; total: num
 /** Titles that carry a NAME in their words are replaced by the kind's plain one. */
 const NAMELESS: Partial<Record<NeedKind, string>> = { cover_request: "home.cold.cover", approval: "home.cold.approval", my_request: "home.cold.myRequest" };
 
-export function coldOf(user: string, at: number, model: HomeModel): ColdHome {
+/**
+ * `ownerTiles` — the owner's and the Medical Superintendent's tiles, when the home is theirs: a key and
+ * its number, nothing else (owner 2026-10-09). The Money tile is only ever in an owner's set, so a
+ * phone that is not the owner's holds no rupee.
+ */
+export function coldOf(user: string, at: number, model: HomeModel, ownerTiles?: readonly { key: string; labelKey: string; value: string }[] | null): ColdHome {
   return {
     user, at, total: model.needsTotal,
     cards: model.allNeeds.slice(0, MAX_CARDS).map((n: NeedCard) => ({
       kind: n.kind, count: n.count, titleKey: NAMELESS[n.kind] ?? n.titleKey, subKey: NAMELESS[n.kind] !== undefined ? null : n.subKey,
       tone: n.tone, sinceMs: n.sinceMs, dueMs: n.dueMs,
     })),
-    tiles: model.tiles.map((t) => ({ ...t })),
+    tiles: ownerTiles != null ? ownerTiles.map((t) => ({ key: t.key, labelKey: t.labelKey, value: t.value })) : model.tiles.map((t) => ({ ...t })),
   };
 }
 

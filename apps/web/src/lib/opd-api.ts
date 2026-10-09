@@ -124,6 +124,11 @@ export type WireAppointment = {
   source: "desk" | "phone"; note: string | null; encounterId: string | null;
   rescheduledToId: string | null; rescheduledFromId: string | null; cancelReason: string | null; leaveId: string | null;
   bookedBy: string; bookedAt: string; updatedBy: string; updatedAt: string;
+  /** Owner 2026-10-09 — how the patient is seen. The number travels only on the contact read. */
+  mode?: "in_person" | "tele"; telePhone?: string | null;
+  /** The desk's money mark on a tele-call (list route only): what it costs, and whether that is met. */
+  teleDesk?: { amountPaise: number | null; covered: boolean };
+  advanceReceiptId?: string | null; advanceQuotePaise?: number | null; advanceQuotedAt?: string | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: WirePatientSummary | null;
 };
@@ -131,6 +136,8 @@ export type WireAppointment = {
 // ——— the encounter spine, the queue, vitals and the e-Rx ———
 
 export type WireEncounter = {
+  /** Owner 2026-10-09 — a tele-call, and the doctor's two answers. Optional: an older server sends none. */
+  consultMode?: string | null; teleOutcome?: string | null; teleOutcomeAt?: string | null; teleNoAnswerCount?: number | null;
   id: string; visitNo: string; patientId: string; type: string; status: OpdVisitStatus; workflowInstanceId: string;
   departmentId: string | null; doctorId: string | null; appointmentId: string | null; serviceDate: string;
   visitType: OpdVisitType; intendedPayer: string; referralSource: string | null; referrerName: string | null;
@@ -193,6 +200,8 @@ export type WireSkipReason = (typeof SKIP_REASONS)[number];
 export type WireQueueEntryView = WireQueueEntry & {
   position: number | null;
   queueClass: OpdQueueClass | null;
+  /** Owner 2026-10-09 — a tele-call: its slot time sits where a token does, with a phone icon. No money mark ever. */
+  tele?: boolean;
   encounter: {
     id: string; patientId: string; visitType: string; dangerFlagged: boolean; status: string;
     /** Owner ruling 2026-09-24 — an internal referral opened this visit. Optional: an older server sends none. */
@@ -226,7 +235,8 @@ export type WireQueueEntryView = WireQueueEntry & {
    * client must never recompute paid-ness from an invoice. `encounterFeeStatuses` is the one
    * projection; a second truth function is a board that can disagree with the gate.
    */
-  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
+  /** ABSENT on a tele-call's row (fix round 2026-10-09): such a row carries no money key at all. */
+  feeStatus?: "free" | "settled" | "credit" | "unsettled" | null;
 };
 
 /**
@@ -416,6 +426,8 @@ export type WireRxPrint = {
    */
   doctor: { unitNumber?: string; deptRegn?: string | null; code?: string | null; departmentName: string | null; unit?: string | null };
   encounter: {
+    /** Owner 2026-10-09 — a tele-call's prescription prints one boxed line saying nobody examined the patient. Optional: an older server sends none. */
+    tele?: boolean;
     id: string; visitNo: string; serviceDate: string; diagnosis: string | null; icd10Code: string | null;
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
     /** PLAN 07d T5 — advised tests with the price AS OF the service date (DD4, E-9). */
@@ -677,7 +689,7 @@ export function getSlots(doctorId: string, date: string): Promise<{ slots: WireS
 }
 
 export function bookAppointment(
-  body: { patientId: string; doctorId: string; slotStart: string; note?: string },
+  body: { patientId: string; doctorId: string; slotStart: string; note?: string; mode?: "tele"; telePhone?: string },
 ): Promise<{ appointment: WireAppointment }> {
   return api("POST", "/opd/appointments", body);
 }

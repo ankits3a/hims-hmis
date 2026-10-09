@@ -111,6 +111,13 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
           ) : (
             <p data-testid="rx-doctor-id" className="text-sm font-medium">{t("rx.doctorId")} <span className="font-mono">{data.doctor.code ?? "—"}</span></p>
           )}
+          {/*
+            Owner 2026-10-09 — TELE-CALL. One boxed line under the doctor's lines, so whoever is handed
+            this sheet knows the patient was spoken to, not examined. Nothing on an in-person sheet.
+          */}
+          {data.encounter.tele === true && (
+            <p data-testid="rx-tele" className="inline-block rounded border border-neutral-700 px-2 py-1 text-sm font-semibold">{t("rx.tele")}</p>
+          )}
         </section>
 
         <section className="grid grid-cols-2 gap-1 border-y py-2 text-sm">

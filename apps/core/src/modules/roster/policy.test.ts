@@ -342,6 +342,7 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     listFindings: "a read",
     acceptedFindingKeys: "a read — the set the publish gate honours, shared with it so the gate and the screen cannot disagree about what `accepted` means",
     fairnessOf: "PURE: counts nights, Sundays and holidays from rows it is handed. It reads no database and is the same answer for a roster somebody typed by hand as for one the proposer drafted",
+    staffToday: "a read for the owner's staff page, guarded by `read` (the route also asks `staff.reports.read`); composed from `onNowBoard`, it writes nothing",
     skeletonModeOn: "a read — and it answers `mine OR the whole hospital's`, because a department cannot be off skeleton cover on a day the hospital is on it",
     modeDeclarations: "a read: the day's checklist, withdrawn rows included",
     // 20-U U5c/U6 — reads of a person's own duties and of the requests they may see.

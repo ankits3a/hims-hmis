@@ -105,20 +105,20 @@ flowchart LR
 | [abdm](modules/abdm.md) | lab, opd, patients, radiology | — | 24 | 11 |
 | [aerb](modules/aerb.md) | patients | radiology | 30 | 9 |
 | [attendance](modules/attendance.md) | — | — | 16 | 10 |
-| [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ot, partners, pharmacy, radiology | 49 | 16 |
+| [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ot, partners, pharmacy, radiology | 51 | 16 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, radiology | 48 | 22 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
-| [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, pharmacy, radiology | 154 | 30 |
+| [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, pharmacy, radiology | 161 | 30 |
 | [ot](modules/ot.md) | billing, materials, patients, roster, tariff | radiology | 53 | 12 |
 | [partners](modules/partners.md) | billing, membership, patients, tariff | — | 10 | 7 |
 | [patients](modules/patients.md) | — | abdm, aerb, billing, lab, membership, opd, ot, partners, pharmacy, radiology | 31 | 8 |
 | [pcpndt](modules/pcpndt.md) | — | radiology | 10 | 5 |
-| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 182 | 32 |
+| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 183 | 32 |
 | [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm | 113 | 22 |
-| [roster](modules/roster.md) | — | opd, ot, radiology | 31 | 26 |
+| [roster](modules/roster.md) | — | opd, ot, radiology | 32 | 26 |
 | [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 18 | 7 |
 
 ## Kernel subsystems

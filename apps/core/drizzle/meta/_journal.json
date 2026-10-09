@@ -1335,8 +1335,15 @@
     {
       "idx": 190,
       "version": "7",
-      "when": 1791546532448,
-      "tag": "0190_attendance",
+      "when": 1791540844070,
+      "tag": "0190_tele_call_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1791540845070,
+      "tag": "0191_attendance",
       "breakpoints": true
     }
   ]

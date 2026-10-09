@@ -307,6 +307,8 @@ Source: `apps/core/src/modules/roster/`
   - `sweepDutyReminders(db: Db, now: Date = new Date()): Promise<number>`
   - `wantsLongReminder(s: { startsAt: Date; endsAt: Date }): boolean`
   - types: `CoverForAlert`, `DutyReminder`
+- `staff-today.ts`
+  - `staffToday(exec: Db | Tx, actor: Actor, now: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<StaffToday>`
 - `swaps.ts`
   - `answerCover(tx: Tx, actor: Actor, requestId: string, accept: boolean, noteRaw: string | null = null): Promise<void>`
   - `coverOptions(exec: Db | Tx, actor: Actor, assignmentId: string): Promise<CoverOptions>`
@@ -353,8 +355,8 @@ Source: `apps/core/src/modules/roster/`
 
 Foreign keys into: `auth`, `org`, `resources`
 
-## HTTP routes (31)
+## HTTP routes (32)
 
-- `roster-board.controller.ts` — 31: `/roster/aebas`, `/roster/as-it-stood`, `/roster/board-prints`, `/roster/covers`, `/roster/declarations`, `/roster/doctor-units`, `/roster/duties`, `/roster/evidence`, `/roster/flags`, `/roster/holidays`, `/roster/modes`, `/roster/my-duties`, `/roster/on-now`, `/roster/opd-units`, `/roster/periods`, `/roster/slots`, `/roster/unit-heads-without-regn`, `/roster/units`
+- `roster-board.controller.ts` — 32: `/roster/aebas`, `/roster/as-it-stood`, `/roster/board-prints`, `/roster/covers`, `/roster/declarations`, `/roster/doctor-units`, `/roster/duties`, `/roster/evidence`, `/roster/flags`, `/roster/holidays`, `/roster/modes`, `/roster/my-duties`, `/roster/on-now`, `/roster/opd-units`, `/roster/periods`, `/roster/slots`, `/roster/staff-today`, `/roster/unit-heads-without-regn`, `/roster/units`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/roster`

@@ -28,6 +28,9 @@ import { refusalText } from "../vitals/api";
 import { todayIst } from "../vitals/rules";
 import { Scanner } from "../vitals/scanner";
 import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
+import { ToCollectList } from "../counter/to-collect";
+import { mayReadToCollect } from "../../../../packages/contracts/src/to-collect";
+import type { WireToCollectRow } from "../../../../packages/contracts/src/to-collect";
 import { SEAT_OF } from "../scan/model";
 
 /**
@@ -94,6 +97,7 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
   const api: CounterApi = useMemo(() => counterApi(call), [call]);
   const perms = state.status === "signedIn" ? state.me.permissions : null;
   const can = useCallback((permission: string): boolean => perms !== null && holds(perms, permission), [perms]);
+  const heldHere = useMemo((): readonly string[] => perms?.hospital ?? [], [perms]);
   const today = todayIst();
 
   const [stage, setStage] = useState<Stage>("find");
@@ -157,6 +161,9 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
   const [apptVersion, setApptVersion] = useState(0);
   const [booking, setBooking] = useState<{ moving: WireAppointment | null; preset?: { doctorId?: string; date?: string } } | null>(null);
   const [deskList, setDeskList] = useState(false);
+  /** Owner 2026-10-09 — "To collect": the count on the desk home (null: not this login's to read, or not read yet), and the list. */
+  const [toCollectN, setToCollectN] = useState<number | null>(null);
+  const [collectList, setCollectList] = useState(false);
 
   const mayRegister = can("patients.register");
   const mayOpen = can("opd.visits.open");
@@ -415,6 +422,28 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
     });
     setQuote(null); setQuoteState("none"); setIssued(null); setJobs(null); settleIntent.current = null; setSettleUnknown(false);
     setError(null); setFlash(null); setStage("bill");
+  };
+
+  // ——— "To collect" (owner 2026-10-09): the count is read when the desk home shows; a doctor-only login never asks ———
+  const readToCollect = useCallback(() => {
+    if (!mayReadToCollect(heldHere)) return;
+    api.toCollect().then((r) => setToCollectN(r.items.length), () => setToCollectN(null));
+  }, [api, heldHere]);
+  useEffect(() => { if (stage === "find") readToCollect(); }, [stage, readToCollect]);
+  /**
+   * Collect, from the list: the person and the visit are put in hand from the row itself and the
+   * bill stage opens — the same stage, quote and settle a visit opened at this desk uses. Nothing
+   * is written by arriving. The visit may be finished or days old, so it is not looked for among
+   * today's open visits.
+   */
+  const collectFor = (row: WireToCollectRow): void => {
+    arriving.current = "done";
+    hold({ id: row.patientId, uhid: row.uhid, name: row.patientName, phone: null, gender: "unknown", dob: null, sealed: row.isConfidential, justRegistered: false });
+    setVisit({
+      encounterId: row.encounterId, patientId: row.patientId, visitNo: row.visitNo, departmentId: "", departmentName: "—", departmentCode: null,
+      doctorName: row.doctorName ?? "—", roomCode: null, ahead: 0, waitMin: 0, tokenNo: row.tokenNo, visitType: null, joining: false, joinError: null,
+    });
+    setStage("bill");
   };
 
   // ——— arrived from a scan (owner 2026-10-08): the person is held, then the visit the code named is opened. Nothing is written by arriving. ———
@@ -678,6 +707,10 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
               ? <Button testID="counter-new" kind="secondary" label={t("mobile.counter.find.new")} onPress={startRegister} />
               : <Text style={[type.small, { color: color.faint }]} testID="counter-noregister">{t("mobile.counter.find.noRegister")}</Text>}
             {mayApptRead && <Button testID="appts-open" kind="secondary" label={t("mobile.counter.appt.open")} onPress={() => setDeskList(true)} />}
+            {/* Owner 2026-10-09 — "To collect": who this hospital's desks let through unpaid. Drawn only while somebody is owing. */}
+            {toCollectN !== null && toCollectN > 0 && (
+              <Button testID="to-collect-open" kind="secondary" label={t("toCollect.count", { n: toCollectN })} onPress={() => setCollectList(true)} />
+            )}
           </>
         )}
 
@@ -776,7 +809,7 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
             )}
             {mayApptRead && (
               <PatientAppointments
-                api={api} patientId={person.id} today={today} version={apptVersion} mayManage={mayApptManage} mayCheckIn={mayOpen}
+                api={api} patientId={person.id} today={today} version={apptVersion} mayManage={mayApptManage} mayCheckIn={mayOpen} mayCollectAdvance={can("billing.receipt.record")}
                 doctorName={doctorNameOf} deptName={deptNameOf}
                 onMove={(a) => setBooking({ moving: a })} onCheckedIn={onCheckedIn} onAlreadyCheckedIn={onAlreadyCheckedIn}
                 onSaid={(text) => { setFlash(text); setApptVersion((n) => n + 1); }}
@@ -1054,6 +1087,13 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
           onMoved={onMovedHeld} onClose={() => setMoving(false)}
         />
       )}
+      {collectList && (
+        <ToCollectList
+          api={api} held={heldHere} mayOpenSession={maySession}
+          onCollect={(row) => { setCollectList(false); collectFor(row); }}
+          onClose={() => { setCollectList(false); readToCollect(); }}
+        />
+      )}
       {deskList && (
         <DeskAppointments
           api={api} today={today} mayManage={mayApptManage}
@@ -1064,7 +1104,7 @@ export function DeskOne({ scanned = null }: { scanned?: Scanned | null } = {}) {
       )}
       {booking !== null && person !== null && (
         <BookAppointment
-          api={api} person={{ id: person.id, name: person.name }} today={today} departments={departments} labelOf={labelOf} terms={terms}
+          api={api} person={{ id: person.id, name: person.name, phone: person.phone }} today={today} departments={departments} labelOf={labelOf} terms={terms}
           moving={booking.moving} preset={booking.preset} onDone={onBooked} onClose={() => setBooking(null)}
         />
       )}

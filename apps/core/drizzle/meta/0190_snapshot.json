@@ -1,5 +1,5 @@
 {
-  "id": "a1c56283-a13b-4793-9599-baf79d4b8830",
+  "id": "3c81dcdf-353f-4c12-b1a3-759436b2cc01",
   "prevId": "417b11e1-254c-4cc1-a65b-4e8eb9f0ab72",
   "version": "7",
   "dialect": "postgresql",
@@ -1428,18 +1428,6 @@
         },
         "phone": {
           "name": "phone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "aadhaar_hash": {
-          "name": "aadhaar_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "aadhaar_last4": {
-          "name": "aadhaar_last4",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -5311,6 +5299,37 @@
           "primaryKey": false,
           "notNull": false
         },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_person'"
+        },
+        "tele_phone": {
+          "name": "tele_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_receipt_id": {
+          "name": "advance_receipt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quote_paise": {
+          "name": "advance_quote_paise",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "advance_quoted_at": {
+          "name": "advance_quoted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "booked_by": {
           "name": "booked_by",
           "type": "text",
@@ -5488,12 +5507,34 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "opd_appointments_advance_receipt_id_receipts_id_fk": {
+          "name": "opd_appointments_advance_receipt_id_receipts_id_fk",
+          "tableFrom": "opd_appointments",
+          "tableTo": "receipts",
+          "columnsFrom": [
+            "advance_receipt_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "opd_appointments_mode_ck": {
+          "name": "opd_appointments_mode_ck",
+          "value": "\"opd_appointments\".\"mode\" in ('in_person', 'tele')"
+        },
+        "opd_appointments_tele_phone_ck": {
+          "name": "opd_appointments_tele_phone_ck",
+          "value": "\"opd_appointments\".\"mode\" <> 'tele' or \"opd_appointments\".\"tele_phone\" is not null"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.opd_complaint_concepts": {
@@ -7008,6 +7049,44 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "consult_mode": {
+          "name": "consult_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_person'"
+        },
+        "tele_call_started_at": {
+          "name": "tele_call_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome": {
+          "name": "tele_outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_at": {
+          "name": "tele_outcome_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_outcome_by": {
+          "name": "tele_outcome_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tele_no_answer_count": {
+          "name": "tele_no_answer_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "paper_recheck_asked_by": {
           "name": "paper_recheck_asked_by",
@@ -9530,6 +9609,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "upi_vpa": {
+          "name": "upi_vpa",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "upi_payee_name": {
+          "name": "upi_payee_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -51271,991 +51362,6 @@
           "value": "(\"abdm_profile_shares\".\"status\" = 'linked') = (\"abdm_profile_shares\".\"patient_id\" is not null)"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.att_days": {
-      "name": "att_days",
-      "schema": "",
-      "columns": {
-        "pin": {
-          "name": "pin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "date": {
-          "name": "date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "first_in": {
-          "name": "first_in",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_out": {
-          "name": "last_out",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hours_worked": {
-          "name": "hours_worked",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ot_minutes": {
-          "name": "ot_minutes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shift_name": {
-          "name": "shift_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "day_type": {
-          "name": "day_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "locked": {
-          "name": "locked",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "att_days_date_idx": {
-          "name": "att_days_date_idx",
-          "columns": [
-            {
-              "expression": "date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "att_days_pin_date_pk": {
-          "name": "att_days_pin_date_pk",
-          "columns": [
-            "pin",
-            "date"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.att_holidays": {
-      "name": "att_holidays",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "att_holidays_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "date": {
-          "name": "date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dept": {
-          "name": "dept",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cancelled": {
-          "name": "cancelled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "att_holidays_date_idx": {
-          "name": "att_holidays_date_idx",
-          "columns": [
-            {
-              "expression": "date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.att_leaves": {
-      "name": "att_leaves",
-      "schema": "",
-      "columns": {
-        "pin": {
-          "name": "pin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "date": {
-          "name": "date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "att_leaves_date_idx": {
-          "name": "att_leaves_date_idx",
-          "columns": [
-            {
-              "expression": "date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "att_leaves_pin_date_pk": {
-          "name": "att_leaves_pin_date_pk",
-          "columns": [
-            "pin",
-            "date"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.att_meeting_requests": {
-      "name": "att_meeting_requests",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "pin": {
-          "name": "pin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "date": {
-          "name": "date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason_code": {
-          "name": "reason_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'open'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "seen_by": {
-          "name": "seen_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "seen_at": {
-          "name": "seen_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "closed_by": {
-          "name": "closed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "closed_at": {
-          "name": "closed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "close_note": {
-          "name": "close_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "att_meeting_requests_active_ux": {
-          "name": "att_meeting_requests_active_ux",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"att_meeting_requests\".\"status\" in ('open', 'seen')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "att_meeting_requests_status_idx": {
-          "name": "att_meeting_requests_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "att_meeting_requests_pin_date_idx": {
-          "name": "att_meeting_requests_pin_date_idx",
-          "columns": [
-            {
-              "expression": "pin",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "att_meeting_requests_user_id_users_id_fk": {
-          "name": "att_meeting_requests_user_id_users_id_fk",
-          "tableFrom": "att_meeting_requests",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "att_meeting_requests_seen_by_users_id_fk": {
-          "name": "att_meeting_requests_seen_by_users_id_fk",
-          "tableFrom": "att_meeting_requests",
-          "tableTo": "users",
-          "columnsFrom": [
-            "seen_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "att_meeting_requests_closed_by_users_id_fk": {
-          "name": "att_meeting_requests_closed_by_users_id_fk",
-          "tableFrom": "att_meeting_requests",
-          "tableTo": "users",
-          "columnsFrom": [
-            "closed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "att_meeting_requests_status_chk": {
-          "name": "att_meeting_requests_status_chk",
-          "value": "\"att_meeting_requests\".\"status\" in ('open', 'seen', 'closed', 'resolved_by_correction')"
-        },
-        "att_meeting_requests_note_chk": {
-          "name": "att_meeting_requests_note_chk",
-          "value": "(\"att_meeting_requests\".\"note\" is null or char_length(\"att_meeting_requests\".\"note\") <= 200) and (\"att_meeting_requests\".\"close_note\" is null or char_length(\"att_meeting_requests\".\"close_note\") <= 200)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.att_on_duty": {
-      "name": "att_on_duty",
-      "schema": "",
-      "columns": {
-        "pin": {
-          "name": "pin",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "in_since": {
-          "name": "in_since",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "device": {
-          "name": "device",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "as_of": {
-          "name": "as_of",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.att_punches": {
-      "name": "att_punches",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "pin": {
-          "name": "pin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ts": {
-          "name": "ts",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "day": {
-          "name": "day",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "direction": {
-          "name": "direction",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "verify": {
-          "name": "verify",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "device": {
-          "name": "device",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "origin": {
-          "name": "origin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "received_via": {
-          "name": "received_via",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "att_punches_pin_day_idx": {
-          "name": "att_punches_pin_day_idx",
-          "columns": [
-            {
-              "expression": "pin",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "day",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "att_punches_via_chk": {
-          "name": "att_punches_via_chk",
-          "value": "\"att_punches\".\"received_via\" in ('pull', 'webhook')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.att_roster": {
-      "name": "att_roster",
-      "schema": "",
-      "columns": {
-        "pin": {
-          "name": "pin",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "date": {
-          "name": "date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "shift_name": {
-          "name": "shift_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "start_time": {
-          "name": "start_time",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "end_time": {
-          "name": "end_time",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "off": {
-          "name": "off",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "holiday": {
-          "name": "holiday",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "leave": {
-          "name": "leave",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "att_roster_date_idx": {
-          "name": "att_roster_date_idx",
-          "columns": [
-            {
-              "expression": "date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "att_roster_pin_date_pk": {
-          "name": "att_roster_pin_date_pk",
-          "columns": [
-            "pin",
-            "date"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.att_shifts": {
-      "name": "att_shifts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dept": {
-          "name": "dept",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "checkin_time": {
-          "name": "checkin_time",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "checkout_time": {
-          "name": "checkout_time",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "crosses_midnight": {
-          "name": "crosses_midnight",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "grace_minutes": {
-          "name": "grace_minutes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "weekly_off_days": {
-          "name": "weekly_off_days",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.att_staff": {
-      "name": "att_staff",
-      "schema": "",
-      "columns": {
-        "pin": {
-          "name": "pin",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "dept": {
-          "name": "dept",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "post": {
-          "name": "post",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gender": {
-          "name": "gender",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "mobile": {
-          "name": "mobile",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "joining_date": {
-          "name": "joining_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "date_of_leaving": {
-          "name": "date_of_leaving",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "work_days": {
-          "name": "work_days",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "aadhaar_hash": {
-          "name": "aadhaar_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "link_source": {
-          "name": "link_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "linked_at": {
-          "name": "linked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "needs_attention": {
-          "name": "needs_attention",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "first_seen_at": {
-          "name": "first_seen_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "att_staff_user_ux": {
-          "name": "att_staff_user_ux",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "att_staff_aadhaar_idx": {
-          "name": "att_staff_aadhaar_idx",
-          "columns": [
-            {
-              "expression": "aadhaar_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "att_staff_user_id_users_id_fk": {
-          "name": "att_staff_user_id_users_id_fk",
-          "tableFrom": "att_staff",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "att_staff_link_source_chk": {
-          "name": "att_staff_link_source_chk",
-          "value": "\"att_staff\".\"link_source\" is null or \"att_staff\".\"link_source\" in ('mobile', 'aadhaar')"
-        },
-        "att_staff_link_pair_chk": {
-          "name": "att_staff_link_pair_chk",
-          "value": "(\"att_staff\".\"user_id\" is null) = (\"att_staff\".\"link_source\" is null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.att_sync_state": {
-      "name": "att_sync_state",
-      "schema": "",
-      "columns": {
-        "stage": {
-          "name": "stage",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "cursor": {
-          "name": "cursor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_attempt_at": {
-          "name": "last_attempt_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_ok_at": {
-          "name": "last_ok_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_outcome": {
-          "name": "last_outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

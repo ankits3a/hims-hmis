@@ -189,13 +189,17 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // through the alias pipeline. HOURLY, so leg 1b beside `sweepOverdueQa` for the same reason
         // (leg 1a pages at 300 s), and an `absent()` term.
         "proposeMedicineNicknames",
-        // Staff attendance (owner 2026-10-09) — the twenty-eighth: HMIS's copy of the attendance
+        // Tele-call (owner 2026-10-09) — the twenty-eighth: covered tele appointments open at their
+        // slot. `every(60_000)`, so leg 1a, and an `absent()` term: a job that never ran is a paid
+        // patient the doctor's line never shows.
+        "openDueTeleVisits",
+        // Staff attendance (owner 2026-10-09) — the twenty-ninth: HMIS's copy of the attendance
         // machine. `every(120_000)`, inside leg 1a's 300 s, and an `absent()` term.
         "syncAttendance",
       ].sort(),
     );
-    expect(registered).toHaveLength(28); // ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(28); // no job registered twice
+    expect(registered).toHaveLength(29); // ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(29); // no job registered twice
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

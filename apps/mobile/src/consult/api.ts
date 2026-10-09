@@ -54,6 +54,10 @@ export function consultApi(call: Call) {
     precheck: (id: string, lines: unknown[]) => call<WirePrecheck>("POST", `/opd/visits/${enc(id)}/rx-precheck`, { lines }),
     issue: (id: string, body: Record<string, unknown>) => call<WireIssued>("POST", `/opd/visits/${enc(id)}/prescriptions`, body),
     complete: (id: string, body: Record<string, unknown>) => call<unknown>("POST", `/opd/visits/${enc(id)}/consult/complete`, body),
+    /** Tele-call (owner 2026-10-09): the number to dial is handed over here and nowhere else; then what came of the call. */
+    teleCall: (id: string) => call<{ telePhone: string | null }>("POST", `/opd/visits/${enc(id)}/tele/call`),
+    teleOutcome: (id: string, outcome: "spoke" | "no_answer") =>
+      call<{ outcome: "spoke" | "no_answer"; final: boolean; encounter: { status: string; consultMode?: string | null; teleOutcome?: string | null; teleOutcomeAt?: string | null; teleNoAnswerCount?: number | null } }>("POST", `/opd/visits/${enc(id)}/tele/outcome`, { outcome }),
 
     medicines: async (q: string) => (await call<{ items: WireMedicineHit[] }>("GET", `/opd/consult/medicines?q=${enc(q)}&limit=8`)).items,
     diagnoses: async (q: string) => (await call<{ items: WireIcd10Hit[] }>("GET", `/opd/cds/complete/diagnosis?q=${enc(q)}&limit=8`)).items,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { TeleCard, isTele } from "../consult/tele-call";
 import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError } from "../api";
@@ -9,7 +10,7 @@ import { Button, MONO, Note, Tag } from "../ui";
 import { humanDate, istClock } from "../vitals/rules";
 import type { WireDangerFlag } from "../vitals/rules";
 import type { DoctorApi, WireAllergyRow, WireDocument, WireRxHistoryItem, WireTimelineItem, WireVisitDetail, WireVisitVitals } from "./api";
-import { ageSexOf, ageYearsOn, briefRefill, briefResults, guardianBrief, isUnpaid, lastCompletedVisit, lastVisitCard, rowName, shortDay, showsLastVisit, visitKind } from "./rules";
+import { ageSexOf, ageYearsOn, briefRefill, briefResults, guardianBrief, lastCompletedVisit, lastVisitCard, rowName, shortDay, showsLastVisit, visitKind } from "./rules";
 import type { WirePatientDispense, WirePatientImaging, WirePatientResult, WireQueueEntryView, WireQueuePatient } from "./rules";
 
 /**
@@ -154,12 +155,12 @@ function Section({ title, children, testID }: { title: string; children: React.R
 }
 
 export type BriefActions = {
-  start: () => void; recall: () => void; skip: () => void; openUnpaid: () => void; undoSkip: () => void;
+  start: () => void; recall: () => void; skip: () => void; undoSkip: () => void;
   park: () => void; resume: () => void; complete: () => void;
 };
 
 /** Where the row stands in the line the server sent — the parent reads it off the queue view; nothing is re-derived here. */
-export type BriefGroup = "called" | "line" | "held" | "left" | "with" | "parked" | "gone";
+export type BriefGroup = "called" | "line" | "left" | "with" | "parked" | "gone";
 
 export function PatientBrief({ api, entry, group, encounterId, patientId, summary, tokenNo, isHead, busy, error, flash, actions, onBack }: {
   api: DoctorApi;
@@ -234,7 +235,6 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
 
   const hiddenParts = [allergies, timeline, rx, lab, imaging].some((l) => l.status === "hidden") && !sealed;
   const kind = entry === null ? null : visitKind(entry);
-  const unpaid = (entry !== null && isUnpaid(entry)) || v?.feeUnpaid === true;
 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
@@ -257,15 +257,8 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
               {kind !== null && <Text testID="brief-kind" style={s.sub}>{t(`opdConsultV2.vtShort.${kind}`)}</Text>}
             </View>
           </View>
+          {isTele(v?.encounter) && <View style={{ marginTop: space.sm }}><TeleCard slotAt={v?.teleSlotAt} testID="brief-tele" /></View>}
           {sealed && <Text testID="brief-sealed" style={[s.sub, { marginTop: space.sm, color: "#8a5a10", fontWeight: "700" }]}>{t("opdConsult.restricted")}</Text>}
-          {unpaid && (
-            <View testID="brief-unpaid" style={s.unpaid}>
-              <Text style={s.unpaidText}>₹ {t("unpaid.notPaid")} — {t("unpaid.title")}</Text>
-              {(entry?.encounter.consultFeeOverrideReason ?? entry?.encounter.feeBypassReason ?? null) !== null && (
-                <Text style={[s.sub, { color: color.red }]}>{t("opdConsult.heldWhy", { reason: entry?.encounter.consultFeeOverrideReason ?? entry?.encounter.feeBypassReason ?? "" })}</Text>
-              )}
-            </View>
-          )}
           {(entry?.encounter.dangerFlagged === true || entry?.danger === true) && (
             <Text testID="brief-danger" style={s.danger}>{t("opdConsult.danger").toUpperCase()}</Text>
           )}
@@ -323,8 +316,9 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
             )}
         </Section>
 
-        {/* A guardian's visit has no chart and the card above says so; a chart that somehow exists is shown as ever. */}
-        {(guardian === null || latestVitals !== null) && (
+        {/* A guardian's visit has no chart and the card above says so; a chart that somehow exists is shown as ever.
+            Owner 2026-10-09 — nobody was at the bay for a tele-call: no vitals block at all. */}
+        {!isTele(v?.encounter) && (guardian === null || latestVitals !== null) && (
           <Section title={t("mobile.doctor.vitalsTitle")} testID="brief-vitals-card">
             {visit.status === "loading" ? <Text style={s.dimLine}>…</Text>
               : visit.status !== "ok" ? <Text style={s.dimLine}>{t("mobile.doctor.partFailed")}</Text>
@@ -432,9 +426,6 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
             </View>
           </>
         )}
-        {group === "held" && (
-          <Button testID="act-open-unpaid" label={t("opdConsult.openUnpaid")} disabled={busy !== null} onPress={actions.openUnpaid} />
-        )}
         {group === "line" && (
           <>
             {!isHead && <Text style={s.barHint}>{t("mobile.doctor.startAheadHint")}</Text>}
@@ -469,8 +460,6 @@ const s = StyleSheet.create({
   name: { fontSize: 20, lineHeight: 25, fontWeight: "700", color: color.ink },
   demo: { fontSize: 16, fontWeight: "500", color: color.dim },
   sub: { ...type.small, color: color.dim, marginTop: 2 },
-  unpaid: { marginTop: space.md, padding: space.md, borderRadius: radius.md, borderWidth: 1, borderColor: color.redLine, backgroundColor: color.redSoft, gap: 4 },
-  unpaidText: { fontSize: 14.5, lineHeight: 20, fontWeight: "700", color: color.red },
   danger: { marginTop: space.md, alignSelf: "flex-start", fontFamily: MONO, fontSize: 12, fontWeight: "700", letterSpacing: 1, color: color.red, borderWidth: 2, borderColor: color.red, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 3 },
   dimLine: { ...type.body, color: color.dim },
   words: { fontSize: 17, lineHeight: 24, color: color.ink },
