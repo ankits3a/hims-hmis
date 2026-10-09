@@ -173,6 +173,10 @@ describe("nothing about money on the doctor's phone (owner 2026-10-09)", () => {
         clean("the consultation");
 
         expect(w.calls.filter((k) => k.includes("open-unpaid"))).toEqual([]);
+        // "To collect" is the desk's list: the doctor's phone neither draws it nor asks for it.
+        expect(w.calls.filter((k) => k.includes("to-collect"))).toEqual([]);
+        expect(screen.queryByTestId("to-collect-open")).toBeNull();
+        expect(screen.queryByTestId("to-collect-list")).toBeNull();
       });
     }
   }

@@ -4136,6 +4136,8 @@ describe("OpdConsult — nothing about money on the doctor's screen", () => {
   /** `current` is the visit under test; one more of the same kind waits in the line behind it. */
   const world = (bypass: string | null): Record<string, Handler> => ({
     ...baseRoutes(),
+    "GET /api/tariff/price-list": { status: 200, body: { items: [{ serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", category: "procedure", pricePaise: 120000 }] } },
+    "PUT /api/opd/visits/enc-1/consult/note": { status: 200, body: { encounter: ENCOUNTER } },
     "GET /api/opd/queues": { status: 200, body: {
       ...QUEUE_VIEW, current: money(CURRENT, bypass), ordered: [money(WAIT_A, bypass), WAIT_B],
       // What a server from before the ruling would still send: the doctor's screen draws none of it.
@@ -4147,11 +4149,16 @@ describe("OpdConsult — nothing about money on the doctor's screen", () => {
       encounter: { ...ENCOUNTER, feeBypassReason: bypass, consultFeeOverrideReason: null },
     } },
   });
-  const said = (): string => [
-    document.body.textContent ?? "",
-    ...[...document.body.querySelectorAll("[title],[aria-label],[placeholder]")].flatMap((el) =>
-      ["title", "aria-label", "placeholder"].map((a) => el.getAttribute(a) ?? "")),
-  ].join(" \n ");
+  /** Every word on the screen — optionally with ONE element, named by its test id, left out. */
+  const said = (exceptTestId?: string): string => {
+    const body = document.body.cloneNode(true) as HTMLElement;
+    if (exceptTestId !== undefined) body.querySelectorAll(`[data-testid="${exceptTestId}"]`).forEach((el) => { el.remove(); });
+    return [
+      body.textContent ?? "",
+      ...[...body.querySelectorAll("[title],[aria-label],[placeholder]")].flatMap((el) =>
+        ["title", "aria-label", "placeholder"].map((a) => el.getAttribute(a) ?? "")),
+    ].join(" \n ");
+  };
 
   for (const [name, bypass] of [["a visit the desk let through unpaid", BYPASS], ["a plainly unpaid visit", null]] as const) {
     for (const lang of ["en", "hi"] as const) {
@@ -4181,6 +4188,24 @@ describe("OpdConsult — nothing about money on the doctor's screen", () => {
         expect(said()).not.toMatch(MONEY_HI);
         expect(said()).not.toContain("sent through by the desk");
         expect(callsTo("POST", "/api/opd/visits/enc-1/consult/open-unpaid")).toHaveLength(0);
+
+        /*
+          THE ONE EXEMPTION, BY ITS TEST ID. Owner, 2026-10-09, asked whether the advised-tests
+          picker's prices should go too: *"Hide test prices from doctor on website: No."* A test's
+          price is the catalogue's, not a statement about this patient's payment, and the doctor
+          advises with it in view. So `advised-tests` — that element and nothing else — is left out
+          of the search, and it is asserted to still carry its price.
+        */
+        await user.click(screen.getByRole("tab", { name: i18next.t("opdConsultV2.tabs.inv") }));
+        const picker = await screen.findByTestId("advised-tests");
+        await user.type(picker.querySelector("input")!, "ultra");
+        await waitFor(() => { expect(picker.textContent).toMatch(/₹1,200/); });
+        expect(said("advised-tests")).not.toMatch(MONEY_EN);
+        expect(said("advised-tests")).not.toMatch(MONEY_HI);
+
+        // "To collect" is the desk's: the doctor's screen neither draws it nor asks for it.
+        expect(screen.queryByTestId("to-collect")).toBeNull();
+        expect(callsTo("GET", "/api/billing/to-collect")).toHaveLength(0);
       });
     }
   }

@@ -444,6 +444,36 @@ describe("billing e2e", () => {
     expect(row.consultFeeOverrideBy).toBeNull();
   });
 
+  /**
+   * OWNER 2026-10-09 — "'To collect' list for desk, with money-off-doctor release: yes." Over HTTP:
+   * the desk and the cashier read it, a doctor is refused, and collecting through the counter's own
+   * invoice route is what takes the row off.
+   */
+  it("GET /billing/to-collect: the cashier and the front desk see the let-through visit, a doctor gets 403, and paying removes the row", async () => {
+    const patientId = await registerPatient("Collect Later Devi", "9876543297");
+    const encounterId = await openVisit(patientId);
+    await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
+
+    await http().get("/billing/to-collect").set(...auth(dra.token)).expect(403);
+    await http().get("/billing/to-collect").set(...auth(rando.token)).expect(403);
+    // The front desk's own key and nothing of the cashier's: `alsoAdmits` is what lets it in.
+    await createRole(db, "tc_front_seat", "front desk, opens visits");
+    await grantPermissionToRole(db, registry, "tc_front_seat", "opd.visits.open");
+    const desk = await mkUser(db, "tc_front_desk", ["tc_front_seat"]);
+    const forDesk = await http().get("/billing/to-collect").set(...auth(desk.token)).expect(200);
+    expect(forDesk.body.items.map((r: { encounterId: string }) => r.encounterId)).toContain(encounterId);
+
+    const forCashier = await http().get("/billing/to-collect").set(...auth(cashier.token)).expect(200);
+    const row = forCashier.body.items.find((r: { encounterId: string }) => r.encounterId === encounterId);
+    expect(row).toMatchObject({ patientName: "Collect Later Devi", state: "with_doctor", amountDuePaise: 50_000 });
+    expect(row.reason).toContain("fixture: this suite");
+
+    await openSession(cashier.token);
+    await issuePaid(patientId, base.consultNewServiceId, encounterId);
+    const after = await http().get("/billing/to-collect").set(...auth(cashier.token)).expect(200);
+    expect(after.body.items.map((r: { encounterId: string }) => r.encounterId)).not.toContain(encounterId);
+  });
+
   it("an app build from before the ruling: consult/open-unpaid still answers 201 and the visit still starts", async () => {
     const patientId = await registerPatient("Old Build Kumar", "9876543298");
     const encounterId = await openVisit(patientId);

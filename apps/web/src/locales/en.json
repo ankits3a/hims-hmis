@@ -941,7 +941,6 @@
     },
     "clockLongest": "Longest wait in this line",
     "clockVitals": "Waiting for vitals",
-    "clockHeld": "Held for payment",
     "clockLeft": "Left after the skip cap",
     "clocksIdle": "choose a doctor",
     "clocksSummary": "longest wait {{n}} min · {{vitals}} at vitals",
@@ -14831,5 +14830,19 @@
     },
     "note": "On record = the slip was photographed, the desk typed it, or the doctor prescribed on a screen.",
     "screenNote": "\"On screen\" counts the phone app and the computer together."
+  },
+  "toCollect": {
+    "title": "To collect",
+    "count": "To collect · {{n}}",
+    "none": "Nobody to collect from.",
+    "collect": "Collect",
+    "atCounter": "at the billing counter",
+    "why": "Let through by {{by}}, {{mins}} min ago — {{reason}}",
+    "state": {
+      "done": "seen by the doctor",
+      "left": "left the line",
+      "with_doctor": "with the doctor",
+      "waiting": "waiting"
+    }
   }
 }

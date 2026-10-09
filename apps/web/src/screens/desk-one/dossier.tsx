@@ -1,3 +1,5 @@
+import { useNavigate } from "@tanstack/react-router";
+import { ToCollect } from "../../components/to-collect";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { useQuery } from "@tanstack/react-query";
@@ -192,6 +194,7 @@ export function Dossier(): React.ReactElement {
   const d = useDesk();
   const { s } = d;
   const { t } = useTranslation();
+  const navigate = useNavigate();
 
   /* ── nobody in hand: the day's figures and the keys ── */
   if (s.person === null && !s.enrolling) {
@@ -215,6 +218,16 @@ export function Dossier(): React.ReactElement {
             <span className="mo" style={{ fontSize: 15, fontWeight: 600 }}>{stat.value}</span>
           </div>
         ))}
+
+        {/*
+          OWNER 2026-10-09 — "To collect": the patients this desk let through unpaid, under the day's
+          own figures, where the eye already goes between two patients. Collect opens the billing
+          chair on that visit (`/billing?encounterId=`), the road the OPD desk has always used.
+        */}
+        <ToCollect
+          style={{ marginTop: 22, padding: "10px 0 0", border: 0, borderTop: "1px solid var(--line)", borderRadius: 0, background: "transparent" }}
+          onCollect={(row) => { void navigate({ to: "/billing", search: { encounterId: row.encounterId } }); }}
+        />
 
         <div className="tag" style={{ marginTop: 26 }}>keys</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9, fontSize: 11.5, color: "var(--dim)" }}>

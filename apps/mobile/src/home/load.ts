@@ -1,3 +1,5 @@
+import { isGone, mayReadToCollect } from "../../../../packages/contracts/src/to-collect";
+import type { ToCollectState } from "../../../../packages/contracts/src/to-collect";
 import { ApiError, NetworkError } from "../api";
 import { doctorApi } from "../doctor/api";
 import { rosterApi } from "../roster/api";
@@ -58,7 +60,7 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
   const doctor = doctorApi(call), roster = rosterApi(call), vitals = vitalsApi(call);
 
   const me = seats.includes("consult") ? await soft(() => doctor.me()) : null;
-  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units, recording] = await Promise.all([
+  const [queue, paper, duties, bench, slips, approvals, dayBrief, week, month, desk, team, onNow, byDept, byDay, depts, report, stranded, mine, sent, bell, units, recording, owing] = await Promise.all([
     me === null ? null : soft(() => doctor.queue(me.id, today)),
     me === null ? null : soft(() => call<Paper>("GET", "/opd/paper/consults?scope=mine")),
     seats.includes("myDuties") ? soft(() => roster.myDuties()) : null,
@@ -82,6 +84,8 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     me === null ? null : soft(() => doctor.doctorUnits(today)),
     /* Is today being recorded? The server decides what this login sees (owner 2026-10-07). */
     soft(() => call<RecordingReport>("GET", "/opd/reports/recording")),
+    /* Owner 2026-10-09 — "To collect": asked only by a login the route admits; a doctor's phone never calls it. */
+    mayReadToCollect(permissions) ? soft(() => call<{ items: { state: ToCollectState }[] }>("GET", "/billing/to-collect")) : null,
   ]);
 
   /* The front desk's own two: who I seated is still waiting (my report's rows), whose booking is stranded. */
@@ -138,6 +142,8 @@ export async function loadHome(call: Call, permissions: readonly string[], seats
     approvals: approvals?.items ?? null, day: dayBrief, week, month,
     blind, receiptsToday: receipts === null ? null : Number(receipts),
     hospital, onNow, team,
+    // Counts and nothing else leave this function: no amount reaches the home model (blind count).
+    toCollect: owing === null ? null : { count: owing.items.length, gone: owing.items.filter(isGone).length },
     deskWaiting, rebook, myRequests: mine?.items ?? null, sentBack, toType: sent?.toType ?? null,
   };
   const deptList = depts === null ? [] : Array.isArray(depts) ? depts : (depts.items ?? []);

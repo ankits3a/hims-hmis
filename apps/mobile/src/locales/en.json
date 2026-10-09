@@ -1958,6 +1958,9 @@
       "deskWaitingSub": "Seated by you, not yet with a doctor",
       "rebook": "appointments to re-book",
       "rebookSub": "The doctor is on leave that day",
+      "toCollect": "to collect",
+      "toCollectSub": "Let through unpaid at the desk",
+      "toCollectGone": "{{n}} already seen or gone",
       "myRequest": "Your request · {{what}}",
       "myRequestPending": "with the approver",
       "myRequestGranted": "Approved — you can go ahead",
@@ -2226,5 +2229,19 @@
     "offline": "No network — could not read the count.",
     "refused": "The server could not answer. Try again.",
     "noAccess": "There is no recording count for your login."
+  },
+  "toCollect": {
+    "title": "To collect",
+    "count": "To collect · {{n}}",
+    "none": "Nobody to collect from.",
+    "collect": "Collect",
+    "atCounter": "at the billing counter",
+    "why": "Let through by {{by}}, {{mins}} min ago — {{reason}}",
+    "state": {
+      "done": "seen by the doctor",
+      "left": "left the line",
+      "with_doctor": "with the doctor",
+      "waiting": "waiting"
+    }
   }
 }
