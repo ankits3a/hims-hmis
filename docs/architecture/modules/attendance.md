@@ -81,9 +81,10 @@ Source: `apps/core/src/modules/attendance/`
 
 Foreign keys into: `auth`
 
-## HTTP routes (16)
+## HTTP routes (18)
 
 - `attendance.controller.ts` — 13: `/attendance/me`, `/attendance/person`, `/attendance/requests`, `/attendance/summary`, `/attendance/sync-state`, `/attendance/team`, `/attendance/today`
+- `me-identity.controller.ts` — 2: `/me/identity`
 - `users-identity.controller.ts` — 2: `/admin/users`
 - `webhook.controller.ts` — 1: `/webhooks/bioattend`
 

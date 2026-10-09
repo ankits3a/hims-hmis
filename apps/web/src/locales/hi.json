@@ -2339,6 +2339,101 @@
     "submit": "पासवर्ड बदलें (Alt+S)"
   },
   "adminUsers": {
+    "heading": "उपयोगकर्ता",
+    "list": {
+      "count": "{{n}} लोग",
+      "newUser": "नया उपयोगकर्ता",
+      "search": "नाम, यूज़रनेम, स्टाफ कोड या मोबाइल",
+      "searchLabel": "उपयोगकर्ता खोजें",
+      "roleFilter": "भूमिका",
+      "anyRole": "कोई भी भूमिका",
+      "filters": "छाँटें",
+      "colName": "नाम",
+      "colSignIn": "साइन-इन",
+      "shown": "{{total}} में से {{n}}",
+      "noMatch": "कोई नहीं मिला",
+      "selectUser": "{{name}} चुनें",
+      "selectAll": "दिखाए गए सभी चुनें",
+      "openUser": "{{name}} खोलें",
+      "noRole": "भूमिका नहीं",
+      "pinSet": "PIN है",
+      "noPin": "PIN नहीं"
+    },
+    "chip": {
+      "all": "सभी",
+      "active": "सक्रिय",
+      "deactivated": "निष्क्रिय",
+      "noRole": "भूमिका नहीं",
+      "passwordDue": "नया पासवर्ड बाकी",
+      "notLinked": "हाज़िरी नहीं जुड़ी"
+    },
+    "bulk": {
+      "selected": "{{n}} चुने",
+      "addRole": "भूमिका जोड़ें",
+      "deactivate": "निष्क्रिय करें",
+      "clear": "हटाएँ",
+      "addRoleTitle": "भूमिका जोड़ें · {{n}} लोग",
+      "addedTo": "{{role}} {{n}} को दी",
+      "deactivatedN": "{{n}} निष्क्रिय",
+      "refusedBy": "{{name}}: {{why}}"
+    },
+    "ask": {
+      "title": "{{name}} को निष्क्रिय करें?",
+      "titleMany": "{{n}} लोगों को निष्क्रिय करें?",
+      "signedOut": "फ़ोन और सभी PC से साइन आउट",
+      "rolesKept": "भूमिकाएँ बनी रहेंगी",
+      "turnOn": "कभी भी फिर चालू करें",
+      "confirm": "निष्क्रिय करें",
+      "keep": "सक्रिय रखें"
+    },
+    "drawer": {
+      "close": "बंद करें",
+      "rolesN": "भूमिकाएँ · {{n}}",
+      "copyFrom": "दूसरे उपयोगकर्ता से लें",
+      "copyPick": "उपयोगकर्ता चुनें",
+      "copyGo": "{{n}} भूमिकाएँ लें",
+      "copyNone": "लेने को कुछ नया नहीं",
+      "copied": "{{from}} से {{n}} भूमिकाएँ {{username}} को",
+      "remove": "हटाएँ",
+      "addRole": "भूमिका जोड़ें",
+      "noRoleMatch": "कोई भूमिका नहीं मिली",
+      "signIn": "साइन-इन",
+      "phones": "फ़ोन",
+      "phonesSignedIn": "{{n}} साइन इन ›",
+      "idTitle": "पहचान और हाज़िरी",
+      "mobile": "मोबाइल",
+      "aadhaar": "आधार",
+      "attendance": "हाज़िरी",
+      "editIdentity": "मोबाइल या आधार बदलें"
+    },
+    "newUser": {
+      "title": "नया उपयोगकर्ता",
+      "usernameMade": "नाम से बना",
+      "usernameTaken": "पहले से है",
+      "mobilePlaceholder": "10 अंक",
+      "mobileHint": "हाज़िरी जोड़ता है",
+      "quick": {
+        "doctor": "डॉक्टर",
+        "vitals_desk": "वाइटल्स डेस्क",
+        "front_office": "फ्रंट ऑफ़िस",
+        "cashier": "कैशियर",
+        "pharmacy": "फ़ार्मेसी",
+        "lab_technician": "लैब तकनीशियन"
+      },
+      "moreRoles": "और भूमिकाएँ…",
+      "add": "जोड़ें",
+      "copyRoles": "या दूसरे उपयोगकर्ता से भूमिकाएँ लें",
+      "firstPassword": "पहला पासवर्ड",
+      "copy": "कॉपी",
+      "copied": "कॉपी हुआ",
+      "newOne": "नया बनाएँ",
+      "mustChange": "पहली बार साइन इन पर बदलना होगा।",
+      "typeOwn": "खुद लिखें",
+      "useMade": "बना हुआ लें",
+      "pinPlaceholder": "4–6 अंक",
+      "create": "उपयोगकर्ता बनाएँ",
+      "notSaved": "{{what}} सहेजा नहीं: {{why}}"
+    },
     "title": "उपयोगकर्ता और पहुँच",
     "createTitle": "व्यक्ति जोड़ें",
     "createWhy": "नए खाते को पहली बार साइन इन करते समय यह पासवर्ड बदलना होगा। PIN वैकल्पिक है और तेज़ टर्मिनल स्विच सक्षम करता है।",
@@ -14926,6 +15021,24 @@
       "left": "क़तार छोड़ी",
       "with_doctor": "डॉक्टर के पास",
       "waiting": "प्रतीक्षा में"
+    }
+  },
+  "aadhaarSticker": {
+    "text": "हाज़िरी देखने के लिए आधार जोड़ें",
+    "button": "आधार जोड़ें",
+    "title": "आपका आधार",
+    "label": "आधार नंबर",
+    "hint": "12 अंक · सिर्फ़ आखिरी 4 रखते हैं",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "linked": "हाज़िरी जुड़ गई",
+    "saved": "सहेजा · हाज़िरी टीम मिलाएगी",
+    "error": {
+      "aadhaar_invalid": "आधार सही नहीं",
+      "aadhaar_locked": "पहले से जुड़ा · एडमिन से कहें",
+      "aadhaar_key_not_configured": "अभी तैयार नहीं",
+      "too_many_attempts": "बहुत बार · कल कोशिश करें",
+      "failed": "सहेजा नहीं · फिर कोशिश करें"
     }
   }
 }

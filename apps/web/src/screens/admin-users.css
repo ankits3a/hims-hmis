@@ -1,0 +1,176 @@
+/*
+  THE USERS SCREEN (owner 2026-10-09: "rework to make it highly user friendly") — the board's five
+  drawings in the app's own tokens. Desktop: the list fills one viewport and scrolls inside its box,
+  the person opens in a drawer on the right. At 900 px and below the drawer is the whole page; at
+  640 px and below a row is avatar, name, roles and status, and the page scrolls as a page.
+*/
+/* `.au` is `display: contents` inside `PaperScreen`, so the screen itself is found by what it holds. */
+@media (min-width: 641px) { .pp:has(> .au) { height: var(--pp-h); min-height: 0; } }
+
+.au .au-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.au .au-head h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+.au .au-count { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 500; color: var(--dim); }
+.au .au-head .au-grow { flex: 1 1 auto; }
+
+.au .au-find { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.au .au-search {
+  flex: 1 1 260px; min-width: 0; display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px;
+  background: var(--card); border: 1.5px solid var(--green); border-radius: 8px;
+}
+.pp .au .au-search input { flex: 1; box-shadow: none; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14.5px; color: var(--ink); height: 38px; padding: 0; }
+.au .au-search input:focus-visible { outline: none; }
+.au .au-search:focus-within { box-shadow: 0 0 0 3px var(--green-soft); }
+.au .au-role-filter {
+  flex: 0 1 200px; min-width: 150px; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); font-size: 13.5px; font-weight: 500; color: var(--ink);
+}
+
+.au .au-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.au .au-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--line);
+  border-radius: 16px; background: var(--card); font-size: 13px; font-weight: 500; color: var(--ink); white-space: nowrap;
+}
+.au .au-chip b { font-family: "IBM Plex Mono", monospace; font-weight: 500; color: var(--dim); }
+.au .au-chip.warn { border-color: var(--gold-line); }
+.au .au-chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+.au .au-chip[aria-pressed="true"] b { color: #cfe0d7; }
+
+.au .au-bulk {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 44px; padding: 6px 14px;
+  background: var(--ink); color: #fff; border-radius: 8px;
+}
+.au .au-bulk .n { font-weight: 600; font-size: 13.5px; }
+.au .au-bulk button { height: 30px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 6px; background: transparent; color: #fff; border: 1px solid #3d524a; }
+.au .au-bulk button.clear { border: 0; color: #cfe0d7; margin-left: auto; }
+
+.au .au-list { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 10px; }
+.au .au-rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.au .au-grid { display: grid; grid-template-columns: 30px minmax(0, 2.2fr) minmax(0, 2.6fr) 128px 76px; gap: 12px; align-items: center; padding: 0 16px; }
+.au .au-colhead { height: 38px; border-bottom: 1px solid var(--line); background: var(--wash); }
+.au .au-colhead span { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.au .au-row { min-height: 58px; border-bottom: 1px solid var(--wash); cursor: pointer; background: var(--card); }
+.au .au-row:hover { background: #f7faf8; }
+.au .au-row.sel { background: #f2f8f4; }
+.au .au-row.open { background: #e6f1ea; }
+.au .au-row input[type="checkbox"], .au .au-colhead input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--green); margin: 0; }
+.au .au-who { display: flex; align-items: center; gap: 11px; min-width: 0; border: 0; background: transparent; padding: 8px 0; text-align: left; color: inherit; cursor: pointer; }
+.au-av { flex: none; width: 34px; height: 34px; border-radius: 17px; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 600; }
+.au .au-name { display: block; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au .au-sub { display: block; font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au .au-roles { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-width: 0; }
+.au .au-role { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: var(--wash); border: 1px solid var(--line); font-size: 11.5px; font-weight: 500; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.au .au-more { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; color: var(--dim); }
+.au-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.au-pill.on { background: rgba(14, 107, 78, .1); color: var(--green); }
+.au-pill.off { background: var(--wash); color: var(--dim); }
+.au-pill.norole { background: rgba(221, 143, 28, .14); color: #7a4c08; }
+.au .au-status { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.au .au-note { font-size: 11px; font-weight: 600; color: #7a4c08; white-space: nowrap; }
+.au .au-icons { display: flex; align-items: center; gap: 9px; color: var(--dim); }
+.au .au-icons .dim { opacity: .25; }
+.au .au-foot { padding: 10px 16px; font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dim); border-top: 1px solid var(--wash); }
+
+/* ── the drawers (person, new user) ── */
+.au-drawer {
+  position: fixed; right: 0; bottom: 0; top: calc(100vh - var(--pp-h, 100vh)); z-index: 50; width: 470px; max-width: 100%;
+  box-sizing: border-box; background: var(--card); border-left: 1px solid var(--line);
+  box-shadow: -18px 0 40px rgba(19, 36, 32, .08); display: flex; flex-direction: column;
+}
+.au-drawer.wide { width: 520px; }
+.au-drawer .dh { display: flex; align-items: flex-start; gap: 12px; padding: 20px 22px 16px; border-bottom: 1px solid var(--line); }
+.au-drawer .dh .au-av { width: 48px; height: 48px; border-radius: 24px; font-size: 17px; }
+.au-drawer .dh .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.au-drawer .dh .nm { font-size: 19px; font-weight: 700; overflow-wrap: anywhere; }
+.au-drawer .x { flex: none; width: 36px; height: 36px; border: 0; background: transparent; border-radius: 6px; color: var(--dim); display: inline-flex; align-items: center; justify-content: center; }
+.au-drawer .x:hover { background: var(--wash); }
+.au-drawer .db { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; padding: 18px 22px; }
+.au-drawer .df { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 22px; border-top: 1px solid var(--line); }
+.au-drawer .sh { margin: 0; font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.au-drawer section { display: flex; flex-direction: column; gap: 10px; }
+.au-drawer .shrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.au-drawer .shrow .sh { flex: 1; }
+.au-drawer .link { border: 0; background: transparent; padding: 0; font-size: 12.5px; font-weight: 600; color: var(--green); cursor: pointer; text-align: left; }
+.au-drawer .link:hover { text-decoration: underline; }
+.au-drawer .rolecard { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.au-drawer .rolecard .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.au-drawer .rolecard .t b { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.au-drawer .rolecard .t span { font-size: 11.5px; color: var(--dim); }
+.au-drawer .sm { height: 30px; padding: 0 10px; font-size: 12px; }
+.au-drawer .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.au-drawer .wide-btn { width: 100%; justify-content: space-between; height: 36px; font-weight: 600; }
+.au-drawer .kv { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13.5px; }
+.au-drawer .kv > span:first-child { color: var(--dim); }
+.au-drawer .danger { color: var(--red); border-color: var(--red-line); font-weight: 600; }
+.au-drawer .lbl { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.au-drawer .hint { font-size: 11.5px; color: var(--dim); }
+.au-drawer .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.au-drawer .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.au-drawer .qp { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 17px; background: var(--card); font-size: 13px; font-weight: 500; }
+.au-drawer .qp[aria-pressed="true"] { background: #e6f1ea; border-color: var(--green); color: var(--green); font-weight: 600; }
+.au-drawer .made { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--wash); flex-wrap: wrap; }
+.au-drawer .made .pw { flex: 1 1 160px; min-width: 0; font-family: "IBM Plex Mono", monospace; font-size: 16px; font-weight: 500; letter-spacing: .04em; overflow-wrap: anywhere; }
+.au-drawer .err { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--red); }
+
+/* ── the role type-ahead ── */
+.au-pick { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.au-pick .box-in { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border: 1.5px solid var(--green); border-radius: 8px; background: var(--card); }
+.pp .au-pick .box-in input { flex: 1; box-shadow: none; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14px; height: 36px; padding: 0; }
+.au-pick .menu { border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: 0 12px 30px rgba(19, 36, 32, .14); max-height: 280px; overflow-y: auto; }
+.au-pick .grp { padding: 6px 12px 4px; font-family: "IBM Plex Mono", monospace; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.au-pick .opt { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 12px; border: 0; background: transparent; text-align: left; font-size: 13.5px; color: var(--ink); cursor: pointer; }
+.au-pick .opt:hover, .au-pick .opt:focus-visible { background: var(--wash); }
+.au-pick .opt .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.au-pick .opt .n { font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+.au-pick .none { padding: 10px 12px; font-size: 12.5px; color: var(--dim); }
+.au-pick .warn { margin: 0; font-size: 11.5px; font-weight: 600; color: #7a4c08; }
+
+@media (max-width: 900px) {
+  .au-drawer, .au-drawer.wide { top: 0; left: 0; width: 100%; border-left: 0; z-index: 58; }
+}
+@media (max-width: 640px) {
+  .pp:has(> .au) { padding: 14px 16px !important; }
+  .au .au-head h1 { font-size: 22px; }
+  .au .au-head .sec { display: none; }
+  .au .au-list { overflow: visible; }
+  .au .au-rows { overflow: visible; }
+  .au .au-colhead { display: none; }
+  .au .au-grid { grid-template-columns: 26px minmax(0, 1fr) auto; grid-template-areas: "c w s" "c r r" "c n n"; row-gap: 2px; padding: 8px 12px; }
+  /* The status pill stays beside the name; "New password due" drops under the roles, so neither cuts the other. */
+  .au .au-row .au-status { display: contents; }
+  .au .au-row .au-status > .au-pill { grid-area: s; align-self: start; margin-top: 6px; }
+  .au .au-row .au-status > .au-note { grid-area: n; padding-left: 45px; }
+  .au .au-row > :nth-child(1) { grid-area: c; }
+  .au .au-row > :nth-child(2) { grid-area: w; }
+  .au .au-row > :nth-child(3) { grid-area: r; padding-left: 45px; flex-wrap: nowrap; overflow: hidden; }
+  .au .au-row > :nth-child(5) { display: none; }
+  .au .au-who { padding: 0; }
+  .au-drawer .dh, .au-drawer .db, .au-drawer .df { padding-left: 16px; padding-right: 16px; }
+  .au-drawer .pair { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  /* The board's phone drawing: "New user" floats bottom-right, above the copilot dock. */
+  .au .au-new { position: fixed; right: 16px; bottom: 76px; z-index: 40; height: 50px; padding: 0 20px; border-radius: 25px; box-shadow: 0 10px 24px rgba(14, 107, 78, .35); }
+}
+.au-drawer .au-new-form { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.au-drawer .au-new-form > div { flex: 1 1 auto; min-height: 0; }
+
+/* Wide screens: the list steps aside for the drawer instead of sliding under it (the board's layout). */
+@media (min-width: 1200px) {
+  .pp:has(> .au-drawer) { padding-right: 492px !important; }
+  .pp:has(> .au-drawer.wide) { padding-right: 542px !important; }
+}
+@media (max-width: 640px) {
+  .au .au-search .kb { display: none; }
+  .au .au-role-filter { flex: 1 1 100%; }
+  /* The board's phone drawing: one row of chips that scrolls sideways inside itself, never the page. */
+  .au .au-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+  .au .au-chip { flex: none; }
+  .au .au-row > :nth-child(3) { flex-wrap: wrap; }
+}
+
+/* The two boxes drawn as one bordered field with an icon: the input inside wears no border of its own
+   (it would otherwise take the FD-25 field geometry every `.pp` input gets, desk-one.css). */
+.pp input.au-bare:not(.in):not([type="checkbox"]):not([type="radio"]),
+.pp input.au-bare:not(.in):not([type="checkbox"]):not([type="radio"]):focus {
+  border: 0; background: transparent; padding: 0; height: 36px; box-shadow: none; outline: none; width: auto;
+}

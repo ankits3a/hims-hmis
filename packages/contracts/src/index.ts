@@ -16,3 +16,4 @@ export * from "./rx-line";
 export * from "./attendance-view";
 export * from "./owner-app";
 export * from "./my-pace";
+export * from "./self-identity";

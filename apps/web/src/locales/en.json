@@ -2339,6 +2339,101 @@
     "submit": "Change password (Alt+S)"
   },
   "adminUsers": {
+    "heading": "Users",
+    "list": {
+      "count": "{{n}} people",
+      "newUser": "New user",
+      "search": "Name, username, staff code or mobile",
+      "searchLabel": "Search users",
+      "roleFilter": "Role",
+      "anyRole": "Any role",
+      "filters": "Filters",
+      "colName": "Name",
+      "colSignIn": "Sign-in",
+      "shown": "{{n}} of {{total}} shown",
+      "noMatch": "No one matches",
+      "selectUser": "Select {{name}}",
+      "selectAll": "Select all shown",
+      "openUser": "Open {{name}}",
+      "noRole": "No role",
+      "pinSet": "PIN set",
+      "noPin": "No PIN"
+    },
+    "chip": {
+      "all": "All",
+      "active": "Active",
+      "deactivated": "Deactivated",
+      "noRole": "No role",
+      "passwordDue": "New password due",
+      "notLinked": "Attendance not linked"
+    },
+    "bulk": {
+      "selected": "{{n}} selected",
+      "addRole": "Add role",
+      "deactivate": "Deactivate",
+      "clear": "Clear",
+      "addRoleTitle": "Add a role · {{n}} people",
+      "addedTo": "{{role}} added to {{n}}",
+      "deactivatedN": "{{n}} deactivated",
+      "refusedBy": "{{name}}: {{why}}"
+    },
+    "ask": {
+      "title": "Deactivate {{name}}?",
+      "titleMany": "Deactivate {{n}} people?",
+      "signedOut": "Signed out of phones and all PCs",
+      "rolesKept": "Roles kept",
+      "turnOn": "Turn on again any time",
+      "confirm": "Deactivate",
+      "keep": "Keep active"
+    },
+    "drawer": {
+      "close": "Close",
+      "rolesN": "Roles · {{n}}",
+      "copyFrom": "Copy from another user",
+      "copyPick": "Pick a user",
+      "copyGo": "Copy {{n}} roles",
+      "copyNone": "Nothing new to copy",
+      "copied": "{{n}} roles copied to {{username}} from {{from}}",
+      "remove": "Remove",
+      "addRole": "Add role",
+      "noRoleMatch": "No role matches",
+      "signIn": "Sign-in",
+      "phones": "Phones",
+      "phonesSignedIn": "{{n}} signed in ›",
+      "idTitle": "ID & attendance",
+      "mobile": "Mobile",
+      "aadhaar": "Aadhaar",
+      "attendance": "Attendance",
+      "editIdentity": "Edit mobile or Aadhaar"
+    },
+    "newUser": {
+      "title": "New user",
+      "usernameMade": "Made from name",
+      "usernameTaken": "Already used",
+      "mobilePlaceholder": "10 digits",
+      "mobileHint": "Links attendance",
+      "quick": {
+        "doctor": "Doctor",
+        "vitals_desk": "Vitals desk",
+        "front_office": "Front office",
+        "cashier": "Cashier",
+        "pharmacy": "Pharmacy",
+        "lab_technician": "Lab technician"
+      },
+      "moreRoles": "More roles…",
+      "add": "Add",
+      "copyRoles": "Or copy roles from another user",
+      "firstPassword": "First password",
+      "copy": "Copy",
+      "copied": "Copied",
+      "newOne": "New one",
+      "mustChange": "Must change on first sign-in.",
+      "typeOwn": "Type my own",
+      "useMade": "Use a made one",
+      "pinPlaceholder": "4–6 digits",
+      "create": "Create user",
+      "notSaved": "{{what}} not saved: {{why}}"
+    },
     "title": "Users and access",
     "createTitle": "Add a person",
     "createWhy": "The new account must change this password at first sign-in. A PIN is optional and enables the fast terminal switch.",
@@ -14926,6 +15021,24 @@
       "left": "left the line",
       "with_doctor": "with the doctor",
       "waiting": "waiting"
+    }
+  },
+  "aadhaarSticker": {
+    "text": "Add your Aadhaar to see attendance",
+    "button": "Add Aadhaar",
+    "title": "Your Aadhaar",
+    "label": "Aadhaar number",
+    "hint": "12 digits · only last 4 kept",
+    "save": "Save",
+    "cancel": "Cancel",
+    "linked": "Attendance linked",
+    "saved": "Saved · attendance team will match",
+    "error": {
+      "aadhaar_invalid": "Not a valid Aadhaar",
+      "aadhaar_locked": "Already linked · ask admin",
+      "aadhaar_key_not_configured": "Not set up yet",
+      "too_many_attempts": "Too many tries · try tomorrow",
+      "failed": "Not saved · try again"
     }
   }
 }

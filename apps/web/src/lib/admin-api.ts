@@ -1,4 +1,5 @@
 import { api, ApiError } from "./api";
+import type { SelfIdentity } from "../../../../packages/contracts/src/self-identity";
 
 /**
  * PLAN 11e T6 — THE USER-ADMINISTRATION WIRE CONTRACT, transcribed from `users-admin.controller.ts`
@@ -228,4 +229,19 @@ export function isPasswordChangeRequired(e: unknown): boolean {
   if (!(e instanceof ApiError) || e.status !== 403) return false;
   const body = e.body as { message?: unknown } | null;
   return body?.message === "password_change_required";
+}
+
+// ──────────────────── "Add your Aadhaar" (owner 2026-10-09) ────────────────────
+
+/**
+ * The signed-in person's OWN mobile-free identity: masked Aadhaar, the link word, and whether the
+ * shell should draw the "Add your Aadhaar" sticker. No id in the path — it is always the caller's.
+ */
+export function getMyIdentity(): Promise<SelfIdentity> {
+  return api("GET", "/me/identity");
+}
+
+/** The number travels in this one body and is dropped by the server after hashing. */
+export function saveMyAadhaar(aadhaar: string): Promise<SelfIdentity> {
+  return api("POST", "/me/identity", { aadhaar });
 }

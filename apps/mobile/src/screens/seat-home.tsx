@@ -25,6 +25,7 @@ import { PaceCard, type MyPace } from "../home/pace";
 import { rosterApi } from "../roster/api";
 import { ALL_READ } from "../attendance/api";
 import { AttendanceCard, attendanceCache, useAttendanceHome } from "../attendance/home-card";
+import { AadhaarCard, AadhaarSheet, useSelfIdentity } from "../attendance/aadhaar-card";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
@@ -85,11 +86,16 @@ export function SeatHome() {
   /* The person's own attendance: ONE read beside the home's, made by the home's own refresh (`attendance/home-card.tsx`). */
   const attendance = useAttendanceHome(call, signedIn ? user : "");
   const reloadAttendance = attendance.reload;
+  /* "Add your Aadhaar" (owner 2026-10-09): the card at the top, while the server says this person owes one. */
+  const identity = useSelfIdentity(call, signedIn ? user : "");
+  const reloadIdentity = identity.reload;
+  const [aadhaarOpen, setAadhaarOpen] = useState(false);
   const refresh = useCallback(async (byHand = false) => {
     if (!signedIn) return;
     if (byHand) setRefreshing(true);
     const now = Date.now();
     void reloadAttendance();
+    void reloadIdentity();
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
     if (loaded.reached) {
@@ -101,7 +107,7 @@ export function SeatHome() {
       setOnline(false);
     }
     if (byHand) setRefreshing(false);
-  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance]);
+  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity]);
   useEffect(() => {
     if (user === "") return;
     let gone = false;
@@ -249,8 +255,13 @@ export function SeatHome() {
           </View>
         }
       />
+      {aadhaarOpen && (
+        <AadhaarSheet t={t} call={call} onClose={() => setAadhaarOpen(false)}
+          onSaved={(next, text) => { identity.set(next); setAadhaarOpen(false); setSaid({ tone: "info", text }); void reloadAttendance(); }} />
+      )}
       <ScrollView testID="home-scroll" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { void refresh(true); }} tintColor={color.green} />}>
+        <AadhaarCard t={t} me={identity.me} onOpen={() => { setSaid(null); setAadhaarOpen(true); }} />
         {update?.kind === "update" && !later && (
           <View testID="update-offer" style={{ backgroundColor: color.card, borderWidth: 2, borderColor: color.green, borderRadius: radius.lg, padding: space.lg, marginBottom: space.lg, gap: space.sm }}>
             <Text style={[type.heading, { color: color.ink }]}>{t("mobile.update.title")}</Text>
