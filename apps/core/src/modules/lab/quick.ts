@@ -1,11 +1,12 @@
 import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
-  labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
+  labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients, users,
 } from "../../kernel/db/schema";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
 import { recordPhiAccess } from "../../kernel/phi/audit";
+import { loadOpdConfig, OpdError } from "../opd";
 import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
 import { labQuickReported, labQuickStarted } from "./events";
 import { flagFor, resolveRange } from "./ranges";
@@ -66,6 +67,14 @@ export type QuickReport = QuickRow & {
   analyteIds: string[];
   /** The same ids under their test's name (`null` title = added by hand), so any screen can print it. */
   groups: { title: string | null; analyteIds: string[] }[];
+  /** Full names for the printed "Collected by" / "Performed by" lines — never a login name. */
+  collectedByName: string | null;
+  reportedByName: string | null;
+  /**
+   * The hospital's letterhead as configured TODAY (`opd_config`, the one the e-Rx and the signed lab
+   * report print). Read live, not frozen: a quick report is not a signed artefact (decision 0061).
+   */
+  letterhead: { name: string; addressLines: string[]; legalName?: string };
   lines: QuickLine[];
   summary: string;
 };
@@ -223,7 +232,20 @@ export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): P
   const extra = lines.map((l) => l.analyteId).filter((id) => !ordered.includes(id));
   ordered.push(...extra);
   if (extra.length > 0) groups.push({ title: null, analyteIds: extra });
-  return { ...row!, analyteIds: ordered, groups, lines, summary: r.summary };
+  const people = [r.collectedBy, r.reportedBy].filter((x): x is string => x !== null);
+  const names = new Map((await exec.select({ id: users.id, fullName: users.fullName }).from(users)
+    .where(inArray(users.id, people))).map((u) => [u.id, u.fullName]));
+  /** A hospital that has not run `seed:opd` still gets its report; the page prints without a name. */
+  const lh = await loadOpdConfig(exec).then((c) => c.letterhead, (e: unknown) => {
+    if (e instanceof OpdError && e.code === "opd_not_configured") return { name: "", addressLines: [] as string[], legalName: undefined };
+    throw e;
+  });
+  return {
+    ...row!, analyteIds: ordered, groups, lines, summary: r.summary,
+    collectedByName: names.get(r.collectedBy) ?? null,
+    reportedByName: r.reportedBy === null ? null : names.get(r.reportedBy) ?? null,
+    letterhead: { name: lh.name, addressLines: lh.addressLines, ...(lh.legalName ? { legalName: lh.legalName } : {}) },
+  };
 }
 
 /**

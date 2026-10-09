@@ -175,6 +175,8 @@ describe("lab quick entry", () => {
 
     const seen = await quickReportsForPatient(db, doctor.actor, ASHA, NOW);
     expect(seen.map((r) => r.id)).toEqual([done.id]);
+    // The print's people and letterhead: a full name only for a real user; no OPD config = no hospital line.
+    expect([seen[0]!.reportedByName, seen[0]!.letterhead]).toEqual([null, { name: "", addressLines: [] }]);
     expect(seen.map((r) => r.id)).not.toContain(waiting.id);
     expect([seen[0]!.summary, seen[0]!.lines[0]!.flag]).toEqual(["Hb low", "L"]);
     expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "lab.quick_reports"))).toHaveLength(1);

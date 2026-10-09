@@ -30,6 +30,8 @@ export type QuickRow = {
 };
 export type QuickReport = QuickRow & {
   analyteIds: string[]; groups: { title: string | null; analyteIds: string[] }[]; lines: QuickLine[]; summary: string;
+  collectedByName: string | null; reportedByName: string | null;
+  letterhead: { name: string; addressLines: string[]; legalName?: string };
 };
 export type QuickQueue = { waiting: QuickRow[]; reportedToday: QuickRow[] };
 export type StartQuick = { patientId: string; encounterNo: string | null; serviceIds: string[]; bloodCollected: boolean };

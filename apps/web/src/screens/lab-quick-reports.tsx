@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { fmtIst } from "../lib/format";
 import { labErrorText } from "../lib/lab-api";
 import { quickReportsForPatient, refText } from "../lib/lab-quick-api";
-import { sexAge } from "./lab-seat";
+import { ageYearsFrom } from "./lab-seat";
+import { useAuth } from "../lib/auth";
 import type { QuickLine, QuickReport } from "../lib/lab-quick-api";
 
 /**
@@ -23,30 +24,146 @@ function escapeHtml(s: string): string {
 
 const abnormal = (l: QuickLine): boolean => l.flag !== null && l.flag !== "N";
 
-/** A plain A4 page in a new window, grouped under each test. Labels are English: the hospital's document. */
-export function printQuickReport(report: QuickReport): void {
+const IST_DATE = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
+const IST_TIME = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false });
+
+/** `09-Oct-2026 11:52` in IST — the way an Indian lab report writes a time. */
+export function istStamp(iso: string): string {
+  const d = new Date(iso);
+  return `${IST_DATE.format(d).replace(/ /g, "-")} ${IST_TIME.format(d)}`;
+}
+
+function istDateOnly(iso: string): string {
+  return IST_DATE.format(new Date(iso)).replace(/ /g, "-");
+}
+
+/** The flag WORD a clinician reads — never a bare letter (`lab-report-print.tsx`'s rule). */
+const FLAG_WORD: Record<string, string> = { L: "Low", H: "High", LL: "Critically low", HH: "Critically high", N: "Normal" };
+const FLAG_CLASS: Record<string, string> = { L: "ab", H: "ab", LL: "cr", HH: "cr", N: "ok" };
+
+/**
+ * THE PRINTED QUICK REPORT — laid out from the approved A4 board
+ * (`docs/design/2026-08-29-opd-counter-flow/ReportA4.dc.html`), the same board the signed report
+ * follows: the hospital's logo and "Laboratory Medicine" beside the identity block, the times on the
+ * right, the department rule, one titled table per test with a coloured result cell and a flag WORD,
+ * the remarks box, the standing notes, the two signatory lines, and the hospital's address at the foot.
+ *
+ * It is a document of its own (a new window), so a quick report prints from any screen that shows it.
+ * The header and the address repeat on every page (`thead`/`tfoot`), and the page number comes from
+ * the browser's `@page` margin box.
+ *
+ * **Unsigned, and the paper says so by leaving the line to sign.** HMIS holds no pathologist
+ * signature for a quick report (decision 0061), so "Authorised by" is a line for a pen, not a name.
+ * The result colours are also printed as words, because a photocopy loses colour.
+ */
+export function printQuickReport(report: QuickReport, printedBy: string | null): void {
   const p = report.patient;
+  const lh = report.letterhead;
   const byId = new Map(report.lines.map((l) => [l.analyteId, l]));
-  const line = (l: QuickLine): string => `<tr${abnormal(l) ? ' class="ab"' : ""}><td>${escapeHtml(l.nameEn)}</td>`
-    + `<td><b>${escapeHtml(l.value)}</b> ${abnormal(l) ? escapeHtml(l.flag!) : ""}</td><td>${escapeHtml(l.unit ?? "")}</td>`
-    + `<td>${escapeHtml(refText({ low: l.low, high: l.high, text: l.refText }))}</td></tr>`;
-  const rows = report.groups.map((g) => {
+  const age = ageYearsFrom(p.dob);
+  const gender = p.administrativeGender === "female" ? "Female" : p.administrativeGender === "male" ? "Male" : "Other";
+  const reportedIso = report.reportedAt ?? new Date().toISOString();
+  const logo = `${window.location.origin}/print/hospital-logo.png`;
+  const e = escapeHtml;
+
+  const tables = report.groups.map((g, i) => {
     const filled = g.analyteIds.map((id) => byId.get(id)).filter((l): l is QuickLine => l !== undefined);
     if (filled.length === 0) return "";
-    return `<tr class="grp"><td colspan="4">${escapeHtml(g.title ?? "Other")}</td></tr>${filled.map(line).join("")}`;
+    const rows = filled.map((l) => {
+      const cls = l.flag === null ? "" : FLAG_CLASS[l.flag] ?? "";
+      const word = l.flag === null ? "—" : FLAG_WORD[l.flag] ?? "—";
+      return `<tr><td class="name">${e(l.nameEn)}</td><td class="val ${cls}">${e(l.value)}</td><td class="c">${e(l.unit ?? "—")}</td>`
+        + `<td class="c flag ${cls}">${e(word)}</td><td class="c">${e(refText({ low: l.low, high: l.high, text: l.refText }) || "—")}</td></tr>`;
+    }).join("");
+    return `<section class="test">
+      <div class="testhead"><h2>${e(g.title ?? "Other parameters")}</h2>${i === 0 ? `<div class="legend">Colours indicate: <span class="lg ab">Abnormal</span><span class="lg cr">Critical</span><span class="lg ok">Normal</span></div>` : ""}</div>
+      <table class="res"><thead><tr><th class="name">Test name</th><th>${e(istDateOnly(reportedIso))}</th><th>Unit</th><th>Flag</th><th>Biological ref. interval</th></tr></thead>
+      <tbody>${rows}</tbody></table></section>`;
   }).join("");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Lab report ${escapeHtml(p.uhid)}</title>
-<style>body{font:13px system-ui,sans-serif;margin:24px;color:#000}h1{font-size:18px;margin:0 0 8px}
-table{width:100%;border-collapse:collapse;margin:12px 0}td,th{border-bottom:1px solid #ccc;padding:6px;text-align:left}
-tr.ab td{font-weight:600}tr.grp td{font-weight:700;padding-top:14px;border-bottom:2px solid #000}
-.sum{white-space:pre-wrap;border:1px solid #999;padding:8px}.meta{color:#333;line-height:1.5}</style></head><body>
-<h1>Laboratory report</h1>
-<div class="meta">${escapeHtml(p.display)} · ${escapeHtml(p.uhid)} · ${escapeHtml(sexAge(p.administrativeGender, p.dob))}${report.encounterNo ? ` · Visit ${escapeHtml(report.encounterNo)}` : ""}<br>
-Tests: ${escapeHtml(report.tests.map((x) => x.nameEn).join(", "))}<br>
-Sample collected: ${escapeHtml(fmtIst(report.collectedAt))} · Reported: ${escapeHtml(fmtIst(report.reportedAt ?? new Date().toISOString()))}</div>
-<table><thead><tr><th>Test</th><th>Result</th><th>Unit</th><th>Reference range</th></tr></thead><tbody>${rows}</tbody></table>
-${report.summary.trim() !== "" ? `<h3>Remarks</h3><div class="sum">${escapeHtml(report.summary)}</div>` : ""}
-<script>window.onload=function(){window.print()}</script></body></html>`;
+
+  const header = `<div class="hd">
+    <div class="brand"><img src="${e(logo)}" alt="" onerror="this.style.display='none'"><div class="dept">Laboratory Medicine</div></div>
+    <div class="who">
+      <div><span>Name:</span> <b>${e(p.display)}</b></div>
+      <div><span>UHID:</span> <b>${e(p.uhid)}</b></div>
+      <div><span>Gender:</span> <b>${e(gender)}</b></div>
+      <div><span>DOB:</span> <b>${p.dob ? `${e(istDateOnly(`${p.dob}T00:00:00+05:30`))}${age === null ? "" : ` (${String(age)} years)`}` : "—"}</b></div>
+      ${report.encounterNo ? `<div><span>Visit No:</span> <b>${e(report.encounterNo)}</b></div>` : ""}
+    </div>
+    <div class="when">
+      <div><span>Collected:</span> <b>${e(istStamp(report.collectedAt))}</b></div>
+      <div><span>Reported:</span> <b>${e(istStamp(reportedIso))}</b></div>
+      <div><span>Tests:</span> <b>${e(report.tests.map((x) => x.code).join(", "))}</b></div>
+    </div>
+  </div>
+  <div class="rule">Department of Laboratory Medicine</div>`;
+
+  const address = [lh.name, ...lh.addressLines].filter((x) => x.trim() !== "").map(e).join(", ");
+  const footer = `<div class="ft">
+    ${address !== "" ? `<div><span>Address:</span> <b>${address}</b></div>` : ""}
+    ${lh.legalName ? `<div class="dim">${e(lh.legalName)}</div>` : ""}
+    <div class="row"><span>Printed${printedBy ? ` by <b>${e(printedBy)}</b>` : ""} on ${e(istStamp(new Date().toISOString()))}</span></div>
+  </div>`;
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Lab report ${e(p.uhid)} ${e(istDateOnly(reportedIso))}</title>
+<style>
+@page { size: A4 portrait; margin: 12mm 12mm 14mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 10px Arial, sans-serif; color: #444; } }
+* { box-sizing: border-box; }
+body { margin: 0; font: 12px/1.45 Arial, Helvetica, sans-serif; color: #111; }
+.page { width: 100%; border-collapse: collapse; }
+.page > thead > tr > td, .page > tfoot > tr > td, .page > tbody > tr > td { padding: 0 2px 0 0; }
+.hd { display: grid; grid-template-columns: 130px 1fr auto; gap: 16px; align-items: start; padding-bottom: 8px; }
+.brand img { width: 84px; height: auto; display: block; }
+.brand .dept { color: #4a1a7a; font-weight: 700; font-size: 12px; margin-top: 4px; }
+.who div, .when div { margin: 1px 0; }
+.who span, .when span, .ft span { color: #333; }
+.when { text-align: right; }
+.rule { border-top: 1px solid #000; border-bottom: 1px solid #000; text-align: center; font-weight: 700; font-size: 13px; padding: 5px 0; margin-bottom: 10px; }
+.test { margin: 14px 0 6px; break-inside: avoid-page; }
+.testhead { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid #e0a0a0; padding-bottom: 3px; margin-bottom: 8px; }
+.testhead h2 { margin: 0; color: #c8102e; font-size: 17px; }
+.legend { font-size: 10.5px; color: #333; }
+.lg { margin-left: 10px; padding-bottom: 1px; border-bottom: 2px solid; }
+.lg.ab { color: #c8102e; } .lg.cr { color: #7a0016; font-weight: 700; } .lg.ok { color: #1a7f4b; }
+table.res { width: 100%; border-collapse: collapse; }
+table.res th { background: #f0f0f0; font-size: 11px; padding: 7px 8px; border: 1px solid #bbb; }
+table.res th.name { text-align: left; }
+table.res td { border: 1px solid #bbb; padding: 6px 8px; }
+table.res td.c { text-align: center; }
+table.res td.val { text-align: center; font-weight: 700; width: 16%; }
+td.val.ok { background: #e3f4ea; } td.val.ab { background: #fbe1e4; } td.val.cr { background: #f3b6be; }
+td.flag.ok { color: #1a7f4b; font-weight: 700; } td.flag.ab { color: #c8102e; font-weight: 700; } td.flag.cr { color: #7a0016; font-weight: 800; text-transform: uppercase; font-size: 11px; }
+.remarks { border: 1px solid #bbb; padding: 8px 10px; margin: 14px 0; white-space: pre-wrap; break-inside: avoid; }
+.remarks b { display: block; margin-bottom: 2px; }
+.notes { margin: 12px 0 0; break-inside: avoid; } .notes b { font-size: 12.5px; } .notes ol { margin: 4px 0 0; padding-left: 20px; }
+.sign { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; margin: 46px 40px 10px; text-align: center; break-inside: avoid; }
+.sign .ln { border-top: 1px solid #777; padding-top: 4px; color: #333; }
+.sign .nm { font-weight: 700; font-size: 13px; min-height: 18px; }
+.sign .rl { color: #555; font-size: 10.5px; }
+.cg { border-top: 1px solid #000; margin-top: 6px; padding-top: 4px; font-size: 10.5px; }
+.ft { border-top: 1px solid #999; margin-top: 8px; padding-top: 5px; font-size: 10.5px; }
+.ft .dim { color: #555; } .ft .row { margin-top: 3px; color: #444; }
+@media screen { body { background: #e9e9e9; } .sheet { background: #fff; width: 210mm; min-height: 297mm; margin: 12px auto; padding: 12mm; box-shadow: 0 1px 6px rgba(0,0,0,.2); } }
+</style></head><body><div class="sheet">
+<table class="page">
+<thead><tr><td>${header}</td></tr></thead>
+<tfoot><tr><td>${footer}</td></tr></tfoot>
+<tbody><tr><td>
+${tables}
+${report.summary.trim() !== "" ? `<div class="remarks"><b>Remarks</b>${e(report.summary)}</div>` : ""}
+<div class="notes"><b>Please note</b><ol>
+<li>Test results are to be clinically correlated.</li>
+<li>An abnormal value should be confirmed before any change of treatment.</li>
+<li>Results relate only to the sample tested.</li>
+<li>Results are not valid for medico-legal purposes.</li>
+</ol></div>
+<div class="sign">
+  <div><div class="nm">${e(report.reportedByName ?? "")}</div><div class="ln">Performed by</div><div class="rl">Laboratory Technologist</div></div>
+  <div><div class="nm"></div><div class="ln">Authorised by</div><div class="rl">Pathologist — signature and seal</div></div>
+</div>
+</td></tr></tbody>
+</table></div>
+<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
   const w = window.open("", "_blank");
   if (w === null) return;
   w.document.write(html);
@@ -55,6 +172,7 @@ ${report.summary.trim() !== "" ? `<h3>Remarks</h3><div class="sum">${escapeHtml(
 
 function ReportCard({ report, compact, onOpen }: { report: QuickReport; compact: boolean; onOpen?: (id: string) => void }): React.ReactElement {
   const { t } = useTranslation();
+  const { username } = useAuth();
   const [open, setOpen] = useState(false);
   const flagged = report.lines.filter(abnormal);
   const byId = new Map(report.lines.map((l) => [l.analyteId, l]));
@@ -81,7 +199,7 @@ function ReportCard({ report, compact, onOpen }: { report: QuickReport; compact:
         <button type="button" className="underline" onClick={() => setOpen((x) => !x)}>
           {open ? t("lab.quick.hideValues") : t("lab.quick.showValues")}
         </button>
-        <button type="button" className="underline" onClick={() => printQuickReport(report)}>{t("lab.quick.print")}</button>
+        <button type="button" className="underline" onClick={() => printQuickReport(report, username)}>{t("lab.quick.print")}</button>
         {onOpen && <button type="button" className="underline" onClick={() => onOpen(report.id)}>{t("lab.quick.openToEdit")}</button>}
       </div>
       {open && (

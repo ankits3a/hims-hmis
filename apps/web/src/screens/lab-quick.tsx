@@ -265,6 +265,7 @@ type Row = { analyteId: string; value: string };
 
 function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickCatalogue | undefined; onBack: () => void }): React.ReactElement {
   const { t } = useTranslation();
+  const { username } = useAuth();
   const qc = useQueryClient();
   const report = useQuery({ queryKey: ["lab-quick", "report", id], queryFn: () => quickReport(id) });
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -464,7 +465,7 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
         </Button>
         {saved !== null && (
           <>
-            <Button variant="outline" onClick={() => printQuickReport(saved)}>{t("lab.quick.print")}</Button>
+            <Button variant="outline" onClick={() => printQuickReport(saved, username)}>{t("lab.quick.print")}</Button>
             <span role="status" className="text-sm text-green-700 dark:text-green-300">{t("lab.quick.saved")}</span>
           </>
         )}

@@ -2,7 +2,8 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
-import { QuickLabReports } from "./lab-quick-reports";
+import { printQuickReport, QuickLabReports } from "./lab-quick-reports";
+import type { QuickReport } from "../lib/lab-quick-api";
 
 /**
  * QUICK MODE (decision 0061) — the block the patient profile and the doctor's brief show: every
@@ -20,6 +21,8 @@ const REPORT = {
     { analyteId: "a-wbc", code: "WBC", nameEn: "Total leucocyte count", unit: "/µL", value: "7000", low: "4000.0000", high: "11000.0000", refText: null, flag: "N" },
   ],
   summary: "Hb low, repeat",
+  collectedByName: "Sunita Devi", reportedByName: "Pravin Kumar Verma",
+  letterhead: { name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR, BIHAR 844101"] },
 };
 
 function stub(items: unknown[]): void {
@@ -51,4 +54,23 @@ it("draws nothing when the patient has no quick report (compact and hideEmpty)",
   await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
   await new Promise((r) => setTimeout(r, 50));
   expect(container.querySelector("[data-testid=quick-lab-reports]")).toBeNull();
+});
+
+it("the printed page: letterhead, identity, flag WORDS beside coloured cells, remarks, an unsigned 'Authorised by' line", () => {
+  let html = "";
+  const doc = { write: (h: string) => { html += h; }, close: () => undefined };
+  vi.stubGlobal("open", vi.fn(() => ({ document: doc })));
+  printQuickReport(REPORT as unknown as QuickReport, "rohan.sinha");
+  expect(html).toContain("CRK MEDICAL COLLEGE &amp; HOSPITAL, CHAURASIA CHOWK, HAJIPUR, BIHAR 844101");
+  expect(html).toContain("/print/hospital-logo.png");
+  expect(html).toContain("<b>Farida Khatoon</b>");
+  expect(html).toContain("<b>U23011884</b>");
+  expect(html).toContain("<h2>Complete blood count</h2>");
+  expect(html).toMatch(/<td class="val ab">9\.2<\/td>.*<td class="c flag ab">Low<\/td>/s);
+  expect(html).toMatch(/<td class="val ok">7000<\/td>.*<td class="c flag ok">Normal<\/td>/s);
+  expect(html).toContain("12 – 15");
+  expect(html).toContain("Hb low, repeat");
+  expect(html).toContain("Pravin Kumar Verma");
+  expect(html).toMatch(/<div class="nm"><\/div><div class="ln">Authorised by<\/div>/);
+  expect(html).toContain("Printed by <b>rohan.sinha</b>");
 });
