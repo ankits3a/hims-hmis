@@ -1,7 +1,11 @@
-import { Controller, Get, Inject, NotFoundException, Param, Query, Res } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Inject, NotFoundException, Param, Query, Res } from "@nestjs/common";
 import { z } from "zod";
 import type { Actor } from "@hmis/contracts";
-import { DB } from "../../kernel/tokens";
+import { rangeProblem } from "@hmis/contracts";
+import type { OwnerAppointments, OwnerLearning } from "@hmis/contracts";
+import { CONFIG, DB } from "../../kernel/tokens";
+import type { AppConfig } from "../../kernel/config";
+import { ownerAppointments, ownerLearning } from "./owner-reads";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { contentDisposition, toCsv } from "../../kernel/report/csv";
@@ -44,9 +48,31 @@ const reportQuery = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), "not a calendar date").optional(),
 });
 
+/**
+ * THE STAFF APP'S OWNER PAGES (owner 2026-10-09) ask in DAYS: `from`..`to`, IST, at most 92 of them and
+ * never the future, with an optional comparison range `cfrom`..`cto`. The report's own Monday-to-Saturday
+ * week is untouched — a range spelt out is a range, not a named period.
+ */
+const daysQuery = z.object({
+  from: z.string().max(10).optional(), to: z.string().max(10).optional(),
+  cfrom: z.string().max(10).optional(), cto: z.string().max(10).optional(),
+  period: z.string().max(8).optional(), date: z.string().max(10).optional(),
+});
+
 @Controller("opd/reports")
 export class OpdReportsController {
-  constructor(@Inject(DB) private readonly db: Db) {}
+  constructor(@Inject(DB) private readonly db: Db, @Inject(CONFIG) private readonly cfg: AppConfig) {}
+
+  /** `from`..`to` (today when both are absent) and the comparison range, refused in the contract's four words. */
+  private daysOf(query: unknown): { range: { from: string; to: string }; compare: { from: string; to: string } | null } {
+    const q = parsed(daysQuery, query);
+    const today = istDate(new Date());
+    const from = q.from ?? q.to ?? today, to = q.to ?? q.from ?? today;
+    const bad = rangeProblem(from, to, today)
+      ?? (q.cfrom === undefined && q.cto === undefined ? null : rangeProblem(q.cfrom, q.cto, today));
+    if (bad !== null) throw new BadRequestException({ message: `the range cannot be read: ${bad}`, code: "invalid_range" });
+    return { range: { from, to }, compare: q.cfrom === undefined ? null : { from: q.cfrom, to: q.cto! } };
+  }
 
   private rangeOf(query: unknown): ReportRange {
     const q = parsed(reportQuery, query);
@@ -85,7 +111,40 @@ export class OpdReportsController {
    */
   @Get("recording")
   async recording(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<RecordingReport> {
+    /*
+      Owner 2026-10-09 — the app's Recorded page asks for a week to date, a month to date or a custom
+      range, and compares like with like: `from`/`to` spell the days out. Who sees what is decided
+      inside exactly as before; a spelt-out range of more than a day reads as the month grain (a row
+      per day) with `to` as its anchor.
+    */
+    const q = (query ?? {}) as { from?: unknown; to?: unknown };
+    if (q.from !== undefined || q.to !== undefined) {
+      const { range } = this.daysOf(query);
+      return loadRecording(this.db, actor, { period: range.from === range.to ? "day" : "month", anchor: range.to, from: range.from, to: range.to });
+    }
     return loadRecording(this.db, actor, this.rangeOf(query));
+  }
+
+  /**
+   * THE OWNER'S APPOINTMENTS PAGE (owner 2026-10-09) — counts by status and by doctor for the days asked
+   * for (`owner-reads.ts`). No patient, no appointment number.
+   */
+  @RequirePermission("opd.reports.read", "hospital")
+  @Get("appointments-summary")
+  async appointmentsSummary(@Query() query: unknown): Promise<OwnerAppointments> {
+    const { range, compare } = this.daysOf(query);
+    return ownerAppointments(this.db, range, compare);
+  }
+
+  /**
+   * THE OWNER'S LEARNING PAGE (owner 2026-10-09) — the nicknames changed in the last seven days, how
+   * often an acted-on suggestion was tapped, and how many words matched nothing. READ ONLY: taking a
+   * nickname back stays on `POST /opd/consult/nicknames/:id/undo` behind `opd.masters.manage`.
+   */
+  @RequirePermission("opd.reports.read", "hospital")
+  @Get("learning")
+  async learning(@CurrentActor() actor: Actor): Promise<OwnerLearning> {
+    return ownerLearning(this.db, actor, this.cfg.aliases.enabled);
   }
 
   @RequirePermission("opd.reports.read", "hospital")

@@ -76,6 +76,7 @@ const ROUTES: [method: "get" | "post" | "put", path: string, permission: string]
   ["post", "/billing/recon/mismatches/X/resolve", "billing.recon.upload"],
   ["get", "/billing/office/needs", "billing.reports.read"],
   ["get", "/billing/day-book", "billing.reports.read"],
+  ["get", "/billing/reports/owner-money", "billing.reports.read"], // the owner's money page in the staff app (2026-10-09)
   ["get", "/billing/gstr1", "billing.reports.read"],
   ["get", "/billing/config", "billing.reports.read"],
   ["put", "/billing/config", "billing.config.write"],
@@ -1034,7 +1035,8 @@ describe("billing e2e", () => {
   it("the 403 sweep: every route in the table refuses a permission-less user, BY THE PERMISSION IT NAMES", async () => {
     // UX-AUDIT 2026-09-28: 31 -> 32, `sessions/current/open-items`; BOARD — +2, the mismatch decision and
     // the office's needs list. Measured from the failing run after merging main: `Received length: 34`.
-    expect(ROUTES).toHaveLength(34);
+    // OWNER APP 2026-10-09: 34 -> 35, `reports/owner-money` (measured: `Received length: 35`).
+    expect(ROUTES).toHaveLength(35);
     for (const [method, path, permission] of ROUTES) {
       const res = await http()[method](path).set(...auth(rando.token)).send({});
       expect({ method, path, status: res.status, message: res.body.message }).toEqual({

@@ -13,3 +13,4 @@ export * from "./app-home";
 export * from "./patient-absent";
 export * from "./tele-call";
 export * from "./rx-line";
+export * from "./owner-app";

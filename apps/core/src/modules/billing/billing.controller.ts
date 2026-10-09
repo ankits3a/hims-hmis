@@ -89,6 +89,9 @@ const feeQuoteReferralQuery = z
 
 import { loadBillingConfig, updateBillingConfig } from "./config";
 import { dayBook, gstr1Summary } from "./daily-close";
+import { ownerMoney } from "./owner-money";
+import { rangeProblem } from "@hmis/contracts";
+import type { OwnerMoney } from "@hmis/contracts";
 import { issueCreditNote, listCreditNotes } from "./credit-notes";
 import { creditRequestStatus, requestCredit } from "./credit-requests";
 import { MembershipError, membershipHttpStatus } from "../membership";
@@ -463,6 +466,10 @@ const recountBody = z.object({
 const reconUploadBody = z.object({ csv: z.string(), source: z.enum(["upi", "card"]) });
 const dayQuery = z.object({ day: z.string().max(10).optional() });
 const gstr1Query = z.object({ from: z.string().max(10), to: z.string().max(10) });
+const ownerMoneyQuery = z.object({
+  from: z.string().max(10).optional(), to: z.string().max(10).optional(),
+  cfrom: z.string().max(10).optional(), cto: z.string().max(10).optional(),
+});
 
 // The admin patch. Mirrors config.ts's own `configPatchSchema` at the wire so a bad body is
 // refused HERE, in the ratified shape, before `updateBillingConfig` re-parses it (carried item 1).
@@ -1359,6 +1366,29 @@ export class BillingController {
     const q = parsed(gstr1Query, query);
     try {
       return { rows: await gstr1Summary(this.db, q.from, q.to) };
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * THE OWNER'S MONEY PAGE IN THE STAFF APP (owner 2026-10-09) — `owner-money.ts`. Sums and counts for
+   * IST days `from`..`to` (today when absent; at most 92 days, never the future), with the collected
+   * total of a comparison range `cfrom`..`cto` when one is sent. No patient, no document number. The
+   * day book's own gate: the owner and the billing manager hold it, the Medical Superintendent does not.
+   */
+  @RequirePermission("billing.reports.read", "hospital")
+  @Get("reports/owner-money")
+  async ownerMoneyRoute(@Query() query: unknown): Promise<OwnerMoney> {
+    const q = parsed(ownerMoneyQuery, query);
+    const now = new Date();
+    const today = istDay(now);
+    const from = q.from ?? today, to = q.to ?? today;
+    const bad = rangeProblem(from, to, today)
+      ?? (q.cfrom === undefined && q.cto === undefined ? null : rangeProblem(q.cfrom, q.cto, today));
+    if (bad !== null) throw httpError(400, `the range cannot be read: ${bad}`, "invalid_range");
+    try {
+      return await ownerMoney(this.db, { from, to }, q.cfrom === undefined ? null : { from: q.cfrom, to: q.cto! }, now);
     } catch (e) {
       toHttp(e);
     }
