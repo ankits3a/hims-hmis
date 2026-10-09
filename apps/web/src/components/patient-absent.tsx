@@ -57,9 +57,9 @@ const ON_GOLD = "#2a1c05";
 const GOLD_TEXT = "#8a5a10";
 
 /** The brief's boxed card — the allergy box's weight, in amber: "Guardian only" / "Son: Rakesh · reports · no vitals". */
-export function GuardianCard({ absent, testId }: { absent: AbsentWho; testId: string }): React.ReactElement {
+export function GuardianCard({ absent, visitType, testId }: { absent: AbsentWho; visitType?: string; testId: string }): React.ReactElement {
   const { t } = useTranslation();
-  const g = guardianBrief((k, v) => t(k, v ?? {}), absent);
+  const g = guardianBrief((k, v) => t(k, v ?? {}), absent, visitType);
   return (
     <div
       data-testid={testId} role="note"
@@ -94,9 +94,9 @@ export function GuardianLine({ absent, testId }: { absent: AbsentWho; testId: st
 }
 
 /** The queue row's chip — filled amber, "Guardian · Son"; the name stays on the card (it is the chip's title). */
-export function PatientAbsentTag({ absent, testId }: { absent: AbsentWho; testId: string }): React.ReactElement {
+export function PatientAbsentTag({ absent, visitType, testId }: { absent: AbsentWho; visitType?: string; testId: string }): React.ReactElement {
   const { t } = useTranslation();
-  const g = guardianBrief((k, v) => t(k, v ?? {}), absent);
+  const g = guardianBrief((k, v) => t(k, v ?? {}), absent, visitType);
   return (
     <span
       data-testid={testId} title={`${g.who}${g.tail}`} className="mo"
@@ -126,8 +126,10 @@ function refusalText(e: unknown, t: TFunction): string {
  * The button and its small inline form: who came (a fixed list) and, optionally, their name.
  * `onDone` fires once the server has moved the visit; the caller decides what leaves the screen.
  */
-export function GuardianAbsentAction({ encounterId, onDone, testId = "patient-absent" }: {
+export function GuardianAbsentAction({ encounterId, onDone, testId = "patient-absent", short = false }: {
   encounterId: string; onDone: (absent: WirePatientAbsent) => void; testId?: string;
+  /** The vitals bay (owner 2026-10-09): a short quiet line in the patient's details — "Guardian with reports". Desk One keeps its button. */
+  short?: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -154,8 +156,13 @@ export function GuardianAbsentAction({ encounterId, onDone, testId = "patient-ab
 
   if (!open) {
     return (
-      <button type="button" className="sec" data-testid={`${testId}-open`} style={{ alignSelf: "flex-start" }} onClick={() => { setOpen(true); }}>
-        {t("patientAbsent.action")}
+      <button
+        type="button" className={short ? undefined : "sec"} data-testid={`${testId}-open`} onClick={() => { setOpen(true); }}
+        style={short
+          ? { alignSelf: "flex-start", padding: 0, border: 0, background: "none", cursor: "pointer", font: "inherit", fontSize: 12.5, fontWeight: 700, color: "#8a5a10", textDecoration: "underline", whiteSpace: "nowrap" }
+          : { alignSelf: "flex-start" }}
+      >
+        {t(short ? "patientAbsent.short" : "patientAbsent.action")}
       </button>
     );
   }

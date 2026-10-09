@@ -261,7 +261,7 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
       </p>
       {/* Owner 2026-10-09 — only a guardian came: boxed, under the name. Then what the doctor recorded last time. */}
       {visit.data?.patientAbsent != null && (
-        <GuardianCard absent={visit.data.patientAbsent} testId="brief-patient-absent" />
+        <GuardianCard absent={visit.data.patientAbsent} visitType={visit.data.encounter.visitType} testId="brief-patient-absent" />
       )}
       <LastVisitCard visits={timeline.data?.items ?? []} currentEncounterId={encounterId} visitType={visit.data?.encounter.visitType} />
       {reminder.data != null && (

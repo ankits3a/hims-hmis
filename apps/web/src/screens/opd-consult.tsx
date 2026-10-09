@@ -15,6 +15,7 @@ import { EyeSections, eyeSummary, fetchVisitSections } from "./opd-eye-sections"
 import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
+import { GuardianReports } from "../components/guardian-reports";
 import { GuardianLine, PatientAbsentTag } from "../components/patient-absent";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import { useDoctorLabel } from "../lib/use-doctor-label";
@@ -2385,7 +2386,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
       )}
       <VisitTypeBadge visitType={shownVisitType(e.encounter)} size="sm" testId={`queue-visit-type-${e.id}`} />
       {/* Owner 2026-10-07 — nobody to call into the room: the guardian came with the reports. */}
-      {e.encounter.patientAbsent != null && <PatientAbsentTag absent={e.encounter.patientAbsent} testId={`queue-absent-${e.id}`} />}
+      {e.encounter.patientAbsent != null && <PatientAbsentTag absent={e.encounter.patientAbsent} visitType={e.encounter.visitType} testId={`queue-absent-${e.id}`} />}
       {/*
         CONSULT V2 (owner, 2026-09-23) — the alarm says a called token again on the corridor board; the
         box-and-arrow opens this patient in a new browser tab (D17: only one tab edits at a time).
@@ -3013,6 +3014,13 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
               {/* Owner 2026-10-07 / 2026-10-09 — only a guardian came: one line, above every tab. */}
               {visit.data?.patientAbsent != null && (
                 <GuardianLine absent={visit.data.patientAbsent} testId="panel-patient-absent" />
+              )}
+              {/* …and what the guardian came to show: the in-house results since the last visit (the brief's own rule and reads). */}
+              {visit.data?.patientAbsent != null && active !== null && (
+                <GuardianReports
+                  patientId={active.patientId}
+                  lastVisitDay={timelineItems.find((i) => i.encounterId !== active.encounterId && i.status === "completed")?.serviceDate ?? null}
+                />
               )}
               </fieldset>
 

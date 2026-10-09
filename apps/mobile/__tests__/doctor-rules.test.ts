@@ -3,9 +3,10 @@ import { join } from "path";
 import {
   LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, briefResults, completionBody, followUpChoices, isUnpaid, longestWait, parkedSince,
   rowName, unissuedRxRows, visitKind, waitMinutes,
-  LAST_VISIT_LIST_CHARS, guardianBrief, joinWithMore, lastCompletedVisit, lastVisitCard, showsLastVisit,
+  LAST_VISIT_LIST_CHARS, REPORT_LINES, guardianBrief, reportsCard, joinWithMore, lastCompletedVisit, lastVisitCard, showsLastVisit,
 } from "../src/doctor/rules";
 import { translate } from "../src/i18n";
+import { guardianMayStandIn } from "../src/vitals/guardian";
 import webEn from "../../web/src/locales/en.json";
 import webHi from "../../web/src/locales/hi.json";
 
@@ -29,10 +30,17 @@ describe("the doctor's line — one rules file for the web and the phone", () =>
   const en = (k: string, v?: Record<string, string | number>) => translate("en", k, v);
   const hi = (k: string, v?: Record<string, string | number>) => translate("hi", k, v);
 
+  it("a guardian may stand in on every visit type (owner 2026-10-09) — the one rule the server, the web and the phone ask", () => {
+    expect(["new", "revisit", "renewal", "referral", undefined, null].map((v) => guardianMayStandIn(v))).toEqual(Array(6).fill(true));
+  });
+
   it("the guardian card, its one-line form and the row chip are worded by ONE function", () => {
     expect(guardianBrief(en, { relation: "son", name: "Rakesh" })).toEqual({
       title: "Guardian only", who: "Son: Rakesh", tail: " · reports · no vitals", compact: "Guardian only · Son: Rakesh", chip: "Guardian · Son",
     });
+    // Owner 2026-10-09 — a NEW patient's guardian has no reports from here to show: the line says "new".
+    expect(guardianBrief(en, { relation: "son", name: "Rakesh" }, "new").tail).toBe(" · new · no vitals");
+    expect(["revisit", "renewal", undefined].map((v) => guardianBrief(en, { relation: "son", name: null }, v).tail)).toEqual(Array(3).fill(" · reports · no vitals"));
     const noName = guardianBrief(en, { relation: "son", name: null });
     expect(`${noName.who}${noName.tail}`).toBe("Son · reports · no vitals");
     expect(noName.compact).toBe("Guardian only · Son");
@@ -87,9 +95,34 @@ describe("the doctor's line — one rules file for the web and the phone", () =>
     expect([showsLastVisit("revisit"), showsLastVisit("renewal"), showsLastVisit("new"), showsLastVisit(undefined)]).toEqual([true, true, false, false]);
   });
 
+  it("the Reports card is built on briefResults' own rule: since the last visit, newest first, three lines and a count of the rest", () => {
+    const l = (analyteName: string, value: string, unit: string | null, verifiedAt: string, flag: string | null = "N") => ({ orderableName: analyteName, analyteName, value, unit, flag, verifiedAt });
+    const labs = [l("HbA1c", "8.9", "%", "2026-10-06T06:00:00.000Z", "H"), l("Creatinine", "1.3", "mg/dL", "2026-10-05T06:00:00.000Z"), l("Hb", "11.2", "g/dL", "2026-10-03T06:00:00.000Z"), l("Old sugar", "140", null, "2026-08-01T06:00:00.000Z")];
+    const imaging = [{ studyName: "X-ray chest PA", impression: "No active lung lesion", criticalCategory: null, signedAt: "2026-10-04T07:00:00.000Z" }];
+    const card = reportsCard(en, labs, imaging, "2026-09-12");
+    expect(card).toEqual({
+      title: "Reports", more: 1,
+      lines: [
+        { name: "HbA1c", rest: " · 8.9 % · 6 Oct", abnormal: true },
+        { name: "Creatinine", rest: " · 1.3 mg/dL · 5 Oct", abnormal: false },
+        { name: "X-ray chest PA", rest: " · ready · 4 Oct", abnormal: false },
+      ],
+    });
+    expect(card!.lines).toHaveLength(REPORT_LINES);
+    // The same rows, in the same order, as the patient page's "since then" block.
+    expect(briefResults(labs, imaging, "2026-09-12").lines.map((x) => x.what.split(/[ :]/)[0])).toEqual(["HbA1c", "Creatinine", "X-ray", "Hb"]);
+    // Nothing since the last visit (the page says "none since"): no card. Nothing at all: no card.
+    expect(reportsCard(en, [labs[3]!], [], "2026-09-12")).toBeNull();
+    expect(reportsCard(en, [], [], null)).toBeNull();
+    expect(reportsCard(hi, labs, imaging, "2026-09-12")!.lines[2]!.rest).toBe(" · तैयार · 4 Oct");
+    // Both screens call it.
+    for (const file of ["../src/screens/consult.tsx", "../../web/src/components/guardian-reports.tsx"]) expect(read(file)).toMatch(/reportsCard\(/);
+  });
+
   it("every new label fits one line of a 360 px phone: 34 characters at most, in English and in Hindi", () => {
     const BUDGET = 34;
-    const keys = ["patientAbsent.cardTitle", "patientAbsent.compact", "patientAbsent.chip", "lastVisit.title", "lastVisit.complaint", "lastVisit.diagnosis", "lastVisit.tests", "lastVisit.medicines"];
+    const keys = ["patientAbsent.cardTitle", "patientAbsent.compact", "patientAbsent.chip", "lastVisit.title", "lastVisit.complaint", "lastVisit.diagnosis", "lastVisit.tests", "lastVisit.medicines",
+      "patientAbsent.short", "patientAbsent.title", "patientAbsent.hint", "reports.title", "reports.ready"];
     const relations = Object.keys((webEn as { patientAbsent: { relation: Record<string, string> } }).patientAbsent.relation);
     expect(relations).toContain("other_relative");
     for (const [name, t, web] of [["en", en, webEn], ["hi", hi, webHi]] as const) {
@@ -100,10 +133,16 @@ describe("the doctor's line — one rules file for the web and the phone", () =>
         const longest = Math.max(...relations.map((r) => { const g = guardianBrief(t, { relation: r, name: null }); return Math.max(g.title.length, g.compact.length, g.chip.length, t(k, { date: "24 Aug" }).length); }));
         expect([name, k, longest <= BUDGET]).toEqual([name, k, true]);
       }
+      // "Guardian with reports" is also a row of the action card and a swipe strip: 24 at most.
+      expect([name, t("patientAbsent.short").length <= 24]).toEqual([name, true]);
+      // The hint under the bench is the one longer line: small type, one line at 360 px (looked at), 44 at most.
+      expect([name, t("mobile.scan.benchHint").length <= 44]).toEqual([name, true]);
       // The card's detail line is composed: test it with every relation and no name.
       for (const r of relations) {
-        const g = guardianBrief(t, { relation: r, name: null });
-        expect([name, r, `${g.who}${g.tail}`.length <= BUDGET]).toEqual([name, r, true]);
+        for (const visitType of ["revisit", "new"]) {
+          const g = guardianBrief(t, { relation: r, name: null }, visitType);
+          expect([name, r, visitType, `${g.who}${g.tail}`.length <= BUDGET]).toEqual([name, r, visitType, true]);
+        }
       }
     }
   });

@@ -221,7 +221,7 @@ export function PatientBrief({ api, entry, group, encounterId, patientId, summar
 
   // Owner 2026-10-09 — only a guardian came: said in a box under the name, and the chart block is not drawn.
   const absent = entry?.encounter.patientAbsent ?? v?.patientAbsent ?? null;
-  const guardian = absent === null ? null : guardianBrief(t, absent);
+  const guardian = absent === null ? null : guardianBrief(t, absent, entry?.encounter.visitType ?? v?.encounter.visitType);
   /*
     WHAT THE DOCTOR RECORDED LAST TIME (owner 2026-10-09) — for a revisit or a renewal. The visit is
     chosen off the timeline (so a history this login may not read chooses nothing) and read through

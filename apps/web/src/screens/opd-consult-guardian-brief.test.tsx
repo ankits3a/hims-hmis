@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { screen, waitFor } from "@testing-library/react";
+import { GuardianReports } from "../components/guardian-reports";
 import { GuardianLine, PatientAbsentTag } from "../components/patient-absent";
 import { setToken } from "../lib/api";
 import { renderWithProviders, stubFetch } from "../test-utils";
@@ -89,6 +90,14 @@ describe("the doctor's brief — guardian only, and the last visit (owner 2026-1
     expect(screen.queryByTestId("brief-patient-absent")).not.toBeInTheDocument();
   });
 
+  it("a NEW patient's guardian visit (owner 2026-10-09): the same box, saying 'new' where a returning patient's says 'reports'", async () => {
+    mount({ "GET /api/opd/visits/e13": today({ patientAbsent: GUARDIAN }, "new"), "GET /api/opd/patients/p13/timeline": { items: [] } });
+    expect((await screen.findByTestId("brief-patient-absent")).textContent).toBe("Guardian onlySon: Rakesh · new · no vitals");
+    await screen.findByTestId("brief-desk-words");
+    expect(screen.queryByTestId("brief-last-visit")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("brief-vitals")).not.toBeInTheDocument();
+  });
+
   it("a new patient has no card and the earlier visit is not even read", async () => {
     const m = mount({ "GET /api/opd/visits/e13": today({}, "new") });
     await screen.findByTestId("brief-desk-words");
@@ -112,6 +121,42 @@ describe("the doctor's brief — guardian only, and the last visit (owner 2026-1
     expect(screen.queryByTestId("brief-last-visit")).not.toBeInTheDocument();
   });
 
+  it("a guardian's consultation carries a Reports card: three newest in-house results since the last visit, one line each, then +n", async () => {
+    const lab = (analyteName: string, value: string, unit: string | null, verifiedAt: string, flag = "N") => ({ orderableName: analyteName, analyteName, value, unit, flag, verifiedAt });
+    stubFetch({
+      "GET /api/lab/results/patient/p13": { items: [
+        lab("HbA1c", "8.9", "%", "2026-10-06T06:00:00.000Z", "H"), lab("Creatinine", "1.3", "mg/dL", "2026-10-05T06:00:00.000Z"),
+        lab("Hb", "11.2", "g/dL", "2026-10-03T06:00:00.000Z"), lab("Old sugar", "140", "mg/dL", "2026-08-01T06:00:00.000Z"),
+      ] },
+      "GET /api/radiology/reports/patient/p13": { items: [{ studyName: "X-ray chest PA", impression: "No active lung lesion", criticalCategory: null, signedAt: "2026-10-04T07:00:00.000Z" }] },
+    });
+    setToken("t-1");
+    renderWithProviders(<GuardianReports patientId="p13" lastVisitDay="2026-08-24" />);
+    const card = await screen.findByTestId("panel-reports");
+    expect(card.textContent).toMatch(/^Reports/);
+    expect(screen.getByTestId("panel-reports-0").textContent).toBe("HbA1c · 8.9 % · 6 Oct");
+    expect(screen.getByTestId("panel-reports-1").textContent).toBe("Creatinine · 1.3 mg/dL · 5 Oct");
+    expect(screen.getByTestId("panel-reports-2").textContent).toBe("X-ray chest PA · ready · 4 Oct");
+    expect(screen.getByTestId("panel-reports-more").textContent).toBe("+1");
+    expect(card.textContent).not.toContain("Old sugar");
+    // Drawn only on a guardian's visit, beside the line that says so.
+    const consult = readFileSync(resolve(__dirname, "opd-consult.tsx"), "utf8");
+    expect(consult).toMatch(/visit\.data\?\.patientAbsent != null && active !== null && \(\s*<GuardianReports\b/);
+  });
+
+  it("nothing since the last visit, or results that cannot be read: no Reports card", async () => {
+    stubFetch({
+      "GET /api/lab/results/patient/p13": { items: [{ orderableName: "Sugar", analyteName: "Sugar", value: "140", unit: null, flag: "N", verifiedAt: "2026-08-01T06:00:00.000Z" }] },
+      "GET /api/radiology/reports/patient/p13": () => { throw new Error("forbidden"); },
+    });
+    setToken("t-1");
+    renderWithProviders(<><GuardianReports patientId="p13" lastVisitDay="2026-08-24" /><span data-testid="after" /></>);
+    await screen.findByTestId("after");
+    await waitFor(() => { expect(vi.mocked(fetch).mock.calls.length).toBeGreaterThanOrEqual(2); });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId("panel-reports")).not.toBeInTheDocument();
+  });
+
   it("where the doctor writes it is one line, and the queue row carries a filled chip without the name", () => {
     renderWithProviders(<><GuardianLine absent={GUARDIAN} testId="line" /><PatientAbsentTag absent={GUARDIAN} testId="chip" /></>);
     expect(screen.getByTestId("line").textContent).toBe("Guardian only · Son: Rakesh");
@@ -122,7 +167,7 @@ describe("the doctor's brief — guardian only, and the last visit (owner 2026-1
     // The consultation's header strip (above every tab) and the queue row use exactly these two.
     const consult = readFileSync(resolve(__dirname, "opd-consult.tsx"), "utf8");
     expect(consult).toMatch(/<GuardianLine absent=\{visit\.data\.patientAbsent\} testId="panel-patient-absent" \/>/);
-    expect(consult).toMatch(/<PatientAbsentTag absent=\{e\.encounter\.patientAbsent\} testId=\{`queue-absent-\$\{e\.id\}`\} \/>/);
+    expect(consult).toMatch(/<PatientAbsentTag absent=\{e\.encounter\.patientAbsent\} visitType=\{e\.encounter\.visitType\} testId=\{`queue-absent-\$\{e\.id\}`\} \/>/);
     expect(consult).not.toMatch(/PatientAbsentNotice/);
   });
 });

@@ -303,6 +303,22 @@ describe("the doctor's OPD line on a phone", () => {
     expect(await screen.findByTestId("brief-vital-bp")).toHaveTextContent(/178\/106/);
   });
 
+  it("a NEW patient's guardian visit (owner 2026-10-09): the same boxed card saying 'new', the same chip, no vitals block and no last-visit card", async () => {
+    const w = world(queue({ ordered: [entry(13, { position: 1 }, { visitType: "new", patientAbsent: GUARDIAN }, { name: "Suresh Prasad" })] }), {
+      "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", { vitals: [], patientAbsent: GUARDIAN }, { visitType: "new" }) }),
+      "GET /opd/patients/p13/timeline": () => ({ status: 200, body: { items: [] } }),
+    });
+    await mount(w.fetcher);
+    expect(await screen.findByTestId("line-guardian-13")).toHaveTextContent("Guardian · Son");
+    await fireEvent.press(screen.getByTestId("line-row-13-open"));
+    const card = await screen.findByTestId("brief-patient-absent");
+    expect(card.props.accessibilityLabel).toBe("Guardian only. Son: Rakesh · new · no vitals");
+    expect(card).not.toHaveTextContent(/reports/);
+    await waitFor(() => expect(screen.getByTestId("brief-why")).toHaveTextContent(/Pair mein jhunjhuni/));
+    expect(screen.queryByTestId("brief-vitals-card")).toBeNull();
+    expect(screen.queryByTestId("brief-last-visit")).toBeNull();
+  });
+
   it("an ordinary revisit with no chart keeps today's line, and has no guardian card", async () => {
     const w = world(queue(), { "GET /opd/visits/e13": () => ({ status: 200, body: visit("e13", { vitals: [] }) }) });
     await mount(w.fetcher);

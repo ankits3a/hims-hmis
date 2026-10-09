@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { within, act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { doctorApi } from "../src/doctor/api";
 import { draftStore } from "../src/consult/draft";
@@ -132,18 +132,74 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(screen.queryByText(/print/i)).toBeNull();
   });
 
-  it("a guardian-only visit says so in one line at the top of This visit (owner 2026-10-09); an ordinary visit says nothing", async () => {
-    const plain = world();
+  // ——— owner 2026-10-09: a guardian's visit — the line in the top card, and the reports the guardian came to show ———
+  const GUARDIAN = { relation: "son", name: "Rakesh", by: "asha.devi", at: "2026-10-07T04:35:00.000Z" };
+  const lab = (analyteName: string, value: string, unit: string | null, verifiedAt: string, flag: string | null = "N") => ({ orderableName: analyteName, analyteName, value, unit, flag, verifiedAt });
+  const REPORTS: Record<string, Route> = {
+    "GET /opd/patients/p13/timeline": () => ({ status: 200, body: { items: [
+      { encounterId: "e13", serviceDate: "2026-10-07", status: "in_consultation", visitType: "revisit", doctorName: "Dr. Chandan Kumar", departmentName: "General Medicine", diagnosis: null, prescriptionLineCount: 0 },
+      { encounterId: "e0", serviceDate: "2026-09-12", status: "completed", visitType: "new", doctorName: "Dr. Chandan Kumar", departmentName: "General Medicine", diagnosis: "Type 2 diabetes", prescriptionLineCount: 2 },
+    ] } }),
+    "GET /lab/results/patient/p13": () => ({ status: 200, body: { items: [
+      lab("HbA1c", "8.9", "%", "2026-10-06T06:00:00.000Z", "H"), lab("Creatinine", "1.3", "mg/dL", "2026-10-05T06:00:00.000Z"),
+      lab("Hb", "11.2", "g/dL", "2026-10-03T06:00:00.000Z"), lab("TSH", "2.1", null, "2026-09-20T06:00:00.000Z"),
+      lab("Old sugar", "140", "mg/dL", "2026-08-01T06:00:00.000Z"),
+    ] } }),
+    "GET /radiology/reports/patient/p13": () => ({ status: 200, body: { items: [{ studyName: "X-ray chest PA", impression: "No active lung lesion", criticalCategory: null, signedAt: "2026-10-04T07:00:00.000Z" }] } }),
+  };
+  const asGuardian = (w: ReturnType<typeof world>): void => {
+    (w.state.visit as unknown as Record<string, unknown>).patientAbsent = GUARDIAN;
+    w.state.visit.vitals = [];
+  };
+
+  it("a guardian-only visit says so in one line in the TOP card, under the chips — and an ordinary visit says nothing and reads no reports", async () => {
+    const plain = world(REPORTS);
     const a = await mount(plain);
     expect(await screen.findByTestId("visit-empty")).toBeTruthy();
     expect(screen.queryByTestId("consult-guardian")).toBeNull();
+    expect(screen.queryByTestId("consult-reports")).toBeNull();
+    expect(plain.of("GET /lab/results/patient/p13")).toHaveLength(0);
     await a.unmount();
     const w = world();
-    (w.state.visit as unknown as Record<string, unknown>).patientAbsent = { relation: "son", name: "Rakesh", by: "asha.devi", at: "2026-10-07T04:35:00.000Z" };
-    w.state.visit.vitals = [];
+    asGuardian(w);
     await mount(w);
     expect(await screen.findByTestId("consult-guardian")).toHaveTextContent("Guardian only · Son: Rakesh");
     expect(screen.queryByTestId("consult-vitals")).toBeNull();
+    // In the patient's card (where the eye starts), no longer inside "This visit".
+    const inside = (parent: string): boolean => within(screen.getByTestId(parent)).queryByTestId("consult-guardian") !== null;
+    expect([inside("consult-who"), inside("this-visit")]).toEqual([true, false]);
+  });
+
+  it("a guardian-only visit shows a Reports card: the three newest in-house results since the last visit, one line each, then +n", async () => {
+    const w = world(REPORTS);
+    asGuardian(w);
+    await mount(w);
+    const card = await screen.findByTestId("consult-reports");
+    expect(card).toHaveTextContent(/^Reports/);
+    expect(screen.getByTestId("consult-report-0")).toHaveTextContent("HbA1c · 8.9 % · 6 Oct");
+    expect(screen.getByTestId("consult-report-1")).toHaveTextContent("Creatinine · 1.3 mg/dL · 5 Oct");
+    // A signed imaging report has no single value: it is "ready".
+    expect(screen.getByTestId("consult-report-2")).toHaveTextContent("X-ray chest PA · ready · 4 Oct");
+    expect(screen.queryByTestId("consult-report-3")).toBeNull();
+    expect(screen.getByTestId("consult-reports-more")).toHaveTextContent("+2"); // Hb and TSH; the August sugar is before the last visit
+    expect(card).not.toHaveTextContent(/Old sugar/);
+  });
+
+  it("no result since the last visit, or results this login may not read: no Reports card, and nothing breaks", async () => {
+    const none = world({ ...REPORTS, "GET /lab/results/patient/p13": () => ({ status: 200, body: { items: [lab("Old sugar", "140", "mg/dL", "2026-08-01T06:00:00.000Z")] } }), "GET /radiology/reports/patient/p13": () => ({ status: 200, body: { items: [] } }) });
+    asGuardian(none);
+    const a = await mount(none);
+    await screen.findByTestId("consult-guardian");
+    await waitFor(() => expect(none.of("GET /lab/results/patient/p13")).toHaveLength(1));
+    expect(screen.queryByTestId("consult-reports")).toBeNull();
+    await a.unmount();
+    const refused = world({ ...REPORTS, "GET /lab/results/patient/p13": () => ({ status: 403, body: { message: "forbidden" } }), "GET /radiology/reports/patient/p13": () => ({ status: 403, body: { message: "forbidden" } }) });
+    asGuardian(refused);
+    await mount(refused);
+    await screen.findByTestId("consult-guardian");
+    await waitFor(() => expect(refused.of("GET /radiology/reports/patient/p13")).toHaveLength(1));
+    expect(screen.queryByTestId("consult-reports")).toBeNull();
+    expect(screen.queryByTestId("consult-error")).toBeNull();
   });
 
   it("a medicine is searched, built from chips, checked by the server, issued and the visit completed — then straight back to the line", async () => {

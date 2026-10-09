@@ -201,6 +201,30 @@ export function shortDay(isoOrDay: string): string {
 export type BriefResultLine = { what: string; kind: "lab" | "radiology"; day: string; abnormal: boolean };
 export const BRIEF_RESULT_LINES = 6;
 
+type ResultRow = BriefResultLine & { at: string; name: string; value: string | null };
+/** Every row the rule admits, newest first and uncut — `briefResults` and `reportsCard` are two views of it. */
+function resultsSince(lab: readonly WirePatientResult[], imaging: readonly WirePatientImaging[], lastVisitDay: string | null): { rows: ResultRow[]; noneSince: boolean } {
+  const all: ResultRow[] = [
+    ...lab.map((r) => {
+      const value = `${r.value}${r.unit === null || r.unit === "" ? "" : ` ${r.unit}`}`;
+      return {
+        what: `${r.analyteName} ${value}`, name: r.analyteName, value,
+        kind: "lab" as const, at: r.verifiedAt, day: istDay(r.verifiedAt),
+        abnormal: r.flag !== null && r.flag !== "" && r.flag.toUpperCase() !== "N",
+      };
+    }),
+    ...imaging.map((r) => ({
+      what: r.impression === null || r.impression.trim() === "" ? r.studyName : `${r.studyName}: ${r.impression.trim()}`, name: r.studyName, value: null,
+      kind: "radiology" as const, at: r.signedAt, day: istDay(r.signedAt), abnormal: r.criticalCategory !== null,
+    })),
+  ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  if (all.length === 0) return { rows: [], noneSince: false };
+  if (lastVisitDay === null) return { rows: all, noneSince: false };
+  const since = all.filter((l) => l.day >= lastVisitDay);
+  if (since.length === 0) return { rows: [all[0]!], noneSince: true };
+  return { rows: since, noneSince: false };
+}
+
 /**
  * The board's rule for the "since then" list:
  *  · results on or after the last consultation's day, newest first (the board lists an ECG taken on
@@ -215,23 +239,33 @@ export const BRIEF_RESULT_LINES = 6;
 export function briefResults(
   lab: WirePatientResult[], imaging: WirePatientImaging[], lastVisitDay: string | null,
 ): { lines: BriefResultLine[]; noneSince: boolean } {
-  const all: (BriefResultLine & { at: string })[] = [
-    ...lab.map((r) => ({
-      what: `${r.analyteName} ${r.value}${r.unit === null || r.unit === "" ? "" : ` ${r.unit}`}`,
-      kind: "lab" as const, at: r.verifiedAt, day: istDay(r.verifiedAt),
-      abnormal: r.flag !== null && r.flag !== "" && r.flag.toUpperCase() !== "N",
-    })),
-    ...imaging.map((r) => ({
-      what: r.impression === null || r.impression.trim() === "" ? r.studyName : `${r.studyName}: ${r.impression.trim()}`,
-      kind: "radiology" as const, at: r.signedAt, day: istDay(r.signedAt), abnormal: r.criticalCategory !== null,
-    })),
-  ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  const strip = (l: BriefResultLine & { at: string }): BriefResultLine => ({ what: l.what, kind: l.kind, day: l.day, abnormal: l.abnormal });
-  if (all.length === 0) return { lines: [], noneSince: false };
-  if (lastVisitDay === null) return { lines: all.slice(0, BRIEF_RESULT_LINES).map(strip), noneSince: false };
-  const since = all.filter((l) => l.day >= lastVisitDay);
-  if (since.length === 0) return { lines: [strip(all[0]!)], noneSince: true };
-  return { lines: since.slice(0, BRIEF_RESULT_LINES).map(strip), noneSince: false };
+  const { rows, noneSince } = resultsSince(lab, imaging, lastVisitDay);
+  return { lines: rows.slice(0, BRIEF_RESULT_LINES).map((l) => ({ what: l.what, kind: l.kind, day: l.day, abnormal: l.abnormal })), noneSince };
+}
+
+export const REPORT_LINES = 3;
+/** `name` may be cut short on a narrow screen; `rest` (" · 8.9 % · 6 Oct") never is. */
+export type ReportLine = { name: string; rest: string; abnormal: boolean };
+export type ReportsCard = { title: string; lines: ReportLine[]; more: number };
+
+/**
+ * THE "REPORTS" CARD ON THE CONSULT SCREEN OF A GUARDIAN'S VISIT (owner 2026-10-09) — the guardian
+ * came to show reports, so the in-house ones signed since the last visit are in front of the doctor:
+ * "HbA1c · 8.9 % · 6 Oct", three at most, then "+n". The rows are `briefResults`' rows (the patient
+ * page's "since then" block), so the two never disagree. An imaging report has no single value: it
+ * is "ready". Nothing since the last visit ⇒ no card (null). Recorded facts only.
+ */
+export function reportsCard(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  lab: readonly WirePatientResult[], imaging: readonly WirePatientImaging[], lastVisitDay: string | null,
+): ReportsCard | null {
+  const { rows, noneSince } = resultsSince(lab, imaging, lastVisitDay);
+  if (noneSince || rows.length === 0) return null;
+  return {
+    title: t("reports.title"),
+    lines: rows.slice(0, REPORT_LINES).map((r) => ({ name: r.name, rest: ` · ${r.value ?? t("reports.ready")} · ${shortDay(r.day)}`, abnormal: r.abnormal })),
+    more: Math.max(0, rows.length - REPORT_LINES),
+  };
 }
 
 export type BriefRefill =
@@ -264,7 +298,7 @@ export type GuardianBrief = {
   title: string;
   /** "Son: Rakesh", or "Son" when no name was given. The only part that may be cut short (a typed name runs to 80 characters). */
   who: string;
-  /** " · reports · no vitals" — fixed words, never cut. */
+  /** " · reports · no vitals" (a new patient's visit: " · new · no vitals") — fixed words, never cut. */
   tail: string;
   /** "Guardian only · Son: Rakesh" — the one-line form where the doctor writes. */
   compact: string;
@@ -277,7 +311,7 @@ export type GuardianBrief = {
  * the patient page, the one line on the consult screen and the chip on the doctor's line. Display
  * only — who may skip the bay is `patient-absent-rule.ts` and the server's.
  */
-export function guardianBrief(t: BriefT, absent: { relation: string; name: string | null }): GuardianBrief {
+export function guardianBrief(t: BriefT, absent: { relation: string; name: string | null }, visitType?: string | null): GuardianBrief {
   // The desk's own word for who came — or, where that word is too long for one line of a phone
   // ("Other relative"), the shorter one the doctor's screens use. A relation this build has no word for is shown as sent.
   const word = (key: string): string | null => { const said = t(key); return said === key ? null : said; };
@@ -285,7 +319,10 @@ export function guardianBrief(t: BriefT, absent: { relation: string; name: strin
   const name = (absent.name ?? "").trim();
   const who = name === "" ? relation : t("patientAbsent.who", { relation, name });
   const title = t("patientAbsent.cardTitle");
-  return { title, who, tail: t("patientAbsent.cardTail"), compact: t("patientAbsent.compact", { who }), chip: t("patientAbsent.chip", { relation }) };
+  // Owner 2026-10-09 — a NEW patient's guardian may be sent on too; there are no reports from here to
+  // show, so the line says "new" where a returning patient's says "reports".
+  const tail = t(visitType === "new" ? "patientAbsent.cardTailNew" : "patientAbsent.cardTail");
+  return { title, who, tail, compact: t("patientAbsent.compact", { who }), chip: t("patientAbsent.chip", { relation }) };
 }
 
 /** The visit the "Last visit" card is about: the newest COMPLETED visit that is not today's. Null for a first visit. */
