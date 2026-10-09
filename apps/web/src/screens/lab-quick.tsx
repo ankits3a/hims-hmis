@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
-import { fmtIst } from "../lib/format";
+import { fmtIst, useDebounced } from "../lib/format";
 import { deskFind, istToday, labErrorText } from "../lib/lab-api";
 import {
   draftSummary, previewFlag, quickCatalogue, quickQueue, quickRanges, quickReport, refText, saveQuickResults,
@@ -10,6 +10,7 @@ import {
 } from "../lib/lab-quick-api";
 import { Button } from "@/components/ui/button";
 import { LabStation, sexAge } from "./lab-seat";
+import { printQuickReport, QuickLabReports } from "./lab-quick-reports";
 import type { WireDeskFindHit } from "../lib/lab-api";
 import type {
   QuickAnalyte, QuickCatalogue, QuickChosenTest, QuickFlag, QuickLine, QuickRange, QuickReport, QuickRow,
@@ -30,7 +31,7 @@ import type {
  * The colours are a preview; the server resolves the range and flag again on save.
  */
 
-type Mode = { kind: "start" } | { kind: "results"; id: string };
+type Mode = { kind: "start" } | { kind: "saved" } | { kind: "results"; id: string };
 
 const FLAG_CLASS: Record<string, string> = {
   L: "border-blue-500 bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100",
@@ -57,72 +58,99 @@ function groupByTest(
   return groups;
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
+/* ═══════════════════════════════ FIND (live) ═══════════════════════════════ */
 
-/** A plain A4 page in a new window. Labels are English: the report is the hospital's document. */
-function printReport(report: QuickReport, catalogue: QuickCatalogue | undefined): void {
-  const p = report.patient;
-  const byId = new Map(report.lines.map((l) => [l.analyteId, l]));
-  const groups = groupByTest(report.tests, catalogue, report.lines.map((l) => l.analyteId), "Other");
-  const line = (l: QuickLine): string => `<tr${l.flag && l.flag !== "N" ? ' class="ab"' : ""}><td>${escapeHtml(l.nameEn)}</td>`
-    + `<td><b>${escapeHtml(l.value)}</b> ${l.flag && l.flag !== "N" ? escapeHtml(l.flag) : ""}</td><td>${escapeHtml(l.unit ?? "")}</td>`
-    + `<td>${escapeHtml(refText({ low: l.low, high: l.high, text: l.refText }))}</td></tr>`;
-  const rows = groups.map((g) => `<tr class="grp"><td colspan="4">${escapeHtml(g.title)}</td></tr>`
-    + g.ids.map((id) => line(byId.get(id)!)).join("")).join("");
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Lab report ${escapeHtml(p.uhid)}</title>
-<style>body{font:13px system-ui,sans-serif;margin:24px;color:#000}h1{font-size:18px;margin:0 0 8px}
-table{width:100%;border-collapse:collapse;margin:12px 0}td,th{border-bottom:1px solid #ccc;padding:6px;text-align:left}
-tr.ab td{font-weight:600}tr.grp td{font-weight:700;padding-top:14px;border-bottom:2px solid #000}.sum{white-space:pre-wrap;border:1px solid #999;padding:8px}.meta{color:#333;line-height:1.5}</style></head><body>
-<h1>Laboratory report</h1>
-<div class="meta">${escapeHtml(p.display)} · ${escapeHtml(p.uhid)} · ${escapeHtml(sexAge(p.administrativeGender, p.dob))}${report.encounterNo ? ` · Visit ${escapeHtml(report.encounterNo)}` : ""}<br>
-Tests: ${escapeHtml(report.tests.map((x) => x.nameEn).join(", "))}<br>
-Sample collected: ${escapeHtml(fmtIst(report.collectedAt))} · Reported: ${escapeHtml(fmtIst(report.reportedAt ?? new Date().toISOString()))}</div>
-<table><thead><tr><th>Test</th><th>Result</th><th>Unit</th><th>Reference range</th></tr></thead><tbody>${rows}</tbody></table>
-${report.summary.trim() !== "" ? `<h3>Remarks</h3><div class="sum">${escapeHtml(report.summary)}</div>` : ""}
-<script>window.onload=function(){window.print()}</script></body></html>`;
-  const w = window.open("", "_blank");
-  if (w === null) return;
-  w.document.write(html);
-  w.document.close();
+/**
+ * The patient finder both panels use: suggestions appear as the person types (two characters or
+ * more, 250 ms after the last key), through the lab desk's own finder — visit no., token, UHID,
+ * mobile or name. Enter on a long string with no suggestion tries it as a scanned card QR.
+ */
+function PatientFind({ onPick, autoFocus = true }: { onPick: (hit: WireDeskFindHit) => void; autoFocus?: boolean }): React.ReactElement {
+  const { t } = useTranslation();
+  const [q, setQ] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const typed = useDebounced(q.trim(), 250);
+  const live = useQuery({
+    queryKey: ["lab-quick", "find", typed],
+    queryFn: () => deskFind(typed, istToday()),
+    enabled: typed.length >= 2,
+    retry: false,
+  });
+  const hits = typed.length >= 2 && typed === q.trim() ? live.data?.hits ?? null : null;
+
+  async function submit(): Promise<void> {
+    const query = q.trim();
+    if (query === "") return;
+    setError(null);
+    try {
+      const today = istToday();
+      const r = await deskFind(query, today);
+      if (r.hits.length === 1) { onPick(r.hits[0]!); return; }
+      if (r.hits.length > 1) return;
+      if (query.length >= 30) {
+        /** Nothing by visit, token, UHID, mobile or name, and long: a scanned card QR. */
+        const qr = await verifyCardQr(query);
+        if (qr.ok) {
+          const again = await deskFind(qr.patient.uhid, today);
+          if (again.hits[0]) { onPick(again.hits[0]); return; }
+        }
+      }
+      setError(t("lab.quick.notFound"));
+    } catch (e) {
+      setError(labErrorText(e));
+    }
+  }
+
+  return (
+    <section>
+      <label htmlFor="lab-quick-find" className="mb-1 block text-base font-semibold">{t("lab.quick.findPatient")}</label>
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="flex gap-2">
+        <input
+          id="lab-quick-find"
+          autoFocus={autoFocus}
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setError(null); }}
+          placeholder={t("lab.quick.findHint")}
+          autoComplete="off"
+          className="min-w-0 flex-1 rounded border bg-background px-3 py-2 text-base"
+        />
+        <Button type="submit">{t("lab.quick.find")}</Button>
+      </form>
+      {error !== null && <p role="alert" className="mt-2 text-sm font-semibold text-red-700 dark:text-red-300">{error}</p>}
+      {live.isError && <p role="alert" className="mt-2 text-sm">{labErrorText(live.error)}</p>}
+      {hits !== null && hits.length === 0 && <p className="mt-2 text-sm text-muted-foreground">{t("lab.quick.notFound")}</p>}
+      {hits !== null && hits.length > 0 && (
+        <ul className="mt-2 divide-y rounded border" data-testid="lab-quick-suggestions">
+          {hits.map((h) => (
+            <li key={`${h.patient.id}-${h.visit?.encounterNo ?? ""}`}>
+              <button type="button" onClick={() => onPick(h)} className="w-full px-3 py-2 text-left hover:bg-muted">
+                <span className="font-medium">{h.patient.display}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {h.patient.uhid} · {sexAge(h.patient.administrativeGender, h.patient.dob)}
+                  {h.visit ? ` · ${h.visit.encounterNo}${h.visit.doctorName ? ` · ${h.visit.doctorName}` : ""}` : ""}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 /* ═══════════════════════════════ START ═══════════════════════════════ */
 
 function StartPanel({ catalogue, onStarted }: { catalogue: QuickCatalogue | undefined; onStarted: (r: QuickRow) => void }): React.ReactElement {
   const { t } = useTranslation();
-  const [q, setQ] = useState("");
-  const [hits, setHits] = useState<WireDeskFindHit[] | null>(null);
   const [hit, setHit] = useState<WireDeskFindHit | null>(null);
   const [tests, setTests] = useState<QuickChosenTest[]>([]);
   const [testSearch, setTestSearch] = useState("");
   const [collected, setCollected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  const find = useMutation({
-    mutationFn: async (query: string): Promise<WireDeskFindHit[]> => {
-      const today = istToday();
-      const r = await deskFind(query, today);
-      if (r.hits.length > 0 || query.length < 30) return r.hits;
-      /** Nothing by visit, token, UHID, mobile or name, and long: a scanned card QR. */
-      const qr = await verifyCardQr(query);
-      if (!qr.ok) return [];
-      return (await deskFind(qr.patient.uhid, today)).hits;
-    },
-    onSuccess: (h) => {
-      setError(null);
-      if (h.length === 1) choose(h[0]!);
-      else setHits(h);
-    },
-    onError: (e) => setError(labErrorText(e)),
-  });
 
   function choose(h: WireDeskFindHit): void {
     setHit(h);
-    setHits(null);
     setDone(null);
     setCollected(false);
     const advised = (h.visit?.advised ?? []).filter((a) => a.orderable !== null);
@@ -130,8 +158,7 @@ function StartPanel({ catalogue, onStarted }: { catalogue: QuickCatalogue | unde
   }
 
   function clear(): void {
-    setHit(null); setHits(null); setTests([]); setCollected(false); setQ(""); setTestSearch(""); setError(null);
-    setTimeout(() => searchRef.current?.focus(), 0);
+    setHit(null); setTests([]); setCollected(false); setTestSearch(""); setError(null);
   }
 
   const start = useMutation({
@@ -165,38 +192,7 @@ function StartPanel({ catalogue, onStarted }: { catalogue: QuickCatalogue | unde
     <div className="space-y-4">
       {done !== null && <p role="status" className="rounded border border-green-600 p-2 text-sm text-green-800 dark:text-green-200">{done}</p>}
       {hit === null ? (
-        <section>
-          <label htmlFor="lab-quick-find" className="mb-1 block text-base font-semibold">{t("lab.quick.findPatient")}</label>
-          <form onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") find.mutate(q.trim()); }} className="flex gap-2">
-            <input
-              id="lab-quick-find"
-              ref={searchRef}
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t("lab.quick.findHint")}
-              autoComplete="off"
-              className="min-w-0 flex-1 rounded border bg-background px-3 py-2 text-base"
-            />
-            <Button type="submit" disabled={find.isPending}>{t("lab.quick.find")}</Button>
-          </form>
-          {hits !== null && hits.length === 0 && <p className="mt-2 text-sm">{t("lab.quick.notFound")}</p>}
-          {hits !== null && hits.length > 0 && (
-            <ul className="mt-2 divide-y rounded border">
-              {hits.map((h) => (
-                <li key={`${h.patient.id}-${h.visit?.encounterNo ?? ""}`}>
-                  <button type="button" onClick={() => choose(h)} className="w-full px-3 py-2 text-left hover:bg-muted">
-                    <span className="font-medium">{h.patient.display}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {h.patient.uhid} · {sexAge(h.patient.administrativeGender, h.patient.dob)}
-                      {h.visit ? ` · ${h.visit.encounterNo}${h.visit.doctorName ? ` · ${h.visit.doctorName}` : ""}` : ""}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <PatientFind onPick={choose} />
       ) : (
         <>
           <section className="flex flex-wrap items-center gap-3 rounded border p-3" aria-label={t("lab.quick.patient")}>
@@ -259,7 +255,6 @@ function StartPanel({ catalogue, onStarted }: { catalogue: QuickCatalogue | unde
           </Button>
         </>
       )}
-      {hit === null && error !== null && <p role="alert" className="text-sm font-semibold text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
 }
@@ -469,11 +464,32 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
         </Button>
         {saved !== null && (
           <>
-            <Button variant="outline" onClick={() => printReport(saved, catalogue)}>{t("lab.quick.print")}</Button>
+            <Button variant="outline" onClick={() => printQuickReport(saved)}>{t("lab.quick.print")}</Button>
             <span role="status" className="text-sm text-green-700 dark:text-green-300">{t("lab.quick.saved")}</span>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════ SAVED REPORTS ═══════════════════════════════ */
+
+/** Any patient's saved quick reports, any day: find the patient, then read, print or reopen to edit. */
+function SavedPanel({ onOpen }: { onOpen: (id: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [hit, setHit] = useState<WireDeskFindHit | null>(null);
+  if (hit === null) return <PatientFind onPick={setHit} />;
+  return (
+    <div className="space-y-4">
+      <section className="flex flex-wrap items-center gap-3 rounded border p-3" aria-label={t("lab.quick.patient")}>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-base font-semibold">{hit.patient.display}</div>
+          <div className="text-sm text-muted-foreground">{hit.patient.uhid} · {sexAge(hit.patient.administrativeGender, hit.patient.dob)}</div>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setHit(null)}>{t("lab.quick.changePatient")}</Button>
+      </section>
+      <QuickLabReports patientId={hit.patient.id} onOpen={onOpen} />
     </div>
   );
 }
@@ -500,6 +516,7 @@ export function LabQuick(): React.ReactElement {
   const qc = useQueryClient();
   const mayStart = can("lab.desk.operate");
   const mayReport = can("lab.results.enter");
+  const mayRead = can("lab.results.read");
   const [mode, setMode] = useState<Mode>({ kind: "start" });
 
   const catalogue = useQuery({ queryKey: ["lab-quick", "catalogue"], queryFn: quickCatalogue, staleTime: 10 * 60_000 });
@@ -513,6 +530,11 @@ export function LabQuick(): React.ReactElement {
       {mayStart && (
         <Button className="w-full" variant={mode.kind === "start" ? "default" : "outline"} onClick={() => setMode({ kind: "start" })}>
           {t("lab.quick.newPatient")}
+        </Button>
+      )}
+      {mayRead && (
+        <Button className="w-full" variant={mode.kind === "saved" ? "default" : "outline"} onClick={() => setMode({ kind: "saved" })}>
+          {t("lab.quick.savedButton")}
         </Button>
       )}
       {mayReport && (
@@ -539,14 +561,16 @@ export function LabQuick(): React.ReactElement {
     <LabStation
       station="quick"
       title={t("lab.quick.title")}
-      place={mode.kind === "start" ? t("lab.quick.placeStart") : t("lab.quick.placeResults")}
+      place={mode.kind === "start" ? t("lab.quick.placeStart") : mode.kind === "saved" ? t("lab.quick.savedTitle") : t("lab.quick.placeResults")}
       stats={[
         { label: t("lab.quick.waitingStat"), value: waiting.length, tone: waiting.length > 0 ? "waiting" : "plain" },
         { label: t("lab.quick.reportedStat"), value: reported.length, tone: "live" },
       ]}
       list={listPane}
     >
-      {mode.kind === "results" && mayReport ? (
+      {mode.kind === "saved" && mayRead ? (
+        <SavedPanel onOpen={(id) => setMode({ kind: "results", id })} />
+      ) : mode.kind === "results" && mayReport ? (
         <ResultsPanel key={mode.id} id={mode.id} catalogue={catalogue.data} onBack={() => setMode({ kind: "start" })} />
       ) : mayStart ? (
         <StartPanel catalogue={catalogue.data} onStarted={() => { void qc.invalidateQueries({ queryKey: ["lab-quick", "queue"] }); }} />

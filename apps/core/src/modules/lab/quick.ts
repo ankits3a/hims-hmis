@@ -3,8 +3,10 @@ import { newId } from "@hmis/contracts";
 import {
   labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
 } from "../../kernel/db/schema";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
-import { displayNameFor } from "../patients";
+import { recordPhiAccess } from "../../kernel/phi/audit";
+import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
 import { labQuickReported, labQuickStarted } from "./events";
 import { flagFor, resolveRange } from "./ranges";
 import type { Actor } from "@hmis/contracts";
@@ -62,6 +64,8 @@ export type QuickRow = {
 export type QuickReport = QuickRow & {
   /** Every parameter of the chosen tests in report order, then any the bench added by hand. */
   analyteIds: string[];
+  /** The same ids under their test's name (`null` title = added by hand), so any screen can print it. */
+  groups: { title: string | null; analyteIds: string[] }[];
   lines: QuickLine[];
   summary: string;
 };
@@ -207,12 +211,19 @@ export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): P
     .where(inArray(labOrderableAnalytes.serviceId, tests.map((t) => t.serviceId)))
     .orderBy(asc(labOrderableAnalytes.position));
   const ordered: string[] = [];
+  const groups: { title: string | null; analyteIds: string[] }[] = [];
   for (const t of tests) {
-    for (const l of links) if (l.serviceId === t.serviceId && !ordered.includes(l.analyteId)) ordered.push(l.analyteId);
+    const mine: string[] = [];
+    for (const l of links) {
+      if (l.serviceId === t.serviceId && !ordered.includes(l.analyteId)) { ordered.push(l.analyteId); mine.push(l.analyteId); }
+    }
+    if (mine.length > 0) groups.push({ title: t.nameEn, analyteIds: mine });
   }
   const lines = r.lines as QuickLine[];
-  for (const l of lines) if (!ordered.includes(l.analyteId)) ordered.push(l.analyteId);
-  return { ...row!, analyteIds: ordered, lines, summary: r.summary };
+  const extra = lines.map((l) => l.analyteId).filter((id) => !ordered.includes(id));
+  ordered.push(...extra);
+  if (extra.length > 0) groups.push({ title: null, analyteIds: extra });
+  return { ...row!, analyteIds: ordered, groups, lines, summary: r.summary };
 }
 
 /**
@@ -270,4 +281,42 @@ export async function saveQuickResults(
   }));
 
   return getQuickReport(tx, actor, input.id);
+}
+
+/**
+ * A patient's REPORTED quick reports, newest first — for the patient profile and the doctor's
+ * consult, on `lab.results.read`. Kept apart from `patientResultsForDoctor` on purpose: that reader
+ * returns SIGNED values only, and a quick report is not signed (decision 0061), so every screen
+ * that shows these labels them as quick reports rather than mixing them into signed results.
+ *
+ * Visibility follows the same rules as that reader: the patient's visibility (sealed charts,
+ * break-glass) through `getPatient`, the whole merge chain, one access-log row per read, and a
+ * report that carries a SENSITIVE test (HIV, HBsAg …) is omitted, not counted, unless the reader
+ * holds `orders.read.restricted` — for those tests the existence of the test is the sensitive fact.
+ */
+export async function quickReportsForPatient(
+  db: Db, actor: Actor, patientId: string, now: Date = new Date(),
+): Promise<QuickReport[]> {
+  if (actor.type !== "user") throw new QuickEntryError("patient_not_found", "a patient's reports are read by a person");
+  const visible = await getPatient(db, actor, patientId);
+  if (visible === null) throw new QuickEntryError("patient_not_found", `no patient ${patientId}`);
+  const canonical = visible.patient.id;
+  const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
+  const rows = await db.select().from(labQuickReports)
+    .where(and(inArray(labQuickReports.patientId, chainIds), eq(labQuickReports.status, "reported")))
+    .orderBy(desc(labQuickReports.reportedAt)).limit(20);
+
+  await recordPhiAccess(db, {
+    actor, patientId: canonical, surface: "lab.quick_reports",
+    sealed: visible.patient.isConfidential, reason: visible.breakGlass?.reason ?? null, now,
+  });
+
+  const serviceIds = [...new Set(rows.flatMap((r) => (r.tests as QuickChosenTest[]).map((t) => t.serviceId)))];
+  const sensitive = serviceIds.length === 0 ? new Set<string>() : new Set((await db.select({ id: labOrderables.serviceId })
+    .from(labOrderables).where(and(inArray(labOrderables.serviceId, serviceIds), eq(labOrderables.sensitive, true)))).map((x) => x.id));
+  const canSeeRestricted = sensitive.size > 0 && await hasPermission(db, actor.id, "orders.read.restricted", "hospital");
+  const shown = rows.filter((r) => canSeeRestricted || !(r.tests as QuickChosenTest[]).some((t) => sensitive.has(t.serviceId)));
+  const out: QuickReport[] = [];
+  for (const r of shown) out.push(await getQuickReport(db, actor, r.id));
+  return out;
 }

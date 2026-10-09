@@ -135,3 +135,49 @@ it("RESULTS — pick from the queue, every CBC parameter is on the form; Hb 9.2 
     summary: "Hb low, repeat", lines: [{ analyteId: "a-hb", value: "9.2" }, { analyteId: "a-wbc", value: "7000" }],
   });
 });
+
+const REPORTED = {
+  ...ROW, status: "reported", reportedAt: "2026-10-09T09:00:00.000Z", reportedBy: "u-1",
+  analyteIds: ["a-hb", "a-wbc"], groups: [{ title: "Complete blood count", analyteIds: ["a-hb", "a-wbc"] }],
+  lines: [
+    { analyteId: "a-hb", code: "HB", nameEn: "Haemoglobin", unit: "g/dL", value: "9.2", low: "12.0000", high: "15.0000", refText: null, flag: "L" },
+    { analyteId: "a-wbc", code: "WBC", nameEn: "Total leucocyte count", unit: "/µL", value: "7000", low: "4000.0000", high: "11000.0000", refText: null, flag: "N" },
+  ],
+  summary: "Hb low, repeat",
+};
+
+it("FIND — suggestions appear while typing, with no Enter", async () => {
+  mockRoutes({
+    "GET /api/auth/me": ME(["lab.desk.operate", "lab.results.enter", "lab.catalogue.read"]),
+    "GET /api/lab/quick/catalogue": { status: 200, body: CATALOGUE },
+    "GET /api/lab/quick/queue": { status: 200, body: { waiting: [], reportedToday: [] } },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [HIT, { ...HIT, visit: null, patient: { ...HIT.patient, id: "p-9", uhid: "U23019999", display: "Farhan Ali" } }], labDoctors: [] } },
+  });
+  renderWithProviders(<LabQuick />);
+  await userEvent.type(await screen.findByLabelText("Find the patient"), "Far");
+  const list = await screen.findByTestId("lab-quick-suggestions");
+  expect(list).toHaveTextContent("Farida Khatoon");
+  expect(list).toHaveTextContent("Farhan Ali");
+  await userEvent.click(screen.getByRole("button", { name: /Farida Khatoon/ }));
+  expect(await screen.findByText("Complete blood count")).toBeInTheDocument();
+});
+
+it("SAVED — lab staff find a patient and see every saved report, marked not signed, with the out-of-range value", async () => {
+  mockRoutes({
+    "GET /api/auth/me": ME(["lab.desk.operate", "lab.results.enter", "lab.results.read", "lab.catalogue.read"]),
+    "GET /api/lab/quick/catalogue": { status: 200, body: CATALOGUE },
+    "GET /api/lab/quick/queue": { status: 200, body: { waiting: [], reportedToday: [] } },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [HIT], labDoctors: [] } },
+    "GET /api/lab/quick/patient/p-1": { status: 200, body: { items: [REPORTED] } },
+  });
+  renderWithProviders(<LabQuick />);
+  await userEvent.click(await screen.findByRole("button", { name: "Saved reports" }));
+  await userEvent.type(screen.getByLabelText("Find the patient"), "U2301");
+  await userEvent.click(await screen.findByRole("button", { name: /Farida Khatoon/ }));
+  const card = await screen.findByTestId("quick-report-q-1");
+  expect(card).toHaveTextContent("Quick lab · not signed");
+  expect(card).toHaveTextContent("Haemoglobin: 9.2 g/dL L");
+  expect(card).not.toHaveTextContent("Total leucocyte count");
+  expect(card).toHaveTextContent("Hb low, repeat");
+  expect(screen.getByRole("button", { name: "Open to edit" })).toBeInTheDocument();
+});

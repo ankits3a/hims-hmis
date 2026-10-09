@@ -5,9 +5,11 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { httpError, idSchema, parsed } from "./lab-http";
 import {
-  getQuickReport, quickCatalogue, QuickEntryError, quickQueue, quickRanges, saveQuickResults, startQuick,
+  getQuickReport, quickCatalogue, QuickEntryError, quickQueue, quickRanges, quickReportsForPatient, saveQuickResults,
+  startQuick,
 } from "./quick";
 import { LAB_DESK_OPERATE } from "./desk";
+import { LAB_RESULTS_READ } from "./reports";
 import { LAB_RESULTS_ENTER } from "./results";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -71,6 +73,13 @@ export class LabQuickController {
   async ranges(@Query() query: unknown): Promise<unknown> {
     const q = parsed(rangesQuery, query);
     try { return { items: await quickRanges(this.db, q.patientId, q.analyteIds) }; } catch (e) { quickHttp(e); }
+  }
+
+  /** The profile's and the doctor's read: reported quick reports, labelled unsigned on every screen. */
+  @Get("patient/:patientId")
+  @RequirePermission(LAB_RESULTS_READ, "hospital")
+  async forPatient(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<unknown> {
+    try { return { items: await quickReportsForPatient(this.db, actor, parsed(idSchema, patientId)) }; } catch (e) { quickHttp(e); }
   }
 
   @Get("reports/:id")

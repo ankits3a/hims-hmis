@@ -3,10 +3,13 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
+  events, labAnalytes, permissions, phiAccessLog, rolePermissions, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
   registrationConfig, services,
 } from "../../kernel/db/schema";
-import { getQuickReport, quickCatalogue, quickQueue, quickRanges, saveQuickResults, startQuick } from "./quick";
+import { mkUser } from "../../../test/helpers/opd";
+import {
+  getQuickReport, quickCatalogue, quickQueue, quickRanges, quickReportsForPatient, saveQuickResults, startQuick,
+} from "./quick";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -105,6 +108,7 @@ describe("lab quick entry", () => {
     const row = await start();
     const r = await getQuickReport(db, ACTOR, row.id);
     expect(r.analyteIds).toEqual([hb, wbc]);
+    expect(r.groups).toEqual([{ title: "Complete blood count", analyteIds: [hb, wbc] }]);
     expect(r.lines).toEqual([]);
   });
 
@@ -152,5 +156,32 @@ describe("lab quick entry", () => {
     expect(q.waiting.map((r) => r.id)).toEqual([old.id]);
     expect(q.reportedToday).toEqual([]);
     expect(await db.select().from(labQuickReports)).toHaveLength(2);
+  });
+
+  it("the profile/doctor read: reported reports only, newest first, logged; a sensitive test is omitted without the restricted grant", async () => {
+    const HIV = "01SERVICE0000000000000009";
+    await db.insert(services).values({ id: HIV, code: "HIV", name: "HIV 1 & 2", category: "investigation", createdBy: ACTOR.id, updatedBy: ACTOR.id });
+    await db.insert(labOrderables).values({
+      serviceId: HIV, code: "HIV", nameEn: "HIV 1 & 2", discipline: "serology", specimenType: "serum", container: "plain",
+      tatMinutesRoutine: 240, sensitive: true, createdBy: ACTOR.id, updatedBy: ACTOR.id,
+    });
+    const doctor = await mkUser(db, "dr.quick", ["doctor"]);
+
+    const waiting = await start();
+    const done = await start(ASHA, new Date(NOW.getTime() - 3_600_000));
+    await withTx(db, (tx) => saveQuickResults(tx, ACTOR, { id: done.id, summary: "Hb low", lines: [{ analyteId: hb, value: "9.2" }] }, NOW));
+    const hiv = await withTx(db, (tx) => startQuick(tx, ACTOR, { patientId: ASHA, encounterNo: null, serviceIds: [HIV], bloodCollected: true }, NOW));
+    await withTx(db, (tx) => saveQuickResults(tx, ACTOR, { id: hiv.id, summary: "Non-reactive", lines: [] }, new Date(NOW.getTime() + 60_000)));
+
+    const seen = await quickReportsForPatient(db, doctor.actor, ASHA, NOW);
+    expect(seen.map((r) => r.id)).toEqual([done.id]);
+    expect(seen.map((r) => r.id)).not.toContain(waiting.id);
+    expect([seen[0]!.summary, seen[0]!.lines[0]!.flag]).toEqual(["Hb low", "L"]);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "lab.quick_reports"))).toHaveLength(1);
+
+    await db.insert(permissions).values({ permission: "orders.read.restricted", module: "orders" }).onConflictDoNothing();
+    await db.insert(rolePermissions).values({ roleKey: "doctor", permission: "orders.read.restricted" });
+    expect((await quickReportsForPatient(db, doctor.actor, ASHA, NOW)).map((r) => r.id)).toEqual([hiv.id, done.id]);
+    expect(await quickReportsForPatient(db, doctor.actor, RAVI, NOW)).toEqual([]);
   });
 });

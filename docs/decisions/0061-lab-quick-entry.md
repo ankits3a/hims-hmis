@@ -56,12 +56,18 @@ can now click on save and then print the test report."*
   of 9.2). Text results are taken as typed.
 - **Reports can be reopened and edited.** Start and every save are logged with who and when.
 - **The phone app** gets the same Start screen in a follow-up app release; the web screen does both now.
-- **Print** is a plain browser page: patient, values, units, ranges, remarks. No signature block.
+- **Print** is a plain browser page: patient, values grouped by test, units, ranges, remarks. No signature block.
+- **Who sees saved reports (owner asked 2026-10-09):** holders of `lab.results.read` — the doctor in the
+  consult brief, the patient profile (admin, doctors), and lab staff through "Saved reports" on the quick
+  lab screen (find the patient, read, print, reopen to edit). Every place labels them "Quick lab · not
+  signed" and keeps them apart from signed results, which stay signed-only. A report with a sensitive
+  test (HIV, HBsAg …) is hidden from anyone without `orders.read.restricted`. Each read is access-logged
+  (`lab.quick_reports`).
 
 ## Consequences / how to apply
 
 - Screen `/lab/quick`; API `GET /lab/quick/catalogue`, `POST /lab/quick/start`, `GET /lab/quick/queue`,
-  `GET /lab/quick/ranges`, `GET|PUT /lab/quick/reports/:id`; patient search is the lab desk's
+  `GET /lab/quick/ranges`, `GET|PUT /lab/quick/reports/:id`, `GET /lab/quick/patient/:patientId`; patient search is the lab desk's
   `GET /lab/desk/find`; table `lab_quick_reports`; events `lab.quick_started`, `lab.quick_reported`.
 - When payment, tokens and signing come into HMIS, a new decision says whether quick reports then
   need an order, a bill and a signature, and this record is marked superseded.
