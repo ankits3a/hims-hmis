@@ -519,6 +519,27 @@ describe("staff attendance e2e (HTTP)", () => {
         expect((await get("hod", "/attendance/person/301")).body.detail).toBe("self");
       });
 
+      it("`leadsTeam` on /attendance/me is the team routes' own answer — for the linked, the unlinked, everyone-readers and an ended headship", async () => {
+        const leads = async (who: string): Promise<[string, boolean, boolean]> => {
+          const b = (await get(who, "/attendance/me")).body as { linked: boolean; leadsTeam: boolean };
+          return [who, b.linked, b.leadsTeam];
+        };
+        // Seeing everyone is not leading a team: the committee member and the linked manager lead nobody.
+        expect(await leads("jyoti.test")).toEqual(["jyoti.test", false, false]);
+        expect(await leads("mgr")).toEqual(["mgr", true, false]);
+        expect(await leads("a.kumar")).toEqual(["a.kumar", true, false]);
+        // A head with no attendance link of their own still learns they lead a team, and the team route agrees.
+        await db.insert(rosterTeamMemberships).values({ id: "m5", teamId: "t-u2", userId: ids.unlinked!, positionKey: ROSTER_POSITIONS[0]!.key, grade: "assistant_professor", roleInTeam: "head", startsAt: new Date(Date.now() - 86_400_000), createdBy: ids.hod!, updatedBy: ids.hod! } as never);
+        expect(await leads("new.clerk")).toEqual(["new.clerk", false, true]);
+        expect((await get("new.clerk", "/attendance/team/today")).status).toBe(200);
+        // A headship that has ended is no team: the flag goes false and the route refuses, together.
+        await db.update(rosterTeamMemberships).set({ endsAt: new Date(Date.now() - 60_000) }).where(eq(rosterTeamMemberships.id, "m5"));
+        expect(await leads("new.clerk")).toEqual(["new.clerk", false, false]);
+        expect((await get("new.clerk", "/attendance/team/today")).status).toBe(403);
+        // A member of a unit is not its head.
+        expect(await leads("oth")).toEqual(["oth", true, false]);
+      });
+
       it("a doctor who leads nothing gets 403 on the team routes — and a member of a unit is not its head", async () => {
         for (const who of ["a.kumar", "sr", "oth", "new.clerk", "jyoti.test"]) {
           for (const path of ["/attendance/team/today", "/attendance/team"]) {
