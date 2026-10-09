@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-
 import { Linking } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { I18nProvider } from "../src/i18n";
-import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_CARD, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
+import { NotificationsProvider, PUSH_CATEGORIES, PUSH_LINK_CARD, PUSH_LINK_ROUTE, PUSH_LINK_SEAT, SERVER_TIMEOUT_MS, _forgetOfferForTests, statusOf } from "../src/notifications";
 import { noteOf, permissionOf, type PushNote, type PushPermission, type PushPhone } from "../src/push-phone";
 import { AccountScreen } from "../src/screens/account";
 import { NotificationsScreen } from "../src/screens/notifications";
@@ -478,7 +478,7 @@ describe("the phone and the server use the same words (M6b)", () => {
 
   it("categories and links are the server's own lists, and every one has its words in both languages", () => {
     expect([...PUSH_CATEGORIES]).toEqual(list("PUSH_CATEGORIES"));
-    expect([...Object.keys(PUSH_LINK_SEAT), ...Object.keys(PUSH_LINK_CARD)].sort()).toEqual(list("PUSH_LINKS").sort());
+    expect([...Object.keys(PUSH_LINK_SEAT), ...Object.keys(PUSH_LINK_CARD), ...Object.keys(PUSH_LINK_ROUTE)].sort()).toEqual(list("PUSH_LINKS").sort());
     for (const dict of [en, hi]) {
       for (const c of PUSH_CATEGORIES) {
         expect(dict.mobile.push.category[c]).toBeTruthy();

@@ -79,10 +79,14 @@ export function SeatHome() {
   const [said, setSaid] = useState<{ tone: "info" | "bad"; text: string } | null>(null);
   const [busyCover, setBusyCover] = useState<string | null>(null);
   const alive = useRef(true);
+  /* The person's own attendance: ONE read beside the home's, made by the home's own refresh (`attendance/home-card.tsx`). */
+  const attendance = useAttendanceHome(call, signedIn ? user : "");
+  const reloadAttendance = attendance.reload;
   const refresh = useCallback(async (byHand = false) => {
     if (!signedIn) return;
     if (byHand) setRefreshing(true);
     const now = Date.now();
+    void reloadAttendance();
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
     if (loaded.reached) {
@@ -93,7 +97,7 @@ export function SeatHome() {
       setOnline(false);
     }
     if (byHand) setRefreshing(false);
-  }, [signedIn, call, permissions, seatKeys, user]);
+  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance]);
   useEffect(() => {
     if (user === "") return;
     let gone = false;
@@ -111,8 +115,6 @@ export function SeatHome() {
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") void refresh(); });
     return () => { alive.current = false; clearInterval(timer); sub.remove(); };
   }, [refresh]);
-  /* The person's own attendance: one read beside the home's, re-read whenever the home is (`attendance/home-card.tsx`). */
-  const attendance = useAttendanceHome(call, signedIn ? user : "", home?.at ?? 0);
   const model: HomeModel | null = useMemo(() => (home === null ? null : buildHome({ ...home.sources, seenRequests: seen, nowMs: online ? Date.now() : home.at })), [home, online, seen]);
   /* A notification about approvals, and exactly one waiting: its sheet opens — the tap said which. */
   useEffect(() => {

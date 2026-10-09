@@ -41,6 +41,8 @@ const PUSH_ROUTE = `/auth/phone/notifications?knows=${PUSH_CATEGORIES.join(",")}
 export const PUSH_LINK_SEAT: Record<string, Seat["key"] | null> = { home: null, onNow: "onNow", myDuties: "myDuties", consult: "consult" };
 /** A link that lands on a CARD of the home screen rather than on a screen of its own. */
 export const PUSH_LINK_CARD: Record<string, NeedKind> = { approvals: "approval" };
+/** STAFF ATTENDANCE — a link that opens one of the attendance screens: the committee's requests list, or a person's own attendance. */
+export const PUSH_LINK_ROUTE: Record<string, "requests" | "mine"> = { attendanceRequests: "requests", attendance: "mine" };
 
 export type PushStatus = "unknown" | "notInBuild" | "unreachable" | "serverError" | "notLinked" | "serverOff" | "off" | "denied" | "on";
 type ServerState = {
@@ -266,8 +268,9 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
     const card = PUSH_LINK_CARD[link];
     if (card !== undefined) { focusHome(card); router.push("/"); return; }
     /* STAFF ATTENDANCE — the committee's requests list (for those who may open it), and a person's own attendance. */
-    if (link === "attendanceRequests") { if (permissions?.hospital.includes("attendance.all.read") === true) router.push({ pathname: "/attendance-staff", params: { tab: "requests" } }); else router.push("/"); return; }
-    if (link === "attendance") { router.push({ pathname: "/attendance", params: { request: "latest" } }); return; }
+    const att = PUSH_LINK_ROUTE[link];
+    if (att === "requests") { if (permissions?.hospital.includes("attendance.all.read") === true) router.push({ pathname: "/attendance-staff", params: { tab: "requests" } }); else router.push("/"); return; }
+    if (att === "mine") { router.push({ pathname: "/attendance", params: { request: "latest" } }); return; }
     const seat = PUSH_LINK_SEAT[link] ?? null;
     const allowed = seat !== null && permissions !== null && seatsFor(permissions).some((s) => s.key === seat);
     if (allowed) router.push({ pathname: "/seat/[key]", params: { key: seat } });

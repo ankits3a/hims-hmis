@@ -32,7 +32,7 @@ const PEOPLE = [
 const TODAY_LIST = { date: "2026-10-14", configured: true, people: PEOPLE, summary: { total: 6, byStatus: {}, byDept: [] } };
 const SYNC = { configured: true, enabled: true, cursor: 1, onDutyAsOf: "2026-10-14 10:42:00", lastErrorClass: null, stages: { today: { lastAttemptAt: "2026-10-14T05:12:00.000Z", lastOkAt: "2026-10-14T05:12:00.000Z", lastOutcome: "ok" } } };
 const queue = (id: string, over: Record<string, unknown> = {}) => ({
-  id, date: "2026-10-09", reasonCode: "one_punch_only", note: null, status: "open", createdAt: "2026-10-14T02:30:00.000Z", closedAt: null, closeNote: null,
+  id, date: "2026-10-09", reasonCode: "one_punch_only", note: null as string | null, status: "open", createdAt: "2026-10-14T02:30:00.000Z", closedAt: null, closeNote: null as string | null,
   name: "Dr A Kumar", dept: "Medicine", post: "Asst Prof", ageHours: 3, seenAt: null, ...over,
 });
 const SELF_ROUTES = ["GET /attendance/me", "GET /attendance/me/punches", "GET /attendance/me/requests"];

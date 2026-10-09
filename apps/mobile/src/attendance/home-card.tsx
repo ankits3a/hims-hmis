@@ -46,12 +46,16 @@ export const attendanceCache = {
 
 export type AttendanceHome = { me: Me | null; cold: TodayState | null };
 
-/** The home screen's read of the caller's own attendance; `tick` re-reads it (the home's own refresh). */
-export function useAttendanceHome(call: Call, user: string, tick: number, nowMs: () => number = Date.now): AttendanceHome {
+/**
+ * The home screen's read of the caller's own attendance. It reads NOTHING by itself: the home calls
+ * `reload` from its own refresh, so there is exactly one attendance request per home refresh.
+ */
+export function useAttendanceHome(call: Call, user: string, nowMs: () => number = Date.now): AttendanceHome & { reload: () => Promise<void> } {
   const [me, setMe] = useState<Me | null>(null);
   const [cold, setCold] = useState<TodayState | null>(null);
   const alive = useRef(true);
-  const load = useCallback(async () => {
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const reload = useCallback(async () => {
     if (user === "") return;
     const today = istDay(new Date(nowMs()).toISOString());
     try {
@@ -65,17 +69,7 @@ export function useAttendanceHome(call: Call, user: string, tick: number, nowMs:
       if (alive.current) setCold(kept?.state ?? null);
     }
   }, [call, user, nowMs]);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  // Read once when the screen opens; after that, whenever the home re-reads (its tick moves on).
-  // The home's FIRST tick is the same moment as the opening read, so it is not a second request.
-  const lastTick = useRef<number | null>(null);
-  useEffect(() => {
-    const prev = lastTick.current;
-    lastTick.current = tick;
-    if (prev === null) { void load(); return; }
-    if (prev !== tick && prev !== 0) void load();
-  }, [load, tick]);
-  return { me, cold };
+  return { me, cold, reload };
 }
 
 export function AttendanceCard({ t, home, onOpen, onConfirm }: { t: T; home: AttendanceHome; onOpen: () => void; onConfirm: (date: string) => void }) {
