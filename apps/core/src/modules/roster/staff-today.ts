@@ -3,7 +3,7 @@ import type { StaffToday } from "@hmis/contracts";
 import { orgDepartments, rosterAssignments, rosterCoverRequests, staffAbsences, users } from "../../kernel/db/schema";
 import { requireRosterAct } from "./access";
 import { BOARD_HORIZON_MS, onNowBoard } from "./board";
-import { istDateOfInstant } from "./calendar";
+import { istDateOfInstant, istMidnightUtc } from "./calendar";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -21,14 +21,13 @@ import type { Db, Tx } from "../../kernel/db/client";
  * Read-only, composed from the board (`onNowBoard`) so the page and the board cannot disagree.
  */
 const DAY_MS = 86_400_000;
-const IST_OFFSET_MS = 5.5 * 3_600_000;
 const LINES = 12;
 
 export async function staffToday(exec: Db | Tx, actor: Actor, now: Date = new Date(), env: NodeJS.ProcessEnv = process.env): Promise<StaffToday> {
   await requireRosterAct(exec, actor, "read");
   const db = exec as Db;
   const day = istDateOfInstant(now);
-  const dayStart = new Date(Date.parse(`${day}T00:00:00.000Z`) - IST_OFFSET_MS);
+  const dayStart = istMidnightUtc(day); // the module's one IST clock (calendar.ts) — ist-clock-parity pins one site per module
   const dayEnd = new Date(dayStart.getTime() + DAY_MS);
 
   const board = await onNowBoard(exec, now, env);
