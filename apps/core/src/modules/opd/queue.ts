@@ -157,7 +157,7 @@ export type QueueEntryView = QueueEntryRow & {
      * `consultFeeOverrideReason` is a doctor's own, and its presence is what puts an unsettled
      * token back in the callable order.
      */
-    feeBypassReason: string | null; consultFeeOverrideReason: string | null;
+    feeBypassReason?: string | null; consultFeeOverrideReason?: string | null;
     /** Owner ruling 2026-09-24 — set when an internal referral opened this visit, so the rail says REFERRAL, not REVISIT. */
     referredFromEncounterId: string | null;
     /** Owner 2026-10-07 — the guardian came with the reports; the patient did not. Null otherwise (`patient-absent.ts`). */
@@ -169,11 +169,11 @@ export type QueueEntryView = QueueEntryRow & {
    * (never stored): free · settled · credit · unsettled. `null` when billing is unconfigured —
    * unknown, rendered as nothing.
    */
-  feeStatus: "free" | "settled" | "credit" | "unsettled" | null;
+  feeStatus?: "free" | "settled" | "credit" | "unsettled" | null;
   /**
    * Owner 2026-10-09 — a tele-call: the doctor's line shows its SLOT TIME (`appointmentAt`) where a
-   * token number sits, and a phone icon. A tele row carries NO money mark of any kind — it is in
-   * this view only because it is covered, and `feeStatus` is always `null` on it.
+   * token number sits, and a phone icon. A tele row carries NO money KEY of any kind — `feeStatus`
+   * and the two fee reasons are ABSENT from it, not null: it is in this view only because it is covered.
    */
   tele: boolean;
 };
@@ -231,18 +231,19 @@ export async function listQueue(db: Db, actor: Actor, doctorId: string, serviceD
 
   const toView = (row: QueueEntryRow, position: number | null, queueClass: QueueClass | null): QueueEntryView => {
     const encounter = encounterById.get(row.encounterId)!;
+    const tele = encounter.consultMode === "tele";
     return {
       ...row, position, queueClass,
       encounter: {
         id: encounter.id, patientId: encounter.patientId, visitType: encounter.visitType,
         dangerFlagged: encounter.dangerFlagged, status: encounter.status,
-        feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason,
+        ...(tele ? {} : { feeBypassReason: encounter.feeBypassReason, consultFeeOverrideReason: encounter.consultFeeOverrideReason }),
         referredFromEncounterId: encounter.referredFromEncounterId,
         patientAbsent: patientAbsentOf(encounter),
       },
       patient: summaryByPatient.get(encounter.patientId) ?? null,
-      feeStatus: encounter.consultMode === "tele" ? null : feeStatuses.get(encounter.id) ?? null,
-      tele: encounter.consultMode === "tele",
+      ...(tele ? {} : { feeStatus: feeStatuses.get(encounter.id) ?? null }),
+      tele,
     };
   };
 

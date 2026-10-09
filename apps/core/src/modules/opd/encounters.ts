@@ -5,8 +5,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { EPISODE_SERIAL_DIGITS, EPISODE_SERIES, nextEpisodeNo } from "../../kernel/episodes/series";
 import { withTx } from "../../kernel/db/client";
 import {
-  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals, users,
-} from "../../kernel/db/schema";
+  opdDepartments, opdDoctors, opdEncounterDiagnoses, opdEncounters, opdPrescriptions, opdQueueEntries, opdQueueSessions, opdVitals, users, opdAppointments } from "../../kernel/db/schema";
 import { startInstance, transition, WorkflowError } from "../../kernel/workflow/instances";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "../patients";
 import { encounterFeeStatuses } from "../billing";
@@ -897,6 +896,17 @@ export async function abandonVisit(db: Db, actor: Actor, encounterId: string, re
       .set({ status: "cancelled" })
       .where(and(eq(opdQueueEntries.encounterId, encounterId), inArray(opdQueueEntries.status, [...LIVE_ENTRY_STATUSES])))
       .returning({ id: opdQueueEntries.id });
+    /*
+      TELE-CALL (fix round 2026-10-09) — a tele visit left before the doctor spoke to the patient has
+      consumed nothing: no bill was raised. Its appointment goes back to the desk's re-booking list
+      with the payment still stamped on it, so the money is never stranded on a `checked_in` row
+      nobody can move or cancel.
+    */
+    if (encounter.consultMode === "tele" && encounter.teleOutcome !== "spoke" && encounter.appointmentId !== null) {
+      await tx.update(opdAppointments)
+        .set({ status: "needs_rebooking", updatedBy: actor.id, updatedAt: now })
+        .where(and(eq(opdAppointments.id, encounter.appointmentId), eq(opdAppointments.status, "checked_in")));
+    }
     // C1: a deferred visit has no entry — the abandon still happens; the event carries nulls,
     // exactly as visit.opened does for the same state.
     const located = await newestEntryWhere(tx, encounterId);

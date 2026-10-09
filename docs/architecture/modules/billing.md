@@ -148,6 +148,7 @@ Source: `apps/core/src/modules/billing/`
   - types: `Settlement`, `SettlementState`
 - `tele-advance.ts`
   - `consultFeeAt(db: Db, input: { patientId: string; visitType: string; at: Date }): Promise<{ feeServiceId: string | null; paise: number }>`
+  - `issuePrepaidConsultInvoice(tx: Tx, actor: Actor, input: { draftId: string; patientId: string; encounterId: string; visitType: string; recei…`
 - `totals.ts`
   - `ROUNDING_RULES`
   - `roundTotalBy(rule: RoundingRule, totalPaise: number): { roundedPaise: number; roundingPaise: number }`

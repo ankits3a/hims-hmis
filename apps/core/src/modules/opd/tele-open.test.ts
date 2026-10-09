@@ -96,8 +96,8 @@ describe("opd tele-call — the visit opens at its slot, once paid (slice 3)", (
     const view = (await line(MON_0931))!;
     expect(view.ordered).toHaveLength(1);
     const row = view.ordered[0]!;
-    expect({ tele: row.tele, feeStatus: row.feeStatus, queueClass: row.queueClass, at: row.appointmentAt?.toISOString() })
-      .toEqual({ tele: true, feeStatus: null, queueClass: 2, at: S0930.toISOString() });
+    expect({ tele: row.tele, hasFeeStatus: "feeStatus" in row, queueClass: row.queueClass, at: row.appointmentAt?.toISOString() })
+      .toEqual({ tele: true, hasFeeStatus: false, queueClass: 2, at: S0930.toISOString() });
     expect(view.heldForPayment).toEqual([]);
     expect(await feeMarksFor(db, enc!)).toEqual({ feeUnpaid: false, feeBypass: null });
     /*

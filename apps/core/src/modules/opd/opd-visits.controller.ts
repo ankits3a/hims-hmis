@@ -130,7 +130,7 @@ const teleAdvanceBody = z.object({
     mode: z.enum(["cash", "upi", "card"]), amountPaise: z.number().int().positive(), refText: z.string().trim().max(80).optional(),
   })).max(3).optional(),
 });
-const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional() });
+const rescheduleBody = z.object({ slotStart: z.coerce.date(), doctorId: z.string().min(1).optional(), reason: z.string().max(400).optional(), telePhone: z.string().max(40).optional() });
 const reasonBody = z.object({ reason: z.string().max(500) }); // blank ⇒ reason_required from the service, with its code
 /* FD-32 — the same shape, and the same choice: a blank reason is refused by the SERVICE so the
    clerk gets `reason_required` with its code rather than a zod shape error they cannot map. */
@@ -308,6 +308,9 @@ type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
   patientAbsent: PatientAbsent | null;
   teleSlotAt: Date | null;
 };
+
+/** The encounter's own fee columns — absent from a tele visit's read (fix round 2026-10-09). */
+const TELE_HIDDEN_ENCOUNTER_KEYS = ["feeBypassBy", "feeBypassReason", "feeBypassAt", "consultFeeOverrideBy", "consultFeeOverrideReason", "consultFeeOverrideAt"] as const;
 
 @Controller("opd")
 export class OpdVisitsController {
@@ -667,6 +670,21 @@ export class OpdVisitsController {
     const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
+    /*
+      Fix round 2026-10-09 — a tele visit's read carries NO money key at all: not the two marks, and
+      not the encounter's own fee columns (absent, not null). Nothing about its money is a reader's
+      of this route; the desk reads that off the appointment.
+    */
+    if (found.encounter.consultMode === "tele") {
+      const encounter: Record<string, unknown> = { ...found.encounter };
+      for (const key of TELE_HIDDEN_ENCOUNTER_KEYS) delete encounter[key];
+      return {
+        ...found, encounter: encounter as typeof found.encounter, patient: summary ?? null,
+        deskComplaint: await deskComplaintFor(this.db, found.encounter),
+        patientAbsent: patientAbsentOf(found.encounter),
+        teleSlotAt: await teleSlotOf(this.db, found.encounter),
+      };
+    }
     return {
       ...found, patient: summary ?? null,
       ...(found.encounter.consultMode === "tele" ? {} : await feeMarksFor(this.db, found.encounter)),

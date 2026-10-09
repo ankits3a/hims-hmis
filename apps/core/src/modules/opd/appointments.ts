@@ -114,7 +114,7 @@ export async function rescheduleAppointment(
   db: Db,
   actor: Actor,
   appointmentId: string,
-  input: { slotStart: Date; doctorId?: string; reason?: string },
+  input: { slotStart: Date; doctorId?: string; reason?: string; /** A tele-call's number may change with the move; the mode may not. */ telePhone?: string },
   now: Date = new Date(),
 ): Promise<{ from: AppointmentRow; to: AppointmentRow }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
@@ -122,6 +122,13 @@ export async function rescheduleAppointment(
   if (!loaded) throw new OpdError("unknown_appointment", `unknown appointment ${appointmentId}`);
   if (loaded.status !== "booked" && loaded.status !== "needs_rebooking") {
     throw new OpdError("appointment_state_conflict", `cannot reschedule from ${loaded.status}`);
+  }
+  // Fix round 2026-10-09 — a moved tele-call may be given another number to ring; an in-person booking takes none.
+  let telePhone = loaded.telePhone;
+  if (loaded.mode === "tele" && input.telePhone !== undefined) {
+    const next = telePhoneOf(input.telePhone);
+    if (next === null) throw new OpdError("tele_phone_required", "Enter the patient's 10-digit mobile number");
+    telePhone = next;
   }
   const targetDoctorId = input.doctorId ?? loaded.doctorId;
   return withTx(db, async (tx) => {
@@ -153,7 +160,7 @@ export async function rescheduleAppointment(
       id: toId, appointmentNo, patientId: loaded.patientId, doctorId: doctor.id, departmentId: doctor.departmentId,
       serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
       source: loaded.source, note: loaded.note, rescheduledFromId: appointmentId,
-      mode: loaded.mode, telePhone: loaded.telePhone, // a moved tele-call is still a tele-call, to the same number
+      mode: loaded.mode, telePhone, // a moved tele-call is still a tele-call — to the same number unless the desk gave another
       // …and still PAID: the quote and its receipt move with it (owner 2026-10-09 — "carried to a re-booked slot").
       advanceReceiptId: loaded.advanceReceiptId, advanceQuotePaise: loaded.advanceQuotePaise, advanceQuotedAt: loaded.advanceQuotedAt,
       bookedBy: actor.id, updatedBy: actor.id,

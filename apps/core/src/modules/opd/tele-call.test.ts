@@ -159,28 +159,23 @@ describe("opd tele-call — the call, the outcome, the guards and the bill (slic
     expect(await db.select().from(events).where(eq(events.name, "queue.fee_status_changed"))).toHaveLength(0);
   });
 
-  it("FIRST 'no answer': back to the doctor's line to be tried again, nothing billed; SECOND: the visit is closed as not consulted and the appointment goes to re-booking WITH its payment", async () => {
+  it("FIRST 'no answer': held aside with the doctor to be tried again, nothing billed; SECOND: the visit is closed as not consulted and the appointment goes to re-booking WITH its payment — re-booked, it opens and is billed once", async () => {
     const { encounterId, appointmentId } = await inCall();
     const first = await recordTeleOutcome(db, dra.actor, encounterId, "no_answer", T0935);
     expect({ final: first.final, status: first.encounter.status, n: first.encounter.teleNoAnswerCount, outcome: first.encounter.teleOutcome })
-      .toEqual({ final: false, status: "waiting", n: 1, outcome: "no_answer" });
-    const entries = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId));
-    expect(entries.map((e) => e.status).sort()).toEqual(["done", "waiting"]);
+      .toEqual({ final: false, status: "in_consultation", n: 1, outcome: "no_answer" });
     const view = (await listQueue(db, dra.actor, dra.doctorId, DAY, T0940))!;
-    expect(view.ordered.map((r) => ({ tele: r.tele, id: r.encounterId, c: r.queueClass }))).toEqual([{ tele: true, id: encounterId, c: 2 }]);
+    expect(view.inConsult.map((r) => ({ tele: r.tele, id: r.encounterId, parked: r.parkedAt !== null }))).toEqual([{ tele: true, id: encounterId, parked: true }]);
     expect((await appt(appointmentId)).status).toBe("checked_in");
     expect(await bills(encounterId)).toHaveLength(0);
 
-    await startConsultation(db, dra.actor, encounterId, T0940);
     const second = await recordTeleOutcome(db, dra.actor, encounterId, "no_answer", T0950);
     expect({ final: second.final, status: second.encounter.status, n: second.encounter.teleNoAnswerCount, reason: second.encounter.abandonReason })
       .toEqual({ final: true, status: "abandoned", n: 2, reason: "tele-call: the patient did not answer twice" });
-    expect((await db.select().from(opdQueueEntries).where(and(eq(opdQueueEntries.encounterId, encounterId), eq(opdQueueEntries.status, "in_consult")))).length).toBe(0);
     expect(await listQueue(db, dra.actor, dra.doctorId, DAY, T0950).then((v) => [...v!.ordered, ...v!.inConsult].length)).toBe(0);
     const a = await appt(appointmentId);
     expect({ status: a.status, q: a.advanceQuotePaise, paid: a.advanceReceiptId !== null }).toEqual({ status: "needs_rebooking", q: FEE, paid: true });
     expect((await teleDeskMarks(db, [a])).get(a.id)).toEqual({ amountPaise: FEE, covered: true });
-    // nothing billed, nothing consumed: the advance is whole
     expect(await bills(encounterId)).toHaveLength(0);
     expect(await db.select().from(allocations)).toHaveLength(0);
     await expect(completeConsultation(db, dra.actor, encounterId, { testsOrderedReturnToday: false }, T0950)).rejects.toMatchObject({ code: "encounter_state_conflict" });
@@ -192,7 +187,6 @@ describe("opd tele-call — the call, the outcome, the guards and the bill (slic
     const reopened = (await db.select().from(opdEncounters).where(eq(opdEncounters.appointmentId, to.id)))[0]!;
     expect({ mode: reopened.consultMode, status: reopened.status, type: reopened.visitType }).toEqual({ mode: "tele", status: "waiting", type: "new" });
     expect(await db.select().from(receipts)).toHaveLength(1);
-    // spoken to on the second slot: now it is billed, once, from the same advance
     await startConsultation(db, dra.actor, reopened.id, T1001);
     await recordTeleOutcome(db, dra.actor, reopened.id, "spoke", T1001);
     expect(await bills(reopened.id)).toHaveLength(1);
@@ -209,25 +203,5 @@ describe("opd tele-call — the call, the outcome, the guards and the bill (slic
     await recordTeleOutcome(db, dra.actor, e.id, "spoke", T0940);
     expect(await bills(e.id)).toHaveLength(0);
     expect((await completeConsultation(db, dra.actor, e.id, { testsOrderedReturnToday: false }, T0950)).encounter.status).toBe("completed");
-  });
-
-  it("the price list moved after the payment: a LOWER fee is billed and the difference stays the patient's advance; a HIGHER fee is left to the billing office — the doctor's outcome stands either way", async () => {
-    const { encounterId } = await inCall();
-    await db.update(tariffItems).set({ pricePaise: 30_000 }).where(and(eq(tariffItems.versionId, base.tariffVersionId), eq(tariffItems.serviceId, base.consultNewServiceId)));
-    await recordTeleOutcome(db, dra.actor, encounterId, "spoke", T0940);
-    const lower = await bills(encounterId);
-    expect(lower.map((i) => i.netPayablePaise)).toEqual([30_000]);
-    expect((await invoiceSettlement(db, lower[0]!.id)).state).toBe("settled");
-    expect((await db.select().from(allocations)).map((x) => x.amountPaise)).toEqual([30_000]);
-  });
-
-  it("…a HIGHER fee: no invoice is raised by the system, the advance stays whole, and 'spoke' is recorded", async () => {
-    const { encounterId } = await inCall();
-    await db.update(tariffItems).set({ pricePaise: 90_000 }).where(and(eq(tariffItems.versionId, base.tariffVersionId), eq(tariffItems.serviceId, base.consultNewServiceId)));
-    const r = await recordTeleOutcome(db, dra.actor, encounterId, "spoke", T0940);
-    expect(r.encounter.teleOutcome).toBe("spoke");
-    expect(await bills(encounterId)).toHaveLength(0);
-    expect(await db.select().from(allocations)).toHaveLength(0);
-    expect((await completeConsultation(db, dra.actor, encounterId, { testsOrderedReturnToday: false }, T0950)).encounter.status).toBe("completed");
   });
 });

@@ -108,7 +108,7 @@ export { registerBenefitSourceProvider } from "./benefit-sources";
 export type { BenefitSourceArgs, BenefitSourceProvider } from "./benefit-sources";
 export type { FeeStatusHook, FeeStatusVia } from "./settle-hooks";
 // Owner 2026-10-09 — tele-call: the consult fee for a patient on a date, with no visit behind it yet.
-export { consultFeeAt } from "./tele-advance";
+export { consultFeeAt, issuePrepaidConsultInvoice } from "./tele-advance";
 // …and the hospital's own UPI id, for the QR the desk shows (no payment company; the cashier confirms).
 export { loadUpiPayee, upiPayUri } from "./upi";
 export type { UpiPayee } from "./upi";

@@ -143,6 +143,15 @@ export const teleVisitsOpened = defineEvent("tele.visits_opened", MODULE, z.obje
   serviceDate: isoDate, due: z.number().int().nonnegative(), opened: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
 }));
 
+/**
+ * Fix round 2026-10-09 — a tele-call's bill could not be raised, so the doctor's 'spoke' was NOT
+ * recorded. For the desk and billing side (the doctor is told only "Could not save — try again").
+ * `code` is the refusing error's own code; no amount and no number is carried.
+ */
+export const teleBillFailed = defineEvent("tele.bill_failed", MODULE, z.object({
+  encounterId: id, appointmentId: z.string().nullable(), code: z.string().min(1),
+}));
+
 export const patientCheckedIn = defineEvent("patient.checked_in", MODULE, z.object({
   encounterId: id, patientId: id, ...where,
   kind: z.enum(["arrival", "re_entry"]), // family lifecycle, type in payload (§10.5)
