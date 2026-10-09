@@ -22,7 +22,8 @@ const REPORT = {
   ],
   summary: "Hb low, repeat",
   collectedByName: "Sunita Devi", reportedByName: "Pravin Kumar Verma",
-  letterhead: { name: "CRK MEDICAL COLLEGE & HOSPITAL", addressLines: ["CHAURASIA CHOWK, HAJIPUR, BIHAR 844101"] },
+  hospital: { name: "CRK Medical College & Hospital", address: "Chaurasia Chowk, Hajipur — 844101, Bihar", hotline: "+91 77648 88189", emergency: "1068", email: "info@crkmch.com", website: "www.crkmch.com" },
+  visitQrSvg: '<svg data-qr="V2610090001"></svg>',
 };
 
 function stub(items: unknown[]): void {
@@ -61,7 +62,11 @@ it("the printed page: letterhead, identity, flag WORDS beside coloured cells, re
   const doc = { write: (h: string) => { html += h; }, close: () => undefined };
   vi.stubGlobal("open", vi.fn(() => ({ document: doc })));
   printQuickReport(REPORT as unknown as QuickReport, "rohan.sinha");
-  expect(html).toContain("CRK MEDICAL COLLEGE &amp; HOSPITAL, CHAURASIA CHOWK, HAJIPUR, BIHAR 844101");
+  expect(html).toContain('<span class="vl">CRK Medical College &amp; Hospital,</span> Chaurasia Chowk, Hajipur — 844101, Bihar');
+  expect(html).toContain('<span class="vl num">+91 77648 88189</span>');
+  expect(html).toContain('<span class="site">www.crkmch.com</span>');
+  expect(html).toContain('<div class="qr"><svg data-qr="V2610090001"></svg></div>');
+  expect(html).toContain("Scan to enter the visit number");
   expect(html).toContain("/print/hospital-logo.png");
   expect(html).toContain("<b>Farida Khatoon</b>");
   expect(html).toContain("<b>U23011884</b>");
@@ -72,5 +77,5 @@ it("the printed page: letterhead, identity, flag WORDS beside coloured cells, re
   expect(html).toContain("Hb low, repeat");
   expect(html).toContain("Pravin Kumar Verma");
   expect(html).toMatch(/<div class="nm"><\/div><div class="ln">Authorised by<\/div>/);
-  expect(html).toContain("Printed by <b>rohan.sinha</b>");
+  expect(html).toContain("Printed by <strong>rohan.sinha</strong> on ");
 });

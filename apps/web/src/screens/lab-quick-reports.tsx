@@ -58,7 +58,7 @@ const FLAG_CLASS: Record<string, string> = { L: "ab", H: "ab", LL: "cr", HH: "cr
  */
 export function printQuickReport(report: QuickReport, printedBy: string | null): void {
   const p = report.patient;
-  const lh = report.letterhead;
+  const h = report.hospital;
   const byId = new Map(report.lines.map((l) => [l.analyteId, l]));
   const age = ageYearsFrom(p.dob);
   const gender = p.administrativeGender === "female" ? "Female" : p.administrativeGender === "male" ? "Male" : "Other";
@@ -98,16 +98,43 @@ export function printQuickReport(report: QuickReport, printedBy: string | null):
   </div>
   <div class="rule">Department of Laboratory Medicine</div>`;
 
-  const address = [lh.name, ...lh.addressLines].filter((x) => x.trim() !== "").map(e).join(", ");
+  /**
+   * THE FOOTER IS THE OPD PRESCRIPTION'S (owner 2026-10-09) — `kernel/printing/render.ts`'s A4 `.ft`:
+   * a black rule, one disclaimer line, a grey rule, the address / hotline / emergency / email / red
+   * website on the left and the visit number's QR on the right, a grey rule, then "Printed by … on
+   * … at …". "Page X of Y" stands at the same baseline from the page's margin box (`@page`), because
+   * a page counter cannot be read inside the body.
+   */
+  const now = new Date().toISOString();
   const footer = `<div class="ft">
-    ${address !== "" ? `<div><span>Address:</span> <b>${address}</b></div>` : ""}
-    ${lh.legalName ? `<div class="dim">${e(lh.legalName)}</div>` : ""}
-    <div class="row"><span>Printed${printedBy ? ` by <b>${e(printedBy)}</b>` : ""} on ${e(istStamp(new Date().toISOString()))}</span></div>
+    <div class="frule"></div>
+    <div class="dis">This report is computer generated. Values are entered by the laboratory; the pathologist signs above.</div>
+    <div class="thin"></div>
+    <div class="grid">
+      <div class="cols">
+        <div class="addr"><span class="lb">Address:</span> <span class="vl">${e(h.name)},</span> ${e(h.address)}</div>
+        <div class="line">
+          <div><span class="lb">24×7 Hotline:</span> <span class="vl num">${e(h.hotline)}</span></div>
+          <div><span class="lb">Emergency:</span> <span class="vl num">${e(h.emergency)}</span></div>
+          <div class="sp"></div>
+          ${report.visitQrSvg !== null ? `<div><span class="lb">Scan to enter the visit number</span></div>` : ""}
+        </div>
+        <div class="line">
+          <div><span class="lb">Email:</span> <span class="vl">${e(h.email)}</span></div>
+          <div><span class="site">${e(h.website)}</span></div>
+          <div class="sp"></div>
+          ${report.encounterNo !== null ? `<div><span class="lb num">${e(report.encounterNo)}</span></div>` : ""}
+        </div>
+      </div>
+      ${report.visitQrSvg !== null ? `<div class="qr">${report.visitQrSvg}</div>` : ""}
+    </div>
+    <div class="thin" style="margin-top:6px"></div>
+    <div class="by"><span class="num">Printed${printedBy ? ` by <strong>${e(printedBy)}</strong>` : ""} on ${e(istDateOnly(now))} at ${e(IST_TIME.format(new Date(now)))}</span></div>
   </div>`;
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Lab report ${e(p.uhid)} ${e(istDateOnly(reportedIso))}</title>
 <style>
-@page { size: A4 portrait; margin: 12mm 12mm 14mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 10px Arial, sans-serif; color: #444; } }
+@page { size: A4 portrait; margin: 12mm 12mm 12mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 10.5px Arial, sans-serif; color: #333; vertical-align: top; padding-top: 1mm; } }
 * { box-sizing: border-box; }
 body { margin: 0; font: 12px/1.45 Arial, Helvetica, sans-serif; color: #111; }
 .page { width: 100%; border-collapse: collapse; }
@@ -141,8 +168,19 @@ td.flag.ok { color: #1a7f4b; font-weight: 700; } td.flag.ab { color: #c8102e; fo
 .sign .nm { font-weight: 700; font-size: 13px; min-height: 18px; }
 .sign .rl { color: #555; font-size: 10.5px; }
 .cg { border-top: 1px solid #000; margin-top: 6px; padding-top: 4px; font-size: 10.5px; }
-.ft { border-top: 1px solid #999; margin-top: 8px; padding-top: 5px; font-size: 10.5px; }
-.ft .dim { color: #555; } .ft .row { margin-top: 3px; color: #444; }
+.ft { padding-top: 12px; }
+.ft .frule { height: 1px; background: #000; } .ft .thin { height: 1px; background: #9a9a9a; }
+.ft .dis { font-size: 10.5px; padding: 4px 0 5px; }
+.ft .grid { display: flex; gap: 14px; padding-top: 6px; }
+.ft .cols { flex-grow: 1; display: flex; flex-direction: column; gap: 3px; }
+.ft .line { display: flex; gap: 22px; }
+.ft .line > div, .ft .addr { font-size: 11.5px; white-space: nowrap; }
+.ft .sp { flex-grow: 1; }
+.ft .lb { color: #333; font-weight: 400; } .ft .vl { color: #000; font-weight: 700; }
+.ft .num { font-variant-numeric: tabular-nums; }
+.ft .site { font-weight: 700; color: #d92230; }
+.ft .qr { width: 62px; height: 62px; flex-shrink: 0; } .ft .qr svg { display: block; }
+.ft .by { display: flex; align-items: baseline; padding-top: 4px; font-size: 10.5px; color: #333; }
 @media screen { body { background: #e9e9e9; } .sheet { background: #fff; width: 210mm; min-height: 297mm; margin: 12px auto; padding: 12mm; box-shadow: 0 1px 6px rgba(0,0,0,.2); } }
 </style></head><body><div class="sheet">
 <table class="page">

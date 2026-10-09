@@ -31,7 +31,9 @@ export type QuickRow = {
 export type QuickReport = QuickRow & {
   analyteIds: string[]; groups: { title: string | null; analyteIds: string[] }[]; lines: QuickLine[]; summary: string;
   collectedByName: string | null; reportedByName: string | null;
-  letterhead: { name: string; addressLines: string[]; legalName?: string };
+  hospital: { name: string; address: string; hotline: string; emergency: string; email: string; website: string };
+  /** Server-drawn SVG of the visit number (the prescription footer's QR), or null with no visit. */
+  visitQrSvg: string | null;
 };
 export type QuickQueue = { waiting: QuickRow[]; reportedToday: QuickRow[] };
 export type StartQuick = { patientId: string; encounterNo: string | null; serviceIds: string[]; bloodCollected: boolean };

@@ -6,8 +6,9 @@ import {
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
+import { HOSPITAL } from "../../kernel/printing/document-kit";
+import { qrSvg } from "../../kernel/printing/qr";
 import { recordPhiAccess } from "../../kernel/phi/audit";
-import { loadOpdConfig, OpdError } from "../opd";
 import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
 import { labQuickReported, labQuickStarted } from "./events";
 import { flagFor, resolveRange } from "./ranges";
@@ -72,10 +73,14 @@ export type QuickReport = QuickRow & {
   collectedByName: string | null;
   reportedByName: string | null;
   /**
-   * The hospital's letterhead as configured TODAY (`opd_config`, the one the e-Rx and the signed lab
-   * report print). Read live, not frozen: a quick report is not a signed artefact (decision 0061).
+   * The footer of the printed page, from the SAME constants the OPD prescription's A4 footer prints
+   * (`kernel/printing/document-kit.ts` `HOSPITAL`, owner 2026-10-09: "the footer needs to be inspired
+   * from OPD prescription slip A4 page"). Plain text — the kit's copies are HTML-escaped for its own
+   * templates, and the screen escapes again.
    */
-  letterhead: { name: string; addressLines: string[]; legalName?: string };
+  hospital: { name: string; address: string; hotline: string; emergency: string; email: string; website: string };
+  /** The visit number as the prescription's footer QR (an SVG string, 62 px), or null with no visit. */
+  visitQrSvg: string | null;
   lines: QuickLine[];
   summary: string;
 };
@@ -98,6 +103,11 @@ export class QuickEntryError extends Error {
   constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
     super(message);
   }
+}
+
+/** The kit's strings are written for its HTML templates (`&amp;`); the wire carries plain text. */
+function unescapeKit(s: string): string {
+  return s.replace(/&amp;/g, "&");
 }
 
 /** Every active test with its parameters in report order, and every analyte those tests name. */
@@ -228,16 +238,15 @@ export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): P
   const people = [r.collectedBy, r.reportedBy].filter((x): x is string => x !== null);
   const names = new Map((await exec.select({ id: users.id, fullName: users.fullName }).from(users)
     .where(inArray(users.id, people))).map((u) => [u.id, u.fullName]));
-  /** A hospital that has not run `seed:opd` still gets its report; the page prints without a name. */
-  const lh = await loadOpdConfig(exec).then((c) => c.letterhead, (e: unknown) => {
-    if (e instanceof OpdError && e.code === "opd_not_configured") return { name: "", addressLines: [] as string[], legalName: undefined };
-    throw e;
-  });
   return {
     ...row!, analyteIds: ordered, groups, lines, summary: r.summary,
     collectedByName: names.get(r.collectedBy) ?? null,
     reportedByName: r.reportedBy === null ? null : names.get(r.reportedBy) ?? null,
-    letterhead: { name: lh.name, addressLines: lh.addressLines, ...(lh.legalName ? { legalName: lh.legalName } : {}) },
+    hospital: {
+      name: unescapeKit(HOSPITAL.nameTitleCase), address: unescapeKit(HOSPITAL.address), hotline: HOSPITAL.hotline,
+      emergency: HOSPITAL.emergency, email: HOSPITAL.email, website: HOSPITAL.website,
+    },
+    visitQrSvg: r.encounterNo === null ? null : qrSvg(r.encounterNo, 62),
   };
 }
 
