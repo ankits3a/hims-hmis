@@ -941,7 +941,6 @@
     },
     "clockLongest": "Longest wait in this line",
     "clockVitals": "Waiting for vitals",
-    "clockHeld": "Held for payment",
     "clockLeft": "Left after the skip cap",
     "clocksIdle": "choose a doctor",
     "clocksSummary": "longest wait {{n}} min · {{vitals}} at vitals",
@@ -1394,15 +1393,6 @@
     "bringBack": "Bring back",
     "leftQueue": "Left the queue ({{n}})",
     "leftQueueHint": "Three skips takes a token out of the queue. The visit is still open — bring them back and they keep their turn.",
-    "heldQueue": "Waiting for the bill ({{n}})",
-    "heldQueueHint": "Ready for you, but the fee is not paid. They are not called and the hall board does not show them. Pay at the counter, or open one yourself.",
-    "heldWhy": "Sent through without paying: {{reason}}",
-    "openUnpaid": "See without payment",
-    "openUnpaidTitle": "Token {{token}} — see before the bill?",
-    "openUnpaidHint": "This puts the token back in your queue and lets you start the consultation although the fee is unpaid.",
-    "openUnpaidReason": "Why (shown at every desk after this one)",
-    "openUnpaidStillOwed": "The fee is still owed and the bill is still raised — only the order changes.",
-    "openUnpaidConfirm": "Open the token",
     "skipReason": {
       "absent": "Not at the door when called",
       "stepped_out": "Stepped out, back shortly",
@@ -4130,7 +4120,7 @@
     "consult": {
       "title": "Laboratory results",
       "empty": "No verified laboratory results for this visit.",
-      "unpaidNote": "Results are shown whatever the bill says. The printed report is held separately.",
+      "unpaidNote": "Results are shown here as soon as they are verified. The printed report is issued separately.",
       "unavailable": "Laboratory results could not be loaded — this is NOT a statement that there are none. Retry, or check the laboratory system.",
       "loading": "Loading laboratory results…",
       "provisionalTitle": "Provisional — not yet verified",
@@ -10610,9 +10600,9 @@
     "vitalsBy": "Recorded by {{by}} at {{at}}",
     "vt": {
       "new": "New patient · first visit to this department",
-      "revisit": "Revisit · free follow-up · last seen {{date}}",
-      "renewal": "Renewal · follow-up window lapsed (last seen {{date}}) · fresh fee",
-      "referral": "Referral · first visit to this department · free within 7 days of the referral"
+      "revisit": "Revisit · follow-up · last seen {{date}}",
+      "renewal": "Renewal · follow-up window lapsed (last seen {{date}})",
+      "referral": "Referral · first visit to this department"
     },
     "waitingVertical": "WAITING",
     "whyCame": "Why the patient came · as told at the front desk",
@@ -10647,7 +10637,7 @@
       "doctor": "Doctor",
       "reason": "Reason (at least 3 characters)",
       "note": "Note for the doctor",
-      "feeNote": "The patient joins that doctor's line without registering again. The fee follows the hospital's tariff; the front desk sees the visit as usual.",
+      "feeNote": "The patient joins that doctor's line without registering again; the front desk sees the visit as usual.",
       "send": "Refer",
       "to": "Refer to (doctor / hospital)",
       "letter": "Letter",
@@ -10687,9 +10677,9 @@
     "token": "token {{n}}",
     "vtShort": {
       "new": "New patient · first visit",
-      "revisit": "Revisit · free follow-up",
-      "renewal": "Renewal · fresh fee due",
-      "referral": "Referral · free within 7 days"
+      "revisit": "Revisit · follow-up",
+      "renewal": "Renewal · follow-up lapsed",
+      "referral": "Referral · first visit here"
     },
     "completeShort": "Complete",
     "deskHeard": "Heard at the desk — tap to add:",
@@ -14840,5 +14830,19 @@
     },
     "note": "On record = the slip was photographed, the desk typed it, or the doctor prescribed on a screen.",
     "screenNote": "\"On screen\" counts the phone app and the computer together."
+  },
+  "toCollect": {
+    "title": "To collect",
+    "count": "To collect · {{n}}",
+    "none": "Nobody to collect from.",
+    "collect": "Collect",
+    "atCounter": "at the billing counter",
+    "why": "Let through by {{by}}, {{mins}} min ago — {{reason}}",
+    "state": {
+      "done": "seen by the doctor",
+      "left": "left the line",
+      "with_doctor": "with the doctor",
+      "waiting": "waiting"
+    }
   }
 }

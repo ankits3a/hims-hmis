@@ -141,6 +141,8 @@ export function counterApi(call: Call) {
     feeQuote: (encounterId: string) => call<WireFeeQuote>("GET", `/billing/visits/${enc(encounterId)}/fee-quote`),
     issue: (body: WireIssueBody, key: string) => call<WireIssued>("POST", "/billing/invoices", body, key),
     cashSession: () => call<{ session: WireCashSession | null }>("GET", "/billing/sessions/current"),
+    /** Owner 2026-10-09 — "To collect": visits a desk let through unpaid, until the fee is settled. */
+    toCollect: () => call<{ items: import("../../../../packages/contracts/src/to-collect").WireToCollectRow[] }>("GET", "/billing/to-collect"),
     openCashSession: (floatPaise: number) => call<WireCashSession>("POST", "/billing/sessions", { floatPaise }),
     invoices: (encounterId: string) => call<{ items: WireInvoiceRow[] }>("GET", `/billing/invoices?encounterId=${enc(encounterId)}`),
 

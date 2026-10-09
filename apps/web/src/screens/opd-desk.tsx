@@ -1,3 +1,4 @@
+import { useToCollect } from "../components/to-collect";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
@@ -265,7 +266,13 @@ export function OpdDesk(): React.ReactElement {
   /* ══════════ the clocks: what is running out in the chosen doctor's line ══════════ */
   const longest = orderedEntries.reduce((m, e) => Math.max(m, minutesSince(e.createdAt, now)), 0);
   const over = longest > WAIT_TARGET_MIN;
-  const held = queueView?.heldForPayment?.length ?? queueView?.counts.heldForPayment ?? 0;
+  /*
+    OWNER 2026-10-09 — nothing is held for payment any more (a visit the desk let through is in the
+    doctor's line like anyone else), so the clock that counted the held tokens would read 0 for
+    ever. It now counts the hospital's "To collect" list, from the same read Desk One and the
+    billing counter draw; a seat that may not read it shows no such clock.
+  */
+  const toCollect = useToCollect();
 
   const lane = inHand !== null ? (
     <section className="od-hand" data-testid="in-hand" aria-label={t("opdDesk.inHand")}>
@@ -392,7 +399,9 @@ export function OpdDesk(): React.ReactElement {
     <div data-testid="clocks">
       <div className="od-clk"><span>{t("opdDesk.clockLongest")}</span><b data-over={over ? "true" : "false"}>{t("opdDesk.minutes", { n: longest })}</b></div>
       <div className="od-clk"><span>{t("opdDesk.clockVitals")}</span><b>{queueView?.waitingVitals ?? 0}</b></div>
-      <div className="od-clk"><span>{t("opdDesk.clockHeld")}</span><b>{held}</b></div>
+      {toCollect.permitted && (
+        <div className="od-clk" data-testid="clock-to-collect"><span>{t("toCollect.title")}</span><b>{toCollect.rows.length}</b></div>
+      )}
       <div className="od-clk"><span>{t("opdDesk.clockLeft")}</span><b>{queueView?.counts.left ?? 0}</b></div>
     </div>
   );

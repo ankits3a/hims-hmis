@@ -8,7 +8,7 @@ import type {
  * (apps/web/src/screens/opd-consult.tsx), each behind the permission the server already checks
  * (`opd.consult`, `opd.queue.read`, `opd.queue.operate`, `opd.visits.read`, `patients.read`,
  * `lab.results.read`, `radiology.reports.read`) and behind `requireTreatingDoctor` for every act on
- * a visit. Nothing here decides who is callable, who is held for the bill, or who may be completed.
+ * a visit. Nothing here decides who is callable or who may be completed.
  */
 export type Call = <T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown, idempotencyKey?: string) => Promise<T>;
 
@@ -26,8 +26,6 @@ export type WireVisitDetail = {
     chiefComplaint: string | null; diagnosis: string | null; dangerFlagged: boolean;
     consultStartedAt: string | null; rxDraft?: { drug?: unknown }[] | null;
   };
-  feeUnpaid?: boolean;
-  feeBypass?: { by: string; reason: string; at: string } | null;
   deskComplaint?: { text: string; by: string; at: string } | null;
   /** Owner 2026-10-07 — only a guardian came, with the reports. Optional: an older server sends none. */
   patientAbsent?: { relation: string; name: string | null; by: string; at: string } | null;
@@ -65,7 +63,6 @@ export function doctorApi(call: Call) {
     undoSkip: (entryId: string) => call<unknown>("POST", `/opd/queues/entries/${enc(entryId)}/undo-skip`),
     sessionStatus: (sessionId: string, status: "in" | "out") => call<unknown>("POST", `/opd/queues/${enc(sessionId)}/status`, { status }),
 
-    openUnpaid: (encounterId: string, reason: string) => call<unknown>("POST", `/opd/visits/${enc(encounterId)}/consult/open-unpaid`, { reason }),
     start: (encounterId: string) => call<unknown>("POST", `/opd/visits/${enc(encounterId)}/consult/start`),
     park: (encounterId: string) => call<unknown>("POST", `/opd/visits/${enc(encounterId)}/consult/park`),
     resume: (encounterId: string) => call<unknown>("POST", `/opd/visits/${enc(encounterId)}/consult/resume`),

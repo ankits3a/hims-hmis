@@ -96,6 +96,8 @@ import { encounterRefSpellings, getInvoice, invoiceSettlement, issueInvoice, lis
 import { chargeOrphans } from "./daily-close";
 import type { ChargeOrphanRow } from "./daily-close";
 import { collectionWorklist } from "./worklist";
+import { toCollectList } from "./to-collect";
+import type { ToCollectRow } from "./to-collect";
 import type { CollectionRow } from "./worklist";
 import type { BenefitBalance } from "./invoices";
 import {
@@ -632,6 +634,18 @@ export class BillingController {
     } catch (e) {
       toHttp(e);
     }
+  }
+
+  /**
+   * OWNER 2026-10-09 — "To collect": the visits the desk let through unpaid, today and seven days
+   * back, until the fee is settled (`to-collect.ts`). The cashier's key, and ALSO the front desk's
+   * two (`alsoAdmits`): the seat that grants the bypass is the seat that must not lose sight of it.
+   * No doctor's key admits it. No parameter: the window is the rule, not the caller's choice.
+   */
+  @RequirePermission("billing.invoice.read", "hospital", { alsoAdmits: ["opd.visits.open", "billing.dues.patient.read"] })
+  @Get("to-collect")
+  async toCollect(@CurrentActor() actor: Actor): Promise<{ items: ToCollectRow[] }> {
+    return { items: await toCollectList(this.db, actor) };
   }
 
   @RequirePermission("billing.invoice.read", "hospital")

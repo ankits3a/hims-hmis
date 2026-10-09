@@ -164,8 +164,8 @@ Source: `apps/core/src/modules/billing/`
 
 Foreign keys into: `patients`
 
-## HTTP routes (49)
+## HTTP routes (50)
 
-- `billing.controller.ts` — 49: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/sessions`, `/billing/visits`, `/billing/worklist`
+- `billing.controller.ts` — 50: `/billing/allocations`, `/billing/charge-orphans`, `/billing/config`, `/billing/consult-prices`, `/billing/consult-terms`, `/billing/credit-requests`, `/billing/day-book`, `/billing/degraded`, `/billing/eie`, `/billing/fee-switches`, `/billing/gstr1`, `/billing/invoices`, `/billing/office`, `/billing/patients`, `/billing/receipts`, `/billing/recon`, `/billing/refunds`, `/billing/sessions`, `/billing/to-collect`, `/billing/visits`, `/billing/worklist`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/billing`

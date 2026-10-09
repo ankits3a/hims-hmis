@@ -126,7 +126,7 @@ describe("the doctor's OPD line on a phone", () => {
     const w = world();
     await mount(w.fetcher);
     expect(await screen.findByTestId("line-row-13")).toHaveTextContent(/Suresh Prasad · 56 M/);
-    expect(screen.getByTestId("line-row-13")).toHaveTextContent(/Revisit · free follow-up/);
+    expect(screen.getByTestId("line-row-13")).toHaveTextContent(/Revisit · follow-up/);
     expect(screen.getByTestId("line-row-14")).toHaveTextContent(/Meena Kumari · 33 F/);
     expect(screen.getByTestId("doctor-name")).toHaveTextContent("Dr. Chandan Kumar · Unit I · Asst. Prof.");
     expect(screen.getByTestId("stat-waiting")).toHaveTextContent("2");
@@ -201,25 +201,6 @@ describe("the doctor's OPD line on a phone", () => {
     await fireEvent.press(await screen.findByTestId("left-undo-13"));
     expect(await screen.findByTestId("line-row-13")).toBeTruthy();
     expect(w.of("POST /opd/queues/entries/q13/undo-skip")).toHaveLength(1);
-  });
-
-  it("tokens waiting for the bill are listed apart, and the doctor opens one only with a reason", async () => {
-    const held = entry(15, { feeStatus: "unsettled" }, { feeBypassReason: "came by ambulance" }, { name: "Ram Pravesh" });
-    const w = world(queue({ heldForPayment: [held] }), {
-      "POST /opd/visits/e15/consult/open-unpaid": () => ({ status: 201, body: { encounter: {} } }),
-    });
-    await mount(w.fetcher);
-    expect(await screen.findByTestId("held-row-15")).toHaveTextContent(/Ram Pravesh/);
-    expect(screen.getByTestId("held-row-15")).toHaveTextContent(/NOT PAID/);
-    expect(screen.getByTestId("held-group")).toHaveTextContent(/Waiting for the bill \(1\)/);
-    await fireEvent.press(screen.getByTestId("held-open-15"));
-    await fireEvent.press(screen.getByTestId("unpaid-go"));
-    expect(screen.getByTestId("sheet-error")).toHaveTextContent("Write the reason first.");
-    expect(w.of("POST /opd/visits/e15/consult/open-unpaid")).toHaveLength(0);
-    await fireEvent.changeText(screen.getByTestId("unpaid-reason"), "elderly, cannot stand in the queue");
-    await fireEvent.press(screen.getByTestId("unpaid-go"));
-    await waitFor(() => expect(w.of("POST /opd/visits/e15/consult/open-unpaid")).toHaveLength(1));
-    expect(w.of("POST /opd/visits/e15/consult/open-unpaid")[0]!.body).toEqual({ reason: "elderly, cannot stand in the queue" });
   });
 
   it("the brief: allergy first, the patient's own words, today's vitals with the bay's flag as a word, results since, the last prescription, past visits", async () => {
