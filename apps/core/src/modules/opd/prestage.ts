@@ -136,6 +136,8 @@ function carryCandidatesFor(ageYears: number | null, last: { heightCm: number | 
  * Owner, 2026-09-13: the unpaid symbol belongs on the vitals bay, the consultation AND the OPD
  * Order Desk. Three screens reading three derivations is three chances for one of them to quietly
  * stop warning; this is the derivation, and `preStage` and the visit route both call it.
+ * (Owner 2026-10-09: no longer on the CONSULTATION — a doctor's screen shows no money, and the
+ * visit route sends these marks only to a caller with a fee-seeing permission, `fee-view.ts`.)
  *
  * `feeUnpaid` is FALSE on an unconfigured hospital by construction, because `encounterFeeStatuses`
  * returns an empty map there — the same answer the consult gate gives when it lets

@@ -7,7 +7,7 @@ import { configureApp } from "../src/app.bootstrap";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkDoctor, mkUser, seedOpdBase, seedOpdMasters, activateOpdVisitDefinition } from "./helpers/opd";
 import { mkBillingManager, mkCashier, seedBillingBase } from "./helpers/billing";
-import { billingConfig, events, invoices, opdConfig, patients, receipts, reconResolutions, refundVouchers } from "../src/kernel/db/schema";
+import { billingConfig, events, invoices, opdConfig, opdEncounters, patients, receipts, reconResolutions, refundVouchers } from "../src/kernel/db/schema";
 import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { DEFAULT_LETTERHEAD } from "../src/modules/opd/config";
 import { authManifest } from "../src/kernel/auth/manifest";
@@ -215,10 +215,10 @@ describe("billing e2e", () => {
    * front desk's emergency door is exactly how an unpaid visit legitimately reaches the bench, and
    * it is the only way that state exists after this ruling.
    *
-   * IT DOES NOT WEAKEN THE CONSULT GATE, which is what the test below turns on: the bypass opens the
-   * VITALS door only. `feeGate` at the consultation still refuses `fee_unsettled`, which is why
-   * "unpaid consult refused 409, paid at the counter, retry starts 201" still passes unchanged —
-   * and if a later task widens the bypass to the doctor's door, that row goes red and says so.
+   * OWNER RULING 2026-10-09 — the bypass now opens the doctor's door too (*"desk let through →
+   * patient shows in doctor's line, no mark"*). `feeGate` still refuses `fee_unsettled` for a visit
+   * with NO bypass, which the gate test below reaches by clearing the bypass after vitals — the
+   * state a receipt voided after charting leaves — and the let-through side has its own test.
    */
   const openVisit = async (patientId: string): Promise<string> => {
     const open = await http().post("/opd/visits").set(...auth(cashier.token))
@@ -377,16 +377,80 @@ describe("billing e2e", () => {
     // answered 400 until the follow-up repair commit put it in that set beside every other OPD
     // conflict code (`session_closed`, `slot_taken`, `not_your_patient`). The status AND the code
     // are both asserted: the code is what the screens branch on, the status is what D8 promises.
+    // Owner 2026-10-09: a visit the desk LET THROUGH is no longer refused here, so this visit is
+    // made what the gate is still for — unpaid with no desk decision on it (a receipt voided after
+    // vitals leaves exactly this row).
+    await db.update(opdEncounters).set({ feeBypassBy: null, feeBypassReason: null, feeBypassAt: null }).where(eq(opdEncounters.id, encounterId));
     const refused = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(409);
     expect(refused.body.code).toBe("consult_gate_refused");
     expect(refused.body.detail.guard).toBe("billing_fee_gate");
     expect(refused.body.detail.code).toBe("fee_unsettled");
+    // The doctor's phone prints the message as it stands: no money in it.
+    expect(refused.body.message).not.toMatch(/paid|fee|bill|₹|dues|held/i);
 
     await openSession(cashier.token);
     await issuePaid(patientId, base.consultNewServiceId, encounterId);
 
     const started = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
     expect(started.body.encounter.status).toBe("in_consultation");
+  });
+
+  /**
+   * ═══ OWNER RULING 2026-10-09 — THE DESK LET THEM THROUGH; THE DOCTOR IS SHOWN NO MONEY ═══
+   *
+   * *"walk-in rule, a (desk let through → patient shows in doctor's line, no mark)"* · *"Doctor's
+   * screens must not show money."* Over real HTTP, with billing's real `feeGate` on the door: the
+   * bypassed, unpaid visit is in the doctor's order and starts with nothing asked; the doctor's
+   * copy of the queue and of the visit carries no money key; the desk's copy still does.
+   */
+  it("a visit the desk let through unpaid: in the doctor's line, starts with no reason, and the doctor's reads carry no money", async () => {
+    const patientId = await registerPatient("Let Through Devi", "9876543299");
+    const encounterId = await openVisit(patientId);
+    const keysOf = (v: unknown, out = new Set<string>()): Set<string> => {
+      if (Array.isArray(v)) v.forEach((x) => keysOf(x, out));
+      else if (v !== null && typeof v === "object") for (const [k, x] of Object.entries(v)) { out.add(k); keysOf(x, out); }
+      return out;
+    };
+    const MONEY = /fee|paid|bypass|override|amount|paise|unsettled|invoice|bill|dues/i;
+    const day = istDay(new Date());
+
+    const mine = await http().get(`/opd/queues?doctorId=${dra.doctorId}&serviceDate=${day}`).set(...auth(dra.token)).expect(200);
+    expect(mine.body.ordered.map((e: { encounterId: string }) => e.encounterId)).toContain(encounterId);
+    expect(mine.body.heldForPayment).toEqual([]);
+    const rowKeys = keysOf([mine.body.ordered, mine.body.current, mine.body.inConsult, mine.body.left]);
+    expect([...rowKeys].filter((k) => MONEY.test(k))).toEqual([]);
+    expect(JSON.stringify(mine.body.ordered)).not.toMatch(/unsettled|fixture: this suite/);
+
+    const visit = await http().get(`/opd/visits/${encounterId}`).set(...auth(dra.token)).expect(200);
+    expect([...keysOf(visit.body)].filter((k) => MONEY.test(k))).toEqual([]);
+    expect(JSON.stringify(visit.body)).not.toMatch(/unsettled|fixture: this suite/);
+
+    // THE DESK DOES NOT LOSE SIGHT OF IT: the same two routes, asked by the counter.
+    const desk = await http().get(`/opd/queues?doctorId=${dra.doctorId}&serviceDate=${day}`).set(...auth(cashier.token)).expect(200);
+    const deskRow = desk.body.ordered.find((e: { encounterId: string }) => e.encounterId === encounterId);
+    expect(deskRow.feeStatus).toBe("unsettled");
+    expect(deskRow.encounter.feeBypassReason).toContain("fixture: this suite");
+    const deskVisit = await http().get(`/opd/visits/${encounterId}`).set(...auth(cashier.token)).expect(200);
+    expect(deskVisit.body.feeUnpaid).toBe(true);
+    expect(deskVisit.body.feeBypass.reason).toContain("fixture: this suite");
+
+    // No `consult/open-unpaid`, no reason: the doctor starts, and the answer carries no money either.
+    const started = await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
+    expect(started.body.encounter.status).toBe("in_consultation");
+    expect([...keysOf(started.body)].filter((k) => MONEY.test(k))).toEqual([]);
+    // The bypass and its audit are untouched, and nobody wrote a doctor's override.
+    const row = (await db.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)))[0]!;
+    expect(row.feeBypassReason).toContain("fixture: this suite");
+    expect(row.consultFeeOverrideBy).toBeNull();
+  });
+
+  it("an app build from before the ruling: consult/open-unpaid still answers 201 and the visit still starts", async () => {
+    const patientId = await registerPatient("Old Build Kumar", "9876543298");
+    const encounterId = await openVisit(patientId);
+    const opened = await http().post(`/opd/visits/${encounterId}/consult/open-unpaid`).set(...auth(dra.token))
+      .send({ reason: "old phone build" }).expect(201);
+    expect(opened.body.encounter.id).toBe(encounterId);
+    await http().post(`/opd/visits/${encounterId}/consult/start`).set(...auth(dra.token)).expect(201);
   });
 
   /**

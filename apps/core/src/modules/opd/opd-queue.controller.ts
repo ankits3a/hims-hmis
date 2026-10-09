@@ -23,13 +23,14 @@ import {
 } from "./prescriptions";
 import { discardDraft, getPendingDraft, issueDraft, saveDraft } from "./prescription-drafts";
 import { SKIP_REASONS } from "./skip-reasons";
-import { boardSnapshot, callNext, listQueue, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
+import { boardSnapshot, callNext, listQueue, queueWithoutMoney, recallCalled, skipCalled, summaryByDoctor, undoSkip } from "./queue";
+import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { setSessionStatus } from "./sessions";
 import { istDate } from "./time";
 import type { EncounterRow, PrescriptionRow, QueueEntryRow } from "./encounters";
 import type { IssuedPrescription, RxPrecheckResult, RxPrintData, RxVerifyResult } from "./prescriptions";
 import type { DraftRow } from "./prescription-drafts";
-import type { BoardItem, DoctorSummary, QueueView } from "./queue";
+import type { BoardItem, DoctorSummary, QueueView, QueueViewNoMoney } from "./queue";
 import type { SessionRow } from "./sessions";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
@@ -236,6 +237,9 @@ const verifyBody = z.object({ payload: z.string().min(1).max(500) });
 /** The section's own schema validates the body (sections.ts); the route bounds only the envelope. */
 const sectionBody = z.object({ body: z.record(z.string(), z.unknown()), leaseToken: z.string().min(1).max(64).nullable().optional() });
 
+/** A visit row as the doctor's own routes answer it: no bypass, no override (owner 2026-10-09, `fee-view.ts`). */
+type DoctorEncounter = ReturnType<typeof encounterWithoutMoney<EncounterRow>>;
+
 @Controller("opd")
 export class OpdQueueController {
   constructor(
@@ -283,10 +287,14 @@ export class OpdQueueController {
 
   @RequirePermission("opd.queue.read", "hospital")
   @Get("queues")
-  async queue(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<QueueView | { session: null }> {
+  async queue(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<QueueView | QueueViewNoMoney | { session: null }> {
     const q = parsed(queueQuery, query);
     try {
-      return (await listQueue(this.db, actor, q.doctorId, q.serviceDate ?? istDate(new Date()))) ?? { session: null };
+      const view = await listQueue(this.db, actor, q.doctorId, q.serviceDate ?? istDate(new Date()));
+      if (view === null) return { session: null };
+      // Owner 2026-10-09 — "Doctor's screens must not show money": the fee status and the bypass /
+      // override sentences go only to a caller whose own work is the fee (`fee-view.ts`).
+      return (await seesFees(this.db, actor)) ? view : queueWithoutMoney(view);
     } catch (e) {
       toHttp(e);
     }
@@ -296,9 +304,10 @@ export class OpdQueueController {
   @Post("queues/:sessionId/call-next")
   async callNext(
     @CurrentActor() actor: Actor, @Param("sessionId") sessionId: string,
-  ): Promise<{ entry: QueueEntryRow | null; encounter: EncounterRow | null }> {
+  ): Promise<{ entry: QueueEntryRow | null; encounter: DoctorEncounter | null }> {
     try {
-      return await callNext(this.db, actor, sessionId);
+      const r = await callNext(this.db, actor, sessionId);
+      return { entry: r.entry, encounter: r.encounter === null ? null : encounterWithoutMoney(r.encounter) };
     } catch (e) {
       toHttp(e);
     }
@@ -357,7 +366,12 @@ export class OpdQueueController {
   // ——— the consultation ———
 
   /**
-   * ═══ THE DOCTOR OPENS AN UNSETTLED TOKEN (OWNER RULING 2026-09-20) ═══
+   * ═══ THE DOCTOR OPENS AN UNSETTLED TOKEN (OWNER RULING 2026-09-20) — RETIRED 2026-10-09 ═══
+   *
+   * RETIRED: no screen calls this and no guard needs it (owner 2026-10-09 — a visit the desk let
+   * through is an ordinary patient). The route still answers, unchanged, for app builds installed
+   * before the ruling. The 2026-09-20 text follows.
+   *
    *
    * *"It waits for bill to be paid until doctor opens the token from his dashboard manually.
    * Currently the doctor have no screen to do it. But we need it to be built."*
@@ -371,10 +385,10 @@ export class OpdQueueController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/open-unpaid")
-  async openUnpaid(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+  async openUnpaid(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: DoctorEncounter }> {
     const b = parsed(openUnpaidBody, body);
     try {
-      return { encounter: (await openUnpaidToken(this.db, actor, id, b.reason)).encounter };
+      return { encounter: encounterWithoutMoney((await openUnpaidToken(this.db, actor, id, b.reason)).encounter) };
     } catch (e) {
       toHttp(e);
     }
@@ -382,9 +396,10 @@ export class OpdQueueController {
 
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/start")
-  async start(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  async start(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: DoctorEncounter; queueEntry: QueueEntryRow }> {
     try {
-      return await startConsultation(this.db, actor, id);
+      const r = await startConsultation(this.db, actor, id);
+      return { encounter: encounterWithoutMoney(r.encounter), queueEntry: r.queueEntry };
     } catch (e) {
       toHttp(e);
     }
@@ -400,9 +415,10 @@ export class OpdQueueController {
    */
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/park")
-  async park(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  async park(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: DoctorEncounter; queueEntry: QueueEntryRow }> {
     try {
-      return await parkConsultation(this.db, actor, id);
+      const r = await parkConsultation(this.db, actor, id);
+      return { encounter: encounterWithoutMoney(r.encounter), queueEntry: r.queueEntry };
     } catch (e) {
       toHttp(e);
     }
@@ -410,9 +426,10 @@ export class OpdQueueController {
 
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/resume")
-  async resume(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: EncounterRow; queueEntry: QueueEntryRow }> {
+  async resume(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ encounter: DoctorEncounter; queueEntry: QueueEntryRow }> {
     try {
-      return await resumeConsultation(this.db, actor, id);
+      const r = await resumeConsultation(this.db, actor, id);
+      return { encounter: encounterWithoutMoney(r.encounter), queueEntry: r.queueEntry };
     } catch (e) {
       toHttp(e);
     }
@@ -420,10 +437,10 @@ export class OpdQueueController {
 
   @RequirePermission("opd.consult", "hospital")
   @Put("visits/:id/consult/note")
-  async note(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+  async note(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: DoctorEncounter }> {
     const b = parsed(consultNoteBody, body);
     try {
-      return await saveConsultNote(this.db, actor, id, b);
+      return { encounter: encounterWithoutMoney((await saveConsultNote(this.db, actor, id, b)).encounter) };
     } catch (e) {
       toHttp(e);
     }
@@ -554,10 +571,10 @@ export class OpdQueueController {
 
   @RequirePermission("opd.consult", "hospital")
   @Post("visits/:id/consult/complete")
-  async complete(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: EncounterRow }> {
+  async complete(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ encounter: DoctorEncounter }> {
     const b = parsed(consultCompleteBody, body);
     try {
-      return await completeConsultation(this.db, actor, id, b);
+      return { encounter: encounterWithoutMoney((await completeConsultation(this.db, actor, id, b)).encounter) };
     } catch (e) {
       toHttp(e);
     }

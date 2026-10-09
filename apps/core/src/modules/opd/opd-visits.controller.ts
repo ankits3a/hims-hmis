@@ -16,6 +16,7 @@ import {
 } from "./encounters";
 import { patientRxHistory, patientVitalsHistory } from "./history";
 import { feeMarksFor } from "./prestage";
+import { encounterWithoutMoney, seesFees } from "./fee-view";
 import { listDepartments } from "./masters";
 import type { RxHistoryItem, VitalsHistoryItem } from "./history";
 import type { AppConfig } from "../../kernel/config";
@@ -276,16 +277,22 @@ const escalationBody = z.object({
 type AppointmentView = AppointmentRow & { patient: PatientSummary | null };
 type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry: QueueEntryRow | null };
 /**
- * FD-32 — the visit read carries the two money marks as well, so the CONSULTATION and the OPD Order
- * Desk wear the owner's warning from the same derivation the vitals bay uses (`feeMarksFor`). On
- * consultation the pair that matters is the BYPASSED one: the fee gate already refuses an unpaid
- * consult, so the patient a doctor actually meets unpaid is the one the front desk waved through —
- * and the doctor should see whose decision that was and why.
+ * FD-32 — the visit read carries the two money marks, from the same derivation the vitals bay uses
+ * (`feeMarksFor`), for the DESKS that read a visit: Desk One's visit card and the paper desks.
+ * Until 2026-10-09 the consultation screen wore them too; the owner ruled that a doctor's screen
+ * shows no money, so they are no longer sent to a caller without a fee-seeing permission.
  */
-type VisitDetail = NonNullable<Awaited<ReturnType<typeof getVisit>>> & {
+type VisitRead = NonNullable<Awaited<ReturnType<typeof getVisit>>>;
+type VisitDetail = (VisitRead | (Omit<VisitRead, "encounter"> & { encounter: ReturnType<typeof encounterWithoutMoney<VisitRead["encounter"]>> })) & {
   patient: PatientSummary | null;
-  feeUnpaid: boolean;
-  feeBypass: { by: string; reason: string; at: Date } | null;
+  /**
+   * OWNER RULING 2026-10-09 — *"Doctor's screens must not show money."* The two marks, and the
+   * bypass / override columns of the visit row, are sent only to a caller whose own work is the fee
+   * (`fee-view.ts`: the front desk, the cashier, the paper desks). For everyone else — the doctor —
+   * the keys are ABSENT.
+   */
+  feeUnpaid?: boolean;
+  feeBypass?: { by: string; reason: string; at: Date } | null;
   /** What the front desk heard, by whom and when — `null` when nothing was typed (D15). */
   deskComplaint: { text: string; by: string; at: Date } | null;
   /** Owner 2026-10-07 — the guardian came with the reports and the patient did not (`patient-absent.ts`). */
@@ -618,11 +625,13 @@ export class OpdVisitsController {
     const found = await getVisit(this.db, actor, id);
     if (!found) toHttp(new OpdError("unknown_encounter", `unknown encounter ${id}`));
     const [summary] = await getPatientSummaries(this.db, actor, [found.encounter.patientId]);
-    return {
-      ...found, patient: summary ?? null, ...(await feeMarksFor(this.db, found.encounter)),
+    const rest = {
+      patient: summary ?? null,
       deskComplaint: await deskComplaintFor(this.db, found.encounter),
       patientAbsent: patientAbsentOf(found.encounter),
     };
+    if (await seesFees(this.db, actor)) return { ...found, ...rest, ...(await feeMarksFor(this.db, found.encounter)) };
+    return { ...found, encounter: encounterWithoutMoney(found.encounter), ...rest };
   }
 
   /**
