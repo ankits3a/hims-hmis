@@ -8,7 +8,7 @@ import { doctorApi, type DoctorApi } from "../doctor/api";
 import { PatientBrief, type BriefGroup } from "../doctor/brief";
 import { ConsultScreen } from "./consult";
 import {
-  LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, completionBody, followUpChoices, isUnpaid, longestWait, parkedSince, rowName,
+  LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, completionBody, followUpChoices, guardianBrief, isUnpaid, longestWait, parkedSince, rowName,
   unissuedRxRows, visitKind, waitMinutes,
 } from "../doctor/rules";
 import type { WireFollowUpConfig, WireQueueDoctor, WireQueueEntryView, WireQueuePatient, WireQueueView, WireSkipReason } from "../doctor/rules";
@@ -16,7 +16,6 @@ import { useI18n } from "../i18n";
 import { HeldCard, ScannedBanner, type Scanned } from "../scan/card";
 import { SwipeHint, SwipeRow } from "../scan/gestures";
 import type { ScanAction } from "../scan/model";
-import { guardianWho } from "../vitals/guardian";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
@@ -60,12 +59,12 @@ function Row({ e, t, now, right, below, tone, onPress, onHold, testID }: {
   const name = rowName(e.patient);
   const demo = ageSexOf(e.patient, now);
   const kind = visitKind(e);
-  const marks: { text: string; fg: string }[] = [];
+  const marks: { text: string; fg: string; fill?: string; testID?: string }[] = [];
   if (e.encounter.dangerFlagged || e.danger) marks.push({ text: t("mobile.doctor.dangerRow"), fg: color.red });
   if (isUnpaid(e)) marks.push({ text: t("mobile.doctor.unpaidRow"), fg: color.red });
-  // Owner 2026-10-07 — the guardian came with the reports; no vitals were taken. The web row's tag, in words.
+  // Owner 2026-10-09 — only a guardian came: a FILLED amber chip, "Guardian · Son". The name is on the patient's page.
   const absent = e.encounter.patientAbsent ?? null;
-  if (absent !== null) marks.push({ text: t("patientAbsent.tag", { who: guardianWho(t, absent) }), fg: "#8a5a10" });
+  if (absent !== null) marks.push({ text: guardianBrief(t, absent).chip, fg: color.ink, fill: color.gold, testID: `line-guardian-${e.tokenNo}` });
   return (
     <View testID={testID} style={[s.rowCard, tone === "next" && { backgroundColor: color.greenSoft, borderColor: color.greenLine }]}>
       <Pressable testID={`${testID}-open`} accessibilityRole="button" onPress={onPress} onLongPress={onHold}
@@ -82,7 +81,7 @@ function Row({ e, t, now, right, below, tone, onPress, onHold, testID }: {
             <Text style={s.rowLine} numberOfLines={1}>{t(`opdConsultV2.vtShort.${kind}`)}</Text>
             {marks.map((m) => (
               // A mark is a bordered WORD, never colour alone.
-              <Text key={m.text} style={[s.mark, { color: m.fg, borderColor: m.fg }]}>{m.text}</Text>
+              <Text key={m.text} testID={m.testID} numberOfLines={1} style={[s.mark, { color: m.fg, borderColor: m.fill ?? m.fg }, m.fill !== undefined && { backgroundColor: m.fill }]}>{m.text}</Text>
             ))}
           </View>
         </View>

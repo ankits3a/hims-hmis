@@ -14516,6 +14516,13 @@
       "billNote": "The bill opens as the printed document — the same one the counter prints on the day, from the server's own figures."
     }
   },
+  "lastVisit": {
+    "title": "Last visit · {{date}}",
+    "complaint": "Complaint",
+    "diagnosis": "Diagnosis",
+    "tests": "Tests",
+    "medicines": "Medicines"
+  },
   "patientAbsent": {
     "action": "Patient not present — guardian with reports",
     "title": "The patient did not come — a guardian brought the reports",
@@ -14528,6 +14535,13 @@
     "done": "Sent to the doctor — guardian with reports, vitals not taken.",
     "notice": "Patient absent — guardian ({{who}}) brought reports. Vitals not taken.",
     "tag": "Guardian ({{who}})",
+    "cardTitle": "Guardian only",
+    "cardTail": " · reports · no vitals",
+    "compact": "Guardian only · {{who}}",
+    "chip": "Guardian · {{relation}}",
+    "cardRelation": {
+      "other_relative": "Relative"
+    },
     "who": "{{relation}}: {{name}}",
     "relation": {
       "father": "Father",

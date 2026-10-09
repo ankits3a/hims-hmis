@@ -132,6 +132,20 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
     expect(screen.queryByText(/print/i)).toBeNull();
   });
 
+  it("a guardian-only visit says so in one line at the top of This visit (owner 2026-10-09); an ordinary visit says nothing", async () => {
+    const plain = world();
+    const a = await mount(plain);
+    expect(await screen.findByTestId("visit-empty")).toBeTruthy();
+    expect(screen.queryByTestId("consult-guardian")).toBeNull();
+    await a.unmount();
+    const w = world();
+    (w.state.visit as unknown as Record<string, unknown>).patientAbsent = { relation: "son", name: "Rakesh", by: "asha.devi", at: "2026-10-07T04:35:00.000Z" };
+    w.state.visit.vitals = [];
+    await mount(w);
+    expect(await screen.findByTestId("consult-guardian")).toHaveTextContent("Guardian only · Son: Rakesh");
+    expect(screen.queryByTestId("consult-vitals")).toBeNull();
+  });
+
   it("a medicine is searched, built from chips, checked by the server, issued and the visit completed — then straight back to the line", async () => {
     const w = world();
     const m = await mount(w);

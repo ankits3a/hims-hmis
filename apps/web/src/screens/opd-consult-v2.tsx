@@ -4,7 +4,8 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
-import { PatientAbsentNotice } from "../components/patient-absent";
+import { LastVisitCard } from "../components/last-visit";
+import { GuardianCard } from "../components/patient-absent";
 import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
 import { briefRefill, briefResults, fetchPatientDispenses, fetchPatientImaging, fetchPatientResults, shortDay } from "../lib/brief-history";
@@ -258,9 +259,11 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
       <p data-testid="brief-visit-meaning" style={{ margin: "-6px 0 0", fontSize: 13.5, fontWeight: 600, color: vt === "renewal" ? "var(--gold)" : "var(--green)" }}>
         {t(vtMeaning(vt), { date: last?.serviceDate ?? "—" })}
       </p>
+      {/* Owner 2026-10-09 — only a guardian came: boxed, under the name. Then what the doctor recorded last time. */}
       {visit.data?.patientAbsent != null && (
-        <PatientAbsentNotice absent={visit.data.patientAbsent} testId="brief-patient-absent" />
+        <GuardianCard absent={visit.data.patientAbsent} testId="brief-patient-absent" />
       )}
+      <LastVisitCard visits={timeline.data?.items ?? []} currentEncounterId={encounterId} visitType={visit.data?.encounter.visitType} />
       {reminder.data != null && (
         <p data-testid="brief-reminder" className="pill" style={{ margin: 0, alignSelf: "flex-start", color: "var(--gold)", fontWeight: 600 }}>
           {t("opdConsultV2.reminderLine", { text: reminder.data.text })}

@@ -11,7 +11,7 @@ import {
   unanswered, warningsOf, wireLine,
 } from "../consult/rules";
 import { AdviceDrawer, DiagnosisDrawer, MedicinesDrawer, NotesDrawer, SetsDrawer, type Patch } from "../consult/sheets";
-import { ageSexOf, ageYearsOn, followUpChoices, rowName, visitKind } from "../doctor/rules";
+import { ageSexOf, ageYearsOn, followUpChoices, guardianBrief, rowName, visitKind } from "../doctor/rules";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text } from "../text";
@@ -289,6 +289,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
   const name = rowName(summary);
   const demo = ageSexOf(summary, now);
   const kind = entry === null ? null : visitKind(entry);
+  const guardianNow = visit?.patientAbsent ?? entry?.encounter.patientAbsent ?? null;
   const vit: WireVisitVitals | null = visit === null ? null : [...visit.vitals].filter((x) => x.status === "active").sort((a, b) => (a.recordedAt < b.recordedAt ? 1 : -1))[0] ?? null;
   const flagged = (k: string): boolean => vit?.dangerFlags.some((f) => (f as { key?: string }).key === k) === true;
   const empty = isEmptyDraft(draft);
@@ -359,6 +360,10 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
             <Text style={s.cardTitle}>{t("mobile.consult.thisVisit")}</Text>
             <Text testID="visit-state" style={s.corner} numberOfLines={1}>{empty ? t("mobile.consult.nothing") : fromLabel ?? t(offline ? "mobile.consult.draftNotSent" : "mobile.consult.draftSaved")}</Text>
           </View>
+          {guardianNow !== null && (
+            // Owner 2026-10-09 — only a guardian came with the reports: one line, where the doctor writes.
+            <Text testID="consult-guardian" accessibilityRole="text" numberOfLines={1} style={s.guardian}>{guardianBrief(t, guardianNow).compact}</Text>
+          )}
           {empty && <Text testID="visit-empty" style={s.emptyText}>{t("mobile.consult.emptyHint")}</Text>}
           {childDoseMissing(draft, bandNow()) && <Note tone="warn" testID="visit-child-no-dose">{t("mobile.consult.childNoDose")}</Note>}
           {(draft.complaints.length > 0 || draft.notes.trim() !== "") && row(t("mobile.consult.five.notes"),
@@ -450,6 +455,7 @@ const s = StyleSheet.create({
   quickTitle: { fontSize: 14.5, fontWeight: "700", color: color.ink },
   quickSub: { fontSize: 11.5, color: color.dim, marginTop: 1 },
   cardTitle: { fontSize: 15, fontWeight: "700", color: color.ink },
+  guardian: { fontSize: 14, lineHeight: 20, fontWeight: "700", color: "#8a5a10", borderWidth: 1.5, borderColor: color.gold, backgroundColor: color.goldSoft, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4, overflow: "hidden" },
   corner: { flexShrink: 1, fontFamily: MONO, fontSize: 11, color: color.faint },
   emptyText: { fontSize: 13.5, lineHeight: 19, color: color.dim, paddingVertical: 6 },
   ln: { flexDirection: "row", gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: color.line2, minHeight: 40 },

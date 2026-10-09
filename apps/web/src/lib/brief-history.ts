@@ -11,8 +11,8 @@ import { api } from "./api";
  * The shapes and the arithmetic (what counts as "since then", the refill record) are ONE file shared
  * with the phone's doctor screen: `packages/contracts/src/doctor-queue.ts` (mobile plan M3).
  */
-export { BRIEF_RESULT_LINES, briefRefill, briefResults, istDay, shortDay } from "../../../../packages/contracts/src/doctor-queue";
-export type { BriefRefill, BriefResultLine, WirePatientDispense, WirePatientImaging, WirePatientResult } from "../../../../packages/contracts/src/doctor-queue";
+export { BRIEF_RESULT_LINES, briefRefill, briefResults, guardianBrief, istDay, lastCompletedVisit, lastVisitCard, shortDay, showsLastVisit } from "../../../../packages/contracts/src/doctor-queue";
+export type { BriefRefill, BriefResultLine, GuardianBrief, LastVisitCard as LastVisitCardData, WireLastVisit, WirePatientDispense, WirePatientImaging, WirePatientResult } from "../../../../packages/contracts/src/doctor-queue";
 import type { WirePatientDispense, WirePatientImaging, WirePatientResult } from "../../../../packages/contracts/src/doctor-queue";
 
 export const fetchPatientResults = (patientId: string): Promise<{ items: WirePatientResult[] }> =>

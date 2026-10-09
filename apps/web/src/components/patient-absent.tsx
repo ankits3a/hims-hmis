@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
+import { guardianBrief } from "../lib/brief-history";
 import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, markPatientAbsent, opdErrorMessage } from "../lib/opd-api";
 import type { TFunction } from "i18next";
 import type { GuardianRelation, WirePatientAbsent } from "../lib/opd-api";
@@ -44,19 +45,67 @@ export function PatientAbsentNotice({ absent, testId = "patient-absent-notice" }
   );
 }
 
-/** The queue row's tag — short, beside the visit-type badge. The full sentence is its title. */
-export function PatientAbsentTag({ absent, testId }: { absent: AbsentWho; testId: string }): React.ReactElement {
+/*
+  ═══ THE DOCTOR'S THREE READINGS OF IT (owner 2026-10-09) ═══
+  "does the doctor's screen highlight that the patient's guardian is here to only show report? so that
+  doctor is pre-prepared … avoid too much text." A boxed card on the brief, one line where the doctor
+  writes, a filled chip on the line — each worded by `guardianBrief` (packages/contracts/src/doctor-queue.ts),
+  the function the phone calls, so both screens say the same few words. The sentence above stays the desk's.
+*/
+/** Dark ink on the amber fill: `--gold` under white text does not carry small type. */
+const ON_GOLD = "#2a1c05";
+const GOLD_TEXT = "#8a5a10";
+
+/** The brief's boxed card — the allergy box's weight, in amber: "Guardian only" / "Son: Rakesh · reports · no vitals". */
+export function GuardianCard({ absent, testId }: { absent: AbsentWho; testId: string }): React.ReactElement {
   const { t } = useTranslation();
-  const who = guardianWho(t, absent);
+  const g = guardianBrief((k, v) => t(k, v ?? {}), absent);
   return (
-    <span
-      data-testid={testId} title={t("patientAbsent.notice", { who })} className="mo"
+    <div
+      data-testid={testId} role="note"
+      style={{ padding: "8px 14px", borderRadius: 10, border: "2px solid var(--gold)", background: "var(--gold-soft)", minWidth: 0 }}
+    >
+      <div style={{ fontSize: 15, fontWeight: 700, lineHeight: "20px", color: GOLD_TEXT, whiteSpace: "nowrap" }}>{g.title}</div>
+      <div style={{ display: "flex", fontSize: 13.5, lineHeight: "19px", whiteSpace: "pre" }}>
+        {/* Only a typed name can be long: it gives way, the fixed words never do. */}
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{g.who}</span>
+        <span style={{ flexShrink: 0 }}>{g.tail}</span>
+      </div>
+    </div>
+  );
+}
+
+/** One line for the strip that stays above every tab of the consultation: "Guardian only · Son: Rakesh". */
+export function GuardianLine({ absent, testId }: { absent: AbsentWho; testId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const g = guardianBrief((k, v) => t(k, v ?? {}), absent);
+  return (
+    <p
+      data-testid={testId} role="note" title={`${g.who}${g.tail}`}
       style={{
-        display: "inline-flex", alignItems: "center", height: 19, padding: "0 5px", borderRadius: 4,
-        border: "1px solid var(--gold)", color: "var(--gold)", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+        margin: "4px 14px 0", width: "fit-content", maxWidth: "calc(100% - 28px)", boxSizing: "border-box", padding: "3px 10px", borderRadius: 6, fontSize: 13, fontWeight: 700, lineHeight: "18px",
+        border: "1.5px solid var(--gold)", background: "var(--gold-soft)", color: GOLD_TEXT,
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
       }}
     >
-      {t("patientAbsent.tag", { who })}
+      {g.compact}
+    </p>
+  );
+}
+
+/** The queue row's chip — filled amber, "Guardian · Son"; the name stays on the card (it is the chip's title). */
+export function PatientAbsentTag({ absent, testId }: { absent: AbsentWho; testId: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const g = guardianBrief((k, v) => t(k, v ?? {}), absent);
+  return (
+    <span
+      data-testid={testId} title={`${g.who}${g.tail}`} className="mo"
+      style={{
+        display: "inline-flex", alignItems: "center", height: 19, padding: "0 6px", borderRadius: 4,
+        border: "1px solid var(--gold)", background: "var(--gold)", color: ON_GOLD, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+      }}
+    >
+      {g.chip}
     </span>
   );
 }

@@ -15,7 +15,7 @@ import { EyeSections, eyeSummary, fetchVisitSections } from "./opd-eye-sections"
 import { PaedsSections, childAgeText } from "./opd-paeds-sections";
 import { MyLayoutDialog, applyLayout, fetchVisitLayout, orderRows } from "./opd-layout";
 import { VisitTypeBadge, shownVisitType } from "../components/visit-type-badge";
-import { PatientAbsentNotice, PatientAbsentTag } from "../components/patient-absent";
+import { GuardianLine, PatientAbsentTag } from "../components/patient-absent";
 import { SKIP_REASONS, isInteractionHit, opdErrorMessage, todayIst } from "../lib/opd-api";
 import { useDoctorLabel } from "../lib/use-doctor-label";
 import type {
@@ -3010,9 +3010,9 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                   })()}
                 </div>
               </header>
-              {/* Owner 2026-10-07 — the guardian came with the reports: the doctor reads it before anything else. */}
+              {/* Owner 2026-10-07 / 2026-10-09 — only a guardian came: one line, above every tab. */}
               {visit.data?.patientAbsent != null && (
-                <PatientAbsentNotice absent={visit.data.patientAbsent} testId="panel-patient-absent" />
+                <GuardianLine absent={visit.data.patientAbsent} testId="panel-patient-absent" />
               )}
               </fieldset>
 

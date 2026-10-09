@@ -255,6 +255,108 @@ export function briefRefill(prescriptionId: string, dispenses: WirePatientDispen
   return { kind: "bought", times: mine.length, lastDay, days, dueDay };
 }
 
+// ——— the guardian came alone, and what the doctor recorded last time (owner 2026-10-09) ———
+
+/** `t` as both screens have it: i18next on the web, the phone's own `translate`. A missing key comes back as the key. */
+export type BriefT = (key: string, vars?: Record<string, string | number>) => string;
+export type GuardianBrief = {
+  /** "Guardian only" — the card's title. */
+  title: string;
+  /** "Son: Rakesh", or "Son" when no name was given. The only part that may be cut short (a typed name runs to 80 characters). */
+  who: string;
+  /** " · reports · no vitals" — fixed words, never cut. */
+  tail: string;
+  /** "Guardian only · Son: Rakesh" — the one-line form where the doctor writes. */
+  compact: string;
+  /** "Guardian · Son" — the queue row's chip; the name stays on the card. */
+  chip: string;
+};
+
+/**
+ * ONE wording of "only a guardian came with the reports" for the phone and the web: the boxed card on
+ * the patient page, the one line on the consult screen and the chip on the doctor's line. Display
+ * only — who may skip the bay is `patient-absent-rule.ts` and the server's.
+ */
+export function guardianBrief(t: BriefT, absent: { relation: string; name: string | null }): GuardianBrief {
+  // The desk's own word for who came — or, where that word is too long for one line of a phone
+  // ("Other relative"), the shorter one the doctor's screens use. A relation this build has no word for is shown as sent.
+  const word = (key: string): string | null => { const said = t(key); return said === key ? null : said; };
+  const relation = word(`patientAbsent.cardRelation.${absent.relation}`) ?? word(`patientAbsent.relation.${absent.relation}`) ?? absent.relation;
+  const name = (absent.name ?? "").trim();
+  const who = name === "" ? relation : t("patientAbsent.who", { relation, name });
+  const title = t("patientAbsent.cardTitle");
+  return { title, who, tail: t("patientAbsent.cardTail"), compact: t("patientAbsent.compact", { who }), chip: t("patientAbsent.chip", { relation }) };
+}
+
+/** The visit the "Last visit" card is about: the newest COMPLETED visit that is not today's. Null for a first visit. */
+export function lastCompletedVisit<I extends { encounterId: string; serviceDate: string; status: string; openedAt?: string | Date }>(
+  items: readonly I[], currentEncounterId: string,
+): I | null {
+  const at = (i: I): string => `${i.serviceDate} ${i.openedAt === undefined ? "" : new Date(i.openedAt).toISOString()}`;
+  return [...items].filter((i) => i.encounterId !== currentEncounterId && i.status === "completed")
+    .sort((a, b) => (at(a) < at(b) ? 1 : at(a) > at(b) ? -1 : 0))[0] ?? null;
+}
+
+/** The card is for a returning patient: a revisit or a renewal, the two visit types that have a "last time". */
+export function showsLastVisit(visitType: string | null | undefined): boolean {
+  return visitType === "revisit" || visitType === "renewal";
+}
+
+/** That earlier visit as `GET /opd/visits/:id` returns it — only the fields the card reads. */
+export type WireLastVisit = {
+  encounter: { serviceDate: string; chiefComplaint?: string | null; diagnosis?: string | null; advisedTests?: unknown };
+  deskComplaint?: { text: string } | null;
+  prescriptions?: readonly { status: string; lines?: unknown }[] | null;
+};
+export type LastVisitRowKey = "complaint" | "diagnosis" | "tests" | "medicines";
+export const LAST_VISIT_ROWS: readonly LastVisitRowKey[] = ["complaint", "diagnosis", "tests", "medicines"];
+export type LastVisitRow = { key: LastVisitRowKey; label: string; value: string };
+export type LastVisitCard = { title: string; doctor: string | null; rows: LastVisitRow[] };
+/** Two lines of a 360 px phone beside the label column: a list stops here and says "+n" for the rest. */
+export const LAST_VISIT_LIST_CHARS = 44;
+export const LAST_VISIT_EMPTY = "—";
+
+function namesOf(list: unknown, field: string): string[] {
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const x of list as unknown[]) {
+    const v = typeof x === "object" && x !== null ? (x as Record<string, unknown>)[field] : undefined;
+    if (typeof v === "string" && v.trim() !== "" && !out.includes(v.trim())) out.push(v.trim());
+  }
+  return out;
+}
+/** "CBC, HbA1c +2": as many names as fit the two-line budget (always the first), then how many more. */
+export function joinWithMore(names: readonly string[], budget: number = LAST_VISIT_LIST_CHARS): string {
+  if (names.length === 0) return LAST_VISIT_EMPTY;
+  let shown = 1;
+  const textAt = (n: number): string => `${names.slice(0, n).join(", ")}${n < names.length ? ` +${names.length - n}` : ""}`;
+  while (shown < names.length && textAt(shown + 1).length <= budget) shown++;
+  return textAt(shown);
+}
+
+/**
+ * THE "LAST VISIT" CARD (owner 2026-10-09) — what the doctor recorded last time, in four short rows,
+ * built ONCE for the web brief and the phone's patient page. The complaint is the doctor's own; when
+ * the doctor recorded none, the words that visit's front desk typed. Medicines are the issued
+ * prescription's names (no doses — the "on now" block carries those).
+ */
+export function lastVisitCard(t: BriefT, visit: WireLastVisit, doctorName: string | null): LastVisitCard {
+  const text = (x: string | null | undefined): string => (typeof x === "string" && x.trim() !== "" ? x.trim() : "");
+  const complaint = text(visit.encounter.chiefComplaint) || text(visit.deskComplaint?.text);
+  const medicines = (visit.prescriptions ?? []).filter((p) => p.status === "active").flatMap((p) => namesOf(p.lines, "drug"));
+  const value: Record<LastVisitRowKey, string> = {
+    complaint: complaint || LAST_VISIT_EMPTY,
+    diagnosis: text(visit.encounter.diagnosis) || LAST_VISIT_EMPTY,
+    tests: joinWithMore(namesOf(visit.encounter.advisedTests, "name")),
+    medicines: joinWithMore([...new Set(medicines)]),
+  };
+  return {
+    title: t("lastVisit.title", { date: shortDay(visit.encounter.serviceDate) }),
+    doctor: text(doctorName) || null,
+    rows: LAST_VISIT_ROWS.map((key) => ({ key, label: t(`lastVisit.${key}`), value: value[key] })),
+  };
+}
+
 // ——— beside the doctor's name ———
 
 /**

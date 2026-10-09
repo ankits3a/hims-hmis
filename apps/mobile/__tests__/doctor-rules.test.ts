@@ -3,7 +3,11 @@ import { join } from "path";
 import {
   LONG_WAIT_MINUTES, SKIP_REASONS, ageSexOf, besideName, briefResults, completionBody, followUpChoices, isUnpaid, longestWait, parkedSince,
   rowName, unissuedRxRows, visitKind, waitMinutes,
+  LAST_VISIT_LIST_CHARS, guardianBrief, joinWithMore, lastCompletedVisit, lastVisitCard, showsLastVisit,
 } from "../src/doctor/rules";
+import { translate } from "../src/i18n";
+import webEn from "../../web/src/locales/en.json";
+import webHi from "../../web/src/locales/hi.json";
 
 const read = (rel: string): string => readFileSync(join(__dirname, rel), "utf8");
 const NOW = new Date("2026-10-06T06:30:00.000Z"); // 12:00 IST
@@ -19,6 +23,89 @@ describe("the doctor's line — one rules file for the web and the phone", () =>
     expect(label).not.toMatch(/export function/);
     // …and the phone grows no second copy either.
     expect(read("../src/doctor/rules.ts")).not.toMatch(/export (function|const)/);
+  });
+
+  // ——— owner 2026-10-09: guardian only, and the last visit ———
+  const en = (k: string, v?: Record<string, string | number>) => translate("en", k, v);
+  const hi = (k: string, v?: Record<string, string | number>) => translate("hi", k, v);
+
+  it("the guardian card, its one-line form and the row chip are worded by ONE function", () => {
+    expect(guardianBrief(en, { relation: "son", name: "Rakesh" })).toEqual({
+      title: "Guardian only", who: "Son: Rakesh", tail: " · reports · no vitals", compact: "Guardian only · Son: Rakesh", chip: "Guardian · Son",
+    });
+    const noName = guardianBrief(en, { relation: "son", name: null });
+    expect(`${noName.who}${noName.tail}`).toBe("Son · reports · no vitals");
+    expect(noName.compact).toBe("Guardian only · Son");
+    expect(guardianBrief(hi, { relation: "son", name: null }).title).toBe("केवल अभिभावक");
+    // A relation a newer server sends and this build has no word for is shown as sent, never as a key.
+    expect(guardianBrief(en, { relation: "neighbour", name: null }).chip).toBe("Guardian · neighbour");
+    // "Other relative" is two characters too long for the line: the doctor's screens say "Relative".
+    const other = guardianBrief(en, { relation: "other_relative", name: null });
+    expect([`${other.who}${other.tail}`, other.chip]).toEqual(["Relative · reports · no vitals", "Guardian · Relative"]);
+  });
+
+  it("the last-visit card's rows come from ONE function that the web brief and the phone's patient page both call", () => {
+    const card = lastVisitCard(en, {
+      encounter: { serviceDate: "2026-08-24", chiefComplaint: "  ", diagnosis: "Type 2 diabetes mellitus", advisedTests: [{ name: "HbA1c" }, { name: "Lipid profile" }, { name: "HbA1c" }] },
+      deskComplaint: { text: "Pair mein jhunjhuni" },
+      prescriptions: [{ status: "active", lines: [{ drug: "Metformin 1 g", dose: "1 tab" }] }, { status: "superseded", lines: [{ drug: "Old" }] }],
+    }, "Dr. Chandan Kumar");
+    expect(card).toEqual({
+      title: "Last visit · 24 Aug", doctor: "Dr. Chandan Kumar",
+      rows: [
+        { key: "complaint", label: "Complaint", value: "Pair mein jhunjhuni" }, // the doctor recorded none: the desk's words
+        { key: "diagnosis", label: "Diagnosis", value: "Type 2 diabetes mellitus" },
+        { key: "tests", label: "Tests", value: "HbA1c, Lipid profile" },
+        { key: "medicines", label: "Medicines", value: "Metformin 1 g" },
+      ],
+    });
+    const bare = lastVisitCard(en, { encounter: { serviceDate: "2026-08-24" } }, null);
+    expect(bare.rows.map((r) => r.value)).toEqual(["—", "—", "—", "—"]);
+    // Both screens call it, and neither words a row of its own.
+    for (const file of ["../src/doctor/brief.tsx", "../../web/src/components/last-visit.tsx"]) {
+      expect(read(file)).toMatch(/lastVisitCard\(/);
+      expect(read(file)).not.toMatch(/lastVisit\.(complaint|diagnosis|tests|medicines)/);
+    }
+    expect(read("../../web/src/screens/opd-consult-v2.tsx")).toMatch(/<LastVisitCard /);
+  });
+
+  it("a long list stops inside two lines and says how many more; which visit is 'last' is the newest completed one that is not today's", () => {
+    const many = ["Atorvastatin 10 mg", "Metformin 500 mg", "Telmisartan 40 mg", "Aspirin 75 mg", "Pantoprazole 40 mg"];
+    const out = joinWithMore(many);
+    expect(out).toBe("Atorvastatin 10 mg, Metformin 500 mg +3");
+    expect(out.length).toBeLessThanOrEqual(LAST_VISIT_LIST_CHARS);
+    expect(joinWithMore(["A very long single test name that runs past the budget on its own"])).toBe("A very long single test name that runs past the budget on its own");
+    const items = [
+      { encounterId: "today", serviceDate: "2026-10-06", status: "completed" },
+      { encounterId: "open", serviceDate: "2026-09-30", status: "awaiting_results" },
+      { encounterId: "aug", serviceDate: "2026-08-24", status: "completed" },
+      { encounterId: "jan", serviceDate: "2026-01-02", status: "completed" },
+      { encounterId: "left", serviceDate: "2026-09-01", status: "abandoned" },
+    ];
+    expect(lastCompletedVisit(items, "today")?.encounterId).toBe("aug");
+    expect(lastCompletedVisit([items[0]!], "today")).toBeNull();
+    expect([showsLastVisit("revisit"), showsLastVisit("renewal"), showsLastVisit("new"), showsLastVisit(undefined)]).toEqual([true, true, false, false]);
+  });
+
+  it("every new label fits one line of a 360 px phone: 34 characters at most, in English and in Hindi", () => {
+    const BUDGET = 34;
+    const keys = ["patientAbsent.cardTitle", "patientAbsent.compact", "patientAbsent.chip", "lastVisit.title", "lastVisit.complaint", "lastVisit.diagnosis", "lastVisit.tests", "lastVisit.medicines"];
+    const relations = Object.keys((webEn as { patientAbsent: { relation: Record<string, string> } }).patientAbsent.relation);
+    expect(relations).toContain("other_relative");
+    for (const [name, t, web] of [["en", en, webEn], ["hi", hi, webHi]] as const) {
+      const pa = (web as { patientAbsent: Record<string, unknown> }).patientAbsent;
+      expect([name, pa.cardTitle]).toEqual([name, t("patientAbsent.cardTitle")]); // the web's wording, not a second one
+      for (const k of keys) {
+        // The longest thing a template can be filled with here: the longest relation, a short date.
+        const longest = Math.max(...relations.map((r) => { const g = guardianBrief(t, { relation: r, name: null }); return Math.max(g.title.length, g.compact.length, g.chip.length, t(k, { date: "24 Aug" }).length); }));
+        expect([name, k, longest <= BUDGET]).toEqual([name, k, true]);
+      }
+      // The card's detail line is composed: test it with every relation and no name.
+      for (const r of relations) {
+        const g = guardianBrief(t, { relation: r, name: null });
+        expect([name, r, `${g.who}${g.tail}`.length <= BUDGET]).toEqual([name, r, true]);
+      }
+    }
   });
 
   it("the skip reasons are the server's list, read off the server's own file", () => {
