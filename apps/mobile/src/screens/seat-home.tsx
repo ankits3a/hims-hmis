@@ -12,7 +12,7 @@ import { APP_VERSION, APP_VERSION_CODE } from "../config";
 import { Band, Button, MONO, Note, Tag } from "../ui";
 import { checkForUpdate, type UpdateAnswer } from "../update";
 import { loadHome, type HeaderFacts, type OwnerHome } from "../home/load";
-import { buildOwnerTiles, coldOwnerTiles, type OwnerTile } from "../owner/model";
+import { buildOwnerTiles, coldOwnerTiles, isWideTile, type OwnerTile } from "../owner/model";
 import { OwnerTiles } from "../owner/tiles";
 import { coldOf, homeCache, seenRequests, type ColdHome } from "../home/cache";
 import { onHomeFocus, takeHomeFocus } from "../home/focus";
@@ -317,7 +317,7 @@ export function SeatHome() {
             ))}
             {cold.tiles.length > 3 && label("owner.today")}
             {cold.tiles.length > 3 && (
-              <OwnerTiles t={t} tiles={cold.tiles.map((c) => ({ key: c.key as OwnerTile["key"], labelKey: c.labelKey, value: c.value ?? "—", failed: c.value === "—", sub: null, tone: "plain", wide: c.key === "learning" }))} />
+              <OwnerTiles t={t} tiles={cold.tiles.map((c) => ({ key: c.key as OwnerTile["key"], labelKey: c.labelKey, value: c.value ?? "—", failed: c.value === "—", sub: null, tone: "plain", wide: isWideTile(c.key, cold.tiles.map((x) => x.key)) }))} />
             )}
             {cold.tiles.length > 0 && cold.tiles.length <= 3 && label("home.day")}
             {cold.tiles.length > 0 && cold.tiles.length <= 3 && (

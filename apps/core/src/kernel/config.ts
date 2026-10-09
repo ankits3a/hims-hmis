@@ -368,6 +368,16 @@ const configSchema = z.object({
    */
   ALIAS_RUN_MAX_TERMS: z.coerce.number().int().min(1).max(500).default(40),
   ALIAS_DAILY_MAX_TERMS: z.coerce.number().int().min(1).max(5000).default(300),
+  /**
+   * HOW LONG PATIENTS WAIT (owner 2026-10-09) — the nightly learning of the desk → vitals → doctor waits
+   * (`modules/opd/flow-learning.ts`): baselines, findings from a closed set, and the owner's × / "Tried it".
+   * ON by default — it is arithmetic over stored timestamps and calls no outside service. "false" stops
+   * the nightly run and empties "To improve"; the wait figures themselves are shown either way.
+   */
+  FLOW_FINDINGS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   NOTIFY_STUCK_AFTER_MS: z.coerce.number().int().positive().default(300000),
   // Plan 11a D6/D7 (retention). All three defaulted, same B1 scar as the block above: no .env
   // entry is required anywhere, on the server or in CI.
@@ -610,6 +620,8 @@ export type AppConfig = {
   copilotChooserOrder: ("typesafe" | "openai")[];
   /** Decision 0051 — the medicine-alias pipeline. `enabled` is FALSE unless an operator says otherwise. */
   aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number; perRun: number; perDay: number };
+  /** The waits' nightly learning (`FLOW_FINDINGS_ENABLED`, default true). */
+  flowFindings: { enabled: boolean };
   notifyStuckAfterMs: number;
   // Plan 11a D6/D7. `retentionEnabled` is FALSE unless an operator says otherwise, in as many
   // letters; `worker/jobs.ts` threads all three into `retentionSweep` through the registration,
@@ -941,6 +953,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       perRun: parsed.ALIAS_RUN_MAX_TERMS,
       perDay: parsed.ALIAS_DAILY_MAX_TERMS,
     },
+    flowFindings: { enabled: parsed.FLOW_FINDINGS_ENABLED },
     notifyStuckAfterMs: parsed.NOTIFY_STUCK_AFTER_MS,
     retentionEnabled: parsed.RETENTION_ENABLED,
     retentionEventsMonths: parsed.RETENTION_EVENTS_MONTHS,

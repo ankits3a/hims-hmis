@@ -3,9 +3,11 @@ import {
   type DayRange, type DrawerState, type OwnerAppointments, type OwnerLearning, type OwnerMoney, type OwnerPeriod, type OwnerPharmacy, type StaffToday,
 } from "../../../../packages/contracts/src/owner-app";
 import { onRecord } from "../../../../packages/contracts/src/recording";
+import { minutesShown, type FlowReport } from "../../../../packages/contracts/src/flow";
 import type { RecordingReport } from "../../../../packages/contracts/src/recording";
 
 export * from "../../../../packages/contracts/src/owner-app";
+export * from "../../../../packages/contracts/src/flow";
 
 /**
  * THE OWNER'S HOME AS TILES (owner, 2026-10-09: "Home as seven tiles (drawn)" · "Medical Superintendent
@@ -19,8 +21,17 @@ export * from "../../../../packages/contracts/src/owner-app";
  *
  * Words never live here: a label is an i18n KEY; a number is a string the server's integers made.
  */
-export type OwnerTileKey = "money" | "opd" | "recorded" | "appointments" | "pharmacy" | "staff" | "learning";
-export const OWNER_TILE_ORDER: readonly OwnerTileKey[] = ["money", "opd", "recorded", "appointments", "pharmacy", "staff", "learning"];
+export type OwnerTileKey = "money" | "opd" | "wait" | "recorded" | "appointments" | "pharmacy" | "staff" | "learning";
+/** Owner 2026-10-09: "Wait" is the eighth — how long patients wait from the desk to the doctor, today. */
+export const OWNER_TILE_ORDER: readonly OwnerTileKey[] = ["money", "opd", "wait", "recorded", "appointments", "pharmacy", "staff", "learning"];
+
+/**
+ * THE GRID STAYS EVEN: two columns; when the tiles are an odd number (the Medical Superintendent has no
+ * Money) the last one, Learning, runs the full width. The owner's eight are four even rows.
+ */
+export function isWideTile(key: string, keys: readonly string[]): boolean {
+  return key === "learning" && keys.length % 2 === 1;
+}
 const HOSPITAL_WIDE = ["staff.reports.read", "staff.reports.history.full", "opd.reports.read", "roster.read"] as const;
 export const MONEY_PERMISSION = "billing.reports.read";
 
@@ -39,6 +50,8 @@ export type OwnerReads = {
   pharmacy?: OwnerPharmacy | null;
   staff?: StaffToday | null;
   learning?: OwnerLearning | null;
+  /** Today's waits (`/opd/reports/flow?period=today`). */
+  wait?: FlowReport | null;
 };
 
 export type TileTone = "up" | "down" | "warn" | "plain";
@@ -79,7 +92,7 @@ const FAILED = "—";
 
 export function buildOwnerTiles(keys: readonly OwnerTileKey[], r: OwnerReads): OwnerTile[] {
   return keys.map((key): OwnerTile => {
-    const base = { key, labelKey: `owner.tile.${key}`, wide: key === "learning" };
+    const base = { key, labelKey: `owner.tile.${key}`, wide: isWideTile(key, keys) };
     const failed: OwnerTile = { ...base, value: FAILED, failed: true, sub: null, tone: "plain" };
     if (key === "money") {
       const m = r.money;
@@ -126,6 +139,18 @@ export function buildOwnerTiles(keys: readonly OwnerTileKey[], r: OwnerReads): O
       const sub = s.gaps.length > 0 ? { key: s.gaps.length === 1 ? "owner.sub.gap" : "owner.sub.gaps", vars: { n: s.gaps.length } }
         : s.onLeave.length > 0 ? { key: "owner.sub.onLeave", vars: { n: s.onLeave.length } } : { key: "owner.sub.onDuty" };
       return { ...base, value: String(s.onDuty), failed: false, sub, tone: s.gaps.length > 0 ? "warn" : "plain" };
+    }
+    if (key === "wait") {
+      const w = r.wait;
+      if (w == null) return failed;
+      /* Desk → doctor Avg today, whole minutes; "—" under the floor. Waits are told in neutral colour. */
+      const now = w.hospital.deskToDoctor.avg;
+      const before = w.previous?.deskToDoctor.avg ?? null;
+      const value = minutesShown(now) ?? "—";
+      if (w.findings.length > 0) return { ...base, value, failed: false, sub: { key: "owner.sub.toFix", vars: { n: w.findings.length } }, tone: "plain" };
+      if (now === null || before === null) return { ...base, value, failed: false, sub: null, tone: "plain" };
+      const d = Math.round(now) - Math.round(before);
+      return { ...base, value, failed: false, sub: { key: d >= 0 ? "owner.sub.waitUp" : "owner.sub.waitDown", vars: { n: Math.abs(d) } }, tone: "plain" };
     }
     const l = r.learning;
     if (l == null) return failed;

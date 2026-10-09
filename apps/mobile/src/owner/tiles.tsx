@@ -7,7 +7,7 @@ import type { OwnerTile, OwnerTileKey, TileTone } from "./model";
 /**
  * THE TILES (owner 2026-10-09, board frame 1): two columns, one number each, one short line under it.
  * Every line is ONE line at 360 px — a label, a number, a sub-line of at most fourteen characters.
- * The last tile (Learning) runs the full width. With no Money tile the grid simply closes up.
+ * Eight tiles are four even rows; with seven (no Money tile) the last, Learning, runs the full width (`isWideTile`).
  * A tile whose read failed shows "—" and still opens its page.
  */
 type T = (key: string, vars?: Record<string, string | number>) => string;
