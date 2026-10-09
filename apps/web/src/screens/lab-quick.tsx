@@ -39,20 +39,42 @@ const FLAG_CLASS: Record<string, string> = {
   HH: "border-red-700 bg-red-200 font-bold text-red-950 dark:bg-red-900 dark:text-white",
 };
 
+/**
+ * Rows under their test's heading, in the order the form already holds them (test order, then
+ * anything added by hand under "Other"). A parameter two tests share sits under the first.
+ */
+function groupByTest(
+  tests: readonly QuickChosenTest[], catalogue: QuickCatalogue | undefined, ids: readonly string[], other: string,
+): { title: string; ids: string[] }[] {
+  const left = new Set(ids);
+  const groups: { title: string; ids: string[] }[] = [];
+  for (const t of tests) {
+    const mine = (catalogue?.tests.find((c) => c.serviceId === t.serviceId)?.analyteIds ?? []).filter((id) => left.has(id));
+    mine.forEach((id) => left.delete(id));
+    if (mine.length > 0) groups.push({ title: t.nameEn, ids: ids.filter((id) => mine.includes(id)) });
+  }
+  if (left.size > 0) groups.push({ title: other, ids: ids.filter((id) => left.has(id)) });
+  return groups;
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
 /** A plain A4 page in a new window. Labels are English: the report is the hospital's document. */
-function printReport(report: QuickReport): void {
+function printReport(report: QuickReport, catalogue: QuickCatalogue | undefined): void {
   const p = report.patient;
-  const rows = report.lines.map((l) => `<tr${l.flag && l.flag !== "N" ? ' class="ab"' : ""}><td>${escapeHtml(l.nameEn)}</td>`
+  const byId = new Map(report.lines.map((l) => [l.analyteId, l]));
+  const groups = groupByTest(report.tests, catalogue, report.lines.map((l) => l.analyteId), "Other");
+  const line = (l: QuickLine): string => `<tr${l.flag && l.flag !== "N" ? ' class="ab"' : ""}><td>${escapeHtml(l.nameEn)}</td>`
     + `<td><b>${escapeHtml(l.value)}</b> ${l.flag && l.flag !== "N" ? escapeHtml(l.flag) : ""}</td><td>${escapeHtml(l.unit ?? "")}</td>`
-    + `<td>${escapeHtml(refText({ low: l.low, high: l.high, text: l.refText }))}</td></tr>`).join("");
+    + `<td>${escapeHtml(refText({ low: l.low, high: l.high, text: l.refText }))}</td></tr>`;
+  const rows = groups.map((g) => `<tr class="grp"><td colspan="4">${escapeHtml(g.title)}</td></tr>`
+    + g.ids.map((id) => line(byId.get(id)!)).join("")).join("");
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Lab report ${escapeHtml(p.uhid)}</title>
 <style>body{font:13px system-ui,sans-serif;margin:24px;color:#000}h1{font-size:18px;margin:0 0 8px}
 table{width:100%;border-collapse:collapse;margin:12px 0}td,th{border-bottom:1px solid #ccc;padding:6px;text-align:left}
-tr.ab td{font-weight:600}.sum{white-space:pre-wrap;border:1px solid #999;padding:8px}.meta{color:#333;line-height:1.5}</style></head><body>
+tr.ab td{font-weight:600}tr.grp td{font-weight:700;padding-top:14px;border-bottom:2px solid #000}.sum{white-space:pre-wrap;border:1px solid #999;padding:8px}.meta{color:#333;line-height:1.5}</style></head><body>
 <h1>Laboratory report</h1>
 <div class="meta">${escapeHtml(p.display)} · ${escapeHtml(p.uhid)} · ${escapeHtml(sexAge(p.administrativeGender, p.dob))}${report.encounterNo ? ` · Visit ${escapeHtml(report.encounterNo)}` : ""}<br>
 Tests: ${escapeHtml(report.tests.map((x) => x.nameEn).join(", "))}<br>
@@ -353,8 +375,12 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
               <th className="py-1 pr-2">{t("lab.quick.colRange")}</th>
             </tr>
           </thead>
-          <tbody>
-            {list.map((row, i) => {
+          {groupByTest(r.tests, catalogue, list.map((x) => x.analyteId), t("lab.quick.otherParams")).map((g) => (
+          <tbody key={g.title}>
+            <tr><th colSpan={4} scope="colgroup" className="pb-1 pt-4 text-left text-sm font-semibold">{g.title}</th></tr>
+            {g.ids.map((analyteId) => {
+              const i = list.findIndex((x) => x.analyteId === analyteId);
+              const row = list[i]!;
               const a = analyteById.get(row.analyteId);
               const flag: QuickFlag = previewLines.find((l) => l.analyteId === row.analyteId)?.flag ?? null;
               const range = rangeById.get(row.analyteId);
@@ -391,6 +417,7 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
               );
             })}
           </tbody>
+          ))}
         </table>
       </section>
 
@@ -442,7 +469,7 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
         </Button>
         {saved !== null && (
           <>
-            <Button variant="outline" onClick={() => printReport(saved)}>{t("lab.quick.print")}</Button>
+            <Button variant="outline" onClick={() => printReport(saved, catalogue)}>{t("lab.quick.print")}</Button>
             <span role="status" className="text-sm text-green-700 dark:text-green-300">{t("lab.quick.saved")}</span>
           </>
         )}

@@ -4027,6 +4027,7 @@
       "colResult": "Result",
       "colUnit": "Unit",
       "colRange": "Reference range",
+      "otherParams": "Other parameters",
       "addParam": "Add a parameter",
       "addParamHint": "Add another parameter (optional)",
       "summary": "Report summary (edit freely)",
