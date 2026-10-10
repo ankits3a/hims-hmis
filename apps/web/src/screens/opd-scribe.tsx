@@ -13,6 +13,7 @@ import type { SlipReadback } from "../../../../packages/contracts/src/slip-desk"
 import type {
   WireAdvisedTest, WireHeldAlert, WirePaperOutcome, WirePriceListRow, WireRxLine, WireTranscription,
 } from "../lib/opd-api";
+import { advisableTests } from "../lib/ordering-api";
 import "./paper-consult.css";
 
 /**
@@ -141,8 +142,8 @@ export function OpdScribe(): React.ReactElement {
     retry: false,
   });
   const services = useQuery({
-    queryKey: ["tariff", "price-list"],
-    queryFn: () => api<{ items: WirePriceListRow[] }>("GET", "/tariff/price-list"),
+    queryKey: ["ordering", "advisable-tests"],
+    queryFn: advisableTests,
     enabled: encounterId !== null,
     retry: false,
   });

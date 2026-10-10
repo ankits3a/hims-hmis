@@ -150,7 +150,7 @@ describe("RxPrint", () => {
  * of whom saw the screen. A printed list of test names that looked like an order would send
  * somebody to a sample-collection desk that does not exist in this hospital's software.
  */
-it("07d T5: advised tests print with their price, the as-of date, and the words 'no test has been ordered'", () => {
+it("07d T5: advised tests print with their price and the as-of date (decision 0065: a free test may be ordered, so the slip no longer says none was)", () => {
   renderWithProviders(<RxPrint data={{
     ...DATA,
     encounter: {
@@ -164,9 +164,28 @@ it("07d T5: advised tests print with their price, the as-of date, and the words 
   const block = screen.getByTestId("rx-advised-tests");
   expect(block).toHaveTextContent("Ultrasound abdomen");
   expect(block).toHaveTextContent("₹1,200.00");
-  expect(block).toHaveTextContent(/no test has been ordered or booked/i);
+  expect(block).not.toHaveTextContent(/no test has been ordered/i);
   // E-9 — the slip names the day it is quoting, because the counter reprices.
   expect(block).toHaveTextContent(DATA.encounter.serviceDate);
+});
+
+it("decision 0065: an outside test prints under 'Tests to be done outside', without a price, and not in the hospital list", () => {
+  renderWithProviders(<RxPrint data={{
+    ...DATA,
+    encounter: {
+      ...DATA.encounter,
+      advisedTests: [
+        { serviceId: "svc-usg", code: "USG-ABD", name: "Ultrasound abdomen", pricePaise: 120000 },
+        { serviceId: "OUTSVC-ECG", code: "OUT-ECG", name: "ECG (12-lead)", pricePaise: 0 },
+      ],
+      outsideTestIds: ["OUTSVC-ECG"],
+    },
+  }} />);
+  const outside = screen.getByTestId("rx-outside-tests");
+  expect(outside).toHaveTextContent("Tests to be done outside");
+  expect(outside).toHaveTextContent("ECG (12-lead)");
+  expect(outside).not.toHaveTextContent("₹");
+  expect(screen.getByTestId("rx-advised-tests")).not.toHaveTextContent("ECG");
 });
 
 it("07d T5: a prescription with no advised tests prints no such block at all", () => {

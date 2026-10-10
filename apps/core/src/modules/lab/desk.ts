@@ -108,6 +108,8 @@ type DeskOrderBase = {
   holdUntilPaid?: { reason: string };
   tags?: string[];
   placedAt?: Date;
+  /** A `system` actor's rule (decision 0065's free-test order); `placeOrder` refuses a system order without one. */
+  protocolRef?: string;
 };
 
 /**
@@ -230,6 +232,23 @@ export async function deskOrder(
   now: Date = new Date(),
 ): Promise<DeskOrderResult> {
   await assertMayDesk(tx, actor);
+  return placeLabOrder(tx, actor, decls, input, now);
+}
+
+/**
+ * THE SAME ATOM WITHOUT THE COUNTER (owner 2026-10-10, decision 0065). The ordering seam calls this
+ * for a doctor's own order (IPD and Emergency screens, when they come) and for the automatic order of
+ * a free test — a `system` actor naming its `protocolRef`. Who may place is then the kernel's
+ * question (`placeOrder`: `orders.place` + `lab.orders.place` for a user, a protocol for the system),
+ * and every check below — catalogue, consent, duplicates, the bill — is unchanged.
+ */
+export async function placeLabOrder(
+  tx: Tx,
+  actor: Actor,
+  decls: readonly OrderKindDecl[],
+  input: DeskOrderInput,
+  now: Date = new Date(),
+): Promise<DeskOrderResult> {
   if (input.items.length === 0) {
     throw new LabError("unknown_service", "a lab order with no tests asks the lab to do nothing");
   }
@@ -424,7 +443,7 @@ export async function deskOrder(
           kind: "lab", patientId: input.patientId, encounterNo: input.encounterNo,
           serviceDate: input.serviceDate, orderGroupId: input.orderGroupId,
           priority: input.priority ?? "routine", orderingClinicianId: input.orderingClinicianId,
-          placedAt: input.placedAt, items: placeItems,
+          placedAt: input.placedAt, items: placeItems, protocolRef: input.protocolRef,
         });
   const orderGroupId = input.orderGroupId ?? placed.orderId;
 

@@ -7,7 +7,7 @@ import { displayName } from "../patients";
 import { deriveGateSet } from "./checkin";
 import { RadiologyError } from "./errors";
 import { pregnancyPolicy } from "./gates";
-import { authorisationOf, encounterPayer } from "./money";
+import { authorisationOf, encounterPayer, imagingFreeAt } from "./money";
 import { prepFor } from "./prep";
 import { clearanceOf } from "./read";
 import { requireStudyType } from "./study-types";
@@ -133,6 +133,7 @@ export async function counterView(db: Db, actor: Actor, studyId: string, now: Da
     authorisation: authorisationOf(
       { invoiceLineId: study.invoiceLineId, priority: study.priority, encounterNo: study.encounterNo },
       { intendedPayer },
+      await imagingFreeAt(db, study.createdAt),
     ),
     checks: { gates: derived.kinds, pregnancyReason: derived.pregnancyReason, policySource: source, prep: prepFor(studyType) },
     addOns,

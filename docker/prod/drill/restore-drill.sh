@@ -379,7 +379,7 @@ if [ "$REHEARSAL" = "1" ]; then
   # asserts that this line and `deploy.sh`'s own sequence agree. A second hand-maintained copy of
   # a seed census is exactly the shape that goes stale in silence — it is the defect that census
   # exists to catch, and this file would otherwise be the fourth place it could happen.
-  REHEARSAL_SEEDS="seed-cursors.js seed-ops.js seed-opd.js seed-patients.js seed-billing.js seed-tariff.js seed-membership.js seed-formulary-interactions.js seed-materials.js seed-ot.js seed-pharmacy.js seed-lab.js"
+  REHEARSAL_SEEDS="seed-cursors.js seed-ops.js seed-opd.js seed-patients.js seed-billing.js seed-tariff.js seed-membership.js seed-formulary-interactions.js seed-materials.js seed-ot.js seed-pharmacy.js seed-lab.js seed-outside-tests.js"
   for seed in $REHEARSAL_SEEDS; do
     note "rehearsing $seed"
     docker run --rm --network "container:$SCRATCH_NAME" --env DATABASE_URL "$SERVER_IMAGE" \

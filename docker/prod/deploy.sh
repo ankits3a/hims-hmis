@@ -942,6 +942,9 @@ compose run --rm api node dist/scripts/seed-pharmacy.js
 # step" predates Plan 11g / DD2 reaching the lab and is superseded by it. Idempotent; it establishes
 # no catalogue, no user and no CA-signed row.
 compose run --rm api node dist/scripts/seed-lab.js
+# Decision 0065 (owner 2026-10-10) — the outside-test list (ECG, echo …) the doctor advises and the slip
+# prints under "Tests to be done outside". Adds missing codes only; never touches an edited row.
+compose run --rm api node dist/scripts/seed-outside-tests.js
 
 # `seed-roles` IS RUN, AND ITS EXIT STATUS IS DELIBERATELY NOT THIS DEPLOY'S.
 #

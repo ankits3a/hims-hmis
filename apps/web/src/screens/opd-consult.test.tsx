@@ -2837,14 +2837,14 @@ describe("07d T5 — advised investigations", () => {
     };
   }
 
-  it("says on the SCREEN that this creates no order — before a doctor assumes one exists", async () => {
+  it("says on the SCREEN when a test becomes an order (only while its fee is Free, decision 0065) — before a doctor assumes one exists", async () => {
     mockRoutes(routes());
     const user = userEvent.setup();
     await openPanel(user);
     await user.click(screen.getByRole("tab", { name: "Lab & radiology" }));
 
     const panel = await screen.findByTestId("advised-tests");
-    expect(within(panel).getByText(/create no order and book no sample/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/switched to Free, completing the consult orders those tests/i)).toBeInTheDocument();
     expect(within(panel).getByText("No investigation advised.")).toBeInTheDocument();
   });
 

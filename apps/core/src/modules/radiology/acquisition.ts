@@ -15,7 +15,7 @@ import { imagingExposureRepeated, imagingStudyAcquired } from "./events";
 import type { RepeatReasonCode } from "./events";
 import { evaluateReadiness } from "./gates";
 import { assertContrastPermissible } from "./contrast";
-import { authorisationOf, encounterPayer, hasBillDecision, raiseBillDecision } from "./money";
+import { authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, raiseBillDecision } from "./money";
 import { activeDoseReferenceLevels, drlFor, requireStudyType } from "./study-types";
 import { attachHeldAtSend, heldArrivalFor, pendingDoseFor, settlePendingDose } from "./pacs";
 import { assertIrSendable, assertIrStartable, raiseSkinDoseAlerts } from "./ir";
@@ -138,7 +138,7 @@ export async function startAcquisition(
 
   /** (2) DD12a — WHY this scan is allowed to start. `null` is the cashier's screen, not an error. */
   const payer = await encounterPayer(tx, study.encounterNo);
-  const authorisedBy = authorisationOf(study, payer);
+  const authorisedBy = authorisationOf(study, payer, await imagingFreeAt(tx, study.createdAt));
   if (authorisedBy === null) {
     throw new RadiologyError(
       "payment_required",
@@ -676,7 +676,9 @@ export async function recordAcquired(
     await raise("repeat_no_charge", { repeatOfStudyId: repeatOf, reason: repeatReason });
   }
   /** I1 — images exist and nothing was billed. The `stat` lane is exactly how this happens. */
-  if (study.invoiceLineId === null && study.authorisedBy !== "daycare" && study.authorisedBy !== "payer_branch") {
+  /** A `free` study (the imaging fee switch was off) has nothing to bill, so nothing leaked. */
+  if (study.invoiceLineId === null && study.authorisedBy !== "daycare" && study.authorisedBy !== "payer_branch"
+    && study.authorisedBy !== "free") {
     await raise("acquired_unbilled", { authorisedBy: study.authorisedBy, priority: study.priority });
   }
 

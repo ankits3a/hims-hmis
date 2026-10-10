@@ -40,11 +40,15 @@ const seriesPrefixesSchema = z.record(z.string(), z.string().min(1));
  * ONLY by `setFeeSwitch` (fee-switches.ts), which names the actor and appends the audit event;
  * `updateBillingConfig` below carries the stored flips over whatever a patch says.
  */
-export const FEE_KINDS = ["opdConsult", "lab"] as const;
+export const FEE_KINDS = ["opdConsult", "lab", "imaging"] as const;
 export type FeeKind = (typeof FEE_KINDS)[number];
 const feeFlipSchema = z.object({ at: z.string().datetime(), off: z.boolean(), by: z.string().min(1) });
 export type FeeFlip = z.infer<typeof feeFlipSchema>;
-const feeSwitchesSchema = z.object({ opdConsult: z.array(feeFlipSchema), lab: z.array(feeFlipSchema) }).partial();
+const feeSwitchesSchema = z.object({
+  opdConsult: z.array(feeFlipSchema), lab: z.array(feeFlipSchema),
+  // `imaging` (owner, 2026-10-10, decision 0065): off = an imaging study needs no bill to start.
+  imaging: z.array(feeFlipSchema),
+}).partial();
 const chargeRulesSchema = z.object({
   // `revisit` (owner, 2026-10-05): optional. Absent, a revisit is free exactly as before; present,
   // it is charged only while the active tariff prices it above ₹0 (`chargeRulesAt`).

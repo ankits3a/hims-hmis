@@ -62,6 +62,7 @@ import { OtList } from "./screens/ot-list";
 import { OtBook } from "./screens/ot-book";
 import { OtCockpit } from "./screens/ot-cockpit";
 import { OtRecovery } from "./screens/ot-recovery";
+import { OutsideTests } from "./screens/outside-tests";
 import { LabDesk } from "./screens/lab-desk";
 import { PharmacyAuthorise } from "./screens/pharmacy-authorise";
 import { PharmacyDesk } from "./screens/pharmacy-desk/pharmacy-desk";
@@ -244,6 +245,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
+  // Decision 0065 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
+  { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
   { to: "/radiology/reception", label: "nav.radiologyReception", permission: "radiology.schedule", group: "imaging" },
@@ -1261,6 +1264,12 @@ const pharmacyDowntimeRoute = createRoute({
   beforeLoad: () => toOffice("/pharmacy/downtime"),
 });
 
+const outsideTestsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ordering/outside-tests",
+  component: OutsideTests,
+});
+
 const labDeskRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/desk",
@@ -1793,6 +1802,7 @@ export const router = createRouter({
       // cockpit, every lab screen is a place a person stands all day, so each carries a menu entry.
       // `caddyfile-parity.test.ts` pins the count and joins this task's Files list, which is the
       // S11 rule this repository has now applied to itself six times.
+      outsideTestsRoute,
       labDeskRoute, labCollectionRoute, labBenchRoute, labVerifyRoute,
       // PLAN 17c T5 — the fifth lab seat, the report centre (+1).
       labReportsRoute,

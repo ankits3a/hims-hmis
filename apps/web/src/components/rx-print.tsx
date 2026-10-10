@@ -62,6 +62,10 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
     a payload from before the rows existed prints the display string as it always did.
   */
   const rows = data.encounter.diagnoses ?? [];
+  /** Decision 0065 — the advised tests split by who does them; `?? []` for a payload from an older server. */
+  const outsideIds = new Set(data.encounter.outsideTestIds ?? []);
+  const inHospitalTests = (data.encounter.advisedTests ?? []).filter((x) => !outsideIds.has(x.serviceId));
+  const outsideTests = (data.encounter.advisedTests ?? []).filter((x) => outsideIds.has(x.serviceId));
   const codedDiagnoses = rows.length > 0 ? rows : null;
   return (
     <div className="space-y-3">
@@ -183,11 +187,11 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
           than crash the whole printable document. A prescription that will not render is a patient
           who leaves without their slip.
         */}
-        {(data.encounter.advisedTests ?? []).length > 0 && (
+        {inHospitalTests.length > 0 && (
           <div data-testid="rx-advised-tests" className="text-sm">
             <p className="font-medium">{t("rx.advisedTests")}</p>
             <ul className="ml-4 list-disc">
-              {(data.encounter.advisedTests ?? []).map((test) => (
+              {inHospitalTests.map((test) => (
                 <li key={test.serviceId}>
                   {test.name} — {fmtPaise(test.pricePaise)}
                 </li>
@@ -196,6 +200,15 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
             <p className="text-xs text-neutral-600">
               {t("rx.advisedTestsNote", { date: data.encounter.serviceDate })}
             </p>
+          </div>
+        )}
+        {/* Decision 0065 — tests the hospital does not do yet: no price, the patient has them done outside. */}
+        {outsideTests.length > 0 && (
+          <div data-testid="rx-outside-tests" className="text-sm">
+            <p className="font-medium">{t("rx.outsideTests")}</p>
+            <ul className="ml-4 list-disc">
+              {outsideTests.map((test) => <li key={test.serviceId}>{test.name}</li>)}
+            </ul>
           </div>
         )}
         {data.encounter.followUpDays !== null && (

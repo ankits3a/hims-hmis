@@ -67,6 +67,14 @@ describe("DD12a — why a scan was allowed to start (18a T7 A4)", () => {
       .toBe("daycare");
   });
 
+  it("the imaging fee switch off ⇒ `free`, below money, day-care and payer, above `stat` (decision 0065)", () => {
+    expect(authorisationOf(study(), { intendedPayer: "self" }, true)).toBe("free");
+    expect(authorisationOf(study({ priority: "stat" }), { intendedPayer: "self" }, true)).toBe("free");
+    expect(authorisationOf(study(), { intendedPayer: "tpa" }, true)).toBe("payer_branch");
+    expect(authorisationOf(study({ invoiceLineId: "IL-1" }), { intendedPayer: "self" }, true)).toBe("invoice");
+    expect(authorisationOf(study(), { intendedPayer: "self" }, false)).toBeNull();
+  });
+
   it("`urgent` is not `stat` — only the top priority band skips the cashier", () => {
     expect(authorisationOf(study({ priority: "urgent" }), { intendedPayer: "self" })).toBeNull();
   });

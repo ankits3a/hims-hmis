@@ -1,11 +1,11 @@
-import { and, asc, eq, max } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { prescriberPrint } from "../roster";
 import type { Actor } from "@hmis/contracts";
 import { hmacSign, hmacVerify } from "../../kernel/crypto";
 import { appendEvent } from "../../kernel/events/append";
 import { withTx } from "../../kernel/db/client";
-import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals, users } from "../../kernel/db/schema";
+import { opdDepartments, opdEncounters, opdPrescriptions, opdVitals, outsideTests, users } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
 import {
   listDrugDiseaseFor, listInteractionsAmong, normalizeDrugName, resolveDrugTexts, resolveMedicines,
@@ -886,6 +886,11 @@ export type RxPrintData = {
      */
     advisedTests: AdvisedTest[];
     /**
+     * Decision 0065 (owner 2026-10-10) — which of `advisedTests` the hospital does NOT do: the outside
+     * catalogue's `outside` rows. The sheet prints them under "Tests to be done outside", with no price.
+     */
+    outsideTestIds: string[];
+    /**
      * The coded rows, each with its eye (board "Ophthal"). `diagnosis`/`icd10Code` above are the
      * display string and the PRIMARY code, and neither can say which eye each tag is — so a print
      * that names the eye renders from these, and one without any eye is unchanged.
@@ -965,6 +970,7 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
       tele: encounter.consultMode === "tele",
       // Read back verbatim; `[]` when the doctor advised none, so the renderer needs no null branch.
       advisedTests: Array.isArray(encounter.advisedTests) ? (encounter.advisedTests as AdvisedTest[]) : [],
+      outsideTestIds: await outsideAmong(db, Array.isArray(encounter.advisedTests) ? (encounter.advisedTests as AdvisedTest[]) : []),
       diagnoses: await visitDiagnoses(db, encounter.id),
     },
     vitals: vitals[vitals.length - 1] ?? null, // the LATEST reading — a danger flag never auto-clears (D4)
@@ -975,4 +981,12 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
     transcribedByName: row.transcribedBy === null ? null
       : (await db.select({ fullName: users.fullName }).from(users).where(eq(users.id, row.transcribedBy)))[0]?.fullName ?? "the desk",
   };
+}
+
+/** Decision 0065 — the advised tests the outside catalogue says are done outside the hospital. */
+async function outsideAmong(db: Db, advised: readonly AdvisedTest[]): Promise<string[]> {
+  if (advised.length === 0) return [];
+  const rows = await db.select({ serviceId: outsideTests.serviceId }).from(outsideTests)
+    .where(and(inArray(outsideTests.serviceId, advised.map((a) => a.serviceId)), eq(outsideTests.site, "outside"), eq(outsideTests.active, true)));
+  return rows.map((r) => r.serviceId);
 }

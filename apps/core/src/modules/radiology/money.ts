@@ -7,6 +7,7 @@ import { daycareEncounters } from "../../kernel/db/schema/ot";
 import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { getEncounter } from "../opd";
+import { BillingError, feeOffAt, loadBillingConfig } from "../billing";
 import { RadiologyError } from "./errors";
 import { imagingBillDecisionRaised } from "./events";
 import type { ImagingAuthorisation, ImagingBillDecisionKind } from "../../kernel/db/schema/radiology";
@@ -63,12 +64,30 @@ export type AuthorisationEncounterFacts = { intendedPayer: string };
 export function authorisationOf(
   study: AuthorisationStudyFacts,
   encounter: AuthorisationEncounterFacts,
+  /** The imaging fee switch was off when the study was ordered (`imagingFreeAt`). */
+  imagingFree = false,
 ): ImagingAuthorisation | null {
   if (study.invoiceLineId !== null) return "invoice";
   if (study.encounterNo.startsWith(EPISODE_SERIES.daycare)) return "daycare";
   if (encounter.intendedPayer !== "self") return "payer_branch";
+  if (imagingFree) return "free";
   if (study.priority === "stat") return "stat";
   return null;
+}
+
+/**
+ * THE IMAGING FEE SWITCH (owner 2026-10-10, decision 0065) — was imaging free when this study was
+ * ordered? Read at the ORDER's time, like the consult switch: a patient sent while imaging was free
+ * stays free if the office switches charging on while they wait. An unconfigured billing module has
+ * no switches, so imaging is charged.
+ */
+export async function imagingFreeAt(exec: Db | Tx, orderedAt: Date): Promise<boolean> {
+  try {
+    return feeOffAt((await loadBillingConfig(exec as Db)).chargeRules, "imaging", orderedAt);
+  } catch (e) {
+    if (e instanceof BillingError) return false;
+    throw e;
+  }
 }
 
 /**

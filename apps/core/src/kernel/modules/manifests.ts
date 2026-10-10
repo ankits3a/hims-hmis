@@ -23,6 +23,7 @@ import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
 import { rosterManifest } from "../../modules/roster";
 import { attendanceManifest } from "../../modules/attendance";
+import { orderingManifest } from "../../modules/ordering";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -185,4 +186,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // STAFF ATTENDANCE (owner 2026-10-09) — appended. One permission (`attendance.all.read`), no menu,
   // no subscription. API only, the `roster` shape: the worker runs its job and needs no permission to.
   attendanceManifest,
+  // TEST ORDERING (owner 2026-10-10, decision 0065) — appended. No permission of its own; the outside-test
+  // menu entry and the free-test consumer.
+  orderingManifest,
 ];

@@ -40,6 +40,7 @@ flowchart LR
   opd[opd] --> patients[patients]
   opd[opd] --> resources[resources]
   ops[ops] --> auth[auth]
+  ordering[ordering] --> tariff[tariff]
   orders[orders] --> patients[patients]
   orders[orders] --> tariff[tariff]
   org[org] --> opd[opd]
@@ -95,6 +96,7 @@ flowchart LR
 | `notifications.ts` | kernel | `notifications`, `notify_template_registrations`, `patient_message_preferences` |
 | `opd.ts` | module opd | `cds_aliases`, `cds_doctor_prefs`, `cds_rx_lines`, `opd_advice_templates`, `opd_appointments`, `opd_complaint_concepts`, `opd_complaint_term_usage`, `opd_complaint_terms`, `opd_config`, `opd_consult_layouts`, `opd_department_tokens`, `opd_departments`, `opd_doctor_leaves`, `opd_doctor_schedules`, `opd_doctors`, `opd_encounter_diagnoses`, `opd_encounters`, `opd_flow_baselines`, `opd_flow_findings`, `opd_lasa_pairs`, `opd_patient_reminders`, `opd_prescription_drafts`, `opd_prescriptions`, `opd_queue_entries`, `opd_queue_sessions`, `opd_rx_sets`, `opd_section_records`, `opd_suggestion_events`, `opd_term_misses`, `opd_vitals`, `opd_voice_settings`, `opd_voice_usage` |
 | `ops.ts` | kernel | `config_validation_reports`, `downtime_form_counters`, `downtime_kit_ranges`, `downtime_kits`, `interfaces`, `operating_mode_changes` |
+| `ordering.ts` | module ordering | `outside_tests` |
 | `orders.ts` | kernel | `order_item_transitions`, `order_items`, `orders` |
 | `org.ts` | kernel | `org_departments` |
 | `ot.ts` | module ot | `daycare_encounters`, `ot_case_gates`, `ot_case_implants`, `ot_cases`, `ot_checklist_runs`, `ot_counts`, `ot_definitions`, `ot_deposit_holds`, `ot_incidents`, `ot_lists`, `ot_specimens`, `pacu_scores` |

@@ -25,6 +25,7 @@ import { radiologyManifest } from "../../modules/radiology";
 import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
+import { orderingManifest } from "../../modules/ordering";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -90,6 +91,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   radiologyManifest,
   pharmacyManifest, // PLAN 16c T3
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
+  orderingManifest, // DECISION 0065 — both processes
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -193,13 +195,16 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "roster",
       // STAFF ATTENDANCE (owner 2026-10-09) — appended. A leaf: it reads `auth.users` and nothing imports it.
       "attendance",
+      // TEST ORDERING (decision 0065, 2026-10-10) — appended. It reaches into lab, radiology, opd and
+      // billing through their indexes; nothing imports it.
+      "ordering",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(24); // STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(25); // TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(24);
+    expect(registry.all()).toHaveLength(25);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -414,7 +419,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "radiology",
       // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
       "pharmacy",
+      // DECISION 0065 — the free-test consumer (`ordering.free_tests`); installed in both processes.
+      "ordering",
     ]);
-    expect(workerKeys).toHaveLength(19); // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(20); // DECISION 0065: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

@@ -16,6 +16,7 @@ function mock(perms: string[]): { puts: unknown[] } {
     switches: [
       { kind: "opdConsult", off: false, changedAt: null, changedBy: null },
       { kind: "lab", off: true, changedAt: "2026-10-01T05:00:00.000Z", changedBy: "u-owner" },
+      { kind: "imaging", off: false, changedAt: null, changedBy: null },
     ],
     consultPaise: { new: 10000, renewal: null },
   };
@@ -28,7 +29,7 @@ function mock(perms: string[]): { puts: unknown[] } {
     if (path === "/billing/office/needs") return json({ rows: [], money: { toPayCount: 0, toPayPaise: 0, shortPaise: 0 } });
     if (path === "/billing/fee-switches" && (init?.method ?? "GET") === "GET") return json(current);
     if (path === "/billing/fee-switches" && init?.method === "PUT") {
-      const body = JSON.parse(String(init.body)) as { kind: "opdConsult" | "lab"; off: boolean };
+      const body = JSON.parse(String(init.body)) as { kind: "opdConsult" | "lab" | "imaging"; off: boolean };
       puts.push(body);
       current = { ...current, switches: current.switches.map((s) => (s.kind === body.kind ? { ...s, off: body.off, changedAt: "2026-10-01T06:00:00.000Z", changedBy: "u-owner" } : s)) };
       return json(current);
@@ -61,6 +62,19 @@ describe("the fee switches (owner, 2026-10-01)", () => {
     expect(puts).toEqual([{ kind: "opdConsult", off: true }]);
     expect(screen.getByRole("status")).toHaveTextContent("OPD consultation is free from now");
     expect(screen.getByTestId("fee-opdConsult")).toHaveTextContent("no consultation fee is asked");
+  });
+
+  it("imaging has its own switch (decision 0065): one tap makes imaging free, and the lab says its tests order themselves", async () => {
+    const { puts } = mock(["billing.reports.read", "billing.config.write"]);
+    renderWithProviders(<FeeSwitches />);
+    const imaging = await screen.findByRole("switch", { name: "Imaging fees" });
+    expect(imaging).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("fee-lab")).toHaveTextContent("the advised tests are ordered for the lab by themselves");
+    await userEvent.click(imaging);
+    await waitFor(() => expect(imaging).toHaveAttribute("aria-checked", "false"));
+    expect(puts).toEqual([{ kind: "imaging", off: true }]);
+    expect(screen.getByRole("status")).toHaveTextContent("imaging is free from now");
+    expect(screen.getByTestId("fee-imaging")).toHaveTextContent("no bill is needed to start a scan");
   });
 
   it("a reader without billing.config.write sees the switches and cannot change them", async () => {
