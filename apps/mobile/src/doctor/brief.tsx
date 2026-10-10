@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { TeleCard, isTele } from "../consult/tele-call";
-import { Image, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError } from "../api";
 import { useI18n } from "../i18n";
 import { Text } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Button, MONO, Note, Tag } from "../ui";
+import { Button, MONO, Note, Tag, KeyboardModal } from "../ui";
 import { humanDate, istClock } from "../vitals/rules";
 import type { WireDangerFlag } from "../vitals/rules";
 import type { DoctorApi, WireAllergyRow, WireDocument, WireRxHistoryItem, WireTimelineItem, WireVisitDetail, WireVisitVitals } from "./api";
@@ -114,7 +114,7 @@ export function PaperViewer({ api, doc, onClose, t }: { api: DoctorApi; doc: Wir
   const [box, setBox] = useState({ w: 0, h: 0 });
   const step = (by: number) => setZoom((z) => Math.min(4, Math.max(1, Math.round((z + by) * 2) / 2)));
   return (
-    <Modal visible animationType="fade" onRequestClose={onClose} transparent={false}>
+    <KeyboardModal visible animationType="fade" onRequestClose={onClose} transparent={false}>
       <View style={{ flex: 1, backgroundColor: "#0c1512", paddingTop: insets.top }} testID="paper-viewer">
         <View style={s.viewerBar}>
           <Text style={s.viewerTitle} numberOfLines={1}>{t(`slipCapture.kinds.${doc.kind}`)} · {shortDay(doc.capturedAt)}</Text>
@@ -141,7 +141,7 @@ export function PaperViewer({ api, doc, onClose, t }: { api: DoctorApi; doc: Wir
           )}
         </View>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TeleCallPanel, hasSpoken, isTele } from "../consult/tele-call";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
@@ -18,7 +18,7 @@ import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, KeyboardScrollView } from "../ui";
 import { refusalText } from "../vitals/api";
 import type { ConsultApi, WireConsultVisit, WireRxSet } from "../consult/api";
 import type { Band, ConsultDraft, WireLastLine, WirePrecheck } from "../consult/rules";
@@ -343,7 +343,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
-      <ScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: 190, gap: space.md }} keyboardShouldPersistTaps="handled">
+      <KeyboardScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: 190, gap: space.md }} keyboardShouldPersistTaps="handled">
         <View style={s.card} testID="consult-who">
           <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
             <Text style={s.token}>#{tokenNo}</Text>
@@ -448,7 +448,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
         <Pressable testID="consult-park" accessibilityRole="button" disabled={parkBusy} hitSlop={6} onPress={onPark} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center" }}>
           <Text style={[s.link, { color: color.dim }]}>{t("opdConsult.park")}</Text>
         </Pressable>
-      </ScrollView>
+      </KeyboardScrollView>
 
       <View style={[s.foot, { paddingBottom: insets.bottom + space.sm }]} testID="consult-foot">
         {error !== null && <Note tone="bad" testID="consult-error">{error}</Note>}

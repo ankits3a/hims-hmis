@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Modal, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { Text } from "../text";
 import { color, radius, space, type } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, KeyboardModal } from "../ui";
 import { refusalText } from "../vitals/api";
 import type { CounterApi, WireDoctorSummary, WireInvoiceRow, WireMoveResult, WirePrintJob } from "./api";
 import { MoveDepartment } from "./move";
@@ -71,7 +71,7 @@ export function VisitCard({ api, visit, today, mayMove, mayPaper, mayBills, queu
   const day = visit.serviceDate.slice(0, 10).split("-").reverse().join("-");
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: color.paper }} testID="visit-card">
         <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl, gap: space.lg }}>
           <View>
@@ -135,7 +135,7 @@ export function VisitCard({ api, visit, today, mayMove, mayPaper, mayBills, queu
           />
         )}
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, KeyboardModal, keyboardScroll } from "../ui";
 import { refusalText } from "../vitals/api";
 import { newIntentKey } from "./api";
 import { QrRows } from "./qr-rows";
@@ -95,9 +95,9 @@ export function TelePay({ api, appointment, mayCollect, onPaid }: {
         <Button testID={`tele-collect-${a.id}`} label={free ? t("mobile.counter.telePay.confirmFree") : t("mobile.counter.telePay.collect", { amount: rs(amountPaise) })} onPress={() => { setError(null); setOpen(true); }} />
       )}
       {open && (
-        <Modal visible animationType="slide" onRequestClose={() => { if (!busy) setOpen(false); }}>
+        <KeyboardModal visible animationType="slide" onRequestClose={() => { if (!busy) setOpen(false); }}>
           <View style={{ flex: 1, backgroundColor: color.paper }} testID="tele-pay">
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, gap: space.md }}>
+            <ScrollView {...keyboardScroll()} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, gap: space.md }}>
               <Text style={[type.heading, { color: color.ink }]} testID="tele-pay-title" numberOfLines={1}>
                 {free ? t("mobile.counter.telePay.nothingToPay") : t("mobile.counter.telePay.collect", { amount: rs(amountPaise) })}
               </Text>
@@ -140,7 +140,7 @@ export function TelePay({ api, appointment, mayCollect, onPaid }: {
               </Pressable>
             </View>
           </View>
-        </Modal>
+        </KeyboardModal>
       )}
     </View>
   );

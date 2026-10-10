@@ -30,6 +30,9 @@
     "mismatch": "The two new passwords do not match"
   },
   "mobile": {
+    "location": {
+      "why": "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises."
+    },
     "submitChange": "Change password",
     "wrongCurrent": "The current password is wrong",
     "policy": "The new password does not meet the rule above",
@@ -40,6 +43,11 @@
     "seatHint": "Only the screens your role allows are shown.",
     "none": "Your account has no phone screens yet. Ask the administrator.",
     "soon": "Coming in the next release",
+    "fineMoney": {
+      "faceId": "Face ID is asked before a money approval. Recorded with your name, time and note.",
+      "touchId": "Touch ID is asked before a money approval. Recorded with your name, time and note.",
+      "apple": "Touch ID / Face ID is asked before a money approval. Recorded with your name, time and note."
+    },
     "unlockTitle": "Unlock HMIS",
     "unlockPrompt": "Confirm it is you",
     "unlockAgain": "Unlock",
@@ -720,6 +728,7 @@
       "screenshots": "Screenshots",
       "screenshotsBlocked": "Blocked in this app, to protect patients",
       "screenshotsAllowed": "Allowed in this staging build (test data only)",
+      "screenshotsSwitcher": "Not blocked on iPhone. The app is hidden in the app switcher.",
       "open": "This phone and my account",
       "title": "This phone",
       "signedInAs": "Signed in as {{name}}",
@@ -1947,6 +1956,34 @@
     }
   },
   "attendance": {
+    "mark": {
+      "in": "Mark attendance · In",
+      "out": "Mark attendance · Out",
+      "checking": "Checking location…",
+      "continue": "Continue",
+      "cancel": "Cancel",
+      "done": {
+        "in": "Marked in",
+        "out": "Marked out"
+      },
+      "place": {
+        "inside": "inside premises",
+        "outside": "outside premises",
+        "not_shared": "location not shared",
+        "doubtful": "location doubtful"
+      },
+      "tag": {
+        "inside": "App ✓",
+        "outside": "App: outside",
+        "not_shared": "App: no location",
+        "doubtful": "App: doubtful"
+      },
+      "tooMany": "Too many marks today",
+      "failed": "Not marked — try again",
+      "offline": "No network — not marked",
+      "appMarks": "App marks",
+      "metres": "{{n}} m"
+    },
     "aadhaar": {
       "card": "Add your Aadhaar to see attendance",
       "button": "Add Aadhaar",

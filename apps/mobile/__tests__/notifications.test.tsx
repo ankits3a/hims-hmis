@@ -523,6 +523,9 @@ describe("screenshots (M6b)", () => {
     jest.isolateModules(() => {
       jest.doMock("../src/config", () => ({ IS_PRODUCTION: true }));
       jest.doMock("expo-screen-capture", () => ({ preventScreenCaptureAsync: prevent }));
+      // FLAG_SECURE is Android's; jest-expo is an iPhone unless told otherwise (the iPhone's answer: ios.test.tsx).
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      (require("react-native") as { Platform: { OS: string } }).Platform.OS = "android";
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       privacy = require("../src/privacy") as typeof import("../src/privacy");
     });

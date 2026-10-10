@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { NetworkError } from "../api";
-import { attendanceApi, type FullDay, type PersonRange, type SelfDay } from "../attendance/api";
+import { attendanceApi, type FullDay, type MarkView, type PersonRange, type SelfDay, type SelfMark } from "../attendance/api";
+import { MARK_COLOR, MarkLine } from "../attendance/mark-button";
 import { WORD_TONE, clampToToday, countWords, managerDay, monthDays, monthOf, weekOf, type SelfWord } from "../attendance/rules";
 import {
   BackBand, Chips, Counts, MonthGrid, PeriodNav, TONE, ToneTag, WeekList, canStepForward, periodTitle, step, wordText, type DayCell, type ViewKind,
@@ -21,6 +22,9 @@ import { Band, MONO, Note } from "../ui";
  * hours, and "Late". The server decides who may open whom (the owner, the Superintendent, the
  * Committee; a head for their own team) — and when it answers with the words-only shape instead
  * (somebody opening their own pin without the right to see everything), this screen draws words.
+ *
+ * APP MARKS (decision 0061) show on the day, beside the machine's in / out: a manager sees each with
+ * its time, place and metres; the words-only shape shows them as words. They never change the word.
  */
 export function AttendancePerson({ pin, name, nowMs = Date.now }: { pin: string; name?: string; nowMs?: () => number }) {
   const { t } = useI18n();
@@ -62,6 +66,7 @@ export function AttendancePerson({ pin, name, nowMs = Date.now }: { pin: string;
   const dayCell = view === "day" ? cells[0] ?? null : null;
   const word: SelfWord | null = dayCell?.word ?? null;
   const person = got?.person ?? null;
+  const dayMarks = view === "day" ? ((got?.marks ?? []) as (SelfMark | MarkView)[]).filter((m) => m.date === anchor) : [];
 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
@@ -104,6 +109,18 @@ export function AttendancePerson({ pin, name, nowMs = Date.now }: { pin: string;
                     <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 14, fontWeight: "700", color: color.ink }}>{v ?? "—"}</Text>
                   </View>
                 ))}
+              </View>
+            )}
+            {dayMarks.length > 0 && (
+              <View testID="att-day-marks" style={{ gap: 4 }}>
+                <Text numberOfLines={1} style={[type.tag, { color: color.faint }]}>{t("attendance.mark.appMarks")}</Text>
+                {dayMarks.map((m, i) => ("time" in m
+                  ? <View key={String(i)} testID={`att-day-mark-${String(i)}`} style={{ flexDirection: "row", alignItems: "baseline", gap: space.sm }}>
+                      <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 13, fontWeight: "700", color: color.ink }}>{`${m.time} ${t(`attendance.${m.kind}`)}`}</Text>
+                      <Text numberOfLines={1} style={[type.small, { flex: 1, fontWeight: "600", color: MARK_COLOR[m.place] }]}>{t(`attendance.mark.place.${m.place}`)}</Text>
+                      {m.distanceM !== null && <Text numberOfLines={1} style={{ fontFamily: MONO, fontSize: 13, color: color.dim }}>{t("attendance.mark.metres", { n: m.distanceM })}</Text>}
+                    </View>
+                  : <MarkLine key={String(i)} t={t} mark={m} testID={`att-day-mark-${String(i)}`} />))}
               </View>
             )}
           </View>

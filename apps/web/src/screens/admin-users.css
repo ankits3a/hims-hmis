@@ -44,7 +44,15 @@
 .au .au-bulk button.clear { border: 0; color: #cfe0d7; margin-left: auto; }
 
 .au .au-list { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 10px; }
-.au .au-rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/*
+  `position: relative` MAKES THE SCROLLER THE CONTAINING BLOCK of what it holds. Every row carries two
+  `.sr-only` spans (PIN set, attendance link) and `.sr-only` is `position: absolute`. With no
+  positioned ancestor their containing block was the page, so the box's `overflow` did not clip them:
+  120 rows put spans 7,000 px down the document, the page grew a scrollbar, and a wheel anywhere off
+  the list scrolled the whole screen — the Desk Agent bar with it — up into blank paper (owner,
+  2026-10-09: "the footer doesn't stick to footer").
+*/
+.au .au-rows { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .au .au-grid { display: grid; grid-template-columns: 30px minmax(0, 2.2fr) minmax(0, 2.6fr) 128px 76px; gap: 12px; align-items: center; padding: 0 16px; }
 .au .au-colhead { height: 38px; border-bottom: 1px solid var(--line); background: var(--wash); }
 .au .au-colhead span { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
@@ -128,7 +136,7 @@
   .au-drawer, .au-drawer.wide { top: 0; left: 0; width: 100%; border-left: 0; z-index: 58; }
 }
 @media (max-width: 640px) {
-  .pp:has(> .au) { padding: 14px 16px !important; }
+  .pp:has(> .au) { padding: 14px 16px 0 !important; }
   .au .au-head h1 { font-size: 22px; }
   .au .au-head .sec { display: none; }
   .au .au-list { overflow: visible; }

@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { Text } from "../text";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { color, space, type } from "../theme";
-import { Band, Button, Field, Note } from "../ui";
+import { Band, Button, Field, Note, KeyboardScrollView } from "../ui";
 
 /**
  * The forced reset (server 403 `password_change_required`). The rule shown is the server's
@@ -40,7 +40,7 @@ export function ChangePasswordScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band />
-      <ScrollView contentContainerStyle={{ padding: space.xl }} keyboardShouldPersistTaps="handled">
+      <KeyboardScrollView contentContainerStyle={{ padding: space.xl }} keyboardShouldPersistTaps="handled">
         <Text style={[type.title, { color: color.ink }]}>{t("changePassword.title")}</Text>
         <Text style={[type.small, { color: color.dim, marginTop: 6, marginBottom: space.lg }]}>{t("changePassword.why")}</Text>
         <Note tone="info">{t("changePassword.rule")}</Note>
@@ -51,7 +51,7 @@ export function ChangePasswordScreen() {
         <Button testID="change" label={t("mobile.submitChange")} busy={busy} disabled={current === "" || next === "" || again === ""} onPress={() => void submit()} />
         <Text style={{ height: space.md }} />
         <Button kind="secondary" label={t("app.logout")} onPress={() => void logout()} />
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

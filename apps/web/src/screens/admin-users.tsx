@@ -282,8 +282,9 @@ export function AdminUsers(): React.ReactElement {
     ? <p role="alert" data-testid="admin-row-error" style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>{rowError}</p>
     : null);
 
+  // No bottom padding: the Desk Agent bar is the screen's foot, flush on the shell's shortcut line, never 18px above it.
   return (
-    <PaperScreen testId="admin-users" style={{ padding: "18px 22px", gap: 16 }}>
+    <PaperScreen testId="admin-users" style={{ padding: "18px 22px 0", gap: 16 }}>
       <div className="au" style={{ display: "contents" }}>
         <div className="au-head">
           <h1>{t("adminUsers.heading")}</h1>

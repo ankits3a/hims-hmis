@@ -1,5 +1,5 @@
-import { type ReactNode, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View, type TextInputProps } from "react-native";
+import { type ReactNode, createContext, forwardRef, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput as RNTextInput, View, type ModalProps, type ScrollViewProps, type TextInputProps } from "react-native";
 import { Text, TextInput } from "./text";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -68,17 +68,36 @@ export function Tag({ children, tone = "dim" }: { children: ReactNode; tone?: "d
   return <Text style={[type.tag, { color: tone === "dim" ? color.dim : color.faint, fontFamily: MONO }]}>{children}</Text>;
 }
 
-export function Field({ label, secure, revealLabel, hideLabel, ...rest }: TextInputProps & {
-  label: string; secure?: boolean; revealLabel?: string; hideLabel?: string;
-}) {
+export type FieldProps = TextInputProps & { label: string; secure?: boolean; revealLabel?: string; hideLabel?: string };
+
+/**
+ * A labelled input. iPHONE (owner 2026-10-09: "the keyboard didn't pop up"): the WHOLE bordered row
+ * is the target — a tap on its padding or border focuses the input inside, so the keyboard comes up
+ * wherever the finger lands. The ref reaches the TextInput itself, so a screen can move focus on
+ * ("next" on the username goes to the password).
+ */
+export const Field = forwardRef<TextInput, FieldProps>(function Field({ label, secure, revealLabel, hideLabel, ...rest }, ref) {
   const [shown, setShown] = useState(false);
   const [focus, setFocus] = useState(false);
+  const input = useRef<TextInput | null>(null);
+  const bind = useCallback((node: TextInput | null) => {
+    input.current = node;
+    if (typeof ref === "function") ref(node);
+    else if (ref !== null) ref.current = node;
+  }, [ref]);
   return (
     <View style={{ marginBottom: space.lg }}>
       <Text style={[type.tag, s.label]}>{label}</Text>
-      <View style={[s.input, focus && s.inputFocus]}>
+      <Pressable
+        testID={rest.testID === undefined ? undefined : `${rest.testID}-row`}
+        // The row is only a bigger target; the screen reader still meets the input itself.
+        accessible={false}
+        onPress={() => input.current?.focus()}
+        style={[s.input, focus && s.inputFocus]}
+      >
         <TextInput
           {...rest}
+          ref={bind}
           accessibilityLabel={label}
           secureTextEntry={secure === true && !shown}
           onFocus={(e) => { setFocus(true); rest.onFocus?.(e); }}
@@ -91,9 +110,168 @@ export function Field({ label, secure, revealLabel, hideLabel, ...rest }: TextIn
             <Text style={s.revealText}>{shown ? hideLabel : revealLabel}</Text>
           </Pressable>
         )}
-      </View>
+      </Pressable>
     </View>
   );
+});
+
+/**
+ * KEYBOARD-AWARE SHEETS (owner 2026-10-09: "the input should be modal responsive with keyboard").
+ * A `Modal` is drawn outside the screen's own KeyboardAvoidingView, so on an iPhone the keyboard
+ * would rise over a sheet's input and its Save button. Every Modal in the app is a `KeyboardModal`:
+ * on iPhone its content is lifted by the keyboard's height.
+ *
+ * ANDROID DRAWS NO MODAL (owner 2026-10-10: the keyboard hid the boxes of every sheet). Since React Native
+ * 0.81 a Modal's dialog window is edge-to-edge, so Android does not resize it for the keyboard, and the
+ * keyboard events come from the activity's window, not the dialog's — padding inside a Modal did nothing on
+ * the phone. On Android a KeyboardModal is drawn by the `SheetHost` (app/_layout.tsx) as a full-screen layer
+ * in the activity's own window, lifted by the keyboard's height; Back closes the top one. Android's
+ * ScrollView then keeps the focused box in view as it shrinks. `ownWindow` keeps a real Modal (the cameras:
+ * no box, and they take the whole screen). Without a host (tests) it falls back to a Modal.
+ */
+export function KeyboardSheet({ children }: { children?: ReactNode }) {
+  return (
+    <KeyboardAvoidingView testID="keyboard-sheet" behavior={Platform.OS === "web" ? undefined : "padding"} style={{ flex: 1 }}>
+      {children}
+    </KeyboardAvoidingView>
+  );
+}
+
+/** The keyboard's height while it is up on Android (activity window only), else 0. */
+export function useAndroidKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return undefined;
+    const up = Keyboard.addListener("keyboardDidShow", (e) => setHeight(Math.max(0, e.endCoordinates.height)));
+    const down = Keyboard.addListener("keyboardDidHide", () => setHeight(0));
+    return () => { up.remove(); down.remove(); };
+  }, []);
+  return height;
+}
+
+type Sheet = { node: ReactNode; opaque: boolean; testID?: string };
+const SheetHostContext = createContext<((id: number, sheet: Sheet | null) => void) | null>(null);
+let nextSheetId = 1;
+
+/** Draws every open Android KeyboardModal over the app, newest on top, above the keyboard. */
+export function SheetHost({ children }: { children?: ReactNode }) {
+  const [sheets, setSheets] = useState<{ id: number; sheet: Sheet }[]>([]);
+  const put = useCallback((id: number, sheet: Sheet | null) => {
+    setSheets((all) => {
+      const at = all.findIndex((x) => x.id === id);
+      if (sheet === null) return at < 0 ? all : all.filter((x) => x.id !== id);
+      if (at < 0) return [...all, { id, sheet }];
+      const next = all.slice();
+      next[at] = { id, sheet };
+      return next;
+    });
+  }, []);
+  const keyboard = useAndroidKeyboardHeight();
+  const insets = useSafeAreaInsets();
+  return (
+    <SheetHostContext.Provider value={put}>
+      {children}
+      {sheets.map(({ id, sheet }) => (
+        // The keyboard's reported height leaves out the navigation bar; the layer reaches the screen's foot.
+        <View key={id} testID={sheet.testID ?? "sheet-layer"}
+          style={[StyleSheet.absoluteFill, s.sheetLayer, sheet.opaque && { backgroundColor: color.paper }, { paddingBottom: keyboard > 0 ? keyboard + insets.bottom : 0 }]}>
+          {sheet.node}
+        </View>
+      ))}
+    </SheetHostContext.Provider>
+  );
+}
+
+function HostedSheet({ put, visible, transparent, onRequestClose, testID, children }: ModalProps & { put: (id: number, sheet: Sheet | null) => void }) {
+  const id = useRef(0);
+  if (id.current === 0) id.current = nextSheetId++;
+  const shown = visible !== false;
+  useEffect(() => { put(id.current, shown ? { node: children, opaque: transparent !== true, testID } : null); });
+  useEffect(() => () => put(id.current, null), [put]);
+  useEffect(() => {
+    if (!shown) return undefined;
+    const back = BackHandler.addEventListener("hardwareBackPress", () => { onRequestClose?.({} as never); return true; });
+    return () => back.remove();
+  }, [shown, onRequestClose]);
+  return null;
+}
+
+export function KeyboardModal({ children, ownWindow, ...rest }: ModalProps & { ownWindow?: boolean }) {
+  const put = useContext(SheetHostContext);
+  if (Platform.OS === "android" && put !== null && ownWindow !== true) return <HostedSheet put={put} {...rest}>{children}</HostedSheet>;
+  return <Modal {...rest}><KeyboardSheet>{children}</KeyboardSheet></Modal>;
+}
+
+/**
+ * Scroll views that hold inputs, iPhone only (Android keeps exactly what it had):
+ * `keyboardScroll()` inside a KeyboardModal / KeyboardAvoidingView — taps reach buttons while the
+ * keyboard is up and a drag pulls it down; `keyboardScrollInsets()` on a bare screen — the same,
+ * and the scroll view also insets itself by the keyboard so the focused input scrolls into view.
+ * (Never both: an inset inside a view that also pads for the keyboard leaves the space twice.)
+ */
+export function keyboardScroll(): Partial<ScrollViewProps> {
+  return Platform.OS === "ios" ? { keyboardShouldPersistTaps: "handled", keyboardDismissMode: "interactive" } : {};
+}
+export function keyboardScrollInsets(): Partial<ScrollViewProps> {
+  return Platform.OS === "ios" ? { ...keyboardScroll(), automaticallyAdjustKeyboardInsets: true } : {};
+}
+
+/**
+ * The scroll view of a bare screen that holds inputs. iPhone: `keyboardScrollInsets()`. ANDROID (owner
+ * 2026-10-10: Desk One's "New patient" boxes hidden under the keyboard): the app is edge-to-edge since
+ * React Native 0.81, so Android no longer shrinks the screen for the keyboard. When the keyboard rises
+ * the scroll view ends at the keyboard's top (a bottom margin of exactly the overlap, measured), and the
+ * box being typed in is scrolled back into view.
+ */
+export const KeyboardScrollView = forwardRef<ScrollView, ScrollViewProps>(function KeyboardScrollView({ style, onScroll, ...props }, outer) {
+  const inner = useRef<ScrollView | null>(null);
+  const offset = useRef(0);
+  const liftRef = useRef(0);
+  const [lift, setLift] = useState(0);
+  const setRefs = useCallback((node: ScrollView | null) => {
+    inner.current = node;
+    if (typeof outer === "function") outer(node);
+    else if (outer !== null) outer.current = node;
+  }, [outer]);
+  useEffect(() => {
+    if (Platform.OS !== "android") return undefined;
+    const apply = (n: number) => { liftRef.current = n; setLift(n); };
+    const up = Keyboard.addListener("keyboardDidShow", (e) => {
+      const host = inner.current?.getNativeScrollRef() ?? null;
+      if (host === null) return;
+      host.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+        // `screenY` is the keyboard's top in the window; the margin already applied is added back.
+        apply(Math.max(0, Math.round(y + h + liftRef.current - e.endCoordinates.screenY)));
+      });
+    });
+    const down = Keyboard.addListener("keyboardDidHide", () => apply(0));
+    return () => { up.remove(); down.remove(); };
+  }, []);
+  useEffect(() => {
+    if (Platform.OS !== "android" || lift === 0) return undefined;
+    const timer = setTimeout(() => scrollFocusedIntoView(inner.current, offset.current), 80);
+    return () => clearTimeout(timer);
+  }, [lift]);
+  return (
+    <ScrollView ref={setRefs} {...keyboardScrollInsets()} {...props} scrollEventThrottle={props.scrollEventThrottle ?? 32}
+      style={lift > 0 ? [style, { marginBottom: lift }] : style}
+      onScroll={(e) => { offset.current = e.nativeEvent.contentOffset.y; onScroll?.(e); }} />
+  );
+});
+
+/** Scrolls `view` so the focused text box is inside it (Android, after the view has shrunk above the keyboard). */
+export function scrollFocusedIntoView(view: ScrollView | null, offset: number): void {
+  const box = RNTextInput.State.currentlyFocusedInput();
+  const host = view?.getNativeScrollRef() ?? null;
+  if (box === null || view === null || host === null) return;
+  host.measureInWindow((_x: number, viewY: number, _w: number, viewH: number) => {
+    box.measureInWindow((_bx: number, boxY: number, _bw: number, boxH: number) => {
+      const below = boxY + Math.min(boxH, 160) + space.md - (viewY + viewH);
+      const above = viewY - boxY;
+      if (below > 0) view.scrollTo({ y: offset + below, animated: true });
+      else if (above > 0) view.scrollTo({ y: Math.max(0, offset - above - space.md), animated: true });
+    });
+  });
 }
 
 export function Button({ label, onPress, busy, disabled, kind = "primary", testID }: {
@@ -138,6 +316,7 @@ export function Note({ tone, children, testID }: { tone: "bad" | "warn" | "info"
 }
 
 export const s = StyleSheet.create({
+  sheetLayer: { zIndex: 100, elevation: 100 },
   band: { backgroundColor: color.agent, paddingHorizontal: space.lg, paddingBottom: space.md },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   mark: { width: 12, height: 12, backgroundColor: color.mint, transform: [{ rotate: "45deg" }] },

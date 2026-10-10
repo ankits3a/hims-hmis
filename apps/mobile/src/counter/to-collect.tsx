@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Modal, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useI18n } from "../i18n";
 import { Text } from "../text";
 import { color, radius, space, type } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, KeyboardModal } from "../ui";
 import type { CounterApi } from "./api";
 import { isGone, toCollectAct, toCollectAmount } from "../../../../packages/contracts/src/to-collect";
 import type { WireToCollectRow } from "../../../../packages/contracts/src/to-collect";
@@ -40,7 +40,7 @@ export function ToCollectList({ api, held, mayOpenSession, onCollect, onClose }:
 
   const act = toCollectAct(held, cashOpen);
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: color.paper }} testID="to-collect-list">
         <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl, gap: space.md }}>
           <Text style={[type.heading, { color: color.ink }]} testID="to-collect-title">{t("toCollect.count", { n: rows?.length ?? 0 })}</Text>
@@ -73,7 +73,7 @@ export function ToCollectList({ api, held, mayOpenSession, onCollect, onClose }:
           <Button testID="to-collect-close" kind="secondary" label={t("mobile.doctor.cancel")} onPress={onClose} />
         </ScrollView>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

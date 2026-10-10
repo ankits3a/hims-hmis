@@ -1,5 +1,5 @@
 {
-  "id": "80be98f6-29e2-4e9b-8963-a90186245c96",
+  "id": "912bfb57-7ca9-45c3-8305-844a50f88686",
   "prevId": "5c70b009-391f-4452-ab9b-97971b92d8b9",
   "version": "7",
   "dialect": "postgresql",
@@ -30126,174 +30126,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.lab_quick_reports": {
-      "name": "lab_quick_reports",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "patient_id": {
-          "name": "patient_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "encounter_no": {
-          "name": "encounter_no",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tests": {
-          "name": "tests",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'waiting'"
-        },
-        "collected_at": {
-          "name": "collected_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "collected_by": {
-          "name": "collected_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "lines": {
-          "name": "lines",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "reported_at": {
-          "name": "reported_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reported_by": {
-          "name": "reported_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "lab_quick_reports_status_idx": {
-          "name": "lab_quick_reports_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "collected_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_quick_reports_patient_idx": {
-          "name": "lab_quick_reports_patient_idx",
-          "columns": [
-            {
-              "expression": "patient_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "collected_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "lab_quick_reports_patient_id_patients_id_fk": {
-          "name": "lab_quick_reports_patient_id_patients_id_fk",
-          "tableFrom": "lab_quick_reports",
-          "tableTo": "patients",
-          "columnsFrom": [
-            "patient_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "lab_quick_reports_status_ck": {
-          "name": "lab_quick_reports_status_ck",
-          "value": "\"lab_quick_reports\".\"status\" in ('waiting', 'reported')"
-        },
-        "lab_quick_reports_reported_ck": {
-          "name": "lab_quick_reports_reported_ck",
-          "value": "(\"lab_quick_reports\".\"status\" = 'reported') = (\"lab_quick_reports\".\"reported_at\" is not null and \"lab_quick_reports\".\"reported_by\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.lab_reference_ranges": {
       "name": "lab_reference_ranges",
       "schema": "",
@@ -51901,6 +51733,138 @@
         "abdm_profile_shares_linked_ck": {
           "name": "abdm_profile_shares_linked_ck",
           "value": "(\"abdm_profile_shares\".\"status\" = 'linked') = (\"abdm_profile_shares\".\"patient_id\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.att_app_marks": {
+      "name": "att_app_marks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pin": {
+          "name": "pin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "day": {
+          "name": "day",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "marked_at": {
+          "name": "marked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "place": {
+          "name": "place",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "distance_m": {
+          "name": "distance_m",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "att_app_marks_pin_day_idx": {
+          "name": "att_app_marks_pin_day_idx",
+          "columns": [
+            {
+              "expression": "pin",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "att_app_marks_user_day_idx": {
+          "name": "att_app_marks_user_day_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "day",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "att_app_marks_user_id_users_id_fk": {
+          "name": "att_app_marks_user_id_users_id_fk",
+          "tableFrom": "att_app_marks",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "att_app_marks_kind_chk": {
+          "name": "att_app_marks_kind_chk",
+          "value": "\"att_app_marks\".\"kind\" in ('in', 'out')"
+        },
+        "att_app_marks_place_chk": {
+          "name": "att_app_marks_place_chk",
+          "value": "\"att_app_marks\".\"place\" in ('inside', 'outside', 'not_shared', 'doubtful')"
+        },
+        "att_app_marks_distance_chk": {
+          "name": "att_app_marks_distance_chk",
+          "value": "(\"att_app_marks\".\"place\" = 'not_shared') = (\"att_app_marks\".\"distance_m\" is null) and (\"att_app_marks\".\"distance_m\" is null or \"att_app_marks\".\"distance_m\" >= 0)"
         }
       },
       "isRLSEnabled": false

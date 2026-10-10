@@ -45,7 +45,11 @@ const cut = (s: string, max: number): string | undefined => {
   return t === "" ? undefined : t;
 };
 
-/** What the phone says it is: "Xiaomi Redmi Note 12" and "Android 14". Read from the platform, no extra module. */
+/**
+ * What the phone says it is: "Xiaomi Redmi Note 12" and "Android 14". Read from the platform, no extra module.
+ * An iPhone tells JavaScript its system and version ("iOS 18.1") but not which iPhone it is, and the
+ * name its owner gave it ("Asha's iPhone") is personal and is not read: the model is "iPhone".
+ */
 export function describePhone(): { model?: string; os?: string } {
   const c = (Platform.constants ?? {}) as Record<string, unknown>;
   const str = (k: string): string => (typeof c[k] === "string" ? (c[k] as string) : "");

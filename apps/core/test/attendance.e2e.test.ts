@@ -561,7 +561,7 @@ describe("staff attendance e2e (HTTP)", () => {
         expect(people.filter((p) => p.hasLogin).map((p) => p.pin).sort()).toEqual(["301", "303", "304", "305", "317"]);
         const college = people.find((p) => p.pin === "325")!; // a college professor: on the machine, no login here
         const theirs = stub.fixture.days.find((d) => d.pin === "325" && d.date === today)!;
-        expect(college).toEqual({ pin: "325", name: "Prof S Banerjee", dept: "Anatomy", post: "Professor", status: theirs.status, known: true, firstIn: theirs.first_in, lastOut: theirs.last_out, onDuty: theirs.first_in !== null && theirs.last_out === null, hasLogin: false });
+        expect(college).toEqual({ pin: "325", name: "Prof S Banerjee", dept: "Anatomy", post: "Professor", status: theirs.status, known: true, firstIn: theirs.first_in, lastOut: theirs.last_out, onDuty: theirs.first_in !== null && theirs.last_out === null, hasLogin: false, appMark: null });
         // The summary is counts, and adds up.
         expect(res.body.summary.total).toBe(29);
         expect(Object.values(res.body.summary.byStatus as Record<string, number>).reduce((a, b) => a + b, 0)).toBe(29);
@@ -604,8 +604,8 @@ describe("staff attendance e2e (HTTP)", () => {
         expect((await get("sr", "/attendance/me")).body.leadsTeam).toBe(false);
         const srToday = stub.fixture.days.find((d) => d.pin === "303" && d.date === today)!;
         expect(todayRes.body.members).toEqual([
-          { userId: ids.jr, name: "Dr Junior Unlinked", linked: false, pin: null, today: null },
-          { userId: ids.sr, name: "Dr Senior Resident", linked: true, pin: "303", today: { status: srToday.status, known: true, firstIn: srToday.first_in, lastOut: srToday.last_out, onDuty: srToday.first_in !== null && srToday.last_out === null } },
+          { userId: ids.jr, name: "Dr Junior Unlinked", linked: false, pin: null, today: null, appMark: null },
+          { userId: ids.sr, name: "Dr Senior Resident", linked: true, pin: "303", today: { status: srToday.status, known: true, firstIn: srToday.first_in, lastOut: srToday.last_out, onDuty: srToday.first_in !== null && srToday.last_out === null }, appMark: null },
         ]);
         expect(todayRes.body.summary).toMatchObject({ total: 2, linked: 1 });
 

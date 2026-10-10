@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { NetworkError } from "../api";
-import { attendanceApi, type Me, type Punch, type SelfDay } from "../attendance/api";
+import { attendanceApi, type Me, type Punch, type SelfDay, type SelfMark } from "../attendance/api";
 import { ConfirmSheet } from "../attendance/confirm-sheet";
+import { MarkAttendance, MarkLine } from "../attendance/mark-button";
 import { WORD_TONE, clampToToday, countWords, monthDays, monthOf, weekOf, type SelfWord } from "../attendance/rules";
 import {
   BackBand, Chips, Counts, MonthGrid, PeriodNav, TONE, WeekList, canStepForward, periodTitle, step, wordText, type DayCell, type ViewKind,
@@ -24,7 +25,11 @@ import { Band, Button, MONO, Note } from "../ui";
  * when those keys are actually there (the hospital switches them on later, with no new app).
  *
  * Nothing ahead of today is drawn, and "next" stops at the period today is in.
+ *
+ * "MARK ATTENDANCE" (decision 0061) sits on top while the period shown includes today: the staff app's
+ * backup to the machine. A day's own marks are words under its word ("Marked in · inside premises").
  */
+const NO_MARKS: readonly SelfMark[] = [];
 export function MyAttendance({ openDay, openRequest, nowMs = Date.now }: { openDay?: string; openRequest?: string; nowMs?: () => number }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -51,6 +56,7 @@ export function MyAttendance({ openDay, openRequest, nowMs = Date.now }: { openD
 
   const linked = me !== null && me.linked ? me : null;
   const showsTimes = linked?.showsTimes === true;
+  const marks = linked?.marks ?? NO_MARKS;
   // The day's punches are asked for ONLY when the server said times are on.
   useEffect(() => {
     setPunches(null);
@@ -96,6 +102,7 @@ export function MyAttendance({ openDay, openRequest, nowMs = Date.now }: { openD
         <PeriodNav t={t} title={periodTitle(t, view, anchor)} onPrev={() => setAnchor(step(view, anchor, -1))} onNext={() => setAnchor(step(view, anchor, 1))} canNext={canStepForward(view, anchor, today)} />
         {failed !== null && <Note tone="warn" testID="att-failed">{t(failed === "offline" ? "attendance.offline" : "attendance.cannotRead")}</Note>}
         {me !== null && !me.linked && <Note tone="info" testID="att-not-linked">{t("attendance.notLinked")}</Note>}
+        {linked !== null && range.read?.to === today && <MarkAttendance t={t} call={call} today={today} marks={marks} onMarked={() => { void load(); }} />}
 
         {linked !== null && view === "week" && (
           <>
@@ -118,6 +125,7 @@ export function MyAttendance({ openDay, openRequest, nowMs = Date.now }: { openD
             <Text testID="att-day-word" numberOfLines={1} style={{ fontSize: 24, fontWeight: "700", color: word === null ? color.faint : TONE[WORD_TONE[word]].fg }}>
               {word === null ? t("attendance.noRecord") : wordText(t, word)}
             </Text>
+            {marks.filter((m) => m.date === anchor).map((m, i) => <MarkLine key={`${m.kind}-${String(i)}`} t={t} mark={m} testID={`att-day-mark-${String(i)}`} />)}
             {word === "confirm" && <Button testID="att-day-confirm" label={t("attendance.word.confirm")} onPress={() => setSheet({ date: anchor, reason: day?.reason ?? null })} />}
             {hasTimes && (
               <View testID="att-day-times" style={{ gap: 6 }}>

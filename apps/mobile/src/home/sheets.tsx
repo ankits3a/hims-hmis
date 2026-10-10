@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Modal, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import * as LocalAuthentication from "expo-local-authentication";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { biometricReady } from "../session";
+import { fineMoneyKey, useBiometricWord } from "../biometric";
 import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
-import { Button, MONO, Note } from "../ui";
+import { Button, MONO, Note, KeyboardModal } from "../ui";
 import { clockWords, isMoneyApproval } from "./rules";
 import { approvalWho, rupees, type WireApproval } from "./model";
 import type { Call } from "../doctor/api";
@@ -51,6 +52,7 @@ export function ApprovalSheet({ approval, call, online, nowMs, onClose, onDone }
   approval: WireApproval; call: Call; online: boolean; nowMs: number; onClose: () => void; onDone: (verdict: "approved" | "declined") => void;
 }) {
   const { t } = useI18n();
+  const lock = useBiometricWord();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<null | "approve" | "reject">(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export function ApprovalSheet({ approval, call, online, nowMs, onClose, onDone }
   );
 
   return (
-    <Modal transparent animationType="slide" onRequestClose={onClose} visible>
+    <KeyboardModal transparent animationType="slide" onRequestClose={onClose} visible>
       <Pressable style={{ flex: 1, backgroundColor: "rgba(12,22,19,.45)" }} onPress={onClose} accessibilityLabel={t("home.sheet.close")} />
       <View testID="approval-sheet" style={{ backgroundColor: color.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: space.lg, gap: space.sm }}>
         <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: color.line, alignSelf: "center" }} />
@@ -116,9 +118,9 @@ export function ApprovalSheet({ approval, call, online, nowMs, onClose, onDone }
           <View style={{ flex: 1 }}><Button testID="approval-decline" kind="secondary" label={t("home.sheet.decline")} busy={busy === "reject"} disabled={busy !== null || !online} onPress={() => { void decide("reject"); }} /></View>
           <View style={{ flex: 1.6 }}><Button testID="approval-approve" label={t("home.sheet.approve")} busy={busy === "approve"} disabled={busy !== null || !online} onPress={() => { void decide("approve"); }} /></View>
         </View>
-        <Text testID="approval-fine" style={[type.small, { color: color.faint }]}>{money ? t("home.sheet.fineMoney") : t("home.sheet.fine")}</Text>
+        <Text testID="approval-fine" style={[type.small, { color: color.faint }]}>{money ? t(fineMoneyKey(lock)) : t("home.sheet.fine")}</Text>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 
@@ -137,7 +139,7 @@ export function CoverSheet({ who, accept, online, busy, error, onClose, onSend }
     onSend(note);
   };
   return (
-    <Modal transparent animationType="slide" onRequestClose={onClose} visible>
+    <KeyboardModal transparent animationType="slide" onRequestClose={onClose} visible>
       <Pressable style={{ flex: 1, backgroundColor: "rgba(12,22,19,.45)" }} onPress={onClose} accessibilityLabel={t("home.sheet.close")} />
       <View testID="cover-sheet" style={{ backgroundColor: color.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: space.lg, gap: space.sm }}>
         <View style={{ width: 38, height: 4, borderRadius: 2, backgroundColor: color.line, alignSelf: "center" }} />
@@ -155,6 +157,6 @@ export function CoverSheet({ who, accept, online, busy, error, onClose, onSend }
         </View>
         <Text style={[type.small, { color: color.faint }]}>{t("home.coverSheet.fine")}</Text>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }

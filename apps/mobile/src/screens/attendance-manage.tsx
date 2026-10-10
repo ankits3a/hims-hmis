@@ -3,7 +3,7 @@ import { Pressable, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { NetworkError } from "../api";
 import {
-  ALL_READ, attendanceApi, type QueueRequest, type RequestTab, type SyncState, type TeamToday, type TodayList,
+  ALL_READ, attendanceApi, type MarkView, type QueueRequest, type RequestTab, type SyncState, type TeamToday, type TodayList,
 } from "../attendance/api";
 import { managerDay, reasonKey, sortToday, todayCounts, todayPlace, type TodayPerson } from "../attendance/rules";
 import { BackBand, Chips, Counts, ToneTag, dayLabel, type T } from "../attendance/views";
@@ -11,13 +11,15 @@ import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, MONO, Note } from "../ui";
+import { Band, MONO, Note, KeyboardScrollView } from "../ui";
 
 export type ManageTab = "today" | "team" | "requests";
 const hhmmIst = (iso: string): string => new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
 
-/** What the right-hand side of a "today" row says: the first-in time, or where they are instead. */
-function PlaceText({ t, p, testID }: { t: T; p: TodayPerson; testID: string }) {
+const MARK_TONE = { inside: "green", outside: "red", not_shared: "grey", doubtful: "warn" } as const;
+
+/** What the right-hand side of a "today" row says: the first-in time, or where they are instead — and, beside it, today's newest app mark (decision 0061). */
+function PlaceText({ t, p, testID, appMark = null }: { t: T; p: TodayPerson; testID: string; appMark?: MarkView | null }) {
   const place = todayPlace(p);
   const late = managerDay(p.status ?? "", p.firstIn !== null).late;
   return (
@@ -28,6 +30,7 @@ function PlaceText({ t, p, testID }: { t: T; p: TodayPerson; testID: string }) {
             {t(place === "not_in" ? "attendance.manage.notIn" : place === "leave" ? "attendance.word.leave" : "attendance.word.off")}
           </Text>}
       {late && <ToneTag label={t("attendance.manage.late")} tone="amber" />}
+      {appMark !== null && <View testID={`${testID}-mark`}><ToneTag label={t(`attendance.mark.tag.${appMark.place}`)} tone={MARK_TONE[appMark.place]} /></View>}
     </View>
   );
 }
@@ -68,13 +71,13 @@ export function AttendanceManage({ lead = false, tab: startTab }: { lead?: boole
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <BackBand t={t} onBack={() => router.back()} Band={Band} />
-      <ScrollView testID="attendance-manage" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }}>
+      <KeyboardScrollView testID="attendance-manage" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }}>
         <Text numberOfLines={1} style={[type.title, { color: color.ink }]}>{t(tabs.length === 1 && tab === "team" ? "attendance.manage.team" : "attendance.title")}</Text>
         {tabs.length > 1 && <Chips testID="att-tab" value={tab} onChange={setTab} items={tabs.map((k) => ({ key: k, label: t(`attendance.manage.${k}`) }))} />}
         {tab === "today" && <TodayTab t={t} call={call} onPerson={openPerson} />}
         {tab === "team" && <TeamTab t={t} call={call} onPerson={openPerson} />}
         {tab === "requests" && <RequestsTab t={t} call={call} />}
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }
@@ -132,7 +135,7 @@ function TodayTab({ t, call, onPerson }: { t: T; call: Call; onPerson: (pin: str
             {shown.map((p) => (
               <Row key={p.pin} testID={`att-person-${p.pin}`} name={p.name} onPress={() => onPerson(p.pin, p.name)}
                 sub={[p.dept ?? p.post ?? "", p.hasLogin ? null : t("attendance.manage.noLogin")].filter((x) => x !== null && x !== "").join(" · ")}
-                right={<PlaceText t={t} p={p} testID={`att-place-${p.pin}`} />} />
+                right={<PlaceText t={t} p={p} testID={`att-place-${p.pin}`} appMark={p.appMark ?? null} />} />
             ))}
           </View>
         </>
@@ -150,7 +153,7 @@ function TeamTab({ t, call, onPerson }: { t: T; call: Call; onPerson: (pin: stri
     return () => { gone = true; };
   }, [call]);
   const blank: TodayPerson = { status: null, firstIn: null, lastOut: null, onDuty: false };
-  const rows = sortToday((team?.members ?? []).map((m) => ({ ...blank, ...(m.today ?? {}), name: m.name, userId: m.userId, linked: m.linked, pin: m.pin })));
+  const rows = sortToday((team?.members ?? []).map((m) => ({ ...blank, ...(m.today ?? {}), name: m.name, userId: m.userId, linked: m.linked, pin: m.pin, appMark: m.appMark ?? null })));
   const counts = todayCounts(rows.filter((r) => r.linked));
   return (
     <View style={{ gap: space.md }}>
@@ -166,7 +169,7 @@ function TeamTab({ t, call, onPerson }: { t: T; call: Call; onPerson: (pin: stri
             {rows.map((m) => (
               <Row key={m.userId} testID={`att-member-${m.userId}`} name={m.name} sub={m.linked ? "" : t("attendance.manage.notLinked")}
                 onPress={m.pin === null ? undefined : () => onPerson(m.pin!, m.name)}
-                right={m.linked ? <PlaceText t={t} p={m} testID={`att-place-${m.userId}`} /> : <Text numberOfLines={1} style={{ fontSize: 13, color: color.faint }}>—</Text>} />
+                right={m.linked ? <PlaceText t={t} p={m} testID={`att-place-${m.userId}`} appMark={m.appMark} /> : <Text numberOfLines={1} style={{ fontSize: 13, color: color.faint }}>—</Text>} />
             ))}
           </View>
         </>
