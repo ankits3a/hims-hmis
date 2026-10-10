@@ -13,7 +13,7 @@ import { dismissCopilotNotice, getCopilotNotice } from "./copilot-api";
  * the card is up before the box can be used, and the ledger records every ask either way.
  *
  * A failed read shows nothing and is retried on the next check: the desk is never stopped by it.
- * The phone app has no copilot yet; its half of this notice ships with E1.3.
+ * The phone app (E1.3, `apps/mobile/src/screens/copilot.tsx`) reads and dismisses the same server state.
  */
 export type NoticeState = "unknown" | "checking" | "seen" | "showing";
 type State = NoticeState;
