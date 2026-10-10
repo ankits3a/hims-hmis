@@ -1366,6 +1366,20 @@
       "when": 1791650935914,
       "tag": "0194_copilot_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1791661314978,
+      "tag": "0195_copilot_name_mask_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1791665345682,
+      "tag": "0196_user_reminders",
+      "breakpoints": true
     }
   ]
 }

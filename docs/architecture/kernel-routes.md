@@ -140,6 +140,14 @@ generated: { by: tools/arch/gen.mjs }
 | POST | `/print/printed` | `printing/printing.controller.ts` |
 | POST | `/print/reprint` | `printing/printing.controller.ts` |
 
+## `reminders`
+
+| verb | path | controller |
+|---|---|---|
+| POST | `/reminders/:id/cancel` | `reminders/reminders.controller.ts` |
+| GET | `/reminders` | `reminders/reminders.controller.ts` |
+| POST | `/reminders` | `reminders/reminders.controller.ts` |
+
 ## `resources`
 
 | verb | path | controller |

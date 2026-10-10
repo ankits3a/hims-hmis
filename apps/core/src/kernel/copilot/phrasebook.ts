@@ -311,3 +311,16 @@ export function matchIntent(question: string): IntentMatch | null {
 export function intentNames(): CopilotIntent[] {
   return Object.keys(CUES) as CopilotIntent[];
 }
+
+/**
+ * E0.6 — every single word the cues are made of, normalised. `names.ts` never masks one of these on
+ * its own (a patient part that equals "bill" or "kab" would otherwise eat the cue that routes the
+ * question), and never treats a near-spelling of one as a name.
+ */
+export function cueWords(): string[] {
+  const words = new Set<string>();
+  for (const cues of Object.values(NORMALISED_CUES)) {
+    for (const cue of cues) for (const w of cue.token.split(" ")) if (w !== "") words.add(w);
+  }
+  return [...words];
+}

@@ -4,6 +4,7 @@ import type { Handler } from "../events/subscriptions";
 import { SubscriptionBus } from "../events/subscriptions";
 import { runDispatchCycle } from "../events/dispatcher";
 import { runDueTimers } from "../workflow/timers";
+import { runDueReminders } from "../reminders/reminders";
 import { sweepExpiredTempRoles } from "../auth/temp-roles";
 import { sweepGuardianMajority } from "../../modules/patients/guardians";
 import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
@@ -246,10 +247,17 @@ export function registerAllJobs(
     every: intervals.workerDispatchIntervalMs,
     run: async (now) => { await runDispatchCycle(db, bus, { now }); },
   });
+  /*
+   * E1.2 (decision 0064, owner yes 2026-10-11) — personal reminders fire on THIS tick rather than as
+   * a job of their own: the 20 s cadence meets "within 60 s", and no new name moves the five job
+   * censuses (jobs.test, scheduler.test, worker-runtime e2e, alerts-parity, the prod alert rules).
+   * This job's staleness alert covers both. `finally`: a workflow timer that throws does not hold a
+   * person's reminder back a tick.
+   */
   scheduler.register({
     name: "runDueTimers",
     every: intervals.workerTimersIntervalMs,
-    run: async (now) => { await runDueTimers(db, now); },
+    run: async (now) => { try { await runDueTimers(db, now); } finally { await runDueReminders(db, now); } },
   });
   scheduler.register({
     name: "sweepExpiredTempRoles",

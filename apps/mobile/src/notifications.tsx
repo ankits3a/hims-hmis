@@ -34,15 +34,15 @@ import { color, radius, space } from "./theme";
  * NOTHING IS ASKED UNINVITED. The phone's permission prompt opens only after the person taps
  * "Turn on" under a sentence that says what a notification will and will not contain.
  */
-export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder", "approvals"] as const;
+export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder", "approvals", "personal"] as const;
 /** The phone SAYS which categories it can draw (`?knows=`), so the server offers a switch only for those (app home round 2). */
 const PUSH_ROUTE = `/auth/phone/notifications?knows=${PUSH_CATEGORIES.join(",")}`;
 /** The server's `link` word → the phone screen it opens. An unknown word, or a screen this person may not open, is home. */
 export const PUSH_LINK_SEAT: Record<string, Seat["key"] | null> = { home: null, onNow: "onNow", myDuties: "myDuties", consult: "consult" };
 /** A link that lands on a CARD of the home screen rather than on a screen of its own. */
 export const PUSH_LINK_CARD: Record<string, NeedKind> = { approvals: "approval" };
-/** STAFF ATTENDANCE — a link that opens one of the attendance screens: the committee's requests list, or a person's own attendance. */
-export const PUSH_LINK_ROUTE: Record<string, "requests" | "mine"> = { attendanceRequests: "requests", attendance: "mine" };
+/** STAFF ATTENDANCE — a link that opens one of the attendance screens: the committee's requests list, or a person's own attendance. E1.2 — `reminders`: the person's own Reminders screen. */
+export const PUSH_LINK_ROUTE: Record<string, "requests" | "mine" | "reminders"> = { attendanceRequests: "requests", attendance: "mine", reminders: "reminders" };
 
 export type PushStatus = "unknown" | "notInBuild" | "unreachable" | "serverError" | "notLinked" | "serverOff" | "off" | "denied" | "on";
 type ServerState = {
@@ -271,6 +271,7 @@ export function NotificationsProvider({ children, phone: injected, foreground = 
     const att = PUSH_LINK_ROUTE[link];
     if (att === "requests") { if (permissions?.hospital.includes("attendance.all.read") === true) router.push({ pathname: "/attendance-staff", params: { tab: "requests" } }); else router.push("/"); return; }
     if (att === "mine") { router.push({ pathname: "/attendance", params: { request: "latest" } }); return; }
+    if (att === "reminders") { router.push("/reminders"); return; }
     const seat = PUSH_LINK_SEAT[link] ?? null;
     const allowed = seat !== null && permissions !== null && seatsFor(permissions).some((s) => s.key === seat);
     if (allowed) router.push({ pathname: "/seat/[key]", params: { key: seat } });

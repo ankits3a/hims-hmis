@@ -113,3 +113,5 @@ export * from "./attendance";
 // E0.1 — the copilot ledger (decision 0064): asks, acts and the staff notice. References nothing
 // (plain-text actor ids, the `phi-access` reasoning), so it sits downstream of no table.
 export * from "./copilot";
+// E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
+export * from "./reminders";
