@@ -15,6 +15,7 @@ import { RADIOLOGY_APPROVAL_GRANTED_CONSUMER, RADIOLOGY_ORDER_PLACED_CONSUMER, R
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../modules/pharmacy";
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
+import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -160,6 +161,13 @@ describe("seedCursors", () => {
          * unsent 72 h after a payment long past. Seeded at `max(seq)`, it begins with the next bill.
          */
         RADIOLOGY_READY_ON_PAYMENT_CONSUMER,
+        /**
+         * DECISION 0065 — the free-test order, and the one whose unseeded cursor would do REAL harm:
+         * from zero it would walk every `consultation.completed` since the OPD opened and, while the
+         * lab fee is Free, place a lab order for every past visit's advised tests. Seeded at
+         * `max(seq)`, it orders only for consults completed after it ships.
+         */
+        ORDERING_FREE_TESTS_CONSUMER,
       ].sort());
   });
 

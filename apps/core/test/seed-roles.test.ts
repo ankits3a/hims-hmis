@@ -1308,6 +1308,7 @@ describe("seed:roles — the census pins, stated before anything is compared (§
       pharmacy: 28, // ITEM DISCOUNT (owner 2026-10-02): +1, pharmacy.sale_items.discount; STAGE D4: +2, pharmacy.trays.check and .manage; STAGE D5: +1, pharmacy.antimicrobial.approve; STAGE D3: +2, pharmacy.coldchain.record and .manage; STAGE D2: +2, pharmacy.incidents.record and .review; STAGE D1: +2, pharmacy.adr.record and .manage; PHARMACY P6 (patient messages): +2, pharmacy.messages.consent and .manage; PHARMACY P6: +3, pharmacy.ndps.custody, .witness and pharmacy.licences.manage; parity P5 (Tally): +1, pharmacy.tally.export; parity P5: +2, pharmacy.reports.read and .margin; P20: +1, pharmacy.downtime.enter; P19: +2, pharmacy.retail.*; PLAN 16c T1; P2: +1, pharmacy.pharmacists.manage; P9: +1, pharmacy.register.read; P17: +1, read_sealed
       roster: 3, // PHASE R (R1) — manage, publish, read; the seam ships inert (no menu, no route)
       attendance: 1, // STAFF ATTENDANCE (owner 2026-10-09) — attendance.all.read; a team and oneself are computed, not granted
+      ordering: 0, // DECISION 0065 — no permission of its own: rides tariff.read, tariff.services.manage and orders.place
       radiology: 21, // 18-S RS12 — `radiology.pacs.interface`, `radiology.pacs.reconcile`; 18-S RS5 — `radiology.contrast.record`; 18-S RS4 — `radiology.devices.manage`; 18-S RS3 — `radiology.display.read`; PLAN 18b T1 — `radiology.mwl.read`
     });
     // VD-1 T4 — +1 with `opd.vitals.history.read` (vitals_desk + doctor).
