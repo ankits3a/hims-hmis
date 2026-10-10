@@ -56,6 +56,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/opd/vitals/bay` | `(redirect)` |
 | `/ops/downtime-kit` | `apps/web/src/screens/ops-downtime-kit` |
 | `/ops/mode` | `apps/web/src/screens/ops-mode` |
+| `/ordering/outside-tests` | `apps/web/src/screens/outside-tests` |
 | `/ot/book` | `apps/web/src/screens/ot-book` |
 | `/ot/cockpit/$caseId` | `apps/web/src/screens/ot-cockpit` |
 | `/ot/list` | `apps/web/src/screens/ot-list` |

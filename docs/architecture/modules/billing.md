@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/billing/`
 · Notes: [MAP.md](../../../apps/core/src/modules/billing/MAP.md)
 
 - **Depends on modules:** `membership`, `opd`, `patients`, `tariff`
-- **Used by modules:** `lab`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `lab`, `opd`, `ordering`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -31,6 +31,8 @@ Source: `apps/core/src/modules/billing/`
 - `cash-law.ts`
   - types: `TenderInput`
 - `config.ts`
+  - `feeOffAt(rules: ChargeRules, kind: FeeKind, at: Date): boolean`
+  - `feeOffNow(rules: ChargeRules, kind: FeeKind): boolean`
   - `loadBillingConfig(db: Db | Tx): Promise<BillingConfig>`
   - types: `BillingConfig`
 - `credit-notes.ts`
@@ -83,6 +85,9 @@ Source: `apps/core/src/modules/billing/`
   - `encounterFeeStatuses(exec: Db | Tx, encounters: Pick<EncounterRow, "id" | "visitType">[]): Promise<Map<string, EncounterFeeStatus>>`
   - `standingInvoiceFor(exec: Db | Tx, encounterId: string): Promise<{ id: string; invoiceNo: string } | null>`
   - types: `EncounterFeeStatus`
+- `fee-switches.ts`
+  - `feeSwitchesView(db: Db, now: Date = new Date()): Promise<FeeSwitchesView>`
+  - `setFeeSwitch(db: Db, actor: Actor, kind: FeeKind, off: boolean, now: Date = new Date()): Promise<FeeSwitchesView>`
 - `idempotency.ts`
   - `withIdempotency(db: Db, scope: { actorId: string; route: string; key: string | undefined }, body: unknown, work: () => Promise<T>, now: Dat…`
 - `invoices.ts`

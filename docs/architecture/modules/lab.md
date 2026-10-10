@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** `abdm`, `radiology`
+- **Used by modules:** `abdm`, `ordering`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
@@ -82,6 +82,7 @@ Source: `apps/core/src/modules/lab/`
   - `deskWalkinOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskWalkinInput, now: Date = new Date()): Promise<DeskOrderRe…`
   - `drawRank(container: string): number`
   - `labDoctors(db: Db): Promise<{ id: string; displayName: string }[]>`
+  - `placeLabOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskOrderInput, now: Date = new Date()): Promise<DeskOrderResul…`
   - `tubePlan(exec: Db | Tx, serviceIds: readonly string[]): Promise<TubePlanRow[]>`
   - types: `AddOnOrderInput`, `DeskAdvisedLine`, `DeskFindHit`, `DeskItemInput`, `DeskOrderInput`, `DeskOrderResult`, `DeskWalkinInput`, `LabCollectionSite`, `LabPriority`, `TubePlanRow`
 - `duplicates.ts`

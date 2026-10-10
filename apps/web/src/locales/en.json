@@ -1,4 +1,28 @@
 {
+  "testPicker": {
+    "placeholder": "Search a test — 2 letters",
+    "none": "No test matches.",
+    "dept": { "lab": "Lab", "imaging": "Imaging", "outside": "Outside", "in_hospital": "In hospital" }
+  },
+  "outsideTests": {
+    "title": "Outside tests",
+    "lead": "Tests the hospital does not do yet, such as ECG or 2D echo. Doctors advise them like any test; the prescription prints them under \"Tests to be done outside\". When the hospital starts one, set it to In hospital and name the department.",
+    "code": "Code",
+    "name": "Name",
+    "where": "Done",
+    "outside": "Outside",
+    "inHospital": "In hospital",
+    "inHospitalAt": "In hospital · {{department}}",
+    "department": "Department",
+    "active": "In use",
+    "add": "Add test",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "saved": "Saved — {{name}}.",
+    "loading": "Loading…",
+    "empty": "No outside tests yet."
+  },
   "hospital": {
     "name": "Hospital (name pending — roadmap item #5)"
   },
@@ -55,6 +79,7 @@
       "admin": "Admin"
     },
     "staffReports": "Staff reports",
+    "outsideTests": "Outside tests",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -1354,9 +1379,10 @@
     "vitalsPulse": "Pulse",
     "vitalsSpo2": "SpO₂",
     "advisedTests": "Advised investigations",
-    "advisedTestsNote": "These print on the prescription as advice, with today's price. They create no order and book no sample — the patient takes the slip to the counter.",
+    "advisedTestsNote": "These print on the prescription with today's price. While a fee is switched to Free, completing the consult orders those tests for the lab or imaging; otherwise the patient takes the slip to the counter.",
     "advisedTestsSearch": "Search the priced service catalogue",
     "advisedTestsNoMatch": "No active service matches. The catalogue is curated in the tariff, not here.",
+    "outsideTest": "done outside",
     "advisedTestsEmpty": "No investigation advised.",
     "advisedTestsRemove": "Remove {{name}}",
     "remove": "Remove",
@@ -1527,7 +1553,8 @@
     "version": "Version {{n}}",
     "print": "Print prescription",
     "advisedTests": "Advised investigations",
-    "advisedTestsNote": "Advice only — no test has been ordered or booked. Prices are as of {{date}} and are re-confirmed at the counter."
+    "advisedTestsNote": "Prices are as of {{date}} and are confirmed at the lab or imaging counter.",
+    "outsideTests": "Tests to be done outside"
   },
   "slip": {
     "room": "Room",
@@ -3229,6 +3256,10 @@
       "lab": {
         "off": "Saved — laboratory tests are free from now.",
         "on": "Saved — laboratory tests are charged from now."
+      },
+      "imaging": {
+        "off": "Saved — imaging is free from now.",
+        "on": "Saved — imaging is charged from now."
       }
     },
     "opdConsult": {
@@ -3241,8 +3272,14 @@
     "lab": {
       "label": "Laboratory test fees",
       "whenOn": "Charged: each test is billed at its tariff price. A test with no price cannot be ordered.",
-      "whenOff": "Free: every laboratory test is billed at ₹0, including tests that have no price yet. The order still gets its bill and its token.",
-      "note": "Imaging, procedures and pharmacy are not affected by this switch."
+      "whenOff": "Free: every laboratory test is billed at ₹0, including tests that have no price yet. When the doctor completes the consult, the advised tests are ordered for the lab by themselves.",
+      "note": "Imaging has its own switch. Procedures and pharmacy are not affected."
+    },
+    "imaging": {
+      "label": "Imaging fees",
+      "whenOn": "Charged: a scan starts only after its bill (or for a TPA, day-care or emergency patient).",
+      "whenOff": "Free: no bill is needed to start a scan. When the doctor completes the consult, the advised X-ray, ultrasound or CT is ordered for imaging by itself.",
+      "note": "A study ordered while imaging is free stays free, even if you switch charging on before the scan."
     }
   },
   "storeSettings": {

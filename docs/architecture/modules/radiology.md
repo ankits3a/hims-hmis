@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
-- **Used by modules:** `abdm`
+- **Used by modules:** `abdm`, `ordering`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
@@ -239,9 +239,10 @@ Source: `apps/core/src/modules/radiology/`
 - `manifest.ts`
   - `radiologyManifest: ModuleManifest`
 - `money.ts`
-  - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts): ImagingAuthorisation | null`
+  - `authorisationOf(study: AuthorisationStudyFacts, encounter: AuthorisationEncounterFacts, imagingFree = false): ImagingAuthorisation | null`
   - `encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }>`
   - `hasBillDecision(exec: Db | Tx, studyId: string, kind: ImagingBillDecisionKind): Promise<boolean>`
+  - `imagingFreeAt(exec: Db | Tx, orderedAt: Date): Promise<boolean>`
   - `linkInvoiceLine(tx: Tx, studyId: string, invoiceLineId: string): Promise<{ studyId: string; invoiceLineId: string }>`
   - `openBillDecisions(exec: Db | Tx): Promise<{ id: string; studyId: string; kind: string; detail: unknown; raisedAt: Date }[]>`
   - `raiseBillDecision(tx: Tx, actor: Actor, input: { studyId: string; kind: ImagingBillDecisionKind; detail?: Record<string, unknown> | null })…`

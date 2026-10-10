@@ -9,7 +9,7 @@ import { events, labOrderables, opdEncounters, registrationConfig, services } fr
 import { getEncounter } from "../opd";
 import { registerPatient } from "../patients";
 import { feeQuote, feeServiceFor } from "./charge-rules";
-import { loadBillingConfig, updateBillingConfig } from "./config";
+import { feeOffAt, loadBillingConfig, updateBillingConfig } from "./config";
 import { encounterFeeStatuses } from "./fee-status";
 import { feeSwitchesView, setFeeSwitch } from "./fee-switches";
 import { previewInvoice } from "./invoices";
@@ -67,6 +67,7 @@ describe("the fee switches: consultation and laboratory fees, off and on", () =>
     expect(view.switches).toEqual([
       { kind: "opdConsult", off: false, changedAt: null, changedBy: null },
       { kind: "lab", off: false, changedAt: null, changedBy: null },
+      { kind: "imaging", off: false, changedAt: null, changedBy: null },
     ]);
     expect(view.consultPaise).toEqual({ new: 50000, renewal: 50000 });
   });
@@ -125,6 +126,18 @@ describe("the fee switches: consultation and laboratory fees, off and on", () =>
     expect((await rules()).feeSwitches?.opdConsult).toHaveLength(1);
     await withTx(db, (tx) => updateBillingConfig(tx, { chargeRules: { opdConsult, feeSwitches: { opdConsult: [], lab: [{ at: T2.toISOString(), off: true, by: "forged" }] } } }, T2));
     expect((await rules()).feeSwitches).toEqual({ opdConsult: [{ at: T1.toISOString(), off: true, by: "the-owner" }] });
+  });
+
+  it("imaging switched off (decision 0065): a study ordered while it is off is free, one ordered before or after is not", async () => {
+    expect(feeOffAt(await rules(), "imaging", T1)).toBe(false);
+    await setFeeSwitch(db, owner, "imaging", true, T1);
+    await setFeeSwitch(db, owner, "imaging", false, T3);
+    expect(feeOffAt(await rules(), "imaging", T0)).toBe(false);
+    expect(feeOffAt(await rules(), "imaging", T2)).toBe(true);
+    expect(feeOffAt(await rules(), "imaging", new Date(T3.getTime() + 1))).toBe(false);
+    expect((await feeSwitchesView(db, T3)).switches.map((s) => s.kind)).toEqual(["opdConsult", "lab", "imaging"]);
+    /** The lab switch is its own: imaging off does not make tests free. */
+    expect((await rules()).feeSwitches?.lab).toBeUndefined();
   });
 
   it("only a named person switches a fee", async () => {

@@ -68,6 +68,7 @@ import { completeComplaint, fetchRegimen, recogniseComplaint, suggestSyndromes }
 import type { WireCard, WireIcd11, WireRegimen, WireSyndromeHit } from "../lib/cds-api";
 import { TabStrip } from "../components/desk-fields";
 import { CreditChip } from "../components/patient-credit";
+import { advisableTests } from "../lib/ordering-api";
 
 /**
  * The consultation screen (D5 / Task 15) — the doctor's flagship: the live queue with call / skip /
@@ -790,8 +791,8 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
    * `tariff.read` is the grant DD6 makes for exactly this (README, Plan 07d T5).
    */
   const services = useQuery({
-    queryKey: ["tariff", "price-list"],
-    queryFn: () => api<{ items: WirePriceListRow[] }>("GET", "/tariff/price-list"),
+    queryKey: ["ordering", "advisable-tests"],
+    queryFn: advisableTests,
     enabled: active !== null,
   });
   const serviceMatches = (services.data?.items ?? [])
@@ -3922,7 +3923,7 @@ export function OpdConsult({ focusEncounterId }: { focusEncounterId?: string } =
                               setTestQuery("");
                             }}
                           >
-                            {sv.name} — {fmtPaise(sv.pricePaise)}
+                            {sv.name} — {"outside" in sv && sv.outside === true ? t("opdConsult.outsideTest") : fmtPaise(sv.pricePaise)}
                           </button>
                         </li>
                       ))}

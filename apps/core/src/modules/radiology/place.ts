@@ -86,6 +86,8 @@ type PlaceImagingOrderBase = {
   indication?: string | null;
   placedAt?: Date;
   items: readonly PlaceImagingItemInput[];
+  /** A `system` actor's rule (decision 0065's free-study order); `placeOrder` refuses a system order without one. */
+  protocolRef?: string;
 };
 
 export type PlaceImagingOrderInput = PlaceImagingOrderBase &
@@ -426,6 +428,7 @@ export async function placeImagingOrder(
           indication: input.indication,
           placedAt: input.placedAt,
           items: placeItems,
+          protocolRef: input.protocolRef,
         };
 
         const placed =

@@ -39,7 +39,7 @@ export type { DuplicateWarning } from "./duplicates";
 // ── PLAN 17a T4 — the desk, the two definitions, and the add-on ──
 // DD22: 17a mounts NO route, so these are transaction-shaped services. 17b's controllers wrap
 // `deskOrder` in `withIdempotency` (imported from `../billing`) and add no second placement path.
-export { addOnOrder, advisedTestItems, deskOrder, LAB_DESK_OPERATE } from "./desk";
+export { addOnOrder, advisedTestItems, deskOrder, LAB_DESK_OPERATE, placeLabOrder } from "./desk";
 export type {
   AddOnOrderInput, DeskItemInput, DeskOrderInput, DeskOrderResult, LabCollectionSite, LabPriority,
 } from "./desk";

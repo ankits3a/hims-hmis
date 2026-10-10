@@ -432,6 +432,8 @@ export type WireRxPrint = {
     advice: string | null; followUpDays: number | null; chiefComplaint: string | null;
     /** PLAN 07d T5 — advised tests with the price AS OF the service date (DD4, E-9). */
     advisedTests: WireAdvisedTest[];
+    /** Decision 0065 — which advised tests are done OUTSIDE the hospital. Absent on an older server. */
+    outsideTestIds?: string[];
     /** The coded rows with each one's eye (board "Ophthal"). Absent on a payload from before it. */
     diagnoses?: { text: string; icd10Code: string | null; laterality: Eye | null }[];
   };
