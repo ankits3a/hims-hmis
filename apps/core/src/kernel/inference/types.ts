@@ -69,8 +69,14 @@ export type CompleteInput = {
 };
 
 export type CompleteResult = {
-  /** The reply, and nothing else. No usage block, no logprobs, no echo of what was sent. */
+  /** The reply. No logprobs, no echo of what was sent. */
   text: string;
+  /**
+   * E0.5 (decision 0064, the ₹5,000/day cap) — the provider's own token counts, when it sent them, so
+   * the copilot's cost meter prices what was actually billed (a reasoning model's thinking included).
+   * Two integers and nothing else: no text, so nothing a caller could mistake for an answer.
+   */
+  usage?: { inputTokens: number; outputTokens: number };
 };
 
 export class InferenceUnavailable extends Error {

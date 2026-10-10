@@ -117,6 +117,13 @@ export type CopilotToolDecl = {
   alsoAdmits?: readonly string[];
   /** Whether the question must name somebody. See the type header. */
   needsSubject: boolean;
+  /**
+   * E0.3 — what the tool does, for the halt switch: `read` (the default) answers; `draft` prepares
+   * something a human then reviews; `act` writes (behind E0.2's confirm). Halting "act" stops every
+   * `act` tool while reads still answer; halting "draft" stops every `draft` tool. A write tool that
+   * forgot to say `act` would slip a halt, so E0.2's confirm path must refuse a tool without it.
+   */
+  kind?: "read" | "draft" | "act";
   run(ctx: CopilotToolCtx): Promise<CopilotAnswer>;
 };
 

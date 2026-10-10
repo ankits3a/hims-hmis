@@ -1672,9 +1672,17 @@ holds `attendance_committee`; nobody is assigned to that role by any seed.
 **Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
 row in its ledger for 180 days — the masked question only, never a name or number typed into it —
 and staff see a one-line notice saying so before their first question. One permission reads the
-totals: `copilot.health.read` is held by `owner`, `admin` and the new role `quality_manager`
-(the copilot steward), and the steward role holds nothing else. The page shows counts, routes and
-timings for a day and never a per-person list; nobody is assigned to `quality_manager` by any seed.
+totals: `copilot.health.read` is held by `owner`, `admin`, `duty_manager` and the new role `quality_manager`
+(the copilot steward), and the steward role holds nothing else but the halt switch. The page shows counts, routes,
+timings, model calls and estimated AI spend for a day and never a per-person list; nobody is assigned to
+`quality_manager` by any seed.
+
+**Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
+`copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
+draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and
+`copilot.halt.clear_global` is held by `owner` alone. Each halt and clear is an audit event naming who.
+When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
+phrasebook only until midnight IST and the health page says so.
 
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it

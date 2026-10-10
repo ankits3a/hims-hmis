@@ -71,6 +71,8 @@ generated: { by: tools/arch/gen.mjs }
 | verb | path | controller |
 |---|---|---|
 | POST | `/copilot/ask` | `copilot/copilot.controller.ts` |
+| POST | `/copilot/halt/clear` | `copilot/halt.controller.ts` |
+| POST | `/copilot/halt` | `copilot/halt.controller.ts` |
 | GET | `/copilot/health` | `copilot/copilot.controller.ts` |
 | GET | `/copilot/notice` | `copilot/copilot.controller.ts` |
 | POST | `/copilot/notice` | `copilot/copilot.controller.ts` |
