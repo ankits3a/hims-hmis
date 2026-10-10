@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { BackHandler, Keyboard, Platform, Pressable, ScrollView, StyleSheet, TextInput as RNTextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
@@ -24,27 +24,83 @@ export type Patch = (next: (d: ConsultDraft) => ConsultDraft) => void;
 
 const says = (e: unknown, t: T): string => (e instanceof NetworkError ? t("mobile.network") : e instanceof ApiError ? refusalText(e.body, e.code) : String(e));
 
-/** One drawer: a full-height sheet over the visit, closed with Done. What it changed is already on the visit. */
+/**
+ * The keyboard's height while it is up on Android, else 0. Android keyboard events come from the
+ * activity's window only, which is why the Android drawer is drawn in that window (see Drawer).
+ */
+export function useAndroidKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return undefined;
+    const up = Keyboard.addListener("keyboardDidShow", (e) => setHeight(Math.max(0, e.endCoordinates.height)));
+    const down = Keyboard.addListener("keyboardDidHide", () => setHeight(0));
+    return () => { up.remove(); down.remove(); };
+  }, []);
+  return height;
+}
+
+/**
+ * One drawer: a full-height sheet over the visit, closed with Done. What it changed is already on the visit.
+ *
+ * ANDROID DRAWS NO MODAL (owner 2026-10-10: the keyboard covered the Notes and Advice boxes, and padding a
+ * Modal did not help). Since React Native 0.81 a Modal's dialog window is edge-to-edge, so Android no longer
+ * resizes it for the keyboard, and the keyboard events come from the activity's window, not the dialog's.
+ * On Android the drawer is therefore an overlay inside the consult screen, lifted by the keyboard's height,
+ * and the focused box is scrolled into view; Back closes it as the Modal did. iPhone keeps the KeyboardModal.
+ */
 export function Drawer({ title, onClose, children, testID, foot }: { title: string; onClose: () => void; children: React.ReactNode; testID: string; foot?: React.ReactNode }) {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
-  return (
-    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={st.scrim}>
-        <View style={[st.sheet, { paddingBottom: insets.bottom + space.md }]} testID={testID}>
-          <View style={st.grab} />
-          <View style={st.head}>
-            <Text style={st.title}>{title}</Text>
-            <Pressable testID={`${testID}-done`} accessibilityRole="button" hitSlop={10} onPress={onClose} style={st.doneBtn}>
-              <Text style={st.done}>{t("mobile.consult.done")}</Text>
-            </Pressable>
-          </View>
-          <ScrollView {...keyboardScroll()} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.xl, gap: space.md }}>{children}</ScrollView>
-          {foot !== undefined && <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.sm }}>{foot}</View>}
+  const android = Platform.OS === "android";
+  const keyboard = useAndroidKeyboardHeight();
+  const scroll = useRef<ScrollView>(null);
+  const offset = useRef(0);
+  useEffect(() => {
+    if (!android) return undefined;
+    const back = BackHandler.addEventListener("hardwareBackPress", () => { onClose(); return true; });
+    return () => back.remove();
+  }, [android, onClose]);
+  useEffect(() => {
+    if (!android || keyboard === 0) return undefined;
+    // After the sheet has shrunk above the keyboard, bring the box being typed in back into view.
+    const timer = setTimeout(() => {
+      const box = RNTextInput.State.currentlyFocusedInput();
+      const view = scroll.current;
+      const host = view?.getNativeScrollRef() ?? null;
+      if (box === null || view === null || host === null) return;
+      host.measureInWindow((_x: number, viewY: number, _w: number, viewH: number) => {
+        box.measureInWindow((_bx: number, boxY: number, _bw: number, boxH: number) => {
+          const below = boxY + Math.min(boxH, 160) + space.md - (viewY + viewH);
+          const above = viewY - boxY;
+          if (below > 0) view.scrollTo({ y: offset.current + below, animated: true });
+          else if (above > 0) view.scrollTo({ y: Math.max(0, offset.current - above - space.md), animated: true });
+        });
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [android, keyboard]);
+  const sheet = (
+    <View style={st.scrim}>
+      <View style={[st.sheet, { paddingBottom: (android && keyboard > 0 ? 0 : insets.bottom) + space.md }]} testID={testID}>
+        <View style={st.grab} />
+        <View style={st.head}>
+          <Text style={st.title}>{title}</Text>
+          <Pressable testID={`${testID}-done`} accessibilityRole="button" hitSlop={10} onPress={onClose} style={st.doneBtn}>
+            <Text style={st.done}>{t("mobile.consult.done")}</Text>
+          </Pressable>
         </View>
+        <ScrollView ref={scroll} {...keyboardScroll()} keyboardShouldPersistTaps="handled" scrollEventThrottle={32}
+          onScroll={(e) => { offset.current = e.nativeEvent.contentOffset.y; }}
+          contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: space.xl, gap: space.md }}>{children}</ScrollView>
+        {foot !== undefined && <View style={{ paddingHorizontal: space.lg, paddingTop: space.sm, gap: space.sm }}>{foot}</View>}
       </View>
-    </KeyboardModal>
+    </View>
   );
+  if (android) {
+    // The keyboard's reported height leaves out the navigation bar; the overlay reaches the screen's foot.
+    return <View testID="drawer-overlay" style={[StyleSheet.absoluteFill, st.overlay, { paddingBottom: keyboard > 0 ? keyboard + insets.bottom : 0 }]}>{sheet}</View>;
+  }
+  return <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>{sheet}</KeyboardModal>;
 }
 
 export function Chip({ label, on, onPress, testID, dashed }: { label: string; on?: boolean; onPress: () => void; testID?: string; dashed?: boolean }) {
@@ -674,6 +730,7 @@ export function SetsDrawer({ api, onClose, onUse, canSave, onSave }: {
 
 const st = StyleSheet.create({
   scrim: { flex: 1, backgroundColor: "rgba(12,22,19,.45)", justifyContent: "flex-end" },
+  overlay: { zIndex: 50, elevation: 50 },
   sheet: { backgroundColor: color.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, maxHeight: "92%", minHeight: "60%" },
   grab: { width: 38, height: 4, borderRadius: 2, backgroundColor: color.line, alignSelf: "center", marginTop: 10 },
   head: { flexDirection: "row", alignItems: "center", paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.sm },
