@@ -62,4 +62,18 @@ export const meetingRequestClosed = defineEvent("attendance.meeting_request_clos
   how: z.enum(["closed", "resolved_by_correction"]),
 }));
 
-export const ATTENDANCE_EVENTS = [attendanceSynced, attendanceSyncRefused, attendancePersonLinked, userIdentityChanged, attendanceRead, meetingRequested, meetingRequestSeen, meetingRequestClosed] as const;
+/**
+ * A person marked attendance from the staff app (decision 0061). The place WORD and whole metres from
+ * the campus centre — NEVER a latitude or longitude: the reading is reduced before this is made.
+ */
+export const attendanceAppMarked = defineEvent("attendance.app_marked", MODULE, z.object({
+  markId: z.string().min(1),
+  userId: z.string().min(1),
+  pin: z.string().min(1),
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  kind: z.enum(["in", "out"]),
+  place: z.enum(["inside", "outside", "not_shared", "doubtful"]),
+  distanceM: count.nullable(),
+}).strict());
+
+export const ATTENDANCE_EVENTS = [attendanceSynced, attendanceSyncRefused, attendancePersonLinked, userIdentityChanged, attendanceRead, meetingRequested, meetingRequestSeen, meetingRequestClosed, attendanceAppMarked] as const;
