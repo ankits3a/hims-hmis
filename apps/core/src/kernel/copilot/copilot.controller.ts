@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, ForbiddenException, HttpCode, Inject, Post } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
-import { CurrentActor } from "../auth/decorators";
+import { CurrentActor, RequirePermission } from "../auth/decorators";
 import { istDayString as istDay } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
@@ -9,7 +9,9 @@ import { chooserFor } from "../inference/openai-decisions";
 import { collectCopilotTools, permissionCheckFor, runTool } from "./catalog";
 import { kernelCopilotTools } from "./kernel-tools";
 import { IdentifierLeak, maskQuestion, rehydrate } from "./mask";
-import { routeQuestion } from "./router";
+import * as router from "./router";
+import { acknowledgeNotice, noticeSeen, readCopilotHealth, recordAsk } from "./ledger";
+import type { AskRecord, CopilotHealth } from "./ledger";
 import type { CopilotAnswer, CopilotToolDecl } from "./types";
 import type { AppConfig } from "../config";
 import type { Db } from "../db/client";
@@ -49,7 +51,16 @@ const askBody = z.object({
    */
   terms: z.array(z.string().min(1).max(80)).max(20).optional(),
   date: z.string().length(10).optional(),
+  /**
+   * E0.1 — the SCREEN that asked, for the ledger (G1 per seat). A short slug the web derives from
+   * its route's first path segment, never a full path: a path can carry a patient's id.
+   */
+  screen: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/).optional(),
 });
+
+/** The permission behind `GET /copilot/health` (declared by `deskManifest`). */
+export const COPILOT_HEALTH_READ = "copilot.health.read";
+const healthQuery = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
 
 export type AskResponse = {
   answer: CopilotAnswer;
@@ -89,11 +100,34 @@ export class CopilotController {
   */
   @HttpCode(200)
   async ask(@CurrentActor() actor: Actor, @Body() raw: unknown): Promise<AskResponse> {
+    /*
+      E0.1 — ONE LEDGER ROW PER REQUEST, WHATEVER BECOMES OF IT. `answer` fills `rec` as it learns
+      things; the row is written in `finally`, so a refusal, a malformed body and a thrown error are
+      recorded exactly like an answer. The write is AWAITED: if it fails the request fails, because
+      an answer the ledger could not record would break the G6(a) reconciliation silently.
+    */
+    const started = Date.now();
+    const rec: Omit<AskRecord, "actor" | "ms"> = {
+      outcome: "error", route: "none", intent: null, answerKey: null, maskedQuestion: null, screen: null,
+    };
+    try {
+      return await this.answer(actor, raw, rec);
+    } finally {
+      await recordAsk(this.db, { ...rec, actor, ms: Date.now() - started });
+    }
+  }
+
+  private async answer(actor: Actor, raw: unknown, rec: Omit<AskRecord, "actor" | "ms">): Promise<AskResponse> {
     if (actor.type !== "user") {
+      rec.outcome = "refusedActor";
       throw new ForbiddenException("the copilot is a desk surface — user actors only");
     }
     const parsed = askBody.safeParse(raw);
-    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? "invalid body");
+    if (!parsed.success) {
+      rec.outcome = "badRequest";
+      throw new BadRequestException(parsed.error.issues[0]?.message ?? "invalid body");
+    }
+    rec.screen = parsed.data.screen ?? null;
 
     const serviceDate = parsed.data.date ?? istDay(new Date());
 
@@ -106,23 +140,32 @@ export class CopilotController {
 
     let routed;
     try {
-      routed = await routeQuestion(masked, slots, this.model(), this.chooser(), this.cfg.copilotChoice.minConfidence);
+      routed = await router.routeQuestion(masked, slots, this.model(), this.chooser(), this.cfg.copilotChoice.minConfidence);
     } catch (e) {
       /*
         THE SCRUBBER FIRED. Something identifier-shaped survived masking, and the request was
         refused rather than sent. The clerk gets an ordinary "I did not understand" — there is
         nothing they can do about a masker bug — and the exception carries no identifier text, by
-        construction, so this is safe to let surface in a log.
+        construction, so this is safe to let surface in a log. The ledger row keeps NO question:
+        a question the scrubber caught is by definition one that still carries an identifier.
       */
       if (e instanceof IdentifierLeak) {
+        rec.outcome = "identifierLeak";
+        rec.answerKey = "copilot.answer.notUnderstood";
         return { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null };
       }
       throw e;
     }
+    // Only now is the masked form known to have passed the scrubber (or never needed it).
+    rec.maskedQuestion = masked;
 
     if (routed === null) {
+      rec.outcome = "notUnderstood";
+      rec.answerKey = "copilot.answer.notUnderstood";
       return { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null };
     }
+    rec.route = routed.via;
+    rec.intent = routed.intent;
 
     const tool = this.tools.find((t) => t.intent === routed.intent);
     if (tool === undefined) {
@@ -131,6 +174,8 @@ export class CopilotController {
         the moment its cues are written, and the module that answers it may ship later. Saying "I
         cannot do that yet" is honest; a 500 would blame the clerk for a gap in the catalog.
       */
+      rec.outcome = "noTool";
+      rec.answerKey = "copilot.answer.noTool";
       return { answer: { key: "copilot.answer.noTool", params: {} }, source: routed.source, intent: routed.intent };
     }
 
@@ -140,7 +185,7 @@ export class CopilotController {
       /*
         REHYDRATED HERE AND NOWHERE ELSE. `rehydrate` resolves only placeholders this request
         minted, so a value reaching a tool was typed by the operator moments ago and can never be
-        one the model invented.
+        one the model invented. It never reaches the ledger.
       */
       subject: routed.slot === null ? null : rehydrate(routed.slot, slots),
       serviceDate,
@@ -148,7 +193,42 @@ export class CopilotController {
     };
 
     const answer = await runTool(tool, ctx, permissionCheckFor(ctx));
+    rec.answerKey = answer.key;
+    rec.outcome = answer.key === "copilot.answer.notPermitted" ? "notPermitted"
+      : answer.key === "copilot.answer.needSubject" ? "needSubject"
+        : answer.key === "copilot.answer.failed" ? "failed"
+          : "answered";
     return { answer, source: routed.source, intent: routed.intent };
+  }
+
+  /**
+   * E0.1 — one IST day's totals for the owner, IT and the copilot steward. Aggregate only: no user
+   * id, no name, no per-person list (plan E0.1 check 4).
+   */
+  @Get("health")
+  @RequirePermission(COPILOT_HEALTH_READ, "hospital")
+  async health(@Query() raw: unknown): Promise<CopilotHealth> {
+    const q = healthQuery.safeParse(raw);
+    if (!q.success) throw new BadRequestException("date must be YYYY-MM-DD");
+    return readCopilotHealth(this.db, q.data.date ?? istDay(new Date()));
+  }
+
+  /**
+   * The staff notice (owner ruling 2026-10-10: notice first) — has THIS user dismissed it? Self-
+   * scoped structurally: it reads the caller's own row and takes no user id, so it names no
+   * permission (the `GET /me/report` reasoning).
+   */
+  @Get("notice")
+  async notice(@CurrentActor() actor: Actor): Promise<{ seen: boolean }> {
+    if (actor.type !== "user") throw new ForbiddenException("user actors only");
+    return { seen: await noticeSeen(this.db, actor.id) };
+  }
+
+  @Post("notice")
+  @HttpCode(204)
+  async dismissNotice(@CurrentActor() actor: Actor): Promise<void> {
+    if (actor.type !== "user") throw new ForbiddenException("user actors only");
+    await acknowledgeNotice(this.db, actor.id);
   }
 
   /**

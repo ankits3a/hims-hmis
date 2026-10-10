@@ -945,6 +945,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // access it inside their app") — everyone's attendance from the attendance machine, including
       // the machine-listed people who have no login here.
       "attendance.all.read",
+      // COPILOT LEDGER E0.1 (decision 0064, owner-approved spec 2026-10-10) — the copilot's health
+      // page: counts, routes and timings for a day. Aggregate only; it names nobody.
+      "copilot.health.read",
     ],
   },
   {
@@ -1935,6 +1938,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * NOBODY is assigned to it here or in any seed — the owner assigns its members himself.
    */
   { roleKey: "attendance_committee", permissions: ["attendance.all.read"] },
+  /**
+   * COPILOT LEDGER E0.1 (decision 0064, owner-approved spec 2026-10-10, D2) — THE COPILOT STEWARD.
+   * Plan §5 names the quality manager as steward: the monthly name sample (G6c), the eval refresh
+   * and the halt drill. No quality role existed, so this one is minted holding the health read and
+   * nothing else. NOBODY is assigned to it by any seed — the owner names the steward.
+   */
+  { roleKey: "quality_manager", permissions: ["copilot.health.read"] },
+  /**
+   * COPILOT LEDGER E0.1 (D2) — IT reads the copilot's health too (latency, failures, the cost meter
+   * to come). `admin`'s `auth.*` set is `seed:admin`'s to write (GRANTED_BY_OTHER_SEEDS); this row
+   * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
+   */
+  { roleKey: "admin", permissions: ["copilot.health.read"] },
 ];
 
 /**
@@ -2191,6 +2207,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // PHARMACY STAGE D5 — held IN ADDITION to a clinical role (DECIDED 2026-09-28, stage D doc; ICMR AMSP 2018).
   antimicrobial_steward: "Antimicrobial Steward (held with a clinical role; approves Reserve and restricted antimicrobials, never their own prescription)",
   // 18-S RS8b — the title names the separation: the resident's signature is not a final report.
+  // COPILOT LEDGER E0.1 — the steward (plan §5) and the IT administrator `seed:admin` creates.
+  quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
+  admin: "Administrator",
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };

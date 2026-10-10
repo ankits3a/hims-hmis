@@ -1,0 +1,16 @@
+import { z } from "zod";
+import { defineEvent } from "@hmis/contracts";
+
+/**
+ * E0.1 — the ask ledger was pruned. A COUNT, once per sweep, never one event per row — the
+ * `search.audit_pruned` shape and reason: after the delete nothing else can say how much was there.
+ */
+export const copilotAsksPruned = defineEvent(
+  "copilot.asks_pruned",
+  "copilot",
+  z.object({
+    rows: z.number().int().positive(),
+    retainDays: z.number().int().positive(),
+    cutoff: z.string().min(1),
+  }),
+);

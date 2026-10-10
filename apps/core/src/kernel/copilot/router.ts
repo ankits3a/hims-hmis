@@ -52,6 +52,11 @@ export type RouteResult = {
   slot: string | null;
   /** `triage.ts`'s rule: the seat SAYS where the routing came from, because a hidden origin is trusted too much. */
   source: "phrasebook" | "model";
+  /**
+   * E0.1 — WHICH route answered, finer than `source`: the ledger times the classifier and the chat
+   * model separately (goal G4 is read per route). `source` stays two-valued because it is the web's.
+   */
+  via: "phrasebook" | "chooser" | "model";
   cues: string[];
 };
 
@@ -121,7 +126,7 @@ export async function routeQuestion(
   */
   const floor = matchIntent(masked);
   if (floor !== null) {
-    return { intent: floor.intent, slot: floor.slot, source: "phrasebook", cues: floor.cues };
+    return { intent: floor.intent, slot: floor.slot, source: "phrasebook", via: "phrasebook", cues: floor.cues };
   }
 
   if (model === null && chooser === null) return null;
@@ -186,6 +191,7 @@ function parseReply(reply: string, masked: string, slots: Record<string, string>
     intent: tool as CopilotIntent,
     slot: resolveSlot(slot, masked, slots),
     source: "model",
+    via: "model",
     cues: [],
   };
 }

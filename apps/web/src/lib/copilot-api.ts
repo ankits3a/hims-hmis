@@ -39,6 +39,34 @@ export function askCopilot(
    */
   terms: string[],
   date?: string,
+  /** E0.1 — the asking screen for the ledger: the route's first path segment, never a full path. */
+  screen?: string,
 ): Promise<CopilotReply> {
-  return api<CopilotReply>("POST", "/copilot/ask", { question, terms, date });
+  return api<CopilotReply>("POST", "/copilot/ask", { question, terms, date, screen });
+}
+
+/** E0.1 — has this user dismissed the staff notice (owner ruling 2026-10-10: notice first)? */
+export function getCopilotNotice(): Promise<{ seen: boolean }> {
+  return api<{ seen: boolean }>("GET", "/copilot/notice");
+}
+
+export function dismissCopilotNotice(): Promise<void> {
+  return api<void>("POST", "/copilot/notice");
+}
+
+export type CopilotRouteTimings = { asks: number; p50Ms: number | null; p95Ms: number | null };
+
+/** `GET /copilot/health` — one IST day's totals. Aggregate only: it names nobody. */
+export type CopilotHealth = {
+  date: string;
+  asks: number;
+  askers: number;
+  byOutcome: Record<string, number>;
+  byRoute: Record<"phrasebook" | "chooser" | "model" | "none", CopilotRouteTimings>;
+  notUnderstoodShare: number | null;
+  acts: number;
+};
+
+export function getCopilotHealth(date?: string): Promise<CopilotHealth> {
+  return api<CopilotHealth>("GET", date === undefined ? "/copilot/health" : `/copilot/health?date=${encodeURIComponent(date)}`);
 }
