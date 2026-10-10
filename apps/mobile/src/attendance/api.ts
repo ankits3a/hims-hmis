@@ -11,21 +11,25 @@ import type { Call } from "../doctor/api";
 export type SelfDay = { date: string; status: SelfWord; reason?: ConfirmReason; firstIn?: string | null; lastOut?: string | null; hoursWorked?: number | null };
 export type SelfToday = { date: string; state: TodayState; status: SelfWord | null; firstIn?: string | null; lastOut?: string | null; inSince?: string | null };
 export type Person = { pin: string; name: string; dept: string | null; post: string | null };
+/** An app mark (decision 0061). A person's own: words only. A manager's: with the IST time and the metres. */
+export type MarkPlace = "inside" | "outside" | "not_shared" | "doubtful";
+export type SelfMark = { date: string; kind: "in" | "out"; place: MarkPlace };
+export type MarkView = SelfMark & { time: string; distanceM: number | null };
 export type Me =
   | { linked: false; reason: string; configured: boolean; leadsTeam?: boolean }
-  | { linked: true; configured: boolean; leadsTeam?: boolean; showsTimes: boolean; person: Person; from: string; to: string; today: SelfToday; days: SelfDay[]; needsConfirm: string[] };
+  | { linked: true; configured: boolean; leadsTeam?: boolean; showsTimes: boolean; person: Person; from: string; to: string; today: SelfToday; days: SelfDay[]; needsConfirm: string[]; marks?: SelfMark[] };
 export type Punch = { time: string; direction: string | null; device: string | null; verify: string | null };
 export type MyPunches = { linked: boolean; date: string; showsTimes: boolean; status: SelfWord | null; reason?: ConfirmReason; punches?: Punch[] };
 export type MyRequest = { id: string; date: string; reasonCode: string; note: string | null; status: "open" | "seen" | "closed" | "resolved_by_correction"; createdAt: string; closedAt: string | null; closeNote: string | null };
 
 /** What managers see: the machine's own status, with times. */
 export type FullDay = { date: string; firstIn: string | null; lastOut: string | null; hoursWorked: number | null; status: string; known: boolean; shiftName: string | null; locked: boolean };
-export type TodayRow = Person & { status: string | null; known: boolean; firstIn: string | null; lastOut: string | null; onDuty: boolean; hasLogin: boolean };
+export type TodayRow = Person & { status: string | null; known: boolean; firstIn: string | null; lastOut: string | null; onDuty: boolean; hasLogin: boolean; appMark?: MarkView | null };
 export type TodayList = { date: string; configured: boolean; people: TodayRow[]; summary: { total: number; byStatus: Record<string, number>; byDept: { dept: string | null; total: number }[] } };
 export type PersonRange =
-  | { detail: "full"; person: Person; from: string; to: string; days: FullDay[] }
-  | { detail: "self"; showsTimes: boolean; person: Person; from: string; to: string; days: SelfDay[] };
-export type TeamMember = { userId: string; name: string; linked: boolean; pin: string | null; today: { status: string | null; known: boolean; firstIn: string | null; lastOut: string | null; onDuty: boolean } | null };
+  | { detail: "full"; person: Person; from: string; to: string; days: FullDay[]; marks?: MarkView[] }
+  | { detail: "self"; showsTimes: boolean; person: Person; from: string; to: string; days: SelfDay[]; marks?: SelfMark[] };
+export type TeamMember = { userId: string; name: string; linked: boolean; pin: string | null; today: { status: string | null; known: boolean; firstIn: string | null; lastOut: string | null; onDuty: boolean } | null; appMark?: MarkView | null };
 export type TeamToday = { date: string; members: TeamMember[]; summary: { total: number; linked: number } };
 export type SyncState = { configured: boolean; enabled: boolean; onDutyAsOf: string | null; lastErrorClass: string | null; stages: Record<string, { lastOkAt: string | null; lastOutcome: string | null }> };
 export type QueueRequest = MyRequest & { name: string; dept: string | null; post: string | null; ageHours: number; seenAt: string | null };
@@ -42,6 +46,8 @@ export function attendanceApi(call: Call) {
     me: (from: string, to: string) => call<Me>("GET", `/attendance/me?from=${from}&to=${to}`),
     myPunches: (date: string) => call<MyPunches>("GET", `/attendance/me/punches?date=${date}`),
     myRequests: () => call<{ requests: MyRequest[] }>("GET", "/attendance/me/requests"),
+    /** The phone's one reading, or null — the server keeps only a word and the metres. */
+    mark: (location: { latitude: number; longitude: number; mocked: boolean } | null) => call<{ created: boolean; mark: SelfMark }>("POST", "/attendance/me/marks", { location }),
     askToMeet: (date: string) => call<{ created: boolean; request: MyRequest }>("POST", "/attendance/me/requests", { date }),
     today: () => call<TodayList>("GET", "/attendance/today"),
     syncState: () => call<SyncState>("GET", "/attendance/sync-state"),

@@ -23,12 +23,14 @@ function configFor(env: Record<string, string>): ExpoConfig & { mods?: { ios?: R
 }
 
 const ICON = { backgroundColor: "#FFFFFF", foregroundImage: "./assets/android-icon-foreground.png", backgroundImage: "./assets/android-icon-background.png" };
+// Decision 0062 (#571) added these to the Android block: location while in use only.
+const BLOCKED = ["android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION"];
 
 describe("app.config.ts — the Android half is what it was before the iPhone was added", () => {
   it("is, key for key, the block the APK has always been built from", () => {
-    expect(configFor({ APP_ENV: "production", HMIS_VERSION_CODE: "41" }).android).toEqual({ package: "com.crkmch.hmis", versionCode: 41, adaptiveIcon: ICON, predictiveBackGestureEnabled: false });
-    expect(configFor({ APP_ENV: "preview", HMIS_VERSION_CODE: "7" }).android).toEqual({ package: "com.crkmch.hmis.staging", versionCode: 7, adaptiveIcon: ICON, predictiveBackGestureEnabled: false });
-    expect(configFor({}).android).toEqual({ package: "com.crkmch.hmis.staging", versionCode: 1, adaptiveIcon: ICON, predictiveBackGestureEnabled: false });
+    expect(configFor({ APP_ENV: "production", HMIS_VERSION_CODE: "41" }).android).toEqual({ package: "com.crkmch.hmis", versionCode: 41, adaptiveIcon: ICON, predictiveBackGestureEnabled: false, blockedPermissions: BLOCKED });
+    expect(configFor({ APP_ENV: "preview", HMIS_VERSION_CODE: "7" }).android).toEqual({ package: "com.crkmch.hmis.staging", versionCode: 7, adaptiveIcon: ICON, predictiveBackGestureEnabled: false, blockedPermissions: BLOCKED });
+    expect(configFor({}).android).toEqual({ package: "com.crkmch.hmis.staging", versionCode: 1, adaptiveIcon: ICON, predictiveBackGestureEnabled: false, blockedPermissions: BLOCKED });
   });
 
   it("adds no Android-side mod: the one mod this file registers is iOS's entitlements", () => {
@@ -52,7 +54,7 @@ describe("app.config.ts — the iPhone half", () => {
     expect(JSON.stringify(prod)).not.toContain("ankits3a");
   });
 
-  it("asks for the camera, the microphone and Face ID in plain words — and for nothing else", () => {
+  it("asks for the camera, the microphone, Face ID and location while in use in plain words — and for nothing else", () => {
     const plugins = (configFor({ APP_ENV: "production" }).plugins ?? []) as (string | [string, Record<string, unknown>])[];
     const of = (name: string): Record<string, unknown> => { const p = plugins.find((x) => Array.isArray(x) && x[0] === name); return Array.isArray(p) ? p[1] : {}; };
     expect(of("expo-camera").cameraPermission).toBe("HMIS uses the camera to photograph prescription slips and scan patient codes.");
@@ -60,8 +62,14 @@ describe("app.config.ts — the iPhone half", () => {
     expect(of("expo-local-authentication").faceIDPermission).toBe("HMIS uses Face ID to unlock the app.");
     expect(of("expo-secure-store").faceIDPermission).toBe("HMIS uses Face ID to unlock the app.");
     expect(of("expo-audio")).toMatchObject({ enableBackgroundRecording: false, enableBackgroundPlayback: false });
+    // Decision 0062: location once, at "Mark attendance", while the app is open — never Always, never background.
+    expect(of("expo-location")).toMatchObject({
+      locationWhenInUsePermission: "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.",
+      locationAlwaysAndWhenInUsePermission: false, locationAlwaysPermission: false, motionUsagePermission: false,
+      isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false,
+    });
     const all = JSON.stringify(configFor({ APP_ENV: "production" }));
-    for (const never of ["NSPhotoLibrary", "NSLocation", "NSUserTracking", "UIBackgroundModes", "expo-location", "expo-image-picker", "expo-media-library", "expo-tracking-transparency", "aps-environment"]) {
+    for (const never of ["NSPhotoLibrary", "NSLocationAlways", "NSUserTracking", "UIBackgroundModes", "expo-image-picker", "expo-media-library", "expo-tracking-transparency", "aps-environment"]) {
       expect(all).not.toContain(never);
     }
   });

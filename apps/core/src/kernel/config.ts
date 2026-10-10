@@ -132,6 +132,14 @@ const configSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  /**
+   * THE APP'S "MARK ATTENDANCE" (owner 2026-10-10, decision 0061) — the campus centre and the radius a
+   * mark is "inside premises" within. Server settings so they change with no app build. The owner's
+   * centre and 200 m are the defaults.
+   */
+  ATTENDANCE_SITE_LAT: z.coerce.number().min(-90).max(90).default(25.6892879),
+  ATTENDANCE_SITE_LNG: z.coerce.number().min(-180).max(180).default(85.2301486),
+  ATTENDANCE_SITE_RADIUS_M: z.coerce.number().int().min(10).max(5000).default(200),
   HMIS_BIOATTEND_API_KEY_FILE: z.string().optional(),
   HMIS_BIOATTEND_WEBHOOK_SECRET_FILE: z.string().optional(),
   HMIS_BIOATTEND_AADHAAR_KEY_FILE: z.string().optional(),
@@ -585,6 +593,8 @@ export type AppConfig = {
   openaiKeyFile: string | null;
   /** Staff attendance from bioattend — where to call, the master switch, and the three secret files (paths, never contents). */
   attendance: { baseUrl: string; syncEnabled: boolean; selfShowsTimes: boolean; apiKeyFile: string | null; webhookSecretFile: string | null; aadhaarKeyFile: string | null };
+  /** Where an app mark counts as "inside premises" (`modules/attendance/marks.ts`). */
+  attendanceSite: { lat: number; lng: number; radiusM: number };
   workerReachIntervalMs: number;
   /**
    * The three VAPID keys, or NULL when push is on the console sink. Null-or-complete rather
@@ -912,6 +922,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       webhookSecretFile: pathOrNull(parsed.HMIS_BIOATTEND_WEBHOOK_SECRET_FILE),
       aadhaarKeyFile: pathOrNull(parsed.HMIS_BIOATTEND_AADHAAR_KEY_FILE),
     },
+    attendanceSite: { lat: parsed.ATTENDANCE_SITE_LAT, lng: parsed.ATTENDANCE_SITE_LNG, radiusM: parsed.ATTENDANCE_SITE_RADIUS_M },
     workerReachIntervalMs: parsed.WORKER_REACH_INTERVAL_MS,
     webPushVapid: vapidFrom(parsed),
     notifySms: smsGatewayFrom(parsed),
