@@ -93,7 +93,7 @@ describe("ordering: the lab side (decision 0065)", () => {
     /** A redelivered completion, or a consult completed again, orders nothing more. */
     expect(await orderFreeTests(db, v.encounterId, fx.pathologist.doctorId, AT, fx.decls)).toBeNull();
     /** The lab removed HbA1c: a later completion does not bring it back. */
-    await db.update(orderItems).set({ status: "cancelled" }).where(eq(orderItems.serviceId, serviceIdForLabCode("HBA1C")));
+    await db.update(orderItems).set({ status: "cancelled", cancelledFrom: "placed" }).where(eq(orderItems.serviceId, serviceIdForLabCode("HBA1C")));
     expect(await orderFreeTests(db, v.encounterId, fx.pathologist.doctorId, AT, fx.decls)).toBeNull();
     expect(await itemsOf(v.visitNo)).toHaveLength(2);
   });

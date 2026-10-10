@@ -78,18 +78,18 @@ export async function orderFreeTests(
       protocolRef: FREE_TESTS_PROTOCOL, departments: { lab, imaging },
     }, at);
     const placed = (result.lab?.itemIds.length ?? 0) + (result.imaging?.itemIds.length ?? 0);
-    if (placed > 0 || result.skipped.length > 0) {
-      await appendEvent(tx, freeTestsOrdered.make({
-        actor: FREE_TESTS_ACTOR, patientId: encounter.patientId, encounterId: encounter.id,
-        payload: {
-          encounterNo: encounter.visitNo,
-          labTests: result.lab?.itemIds.length ?? 0,
-          imagingTests: result.imaging?.itemIds.length ?? 0,
-          outsideTests: result.routed.outside.length,
-          skipped: result.skipped.length,
-        },
-      }));
-    }
+    /** Outside tests never become orders, so a visit advising only those (or only already-ordered tests) did nothing. */
+    if (placed === 0 && result.skipped.length === 0) return null;
+    await appendEvent(tx, freeTestsOrdered.make({
+      actor: FREE_TESTS_ACTOR, patientId: encounter.patientId, encounterId: encounter.id,
+      payload: {
+        encounterNo: encounter.visitNo,
+        labTests: result.lab?.itemIds.length ?? 0,
+        imagingTests: result.imaging?.itemIds.length ?? 0,
+        outsideTests: result.routed.outside.length,
+        skipped: result.skipped.length,
+      },
+    }));
     return result;
   });
 }

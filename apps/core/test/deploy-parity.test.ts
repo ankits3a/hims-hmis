@@ -410,6 +410,8 @@ const SEED_STEP_SCRIPTS = [
   // was `test/helpers/lab.ts`. A module that ships, migrates, serves routes and throws
   // `no_active_definition` on first use is what this census exists to make impossible.
   "seed-lab.js",
+  // Decision 0065 (2026-10-10) — the owner's outside-test list (ECG, echo …); adds missing codes only.
+  "seed-outside-tests.js",
   "seed-roles.js",
 ] as const;
 
@@ -832,7 +834,8 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
     // 16 since Phase 11i T2 added `standup-check.js` — which is NOT a seed and is deliberately not
     // in SEED_STEP_SCRIPTS: it runs AFTER the gate and writes nothing. It appears here only because
     // this parser counts every `compose run --rm api node dist/scripts/*.js` line.
-    expect(order).toHaveLength(16);
+    // 17 since decision 0065 added `seed-outside-tests.js` after `seed-lab.js` (the outside-test list).
+    expect(order).toHaveLength(17);
     expect(order[0]).toBe("migrate.js");
     expect(order[1]).toBe("seed-cursors.js");
   });

@@ -26,7 +26,7 @@ import type {
   WireQueueEntryView, WireQueueView, WireRxPrint, WireTimelineItem, WireVitals,
   WireDrugDiseaseHit, WireDuplicateHit, WireInteractionHit, WireRxNotice, WireSkipReason,
   WireRxHistoryItem, WireVitalsHistoryItem,
-  WireAdvisedTest, WirePriceListRow, WireRxDraftLine, WireRxLine,
+  WireAdvisedTest, WireRxDraftLine, WireRxLine,
 } from "../lib/opd-api";
 import { Link } from "@tanstack/react-router";
 import { fmtIst, fmtPaise } from "../lib/format";

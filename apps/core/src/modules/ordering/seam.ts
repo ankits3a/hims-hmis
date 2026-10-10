@@ -99,6 +99,11 @@ export async function orderTests(
         patientId: input.patientId, encounterNo: input.encounterNo, serviceDate: input.serviceDate,
         orderingClinicianId: input.orderingClinicianId, priority: input.priority,
         items: labIds.map((serviceId) => ({ serviceId })),
+        /**
+         * The bill waits for the money while the REPORT is held — the lab's own rule for an order the
+         * counter did not take payment for (`holdUntilPaid`, DD23's interlock). A free test bills ₹0.
+         */
+        holdUntilPaid: { reason: "ordered by the doctor; paid at the lab counter" },
         ...protocol,
       }, now));
     } catch (e) {
