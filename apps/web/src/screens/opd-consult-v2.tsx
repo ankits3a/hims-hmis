@@ -8,6 +8,7 @@ import { LastVisitCard } from "../components/last-visit";
 import { GuardianCard } from "../components/patient-absent";
 import { TermInput, ownTerms } from "./opd-consult-suggest";
 import { clearReminder, fetchDoctorStock, fetchReminder, putReminder, referInternally } from "../lib/opd-api";
+import { QuickLabReports } from "./lab-quick-reports";
 import { briefRefill, briefResults, fetchPatientDispenses, fetchPatientImaging, fetchPatientResults, shortDay } from "../lib/brief-history";
 import { eyeTextOf } from "../lib/eye-line";
 import type { Eye } from "../lib/eye-line";
@@ -320,6 +321,10 @@ export function PatientBrief({ encounterId, patientId, patientName, onStart, sta
                 </li>
               ))}
             </ul>
+            {/* Decision 0061 — the lab's quick reports, labelled unsigned, never mixed into the signed lines above. */}
+            <div style={{ marginTop: 10 }}>
+              <QuickLabReports patientId={patientId} compact />
+            </div>
           </div>
           <div>
             <div className="tag">{t("opdConsultV2.onNow")}</div>

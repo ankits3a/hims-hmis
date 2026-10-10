@@ -1359,6 +1359,13 @@
       "when": 1791638581198,
       "tag": "0193_attendance_app_marks",
       "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1791651878834,
+      "tag": "0194_lab_quick_reports",
+      "breakpoints": true
     }
   ]
 }

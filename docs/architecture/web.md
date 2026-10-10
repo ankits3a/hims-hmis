@@ -31,6 +31,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/desk` | `apps/web/src/screens/lab-desk` |
+| `/lab/quick` | `apps/web/src/screens/lab-quick` |
 | `/lab/reports` | `apps/web/src/screens/lab-reports` |
 | `/lab/verify` | `apps/web/src/screens/lab-verify` |
 | `/login` | `apps/web/src/screens/login` |

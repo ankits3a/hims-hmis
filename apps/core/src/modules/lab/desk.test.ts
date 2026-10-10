@@ -4,7 +4,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { deactivateLabDepartment, seedLabDeskBase, serviceIdForLabCode, UNPRICED_LAB_CODE } from "../../../test/helpers/lab";
 import { withTx } from "../../kernel/db/client";
 import { events } from "../../kernel/db/schema";
-import { labItems, opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, orderItems, orders, patients } from "../../kernel/db/schema";
+import { labItems, labOrderables, opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, orderItems, orders, patients } from "../../kernel/db/schema";
 import { invoices } from "../../kernel/db/schema";
 import { withIdempotency } from "../billing";
 import { BillingError } from "../billing";
@@ -382,6 +382,17 @@ describe("the reception seat (17c T1)", () => {
     const sunita = await mkPatient(db, fx.desk.actor, { name: "Sunita Devi" });
     const byUhid = await deskFind(db, fx.desk.actor, sunita.uhid, fx.serviceDate);
     expect(byUhid.map((h) => [h.matchedOn, h.patient.id, h.visit])).toEqual([["uhid", sunita.id, null]]);
+  });
+
+  it("A1c: a test WITHDRAWN from the catalogue comes back not orderable — the desk never pre-ticks a line it will refuse", async () => {
+    const { first } = await twoSameNameVisits();
+    await db.update(labOrderables).set({ active: false }).where(eq(labOrderables.serviceId, serviceIdForLabCode("HBA1C")));
+    const [entry] = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, first));
+    const hits = await deskFind(db, fx.desk.actor, `T-${String(entry!.tokenNo)}`, fx.serviceDate);
+    /** The doctor's line is still shown, greyed; the withdrawn one carries no orderable, so neither seat ticks it. */
+    expect(hits[0]!.visit?.advised.map((a) => [a.code, a.orderable === null])).toEqual([
+      ["CBC", false], ["HBA1C", true],
+    ]);
   });
 
   it("A2: a WALK-IN order opens the lab visit and places the order in ONE transaction — a refused order opens no visit", async () => {

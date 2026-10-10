@@ -32,6 +32,7 @@ import { slotClock, upcomingOf } from "../lib/appointment-view";
 import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
+import { QuickLabReports } from "./lab-quick-reports";
 import { fmtPaise } from "../lib/format";
 import { CREDIT_READERS, CreditTile } from "../components/patient-credit";
 import { AllBillsTile } from "../components/patient-all-bills";
@@ -1573,6 +1574,12 @@ export function PatientDetail(): React.ReactElement {
               </>
             )}
 
+            {/* Decision 0061 — the lab's quick reports (unsigned), beside the history rather than inside it. */}
+            {pid !== null && (
+              <div style={{ marginTop: 18 }}>
+                <QuickLabReports patientId={pid} enabled={can("lab.results.read")} hideEmpty />
+              </div>
+            )}
             <h3 style={{ margin: "18px 0 0", fontSize: 15, fontWeight: 600 }}>{t("profile.history")}</h3>
             {days.length === 0 && <p style={{ fontSize: 12.5, color: "var(--dim)" }} data-testid="timeline-empty">{t("profile.noHistory")}</p>}
             <div data-testid="timeline">

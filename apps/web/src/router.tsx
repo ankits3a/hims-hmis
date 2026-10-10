@@ -93,6 +93,7 @@ import { LabCollection } from "./screens/lab-collection";
 import { LabBench } from "./screens/lab-bench";
 import { LabVerify } from "./screens/lab-verify";
 import { LabReports } from "./screens/lab-reports";
+import { LabQuick } from "./screens/lab-quick";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -347,6 +348,7 @@ const NAV: readonly NavEntry[] = [
   { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "lab" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab" },
+  { to: "/lab/quick", label: "nav.labQuick", permission: "lab.results.enter", group: "lab", anyOf: ["lab.desk.operate"] },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
@@ -1502,6 +1504,14 @@ const labReportsRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
+/** Decision 0061 — quick entry: search a patient, type values, an editable flagged report. */
+const labQuickRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/quick",
+  component: LabQuick,
+  staticData: { fullViewport: true },
+});
+
 const opdAppointmentsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/opd/appointments",
@@ -1796,6 +1806,7 @@ export const router = createRouter({
       labDeskRoute, labCollectionRoute, labBenchRoute, labVerifyRoute,
       // PLAN 17c T5 — the fifth lab seat, the report centre (+1).
       labReportsRoute,
+      labQuickRoute,
       // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the

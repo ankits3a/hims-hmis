@@ -749,7 +749,8 @@ async function advisedLinesFor(exec: Db | Tx, encounter: EncounterRow): Promise<
     .select()
     .from(labOrderables)
     .where(inArray(labOrderables.serviceId, serviceIds));
-  const byService = new Map(orderables.map((o) => [o.serviceId, o]));
+  /** A withdrawn test is shown but not orderable: `deskOrder` and the quick Start both refuse it. */
+  const byService = new Map(orderables.filter((o) => o.active).map((o) => [o.serviceId, o]));
   const placed = await (exec as Db)
     .select({ id: orderItems.id, serviceId: orderItems.serviceId, status: orderItems.status })
     .from(orderItems)
