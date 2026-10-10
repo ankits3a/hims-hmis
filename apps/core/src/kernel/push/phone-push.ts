@@ -25,7 +25,7 @@ import type { PhoneMessage, PhonePushSender } from "./fcm";
  * out this phone") and on deactivation and reset — the query is the guard, the clearing is hygiene.
  */
 
-export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder", "approvals"] as const;
+export const PUSH_CATEGORIES = ["alert", "roster", "queue", "reminder", "approvals", "personal"] as const;
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
 
 /**
@@ -39,6 +39,14 @@ export type PushCategory = (typeof PUSH_CATEGORIES)[number];
  * must not also silence "a colleague asks you to cover tonight".
  */
 export const LIVE_PUSH_CATEGORIES: readonly PushCategory[] = ["alert", "roster", "queue", "reminder", "approvals"];
+/**
+ * E1.2 — `personal`: a reminder the person set for THEMSELVES. Not `reminder` (that word is a DUTY
+ * reminder, with its own switch and its own sentence), and never offered as a switch — nobody needs
+ * to be protected from a notification they asked for; they cancel the reminder instead. So it is
+ * not in the live list above, and a mute that somehow names it is not obeyed (`relayAlertToPhones`).
+ * An older build that does not know the word shows it as an alert on its default channel.
+ */
+const NEVER_MUTED: readonly PushCategory[] = ["personal"];
 
 /**
  * A build older than this knows three categories and would draw `reminder` as a raw key. It is
@@ -82,7 +90,7 @@ export const PUSH_RESERVED_FOR_ASKS = 4;
 const CLOCK_DRIVEN: readonly PushCategory[] = ["queue", "reminder"];
 
 /** Which screen a tap opens. Closed vocabulary; the app maps a word it knows and goes home on one it does not. */
-export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals", "attendance", "attendanceRequests"] as const;
+export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals", "attendance", "attendanceRequests", "reminders"] as const;
 export type PushLink = (typeof PUSH_LINKS)[number];
 
 /** R9's cousin: a phone that buzzes all hour gets muted, and then the one that mattered is silent. */
@@ -116,6 +124,8 @@ const BY_ALERT_KIND: Record<string, { category: PushCategory; link: PushLink }> 
   // that does not know these two words lands on home, as for any word it does not know.
   attendance_meeting_request: { category: "alert", link: "attendanceRequests" },
   attendance_request_closed: { category: "alert", link: "attendance" },
+  // E1.2 — a person's own reminder opens their Reminders screen.
+  personal_reminder: { category: "personal", link: "reminders" },
 };
 export function routeOfAlertKind(kind: string): { category: PushCategory; link: PushLink } {
   return BY_ALERT_KIND[kind] ?? { category: "alert", link: "home" };
@@ -135,6 +145,7 @@ const SENTENCES: Record<PushCategory | "test", Record<"en" | "hi", string>> = {
   queue: { en: "Your OPD queue needs you. Open HMIS to see it.", hi: "आपकी ओपीडी कतार को आपकी ज़रूरत है। देखने के लिए HMIS खोलें।" },
   reminder: { en: "You have a duty coming up. Open HMIS to see it.", hi: "आपकी ड्यूटी आने वाली है। देखने के लिए HMIS खोलें।" },
   approvals: { en: "An approval is waiting past its time. Open HMIS to decide it.", hi: "एक मंज़ूरी समय से ज़्यादा देर से रुकी है। तय करने के लिए HMIS खोलें।" },
+  personal: { en: "You have a reminder. Open HMIS to see it.", hi: "आपका एक रिमाइंडर है। देखने के लिए HMIS खोलें।" },
   test: { en: "Test — this phone can receive HMIS notifications.", hi: "जाँच — यह फ़ोन HMIS की सूचनाएँ पा सकता है।" },
 };
 export function phoneMessage(category: PushCategory | "test", link: PushLink, language: string): PhoneMessage {
@@ -233,7 +244,7 @@ export async function relayAlertToPhones(
   db: Db, sender: PhonePushSender, alert: { id: string; userId: string; kind: string }, now: Date = new Date(),
 ): Promise<RelayResult> {
   const { category, link } = routeOfAlertKind(alert.kind);
-  const phones = (await livePhonesOf(db, alert.userId, now)).filter((p) => !p.muted.includes(category));
+  const phones = (await livePhonesOf(db, alert.userId, now)).filter((p) => NEVER_MUTED.includes(category) || !p.muted.includes(category));
   const result: RelayResult = { sent: 0, gone: 0, skipped: 0, limited: false };
   if (phones.length === 0) return result;
   const done = await db.select({ deviceRowId: phonePushSends.deviceRowId }).from(phonePushSends).where(eq(phonePushSends.alertId, alert.id));

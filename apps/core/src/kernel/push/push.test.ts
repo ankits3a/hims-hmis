@@ -51,8 +51,9 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
         }
       }
     }
-    // Six (five categories and the test) × two languages, and not one more sentence whatever the link.
-    expect(sentences.size).toBe(12);
+    // Seven (six categories and the test) × two languages, and not one more sentence whatever the link.
+    // E1.2 — `personal` (a person's own reminder) is the sixth category: 12 -> 14.
+    expect(sentences.size).toBe(14);
     for (const s of sentences) expect(s).toMatch(/HMIS/);
   });
 
@@ -84,6 +85,12 @@ describe("mobile M6b — what a phone is told carries no patient text", () => {
     expect(categoriesFor("1.0.0")).toContain("reminder");
     // The sentence for a reminder names no duty, no time and no person.
     expect(phoneMessage("reminder", "myDuties", "en")).toEqual({ title: "HMIS", body: "You have a duty coming up. Open HMIS to see it.", data: { category: "reminder", link: "myDuties" } });
+    // E1.2 — a person's own reminder is NOT a duty reminder: its own word, its own sentence, and no
+    // switch offered (the person set it; they cancel it instead), on any build.
+    expect(routeOfAlertKind("personal_reminder")).toEqual({ category: "personal", link: "reminders" });
+    expect(phoneMessage("personal", "reminders", "en")).toEqual({ title: "HMIS", body: "You have a reminder. Open HMIS to see it.", data: { category: "personal", link: "reminders" } });
+    expect(LIVE_PUSH_CATEGORIES).not.toContain("personal");
+    expect(knownTo("0.18.0 (30)", "alert,roster,queue,reminder,approvals,personal")).not.toContain("personal");
   });
 
   it("bounds what a phone may hand over as its address", () => {

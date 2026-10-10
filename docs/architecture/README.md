@@ -127,7 +127,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 
 | subsystem | used by modules | depends on kernel | routes |
 |---|---|---|---|
-| `alerts` | attendance, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, tokens, workflow | 3 |
+| `alerts` | attendance, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
 | `approvals` | abdm, aerb, attendance, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
 | `auth` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, attendance, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
@@ -148,12 +148,13 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `printing` | billing, opd, pharmacy, roster | auth, crypto, db, events, phi, tokens | 15 |
 | `push` | — | alerts, db, events, modules | — |
 | `realtime` | lab, opd | auth, db, tokens | — |
+| `reminders` | — | alerts, auth, db, tokens | 3 |
 | `report` | billing, opd, pharmacy | — | — |
 | `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
 | `retention` | — | db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
 | `tokens` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
-| `worker` | — | alerts, approvals, auth, config, copilot, db, desk, events, modules, notify, obligations, ops, orders, push, resources, retention, tokens, workflow | — |
+| `worker` | — | alerts, approvals, auth, config, copilot, db, desk, events, modules, notify, obligations, ops, orders, push, reminders, resources, retention, tokens, workflow | — |
 | `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | 9 |
 
 Kernel HTTP routes: [kernel-routes.md](kernel-routes.md). Database: [schema.md](schema.md). Web screens: [web.md](web.md).

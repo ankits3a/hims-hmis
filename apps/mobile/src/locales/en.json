@@ -707,14 +707,16 @@
         "roster": "Duty roster",
         "queue": "Your queue",
         "reminder": "Duty reminders",
-        "approvals": "Approvals"
+        "approvals": "Approvals",
+        "personal": "My reminders"
       },
       "categoryHint": {
         "alert": "Something is overdue or waiting on you.",
         "roster": "A colleague asks you to cover or swap, your request was answered, your duties changed or were published — or somebody flagged the duty board.",
         "queue": "Patients are ready and you are not in, or somebody has waited over 40 minutes.",
         "reminder": "A duty of yours starts in an hour — and the evening before a night or a 24-hour duty.",
-        "approvals": "A request waiting for your decision has passed its time."
+        "approvals": "A request waiting for your decision has passed its time.",
+        "personal": "Reminders you set for yourself."
       },
       "problem": {
         "notAllowed": "The phone has not allowed notifications yet. Tap Turn on again and choose Allow.",
@@ -2668,5 +2670,49 @@
     "refused": "Could not load",
     "again": "Try again",
     "noMeasure": "No measure for your login"
+  },
+  "reminders": {
+    "title": "Reminders",
+    "back": "Back",
+    "add": "New reminder",
+    "addShort": "+ Reminder",
+    "what": "What",
+    "hint": "No patient names",
+    "time": "Time (24 h)",
+    "save": "Save",
+    "cancel": "Cancel",
+    "none": "No reminders",
+    "saved": "Set for {{when}}",
+    "offline": "No signal",
+    "today": "Today {{time}}",
+    "tomorrow": "Tomorrow {{time}}",
+    "onDay": "{{day}} {{date}} · {{time}}",
+    "dayChip": "{{day}} {{date}}",
+    "day": {
+      "today": "Today",
+      "tomorrow": "Tomorrow"
+    },
+    "repeat": {
+      "none": "Once",
+      "daily": "Daily",
+      "mon_sat": "Mon–Sat",
+      "weekly": "Weekly"
+    },
+    "wd": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
+    },
+    "problem": {
+      "text": "Type a few words",
+      "time": "Time like 16:00",
+      "past": "That time has gone",
+      "limit": "20 reminders is the most",
+      "refused": "Could not save"
+    }
   }
 }

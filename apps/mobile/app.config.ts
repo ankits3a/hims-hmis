@@ -24,7 +24,7 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.17.0";
+const VERSION = "0.18.0";
 /**
  * "MARK ATTENDANCE" (decision 0061) — the ONE location sentence, iPhone and Android. The app reads the
  * position once, in the foreground, when a person taps the button; never in the background.
