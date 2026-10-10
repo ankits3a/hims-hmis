@@ -2,6 +2,7 @@ import { Injectable, Module, OnModuleInit } from "@nestjs/common";
 import { RealtimeGateway } from "../realtime/gateway";
 import { RealtimeModule } from "../realtime/realtime.module";
 import { AlertsController } from "./alerts.controller";
+import { RemindersController } from "../reminders/reminders.controller";
 import { alertsTopicRouter, alertsTopicSpace } from "./realtime";
 
 /**
@@ -23,7 +24,9 @@ class AlertsRealtimeRegistrar implements OnModuleInit {
 // registered once by AuthModule (order load-bearing, Plan 02).
 @Module({
   imports: [RealtimeModule],
-  controllers: [AlertsController],
+  // E1.2 — personal reminders ride here: a fired reminder IS a bell row of its person's, and mounting
+  // them in the bell's module keeps app.module.ts (a file every lane shares) untouched.
+  controllers: [AlertsController, RemindersController],
   providers: [AlertsRealtimeRegistrar],
 })
 export class AlertsModule {}
