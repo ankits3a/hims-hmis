@@ -13,6 +13,9 @@ import { COPILOT_NAME_SOURCE, loadDayNames, maskForAsk, nameDays, nameIndexFor }
 import type { CopilotNameSource } from "./names";
 import * as router from "./router";
 import { acknowledgeNotice, noticeSeen, readCopilotHealth, recordAsk } from "./ledger";
+import { asksHalted, listHalts, readCopilotGate } from "./halt";
+import { SpendMeter, inrToMicro } from "./spend";
+import type { CopilotGate } from "./halt";
 import type { AskRecord, CopilotHealth } from "./ledger";
 import type { CopilotAnswer, CopilotToolDecl } from "./types";
 import type { AppConfig } from "../config";
@@ -63,6 +66,17 @@ const askBody = z.object({
 /** The permission behind `GET /copilot/health` (declared by `deskManifest`). */
 export const COPILOT_HEALTH_READ = "copilot.health.read";
 const healthQuery = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+
+/** E0.3/E0.5 — the health read, plus the cap and the halt switch as they stand now. */
+export type CopilotHealthResponse = CopilotHealth & {
+  capInr: number;
+  /** The day read is today AND today's estimated spend has reached the cap: phrasebook-only till midnight IST. */
+  capped: boolean;
+  /** Halted scopes now. Who halted is in the audit event, not here: this page names nobody. */
+  halts: { scope: string; haltedAt: string; reason: string | null }[];
+};
+
+const PAUSED = "copilot.answer.paused" as const;
 
 export type AskResponse = {
   answer: CopilotAnswer;
@@ -139,7 +153,24 @@ export class CopilotController {
     }
     rec.screen = parsed.data.screen ?? null;
 
-    const serviceDate = parsed.data.date ?? istDay(new Date());
+    const now = new Date();
+    const serviceDate = parsed.data.date ?? istDay(now);
+
+    /*
+      E0.3 + E0.5 — ONE ROUND TRIP, EVERY ASK, NO CACHE (`halt.ts`): the halt switch and the day's
+      estimated spend. A halted read path answers "paused" before anything is masked or routed.
+    */
+    const gate: CopilotGate = await readCopilotGate(this.db, now);
+    if (asksHalted(gate.halts)) {
+      rec.outcome = "halted";
+      rec.answerKey = PAUSED;
+      return { answer: { key: PAUSED, params: {} }, source: "none", intent: null };
+    }
+    /* At the cap (decision 0064) the ask routes by the phrasebook alone: no model is even built. */
+    const capped = gate.spentMicroInr >= inrToMicro(this.cfg.copilotSpend.dailyCapInr);
+    const meter = new SpendMeter(this.cfg.copilotSpend.prices);
+    rec.capped = capped;
+    rec.modelCalls = meter.calls;
 
     /*
       MASK FIRST, ALWAYS — before routing, before the floor, before anything is logged. The masked
@@ -158,7 +189,10 @@ export class CopilotController {
     let routed;
     try {
       routed = await router.routeQuestion(
-        masked, slots, this.model(), this.chooser(), this.cfg.copilotChoice.minConfidence, { names, phrasebookOnly },
+        masked, slots,
+        capped ? null : meter.complete(this.model(), this.cfg.copilot.model),
+        capped ? null : this.chooser(meter),
+        this.cfg.copilotChoice.minConfidence, { names, phrasebookOnly: phrasebookOnly || capped },
       );
     } catch (e) {
       /*
@@ -216,9 +250,10 @@ export class CopilotController {
       question: masked,
     };
 
-    const answer = await runTool(tool, ctx, permissionCheckFor(ctx));
+    const answer = await runTool(tool, ctx, permissionCheckFor(ctx), gate.halts);
     rec.answerKey = answer.key;
-    rec.outcome = answer.key === "copilot.answer.notPermitted" ? "notPermitted"
+    rec.outcome = answer.key === PAUSED ? "halted"
+      : answer.key === "copilot.answer.notPermitted" ? "notPermitted"
       : answer.key === "copilot.answer.needSubject" ? "needSubject"
         : answer.key === "copilot.answer.failed" ? "failed"
           : "answered";
@@ -231,10 +266,19 @@ export class CopilotController {
    */
   @Get("health")
   @RequirePermission(COPILOT_HEALTH_READ, "hospital")
-  async health(@Query() raw: unknown): Promise<CopilotHealth> {
+  async health(@Query() raw: unknown): Promise<CopilotHealthResponse> {
     const q = healthQuery.safeParse(raw);
     if (!q.success) throw new BadRequestException("date must be YYYY-MM-DD");
-    return readCopilotHealth(this.db, q.data.date ?? istDay(new Date()));
+    const now = new Date();
+    const date = q.data.date ?? istDay(now);
+    const [health, gate, halts] = await Promise.all([readCopilotHealth(this.db, date), readCopilotGate(this.db, now), listHalts(this.db)]);
+    const capInr = this.cfg.copilotSpend.dailyCapInr;
+    return {
+      ...health,
+      capInr,
+      capped: date === istDay(now) && gate.spentMicroInr >= inrToMicro(capInr),
+      halts: halts.map((h) => ({ scope: h.scope, haltedAt: h.haltedAt, reason: h.reason })),
+    };
   }
 
   /**
@@ -267,10 +311,11 @@ export class CopilotController {
    * The router's FIRST model (owner, 2026-09-19: TypeSafe as priority, the chat model its fallback),
    * or null when no key is configured — and then `model()` answers alone, exactly as before.
    */
-  private chooser() {
+  private chooser(meter: SpendMeter) {
     return chooserFor({
       order: this.cfg.copilotChooserOrder, typesafe: this.cfg.copilotChoice, decisions: this.cfg.decisions,
       openaiKeyFile: this.cfg.openaiKeyFile, minConfidence: this.cfg.copilotChoice.minConfidence,
+      wrap: (provider, model, client) => meter.chooser(provider, model, client),
     });
   }
 }

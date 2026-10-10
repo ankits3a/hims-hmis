@@ -7,6 +7,7 @@ import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
 import { copilotAsksPruned } from "./events";
 import type { CopilotAskOutcome, CopilotRoute } from "../db/schema";
+import type { ModelCall } from "./spend";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -46,6 +47,10 @@ export type AskRecord = {
   maskedQuestion: string | null;
   screen: string | null;
   source?: "chip" | "typed" | null;
+  /** E0.5 — the chooser/model calls this ask made, priced (`spend.ts`). None on the phrasebook path. */
+  modelCalls?: readonly ModelCall[];
+  /** E0.5 — the day's cap was already reached, so this ask ran phrasebook-only. */
+  capped?: boolean;
   /** Tests only; production rows take the database's clock. */
   at?: Date;
 };
@@ -66,6 +71,10 @@ export async function recordAsk(db: Db, r: AskRecord): Promise<string> {
     maskedQuestion: r.maskedQuestion,
     screen: r.screen,
     source: r.source ?? null,
+    modelCalls: r.modelCalls?.length ?? 0,
+    costMicroInr: (r.modelCalls ?? []).reduce((n, c) => n + c.microInr, 0),
+    modelUsage: r.modelCalls === undefined || r.modelCalls.length === 0 ? null : r.modelCalls,
+    capped: r.capped ?? false,
   });
   return id;
 }
@@ -143,6 +152,11 @@ export type CopilotHealth = {
   notUnderstoodShare: number | null;
   /** Act rows written that day (zero until E0.2 writes any). */
   acts: number;
+  /** E0.5 — chooser + model calls that day, and their ESTIMATED cost in rupees (2 decimals). */
+  modelCalls: number;
+  spendInr: number;
+  /** Asks that ran phrasebook-only because the cap had been reached. */
+  cappedAsks: number;
 };
 
 /** One IST day's totals. `date` is `YYYY-MM-DD`. */
@@ -151,7 +165,10 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
   const to = new Date(from.getTime() + DAY_MS);
 
   const asks = await db
-    .select({ actorType: copilotAsks.actorType, actorId: copilotAsks.actorId, outcome: copilotAsks.outcome, route: copilotAsks.route, ms: copilotAsks.ms })
+    .select({
+      actorType: copilotAsks.actorType, actorId: copilotAsks.actorId, outcome: copilotAsks.outcome, route: copilotAsks.route, ms: copilotAsks.ms,
+      modelCalls: copilotAsks.modelCalls, costMicroInr: copilotAsks.costMicroInr, capped: copilotAsks.capped,
+    })
     .from(copilotAsks)
     .where(and(gte(copilotAsks.at, from), lt(copilotAsks.at, to)));
   const [acts] = await db
@@ -175,6 +192,9 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
     byRoute,
     notUnderstoodShare: asks.length === 0 ? null : byOutcome.notUnderstood / asks.length,
     acts: acts?.n ?? 0,
+    modelCalls: asks.reduce((n, a) => n + a.modelCalls, 0),
+    spendInr: Math.round(asks.reduce((n, a) => n + a.costMicroInr, 0) / 10_000) / 100,
+    cappedAsks: asks.filter((a) => a.capped).length,
   };
 }
 

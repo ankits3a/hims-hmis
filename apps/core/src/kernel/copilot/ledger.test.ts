@@ -131,7 +131,7 @@ describe("E0.1 — the copilot ledger at the database", () => {
     expect(h.byRoute.model.p50Ms).toBeNull();
     expect(h.acts).toBe(1);
     expect(Object.keys(h).sort()).toEqual(
-      ["acts", "askers", "asks", "byOutcome", "byRoute", "date", "notUnderstoodShare"],
+      ["acts", "askers", "asks", "byOutcome", "byRoute", "cappedAsks", "date", "modelCalls", "notUnderstoodShare", "spendInr"], // E0.5: + the cost meter, still no per-person field
     );
     expect(JSON.stringify(h)).not.toMatch(/u-1|u-2/);
   });

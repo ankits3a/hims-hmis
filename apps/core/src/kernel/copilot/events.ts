@@ -14,3 +14,23 @@ export const copilotAsksPruned = defineEvent(
     cutoff: z.string().min(1),
   }),
 );
+
+/**
+ * E0.3 — the copilot's halt switch was thrown or cleared. Each names WHO by the event's actor, and
+ * the scope; a clear also names who had halted it and when, so the pair reads as one story.
+ */
+export const copilotHaltSet = defineEvent(
+  "copilot.halt_set",
+  "copilot",
+  z.object({ scope: z.enum(["read", "act", "draft", "global"]), reason: z.string().max(200).nullable() }),
+);
+
+export const copilotHaltCleared = defineEvent(
+  "copilot.halt_cleared",
+  "copilot",
+  z.object({
+    scope: z.enum(["read", "act", "draft", "global"]),
+    haltedBy: z.string().min(1),
+    haltedAt: z.string().min(1),
+  }),
+);

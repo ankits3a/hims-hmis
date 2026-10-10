@@ -194,10 +194,20 @@ export function chooserFor(input: {
   decisions: DecisionsConfig;
   openaiKeyFile: string | null;
   minConfidence: number;
+  /**
+   * E0.5 — wraps EACH provider before it joins the chain, so a caller can meter every call the chain
+   * makes (a chain that asks Jev and then OpenAI made two billable calls, not one). Identity when absent.
+   */
+  wrap?: (provider: ChooserProvider, model: string, client: ChoiceClient) => ChoiceClient;
 }): ChoiceClient | null {
   const build: Record<ChooserProvider, () => ChoiceClient | null> = {
     typesafe: () => typesafeClient(input.typesafe),
     openai: () => openAiDecisionsClient(input.decisions, () => openAiKeyFromFile(input.openaiKeyFile)),
   };
-  return chooserChain(input.order.map((name) => build[name]()), input.minConfidence);
+  const modelOf: Record<ChooserProvider, string> = { typesafe: input.typesafe.model, openai: input.decisions.model };
+  const wrap = input.wrap;
+  return chooserChain(input.order.map((name) => {
+    const client = build[name]();
+    return client === null || wrap === undefined ? client : wrap(name, modelOf[name], client);
+  }), input.minConfidence);
 }
