@@ -1,7 +1,7 @@
 # PLAN — the staff copilot: goals, milestones, epics, and what "done" means
 
 **Date:** 2026-10-10 · **Measured at:** `main` 21467fd7 · **Roadmap:** `docs/superpowers/2026-10-10-ROADMAP-copilot.md`
-**Status:** v2 — Fable review applied (§7). Nothing is built from this until the owner approves §1 (goals and targets).
+**Status:** v2 — Fable review applied (§7). §1 goals and targets APPROVED by the owner 2026-10-10 (decision 0064, with a ₹5,000/day model spend cap).
 **Owner request 2026-10-10:** "plan this roadmap and get it reviewed by Fable. Then break the plan into milestones &
 epics. Add goals around it and then create what 'goal is done' means. Once the confirmation metrics is clear we can
 then proceed with implementation."
@@ -28,7 +28,7 @@ approves them; the approved table becomes a numbered decision.
 | G5 | **Criticals are not missed** | lab critical read-back loop: `lab_critical_calls.closed_at − opened_at`, median and p95 | existing `lab_critical_calls` table (baseline readable today) | median <15 min, p95 <30 min | 4 weeks |
 | G6 | **Safe and auditable** | (a) ledger ask rows = `POST /copilot/ask` count in the Caddy access log; (b) act rows with no confirm id; (c) names found in a monthly sample of 50 masked questions read by the steward; (d) monthly halt drill | reconciliation query; steward sample record; drill record | (a) equal ±0; (b) 0; (c) 0; (d) passes, halt effective on the next ask | every month |
 | G7 | **No act on the wrong patient** | acts where the ledger subject ≠ the module audit subject, plus any incident-register entry citing the copilot | reconciliation query + incident register | 0, ever | permanent |
-| G8 | **Cost under control** | model calls per day and ₹ per answered question; hard daily cap that falls back to phrasebook-only | ledger + provider usage | owner sets cap (R-4); never exceeded | every day |
+| G8 | **Cost under control** | model calls per day and ₹ per answered question; hard daily cap that falls back to phrasebook-only | ledger + provider usage | ₹5,000/day (decision 0064); never exceeded | every day |
 | G9 | **The owner sees the hospital without asking** | 08:00 digest delivered; owner's "useful" tap | notify log; digest feedback row | ≥95% of days; useful ≥4 of 5 days | 30 days |
 
 G9 waits for R-3/R-4. No goal for "minutes saved": no honest instrument exists; G2 + G4 are the measurable proxies.
