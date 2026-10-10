@@ -149,6 +149,8 @@ export type PhiSurface =
    * deliberately asked about somebody by name.
    */
   | "copilot.visit_status"
+  /** E1.6 — "what does U00110012 owe": a typed question about one patient's dues (billing/copilot-tools.ts). */
+  | "copilot.patient_dues"
   /**
    * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
    *
