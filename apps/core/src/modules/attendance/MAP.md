@@ -20,7 +20,9 @@ The contract this module implements is bioattend's API guide of 2026-10-09 (kept
 HMIS keeps a COPY of the hospital's attendance system ("bioattend") and serves it to three audiences: every
 signed-in person (their own days), unit heads and in-charges (their own team), and the owner, the Medical
 Superintendent and the Attendance Committee (everyone, including machine-listed people with no login here).
-Nothing in the `att_*` tables is typed by a person except a meeting request.
+Nothing in the `att_*` tables is typed by a person except a meeting request. The one other row a person
+causes is an APP MARK (`att_app_marks`, decision 0062): a tap of "Mark attendance" in the staff app,
+stored as a place word and metres — evidence beside the machine's record, never part of it.
 
 ## 2. Key files (owner of what)
 - `client.ts` — `createBioattendClient`: eight GETs, named outcomes (`BioattendOutcome`), retry only 429 / 503 /
@@ -35,6 +37,10 @@ Nothing in the `att_*` tables is typed by a person except a meeting request.
   `verifyBioattendWebhook`: secret used AS TEXT. Both are pinned by the guide's test vectors.
 - `reads.ts` — every read view, `dayWord` / `selfWord` (the words a person sees of their own day), `readRange`.
 - `requests.ts` — meeting requests about a `confirm` day; `closeCorrected` is the sync's half.
+- `marks.ts` — "Mark attendance" (decision 0062): `placeOf` (pure: a reading or none against the site →
+  inside / outside / not_shared / doubtful + whole metres), `markAttendance` (In/Out by today's count,
+  advisory lock per person, double-tap window, daily cap), and the reads `selfMarks` (words),
+  `marksOfPins` and `latestMarks` (time, place, metres for managers).
 - `attendance.controller.ts`, `users-identity.controller.ts`, `webhook.controller.ts` — the routes.
 - `scripts/bioattend-stub.ts` — the test double: the eight endpoints, a signed webhook, a fixed fixture.
 
@@ -51,6 +57,13 @@ Nothing in the `att_*` tables is typed by a person except a meeting request.
   absent from the payload, not hidden by the app. `/attendance/person/<own pin>` answers the same self shape
   unless the caller holds `attendance.all.read`.
 - A notice about a meeting request carries fixed wording and nobody's attendance.
+- NO COORDINATES ARE KEPT. `POST /attendance/me/marks` reduces the reading in `placeOf` before any
+  write; `att_app_marks` has no latitude/longitude column and `attendance.app_marked` carries the place
+  and metres only. A refused body answers `bad_body` and echoes nothing. The centre and radius are the
+  `ATTENDANCE_SITE_*` settings.
+- AN APP MARK NEVER CHANGES THE MACHINE'S RECORD (Option B, a money ruling): nothing in `marks.ts`
+  touches `att_punches` or `att_days`, and no day word reads `att_app_marks`. Self routes return marks
+  as words (no time, no metres), like the rest of the self shape.
 
 ## 4. Traps
 - The two secrets are keyed OPPOSITE ways: the Aadhaar key is hex-decoded, the webhook secret is not.
@@ -62,4 +75,6 @@ Nothing in the `att_*` tables is typed by a person except a meeting request.
   out-punch is the first punch of its calendar date, so that morning reads "checked in" until the evening punch.
 - One unparseable row in a bioattend page fails that stage with `bad_response` and the cursor stays put — visible in
   `/attendance/sync-state`, by design, rather than a silent skip.
+- The double-tap window (`REPEAT_WINDOW_MS`) is why the kind is the SERVER's: a client that chose
+  In/Out could send two Ins. Tests move `marked_at` back to make the next tap a new mark.
 - A regenerated lane migration needs the lane's test databases dropped (drizzle skips on timestamp alone).
