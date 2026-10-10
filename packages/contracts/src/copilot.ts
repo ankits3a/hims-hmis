@@ -80,6 +80,14 @@ export const COPILOT_ANSWER_KEYS = [
    */
   "copilot.answer.uhidCheckFailed",
 
+  /* ═══ patient_dues (billing, E1.6) — the counter's own outstanding; dues only, never the advance (owner 2026-10-11) ═══ */
+  /** "U00110012: ₹600.00 due · unpaid bills: 1 · oldest INV/26-27/000001 (2026-10-11)". */
+  "copilot.answer.duesOwed",
+  /** Nothing outstanding on any of the patient's bills. */
+  "copilot.answer.duesNone",
+  /** The question named a visit number or something else: a bill names a patient, so ask for the UHID. */
+  "copilot.answer.duesNeedUhid",
+
   /* ═══ queue_depth ═══ */
   "copilot.answer.queueShortest",
   /** Nobody is holding a clinic today — a closed OPD, a Sunday, or every doctor on leave. */
