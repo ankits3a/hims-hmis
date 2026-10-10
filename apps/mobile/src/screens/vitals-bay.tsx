@@ -7,7 +7,7 @@ import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note, Tag, KeyboardModal, keyboardScrollInsets } from "../ui";
+import { Band, Button, MONO, Note, Tag, KeyboardModal, KeyboardScrollView } from "../ui";
 import { AllergyStep } from "../vitals/allergy";
 import { AmendPanel } from "../vitals/amend";
 import { GuardianLink, GuardianSheet, guardianMayStandIn } from "../vitals/guardian";
@@ -528,7 +528,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
           }
         />
       ) : (
-        <ScrollView {...keyboardScrollInsets()} ref={deskScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
+        <KeyboardScrollView ref={deskScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
           {bannerView}
           {rowInHand === null ? (
             <View style={s.card}>
@@ -583,7 +583,7 @@ export function VitalsBay({ scanned = null }: { scanned?: Scanned | null } = {})
               <Text style={s.faint}>{t("vitalsBay.session.dignity")}</Text>
             </>
           )}
-        </ScrollView>
+        </KeyboardScrollView>
       )}
 
       <KeyboardModal visible={benchOpen} transparent animationType="slide" onRequestClose={() => setBenchOpen(false)}>

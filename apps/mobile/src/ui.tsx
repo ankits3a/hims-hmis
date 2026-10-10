@@ -1,5 +1,5 @@
-import { type ReactNode, forwardRef, useCallback, useRef, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View, type ModalProps, type ScrollViewProps, type TextInputProps } from "react-native";
+import { type ReactNode, forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput as RNTextInput, View, type ModalProps, type ScrollViewProps, type TextInputProps } from "react-native";
 import { Text, TextInput } from "./text";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -147,6 +147,64 @@ export function keyboardScroll(): Partial<ScrollViewProps> {
 }
 export function keyboardScrollInsets(): Partial<ScrollViewProps> {
   return Platform.OS === "ios" ? { ...keyboardScroll(), automaticallyAdjustKeyboardInsets: true } : {};
+}
+
+/**
+ * The scroll view of a bare screen that holds inputs. iPhone: `keyboardScrollInsets()`. ANDROID (owner
+ * 2026-10-10: Desk One's "New patient" boxes hidden under the keyboard): the app is edge-to-edge since
+ * React Native 0.81, so Android no longer shrinks the screen for the keyboard. When the keyboard rises
+ * the scroll view ends at the keyboard's top (a bottom margin of exactly the overlap, measured), and the
+ * box being typed in is scrolled back into view.
+ */
+export const KeyboardScrollView = forwardRef<ScrollView, ScrollViewProps>(function KeyboardScrollView({ style, onScroll, ...props }, outer) {
+  const inner = useRef<ScrollView | null>(null);
+  const offset = useRef(0);
+  const liftRef = useRef(0);
+  const [lift, setLift] = useState(0);
+  const setRefs = useCallback((node: ScrollView | null) => {
+    inner.current = node;
+    if (typeof outer === "function") outer(node);
+    else if (outer !== null) outer.current = node;
+  }, [outer]);
+  useEffect(() => {
+    if (Platform.OS !== "android") return undefined;
+    const apply = (n: number) => { liftRef.current = n; setLift(n); };
+    const up = Keyboard.addListener("keyboardDidShow", (e) => {
+      const host = inner.current?.getNativeScrollRef() ?? null;
+      if (host === null) return;
+      host.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+        // `screenY` is the keyboard's top in the window; the margin already applied is added back.
+        apply(Math.max(0, Math.round(y + h + liftRef.current - e.endCoordinates.screenY)));
+      });
+    });
+    const down = Keyboard.addListener("keyboardDidHide", () => apply(0));
+    return () => { up.remove(); down.remove(); };
+  }, []);
+  useEffect(() => {
+    if (Platform.OS !== "android" || lift === 0) return undefined;
+    const timer = setTimeout(() => scrollFocusedIntoView(inner.current, offset.current), 80);
+    return () => clearTimeout(timer);
+  }, [lift]);
+  return (
+    <ScrollView ref={setRefs} {...keyboardScrollInsets()} {...props} scrollEventThrottle={props.scrollEventThrottle ?? 32}
+      style={lift > 0 ? [style, { marginBottom: lift }] : style}
+      onScroll={(e) => { offset.current = e.nativeEvent.contentOffset.y; onScroll?.(e); }} />
+  );
+});
+
+/** Scrolls `view` so the focused text box is inside it (Android, after the view has shrunk above the keyboard). */
+export function scrollFocusedIntoView(view: ScrollView | null, offset: number): void {
+  const box = RNTextInput.State.currentlyFocusedInput();
+  const host = view?.getNativeScrollRef() ?? null;
+  if (box === null || view === null || host === null) return;
+  host.measureInWindow((_x: number, viewY: number, _w: number, viewH: number) => {
+    box.measureInWindow((_bx: number, boxY: number, _bw: number, boxH: number) => {
+      const below = boxY + Math.min(boxH, 160) + space.md - (viewY + viewH);
+      const above = viewY - boxY;
+      if (below > 0) view.scrollTo({ y: offset + below, animated: true });
+      else if (above > 0) view.scrollTo({ y: Math.max(0, offset - above - space.md), animated: true });
+    });
+  });
 }
 
 export function Button({ label, onPress, busy, disabled, kind = "primary", testID }: {

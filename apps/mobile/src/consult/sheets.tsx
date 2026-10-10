@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Keyboard, Platform, Pressable, ScrollView, StyleSheet, TextInput as RNTextInput, View } from "react-native";
+import { BackHandler, Keyboard, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
-import { Button, MONO, Note, KeyboardModal, keyboardScroll } from "../ui";
+import { Button, MONO, Note, KeyboardModal, keyboardScroll, scrollFocusedIntoView } from "../ui";
 import { refusalText } from "../vitals/api";
 import { voiceNotice } from "./draft";
 import {
@@ -63,20 +63,7 @@ export function Drawer({ title, onClose, children, testID, foot }: { title: stri
   useEffect(() => {
     if (!android || keyboard === 0) return undefined;
     // After the sheet has shrunk above the keyboard, bring the box being typed in back into view.
-    const timer = setTimeout(() => {
-      const box = RNTextInput.State.currentlyFocusedInput();
-      const view = scroll.current;
-      const host = view?.getNativeScrollRef() ?? null;
-      if (box === null || view === null || host === null) return;
-      host.measureInWindow((_x: number, viewY: number, _w: number, viewH: number) => {
-        box.measureInWindow((_bx: number, boxY: number, _bw: number, boxH: number) => {
-          const below = boxY + Math.min(boxH, 160) + space.md - (viewY + viewH);
-          const above = viewY - boxY;
-          if (below > 0) view.scrollTo({ y: offset.current + below, animated: true });
-          else if (above > 0) view.scrollTo({ y: Math.max(0, offset.current - above - space.md), animated: true });
-        });
-      });
-    }, 80);
+    const timer = setTimeout(() => scrollFocusedIntoView(scroll.current, offset.current), 80);
     return () => clearTimeout(timer);
   }, [android, keyboard]);
   const sheet = (

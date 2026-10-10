@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { ApiError, NetworkError } from "../api";
@@ -10,7 +10,7 @@ import { HeldCard } from "../scan/card";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
-import { Band, Button, MONO, Note, keyboardScrollInsets } from "../ui";
+import { Band, Button, MONO, Note, KeyboardScrollView } from "../ui";
 
 /**
  * MY PAPER CONSULTATIONS, ON THE PHONE (app home round 2, decision 0043 — owner ruling 2026-10-06
@@ -111,7 +111,7 @@ export function PaperConsultsScreen() {
           <Text style={{ color: color.agentFg, fontSize: 13, fontWeight: "600" }}>{t("mobile.back")}</Text>
         </Pressable>
       } />
-      <ScrollView {...keyboardScrollInsets()} contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }} keyboardShouldPersistTaps="handled" testID="paper-list">
+      <KeyboardScrollView contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.md }} keyboardShouldPersistTaps="handled" testID="paper-list">
         <Text style={[type.title, { color: color.ink }]}>{t("mobile.paper.title")}</Text>
         <Text style={[type.small, { color: color.dim }]}>{t("mobile.paper.sub")}</Text>
         {failed !== null && <Note tone="warn" testID="paper-failed">{t(failed === "offline" ? "mobile.paper.offline" : "mobile.paper.cannotRead")}</Note>}
@@ -227,7 +227,7 @@ export function PaperConsultsScreen() {
             </View>
           );
         })}
-      </ScrollView>
+      </KeyboardScrollView>
       {viewing !== null && <PaperViewer api={api} doc={viewing} onClose={() => setViewing(null)} t={t} />}
       <HeldCard source={held1 === null ? null : { encounterId: held1 }} onClose={() => setHeld1(null)} />
     </View>
