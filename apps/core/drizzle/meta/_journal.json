@@ -1387,6 +1387,13 @@
       "when": 1791668551777,
       "tag": "0197_copilot_halt_and_spend",
       "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1791706898461,
+      "tag": "0198_copilot_ask_feedback",
+      "breakpoints": true
     }
   ]
 }
