@@ -15,11 +15,9 @@ import type { ChoiceAnswer, ChoiceClient, ChooseInput, ChooseResult } from "../.
  * changes, or a tool is added, every key changes. The test then says "not recorded" and does not replay
  * an answer that was given to a different question.
  *
- * PENDING ITEMS (`pending/*.jsonl`, NOT locked) are written but not yet in the gated set. The test
- * reports them and does not gate them. `unrecorded-*` items have no chooser recording yet: the session
- * that wrote them had no TypeSafe key. `patient-dues` items wait for the copilot-dues lane's tool for
- * `patient_dues`. To promote them: record (`copilot-eval-record.ts`), copy them into a NEW
- * `acceptance/eval/items-*.jsonl`, delete them here, then write a new floor with `--floor`.
+ * PENDING ITEMS (`pending/*.jsonl`, NOT locked; none today) are for the steward's monthly refresh.
+ * The test reports them and does not gate them. To promote one: record it (`copilot-eval-record.ts`),
+ * copy it into a NEW `acceptance/eval/items-*.jsonl`, delete it here, and write a new floor with `--floor`.
  */
 
 export type EvalItem = {

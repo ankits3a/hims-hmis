@@ -23,9 +23,10 @@ import {
  *   retired-*.json  ids taken out of scoring, as a JSON array (append a new file; never delete an item)
  *   floor-*.json    the ids that routed right on the day it was written; each one must keep routing right
  *
- * "Routed right" is the production path with the chat model off: the phrasebook, then the chooser in the
- * default COPILOT_CHOOSER_ORDER (typesafe), answered from `eval/recorded.json` at the default line 0.6
- * (COPILOT_TYPESAFE_MIN_CONFIDENCE). For `none`, the right answer is that no tool is chosen.
+ * "Routed right" is the production path with the chat model off: the phrasebook, then the copilot's FIRST
+ * chooser, OpenAI Decisions (COPILOT_CHOOSER_ORDER default `openai,typesafe`, owner 2026-10-11), answered
+ * from `eval/recorded.json` at the default line 0.6. The TypeSafe fallback is not replayed, so this is a
+ * floor under production. For `none`, the right answer is that no tool is chosen.
  *
  * NONE OF THESE QUESTIONS MAY EVER BECOME AN EXAMPLE shown to a model (`choice-route.ts` CRITERIA, the
  * phrasebook's cues written from them). They are held out; an example copied from here makes the score a lie.
