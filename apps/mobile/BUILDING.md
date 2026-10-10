@@ -253,8 +253,10 @@ same server. What differs in this first version:
      (10–30 minutes). Install it from TestFlight on one iPhone and sign in before going further.
 5. Fill in App Store Connect (<https://appstoreconnect.apple.com> → Apps → HMIS Staff):
    - **Name** HMIS Staff. **Primary category** Medical. **Price** Free.
-   - **Privacy Policy URL** — Apple requires one. **There is no privacy-policy page in this
-     repository or on the hospital's site yet**; one has to be written and published first.
+   - **Privacy Policy URL** — <https://crkmch.com/privacy-policy.html>. It has an HMIS Staff app
+     section, its "Apple iOS App Store Disclosures" and the attendance-location paragraph
+     (checked 2026-10-10). The page is not in this repository: when the app starts collecting
+     something new, the page is changed first.
    - **App Privacy** — what the app really collects (read from the code), all "linked to the
      person", all for "App functionality", none used for tracking:
      - *User ID* — the staff member's sign-in name.
@@ -268,7 +270,11 @@ same server. What differs in this first version:
        stays on the phone.
      - *Health* — staff type and read patients' clinical details in the app. If Apple's form asks,
        this is health data handled by the app, for app functionality.
-     - **No tracking, no advertising, no analytics, no location, no contacts.**
+     - *Precise location* — read ONCE, while the app is open, when a staff member taps "Mark
+       attendance" (decision 0062). The server keeps only "inside / outside premises" and the
+       distance in metres from the campus centre — never the coordinates. Linked to the person,
+       app functionality, not used for tracking. Never in the background.
+     - **No tracking, no advertising, no analytics, no contacts.**
    - **Export compliance** is already answered inside the build (standard HTTPS only).
    - **App Review Information → Sign-in required** — see the next section.
    - **Version Release** — choose **"Manually release this version"**, so an approved app does not
@@ -317,7 +323,9 @@ for giving the app to staff.
 
 - `app.config.ts`, `ios`: the two bundle identifiers (the same strings as Android's app ids),
   iPhone only (no iPad layout), and the three sentences iOS shows when the app first asks for the
-  camera, the microphone and Face ID. No photo library, no location, no background mode.
+  camera, the microphone and Face ID, plus `NSLocationWhenInUseUsageDescription` for "Mark
+  attendance" (decision 0062) — "while using the app" only: no Always location, no background mode,
+  no photo library (`__tests__/ios-config.test.ts` and `__tests__/location-config.test.ts` pin it).
 - `withoutApplePush` in the same file removes the push entitlement, so the first build needs no
   Apple push key. Turning iPhone notifications on later is separate work: the server sends through
   Firebase only.
