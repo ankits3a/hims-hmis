@@ -131,6 +131,8 @@ const THE_EIGHTEEN = [
   // first pass of this task and both were caught by the verify run.
   "rollupUserDayFacts",
   "retentionSweep",
+  // E0.1 (decision 0064) — the copilot ask prune, daily 01:20 IST, always on.
+  "pruneCopilotAsks",
   // Plan 11c D6 — THE TENTH. Unlike the eighth and ninth it is an `every` job whose cadence is a
   // real operator key, so the widened `Pick` DID announce it to the three `JobIntervals` object
   // literals — but not to THIS file, which passes the whole `AppConfig` and satisfies any Pick

@@ -4,6 +4,8 @@ import {
   COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAsks, copilotNoticeAcks,
 } from "../db/schema";
 import { withTx } from "../db/client";
+import { appendEvent } from "../events/append";
+import { copilotAsksPruned } from "./events";
 import type { CopilotAskOutcome, CopilotRoute } from "../db/schema";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
@@ -88,6 +90,43 @@ export async function pruneCopilotAsks(
       .returning({ id: copilotAsks.id });
   });
   return deleted.length;
+}
+
+/**
+ * THE COPILOT'S OWN NIGHTLY PRUNE — owner ruling 2026-10-10 (option a). Ask rows are staff
+ * operational rows, not patient event records, so they get their own 180-day deletion, ALWAYS ON
+ * and independent of `RETENTION_ENABLED`: the patient-record retention sweep stays inert under owner
+ * ruling 6, and its legal holds govern patient records, which an ask row is not. Bounded batches
+ * (a run must end), one count event per run that deleted anything, `copilot_acts` never touched.
+ */
+const MAX_PRUNE_BATCHES = 100;
+const SYSTEM_ACTOR: Actor = { type: "system", id: "copilot-ask-prune" };
+
+export async function runCopilotAskPrune(
+  db: Db,
+  opts: { now?: Date; batchSize?: number } = {},
+): Promise<number> {
+  const now = opts.now ?? new Date();
+  const batchSize = opts.batchSize ?? 5000;
+  let total = 0;
+  for (let i = 0; i < MAX_PRUNE_BATCHES; i += 1) {
+    const removed = await pruneCopilotAsks(db, { retainDays: COPILOT_ASK_RETAIN_DAYS, batchSize, now });
+    total += removed;
+    if (removed < batchSize) break;
+  }
+  if (total > 0) {
+    await withTx(db, (tx) =>
+      appendEvent(tx, copilotAsksPruned.make({
+        actor: SYSTEM_ACTOR,
+        payload: {
+          rows: total,
+          retainDays: COPILOT_ASK_RETAIN_DAYS,
+          cutoff: new Date(now.getTime() - COPILOT_ASK_RETAIN_DAYS * DAY_MS).toISOString(),
+        },
+      })),
+    );
+  }
+  return total;
 }
 
 export type RouteTimings = { asks: number; p50Ms: number | null; p95Ms: number | null };

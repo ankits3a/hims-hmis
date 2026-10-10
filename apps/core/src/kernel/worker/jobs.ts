@@ -19,6 +19,7 @@ import { runReachLadder } from "../notify/reach";
 import type { ChannelAdapter, NotifyChannel } from "../notify/adapters";
 import { createEventPartitions } from "./partitions";
 import { retentionSweep } from "../retention/sweep";
+import { runCopilotAskPrune } from "../copilot/ledger";
 import { istDayString } from "../approvals/cumulative";
 import { sweepOverdueApprovals } from "../approvals/overdue";
 import { collectDeskProviders } from "../desk/registry";
@@ -68,6 +69,8 @@ const RADIOLOGY_UNREAD_WATCHMAN_IST = "08:00";
 // clinic. Like its neighbours it is a code constant, not a deployment knob: WHAT retention does
 // is configurable (and off by default), WHEN it runs is a design decision.
 const RETENTION_SWEEP_IST = "01:15";
+/** E0.1 — the copilot ledger's own 180-day prune (owner ruling 2026-10-10, option a), after the sweep's slot. */
+const COPILOT_ASK_PRUNE_IST = "01:20";
 /**
  * PLAN 07c T8 / DD13 — the per-user daily rollup that the six-period briefs are served from.
  *
@@ -427,6 +430,18 @@ export function registerAllJobs(
         notifyRetainDays: intervals.notifyRetainDays,
       });
     },
+  });
+  /*
+    E0.1 (decision 0064) — THE COPILOT ASK PRUNE, owner ruling 2026-10-10 (option a). ALWAYS ON: it
+    does not read `retentionEnabled`, because ask rows are staff operational rows, not the patient
+    event records the inert retention sweep (owner ruling 6) and its legal holds govern. Census moved
+    by hand: jobs-count pins, the named arrays in `scheduler.test.ts` and `worker-runtime.e2e.test.ts`,
+    `alerts-parity.test.ts`, and `docker/prod/prometheus/alerts.yml`.
+  */
+  scheduler.register({
+    name: "pruneCopilotAsks",
+    dailyIst: COPILOT_ASK_PRUNE_IST,
+    run: async (now) => { await runCopilotAskPrune(db, { now }); },
   });
   // Plan 11c D6: THE TENTH JOB, and it is an `every` job whose cadence is a real operator key —
   // so unlike the eighth it widened `JobIntervals` (see the Pick above), and unlike the ninth the

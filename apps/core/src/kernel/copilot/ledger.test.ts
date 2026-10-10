@@ -3,8 +3,12 @@ import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { copilotActs, copilotAsks, events } from "../db/schema";
 import { retentionSweep } from "../retention/sweep";
+import { registerAllJobs, type JobIntervals } from "../worker/jobs";
+import { ModuleRegistry } from "../modules/loader";
+import type { JobSpec, Scheduler } from "../worker/scheduler";
 import {
   COPILOT_ASK_RETAIN_DAYS, acknowledgeNotice, noticeSeen, pruneCopilotAsks, readCopilotHealth, recordAsk,
+  runCopilotAskPrune,
 } from "./ledger";
 import type { Db } from "../db/client";
 
@@ -14,6 +18,14 @@ import type { Db } from "../db/client";
  */
 const DAY = 24 * 60 * 60 * 1000;
 const APPEND_ONLY = /audit_append_only/;
+
+/** The shipped defaults, retention OFF — the state production is in (owner ruling 6). */
+const RETENTION_OFF: JobIntervals = {
+  workerDispatchIntervalMs: 2000, workerTimersIntervalMs: 20_000, workerTempRolesIntervalMs: 60_000,
+  workerNotifyIntervalMs: 5000, workerReachIntervalMs: 60_000, notifyStuckAfterMs: 300_000,
+  retentionEnabled: false, retentionEventsMonths: 120, notifyRetainDays: 180,
+  workerInterfaceSweepIntervalMs: 60_000, workerLabSweepIntervalMs: 60_000,
+};
 
 describe("E0.1 — the copilot ledger at the database", () => {
   let db: Db;
@@ -56,21 +68,41 @@ describe("E0.1 — the copilot ledger at the database", () => {
     expect(await db.select().from(copilotAsks)).toHaveLength(1);
   });
 
-  it("D6: the retention sweep removes asks older than 180 days, keeps younger ones, and leaves acts alone", async () => {
-    await anAsk(COPILOT_ASK_RETAIN_DAYS * DAY + 60 * 60 * 1000);
-    await anAsk((COPILOT_ASK_RETAIN_DAYS + 40) * DAY);
-    const young = await anAsk((COPILOT_ASK_RETAIN_DAYS - 2) * DAY);
-    const today = await anAsk(DAY / 2);
+  it("D6 (owner ruling 2026-10-10, option a): with RETENTION_ENABLED=false the copilot's own nightly job deletes a 181-day-old ask, keeps a 179-day-old one, and leaves acts alone", async () => {
+    await anAsk(181 * DAY);
+    const kept = await anAsk(179 * DAY);
     await db.execute(anAct("c-3"));
 
-    const result = await retentionSweep(db, { enabled: true });
-    expect(result.copilotAsksDeleted).toBe(2);
-    expect((await db.select({ id: copilotAsks.id }).from(copilotAsks)).map((r) => r.id).sort()).toEqual([young, today].sort());
+    // The patient-record sweep stays inert (owner ruling 6) and is not the door.
+    await retentionSweep(db, { enabled: false });
+    expect(await db.select().from(copilotAsks)).toHaveLength(2);
+
+    const specs: JobSpec[] = [];
+    registerAllJobs(
+      { register: (spec: JobSpec) => { specs.push(spec); } } as unknown as Scheduler,
+      db, new ModuleRegistry(), {}, RETENTION_OFF,
+    );
+    const job = specs.find((j) => j.name === "pruneCopilotAsks");
+    expect(job).toBeDefined();
+    await job!.run(new Date());
+
+    expect((await db.select({ id: copilotAsks.id }).from(copilotAsks)).map((r) => r.id)).toEqual([kept]);
     expect(await db.select().from(copilotActs)).toHaveLength(1);
-    // the destruction is evented with its count, as `search.audit_pruned` is
     const pruned = (await db.select().from(events)).filter((e) => e.name === "copilot.asks_pruned");
     expect(pruned).toHaveLength(1);
-    expect((pruned[0]!.payload as { rows: number }).rows).toBe(2);
+    expect((pruned[0]!.payload as { rows: number }).rows).toBe(1);
+  });
+
+  it("the patient-record retention sweep, even switched on, does not touch the copilot's asks", async () => {
+    await anAsk(200 * DAY);
+    await retentionSweep(db, { enabled: true });
+    expect(await db.select().from(copilotAsks)).toHaveLength(1);
+  });
+
+  it("a run with nothing to prune deletes nothing and appends no event", async () => {
+    await anAsk(DAY);
+    expect(await runCopilotAskPrune(db)).toBe(0);
+    expect((await db.select().from(events)).filter((e) => e.name === "copilot.asks_pruned")).toHaveLength(0);
   });
 
   it("the prune's database floor refuses a window shorter than 179 days", async () => {
