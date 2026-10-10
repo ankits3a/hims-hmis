@@ -11,7 +11,8 @@ import { users } from "./auth";
  * everyone's, unit heads and in-charges their own team's. These tables are a COPY, written by one
  * job (`syncAttendance`) and one webhook, and read by `modules/attendance`. Nothing here is typed by
  * a person and nothing here is invented: each column is a field of the bioattend API guide
- * (2026-10-09), under the guide's own name.
+ * (2026-10-09), under the guide's own name. The two exceptions, both HMIS's own and both at the
+ * foot of this file: meeting requests, and the staff app's location-checked marks (`att_app_marks`).
  *
  * ALL DATES AND TIMES ARE IST WALL-CLOCK, AS BIOATTEND SENDS THEM. A date is a `date` read as a
  * string; a time of day or a punch instant is TEXT (`08:58`, `2026-10-09 08:58:12`). None of them is
@@ -212,5 +213,40 @@ export const attMeetingRequests = pgTable(
     index("att_meeting_requests_pin_date_idx").on(t.pin, t.date),
     check("att_meeting_requests_status_chk", sql`${t.status} in ('open', 'seen', 'closed', 'resolved_by_correction')`),
     check("att_meeting_requests_note_chk", sql`(${t.note} is null or char_length(${t.note}) <= 200) and (${t.closeNote} is null or char_length(${t.closeNote}) <= 200)`),
+  ],
+);
+
+/**
+ * ═══ APP MARKS — THE STAFF APP'S "MARK ATTENDANCE", A BACKUP TO THE MACHINE (owner 2026-10-10) ═══
+ *
+ * The one `att_*` table a person writes (with a tap, not by typing). The machine stays the main
+ * record: a row here is EVIDENCE the Attendance Committee weighs. It is never sent to bioattend,
+ * never touches `att_punches` or `att_days`, and never changes a day's word (Option B, a money ruling).
+ *
+ * NO COORDINATES — there is no latitude or longitude column, and there must never be one. The server
+ * reduces the phone's one reading to `place` and `distance_m` before anything is written.
+ */
+export const attAppMarks = pgTable(
+  "att_app_marks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    /** The machine pin the login was linked to when it marked — so a mark stands beside that person's punches. */
+    pin: text("pin").notNull(),
+    /** The IST calendar date of `marked_at`. */
+    day: date("day", { mode: "string" }).notNull(),
+    markedAt: timestamp("marked_at", { withTimezone: true }).notNull().defaultNow(),
+    kind: text("kind").notNull(),
+    /** `inside` / `outside` (premises), `not_shared` (no reading), `doubtful` (the phone said the reading was mocked). */
+    place: text("place").notNull(),
+    /** Whole metres from the campus centre; null when there was no reading. */
+    distanceM: integer("distance_m"),
+  },
+  (t) => [
+    index("att_app_marks_pin_day_idx").on(t.pin, t.day),
+    index("att_app_marks_user_day_idx").on(t.userId, t.day),
+    check("att_app_marks_kind_chk", sql`${t.kind} in ('in', 'out')`),
+    check("att_app_marks_place_chk", sql`${t.place} in ('inside', 'outside', 'not_shared', 'doubtful')`),
+    check("att_app_marks_distance_chk", sql`(${t.place} = 'not_shared') = (${t.distanceM} is null) and (${t.distanceM} is null or ${t.distanceM} >= 0)`),
   ],
 );

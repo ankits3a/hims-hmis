@@ -30,6 +30,9 @@
     "mismatch": "The two new passwords do not match"
   },
   "mobile": {
+    "location": {
+      "why": "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises."
+    },
     "submitChange": "Change password",
     "wrongCurrent": "The current password is wrong",
     "policy": "The new password does not meet the rule above",
@@ -1947,6 +1950,34 @@
     }
   },
   "attendance": {
+    "mark": {
+      "in": "Mark attendance · In",
+      "out": "Mark attendance · Out",
+      "checking": "Checking location…",
+      "continue": "Continue",
+      "cancel": "Cancel",
+      "done": {
+        "in": "Marked in",
+        "out": "Marked out"
+      },
+      "place": {
+        "inside": "inside premises",
+        "outside": "outside premises",
+        "not_shared": "location not shared",
+        "doubtful": "location doubtful"
+      },
+      "tag": {
+        "inside": "App ✓",
+        "outside": "App: outside",
+        "not_shared": "App: no location",
+        "doubtful": "App: doubtful"
+      },
+      "tooMany": "Too many marks today",
+      "failed": "Not marked — try again",
+      "offline": "No network — not marked",
+      "appMarks": "App marks",
+      "metres": "{{n}} m"
+    },
     "aadhaar": {
       "card": "Add your Aadhaar to see attendance",
       "button": "Add Aadhaar",

@@ -18,6 +18,8 @@ import {
 } from "./reads";
 import { MAX_OPEN_REQUESTS, NOTE_MAX, RequestError, closeRequest, listRequests, markSeen, ownRequests, requestMeeting } from "./requests";
 import { apiKeyOf } from "./secrets";
+import { MarkError, latestMarks, markAttendance, marksOfPins, selfMarks } from "./marks";
+import type { MarkView, SelfMarkView } from "./marks";
 import { inArray } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
 import type { AppConfig } from "../../kernel/config";
@@ -36,6 +38,10 @@ const requestBody = z.object({ date: z.string(), note }).strict();
 const closeBody = z.object({ note }).strict();
 const requestsQuery = z.object({ status: z.enum(["open", "seen", "closed"]).optional() });
 const summaryQuery = rangeQuery.extend({ groupBy: z.enum(["dept", "status", "day"]).optional() });
+/** The phone's one reading, or null when it has none. Nothing else is accepted — and none of it is kept (`marks.ts`). */
+const markBody = z.object({
+  location: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180), mocked: z.boolean().default(false) }).strict().nullable(),
+}).strict();
 
 function q<T>(schema: z.ZodType<T>, value: unknown): T {
   const r = schema.safeParse(value);
@@ -50,7 +56,7 @@ function rangeOf(query: { from?: string; to?: string }, today: string): { from: 
 }
 
 /** A person's OWN attendance: five words, "checked in", and (planned) leave, roster and holidays. Times only when the setting says so. */
-export type SelfRange = { person: PersonView; from: string; to: string; today: SelfTodayView; days: SelfDayView[]; needsConfirm: string[] } & Omit<RangeView, "days">;
+export type SelfRange = { person: PersonView; from: string; to: string; today: SelfTodayView; days: SelfDayView[]; needsConfirm: string[]; marks: SelfMarkView[] } & Omit<RangeView, "days">;
 function requestHttp(e: unknown): never {
   if (!(e instanceof RequestError)) throw e;
   if (e.code === "unknown_request") throw new NotFoundException({ code: e.code });
@@ -62,7 +68,7 @@ function requestHttp(e: unknown): never {
 export type MeResponse =
   | { linked: false; reason: UnlinkedReason; configured: boolean; leadsTeam: boolean }
   | ({ linked: true; configured: boolean; leadsTeam: boolean; showsTimes: boolean } & SelfRange);
-export type TeamMemberToday = { userId: string; name: string; linked: boolean; pin: string | null; today: Omit<TodayRow, keyof PersonView | "hasLogin"> | null };
+export type TeamMemberToday = { userId: string; name: string; linked: boolean; pin: string | null; today: Omit<TodayRow, keyof PersonView | "hasLogin"> | null; appMark: MarkView | null };
 
 /**
  * ═══ THE ATTENDANCE READ ROUTES — THREE AUDIENCES, ONE COPY ═══
@@ -83,6 +89,10 @@ export type TeamMemberToday = { userId: string; name: string; linked: boolean; p
  * counts-only summary or the sync state: there is no person in them.
  *
  * NO ROUTE RETURNS A MOBILE NUMBER OR AN AADHAAR HASH — `reads.ts` selects neither.
+ *
+ * APP MARKS (decision 0061) ride along with the machine's data on every route above: the person sees
+ * their own as words, a manager sees each with its time, place and metres. No route has a coordinate
+ * to return: none is stored.
  */
 @Controller("attendance")
 export class AttendanceController {
@@ -106,7 +116,7 @@ export class AttendanceController {
     const leadsTeam = (await teamOf(this.db, actor.id, new Date())).userIds.length > 0;
     const person = await personOfUser(this.db, actor.id);
     if (person === null) return { linked: false, reason: await unlinkedReason(this.db, actor.id), configured, leadsTeam };
-    return { linked: true, configured, leadsTeam, showsTimes: this.cfg.attendance.selfShowsTimes, ...(await this.selfRange(person, from, to, today)) };
+    return { linked: true, configured, leadsTeam, showsTimes: this.cfg.attendance.selfShowsTimes, ...(await this.selfRange(actor.id, person, from, to, today)) };
   }
 
   /**
@@ -114,13 +124,13 @@ export class AttendanceController {
    * are not in the payload at all unless `ATTENDANCE_SELF_SHOWS_TIMES` is on — hidden-by-the-app is
    * not hidden. `/attendance/me` and a plain person asking for their own pin both answer with this.
    */
-  private async selfRange(person: PersonView, from: string, to: string, today: string): Promise<SelfRange> {
+  private async selfRange(userId: string, person: PersonView, from: string, to: string, today: string): Promise<SelfRange> {
     const withTimes = this.cfg.attendance.selfShowsTimes;
     const { leaves, roster, holidays } = await personRange(this.db, person, from, to);
     return {
       person, from, to, today: await selfToday(this.db, person.pin, today, withTimes),
       days: await selfDays(this.db, person.pin, from, to, today, withTimes),
-      needsConfirm: await needsConfirm(this.db, person.pin, today), leaves, roster, holidays,
+      needsConfirm: await needsConfirm(this.db, person.pin, today), marks: await selfMarks(this.db, userId, from, to), leaves, roster, holidays,
     };
   }
 
@@ -135,6 +145,24 @@ export class AttendanceController {
     // With the setting off this is the day's word and NOTHING else: no `punches` key at all.
     const day = (await selfDays(this.db, person.pin, date, date, today, false))[0];
     return { linked: true, date, showsTimes, status: day?.status ?? null, ...(day?.reason === undefined ? {} : { reason: day.reason }), ...(showsTimes ? { punches: await punchesOf(this.db, person.pin, date) } : {}) };
+  }
+
+  /**
+   * "MARK ATTENDANCE" (owner 2026-10-10, decision 0061) — In, or Out after an In. The answer is words
+   * only, like every self route. The body's reading is reduced to a place and metres in `marks.ts` and
+   * goes no further: a refused body says only `bad_body`, never what it held.
+   */
+  @Post("me/marks")
+  @HttpCode(200)
+  async mark(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ created: boolean; mark: SelfMarkView }> {
+    const r = markBody.safeParse(body);
+    if (!r.success) throw new BadRequestException({ code: "bad_body" });
+    if (actor.type !== "user") throw new ForbiddenException();
+    return markAttendance(this.db, actor.id, r.data.location, this.cfg.attendanceSite, new Date()).catch((e: unknown) => {
+      if (!(e instanceof MarkError)) throw e;
+      if (e.code === "too_many_marks") throw new HttpException({ code: e.code }, 429);
+      throw new ConflictException({ code: e.code });
+    });
   }
 
   /**
@@ -184,17 +212,18 @@ export class AttendanceController {
   @RequirePermission(ATTENDANCE_ALL_READ, "hospital")
   @Get("today")
   async today(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{
-    date: string; configured: boolean; people: TodayRow[]; summary: { total: number; byStatus: CountsByStatus; byDept: { dept: string | null; total: number; byStatus: CountsByStatus }[] };
+    date: string; configured: boolean; people: (TodayRow & { appMark: MarkView | null })[]; summary: { total: number; byStatus: CountsByStatus; byDept: { dept: string | null; total: number; byStatus: CountsByStatus }[] };
   }> {
     const date = istDate(new Date());
     const { dept } = q(todayQuery, query);
     const list = await todayList(this.db, date, dept === undefined ? {} : { dept });
     await this.audit(actor, { view: "today", scope: "all", subjectPin: null, from: date, to: date, people: list.people.length, rows: list.people.length });
-    return { date, configured: this.configured(), people: list.people, summary: { total: list.people.length, byStatus: list.byStatus, byDept: list.byDept } };
+    const marks = await latestMarks(this.db, date);
+    return { date, configured: this.configured(), people: list.people.map((p) => ({ ...p, appMark: marks.get(p.pin) ?? null })), summary: { total: list.people.length, byStatus: list.byStatus, byDept: list.byDept } };
   }
 
   @Get("person/:pin")
-  async person(@CurrentActor() actor: Actor, @Param("pin") pin: string, @Query() query: unknown): Promise<({ detail: "full"; person: PersonView; from: string; to: string; today: TodayView } & RangeView) | ({ detail: "self"; showsTimes: boolean } & SelfRange)> {
+  async person(@CurrentActor() actor: Actor, @Param("pin") pin: string, @Query() query: unknown): Promise<({ detail: "full"; person: PersonView; from: string; to: string; today: TodayView; marks: MarkView[] } & RangeView) | ({ detail: "self"; showsTimes: boolean } & SelfRange)> {
     const today = istDate(new Date());
     const { from, to } = rangeOf(q(rangeQuery, query), today);
     if (actor.type !== "user") throw new ForbiddenException();
@@ -210,10 +239,11 @@ export class AttendanceController {
     // THE SELF SHAPE CANNOT BE BYPASSED THROUGH THIS DOOR: somebody asking for their OWN pin gets
     // the machine's full detail only as a manager (`attendance.all.read`). `teamOf` never puts a
     // person on their own team, so leading a team does not open one's own times either.
-    if (own && !all) return { detail: "self", showsTimes: this.cfg.attendance.selfShowsTimes, ...(await this.selfRange(person, from, to, today)) };
+    if (own && !all) return { detail: "self", showsTimes: this.cfg.attendance.selfShowsTimes, ...(await this.selfRange(actor.id, person, from, to, today)) };
     const range = await personRange(this.db, person, from, to);
     if (!own) await this.audit(actor, { view: "person", scope: all ? "all" : "team", subjectPin: pin, from, to, people: 1, rows: range.days.length });
-    return { detail: "full", person, from, to, today: await todayOf(this.db, pin, today), ...range };
+    const marks = (await marksOfPins(this.db, [pin], from, to)).get(pin) ?? [];
+    return { detail: "full", person, from, to, today: await todayOf(this.db, pin, today), marks, ...range };
   }
 
   /** The caller's team, or 403 when they lead nobody. Names come from HMIS (`users`), so an unlinked member is still named. */
@@ -236,11 +266,13 @@ export class AttendanceController {
     const { members } = await this.team(actor);
     const pins = members.flatMap((m) => (m.person === null ? [] : [m.person.pin]));
     const list = await todayList(this.db, date, { pins });
+    const marks = await latestMarks(this.db, date, pins);
     const out: TeamMemberToday[] = members.map((m) => {
       const row = m.person === null ? undefined : list.people.find((p) => p.pin === m.person!.pin);
       return {
         userId: m.userId, name: m.name, linked: m.person !== null, pin: m.person?.pin ?? null,
         today: row === undefined ? null : { status: row.status, known: row.known, firstIn: row.firstIn, lastOut: row.lastOut, onDuty: row.onDuty },
+        appMark: m.person === null ? null : marks.get(m.person.pin) ?? null,
       };
     });
     await this.audit(actor, { view: "team_today", scope: "team", subjectPin: null, from: date, to: date, people: members.length, rows: list.people.length });
@@ -248,12 +280,17 @@ export class AttendanceController {
   }
 
   @Get("team")
-  async teamRange(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ from: string; to: string; members: { userId: string; name: string; linked: boolean; pin: string | null; days: DayView[] }[] }> {
+  async teamRange(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<{ from: string; to: string; members: { userId: string; name: string; linked: boolean; pin: string | null; days: DayView[]; marks: MarkView[] }[] }> {
     const today = istDate(new Date());
     const { from, to } = rangeOf(q(rangeQuery, query), today);
     const { members } = await this.team(actor);
-    const days = await daysOfPins(this.db, members.flatMap((m) => (m.person === null ? [] : [m.person.pin])), from, to);
-    const out = members.map((m) => ({ userId: m.userId, name: m.name, linked: m.person !== null, pin: m.person?.pin ?? null, days: m.person === null ? [] : days.get(m.person.pin) ?? [] }));
+    const pins = members.flatMap((m) => (m.person === null ? [] : [m.person.pin]));
+    const days = await daysOfPins(this.db, pins, from, to);
+    const marks = await marksOfPins(this.db, pins, from, to);
+    const out = members.map((m) => ({
+      userId: m.userId, name: m.name, linked: m.person !== null, pin: m.person?.pin ?? null,
+      days: m.person === null ? [] : days.get(m.person.pin) ?? [], marks: m.person === null ? [] : marks.get(m.person.pin) ?? [],
+    }));
     await this.audit(actor, { view: "team", scope: "team", subjectPin: null, from, to, people: members.length, rows: out.reduce((n, m) => n + m.days.length, 0) });
     return { from, to, members: out };
   }

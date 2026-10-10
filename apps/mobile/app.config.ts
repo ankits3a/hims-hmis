@@ -23,7 +23,13 @@ const UPDATE_FEED: Record<typeof ENV, string> = {
   // Served by production's caddy since 2026-10-06 (docker/prod/Caddyfile, `@app_file`; plan §7).
   production: "https://hmis.crkmch.com/app/hmis-staff-production-latest.json",
 };
-const VERSION = "0.15.2";
+const VERSION = "0.16.0";
+/**
+ * "MARK ATTENDANCE" (decision 0061) — the ONE location sentence, iPhone and Android. The app reads the
+ * position once, in the foreground, when a person taps the button; never in the background.
+ */
+export const LOCATION_SENTENCE = "HMIS checks your location once when you mark attendance, to confirm you are on hospital premises.";
+
 /**
  * M6b — NOTIFICATIONS ARE IN A BUILD ONLY WHEN THE HOSPITAL'S FIREBASE PROJECT IS.
  * `scripts/build-apk.sh` copies the owner's `google-services.json` beside this file when it exists
@@ -55,6 +61,8 @@ const config: ExpoConfig = {
       backgroundImage: "./assets/android-icon-background.png",
     },
     predictiveBackGestureEnabled: false,
+    // Location is foreground-only: never the background permission, never a location foreground service.
+    blockedPermissions: ["android.permission.ACCESS_BACKGROUND_LOCATION", "android.permission.FOREGROUND_SERVICE_LOCATION"],
     ...(PUSH_IN_BUILD ? { googleServicesFile: GOOGLE_SERVICES } : {}),
   },
   web: { favicon: "./assets/favicon.png", output: "single" },
@@ -76,6 +84,12 @@ const config: ExpoConfig = {
     // Phone consult (decision 0048) — the microphone, for the doctor's spoken note ONLY. The clip is sent
     // to the hospital's server and on to the speech service; nothing is recorded in the background.
     ["expo-audio", { microphonePermission: "HMIS uses the microphone when a doctor chooses to speak a consultation note.", enableBackgroundRecording: false, enableBackgroundPlayback: false }],
+    // Decision 0061 — "Mark attendance" reads the position once, while the app is open. ONLY "when in use":
+    // `false` REMOVES the plugin's default Always / motion keys from the iPhone build; nothing in the background.
+    ["expo-location", {
+      locationWhenInUsePermission: LOCATION_SENTENCE, locationAlwaysAndWhenInUsePermission: false, locationAlwaysPermission: false, motionUsagePermission: false,
+      isIosBackgroundLocationEnabled: false, isAndroidBackgroundLocationEnabled: false, isAndroidForegroundServiceEnabled: false, isAndroidMotionActivityEnabled: false,
+    }],
     // M6b — the small icon in the tray is the HMIS diamond (alpha only), tinted pine.
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#0E6B4E" }],
   ],

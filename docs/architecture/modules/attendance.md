@@ -30,6 +30,7 @@ Source: `apps/core/src/modules/attendance/`
   - types: `BioattendOutcome`
 - `events.ts`
   - `ATTENDANCE_EVENTS`
+  - `attendanceAppMarked`
   - `attendancePersonLinked`
   - `attendanceRead`
   - `attendanceSyncRefused`
@@ -77,13 +78,13 @@ Source: `apps/core/src/modules/attendance/`
 
 ## Tables (`kernel/db/schema/attendance.ts`)
 
-`att_days`, `att_holidays`, `att_leaves`, `att_meeting_requests`, `att_on_duty`, `att_punches`, `att_roster`, `att_shifts`, `att_staff`, `att_sync_state`
+`att_app_marks`, `att_days`, `att_holidays`, `att_leaves`, `att_meeting_requests`, `att_on_duty`, `att_punches`, `att_roster`, `att_shifts`, `att_staff`, `att_sync_state`
 
 Foreign keys into: `auth`
 
-## HTTP routes (18)
+## HTTP routes (19)
 
-- `attendance.controller.ts` — 13: `/attendance/me`, `/attendance/person`, `/attendance/requests`, `/attendance/summary`, `/attendance/sync-state`, `/attendance/team`, `/attendance/today`
+- `attendance.controller.ts` — 14: `/attendance/me`, `/attendance/person`, `/attendance/requests`, `/attendance/summary`, `/attendance/sync-state`, `/attendance/team`, `/attendance/today`
 - `me-identity.controller.ts` — 2: `/me/identity`
 - `users-identity.controller.ts` — 2: `/admin/users`
 - `webhook.controller.ts` — 1: `/webhooks/bioattend`
