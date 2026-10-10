@@ -1,4 +1,4 @@
-import { matchIntent } from "./phrasebook";
+import { cueWords, matchIntent } from "./phrasebook";
 
 /**
  * FD-COPILOT T2 — THE FLOOR, AND THE BUG IT IS WRITTEN AGAINST.
@@ -247,5 +247,52 @@ describe("matchIntent — the roster (20-U U9)", () => {
   it("the queue and the patient keep their questions", () => {
     expect(matchIntent("kaun si line chhoti hai")?.intent).toBe("queue_depth");
     expect(matchIntent("kya <<P1>> ko doctor ne dekh liya?")?.intent).toBe("visit_status");
+  });
+});
+
+/**
+ * ═══ #672 — THE FLOOR'S CONFIDENT WRONGS ON THE FROZEN EVAL SET (E0.4, goal G3c) ═══
+ *
+ * 12 of the eval set's 17 misses were this floor answering with the wrong tool before the chooser was
+ * asked; the chooser had the right answer for each. The sentences below are PARAPHRASES — the eval set is
+ * held out and none of its questions may be copied here. Each case failed against the table before #672.
+ */
+describe("matchIntent — #672, the wrong tool grabbed first", () => {
+  it.each([
+    ["haddi wale doctor ke paas kitna samay lagega", "queue_depth"],
+    ["हड्डी वाले डॉक्टर के पास कितना समय लगेगा", "queue_depth"],
+    ["<<P1>> का भुगतान कितना बाकी है", "patient_dues"],
+    ["kin logon ne paise de diye lekin dawai nahi li", "paid_not_collected"],
+    ["bhugtan ho gaya, dawai counter pe padi hai, kiski hai", "paid_not_collected"],
+    ["dolo nahi bachi hai, note kar lena", "draft_short_book_entry"],
+    ["supplier ka paisa dena hai, run bana do", "draft_payment_run"],
+    ["expire wali dawai company ko lautana hai", "draft_supplier_returns"],
+    ["expiry wala maal distributor ko return kar do", "draft_supplier_returns"],
+    ["send the expired stock back to the supplier", "draft_supplier_returns"],
+    ["एक्सपायर दवाइयाँ कंपनी को लौटानी हैं", "draft_supplier_returns"],
+    ["need a swap for my night on friday", "roster.ask_cover"],
+  ])("routes %s", (question: string, intent: string) => {
+    expect(matchIntent(question)?.intent).toBe(intent);
+  });
+
+  it.each([
+    ["printer ka toner khatam ho gaya", "draft_short_book_entry"],
+    ["expiry ki return list bana do", "stock_on_shelf"],
+    ["am i on call on saturday", "roster.who_is_on"],
+  ])("abstains on %s rather than answering %s", (question: string, wrong: string) => {
+    expect(matchIntent(question)?.intent).not.toBe(wrong);
+  });
+
+  it("keeps the questions the new cues sit next to", () => {
+    expect(matchIntent("pan 40 kab expire hoga")?.intent).toBe("stock_on_shelf");
+    expect(matchIntent("supplier payment karo")?.intent).toBe("draft_payment_run");
+    expect(matchIntent("<<P1>> ka kitna paisa baaki hai")?.intent).toBe("patient_dues");
+    expect(matchIntent("who is on call in surgery now")?.intent).toBe("roster.who_is_on");
+    expect(matchIntent("when is my next night")?.intent).toBe("roster.my_duties");
+  });
+
+  it("names a negative cue as one, and never offers it to the name masker", () => {
+    expect(matchIntent("printer ka toner khatam ho gaya")?.cues ?? []).not.toContain("khatam");
+    expect(cueWords()).not.toContain("printer");
   });
 });

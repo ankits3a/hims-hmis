@@ -77,13 +77,17 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   queue_depth: [
     S("wait"), S("queue"), S("line"), S("bhid"), S("भीड़"), S("intezaar"), S("इंतज़ार"),
     S("kitni der"), S("how long"), S("katar"), S("क़तार"),
+    /* #672 — "how much TIME will it take" is the queue's; `डॉक्टर` alone was answering it as one patient's visit. */
+    S("kitna samay"), S("कितना समय"), S("samay lagega"), S("समय लगेगा"), S("kitna time"), S("time lagega"),
     W("kam"), W("chhoti"), W("shortest"), W("kaun si"), W("kitna"),
   ],
   /** "What does this person owe?" */
   patient_dues: [
     S("paisa"), S("paise"), S("bakay"), S("baaki"), S("बकाया"), S("due"), S("dues"),
     S("owe"), S("outstanding"), S("balance"), S("पैसा"),
-    W("kitna"), W("bill"), W("amount"),
+    /* #672 — the Devanagari `बाकी` was missing, so "<<P1>> का कितना भुगतान बाकी है" went to the supplier payment run. */
+    S("बाकी"), S("बाक़ी"),
+    W("kitna"), W("कितना"), W("bill"), W("amount"),
   ],
   /** "Give me my day." — the owner's second example, and the one that must DO something. */
   my_day_report: [
@@ -121,7 +125,14 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("lene nahi aaya"), S("lene nahi aaye"), S("lene nahi aayi"), S("nahi aaya lene"),
     S("paisa dekar"), S("paise dekar"), S("pay karke"),
     S("दवा नहीं ली"), S("लेने नहीं आया"), S("पैसे दे दिए"),
-    W("pending"), W("collect"), W("le gaye"),
+    /*
+      #672 — "paid, but did not PICK IT UP / did not take it": `paise` (dues) and `bhugtan` (the
+      supplier payment run) each answered alone because none of these was a cue. "Paid, but the
+      medicine…" is weak on purpose (`par dawa`, `lekin dawa`): it tips a balance, never decides one.
+    */
+    S("nahi uthayi"), S("nahin uthayi"), S("nahi uthaya"), S("nahin uthaya"), S("nahi li"), S("nahin li"),
+    S("paise de diye"), S("paisa de diya"), S("bhugtan ho gaya"), S("counter par padi"), S("counter pe padi"),
+    W("pending"), W("collect"), W("le gaye"), W("par dawa"), W("lekin dawa"),
   ],
   /**
    * PARITY P1 (2026-09-24) — "Pan 40 khatam", "out of Pan 40": the counter says a drug is short,
@@ -133,6 +144,8 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   draft_short_book_entry: [
     S("khatam"), S("khatm"), S("khtm"), S("खत्म"), S("ख़त्म"), S("out of"), S("out of stock"), S("ran out"),
     S("short book"), S("shortbook"), S("shortage"), S("short hai"), S("short ho"),
+    /* #672 — "X nahi bachi, note kar lo" asks for the line to be WRITTEN; `bachi` alone was answering it from the shelf. */
+    S("note kar"),
     W("likh"), W("note"), W("finished"),
   ],
   /**
@@ -154,6 +167,8 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   draft_payment_run: [
     S("payment run"), S("pay the suppliers"), S("pay suppliers"), S("pay the vendors"), S("pay vendors"), S("supplier payment"),
     S("vendor payment"), S("payment bana"), S("payment karo"), S("payment kar do"), S("bills to pay"), S("bhugtan"), S("भुगतान"),
+    /* #672 — a distributor's money is a payment run, not a patient's dues (`paisa`). */
+    S("run bana"), S("distributor ka paisa"), S("supplier ka paisa"), S("vendor ka paisa"),
   ],
   /**
    * PARITY P4 (2026-09-25) — "expiry return bana do", "expired maal wapas bhejo": the agent DRAFTS
@@ -165,7 +180,13 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   draft_supplier_returns: [
     S("supplier return"), S("purchase return"), S("return to supplier"), S("return to the supplier"), S("return bana"), S("returns bana"),
     S("expiry return"), S("expired maal"), S("wapas bhej"), S("vapas bhej"), S("debit note"), S("वापस भेज"), S("दवा वापस"),
-    W("wapas"), W("vapas"), W("वापस"),
+    /*
+      #672 — "expired medicines are to be RETURNED / sent back to the company": `expire` + `dawai`
+      answered from the shelf, because `lautana` and "back to the supplier" were cues nowhere. The
+      receiving party (`company ko`, `distributor ko`) is weak: "supplier ko payment karo" must not tie.
+    */
+    S("lautan"), S("लौटान"), S("return kar"), S("back to the supplier"), S("back to supplier"), S("send back"), S("expired stock"),
+    W("wapas"), W("vapas"), W("वापस"), W("company ko"), W("कंपनी को"), W("distributor ko"), W("supplier ko"), W("सप्लायर को"),
   ],
   /**
    * PHARMACY P6 (hygiene, 2026-09-26) — "duplicate items dikhao", "same medicine do baar bana hai": the
@@ -204,6 +225,8 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("meri duty"), S("mera duty"), S("my duty"), S("my duties"), S("my next"), S("mera agla"), S("meri agli"),
     S("agla night"), S("agli night"), S("next night"), S("my night"), S("meri night"), S("mera night"), S("मेरी ड्यूटी"),
     S("मेरा अगला"), S("मेरी अगली"),
+    /* #672 — "am I on call" is the asker's own duty; the board's `on call` alone was answering it as "who is on". */
+    S("am i on"), S("do i have duty"), S("am i working"),
     W("mera"), W("meri"), W("मेरी"), W("मेरा"), W("kab"), W("agla"), W("agli"), W("night"),
   ],
   /**
@@ -214,8 +237,28 @@ const CUES: Record<CopilotIntent, Cue[]> = {
   "roster.ask_cover": [
     S("le sakta"), S("le sakti"), S("le sakte"), S("le lega"), S("le legi"), S("koi le"), S("cover kar"), S("cover"), S("swap"),
     S("duty badal"), S("meri jagah"), S("take my"), S("anyone take"), S("someone take"), S("मेरी जगह"), S("ले सकता"), S("ले सकती"),
+    /* #672 — "a swap FOR my night" was answered as the night itself (`my night`). */
+    S("swap for"), S("swap my"), S("cover my"), S("cover for my"),
     W("koi"), W("कोई"),
   ],
+};
+
+/**
+ * ═══ #672 — NEGATIVE CUES: WORDS THAT SAY "NOT THIS ONE" ═══
+ *
+ * Measured on the frozen eval set (E0.4, 2026-10-11): 12 of its 17 misses were this floor answering
+ * confidently with the wrong tool before the chooser was ever asked, and the chooser had the right
+ * answer for every one of them. Some of those cannot be fixed by adding a cue for the right intent,
+ * because the right intent's words are too common to be safe cues — "printer mein paper khatam" is
+ * not a short-book line, and no cue says "printer" means anything. So a word may also COUNT AGAINST
+ * an intent. A drafting verb ("list bana do") or a supplier says a question is not about the shelf;
+ * equipment says `khatam` is not a medicine running out. The usual outcome is that the floor
+ * abstains and the chooser answers — admitting a miss is still cheaper than a confident wrong.
+ */
+const NOT_WEIGHT = 3;
+const NOT_CUES: Partial<Record<CopilotIntent, string[]>> = {
+  stock_on_shelf: ["bana do", "list bana", "return", "lautan", "लौटा", "supplier", "सप्लायर", "distributor"],
+  draft_short_book_entry: ["printer", "paper", "toner", "cartridge"],
 };
 
 const PLACEHOLDER_RE = /<<P\d+>>/;
@@ -261,10 +304,22 @@ function normalise(question: string): string {
  * normalised by the same code, or the two drift the first time a cue contains punctuation.
  */
 const NORMALISED_CUES: Record<CopilotIntent, Cue[]> = Object.fromEntries(
-  (Object.keys(CUES) as CopilotIntent[]).map((intent) => [
-    intent,
-    CUES[intent].map((cue) => ({ token: normalise(cue.token), weight: cue.weight })),
-  ]),
+  (Object.keys(CUES) as CopilotIntent[]).map((intent) => {
+    /*
+      #672 — ONE CUE COUNTS ONCE. `on call` and `on-call` normalise to the same token, so "am I on
+      call" scored the board's `on call` twice (8) and nothing the asker's own duty had could reach it.
+    */
+    const seen = new Set<string>();
+    const cues: Cue[] = [];
+    for (const cue of CUES[intent]) {
+      const token = normalise(cue.token);
+      if (seen.has(token)) continue;
+      seen.add(token);
+      cues.push({ token, weight: cue.weight });
+    }
+    for (const not of NOT_CUES[intent] ?? []) cues.push({ token: normalise(not), weight: -NOT_WEIGHT });
+    return [intent, cues];
+  }),
 ) as Record<CopilotIntent, Cue[]>;
 
 /**
@@ -284,7 +339,7 @@ export function matchIntent(question: string): IntentMatch | null {
     let score = 0;
     for (const cue of NORMALISED_CUES[intent]) {
       if (!text.includes(cue.token)) continue;
-      cues.push(cue.token);
+      cues.push(cue.weight < 0 ? `not:${cue.token}` : cue.token);
       score += cue.weight;
     }
     /*
@@ -320,7 +375,7 @@ export function intentNames(): CopilotIntent[] {
 export function cueWords(): string[] {
   const words = new Set<string>();
   for (const cues of Object.values(NORMALISED_CUES)) {
-    for (const cue of cues) for (const w of cue.token.split(" ")) if (w !== "") words.add(w);
+    for (const cue of cues) if (cue.weight > 0) for (const w of cue.token.split(" ")) if (w !== "") words.add(w);
   }
   return [...words];
 }
