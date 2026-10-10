@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TeleMark } from "../counter/tele-mark";
-import { AppState, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,7 +21,7 @@ import type { ScanAction } from "../scan/model";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note, Tag } from "../ui";
+import { Band, Button, MONO, Note, Tag, KeyboardModal } from "../ui";
 import { refusalText } from "../vitals/api";
 import { istClock, todayIst } from "../vitals/rules";
 
@@ -106,13 +106,13 @@ function Wait({ e, now, t }: { e: WireQueueEntryView; now: Date; t: T }) {
 function Sheet({ title, children, onClose, testID }: { title: string; children: React.ReactNode; onClose: () => void; testID: string }) {
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.scrim} onPress={onClose} accessibilityLabel="close" />
       <View style={[s.sheet, { paddingBottom: insets.bottom + space.lg }]} testID={testID}>
         <Text style={[type.heading, { color: color.ink }]}>{title}</Text>
         {children}
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

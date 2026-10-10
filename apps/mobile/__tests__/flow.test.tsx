@@ -4,6 +4,13 @@ import Index from "../app/index";
 import { I18nProvider } from "../src/i18n";
 import { SessionProvider } from "../src/session";
 import { _forgetDeviceForTests } from "../src/device";
+import { Platform } from "react-native";
+
+// THIS SUITE DESCRIBES THE ANDROID APP. jest-expo runs as an iPhone unless told otherwise, and on an
+// iPhone the update feed and the word "fingerprint" do not exist (__tests__/ios.test.tsx has its answers).
+const realOS = Platform.OS;
+beforeAll(() => { (Platform as { OS: string }).OS = "android"; });
+afterAll(() => { (Platform as { OS: string }).OS = realOS; });
 
 jest.mock("expo-secure-store", () => {
   // Keyed, like the real store: the session and the phone's own id (M6a) live under different keys.

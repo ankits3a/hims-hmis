@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Button, MONO, Note, Tag } from "../ui";
+import { Button, MONO, Note, Tag, KeyboardModal, keyboardScroll } from "../ui";
 import { refusalText } from "../vitals/api";
 import type { CounterApi, WireAppointment, WireCheckIn, WireDepartment, WireLeave, WireMasterDoctor, WireRoom, WireSchedule, WireSlot } from "./api";
 import {
@@ -412,7 +412,7 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
   if (done !== null) {
     const d = (doctors ?? []).find((x) => x.id === done.a.doctorId) ?? doctor;
     return (
-      <Modal visible animationType="slide" onRequestClose={() => onDone(done.a, done.kind)}>
+      <KeyboardModal visible animationType="slide" onRequestClose={() => onDone(done.a, done.kind)}>
         <View style={{ flex: 1, backgroundColor: color.paper }} testID="book-done">
           <ScrollView contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.xl, gap: space.lg }}>
             <View style={[s.card, { alignItems: "center", borderColor: color.greenLine, backgroundColor: color.greenSoft }]}>
@@ -434,14 +434,14 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
             <Button testID="book-done-close" label={t("mobile.counter.appt.doneClose")} onPress={() => onDone(done.a, done.kind)} />
           </View>
         </View>
-      </Modal>
+      </KeyboardModal>
     );
   }
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: color.paper }} testID="book">
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl * 2, gap: space.md }}>
+        <ScrollView {...keyboardScroll()} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl * 2, gap: space.md }}>
           <View>
             <Text style={[type.heading, { color: color.ink }]} testID="book-title">{title}</Text>
             {moving === null
@@ -638,7 +638,7 @@ export function BookAppointment({ api, person, today, departments, labelOf, term
           )}
         </View>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 
@@ -694,9 +694,9 @@ export function DeskAppointments({ api, today, mayManage, onPick, onRebook, onCl
   const tone = (state: string): string => (state === "missed" || state === "needs_rebooking" ? color.red : state === "waiting" ? color.green : state === "cancelled" ? color.faint : color.dim);
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
+    <KeyboardModal visible animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: color.paper }} testID="desk-appts">
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl, gap: space.md }}>
+        <ScrollView {...keyboardScroll()} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingTop: insets.top + space.lg, paddingBottom: space.xxl, gap: space.md }}>
           <Text style={[type.heading, { color: color.ink }]}>{t("mobile.counter.appt.deskTitle")}</Text>
           <View style={s.pills}>
             <Pill testID="desk-appts-tab-today" on={tab === "today"} label={t("mobile.counter.appt.tabToday")} onPress={() => setTab("today")} />
@@ -784,7 +784,7 @@ export function DeskAppointments({ api, today, mayManage, onPick, onRebook, onCl
           <Button testID="desk-appts-close" kind="secondary" label={t("mobile.back")} onPress={onClose} />
         </View>
       </View>
-    </Modal>
+    </KeyboardModal>
   );
 }
 

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useI18n } from "../i18n";
 import { seatsFor } from "../seats";
 import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH, type } from "../theme";
-import { Band, Button, MONO, Note } from "../ui";
+import { Band, Button, MONO, Note, KeyboardScrollView } from "../ui";
 import { rosterApi } from "../roster/api";
 import { onRecord, recordedPercent } from "../../../../packages/contracts/src/recording";
 import type { RecordingCounts, RecordingReport } from "../../../../packages/contracts/src/recording";
@@ -414,7 +414,7 @@ export function OwnerPage({ page, now = Date.now }: { page: OwnerTileKey; now?: 
   return (
     <View style={{ flex: 1, backgroundColor: color.paper }}>
       <Band right={<Button kind="secondary" label={t("recorded.back")} onPress={() => router.back()} testID="owner-back" />} />
-      <ScrollView testID="owner-scroll" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }} keyboardShouldPersistTaps="handled">
+      <KeyboardScrollView testID="owner-scroll" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }} keyboardShouldPersistTaps="handled">
         <Text testID="owner-title" style={[type.title, { color: color.ink }]} numberOfLines={1}>{title}</Text>
         {periodic && (
           <View testID="owner-periods" style={{ flexDirection: "row", gap: 6 }}>
@@ -453,7 +453,7 @@ export function OwnerPage({ page, now = Date.now }: { page: OwnerTileKey; now?: 
         {failed && <Note tone="warn" testID="owner-failed">{t("owner.notLoaded")}</Note>}
         {failed && <Button kind="secondary" label={t("recorded.again")} onPress={() => { void load(); }} testID="owner-again" />}
         {page === "money" && !permissions.includes(MONEY_PERMISSION) ? null : body()}
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

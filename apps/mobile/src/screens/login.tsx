@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { Text } from "../text";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { useSession } from "../session";
 import { color, space, type } from "../theme";
-import { Band, Button, Field, Note, Tag } from "../ui";
+import { Band, Button, Field, Note, Tag, keyboardScroll } from "../ui";
+import type { TextInput } from "../text";
 
 /** The models of the phones that hold the places, as the refusal carries them (untrusted text). */
 function phoneLimit(body: unknown): (string | null)[] {
@@ -22,6 +23,7 @@ export function LoginScreen({ expired }: { expired?: boolean }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const passwordInput = useRef<TextInput | null>(null);
 
   const submit = async () => {
     if (username.trim() === "" || password === "") return;
@@ -45,7 +47,7 @@ export function LoginScreen({ expired }: { expired?: boolean }) {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.paper }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <Band />
-      <ScrollView contentContainerStyle={{ padding: space.xl, paddingTop: space.xxl }} keyboardShouldPersistTaps="handled">
+      <ScrollView {...keyboardScroll()} contentContainerStyle={{ padding: space.xl, paddingTop: space.xxl }} keyboardShouldPersistTaps="handled">
         <Tag tone="faint">{t("login.welcome")}</Tag>
         <Text style={[type.title, { color: color.ink, marginTop: space.sm }]}>{t("login.title")}</Text>
         <Text style={[type.small, { color: color.dim, marginTop: 6, marginBottom: space.xl }]}>{t("login.issued")}</Text>
@@ -62,9 +64,15 @@ export function LoginScreen({ expired }: { expired?: boolean }) {
           autoComplete="username"
           textContentType="username"
           returnKeyType="next"
+          // iPhone (owner 2026-10-09): the keyboard is up the moment the sign-in opens; Android unchanged.
+          autoFocus={Platform.OS === "ios"}
+          // "Next" moves to the password and keeps the keyboard up.
+          submitBehavior="submit"
+          onSubmitEditing={() => passwordInput.current?.focus()}
           testID="username"
         />
         <Field
+          ref={passwordInput}
           label={t("login.password")}
           value={password}
           onChangeText={setPassword}

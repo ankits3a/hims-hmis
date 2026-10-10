@@ -5,12 +5,12 @@ import { API_BASE, APP_VERSION, APP_VERSION_CODE } from "../config";
 import { describePhone } from "../device";
 import { useI18n } from "../i18n";
 import { useNotifications } from "../notifications";
-import { SCREENSHOTS_BLOCKED } from "../privacy";
+import { SCREENSHOTS_BLOCKED, SWITCHER_BLANKED } from "../privacy";
 import { useSession } from "../session";
 import { Text } from "../text";
 import { color, radius, space, type } from "../theme";
 import { Band, Button, MONO, Note } from "../ui";
-import { checkForUpdate, type UpdateAnswer } from "../update";
+import { checkForUpdate, updatesFromFeed, type UpdateAnswer } from "../update";
 import { clockLine } from "../roster/words";
 
 /**
@@ -64,7 +64,7 @@ export function AccountScreen() {
           <Row label={t("mobile.account.phone")} value={said === "" ? t("mobile.account.phoneUnknown") : said} testID="account-phone" />
           <Row label={t("mobile.account.app")} value={t("mobile.account.appLine", { version: APP_VERSION, code: APP_VERSION_CODE })} testID="account-app" />
           <Row label={t("mobile.account.server")} value={server} testID="account-server" />
-          <Row label={t("mobile.account.screenshots")} value={t(SCREENSHOTS_BLOCKED ? "mobile.account.screenshotsBlocked" : "mobile.account.screenshotsAllowed")} testID="account-screenshots" last />
+          <Row label={t("mobile.account.screenshots")} value={t(SCREENSHOTS_BLOCKED ? "mobile.account.screenshotsBlocked" : SWITCHER_BLANKED ? "mobile.account.screenshotsSwitcher" : "mobile.account.screenshotsAllowed")} testID="account-screenshots" last />
         </View>
 
         <Pressable
@@ -80,7 +80,7 @@ export function AccountScreen() {
 
         <Note tone="info" testID="account-lost">{`${t("mobile.account.lost")} ${t("mobile.account.limit")}`}</Note>
 
-        <Button kind="secondary" testID="account-update-check" busy={checking} label={t("mobile.update.check")} onPress={() => { void check(); }} />
+        {updatesFromFeed() && <Button kind="secondary" testID="account-update-check" busy={checking} label={t("mobile.update.check")} onPress={() => { void check(); }} />}
         {update?.kind === "latest" && <Text style={s.dim} testID="account-update-latest">{t("mobile.update.latest", { version: APP_VERSION })}</Text>}
         {update?.kind === "unknown" && <Text style={s.dim} testID="account-update-unknown">{t("mobile.update.failed")}</Text>}
         {update?.kind === "update" && (

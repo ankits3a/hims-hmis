@@ -43,6 +43,11 @@
     "seatHint": "Only the screens your role allows are shown.",
     "none": "Your account has no phone screens yet. Ask the administrator.",
     "soon": "Coming in the next release",
+    "fineMoney": {
+      "faceId": "Face ID is asked before a money approval. Recorded with your name, time and note.",
+      "touchId": "Touch ID is asked before a money approval. Recorded with your name, time and note.",
+      "apple": "Touch ID / Face ID is asked before a money approval. Recorded with your name, time and note."
+    },
     "unlockTitle": "Unlock HMIS",
     "unlockPrompt": "Confirm it is you",
     "unlockAgain": "Unlock",
@@ -723,6 +728,7 @@
       "screenshots": "Screenshots",
       "screenshotsBlocked": "Blocked in this app, to protect patients",
       "screenshotsAllowed": "Allowed in this staging build (test data only)",
+      "screenshotsSwitcher": "Not blocked on iPhone. The app is hidden in the app switcher.",
       "open": "This phone and my account",
       "title": "This phone",
       "signedInAs": "Signed in as {{name}}",
