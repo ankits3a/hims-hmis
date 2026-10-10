@@ -215,6 +215,8 @@ describe("retentionSweep", () => {
         // is exactly the visibility it exists for. Same reasoning as above — the leg sits BELOW the
         // inert gate, so it deletes nothing while the flag is false.
         phiAccessDeleted: 0,
+        // E0.1 — the copilot ledger's ask leg, below the inert gate like the two above.
+        copilotAsksDeleted: 0,
       });
       expect(await partitions()).toEqual(before);
       expect(await notificationIds()).toEqual([

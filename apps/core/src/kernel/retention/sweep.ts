@@ -18,6 +18,8 @@ import { SEARCH_AUDIT_RETAIN_DAYS, pruneSearchAudit } from "../search/audit";
 import { searchAuditPruned } from "../search/events";
 import { phiAccessPruned } from "../phi/events";
 import { PHI_ACCESS_RETAIN_DAYS, prunePhiAccessLog } from "../phi/audit";
+import { COPILOT_ASK_RETAIN_DAYS, pruneCopilotAsks } from "../copilot/ledger";
+import { copilotAsksPruned } from "../copilot/events";
 
 // RETENTION (Plan 11a D6/D7). THIS FILE DESTROYS CLINICAL RECORDS, and every guard below is
 // therefore written to fail CLOSED — the sweep does nothing at all unless it is switched on, and
@@ -143,6 +145,8 @@ export type RetentionSweepResult = {
   deadLettersDeleted: number;
   searchAuditDeleted: number;
   phiAccessDeleted: number;
+  /** E0.1 — the copilot ledger's asks past 180 days. */
+  copilotAsksDeleted: number;
   /** FD-25 — the print outbox's terminal rows. See step 4. */
   printJobsDeleted: number;
 };
@@ -156,6 +160,7 @@ const inert = (): RetentionSweepResult => ({
   deadLettersDeleted: 0,
   searchAuditDeleted: 0,
   phiAccessDeleted: 0,
+  copilotAsksDeleted: 0,
   printJobsDeleted: 0,
 });
 
@@ -547,6 +552,38 @@ export async function retentionSweep(
             actor: RETENTION_ACTOR,
             payload: {
               rows: result.phiAccessDeleted,
+              retainDays,
+              cutoff: new Date(now.getTime() - retainDays * 24 * 60 * 60 * 1000).toISOString(),
+            },
+          }),
+        ),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 2c. `copilot_asks` — THE COPILOT LEDGER'S ASKS (E0.1, decision 0064). 180 days, the
+  //     `notifications` class, and NOT hold-clamped for the `search_audit` reason: an ask row names
+  //     no patient, so a hold on one has nothing to compute. `copilot_acts` is never touched here —
+  //     an act is kept as long as the record it changed, and its trigger refuses every delete.
+  // ---------------------------------------------------------------------------------------------
+  {
+    const retainDays = COPILOT_ASK_RETAIN_DAYS;
+    let copilotBatches = 0;
+    while (copilotBatches < MAX_NOTIFY_BATCHES) {
+      const removed = await pruneCopilotAsks(db, { retainDays, batchSize, now });
+      result.copilotAsksDeleted += removed;
+      copilotBatches += 1;
+      if (removed < batchSize) break; // the window is clear
+    }
+    if (result.copilotAsksDeleted > 0) {
+      await withTx(db, (tx) =>
+        appendEvent(
+          tx,
+          copilotAsksPruned.make({
+            actor: RETENTION_ACTOR,
+            payload: {
+              rows: result.copilotAsksDeleted,
               retainDays,
               cutoff: new Date(now.getTime() - retainDays * 24 * 60 * 60 * 1000).toISOString(),
             },

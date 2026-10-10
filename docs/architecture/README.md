@@ -131,7 +131,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `approvals` | abdm, aerb, attendance, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
 | `auth` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, attendance, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
-| `copilot` | opd, pharmacy, roster | approvals, auth, config, db, desk, inference, modules, tokens | 1 |
+| `copilot` | opd, pharmacy, roster | approvals, auth, config, db, desk, inference, modules, tokens | 4 |
 | `crypto` | abdm, billing, opd, patients | — | — |
 | `db` | abdm, aerb, attendance, billing, cds, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `desk` | attendance, billing, membership, opd, partners, patients, pharmacy | approvals, auth, db, events, modules, report, tokens, workflow | 9 |
@@ -150,7 +150,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `realtime` | lab, opd | auth, db, tokens | — |
 | `report` | billing, opd, pharmacy | — | — |
 | `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
-| `retention` | — | db, events, phi, search, worker | — |
+| `retention` | — | copilot, db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
 | `tokens` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `worker` | — | alerts, approvals, auth, config, db, desk, events, modules, notify, obligations, ops, orders, push, resources, retention, tokens, workflow | — |

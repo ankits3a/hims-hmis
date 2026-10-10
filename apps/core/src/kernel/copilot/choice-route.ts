@@ -174,5 +174,5 @@ export async function chooseRoute(
     if (subject !== undefined && subject.confidence >= minConfidence && present.includes(subject.choice)) slot = subject.choice;
   }
 
-  return { intent: tool.choice as CopilotIntent, slot, source: "model", cues: [] };
+  return { intent: tool.choice as CopilotIntent, slot, source: "model", via: "chooser", cues: [] };
 }

@@ -271,6 +271,7 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
         idempotencyDeleted: 0, deliveriesDeleted: 0, deadLettersDeleted: 0,
         searchAuditDeleted: 0, // Plan 11h T5 — the sweep's result gained a leg
         phiAccessDeleted: 0, // Plan 07a T2 — and another
+        copilotAsksDeleted: 0, // E0.1 — the copilot ledger's asks
       };
     }),
     // THE TENTH (Plan 11c D6) IS THE ONLY SPY HERE THAT GUARDS AN EVENT APPEND. Un-stubbed,
