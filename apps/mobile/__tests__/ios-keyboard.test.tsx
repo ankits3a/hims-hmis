@@ -84,7 +84,7 @@ describe("Sign-in on an iPhone", () => {
 });
 
 describe("Sheets lift above the keyboard", () => {
-  it("KeyboardModal pads for the keyboard on iOS and is a plain full-size view on Android", async () => {
+  it("KeyboardModal pads for the keyboard on iOS and on Android (edge-to-edge: Android no longer resizes a Modal)", async () => {
     const seen = jest.spyOn(KeyboardAvoidingView.prototype, "render");
     const behaviour = () => (seen.mock.contexts.at(-1) as { props: { behavior?: string; style?: unknown } }).props;
     const ios = await render(<KeyboardModal visible><RNTextInput testID="in" /></KeyboardModal>);
@@ -94,7 +94,8 @@ describe("Sheets lift above the keyboard", () => {
     await ios.unmount();
     setOS("android");
     await render(<KeyboardModal visible><RNTextInput testID="in" /></KeyboardModal>);
-    expect(behaviour().behavior).toBeUndefined();
+    expect(behaviour().behavior).toBe("padding");
+    expect(screen.getByTestId("keyboard-sheet")).toContainElement(screen.getByTestId("in"));
     seen.mockRestore();
   });
 

@@ -119,12 +119,13 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field({ label, s
  * KEYBOARD-AWARE SHEETS (owner 2026-10-09: "the input should be modal responsive with keyboard").
  * A `Modal` is drawn outside the screen's own KeyboardAvoidingView, so on an iPhone the keyboard
  * would rise over a sheet's input and its Save button. Every Modal in the app is a `KeyboardModal`:
- * on iOS its content is lifted by the keyboard's height; everywhere else the wrapper is a plain
- * full-size View (Android resizes the window itself — its behaviour is unchanged).
+ * on a phone its content is lifted by the keyboard's height. Android too (owner 2026-10-10: the keyboard
+ * covered the Notes and Advice boxes): React Native 0.81+ draws edge-to-edge, so Android no longer resizes a
+ * Modal's window for the keyboard — the same reason scan.tsx and slip-desk.tsx already pad on Android.
  */
 export function KeyboardSheet({ children }: { children?: ReactNode }) {
   return (
-    <KeyboardAvoidingView testID="keyboard-sheet" behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+    <KeyboardAvoidingView testID="keyboard-sheet" behavior={Platform.OS === "web" ? undefined : "padding"} style={{ flex: 1 }}>
       {children}
     </KeyboardAvoidingView>
   );
