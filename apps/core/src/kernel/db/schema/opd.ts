@@ -234,6 +234,8 @@ export const opdAppointments = pgTable(
     index("opd_appointments_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_appointments_patient_idx").on(t.patientId),
     index("opd_appointments_status_idx").on(t.status),
+    // E0.6 — the copilot's name mask reads the day's appointments on every ask (kernel/copilot/names.ts).
+    index("opd_appointments_service_date_idx").on(t.serviceDate),
     check("opd_appointments_mode_ck", sql`${t.mode} in ('in_person', 'tele')`),
     check("opd_appointments_tele_phone_ck", sql`${t.mode} <> 'tele' or ${t.telePhone} is not null`),
   ],
@@ -607,6 +609,8 @@ export const opdEncounters = pgTable(
     index("opd_encounters_doctor_date_idx").on(t.doctorId, t.serviceDate),
     index("opd_encounters_patient_opened_idx").on(t.patientId, t.openedAt),
     index("opd_encounters_status_idx").on(t.status),
+    // E0.6 — the copilot's name mask reads the day's patients on every ask (kernel/copilot/names.ts).
+    index("opd_encounters_service_date_idx").on(t.serviceDate),
     check("opd_encounters_diagnosis_kind_ck", sql`${t.diagnosisKind} is null or ${t.diagnosisKind} in ('provisional', 'final')`),
   ],
 );

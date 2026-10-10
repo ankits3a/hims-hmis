@@ -1,5 +1,7 @@
 import { chooseRoute } from "./choice-route";
 import { assertNoIdentifiers } from "./mask";
+import { assertNoNames } from "./names";
+import type { NameIndex } from "./names";
 import { intentNames, matchIntent } from "./phrasebook";
 import type { CopilotIntent } from "./phrasebook";
 import type { ChoiceClient, InferenceClient } from "../inference/types";
@@ -102,6 +104,16 @@ function buildSystemPrompt(): string {
 }
 
 /**
+ * E0.6 — what the name mask knows that the router must honour.
+ *
+ * `names` is today's name index; when present it is a second witness beside `assertNoIdentifiers`,
+ * run on the exact string about to go on the wire. `phrasebookOnly` is set when the name list could
+ * not be read or a word in the question was a near-spelling of a patient's name: the floor may still
+ * answer, and nothing is sent anywhere.
+ */
+export type RouteGuard = { names?: NameIndex | null; phrasebookOnly?: boolean };
+
+/**
  * Route a MASKED question. Returns null for "I did not understand", which is an answer the desk can
  * say honestly.
  *
@@ -117,6 +129,7 @@ export async function routeQuestion(
   model: InferenceClient | null,
   chooser: ChoiceClient | null = null,
   minConfidence: number = DEFAULT_MIN_CONFIDENCE,
+  guard: RouteGuard = {},
 ): Promise<RouteResult | null> {
   /*
     THE FLOOR RUNS FIRST, AND THAT ORDERING IS THE COST MODEL.
@@ -129,13 +142,16 @@ export async function routeQuestion(
     return { intent: floor.intent, slot: floor.slot, source: "phrasebook", via: "phrasebook", cues: floor.cues };
   }
 
+  if (guard.phrasebookOnly === true) return null;
   if (model === null && chooser === null) return null;
 
   /*
     THE LAST GATE BEFORE THE WIRE — either wire. `mask.ts` explains why this is a separate function
-    from the masker rather than part of it: a masker cannot be its own witness.
+    from the masker rather than part of it: a masker cannot be its own witness. E0.6 adds the names
+    of today's patients to what it refuses.
   */
   assertNoIdentifiers(masked);
+  if (guard.names != null) assertNoNames(masked, guard.names);
 
   if (chooser !== null) {
     const picked = await chooseRoute(masked, slots, chooser, minConfidence);
