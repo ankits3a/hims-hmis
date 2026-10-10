@@ -1,4 +1,4 @@
-import type { Actor } from "@hmis/contracts";
+import type { Actor, WaitingItem } from "@hmis/contracts";
 import type { Db } from "../db/client";
 import type { RangeProvider } from "./range";
 
@@ -149,7 +149,17 @@ export type DeskProvider = {
   key: string;
   /** Must be a string some manifest declares — `collectDeskProviders` refuses anything else. */
   permission: string;
+  /** The desk card(s). A provider that exists only to say what is WAITING answers `noDeskCards`. */
   load(ctx: DeskProviderCtx): Promise<DeskCard[]>;
+  /**
+   * E1.4 / E1.5 (decision 0064) — WHAT IS WAITING ON THIS PERSON, as counts (`GET /me/waiting`).
+   *
+   * Rides this declaration for the reason `report` gives: one permission gates the card, the report
+   * and this, so a module cannot be visible in one and hidden in another. Counts, an oldest instant
+   * and a web link ONLY — the wire type has no field for a patient, a test or an id, because the
+   * phone's home card is read over a shoulder (`packages/contracts/src/waiting.ts`).
+   */
+  waiting?(ctx: DeskProviderCtx): Promise<WaitingItem[]>;
   /**
    * PLAN 07c T2 — this provider's contribution to the person's DAILY REPORT, if it has one.
    *
@@ -216,3 +226,6 @@ export class DeskError extends Error {
     this.name = "DeskError";
   }
 }
+
+/** E1.4 — the `load` of a provider that has nothing for the desk and exists for `waiting` alone. */
+export const noDeskCards = (): Promise<DeskCard[]> => Promise.resolve([]);

@@ -84,6 +84,7 @@ generated: { by: tools/arch/gen.mjs }
 | GET | `/me/report.csv` | `desk/desk.controller.ts` |
 | GET | `/me/report` | `desk/desk.controller.ts` |
 | GET | `/me/team` | `desk/home.controller.ts` |
+| GET | `/me/waiting` | `desk/waiting.controller.ts` |
 | GET | `/staff/:userId/brief` | `desk/staff.controller.ts` |
 | POST | `/staff/:userId/drill` | `desk/staff.controller.ts` |
 | GET | `/staff/range` | `desk/staff.controller.ts` |

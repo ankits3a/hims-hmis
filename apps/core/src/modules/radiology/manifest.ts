@@ -4,6 +4,7 @@ import { RADIOLOGY_READY_ON_PAYMENT_CONSUMER, READY_ON_PAYMENT_EVENTS } from "./
 import { orderPlaced } from "../../kernel/orders/events";
 import { approvalGranted } from "../../kernel/approvals/events";
 import { RADIOLOGY_APPROVAL_GRANTED_CONSUMER } from "./approval-consumer";
+import { radiologyWaitingMine, radiologyWaitingReads } from "./waiting";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -158,4 +159,6 @@ export const radiologyManifest: ModuleManifest = {
       selfOrderable: false,
     },
   ],
+  /** E1.4 / E1.5 — what imaging has waiting on a person (`GET /me/waiting`); no desk card. */
+  desk: [radiologyWaitingMine, radiologyWaitingReads],
 };
