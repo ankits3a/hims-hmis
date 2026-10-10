@@ -1,5 +1,5 @@
 import { hasPermission } from "../auth/permissions";
-import { DeskError } from "./types";
+import { DeskError, noDeskCards } from "./types";
 import type { DeskCard, DeskProvider, DeskProviderCtx, ReportSection } from "./types";
 import { assertRange, mergeBuckets, totalsOf } from "./range";
 import type { RangeCtx, RangeRow } from "./range";
@@ -73,6 +73,7 @@ export async function loadDesk(
 ): Promise<{ cards: DeskCard[] }> {
   const allowed: DeskProvider[] = [];
   for (const p of providers) {
+    if (p.load === noDeskCards) continue; // E1.4 — a waiting-only provider has no card to gate
     if (await hasPermission(ctx.db, ctx.actor.id, p.permission, "hospital")) allowed.push(p);
   }
   const results = await Promise.all(allowed.map((p) => runOne(p, ctx)));

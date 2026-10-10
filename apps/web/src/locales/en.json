@@ -15083,5 +15083,48 @@
       "too_many_attempts": "Too many tries · try tomorrow",
       "failed": "Not saved · try again"
     }
+  },
+  "waiting": {
+    "title": "Waiting for me",
+    "nothing": "Nothing waiting on you.",
+    "oldest": "oldest {{age}}",
+    "kind": {
+      "lab": {
+        "criticalsMine_one": "lab critical on your patient",
+        "criticalsMine_other": "lab criticals on your patients",
+        "callsOpen_one": "critical call not yet read back",
+        "callsOpen_other": "critical calls not yet read back",
+        "reportsBack_one": "lab report back",
+        "reportsBack_other": "lab reports back"
+      },
+      "radiology": {
+        "criticalsMine_one": "imaging critical to acknowledge",
+        "criticalsMine_other": "imaging criticals to acknowledge",
+        "readsOverdue_one": "study past its reading time",
+        "readsOverdue_other": "studies past their reading time",
+        "unreadMine_one": "imaging report unread",
+        "unreadMine_other": "imaging reports unread"
+      },
+      "alerts": {
+        "unanswered_one": "alert not answered",
+        "unanswered_other": "alerts not answered"
+      },
+      "reminders": {
+        "today_one": "reminder still today",
+        "today_other": "reminders still today"
+      },
+      "roster": {
+        "dutiesToday_one": "duty today",
+        "dutiesToday_other": "duties today"
+      }
+    },
+    "where": {
+      "alerts": {
+        "unanswered": "in the bell"
+      },
+      "reminders": {
+        "today": "on the phone"
+      }
+    }
   }
 }

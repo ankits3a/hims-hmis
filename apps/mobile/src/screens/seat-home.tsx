@@ -27,6 +27,7 @@ import { ALL_READ } from "../attendance/api";
 import { AttendanceCard, attendanceCache, useAttendanceHome } from "../attendance/home-card";
 import { AadhaarCard, AadhaarSheet, useSelfIdentity } from "../attendance/aadhaar-card";
 import { ReminderCard, useReminders } from "../reminders/card";
+import { WaitingCard, useWaiting } from "../waiting/card";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
@@ -90,6 +91,9 @@ export function SeatHome() {
   /* E1.2 — the person's own reminders: one line under attendance, read on the same refresh. */
   const reminders = useReminders(call, signedIn);
   const reloadReminders = reminders.reload;
+  /* E1.4 / E1.5 — what is waiting for me: one read (`GET /me/waiting`), the card at the top of the home. */
+  const waiting = useWaiting(call, signedIn);
+  const reloadWaiting = waiting.reload;
   /* "Add your Aadhaar" (owner 2026-10-09): the card at the top, while the server says this person owes one. */
   const identity = useSelfIdentity(call, signedIn ? user : "");
   const reloadIdentity = identity.reload;
@@ -101,6 +105,7 @@ export function SeatHome() {
     void reloadAttendance();
     void reloadIdentity();
     void reloadReminders();
+    void reloadWaiting();
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
     if (loaded.reached) {
@@ -112,7 +117,7 @@ export function SeatHome() {
       setOnline(false);
     }
     if (byHand) setRefreshing(false);
-  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity, reloadReminders]);
+  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity, reloadReminders, reloadWaiting]);
   useEffect(() => {
     if (user === "") return;
     let gone = false;
@@ -300,6 +305,7 @@ export function SeatHome() {
         <Text style={[type.small, { color: color.dim }]} testID="signed-in-as">
           {who.line ?? t("mobile.signedInAs", { name: state.username || state.me.actor.id })}
         </Text>
+        <WaitingCard t={t} lines={waiting.lines} push={router.push} />
         <AttendanceCard t={t} home={attendance} onOpen={() => router.push("/attendance")}
           onConfirm={(date) => router.push({ pathname: "/attendance", params: { confirm: date } })} />
         <ReminderCard t={t} items={reminders.items} onOpen={() => router.push("/reminders")} />

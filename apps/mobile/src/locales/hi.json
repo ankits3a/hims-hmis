@@ -2714,5 +2714,54 @@
       "limit": "ज़्यादा से ज़्यादा 20 रिमाइंडर",
       "refused": "सेव नहीं हुआ"
     }
+  },
+  "openLoops": {
+    "title": "मेरे लिए बाकी",
+    "loops": "खुले काम",
+    "all": "सब ›",
+    "back": "वापस",
+    "nothing": "कुछ बाकी नहीं",
+    "kind": {
+      "lab": {
+        "criticalsMine_one": "लैब क्रिटिकल",
+        "criticalsMine_other": "लैब क्रिटिकल",
+        "callsOpen_one": "क्रिटिकल कॉल खुली",
+        "callsOpen_other": "क्रिटिकल कॉल खुली",
+        "reportsBack_one": "लैब रिपोर्ट आई",
+        "reportsBack_other": "लैब रिपोर्ट आईं"
+      },
+      "radiology": {
+        "criticalsMine_one": "इमेजिंग क्रिटिकल",
+        "criticalsMine_other": "इमेजिंग क्रिटिकल",
+        "readsOverdue_one": "स्टडी देर से",
+        "readsOverdue_other": "स्टडी देर से",
+        "unreadMine_one": "इमेजिंग नहीं खोली",
+        "unreadMine_other": "इमेजिंग नहीं खोलीं"
+      },
+      "alerts": {
+        "unanswered_one": "अलर्ट जवाब बाकी",
+        "unanswered_other": "अलर्ट जवाब बाकी"
+      },
+      "reminders": {
+        "today_one": "रिमाइंडर आज",
+        "today_other": "रिमाइंडर आज"
+      },
+      "roster": {
+        "dutiesToday_one": "ड्यूटी आज",
+        "dutiesToday_other": "ड्यूटी आज"
+      }
+    },
+    "where": {
+      "lab": {
+        "criticalsMine": "कंप्यूटर पर · कंसल्ट",
+        "callsOpen": "कंप्यूटर पर · लैब बेंच",
+        "reportsBack": "कंप्यूटर पर · कंसल्ट"
+      },
+      "radiology": {
+        "criticalsMine": "कंप्यूटर पर · कंसल्ट",
+        "readsOverdue": "कंप्यूटर पर · रीडिंग रूम",
+        "unreadMine": "कंप्यूटर पर · कंसल्ट"
+      }
+    }
   }
 }

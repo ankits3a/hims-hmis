@@ -15083,5 +15083,48 @@
       "too_many_attempts": "बहुत बार · कल कोशिश करें",
       "failed": "सहेजा नहीं · फिर कोशिश करें"
     }
+  },
+  "waiting": {
+    "title": "मेरे लिए बाकी",
+    "nothing": "आपके लिए कुछ बाकी नहीं।",
+    "oldest": "सबसे पुराना {{age}}",
+    "kind": {
+      "lab": {
+        "criticalsMine_one": "आपके मरीज़ का लैब क्रिटिकल",
+        "criticalsMine_other": "आपके मरीज़ों के लैब क्रिटिकल",
+        "callsOpen_one": "क्रिटिकल कॉल, रीड-बैक बाकी",
+        "callsOpen_other": "क्रिटिकल कॉल, रीड-बैक बाकी",
+        "reportsBack_one": "लैब रिपोर्ट आई",
+        "reportsBack_other": "लैब रिपोर्ट आईं"
+      },
+      "radiology": {
+        "criticalsMine_one": "इमेजिंग क्रिटिकल, स्वीकार करें",
+        "criticalsMine_other": "इमेजिंग क्रिटिकल, स्वीकार करें",
+        "readsOverdue_one": "स्टडी पढ़ने का समय निकला",
+        "readsOverdue_other": "स्टडी पढ़ने का समय निकला",
+        "unreadMine_one": "इमेजिंग रिपोर्ट नहीं खोली",
+        "unreadMine_other": "इमेजिंग रिपोर्ट नहीं खोलीं"
+      },
+      "alerts": {
+        "unanswered_one": "अलर्ट का जवाब बाकी",
+        "unanswered_other": "अलर्ट का जवाब बाकी"
+      },
+      "reminders": {
+        "today_one": "रिमाइंडर आज बाकी",
+        "today_other": "रिमाइंडर आज बाकी"
+      },
+      "roster": {
+        "dutiesToday_one": "ड्यूटी आज",
+        "dutiesToday_other": "ड्यूटी आज"
+      }
+    },
+    "where": {
+      "alerts": {
+        "unanswered": "घंटी में"
+      },
+      "reminders": {
+        "today": "फ़ोन पर"
+      }
+    }
   }
 }

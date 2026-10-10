@@ -2714,5 +2714,54 @@
       "limit": "20 reminders is the most",
       "refused": "Could not save"
     }
+  },
+  "openLoops": {
+    "title": "Waiting for me",
+    "loops": "Open loops",
+    "all": "All ›",
+    "back": "Back",
+    "nothing": "Nothing waiting",
+    "kind": {
+      "lab": {
+        "criticalsMine_one": "Lab critical",
+        "criticalsMine_other": "Lab criticals",
+        "callsOpen_one": "Critical call open",
+        "callsOpen_other": "Critical calls open",
+        "reportsBack_one": "Lab report back",
+        "reportsBack_other": "Lab reports back"
+      },
+      "radiology": {
+        "criticalsMine_one": "Imaging critical",
+        "criticalsMine_other": "Imaging criticals",
+        "readsOverdue_one": "Study overdue",
+        "readsOverdue_other": "Studies overdue",
+        "unreadMine_one": "Imaging unread",
+        "unreadMine_other": "Imaging unread"
+      },
+      "alerts": {
+        "unanswered_one": "Alert unanswered",
+        "unanswered_other": "Alerts unanswered"
+      },
+      "reminders": {
+        "today_one": "Reminder today",
+        "today_other": "Reminders today"
+      },
+      "roster": {
+        "dutiesToday_one": "Duty today",
+        "dutiesToday_other": "Duties today"
+      }
+    },
+    "where": {
+      "lab": {
+        "criticalsMine": "On computer · Consult",
+        "callsOpen": "On computer · Lab bench",
+        "reportsBack": "On computer · Consult"
+      },
+      "radiology": {
+        "criticalsMine": "On computer · Consult",
+        "readsOverdue": "On computer · Reading room",
+        "unreadMine": "On computer · Consult"
+      }
+    }
   }
 }

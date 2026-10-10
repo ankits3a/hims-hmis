@@ -161,7 +161,8 @@ describe("sign-in flow", () => {
       // STAFF ATTENDANCE (2026-10-09): +1, the person's own attendance card — ONE read, whatever the role.
       // "Add your Aadhaar" (2026-10-09): +1, `/me/identity` — whether the home draws the card. ONE read, whatever the role.
       // E1.2 personal reminders (2026-10-11): +1, `/reminders` — the person's own reminders line. ONE read, whatever the role.
-      "GET /alerts", "GET /attendance/me", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/identity", "GET /me/team", "GET /opd/bench", "GET /opd/reports/recording", "GET /reminders", "GET /roster/my-duties",
+      // E1.4 / E1.5 waiting for me (2026-10-11): +1, `/me/waiting` — the card at the top of the home. ONE read, whatever the role.
+      "GET /alerts", "GET /attendance/me", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/identity", "GET /me/team", "GET /me/waiting", "GET /opd/bench", "GET /opd/reports/recording", "GET /reminders", "GET /roster/my-duties",
     ]);
   });
 
