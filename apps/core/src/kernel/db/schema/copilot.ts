@@ -47,7 +47,7 @@ export const copilotAsks = pgTable(
     maskedQuestion: text("masked_question"),
     /** The screen that asked, as the web names it. Null from callers that send none. */
     screen: text("screen"),
-    /** chip | typed — filled from E1.3; null until then. */
+    /** chip | typed — sent by the phone (E1.3); null from the web, which sends none. */
     source: text("source"),
   },
   (t) => [
@@ -100,4 +100,25 @@ export const copilotNoticeAcks = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ name: "copilot_notice_acks_pkey", columns: [t.userId, t.version] })],
+);
+
+/**
+ * E1.3 — the one-tap "Wrong" on an answer card (goal G3b: wrong taps ÷ answers). One row per ask,
+ * written only by the person who asked it (`POST /copilot/feedback`). Like the asks it references
+ * nothing; it is deleted with them after 180 days by the copilot's own prune (decision 0065).
+ */
+export const COPILOT_FEEDBACK_VERDICTS = ["wrong"] as const;
+
+export const copilotAskFeedback = pgTable(
+  "copilot_ask_feedback",
+  {
+    askId: text("ask_id").primaryKey(),
+    userId: text("user_id").notNull(),
+    verdict: text("verdict").notNull(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("copilot_ask_feedback_at_idx").on(t.at),
+    check("copilot_ask_feedback_verdict_ck", inList(t.verdict, COPILOT_FEEDBACK_VERDICTS)),
+  ],
 );

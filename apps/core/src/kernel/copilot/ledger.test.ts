@@ -1,14 +1,14 @@
 import { sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
-import { copilotActs, copilotAsks, events } from "../db/schema";
+import { copilotActs, copilotAskFeedback, copilotAsks, events } from "../db/schema";
 import { retentionSweep } from "../retention/sweep";
 import { registerAllJobs, type JobIntervals } from "../worker/jobs";
 import { ModuleRegistry } from "../modules/loader";
 import type { JobSpec, Scheduler } from "../worker/scheduler";
 import {
   COPILOT_ASK_RETAIN_DAYS, acknowledgeNotice, noticeSeen, pruneCopilotAsks, readCopilotHealth, recordAsk,
-  runCopilotAskPrune,
+  recordWrong, runCopilotAskPrune,
 } from "./ledger";
 import type { Db } from "../db/client";
 
@@ -103,6 +103,17 @@ describe("E0.1 — the copilot ledger at the database", () => {
     await anAsk(DAY);
     expect(await runCopilotAskPrune(db)).toBe(0);
     expect((await db.select().from(events)).filter((e) => e.name === "copilot.asks_pruned")).toHaveLength(0);
+  });
+
+  it("E1.3: the nightly prune takes a 181-day-old Wrong tap with its window and keeps a recent one", async () => {
+    const old = await anAsk(181 * DAY);
+    const recent = await anAsk(DAY);
+    expect(await recordWrong(db, "u-1", old)).toBe(true);
+    expect(await recordWrong(db, "u-1", recent)).toBe(true);
+    expect(await recordWrong(db, "u-2", recent)).toBe(false); // not their ask
+    await db.execute(sql`update copilot_ask_feedback set at = now() - interval '181 days' where ask_id = ${old}`);
+    await runCopilotAskPrune(db);
+    expect((await db.select().from(copilotAskFeedback)).map((r) => r.askId)).toEqual([recent]);
   });
 
   it("the prune's database floor refuses a window shorter than 179 days", async () => {

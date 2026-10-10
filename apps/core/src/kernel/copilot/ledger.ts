@@ -1,7 +1,7 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
-  COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAsks, copilotNoticeAcks,
+  COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAskFeedback, copilotAsks, copilotNoticeAcks,
 } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
@@ -37,6 +37,8 @@ export const COPILOT_NOTICE_VERSION = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type AskRecord = {
+  /** The row's id when the caller must name it before it is written (the ask response carries it, E1.3). */
+  id?: string;
   actor: Actor;
   outcome: CopilotAskOutcome;
   route: CopilotRoute;
@@ -52,7 +54,7 @@ export type AskRecord = {
 
 /** Awaited by the controller BEFORE the answer leaves: an answer the ledger could not record is not sent. */
 export async function recordAsk(db: Db, r: AskRecord): Promise<string> {
-  const id = newId();
+  const id = r.id ?? newId();
   await db.insert(copilotAsks).values({
     id,
     ...(r.at !== undefined ? { at: r.at } : {}),
@@ -114,6 +116,12 @@ export async function runCopilotAskPrune(
     total += removed;
     if (removed < batchSize) break;
   }
+  /*
+    E1.3 — the "Wrong" taps go with their questions: same window, same nightly run. The feedback table
+    has no delete trigger (it holds a verdict, not the question), so a plain bounded delete suffices.
+  */
+  const cutoff = new Date(now.getTime() - COPILOT_ASK_RETAIN_DAYS * DAY_MS);
+  await db.delete(copilotAskFeedback).where(lt(copilotAskFeedback.at, cutoff));
   if (total > 0) {
     await withTx(db, (tx) =>
       appendEvent(tx, copilotAsksPruned.make({
@@ -199,4 +207,18 @@ export async function noticeSeen(db: Db, userId: string): Promise<boolean> {
 /** Records the dismissal. First write wins; a second tap is a no-op. */
 export async function acknowledgeNotice(db: Db, userId: string): Promise<void> {
   await db.insert(copilotNoticeAcks).values({ userId, version: COPILOT_NOTICE_VERSION }).onConflictDoNothing();
+}
+
+/**
+ * E1.3 — records a "Wrong" tap on the asker's OWN ask. False when the ask is not theirs or does not
+ * exist (the controller answers 404 for both). First tap wins; a second is a no-op that still returns true.
+ */
+export async function recordWrong(db: Db, userId: string, askId: string): Promise<boolean> {
+  const own = await db
+    .select({ id: copilotAsks.id })
+    .from(copilotAsks)
+    .where(and(eq(copilotAsks.id, askId), eq(copilotAsks.actorType, "user"), eq(copilotAsks.actorId, userId)));
+  if (own.length === 0) return false;
+  await db.insert(copilotAskFeedback).values({ askId, userId, verdict: "wrong" }).onConflictDoNothing();
+  return true;
 }
