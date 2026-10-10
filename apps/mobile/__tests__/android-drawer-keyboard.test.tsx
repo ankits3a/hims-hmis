@@ -1,11 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, render, screen } from "@testing-library/react-native";
-import { BackHandler, Keyboard, Platform, ScrollView, StyleSheet, TextInput as RNTextInput } from "react-native";
+import { BackHandler, Keyboard, Platform, ScrollView, StyleSheet, TextInput as RNTextInput, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Drawer } from "../src/consult/sheets";
 import { I18nProvider } from "../src/i18n";
-import { KeyboardScrollView } from "../src/ui";
+import { KeyboardModal, KeyboardScrollView, SheetHost } from "../src/ui";
 
 /*
   ANDROID KEYBOARD OVER A CONSULT DRAWER (owner 2026-10-10, staging APK vc21: "keyboard not fixed" on the
@@ -120,5 +120,72 @@ describe("KeyboardScrollView", () => {
     for (const f of ["desk-one", "vitals-bay", "consult", "change-password", "attendance-manage", "owner-page", "paper-consults"]) {
       expect(readFileSync(join(dir, `${f}.tsx`), "utf8")).toContain("<KeyboardScrollView");
     }
+  });
+});
+
+/*
+  THE OTHER SHEETS (owner 2026-10-10: "fix the other 18 pop-ups too"). On Android every KeyboardModal is
+  drawn by the SheetHost in the activity's window, lifted by the keyboard; the cameras keep their own window.
+*/
+describe("SheetHost — Android sheets in the app's own window", () => {
+  afterEach(() => jest.restoreAllMocks());
+  function app(sheet: React.ReactNode) {
+    return render(
+      <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 360, height: 780 }, insets: { top: 24, left: 0, right: 0, bottom: 48 } }}>
+        <SheetHost><View testID="screen">{sheet}</View></SheetHost>
+      </SafeAreaProvider>,
+    );
+  }
+
+  it("draws an open sheet as a layer over the app, not a Modal, and rises above the keyboard", async () => {
+    setOS("android");
+    const kb = captureKeyboard();
+    await app(<KeyboardModal visible transparent onRequestClose={() => undefined} testID="aadhaar-sheet"><RNTextInput testID="box" /></KeyboardModal>);
+    const layer = () => screen.getByTestId("aadhaar-sheet");
+    expect(screen.queryByTestId("keyboard-sheet")).toBeNull();
+    expect(screen.getByTestId("screen")).not.toContainElement(screen.getByTestId("box"));
+    expect(layer()).toContainElement(screen.getByTestId("box"));
+    await act(async () => kb.keyboardDidShow!({ endCoordinates: { height: 300 } }));
+    expect(StyleSheet.flatten(layer().props.style).paddingBottom).toBe(348);
+    await act(async () => kb.keyboardDidHide!({ endCoordinates: { height: 0 } }));
+    expect(StyleSheet.flatten(layer().props.style).paddingBottom).toBe(0);
+  });
+
+  it("a closed sheet draws nothing, and Back closes the newest open one", async () => {
+    setOS("android");
+    captureKeyboard();
+    const backs: (() => boolean)[] = [];
+    jest.spyOn(BackHandler, "addEventListener").mockImplementation(((_n: string, fn: () => boolean) => {
+      backs.push(fn);
+      return { remove: () => undefined };
+    }) as unknown as typeof BackHandler.addEventListener);
+    const close = jest.fn();
+    await app(<>
+      <KeyboardModal visible={false} transparent onRequestClose={() => undefined} testID="closed"><RNTextInput /></KeyboardModal>
+      <KeyboardModal visible transparent onRequestClose={close} testID="open"><RNTextInput /></KeyboardModal>
+    </>);
+    expect(screen.queryByTestId("closed")).toBeNull();
+    expect(screen.getByTestId("open")).toBeTruthy();
+    expect(backs.at(-1)!()).toBe(true);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("ownWindow (the cameras) and iPhone keep a real Modal", async () => {
+    setOS("android");
+    captureKeyboard();
+    const cam = await app(<KeyboardModal ownWindow visible onRequestClose={() => undefined}><RNTextInput testID="box" /></KeyboardModal>);
+    expect(screen.getByTestId("keyboard-sheet")).toContainElement(screen.getByTestId("box"));
+    await cam.unmount();
+    setOS("ios");
+    await app(<KeyboardModal visible onRequestClose={() => undefined}><RNTextInput testID="box" /></KeyboardModal>);
+    expect(screen.getByTestId("keyboard-sheet")).toContainElement(screen.getByTestId("box"));
+  });
+
+  it("the app's root mounts the SheetHost, and only the two cameras keep their own window", () => {
+    expect(readFileSync(join(__dirname, "..", "app", "_layout.tsx"), "utf8")).toMatch(/<SheetHost>\s*<Stack/);
+    const src = join(__dirname, "..", "src");
+    const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith(".tsx") ? [join(d, e.name)] : []));
+    const own = walk(src).filter((f) => /<KeyboardModal ownWindow/.test(readFileSync(f, "utf8"))).map((f) => f.slice(src.length + 1)).sort();
+    expect(own).toEqual(["slips/camera.tsx", "vitals/scanner.tsx"]);
   });
 });

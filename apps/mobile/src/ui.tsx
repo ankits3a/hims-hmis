@@ -1,5 +1,5 @@
-import { type ReactNode, forwardRef, useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput as RNTextInput, View, type ModalProps, type ScrollViewProps, type TextInputProps } from "react-native";
+import { type ReactNode, createContext, forwardRef, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput as RNTextInput, View, type ModalProps, type ScrollViewProps, type TextInputProps } from "react-native";
 import { Text, TextInput } from "./text";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -119,9 +119,15 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field({ label, s
  * KEYBOARD-AWARE SHEETS (owner 2026-10-09: "the input should be modal responsive with keyboard").
  * A `Modal` is drawn outside the screen's own KeyboardAvoidingView, so on an iPhone the keyboard
  * would rise over a sheet's input and its Save button. Every Modal in the app is a `KeyboardModal`:
- * on a phone its content is lifted by the keyboard's height. Android too (owner 2026-10-10: the keyboard
- * covered the Notes and Advice boxes): React Native 0.81+ draws edge-to-edge, so Android no longer resizes a
- * Modal's window for the keyboard — the same reason scan.tsx and slip-desk.tsx already pad on Android.
+ * on iPhone its content is lifted by the keyboard's height.
+ *
+ * ANDROID DRAWS NO MODAL (owner 2026-10-10: the keyboard hid the boxes of every sheet). Since React Native
+ * 0.81 a Modal's dialog window is edge-to-edge, so Android does not resize it for the keyboard, and the
+ * keyboard events come from the activity's window, not the dialog's — padding inside a Modal did nothing on
+ * the phone. On Android a KeyboardModal is drawn by the `SheetHost` (app/_layout.tsx) as a full-screen layer
+ * in the activity's own window, lifted by the keyboard's height; Back closes the top one. Android's
+ * ScrollView then keeps the focused box in view as it shrinks. `ownWindow` keeps a real Modal (the cameras:
+ * no box, and they take the whole screen). Without a host (tests) it falls back to a Modal.
  */
 export function KeyboardSheet({ children }: { children?: ReactNode }) {
   return (
@@ -131,7 +137,68 @@ export function KeyboardSheet({ children }: { children?: ReactNode }) {
   );
 }
 
-export function KeyboardModal({ children, ...rest }: ModalProps) {
+/** The keyboard's height while it is up on Android (activity window only), else 0. */
+export function useAndroidKeyboardHeight(): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return undefined;
+    const up = Keyboard.addListener("keyboardDidShow", (e) => setHeight(Math.max(0, e.endCoordinates.height)));
+    const down = Keyboard.addListener("keyboardDidHide", () => setHeight(0));
+    return () => { up.remove(); down.remove(); };
+  }, []);
+  return height;
+}
+
+type Sheet = { node: ReactNode; opaque: boolean; testID?: string };
+const SheetHostContext = createContext<((id: number, sheet: Sheet | null) => void) | null>(null);
+let nextSheetId = 1;
+
+/** Draws every open Android KeyboardModal over the app, newest on top, above the keyboard. */
+export function SheetHost({ children }: { children?: ReactNode }) {
+  const [sheets, setSheets] = useState<{ id: number; sheet: Sheet }[]>([]);
+  const put = useCallback((id: number, sheet: Sheet | null) => {
+    setSheets((all) => {
+      const at = all.findIndex((x) => x.id === id);
+      if (sheet === null) return at < 0 ? all : all.filter((x) => x.id !== id);
+      if (at < 0) return [...all, { id, sheet }];
+      const next = all.slice();
+      next[at] = { id, sheet };
+      return next;
+    });
+  }, []);
+  const keyboard = useAndroidKeyboardHeight();
+  const insets = useSafeAreaInsets();
+  return (
+    <SheetHostContext.Provider value={put}>
+      {children}
+      {sheets.map(({ id, sheet }) => (
+        // The keyboard's reported height leaves out the navigation bar; the layer reaches the screen's foot.
+        <View key={id} testID={sheet.testID ?? "sheet-layer"}
+          style={[StyleSheet.absoluteFill, s.sheetLayer, sheet.opaque && { backgroundColor: color.paper }, { paddingBottom: keyboard > 0 ? keyboard + insets.bottom : 0 }]}>
+          {sheet.node}
+        </View>
+      ))}
+    </SheetHostContext.Provider>
+  );
+}
+
+function HostedSheet({ put, visible, transparent, onRequestClose, testID, children }: ModalProps & { put: (id: number, sheet: Sheet | null) => void }) {
+  const id = useRef(0);
+  if (id.current === 0) id.current = nextSheetId++;
+  const shown = visible !== false;
+  useEffect(() => { put(id.current, shown ? { node: children, opaque: transparent !== true, testID } : null); });
+  useEffect(() => () => put(id.current, null), [put]);
+  useEffect(() => {
+    if (!shown) return undefined;
+    const back = BackHandler.addEventListener("hardwareBackPress", () => { onRequestClose?.({} as never); return true; });
+    return () => back.remove();
+  }, [shown, onRequestClose]);
+  return null;
+}
+
+export function KeyboardModal({ children, ownWindow, ...rest }: ModalProps & { ownWindow?: boolean }) {
+  const put = useContext(SheetHostContext);
+  if (Platform.OS === "android" && put !== null && ownWindow !== true) return <HostedSheet put={put} {...rest}>{children}</HostedSheet>;
   return <Modal {...rest}><KeyboardSheet>{children}</KeyboardSheet></Modal>;
 }
 
@@ -249,6 +316,7 @@ export function Note({ tone, children, testID }: { tone: "bad" | "warn" | "info"
 }
 
 export const s = StyleSheet.create({
+  sheetLayer: { zIndex: 100, elevation: 100 },
   band: { backgroundColor: color.agent, paddingHorizontal: space.lg, paddingBottom: space.md },
   row: { flexDirection: "row", alignItems: "center", gap: 10 },
   mark: { width: 12, height: 12, backgroundColor: color.mint, transform: [{ rotate: "45deg" }] },

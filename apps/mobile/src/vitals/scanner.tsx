@@ -40,7 +40,7 @@ export function Scanner({ open, onRead, onClose }: { open: boolean; onRead: (dat
   const granted = permission?.granted === true;
   const blocked = permission !== null && !permission.granted && !permission.canAskAgain;
   return (
-    <KeyboardModal visible animationType="slide" onRequestClose={onClose} testID="scanner">
+    <KeyboardModal ownWindow visible animationType="slide" onRequestClose={onClose} testID="scanner">
       <View style={s.wrap}>
         <Text style={s.title}>{t("mobile.vitals.scanTitle")}</Text>
         {granted ? (

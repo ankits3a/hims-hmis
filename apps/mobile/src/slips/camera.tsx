@@ -62,7 +62,7 @@ export function SlipCamera({ open, onShot, onClose, burst = null }: {
   };
 
   return (
-    <KeyboardModal visible animationType="slide" onRequestClose={onClose} testID="slip-camera" statusBarTranslucent>
+    <KeyboardModal ownWindow visible animationType="slide" onRequestClose={onClose} testID="slip-camera" statusBarTranslucent>
       <View style={s.wrap}>
         {granted ? (
           <>

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Keyboard, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { BackHandler, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
-import { Button, MONO, Note, KeyboardModal, keyboardScroll, scrollFocusedIntoView } from "../ui";
+import { Button, MONO, Note, KeyboardModal, keyboardScroll, scrollFocusedIntoView, useAndroidKeyboardHeight } from "../ui";
 import { refusalText } from "../vitals/api";
 import { voiceNotice } from "./draft";
 import {
@@ -23,21 +23,6 @@ type T = ReturnType<typeof useI18n>["t"];
 export type Patch = (next: (d: ConsultDraft) => ConsultDraft) => void;
 
 const says = (e: unknown, t: T): string => (e instanceof NetworkError ? t("mobile.network") : e instanceof ApiError ? refusalText(e.body, e.code) : String(e));
-
-/**
- * The keyboard's height while it is up on Android, else 0. Android keyboard events come from the
- * activity's window only, which is why the Android drawer is drawn in that window (see Drawer).
- */
-export function useAndroidKeyboardHeight(): number {
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    if (Platform.OS !== "android") return undefined;
-    const up = Keyboard.addListener("keyboardDidShow", (e) => setHeight(Math.max(0, e.endCoordinates.height)));
-    const down = Keyboard.addListener("keyboardDidHide", () => setHeight(0));
-    return () => { up.remove(); down.remove(); };
-  }, []);
-  return height;
-}
 
 /**
  * One drawer: a full-height sheet over the visit, closed with Done. What it changed is already on the visit.

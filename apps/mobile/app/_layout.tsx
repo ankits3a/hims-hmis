@@ -10,6 +10,7 @@ import { NotificationsProvider } from "../src/notifications";
 import { guardScreen } from "../src/privacy";
 import { PrivacyCover } from "../src/privacy-cover";
 import { SessionProvider } from "../src/session";
+import { SheetHost } from "../src/ui";
 
 // The crest stays up until the typeface is registered, so no screen is first drawn in the system's.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -30,7 +31,7 @@ export default function RootLayout() {
         <SessionProvider>
           <NotificationsProvider>
             <StatusBar style="light" />
-            <Stack screenOptions={{ headerShown: false }} />
+            <SheetHost><Stack screenOptions={{ headerShown: false }} /></SheetHost>
             <PrivacyCover />
           </NotificationsProvider>
         </SessionProvider>
