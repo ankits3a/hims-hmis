@@ -100,7 +100,16 @@ function escapeLiteral(s: string): string {
 export function maskQuestion(
   question: string,
   terms: readonly string[] = [],
-  opts: { wholeWords?: boolean } = {},
+  opts: {
+    wholeWords?: boolean;
+    /**
+     * E0.6 — names the SERVER found in the question (`names.ts`: patients in the hospital today),
+     * passed as the exact text typed. They run AFTER `terms`, so a screen's terms mask exactly as
+     * they always did, and always whole-word, because they are spans the finder already cut on
+     * word boundaries. Empty by default: every existing caller is unchanged.
+     */
+    nameTerms?: readonly string[];
+  } = {},
 ): MaskedQuestion {
   const slots: Record<string, string> = {};
   const issued = new Map<string, string>();
@@ -129,6 +138,11 @@ export function maskQuestion(
     const re = opts.wholeWords === true
       ? new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${literal}(?=(?:ji|जी)?(?![\\p{L}\\p{M}\\p{N}]))`, "giu")
       : new RegExp(literal, "gi");
+    masked = masked.replace(re, (found) => placeholderFor(found));
+  }
+
+  for (const term of [...(opts.nameTerms ?? [])].filter((t) => t.trim() !== "").sort((a, b) => b.length - a.length)) {
+    const re = new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escapeLiteral(term.trim())}(?![\\p{L}\\p{M}\\p{N}])`, "giu");
     masked = masked.replace(re, (found) => placeholderFor(found));
   }
 

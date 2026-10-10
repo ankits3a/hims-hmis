@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/billing/`
 
 - **Depends on modules:** `membership`, `opd`, `patients`, `tariff`
 - **Used by modules:** `lab`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
-- **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 

@@ -1,6 +1,6 @@
 {
-  "id": "3dd648f1-5224-4c84-9899-4fadf32f2c05",
-  "prevId": "c9ac9180-eab6-4a5f-99c1-f2022ecc12c1",
+  "id": "5aed2e68-347b-4462-b729-9a7358d8a052",
+  "prevId": "3dd648f1-5224-4c84-9899-4fadf32f2c05",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -53178,6 +53178,123 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_reminders": {
+      "name": "user_reminders",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "repeat": {
+          "name": "repeat",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fired_at": {
+          "name": "fired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "user_reminders_due_idx": {
+          "name": "user_reminders_due_idx",
+          "columns": [
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"user_reminders\".\"fired_at\" is null and \"user_reminders\".\"cancelled_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "user_reminders_user_idx": {
+          "name": "user_reminders_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "user_reminders_user_id_users_id_fk": {
+          "name": "user_reminders_user_id_users_id_fk",
+          "tableFrom": "user_reminders",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "user_reminders_repeat_ck": {
+          "name": "user_reminders_repeat_ck",
+          "value": "\"user_reminders\".\"repeat\" in ('none', 'daily', 'mon_sat', 'weekly')"
+        },
+        "user_reminders_text_ck": {
+          "name": "user_reminders_text_ck",
+          "value": "char_length(\"user_reminders\".\"text\") between 1 and 80"
+        }
+      },
       "isRLSEnabled": false
     }
   },

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Logger, Optional, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
@@ -8,7 +8,9 @@ import { openAiCompatibleClient } from "../inference/openai-compatible";
 import { chooserFor } from "../inference/openai-decisions";
 import { collectCopilotTools, permissionCheckFor, runTool } from "./catalog";
 import { kernelCopilotTools } from "./kernel-tools";
-import { IdentifierLeak, maskQuestion, rehydrate } from "./mask";
+import { IdentifierLeak, rehydrate } from "./mask";
+import { COPILOT_NAME_SOURCE, loadDayNames, maskForAsk, nameDays, nameIndexFor } from "./names";
+import type { CopilotNameSource } from "./names";
 import * as router from "./router";
 import { acknowledgeNotice, noticeSeen, readCopilotHealth, recordAsk } from "./ledger";
 import type { AskRecord, CopilotHealth } from "./ledger";
@@ -72,6 +74,8 @@ export type AskResponse = {
 @Controller("copilot")
 export class CopilotController {
   private readonly tools: CopilotToolDecl[];
+  private readonly nameSource: CopilotNameSource;
+  private readonly logger = new Logger("copilot");
 
   constructor(
     @Inject(DB) private readonly db: Db,
@@ -83,7 +87,13 @@ export class CopilotController {
       a live box. A registry constructed here would be a fifth.
     */
     @Inject(MODULE_REGISTRY) registry: ModuleRegistry,
+    /*
+      E0.6 — THE NAME SOURCE IS A SEAM. Nothing provides it in production, so the day's names come
+      from `loadDayNames`; a test or the eval harness provides a fixed list (or none) under the token.
+    */
+    @Optional() @Inject(COPILOT_NAME_SOURCE) nameSource?: CopilotNameSource,
   ) {
+    this.nameSource = nameSource ?? loadDayNames;
     /*
       COLLECTED ONCE, AT CONSTRUCTION, so a duplicate intent or an undeclared permission fails at
       BOOT rather than on the first question somebody asks. `collectDeskProviders` refuses on the
@@ -135,12 +145,21 @@ export class CopilotController {
       MASK FIRST, ALWAYS — before routing, before the floor, before anything is logged. The masked
       form is what the phrasebook scores and what the model would see, so there is no ordering in
       which an identifier could reach either.
+
+      E0.6 — and the names of the day's patients with it, read fresh for this ask. No list (an error,
+      a slow read, an overflow) or a near-spelling of a name means PHRASEBOOK-ONLY: the floor may
+      still answer, nothing is sent, and with no list the ledger keeps no question text.
     */
-    const { masked, slots } = maskQuestion(parsed.data.question, parsed.data.terms ?? []);
+    const names = await nameIndexFor(this.nameSource, this.db, nameDays(new Date(), serviceDate));
+    const { masked, slots, nameSlots, phrasebookOnly } = maskForAsk(parsed.data.question, parsed.data.terms ?? [], names);
+    if (names === null) this.logger.warn("copilot: name list unavailable — phrasebook-only for this ask");
+    else if (phrasebookOnly) this.logger.log("copilot: near-spelling of a patient name — phrasebook-only for this ask");
 
     let routed;
     try {
-      routed = await router.routeQuestion(masked, slots, this.model(), this.chooser(), this.cfg.copilotChoice.minConfidence);
+      routed = await router.routeQuestion(
+        masked, slots, this.model(), this.chooser(), this.cfg.copilotChoice.minConfidence, { names, phrasebookOnly },
+      );
     } catch (e) {
       /*
         THE SCRUBBER FIRED. Something identifier-shaped survived masking, and the request was
@@ -156,8 +175,9 @@ export class CopilotController {
       }
       throw e;
     }
-    // Only now is the masked form known to have passed the scrubber (or never needed it).
-    rec.maskedQuestion = masked;
+    // Only now is the masked form known to have passed the scrubber (or never needed it) — and
+    // only with the day's names in hand is it known to carry none of them.
+    if (names !== null) rec.maskedQuestion = masked;
 
     if (routed === null) {
       rec.outcome = "notUnderstood";
@@ -187,7 +207,11 @@ export class CopilotController {
         minted, so a value reaching a tool was typed by the operator moments ago and can never be
         one the model invented. It never reaches the ledger.
       */
-      subject: routed.slot === null ? null : rehydrate(routed.slot, slots),
+      /*
+        E0.6 — A PLACEHOLDER MINTED FROM A SERVER NAME IS NEVER A SUBJECT. No tool resolves a name to
+        a patient, and a name is not a visit number; the tool asks "which patient?" instead.
+      */
+      subject: routed.slot === null || nameSlots.includes(routed.slot) ? null : rehydrate(routed.slot, slots),
       serviceDate,
       question: masked,
     };
