@@ -775,6 +775,12 @@ describe("ABDM S1 — the demographics lock on the record", () => {
  * full, dates were ISO, a sealed record's H1 was the real name, and every act drew for every role.
  */
 describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
+  /**
+   * Owner 2026-10-11 — the middle column has three views and Overview is the default. These cases were
+   * written against the one dated timeline, which is still a view: they choose it, as a person would.
+   */
+  beforeEach(() => { localStorage.setItem("hmis.profile.historyView", "timeline"); });
+  afterEach(() => { localStorage.removeItem("hmis.profile.historyView"); });
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   const FRONT_DESK = [
@@ -1135,6 +1141,41 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(document.getElementById("f-phone")).toBeNull();
     expect(document.getElementById("f-addressLine")).toBeNull();
     expect(text()).not.toContain("Asha Devi");
+  });
+
+  /* ═══ OWNER 2026-10-11 — the middle column three ways; Overview is the default ═══ */
+
+  it("OVERVIEW (default): a tab per category with its count, a card per category; View all opens the full list by month; the choice is remembered", async () => {
+    localStorage.removeItem("hmis.profile.historyView");
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/invoices": INVOICES, "GET /api/billing/patients/p-1/dues": DUES },
+      [...FRONT_DESK, ...CASHIER]);
+    renderWithProviders(<PatientDetail />);
+    const visits = await screen.findByTestId("history-card-visits");
+    expect(within(visits).getByText("General Medicine · Dr. S. Rao")).toBeInTheDocument();
+    expect(screen.getByTestId("history-card-bills")).toHaveTextContent("OP/26/004411");
+    expect(screen.getByTestId("history-tab-bills")).toHaveTextContent(/Bills\s*2/);
+    await userEvent.setup().click(within(screen.getByTestId("history-card-bills")).getByRole("button", { name: /View all/ }));
+    const list = screen.getByTestId("history-list-bills");
+    expect(list).toHaveTextContent("OP/26/004411");
+    expect(screen.queryByTestId("history-card-visits")).toBeNull();
+    /** Switching views is the icon group; the choice outlives the screen. */
+    await userEvent.setup().click(screen.getByRole("button", { name: "Cards, one under another" }));
+    expect(screen.getByTestId("history-stack")).toBeInTheDocument();
+    expect(localStorage.getItem("hmis.profile.historyView")).toBe("cards");
+    await userEvent.setup().click(screen.getByRole("button", { name: "One timeline with filters" }));
+    expect(screen.getByTestId("timeline")).toBeInTheDocument();
+  });
+
+  it("TIMELINE: the filter chips narrow the one timeline to a category", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/invoices": INVOICES, "GET /api/billing/patients/p-1/dues": DUES },
+      [...FRONT_DESK, ...CASHIER]);
+    renderWithProviders(<PatientDetail />);
+    const tl = await screen.findByTestId("timeline");
+    await waitFor(() => expect(tl).toHaveTextContent("OP/26/004411"));
+    expect(tl).toHaveTextContent("General Medicine");
+    await userEvent.setup().click(within(screen.getByTestId("history-filters")).getByRole("button", { name: "Bills" }));
+    expect(screen.getByTestId("timeline")).not.toHaveTextContent("General Medicine");
+    expect(screen.getByTestId("timeline")).toHaveTextContent("OP/26/004411");
   });
 });
 

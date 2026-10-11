@@ -14051,6 +14051,30 @@
     }
   },
   "profile": {
+    "hv": {
+      "choose": "इतिहास कैसे दिखे",
+      "categories": "इतिहास की श्रेणियाँ",
+      "overview": "सारांश",
+      "viewAll": "सब देखें",
+      "viewMore_one": "1 और देखें",
+      "viewMore_other": "{{count}} और देखें",
+      "showLess": "कम दिखाएँ",
+      "all": "सभी",
+      "view": {
+        "overview": "सारांश कार्ड और टैब",
+        "cards": "कार्ड, एक के नीचे एक",
+        "timeline": "एक टाइमलाइन, फ़िल्टर के साथ"
+      },
+      "cat": {
+        "visits": "विज़िट",
+        "lab": "लैब",
+        "imaging": "इमेजिंग",
+        "medicines": "दवाइयाँ",
+        "bills": "बिल",
+        "appointments": "अपॉइंटमेंट",
+        "documents": "दस्तावेज़"
+      }
+    },
     "add": "+ जोड़ें",
     "yes": "हाँ",
     "no": "नहीं",

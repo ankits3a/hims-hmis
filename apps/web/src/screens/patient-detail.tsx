@@ -33,12 +33,14 @@ import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
 import { QuickLabReports } from "./lab-quick-reports";
+import { PatientHistory } from "./patient-history-views";
 import { fmtPaise } from "../lib/format";
 import { CREDIT_READERS, CreditTile } from "../components/patient-credit";
 import { AllBillsTile } from "../components/patient-all-bills";
 import {
-  buildTimeline, dmy, dmyIst, duesSummary, groupByDay, istDay, maskMobile, openVisitsToday, type Labels,
+  buildTimeline, dmy, dmyIst, duesSummary, istDay, maskMobile, openVisitsToday, type Labels,
 } from "./patient-profile-model";
+import type { TimelineRow } from "./patient-profile-model";
 import "./patient-profile.css";
 
 // Wire shapes (patients.controller.ts) — every Date column arrives JSON-serialized as an
@@ -1189,7 +1191,6 @@ export function PatientDetail(): React.ReactElement {
   const [addingRep, setAddingRep] = useState(false);
   const [reissued, setReissued] = useState<{ qrVersion: number; payload: string } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [showAll, setShowAll] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [openVisit, setOpenVisit] = useState<WireTimelineItem | null>(null);
 
@@ -1337,12 +1338,26 @@ export function PatientDetail(): React.ReactElement {
     ...(dispenses.data !== undefined ? { dispenses: dispenses.data.items } : {}),
     ...(documents.data !== undefined ? { documents: documents.data } : {}),
   }, labels);
-  const days = groupByDay(rows);
+  /** One history row — the same row in every view of the middle column (owner 2026-10-11). */
+  const renderRow = (r: TimelineRow): React.ReactNode => (
+                      <div className={r.owing === true ? "ev owe" : "ev"} key={r.key} data-testid="timeline-row">
+                        <span className="src">{r.source}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="t">{r.title}{r.alert !== undefined && <> <span className="hl">{r.alert}</span></>}</div>
+                          {r.sub !== null && <div className="s">{r.sub}</div>}
+                        </div>
+                        {r.amountPaise !== undefined && <span className="r mo">{fmtPaise(r.amountPaise)}</span>}
+                        {r.note !== undefined && <span className="r s">{r.note}</span>}
+                        {r.documentId !== undefined && (
+                          <button type="button" className="r lnk" onClick={() => setOpenDoc(r.documentId!)}>{t("profile.view")}</button>
+                        )}
+                        {r.encounterId !== undefined && visitOf(r.encounterId) !== null && (
+                          <button type="button" className="r lnk" data-testid="timeline-open-visit" title={t("visitCard.openHint")} onClick={() => { setOpenVisit(visitOf(r.encounterId)); }}>{t("visitCard.open")}</button>
+                        )}
+                      </div>
+  );
   const visitOf = (encounterId: string | null | undefined): WireTimelineItem | null =>
     encounterId == null ? null : (visits.data?.items.find((v) => v.encounterId === encounterId) ?? null);
-  const DAYS_SHOWN = 6;
-  const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);
-  const hiddenRows = days.slice(DAYS_SHOWN).reduce((s, d) => s + d.rows.length, 0);
 
   const owed = duesSummary(dues.data?.items);
   const openToday = openVisitsToday(visits.data?.items, today);
@@ -1516,7 +1531,10 @@ export function PatientDetail(): React.ReactElement {
               </>
             )}
 
-            {can("opd.appointments.read") && (
+            <PatientHistory
+              rows={rows}
+              renderRow={renderRow}
+              appointments={(can("opd.appointments.read") && (
               <>
                 <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.upcoming")}</h3>
                 {upcoming.length === 0 ? (
@@ -1572,51 +1590,15 @@ export function PatientDetail(): React.ReactElement {
                   </>
                 )}
               </>
-            )}
-
-            {/* Decision 0061 — the lab's quick reports (unsigned), beside the history rather than inside it. */}
-            {pid !== null && (
-              <div style={{ marginTop: 18 }}>
-                {/* Owner 2026-10-11 — the lab counter's people (print grant) read and print them here too. */}
+            )) || null}
+              showQuickLab={pid !== null && (can("lab.results.read") || can("lab.reports.print"))}
+              quickLab={(compact) => pid === null ? null : (
+                /* Decision 0061 — the lab's quick reports (unsigned); owner 2026-10-11 — the lab counter's print grant reads them too. */
                 <QuickLabReports patientId={pid} enabled={can("lab.results.read") || can("lab.reports.print")}
-                  via={can("lab.results.read") ? "results" : "print"} hideEmpty />
-              </div>
-            )}
-            <h3 style={{ margin: "18px 0 0", fontSize: 15, fontWeight: 600 }}>{t("profile.history")}</h3>
-            {days.length === 0 && <p style={{ fontSize: 12.5, color: "var(--dim)" }} data-testid="timeline-empty">{t("profile.noHistory")}</p>}
-            <div data-testid="timeline">
-              {shownDays.map((d) => (
-                <div key={d.day}>
-                  <div className="day"><span className="d">{dmy(d.day)}</span><span className="ln" /></div>
-                  <div className="box" style={{ overflow: "hidden" }}>
-                    {d.rows.map((r) => (
-                      <div className={r.owing === true ? "ev owe" : "ev"} key={r.key} data-testid="timeline-row">
-                        <span className="src">{r.source}</span>
-                        <div style={{ minWidth: 0 }}>
-                          <div className="t">{r.title}{r.alert !== undefined && <> <span className="hl">{r.alert}</span></>}</div>
-                          {r.sub !== null && <div className="s">{r.sub}</div>}
-                        </div>
-                        {r.amountPaise !== undefined && <span className="r mo">{fmtPaise(r.amountPaise)}</span>}
-                        {r.note !== undefined && <span className="r s">{r.note}</span>}
-                        {r.documentId !== undefined && (
-                          <button type="button" className="r lnk" onClick={() => setOpenDoc(r.documentId!)}>{t("profile.view")}</button>
-                        )}
-                        {r.encounterId !== undefined && visitOf(r.encounterId) !== null && (
-                          <button type="button" className="r lnk" data-testid="timeline-open-visit" title={t("visitCard.openHint")} onClick={() => { setOpenVisit(visitOf(r.encounterId)); }}>{t("visitCard.open")}</button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {!showAll && hiddenRows > 0 && (
-              <div className="day">
-                <span className="d">{t("profile.earlier", { count: hiddenRows })}</span><span className="ln" />
-                <button type="button" className="lnk" onClick={() => setShowAll(true)}>{t("profile.showMore")}</button>
-              </div>
-            )}
-            <p style={{ fontSize: 11.5, color: "var(--dim)", margin: "8px 0 0" }}>{t("profile.historyNote")}</p>
+                  via={can("lab.results.read") ? "results" : "print"} hideEmpty compact={compact} />
+              )}
+              note={<p style={{ fontSize: 11.5, color: "var(--dim)", margin: "8px 0 0" }}>{t("profile.historyNote")}</p>}
+            />
           </main>
 
           {/* ——— THE ACTS THIS SEAT MAY TAKE ——— */}

@@ -14051,6 +14051,30 @@
     }
   },
   "profile": {
+    "hv": {
+      "choose": "How to show the history",
+      "categories": "History categories",
+      "overview": "Overview",
+      "viewAll": "View all",
+      "viewMore_one": "View 1 more",
+      "viewMore_other": "View {{count}} more",
+      "showLess": "Show less",
+      "all": "All",
+      "view": {
+        "overview": "Overview cards with tabs",
+        "cards": "Cards, one under another",
+        "timeline": "One timeline with filters"
+      },
+      "cat": {
+        "visits": "Visits",
+        "lab": "Lab",
+        "imaging": "Imaging",
+        "medicines": "Medicines",
+        "bills": "Bills",
+        "appointments": "Appointments",
+        "documents": "Documents"
+      }
+    },
     "add": "+ Add",
     "yes": "yes",
     "no": "no",
