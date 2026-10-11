@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -295,35 +295,36 @@ describe("RosterOnNow (20-U U5a)", () => {
     expect(screen.queryByTestId("desk-ask-answer")).toBeNull();
   });
 
-  it("roster.ask_cover: the ask bar shows the DRAFT, asks nobody by itself, and sends the request only on the person's tap", async () => {
+  it("roster.ask_cover (E2.2): the ask bar offers who can take it, asks nobody by itself, and sends THAT proposal only on Confirm", async () => {
     reply = {
       answer: {
         key: "copilot.answer.rosterCoverDraft",
         params: { day: "2026-10-10", from: "20:00", till: "08:00", n: 2, names: "Dr. Rohit Bansal, Dr. Aman Gupta" },
         payload: {
-          kind: "roster_cover_draft", assignmentId: "A-1", post: "Ward junior resident", unit: "General Medicine Unit II",
-          startsAt: "2026-10-10T14:30:00.000Z", endsAt: "2026-10-11T02:30:00.000Z", night: true, more: 0, cannot: 1,
-          canTake: [
-            { userId: "u-rohit", name: "Dr. Rohit Bansal", grade: "jr1", teamName: "General Medicine Unit II", crossUnit: false },
-            { userId: "u-aman", name: "Dr. Aman Gupta", grade: "jr2", teamName: "General Medicine Unit I", crossUnit: true },
+          kind: "coverPick", more: 0,
+          duty: { istDate: "2026-10-10", night: true, startsAt: "2026-10-10T14:30:00.000Z", endsAt: "2026-10-11T02:30:00.000Z", post: "Ward junior resident" },
+          options: [
+            { name: "Dr. Rohit Bansal", grade: "jr1", teamName: "General Medicine Unit II", crossUnit: false, give: null, proposal: 0 },
+            { name: "Dr. Aman Gupta", grade: "jr2", teamName: "General Medicine Unit I", crossUnit: true, give: { istDate: "2026-10-12", night: true, startsAt: "2026-10-12T14:30:00.000Z", endsAt: "2026-10-13T02:30:00.000Z" }, proposal: 1 },
           ],
         },
       },
       source: "phrasebook", intent: "roster.ask_cover",
-    };
+      proposals: [{ id: "p-rohit" }, { id: "p-aman-swap" }],
+    } as typeof reply;
     const user = userEvent.setup();
     renderWithProviders(<RosterOnNow />);
     await screen.findByTestId("dept-MED");
     await user.type(screen.getByLabelText("Ask the copilot"), "Saturday night koi le sakta hai kya?{Enter}");
-    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Your night on Saturday 10 Oct (20:00–08:00): Dr. Rohit Bansal, Dr. Aman Gupta can take it. Nothing is asked yet — tap Ask to send one request.");
-    const draft = await screen.findByTestId("cover-draft");
-    expect(draft).toHaveTextContent("Dr. Aman Gupta");
-    expect(draft).toHaveTextContent("Another unit, so the HOD also approves");
-    // The draft asked nobody.
-    expect(posted.filter((p) => p.url.endsWith("/roster/covers"))).toEqual([]);
-    await user.click(screen.getByTestId("cover-ask-u-rohit"));
-    expect(await screen.findByTestId("cover-draft-sent")).toHaveTextContent("Asked Dr. Rohit Bansal.");
-    expect(posted.filter((p) => p.url.endsWith("/roster/covers")).map((p) => p.body)).toEqual([{ assignmentId: "A-1", counterpartId: "u-rohit" }]);
+    expect(await screen.findByTestId("desk-ask-answer")).toHaveTextContent("Your night on Saturday 10 Oct (20:00–08:00): Dr. Rohit Bansal, Dr. Aman Gupta can take it. Nothing is asked yet — tap one, then Confirm.");
+    const pick = await screen.findByTestId("copilot-act-pick");
+    expect(pick).toHaveTextContent("Dr. Rohit Bansal takes it");
+    expect(pick).toHaveTextContent("Swap with Dr. Aman Gupta: you take Monday 12 Oct night");
+    // Nothing was asked by the answer, nor by tapping a name: only Confirm sends.
+    await user.click(screen.getByTestId("copilot-act-option-1"));
+    expect(posted.filter((p) => p.url.endsWith("/copilot/confirm") || p.url.endsWith("/roster/covers"))).toEqual([]);
+    await user.click(screen.getByTestId("copilot-act-confirm-go"));
+    await waitFor(() => expect(posted.filter((p) => p.url.endsWith("/copilot/confirm")).map((p) => p.body)).toEqual([{ proposal: { id: "p-aman-swap" } }]));
   });
 
   it("the board's own answerer: a service by name, and nothing for a question it cannot place", () => {

@@ -1,6 +1,6 @@
 ---
 type: decision
-id: "0069"
+id: "0070"
 title: "Lab test prices: 331 tests priced at about 70–90% of Lal PathLabs / Apollo walk-in prices, put into force by the owner's authorisation"
 description: "Owner 2026-10-12 authorised prices for every lab test, inspired by Lal PathLabs and Apollo, added in the name of user admin. They go into force as a new tariff version on the direct road; the lab fee switch still decides whether a lab bill is raised at all."
 generated: { by: agent:claude, at: 2026-10-12 }
@@ -12,7 +12,7 @@ supersedes: []
 superseded_by: []
 sources: []
 ---
-# 0069 — Lab test prices (October 2026)
+# 0070 — Lab test prices (October 2026)
 
 - **Date:** 2026-10-12   **Status:** Ruled
 - **Area:** tariff (lab services), billing

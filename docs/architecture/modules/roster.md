@@ -28,7 +28,7 @@ Source: `apps/core/src/modules/roster/`
   - `recordAbsenceUnchecked(tx: Tx, actor: Actor, input: RequestAbsenceInput): Promise<{ absenceId: string }>`
   - `recordAbsences(tx: Tx, actor: Actor, userIds: readonly string[], input: Omit<RequestAbsenceInput, "userId">): Promise<{ absenceIds: string[…`
   - `redactReason(row: StaffAbsenceRow, readerUserId: string | null): StaffAbsenceRow`
-  - `rejectAbsence(tx: Tx, actor: Actor, absenceId: string): Promise<void>`
+  - `rejectAbsence(tx: Tx, actor: Actor, absenceId: string, noteRaw: string | null = null): Promise<void>`
   - `requestAbsence(tx: Tx, actor: Actor, input: RequestAbsenceInput, via: RosterVia = "direct"): Promise<{ absenceId: string }>`
   - types: `AbsenceQuery`, `AttendanceProjection`, `RequestAbsenceInput`, `StaffAbsenceRow`
 - `access.ts`
@@ -135,6 +135,7 @@ Source: `apps/core/src/modules/roster/`
 - `events.ts`
   - `ROSTER_EVENTS`
   - `rosterAbsenceApproved`
+  - `rosterAbsenceRefused`
   - `rosterAbsenceRequested`
   - `rosterAmendmentApplied`
   - `rosterCoverAnswered`
@@ -182,6 +183,20 @@ Source: `apps/core/src/modules/roster/`
   - `internYear(input: InternYearInput): InternPosting[]`
   - `splitBlock(weeks: number): number[]`
   - types: `CrmiBlock`, `InternAbsence`, `InternPosting`, `InternYearInput`
+- `leave.ts`
+  - `LEAVE_REASON_MAX`
+  - `MAX_LEAVE_DAYS`
+  - `SELF_LEAVE_KINDS`
+  - `cancelOwnLeave(tx: Tx, actor: Actor, absenceId: string): Promise<void>`
+  - `checkLeave(exec: Db | Tx, userId: string, input: { kind: string; from: string; to: string }): Promise<{ kind: SelfLeaveKind; startsAt: Date…`
+  - `decideLeave(tx: Tx, actor: Actor, absenceId: string, input: { approve: boolean; note?: string | null }): Promise<void>`
+  - `fileOwnLeave(tx: Tx, actor: Actor, input: FileLeaveInput, via: RosterVia = "direct"): Promise<{ absenceId: string }>`
+  - `homeDepartmentOf(exec: Db | Tx, userId: string, at: Date): Promise<string | null>`
+  - `leaveDeciders(exec: Db | Tx, departmentId: string | null, exceptUserId: string): Promise<string[]>`
+  - `leaveForAlert(exec: Db | Tx, absenceId: string): Promise<LeaveForAlert | null>`
+  - `leaveToDecide(exec: Db | Tx, actor: Actor): Promise<LeaveToDecideView[]>`
+  - `myLeave(exec: Db | Tx, actor: Actor): Promise<MyLeaveView[]>`
+  - types: `FileLeaveInput`, `LeaveForAlert`, `LeaveStatus`, `LeaveToDecideView`, `MyLeaveView`, `SelfLeaveKind`
 - `manifest.ts`
   - `rosterManifest: ModuleManifest`
 - `masters.ts`
@@ -355,8 +370,9 @@ Source: `apps/core/src/modules/roster/`
 
 Foreign keys into: `auth`, `org`, `resources`
 
-## HTTP routes (32)
+## HTTP routes (37)
 
+- `leave.controller.ts` — 5: `/roster/leave`
 - `roster-board.controller.ts` — 32: `/roster/aebas`, `/roster/as-it-stood`, `/roster/board-prints`, `/roster/covers`, `/roster/declarations`, `/roster/doctor-units`, `/roster/duties`, `/roster/evidence`, `/roster/flags`, `/roster/holidays`, `/roster/modes`, `/roster/my-duties`, `/roster/on-now`, `/roster/opd-units`, `/roster/periods`, `/roster/slots`, `/roster/staff-today`, `/roster/unit-heads-without-regn`, `/roster/units`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/roster`

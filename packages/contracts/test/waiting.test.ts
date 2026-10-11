@@ -11,9 +11,10 @@ describe("waiting — the one list both clients draw (E1.4, E1.5)", () => {
     expect(waitingLines({ items: "x" } as never)).toEqual([]);
   });
 
-  it("every kind has a phone target; only the bell, reminders and duties leave the Open loops screen", () => {
+  it("every kind has a phone target; only the bell, my leave, reminders and duties leave the Open loops screen", () => {
     const outward = WAITING_KINDS.filter((k) => appTargetOf(k).type !== "loops");
-    expect(outward).toEqual(["alerts.unanswered", "reminders.today", "roster.dutiesToday"]);
+    // E2.2 — both leave lines open My leave (decision 0069).
+    expect(outward).toEqual(["alerts.unanswered", "roster.leaveToDecide", "roster.leaveRefused", "reminders.today", "roster.dutiesToday"]);
   });
 
   it("ages read short", () => {

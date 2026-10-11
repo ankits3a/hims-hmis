@@ -25,6 +25,8 @@ export const WAITING_KINDS = [
   "lab.reportsBack",
   "radiology.unreadMine",
   "alerts.unanswered",
+  "roster.leaveToDecide",
+  "roster.leaveRefused",
   "reminders.today",
   "roster.dutiesToday",
 ] as const;
@@ -53,6 +55,8 @@ export const WAITING_WEB_HREF: Record<WaitingKind, string | null> = {
   "lab.reportsBack": "/opd/consult",
   "radiology.unreadMine": "/opd/consult",
   "alerts.unanswered": null,
+  "roster.leaveToDecide": "/roster/leave",
+  "roster.leaveRefused": "/roster/leave",
   "reminders.today": null,
   "roster.dutiesToday": "/roster/my-duties",
 };
@@ -65,6 +69,8 @@ export const WAITING_TONE: Record<WaitingKind, WaitingTone> = {
   "lab.reportsBack": "calm",
   "radiology.unreadMine": "warn",
   "alerts.unanswered": "warn",
+  "roster.leaveToDecide": "warn",
+  "roster.leaveRefused": "warn",
   "reminders.today": "calm",
   "roster.dutiesToday": "calm",
 };
@@ -74,7 +80,7 @@ export const WAITING_TONE: Record<WaitingKind, WaitingTone> = {
  * worked on the computer today, so the phone opens the Open loops screen on that kind and says where.
  */
 export type WaitingAppTarget =
-  | { type: "route"; path: "/alerts" | "/reminders" }
+  | { type: "route"; path: "/alerts" | "/reminders" | "/my-leave" }
   | { type: "seat"; key: "myDuties" }
   | { type: "loops"; kind: WaitingKind };
 
@@ -82,6 +88,8 @@ export function appTargetOf(kind: WaitingKind): WaitingAppTarget {
   if (kind === "alerts.unanswered") return { type: "route", path: "/alerts" };
   if (kind === "reminders.today") return { type: "route", path: "/reminders" };
   if (kind === "roster.dutiesToday") return { type: "seat", key: "myDuties" };
+  // E2.2 — both leave lines open My leave, where the request and the decider's reason are read.
+  if (kind === "roster.leaveToDecide" || kind === "roster.leaveRefused") return { type: "route", path: "/my-leave" };
   return { type: "loops", kind };
 }
 

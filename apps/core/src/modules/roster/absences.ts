@@ -7,7 +7,7 @@ import { hasPermission } from "../../kernel/auth/permissions";
 import { RosterError } from "./errors";
 import { ROSTER_MANAGE, requireRosterAct } from "./access";
 import type { RosterVia } from "./policy";
-import { rosterAbsenceApproved, rosterAbsenceRequested } from "./events";
+import { rosterAbsenceApproved, rosterAbsenceRefused, rosterAbsenceRequested } from "./events";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
 import type { StaffAbsenceKind } from "../../kernel/db/schema/roster";
@@ -27,6 +27,8 @@ import type { StaffAbsenceKind } from "../../kernel/db/schema/roster";
 export type StaffAbsenceRow = typeof staffAbsences.$inferSelect;
 
 const HOUR_MS = 3_600_000;
+/** The longest reason a decider may give for refusing (the column's check says the same). */
+export const DECISION_NOTE_MAX = 280;
 
 async function dbNow(exec: Db | Tx): Promise<Date> {
   const r = await (exec as Db).execute(sql`select now() as "now"`);
@@ -65,6 +67,8 @@ export interface RequestAbsenceInput {
   endsAt: Date;
   reason?: string | null;
   source?: "manual" | "import" | "opd" | "academic";
+  /** E2.2 — whose list it waits in (`leave.ts` finds it for a person's own leave). */
+  departmentId?: string | null;
 }
 
 /**
@@ -102,7 +106,7 @@ export async function requestAbsence(
   await tx.insert(staffAbsences).values({
     id: absenceId, userId: input.userId, kind: input.kind,
     startsAt: input.startsAt, endsAt: input.endsAt, status: "requested",
-    requestedBy: actor.id, reason, source: input.source ?? "manual",
+    requestedBy: actor.id, reason, source: input.source ?? "manual", departmentId: input.departmentId ?? null,
     createdBy: actor.id, updatedBy: actor.id,
   });
   await appendEvent(tx, rosterAbsenceRequested.make({
@@ -118,13 +122,14 @@ export async function requestAbsence(
 /* ═══════════════════════════════ deciding ═══════════════════════════════ */
 
 async function decide(
-  tx: Tx, actor: Actor, absenceId: string, status: "approved" | "rejected",
+  tx: Tx, actor: Actor, absenceId: string, status: "approved" | "rejected", note: string | null = null,
 ): Promise<StaffAbsenceRow> {
   const row = (await tx.select().from(staffAbsences).where(eq(staffAbsences.id, absenceId)).for("update"))[0];
   if (row === undefined) throw new RosterError("unknown_absence", undefined, { absenceId });
   // "Approve a leave" is in the matrix's PUBLISH row: it is a governed act, because it decides
-  // whether a ward has somebody in it.
-  await requireRosterAct(tx, actor, "publish");
+  // whether a ward has somebody in it. E2.2: a leave filed with a department is that department's
+  // publisher's to decide (a hospital-wide publisher still may); one without stays hospital-wide.
+  await requireRosterAct(tx, actor, "publish", row.departmentId === null ? {} : { departmentId: row.departmentId });
   if (row.status !== "requested") {
     throw new RosterError("absence_already_decided", undefined, { absenceId, status: row.status });
   }
@@ -139,9 +144,9 @@ async function decide(
 
   const now = await dbNow(tx);
   await tx.update(staffAbsences)
-    .set({ status, approvedBy: actor.id, decidedAt: now, updatedBy: actor.id, updatedAt: now })
+    .set({ status, approvedBy: actor.id, decidedAt: now, decisionNote: note, updatedBy: actor.id, updatedAt: now })
     .where(eq(staffAbsences.id, absenceId));
-  return { ...row, status, approvedBy: actor.id, decidedAt: now };
+  return { ...row, status, approvedBy: actor.id, decidedAt: now, decisionNote: note };
 }
 
 export async function approveAbsence(tx: Tx, actor: Actor, absenceId: string): Promise<void> {
@@ -158,8 +163,20 @@ export async function approveAbsence(tx: Tx, actor: Actor, absenceId: string): P
   }));
 }
 
-export async function rejectAbsence(tx: Tx, actor: Actor, absenceId: string): Promise<void> {
-  await decide(tx, actor, absenceId, "rejected");
+/**
+ * E2.2 — a refusal may carry the decider's reason (the leave screen requires one). It goes on the row
+ * only: the event says THAT it was refused, never why, so no notice or phone can print it.
+ */
+export async function rejectAbsence(tx: Tx, actor: Actor, absenceId: string, noteRaw: string | null = null): Promise<void> {
+  const note = noteRaw === null || noteRaw.trim() === "" ? null : noteRaw.trim();
+  if (note !== null && note.length > DECISION_NOTE_MAX) {
+    throw new RosterError("invalid_window", `a reason for refusing is ${String(DECISION_NOTE_MAX)} characters or fewer`, { noteLength: note.length });
+  }
+  const row = await decide(tx, actor, absenceId, "rejected", note);
+  await appendEvent(tx, rosterAbsenceRefused.make({
+    payload: { absenceId, userId: row.userId, decidedAt: row.decidedAt!.toISOString() },
+    actor, correlationId: absenceId,
+  }));
 }
 
 /** Cancelling is the taker's own, or a manager's. A decided absence may still be cancelled. */
@@ -277,7 +294,7 @@ export async function markAebasEntered(tx: Tx, actor: Actor, absenceId: string):
 export function redactReason(row: StaffAbsenceRow, readerUserId: string | null): StaffAbsenceRow {
   const mayRead = readerUserId !== null
     && (readerUserId === row.userId || readerUserId === row.requestedBy || readerUserId === row.approvedBy);
-  return mayRead ? row : { ...row, reason: null };
+  return mayRead ? row : { ...row, reason: null, decisionNote: null };
 }
 
 export interface AbsenceQuery {
