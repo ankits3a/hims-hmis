@@ -73,4 +73,34 @@ describe("owner 2026-10-11 — a lab counter walk-in is not an OPD visit", () =>
     const [row] = buildTimeline({ visits: [lab] }, L);
     expect([row!.source, row!.title, row!.encounterId]).toEqual(["LAB", "Lab visit · walk-in", undefined]);
   });
+
+  const order = (no: string, at: string, codes: string[], stage = "handed_over" as const) => ({
+    orderId: `o-${no}`, orderNo: no, encounterNo: "V2610110001", placedAt: at, stage, quickId: null,
+    tests: codes.map((code) => ({ code, nameEn: `${code} name` })),
+  });
+  it("names its tests by code, once each, first ordered first; cancelled orders and other visits left out", () => {
+    const [row] = buildTimeline({
+      visits: [lab],
+      labOrders: [
+        order("L2", "2026-10-11T05:00:00Z", ["LFT", "CBC"]),
+        order("L1", "2026-10-11T04:30:00Z", ["CBC", "KFT"]),
+        order("L3", "2026-10-11T06:00:00Z", ["TSH"], "cancelled" as never),
+        { ...order("L9", "2026-10-11T06:00:00Z", ["ESR"]), encounterNo: "V-other" },
+      ],
+    }, L);
+    expect(row!.tags).toEqual(["CBC", "KFT", "LFT"]);
+    expect(row!.labVisitNo).toBe("V2610110001");
+  });
+  it("folds the visit's signed reports into the visit row; another visit's report keeps its own row", () => {
+    const report = (id: string, encounterNo: string) => ({
+      reportId: id, orderId: "o", orderNo: "L", encounterNo, serviceDate: "2026-10-11", version: 1, partial: false,
+      publishedAt: "2026-10-11T08:00:00Z", channels: [], printCount: 0, orderables: ["CBC"], sensitive: false,
+      delivery: {} as never, deliveries: [], notice: null, snapshot: null,
+    });
+    const rows = buildTimeline({
+      visits: [lab],
+      labReports: { patient: { id: "p", uhid: "u", display: "d", restricted: false }, reports: [report("r1", "V2610110001"), report("r2", "OP-9")], pending: [] },
+    }, L);
+    expect(rows.map((r) => r.key).sort()).toEqual(["labr-r2", "opd-e-lab"]);
+  });
 });

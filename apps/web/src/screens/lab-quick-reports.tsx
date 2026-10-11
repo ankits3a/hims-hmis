@@ -272,8 +272,10 @@ function ReportCard({ report, compact, onOpen }: { report: QuickReport; compact:
  * until opened; `onOpen` (the lab) adds "Open to edit". Renders nothing at all when the reader may
  * not ask (`enabled` false) and, in compact or `hideEmpty` mode, when there is nothing to show.
  */
-export function QuickLabReports({ patientId, enabled = true, compact = false, hideEmpty = false, onOpen, via = "results" }: {
+export function QuickLabReports({ patientId, enabled = true, compact = false, hideEmpty = false, onOpen, via = "results", exclude }: {
   patientId: string; enabled?: boolean; compact?: boolean; hideEmpty?: boolean; onOpen?: (id: string) => void;
+  /** Owner 2026-10-11 — visit numbers whose reports open from the visit row instead (the profile's lab visits). */
+  exclude?: ReadonlySet<string>;
   /** Owner 2026-10-11 — `print`: the lab counter's grant reads them for the profile (`/printable`). */
   via?: "results" | "print";
 }): React.ReactElement | null {
@@ -285,7 +287,7 @@ export function QuickLabReports({ patientId, enabled = true, compact = false, hi
     retry: false,
   });
   if (!enabled) return null;
-  const items = q.data?.items ?? [];
+  const items = (q.data?.items ?? []).filter((r) => exclude === undefined || r.encounterNo === null || !exclude.has(r.encounterNo));
   if ((compact || hideEmpty) && items.length === 0) return null;
   return (
     <section data-testid="quick-lab-reports" aria-label={t("lab.quick.savedTitle")}>

@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { WireRecentLabOrder } from "./lab-api";
 
 /**
  * QUICK MODE (decision 0061) — the wire contract of `lab-quick.controller.ts`, transcribed. The
@@ -51,6 +52,9 @@ export const quickReport = (id: string): Promise<QuickReport> => api("GET", `/la
 /** Reported quick reports of one patient (profile, consult, the lab's saved reports) — `lab.results.read`. */
 export const quickReportsForPatient = (patientId: string, via: "results" | "print" = "results"): Promise<{ items: QuickReport[] }> =>
   api("GET", `/lab/quick/patient/${encodeURIComponent(patientId)}${via === "print" ? "/printable" : ""}`);
+/** Owner 2026-10-11 — a person's lab orders (codes, names, stage, visit no.; no values), for the profile's lab visit. */
+export const labOrdersForPatient = (patientId: string, via: "results" | "print" = "results"): Promise<{ items: WireRecentLabOrder[] }> =>
+  api("GET", `/lab/quick/patient/${encodeURIComponent(patientId)}/orders${via === "print" ? "/printable" : ""}`);
 export const saveQuickResults = (id: string, body: SaveQuickResults): Promise<QuickReport> =>
   api("PUT", `/lab/quick/reports/${encodeURIComponent(id)}`, body);
 

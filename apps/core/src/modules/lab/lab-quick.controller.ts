@@ -9,6 +9,8 @@ import {
   quickReportsDesk, quickReportsForPatient, saveQuickResults, sendBackQuick, startQuick,
 } from "./quick";
 import { recordPhiAccess } from "../../kernel/phi/audit";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { recentLabOrders } from "./desk-picker";
 import { patients } from "../../kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { LAB_DESK_OPERATE } from "./desk";
@@ -168,5 +170,29 @@ export class LabQuickController {
   @RequirePermission(LAB_REPORTS_PRINT, "hospital")
   async patientPrintable(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<unknown> {
     try { return { items: await quickReportsForPatient(this.db, actor, parsed(idSchema, patientId)) }; } catch (e) { quickHttp(e); }
+  }
+
+  /**
+   * Owner 2026-10-11 — "let the user click on the visit card to access the reports and tests related
+   * to that visit" and name the tests (CBC, LFT, KFT) on the card. The profile's read of a person's
+   * lab orders: test codes and names, stage, visit number — no values. The results grant reads it
+   * here, the lab counter's print grant at `/printable`, as the quick reports above.
+   */
+  @Get("patient/:patientId/orders")
+  @RequirePermission(LAB_RESULTS_READ, "hospital")
+  async patientOrders(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<unknown> {
+    return { items: await this.ordersOf(actor, patientId) };
+  }
+
+  @Get("patient/:patientId/orders/printable")
+  @RequirePermission(LAB_REPORTS_PRINT, "hospital")
+  async patientOrdersPrintable(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<unknown> {
+    return { items: await this.ordersOf(actor, patientId) };
+  }
+
+  private async ordersOf(actor: Actor, patientId: string): Promise<unknown[]> {
+    const id = parsed(idSchema, patientId);
+    const canSeeRestricted = actor.type === "user" && await hasPermission(this.db, actor.id, "orders.read.restricted", "hospital");
+    return recentLabOrders(this.db, id, canSeeRestricted, 50);
   }
 }

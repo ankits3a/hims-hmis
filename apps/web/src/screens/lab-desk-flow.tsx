@@ -310,7 +310,7 @@ export function LabHistory({ hit, serviceDate, canOpenReports, onArrived, compac
   );
 }
 
-const STAGE_PILL: Record<string, string> = {
+export const STAGE_PILL: Record<string, string> = {
   awaiting_blood: "pill gd", sample_taken: "pill", draft: "pill gd", report_ready: "pill on", handed_over: "pill", cancelled: "pill rd", in_lab: "pill",
 };
 

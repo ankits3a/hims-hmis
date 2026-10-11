@@ -14201,6 +14201,15 @@
     "dueFrom_other": "oldest from {{date}} · bill {{bill}} · {{count}} bills",
     "history": "History · newest first",
     "noHistory": "Nothing on this record yet that this seat may read.",
+    "lv": {
+      "title": "Lab visit {{n}}",
+      "open": "Tests & reports",
+      "none": "No tests on this visit yet.",
+      "quick": "Quick report · not signed",
+      "view": "View report",
+      "hide": "Hide report",
+      "openSigned": "Open in Lab reports"
+    },
     "tl": {
       "visit": "visit {{n}}",
       "medicines_one": "{{count}} medicine prescribed",
