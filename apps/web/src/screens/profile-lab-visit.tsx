@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "../lib/auth";
 import type { WirePatientReportRow, WireRecentLabOrder } from "../lib/lab-api";
-import type { QuickReport } from "../lib/lab-quick-api";
+import { labOrdersForPatient, quickReportsForPatient, type QuickReport } from "../lib/lab-quick-api";
+import { reportsForPatient } from "../lib/lab-api";
+import { PapersSheet } from "./desk-one/papers";
 import type { WireTimelineItem } from "../lib/opd-api";
 import { dmy } from "./patient-profile-model";
 import { STAGE_PILL } from "./lab-desk-flow";
@@ -17,15 +20,30 @@ import { printQuickReport } from "./lab-quick-reports";
  * signed report opens in Lab reports for a seat that may print there. The rows it shows are the ones
  * the profile already read; it asks nothing new of the server.
  */
-export function LabVisitDialog({ visitNo, visit, orders, quickReports, signedReports, patientId, onClose }: {
+type LabVisitData = {
   visitNo: string | null;
-  visit: WireTimelineItem | null;
   orders: WireRecentLabOrder[];
   quickReports: QuickReport[];
   signedReports: WirePatientReportRow[];
   patientId: string;
-  onClose: () => void;
-}): React.ReactElement {
+};
+
+export function LabVisitDialog({ visit, onClose, ...data }: LabVisitData & { visit: WireTimelineItem | null; onClose: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const who = visit === null ? "" : [visit.departmentName, visit.doctorName].filter((x) => x !== null && x !== "").join(" · ");
+  return (
+    <Dialog open={data.visitNo !== null} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="pp max-w-2xl" data-testid="lab-visit-dialog" style={{ maxHeight: "90vh", overflowY: "auto" }}>
+        <DialogTitle>{t("profile.lv.title", { n: data.visitNo ?? "" })}</DialogTitle>
+        <DialogDescription>{[visit === null ? "" : dmy(visit.serviceDate), who].filter((x) => x !== "").join(" · ")}</DialogDescription>
+        <LabVisitBody {...data} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The visit's orders, tests and reports — the same body in the profile's dialog and the counter's sheet. */
+export function LabVisitBody({ visitNo, orders, quickReports, signedReports, patientId }: LabVisitData): React.ReactElement {
   const { t } = useTranslation();
   const { can, username } = useAuth();
   const [shown, setShown] = useState<string | null>(null);
@@ -35,7 +53,6 @@ export function LabVisitDialog({ visitNo, visit, orders, quickReports, signedRep
   /** A quick report started before orders carried one (decision 0061) still belongs to the visit. */
   const looseQuick = quick.filter((r) => !mine.some((o) => o.orderId === r.orderId || o.quickId === r.id));
   const looseSigned = signed.filter((r) => !mine.some((o) => o.orderId === r.orderId));
-  const who = visit === null ? "" : [visit.departmentName, visit.doctorName].filter((x) => x !== null && x !== "").join(" · ");
   const mayOpenSigned = can("lab.reports.print");
 
   const quickBlock = (r: QuickReport): React.ReactNode => (
@@ -55,10 +72,7 @@ export function LabVisitDialog({ visitNo, visit, orders, quickReports, signedRep
   );
 
   return (
-    <Dialog open={visitNo !== null} onOpenChange={(o) => { if (!o) { setShown(null); onClose(); } }}>
-      <DialogContent className="pp max-w-2xl" data-testid="lab-visit-dialog" style={{ maxHeight: "90vh", overflowY: "auto" }}>
-        <DialogTitle>{t("profile.lv.title", { n: visitNo ?? "" })}</DialogTitle>
-        <DialogDescription>{[visit === null ? "" : dmy(visit.serviceDate), who].filter((x) => x !== "").join(" · ")}</DialogDescription>
+    <div data-testid="lab-visit-body">
         {mine.length === 0 && looseQuick.length === 0 && looseSigned.length === 0 && (
           <p style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("profile.lv.none")}</p>
         )}
@@ -103,7 +117,42 @@ export function LabVisitDialog({ visitNo, visit, orders, quickReports, signedRep
             <li key={r.id} className="box" style={{ padding: "9px 11px" }}>{quickBlock(r)}</li>
           ))}
         </ul>
-      </DialogContent>
-    </Dialog>
+    </div>
+  );
+}
+
+/**
+ * OWNER 2026-10-11 — /counter's history opened a lab visit as an OPD visit card ("Change department",
+ * "Patient not present — guardian with reports", OPD slips). A lab visit opens this instead: the
+ * visit's tests and reports, read through whichever lab grant the seat holds, and its bills.
+ */
+export function LabVisitSheet({ patientId, visit }: { patientId: string; visit: WireTimelineItem }): React.ReactElement {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const via = can("lab.results.read") ? "results" as const : "print" as const;
+  const mayRead = can("lab.results.read") || can("lab.reports.print");
+  const orders = useQuery({ queryKey: ["pf-lab-orders", patientId, via], queryFn: () => labOrdersForPatient(patientId, via), enabled: mayRead, retry: false });
+  const quick = useQuery({ queryKey: ["lab-quick", "patient", patientId, via], queryFn: () => quickReportsForPatient(patientId, via), enabled: mayRead, retry: false });
+  const signed = useQuery({ queryKey: ["pf-lab-reports", patientId], queryFn: () => reportsForPatient(patientId), enabled: can("lab.reports.print"), retry: false });
+  const who = [visit.departmentName, visit.doctorName].filter((x) => x !== null && x !== "").join(" · ");
+  return (
+    <div className="pp" data-testid="lab-visit-sheet">
+      <div style={{ padding: "16px 18px 0" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <span data-testid="lab-visit-title" style={{ fontSize: 15, fontWeight: 700 }}>{t("profile.lv.title", { n: visit.visitNo ?? "" })}</span>
+          <span className="pill" style={{ height: 20 }}>{t("profile.lv.kind")}</span>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>{[dmy(visit.serviceDate), who].filter((x) => x !== "").join(" · ")}</div>
+        <div style={{ marginTop: 12 }}>
+          {mayRead ? (
+            <LabVisitBody visitNo={visit.visitNo ?? null} patientId={patientId} orders={orders.data?.items ?? []}
+              quickReports={quick.data?.items ?? []} signedReports={signed.data?.reports ?? []} />
+          ) : (
+            <p style={{ fontSize: 12.5, color: "var(--dim)" }} data-testid="lab-visit-no-grant">{t("profile.lv.noGrant")}</p>
+          )}
+        </div>
+      </div>
+      <PapersSheet encounterId={visit.encounterId} when={visit.serviceDate} billsOnly />
+    </div>
   );
 }

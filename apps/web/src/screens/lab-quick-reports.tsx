@@ -106,7 +106,7 @@ export function printQuickReport(report: QuickReport, printedBy: string | null):
    * a page counter cannot be read inside the body.
    */
   const now = new Date().toISOString();
-  const footer = `<div class="ft">
+  const footer = `<div class="ft ftfix">
     <div class="frule"></div>
     <div class="dis">This report is computer generated. Values are entered by the laboratory; the pathologist signs above.</div>
     <div class="thin"></div>
@@ -181,11 +181,18 @@ td.flag.ok { color: #1a7f4b; font-weight: 700; } td.flag.ab { color: #c8102e; fo
 .ft .site { font-weight: 700; color: #d92230; }
 .ft .qr { width: 62px; height: 62px; flex-shrink: 0; } .ft .qr svg { display: block; }
 .ft .by { display: flex; align-items: baseline; padding-top: 4px; font-size: 10.5px; color: #333; }
-@media screen { body { background: #e9e9e9; } .sheet { background: #fff; width: 210mm; min-height: 297mm; margin: 12px auto; padding: 12mm; box-shadow: 0 1px 6px rgba(0,0,0,.2); } }
+/* Owner 2026-10-11 — the footer stands at the FOOT of every page, not after the last line of results.
+   Printed, a fixed box repeats at the bottom of each page's area; the empty tfoot row (as tall as the
+   footer) repeats too, so results never run under it. On screen the sheet holds it at its own foot. */
+.ftsp { height: 38mm; }
+.ftfix { background: #fff; }
+@media print { .ftfix { position: fixed; left: 0; right: 0; bottom: 0; } }
+@media screen { body { background: #e9e9e9; } .sheet { position: relative; background: #fff; width: 210mm; min-height: 297mm; margin: 12px auto; padding: 12mm; box-shadow: 0 1px 6px rgba(0,0,0,.2); }
+  .ftfix { position: absolute; left: 12mm; right: 12mm; bottom: 12mm; } }
 </style></head><body><div class="sheet">
 <table class="page">
 <thead><tr><td>${header}</td></tr></thead>
-<tfoot><tr><td>${footer}</td></tr></tfoot>
+<tfoot><tr><td><div class="ftsp"></div></td></tr></tfoot>
 <tbody><tr><td>
 ${tables}
 ${report.summary.trim() !== "" ? `<div class="remarks"><b>Remarks</b>${e(report.summary)}</div>` : ""}
@@ -200,7 +207,8 @@ ${report.summary.trim() !== "" ? `<div class="remarks"><b>Remarks</b>${e(report.
   <div><div class="nm"></div><div class="ln">Authorised by</div><div class="rl">Pathologist — signature and seal</div></div>
 </div>
 </td></tr></tbody>
-</table></div>
+</table>
+${footer}</div>
 <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
   const w = window.open("", "_blank");
   if (w === null) return;

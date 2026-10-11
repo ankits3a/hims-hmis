@@ -14202,6 +14202,8 @@
     "history": "History · newest first",
     "noHistory": "Nothing on this record yet that this seat may read.",
     "lv": {
+      "kind": "Lab visit",
+      "noGrant": "This seat may not read lab tests and reports.",
       "title": "Lab visit {{n}}",
       "open": "Tests & reports",
       "none": "No tests on this visit yet.",
