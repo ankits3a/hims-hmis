@@ -1380,6 +1380,13 @@
       "when": 1791665345682,
       "tag": "0196_user_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1791668551777,
+      "tag": "0197_copilot_halt_and_spend",
+      "breakpoints": true
     }
   ]
 }

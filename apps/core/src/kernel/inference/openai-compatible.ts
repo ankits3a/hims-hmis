@@ -24,7 +24,10 @@ export type CompleteConfig = {
 
 type ChatCompletionResponse = {
   choices?: { message?: { content?: unknown } }[];
+  usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
 };
+
+const tokenCount = (x: unknown): number | null => (typeof x === "number" && Number.isInteger(x) && x >= 0 ? x : null);
 
 /**
  * Build a client, or `null` when nothing is configured.
@@ -90,7 +93,9 @@ export function openAiCompatibleClient(
         if (typeof content !== "string" || content.trim() === "") {
           throw new InferenceUnavailable("provider_failed");
         }
-        return { text: content };
+        const inputTokens = tokenCount(body.usage?.prompt_tokens);
+        const outputTokens = tokenCount(body.usage?.completion_tokens);
+        return inputTokens === null || outputTokens === null ? { text: content } : { text: content, usage: { inputTokens, outputTokens } };
       } catch (e) {
         if (e instanceof InferenceUnavailable) throw e;
         /*

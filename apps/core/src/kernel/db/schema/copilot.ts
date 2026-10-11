@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigserial, check, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -49,13 +49,29 @@ export const copilotAsks = pgTable(
     screen: text("screen"),
     /** chip | typed — filled from E1.3; null until then. */
     source: text("source"),
+    /**
+     * E0.5 — the chooser and model calls this ask made (0 on the phrasebook path), their ESTIMATED cost in
+     * micro-rupees (₹1 = 1,000,000; a routing call costs fractions of a paisa, so paise would round to 0),
+     * one `{provider, model, kind, inTok, outTok, microInr, ok, tokens}` entry per call, and whether the
+     * daily cap had already been reached so this ask ran phrasebook-only (decision 0064).
+     */
+    modelCalls: integer("model_calls").notNull().default(0),
+    costMicroInr: integer("cost_micro_inr").notNull().default(0),
+    modelUsage: jsonb("model_usage"),
+    capped: boolean("capped").notNull().default(false),
   },
   (t) => [
     index("copilot_asks_at_idx").on(t.at),
+    /*
+      E0.5 — THE CAP CHECK'S INDEX. Every ask sums today's spend; only rows that spent anything are in
+      it, and the cost is the index's second column, so the sum is an index-only scan over the day's model calls.
+    */
+    index("copilot_asks_spend_idx").on(t.at, t.costMicroInr).where(sql`cost_micro_inr > 0`),
     check("copilot_asks_outcome_ck", inList(t.outcome, COPILOT_ASK_OUTCOMES)),
     check("copilot_asks_route_ck", inList(t.route, COPILOT_ROUTES)),
     check("copilot_asks_source_ck", sql`${t.source} is null or ${t.source} in ('chip', 'typed')`),
     check("copilot_asks_ms_ck", sql`${t.ms} >= 0`),
+    check("copilot_asks_cost_ck", sql`${t.modelCalls} >= 0 and ${t.costMicroInr} >= 0`),
   ],
 );
 
@@ -100,4 +116,24 @@ export const copilotNoticeAcks = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ name: "copilot_notice_acks_pkey", columns: [t.userId, t.version] })],
+);
+
+/**
+ * E0.3 — THE HALT SWITCH (plan E0.3, decision 0064). One row per HALTED scope; no row, not halted. Read
+ * on every ask (one indexed round trip, no cache — the `getOperatingMode` rule: a halt must take effect
+ * on the very next ask, on this box and on the failover site, which reads the same replicated table).
+ * The history lives in `events` (`copilot.halt_set` / `copilot.halt_cleared`, each naming who).
+ */
+export const COPILOT_HALT_SCOPES = ["read", "act", "draft", "global"] as const;
+export type CopilotHaltScope = (typeof COPILOT_HALT_SCOPES)[number];
+
+export const copilotHalts = pgTable(
+  "copilot_halts",
+  {
+    scope: text("scope").primaryKey(),
+    haltedBy: text("halted_by").notNull(),
+    haltedAt: timestamp("halted_at", { withTimezone: true }).notNull().defaultNow(),
+    reason: text("reason"),
+  },
+  (t) => [check("copilot_halts_scope_ck", inList(t.scope, COPILOT_HALT_SCOPES))],
 );

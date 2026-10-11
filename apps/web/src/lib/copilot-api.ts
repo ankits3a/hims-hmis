@@ -65,7 +65,29 @@ export type CopilotHealth = {
   byRoute: Record<"phrasebook" | "chooser" | "model" | "none", CopilotRouteTimings>;
   notUnderstoodShare: number | null;
   acts: number;
+  /** E0.5 — chooser + model calls that day and their ESTIMATED cost in rupees. */
+  modelCalls: number;
+  spendInr: number;
+  cappedAsks: number;
+  /** E0.5 — the daily cap (decision 0064) and whether today has reached it. */
+  capInr: number;
+  capped: boolean;
+  /** E0.3 — the halted scopes now. */
+  halts: { scope: CopilotHaltScope; haltedAt: string; reason: string | null }[];
 };
+
+export const COPILOT_HALT_SCOPES = ["read", "act", "draft", "global"] as const;
+export type CopilotHaltScope = (typeof COPILOT_HALT_SCOPES)[number];
+
+/** E0.3 — `POST /copilot/halt` (`copilot.halt.set`). */
+export function haltCopilot(scope: CopilotHaltScope, reason?: string): Promise<unknown> {
+  return api("POST", "/copilot/halt", reason === undefined ? { scope } : { scope, reason });
+}
+
+/** E0.3 — `POST /copilot/halt/clear` (`copilot.halt.clear`; global needs `copilot.halt.clear_global`). */
+export function clearCopilotHalt(scope: CopilotHaltScope): Promise<unknown> {
+  return api("POST", "/copilot/halt/clear", { scope });
+}
 
 export function getCopilotHealth(date?: string): Promise<CopilotHealth> {
   return api<CopilotHealth>("GET", date === undefined ? "/copilot/health" : `/copilot/health?date=${encodeURIComponent(date)}`);
