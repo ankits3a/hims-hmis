@@ -4145,6 +4145,32 @@
         "chosenTests_one": "Chosen test",
         "chosenTests_other": "Chosen tests ({{count}})",
         "change": "Change patient",
+        "noShow": "No-show",
+        "backToSummary": "Back",
+        "noVisitToday": "No OPD visit today",
+        "withTheHospital": "With the hospital",
+        "noMembership": "No membership on file",
+        "walkInBlockedTitle": "Walk-ins cannot be opened yet",
+        "walkInBlocked": {
+          "no_lab_department": "This hospital has no Laboratory department. Ask the OPD admin: OPD admin → Departments → add code LAB, name Laboratory. Then add the pathologist under Doctors in that department.",
+          "lab_department_inactive": "The Laboratory department (LAB) is switched off. Ask the OPD admin to switch it on in OPD admin → Departments.",
+          "no_pathologist": "The Laboratory department has no doctor. Ask the OPD admin: OPD admin → Doctors → add the pathologist in the Laboratory department."
+        },
+        "orderTitle": "Order the tests",
+        "walkInTitle": "New walk-in — which tests?",
+        "forPatient": "for {{name}} · {{uhid}}",
+        "hours": {
+          "title": "Booking hours",
+          "line": "Lab takes bookings {{open}}–{{close}}, every {{minutes}} min, {{per}} per slot",
+          "open": "Opens",
+          "close": "Closes",
+          "slot": "Slot length",
+          "perSlot": "Patients per slot",
+          "daysAhead": "Bookable days ahead",
+          "closedOn": "Closed on",
+          "note": "Bookings already made stay as they are.",
+          "save": "Save booking hours"
+        },
         "noneBookedToday": "Nobody booked for today.",
         "arrivedNotFound": "That patient could not be found — search them by UHID."
       }

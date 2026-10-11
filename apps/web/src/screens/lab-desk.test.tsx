@@ -566,3 +566,93 @@ it("DONE 4 — Arrived on today's booking opens the order with the booked tests,
   await waitFor(() => expect(seen.some((s) => s.path === "/api/lab/desk/orders")).toBe(true));
   expect((seen.find((s) => s.path === "/api/lab/desk/orders")!.body as { bookingId?: string }).bookingId).toBe("b-7");
 });
+
+/* ═══ OWNER 2026-10-11 (second ask) — the walk-in screen beside the patient, booking hours, no-show, the LAB precondition ═══ */
+
+const me = (hospital: string[]) => ({ status: 200, body: { actor: { type: "user", id: "u-9" }, permissions: { hospital, scoped: { department: {}, floor: {} } } } });
+
+it("no Laboratory department: the desk says what to set up BEFORE the click, and New walk-in waits", async () => {
+  mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/desk/fee-state": { status: 200, body: { labFree: true, walkIn: { ready: false, problem: "no_lab_department" } } },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await waitFor(() => expect(screen.getByTestId("walkin-blocked")).toHaveTextContent(/OPD admin → Departments → add code LAB/));
+  expect(screen.getByRole("button", { name: "New walk-in" })).toBeDisabled();
+  /** Booking a future visit does not need the department today. */
+  expect(screen.getByRole("button", { name: "Future appointment" })).toBeEnabled();
+});
+
+it("New walk-in is a screen of its own: the search leaves, the patient moves to the left lane with credit, membership and history", async () => {
+  mockRoutes({
+    "GET /api/auth/me": me(["lab.desk.operate", "membership.instrument.recognise", "billing.invoice.read"]),
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/desk/fee-state": { status: 200, body: { labFree: true, walkIn: { ready: true, problem: null } } },
+    "GET /api/lab/desk/common": { status: 200, body: COMMON },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+    "GET /api/lab/reports/patient/p-farida": { status: 200, body: HISTORY },
+    "GET /api/membership/recognition": { status: 200, body: { patientId: "p-farida", memberships: [{ instanceId: "m-1", planTitle: "Gold Family Card", usable: true, benefits: [] }], coupons: [], disclosure: "" } },
+    "GET /api/pharmacy/patients/p-farida/credit": { status: 200, body: { totalAvailablePaise: 150000, availablePaise: 150000, totalNetPaise: 150000, notes: [], refundAwaitingApprovalPaise: 0, refundApprovedUnpaidPaise: 0, refunds: [] } },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await userEvent.click(await screen.findByRole("button", { name: "New walk-in" }));
+  await waitFor(() => expect(screen.getByTestId("focus-title")).toHaveTextContent("New walk-in"));
+  expect(screen.queryByLabelText(/Scan the token/)).toBeNull();
+  const lane = screen.getByTestId("patient-card");
+  expect(lane).toHaveTextContent("Farida Khatoon");
+  await waitFor(() => expect(within(lane).getByTestId("lane-memberships")).toHaveTextContent("Gold Family Card"));
+  await waitFor(() => expect(within(lane).getByTestId("lab-history")).toHaveTextContent("LFT"));
+  /** Back returns to the summary and the search. */
+  await userEvent.click(within(lane).getByRole("button", { name: /Back/ }));
+  expect(await screen.findByLabelText(/Scan the token/)).toBeInTheDocument();
+});
+
+it("BOOKING HOURS: the lab administrator opens the editor from the booking screen and saves the hours", async () => {
+  const seen = mockRoutes({
+    "GET /api/auth/me": me(["lab.desk.operate", "lab.catalogue.manage"]),
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+    "GET /api/lab/desk/bookings/slots": { status: 200, body: { serviceDate: "x", closed: null, perSlot: 4, slots: [] } },
+    "GET /api/lab/desk/booking-hours": { status: 200, body: { open: "07:30", close: "12:30", slotMinutes: 15, perSlot: 4, daysAhead: 30, closedWeekdays: [0], saved: null } },
+    "PUT /api/lab/desk/booking-hours": (body) => ({ status: 200, body: { ...(body as object), saved: { by: "u-9", at: "x" } } }),
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await userEvent.click(await screen.findByRole("button", { name: "Future appointment" }));
+  await waitFor(() => expect(screen.getByTestId("hours-line")).toHaveTextContent("07:30–12:30"));
+  await userEvent.click(screen.getByRole("button", { name: /Booking hours/ }));
+  const editor = screen.getByTestId("hours-editor");
+  await userEvent.clear(within(editor).getByLabelText("Patients per slot"));
+  await userEvent.type(within(editor).getByLabelText("Patients per slot"), "6");
+  await userEvent.click(within(editor).getByRole("button", { name: "Sat" }));
+  await userEvent.click(within(editor).getByRole("button", { name: "Save booking hours" }));
+  await waitFor(() => expect(seen.some((s) => s.method === "PUT")).toBe(true));
+  const body = seen.find((s) => s.method === "PUT")!.body as { perSlot: number; closedWeekdays: number[] };
+  expect([body.perSlot, [...body.closedWeekdays].sort()]).toEqual([6, [0, 6]]);
+});
+
+it("NO-SHOW: today's booked patient who did not come is marked from the list, and the booking leaves it", async () => {
+  const booking = {
+    id: "b-8", serviceDate: "2026-09-02", slotStart: "09:00", status: "booked", note: null, orderId: null, createdAt: "x",
+    patient: { id: "p-farida", uhid: "U23011884", display: "Farida Khatoon", restricted: false },
+    tests: [{ serviceId: "svc-cbc", code: "CBC", nameEn: "Complete blood count" }],
+  };
+  let closed = false;
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/bookings": () => ({ status: 200, body: closed ? [] : [booking] }),
+    "POST /api/lab/desk/bookings/b-8/no-show": () => { closed = true; return { status: 200, body: { ok: true } }; },
+  });
+  renderWithProviders(<LabDesk />);
+  const list = await screen.findByTestId("todays-bookings");
+  await waitFor(() => expect(list).toHaveTextContent("Farida Khatoon"));
+  await userEvent.click(within(list).getByRole("button", { name: "No-show Farida Khatoon" }));
+  await waitFor(() => expect(seen.some((s) => s.path === "/api/lab/desk/bookings/b-8/no-show")).toBe(true));
+  await waitFor(() => expect(list).not.toHaveTextContent("Farida Khatoon"));
+});

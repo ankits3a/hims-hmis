@@ -2,10 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  bookLab, bookingsForDay, bookingsForPatient, cancelLabBooking, commonOrderables, labErrorText, labSlots,
-  orderableDetail, reportsForPatient, searchOrderables,
+  bookLab, bookingsForDay, bookingsForPatient, cancelLabBooking, commonOrderables, getBookingHours, labErrorText, labSlots,
+  noShowLabBooking, orderableDetail, reportsForPatient, saveBookingHours, searchOrderables,
 } from "../lib/lab-api";
-import type { WireDeskFindHit, WireLabBooking, WireOrderable } from "../lib/lab-api";
+import { fetchRecognition } from "../lib/membership-api";
+import { useAuth } from "../lib/auth";
+import { CreditTile } from "../components/patient-credit";
+import { sexAge } from "./lab-seat";
+import type { WireBookingHours, WireDeskFindHit, WireLabBooking, WireOrderable, WireWalkInReadiness } from "../lib/lab-api";
 
 /**
  * OWNER 2026-10-11 — THE LAB DESK, FROM PICKING THE PATIENT TO THE SAMPLE (spec
@@ -130,8 +134,10 @@ function fmtDay(date: string, lang: string): string {
 }
 
 /** The summary the clerk sees the moment they tap "This is them". */
-export function PatientSummary({ hit, serviceDate, labFree, canOpenReports, onWalkIn, onBook, onOrderAdvised, onArrived, stepOpen }: {
+export function PatientSummary({ hit, serviceDate, labFree, walkIn, canOpenReports, onWalkIn, onBook, onOrderAdvised, onArrived, stepOpen }: {
   hit: WireDeskFindHit;
+  /** Whether this hospital can open a lab walk-in at all; only asked for a patient with no visit today. */
+  walkIn?: WireWalkInReadiness;
   serviceDate: string;
   labFree: boolean;
   canOpenReports: boolean;
@@ -142,23 +148,9 @@ export function PatientSummary({ hit, serviceDate, labFree, canOpenReports, onWa
   /** Which next step is open below, so its button reads as chosen. */
   stepOpen: "none" | "order" | "book" | "done";
 }): React.ReactElement {
-  const { t, i18n } = useTranslation();
-  const qc = useQueryClient();
-  const pid = hit.patient.id;
-  const history = useQuery({ queryKey: ["lab", "reports", "patient", pid], queryFn: () => reportsForPatient(pid), retry: false });
-  const bookings = useQuery({ queryKey: ["lab", "bookings", "patient", pid], queryFn: () => bookingsForPatient(pid), retry: false });
-  const cancel = useMutation({
-    mutationFn: (id: string) => cancelLabBooking(id),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["lab", "bookings"] }); },
-  });
+  const { t } = useTranslation();
 
   const advisedPending = (hit.visit?.advised ?? []).filter((a) => a.alreadyOrderedItemId === null && a.orderable !== null);
-  const open = (bookings.data ?? []).filter((b) => b.status === "booked");
-  const closed = (bookings.data ?? []).filter((b) => b.status !== "booked").slice(0, 5);
-  const reports = history.data?.reports ?? [];
-  const pending = history.data?.pending ?? [];
-  const nothingYet = !history.isLoading && !bookings.isLoading && reports.length === 0 && pending.length === 0 && (bookings.data ?? []).length === 0;
-
   return (
     <div className="pp" style={{ ...PP_FONT, display: "flex", flexDirection: "column", gap: 12 }} data-testid="patient-summary">
       {/* ── today ── */}
@@ -191,6 +183,8 @@ export function PatientSummary({ hit, serviceDate, labFree, canOpenReports, onWa
         )}
       </div>
 
+      {hit.visit === null && walkIn !== undefined && <WalkInBlocked readiness={walkIn} />}
+
       {/* ── the next step, as one big choice ── */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         {advisedPending.length > 0 && (
@@ -200,6 +194,7 @@ export function PatientSummary({ hit, serviceDate, labFree, canOpenReports, onWa
         )}
         <button type="button" className={advisedPending.length === 0 ? "pri" : "sec"}
           style={{ height: 48, flex: "1 1 160px", ...(stepOpen === "order" && advisedPending.length === 0 ? { boxShadow: "0 0 0 3px var(--green-soft)" } : {}) }}
+          disabled={hit.visit === null && walkIn !== undefined && !walkIn.ready}
           onClick={onWalkIn}>
           {t("lab.desk.flow.newWalkIn")}
         </button>
@@ -210,32 +205,70 @@ export function PatientSummary({ hit, serviceDate, labFree, canOpenReports, onWa
         </button>
       </div>
 
-      {/* ── booked, not yet done ── */}
+      <LabHistory hit={hit} serviceDate={serviceDate} canOpenReports={canOpenReports} onArrived={onArrived} />
+    </div>
+  );
+}
+
+/**
+ * THE PERSON'S LAB STORY — bookings still open (Arrived on the day, No-show once the day has come,
+ * Cancel), then reports and orders in progress, then past bookings. Drawn in the summary and in the
+ * patient lane beside the walk-in and booking screens.
+ */
+export function LabHistory({ hit, serviceDate, canOpenReports, onArrived, compact = false }: {
+  hit: WireDeskFindHit;
+  serviceDate: string;
+  canOpenReports: boolean;
+  onArrived: (b: WireLabBooking) => void;
+  compact?: boolean;
+}): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const qc = useQueryClient();
+  const pid = hit.patient.id;
+  const history = useQuery({ queryKey: ["lab", "reports", "patient", pid], queryFn: () => reportsForPatient(pid), retry: false });
+  const bookings = useQuery({ queryKey: ["lab", "bookings", "patient", pid], queryFn: () => bookingsForPatient(pid), retry: false });
+  const close = useMutation({
+    mutationFn: ({ id, outcome }: { id: string; outcome: "cancel" | "no_show" }) => (outcome === "cancel" ? cancelLabBooking(id) : noShowLabBooking(id)),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["lab", "bookings"] }); },
+  });
+  const open = (bookings.data ?? []).filter((b) => b.status === "booked");
+  const closed = (bookings.data ?? []).filter((b) => b.status !== "booked").slice(0, 5);
+  const reports = history.data?.reports ?? [];
+  const pending = history.data?.pending ?? [];
+  const nothingYet = !history.isLoading && !bookings.isLoading && reports.length === 0 && pending.length === 0 && (bookings.data ?? []).length === 0;
+  const row = { display: "flex", alignItems: "center", gap: compact ? 6 : 10, padding: compact ? "7px 9px" : "9px 12px", flexWrap: "wrap" } as const;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {open.length > 0 && (
         <div>
           <div className="tag" style={{ marginBottom: 6 }}>{t("lab.desk.flow.openBookings")}</div>
-          <ul style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <ul style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="open-bookings">
             {open.map((b) => (
-              <li key={b.id} className="box" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", flexWrap: "wrap", borderColor: "var(--gold-line)" }}>
+              <li key={b.id} className="box" style={{ ...row, borderColor: "var(--gold-line)" }}>
                 <span className="mo" style={{ fontWeight: 600, fontSize: 12.5 }}>{fmtDay(b.serviceDate, i18n.language)} · {b.slotStart}</span>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--dim)" }}>{b.tests.map((x) => x.code).join(", ")}</span>
-                {b.serviceDate === serviceDate && (
-                  <button type="button" className="sec grn" onClick={() => onArrived(b)}>{t("lab.desk.flow.arrived")}</button>
-                )}
-                <button type="button" className="sec" disabled={cancel.isPending} onClick={() => cancel.mutate(b.id)}>{t("lab.desk.flow.cancelBooking")}</button>
+                <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {b.serviceDate === serviceDate && (
+                    <button type="button" className="sec grn" onClick={() => onArrived(b)}>{t("lab.desk.flow.arrived")}</button>
+                  )}
+                  {b.serviceDate <= serviceDate && (
+                    <button type="button" className="sec" disabled={close.isPending} onClick={() => close.mutate({ id: b.id, outcome: "no_show" })}>{t("lab.desk.flow.noShow")}</button>
+                  )}
+                  <button type="button" className="sec" disabled={close.isPending} onClick={() => close.mutate({ id: b.id, outcome: "cancel" })}>{t("lab.desk.flow.cancelBooking")}</button>
+                </span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* ── history ── */}
       <div>
         <div className="tag" style={{ marginBottom: 6 }}>{t("lab.desk.flow.history")}</div>
         {nothingYet && <div style={{ fontSize: 12.5, color: "var(--faint)" }} data-testid="no-history">{t("lab.desk.flow.noHistory")}</div>}
         <ul style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="lab-history">
           {pending.map((p) => (
-            <li key={p.orderId} className="box" style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", flexWrap: "wrap" }}>
+            <li key={p.orderId} className="box" style={row}>
               <span className="mo" style={{ fontSize: 12, fontWeight: 600 }}>{fmtDay(p.serviceDate, i18n.language)}</span>
               <span style={{ flex: 1, minWidth: 0, fontSize: 12.5 }}>{p.orderables.join(", ")}</span>
               <span className="pill gd" style={{ height: 20 }}>
@@ -244,7 +277,7 @@ export function PatientSummary({ hit, serviceDate, labFree, canOpenReports, onWa
             </li>
           ))}
           {reports.map((r) => (
-            <li key={r.reportId} className="box" style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", flexWrap: "wrap" }}>
+            <li key={r.reportId} className="box" style={row}>
               <span className="mo" style={{ fontSize: 12, fontWeight: 600 }}>{fmtDay(r.serviceDate, i18n.language)}</span>
               <span style={{ flex: 1, minWidth: 0, fontSize: 12.5 }}>{r.orderables.join(", ")}</span>
               <span className={r.delivery.allowed ? "pill on" : "pill rd"} style={{ height: 20 }}>
@@ -268,6 +301,86 @@ export function PatientSummary({ hit, serviceDate, labFree, canOpenReports, onWa
   );
 }
 
+/**
+ * THE PATIENT IN HAND — the left panel beside the walk-in and booking screens, the way Desk One's
+ * dossier sits beside its stages: who they are, what they hold with the hospital (credit, the
+ * memberships the server recognises) and their lab story.
+ */
+export function PatientLane({ hit, serviceDate, onBack, onArrived }: {
+  hit: WireDeskFindHit;
+  serviceDate: string;
+  onBack: () => void;
+  onArrived: (b: WireLabBooking) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const p = hit.patient;
+  const mayRecognise = can("membership.instrument.recognise") && !p.restricted;
+  const recognition = useQuery({
+    queryKey: ["lab", "recognition", p.id], queryFn: () => fetchRecognition({ patientId: p.id }), enabled: mayRecognise, retry: false,
+  });
+  const memberships = (recognition.data?.memberships ?? []).filter((m) => m.usable);
+  const initials = p.display.split(/\s+/).filter((w) => w !== "").slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+
+  return (
+    <div className="pp" style={{ ...PP_FONT, display: "flex", flexDirection: "column", gap: 14, marginTop: 4 }} data-testid="patient-card">
+      <button type="button" className="sec" style={{ alignSelf: "flex-start", height: 30 }} onClick={onBack}>← {t("lab.desk.flow.backToSummary")}</button>
+      <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+        <div aria-hidden style={{
+          width: 46, height: 46, borderRadius: 8, background: "var(--green-soft)", color: "var(--green)", display: "flex",
+          alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0,
+        }}>{initials}</div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.25 }}>{p.display}</div>
+          <div className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>{sexAge(p.administrativeGender, p.dob)} · {p.uhid}</div>
+          {p.guardian != null && (
+            <div style={{ fontSize: 11.5, color: "var(--dim)" }}>
+              {p.guardian.relation === null
+                ? t("lab.desk.fatherHusband", { name: p.guardian.name })
+                : t("lab.desk.guardianOf", { name: p.guardian.name, relation: t(`lab.desk.relation.${p.guardian.relation}`, { defaultValue: p.guardian.relation }) })}
+            </div>
+          )}
+          {p.phoneLast4 != null && <div className="mo" style={{ fontSize: 11.5, color: "var(--dim)" }}>••••{p.phoneLast4}{p.phoneOf === "guardian" ? ` (${t("lab.desk.guardianMobile")})` : ""}</div>}
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--dim)" }}>
+        {hit.visit !== null
+          ? <>{t("lab.desk.visit")} <span className="mo" style={{ color: "var(--ink)", fontWeight: 600 }}>{hit.visit.encounterNo}</span>{hit.visit.doctorName !== null && <> · {hit.visit.doctorName}</>}{hit.visit.tokenNo !== null && <> · <b style={{ color: "var(--ink)" }}>T-{hit.visit.tokenNo}</b></>}</>
+          : t("lab.desk.flow.noVisitToday")}
+      </div>
+
+      {!p.restricted && (
+        <div>
+          <div className="tag" style={{ marginBottom: 4 }}>{t("lab.desk.flow.withTheHospital")}</div>
+          <CreditTile patientId={p.id} />
+          {mayRecognise && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} data-testid="lane-memberships">
+              {memberships.length === 0
+                ? <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("lab.desk.flow.noMembership")}</span>
+                : memberships.map((m) => <span key={m.instanceId} className="pill on">✓ {m.planTitle}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      <LabHistory hit={hit} serviceDate={serviceDate} canOpenReports={can("lab.reports.print")} onArrived={onArrived} compact />
+    </div>
+  );
+}
+
+/** What stops a walk-in at this hospital, said so the OPD admin can fix it — shown before the button, not after it. */
+export function WalkInBlocked({ readiness }: { readiness: WireWalkInReadiness }): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (readiness.ready || readiness.problem === null) return null;
+  return (
+    <div className="pp box" role="note" data-testid="walkin-blocked"
+      style={{ ...PP_FONT, padding: "12px 14px", borderColor: "var(--gold-line)", background: "var(--gold-soft)" }}>
+      <div style={{ fontWeight: 700, color: "var(--gold)" }}>{t("lab.desk.flow.walkInBlockedTitle")}</div>
+      <div style={{ fontSize: 12.5, marginTop: 4 }}>{t(`lab.desk.flow.walkInBlocked.${readiness.problem}`)}</div>
+    </div>
+  );
+}
+
 /** The next fourteen calendar days from today, as the date strip shows them. */
 function nextDays(from: string, n: number): string[] {
   const out: string[] = [];
@@ -287,8 +400,13 @@ export function BookingPanel({ hit, serviceDate, onBooked, onClose }: {
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
-  const days = useMemo(() => nextDays(serviceDate, 14), [serviceDate]);
+  const { can } = useAuth();
+  const hours = useQuery({ queryKey: ["lab", "booking-hours"], queryFn: getBookingHours, staleTime: 60_000, retry: false });
+  const closedDays = hours.data?.closedWeekdays ?? [0];
+  const days = useMemo(() => nextDays(serviceDate, Math.min(14, (hours.data?.daysAhead ?? 30) + 1)), [serviceDate, hours.data?.daysAhead]);
+  const isClosed = (d: string): boolean => closedDays.includes(new Date(`${d}T00:00:00Z`).getUTCDay());
   const [day, setDay] = useState(() => days.find((d) => new Date(`${d}T00:00:00Z`).getUTCDay() !== 0 && d !== serviceDate) ?? days[1]!);
+  const [editHours, setEditHours] = useState(false);
   const [slot, setSlot] = useState<string | null>(null);
   const [tests, setTests] = useState<Chosen[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -305,15 +423,27 @@ export function BookingPanel({ hit, serviceDate, onBooked, onClose }: {
   return (
     <div className="pp box" style={{ ...PP_FONT, padding: 16, display: "flex", flexDirection: "column", gap: 14 }} data-testid="booking-panel">
       <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, flex: 1 }}>{t("lab.desk.flow.bookTitle")}</div>
+        {/* The screen's own title sits over the centre (the patient lane's screen); this row holds its tools. */}
+        <div style={{ flex: 1 }} />
+        {can("lab.catalogue.manage") && (
+          <button type="button" className="sec" aria-expanded={editHours} onClick={() => setEditHours((v) => !v)}>⚙ {t("lab.desk.flow.hours.title")}</button>
+        )}
         <button type="button" className="sec" onClick={onClose}>{t("lab.desk.flow.close")}</button>
       </div>
+      {hours.data !== undefined && (
+        <div style={{ fontSize: 11.5, color: "var(--dim)" }} data-testid="hours-line">
+          {t("lab.desk.flow.hours.line", { open: hours.data.open, close: hours.data.close, minutes: hours.data.slotMinutes, per: hours.data.perSlot })}
+        </div>
+      )}
+      {editHours && hours.data !== undefined && (
+        <BookingHoursEditor initial={hours.data} onSaved={() => { setEditHours(false); void qc.invalidateQueries({ queryKey: ["lab", "booking-hours"] }); void qc.invalidateQueries({ queryKey: ["lab", "bookings", "slots"] }); }} />
+      )}
 
       <div>
         <div className="tag" style={{ marginBottom: 6 }}>1 · {t("lab.desk.flow.pickDay")}</div>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
           {days.map((d) => {
-            const sunday = new Date(`${d}T00:00:00Z`).getUTCDay() === 0;
+            const sunday = isClosed(d);
             return (
               <button key={d} type="button" disabled={sunday}
                 className={d === day ? "pill on" : "pill"} aria-pressed={d === day}
@@ -377,10 +507,69 @@ export function BookingPanel({ hit, serviceDate, onBooked, onClose }: {
   );
 }
 
+const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+
+/** THE LAB'S BOOKING HOURS — set by whoever holds `lab.catalogue.manage`; bookings already made stand. */
+export function BookingHoursEditor({ initial, onSaved }: { initial: WireBookingHours; onSaved: () => void }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const [f, setF] = useState<WireBookingHours>({ ...initial, closedWeekdays: [...initial.closedWeekdays] });
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => saveBookingHours(f),
+    onSuccess: () => { setError(null); onSaved(); },
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
+  const dayName = (d: number): string => new Date(Date.UTC(2026, 10, 1 + d)).toLocaleDateString(i18n.language.startsWith("hi") ? "hi-IN" : "en-IN", { weekday: "short", timeZone: "UTC" });
+  const num = (k: "slotMinutes" | "perSlot" | "daysAhead") => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((x) => ({ ...x, [k]: Number(e.target.value) }));
+  const field = { display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: "var(--dim)" } as const;
+  return (
+    <div className="box" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, background: "var(--wash)" }} data-testid="hours-editor">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10 }}>
+        <label style={field}>{t("lab.desk.flow.hours.open")}
+          <input type="time" value={f.open} onChange={(e) => setF((x) => ({ ...x, open: e.target.value }))} /></label>
+        <label style={field}>{t("lab.desk.flow.hours.close")}
+          <input type="time" value={f.close} onChange={(e) => setF((x) => ({ ...x, close: e.target.value }))} /></label>
+        <label style={field}>{t("lab.desk.flow.hours.slot")}
+          <select value={f.slotMinutes} onChange={num("slotMinutes")}>
+            {[5, 10, 15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m} min</option>)}
+          </select></label>
+        <label style={field}>{t("lab.desk.flow.hours.perSlot")}
+          <input type="number" min={1} max={100} value={f.perSlot} onChange={num("perSlot")} /></label>
+        <label style={field}>{t("lab.desk.flow.hours.daysAhead")}
+          <input type="number" min={1} max={365} value={f.daysAhead} onChange={num("daysAhead")} /></label>
+      </div>
+      <div>
+        <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 6 }}>{t("lab.desk.flow.hours.closedOn")}</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {WEEKDAYS.map((d) => {
+            const shut = f.closedWeekdays.includes(d);
+            return (
+              <button key={d} type="button" className={shut ? "pill rd" : "pill"} aria-pressed={shut} style={{ height: 30 }}
+                onClick={() => setF((x) => ({ ...x, closedWeekdays: shut ? x.closedWeekdays.filter((y) => y !== d) : [...x.closedWeekdays, d] }))}>
+                {dayName(d)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("lab.desk.flow.hours.note")}</div>
+      {error !== null && <div role="alert" style={{ color: "var(--red)", fontSize: 12.5 }}>{error}</div>}
+      <button type="button" className="pri" style={{ alignSelf: "flex-start" }} disabled={save.isPending} onClick={() => save.mutate()}>
+        {t("lab.desk.flow.hours.save")}
+      </button>
+    </div>
+  );
+}
+
 /** The list pane's "Booked for today" — each with Arrived, which opens the order with the tests in it. */
 export function TodaysBookings({ serviceDate, onArrived }: { serviceDate: string; onArrived: (b: WireLabBooking) => void }): React.ReactElement | null {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const day = useQuery({ queryKey: ["lab", "bookings", "day", serviceDate], queryFn: () => bookingsForDay(serviceDate), refetchInterval: 60_000, retry: false });
+  const noShow = useMutation({
+    mutationFn: (id: string) => noShowLabBooking(id),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["lab", "bookings"] }); },
+  });
   const rows = (day.data ?? []).filter((b) => b.status === "booked");
   if (day.isError) return null;
   return (
@@ -396,6 +585,11 @@ export function TodaysBookings({ serviceDate, onArrived }: { serviceDate: string
             </span>
             <button type="button" className="shrink-0 rounded border border-input px-2 py-0.5 text-xs font-semibold" onClick={() => onArrived(b)}>
               {t("lab.desk.flow.arrived")}
+            </button>
+            <button type="button" className="shrink-0 rounded border border-input px-2 py-0.5 text-xs text-muted-foreground"
+              aria-label={`${t("lab.desk.flow.noShow")} ${b.patient.display}`}
+              disabled={noShow.isPending} onClick={() => noShow.mutate(b.id)}>
+              {t("lab.desk.flow.noShow")}
             </button>
           </li>
         ))}

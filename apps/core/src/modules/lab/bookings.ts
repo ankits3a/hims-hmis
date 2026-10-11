@@ -1,11 +1,11 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { labBookings, labOrderables } from "../../kernel/db/schema";
+import { labBookingSettings, labBookings, labOrderables } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { getPatientSummaries, resolvePatientId } from "../patients";
 import { LabError } from "./errors";
-import { labBookingClosed, labBookingMade } from "./events";
+import { labBookingClosed, labBookingHoursChanged, labBookingMade } from "./events";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -17,17 +17,61 @@ import type { Db, Tx } from "../../kernel/db/client";
  * is billed or drawn until they arrive, and on that day the desk's Arrived places the order through
  * the ordinary desk path with `bookingId`, which closes the booking in the order's own transaction.
  *
- * DECIDED, until the lab sets its own hours (a settings screen is owed): collection 07:30–12:30 IST,
- * 15-minute slots, 4 patients a slot, closed on Sunday, bookable from today up to 30 days ahead.
+ * The hours are the lab's own (`lab_booking_settings`, edited on the desk's Booking hours panel by
+ * whoever holds `lab.catalogue.manage`). Until somebody saves them, the DECIDED defaults below hold:
+ * collection 07:30–12:30 IST, 15-minute slots, 4 patients a slot, closed on Sunday, 30 days ahead.
  */
-export const LAB_BOOKING_RULES = {
+export type LabBookingRules = {
+  open: string; close: string; slotMinutes: number; perSlot: number; daysAhead: number; closedWeekdays: readonly number[];
+};
+export const LAB_BOOKING_RULES: LabBookingRules = {
   open: "07:30",
   close: "12:30",
   slotMinutes: 15,
   perSlot: 4,
   daysAhead: 30,
-  closedWeekdays: [0] as readonly number[],
-} as const;
+  closedWeekdays: [0],
+};
+
+/** The lab's saved hours, or the defaults when nobody has saved any. */
+export async function bookingRules(exec: Db | Tx): Promise<LabBookingRules & { saved: { by: string; at: string } | null }> {
+  const [row] = await (exec as Db).select().from(labBookingSettings).where(eq(labBookingSettings.id, "main"));
+  if (!row) return { ...LAB_BOOKING_RULES, saved: null };
+  return {
+    open: row.openAt, close: row.closeAt, slotMinutes: row.slotMinutes, perSlot: row.perSlot,
+    daysAhead: row.daysAhead, closedWeekdays: row.closedWeekdays, saved: { by: row.updatedBy, at: row.updatedAt.toISOString() },
+  };
+}
+
+const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+/**
+ * SAVE THE HOURS. Bookings already made are never moved or cancelled by a change: a slot that is no
+ * longer offered keeps its patients, and the desk still shows them on their day.
+ */
+export async function saveBookingHours(tx: Tx, actor: Actor, input: LabBookingRules, now: Date = new Date()): Promise<void> {
+  if (actor.type !== "user" || !(await hasPermission(tx, actor.id, "lab.catalogue.manage", "hospital"))) {
+    throw new LabError("permission_denied", "the lab's booking hours are set by the lab's administrator (lab.catalogue.manage)");
+  }
+  const bad = (why: string): never => { throw new LabError("catalogue_invalid", `booking hours: ${why}`, { reason: why }); };
+  if (!HHMM.test(input.open) || !HHMM.test(input.close)) bad("open and close are HH:MM");
+  if (toMinutes(input.open) >= toMinutes(input.close)) bad("the lab must open before it closes");
+  if (![5, 10, 15, 20, 30, 45, 60].includes(input.slotMinutes)) bad("a slot is 5, 10, 15, 20, 30, 45 or 60 minutes");
+  if (!Number.isInteger(input.perSlot) || input.perSlot < 1 || input.perSlot > 100) bad("1 to 100 patients a slot");
+  if (!Number.isInteger(input.daysAhead) || input.daysAhead < 1 || input.daysAhead > 365) bad("bookable 1 to 365 days ahead");
+  const closed = [...new Set(input.closedWeekdays)].sort();
+  if (closed.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) bad("closed days are 0 (Sunday) to 6 (Saturday)");
+  if (closed.length === 7) bad("the lab cannot be closed every day");
+  const values = {
+    openAt: input.open, closeAt: input.close, slotMinutes: input.slotMinutes, perSlot: input.perSlot,
+    daysAhead: input.daysAhead, closedWeekdays: closed, updatedBy: actor.id, updatedAt: now,
+  };
+  await tx.insert(labBookingSettings).values({ id: "main", ...values })
+    .onConflictDoUpdate({ target: labBookingSettings.id, set: values });
+  await appendEvent(tx, labBookingHoursChanged.make({
+    actor, payload: { open: input.open, close: input.close, slotMinutes: input.slotMinutes, perSlot: input.perSlot, daysAhead: input.daysAhead, closedWeekdays: closed },
+  }));
+}
 
 const IST_OFFSET_MS = 330 * 60_000;
 const DAY_MS = 86_400_000;
@@ -49,21 +93,21 @@ const toMinutes = (hhmm: string): number => Number(hhmm.slice(0, 2)) * 60 + Numb
 const toHhmm = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 /** Every slot start of a working day, in order. */
-export function slotStarts(): string[] {
+export function slotStarts(rules: LabBookingRules = LAB_BOOKING_RULES): string[] {
   const out: string[] = [];
-  for (let m = toMinutes(LAB_BOOKING_RULES.open); m < toMinutes(LAB_BOOKING_RULES.close); m += LAB_BOOKING_RULES.slotMinutes) {
+  for (let m = toMinutes(rules.open); m < toMinutes(rules.close); m += rules.slotMinutes) {
     out.push(toHhmm(m));
   }
   return out;
 }
 
 /** Why a day takes no bookings, or null when it does. The screen says the reason in words. */
-export function dayClosedReason(date: string, now: Date): "past" | "too_far" | "closed_day" | null {
+export function dayClosedReason(date: string, now: Date, rules: LabBookingRules = LAB_BOOKING_RULES): "past" | "too_far" | "closed_day" | null {
   const today = istToday(now);
   const ahead = daysBetween(today, date);
   if (ahead < 0) return "past";
-  if (ahead > LAB_BOOKING_RULES.daysAhead) return "too_far";
-  if (LAB_BOOKING_RULES.closedWeekdays.includes(weekday(date))) return "closed_day";
+  if (ahead > rules.daysAhead) return "too_far";
+  if (rules.closedWeekdays.includes(weekday(date))) return "closed_day";
   return null;
 }
 
@@ -74,12 +118,17 @@ async function assertMayBook(exec: Db | Tx, actor: Actor): Promise<void> {
 }
 
 export type LabSlot = { start: string; booked: number; free: number; past: boolean };
-export type LabDaySlots = { serviceDate: string; closed: "past" | "too_far" | "closed_day" | null; perSlot: number; slots: LabSlot[] };
+export type LabDaySlots = {
+  serviceDate: string; closed: "past" | "too_far" | "closed_day" | null; perSlot: number; slots: LabSlot[];
+  /** The hours the slots were cut from — the screen's date strip greys the closed weekdays. */
+  rules: LabBookingRules;
+};
 
 export async function slotsForDay(db: Db, actor: Actor, serviceDate: string, now: Date = new Date()): Promise<LabDaySlots> {
   await assertMayBook(db, actor);
-  const closed = dayClosedReason(serviceDate, now);
-  if (closed !== null) return { serviceDate, closed, perSlot: LAB_BOOKING_RULES.perSlot, slots: [] };
+  const rules: LabBookingRules = await bookingRules(db);
+  const closed = dayClosedReason(serviceDate, now, rules);
+  if (closed !== null) return { serviceDate, closed, perSlot: rules.perSlot, slots: [], rules };
   const counts = await db
     .select({ slotStart: labBookings.slotStart, n: sql<number>`count(*)::int` })
     .from(labBookings)
@@ -89,10 +138,10 @@ export async function slotsForDay(db: Db, actor: Actor, serviceDate: string, now
   const isToday = serviceDate === istToday(now);
   const nowMin = istMinutesNow(now);
   return {
-    serviceDate, closed: null, perSlot: LAB_BOOKING_RULES.perSlot,
-    slots: slotStarts().map((start) => {
+    serviceDate, closed: null, perSlot: rules.perSlot, rules,
+    slots: slotStarts(rules).map((start) => {
       const booked = byStart.get(start) ?? 0;
-      return { start, booked, free: Math.max(0, LAB_BOOKING_RULES.perSlot - booked), past: isToday && toMinutes(start) <= nowMin };
+      return { start, booked, free: Math.max(0, rules.perSlot - booked), past: isToday && toMinutes(start) <= nowMin };
     }),
   };
 }
@@ -103,11 +152,12 @@ export async function bookLab(tx: Tx, actor: Actor, input: BookLabInput, now: Da
   await assertMayBook(tx, actor);
   const patientId = await resolvePatientId(tx, input.patientId);
   if (!patientId) throw new LabError("unknown_patient", `no patient ${input.patientId}`);
-  const closed = dayClosedReason(input.serviceDate, now);
+  const rules = await bookingRules(tx);
+  const closed = dayClosedReason(input.serviceDate, now, rules);
   if (closed !== null) {
     throw new LabError("booking_slot_unavailable", `the lab takes no bookings for ${input.serviceDate} (${closed})`, { reason: closed });
   }
-  if (!slotStarts().includes(input.slotStart)) {
+  if (!slotStarts(rules).includes(input.slotStart)) {
     throw new LabError("booking_slot_unavailable", `${input.slotStart} is not a lab slot`, { reason: "not_a_slot" });
   }
   if (input.serviceDate === istToday(now) && toMinutes(input.slotStart) <= istMinutesNow(now)) {
@@ -124,7 +174,7 @@ export async function bookLab(tx: Tx, actor: Actor, input: BookLabInput, now: Da
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`lab_booking:${input.serviceDate}:${input.slotStart}`}))`);
   const [taken] = await tx.select({ n: sql<number>`count(*)::int` }).from(labBookings)
     .where(and(eq(labBookings.serviceDate, input.serviceDate), eq(labBookings.slotStart, input.slotStart), eq(labBookings.status, "booked")));
-  if ((taken?.n ?? 0) >= LAB_BOOKING_RULES.perSlot) {
+  if ((taken?.n ?? 0) >= rules.perSlot) {
     throw new LabError("booking_slot_unavailable", `${input.slotStart} on ${input.serviceDate} is full`, { reason: "full" });
   }
   const [same] = await tx.select({ id: labBookings.id, slotStart: labBookings.slotStart }).from(labBookings)

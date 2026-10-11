@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -6,9 +6,9 @@ import { withTx } from "../../kernel/db/client";
 import { listOrdersForEncounter, listOrdersForPatient } from "../../kernel/orders/read";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { previewInvoice, withIdempotency } from "../billing";
-import { bookLab, closeBooking, listBookings, slotsForDay } from "./bookings";
+import { bookLab, bookingRules, closeBooking, listBookings, saveBookingHours, slotsForDay } from "./bookings";
 import { addOnOrder, deskFind, labDoctors, tubePlan } from "./desk";
-import { commonOrderables, labFeeFree } from "./desk-picker";
+import { commonOrderables, labFeeFree, walkInReadiness } from "./desk-picker";
 import { cancelLabItem, deskOrderAtCounter } from "./money";
 import { idSchema, isoDateSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -109,6 +109,14 @@ const bookBody = z.object({
   note: z.string().max(300).nullish(),
 });
 const closeBookingBody = z.object({ reason: z.string().max(300).nullish() });
+const hoursBody = z.object({
+  open: z.string().regex(/^[0-2][0-9]:[0-5][0-9]$/),
+  close: z.string().regex(/^[0-2][0-9]:[0-5][0-9]$/),
+  slotMinutes: z.number().int(),
+  perSlot: z.number().int(),
+  daysAhead: z.number().int(),
+  closedWeekdays: z.array(z.number().int()).max(7),
+});
 const findQuery = z.object({ q: z.string().max(80), serviceDate: isoDateSchema });
 const previewBody = z.object({
   patientId: idSchema,
@@ -271,7 +279,7 @@ export class LabDeskController {
   @Get("fee-state")
   @RequirePermission("lab.desk.operate", "hospital")
   async feeState(): Promise<unknown> {
-    return { labFree: await labFeeFree(this.db) };
+    return { labFree: await labFeeFree(this.db), walkIn: await walkInReadiness(this.db) };
   }
 
   /** The new-walk-in picker's tap-chips: this lab's most ordered tests, topped up from a starter list. */
@@ -328,6 +336,24 @@ export class LabDeskController {
     try {
       await withTx(this.db, (tx) => closeBooking(tx, actor, id, "no_show", input.reason ?? null));
       return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-11 — the lab's booking hours, as the desk and the booking panel cut slots from them. */
+  @Get("booking-hours")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async bookingHours(): Promise<unknown> {
+    return bookingRules(this.db);
+  }
+
+  /** Changed by the lab's administrator; bookings already made stand. */
+  @Put("booking-hours")
+  @RequirePermission("lab.catalogue.manage", "hospital")
+  async saveHours(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(hoursBody, body);
+    try {
+      await withTx(this.db, (tx) => saveBookingHours(tx, actor, input));
+      return await bookingRules(this.db);
     } catch (e) { toHttp(e); }
   }
 }

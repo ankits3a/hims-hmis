@@ -4145,6 +4145,32 @@
         "chosenTests_one": "चुनी गई जाँच",
         "chosenTests_other": "चुनी गई जाँचें ({{count}})",
         "change": "मरीज़ बदलें",
+        "noShow": "नहीं आए",
+        "backToSummary": "वापस",
+        "noVisitToday": "आज कोई OPD विज़िट नहीं",
+        "withTheHospital": "अस्पताल के साथ",
+        "noMembership": "कोई सदस्यता नहीं",
+        "walkInBlockedTitle": "वॉक-इन अभी नहीं खुल सकता",
+        "walkInBlocked": {
+          "no_lab_department": "इस अस्पताल में Laboratory विभाग नहीं है। OPD एडमिन से कहें: OPD admin → Departments → कोड LAB, नाम Laboratory जोड़ें। फिर उस विभाग में Doctors के अंतर्गत पैथोलॉजिस्ट जोड़ें।",
+          "lab_department_inactive": "Laboratory विभाग (LAB) बंद है। OPD एडमिन से OPD admin → Departments में चालू करवाएँ।",
+          "no_pathologist": "Laboratory विभाग में कोई डॉक्टर नहीं है। OPD एडमिन से कहें: OPD admin → Doctors → Laboratory विभाग में पैथोलॉजिस्ट जोड़ें।"
+        },
+        "orderTitle": "जाँचें ऑर्डर करें",
+        "walkInTitle": "नया वॉक-इन — कौन सी जाँचें?",
+        "forPatient": "{{name}} · {{uhid}} के लिए",
+        "hours": {
+          "title": "बुकिंग समय",
+          "line": "लैब बुकिंग {{open}}–{{close}}, हर {{minutes}} मिनट, प्रति स्लॉट {{per}}",
+          "open": "खुलता है",
+          "close": "बंद होता है",
+          "slot": "स्लॉट अवधि",
+          "perSlot": "प्रति स्लॉट मरीज़",
+          "daysAhead": "कितने दिन आगे तक",
+          "closedOn": "बंद रहता है",
+          "note": "पहले से की गई बुकिंग वैसी ही रहेंगी।",
+          "save": "बुकिंग समय सहेजें"
+        },
         "noneBookedToday": "आज के लिए कोई बुक नहीं।",
         "arrivedNotFound": "मरीज़ नहीं मिला — UHID से खोजें।"
       }

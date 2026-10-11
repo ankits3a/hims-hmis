@@ -38,7 +38,7 @@ export const LAB_STATIONS: readonly (Omit<StationLink, "label"> & { key: LabStat
 ];
 
 export function LabStation({
-  station, title, place, stats, list, clocks, clocksSummary, clocksAlert, children,
+  station, title, place, stats, list, clocks, clocksSummary, clocksAlert, lane, laneHead, children,
 }: {
   station: LabStationKey;
   /** The seat's name — "Lab reception". */
@@ -52,6 +52,10 @@ export function LabStation({
   clocks?: React.ReactNode;
   clocksSummary?: React.ReactNode;
   clocksAlert?: boolean;
+  /** The left lane's content below the station's day — the patient in hand (owner 2026-10-11, the lab desk). */
+  lane?: React.ReactNode;
+  /** `false` gives the lane to `lane` alone, with no station title and numbers over it. */
+  laneHead?: boolean;
   children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
@@ -68,6 +72,8 @@ export function LabStation({
       clocks={clocks}
       clocksSummary={clocksSummary}
       clocksAlert={clocksAlert}
+      lane={lane}
+      laneHead={laneHead}
     >
       {children}
     </StationShell>

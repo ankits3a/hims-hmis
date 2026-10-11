@@ -2,10 +2,11 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedLabDeskBase, serviceIdForLabCode } from "../../../test/helpers/lab";
 import { withTx } from "../../kernel/db/client";
-import { billingConfig, events, labBookings } from "../../kernel/db/schema";
-import { bookLab, closeBooking, LAB_BOOKING_RULES, listBookings, slotsForDay } from "./bookings";
+import { billingConfig, events, labBookings, opdDepartments, opdDoctors } from "../../kernel/db/schema";
+import { grantPermissionToRole } from "../../kernel/auth/permissions";
+import { bookingRules, bookLab, closeBooking, LAB_BOOKING_RULES, listBookings, saveBookingHours, slotsForDay } from "./bookings";
 import { deskOrder } from "./desk";
-import { commonOrderables, labFeeFree } from "./desk-picker";
+import { commonOrderables, labFeeFree, walkInReadiness } from "./desk-picker";
 import { LabError } from "./errors";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { DeskOrderInput } from "./desk";
@@ -123,4 +124,31 @@ describe("lab bookings, the fee boolean and the common tests (owner 2026-10-11)"
     } as DeskOrderInput));
     expect((await commonOrderables(db))[0]?.code).toBe("LFT");
   });
+
+  it("BOOKING HOURS: the lab's own hours cut the slots and the capacity; only lab.catalogue.manage may set them; bad hours are refused", async () => {
+    const hours = { open: "08:00", close: "09:00", slotMinutes: 30, perSlot: 2, daysAhead: 7, closedWeekdays: [0, 6] };
+    /** A person without the lab's administration grant cannot set its hours. */
+    await expect(withTx(db, (tx) => saveBookingHours(tx, { type: "user", id: "u-no-grant" }, hours, NOW))).rejects.toMatchObject({ code: "permission_denied" });
+    await grantPermissionToRole(db, fx.registry, "lab_reception", "lab.catalogue.manage");
+    expect(await refusal(withTx(db, (tx) => saveBookingHours(tx, fx.desk.actor, { ...hours, open: "10:00" }, NOW))))
+      .toEqual(["catalogue_invalid", "the lab must open before it closes"]);
+    await withTx(db, (tx) => saveBookingHours(tx, fx.desk.actor, hours, NOW));
+    const day = await slotsForDay(db, fx.desk.actor, MONDAY, NOW);
+    expect([day.perSlot, day.slots.map((s) => s.start)]).toEqual([2, ["08:00", "08:30"]]);
+    /** Saturday is now closed, and 08:00 is a slot where 07:30 no longer is. */
+    expect((await slotsForDay(db, fx.desk.actor, "2026-11-07", NOW)).closed).toBe("closed_day");
+    expect(await refusal(book({ slotStart: "07:30" }))).toEqual(["booking_slot_unavailable", "not_a_slot"]);
+    expect((await bookingRules(db)).saved?.by).toBe(fx.desk.id);
+    expect((await db.select().from(events)).some((e) => e.name === "lab.booking_hours_changed")).toBe(true);
+  });
+
+  it("WALK-IN READINESS says what is missing — the department, then a doctor in it", async () => {
+    expect(await walkInReadiness(db)).toEqual({ ready: true, problem: null });
+    const [lab] = await db.select().from(opdDepartments).where(eq(opdDepartments.code, "LAB"));
+    await db.update(opdDoctors).set({ active: false }).where(eq(opdDoctors.departmentId, lab!.id));
+    expect(await walkInReadiness(db)).toEqual({ ready: false, problem: "no_pathologist" });
+    await db.update(opdDepartments).set({ active: false }).where(eq(opdDepartments.id, lab!.id));
+    expect(await walkInReadiness(db)).toEqual({ ready: false, problem: "lab_department_inactive" });
+  });
+
 });

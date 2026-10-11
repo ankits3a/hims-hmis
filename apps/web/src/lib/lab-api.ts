@@ -582,7 +582,8 @@ export function labErrorText(e: unknown): string {
 /* ─────────────── owner 2026-10-11 — the desk's new flow: fee state, common tests, bookings ─────────────── */
 
 /** True while Billing office → Fees has the lab fee switched off: the desk skips its money step. */
-export const labFeeState = (): Promise<{ labFree: boolean }> => api("GET", "/lab/desk/fee-state");
+export type WireWalkInReadiness = { ready: boolean; problem: "no_lab_department" | "lab_department_inactive" | "no_pathologist" | null };
+export const labFeeState = (): Promise<{ labFree: boolean; walkIn?: WireWalkInReadiness }> => api("GET", "/lab/desk/fee-state");
 
 export type WireCommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string };
 export const commonOrderables = (): Promise<WireCommonOrderable[]> => api("GET", "/lab/desk/common");
@@ -596,7 +597,11 @@ export const orderableDetail = (serviceId: string): Promise<WireOrderableDetail>
   api("GET", `/lab/catalogue/orderables/${encodeURIComponent(serviceId)}`);
 
 export type WireLabSlot = { start: string; booked: number; free: number; past: boolean };
-export type WireLabDaySlots = { serviceDate: string; closed: "past" | "too_far" | "closed_day" | null; perSlot: number; slots: WireLabSlot[] };
+export type WireBookingHours = { open: string; close: string; slotMinutes: number; perSlot: number; daysAhead: number; closedWeekdays: number[] };
+export type WireLabDaySlots = { serviceDate: string; closed: "past" | "too_far" | "closed_day" | null; perSlot: number; slots: WireLabSlot[]; rules?: WireBookingHours };
+export const getBookingHours = (): Promise<WireBookingHours & { saved: { by: string; at: string } | null }> => api("GET", "/lab/desk/booking-hours");
+export const saveBookingHours = (body: WireBookingHours): Promise<WireBookingHours & { saved: { by: string; at: string } | null }> =>
+  api("PUT", "/lab/desk/booking-hours", body);
 export const labSlots = (serviceDate: string): Promise<WireLabDaySlots> =>
   api("GET", `/lab/desk/bookings/slots?serviceDate=${serviceDate}`);
 
@@ -614,3 +619,5 @@ export const bookLab = (body: { patientId: string; serviceDate: string; slotStar
   api("POST", "/lab/desk/bookings", body);
 export const cancelLabBooking = (id: string, reason?: string): Promise<{ ok: true }> =>
   api("POST", `/lab/desk/bookings/${id}/cancel`, { reason: reason ?? null });
+export const noShowLabBooking = (id: string): Promise<{ ok: true }> =>
+  api("POST", `/lab/desk/bookings/${id}/no-show`, { reason: null });

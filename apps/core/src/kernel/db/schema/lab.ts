@@ -1181,3 +1181,28 @@ export const labBookings = pgTable(
     check("lab_bookings_fulfilled_ck", sql`(${t.status} = 'fulfilled') = (${t.orderId} is not null)`),
   ],
 );
+
+/**
+ * OWNER 2026-10-11 — THE LAB'S BOOKING HOURS, one row (`id = 'main'`). Absent, `bookings.ts` uses its
+ * DECIDED defaults (07:30–12:30, 15-minute slots, 4 a slot, closed Sunday, 30 days ahead); present,
+ * the lab's own setting wins. Written only by `saveBookingHours`, which names who changed it.
+ */
+export const labBookingSettings = pgTable(
+  "lab_booking_settings",
+  {
+    id: text("id").primaryKey(),
+    openAt: text("open_at").notNull(),
+    closeAt: text("close_at").notNull(),
+    slotMinutes: integer("slot_minutes").notNull(),
+    perSlot: integer("per_slot").notNull(),
+    daysAhead: integer("days_ahead").notNull(),
+    closedWeekdays: jsonb("closed_weekdays").$type<number[]>().notNull(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("lab_booking_settings_one_ck", sql`${t.id} = 'main'`),
+    check("lab_booking_settings_hours_ck", sql`${t.openAt} ~ '^[0-2][0-9]:[0-5][0-9]$' and ${t.closeAt} ~ '^[0-2][0-9]:[0-5][0-9]$' and ${t.openAt} < ${t.closeAt}`),
+    check("lab_booking_settings_numbers_ck", sql`${t.slotMinutes} between 5 and 120 and ${t.perSlot} between 1 and 100 and ${t.daysAhead} between 1 and 365`),
+  ],
+);

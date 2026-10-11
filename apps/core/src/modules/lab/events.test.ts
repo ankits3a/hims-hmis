@@ -10,8 +10,8 @@ import { labManifest } from "./manifest";
  * `materials`, `membership`, `formulary` and `ot` convention, unchanged.
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
-  it("declares twenty-nine events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(29); // owner 2026-10-11: `booking_made`, `booking_closed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
+  it("declares thirty events, every one `lab.*`, in the lab's module namespace", () => {
+    expect(LAB_EVENTS).toHaveLength(30); // owner 2026-10-11: `booking_made`, `booking_closed`, `booking_hours_changed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -30,6 +30,7 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.attribution_unverified_flagged",
       /** Owner 2026-10-11 — a future lab visit by day and slot, and its end (`bookings.ts`). */
       "lab.booking_closed",
+      "lab.booking_hours_changed",
       "lab.booking_made",
       "lab.critical_acknowledged",
       "lab.label_printed",

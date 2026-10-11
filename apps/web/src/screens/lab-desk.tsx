@@ -14,7 +14,7 @@ import type {
   DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
 } from "../lib/lab-api";
 import { CreditChip } from "../components/patient-credit";
-import { BookingPanel, ParametersOf, PatientSummary, TestChooser, TodaysBookings, TubeDot } from "./lab-desk-flow";
+import { BookingPanel, ParametersOf, PatientLane, PatientSummary, TestChooser, TodaysBookings, TubeDot, WalkInBlocked } from "./lab-desk-flow";
 import type { WireLabBooking } from "../lib/lab-api";
 import { PaperSlipSheet } from "../components/paper-slip";
 
@@ -178,6 +178,7 @@ export function LabDesk(): React.ReactElement {
   /** Lab fee switched off in Billing office → Fees: the desk skips its money step (spec 2026-10-11). */
   const feeState = useQuery({ queryKey: ["lab", "desk", "fee-state"], queryFn: labFeeState, staleTime: 60_000, retry: false });
   const labFree = feeState.data?.labFree === true;
+  const walkIn = feeState.data?.walkIn;
 
   useEffect(() => {
     const id = setTimeout(() => setDebounced(q.trim()), 180);
@@ -446,9 +447,20 @@ export function LabDesk(): React.ReactElement {
     </div>
   );
 
+  /**
+   * OWNER 2026-10-11 — New walk-in and Future appointment are a SCREEN of their own: the patient in
+   * hand moves to the left lane (who they are, credit, memberships, lab history) and the centre is
+   * the one task, the way Desk One's dossier sits beside its stages.
+   */
+  const focus = selected !== null && (step === "order" || step === "book");
+
   return (
     <LabStation
       station="desk"
+      laneHead={!focus}
+      lane={focus && selected !== null
+        ? <PatientLane hit={selected} serviceDate={serviceDate} onBack={() => setStep("none")} onArrived={(b) => arrive.mutate(b)} />
+        : undefined}
       title={t("lab.desk.title")}
       place={t("lab.desk.place")}
       stats={[
@@ -458,6 +470,7 @@ export function LabDesk(): React.ReactElement {
     >
       {/* ── walk-in with a slip · one field, three doors — owner 2026-10-11: drawn in /counter's paper-and-pine (`.pp`) ── */}
       <section className="space-y-3">
+      {!focus && (
       <div className="pp space-y-3" style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)" }}>
         <div>
           <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("lab.desk.whoTitle")}</div>
@@ -562,8 +575,9 @@ export function LabDesk(): React.ReactElement {
           </div>
         )}
       </div>
+      )}
 
-        {registering && (
+        {registering && !focus && (
           <form
             className="grid grid-cols-2 gap-2 rounded border border-border p-3 text-sm md:grid-cols-4"
             aria-label={t("lab.desk.registerNew")}
@@ -597,6 +611,17 @@ export function LabDesk(): React.ReactElement {
 
         {selected !== null && (
           <div className="space-y-3">
+            {focus && (
+              <div className="pp" style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)" }}>
+                <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }} data-testid="focus-title">
+                  {step === "book" ? t("lab.desk.flow.bookTitle") : selected.visit !== null && lines.some((l) => l.source === "advised") ? t("lab.desk.flow.orderTitle") : t("lab.desk.flow.walkInTitle")}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>
+                  {t("lab.desk.flow.forPatient", { name: selected.patient.display, uhid: selected.patient.uhid })}
+                </div>
+              </div>
+            )}
+            {!focus && (<>
             {/* ── the patient, confirmed ── */}
             <div className="pp box" data-testid="patient-card"
               style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)", padding: "12px 15px", display: "flex", gap: 13, alignItems: "flex-start", borderColor: "var(--green)" }}>
@@ -644,6 +669,7 @@ export function LabDesk(): React.ReactElement {
               hit={selected}
               serviceDate={serviceDate}
               labFree={labFree}
+              walkIn={walkIn}
               canOpenReports={can("lab.reports.print")}
               stepOpen={step}
               onWalkIn={() => { setPlaced(null); setStep("order"); }}
@@ -651,6 +677,7 @@ export function LabDesk(): React.ReactElement {
               onOrderAdvised={() => { setPlaced(null); setStep("order"); }}
               onArrived={(b) => arrive.mutate(b)}
             />
+            </>)}
             {bookedNote !== null && (
               <div className="pp box" role="status" style={{ padding: "12px 14px", borderColor: "var(--green)", color: "var(--green)", fontWeight: 600 }} data-testid="booked-note">
                 ✓ {bookedNote}
@@ -863,12 +890,14 @@ export function LabDesk(): React.ReactElement {
               </div>
             )}
 
+            {selected.visit === null && walkIn !== undefined && <WalkInBlocked readiness={walkIn} />}
             {labFree ? (
               <div className="pp" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <button type="button" className="pri" style={{ height: 50, fontSize: 15 }} data-testid="send-free"
                   disabled={
                     orderableLines.length === 0 || missingConsent.length > 0 || sendFree.isPending || place.isPending
                     || (selected.visit === null && labDoctors.length > 1 && walkInDoctorId === "")
+                    || (selected.visit === null && walkIn !== undefined && !walkIn.ready)
                   }
                   onClick={() => sendFree.mutate()}>
                   {t("lab.desk.flow.sendToCollection", { count: orderableLines.length })}
@@ -888,6 +917,8 @@ export function LabDesk(): React.ReactElement {
                   || priced === null || place.isPending || check.isPending
                   /** Two pathologists: the walk-in names one (F6). */
                   || (selected.visit === null && labDoctors.length > 1 && walkInDoctorId === "")
+                  /** No laboratory department or pathologist: a walk-in cannot open (owner 2026-10-11). */
+                  || (selected.visit === null && walkIn !== undefined && !walkIn.ready)
                 }
                 onClick={() => place.mutate()}
               >

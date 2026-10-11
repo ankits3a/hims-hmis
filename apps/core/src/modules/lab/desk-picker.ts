@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
-import { labOrderables, orderItems, orders } from "../../kernel/db/schema";
+import { labOrderables, opdDepartments, opdDoctors, orderItems, orders } from "../../kernel/db/schema";
+import { LAB_DEPARTMENT_CODE } from "../opd";
 import { BillingError, feeOffNow, loadBillingConfig } from "../billing";
 import type { Db } from "../../kernel/db/client";
 
@@ -58,4 +59,23 @@ export async function commonOrderables(db: Db, now: Date = new Date(), limit = 1
     }
   }
   return out;
+}
+
+/**
+ * CAN THIS DESK OPEN A WALK-IN? A walk-in (a patient with no visit today) is a visit to the
+ * LABORATORY department under its pathologist of record (`openLabWalkinInTx`), and that refuses
+ * when the hospital has not declared the department or put a doctor in it. The desk asks first, so
+ * the clerk is told what is missing BEFORE pressing the button, in words the OPD admin can act on —
+ * not after, in the server's.
+ */
+export type WalkInReadiness = { ready: boolean; problem: "no_lab_department" | "lab_department_inactive" | "no_pathologist" | null };
+
+export async function walkInReadiness(db: Db): Promise<WalkInReadiness> {
+  const [dept] = await db.select({ id: opdDepartments.id, active: opdDepartments.active })
+    .from(opdDepartments).where(eq(opdDepartments.code, LAB_DEPARTMENT_CODE));
+  if (!dept) return { ready: false, problem: "no_lab_department" };
+  if (!dept.active) return { ready: false, problem: "lab_department_inactive" };
+  const [doc] = await db.select({ id: opdDoctors.id }).from(opdDoctors)
+    .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true))).limit(1);
+  return doc ? { ready: true, problem: null } : { ready: false, problem: "no_pathologist" };
 }

@@ -298,6 +298,12 @@ export const labBookingClosed = defineEvent("lab.booking_closed", MODULE, z.obje
   bookingId: id, patientId: id, outcome: z.enum(["fulfilled", "cancelled", "no_show"]), orderId: id.nullable(),
 }));
 
+/** Owner 2026-10-11 — the lab's booking hours changed, and to what. Bookings already made stand. */
+export const labBookingHoursChanged = defineEvent("lab.booking_hours_changed", MODULE, z.object({
+  open: z.string(), close: z.string(), slotMinutes: z.number().int(), perSlot: z.number().int(),
+  daysAhead: z.number().int(), closedWeekdays: z.array(z.number().int()),
+}));
+
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
@@ -308,5 +314,5 @@ export const LAB_EVENTS = [
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
-  labBookingMade, labBookingClosed,
+  labBookingMade, labBookingClosed, labBookingHoursChanged,
 ] as const;
