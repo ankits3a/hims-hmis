@@ -66,7 +66,8 @@ export function PatientHistory({ rows, renderRow, appointments, quickLab, showQu
   const cats = ORDER.filter((c) => (c === "appointments" ? appointments !== null
     : c === "lab" ? showQuickLab || (byCat.get(c) ?? []).length > 0
     : (byCat.get(c) ?? []).length > 0));
-  const count = (c: HistoryCategory): number | null => (c === "appointments" ? null : (byCat.get(c) ?? []).length);
+  /** No count where it would mislead: appointments are drawn elsewhere, and the lab's quick reports are not counted here. */
+  const count = (c: HistoryCategory): number | null => (c === "appointments" || (c === "lab" && showQuickLab) ? null : (byCat.get(c) ?? []).length);
   const monthName = (ym: string): string => new Date(`${ym}-01T00:00:00Z`)
     .toLocaleDateString(i18n.language.startsWith("hi") ? "hi-IN" : "en-IN", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -133,7 +134,7 @@ export function PatientHistory({ rows, renderRow, appointments, quickLab, showQu
           {tab === "overview" ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 12 }} data-testid="history-cards">
               {cats.map((c) => (
-                <div key={c} className="box" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }} data-testid={`history-card-${c}`}>
+                <div key={c} className="box hv-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }} data-testid={`history-card-${c}`}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                     <b style={{ fontSize: 13.5 }}>{catTitle(c)}</b>
                     {count(c) !== null && <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{count(c)}</span>}
@@ -158,7 +159,7 @@ export function PatientHistory({ rows, renderRow, appointments, quickLab, showQu
             const all = (byCat.get(c) ?? []).length;
             const expanded = open.includes(c);
             return (
-              <div key={c} className="box" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }} data-testid={`history-card-${c}`}>
+              <div key={c} className="box hv-card" style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }} data-testid={`history-card-${c}`}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <b style={{ fontSize: 13.5 }}>{catTitle(c)}</b>
                   {count(c) !== null && <span style={{ fontSize: 11.5, color: "var(--faint)" }}>{count(c)}</span>}

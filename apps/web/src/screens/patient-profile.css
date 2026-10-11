@@ -99,3 +99,15 @@
   .pf .ev .r { white-space: normal; }
   .pf-drawer .grid2 { grid-template-columns: 1fr; }
 }
+
+/*
+ * OWNER 2026-10-11 — a history CARD (the Overview grid, the stacked Cards view) is narrower than the
+ * timeline, and a row that kept its visit number and "Open the visit" on the title's line squeezed the
+ * title to a few letters a line (owner's screenshot of the Visits card). In a card the title takes the
+ * whole first line and the row's right-hand items move under it.
+ */
+.pf .hv-card .ev { flex-wrap: wrap; row-gap: 2px; }
+.pf .hv-card .ev > div { flex: 1 1 calc(100% - 64px); min-width: 0; }
+.pf .hv-card .ev > div + .r { margin-left: 56px; }
+.pf .hv-card .ev .r { padding-left: 0; }
+.pf .hv-card .ev .r + .r { margin-left: auto; }
