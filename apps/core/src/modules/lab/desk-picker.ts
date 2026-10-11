@@ -91,6 +91,8 @@ export type RecentLabOrder = {
   orderId: string; orderNo: string; encounterNo: string; placedAt: string;
   tests: { code: string; nameEn: string }[];
   stage: "awaiting_blood" | "sample_taken" | "draft" | "report_ready" | "handed_over" | "cancelled" | "in_lab";
+  /** The quick report, when the quick chain collected this order — what the lane opens to view or reprint. */
+  quickId: string | null;
 };
 
 export async function recentLabOrders(db: Db, patientId: string, canSeeRestricted: boolean, limit = 20): Promise<RecentLabOrder[]> {
@@ -104,7 +106,7 @@ export async function recentLabOrders(db: Db, patientId: string, canSeeRestricte
   const items = await db.select({ orderId: orderItems.orderId, status: orderItems.status, code: labOrderables.code, nameEn: labOrderables.nameEn, sensitive: labOrderables.sensitive })
     .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
     .where(inArray(orderItems.orderId, ids));
-  const quick = await db.select({ orderId: labQuickReports.orderId, status: labQuickReports.status, handedOverAt: labQuickReports.handedOverAt })
+  const quick = await db.select({ id: labQuickReports.id, orderId: labQuickReports.orderId, status: labQuickReports.status, handedOverAt: labQuickReports.handedOverAt })
     .from(labQuickReports).where(inArray(labQuickReports.orderId, ids));
   const quickBy = new Map(quick.map((q) => [q.orderId!, q]));
   return heads.map((h) => {
@@ -116,7 +118,7 @@ export async function recentLabOrders(db: Db, patientId: string, canSeeRestricte
       : q.status === "reported" ? "report_ready"
       : q.status === "draft" ? "draft" : "sample_taken";
     return {
-      orderId: h.id, orderNo: h.orderNo, encounterNo: h.encounterNo, placedAt: h.placedAt.toISOString(), stage,
+      orderId: h.id, orderNo: h.orderNo, encounterNo: h.encounterNo, placedAt: h.placedAt.toISOString(), stage, quickId: q?.id ?? null,
       tests: mine.map((i) => (i.sensitive && !canSeeRestricted ? { code: "—", nameEn: "Restricted test" } : { code: i.code, nameEn: i.nameEn })),
     };
   });

@@ -694,3 +694,36 @@ it("/lab/counter: the pick opens two columns — the last three tests with View 
   expect(screen.getByTestId("focus-title")).toHaveTextContent("Bill the tests");
   expect(screen.getByRole("button", { name: /Save/ })).toBeInTheDocument();
 });
+
+it("/lab/counter: a handed-over report opens again from the left panel's last tests — view it and print it (owner 2026-10-11)", async () => {
+  const report = {
+    id: "q-9", status: "reported", patient: { id: "p-farida", uhid: "U23011884", display: "Farida Khatoon", administrativeGender: "female", dob: "1974-03-02" },
+    encounterNo: "V1", tests: [{ serviceId: "svc-cbc", code: "CBC", nameEn: "Complete blood count" }],
+    collectedAt: "2026-10-01T05:00:00Z", collectedBy: "u", reportedAt: "2026-10-01T09:00:00Z", reportedBy: "u",
+    orderId: "o-0", orderNo: "L2610010001", sampleNo: "S2610010003", handedOverAt: "2026-10-01T10:00:00Z", handedOverBy: "u",
+    analyteIds: ["a-hb"], groups: [{ title: "Complete blood count", analyteIds: ["a-hb"] }],
+    lines: [{ analyteId: "a-hb", code: "HB", nameEn: "Haemoglobin", unit: "g/dL", value: "13.1", low: "12", high: "15", refText: null, flag: "N" }],
+    summary: "", collectedByName: null, reportedByName: null,
+    hospital: { name: "CRK", address: "a", hotline: "1", emergency: "2", email: "e", website: "w" }, visitQrSvg: null,
+  };
+  const opened = vi.fn(() => ({ document: { open: vi.fn(), write: vi.fn(), close: vi.fn() }, focus: vi.fn(), print: vi.fn(), close: vi.fn() }));
+  vi.stubGlobal("open", opened);
+  mockRoutes({
+    "GET /api/auth/me": me(["lab.desk.operate", "lab.reports.print"]),
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+    "GET /api/lab/desk/patient/p-farida/recent": { status: 200, body: [{
+      orderId: "o-0", orderNo: "L2610010001", encounterNo: "V1", placedAt: "2026-10-01T05:00:00Z", stage: "handed_over", quickId: "q-9",
+      tests: [{ code: "CBC", nameEn: "Complete blood count" }],
+    }] },
+    "GET /api/lab/quick/ready/q-9": { status: 200, body: report },
+  });
+  renderWithProviders(<LabDesk mode="counter" />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await userEvent.click(await screen.findByRole("button", { name: "View / print report L2610010001" }));
+  const dialog = await screen.findByTestId("report-dialog");
+  await waitFor(() => expect(within(dialog).getByTestId("report-preview")).toHaveTextContent("13.1"));
+  await userEvent.click(within(dialog).getByRole("button", { name: /Print/ }));
+  expect(opened).toHaveBeenCalled();
+});

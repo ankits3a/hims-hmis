@@ -627,6 +627,7 @@ export type WireRecentLabOrder = {
   orderId: string; orderNo: string; encounterNo: string; placedAt: string;
   tests: { code: string; nameEn: string }[];
   stage: "awaiting_blood" | "sample_taken" | "draft" | "report_ready" | "handed_over" | "cancelled" | "in_lab";
+  quickId?: string | null;
 };
 export const recentLabOrders = (patientId: string): Promise<WireRecentLabOrder[]> =>
   api("GET", `/lab/desk/patient/${encodeURIComponent(patientId)}/recent`);

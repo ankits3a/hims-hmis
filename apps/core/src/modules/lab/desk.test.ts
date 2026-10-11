@@ -3,7 +3,7 @@ import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { deactivateLabDepartment, seedLabDeskBase, serviceIdForLabCode, UNPRICED_LAB_CODE } from "../../../test/helpers/lab";
 import { withTx } from "../../kernel/db/client";
-import { events } from "../../kernel/db/schema";
+import { events, printJobs } from "../../kernel/db/schema";
 import { labItems, labOrderables, opdDepartments, opdDoctors, opdEncounters, opdQueueEntries, orderItems, orders, patientGuardians, patients, phiAccessLog } from "../../kernel/db/schema";
 import { invoices } from "../../kernel/db/schema";
 import { withIdempotency } from "../billing";
@@ -453,6 +453,11 @@ describe("the reception seat (17c T1)", () => {
       .toEqual([placed.encounterNo, "external_prescription", fx.pathologist.id]);
     const [item] = await db.select().from(labItems).where(eq(labItems.orderItemId, placed.itemIds[0]!));
     expect(item!.chargeReason).toBe("lab_walkin");
+    /**
+     * Owner 2026-10-11 — the lab visit is not an OPD consultation: no OPD token slip and no A4 OPD sheet
+     * is queued for it ("I can see an OPD slip generated").
+     */
+    expect(await db.select().from(printJobs).where(eq(printJobs.encounterId, enc!.id))).toEqual([]);
 
     /**
      * ═══ THE REFUSED ATTEMPT IS A DIFFERENT PATIENT NOW, AND 17d T4 IS WHY ═══

@@ -10,6 +10,10 @@ import { useAuth } from "../lib/auth";
 import { CreditDialog, usePatientCredit } from "../components/patient-credit";
 import { fmtPaise } from "../lib/format";
 import { sexAge } from "./lab-seat";
+import { ReportPreview } from "./lab-qchain";
+import { printQuickReport } from "./lab-quick-reports";
+import { quickReadyReport } from "../lib/lab-quick-api";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import type { WireBookingHours, WireDeskFindHit, WireLabBooking, WireOrderable, WireWalkInReadiness } from "../lib/lab-api";
 
 /**
@@ -313,7 +317,15 @@ const STAGE_PILL: Record<string, string> = {
 /** OWNER 2026-10-11 — the counter's lane: the last three lab orders, then all of them on View more. */
 export function RecentTests({ patientId }: { patientId: string }): React.ReactElement {
   const { t, i18n } = useTranslation();
+  const { can, username } = useAuth();
   const [all, setAll] = useState(false);
+  /**
+   * Owner 2026-10-11 — a report handed over is not gone: the lane opens it again to view or reprint.
+   * Read through the hand-over counter's print grant (`GET /lab/quick/ready/:id`, access-logged).
+   */
+  const [openId, setOpenId] = useState<string | null>(null);
+  const report = useQuery({ queryKey: ["lab-quick", "ready", openId], queryFn: () => quickReadyReport(openId!), enabled: openId !== null, retry: false });
+  const mayOpen = can("lab.reports.print");
   const recent = useQuery({ queryKey: ["lab", "recent", patientId], queryFn: () => recentLabOrders(patientId), retry: false });
   const rows = recent.data ?? [];
   const shown = all ? rows : rows.slice(0, 3);
@@ -323,13 +335,20 @@ export function RecentTests({ patientId }: { patientId: string }): React.ReactEl
       {recent.isSuccess && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--faint)" }}>{t("lab.desk.flow.noHistory")}</div>}
       <ul style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {shown.map((o) => (
-          <li key={o.orderId} className="box" style={{ padding: "7px 9px", display: "flex", flexDirection: "column", gap: 3 }}>
+          <li key={o.orderId} className="box" style={{ padding: "7px 9px", display: "flex", flexDirection: "column", gap: 3 }}
+            data-testid={`recent-${o.orderNo}`}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span className="mo" style={{ fontSize: 11.5, fontWeight: 600 }}>{fmtDay(o.placedAt.slice(0, 10), i18n.language)}</span>
               <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>{o.orderNo}</span>
               <span className={STAGE_PILL[o.stage] ?? "pill"} style={{ height: 19, marginLeft: "auto" }}>{t(`lab.counter.stage.${o.stage}`)}</span>
             </div>
             <div style={{ fontSize: 12 }}>{o.tests.map((x) => x.nameEn).join(", ")}</div>
+            {mayOpen && o.quickId != null && (o.stage === "report_ready" || o.stage === "handed_over") && (
+              <button type="button" className="sec" style={{ height: 26, alignSelf: "flex-start", fontSize: 11.5 }}
+                aria-label={`${t("lab.counter.viewReport")} ${o.orderNo}`} onClick={() => setOpenId(o.quickId!)}>
+                {t("lab.counter.viewReport")}
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -338,6 +357,24 @@ export function RecentTests({ patientId }: { patientId: string }): React.ReactEl
           {all ? t("lab.counter.showLess") : t("lab.counter.viewMore", { count: rows.length - 3 })}
         </button>
       )}
+      <Dialog open={openId !== null} onOpenChange={(o) => { if (!o) setOpenId(null); }}>
+        <DialogContent className="pp max-w-2xl" data-testid="report-dialog">
+          <DialogTitle>{report.data?.patient.display ?? t("lab.counter.viewReport")}</DialogTitle>
+          <DialogDescription>
+            {report.data?.orderNo ?? ""}{report.data?.sampleNo ? ` · ${report.data.sampleNo}` : ""}
+            {report.data?.handedOverAt ? ` · ${t("lab.counter.stage.handed_over")}` : ""}
+          </DialogDescription>
+          {report.isError && <div role="alert" style={{ color: "var(--red)" }}>{labErrorText(report.error)}</div>}
+          {report.data !== undefined && (
+            <>
+              <ReportPreview report={report.data} />
+              <button type="button" className="pri" style={{ alignSelf: "flex-start" }} onClick={() => printQuickReport(report.data!, username)}>
+                🖨 {t("lab.counter.printReport")}
+              </button>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

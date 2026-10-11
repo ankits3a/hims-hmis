@@ -49,8 +49,8 @@ export const startQuick = (body: StartQuick): Promise<QuickRow> => api("POST", "
 export const quickQueue = (): Promise<QuickQueue> => api("GET", "/lab/quick/queue");
 export const quickReport = (id: string): Promise<QuickReport> => api("GET", `/lab/quick/reports/${encodeURIComponent(id)}`);
 /** Reported quick reports of one patient (profile, consult, the lab's saved reports) — `lab.results.read`. */
-export const quickReportsForPatient = (patientId: string): Promise<{ items: QuickReport[] }> =>
-  api("GET", `/lab/quick/patient/${encodeURIComponent(patientId)}`);
+export const quickReportsForPatient = (patientId: string, via: "results" | "print" = "results"): Promise<{ items: QuickReport[] }> =>
+  api("GET", `/lab/quick/patient/${encodeURIComponent(patientId)}${via === "print" ? "/printable" : ""}`);
 export const saveQuickResults = (id: string, body: SaveQuickResults): Promise<QuickReport> =>
   api("PUT", `/lab/quick/reports/${encodeURIComponent(id)}`, body);
 

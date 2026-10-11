@@ -318,6 +318,16 @@ async function joinSessionInTx(
     moment the stamp has to be true is the moment paper comes out. The queue row keeps identifiers
     and nothing else, which is what it was for.
   */
+  /**
+   * OWNER 2026-10-11 — a LABORATORY visit (the lab desk's walk-in, `openLabWalkinInTx`) is not an OPD
+   * consultation and gets no OPD paper: no token slip, no A4 prescription sheet. The lab prints its own
+   * report. ("the visit created in lab counter is seen as OPD as I can see an OPD slip generated.")
+   */
+  const [deptRow] = encounter.departmentId === null ? [undefined]
+    : await tx.select({ code: opdDepartments.code }).from(opdDepartments).where(eq(opdDepartments.id, encounter.departmentId));
+  if (deptRow?.code === LAB_DEPARTMENT_CODE) {
+    return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
+  }
   await enqueuePrintJob(tx, {
     document: "opd_token_slip",
     params: { encounterId: encounter.id },
@@ -1274,7 +1284,7 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
   });
   const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
   const rows = await db
-    .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name })
+    .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name, departmentCode: opdDepartments.code })
     .from(opdEncounters)
     .leftJoin(opdDoctors, eq(opdEncounters.doctorId, opdDoctors.id))
     .leftJoin(opdDepartments, eq(opdEncounters.departmentId, opdDepartments.id))
@@ -1294,6 +1304,8 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
     status: r.encounter.status, visitType: r.encounter.visitType,
     doctorId: r.encounter.doctorId, doctorName: r.doctorName,
     departmentId: r.encounter.departmentId, departmentName: r.departmentName,
+    /** Owner 2026-10-11 — `LAB` marks the lab desk's walk-in visit, which the front desk must not treat as OPD. */
+    departmentCode: r.departmentCode,
     diagnosis: r.encounter.diagnosis, icd10Code: r.encounter.icd10Code,
     prescriptionLineCount: lineCounts.get(r.encounter.id) ?? 0, dangerFlagged: r.encounter.dangerFlagged,
     referredFromEncounterId: r.encounter.referredFromEncounterId,

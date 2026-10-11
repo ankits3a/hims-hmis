@@ -3998,6 +3998,8 @@
   },
   "lab": {
     "counter": {
+      "viewReport": "रिपोर्ट देखें / प्रिंट",
+      "printReport": "प्रिंट",
       "title": "लैब काउंटर",
       "requestsTitle": "इस मरीज़ के अनुरोध",
       "sendTitle": "नमूना संग्रह को भेजें",

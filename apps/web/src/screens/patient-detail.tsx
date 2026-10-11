@@ -1577,7 +1577,9 @@ export function PatientDetail(): React.ReactElement {
             {/* Decision 0061 — the lab's quick reports (unsigned), beside the history rather than inside it. */}
             {pid !== null && (
               <div style={{ marginTop: 18 }}>
-                <QuickLabReports patientId={pid} enabled={can("lab.results.read")} hideEmpty />
+                {/* Owner 2026-10-11 — the lab counter's people (print grant) read and print them here too. */}
+                <QuickLabReports patientId={pid} enabled={can("lab.results.read") || can("lab.reports.print")}
+                  via={can("lab.results.read") ? "results" : "print"} hideEmpty />
               </div>
             )}
             <h3 style={{ margin: "18px 0 0", fontSize: 15, fontWeight: 600 }}>{t("profile.history")}</h3>

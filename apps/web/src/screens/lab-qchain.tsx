@@ -208,7 +208,7 @@ export function LabQBench(): React.ReactElement {
 
 const FLAG_COLOUR: Record<string, string> = { L: "var(--gold)", H: "var(--gold)", LL: "var(--red)", HH: "var(--red)" };
 
-function ReportPreview({ report }: { report: QuickReport }): React.ReactElement {
+export function ReportPreview({ report }: { report: QuickReport }): React.ReactElement {
   const { t } = useTranslation();
   const byId = new Map(report.lines.map((l) => [l.analyteId, l]));
   return (

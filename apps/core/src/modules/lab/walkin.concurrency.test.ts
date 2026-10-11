@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedLabDeskBase } from "../../../test/helpers/lab";
-import { opdEncounters, printJobs } from "../../kernel/db/schema";
+import { opdEncounters, opdQueueEntries, printJobs } from "../../kernel/db/schema";
 import { openLabWalkin } from "../opd";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
@@ -129,10 +129,16 @@ describe("17d §9.2 — the lab walk-in race", () => {
      * documents there are. So: the loser left NOTHING behind, and the winner left SOMETHING — which
      * keeps the assertion non-vacuous without borrowing a constant that is not ours to hold.
      */
-    const jobs = await db.select({ encounterId: printJobs.encounterId }).from(printJobs);
-    const forWinner = jobs.filter((j) => j.encounterId === winner.encounter.id).length;
-    expect(jobs.length - forWinner).toBe(0);   // THE KILL: a refused visit that left paper behind
-    expect(forWinner).toBeGreaterThan(0);      // and the enqueue really does run on this path
+    /**
+     * Owner 2026-10-11 — the lab road now queues NO paper at all (a lab visit is not an OPD visit), so
+     * paper can no longer witness the rollback. The queue entry is written in the same transaction on
+     * the same path, so it carries the same kill: the loser left no queue row behind, the winner did.
+     */
+    expect(await db.select().from(printJobs)).toEqual([]);
+    const entries = await db.select({ encounterId: opdQueueEntries.encounterId }).from(opdQueueEntries);
+    const forWinner = entries.filter((j) => j.encounterId === winner.encounter.id).length;
+    expect(entries.length - forWinner).toBe(0);   // THE KILL: a refused visit that left a queue row behind
+    expect(forWinner).toBeGreaterThan(0);         // and the join really does run on this path
   });
 
   /**

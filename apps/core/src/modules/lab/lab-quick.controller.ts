@@ -157,4 +157,16 @@ export class LabQuickController {
   async sendBack(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     try { return await withTx(this.db, (tx) => sendBackQuick(tx, actor, parsed(idSchema, id))); } catch (e) { quickHttp(e); }
   }
+
+  /**
+   * Owner 2026-10-11 — "if front desk staff has access to lab counter then he can access patients reports
+   * from the patient profile page and print the report from there." The lab counter holds the PRINT
+   * grant, not the results grant, so the profile reads through it here — the same reader, the same
+   * visibility, sensitive-test and access-log rules as `GET patient/:patientId`.
+   */
+  @Get("patient/:patientId/printable")
+  @RequirePermission(LAB_REPORTS_PRINT, "hospital")
+  async patientPrintable(@CurrentActor() actor: Actor, @Param("patientId") patientId: string): Promise<unknown> {
+    try { return { items: await quickReportsForPatient(this.db, actor, parsed(idSchema, patientId)) }; } catch (e) { quickHttp(e); }
+  }
 }

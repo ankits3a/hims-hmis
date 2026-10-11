@@ -3998,6 +3998,8 @@
   },
   "lab": {
     "counter": {
+      "viewReport": "View / print report",
+      "printReport": "Print",
       "title": "Lab counter",
       "requestsTitle": "Requests for this patient",
       "sendTitle": "Send to sample collection",
