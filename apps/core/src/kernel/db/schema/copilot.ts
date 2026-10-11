@@ -119,6 +119,18 @@ export const copilotNoticeAcks = pgTable(
 );
 
 /**
+ * PHONE SETTINGS (owner 2026-10-11, spec SPEC-phone-settings-2026-10-11) — whether a person has turned the
+ * copilot ON in the phone app. It follows the ACCOUNT (owner: "follows the account"), so it is a row here
+ * rather than a value on one phone. No row = OFF, the owner's default for everyone. It governs the phone
+ * app only; the web's ask box does not read it.
+ */
+export const copilotUserSettings = pgTable("copilot_user_settings", {
+  userId: text("user_id").primaryKey(),
+  phoneEnabled: boolean("phone_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * E0.3 — THE HALT SWITCH (plan E0.3, decision 0064). One row per HALTED scope; no row, not halted. Read
  * on every ask (one indexed round trip, no cache — the `getOperatingMode` rule: a halt must take effect
  * on the very next ask, on this box and on the failover site, which reads the same replicated table).

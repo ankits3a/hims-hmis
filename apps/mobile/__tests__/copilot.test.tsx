@@ -10,6 +10,7 @@ import { I18nProvider, translate } from "../src/i18n";
 import { CHIPS, SEAT_CHIPS, answerText, chipsFor, sayParams } from "../src/copilot/model";
 import { CopilotScreen } from "../src/screens/copilot";
 import { SessionProvider, useSession } from "../src/session";
+import { _resetCopilotSettingForTests } from "../src/copilot/setting";
 import { Band } from "../src/ui";
 import CopilotPage from "../app/copilot";
 import type { EffectivePermissions } from "../src/seats";
@@ -237,8 +238,9 @@ describe("E1.3 — the keyboard, the header and signing in", () => {
     expect(open < row && row < close).toBe(true);
   });
 
-  it("the header offers the copilot beside the scan mark when signed in, and not on the copilot screen itself", async () => {
-    const s = server({ "GET /copilot/notice": { status: 200, body: { seen: true } } });
+  it("the header offers the copilot beside the scan mark when signed in AND turned on, and not on the copilot screen itself", async () => {
+    _resetCopilotSettingForTests();
+    const s = server({ "GET /copilot/notice": { status: 200, body: { seen: true } }, "GET /copilot/setting": { status: 200, body: { phone: true } } });
     function Head() { const { state } = useSession(); return state.status !== "signedIn" ? null : <Band />; }
     await mount(s.fetcher, <Head />);
     await fireEvent.press(await screen.findByTestId("band-copilot"));

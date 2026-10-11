@@ -78,6 +78,8 @@ generated: { by: tools/arch/gen.mjs }
 | GET | `/copilot/health` | `copilot/copilot.controller.ts` |
 | GET | `/copilot/notice` | `copilot/copilot.controller.ts` |
 | POST | `/copilot/notice` | `copilot/copilot.controller.ts` |
+| GET | `/copilot/setting` | `copilot/copilot.controller.ts` |
+| PUT | `/copilot/setting` | `copilot/copilot.controller.ts` |
 
 ## `desk`
 

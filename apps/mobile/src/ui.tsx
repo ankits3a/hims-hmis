@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { IS_PRODUCTION } from "./config";
 import { useI18n } from "./i18n";
+import { useCopilotOn } from "./copilot/setting";
 import { useSessionOptional } from "./session";
 import { color, radius, space, TOUCH, type } from "./theme";
 
@@ -51,7 +52,10 @@ export function Band({ right, scan = true, copilot = true }: { right?: ReactNode
   const session = useSessionOptional();
   const showScan = scan && session?.state.status === "signedIn";
   // E1.3 — the copilot sits beside the scan mark, on every signed-in screen but its own.
-  const showCopilot = copilot && session?.state.status === "signedIn";
+  // PHONE SETTINGS (owner 2026-10-11) — and only when the person has turned it on in Settings.
+  const copilotOn = useCopilotOn().on;
+  const showCopilot = copilot && session?.state.status === "signedIn" && copilotOn;
+  const signedIn = session?.state.status === "signedIn";
   return (
     <View style={[s.band, { paddingTop: insets.top + space.md }]}>
       <View style={s.row}>
@@ -73,9 +77,20 @@ export function Band({ right, scan = true, copilot = true }: { right?: ReactNode
           </Pressable>
         )}
         {right}
-        <Pressable onPress={toggle} accessibilityRole="button" hitSlop={8} style={s.lang} testID="lang-toggle">
-          <Text style={s.langText}>{t("app.language")}</Text>
-        </Pressable>
+        {/*
+          PHONE SETTINGS (owner 2026-10-11) — signed in, the language, Reminders, the copilot switch, the
+          account and "Log out of this phone" live behind the gear. Signed out (the sign-in screen) the
+          language word stays here: a person must be able to read the screen before they can sign in.
+        */}
+        {signedIn ? (
+          <Pressable onPress={() => router.push("/settings")} accessibilityRole="button" accessibilityLabel={t("settings.title")} hitSlop={8} style={s.lang} testID="band-settings">
+            <Text style={[s.langText, { fontSize: 18 }]}>⚙</Text>
+          </Pressable>
+        ) : (
+          <Pressable onPress={toggle} accessibilityRole="button" hitSlop={8} style={s.lang} testID="lang-toggle">
+            <Text style={s.langText}>{t("app.language")}</Text>
+          </Pressable>
+        )}
       </View>
       {!IS_PRODUCTION && (
         <Text style={s.staging} testID="staging-strip">{t("mobile.staging")}</Text>

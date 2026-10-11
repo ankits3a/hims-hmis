@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Post, Put, Query } from "@nestjs/common";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
 import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
@@ -16,7 +16,7 @@ import { IdentifierLeak, rehydrate } from "./mask";
 import { COPILOT_NAME_SOURCE, loadDayNames, maskForAsk, nameDays, nameIndexFor } from "./names";
 import type { CopilotNameSource } from "./names";
 import * as router from "./router";
-import { acknowledgeNotice, noticeSeen, readCopilotHealth, recordAsk, recordWrong } from "./ledger";
+import { acknowledgeNotice, noticeSeen, phoneCopilotOn, readCopilotHealth, recordAsk, recordWrong, setPhoneCopilot } from "./ledger";
 import { asksHalted, listHalts, readCopilotGate } from "./halt";
 import { SpendMeter, inrToMicro } from "./spend";
 import type { CopilotGate } from "./halt";
@@ -370,6 +370,25 @@ export class CopilotController {
   async dismissNotice(@CurrentActor() actor: Actor): Promise<void> {
     if (actor.type !== "user") throw new ForbiddenException("user actors only");
     await acknowledgeNotice(this.db, actor.id);
+  }
+
+  /**
+   * PHONE SETTINGS (owner 2026-10-11) — the person's own "copilot on the phone" switch, which follows
+   * their account. Self-scoped structurally, like the notice: it reads and writes the caller's own row.
+   */
+  @Get("setting")
+  async setting(@CurrentActor() actor: Actor): Promise<{ phone: boolean }> {
+    if (actor.type !== "user") throw new ForbiddenException("user actors only");
+    return { phone: await phoneCopilotOn(this.db, actor.id) };
+  }
+
+  @Put("setting")
+  async setSetting(@CurrentActor() actor: Actor, @Body() raw: unknown): Promise<{ phone: boolean }> {
+    if (actor.type !== "user") throw new ForbiddenException("user actors only");
+    const phone = (raw as { phone?: unknown } | null)?.phone;
+    if (typeof phone !== "boolean") throw new BadRequestException("phone must be true or false");
+    await setPhoneCopilot(this.db, actor.id, phone);
+    return { phone };
   }
 
   /**

@@ -1,7 +1,7 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
-  COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAskFeedback, copilotAsks, copilotNoticeAcks,
+  COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAskFeedback, copilotAsks, copilotNoticeAcks, copilotUserSettings,
 } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
@@ -241,4 +241,16 @@ export async function recordWrong(db: Db, userId: string, askId: string): Promis
   if (own.length === 0) return false;
   await db.insert(copilotAskFeedback).values({ askId, userId, verdict: "wrong" }).onConflictDoNothing();
   return true;
+}
+
+/** PHONE SETTINGS — has this person turned the copilot on in the phone app? No row = off (owner's default). */
+export async function phoneCopilotOn(db: Db, userId: string): Promise<boolean> {
+  const rows = await db.select({ on: copilotUserSettings.phoneEnabled }).from(copilotUserSettings).where(eq(copilotUserSettings.userId, userId));
+  return rows[0]?.on === true;
+}
+
+/** Turns it on or off for this person, on every phone they sign in on. */
+export async function setPhoneCopilot(db: Db, userId: string, on: boolean): Promise<void> {
+  await db.insert(copilotUserSettings).values({ userId, phoneEnabled: on, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: copilotUserSettings.userId, set: { phoneEnabled: on, updatedAt: new Date() } });
 }

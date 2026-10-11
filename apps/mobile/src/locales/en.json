@@ -2891,5 +2891,17 @@
         "unreadMine": "On computer · Consult"
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "back": "Back",
+    "language": "Language",
+    "tools": "Tools",
+    "copilot": "Copilot",
+    "copilotOn": "Copilot icon is on the top bar",
+    "copilotOff": "Off. Turn on to ask the copilot",
+    "account": "Account",
+    "logout": "Log out of this phone",
+    "offline": "No signal. Try again"
   }
 }
