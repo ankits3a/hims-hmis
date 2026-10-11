@@ -449,6 +449,8 @@ export type WireRxPrint = {
 export type WireTimelineItem = {
   /** Consult v2 — the visit's number, for the History browser. Optional: an older server sends none. */
   visitNo?: string;
+  /** Owner 2026-10-11 — `opd`, `lab` (the lab counter's walk-in) or `pharmacy`. Optional: an older server sends none (= opd). */
+  type?: string;
   encounterId: string; serviceDate: string; openedAt: string; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   diagnosis: string | null; icd10Code: string | null; prescriptionLineCount: number; dangerFlagged: boolean;

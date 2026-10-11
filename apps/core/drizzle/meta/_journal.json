@@ -1394,6 +1394,13 @@
       "when": 1791706898461,
       "tag": "0198_copilot_ask_feedback",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1791706899461,
+      "tag": "0199_lab_desk_and_quick_chain",
+      "breakpoints": true
     }
   ]
 }

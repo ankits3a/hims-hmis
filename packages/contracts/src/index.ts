@@ -20,3 +20,4 @@ export * from "./my-pace";
 export * from "./self-identity";
 export * from "./reminders";
 export * from "./waiting";
+export * from "./lab-formula";

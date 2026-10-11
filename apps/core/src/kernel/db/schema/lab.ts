@@ -1146,3 +1146,128 @@ export const labPlateWells = pgTable(
     ),
   ],
 );
+
+/**
+ * OWNER 2026-10-11 — LAB BOOKINGS: a patient booked for a FUTURE day and time slot, with the tests
+ * already chosen (spec `SPEC-lab-desk-flow-2026-10-11.md`). A booking is not an order: nothing is
+ * billed or drawn until the patient arrives, and on that day the desk's Arrived turns it into the
+ * order in the same transaction (`order_id`). Cancel and no-show close it; a row is never deleted.
+ *
+ * `slot_start` is the IST wall-clock start ("08:15"). Capacity is enforced by the writer under an
+ * advisory lock on (service_date, slot_start), not by a constraint: the per-slot limit is a setting.
+ */
+export const labBookings = pgTable(
+  "lab_bookings",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    serviceDate: date("service_date").notNull(),
+    slotStart: text("slot_start").notNull(),
+    serviceIds: jsonb("service_ids").$type<string[]>().notNull(),
+    note: text("note"),
+    status: text("status").notNull().default("booked"),
+    orderId: text("order_id").references(() => orders.id),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closedBy: text("closed_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closeReason: text("close_reason"),
+  },
+  (t) => [
+    index("lab_bookings_day_slot_idx").on(t.serviceDate, t.slotStart),
+    index("lab_bookings_patient_idx").on(t.patientId),
+    check("lab_bookings_status_ck", sql`${t.status} in ('booked', 'fulfilled', 'cancelled', 'no_show')`),
+    check("lab_bookings_slot_ck", sql`${t.slotStart} ~ '^[0-2][0-9]:[0-5][0-9]$'`),
+    check("lab_bookings_fulfilled_ck", sql`(${t.status} = 'fulfilled') = (${t.orderId} is not null)`),
+  ],
+);
+
+/**
+ * OWNER 2026-10-11 — THE LAB'S BOOKING HOURS, one row (`id = 'main'`). Absent, `bookings.ts` uses its
+ * DECIDED defaults (07:30–12:30, 15-minute slots, 4 a slot, closed Sunday, 30 days ahead); present,
+ * the lab's own setting wins. Written only by `saveBookingHours`, which names who changed it.
+ */
+export const labBookingSettings = pgTable(
+  "lab_booking_settings",
+  {
+    id: text("id").primaryKey(),
+    openAt: text("open_at").notNull(),
+    closeAt: text("close_at").notNull(),
+    slotMinutes: integer("slot_minutes").notNull(),
+    perSlot: integer("per_slot").notNull(),
+    daysAhead: integer("days_ahead").notNull(),
+    closedWeekdays: jsonb("closed_weekdays").$type<number[]>().notNull(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("lab_booking_settings_one_ck", sql`${t.id} = 'main'`),
+    check("lab_booking_settings_hours_ck", sql`${t.openAt} ~ '^[0-2][0-9]:[0-5][0-9]$' and ${t.closeAt} ~ '^[0-2][0-9]:[0-5][0-9]$' and ${t.openAt} < ${t.closeAt}`),
+    check("lab_booking_settings_numbers_ck", sql`${t.slotMinutes} between 5 and 120 and ${t.perSlot} between 1 and 100 and ${t.daysAhead} between 1 and 365`),
+  ],
+);
+
+/**
+ * QUICK MODE (owner 2026-10-09, decision 0061) — one row per patient visit to the lab in quick
+ * mode. **Started** at the counter (tests chosen, blood collected: `status = 'waiting'`, the row is in
+ * the queue) and **reported** at the bench (values typed, summary edited: `status = 'reported'`).
+ *
+ * Not an order and not a `lab_results` row, on purpose: quick mode carries no bill, no token and
+ * no pathologist signature (those live in other software for now), so nothing here may reach the
+ * readers that assume a verified, paid result — ABDM release, INR/platelet/creatinine gates, the
+ * delivery interlock. A separate table makes that structural rather than a filter every reader must
+ * remember.
+ *
+ * `tests` is what the counter chose (`{ serviceId, code, nameEn }[]`); `lines` is the bench's
+ * snapshot — the range and flag the server resolved at save, so a later edit to the range book
+ * never rewrites what a printed report said.
+ */
+export const labQuickReports = pgTable(
+  "lab_quick_reports",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** The OPD visit the slip names, when the counter found the patient by it. */
+    encounterNo: text("encounter_no"),
+    /**
+     * Owner 2026-10-11 (the quick chain) — the lab ORDER whose blood this is, when the row came from
+     * /lab/qcollect (billed or free at /lab/counter). Null for a decision-0061 Start with no order.
+     */
+    orderId: text("order_id").references(() => orders.id),
+    /** The sample number stamped when blood was confirmed collected (`S…`, the specimen series). */
+    sampleNo: text("sample_no"),
+    tests: jsonb("tests").notNull(),
+    status: text("status").notNull().default("waiting"),
+    collectedAt: timestamp("collected_at", { withTimezone: true }).notNull(),
+    collectedBy: text("collected_by").notNull(),
+    lines: jsonb("lines").notNull().default(sql`'[]'::jsonb`),
+    summary: text("summary").notNull().default(""),
+    reportedAt: timestamp("reported_at", { withTimezone: true }),
+    reportedBy: text("reported_by"),
+    /** Owner 2026-10-11 — Print & Hand over at /lab/qreports: who gave the report to the patient, and when. */
+    handedOverAt: timestamp("handed_over_at", { withTimezone: true }),
+    handedOverBy: text("handed_over_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("lab_quick_reports_status_idx").on(t.status, t.collectedAt),
+    index("lab_quick_reports_patient_idx").on(t.patientId, t.collectedAt),
+    /** `draft` (owner 2026-10-11): values saved but not complete, or sent back from /lab/qreports. */
+    check("lab_quick_reports_status_ck", sql`${t.status} in ('waiting', 'draft', 'reported')`),
+    /** Reported means someone reported it, and only then. */
+    check(
+      "lab_quick_reports_reported_ck",
+      sql`(${t.status} = 'reported') = (${t.reportedAt} is not null and ${t.reportedBy} is not null)`,
+    ),
+    /** Handed over only a reported report, and the hand-over names who. */
+    check(
+      "lab_quick_reports_handover_ck",
+      sql`(${t.handedOverAt} is null and ${t.handedOverBy} is null) or (${t.status} = 'reported' and ${t.handedOverAt} is not null and ${t.handedOverBy} is not null)`,
+    ),
+    /** One quick report per order: the blood is confirmed once. */
+    uniqueIndex("lab_quick_reports_order_ux").on(t.orderId),
+    uniqueIndex("lab_quick_reports_sample_ux").on(t.sampleNo),
+  ],
+);

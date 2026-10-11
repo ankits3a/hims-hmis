@@ -32,12 +32,17 @@ import { slotClock, upcomingOf } from "../lib/appointment-view";
 import { listDues, listInvoicesFor } from "../lib/billing-api";
 import { fetchPatientDispenses, fetchPatientImaging, fetchPatientResults } from "../lib/brief-history";
 import { reportsForPatient } from "../lib/lab-api";
+import { QuickLabReports } from "./lab-quick-reports";
+import { labOrdersForPatient, quickReportsForPatient } from "../lib/lab-quick-api";
+import { LabVisitDialog } from "./profile-lab-visit";
+import { PatientHistory } from "./patient-history-views";
 import { fmtPaise } from "../lib/format";
 import { CREDIT_READERS, CreditTile } from "../components/patient-credit";
 import { AllBillsTile } from "../components/patient-all-bills";
 import {
-  buildTimeline, dmy, dmyIst, duesSummary, groupByDay, istDay, maskMobile, openVisitsToday, type Labels,
+  buildTimeline, dmy, dmyIst, duesSummary, istDay, labVisitNos, maskMobile, openVisitsToday, type Labels,
 } from "./patient-profile-model";
+import type { TimelineRow } from "./patient-profile-model";
 import "./patient-profile.css";
 
 // Wire shapes (patients.controller.ts) — every Date column arrives JSON-serialized as an
@@ -1188,7 +1193,6 @@ export function PatientDetail(): React.ReactElement {
   const [addingRep, setAddingRep] = useState(false);
   const [reissued, setReissued] = useState<{ qrVersion: number; payload: string } | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [showAll, setShowAll] = useState(false);
   const [openDoc, setOpenDoc] = useState<string | null>(null);
   const [openVisit, setOpenVisit] = useState<WireTimelineItem | null>(null);
 
@@ -1220,6 +1224,12 @@ export function PatientDetail(): React.ReactElement {
   const bookDepartments = useQuery({ queryKey: ["opd", "departments"], queryFn: listDepartments, enabled: hasBookings, staleTime: 300_000, retry: false });
   const labResults = useQuery({ queryKey: ["pf-lab-results", pid], queryFn: () => fetchPatientResults(pid!), enabled: on("lab.results.read"), retry: false });
   const labReports = useQuery({ queryKey: ["pf-lab-reports", pid], queryFn: () => reportsForPatient(pid!), enabled: on("lab.reports.print"), retry: false });
+  /** Owner 2026-10-11 — a lab visit names its tests and opens its tests and reports; either lab grant reads them. */
+  const labVia = can("lab.results.read") ? "results" as const : "print" as const;
+  const mayReadLab = on("lab.results.read") || on("lab.reports.print");
+  const labOrders = useQuery({ queryKey: ["pf-lab-orders", pid, labVia], queryFn: () => labOrdersForPatient(pid!, labVia), enabled: mayReadLab, retry: false });
+  const quickReports = useQuery({ queryKey: ["lab-quick", "patient", pid, labVia], queryFn: () => quickReportsForPatient(pid!, labVia), enabled: mayReadLab, retry: false });
+  const [openLabVisit, setOpenLabVisit] = useState<string | null>(null);
   const imaging = useQuery({ queryKey: ["pf-imaging", pid], queryFn: () => fetchPatientImaging(pid!), enabled: on("radiology.reports.read"), retry: false });
   const invoices = useQuery({ queryKey: ["pf-invoices", pid], queryFn: () => listInvoicesFor({ patientId: pid! }), enabled: on("billing.invoice.read"), retry: false });
   const dues = useQuery({ queryKey: ["pf-dues", pid], queryFn: () => listDues(pid!), enabled: on("billing.invoice.read") || on("billing.dues.patient.read"), retry: false });
@@ -1315,6 +1325,7 @@ export function PatientDetail(): React.ReactElement {
     visit: (n) => t("profile.tl.visit", { n }),
     medicines: (n) => t("profile.tl.medicines", { count: n }),
     labSigned: t("profile.tl.labSigned"),
+    labVisit: t("profile.tl.labVisit"),
     labResults: (n) => t("profile.tl.labResults", { count: n }),
     labReportVersion: (n) => t("profile.tl.version", { n }),
     paidDue: (paid, due) => t("profile.tl.paidDue", { paid, due }),
@@ -1330,18 +1341,41 @@ export function PatientDetail(): React.ReactElement {
     ...(visits.data !== undefined ? { visits: visits.data.items } : {}),
     ...(labResults.data !== undefined ? { labResults: labResults.data.items } : {}),
     ...(labResults.data === undefined && labReports.data !== undefined ? { labReports: labReports.data } : {}),
+    ...(labOrders.data !== undefined ? { labOrders: labOrders.data.items } : {}),
     ...(imaging.data !== undefined ? { imaging: imaging.data.items } : {}),
     ...(invoices.data !== undefined ? { invoices: invoices.data.items } : {}),
     ...(dues.data !== undefined ? { dues: dues.data.items } : {}),
     ...(dispenses.data !== undefined ? { dispenses: dispenses.data.items } : {}),
     ...(documents.data !== undefined ? { documents: documents.data } : {}),
   }, labels);
-  const days = groupByDay(rows);
+  /** One history row — the same row in every view of the middle column (owner 2026-10-11). */
+  const renderRow = (r: TimelineRow): React.ReactNode => (
+                      <div className={r.owing === true ? "ev owe" : "ev"} key={r.key} data-testid="timeline-row">
+                        <span className="src">{r.source}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div className="t">{r.title}{r.alert !== undefined && <> <span className="hl">{r.alert}</span></>}</div>
+                          {r.sub !== null && <div className="s">{r.sub}</div>}
+                          {r.tags !== undefined && (
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 3 }} data-testid="timeline-tags">
+                              {r.tags.map((c) => <span key={c} className="kb" style={{ fontSize: 10.5 }}>{c}</span>)}
+                            </div>
+                          )}
+                        </div>
+                        {r.amountPaise !== undefined && <span className="r mo">{fmtPaise(r.amountPaise)}</span>}
+                        {r.note !== undefined && <span className="r s">{r.note}</span>}
+                        {r.documentId !== undefined && (
+                          <button type="button" className="r lnk" onClick={() => setOpenDoc(r.documentId!)}>{t("profile.view")}</button>
+                        )}
+                        {r.labVisitNo !== undefined && mayReadLab && (
+                          <button type="button" className="r lnk" data-testid="timeline-open-lab-visit" onClick={() => { setOpenLabVisit(r.labVisitNo!); }}>{t("profile.lv.open")}</button>
+                        )}
+                        {r.encounterId !== undefined && visitOf(r.encounterId) !== null && (
+                          <button type="button" className="r lnk" data-testid="timeline-open-visit" title={t("visitCard.openHint")} onClick={() => { setOpenVisit(visitOf(r.encounterId)); }}>{t("visitCard.open")}</button>
+                        )}
+                      </div>
+  );
   const visitOf = (encounterId: string | null | undefined): WireTimelineItem | null =>
     encounterId == null ? null : (visits.data?.items.find((v) => v.encounterId === encounterId) ?? null);
-  const DAYS_SHOWN = 6;
-  const shownDays = showAll ? days : days.slice(0, DAYS_SHOWN);
-  const hiddenRows = days.slice(DAYS_SHOWN).reduce((s, d) => s + d.rows.length, 0);
 
   const owed = duesSummary(dues.data?.items);
   const openToday = openVisitsToday(visits.data?.items, today);
@@ -1515,7 +1549,10 @@ export function PatientDetail(): React.ReactElement {
               </>
             )}
 
-            {can("opd.appointments.read") && (
+            <PatientHistory
+              rows={rows}
+              renderRow={renderRow}
+              appointments={(can("opd.appointments.read") && (
               <>
                 <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.upcoming")}</h3>
                 {upcoming.length === 0 ? (
@@ -1571,44 +1608,23 @@ export function PatientDetail(): React.ReactElement {
                   </>
                 )}
               </>
-            )}
-
-            <h3 style={{ margin: "18px 0 0", fontSize: 15, fontWeight: 600 }}>{t("profile.history")}</h3>
-            {days.length === 0 && <p style={{ fontSize: 12.5, color: "var(--dim)" }} data-testid="timeline-empty">{t("profile.noHistory")}</p>}
-            <div data-testid="timeline">
-              {shownDays.map((d) => (
-                <div key={d.day}>
-                  <div className="day"><span className="d">{dmy(d.day)}</span><span className="ln" /></div>
-                  <div className="box" style={{ overflow: "hidden" }}>
-                    {d.rows.map((r) => (
-                      <div className={r.owing === true ? "ev owe" : "ev"} key={r.key} data-testid="timeline-row">
-                        <span className="src">{r.source}</span>
-                        <div style={{ minWidth: 0 }}>
-                          <div className="t">{r.title}{r.alert !== undefined && <> <span className="hl">{r.alert}</span></>}</div>
-                          {r.sub !== null && <div className="s">{r.sub}</div>}
-                        </div>
-                        {r.amountPaise !== undefined && <span className="r mo">{fmtPaise(r.amountPaise)}</span>}
-                        {r.note !== undefined && <span className="r s">{r.note}</span>}
-                        {r.documentId !== undefined && (
-                          <button type="button" className="r lnk" onClick={() => setOpenDoc(r.documentId!)}>{t("profile.view")}</button>
-                        )}
-                        {r.encounterId !== undefined && visitOf(r.encounterId) !== null && (
-                          <button type="button" className="r lnk" data-testid="timeline-open-visit" title={t("visitCard.openHint")} onClick={() => { setOpenVisit(visitOf(r.encounterId)); }}>{t("visitCard.open")}</button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {!showAll && hiddenRows > 0 && (
-              <div className="day">
-                <span className="d">{t("profile.earlier", { count: hiddenRows })}</span><span className="ln" />
-                <button type="button" className="lnk" onClick={() => setShowAll(true)}>{t("profile.showMore")}</button>
-              </div>
-            )}
-            <p style={{ fontSize: 11.5, color: "var(--dim)", margin: "8px 0 0" }}>{t("profile.historyNote")}</p>
+            )) || null}
+              showQuickLab={pid !== null && (can("lab.results.read") || can("lab.reports.print"))}
+              quickLab={(compact) => pid === null ? null : (
+                /* Decision 0061 — the lab's quick reports (unsigned); owner 2026-10-11 — the lab counter's print grant reads them too. */
+                <QuickLabReports patientId={pid} enabled={can("lab.results.read") || can("lab.reports.print")}
+                  via={labVia} hideEmpty compact={compact} exclude={labVisitNos(visits.data?.items)} />
+              )}
+              note={<p style={{ fontSize: 11.5, color: "var(--dim)", margin: "8px 0 0" }}>{t("profile.historyNote")}</p>}
+            />
           </main>
+
+          {pid !== null && (
+            <LabVisitDialog visitNo={openLabVisit} patientId={pid} onClose={() => setOpenLabVisit(null)}
+              visit={visits.data?.items.find((v) => v.visitNo === openLabVisit) ?? null}
+              orders={labOrders.data?.items ?? []} quickReports={quickReports.data?.items ?? []}
+              signedReports={labReports.data?.reports ?? []} />
+          )}
 
           {/* ——— THE ACTS THIS SEAT MAY TAKE ——— */}
           <aside className={moreOpen ? "pf-side open" : "pf-side"} data-testid="onward-actions">

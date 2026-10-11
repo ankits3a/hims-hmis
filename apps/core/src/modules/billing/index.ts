@@ -88,7 +88,7 @@ export type {
 
 export type { DayBook, Gstr1Row, DailyCloseResult } from "./daily-close";
 export { registerBillingApprovalTypes, BILLING_APPROVAL_TYPES } from "./approval-types";
-export { loadBillingConfig } from "./config";
+export { feeOffNow, loadBillingConfig } from "./config";
 export type { BillingConfig } from "./config";
 /**
  * RC-1 T3 — the token's paid stamp, both halves. `encounterFeeStatuses` is the batched projection

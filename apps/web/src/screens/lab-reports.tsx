@@ -59,7 +59,16 @@ export function LabReports(): React.ReactElement {
   const qc = useQueryClient();
   const serviceDate = istToday();
   const { can } = useAuth();
-  const [picked, setPicked] = useState<PatientPickerHit | null>(null);
+  /**
+   * Owner 2026-10-11 — the lab desk's history row opens this centre on its patient
+   * (`?patientId=&uhid=&name=`), so the clerk does not search the person twice.
+   */
+  const [picked, setPicked] = useState<PatientPickerHit | null>(() => {
+    const link = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+    const id = link.get("patientId");
+    return id === null || id === "" ? null
+      : { id, uhid: link.get("uhid") ?? "", name: link.get("name"), administrativeGender: "", dob: null };
+  });
   const [openId, setOpenId] = useState<string | null>(null);
   /**
    * 17d T7 — which reports the counter is showing in Hindi. Per REPORT rather than per seat: the
