@@ -1,7 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { getMode } from "../lib/ops-api";
 import { useAuth } from "../lib/auth";
+import { labErrorText } from "../lib/lab-api";
+import { saveLabMode, shownInMode, useLabMode } from "../lib/lab-mode";
+import type { LabMode } from "../lib/lab-mode";
 import { StationShell } from "../components/station/station-shell";
 import type { StationLink, StationStat } from "../components/station/station-shell";
 
@@ -29,18 +33,18 @@ export type SeatStat = StationStat;
 export type LabStationKey = "desk" | "collection" | "bench" | "verify" | "reports" | "quick" | "counter" | "qcollect" | "qbench" | "qreports";
 
 /** The five stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
-export const LAB_STATIONS: readonly (Omit<StationLink, "label"> & { key: LabStationKey; labelKey: string })[] = [
+export const LAB_STATIONS: readonly (Omit<StationLink, "label"> & { key: LabStationKey; labelKey: string; mode: LabMode | "never" })[] = [
   /** Owner 2026-10-11 — the quick chain, the lab's everyday path: counter → collect → bench → reports. */
-  { key: "counter", to: "/lab/counter", labelKey: "nav.labCounter", permission: "lab.desk.operate" },
-  { key: "qcollect", to: "/lab/qcollect", labelKey: "nav.labQCollect", permission: "lab.worklist.read" },
-  { key: "qbench", to: "/lab/qbench", labelKey: "nav.labQBench", permission: "lab.results.enter" },
-  { key: "qreports", to: "/lab/qreports", labelKey: "nav.labQReports", permission: "lab.reports.print" },
-  { key: "desk", to: "/lab/desk", labelKey: "nav.labDesk", permission: "lab.desk.operate" },
-  { key: "collection", to: "/lab/collection", labelKey: "nav.labCollection", permission: "lab.collection.operate" },
-  { key: "bench", to: "/lab/bench", labelKey: "nav.labBench", permission: "lab.accession.operate" },
-  { key: "verify", to: "/lab/verify", labelKey: "nav.labVerify", permission: "lab.results.verify" },
-  { key: "reports", to: "/lab/reports", labelKey: "nav.labReports", permission: "lab.reports.print" },
-  { key: "quick", to: "/lab/quick", labelKey: "nav.labQuick", permission: "lab.results.enter" },
+  { key: "counter", to: "/lab/counter", labelKey: "nav.labCounter", permission: "lab.desk.operate", mode: "quick" },
+  { key: "qcollect", to: "/lab/qcollect", labelKey: "nav.labQCollect", permission: "lab.worklist.read", mode: "quick" },
+  { key: "qbench", to: "/lab/qbench", labelKey: "nav.labQBench", permission: "lab.results.enter", mode: "quick" },
+  { key: "qreports", to: "/lab/qreports", labelKey: "nav.labQReports", permission: "lab.reports.print", mode: "quick" },
+  { key: "desk", to: "/lab/desk", labelKey: "nav.labDesk", permission: "lab.desk.operate", mode: "full" },
+  { key: "collection", to: "/lab/collection", labelKey: "nav.labCollection", permission: "lab.collection.operate", mode: "full" },
+  { key: "bench", to: "/lab/bench", labelKey: "nav.labBench", permission: "lab.accession.operate", mode: "full" },
+  { key: "verify", to: "/lab/verify", labelKey: "nav.labVerify", permission: "lab.results.verify", mode: "full" },
+  { key: "reports", to: "/lab/reports", labelKey: "nav.labReports", permission: "lab.reports.print", mode: "full" },
+  { key: "quick", to: "/lab/quick", labelKey: "nav.labQuick", permission: "lab.results.enter", mode: "never" },
 ];
 
 export function LabStation({
@@ -65,10 +69,15 @@ export function LabStation({
   children: React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation();
+  const mode = useLabMode();
+  const mine = LAB_STATIONS.find((s) => s.key === station)?.mode;
+  /** Owner 2026-10-12 — a station of the mode the lab is NOT running says so instead of working. */
+  const off = mode !== null && mine !== undefined && mine !== "never" && mine !== mode;
   return (
     <StationShell
       brand={t("lab.seat.department")}
-      stations={LAB_STATIONS.map((s) => ({ key: s.key, to: s.to, permission: s.permission, label: t(s.labelKey) }))}
+      stations={LAB_STATIONS.filter((s) => s.key === station || shownInMode(s.mode, mode))
+        .map((s) => ({ key: s.key, to: s.to, permission: s.permission, label: t(s.labelKey) }))}
       current={station}
       title={title}
       place={place}
@@ -81,8 +90,56 @@ export function LabStation({
       lane={lane}
       laneHead={laneHead}
     >
-      {children}
+      {off ? <LabModeOff mode={mode} /> : children}
     </StationShell>
+  );
+}
+
+/** The notice a station of the other mode shows, with the switch for the one person who may flip it. */
+function LabModeOff({ mode }: { mode: LabMode }): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <div className="box" style={{ padding: 18, display: "flex", flexDirection: "column", gap: 10 }} data-testid="lab-mode-off">
+      <b style={{ fontSize: 15 }}>{t(mode === "quick" ? "lab.mode.fullOff" : "lab.mode.quickOff")}</b>
+      <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{t(mode === "quick" ? "lab.mode.useQuick" : "lab.mode.useFull")}</span>
+      <LabModeSwitch />
+    </div>
+  );
+}
+
+/**
+ * OWNER 2026-10-12 — the switch. Shown only to the lab's administrator (`lab.catalogue.manage`); a
+ * change asks once, because every lab seat's menu changes with it.
+ */
+export function LabModeSwitch(): React.ReactElement | null {
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const mode = useLabMode();
+  const [asking, setAsking] = useState<LabMode | null>(null);
+  const save = useMutation({
+    mutationFn: saveLabMode,
+    onSuccess: (r) => { qc.setQueryData(["lab", "mode"], r); setAsking(null); },
+  });
+  if (!can("lab.catalogue.manage") || mode === null) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }} data-testid="lab-mode-switch">
+      <span className="tag">{t("lab.mode.title")}</span>
+      {(["quick", "full"] as const).map((m) => (
+        <button key={m} type="button" className={m === mode ? "pill on" : "pill"} aria-pressed={m === mode}
+          style={{ height: 28 }} onClick={() => { if (m !== mode) setAsking(m); }}>
+          {t(`lab.mode.${m}`)}
+        </button>
+      ))}
+      {asking !== null && (
+        <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }} role="alertdialog" aria-label={t("lab.mode.confirm", { mode: t(`lab.mode.${asking}`) })}>
+          <span style={{ fontSize: 12 }}>{t("lab.mode.confirm", { mode: t(`lab.mode.${asking}`) })}</span>
+          <button type="button" className="pri" style={{ height: 28 }} disabled={save.isPending} onClick={() => save.mutate(asking)}>{t("lab.mode.yes")}</button>
+          <button type="button" className="sec" style={{ height: 28 }} onClick={() => setAsking(null)}>{t("lab.mode.no")}</button>
+        </span>
+      )}
+      {save.isError && <span role="alert" style={{ color: "var(--red)", fontSize: 12 }}>{labErrorText(save.error)}</span>}
+    </div>
   );
 }
 

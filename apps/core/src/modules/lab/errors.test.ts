@@ -112,6 +112,7 @@ const OWNED_BY: Record<LabErrorCode, string> = {
   booking_slot_unavailable: "bookings.ts",
   unknown_booking: "bookings.ts",
   booking_not_open: "bookings.ts",
+  lab_mode_off: "mode.ts",
 
   /**
    * 17-E T7 — the rerun rule is resolved in `results.ts`, which is where the contradiction lived,
@@ -194,7 +195,9 @@ describe("the lab error union (Plan 17 T2)", () => {
       /** Owner 2026-10-11 — a full, past or closed slot; a booking already arrived, cancelled or missed. */
       "booking_not_open", "booking_slot_unavailable",
       "critical_already_closed",
-      "item_not_cancellable", "item_not_resultable", "no_active_order",
+      "item_not_cancellable", "item_not_resultable",
+      /** Owner 2026-10-12 — the other lab mode is running; switching back is the fix, not a new body. */
+      "lab_mode_off", "no_active_order",
       /** 17-E T7 — there is nothing to choose between; the set is already signed; a newer row
        *  replaced this one. All three are re-read-and-retry, which is what 409 means. */
       "no_rerun_to_choose", "report_not_amendable", "rerun_choice_final", "result_superseded",

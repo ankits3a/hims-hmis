@@ -11,7 +11,7 @@ import { labManifest } from "./manifest";
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
   it("declares thirty-four events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(34); // owner 2026-10-11 quick chain: `quick_handed_over`, `quick_sent_back`. 0061: `quick_started`, `quick_reported`. owner 2026-10-11: `booking_made`, `booking_closed`, `booking_hours_changed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
+    expect(LAB_EVENTS).toHaveLength(35); // owner 2026-10-12: `mode_changed`. owner 2026-10-11 quick chain: `quick_handed_over`, `quick_sent_back`. 0061: `quick_started`, `quick_reported`. owner 2026-10-11: `booking_made`, `booking_closed`, `booking_hours_changed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -34,6 +34,8 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.booking_made",
       "lab.critical_acknowledged",
       "lab.label_printed",
+      /** Owner 2026-10-12 — quick or full lab, switched by the lab's administrator (`mode.ts`). */
+      "lab.mode_changed",
       /**
        * DD11's compensating control. Night mode relaxes separation of duties; this is the record
        * that the second pair of hands arrived in the morning, naming BOTH people.

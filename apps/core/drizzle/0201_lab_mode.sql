@@ -1,0 +1,2 @@
+ALTER TABLE "lab_booking_settings" ADD COLUMN "lab_mode" text DEFAULT 'quick' NOT NULL;--> statement-breakpoint
+ALTER TABLE "lab_booking_settings" ADD CONSTRAINT "lab_booking_settings_mode_ck" CHECK ("lab_booking_settings"."lab_mode" in ('quick', 'full'));

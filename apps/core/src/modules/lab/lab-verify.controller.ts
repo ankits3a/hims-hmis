@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { LabModeOnly } from "./mode";
 import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -96,12 +97,14 @@ export class LabVerifyController {
 
   /** DD11's queue: numbers keyed and awaiting a signature, oldest first. */
   @Get("verify/worklist")
+  @LabModeOnly("full")
   @RequirePermission("lab.worklist.read", "hospital")
   async worklist(@CurrentActor() actor: Actor): Promise<unknown> {
     try { return await verifyWorklist(this.db, actor); } catch (e) { toHttp(e); }
   }
 
   @Post("verify/results/:resultId")
+  @LabModeOnly("full")
   @RequirePermission("lab.results.verify", "hospital")
   async sign(
     @CurrentActor() actor: Actor,
@@ -153,6 +156,7 @@ export class LabVerifyController {
   }
 
   @Post("verify/rerun")
+  @LabModeOnly("full")
   @RequirePermission("lab.results.verify", "hospital")
   async rerun(
     @CurrentActor() actor: Actor,
@@ -178,12 +182,14 @@ export class LabVerifyController {
    * leaves the verify queue at the very moment it becomes publishable.
    */
   @Get("reports/publishable")
+  @LabModeOnly("full")
   @RequirePermission("lab.worklist.read", "hospital")
   async publishable(@CurrentActor() actor: Actor): Promise<unknown> {
     try { return await publishableOrders(this.db, actor); } catch (e) { toHttp(e); }
   }
 
   @Post("reports")
+  @LabModeOnly("full")
   @RequirePermission("lab.reports.publish", "hospital")
   async publish(
     @CurrentActor() actor: Actor,

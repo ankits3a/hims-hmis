@@ -1197,12 +1197,19 @@ export const labBookingSettings = pgTable(
     perSlot: integer("per_slot").notNull(),
     daysAhead: integer("days_ahead").notNull(),
     closedWeekdays: jsonb("closed_weekdays").$type<number[]>().notNull(),
+    /**
+     * Owner 2026-10-12 — which lab the hospital runs: `quick` (counter → collect → bench → reports,
+     * unsigned, decision 0068) or `full` (desk → collection → bench → verify → report centre). The
+     * other mode's menus are hidden and its work routes refuse. This single lab settings row holds it.
+     */
+    labMode: text("lab_mode").notNull().default("quick"),
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check("lab_booking_settings_one_ck", sql`${t.id} = 'main'`),
     check("lab_booking_settings_hours_ck", sql`${t.openAt} ~ '^[0-2][0-9]:[0-5][0-9]$' and ${t.closeAt} ~ '^[0-2][0-9]:[0-5][0-9]$' and ${t.openAt} < ${t.closeAt}`),
+    check("lab_booking_settings_mode_ck", sql`${t.labMode} in ('quick', 'full')`),
     check("lab_booking_settings_numbers_ck", sql`${t.slotMinutes} between 5 and 120 and ${t.perSlot} between 1 and 100 and ${t.daysAhead} between 1 and 365`),
   ],
 );

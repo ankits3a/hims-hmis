@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post } from "@nestjs/common";
+import { LabModeOnly } from "./mode";
 import { z } from "zod";
 import { DB, MODULE_REGISTRY } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -93,6 +94,7 @@ export class LabBenchController {
   private decls() { return collectOrderKinds(this.registry); }
 
   @Post("receive")
+  @LabModeOnly("full")
   @RequirePermission("lab.accession.operate", "hospital")
   async accession(
     @CurrentActor() actor: Actor,
@@ -112,6 +114,7 @@ export class LabBenchController {
 
   /** A rejected tube costs the patient NOTHING: a replacement is opened and no invoice is issued. */
   @Post("reject")
+  @LabModeOnly("full")
   @RequirePermission("lab.accession.operate", "hospital")
   async refuse(
     @CurrentActor() actor: Actor,
@@ -130,6 +133,7 @@ export class LabBenchController {
   }
 
   @Post("results")
+  @LabModeOnly("full")
   @RequirePermission("lab.results.enter", "hospital")
   async result(
     @CurrentActor() actor: Actor,
@@ -154,6 +158,7 @@ export class LabBenchController {
    * hands is `verify.ts`, which signs it and cannot sign the row this did not choose.
    */
   @Post("results/choose")
+  @LabModeOnly("full")
   @RequirePermission("lab.results.enter", "hospital")
   async choose(
     @CurrentActor() actor: Actor,
@@ -188,12 +193,14 @@ export class LabBenchController {
   /** The bench worklist: items the department has started and not yet resulted, oldest first. */
   /** PLAN 17c T3 / D7 — the tubes drawn and not yet received, with the patient, for the scan. */
   @Get("arrivals")
+  @LabModeOnly("full")
   @RequirePermission("lab.accession.operate", "hospital")
   async arrivals(@CurrentActor() actor: Actor): Promise<unknown> {
     try { return await benchArrivals(this.db, actor); } catch (e) { toHttp(e); }
   }
 
   @Get("worklist")
+  @LabModeOnly("full")
   @RequirePermission("lab.worklist.read", "hospital")
   async worklist(@CurrentActor() actor: Actor): Promise<unknown> {
     try { return await benchWorklist(this.db, actor); } catch (e) { toHttp(e); }
