@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/roster/`
 
 - **Depends on modules:** —
 - **Used by modules:** `opd`, `ot`, `radiology`
-- **Kernel used:** `alerts`, `auth`, `copilot`, `db`, `events`, `modules`, `printing`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `copilot`, `db`, `desk`, `events`, `modules`, `printing`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
