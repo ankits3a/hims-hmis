@@ -161,6 +161,13 @@ export type DeskProvider = {
    */
   waiting?(ctx: DeskProviderCtx): Promise<WaitingItem[]>;
   /**
+   * E2.2 (decision 0069) — `waiting` checks its OWN authority, row by row, so `GET /me/waiting` asks
+   * it for everybody instead of only for hospital-wide holders of `permission`. For a provider whose
+   * lines are the reader's own rows (my leave) or rows the reader's scoped authority decides (a
+   * department head's leave list). The desk card and the report stay gated as before.
+   */
+  waitingSelfGated?: true;
+  /**
    * PLAN 07c T2 — this provider's contribution to the person's DAILY REPORT, if it has one.
    *
    * It rides the SAME declaration as the card rather than a parallel registry, because a report is

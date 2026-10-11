@@ -250,6 +250,8 @@ export class CopilotController {
     rec.intent = routed.intent;
 
     const tool = this.tools.find((t) => t.intent === routed.intent);
+    /* E2.2 — a private question (a leave) leaves no text in the ledger: its key and intent say enough. */
+    if (tool?.privateQuestion === true) rec.maskedQuestion = null;
     if (tool === undefined) {
       /*
         A ROUTED INTENT WITH NO TOOL BEHIND IT. Real and expected: the phrasebook knows an intent

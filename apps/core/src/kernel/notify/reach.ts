@@ -119,6 +119,8 @@ export const NOTICE_KINDS: ReadonlySet<string> = new Set([
   "attendance_meeting_request", "attendance_request_closed",
   // E1.2 — a person's own reminder: their bell and their phone, at the time they chose. Never relayed.
   "personal_reminder",
+  // E2.2 — a leave waiting, and its answer: told on the bell and the phone, never relayed.
+  "roster_leave_requested", "roster_leave_decided",
 ]);
 
 export function laneOf(kind: string): ReachLane {

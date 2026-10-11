@@ -475,6 +475,7 @@ export function Desk(): React.ReactElement {
       <div className="close">
         <span className="tag">{t("desk.band.close")}</span>
         <Link to="/my-day">{t("desk.myDay")}</Link>
+        <Link to="/roster/leave" data-testid="desk-my-leave">{t("myLeave.title")}</Link>
         {holdsDrawer ? <span className="pill gd">{t("desk.drawer.atClose")}</span> : null}
       </div>
     </div>

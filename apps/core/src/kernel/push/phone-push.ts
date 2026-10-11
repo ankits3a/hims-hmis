@@ -90,7 +90,7 @@ export const PUSH_RESERVED_FOR_ASKS = 4;
 const CLOCK_DRIVEN: readonly PushCategory[] = ["queue", "reminder"];
 
 /** Which screen a tap opens. Closed vocabulary; the app maps a word it knows and goes home on one it does not. */
-export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals", "attendance", "attendanceRequests", "reminders"] as const;
+export const PUSH_LINKS = ["home", "onNow", "myDuties", "consult", "approvals", "attendance", "attendanceRequests", "reminders", "myLeave"] as const;
 export type PushLink = (typeof PUSH_LINKS)[number];
 
 /** R9's cousin: a phone that buzzes all hour gets muted, and then the one that mattered is silent. */
@@ -126,6 +126,9 @@ const BY_ALERT_KIND: Record<string, { category: PushCategory; link: PushLink }> 
   attendance_request_closed: { category: "alert", link: "attendance" },
   // E1.2 — a person's own reminder opens their Reminders screen.
   personal_reminder: { category: "personal", link: "reminders" },
+  // E2.2 — a leave waiting opens the decider's list; the answer opens the person's own. Both on My leave.
+  roster_leave_requested: { category: "roster", link: "myLeave" },
+  roster_leave_decided: { category: "roster", link: "myLeave" },
 };
 export function routeOfAlertKind(kind: string): { category: PushCategory; link: PushLink } {
   return BY_ALERT_KIND[kind] ?? { category: "alert", link: "home" };

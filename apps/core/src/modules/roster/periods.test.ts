@@ -440,6 +440,7 @@ describe("roster — periods, the publication gate and amendments (R2)", () => {
       extendWindows: "the IST date to extend the horizon FROM",
       fairnessOf: "rows in, counts out",
       holdsCredential: "an `at`; a read",
+      homeDepartmentOf: "an `at` (the leave's first day); a read",
       hoursCarried: "a window",
       istDateOfInstant: "an instant, answering which DAY",
       istMidnightUtc: "a date string, answering which INSTANT",
