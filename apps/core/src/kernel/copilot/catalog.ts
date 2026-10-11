@@ -1,5 +1,7 @@
 import { hasPermission } from "../auth/permissions";
+import { toolHalted } from "./halt";
 import { CopilotError } from "./types";
+import type { CopilotHaltScope } from "../db/schema";
 import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "./types";
 import type { ModuleRegistry } from "../modules/loader";
 
@@ -81,7 +83,15 @@ export async function runTool(
   tool: CopilotToolDecl,
   ctx: CopilotToolCtx,
   can: PermissionCheck,
+  /** E0.3 — the halted scopes read for THIS ask (`readCopilotGate`); none by default. */
+  halts: ReadonlySet<CopilotHaltScope> = new Set(),
 ): Promise<CopilotAnswer> {
+  /*
+    E0.3 — THE HALT GOES FIRST, before the permission read: a paused copilot does no work at all for
+    the tool it stopped. Generic on the tool's declared kind (see `halt.ts`).
+  */
+  if (toolHalted(tool, halts)) return { key: "copilot.answer.paused", params: {} };
+
   /*
     BEFORE THE TOOL RUNS, exactly as `loadDesk` gates a card rather than running it and filtering
     after. Run-then-filter would do the work and read the data for an answer the person may not see,

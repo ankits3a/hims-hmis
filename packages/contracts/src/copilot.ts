@@ -37,6 +37,8 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.notUnderstood",
   /** Routed to an intent no module has shipped a tool for yet. Honest rather than a 500. */
   "copilot.answer.noTool",
+  /** E0.3 — the copilot (or this kind of tool) is halted by the owner, IT, the steward or the duty manager. */
+  "copilot.answer.paused",
 
   /* ═══ my_day_report — the owner's "it should do it and give it to the user" ═══ */
   "copilot.answer.dayReport",

@@ -948,6 +948,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // COPILOT LEDGER E0.1 (decision 0064, owner-approved spec 2026-10-10) — the copilot's health
       // page: counts, routes and timings for a day. Aggregate only; it names nobody.
       "copilot.health.read",
+      // COPILOT HALT E0.3 (plan, decision 0064; built overnight 2026-10-11, awaiting owner review) —
+      // the owner throws and clears every halt, and is the ONLY one who may clear a global halt.
+      "copilot.halt.set", "copilot.halt.clear", "copilot.halt.clear_global",
     ],
   },
   {
@@ -1087,7 +1090,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // 20-U U6 (register I22) — and `roster.read`: the who-is-on board is where a ward flags a wrong
   // name on duty ("this is wrong"), and the duty manager is the person that flag is for. A READ: the
   // duty manager still drafts, publishes and approves nothing on a roster.
-  { roleKey: "duty_manager", permissions: ["auth.temp_role.grant", "roster.read"] },
+  //
+  // COPILOT HALT E0.3 (plan: "act scope: owner or duty manager clears — a false 2 a.m. halt must not
+  // block till morning") — the duty manager may halt the copilot and clear a read/act/draft halt, and
+  // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
+  {
+    roleKey: "duty_manager",
+    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+  },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
    *
@@ -1944,13 +1954,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * and the halt drill. No quality role existed, so this one is minted holding the health read and
    * nothing else. NOBODY is assigned to it by any seed — the owner names the steward.
    */
-  { roleKey: "quality_manager", permissions: ["copilot.health.read"] },
+  // COPILOT HALT E0.3 — and throws the halt switch: the steward runs the monthly halt drill (G6d).
+  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.set"] },
   /**
    * COPILOT LEDGER E0.1 (D2) — IT reads the copilot's health too (latency, failures, the cost meter
    * to come). `admin`'s `auth.*` set is `seed:admin`'s to write (GRANTED_BY_OTHER_SEEDS); this row
    * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
    */
-  { roleKey: "admin", permissions: ["copilot.health.read"] },
+  // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set"] },
 ];
 
 /**

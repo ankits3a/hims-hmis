@@ -182,14 +182,15 @@ describe("loadConfig — copilotChoice", () => {
 });
 
 /**
- * 2026-10-07 — OpenAI's Decisions API as a second chooser. The default order is TypeSafe ALONE for
- * both jobs, so an environment that names none of these keys routes exactly as it did before.
+ * 2026-10-07 — OpenAI's Decisions API as a second chooser. Triage's default is TypeSafe alone.
+ * 2026-10-11 (owner: "Use OpenAI decision API for this", E0.4): the copilot's default is OpenAI
+ * Decisions FIRST, TypeSafe when it is unsure — the order the copilot eval set (acceptance/) measures.
  */
 describe("loadConfig — the chooser order", () => {
-  it("defaults to typesafe alone for triage and the copilot, with the Decisions endpoint described but unused", () => {
+  it("defaults to typesafe alone for triage and to OpenAI Decisions first, then typesafe, for the copilot", () => {
     const cfg = loadConfig(base);
     expect(cfg.triageChooserOrder).toEqual(["typesafe"]);
-    expect(cfg.copilotChooserOrder).toEqual(["typesafe"]);
+    expect(cfg.copilotChooserOrder).toEqual(["openai", "typesafe"]);
     expect(cfg.decisions).toEqual({ baseUrl: "https://api.openai.com/v1", model: "gpt-6-luna", timeoutMs: 1500 });
   });
 

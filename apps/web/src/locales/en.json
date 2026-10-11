@@ -10589,6 +10589,24 @@
       "p95": "Slow (p95)",
       "none": "—",
       "failed": "Could not load the copilot's health.",
+      "modelCalls": "AI calls",
+      "spend": "AI spend (estimate)",
+      "capped": "AI spend cap of ₹{{cap}} reached — the copilot answers from its phrasebook only until midnight IST.",
+      "capLine": "Daily cap ₹{{cap}}. Rupees are estimates from token counts.",
+      "halt": {
+        "title": "Halt switch",
+        "halted": "Halted",
+        "running": "Running",
+        "halt": "Halt",
+        "clear": "Resume",
+        "failed": "Could not change the halt switch.",
+        "scope": {
+          "read": "Answers",
+          "act": "Actions",
+          "draft": "Drafts",
+          "global": "Everything"
+        }
+      },
       "outcome": {
         "answered": "Answered",
         "notUnderstood": "Not understood",
@@ -10615,6 +10633,7 @@
       "failed": "I could not get an answer just now. Try the screen for this.",
       "notUnderstood": "I did not understand that. I can tell you whether a patient has been seen, how the queues look, what a patient owes, and I can pull your day report.",
       "noTool": "I understood the question, but nothing here answers it yet.",
+      "paused": "The copilot is paused just now. Use the screen for this.",
       "dayReport": "Your day report for {{date}} — {{sections}} sections, ready below.",
       "dayReportProvisional": "Your day so far on {{date}} — {{sections}} sections, ready below. The day has not closed, so these figures can still change.",
       "dayReportEmpty": "Nothing recorded under your name on {{date}} yet.",
