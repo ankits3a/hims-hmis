@@ -203,6 +203,52 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.rosterCoverNobody",
   "copilot.answer.rosterCoverNoDuty",
   "copilot.answer.rosterCoverNoDutyOn",
+
+  /*
+    ═══ E2.1 — book / move an appointment from chat (spec SPEC-copilot-appt-2026-10-11) ═══
+    The ask answers with a pick (patients and three free times, each a signed proposal); the confirm
+    answers with what was written, read back from the row. `when` is an ISO instant.
+  */
+  "copilot.answer.apptPick",
+  "copilot.answer.apptPickTime",
+  "copilot.answer.apptWhichPatient",
+  "copilot.answer.apptNoPatient",
+  "copilot.answer.apptWhichDoctor",
+  "copilot.answer.apptDoctorUnclear",
+  "copilot.answer.apptNoSlots",
+  "copilot.answer.apptNoSlotsOn",
+  "copilot.answer.apptNoneToMove",
+  "copilot.answer.apptNoMobile",
+  "copilot.answer.apptBooked",
+  "copilot.answer.apptMoved",
+  "copilot.answer.apptSlotTaken",
+  "copilot.answer.apptDoctorOnLeave",
+  "copilot.answer.apptPast",
+  "copilot.answer.apptChanged",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
+
+/**
+ * E2.1 — the pick an appointment ask hands back in `answer.payload`: one row per patient (book) or per
+ * live appointment (move), each with up to three free times. `proposal` indexes the ask response's
+ * `proposals` — the signed proposal that time confirms. `when`/`at`/`from` are ISO instants.
+ */
+export type CopilotApptRow = {
+  patient: { name: string; uhid: string; ageSex: string; phoneLast4: string | null };
+  doctor: string;
+  mode: "in_person" | "tele";
+  /** move: where the appointment is now. */
+  from: string | null;
+  fromDoctor?: string;
+  /** A tele-call and no mobile on record: no times; the booking screen can take a number. */
+  noMobile: boolean;
+  times: { at: string; proposal: number }[];
+};
+export type CopilotApptPick = {
+  kind: "apptPick";
+  action: "book" | "move";
+  /** The patient came from a search (mobile or name): the clerk taps the patient before a time. */
+  pickPatient: boolean;
+  rows: CopilotApptRow[];
+};

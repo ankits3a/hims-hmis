@@ -256,3 +256,64 @@ describe("E1.3 — the keyboard, the header and signing in", () => {
     expect(await screen.findByTestId("redirect")).toHaveTextContent("/");
   });
 });
+
+describe("E2.1 — an appointment from the chat on the phone", () => {
+  // The signed-out test above deletes the stored session; sign back in for these.
+  beforeEach(async () => {
+    await jest.requireMock<{ setItemAsync: (k: string, v: string) => Promise<void> }>("expo-secure-store")
+      .setItemAsync("hmis.session", JSON.stringify({ token: "t1", username: "asha", since: "2026-10-07T03:30:00.000Z" }));
+  });
+  const at = (hhmm: string) => new Date(`2026-08-19T${hhmm}:00+05:30`).toISOString();
+  const PICK = {
+    answer: {
+      key: "copilot.answer.apptPick", params: { count: 2 },
+      payload: {
+        kind: "apptPick", action: "book", pickPatient: true,
+        rows: [
+          { patient: { name: "Ramesh Kumar", uhid: "HMS00110012", ageSex: "40M", phoneLast4: "0011" }, doctor: "Dr Meera Rao", mode: "in_person", from: null, noMobile: false, times: [{ at: at("09:00"), proposal: 0 }] },
+          { patient: { name: "Ramesh Kumar", uhid: "HMS00110020", ageSex: "62M", phoneLast4: "0012" }, doctor: "Dr Meera Rao", mode: "in_person", from: null, noMobile: false, times: [{ at: at("09:00"), proposal: 1 }, { at: at("09:10"), proposal: 2 }] },
+        ],
+      },
+    },
+    proposals: [{ id: "p0" }, { id: "p1" }, { id: "p2" }],
+    source: "phrasebook", intent: "appointment_book", askId: "a7",
+  };
+  const BOOKED = { outcome: "done", answer: { key: "copilot.answer.apptBooked", params: { patient: "Ramesh Kumar", uhid: "HMS00110020", doctor: "Dr Meera Rao", when: at("09:10") } } };
+
+  it("tap the patient, tap a time, see the card, Confirm posts THAT proposal; the answer is the web's sentence", async () => {
+    const s = server({ "GET /copilot/notice": { status: 200, body: { seen: true } }, "POST /copilot/ask": { status: 200, body: PICK }, "POST /copilot/confirm": { status: 200, body: BOOKED } });
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("copilot-input"), "Ramesh Kumar ka appointment Dr Meera Rao parso");
+    await fireEvent.press(screen.getByTestId("copilot-ask"));
+    expect(await screen.findByTestId("copilot-answer-1")).toHaveTextContent("Pick the patient, then a time.");
+    expect(screen.queryByTestId("copilot-appt-time-1-1")).toBeNull();
+    await fireEvent.press(screen.getByTestId("copilot-appt-patient-1-1"));
+    await fireEvent.press(screen.getByTestId("copilot-appt-time-1-2"));
+    expect(s.calls.filter((c) => c.key === "POST /copilot/confirm")).toEqual([]);
+    expect(screen.getByTestId("copilot-appt-confirm-1")).toHaveTextContent(/HMS00110020/);
+    await fireEvent.press(screen.getByTestId("copilot-appt-confirm-go-1"));
+    await waitFor(() => expect(screen.queryByTestId("copilot-appt-pick-1")).toBeNull());
+    expect(s.calls.filter((c) => c.key === "POST /copilot/confirm").map((c) => c.body)).toEqual([{ proposal: { id: "p2" } }]);
+    expect(screen.getByTestId("copilot-answer-1")).toHaveTextContent("Booked: Ramesh Kumar (HMS00110020) with Dr Meera Rao, on Wednesday 19 Aug at 09:10.");
+  });
+
+  it("a refusal at confirm is said in the web's words, and nothing else is offered", async () => {
+    const s = server({
+      "GET /copilot/notice": { status: 200, body: { seen: true } }, "POST /copilot/ask": { status: 200, body: PICK },
+      "POST /copilot/confirm": { status: 200, body: { outcome: "stateChanged", answer: { key: "copilot.answer.apptSlotTaken", params: {} } } },
+    });
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("copilot-input"), "Ramesh Kumar ka appointment");
+    await fireEvent.press(screen.getByTestId("copilot-ask"));
+    await fireEvent.press(await screen.findByTestId("copilot-appt-patient-1-0"));
+    await fireEvent.press(screen.getByTestId("copilot-appt-time-1-0"));
+    await fireEvent.press(screen.getByTestId("copilot-appt-confirm-go-1"));
+    await waitFor(() => expect(screen.getByTestId("copilot-answer-1")).toHaveTextContent(webEn.copilot.answer.apptSlotTaken));
+    expect(screen.queryByTestId("copilot-appt-pick-1")).toBeNull();
+  });
+
+  it("carries the web's copilot.act words, in English and Hindi", () => {
+    expect(en.copilot.act).toEqual(webEn.copilot.act);
+    expect(hi.copilot.act).toEqual(webHi.copilot.act);
+  });
+});
