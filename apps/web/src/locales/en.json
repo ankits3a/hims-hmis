@@ -10863,6 +10863,24 @@
       }
     },
     "answer": {
+      "leavePickDay": "{{kind}} on {{from}}. Check it, then Confirm.",
+      "leavePick": "{{kind}}, {{from}} to {{to}} ({{count}} days). Check it, then Confirm.",
+      "leavePickKindDay": "Leave on {{from}}. Pick the kind, then Confirm.",
+      "leavePickKind": "Leave from {{from}} to {{to}} ({{count}} days). Pick the kind, then Confirm.",
+      "leaveWhichDays": "Which days? Say \"kal\", \"20 Oct\" or \"20 to 22 Oct\".",
+      "leaveInPast": "That day has already begun. Your department enters leave for it.",
+      "leaveOverlaps": "You already have leave on one of those days.",
+      "leaveTooLong": "That is too long or too far ahead for one request. Use My leave.",
+      "leaveKindNotHere": "That kind of leave is entered by your department.",
+      "leaveFiled": "Leave asked: {{kind}}, {{from}} to {{to}}. Your department's head decides it.",
+      "leaveNone": "You have asked no leave in the last two weeks.",
+      "leaveStatusRequested": "Your {{kind}} from {{from}} is waiting for a decision.",
+      "leaveStatusApproved": "Your {{kind}} from {{from}} is approved by {{who}}.",
+      "leaveStatusRefused": "Your {{kind}} from {{from}} was not approved by {{who}}: {{why}}",
+      "leaveStatusCancelled": "Your {{kind}} from {{from}} was taken back.",
+      "coverAsked": "Asked {{name}} to take your duty. Their answer comes to My duties.",
+      "swapAsked": "Asked {{name}} for the swap. Their answer comes to My duties.",
+      "coverRefused": "That person can no longer take this duty. Ask again to see who can.",
       "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
       "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
       "failed": "I could not get an answer just now. Try the screen for this.",
@@ -10926,8 +10944,8 @@
       "rosterMyNone": "You have no duty on a published roster in the next {{days}} days.",
       "rosterMyNoNight": "You have no night on a published roster in the next {{days}} days.",
       "rosterMyNoneOnDay": "You are not on duty on {{day}}.",
-      "rosterCoverDraft": "Your night on {{day}} ({{from}}–{{till}}): {{names}} can take it. Nothing is asked yet — tap Ask to send one request.",
-      "rosterCoverDraftDuty": "Your duty on {{day}} ({{from}}–{{till}}): {{names}} can take it. Nothing is asked yet — tap Ask to send one request.",
+      "rosterCoverDraft": "Your night on {{day}} ({{from}}–{{till}}): {{names}} can take it. Nothing is asked yet — tap one, then Confirm.",
+      "rosterCoverDraftDuty": "Your duty on {{day}} ({{from}}–{{till}}): {{names}} can take it. Nothing is asked yet — tap one, then Confirm.",
       "rosterCoverAlready": "You have already asked someone to take your duty on {{day}} ({{from}}–{{till}}). Their answer will be on My duties.",
       "rosterCoverNobody": "Nobody can take your duty on {{day}} ({{from}}–{{till}}) without breaking a rule — {{n}} people were checked. Your SR can still arrange it.",
       "rosterCoverNoDuty": "You have no duty in the next {{days}} days to hand over.",
@@ -10950,6 +10968,15 @@
       "apptChanged": "That appointment has changed. Nothing done — ask again."
     },
     "act": {
+      "leave": "Ask for this leave?",
+      "cover": "Hand on {{duty}}?",
+      "coverBy": "{{name}} takes it",
+      "swapWith": "Swap with {{name}}: you take {{give}}",
+      "dutyNight": "{{day}} night",
+      "dutyDay": "{{day}} duty",
+      "days_one": "{{from}}",
+      "days_other": "{{from}} – {{to}} · {{count}} days",
+      "dismiss": "Not now",
       "confirm": "Confirm",
       "cancel": "Cancel",
       "tele": "Tele-call",
@@ -14886,6 +14913,12 @@
   },
   "roster": {
     "refusal": {
+      "leave_in_past": "That day has already begun. Leave for a past or running day is entered by your department.",
+      "leave_overlaps": "You already have leave on one of those days. Take it back first or pick other days.",
+      "unknown_absence": "That leave is no longer on record.",
+      "unknown_absence_kind": "That kind of leave is entered by your department.",
+      "absence_already_decided": "Somebody has already decided this leave.",
+      "absence_self_approval": "You cannot decide your own leave.",
       "other": "The roster refused this ({{code}}). Nothing was changed.",
       "network": "The server could not be reached. Nothing was changed.",
       "not_permitted": "You may read this roster, but not change it. The unit's head or the medical superintendent can.",
@@ -15438,6 +15471,10 @@
         "today_other": "reminders still today"
       },
       "roster": {
+        "leaveToDecide_one": "leave to decide",
+        "leaveToDecide_other": "leaves to decide",
+        "leaveRefused_one": "leave not approved",
+        "leaveRefused_other": "leaves not approved",
         "dutiesToday_one": "duty today",
         "dutiesToday_other": "duties today"
       }
@@ -15449,6 +15486,44 @@
       "reminders": {
         "today": "on the phone"
       }
+    }
+  },
+  "myLeave": {
+    "title": "My leave",
+    "toDecide": "To decide",
+    "mine": "My requests",
+    "loading": "Loading…",
+    "none": "No leave asked",
+    "ask": "Ask for leave",
+    "kindLabel": "Kind",
+    "from": "First day",
+    "to": "Last day",
+    "reason": "Reason (optional)",
+    "reasonHint": "Only you and the decider read it",
+    "send": "Send",
+    "sent": "Sent to your head",
+    "cancel": "Take back",
+    "refusedBecause": "Not approved by {{who}}: {{why}}",
+    "theirReason": "Reason: {{why}}",
+    "approve": "Approve",
+    "refuse": "Refuse",
+    "refuseWhy": "Why (they read it)",
+    "refuseSend": "Refuse",
+    "back": "Back",
+    "oneDay": "{{day}}",
+    "span_one": "{{from}}–{{to}} · {{count}} day",
+    "span_other": "{{from}}–{{to}} · {{count}} days",
+    "kind": {
+      "CL": "Casual leave",
+      "EL": "Earned leave",
+      "ML": "Medical leave",
+      "comp_off": "Comp off"
+    },
+    "status": {
+      "requested": "Waiting",
+      "approved": "Approved",
+      "rejected": "Not approved",
+      "cancelled": "Taken back"
     }
   }
 }

@@ -164,7 +164,8 @@ describe("roster — 0108 structure", () => {
   const STAFF_CENSUS: Record<string, string[]> = {
     staff_absences: [
       "aebas_entered_at", "aebas_entered_by", "approved_by", "created_at", "created_by",
-      "decided_at", "ends_at", "id", "kind", "reason", "requested_by", "source", "starts_at",
+      // E2.2 (decision 0069): whose list a leave waits in, and why it was refused.
+      "decided_at", "decision_note", "department_id", "ends_at", "id", "kind", "reason", "requested_by", "source", "starts_at",
       "status", "updated_at", "updated_by", "user_id",
     ],
     staff_credentials: [

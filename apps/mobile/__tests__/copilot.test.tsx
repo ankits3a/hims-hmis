@@ -319,3 +319,41 @@ describe("E2.1 — an appointment from the chat on the phone", () => {
     expect(hi.copilot.act).toEqual(webHi.copilot.act);
   });
 });
+
+describe("E2.2 — leave and a duty cover from the chat on the phone", () => {
+  beforeEach(async () => {
+    await jest.requireMock<{ setItemAsync: (k: string, v: string) => Promise<void> }>("expo-secure-store")
+      .setItemAsync("hmis.session", JSON.stringify({ token: "t1", username: "asha", since: "2026-10-07T03:30:00.000Z" }));
+  });
+  const LEAVE = {
+    answer: {
+      key: "copilot.answer.leavePickKind", params: { from: "2026-11-20", to: "2026-11-22", count: 3 },
+      payload: { kind: "leavePick", from: "2026-11-20", to: "2026-11-22", days: 3, options: [{ leave: "CL", proposal: 0 }, { leave: "EL", proposal: 1 }, { leave: "ML", proposal: 2 }, { leave: "comp_off", proposal: 3 }] },
+    },
+    proposals: [{ id: "c" }, { id: "e" }, { id: "m" }, { id: "o" }],
+    source: "phrasebook", intent: "roster.leave_apply", askId: "a8",
+  };
+  const FILED = { outcome: "done", answer: { key: "copilot.answer.leaveFiled", params: { kind: "EL", from: "2026-11-20", to: "2026-11-22" } } };
+
+  it("pick the kind, see the days, Confirm posts THAT proposal; the answer is the web's sentence with the kind in words", async () => {
+    const s = server({ "GET /copilot/notice": { status: 200, body: { seen: true } }, "POST /copilot/ask": { status: 200, body: LEAVE }, "POST /copilot/confirm": { status: 200, body: FILED } });
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("copilot-input"), "20 se 22 nov chhutti chahiye");
+    await fireEvent.press(screen.getByTestId("copilot-ask"));
+    expect(await screen.findByTestId("copilot-answer-1")).toHaveTextContent(/^Leave from Friday 20 Nov to Sunday 22 Nov \(3 days\)\. Pick the kind, then Confirm\.$/);
+    await fireEvent.press(screen.getByTestId("copilot-act-option-1-1"));
+    expect(s.calls.filter((c) => c.key === "POST /copilot/confirm")).toEqual([]);
+    expect(screen.getByTestId("copilot-act-confirm-1")).toHaveTextContent(/Earned leave/);
+    await fireEvent.press(screen.getByTestId("copilot-act-confirm-go-1"));
+    await waitFor(() => expect(screen.queryByTestId("copilot-act-pick-1")).toBeNull());
+    expect(s.calls.filter((c) => c.key === "POST /copilot/confirm").map((c) => c.body)).toEqual([{ proposal: { id: "e" } }]);
+    expect(screen.getByTestId("copilot-answer-1")).toHaveTextContent(/^Leave asked: Earned leave,/);
+  });
+
+  it("carries the web's leave and cover card words, in English and Hindi", () => {
+    for (const k of ["leave", "cover", "coverBy", "swapWith", "dutyNight", "dutyDay", "days_one", "days_other", "dismiss"]) {
+      expect((en.copilot.act as Record<string, string>)[k]).toBe((webEn.copilot.act as Record<string, string>)[k]);
+      expect((hi.copilot.act as Record<string, string>)[k]).toBe((webHi.copilot.act as Record<string, string>)[k]);
+    }
+  });
+});

@@ -61,7 +61,12 @@ export {
   credentialsOf, expiringCredentials, holdsCredential, recordCredential, verifyCredential,
 } from "./credentials";
 export type { RecordCredentialInput, StaffCredentialRow } from "./credentials";
-export { rosterAbsenceApproved, rosterAbsenceRequested } from "./events";
+export { rosterAbsenceApproved, rosterAbsenceRefused, rosterAbsenceRequested } from "./events";
+export {
+  LEAVE_REASON_MAX, MAX_LEAVE_DAYS, SELF_LEAVE_KINDS, cancelOwnLeave, checkLeave, decideLeave, fileOwnLeave,
+  homeDepartmentOf, leaveDeciders, leaveForAlert, leaveToDecide, myLeave,
+} from "./leave";
+export type { FileLeaveInput, LeaveForAlert, LeaveStatus, LeaveToDecideView, MyLeaveView, SelfLeaveKind } from "./leave";
 export {
   LOOK_BACK_DAYS, ROSTER_RESOLVER_FLAG, calloutList, dutiesOf, onDutyNow, resolverEnabled,
   whoIsAt, whoIsOn,

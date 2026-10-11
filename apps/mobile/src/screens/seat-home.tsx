@@ -301,6 +301,12 @@ export function SeatHome() {
         <AttendanceCard t={t} home={attendance} onOpen={() => router.push("/attendance")}
           onConfirm={(date) => router.push({ pathname: "/attendance", params: { confirm: date } })} />
         {/* PHONE SETTINGS (owner 2026-10-11) — Reminders open from Settings; their notifications and the Waiting line stay. */}
+        {/* E2.2 — My leave: every person has it, so it is a line on every home, not a seat. */}
+        <Pressable testID="home-my-leave" accessibilityRole="button" onPress={() => router.push("/my-leave")}
+          style={{ minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: space.sm }}>
+          <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: "600", color: color.green }}>{t("myLeave.title")}</Text>
+          <Text style={{ fontSize: 14, color: color.faint }}>›</Text>
+        </Pressable>
         {!online && <View style={{ marginTop: space.sm }}><Note tone="warn" testID="home-offline">{t(home === null && cold === null ? "home.offline.nothing" : "home.offline.banner")}</Note></View>}
         {/* Cold and offline: the last numbers this phone drew, counts only, and nothing to tap. */}
         {model === null && cold !== null && !online && (

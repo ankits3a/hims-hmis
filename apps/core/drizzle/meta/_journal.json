@@ -1405,8 +1405,15 @@
     {
       "idx": 200,
       "version": "7",
-      "when": 1791749535033,
-      "tag": "0200_copilot_user_settings",
+      "when": 1791746811383,
+      "tag": "0200_staff_leave_department_note",
+      "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1791751833217,
+      "tag": "0201_copilot_user_settings",
       "breakpoints": true
     }
   ]

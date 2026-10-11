@@ -1,5 +1,5 @@
 {
-  "id": "3e7c30c4-e89e-4ea0-ad47-c91b578827d7",
+  "id": "19ce3408-4b32-4808-b40e-b73a20375b07",
   "prevId": "d66a69cb-2296-4389-81ff-d92f4241ea38",
   "version": "7",
   "dialect": "postgresql",
@@ -49617,6 +49617,18 @@
           "notNull": true,
           "default": "'manual'"
         },
+        "department_id": {
+          "name": "department_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision_note": {
+          "name": "decision_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -49656,6 +49668,27 @@
             },
             {
               "expression": "starts_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "staff_absences_department_status_idx": {
+          "name": "staff_absences_department_status_idx",
+          "columns": [
+            {
+              "expression": "department_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -49740,12 +49773,29 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "staff_absences_department_id_org_departments_id_fk": {
+          "name": "staff_absences_department_id_org_departments_id_fk",
+          "tableFrom": "staff_absences",
+          "tableTo": "org_departments",
+          "columnsFrom": [
+            "department_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "staff_absences_decision_note_ck": {
+          "name": "staff_absences_decision_note_ck",
+          "value": "\"staff_absences\".\"decision_note\" is null or length(\"staff_absences\".\"decision_note\") between 1 and 280"
+        },
         "staff_absences_kind_ck": {
           "name": "staff_absences_kind_ck",
           "value": "\"staff_absences\".\"kind\" in ('CL', 'EL', 'ML', 'maternity', 'paternity', 'comp_off', 'night_off', 'duty_off', 'deputation', 'academic', 'study', 'abstaining', 'unauthorised')"
@@ -53820,39 +53870,6 @@
           ]
         }
       },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.copilot_user_settings": {
-      "name": "copilot_user_settings",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "phone_enabled": {
-          "name": "phone_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

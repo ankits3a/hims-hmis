@@ -143,6 +143,12 @@ export type CopilotToolDecl = {
    * forgot to say `act` would slip a halt, so E0.2's confirm path must refuse a tool without it.
    */
   kind?: "read" | "draft" | "act";
+  /**
+   * E2.2 (decision 0069) — the ledger keeps NO question text for this tool. For a question whose words
+   * beside the routed ones may be private — "kal CL chahiye, papa ICU mein hain" — the intent and the
+   * answer's key are kept and the masked question is dropped.
+   */
+  privateQuestion?: true;
   run(ctx: CopilotToolCtx): Promise<CopilotAnswer>;
   /**
    * E0.2 — the WRITE, run only by `POST /copilot/confirm` after one human tap. Present exactly when

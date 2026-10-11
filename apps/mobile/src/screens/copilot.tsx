@@ -8,8 +8,8 @@ import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
 import { Band, Button, KeyboardScrollView, s as ui } from "../ui";
 import { ApptPick } from "../copilot/appt-pick";
-import { PHONE_SCREEN, answerText, chipsFor, isApptPick, type AskReply, type AskSource, type ConfirmReply, type CopilotProposal } from "../copilot/model";
-import type { CopilotApptPick } from "../../../../packages/contracts/src/copilot";
+import { ActPick } from "../copilot/act-pick";
+import { PHONE_SCREEN, answerText, chipsFor, isActPick, type AskReply, type AskSource, type ConfirmReply, type CopilotActPick, type CopilotProposal } from "../copilot/model";
 
 /**
  * E1.3 — "COPILOT" (decision 0064; spec /opt/hmis-context/SPEC-copilot-phone-2026-10-11.md). Three
@@ -23,7 +23,7 @@ import type { CopilotApptPick } from "../../../../packages/contracts/src/copilot
 type Turn = {
   n: number; question: string; text: string | null; askId: string | null; report: boolean; wrong: "no" | "sending" | "yes";
   /** E2.1 — an appointment to pick and confirm; gone once confirmed or dismissed. */
-  pick: { pick: CopilotApptPick; proposals: CopilotProposal[] } | null;
+  pick: { pick: CopilotActPick; proposals: CopilotProposal[] } | null;
 };
 
 export function CopilotScreen() {
@@ -65,7 +65,7 @@ export function CopilotScreen() {
         // "Wrong" is for an answer; "I did not understand" is already counted as notUnderstood (G3a).
         askId: reply.source === "none" ? null : reply.askId ?? null,
         report: reply.intent === "my_day_report" && reply.answer.payload !== undefined,
-        pick: isApptPick(reply.answer.payload) && reply.proposals !== undefined ? { pick: reply.answer.payload, proposals: reply.proposals } : null,
+        pick: isActPick(reply.answer.payload) && reply.proposals !== undefined ? { pick: reply.answer.payload, proposals: reply.proposals } : null,
       });
     } catch (e) {
       patch(n, { text: t(e instanceof NetworkError ? "copilotPhone.offline" : "copilot.answer.notUnderstood") });
@@ -137,8 +137,13 @@ export function CopilotScreen() {
             {turn.text === null
               ? <Text style={[type.body, { color: color.dim }]}>…</Text>
               : <Text testID={`copilot-answer-${String(turn.n)}`} style={[type.body, { color: color.ink }]}>{turn.text}</Text>}
-            {turn.pick !== null && (
+            {turn.pick !== null && turn.pick.pick.kind === "apptPick" && (
               <ApptPick n={turn.n} pick={turn.pick.pick} proposals={turn.pick.proposals} busy={busy}
+                onConfirm={(p) => { void confirm(turn, p); }} onDismiss={() => { patch(turn.n, { pick: null }); }} />
+            )}
+            {/* E2.2 — a leave, or a duty to hand on: pick one, see it, Confirm. */}
+            {turn.pick !== null && turn.pick.pick.kind !== "apptPick" && (
+              <ActPick n={turn.n} pick={turn.pick.pick} proposals={turn.pick.proposals} busy={busy}
                 onConfirm={(p) => { void confirm(turn, p); }} onDismiss={() => { patch(turn.n, { pick: null }); }} />
             )}
             {turn.report && <Text testID={`copilot-report-${String(turn.n)}`} numberOfLines={1} style={[type.small, { color: color.dim }]}>{t("copilotPhone.report")}</Text>}

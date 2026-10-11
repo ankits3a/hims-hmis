@@ -46,6 +46,7 @@ export function AlertsScreen() {
     /* STAFF ATTENDANCE — "Meeting request" opens the requests list; "Request closed" opens the day it was about. */
     if (a.kind === "attendance_meeting_request") { if (state.me.permissions.hospital.includes(ALL_READ)) router.push({ pathname: "/attendance-staff", params: { tab: "requests" } }); return; }
     if (a.kind === "personal_reminder") { router.push("/reminders"); return; }
+    if (a.kind === "roster_leave_requested" || a.kind === "roster_leave_decided") { router.push("/my-leave"); return; }
     if (a.kind === "attendance_request_closed") { router.push({ pathname: "/attendance", params: a.refId != null && a.refId !== "" ? { request: a.refId } : {} }); return; }
     const seat = SEAT_OF[a.kind];
     if (seat !== undefined && mine.includes(seat)) router.push({ pathname: "/seat/[key]", params: { key: seat } });
