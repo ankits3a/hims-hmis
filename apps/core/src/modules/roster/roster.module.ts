@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import type { OnModuleInit } from "@nestjs/common";
 import { RosterBoardController } from "./roster-board.controller";
+import { LeaveController } from "./leave.controller";
 import { registerRosterEvidencePrinting } from "./evidence-print";
 import { registerRosterPrinting } from "./board-print";
 
@@ -14,7 +15,7 @@ import { registerRosterPrinting } from "./board-print";
  * 20-U infra (owner 2026-10-04) — the board's own paper (`roster_board`): its renderer is registered
  * here, so the print relay's claim (an API route) can draw the stored sheet. The pharmacy precedent.
  */
-@Module({ controllers: [RosterBoardController] })
+@Module({ controllers: [RosterBoardController, LeaveController] })
 export class RosterModule implements OnModuleInit {
   /** 20-U infra — the board's paper; 20-U U8 — the duty-evidence sheet. Both renderers join the
    *  kernel's print dispatcher. */

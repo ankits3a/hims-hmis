@@ -435,6 +435,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           // MOBILE §3i (owner 2026-10-07): NINTH to TWELFTH — a person's own duties reach their own
           // bell (a cover asked / answered / decided, a duty published or moved). Read off the red run.
           "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
+          // E2.2 (decision 0069): a leave waiting reaches its deciders; the answer reaches the person.
+          "roster.absence_requested", "roster.absence_approved", "roster.absence_refused",
         ].sort()],
         [
           "kernel.notify",

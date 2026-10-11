@@ -55,6 +55,8 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     "roster.absence_approved": {
       absenceId: ID, userId: ID, kind: "CL", startsAt: WHEN, endsAt: WHEN, decidedAt: WHEN,
     },
+    // E2.2. NOTE WHAT IS ABSENT: the decider's reason for refusing — on the row only.
+    "roster.absence_refused": { absenceId: ID, userId: ID, decidedAt: WHEN },
     // R8. NOTE WHAT IS ABSENT, for the same reason as the absence events above: the acceptance
     // REASON. This event says a named human overrode a gate — doc 10 §3.9 asks for exactly that —
     // and whoever needs to know WHY reads `roster_findings`, under the hospital's access rules.
@@ -150,6 +152,6 @@ describe("roster — event payloads carry ids, codes and instants only (V9)", ()
     for (const event of ROSTER_EVENTS) {
       expect(`${event.name}: ${event.module}/${event.version}`).toBe(`${event.name}: roster/1`);
     }
-    expect(ROSTER_EVENTS).toHaveLength(15); // 8 + 20-U U6 (+4: cover requested / answered / decided, flag raised) + 20-U I1/I5 (+3: holiday declared, mode declared / withdrawn)
+    expect(ROSTER_EVENTS).toHaveLength(16); // E2.2 (+1: absence refused) + 8 + 20-U U6 (+4: cover requested / answered / decided, flag raised) + 20-U I1/I5 (+3: holiday declared, mode declared / withdrawn)
   });
 });

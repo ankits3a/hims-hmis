@@ -225,6 +225,30 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.apptDoctorOnLeave",
   "copilot.answer.apptPast",
   "copilot.answer.apptChanged",
+
+  /*
+    ═══ E2.2 — leave, and a duty cover or swap, from chat (spec SPEC-copilot-leave-swap-2026-10-11) ═══
+    `from` / `to` are IST days; `kind` is CL | EL | ML | comp_off and the clients say it in words. A
+    refusal's `why` is the decider's own text, read back to its person only — never stored by the copilot.
+  */
+  "copilot.answer.leavePick",
+  "copilot.answer.leavePickDay",
+  "copilot.answer.leavePickKind",
+  "copilot.answer.leavePickKindDay",
+  "copilot.answer.leaveWhichDays",
+  "copilot.answer.leaveInPast",
+  "copilot.answer.leaveOverlaps",
+  "copilot.answer.leaveTooLong",
+  "copilot.answer.leaveKindNotHere",
+  "copilot.answer.leaveFiled",
+  "copilot.answer.leaveNone",
+  "copilot.answer.leaveStatusRequested",
+  "copilot.answer.leaveStatusApproved",
+  "copilot.answer.leaveStatusRefused",
+  "copilot.answer.leaveStatusCancelled",
+  "copilot.answer.coverAsked",
+  "copilot.answer.swapAsked",
+  "copilot.answer.coverRefused",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
@@ -245,6 +269,31 @@ export type CopilotApptRow = {
   noMobile: boolean;
   times: { at: string; proposal: number }[];
 };
+/**
+ * E2.2 — a leave to confirm: the days, and one option per kind (one when the kind was said). `proposal`
+ * indexes the ask response's `proposals`. No reason is carried: the chat never takes one.
+ */
+export type CopilotLeavePick = {
+  kind: "leavePick";
+  from: string;
+  to: string;
+  days: number;
+  options: { leave: "CL" | "EL" | "ML" | "comp_off"; proposal: number }[];
+};
+
+/**
+ * E2.2 — a duty to hand on: the asker's duty, and per person who can take it a cover (`give` null) and
+ * the swaps they could give back (one of THEIR duties of the same post). Instants are ISO.
+ */
+export type CopilotCoverDuty = { istDate: string; night: boolean; startsAt: string; endsAt: string };
+export type CopilotCoverPick = {
+  kind: "coverPick";
+  duty: CopilotCoverDuty & { post: string };
+  options: { name: string; grade: string; teamName: string; crossUnit: boolean; give: CopilotCoverDuty | null; proposal: number }[];
+  /** People who could take it but are not offered here (more than the card holds). */
+  more: number;
+};
+
 export type CopilotApptPick = {
   kind: "apptPick";
   action: "book" | "move";

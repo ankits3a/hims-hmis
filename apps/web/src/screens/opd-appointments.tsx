@@ -10,7 +10,7 @@ import { listDepartments, listDoctors, listPatientAppointments, listRooms, opdEr
 import { upcomingOf } from "../lib/appointment-view";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
-import { useCopilot } from "../lib/use-copilot";
+import { isApptPick, useCopilot } from "../lib/use-copilot";
 import { CopilotApptPicker } from "../components/copilot-appt-pick";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
@@ -881,7 +881,7 @@ export function OpdAppointments(): React.ReactElement {
         idle={t("opdAppt.agentIdle")}
         panel={copilot.report !== null ? (
           <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
-        ) : copilot.pick !== null ? (
+        ) : copilot.pick !== null && isApptPick(copilot.pick.pick) ? (
           <CopilotApptPicker
             pick={copilot.pick.pick} proposals={copilot.pick.proposals} busy={copilot.busy}
             onConfirm={(p) => { void copilot.confirm(p); }} onDismiss={copilot.clearPick}

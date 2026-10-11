@@ -3,6 +3,9 @@ import { confirmSeededUnits } from "../../../test/helpers/units";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
 import { permissionCheckFor, runTool } from "../../kernel/copilot/catalog";
+import { confirmProposal, issueProposal } from "../../kernel/copilot/act";
+import { hasPermission } from "../../kernel/auth/permissions";
+import { events, staffAbsences } from "../../kernel/db/schema";
 import { matchIntent } from "../../kernel/copilot/phrasebook";
 import {
   orgDepartments, permissions, roleAssignments, rolePermissions, roles, rosterCoverRequests,
@@ -168,18 +171,62 @@ describe("roster — the copilot's tools (20-U U9)", () => {
     expect(await ask("roster.my_duties", "Saturday ko meri duty hai?")).toEqual({ key: "copilot.answer.rosterMyNoneOnDay", params: { day: "2026-11-14" } });
   });
 
-  it("roster.ask_cover returns a DRAFT of who can take my Tuesday night — and never asks anybody itself", async () => {
+  it("roster.ask_cover offers who can take my Tuesday night, each a proposal to confirm — and asks nobody itself (decision 0069)", async () => {
     const a = await ask("roster.ask_cover", "Tuesday night koi le sakta hai kya?");
     expect(a.key).toBe("copilot.answer.rosterCoverDraft");
-    expect(a.payload).toMatchObject({ kind: "roster_cover_draft", assignmentId: meenaNight, post: "Ward junior resident", night: true });
-    const draft = a.payload as { canTake: { userId: string; name: string }[] };
-    expect(draft.canTake.length).toBeGreaterThan(0);
-    expect(draft.canTake.map((c) => c.userId)).not.toContain(MEENA);
+    expect(a.payload).toMatchObject({ kind: "coverPick", duty: { istDate: "2026-11-10", night: true, post: "Ward junior resident" } });
+    const pick = a.payload as { options: { name: string; give: unknown; proposal: number }[] };
+    expect(pick.options.length).toBeGreaterThan(0);
+    expect(pick.options.map((o) => o.name)).not.toContain("Dr. Meena Joshi");
+    // Every option is one signed proposal for the same duty, and none is for the asker.
+    expect(a.proposeMany).toHaveLength(pick.options.length);
+    expect(pick.options.map((o) => o.proposal)).toEqual(pick.options.map((_, i) => i));
+    for (const m of a.proposeMany ?? []) expect(m.args).toMatchObject({ assignmentId: meenaNight });
+    expect((a.proposeMany ?? []).map((m) => (m.args as { counterpartId: string }).counterpartId)).not.toContain(MEENA);
     expect(a.params).toMatchObject({ day: "2026-11-10", from: "20:00", till: "08:00" });
-    // Nothing was written: the request is the person's tap on the draft, through POST /roster/covers.
+    // Nothing was written: the request is the person's Confirm (POST /copilot/confirm).
     expect(await db.select().from(rosterCoverRequests)).toHaveLength(0);
     // …and the matrix still closes the act itself to the copilot.
     expect(() => rosterActPolicy(meena, "request_cover", "copilot")).toThrow(RosterError);
+  });
+
+  /*
+    E2.2 done-means 5 (spec SPEC-copilot-leave-swap-2026-10-11, decision 0069): a cover confirmed from the
+    chat is the request My duties' "Ask" makes — `requestCover`, as the person — and a rule that breaks
+    between the ask and the confirm refuses it in a sentence, writing nothing.
+  */
+  const KEY = Buffer.alloc(32, 7);
+  const confirmAs = (actor: Actor, p: NonNullable<ReturnType<typeof issueProposal>>) => confirmProposal({
+    db, key: KEY, tools: tools(), halts: new Set(), now: new Date(),
+    can: (permission) => hasPermission(db, actor.id, permission, "hospital"),
+  }, actor, p);
+  const proposalFor = (a: CopilotAnswer, pick: (o: { name: string; give: unknown }) => boolean) => {
+    const tool = tools().find((t) => t.intent === "roster.ask_cover")!;
+    const o = (a.payload as { options: { name: string; give: unknown; proposal: number }[] }).options.find(pick)!;
+    return issueProposal(KEY, tool, meena, { args: a.proposeMany![o.proposal]!.args }, null, new Date())!;
+  };
+
+  it("E2.2: a cover confirmed from the chat is the request My duties makes, by the person", async () => {
+    const a = await ask("roster.ask_cover", "Tuesday night Rohit le lega?");
+    const opts = (a.payload as { options: { name: string }[] }).options;
+    expect(new Set(opts.map((o) => o.name))).toEqual(new Set(["Dr. Rohit Bansal"])); // the name narrows the card
+    const done = await confirmAs(meena, proposalFor(a, (o) => o.give === null));
+    expect(done).toMatchObject({ outcome: "done", answer: { key: "copilot.answer.coverAsked", params: { name: "Dr. Rohit Bansal" } } });
+    const [r] = await db.select().from(rosterCoverRequests);
+    expect(r).toMatchObject({ kind: "cover", status: "asked", assignmentId: meenaNight, ownerId: MEENA, requestedBy: MEENA, counterpartId: ROHIT, counterpartAssignmentId: null, note: null });
+    expect((await db.select().from(events)).filter((e) => e.name === "roster.cover_requested")).toHaveLength(1);
+  });
+
+  it("E2.2: a rule that breaks between the ask and the confirm refuses it, and nothing is asked", async () => {
+    const a = await ask("roster.ask_cover", "Tuesday night Rohit le lega?");
+    const p = proposalFor(a, (o) => o.give === null);
+    // Rohit's leave is approved for that night after the card was drawn.
+    await db.insert(staffAbsences).values({
+      id: newId(), userId: ROHIT, kind: "CL", startsAt: ist("2026-11-10T00:00"), endsAt: ist("2026-11-12T00:00"), status: "approved",
+      requestedBy: ROHIT, approvedBy: MS, decidedAt: new Date(), createdBy: ROHIT, updatedBy: MS,
+    });
+    expect(await confirmAs(meena, p)).toEqual({ outcome: "stateChanged", answer: { key: "copilot.answer.coverRefused", params: {} } });
+    expect(await db.select().from(rosterCoverRequests)).toHaveLength(0);
   });
 
   it("roster.ask_cover says so when there is no duty of mine on the day named", async () => {
@@ -197,9 +244,11 @@ describe("roster — the copilot's tools (20-U U9)", () => {
     expect(await db.select().from(rosterCoverRequests)).toHaveLength(0);
   });
 
-  it("the manifest declares the four tools, each on roster.read, and the phrasebook routes the plan's sentences to them", () => {
+  it("the manifest declares the four board tools on roster.read and the two leave tools on no permission, and the phrasebook routes the plan's sentences to them", () => {
     expect((rosterManifest.copilotTools ?? []).map((t) => [t.intent, t.permission])).toEqual([
       ["roster.who_is_on", ROSTER_READ], ["roster.unit_on_take", ROSTER_READ], ["roster.my_duties", ROSTER_READ], ["roster.ask_cover", ROSTER_READ],
+      // E2.2 — a person's OWN leave: self-scoped, so authenticated-only (decision 0069).
+      ["roster.leave_apply", null], ["roster.leave_status", null],
     ]);
     expect(matchIntent("ortho mein abhi on call kaun hai?")?.intent).toBe("roster.who_is_on");
     expect(matchIntent("kal raat surgery ka unit kaun sa hai?")?.intent).toBe("roster.unit_on_take");

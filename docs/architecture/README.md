@@ -118,7 +118,7 @@ flowchart LR
 | [pcpndt](modules/pcpndt.md) | — | radiology | 10 | 5 |
 | [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 183 | 32 |
 | [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm | 113 | 22 |
-| [roster](modules/roster.md) | — | opd, ot, radiology | 32 | 26 |
+| [roster](modules/roster.md) | — | opd, ot, radiology | 37 | 26 |
 | [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 18 | 7 |
 
 ## Kernel subsystems

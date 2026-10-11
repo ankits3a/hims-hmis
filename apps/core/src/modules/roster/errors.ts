@@ -66,6 +66,9 @@ export const ROSTER_ERROR_CODES = [
   "unknown_absence_kind",
   "absence_already_decided",
   "absence_self_approval",
+  /* E2.2 — a person's own leave */
+  "leave_in_past",
+  "leave_overlaps",
   "unknown_credential",
 
   /* ── PHASE R (R6) — where an escalation goes ── */
@@ -154,6 +157,8 @@ export const ROSTER_ERROR_SENTENCES: Record<RosterErrorCode, string> = {
   unknown_absence_kind: "that is not a kind of absence this hospital records",
   absence_already_decided: "somebody has already decided this one — it cannot be decided twice",
   absence_self_approval: "the person who asks for leave is not the person who allows it; ask whoever answers for the department",
+  leave_in_past: "that day has already begun — leave for a past or running day is entered by your department",
+  leave_overlaps: "you already have leave asked or approved on one of those days — cancel it first or pick other days",
   unknown_credential: "there is no such registration or certificate on record",
 
   unknown_escalation_kind: "that is not a kind of alert the roster can be asked to route",
@@ -249,6 +254,8 @@ const STATUS: Record<RosterErrorCode, number> = {
   unknown_absence_kind: 422,
   absence_already_decided: 409,
   absence_self_approval: 409,
+  leave_in_past: 422,
+  leave_overlaps: 409,
   unknown_cover_request: 404,
   /** 422, as `blocked_by_findings`: well-formed, and the hospital will not stand behind it. */
   cover_breaks_rule: 422,

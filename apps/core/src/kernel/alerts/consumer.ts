@@ -13,6 +13,7 @@ import { imagingCriticalOverdue, imagingReportUnread } from "../../modules/radio
 import { usersHoldingRole } from "../workflow/roles";
 import {
   ROSTER_DUTY_REF_TYPE, amendmentIsOfCover, coverForAlert, dutyManagersAt, dutyWindowsForAlert, escalationRecipients, flagForAlert,
+  leaveDeciders, leaveForAlert, rosterAbsenceApproved, rosterAbsenceRefused, rosterAbsenceRequested,
   rosterCoverAnswered, rosterCoverDecided, rosterCoverRequested, rosterDutyChanged, rosterFlagRaised,
 } from "../../modules/roster";
 import { alertRaised } from "./events";
@@ -166,6 +167,14 @@ export function alertsConsumer(db: Db): Handler {
     }
     if (e.name === rosterDutyChanged.name) {
       await handleRosterDutyChanged(db, e);
+      return;
+    }
+    if (e.name === rosterAbsenceRequested.name) {
+      await handleLeaveRequested(db, e);
+      return;
+    }
+    if (e.name === rosterAbsenceApproved.name || e.name === rosterAbsenceRefused.name) {
+      await handleLeaveDecided(db, e);
       return;
     }
     await handleEscalationTriggered(db, e);
@@ -662,5 +671,42 @@ async function handleRosterDutyChanged(db: Db, e: DispatchedEvent): Promise<void
     title: "Your duties changed",
     body: `${parts.join(" ")} Open My duties.`,
     refType: ROSTER_DUTY_REF_TYPE, refId: p.amendmentId,
+  });
+}
+
+/* ═══ E2.2 (owner 2026-10-11) — A LEAVE WAITING, AND THE ANSWER TO IT ═══
+ *
+ * The deciders hear that a leave is waiting (a name and a number of days — never the reason); the
+ * person hears approved or NOT approved, and nothing more: the decider's reason is read on My leave,
+ * in Waiting for me, or from the copilot (owner: never in a notice, which is also a lock screen). A
+ * leave filed by somebody else on the person's behalf (a manager's entry) tells nobody it is waiting
+ * — its filer holds the book. Manager-entered and OPD rows have no department and are not `manual`.
+ */
+export const ALERT_KIND_LEAVE_REQUESTED = "roster_leave_requested";
+export const ALERT_KIND_LEAVE_DECIDED = "roster_leave_decided";
+const LEAVE_REF_TYPE = "staff_absence";
+
+async function handleLeaveRequested(db: Db, e: DispatchedEvent): Promise<void> {
+  const p = rosterAbsenceRequested.payloadSchema.parse(e.payload);
+  const l = await leaveForAlert(db, p.absenceId);
+  if (l === null || !l.ownFiling) return;
+  const recipients = await leaveDeciders(db, l.departmentId, l.userId);
+  await raiseAlerts(db, e, recipients, {
+    kind: ALERT_KIND_LEAVE_REQUESTED, title: `Leave request · ${l.name}`,
+    body: `${l.kindLabel}, ${l.days} ${l.days === 1 ? "day" : "days"} from ${l.fromLabel}. Open Leave to approve or refuse.`,
+    refType: LEAVE_REF_TYPE, refId: p.absenceId,
+  });
+}
+
+async function handleLeaveDecided(db: Db, e: DispatchedEvent): Promise<void> {
+  const approved = e.name === rosterAbsenceApproved.name;
+  const p = (approved ? rosterAbsenceApproved : rosterAbsenceRefused).payloadSchema.parse(e.payload);
+  const l = await leaveForAlert(db, p.absenceId);
+  if (l === null || !l.ownFiling) return;
+  await raiseAlerts(db, e, [l.userId], {
+    kind: ALERT_KIND_LEAVE_DECIDED,
+    title: approved ? "Your leave is approved" : "Your leave was not approved",
+    body: approved ? `${l.kindLabel} from ${l.fromLabel}. My leave shows it.` : "Open My leave to see why.",
+    refType: LEAVE_REF_TYPE, refId: p.absenceId,
   });
 }

@@ -7,6 +7,9 @@ import { coverOptions, myDutyRows, positionLabels, rosterTeamNames, toDutyRef } 
 import { ROSTER_READ } from "./policy";
 import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "../../kernel/copilot/types";
 import type { DutyRef } from "./swaps";
+import { coverAct } from "./copilot-acts";
+import type { CoverArgs } from "./copilot-acts";
+import type { CopilotCoverDuty, CopilotCoverPick } from "@hmis/contracts";
 
 /**
  * ═══ 20-U U9 — THE ROSTER'S FOUR QUESTIONS, ANSWERED BY LOOKUP ═══
@@ -23,12 +26,13 @@ import type { DutyRef } from "./swaps";
  * OPD admin, duty manager) — and asks the act matrix as the COPILOT (`via: "copilot"`), so a cell the
  * matrix closes to the copilot stays closed whatever the person holds.
  *
- * ═══ `roster.ask_cover` DRAFTS AND NEVER ASKS ═══
+ * ═══ `roster.ask_cover` PROPOSES; THE PERSON'S CONFIRM ASKS (E2.2, decision 0069) ═══
  *
- * `request_cover` is `never` for the copilot (policy.ts), and this file keeps it so by construction:
- * it imports no writer. The answer's `payload` is a DRAFT — the duty and the people who can take it —
- * and the person sends the request with their own tap, through `POST /roster/covers`, exactly as from
- * My duties. Nothing is asked of anybody until a human presses a button.
+ * `request_cover` stays `never` for the copilot ITSELF (policy.ts): the ask writes nothing. Its answer
+ * is a card — the duty, each person who can take it, and each swap they could give back — every option
+ * a signed proposal (E0.2). The person taps one and Confirm; `coverAct` (`copilot-acts.ts`) then calls
+ * `requestCover`, the same function My duties' "Ask" calls, as the person, after reading "who can take
+ * it" again. Nothing is asked of anybody until a human presses Confirm.
  */
 
 /** How far ahead "my next duty" and "can anyone take it" look. A published month and a bit. */
@@ -36,6 +40,8 @@ export const DUTY_LOOKAHEAD_DAYS = 28;
 const DAY_MS = 86_400_000;
 const MAX_NAMED = 3;
 const MAX_DRAFTED = 5;
+/** Swaps offered per person beside the cover: 5 people × (1 + 2) = 15 = `MAX_PROPOSALS`. */
+const SWAPS_PER_PERSON = 2;
 
 /* ═══════════════════════════════ reading the question ═══════════════════════════════ */
 
@@ -287,6 +293,8 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
       intent: "roster.ask_cover",
       permission: ROSTER_READ,
       needsSubject: false,
+      /* E2.2 — the person's Confirm sends it (`coverAct`, `requestCover` as the person, decision 0069). */
+      kind: "act",
       async run(ctx): Promise<CopilotAnswer> {
         await asCopilot(ctx);
         const now = nowOf();
@@ -301,22 +309,41 @@ export function rosterCopilotTools(opts: RosterToolOptions = {}): readonly Copil
         const params = dutyWhen(duty);
         if (options.openRequestId !== null) return { key: "copilot.answer.rosterCoverAlready", params };
         if (options.canTake.length === 0) return { key: "copilot.answer.rosterCoverNobody", params: { ...params, n: options.cannot.length } };
-        const payload = {
-          kind: "roster_cover_draft", assignmentId: duty.assignmentId, post: duty.positionLabel, unit: unitOf(duty),
-          startsAt: duty.startsAt.toISOString(), endsAt: duty.endsAt.toISOString(), night: duty.night,
-          canTake: options.canTake.slice(0, MAX_DRAFTED).map((c) => ({
-            userId: c.userId, name: c.name, grade: c.grade, teamName: c.teamName, crossUnit: c.crossUnit,
+        /*
+          E2.2 (decision 0069) — A COVER OR A SWAP, TO CONFIRM. One signed proposal per option: a cover
+          from each person who can take it, and each swap they could give back. A person named in the
+          question ("Dr Rohit le lega?") narrows the card to them.
+        */
+        const named = namedIn(ctx.typed ?? ctx.question, options.canTake);
+        const people = (named.length > 0 ? named : options.canTake).slice(0, MAX_DRAFTED);
+        const proposeMany: { args: CoverArgs; subject: null }[] = [];
+        const ref = (d: DutyRef): CopilotCoverDuty => ({ istDate: d.istDate, night: d.night, startsAt: d.startsAt.toISOString(), endsAt: d.endsAt.toISOString() });
+        const pick: CopilotCoverPick = {
+          kind: "coverPick", duty: { ...ref(duty), post: duty.positionLabel },
+          options: people.flatMap((c) => [null, ...c.swaps.slice(0, SWAPS_PER_PERSON)].map((give) => {
+            proposeMany.push({ args: { assignmentId: duty.assignmentId, counterpartId: c.userId, counterpartAssignmentId: give?.assignmentId ?? null }, subject: null });
+            return { name: c.name, grade: c.grade, teamName: c.teamName, crossUnit: c.crossUnit, give: give === null ? null : ref(give), proposal: proposeMany.length - 1 };
           })),
-          more: Math.max(0, options.canTake.length - MAX_DRAFTED),
-          cannot: options.cannot.length,
+          more: Math.max(0, (named.length > 0 ? named : options.canTake).length - people.length),
         };
         return {
           // A night and a day duty are said differently ("Your night on …" / "Your duty on …").
           key: duty.night ? "copilot.answer.rosterCoverDraft" : "copilot.answer.rosterCoverDraftDuty",
-          params: { ...params, n: options.canTake.length, names: options.canTake.slice(0, MAX_NAMED).map((c) => c.name).join(", ") },
-          payload,
+          params: { ...params, n: people.length, names: people.slice(0, MAX_NAMED).map((c) => c.name).join(", ") },
+          payload: pick,
+          proposeMany,
         };
       },
+      act: coverAct,
     },
   ];
+}
+
+/** Titles are not names: "Dr Rohit" names Rohit. */
+const TITLES = new Set(["dr", "doctor", "sr", "sister", "mr", "mrs", "ms", "shri", "smt"]);
+/** The people the question names, by a whole word of their name (three letters or more, titles aside). */
+function namedIn<T extends { name: string }>(typed: string, people: readonly T[]): T[] {
+  const words = new Set(typed.normalize("NFC").toLowerCase().split(/[^\p{L}\p{M}]+/u));
+  return people.filter((p) => p.name.toLowerCase().split(/[^\p{L}\p{M}]+/u)
+    .some((w) => w.length >= 3 && !TITLES.has(w) && words.has(w)));
 }
