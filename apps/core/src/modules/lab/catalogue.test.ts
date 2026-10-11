@@ -4,7 +4,7 @@ import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { labAnalytes, labOrderables, labReflexRules, registrationConfig } from "../../kernel/db/schema";
-import { LAB_CATALOGUE_STANDARD, loadLabCatalogue, seedLabCatalogue, serviceIdForLabCode } from "../../../scripts/seed-lab-catalogue";
+import { LAB_CATALOGUE_STANDARD_DATA, seedLabCatalogue, serviceIdForLabCode } from "../../../scripts/seed-lab-catalogue";
 import { evaluateFormula } from "./formula";
 import { analytesFor, getOrderable, upsertAnalyte, upsertOrderable } from "./catalogue";
 import { labManifest } from "./manifest";
@@ -91,7 +91,7 @@ describe("the lab catalogue (17a T3)", () => {
    */
   describe("the standard catalogue, seeded", () => {
     it("lands whole through every catalogue guard, keeps the golden codes and their confidentiality, and its calculations are right", async () => {
-      const report = await seedLabCatalogue(db, curator, loadLabCatalogue(LAB_CATALOGUE_STANDARD));
+      const report = await seedLabCatalogue(db, curator, LAB_CATALOGUE_STANDARD_DATA);
       expect([report.orderables, report.analytes, report.activeReflexRules]).toEqual([331, 583, 0]);
       const cbc = await analytesFor(db, serviceIdForLabCode("CBC"));
       expect(cbc.map((a) => a.code)).toEqual(expect.arrayContaining(["RDW_SD", "LYMPH_ABS", "NLR", "PDW", "PLTCRIT"]));
