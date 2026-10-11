@@ -621,3 +621,12 @@ export const cancelLabBooking = (id: string, reason?: string): Promise<{ ok: tru
   api("POST", `/lab/desk/bookings/${id}/cancel`, { reason: reason ?? null });
 export const noShowLabBooking = (id: string): Promise<{ ok: true }> =>
   api("POST", `/lab/desk/bookings/${id}/no-show`, { reason: null });
+
+/** Owner 2026-10-11 — the counter's last tests: a person's lab orders with test names and stage. */
+export type WireRecentLabOrder = {
+  orderId: string; orderNo: string; encounterNo: string; placedAt: string;
+  tests: { code: string; nameEn: string }[];
+  stage: "awaiting_blood" | "sample_taken" | "draft" | "report_ready" | "handed_over" | "cancelled" | "in_lab";
+};
+export const recentLabOrders = (patientId: string): Promise<WireRecentLabOrder[]> =>
+  api("GET", `/lab/desk/patient/${encodeURIComponent(patientId)}/recent`);

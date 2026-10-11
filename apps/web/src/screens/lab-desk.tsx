@@ -92,7 +92,15 @@ function initialsOf(name: string): string {
   return name.split(/\s+/).filter((w) => w !== "").slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
 }
 
-export function LabDesk(): React.ReactElement {
+/**
+ * `mode="counter"` is /lab/counter (owner 2026-10-11, spec `SPEC-lab-quick-chain-2026-10-11.md`): the
+ * quick chain's front. After the pick it is two columns at once — the patient on the left (credit,
+ * memberships, the last three tests), the requests or New walk-in · Future appointment on the right —
+ * a walk-in chooses its tests and presses **Next** before the billing step, and a placed order is sent
+ * to /lab/qcollect. `"desk"` (/lab/desk) keeps the full lab's desk as it was.
+ */
+export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): React.ReactElement {
+  const counter = mode === "counter";
   const { t } = useTranslation();
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -126,6 +134,8 @@ export function LabDesk(): React.ReactElement {
    * offers New walk-in · Future appointment), the order, a booking, or the order just placed.
    */
   const [step, setStep] = useState<"none" | "order" | "book" | "done">("none");
+  /** /lab/counter only: a walk-in first chooses its tests (`tests`), then **Next** opens the bill (`bill`). */
+  const [phase, setPhase] = useState<"tests" | "bill">("bill");
   /** The booking this order fulfils, when the patient arrived for one. */
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [bookedNote, setBookedNote] = useState<string | null>(null);
@@ -249,7 +259,8 @@ export function LabDesk(): React.ReactElement {
     setReferrerName(hit.visit?.referrerName ?? "");
     setBookingId(null); setBookedNote(null); setOpenParams([]);
     /** Tests already advised today open the order at once; otherwise the summary offers the two steps. */
-    setStep(advised.some((l) => l.alreadyOrderedItemId === null) ? "order" : "none");
+    setPhase("bill");
+    setStep(!counter && advised.some((l) => l.alreadyOrderedItemId === null) ? "order" : "none");
   }
 
   /** Back to an empty desk for the next person. */
@@ -286,6 +297,7 @@ export function LabDesk(): React.ReactElement {
         return next;
       });
       setBookingId(b.id);
+      setPhase("bill");
       setStep("order");
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -333,6 +345,7 @@ export function LabDesk(): React.ReactElement {
       setHits(null);
       setFields(EMPTY_REGISTER);
       /** A person just registered at the lab is a walk-in: the test picker opens at once. */
+      setPhase("tests");
       setStep("order");
     },
     onError: (e: unknown) => setError(labErrorText(e)),
@@ -452,16 +465,20 @@ export function LabDesk(): React.ReactElement {
    * hand moves to the left lane (who they are, credit, memberships, lab history) and the centre is
    * the one task, the way Desk One's dossier sits beside its stages.
    */
-  const focus = selected !== null && (step === "order" || step === "book");
+  const focus = selected !== null && (counter || step === "order" || step === "book");
+  /** On the counter the walk-in's test choice and its bill are two steps; on the desk they are one screen. */
+  const showChooser = !counter || phase === "tests";
+  const showBilling = !counter || phase === "bill";
 
   return (
     <LabStation
-      station="desk"
+      station={counter ? "counter" : "desk"}
       laneHead={!focus}
       lane={focus && selected !== null
-        ? <PatientLane hit={selected} serviceDate={serviceDate} onBack={() => setStep("none")} onArrived={(b) => arrive.mutate(b)} />
+        ? <PatientLane hit={selected} serviceDate={serviceDate} variant={mode}
+            onBack={() => (counter && step === "none" ? nextPatient() : setStep("none"))} onArrived={(b) => arrive.mutate(b)} />
         : undefined}
-      title={t("lab.desk.title")}
+      title={counter ? t("lab.counter.title") : t("lab.desk.title")}
       place={t("lab.desk.place")}
       stats={[
         { label: t("lab.desk.arrivedToday"), value: waiting, tone: "live" },
@@ -611,10 +628,13 @@ export function LabDesk(): React.ReactElement {
 
         {selected !== null && (
           <div className="space-y-3">
-            {focus && (
+            {focus && step !== "done" && (
               <div className="pp" style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)" }}>
                 <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }} data-testid="focus-title">
-                  {step === "book" ? t("lab.desk.flow.bookTitle") : selected.visit !== null && lines.some((l) => l.source === "advised") ? t("lab.desk.flow.orderTitle") : t("lab.desk.flow.walkInTitle")}
+                  {step === "none" ? t("lab.counter.requestsTitle")
+                    : step === "book" ? t("lab.desk.flow.bookTitle")
+                    : counter && phase === "bill" ? (labFree ? t("lab.counter.sendTitle") : t("lab.counter.billTitle"))
+                    : selected.visit !== null && lines.some((l) => l.source === "advised") ? t("lab.desk.flow.orderTitle") : t("lab.desk.flow.walkInTitle")}
                 </div>
                 <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>
                   {t("lab.desk.flow.forPatient", { name: selected.patient.display, uhid: selected.patient.uhid })}
@@ -672,12 +692,27 @@ export function LabDesk(): React.ReactElement {
               walkIn={walkIn}
               canOpenReports={can("lab.reports.print")}
               stepOpen={step}
-              onWalkIn={() => { setPlaced(null); setStep("order"); }}
+              onWalkIn={() => { setPlaced(null); setPhase("tests"); setStep("order"); }}
               onBook={() => { setPlaced(null); setBookedNote(null); setStep("book"); }}
-              onOrderAdvised={() => { setPlaced(null); setStep("order"); }}
+              onOrderAdvised={() => { setPlaced(null); setPhase("bill"); setStep("order"); }}
               onArrived={(b) => arrive.mutate(b)}
             />
             </>)}
+            {counter && step === "none" && (
+              <PatientSummary
+                hit={selected}
+                serviceDate={serviceDate}
+                labFree={labFree}
+                walkIn={walkIn}
+                canOpenReports={can("lab.reports.print")}
+                stepOpen={step}
+                showHistory={false}
+                onWalkIn={() => { setPlaced(null); setPhase("tests"); setStep("order"); }}
+                onBook={() => { setPlaced(null); setBookedNote(null); setStep("book"); }}
+                onOrderAdvised={() => { setPlaced(null); setPhase("bill"); setStep("order"); check.mutate(); }}
+                onArrived={(b) => arrive.mutate(b)}
+              />
+            )}
             {bookedNote !== null && (
               <div className="pp box" role="status" style={{ padding: "12px 14px", borderColor: "var(--green)", color: "var(--green)", fontWeight: 600 }} data-testid="booked-note">
                 ✓ {bookedNote}
@@ -690,7 +725,12 @@ export function LabDesk(): React.ReactElement {
             )}
 
             {step === "order" && (<>
-            {!lines.some((l) => l.source === "advised") && (
+            {counter && phase === "bill" && (
+              <div className="pp"><button type="button" className="sec" style={{ height: 30 }} onClick={() => setPhase("tests")}>
+                ← {t("lab.counter.changeTests")}
+              </button></div>
+            )}
+            {showChooser && !lines.some((l) => l.source === "advised") && (
             <>
             {/* ── which tests? — owner 2026-10-11: common tests as chips, then one search ── */}
             <TestChooser
@@ -786,7 +826,7 @@ export function LabDesk(): React.ReactElement {
               </ul>
             </div>
 
-            {lines.some((l) => l.source === "advised") && (
+            {showChooser && lines.some((l) => l.source === "advised") && (
             <>
             {/* ── which tests? — owner 2026-10-11: common tests as chips, then one search ── */}
             <TestChooser
@@ -835,6 +875,7 @@ export function LabDesk(): React.ReactElement {
             )}
 
             {/* ── priority · referred by · money ── */}
+            {(showBilling || labFree) && (<>
             <div className="grid gap-2 md:grid-cols-3">
               <label className="text-sm">
                 {t("lab.desk.priority")}
@@ -877,6 +918,7 @@ export function LabDesk(): React.ReactElement {
               <input type="checkbox" checked={reflexConsent} onChange={(e) => setReflexConsent(e.target.checked)} />
               {t("lab.desk.reflexConsent")}
             </label>
+            </>)}
 
             {priced !== null && (
               <div className="rounded border border-border bg-card p-2 text-sm" data-testid="money">
@@ -891,7 +933,16 @@ export function LabDesk(): React.ReactElement {
             )}
 
             {selected.visit === null && walkIn !== undefined && <WalkInBlocked readiness={walkIn} />}
-            {labFree ? (
+            {counter && phase === "tests" && !labFree ? (
+              <div className="pp" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button type="button" className="pri" style={{ height: 50, fontSize: 15, minWidth: 220 }} data-testid="counter-next"
+                  disabled={orderableLines.length === 0 || missingConsent.length > 0 || (selected.visit === null && walkIn !== undefined && !walkIn.ready)}
+                  onClick={() => { setPhase("bill"); check.mutate(); }}>
+                  {t("lab.counter.next", { count: orderableLines.length })} →
+                </button>
+                <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{t("lab.counter.nextNote")}</span>
+              </div>
+            ) : labFree ? (
               <div className="pp" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <button type="button" className="pri" style={{ height: 50, fontSize: 15 }} data-testid="send-free"
                   disabled={
@@ -946,6 +997,7 @@ export function LabDesk(): React.ReactElement {
               {(placed.invoice.creditExtended || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</div>
             <div style={{ fontSize: 13, color: "var(--dim)" }}>{t("lab.desk.sentToCollection")}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+              {counter && <a className="sec" href="/lab/qcollect" data-testid="go-qcollect">{t("lab.counter.openQCollect")} →</a>}
               <button type="button" className="pri" onClick={nextPatient}>{t("lab.desk.flow.nextPatient")}</button>
               {selected !== null && <button type="button" className="sec" onClick={() => { setPlaced(null); setStep("none"); }}>{t("lab.desk.flow.backToPatient")}</button>}
             </div>

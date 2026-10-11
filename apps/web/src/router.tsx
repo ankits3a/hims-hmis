@@ -96,6 +96,7 @@ import { LabBench } from "./screens/lab-bench";
 import { LabVerify } from "./screens/lab-verify";
 import { LabReports } from "./screens/lab-reports";
 import { LabQuick } from "./screens/lab-quick";
+import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -353,6 +354,11 @@ const NAV: readonly NavEntry[] = [
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
   { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab" },
   { to: "/lab/quick", label: "nav.labQuick", permission: "lab.results.enter", group: "lab", anyOf: ["lab.desk.operate"] },
+  // OWNER 2026-10-11 — the quick chain, the lab's everyday path: counter → collect → bench → reports.
+  { to: "/lab/counter", label: "nav.labCounter", permission: "lab.desk.operate", group: "lab" },
+  { to: "/lab/qcollect", label: "nav.labQCollect", permission: "lab.worklist.read", group: "lab" },
+  { to: "/lab/qbench", label: "nav.labQBench", permission: "lab.results.enter", group: "lab" },
+  { to: "/lab/qreports", label: "nav.labQReports", permission: "lab.reports.print", group: "lab" },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
@@ -1516,6 +1522,32 @@ const labReportsRoute = createRoute({
 });
 
 /** Decision 0061 — quick entry: search a patient, type values, an editable flagged report. */
+/** OWNER 2026-10-11 — the quick chain (spec SPEC-lab-quick-chain-2026-10-11.md). Each station draws its own shell. */
+const labCounterRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/counter",
+  component: () => <LabDesk mode="counter" />,
+  staticData: { fullViewport: true },
+});
+const labQCollectRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/qcollect",
+  component: LabQCollect,
+  staticData: { fullViewport: true },
+});
+const labQBenchRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/qbench",
+  component: LabQBench,
+  staticData: { fullViewport: true },
+});
+const labQReportsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/qreports",
+  component: LabQReports,
+  staticData: { fullViewport: true },
+});
+
 const labQuickRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/quick",
@@ -1818,6 +1850,8 @@ export const router = createRouter({
       // PLAN 17c T5 — the fifth lab seat, the report centre (+1).
       labReportsRoute,
       labQuickRoute,
+      // OWNER 2026-10-11 — the quick chain (+4).
+      labCounterRoute, labQCollectRoute, labQBenchRoute, labQReportsRoute,
       // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the

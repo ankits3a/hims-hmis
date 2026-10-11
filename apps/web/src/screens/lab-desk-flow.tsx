@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   bookLab, bookingsForDay, bookingsForPatient, cancelLabBooking, commonOrderables, getBookingHours, labErrorText, labSlots,
-  noShowLabBooking, orderableDetail, reportsForPatient, saveBookingHours, searchOrderables,
+  noShowLabBooking, orderableDetail, recentLabOrders, reportsForPatient, saveBookingHours, searchOrderables,
 } from "../lib/lab-api";
 import { fetchRecognition } from "../lib/membership-api";
 import { useAuth } from "../lib/auth";
@@ -134,8 +134,10 @@ function fmtDay(date: string, lang: string): string {
 }
 
 /** The summary the clerk sees the moment they tap "This is them". */
-export function PatientSummary({ hit, serviceDate, labFree, walkIn, canOpenReports, onWalkIn, onBook, onOrderAdvised, onArrived, stepOpen }: {
+export function PatientSummary({ hit, serviceDate, labFree, walkIn, canOpenReports, onWalkIn, onBook, onOrderAdvised, onArrived, stepOpen, showHistory = true }: {
   hit: WireDeskFindHit;
+  /** /lab/counter shows the history in its left lane, so its right column leaves it out. */
+  showHistory?: boolean;
   /** Whether this hospital can open a lab walk-in at all; only asked for a patient with no visit today. */
   walkIn?: WireWalkInReadiness;
   serviceDate: string;
@@ -205,7 +207,7 @@ export function PatientSummary({ hit, serviceDate, labFree, walkIn, canOpenRepor
         </button>
       </div>
 
-      <LabHistory hit={hit} serviceDate={serviceDate} canOpenReports={canOpenReports} onArrived={onArrived} />
+      {showHistory && <LabHistory hit={hit} serviceDate={serviceDate} canOpenReports={canOpenReports} onArrived={onArrived} />}
     </div>
   );
 }
@@ -215,17 +217,19 @@ export function PatientSummary({ hit, serviceDate, labFree, walkIn, canOpenRepor
  * Cancel), then reports and orders in progress, then past bookings. Drawn in the summary and in the
  * patient lane beside the walk-in and booking screens.
  */
-export function LabHistory({ hit, serviceDate, canOpenReports, onArrived, compact = false }: {
+export function LabHistory({ hit, serviceDate, canOpenReports, onArrived, compact = false, bookingsOnly = false }: {
   hit: WireDeskFindHit;
   serviceDate: string;
   canOpenReports: boolean;
   onArrived: (b: WireLabBooking) => void;
   compact?: boolean;
+  /** The counter's lane shows its own recent tests; it borrows only the open bookings from here. */
+  bookingsOnly?: boolean;
 }): React.ReactElement {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const pid = hit.patient.id;
-  const history = useQuery({ queryKey: ["lab", "reports", "patient", pid], queryFn: () => reportsForPatient(pid), retry: false });
+  const history = useQuery({ queryKey: ["lab", "reports", "patient", pid], queryFn: () => reportsForPatient(pid), retry: false, enabled: !bookingsOnly });
   const bookings = useQuery({ queryKey: ["lab", "bookings", "patient", pid], queryFn: () => bookingsForPatient(pid), retry: false });
   const close = useMutation({
     mutationFn: ({ id, outcome }: { id: string; outcome: "cancel" | "no_show" }) => (outcome === "cancel" ? cancelLabBooking(id) : noShowLabBooking(id)),
@@ -263,7 +267,7 @@ export function LabHistory({ hit, serviceDate, canOpenReports, onArrived, compac
         </div>
       )}
 
-      <div>
+      {!bookingsOnly && <div>
         <div className="tag" style={{ marginBottom: 6 }}>{t("lab.desk.flow.history")}</div>
         {nothingYet && <div style={{ fontSize: 12.5, color: "var(--faint)" }} data-testid="no-history">{t("lab.desk.flow.noHistory")}</div>}
         <ul style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="lab-history">
@@ -296,7 +300,43 @@ export function LabHistory({ hit, serviceDate, canOpenReports, onArrived, compac
             </li>
           ))}
         </ul>
-      </div>
+      </div>}
+    </div>
+  );
+}
+
+const STAGE_PILL: Record<string, string> = {
+  awaiting_blood: "pill gd", sample_taken: "pill", draft: "pill gd", report_ready: "pill on", handed_over: "pill", cancelled: "pill rd", in_lab: "pill",
+};
+
+/** OWNER 2026-10-11 — the counter's lane: the last three lab orders, then all of them on View more. */
+export function RecentTests({ patientId }: { patientId: string }): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const [all, setAll] = useState(false);
+  const recent = useQuery({ queryKey: ["lab", "recent", patientId], queryFn: () => recentLabOrders(patientId), retry: false });
+  const rows = recent.data ?? [];
+  const shown = all ? rows : rows.slice(0, 3);
+  return (
+    <div data-testid="recent-tests">
+      <div className="tag" style={{ marginBottom: 6 }}>{t("lab.counter.recentTests")}</div>
+      {recent.isSuccess && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--faint)" }}>{t("lab.desk.flow.noHistory")}</div>}
+      <ul style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {shown.map((o) => (
+          <li key={o.orderId} className="box" style={{ padding: "7px 9px", display: "flex", flexDirection: "column", gap: 3 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span className="mo" style={{ fontSize: 11.5, fontWeight: 600 }}>{fmtDay(o.placedAt.slice(0, 10), i18n.language)}</span>
+              <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>{o.orderNo}</span>
+              <span className={STAGE_PILL[o.stage] ?? "pill"} style={{ height: 19, marginLeft: "auto" }}>{t(`lab.counter.stage.${o.stage}`)}</span>
+            </div>
+            <div style={{ fontSize: 12 }}>{o.tests.map((x) => x.nameEn).join(", ")}</div>
+          </li>
+        ))}
+      </ul>
+      {rows.length > 3 && (
+        <button type="button" className="sec" style={{ marginTop: 6, height: 28 }} onClick={() => setAll((v) => !v)}>
+          {all ? t("lab.counter.showLess") : t("lab.counter.viewMore", { count: rows.length - 3 })}
+        </button>
+      )}
     </div>
   );
 }
@@ -306,11 +346,13 @@ export function LabHistory({ hit, serviceDate, canOpenReports, onArrived, compac
  * dossier sits beside its stages: who they are, what they hold with the hospital (credit, the
  * memberships the server recognises) and their lab story.
  */
-export function PatientLane({ hit, serviceDate, onBack, onArrived }: {
+export function PatientLane({ hit, serviceDate, onBack, onArrived, variant = "desk" }: {
   hit: WireDeskFindHit;
   serviceDate: string;
   onBack: () => void;
   onArrived: (b: WireLabBooking) => void;
+  /** `counter` (/lab/counter): the last three tests with View more, then open bookings. */
+  variant?: "desk" | "counter";
 }): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
@@ -363,7 +405,8 @@ export function PatientLane({ hit, serviceDate, onBack, onArrived }: {
         </div>
       )}
 
-      <LabHistory hit={hit} serviceDate={serviceDate} canOpenReports={can("lab.reports.print")} onArrived={onArrived} compact />
+      {variant === "counter" && <RecentTests patientId={p.id} />}
+      <LabHistory hit={hit} serviceDate={serviceDate} canOpenReports={can("lab.reports.print")} onArrived={onArrived} compact bookingsOnly={variant === "counter"} />
     </div>
   );
 }

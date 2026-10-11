@@ -656,3 +656,41 @@ it("NO-SHOW: today's booked patient who did not come is marked from the list, an
   await waitFor(() => expect(seen.some((s) => s.path === "/api/lab/desk/bookings/b-8/no-show")).toBe(true));
   await waitFor(() => expect(list).not.toHaveTextContent("Farida Khatoon"));
 });
+
+/* ═══ OWNER 2026-10-11 — /lab/counter: two columns after the pick, last 3 tests + View more, walk-in Next → bill ═══ */
+
+it("/lab/counter: the pick opens two columns — the last three tests with View more on the left, the requests on the right; a walk-in chooses tests, Next prices them", async () => {
+  const recent = ["L2610010001", "L2609200002", "L2609010003", "L2608150004"].map((orderNo, i) => ({
+    orderId: `o-${String(i)}`, orderNo, encounterNo: "V1", placedAt: "2026-10-01T05:00:00Z", stage: i === 0 ? "report_ready" : "handed_over",
+    tests: [{ code: "CBC", nameEn: "Complete blood count" }],
+  }));
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/desk/fee-state": { status: 200, body: { labFree: false, walkIn: { ready: true, problem: null } } },
+    "GET /api/lab/desk/common": { status: 200, body: COMMON },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+    "GET /api/lab/desk/patient/p-farida/recent": { status: 200, body: recent },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/preview": { status: 200, body: { ...PRICED, lines: [PRICED.lines[0]], totals: { ...PRICED.totals, netPayablePaise: 30000 }, tubes: [] } },
+  });
+  renderWithProviders(<LabDesk mode="counter" />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  const lane = await screen.findByTestId("patient-card");
+  const tests = await within(lane).findByTestId("recent-tests");
+  await waitFor(() => expect(tests).toHaveTextContent("L2610010001"));
+  expect(tests).not.toHaveTextContent("L2608150004");
+  await userEvent.click(within(tests).getByRole("button", { name: "View 1 more" }));
+  expect(tests).toHaveTextContent("L2608150004");
+  expect(screen.getByTestId("focus-title")).toHaveTextContent("Requests for this patient");
+
+  await userEvent.click(screen.getByRole("button", { name: "New walk-in" }));
+  await userEvent.click(await screen.findByRole("button", { name: /CBC/ }));
+  /** The bill is not on screen until Next. */
+  expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
+  await userEvent.click(screen.getByTestId("counter-next"));
+  await waitFor(() => expect(seen.some((s) => s.path === "/api/lab/desk/preview")).toBe(true));
+  await waitFor(() => expect(screen.getByTestId("money")).toBeInTheDocument());
+  expect(screen.getByTestId("focus-title")).toHaveTextContent("Bill the tests");
+  expect(screen.getByRole("button", { name: /Save/ })).toBeInTheDocument();
+});

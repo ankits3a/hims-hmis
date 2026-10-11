@@ -24,9 +24,12 @@ export type QuickLine = {
 export type QuickChosenTest = { serviceId: string; code: string; nameEn: string };
 export type QuickPatient = { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null };
 export type QuickRow = {
-  id: string; status: "waiting" | "reported"; patient: QuickPatient; encounterNo: string | null;
+  id: string; status: "waiting" | "draft" | "reported"; patient: QuickPatient; encounterNo: string | null;
   tests: QuickChosenTest[]; collectedAt: string; collectedBy: string;
   reportedAt: string | null; reportedBy: string | null;
+  /** Owner 2026-10-11 — the quick chain's order, sample number and hand-over (absent on older servers). */
+  orderId?: string | null; orderNo?: string | null; sampleNo?: string | null;
+  handedOverAt?: string | null; handedOverBy?: string | null;
 };
 export type QuickReport = QuickRow & {
   analyteIds: string[]; groups: { title: string | null; analyteIds: string[] }[]; lines: QuickLine[]; summary: string;
@@ -37,7 +40,7 @@ export type QuickReport = QuickRow & {
 };
 export type QuickQueue = { waiting: QuickRow[]; reportedToday: QuickRow[] };
 export type StartQuick = { patientId: string; encounterNo: string | null; serviceIds: string[]; bloodCollected: boolean };
-export type SaveQuickResults = { lines: { analyteId: string; value: string }[]; summary: string };
+export type SaveQuickResults = { lines: { analyteId: string; value: string }[]; summary: string; complete?: boolean };
 
 export const quickCatalogue = (): Promise<QuickCatalogue> => api("GET", "/lab/quick/catalogue");
 export const quickRanges = (patientId: string, analyteIds: readonly string[]): Promise<{ items: QuickRange[] }> =>
@@ -106,3 +109,16 @@ export function draftSummary(lines: readonly QuickLine[]): string {
   else if (normal.length > 0) out.push("Other reported parameters are within the reference range.");
   return out.join("\n");
 }
+
+/* ─────────────── owner 2026-10-11 — the quick chain: /lab/qcollect, /lab/qbench, /lab/qreports ─────────────── */
+
+export type QuickCollectRow = {
+  orderId: string; orderNo: string; encounterNo: string; placedAt: string; priority: string;
+  patient: QuickPatient; tests: QuickChosenTest[];
+};
+export const quickCollectQueue = (): Promise<QuickCollectRow[]> => api("GET", "/lab/quick/collect");
+export const quickCollect = (orderId: string): Promise<QuickRow> => api("POST", `/lab/quick/collect/${encodeURIComponent(orderId)}`, {});
+export const quickReady = (): Promise<{ ready: QuickRow[]; handedOverToday: QuickRow[] }> => api("GET", "/lab/quick/ready");
+export const quickReadyReport = (id: string): Promise<QuickReport> => api("GET", `/lab/quick/ready/${encodeURIComponent(id)}`);
+export const quickHandOver = (id: string): Promise<QuickRow> => api("POST", `/lab/quick/reports/${encodeURIComponent(id)}/hand-over`, {});
+export const quickSendBack = (id: string): Promise<QuickRow> => api("POST", `/lab/quick/reports/${encodeURIComponent(id)}/send-back`, {});

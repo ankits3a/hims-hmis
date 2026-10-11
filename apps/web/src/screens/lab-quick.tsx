@@ -263,7 +263,15 @@ function StartPanel({ catalogue, onStarted }: { catalogue: QuickCatalogue | unde
 
 type Row = { analyteId: string; value: string };
 
-function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickCatalogue | undefined; onBack: () => void }): React.ReactElement {
+/**
+ * The results form. `mode="bench"` is /lab/qbench (owner 2026-10-11): **Save draft** keeps the values on
+ * the bench, **Save & Complete** sends the report to /lab/qreports (`onCompleted`); printing belongs to
+ * the hand-over counter there. The default `"quick"` keeps decision 0061's Save then Print.
+ */
+export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onCompleted }: {
+  id: string; catalogue: QuickCatalogue | undefined; onBack: () => void;
+  mode?: "quick" | "bench"; onCompleted?: (r: QuickReport) => void;
+}): React.ReactElement {
   const { t } = useTranslation();
   const { username } = useAuth();
   const qc = useQueryClient();
@@ -282,6 +290,8 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
     const typed = new Map(r.lines.map((l) => [l.analyteId, l.value]));
     setRows(r.analyteIds.map((analyteId) => ({ analyteId, value: typed.get(analyteId) ?? "" })));
     if (r.status === "reported") { setSummary(r.summary); setSummaryEdited(true); setSaved(r); }
+    /** A draft (owner 2026-10-11) keeps its typed summary, so a draft saved and reopened says what it said. */
+    else if (r.status === "draft" && r.summary !== "") { setSummary(r.summary); setSummaryEdited(true); }
     setTimeout(() => { const first = r.analyteIds[0]; if (first) inputs.current.get(first)?.focus(); }, 0);
   }, [report.data, rows]);
 
@@ -309,12 +319,15 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
   const shownSummary = summaryEdited ? summary : draftSummary(previewLines);
 
   const save = useMutation({
-    mutationFn: () => saveQuickResults(id, { lines: list.filter((r) => r.value.trim() !== ""), summary: shownSummary }),
+    mutationFn: (complete?: boolean) => saveQuickResults(id, {
+      lines: list.filter((r) => r.value.trim() !== ""), summary: shownSummary, ...(complete === undefined ? {} : { complete }),
+    }),
     onSuccess: (r) => {
       setSaved(r);
       setError(null);
       qc.setQueryData(["lab-quick", "report", id], r);
-      void qc.invalidateQueries({ queryKey: ["lab-quick", "queue"] });
+      void qc.invalidateQueries({ queryKey: ["lab-quick"] });
+      if (mode === "bench" && r.status === "reported") onCompleted?.(r);
     },
     onError: (e) => setError(labErrorText(e)),
   });
@@ -459,8 +472,17 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
 
       {error !== null && <p role="alert" className="text-sm font-semibold text-red-700 dark:text-red-300">{error}</p>}
 
+      {mode === "bench" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => save.mutate(false)} disabled={save.isPending}>{t("lab.qchain.saveDraft")}</Button>
+          <Button onClick={() => save.mutate(true)} disabled={filledCount === 0 || save.isPending}>{t("lab.qchain.saveComplete")}</Button>
+          {saved !== null && saved.status === "draft" && (
+            <span role="status" className="text-sm text-green-700 dark:text-green-300">{t("lab.qchain.draftSaved")}</span>
+          )}
+        </div>
+      ) : (
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => save.mutate()} disabled={filledCount === 0 || save.isPending}>
+        <Button onClick={() => save.mutate(undefined)} disabled={filledCount === 0 || save.isPending}>
           {r.status === "reported" ? t("lab.quick.saveChanges") : t("lab.quick.save")}
         </Button>
         {saved !== null && (
@@ -470,6 +492,7 @@ function ResultsPanel({ id, catalogue, onBack }: { id: string; catalogue: QuickC
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

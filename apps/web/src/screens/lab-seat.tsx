@@ -26,10 +26,15 @@ import type { StationLink, StationStat } from "../components/station/station-she
 export { useIstClock } from "../components/station/station-shell";
 export type SeatStat = StationStat;
 
-export type LabStationKey = "desk" | "collection" | "bench" | "verify" | "reports" | "quick";
+export type LabStationKey = "desk" | "collection" | "bench" | "verify" | "reports" | "quick" | "counter" | "qcollect" | "qbench" | "qreports";
 
 /** The five stations, their routes and the grant each is reached by — the same pairs as `router.tsx`'s NAV. */
 export const LAB_STATIONS: readonly (Omit<StationLink, "label"> & { key: LabStationKey; labelKey: string })[] = [
+  /** Owner 2026-10-11 — the quick chain, the lab's everyday path: counter → collect → bench → reports. */
+  { key: "counter", to: "/lab/counter", labelKey: "nav.labCounter", permission: "lab.desk.operate" },
+  { key: "qcollect", to: "/lab/qcollect", labelKey: "nav.labQCollect", permission: "lab.worklist.read" },
+  { key: "qbench", to: "/lab/qbench", labelKey: "nav.labQBench", permission: "lab.results.enter" },
+  { key: "qreports", to: "/lab/qreports", labelKey: "nav.labQReports", permission: "lab.reports.print" },
   { key: "desk", to: "/lab/desk", labelKey: "nav.labDesk", permission: "lab.desk.operate" },
   { key: "collection", to: "/lab/collection", labelKey: "nav.labCollection", permission: "lab.collection.operate" },
   { key: "bench", to: "/lab/bench", labelKey: "nav.labBench", permission: "lab.accession.operate" },
