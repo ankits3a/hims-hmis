@@ -22,6 +22,7 @@ import { PatientInHandProvider } from "./lib/patient-in-hand";
 import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
+import { MyLeave } from "./screens/my-leave";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CopilotNoticeHost } from "./components/copilot-notice";
@@ -1056,6 +1057,16 @@ const approvalsRoute = createRoute({
  * alerts bell's footer, and a settings page somebody visits twice a year does not earn a line
  * of chrome on every seat's sidebar for ever. The caddy SPA census gains it; the nav one does not.
  */
+/**
+ * E2.2 (decision 0069) — my leave, and a department head's "to decide". NO NAV ROW: every person
+ * holds it, so it is linked from the desk's close band and the Waiting-for-me lines (like `/me/reach`).
+ */
+const myLeaveRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/roster/leave",
+  component: MyLeave,
+});
+
 const myReachRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/me/reach",
@@ -1829,6 +1840,8 @@ export const router = createRouter({
       rosterMonthRoute,
       // 20-U U5c — +1, `/roster/my-duties`. `caddyfile-parity.test.ts` pins the count, read off the failing run.
       rosterMyDutiesRoute,
+      // E2.2 — +1, `/roster/leave` (my leave). `caddyfile-parity.test.ts` pins the count.
+      myLeaveRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
     ]),

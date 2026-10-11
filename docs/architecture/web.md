@@ -98,6 +98,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/reports/opd-day` | `apps/web/src/screens/opd-report` |
 | `/roster/aebas` | `apps/web/src/screens/roster-aebas` |
 | `/roster/evidence` | `apps/web/src/screens/roster-evidence` |
+| `/roster/leave` | `apps/web/src/screens/my-leave` |
 | `/roster/month` | `apps/web/src/screens/roster-month` |
 | `/roster/my-duties` | `apps/web/src/screens/roster-my-duties` |
 | `/roster/on-now` | `apps/web/src/screens/roster-on-now` |

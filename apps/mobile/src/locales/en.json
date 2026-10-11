@@ -1664,6 +1664,12 @@
   },
   "roster": {
     "refusal": {
+      "leave_in_past": "That day has already begun. Leave for a past or running day is entered by your department.",
+      "leave_overlaps": "You already have leave on one of those days. Take it back first or pick other days.",
+      "unknown_absence": "That leave is no longer on record.",
+      "unknown_absence_kind": "That kind of leave is entered by your department.",
+      "absence_already_decided": "Somebody has already decided this leave.",
+      "absence_self_approval": "You cannot decide your own leave.",
       "other": "The roster refused this ({{code}}). Nothing was changed.",
       "network": "The server could not be reached. Nothing was changed.",
       "not_permitted": "You may read this roster, but not change it. The unit's head or the medical superintendent can.",
@@ -2875,6 +2881,10 @@
         "today_other": "Reminders today"
       },
       "roster": {
+        "leaveToDecide_one": "Leave to decide",
+        "leaveToDecide_other": "Leaves to decide",
+        "leaveRefused_one": "Leave not approved",
+        "leaveRefused_other": "Leaves not approved",
         "dutiesToday_one": "Duty today",
         "dutiesToday_other": "Duties today"
       }
@@ -2890,6 +2900,43 @@
         "readsOverdue": "On computer · Reading room",
         "unreadMine": "On computer · Consult"
       }
+    }
+  },
+  "myLeave": {
+    "title": "My leave",
+    "back": "Back",
+    "toDecide": "To decide",
+    "mine": "My requests",
+    "none": "No leave asked",
+    "ask": "Ask for leave",
+    "from": "First day",
+    "fromHint": "Today, or e.g. 12/11",
+    "badDay": "Write the first day as 12/11",
+    "daysLabel": "Days",
+    "reason": "Reason (optional)",
+    "reasonHint": "Only you and the decider read it",
+    "send": "Send",
+    "sent": "Sent to your head",
+    "cancel": "Take back",
+    "refusedBecause": "Not approved by {{who}}: {{why}}",
+    "theirReason": "Reason: {{why}}",
+    "approve": "Approve",
+    "refuse": "Refuse",
+    "refuseWhy": "Why (they read it)",
+    "refuseSend": "Refuse",
+    "span_one": "{{from}}–{{to}} · {{count}} day",
+    "span_other": "{{from}}–{{to}} · {{count}} days",
+    "kind": {
+      "CL": "Casual leave",
+      "EL": "Earned leave",
+      "ML": "Medical leave",
+      "comp_off": "Comp off"
+    },
+    "status": {
+      "requested": "Waiting",
+      "approved": "Approved",
+      "rejected": "Not approved",
+      "cancelled": "Taken back"
     }
   }
 }

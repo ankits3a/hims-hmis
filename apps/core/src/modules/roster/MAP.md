@@ -42,6 +42,9 @@ and swaps, and the readers every other module asks ("who is on now", "which unit
 - `escalation.ts` — `dutyManagersAt`: roster flags page the duty manager.
 - `board.ts` / `board-print.ts` — `onNowBoard`, and the board auto-print job.
 - `month.ts`, `as-it-stood.ts`, `declarations.ts`, `swaps.ts`, `absences.ts` — screen read models and acts.
+- `leave.ts` + `leave.controller.ts` — E2.2 (decision 0069): a person's OWN leave (`/roster/leave…`, no permission on
+  the door; CL/EL/ML/comp off), the department head's "to decide" list, and the bell words (`leaveForAlert`).
+  `staff_absences.department_id` says whose list a leave waits in; `decision_note` is the refusal reason (row only).
 - `copilot-tools.ts` — copilot tools `roster.who_is_on`, `roster.unit_on_take`, `roster.my_duties`,
   `roster.ask_cover`.
 - `roster-board.controller.ts` — every route's door is `roster.read`; the real act check is inside the domain call.
@@ -93,6 +96,11 @@ and swaps, and the readers every other module asks ("who is on now", "which unit
 - **No direct roster → ot import.** The OT evidence read is registered by OT (`ot/duty-evidence.ts`, in the OT
   module's init); a direct import made a module load cycle.
 - Evidence and AEBAS screens never use verdict words; leave shows "on record" with no kind or reason.
+- **A leave reason and a refusal reason never ride an event, a bell row or a phone notice** (decision 0069).
+  `roster.absence_refused` says THAT; the reason is read on My leave. Leave notices go only for a person's own
+  filing (`source='manual'`, requested by themselves); an OPD or manager entry tells nobody.
+- Leave decide is `publish` at the leave's department (hospital-wide still may). `/me/waiting`'s leave lines come
+  from a SELF-GATED provider (`waitingSelfGated`), because a department head holds nothing hospital-wide.
 - `ask_cover` (copilot) only drafts (`roster_cover_draft`) and never writes; the human's tap calls the cover route.
   Copilot answer cards are LIGHT, never dark slabs (owner).
 - Board auto-print prints only to a destination granted to a relay (`duty_board_a4`); otherwise it records

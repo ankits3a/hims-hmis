@@ -70,7 +70,7 @@ export async function loadWaiting(providers: DeskProvider[], ctx: DeskProviderCt
   try { parts.push(await kernelItems(ctx)); } catch { /* the bell's line is lost, not the card */ }
   for (const p of providers) {
     if (p.waiting === undefined) continue;
-    if (!(await hasPermission(ctx.db, ctx.actor.id, p.permission, "hospital"))) continue;
+    if (p.waitingSelfGated !== true && !(await hasPermission(ctx.db, ctx.actor.id, p.permission, "hospital"))) continue;
     try { parts.push(await p.waiting(ctx)); } catch { /* one module's lines lost, never the card */ }
   }
   const byKind = new Map<WaitingKind, WaitingItem>();
