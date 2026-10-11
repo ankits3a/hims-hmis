@@ -1,5 +1,5 @@
 {
-  "id": "3c222b15-f972-4828-8194-f2849b2a62f1",
+  "id": "eca3866b-c40e-4974-a8d8-3aaa71f557a9",
   "prevId": "149054a9-e841-4cd2-964f-f0badc95e64f",
   "version": "7",
   "dialect": "postgresql",
@@ -30418,6 +30418,174 @@
         "lab_plate_wells_verdict_ck": {
           "name": "lab_plate_wells_verdict_ck",
           "value": "\"lab_plate_wells\".\"verdict\" is null or \"lab_plate_wells\".\"verdict\" in ('non_reactive', 'reactive', 'control_ok', 'control_failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lab_quick_reports": {
+      "name": "lab_quick_reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encounter_no": {
+          "name": "encounter_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tests": {
+          "name": "tests",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'waiting'"
+        },
+        "collected_at": {
+          "name": "collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collected_by": {
+          "name": "collected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lines": {
+          "name": "lines",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "reported_at": {
+          "name": "reported_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reported_by": {
+          "name": "reported_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lab_quick_reports_status_idx": {
+          "name": "lab_quick_reports_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_quick_reports_patient_idx": {
+          "name": "lab_quick_reports_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lab_quick_reports_patient_id_patients_id_fk": {
+          "name": "lab_quick_reports_patient_id_patients_id_fk",
+          "tableFrom": "lab_quick_reports",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lab_quick_reports_status_ck": {
+          "name": "lab_quick_reports_status_ck",
+          "value": "\"lab_quick_reports\".\"status\" in ('waiting', 'reported')"
+        },
+        "lab_quick_reports_reported_ck": {
+          "name": "lab_quick_reports_reported_ck",
+          "value": "(\"lab_quick_reports\".\"status\" = 'reported') = (\"lab_quick_reports\".\"reported_at\" is not null and \"lab_quick_reports\".\"reported_by\" is not null)"
         }
       },
       "isRLSEnabled": false
