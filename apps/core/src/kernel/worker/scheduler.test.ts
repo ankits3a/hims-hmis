@@ -39,6 +39,7 @@ import * as notifyPumpMod from "../notify/pump";
 import * as reachMod from "../notify/reach";
 import * as partitionsMod from "./partitions";
 import * as retentionMod from "../retention/sweep";
+import * as copilotLedgerMod from "../copilot/ledger";
 import * as interfacesMod from "../ops/interfaces";
 import * as materialsExpiryMod from "../../modules/materials/expiry";
 import * as otListsMod from "../../modules/ot/lists";
@@ -264,6 +265,11 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("createEventPartitions");
       return [];
     }),
+    // E0.1 (decision 0064) — the copilot ask prune, always on; its behaviour is `copilot/ledger.test.ts`'s.
+    jest.spyOn(copilotLedgerMod, "runCopilotAskPrune").mockImplementation(async () => {
+      invoked.push("pruneCopilotAsks");
+      return 0;
+    }),
     jest.spyOn(retentionMod, "retentionSweep").mockImplementation(async () => {
       invoked.push("retentionSweep");
       return {
@@ -467,6 +473,8 @@ const THE_EIGHTEEN = [
   // and this array stays the REGISTRATION order rather than an alphabetical one.
   "rollupUserDayFacts",
   "retentionSweep",
+  // E0.1 (decision 0064) — the copilot ask prune, daily 01:20 IST, registered right after the sweep.
+  "pruneCopilotAsks",
   "sweepInterfaceHeartbeats",
   /**
    * PLAN 17a T5 / DD20 — the FOURTEENTH and FIFTEENTH, registered together after the interface
@@ -722,6 +730,7 @@ describe("Scheduler", () => {
       6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
       6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
       7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
+      7 * HOUR_MS + 50 * MINUTE_MS, // 19:50Z = 01:20 IST 08-22 · pruneCopilotAsks (E0.1)
       // PLAN 07c T8 — 20:30Z 08-21 = 02:00 IST 08-22 · rollupUserDayFacts. An hour after the
       // retention sweep, which is where `jobs.ts` puts it and why: a partition DROP takes ACCESS
       // EXCLUSIVE on `events` and there is nothing to gain by queueing the roll behind it.

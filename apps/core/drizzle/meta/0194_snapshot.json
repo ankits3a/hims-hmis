@@ -1,5 +1,5 @@
 {
-  "id": "b78a40ec-10af-4e26-a578-219d49f889aa",
+  "id": "c9ac9180-eab6-4a5f-99c1-f2022ecc12c1",
   "prevId": "912bfb57-7ca9-45c3-8305-844a50f88686",
   "version": "7",
   "dialect": "postgresql",
@@ -35474,7 +35474,7 @@
         },
         "imaging_studies_authorised_by_ck": {
           "name": "imaging_studies_authorised_by_ck",
-          "value": "\"imaging_studies\".\"authorised_by\" is null or \"imaging_studies\".\"authorised_by\" in ('invoice', 'payer_branch', 'daycare', 'stat', 'free')"
+          "value": "\"imaging_studies\".\"authorised_by\" is null or \"imaging_studies\".\"authorised_by\" in ('invoice', 'payer_branch', 'daycare', 'stat')"
         },
         "imaging_studies_dose_ck": {
           "name": "imaging_studies_dose_ck",
@@ -52854,81 +52854,99 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.outside_tests": {
-      "name": "outside_tests",
+    "public.copilot_acts": {
+      "name": "copilot_acts",
       "schema": "",
       "columns": {
-        "service_id": {
-          "name": "service_id",
+        "id": {
+          "name": "id",
           "type": "text",
           "primaryKey": true,
           "notNull": true
         },
-        "code": {
-          "name": "code",
-          "type": "text",
+        "seq": {
+          "name": "seq",
+          "type": "bigserial",
           "primaryKey": false,
           "notNull": true
         },
-        "name_en": {
-          "name": "name_en",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "site": {
-          "name": "site",
-          "type": "text",
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
-          "default": "'outside'"
+          "default": "now()"
         },
-        "department": {
-          "name": "department",
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tool": {
+          "name": "tool",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_patient_id": {
+          "name": "subject_patient_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_by": {
-          "name": "created_by",
+        "args_hash": {
+          "name": "args_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
+        "proposal_id": {
+          "name": "proposal_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
+        "confirm_id": {
+          "name": "confirm_id",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
+        },
+        "result_module": {
+          "name": "result_module",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result_row_id": {
+          "name": "result_row_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "outside_tests_active_idx": {
-          "name": "outside_tests_active_idx",
+        "copilot_acts_confirm_ux": {
+          "name": "copilot_acts_confirm_ux",
           "columns": [
             {
-              "expression": "active",
+              "expression": "confirm_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "copilot_acts_at_idx": {
+          "name": "copilot_acts_at_idx",
+          "columns": [
+            {
+              "expression": "at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -52940,42 +52958,181 @@
           "with": {}
         }
       },
-      "foreignKeys": {
-        "outside_tests_service_id_services_id_fk": {
-          "name": "outside_tests_service_id_services_id_fk",
-          "tableFrom": "outside_tests",
-          "tableTo": "services",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "copilot_acts_confirm_ck": {
+          "name": "copilot_acts_confirm_ck",
+          "value": "length(\"copilot_acts\".\"confirm_id\") > 0"
         }
       },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "outside_tests_code_unique": {
-          "name": "outside_tests_code_unique",
-          "nullsNotDistinct": false,
+      "isRLSEnabled": false
+    },
+    "public.copilot_asks": {
+      "name": "copilot_asks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "bigserial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "route": {
+          "name": "route",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "intent": {
+          "name": "intent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "answer_key": {
+          "name": "answer_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ms": {
+          "name": "ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "masked_question": {
+          "name": "masked_question",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "screen": {
+          "name": "screen",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "copilot_asks_at_idx": {
+          "name": "copilot_asks_at_idx",
           "columns": [
-            "code"
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "copilot_asks_outcome_ck": {
+          "name": "copilot_asks_outcome_ck",
+          "value": "\"copilot_asks\".\"outcome\" in ('answered', 'notUnderstood', 'noTool', 'notPermitted', 'needSubject', 'failed', 'identifierLeak', 'refusedActor', 'badRequest', 'error', 'halted')"
+        },
+        "copilot_asks_route_ck": {
+          "name": "copilot_asks_route_ck",
+          "value": "\"copilot_asks\".\"route\" in ('phrasebook', 'chooser', 'model', 'none')"
+        },
+        "copilot_asks_source_ck": {
+          "name": "copilot_asks_source_ck",
+          "value": "\"copilot_asks\".\"source\" is null or \"copilot_asks\".\"source\" in ('chip', 'typed')"
+        },
+        "copilot_asks_ms_ck": {
+          "name": "copilot_asks_ms_ck",
+          "value": "\"copilot_asks\".\"ms\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.copilot_notice_acks": {
+      "name": "copilot_notice_acks",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "copilot_notice_acks_pkey": {
+          "name": "copilot_notice_acks_pkey",
+          "columns": [
+            "user_id",
+            "version"
           ]
         }
       },
+      "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "outside_tests_site_ck": {
-          "name": "outside_tests_site_ck",
-          "value": "\"outside_tests\".\"site\" in ('outside', 'in_hospital')"
-        },
-        "outside_tests_department_ck": {
-          "name": "outside_tests_department_ck",
-          "value": "\"outside_tests\".\"site\" = 'outside' or \"outside_tests\".\"department\" is not null"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

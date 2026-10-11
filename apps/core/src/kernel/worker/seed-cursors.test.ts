@@ -162,7 +162,7 @@ describe("seedCursors", () => {
          */
         RADIOLOGY_READY_ON_PAYMENT_CONSUMER,
         /**
-         * DECISION 0065 — the free-test order, and the one whose unseeded cursor would do REAL harm:
+         * DECISION 0067 — the free-test order, and the one whose unseeded cursor would do REAL harm:
          * from zero it would walk every `consultation.completed` since the OPD opened and, while the
          * lab fee is Free, place a lab order for every past visit's advised tests. Seeded at
          * `max(seq)`, it orders only for consults completed after it ships.

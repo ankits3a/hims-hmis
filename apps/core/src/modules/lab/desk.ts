@@ -108,7 +108,7 @@ type DeskOrderBase = {
   holdUntilPaid?: { reason: string };
   tags?: string[];
   placedAt?: Date;
-  /** A `system` actor's rule (decision 0065's free-test order); `placeOrder` refuses a system order without one. */
+  /** A `system` actor's rule (decision 0067's free-test order); `placeOrder` refuses a system order without one. */
   protocolRef?: string;
 };
 
@@ -236,7 +236,7 @@ export async function deskOrder(
 }
 
 /**
- * THE SAME ATOM WITHOUT THE COUNTER (owner 2026-10-10, decision 0065). The ordering seam calls this
+ * THE SAME ATOM WITHOUT THE COUNTER (owner 2026-10-10, decision 0067). The ordering seam calls this
  * for a doctor's own order (IPD and Emergency screens, when they come) and for the automatic order of
  * a free test — a `system` actor naming its `protocolRef`. Who may place is then the kernel's
  * question (`placeOrder`: `orders.place` + `lab.orders.place` for a user, a protocol for the system),

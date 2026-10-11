@@ -333,8 +333,9 @@ const configSchema = z.object({
    *
    * It answers the same closed-set question Jev does, behind the same `ChoiceClient`. Its key is the
    * FILE `HMIS_OPENAI_KEY_FILE` already names (the one voice notes use); these three say where and
-   * which model. WHO ANSWERS FIRST is the two `*_CHOOSER_ORDER` lists, one per job, and the default
-   * is `typesafe` alone: with nothing set, both jobs run exactly as they did before this block.
+   * which model. WHO ANSWERS FIRST is the two `*_CHOOSER_ORDER` lists, one per job. Triage's default
+   * is `typesafe` alone. The copilot's default is `openai,typesafe` (owner 2026-10-11, decision 0066:
+   * "Use OpenAI decision API for this"), the order its eval set (`kernel/copilot/acceptance/`) measures.
    * `typesafe,openai` asks Jev first and OpenAI when Jev is unsure; `openai,typesafe` the reverse.
    * A provider with no key is skipped. The chat model stays behind whichever list is chosen.
    *
@@ -346,7 +347,7 @@ const configSchema = z.object({
   OPENAI_DECISIONS_MODEL: z.string().min(1).default("gpt-6-luna"),
   OPENAI_DECISIONS_TIMEOUT_MS: z.coerce.number().int().positive().default(1500),
   TRIAGE_CHOOSER_ORDER: z.string().default("typesafe"),
-  COPILOT_CHOOSER_ORDER: z.string().default("typesafe"),
+  COPILOT_CHOOSER_ORDER: z.string().default("openai,typesafe"),
   /**
    * ═══ THE AUTOMATIC MEDICINE-ALIAS PIPELINE (decision 0051, plan §7a, §14) — SHIPS OFF ═══
    *

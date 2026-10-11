@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { services } from "./tariff";
 
 /**
- * ═══ THE OUTSIDE-TEST CATALOGUE (owner 2026-10-10, decision 0065) ═══
+ * ═══ THE OUTSIDE-TEST CATALOGUE (owner 2026-10-10, decision 0067) ═══
  *
  * *"Build Catalog for them. The patient would get the tests outside the hospital till the hospital
  * don't arrange the facility."* ECG, 2D echo, TMT, PFT, EEG, NCV, endoscopy and the like: a doctor

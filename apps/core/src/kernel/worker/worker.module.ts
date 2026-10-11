@@ -310,7 +310,7 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // `credit_note.issued` -> `radiology.report_ready_on_payment`: the "report ready" message for a
     // bill paid after release, once per report version. One without the other is a boot error.
     [RADIOLOGY_READY_ON_PAYMENT_CONSUMER]: readyOnPaymentConsumer(db),
-    // Decision 0065 — the other half of `orderingManifest`'s `consultation.completed` /
+    // Decision 0067 — the other half of `orderingManifest`'s `consultation.completed` /
     // `prescription.paper_transcribed` declaration: free tests order themselves. One without the other is a boot error.
     [ORDERING_FREE_TESTS_CONSUMER]: freeTestsConsumer(db),
     [PHARMACY_RX_ISSUED_CONSUMER]: rxIssuedConsumer(db),

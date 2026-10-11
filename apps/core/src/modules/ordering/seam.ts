@@ -13,7 +13,7 @@ import type { PlaceImagingOrderResult } from "../radiology";
 import type { RoutedTests } from "./route";
 
 /**
- * ═══ THE ORDERING SEAM (owner 2026-10-10, decision 0065) ═══
+ * ═══ THE ORDERING SEAM (owner 2026-10-10, decision 0067) ═══
  *
  * *"Build the functionality so that when the screens are built then it will be easy to get started."*
  * One call takes an episode number, the tests and the ordering doctor, and sends each test to the

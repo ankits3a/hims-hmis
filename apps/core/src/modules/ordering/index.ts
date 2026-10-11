@@ -1,5 +1,5 @@
 /**
- * ORDERING (decision 0065) — modules import this one only through here (lint-enforced).
+ * ORDERING (decision 0067) — modules import this one only through here (lint-enforced).
  */
 export { orderingManifest } from "./manifest";
 export { OrderingModule } from "./ordering.module";

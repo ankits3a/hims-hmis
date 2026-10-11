@@ -182,7 +182,7 @@ describe("notifications on this phone (M6b)", () => {
     expect(ph.asked).toHaveBeenCalledTimes(1);
     expect(s.calls.find((c) => c.key === "PUT /auth/phone/notifications")?.body).toEqual({ token: ADDRESS, language: "en" });
     // One Android channel per category, named in the person's language.
-    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue", reminder: "Duty reminders", approvals: "Approvals" });
+    expect(ph.channels).toHaveBeenCalledWith({ alert: "Alerts", roster: "Duty roster", queue: "Your queue", reminder: "Duty reminders", approvals: "Approvals", personal: "My reminders" }); // E1.2 — an Android channel for one's own reminders
     await waitFor(() => expect(screen.queryByTestId("push-offer")).toBeNull());
   });
 

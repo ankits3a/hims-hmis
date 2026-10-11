@@ -8,7 +8,7 @@ import { OutsideTests } from "./outside-tests";
 import type { WireOutsideTest } from "../lib/ordering-api";
 
 /**
- * DECISION 0065 (owner 2026-10-10) — ECG, echo and the like are done outside until the hospital has
+ * DECISION 0067 (owner 2026-10-10) — ECG, echo and the like are done outside until the hospital has
  * the facility: an admin list, a doctor's test box that finds them, and a picker that names who does
  * each test.
  */
@@ -45,7 +45,7 @@ function mock(perms: string[]): { puts: unknown[] } {
   return { puts };
 }
 
-describe("outside tests (decision 0065)", () => {
+describe("outside tests (decision 0067)", () => {
   beforeEach(() => { setToken("t"); });
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 

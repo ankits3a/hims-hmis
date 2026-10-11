@@ -87,7 +87,7 @@ export const IMAGE_SOURCES = ["pacs", "no_pacs_images", "outside"] as const;
  * `invoice` is money actually taken; `payer_branch` is a TPA/PMJAY/corporate patient whose
  * pre-authorisation object is Plan 46's and does not exist yet; `daycare` is a `D…` encounter whose
  * discharge bill composes it (Plan 15); `stat` is D3 — an emergency never waits on the cashier, and
- * the fact that it did not is recorded rather than inferred. `free` (owner 2026-10-10, decision 0065) is
+ * the fact that it did not is recorded rather than inferred. `free` (owner 2026-10-10, decision 0067) is
  * the billing office's imaging fee switch, off when the study was ordered: there is no bill to take.
  */
 export const IMAGING_AUTHORISATIONS = ["invoice", "payer_branch", "daycare", "stat", "free"] as const;

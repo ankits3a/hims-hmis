@@ -46,7 +46,7 @@ const feeFlipSchema = z.object({ at: z.string().datetime(), off: z.boolean(), by
 export type FeeFlip = z.infer<typeof feeFlipSchema>;
 const feeSwitchesSchema = z.object({
   opdConsult: z.array(feeFlipSchema), lab: z.array(feeFlipSchema),
-  // `imaging` (owner, 2026-10-10, decision 0065): off = an imaging study needs no bill to start.
+  // `imaging` (owner, 2026-10-10, decision 0067): off = an imaging study needs no bill to start.
   imaging: z.array(feeFlipSchema),
 }).partial();
 const chargeRulesSchema = z.object({

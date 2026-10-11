@@ -6,7 +6,7 @@ import { listOutsideTests, saveOutsideTest } from "../lib/ordering-api";
 import type { WireOutsideTest } from "../lib/ordering-api";
 
 /**
- * OUTSIDE TESTS (owner 2026-10-10, decision 0065) — ECG, echo and the other tests the hospital does not
+ * OUTSIDE TESTS (owner 2026-10-10, decision 0067) — ECG, echo and the other tests the hospital does not
  * do yet. The doctor advises them like any test; the slip prints them under "Tests to be done outside".
  * When the hospital starts one, set it "In hospital" and name the department.
  */

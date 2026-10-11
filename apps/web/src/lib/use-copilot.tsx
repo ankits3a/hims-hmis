@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { askCopilot } from "./copilot-api";
+import { checkCopilotNotice } from "./copilot-notice";
 import type { CopilotDayReport, CopilotReply } from "./copilot-api";
 
 /**
@@ -67,6 +68,12 @@ export function useCopilot(opts: {
 
   const { terms, fallback, onNote, date } = opts;
 
+  /*
+    E0.1 — THE STAFF NOTICE (owner ruling 2026-10-10: notice first). Checked when the ask box first
+    appears, so the one-line notice is up before the first question; `lib/copilot-notice.ts`.
+  */
+  useEffect(() => { checkCopilotNotice(); }, []);
+
   const ask = useCallback((question: string): void => {
     const q = question.trim();
     if (q === "") return;
@@ -76,7 +83,8 @@ export function useCopilot(opts: {
     setBusy(true);
     setReport(null);
     setPayload(null);
-    askCopilot(q, terms?.() ?? [], date)
+    checkCopilotNotice();
+    askCopilot(q, terms?.() ?? [], date, screenSlug())
       .then((reply: CopilotReply) => {
         /*
           THE SERVER DID NOT UNDERSTAND, SO THE SCREEN GETS ITS TURN. This is the seam that keeps
@@ -148,4 +156,13 @@ export function sayParams(
     } else out[k] = v;
   }
   return out;
+}
+
+/**
+ * E0.1 — the asking screen, for the ledger: the route's FIRST path segment only (`opd`, `pharmacy`,
+ * `my-day`), never the full path, which can carry a patient's or a visit's id.
+ */
+export function screenSlug(pathname: string = typeof window === "undefined" ? "/" : window.location.pathname): string {
+  const first = (pathname.split("/")[1] ?? "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40);
+  return /^[a-z0-9]/.test(first) ? first : "home";
 }

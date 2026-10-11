@@ -1669,6 +1669,13 @@ person sees their own days — as one word a day (Present, Absent, Leave, Off, P
 a day with a single punch), without times. A request to meet about a Confirm day goes to whoever
 holds `attendance_committee`; nobody is assigned to that role by any seed.
 
+**Copilot health (decision 0064, E0.1, 2026-10-10).** Every question put to the copilot leaves one
+row in its ledger for 180 days — the masked question only, never a name or number typed into it —
+and staff see a one-line notice saying so before their first question. One permission reads the
+totals: `copilot.health.read` is held by `owner`, `admin` and the new role `quality_manager`
+(the copilot steward), and the steward role holds nothing else. The page shows counts, routes and
+timings for a day and never a per-person list; nobody is assigned to `quality_manager` by any seed.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

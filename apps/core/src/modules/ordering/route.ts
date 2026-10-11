@@ -5,7 +5,7 @@ import type { Db, Tx } from "../../kernel/db/client";
 import type { StudyType } from "../radiology";
 
 /**
- * ═══ WHICH DEPARTMENT DOES A TEST (owner 2026-10-10, decision 0065) ═══
+ * ═══ WHICH DEPARTMENT DOES A TEST (owner 2026-10-10, decision 0067) ═══
  *
  * One answer for every ordering screen — OPD today, IPD and Emergency when they come. A test is
  * routed by its `serviceId`, never by its name: the lab owns the services its catalogue names

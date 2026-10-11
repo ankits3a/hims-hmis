@@ -21,6 +21,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/billing/office` | `apps/web/src/screens/billing-office` |
 | `/billing/session` | `apps/web/src/screens/billing-session` |
 | `/change-password` | `apps/web/src/screens/change-password` |
+| `/copilot-health` | `apps/web/src/screens/copilot-health` |
 | `/counter` | `apps/web/src/screens/desk-one/desk-one` |
 | `/counter/figures` | `apps/web/src/screens/counter-figures` |
 | `/counter/instruments` | `apps/web/src/screens/counter-instruments` |

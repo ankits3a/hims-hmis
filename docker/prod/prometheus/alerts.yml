@@ -49,7 +49,7 @@ groups:
       - alert: HmisSchedulerJobStaleDaily
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames"
+            job=~"sweepGuardianMajority|sweepAppointmentNoShows|sweepBatchExpiry|runDailyClose|createEventPartitions|retentionSweep|rollupUserDayFacts|sweepLabNonReturn|sweepUnreadWatchman|sweepRosterWindows|runMonthlyProposals|runRefillReminders|sweepOverdueQa|proposeMedicineNicknames|pruneCopilotAsks"
           } > 93600
         for: 5m
         labels:
@@ -142,6 +142,9 @@ groups:
           # Medicine nicknames (decision 0051): hourly, and it heartbeats whether or not the pipeline
           # is switched on — so an absent series means the worker never ran it, not that it is off.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="proposeMedicineNicknames"})
+          # E0.1 (decision 0064) — the copilot ask prune, DAILY (01:20 IST), always on (owner ruling
+          # 2026-10-10, option a). A prune that silently stopped keeps staff questions past 180 days.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="pruneCopilotAsks"})
           # Tele-call (owner 2026-10-09): every minute. A job that never ran is a paid tele patient
           # the doctor's line never shows.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="openDueTeleVisits"})

@@ -12,6 +12,9 @@ import { PrivacyCover } from "../src/privacy-cover";
 import { SessionProvider } from "../src/session";
 import { SheetHost } from "../src/ui";
 
+// "/" sits under any route opened by link (the scan widget's hmis://scan): Back returns home, and the gate is there to return to.
+export const unstable_settings = { anchor: "index" };
+
 // The crest stays up until the typeface is registered, so no screen is first drawn in the system's.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 

@@ -128,7 +128,7 @@ describe("the fee switches: consultation and laboratory fees, off and on", () =>
     expect((await rules()).feeSwitches).toEqual({ opdConsult: [{ at: T1.toISOString(), off: true, by: "the-owner" }] });
   });
 
-  it("imaging switched off (decision 0065): a study ordered while it is off is free, one ordered before or after is not", async () => {
+  it("imaging switched off (decision 0067): a study ordered while it is off is free, one ordered before or after is not", async () => {
     expect(feeOffAt(await rules(), "imaging", T1)).toBe(false);
     await setFeeSwitch(db, owner, "imaging", true, T1);
     await setFeeSwitch(db, owner, "imaging", false, T3);

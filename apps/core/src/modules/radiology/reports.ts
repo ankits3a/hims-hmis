@@ -1295,7 +1295,7 @@ async function notifyIfDue(
   now: Date,
 ): Promise<boolean> {
   const isRedCritical = signed.criticalCategory === "red";
-  /** A `free` study (imaging fee switch off, decision 0065) has no bill to wait for. */
+  /** A `free` study (imaging fee switch off, decision 0067) has no bill to wait for. */
   const free = study.authorisedBy === "free";
   if (!isRedCritical && !free && !(await invoiceIsSettled(tx, study.invoiceLineId))) return false;
   return (await enqueueReportReady(tx, study, signed.id, now)) !== "failed";

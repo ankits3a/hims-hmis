@@ -6,7 +6,7 @@ const count = z.number().int().nonnegative();
 
 /**
  * The doctor's tests became orders by themselves because the fee was switched to Free (decision
- * 0065). Counts and the episode number only — what was ordered is on the orders.
+ * 0067). Counts and the episode number only — what was ordered is on the orders.
  */
 export const freeTestsOrdered = defineEvent("ordering.free_tests_ordered", MODULE, z.object({
   encounterNo: z.string().min(1),

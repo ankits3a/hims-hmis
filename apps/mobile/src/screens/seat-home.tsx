@@ -26,6 +26,7 @@ import { rosterApi } from "../roster/api";
 import { ALL_READ } from "../attendance/api";
 import { AttendanceCard, attendanceCache, useAttendanceHome } from "../attendance/home-card";
 import { AadhaarCard, AadhaarSheet, useSelfIdentity } from "../attendance/aadhaar-card";
+import { ReminderCard, useReminders } from "../reminders/card";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
 /** Refreshed while the app is in front: every 30 s, and whenever it comes back to the front. */
@@ -86,6 +87,9 @@ export function SeatHome() {
   /* The person's own attendance: ONE read beside the home's, made by the home's own refresh (`attendance/home-card.tsx`). */
   const attendance = useAttendanceHome(call, signedIn ? user : "");
   const reloadAttendance = attendance.reload;
+  /* E1.2 — the person's own reminders: one line under attendance, read on the same refresh. */
+  const reminders = useReminders(call, signedIn);
+  const reloadReminders = reminders.reload;
   /* "Add your Aadhaar" (owner 2026-10-09): the card at the top, while the server says this person owes one. */
   const identity = useSelfIdentity(call, signedIn ? user : "");
   const reloadIdentity = identity.reload;
@@ -96,6 +100,7 @@ export function SeatHome() {
     const now = Date.now();
     void reloadAttendance();
     void reloadIdentity();
+    void reloadReminders();
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
     if (loaded.reached) {
@@ -107,7 +112,7 @@ export function SeatHome() {
       setOnline(false);
     }
     if (byHand) setRefreshing(false);
-  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity]);
+  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity, reloadReminders]);
   useEffect(() => {
     if (user === "") return;
     let gone = false;
@@ -297,6 +302,7 @@ export function SeatHome() {
         </Text>
         <AttendanceCard t={t} home={attendance} onOpen={() => router.push("/attendance")}
           onConfirm={(date) => router.push({ pathname: "/attendance", params: { confirm: date } })} />
+        <ReminderCard t={t} items={reminders.items} onOpen={() => router.push("/reminders")} />
         {!online && <View style={{ marginTop: space.sm }}><Note tone="warn" testID="home-offline">{t(home === null && cold === null ? "home.offline.nothing" : "home.offline.banner")}</Note></View>}
         {/* Cold and offline: the last numbers this phone drew, counts only, and nothing to tap. */}
         {model === null && cold !== null && !online && (

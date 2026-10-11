@@ -11,7 +11,7 @@ import type { Db } from "../../kernel/db/client";
 import type { ModuleRegistry } from "../../kernel/modules/loader";
 
 /**
- * THE ORDERING DOOR (decision 0065). No new permission:
+ * THE ORDERING DOOR (decision 0067). No new permission:
  *   · reading the test lists rides `tariff.read`, which every doctor and desk already holds for the price list;
  *   · curating the outside list rides `tariff.services.manage`, the service master's own grant;
  *   · ordering rides `orders.place`, and `placeOrder` then asks for each department's own permission.

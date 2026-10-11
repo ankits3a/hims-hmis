@@ -23,6 +23,8 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { StaffReports } from "./screens/staff-reports";
+import { CopilotHealthScreen } from "./screens/copilot-health";
+import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
 import { SeatShell } from "./screens/desk-one/seat-shell";
@@ -245,7 +247,7 @@ const NAV: readonly NavEntry[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
-  // Decision 0065 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
+  // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
   // it exactly. `nav-parity.test.ts` compares the two lists rather than trusting this comment.
@@ -280,6 +282,8 @@ const NAV: readonly NavEntry[] = [
   // `desk`: reading a colleague's figures is supervision, not counter work, and putting it beside
   // the counter would make it look like part of a shift.
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
+  // E0.1 (decision 0064) — the copilot's health; path and permission match `deskManifest.menu`.
+  { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -651,7 +655,7 @@ function Shell(): React.ReactElement {
 }
 
 /* The printing panel is this BROWSER's setting, so it is mounted once, above every screen (Desk One has no shell). */
-const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelHost /></> });
+const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelHost /><CopilotNoticeHost /></> });
 
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginScreen });
 
@@ -722,6 +726,13 @@ const staffReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/staff",
   component: StaffReports,
+});
+
+/** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
+const copilotHealthRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/copilot-health",
+  component: CopilotHealthScreen,
 });
 
 /**
@@ -1771,7 +1782,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

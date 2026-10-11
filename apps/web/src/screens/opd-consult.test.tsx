@@ -2837,7 +2837,7 @@ describe("07d T5 — advised investigations", () => {
     };
   }
 
-  it("says on the SCREEN when a test becomes an order (only while its fee is Free, decision 0065) — before a doctor assumes one exists", async () => {
+  it("says on the SCREEN when a test becomes an order (only while its fee is Free, decision 0067) — before a doctor assumes one exists", async () => {
     mockRoutes(routes());
     const user = userEvent.setup();
     await openPanel(user);

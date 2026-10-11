@@ -67,6 +67,11 @@ describe("collectCopilotTools", () => {
     expect(collectCopilotTools(reg)).toHaveLength(1);
   });
 
+  it("refuses at boot on an alsoAdmits permission no manifest declares (E1.6)", () => {
+    const reg = registryOf([manifest("billing", [tool({ alsoAdmits: ["billing.invented"] })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(reg)).toThrow(/billing\.invented/);
+  });
+
   it("checks kernel-owned tools in the same pass as the modules'", () => {
     // Two lists checked separately is how a collision gets through, so there is only one pass.
     const reg = registryOf([manifest("opd", [tool()], ["opd.queue.read"])]);
@@ -104,6 +109,25 @@ describe("runTool", () => {
     */
     let ran = false;
     const t = tool({ run: () => { ran = true; return Promise.resolve({ key: "copilot.answer.failed", params: {} }); } });
+    const out = await runTool(t, ctx(), () => Promise.resolve(false));
+    expect(out.key).toBe("copilot.answer.notPermitted");
+    expect(ran).toBe(false);
+  });
+
+  it("admits a user who holds only an alsoAdmits permission, and checks nothing past the first hit (E1.6)", async () => {
+    const asked: string[] = [];
+    const t = tool({ permission: "billing.dues.patient.read", alsoAdmits: ["billing.invoice.read"] });
+    const out = await runTool(t, ctx(), (p) => { asked.push(p); return Promise.resolve(p === "billing.invoice.read"); });
+    expect(out.key).toBe("copilot.answer.queueShortest");
+    expect(asked).toEqual(["billing.dues.patient.read", "billing.invoice.read"]);
+  });
+
+  it("refuses a user who holds neither the permission nor any alsoAdmits one (E1.6)", async () => {
+    let ran = false;
+    const t = tool({
+      permission: "billing.dues.patient.read", alsoAdmits: ["billing.invoice.read"],
+      run: () => { ran = true; return Promise.resolve({ key: "copilot.answer.failed", params: {} }); },
+    });
     const out = await runTool(t, ctx(), () => Promise.resolve(false));
     expect(out.key).toBe("copilot.answer.notPermitted");
     expect(ran).toBe(false);

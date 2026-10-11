@@ -48,10 +48,11 @@ export function collectCopilotTools(
       declares is a tool no role can ever reach, and it would sit in the catalog looking implemented
       forever. Boot is the only honest place to find that out.
     */
-    if (t.permission !== null && !declared.has(t.permission)) {
+    for (const p of t.permission === null ? [] : [t.permission, ...(t.alsoAdmits ?? [])]) {
+      if (declared.has(p)) continue;
       throw new CopilotError(
         "undeclared_permission",
-        `copilot tool "${t.intent}" declares permission "${t.permission}", which no manifest declares — ` +
+        `copilot tool "${t.intent}" declares permission "${p}", which no manifest declares — ` +
           "a tool gated on a permission nothing declares is a tool no role can ever reach",
       );
     }
@@ -86,7 +87,7 @@ export async function runTool(
     after. Run-then-filter would do the work and read the data for an answer the person may not see,
     which is the only thing the permission is for.
   */
-  if (tool.permission !== null && !(await can(tool.permission))) {
+  if (tool.permission !== null && !(await admitted([tool.permission, ...(tool.alsoAdmits ?? [])], can))) {
     return { key: "copilot.answer.notPermitted", params: {} };
   }
 
@@ -109,4 +110,10 @@ export async function runTool(
     */
     return { key: "copilot.answer.failed", params: {} };
   }
+}
+
+/** Any one of the gate's permissions admits; asked in order, stopping at the first held. */
+async function admitted(permissions: readonly string[], can: PermissionCheck): Promise<boolean> {
+  for (const p of permissions) if (await can(p)) return true;
+  return false;
 }

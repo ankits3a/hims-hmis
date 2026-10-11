@@ -64,7 +64,7 @@ describe("the fee switches (owner, 2026-10-01)", () => {
     expect(screen.getByTestId("fee-opdConsult")).toHaveTextContent("no consultation fee is asked");
   });
 
-  it("imaging has its own switch (decision 0065): one tap makes imaging free, and the lab says its tests order themselves", async () => {
+  it("imaging has its own switch (decision 0067): one tap makes imaging free, and the lab says its tests order themselves", async () => {
     const { puts } = mock(["billing.reports.read", "billing.config.write"]);
     renderWithProviders(<FeeSwitches />);
     const imaging = await screen.findByRole("switch", { name: "Imaging fees" });

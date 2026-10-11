@@ -18,13 +18,13 @@ import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 
 /**
- * DECISION 0065 (owner 2026-10-10): free tests order themselves at "Complete consult", outside tests
+ * DECISION 0067 (owner 2026-10-10): free tests order themselves at "Complete consult", outside tests
  * have a catalogue and print, and one seam routes any episode's tests to lab, imaging or outside.
  */
 const owner: Actor = { type: "user", id: "the-owner" };
 const seedActor: Actor = { type: "system", id: "seed-outside-tests" };
 
-describe("ordering: the lab side (decision 0065)", () => {
+describe("ordering: the lab side (decision 0067)", () => {
   let db: Db;
   let teardown: () => Promise<void>;
   let fx: LabDeskFixture;
@@ -135,7 +135,7 @@ describe("ordering: the lab side (decision 0065)", () => {
   });
 });
 
-describe("ordering: the outside catalogue (decision 0065)", () => {
+describe("ordering: the outside catalogue (decision 0067)", () => {
   let db: Db;
   let teardown: () => Promise<void>;
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
@@ -158,7 +158,7 @@ describe("ordering: the outside catalogue (decision 0065)", () => {
   });
 });
 
-describe("ordering: the imaging side (decision 0065)", () => {
+describe("ordering: the imaging side (decision 0067)", () => {
   let db: Db;
   let teardown: () => Promise<void>;
   const DAY = "2026-08-31";

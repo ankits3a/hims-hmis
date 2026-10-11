@@ -108,6 +108,13 @@ export type CopilotToolDecl = {
    * ANOTHER person names a permission, without exception.
    */
   permission: string | null;
+  /**
+   * E1.6 — further permissions that ALSO admit the asker, exactly as `@RequirePermission`'s
+   * `alsoAdmits` does on the screen's route: the copilot is then reachable by the same seats as that
+   * route and no others. Each string is boot-checked like `permission`. Ignored when `permission`
+   * is null.
+   */
+  alsoAdmits?: readonly string[];
   /** Whether the question must name somebody. See the type header. */
   needsSubject: boolean;
   run(ctx: CopilotToolCtx): Promise<CopilotAnswer>;

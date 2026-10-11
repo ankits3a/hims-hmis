@@ -71,6 +71,9 @@ generated: { by: tools/arch/gen.mjs }
 | verb | path | controller |
 |---|---|---|
 | POST | `/copilot/ask` | `copilot/copilot.controller.ts` |
+| GET | `/copilot/health` | `copilot/copilot.controller.ts` |
+| GET | `/copilot/notice` | `copilot/copilot.controller.ts` |
+| POST | `/copilot/notice` | `copilot/copilot.controller.ts` |
 
 ## `desk`
 
@@ -136,6 +139,14 @@ generated: { by: tools/arch/gen.mjs }
 | GET | `/print/jobs` | `printing/printing.controller.ts` |
 | POST | `/print/printed` | `printing/printing.controller.ts` |
 | POST | `/print/reprint` | `printing/printing.controller.ts` |
+
+## `reminders`
+
+| verb | path | controller |
+|---|---|---|
+| POST | `/reminders/:id/cancel` | `reminders/reminders.controller.ts` |
+| GET | `/reminders` | `reminders/reminders.controller.ts` |
+| POST | `/reminders` | `reminders/reminders.controller.ts` |
 
 ## `resources`
 

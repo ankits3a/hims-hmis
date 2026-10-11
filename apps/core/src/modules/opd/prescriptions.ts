@@ -886,7 +886,7 @@ export type RxPrintData = {
      */
     advisedTests: AdvisedTest[];
     /**
-     * Decision 0065 (owner 2026-10-10) — which of `advisedTests` the hospital does NOT do: the outside
+     * Decision 0067 (owner 2026-10-10) — which of `advisedTests` the hospital does NOT do: the outside
      * catalogue's `outside` rows. The sheet prints them under "Tests to be done outside", with no price.
      */
     outsideTestIds: string[];
@@ -983,7 +983,7 @@ export async function getPrescriptionPrint(db: Db, cfg: AppConfig, actor: Actor,
   };
 }
 
-/** Decision 0065 — the advised tests the outside catalogue says are done outside the hospital. */
+/** Decision 0067 — the advised tests the outside catalogue says are done outside the hospital. */
 async function outsideAmong(db: Db, advised: readonly AdvisedTest[]): Promise<string[]> {
   if (advised.length === 0) return [];
   const rows = await db.select({ serviceId: outsideTests.serviceId }).from(outsideTests)

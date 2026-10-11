@@ -150,7 +150,7 @@ describe("RxPrint", () => {
  * of whom saw the screen. A printed list of test names that looked like an order would send
  * somebody to a sample-collection desk that does not exist in this hospital's software.
  */
-it("07d T5: advised tests print with their price and the as-of date (decision 0065: a free test may be ordered, so the slip no longer says none was)", () => {
+it("07d T5: advised tests print with their price and the as-of date (decision 0067: a free test may be ordered, so the slip no longer says none was)", () => {
   renderWithProviders(<RxPrint data={{
     ...DATA,
     encounter: {
@@ -169,7 +169,7 @@ it("07d T5: advised tests print with their price and the as-of date (decision 00
   expect(block).toHaveTextContent(DATA.encounter.serviceDate);
 });
 
-it("decision 0065: an outside test prints under 'Tests to be done outside', without a price, and not in the hospital list", () => {
+it("decision 0067: an outside test prints under 'Tests to be done outside', without a price, and not in the hospital list", () => {
   renderWithProviders(<RxPrint data={{
     ...DATA,
     encounter: {

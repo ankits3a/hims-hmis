@@ -80,6 +80,7 @@
     },
     "staffReports": "Staff reports",
     "outsideTests": "Outside tests",
+    "copilotHealth": "Copilot health",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -10606,6 +10607,45 @@
     }
   },
   "copilot": {
+    "notice": {
+      "text": "Copilot questions are logged for 180 days for safety and quality. No one sees a per-person list.",
+      "ok": "OK"
+    },
+    "health": {
+      "title": "Copilot health",
+      "date": "Day",
+      "asks": "Questions",
+      "askers": "People who asked",
+      "notUnderstoodShare": "Not understood",
+      "acts": "Acts",
+      "byOutcome": "How questions ended",
+      "byRoute": "Who answered, and how fast",
+      "route": "Route",
+      "count": "Questions",
+      "p50": "Typical (p50)",
+      "p95": "Slow (p95)",
+      "none": "—",
+      "failed": "Could not load the copilot's health.",
+      "outcome": {
+        "answered": "Answered",
+        "notUnderstood": "Not understood",
+        "noTool": "Not available yet",
+        "notPermitted": "Not permitted",
+        "needSubject": "Asked which patient",
+        "failed": "Failed",
+        "identifierLeak": "Stopped by the masker",
+        "refusedActor": "Refused (not a person)",
+        "badRequest": "Malformed",
+        "error": "Error",
+        "halted": "Halted"
+      },
+      "routeName": {
+        "phrasebook": "Phrasebook",
+        "chooser": "Chooser",
+        "model": "Model",
+        "none": "Nobody"
+      }
+    },
     "answer": {
       "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
       "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
@@ -10634,6 +10674,9 @@
       "uncollected": "Paid and not yet collected ({{n}}): {{items}}.",
       "uncollectedNone": "Nothing is paid and waiting to be collected.",
       "uhidCheckFailed": "That UHID does not look right — check the digits. ({{uhid}})",
+      "duesOwed": "{{uhid}}: {{amount}} due · unpaid bills: {{count}} · oldest {{billNo}} ({{date}})",
+      "duesNone": "{{uhid}}: nothing due",
+      "duesNeedUhid": "Give the patient's UHID",
       "shortBookDraft": "Drafted: note {{name}} in the short book? Confirm on the card.",
       "shortBookAlready": "{{name}} is already in the short book.",
       "shortBookNeedName": "Which medicine is out? Say it with the name — “Pan 40 khatam”.",

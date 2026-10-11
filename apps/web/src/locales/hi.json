@@ -80,6 +80,7 @@
     },
     "staffReports": "स्टाफ़ रिपोर्ट",
     "outsideTests": "बाहर की जाँचें",
+    "copilotHealth": "कोपायलट हेल्थ",
     "labDesk": "लैब डेस्क",
     "labCollection": "नमूना संग्रह",
     "labBench": "बेंच",
@@ -10606,6 +10607,45 @@
     }
   },
   "copilot": {
+    "notice": {
+      "text": "सुरक्षा और गुणवत्ता के लिए कोपायलट के सवाल 180 दिन तक दर्ज रहते हैं। किसी को व्यक्ति-वार सूची नहीं दिखती।",
+      "ok": "ठीक है"
+    },
+    "health": {
+      "title": "कोपायलट हेल्थ",
+      "date": "दिन",
+      "asks": "सवाल",
+      "askers": "पूछने वाले लोग",
+      "notUnderstoodShare": "समझ नहीं आए",
+      "acts": "काम",
+      "byOutcome": "सवालों का नतीजा",
+      "byRoute": "किसने जवाब दिया, कितनी जल्दी",
+      "route": "रास्ता",
+      "count": "सवाल",
+      "p50": "आम (p50)",
+      "p95": "धीमा (p95)",
+      "none": "—",
+      "failed": "कोपायलट हेल्थ नहीं खुल सका।",
+      "outcome": {
+        "answered": "जवाब मिला",
+        "notUnderstood": "समझ नहीं आया",
+        "noTool": "अभी उपलब्ध नहीं",
+        "notPermitted": "अनुमति नहीं",
+        "needSubject": "कौन सा मरीज़, पूछा",
+        "failed": "नहीं हो सका",
+        "identifierLeak": "मास्कर ने रोका",
+        "refusedActor": "मना (व्यक्ति नहीं)",
+        "badRequest": "गलत अनुरोध",
+        "error": "त्रुटि",
+        "halted": "रोका गया"
+      },
+      "routeName": {
+        "phrasebook": "फ़्रेज़बुक",
+        "chooser": "चूज़र",
+        "model": "मॉडल",
+        "none": "कोई नहीं"
+      }
+    },
     "answer": {
       "notPermitted": "आपके पास इसकी अनुमति नहीं है। ज़रूरत हो तो रोल देखने वाले से कहें।",
       "needSubject": "किस मरीज़ का? UHID या पर्ची पर लिखा विज़िट नंबर बताइए।",
@@ -10634,6 +10674,9 @@
       "uncollected": "पैसे दिए, दवा अभी नहीं ली ({{n}}): {{items}}।",
       "uncollectedNone": "ऐसा कोई नहीं जिसने पैसे देकर दवा न ली हो।",
       "uhidCheckFailed": "यह UHID सही नहीं लग रहा — अंक दोबारा देख लीजिए। ({{uhid}})",
+      "duesOwed": "{{uhid}}: {{amount}} बाकी · बकाया बिल: {{count}} · सबसे पुराना {{billNo}} ({{date}})",
+      "duesNone": "{{uhid}}: कुछ बाकी नहीं",
+      "duesNeedUhid": "मरीज़ का UHID बताइए",
       "shortBookDraft": "ड्राफ़्ट तैयार: {{name}} शॉर्ट बुक में लिखें? कार्ड पर पुष्टि करें।",
       "shortBookAlready": "{{name}} पहले से शॉर्ट बुक में है।",
       "shortBookNeedName": "कौन सी दवा ख़त्म है? नाम के साथ कहें — “Pan 40 khatam”।",

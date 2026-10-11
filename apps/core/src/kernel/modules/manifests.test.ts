@@ -91,7 +91,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   radiologyManifest,
   pharmacyManifest, // PLAN 16c T3
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
-  orderingManifest, // DECISION 0065 — both processes
+  orderingManifest, // DECISION 0067 — both processes
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -195,7 +195,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "roster",
       // STAFF ATTENDANCE (owner 2026-10-09) — appended. A leaf: it reads `auth.users` and nothing imports it.
       "attendance",
-      // TEST ORDERING (decision 0065, 2026-10-10) — appended. It reaches into lab, radiology, opd and
+      // TEST ORDERING (decision 0067, 2026-10-10) — appended. It reaches into lab, radiology, opd and
       // billing through their indexes; nothing imports it.
       "ordering",
     ]);
@@ -419,9 +419,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "radiology",
       // PLAN 16c T3 — the pharmacy's `prescription.issued` consumer; installed in both processes.
       "pharmacy",
-      // DECISION 0065 — the free-test consumer (`ordering.free_tests`); installed in both processes.
+      // DECISION 0067 — the free-test consumer (`ordering.free_tests`); installed in both processes.
       "ordering",
     ]);
-    expect(workerKeys).toHaveLength(20); // DECISION 0065: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(20); // DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

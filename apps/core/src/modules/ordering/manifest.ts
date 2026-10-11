@@ -3,7 +3,7 @@ import { ORDERING_FREE_TESTS_CONSUMER } from "./auto-order";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
- * ORDERING (owner 2026-10-10, decision 0065) — the one door every doctor's screen orders tests
+ * ORDERING (owner 2026-10-10, decision 0067) — the one door every doctor's screen orders tests
  * through, the outside-test catalogue, and the free-test automatic order. No permission of its own:
  * it rides `tariff.read`, `tariff.services.manage` and `orders.place` (see the controller).
  *

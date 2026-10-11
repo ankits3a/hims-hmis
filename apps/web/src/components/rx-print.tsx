@@ -62,7 +62,7 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
     a payload from before the rows existed prints the display string as it always did.
   */
   const rows = data.encounter.diagnoses ?? [];
-  /** Decision 0065 — the advised tests split by who does them; `?? []` for a payload from an older server. */
+  /** Decision 0067 — the advised tests split by who does them; `?? []` for a payload from an older server. */
   const outsideIds = new Set(data.encounter.outsideTestIds ?? []);
   const inHospitalTests = (data.encounter.advisedTests ?? []).filter((x) => !outsideIds.has(x.serviceId));
   const outsideTests = (data.encounter.advisedTests ?? []).filter((x) => outsideIds.has(x.serviceId));
@@ -202,7 +202,7 @@ export function RxPrint({ data }: { data: WireRxPrint }): React.ReactElement {
             </p>
           </div>
         )}
-        {/* Decision 0065 — tests the hospital does not do yet: no price, the patient has them done outside. */}
+        {/* Decision 0067 — tests the hospital does not do yet: no price, the patient has them done outside. */}
         {outsideTests.length > 0 && (
           <div data-testid="rx-outside-tests" className="text-sm">
             <p className="font-medium">{t("rx.outsideTests")}</p>

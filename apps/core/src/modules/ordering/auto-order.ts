@@ -15,7 +15,7 @@ import type { OrderKindDecl } from "../../kernel/orders/kinds";
 import type { OrderTestsResult } from "./seam";
 
 /**
- * ═══ FREE TESTS ORDER THEMSELVES (owner 2026-10-10, decision 0065) ═══
+ * ═══ FREE TESTS ORDER THEMSELVES (owner 2026-10-10, decision 0067) ═══
  *
  * *"If the fee is toggled Free by the admin then an automatic order will be created which the lab
  * staff can add/edit and proceed for blood collection or imaging."*
@@ -32,7 +32,7 @@ import type { OrderTestsResult } from "./seam";
  */
 export const ORDERING_FREE_TESTS_CONSUMER = "ordering.free_tests";
 export const FREE_TESTS_ACTOR: Actor = { type: "system", id: "free-tests" };
-export const FREE_TESTS_PROTOCOL = "decision-0065:free-tests";
+export const FREE_TESTS_PROTOCOL = "decision-0067:free-tests";
 
 /** The two departments' order kinds, straight from their manifests (the worker installs both). */
 function orderDecls(): OrderKindDecl[] {

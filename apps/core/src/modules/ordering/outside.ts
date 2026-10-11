@@ -8,7 +8,7 @@ import type { Db, Tx } from "../../kernel/db/client";
 import type { OutsideTestSite } from "../../kernel/db/schema";
 
 /**
- * ═══ THE OUTSIDE-TEST CATALOGUE (owner 2026-10-10, decision 0065) ═══
+ * ═══ THE OUTSIDE-TEST CATALOGUE (owner 2026-10-10, decision 0067) ═══
  *
  * Each row is a tariff service of its own (`OUTSVC-<code>`, code `OUT-<code>`, category
  * `investigation`), so the doctor's advised test carries one id from the consult to the slip, the

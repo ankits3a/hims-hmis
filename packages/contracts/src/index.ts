@@ -18,3 +18,4 @@ export * from "./owner-app";
 export * from "./flow";
 export * from "./my-pace";
 export * from "./self-identity";
+export * from "./reminders";

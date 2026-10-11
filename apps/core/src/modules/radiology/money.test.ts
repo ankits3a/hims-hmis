@@ -67,7 +67,7 @@ describe("DD12a — why a scan was allowed to start (18a T7 A4)", () => {
       .toBe("daycare");
   });
 
-  it("the imaging fee switch off ⇒ `free`, below money, day-care and payer, above `stat` (decision 0065)", () => {
+  it("the imaging fee switch off ⇒ `free`, below money, day-care and payer, above `stat` (decision 0067)", () => {
     expect(authorisationOf(study(), { intendedPayer: "self" }, true)).toBe("free");
     expect(authorisationOf(study({ priority: "stat" }), { intendedPayer: "self" }, true)).toBe("free");
     expect(authorisationOf(study(), { intendedPayer: "tpa" }, true)).toBe("payer_branch");

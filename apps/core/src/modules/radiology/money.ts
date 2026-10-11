@@ -76,7 +76,7 @@ export function authorisationOf(
 }
 
 /**
- * THE IMAGING FEE SWITCH (owner 2026-10-10, decision 0065) — was imaging free when this study was
+ * THE IMAGING FEE SWITCH (owner 2026-10-10, decision 0067) — was imaging free when this study was
  * ordered? Read at the ORDER's time, like the consult switch: a patient sent while imaging was free
  * stays free if the office switches charging on while they wait. An unconfigured billing module has
  * no switches, so imaging is charged.

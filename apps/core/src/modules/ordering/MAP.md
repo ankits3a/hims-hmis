@@ -1,7 +1,7 @@
 ---
 type: module-notes
 title: "ordering — module notes"
-description: "Test ordering for every doctor screen (decision 0065): routing by service id, the ordering seam, the free-test automatic order, and the outside-test catalogue."
+description: "Test ordering for every doctor screen (decision 0067): routing by service id, the ordering seam, the free-test automatic order, and the outside-test catalogue."
 resource: apps/core/src/modules/ordering
 tags: [ordering, lab, radiology]
 generated: { by: agent:claude, at: 2026-10-10 }
@@ -10,7 +10,7 @@ stale_after: 2027-01-10
 ---
 # ordering — MAP
 
-Test ordering for every doctor screen (decision 0065, owner 2026-10-10).
+Test ordering for every doctor screen (decision 0067, owner 2026-10-10).
 
 | File | What it holds |
 |---|---|

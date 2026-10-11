@@ -6,7 +6,7 @@ import { searchOrderableTests } from "../lib/ordering-api";
 import type { WireOrderableTest } from "../lib/ordering-api";
 
 /**
- * THE TEST PICKER (decision 0065) — for the IPD and Emergency doctor screens when they are built.
+ * THE TEST PICKER (decision 0067) — for the IPD and Emergency doctor screens when they are built.
  * Searches every test a department claims (`GET /ordering/tests`) and tags each with who does it, so
  * the doctor sees "Lab", "Imaging" or "Outside" before picking. Ordering is the caller's: it posts the
  * picked ids to `POST /ordering/orders`, which routes each to its department.

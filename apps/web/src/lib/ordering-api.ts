@@ -2,7 +2,7 @@ import { api } from "./api";
 import type { WirePriceListRow } from "./opd-api";
 
 /**
- * TEST ORDERING (owner 2026-10-10, decision 0065) — the outside-test catalogue, the ordering door's
+ * TEST ORDERING (owner 2026-10-10, decision 0067) — the outside-test catalogue, the ordering door's
  * test search, and the list the doctor's "advise a test" box searches.
  */
 export type WireOutsideTest = {

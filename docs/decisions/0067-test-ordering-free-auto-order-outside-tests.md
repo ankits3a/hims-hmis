@@ -1,6 +1,6 @@
 ---
 type: decision
-id: "0065"
+id: "0067"
 title: "While a test fee is Free, the doctor's advised tests order themselves at Complete consult; imaging gets its own Free switch; ECG, echo and the like get an outside-test catalogue; one ordering door serves every doctor screen"
 description: "Owner 2026-10-10: free lab tests and free imaging studies are ordered automatically when the doctor completes the consult (or the scribe saves a paper prescription), and the lab or imaging staff then add, remove and proceed. A new Imaging switch joins the OPD consult and lab switches. Tests the hospital does not do (ECG, 2D echo, TMT, PFT, EEG, NCV, endoscopy, colonoscopy, Holter, audiometry) are kept in an outside-test catalogue and print under 'Tests to be done outside'. One server door routes any episode's tests to lab, imaging or outside, ready for the IPD and Emergency screens."
 generated: { by: agent:claude, at: 2026-10-10 }
@@ -13,7 +13,7 @@ superseded_by: []
 sources:
   - { id: spec-test-ordering, resource: "/opt/hmis-context/SPEC-test-ordering-sync-2026-10-10.md", title: "Spec: doctor's tests become orders when free, outside catalogue, ordering seam" }
 ---
-# 0065 — Test ordering: free tests order themselves, outside tests, one door
+# 0067 — Test ordering: free tests order themselves, outside tests, one door
 
 - **Date:** 2026-10-10   **Status:** Ruled
 - **Area:** ordering (new module), lab, radiology, billing fee switches, OPD prescription print
@@ -37,7 +37,7 @@ The owner's answers, in their words:
 1. **Free tests order themselves.** When the doctor completes the consult, or the scribe saves a paper
    prescription, each advised lab test is ordered for the lab if the lab fee switch was off at that
    moment, and each advised imaging study for imaging if the imaging switch was off. The order is
-   placed by the system under protocol `decision-0065:free-tests`, with the treating doctor as the
+   placed by the system under protocol `decision-0067:free-tests`, with the treating doctor as the
    ordering clinician; a lab order still gets its ₹0 bill. With a fee charged, nothing changes: the
    desk orders and bills.
 2. **Imaging has its own Free switch** on Billing back office → Fees. A study ordered while imaging is

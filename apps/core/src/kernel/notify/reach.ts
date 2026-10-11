@@ -117,6 +117,8 @@ export const NOTICE_KINDS: ReadonlySet<string> = new Set([
   // STAFF ATTENDANCE (owner 2026-10-09) — "somebody asked to meet you about a day" and "your request
   // was closed". Told, not answered by acknowledging a bell row: they never climb to WhatsApp or SMS.
   "attendance_meeting_request", "attendance_request_closed",
+  // E1.2 — a person's own reminder: their bell and their phone, at the time they chose. Never relayed.
+  "personal_reminder",
 ]);
 
 export function laneOf(kind: string): ReachLane {

@@ -86,7 +86,7 @@ type PlaceImagingOrderBase = {
   indication?: string | null;
   placedAt?: Date;
   items: readonly PlaceImagingItemInput[];
-  /** A `system` actor's rule (decision 0065's free-study order); `placeOrder` refuses a system order without one. */
+  /** A `system` actor's rule (decision 0067's free-study order); `placeOrder` refuses a system order without one. */
   protocolRef?: string;
 };
 

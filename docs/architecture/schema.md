@@ -67,6 +67,7 @@ flowchart LR
   radiology[radiology] --> resources[resources]
   radiology[radiology] --> tariff[tariff]
   reach[reach] --> auth[auth]
+  reminders[reminders] --> auth[auth]
   retention[retention] --> patients[patients]
   roster[roster] --> auth[auth]
   roster[roster] --> org[org]
@@ -83,6 +84,7 @@ flowchart LR
 | `auth.ts` | kernel | `agents`, `auth_devices`, `auth_sessions`, `auth_throttle`, `break_glass_grants`, `permissions`, `phone_push_sends`, `role_assignments`, `role_permissions`, `roles`, `sod_pairs`, `temp_role_grants`, `user_totp`, `users` |
 | `billing.ts` | module billing | `allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_vouchers` |
 | `clinical-coding.ts` | kernel | `icd10_codes`, `icd11_map_loads`, `icd11_map_rows` |
+| `copilot.ts` | kernel | `copilot_acts`, `copilot_asks`, `copilot_notice_acks` |
 | `desk.ts` | kernel | `user_day_facts` |
 | `documents.ts` | kernel | `patient_documents` |
 | `episodes.ts` | kernel | `episode_series` |
@@ -108,6 +110,7 @@ flowchart LR
 | `printing.ts` | kernel | `print_computers`, `print_enrolment_codes`, `print_jobs` |
 | `radiology.ts` | module radiology | `imaging_bill_decisions`, `imaging_contrast_administrations`, `imaging_contrast_reactions`, `imaging_critical_call_attempts`, `imaging_critical_findings`, `imaging_definitions`, `imaging_dose_sr_receipts`, `imaging_followups`, `imaging_image_views`, `imaging_ir_cases`, `imaging_ir_checklists`, `imaging_ir_sedation_vitals`, `imaging_media_requests`, `imaging_outside_studies`, `imaging_peer_reviews`, `imaging_report_delivery`, `imaging_report_handovers`, `imaging_reports`, `imaging_safety_screenings`, `imaging_studies`, `imaging_tele_reads`, `imaging_unmatched_studies` |
 | `reach.ts` | kernel | `push_subscriptions`, `user_reach_profiles` |
+| `reminders.ts` | kernel | `user_reminders` |
 | `resources.ts` | kernel | `resource_status_history`, `resources` |
 | `retention.ts` | kernel | `retention_legal_holds` |
 | `roster.ts` | module roster | `roster_amendments`, `roster_assignments`, `roster_bed_allotments`, `roster_board_prints`, `roster_cover_requests`, `roster_cycle_entries`, `roster_cycle_overlays`, `roster_cycles`, `roster_delegations`, `roster_duty_windows`, `roster_escalation_targets`, `roster_findings`, `roster_flags`, `roster_holidays`, `roster_mode_declarations`, `roster_officiating`, `roster_periods`, `roster_positions`, `roster_requirements`, `roster_rule_profiles`, `roster_rules`, `roster_shift_defs`, `roster_team_memberships`, `roster_teams`, `staff_absences`, `staff_credentials` |
