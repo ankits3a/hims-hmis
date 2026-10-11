@@ -14205,6 +14205,7 @@
       "visit": "visit {{n}}",
       "medicines_one": "{{count}} medicine prescribed",
       "medicines_other": "{{count}} medicines prescribed",
+      "labVisit": "Lab visit · walk-in",
       "labSigned": "Report signed",
       "labResults_one": "{{count}} result",
       "labResults_other": "{{count}} results",

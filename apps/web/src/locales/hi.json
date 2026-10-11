@@ -14205,6 +14205,7 @@
       "visit": "विज़िट {{n}}",
       "medicines_one": "{{count}} दवा लिखी गई",
       "medicines_other": "{{count}} दवाएँ लिखी गईं",
+      "labVisit": "लैब विज़िट · वॉक-इन",
       "labSigned": "रिपोर्ट हस्ताक्षरित",
       "labResults_one": "{{count}} परिणाम",
       "labResults_other": "{{count}} परिणाम",

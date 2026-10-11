@@ -6,7 +6,7 @@ import { buildTimeline, dmy, dmyIst, duesSummary, groupByDay, maskMobile, openVi
  */
 const L: Labels = {
   clinical: false,
-  visit: (n) => `visit ${n}`, medicines: (n) => `${String(n)} medicines`, labSigned: "Report signed",
+  visit: (n) => `visit ${n}`, medicines: (n) => `${String(n)} medicines`, labSigned: "Report signed", labVisit: "Lab visit · walk-in",
   labResults: (n) => `${String(n)} results`, labReportVersion: (n) => `version ${String(n)}`,
   paidDue: (p, d) => `${p} paid · ${d} due`, settled: "settled", onCredit: "on credit",
   pharmacy: (n) => `Pharmacy · ${String(n)} items`, docKind: (k) => k, docScanned: "scanned", high: "high", low: "low",
@@ -61,3 +61,16 @@ function rowsVisit() {
   return { encounterId: "e1", visitNo: "OP-1", serviceDate: "2026-09-18", openedAt: "2026-09-18T04:00:00.000Z", status: "completed", visitType: "new",
     doctorId: null, doctorName: "Dr. S. Rao", departmentId: null, departmentName: "General Medicine", diagnosis: "Type 2 diabetes", icd10Code: "E11.9", prescriptionLineCount: 4, dangerFlagged: false };
 }
+
+describe("owner 2026-10-11 — a lab counter walk-in is not an OPD visit", () => {
+  const lab = {
+    encounterId: "e-lab", visitNo: "V2610110001", type: "lab", serviceDate: "2026-10-11", openedAt: "2026-10-11T04:00:00Z", status: "registered",
+    visitType: "new", doctorId: "d", doctorName: "Dr Pathology", departmentId: "x", departmentName: "Laboratory",
+    diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+  };
+  it("is never 'where they are now', and its history row is a LAB row with no visit card", () => {
+    expect(openVisitsToday([lab], "2026-10-11")).toEqual([]);
+    const [row] = buildTimeline({ visits: [lab] }, L);
+    expect([row!.source, row!.title, row!.encounterId]).toEqual(["LAB", "Lab visit · walk-in", undefined]);
+  });
+});

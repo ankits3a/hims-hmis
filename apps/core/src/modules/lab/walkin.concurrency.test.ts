@@ -1,8 +1,8 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { seedLabDeskBase } from "../../../test/helpers/lab";
-import { opdEncounters, opdQueueEntries, printJobs } from "../../kernel/db/schema";
-import { openLabWalkin } from "../opd";
+import { events, opdEncounters, opdQueueEntries, printJobs } from "../../kernel/db/schema";
+import { openLabWalkin, visitOpened } from "../opd";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
 
@@ -130,15 +130,16 @@ describe("17d §9.2 — the lab walk-in race", () => {
      * keeps the assertion non-vacuous without borrowing a constant that is not ours to hold.
      */
     /**
-     * Owner 2026-10-11 — the lab road now queues NO paper at all (a lab visit is not an OPD visit), so
-     * paper can no longer witness the rollback. The queue entry is written in the same transaction on
-     * the same path, so it carries the same kill: the loser left no queue row behind, the winner did.
+     * Owner 2026-10-11 — the lab road now writes NO paper and NO queue row (a lab visit is not an OPD
+     * visit), so neither can witness the rollback. The `visit.opened` event is written in the same
+     * transaction on the same path, so it carries the same kill: the loser left no event behind.
      */
     expect(await db.select().from(printJobs)).toEqual([]);
-    const entries = await db.select({ encounterId: opdQueueEntries.encounterId }).from(opdQueueEntries);
-    const forWinner = entries.filter((j) => j.encounterId === winner.encounter.id).length;
-    expect(entries.length - forWinner).toBe(0);   // THE KILL: a refused visit that left a queue row behind
-    expect(forWinner).toBeGreaterThan(0);         // and the join really does run on this path
+    expect(await db.select().from(opdQueueEntries)).toEqual([]);
+    const opened = await db.select({ encounterId: events.encounterId }).from(events).where(eq(events.name, visitOpened.name));
+    const forWinner = opened.filter((j) => j.encounterId === winner.encounter.id).length;
+    expect(opened.length - forWinner).toBe(0);   // THE KILL: a refused visit that left its event behind
+    expect(forWinner).toBe(1);                   // and the open really does run on this path
   });
 
   /**

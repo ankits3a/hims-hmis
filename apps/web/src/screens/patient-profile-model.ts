@@ -85,6 +85,8 @@ export type TimelineSources = {
 export type Labels = {
   /** `opd.consult` holder: the diagnosis code and the medicine count are drawn. */
   clinical: boolean;
+  /** Owner 2026-10-11 — the title of a lab counter walk-in visit row. */
+  labVisit: string;
   visit: (visitNo: string) => string;
   medicines: (n: number) => string;
   labSigned: string;
@@ -120,9 +122,12 @@ export function buildTimeline(src: TimelineSources, l: Labels): TimelineRow[] {
     const parts: string[] = [];
     if (v.diagnosis !== null && v.diagnosis !== "") parts.push(l.clinical && v.icd10Code !== null ? `${v.diagnosis} (${v.icd10Code})` : v.diagnosis);
     if (l.clinical && v.prescriptionLineCount > 0) parts.push(l.medicines(v.prescriptionLineCount));
+    /** Owner 2026-10-11 — a lab walk-in is a LAB row with no OPD visit card (no token, no OPD papers). */
+    const lab = v.type === "lab";
     rows.push({
-      key: `opd-${v.encounterId}`, source: "OPD", day: v.serviceDate, at: v.openedAt, encounterId: v.encounterId,
-      title: who === "" ? "OPD" : who, sub: parts.length === 0 ? null : parts.join(" · "),
+      key: `opd-${v.encounterId}`, source: lab ? "LAB" : "OPD", day: v.serviceDate, at: v.openedAt,
+      ...(lab ? {} : { encounterId: v.encounterId }),
+      title: lab ? l.labVisit : who === "" ? "OPD" : who, sub: lab ? (who === "" ? null : who) : parts.length === 0 ? null : parts.join(" · "),
       ...(v.visitNo !== undefined && v.visitNo !== "" ? { note: l.visit(v.visitNo) } : {}),
     });
   }
@@ -208,5 +213,9 @@ export function duesSummary(dues: WireDueRow[] | undefined): { totalPaise: numbe
 /** Today's visits that are still open — "where are they now". */
 export function openVisitsToday(visits: WireTimelineItem[] | undefined, today: string): WireTimelineItem[] {
   const ended = new Set(["completed", "closed", "cancelled", "abandoned", "ended", "no_show"]);
-  return (visits ?? []).filter((v) => v.serviceDate === today && !ended.has(v.status));
+  /**
+   * Owner 2026-10-11 — only an OPD visit is "where they are now": a lab walk-in or a pharmacy visit is
+   * never in an OPD queue (the lab's own work shows in the Today band as tests in progress).
+   */
+  return (visits ?? []).filter((v) => v.serviceDate === today && !ended.has(v.status) && (v.type ?? "opd") === "opd");
 }
