@@ -8,7 +8,8 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { previewInvoice, withIdempotency } from "../billing";
 import { bookLab, bookingRules, closeBooking, listBookings, saveBookingHours, slotsForDay } from "./bookings";
 import { addOnOrder, deskFind, labDoctors, tubePlan } from "./desk";
-import { commonOrderables, labFeeFree, walkInReadiness } from "./desk-picker";
+import { commonOrderables, labFeeFree, recentLabOrders, walkInReadiness } from "./desk-picker";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { cancelLabItem, deskOrderAtCounter } from "./money";
 import { idSchema, isoDateSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -355,5 +356,14 @@ export class LabDeskController {
       await withTx(this.db, (tx) => saveBookingHours(tx, actor, input));
       return await bookingRules(this.db);
     } catch (e) { toHttp(e); }
+  }
+
+  /** Owner 2026-10-11 — the counter's left panel: a person's lab orders with test names and stage. */
+  @Get("patient/:patientId/recent")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async recent(@CurrentActor() actor: Actor, @Param("patientId") patientId: string, @Query("limit") limit?: string): Promise<unknown> {
+    const id = parsed(idSchema, patientId);
+    const canSeeRestricted = actor.type === "user" && await hasPermission(this.db, actor.id, "orders.read.restricted", "hospital");
+    return recentLabOrders(this.db, id, canSeeRestricted, limit === undefined ? 20 : Number(limit) || 20);
   }
 }

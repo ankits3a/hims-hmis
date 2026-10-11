@@ -5,6 +5,7 @@ import { withTx } from "../../kernel/db/client";
 import { events, labQuickReports } from "../../kernel/db/schema";
 import { awaitingLabels } from "./collection";
 import { deskOrder } from "./desk";
+import { recentLabOrders } from "./desk-picker";
 import {
   getQuickReport, handOverQuick, quickCollect, quickCollectQueue, QuickEntryError, quickQueue, quickReportsDesk,
   saveQuickResults, sendBackQuick,
@@ -29,9 +30,9 @@ describe("the quick lab chain (owner 2026-10-11)", () => {
   beforeEach(async () => { await truncateAll(db); fx = await seedLabDeskBase(db); });
   afterEach(() => { fx.unregister(); });
 
-  const order = () => withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
+  const order = (codes: string[] = ["CBC", "LFT"]) => withTx(db, (tx) => deskOrder(tx, fx.desk.actor, fx.decls, {
     patientId: fx.patientId, encounterNo: fx.encounterNo, serviceDate: fx.serviceDate,
-    orderingClinicianId: fx.pathologist.id, items: [{ serviceId: serviceIdForLabCode("CBC") }, { serviceId: serviceIdForLabCode("LFT") }],
+    orderingClinicianId: fx.pathologist.id, items: codes.map((c) => ({ serviceId: serviceIdForLabCode(c) })),
     credit: { reason: "counter order, paid at collection" },
   } as DeskOrderInput));
 
@@ -97,4 +98,20 @@ describe("the quick lab chain (owner 2026-10-11)", () => {
     expect(await code(withTx(db, (tx) => quickCollect(tx, { type: "user", id: "u-nobody" }, placed.orderId)))).toBe("not_permitted");
     expect(await db.select().from(labQuickReports).where(eq(labQuickReports.orderId, placed.orderId))).toEqual([]);
   });
+
+  it("the counter's last tests name each order's tests and say where it stands, newest first", async () => {
+    const first = await order();
+    const { id } = await withTx(db, (tx) => quickCollect(tx, fx.desk.actor, first.orderId));
+    const second = await order(["TSH"]);
+    let recent = await recentLabOrders(db, fx.patientId, false);
+    expect(recent.map((r) => [r.orderNo, r.stage, r.tests.map((t) => t.code)])).toEqual([
+      [second.orderNo, "awaiting_blood", ["TSH"]],
+      [first.orderNo, "sample_taken", ["CBC", "LFT"]],
+    ]);
+    const hb = (await getQuickReport(db, fx.desk.actor, id)).analyteIds[0]!;
+    await withTx(db, (tx) => saveQuickResults(tx, fx.desk.actor, { id, lines: [{ analyteId: hb, value: "12" }], summary: "" }));
+    recent = await recentLabOrders(db, fx.patientId, false);
+    expect(recent[1]?.stage).toBe("report_ready");
+  });
+
 });

@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
-import { labOrderables, opdDepartments, opdDoctors, orderItems, orders } from "../../kernel/db/schema";
+import { labOrderables, labQuickReports, opdDepartments, opdDoctors, orderItems, orders } from "../../kernel/db/schema";
+import { listMergedLoserIds, resolvePatientId } from "../patients";
 import { LAB_DEPARTMENT_CODE } from "../opd";
 import { BillingError, feeOffNow, loadBillingConfig } from "../billing";
 import type { Db } from "../../kernel/db/client";
@@ -78,4 +79,45 @@ export async function walkInReadiness(db: Db): Promise<WalkInReadiness> {
   const [doc] = await db.select({ id: opdDoctors.id }).from(opdDoctors)
     .where(and(eq(opdDoctors.departmentId, dept.id), eq(opdDoctors.active, true))).limit(1);
   return doc ? { ready: true, problem: null } : { ready: false, problem: "no_pathologist" };
+}
+
+/**
+ * OWNER 2026-10-11 — THE COUNTER'S "LAST TESTS": a person's lab orders, newest first, each with its
+ * test names and where it stands (waiting for blood, sample taken, report ready, handed over). Test
+ * names only — no value — and a RESTRICTED test (HIV, HBsAg …) is shown by its name only to a reader
+ * holding `orders.read.restricted`, otherwise as "Restricted test".
+ */
+export type RecentLabOrder = {
+  orderId: string; orderNo: string; encounterNo: string; placedAt: string;
+  tests: { code: string; nameEn: string }[];
+  stage: "awaiting_blood" | "sample_taken" | "draft" | "report_ready" | "handed_over" | "cancelled" | "in_lab";
+};
+
+export async function recentLabOrders(db: Db, patientId: string, canSeeRestricted: boolean, limit = 20): Promise<RecentLabOrder[]> {
+  const canonical = (await resolvePatientId(db, patientId)) ?? patientId;
+  const chain = [canonical, ...(await listMergedLoserIds(db, canonical))];
+  const heads = await db.select({ id: orders.id, orderNo: orders.orderNo, encounterNo: orders.encounterNo, placedAt: orders.placedAt, status: orders.status })
+    .from(orders).where(and(inArray(orders.patientId, chain), eq(orders.kind, "lab")))
+    .orderBy(desc(orders.placedAt)).limit(Math.min(Math.max(limit, 1), 50));
+  if (heads.length === 0) return [];
+  const ids = heads.map((h) => h.id);
+  const items = await db.select({ orderId: orderItems.orderId, status: orderItems.status, code: labOrderables.code, nameEn: labOrderables.nameEn, sensitive: labOrderables.sensitive })
+    .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    .where(inArray(orderItems.orderId, ids));
+  const quick = await db.select({ orderId: labQuickReports.orderId, status: labQuickReports.status, handedOverAt: labQuickReports.handedOverAt })
+    .from(labQuickReports).where(inArray(labQuickReports.orderId, ids));
+  const quickBy = new Map(quick.map((q) => [q.orderId!, q]));
+  return heads.map((h) => {
+    const mine = items.filter((i) => i.orderId === h.id);
+    const q = quickBy.get(h.id);
+    const stage: RecentLabOrder["stage"] = mine.length > 0 && mine.every((i) => i.status === "cancelled") ? "cancelled"
+      : q === undefined ? (mine.every((i) => i.status === "placed") ? "awaiting_blood" : "in_lab")
+      : q.handedOverAt !== null ? "handed_over"
+      : q.status === "reported" ? "report_ready"
+      : q.status === "draft" ? "draft" : "sample_taken";
+    return {
+      orderId: h.id, orderNo: h.orderNo, encounterNo: h.encounterNo, placedAt: h.placedAt.toISOString(), stage,
+      tests: mine.map((i) => (i.sensitive && !canSeeRestricted ? { code: "—", nameEn: "Restricted test" } : { code: i.code, nameEn: i.nameEn })),
+    };
+  });
 }
