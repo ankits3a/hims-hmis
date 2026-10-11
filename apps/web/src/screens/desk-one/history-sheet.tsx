@@ -99,7 +99,7 @@ export function HistorySheet({ patientId, name }: { patientId: string; name: str
                 className="tag"
                 style={{ flexShrink: 0, color: h.status === "completed" ? "var(--green)" : h.status === "abandoned" ? "var(--gold)" : "var(--faint)" }}
               >
-                {t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
+                {h.type === "lab" ? t("profile.lv.kind") : t(`registrationCounter.history.state.${h.status}`, { defaultValue: h.status })}
               </span>
             </button>
           ))}

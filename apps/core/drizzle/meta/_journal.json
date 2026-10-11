@@ -1398,8 +1398,15 @@
     {
       "idx": 199,
       "version": "7",
-      "when": 1791743208757,
-      "tag": "0199_staff_leave_department_note",
+      "when": 1791706899461,
+      "tag": "0199_lab_desk_and_quick_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1791746811383,
+      "tag": "0200_staff_leave_department_note",
       "breakpoints": true
     }
   ]

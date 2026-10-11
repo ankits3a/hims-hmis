@@ -775,6 +775,12 @@ describe("ABDM S1 — the demographics lock on the record", () => {
  * full, dates were ISO, a sealed record's H1 was the real name, and every act drew for every role.
  */
 describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
+  /**
+   * Owner 2026-10-11 — the middle column has three views and Overview is the default. These cases were
+   * written against the one dated timeline, which is still a view: they choose it, as a person would.
+   */
+  beforeEach(() => { localStorage.setItem("hmis.profile.historyView", "timeline"); });
+  afterEach(() => { localStorage.removeItem("hmis.profile.historyView"); });
   afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
   const FRONT_DESK = [
@@ -1135,6 +1141,81 @@ describe("UX-AUDIT 2026-09-29 · BOARD — the profile", () => {
     expect(document.getElementById("f-phone")).toBeNull();
     expect(document.getElementById("f-addressLine")).toBeNull();
     expect(text()).not.toContain("Asha Devi");
+  });
+
+  /* ═══ OWNER 2026-10-11 — the middle column three ways; Overview is the default ═══ */
+
+  it("OVERVIEW (default): a tab per category with its count, a card per category; View all opens the full list by month; the choice is remembered", async () => {
+    localStorage.removeItem("hmis.profile.historyView");
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/invoices": INVOICES, "GET /api/billing/patients/p-1/dues": DUES },
+      [...FRONT_DESK, ...CASHIER]);
+    renderWithProviders(<PatientDetail />);
+    const visits = await screen.findByTestId("history-card-visits");
+    expect(within(visits).getByText("General Medicine · Dr. S. Rao")).toBeInTheDocument();
+    expect(screen.getByTestId("history-card-bills")).toHaveTextContent("OP/26/004411");
+    expect(screen.getByTestId("history-tab-bills")).toHaveTextContent(/Bills\s*2/);
+    await userEvent.setup().click(within(screen.getByTestId("history-card-bills")).getByRole("button", { name: /View all/ }));
+    const list = screen.getByTestId("history-list-bills");
+    expect(list).toHaveTextContent("OP/26/004411");
+    expect(screen.queryByTestId("history-card-visits")).toBeNull();
+    /** Switching views is the icon group; the choice outlives the screen. */
+    await userEvent.setup().click(screen.getByRole("button", { name: "Cards, one under another" }));
+    expect(screen.getByTestId("history-stack")).toBeInTheDocument();
+    expect(localStorage.getItem("hmis.profile.historyView")).toBe("cards");
+    await userEvent.setup().click(screen.getByRole("button", { name: "One timeline with filters" }));
+    expect(screen.getByTestId("timeline")).toBeInTheDocument();
+  });
+
+  it("OWNER 2026-10-11: a lab visit names its tests (CBC · LFT) and opens its own tests and reports; its report is not a row of its own", async () => {
+    localStorage.removeItem("hmis.profile.historyView");
+    const LAB_VISIT = {
+      encounterId: "e-lab", visitNo: "V2610110002", type: "lab", serviceDate: "2026-10-11", openedAt: "2026-10-11T04:00:00.000Z", status: "registered",
+      visitType: "new", doctorId: "d-p", doctorName: "Dr Pathology", departmentId: "lab", departmentName: "Laboratory",
+      diagnosis: null, icd10Code: null, prescriptionLineCount: 0, dangerFlagged: false,
+    };
+    const QUICK = {
+      id: "q-1", status: "reported", patient: { id: "p-1", uhid: "HMS0000001234", display: "Asha Devi", ageSex: "36 F", restricted: false },
+      encounterNo: "V2610110002", tests: [{ serviceId: "s-cbc", code: "CBC", nameEn: "Complete blood count" }],
+      collectedAt: "2026-10-11T04:10:00.000Z", collectedBy: "u-1", reportedAt: "2026-10-11T05:00:00.000Z", reportedBy: "u-1",
+      orderId: "o-1", orderNo: "L2610110001", sampleNo: "S2610110007", handedOverAt: "2026-10-11T05:30:00.000Z", handedOverBy: "u-1",
+      analyteIds: ["a-hb"], groups: [{ title: "Complete blood count", analyteIds: ["a-hb"] }],
+      lines: [{ analyteId: "a-hb", code: "HB", nameEn: "Haemoglobin", unit: "g/dL", value: "9.2", low: "12.0000", high: "15.0000", refText: null, flag: "L" }],
+      summary: "Hb low", collectedByName: null, reportedByName: null,
+      hospital: { name: "CRK", address: "Hajipur", hotline: "1", emergency: "2", email: "e", website: "w" }, visitQrSvg: null,
+    };
+    stubSeat({
+      ...BASE,
+      "GET /api/opd/patients/p-1/timeline": { items: [LAB_VISIT] },
+      "GET /api/lab/reports/patient/p-1": { patient: { id: "p-1", uhid: "HMS0000001234", display: "Asha Devi", restricted: false }, reports: [], pending: [] },
+      "GET /api/lab/quick/patient/p-1/printable": { items: [QUICK] },
+      "GET /api/lab/quick/patient/p-1/orders/printable": { items: [{
+        orderId: "o-1", orderNo: "L2610110001", encounterNo: "V2610110002", placedAt: "2026-10-11T04:00:00.000Z", stage: "handed_over", quickId: "q-1",
+        tests: [{ code: "CBC", nameEn: "Complete blood count" }, { code: "LFT", nameEn: "Liver function tests" }],
+      }] },
+    }, [...FRONT_DESK, "lab.reports.print"]);
+    renderWithProviders(<PatientDetail />);
+    const card = await screen.findByTestId("history-card-lab");
+    await waitFor(() => expect(within(card).getByTestId("timeline-tags")).toHaveTextContent(/CBC\s*LFT/));
+    expect(within(card).queryByTestId("quick-lab-reports")).toBeNull();
+    const user = userEvent.setup();
+    await user.click(within(card).getByTestId("timeline-open-lab-visit"));
+    const dialog = await screen.findByTestId("lab-visit-dialog");
+    expect(dialog).toHaveTextContent("Lab visit V2610110002");
+    expect(within(dialog).getByTestId("lv-order-L2610110001")).toHaveTextContent("Complete blood count, Liver function tests");
+    await user.click(within(dialog).getByTestId("lv-view-q-1"));
+    expect(within(dialog).getByTestId("report-preview")).toHaveTextContent("Haemoglobin");
+  });
+
+  it("TIMELINE: the filter chips narrow the one timeline to a category", async () => {
+    stubSeat({ ...BASE, "GET /api/opd/patients/p-1/timeline": TIMELINE, "GET /api/billing/invoices": INVOICES, "GET /api/billing/patients/p-1/dues": DUES },
+      [...FRONT_DESK, ...CASHIER]);
+    renderWithProviders(<PatientDetail />);
+    const tl = await screen.findByTestId("timeline");
+    await waitFor(() => expect(tl).toHaveTextContent("OP/26/004411"));
+    expect(tl).toHaveTextContent("General Medicine");
+    await userEvent.setup().click(within(screen.getByTestId("history-filters")).getByRole("button", { name: "Bills" }));
+    expect(screen.getByTestId("timeline")).not.toHaveTextContent("General Medicine");
+    expect(screen.getByTestId("timeline")).toHaveTextContent("OP/26/004411");
   });
 });
 

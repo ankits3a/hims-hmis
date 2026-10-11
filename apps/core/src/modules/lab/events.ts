@@ -285,9 +285,46 @@ export const labNotifiableFlagged = defineEvent("lab.notifiable_flagged", MODULE
 }));
 
 /**
+ * QUICK MODE (decision 0061) — counts and ids only: no value, no analyte name, so the event log
+ * answers "who started / reported what, when" without carrying the result.
+ *
+ * `quick_started`: the counter chose the tests, confirmed blood collected and put the patient in
+ * the queue. `quick_reported`: the bench saved the values (`edit` when it was saved before).
+ */
+export const labQuickStarted = defineEvent("lab.quick_started", MODULE, z.object({
+  quickId: id, testCount: z.number().int().min(1),
+}));
+
+export const labQuickReported = defineEvent("lab.quick_reported", MODULE, z.object({
+  quickId: id, lineCount: z.number().int().min(0), abnormalCount: z.number().int().min(0), edit: z.boolean(),
+}));
+
+/** Owner 2026-10-11 — Print & Hand over at /lab/qreports: the report left the lab with the patient. */
+export const labQuickHandedOver = defineEvent("lab.quick_handed_over", MODULE, z.object({ quickId: id }));
+
+/** Owner 2026-10-11 — a completed quick report sent back to the bench as a draft, before hand-over. */
+export const labQuickSentBack = defineEvent("lab.quick_sent_back", MODULE, z.object({ quickId: id }));
+
+/**
  * THE CATALOGUE OF THIS MODULE'S EVENTS, in one place, so `events.test.ts` can assert the grammar
  * and the module tag over ALL of them rather than over the ones a reader remembered to list.
  */
+/** Owner 2026-10-11 — a future lab visit booked by day and slot (`bookings.ts`). Counts only. */
+export const labBookingMade = defineEvent("lab.booking_made", MODULE, z.object({
+  bookingId: id, patientId: id, serviceDate: z.string(), slotStart: z.string(), testCount: z.number().int().positive(),
+}));
+
+/** The booking's end: the patient arrived and was ordered, or it was cancelled, or they did not come. */
+export const labBookingClosed = defineEvent("lab.booking_closed", MODULE, z.object({
+  bookingId: id, patientId: id, outcome: z.enum(["fulfilled", "cancelled", "no_show"]), orderId: id.nullable(),
+}));
+
+/** Owner 2026-10-11 — the lab's booking hours changed, and to what. Bookings already made stand. */
+export const labBookingHoursChanged = defineEvent("lab.booking_hours_changed", MODULE, z.object({
+  open: z.string(), close: z.string(), slotMinutes: z.number().int(), perSlot: z.number().int(),
+  daysAhead: z.number().int(), closedWeekdays: z.array(z.number().int()),
+}));
+
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
@@ -298,4 +335,6 @@ export const LAB_EVENTS = [
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
+  labBookingMade, labBookingClosed, labBookingHoursChanged,
+  labQuickStarted, labQuickReported, labQuickHandedOver, labQuickSentBack,
 ] as const;

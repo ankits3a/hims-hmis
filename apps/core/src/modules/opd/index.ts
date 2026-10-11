@@ -23,7 +23,7 @@ export type { EncounterRow, QueueEntryRow, TimelineItem } from "./encounters";
 // ── PLAN 17a T4 / DD15 — the lab walk-in, opened by the module that owns visits (spec §4) ──
 export { PHARMACY_VISIT_TYPE, openPharmacyVisitInTx } from "./encounters";
 export type { OutsidePrescriber } from "./prescriptions";
-export { LAB_DEPARTMENT_CODE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
+export { LAB_DEPARTMENT_CODE, LAB_VISIT_TYPE, joinQueue, openLabWalkin, openLabWalkinInTx, reviewAnchorFor } from "./encounters";
 export type { JoinQueueResult, OpenLabWalkinInput, OpenVisitResult, ReviewAnchor } from "./encounters";
 export type { AdvisedTest } from "./consultation";
 // ── PLAN 16c T0a — the prescription read surface the dispensing counter consumes (spec §4) ──

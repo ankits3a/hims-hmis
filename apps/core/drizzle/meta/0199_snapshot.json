@@ -1,5 +1,5 @@
 {
-  "id": "ad8410b8-28c3-47b4-9efb-846f23b7703b",
+  "id": "d66a69cb-2296-4389-81ff-d92f4241ea38",
   "prevId": "ecef542e-5388-42c6-ae18-8d91cfaea871",
   "version": "7",
   "dialect": "postgresql",
@@ -49127,18 +49127,6 @@
           "notNull": true,
           "default": "'manual'"
         },
-        "department_id": {
-          "name": "department_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "decision_note": {
-          "name": "decision_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -49178,27 +49166,6 @@
             },
             {
               "expression": "starts_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "staff_absences_department_status_idx": {
-          "name": "staff_absences_department_status_idx",
-          "columns": [
-            {
-              "expression": "department_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -49283,29 +49250,12 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "staff_absences_department_id_org_departments_id_fk": {
-          "name": "staff_absences_department_id_org_departments_id_fk",
-          "tableFrom": "staff_absences",
-          "tableTo": "org_departments",
-          "columnsFrom": [
-            "department_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "staff_absences_decision_note_ck": {
-          "name": "staff_absences_decision_note_ck",
-          "value": "\"staff_absences\".\"decision_note\" is null or length(\"staff_absences\".\"decision_note\") between 1 and 280"
-        },
         "staff_absences_kind_ck": {
           "name": "staff_absences_kind_ck",
           "value": "\"staff_absences\".\"kind\" in ('CL', 'EL', 'ML', 'maternity', 'paternity', 'comp_off', 'night_off', 'duty_off', 'deputation', 'academic', 'study', 'abstaining', 'unauthorised')"
@@ -53498,6 +53448,496 @@
         "user_reminders_text_ck": {
           "name": "user_reminders_text_ck",
           "value": "char_length(\"user_reminders\".\"text\") between 1 and 80"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lab_booking_settings": {
+      "name": "lab_booking_settings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "open_at": {
+          "name": "open_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "close_at": {
+          "name": "close_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot_minutes": {
+          "name": "slot_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "per_slot": {
+          "name": "per_slot",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "days_ahead": {
+          "name": "days_ahead",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closed_weekdays": {
+          "name": "closed_weekdays",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lab_booking_settings_one_ck": {
+          "name": "lab_booking_settings_one_ck",
+          "value": "\"lab_booking_settings\".\"id\" = 'main'"
+        },
+        "lab_booking_settings_hours_ck": {
+          "name": "lab_booking_settings_hours_ck",
+          "value": "\"lab_booking_settings\".\"open_at\" ~ '^[0-2][0-9]:[0-5][0-9]$' and \"lab_booking_settings\".\"close_at\" ~ '^[0-2][0-9]:[0-5][0-9]$' and \"lab_booking_settings\".\"open_at\" < \"lab_booking_settings\".\"close_at\""
+        },
+        "lab_booking_settings_numbers_ck": {
+          "name": "lab_booking_settings_numbers_ck",
+          "value": "\"lab_booking_settings\".\"slot_minutes\" between 5 and 120 and \"lab_booking_settings\".\"per_slot\" between 1 and 100 and \"lab_booking_settings\".\"days_ahead\" between 1 and 365"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lab_bookings": {
+      "name": "lab_bookings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "service_date": {
+          "name": "service_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot_start": {
+          "name": "slot_start",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "service_ids": {
+          "name": "service_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'booked'"
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "close_reason": {
+          "name": "close_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "lab_bookings_day_slot_idx": {
+          "name": "lab_bookings_day_slot_idx",
+          "columns": [
+            {
+              "expression": "service_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "slot_start",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_bookings_patient_idx": {
+          "name": "lab_bookings_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lab_bookings_patient_id_patients_id_fk": {
+          "name": "lab_bookings_patient_id_patients_id_fk",
+          "tableFrom": "lab_bookings",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lab_bookings_order_id_orders_id_fk": {
+          "name": "lab_bookings_order_id_orders_id_fk",
+          "tableFrom": "lab_bookings",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lab_bookings_status_ck": {
+          "name": "lab_bookings_status_ck",
+          "value": "\"lab_bookings\".\"status\" in ('booked', 'fulfilled', 'cancelled', 'no_show')"
+        },
+        "lab_bookings_slot_ck": {
+          "name": "lab_bookings_slot_ck",
+          "value": "\"lab_bookings\".\"slot_start\" ~ '^[0-2][0-9]:[0-5][0-9]$'"
+        },
+        "lab_bookings_fulfilled_ck": {
+          "name": "lab_bookings_fulfilled_ck",
+          "value": "(\"lab_bookings\".\"status\" = 'fulfilled') = (\"lab_bookings\".\"order_id\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.lab_quick_reports": {
+      "name": "lab_quick_reports",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encounter_no": {
+          "name": "encounter_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sample_no": {
+          "name": "sample_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tests": {
+          "name": "tests",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'waiting'"
+        },
+        "collected_at": {
+          "name": "collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "collected_by": {
+          "name": "collected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lines": {
+          "name": "lines",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "reported_at": {
+          "name": "reported_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reported_by": {
+          "name": "reported_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handed_over_at": {
+          "name": "handed_over_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handed_over_by": {
+          "name": "handed_over_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lab_quick_reports_status_idx": {
+          "name": "lab_quick_reports_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_quick_reports_patient_idx": {
+          "name": "lab_quick_reports_patient_idx",
+          "columns": [
+            {
+              "expression": "patient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "collected_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_quick_reports_order_ux": {
+          "name": "lab_quick_reports_order_ux",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_quick_reports_sample_ux": {
+          "name": "lab_quick_reports_sample_ux",
+          "columns": [
+            {
+              "expression": "sample_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lab_quick_reports_patient_id_patients_id_fk": {
+          "name": "lab_quick_reports_patient_id_patients_id_fk",
+          "tableFrom": "lab_quick_reports",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "lab_quick_reports_order_id_orders_id_fk": {
+          "name": "lab_quick_reports_order_id_orders_id_fk",
+          "tableFrom": "lab_quick_reports",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "lab_quick_reports_status_ck": {
+          "name": "lab_quick_reports_status_ck",
+          "value": "\"lab_quick_reports\".\"status\" in ('waiting', 'draft', 'reported')"
+        },
+        "lab_quick_reports_reported_ck": {
+          "name": "lab_quick_reports_reported_ck",
+          "value": "(\"lab_quick_reports\".\"status\" = 'reported') = (\"lab_quick_reports\".\"reported_at\" is not null and \"lab_quick_reports\".\"reported_by\" is not null)"
+        },
+        "lab_quick_reports_handover_ck": {
+          "name": "lab_quick_reports_handover_ck",
+          "value": "(\"lab_quick_reports\".\"handed_over_at\" is null and \"lab_quick_reports\".\"handed_over_by\" is null) or (\"lab_quick_reports\".\"status\" = 'reported' and \"lab_quick_reports\".\"handed_over_at\" is not null and \"lab_quick_reports\".\"handed_over_by\" is not null)"
         }
       },
       "isRLSEnabled": false

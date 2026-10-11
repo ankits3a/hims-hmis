@@ -9,6 +9,7 @@ import type { WireTimelineItem } from "../../lib/opd-api";
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
 import { VisitCard } from "./visit-card";
+import { LabVisitSheet } from "../profile-lab-visit";
 import { HistorySheet } from "./history-sheet";
 import { usePaletteOptional } from "../../components/command-palette";
 
@@ -75,6 +76,9 @@ function PapersOverlay(): React.ReactElement {
             visit carries its own slips and bills, and each one can be handed over again.
           </p>
         </div>
+      ) : chosen.visit?.type === "lab" && d.s.person !== null ? (
+        /* Owner 2026-10-11 — a lab visit is not an OPD visit: its tests, reports and bills, no OPD card. */
+        <LabVisitSheet key={chosen.encounterId} patientId={d.s.person.id} visit={chosen.visit} />
       ) : (
         <VisitCard key={chosen.encounterId} encounterId={chosen.encounterId} when={chosen.when} visit={chosen.visit ?? null} />
       )}
