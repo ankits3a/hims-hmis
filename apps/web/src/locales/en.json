@@ -4058,7 +4058,8 @@
       "handedOverToast": "{{name}} — report handed over",
       "sentBackToast": "{{name}} — sent back to Quick Bench as a draft",
       "otherParams": "Other parameters",
-      "notSigned": "Quick lab · not signed"
+      "notSigned": "Quick lab · not signed",
+      "summary": "Summary"
     },
     "quick": {
       "title": "Quick lab",

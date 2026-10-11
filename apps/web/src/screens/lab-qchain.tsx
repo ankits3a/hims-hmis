@@ -236,7 +236,7 @@ function ReportPreview({ report }: { report: QuickReport }): React.ReactElement 
           </div>
         );
       })}
-      {report.summary !== "" && <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}><b>{t("lab.quick.summary")}:</b> {report.summary}</div>}
+      {report.summary !== "" && <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}><b>{t("lab.qchain.summary")}:</b> {report.summary}</div>}
       <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("lab.qchain.notSigned")}</div>
     </div>
   );

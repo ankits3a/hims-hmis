@@ -7,7 +7,8 @@ import {
 } from "../lib/lab-api";
 import { fetchRecognition } from "../lib/membership-api";
 import { useAuth } from "../lib/auth";
-import { CreditTile } from "../components/patient-credit";
+import { CreditDialog, usePatientCredit } from "../components/patient-credit";
+import { fmtPaise } from "../lib/format";
 import { sexAge } from "./lab-seat";
 import type { WireBookingHours, WireDeskFindHit, WireLabBooking, WireOrderable, WireWalkInReadiness } from "../lib/lab-api";
 
@@ -394,7 +395,7 @@ export function PatientLane({ hit, serviceDate, onBack, onArrived, variant = "de
       {!p.restricted && (
         <div>
           <div className="tag" style={{ marginBottom: 4 }}>{t("lab.desk.flow.withTheHospital")}</div>
-          <CreditTile patientId={p.id} />
+          <LaneCredit patientId={p.id} />
           {mayRecognise && (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} data-testid="lane-memberships">
               {memberships.length === 0
@@ -408,6 +409,27 @@ export function PatientLane({ hit, serviceDate, onBack, onArrived, variant = "de
       {variant === "counter" && <RecentTests patientId={p.id} />}
       <LabHistory hit={hit} serviceDate={serviceDate} canOpenReports={can("lab.reports.print")} onArrived={onArrived} compact bookingsOnly={variant === "counter"} />
     </div>
+  );
+}
+
+/** Credit the hospital holds for this person, one line in the lane; a tap opens the same dialog as everywhere else. */
+function LaneCredit({ patientId }: { patientId: string }): React.ReactElement | null {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const d = usePatientCredit(patientId);
+  if (d === undefined) return null;
+  return (
+    <>
+      <button type="button" data-testid="lane-credit" onClick={() => setOpen(true)}
+        style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, width: "100%", fontSize: 12.5 }}>
+        <span style={{ color: "var(--dim)" }}>{t("profile.credit.tile")}</span>
+        <span>
+          <b className="mo" style={{ color: d.totalAvailablePaise > 0 ? "var(--green)" : undefined }}>{fmtPaise(d.totalAvailablePaise)}</b>
+          <span style={{ color: "var(--dim)", marginLeft: 6 }}>{t("profile.credit.details")} ›</span>
+        </span>
+      </button>
+      <CreditDialog d={d} open={open} setOpen={setOpen} />
+    </>
   );
 }
 
