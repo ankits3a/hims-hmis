@@ -19,7 +19,7 @@ import { assignRole, createRole, grantPermissionToRole, syncPermissions } from "
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
 import {
-  events, labAnalytes, labItems, labReferenceRanges, labReportDeliveries, labReports, labResults, labSpecimens, opdEncounters,
+  events, labAnalytes, labBookingSettings, labItems, labReferenceRanges, labReportDeliveries, labReports, labResults, labSpecimens, opdEncounters,
   orderItems, orders,
 } from "../src/kernel/db/schema";
 import type { LabDeskFixture } from "./helpers/lab";
@@ -76,6 +76,11 @@ describe("the laboratory over HTTP (17b T8)", () => {
     await grantLabResultPermissions(db, fx);
     cashier = await mkCashier(db, "lab.e2e.cashier");
     await openSessionFor(db, cashier, 0);
+    /** Owner 2026-10-12 — the lab defaults to QUICK mode; these walks are the FULL lab's, so the lab runs full here. */
+    await db.insert(labBookingSettings).values({
+      id: "main", openAt: "07:30", closeAt: "12:30", slotMinutes: 15, perSlot: 4, daysAhead: 30, closedWeekdays: [0],
+      labMode: "full", updatedBy: "test",
+    });
   });
   afterEach(() => { fx.unregister(); });
 
@@ -142,6 +147,38 @@ describe("the laboratory over HTTP (17b T8)", () => {
     await request(server()).post("/lab/collection/labels").send({}).expect(401);
     await request(server()).post("/lab/bench/receive").send({}).expect(401);
     await request(server()).post("/lab/reports").send({}).expect(401);
+  });
+
+  /**
+   * ═══ OWNER 2026-10-12 — ONE LAB MODE AT A TIME ═══
+   *
+   * The admin switches quick ↔ full; the other mode's WORK routes answer 409 `lab_mode_off` (after
+   * the permission check, so a stranger still gets 403), and every switch is an event naming who.
+   * Reads of reports that already exist stay open in both modes.
+   */
+  it("the lab mode: read by any lab seat, switched by the lab admin only, and the other mode's work routes refuse", async () => {
+    const seat = await userWith(["lab.worklist.read", "lab.results.enter", "lab.collection.operate", "lab.reports.print"]);
+    const admin = await userWith(["lab.catalogue.read", "lab.catalogue.manage"]);
+    expect((await request(server()).get("/lab/desk/mode").set(...auth(seat.token)).expect(200)).body).toEqual({ mode: "full" });
+    await request(server()).put("/lab/desk/mode").set(...auth(seat.token)).send({ mode: "quick" }).expect(403);
+    await request(server()).put("/lab/desk/mode").set(...auth(admin.token)).send({ mode: "half" }).expect(400);
+
+    // full: the quick chain's queues refuse, the full collection queue answers
+    expect((await request(server()).get("/lab/quick/collect").set(...auth(seat.token)).expect(409)).body.code).toBe("lab_mode_off");
+    await request(server()).get(`/lab/collection/queue?serviceDate=${istDayString(new Date())}`).set(...auth(seat.token)).expect(200);
+
+    expect((await request(server()).put("/lab/desk/mode").set(...auth(admin.token)).send({ mode: "quick" }).expect(200)).body).toEqual({ mode: "quick" });
+    // quick: the other way round — and a stranger is still refused on permission first
+    await request(server()).get("/lab/quick/collect").set(...auth(seat.token)).expect(200);
+    const off = await request(server()).get(`/lab/collection/queue?serviceDate=${istDayString(new Date())}`).set(...auth(seat.token)).expect(409);
+    expect([off.body.code, off.body.message]).toEqual(["lab_mode_off", expect.stringMatching(/Full lab mode is off/)]);
+    const stranger = await userWith(["opd.visits.read"]);
+    await request(server()).get(`/lab/collection/queue?serviceDate=${istDayString(new Date())}`).set(...auth(stranger.token)).expect(403);
+    // reading what exists is never mode-gated
+    await request(server()).get(`/lab/reports/patient/${fx.patientId}`).set(...auth(seat.token)).expect(200);
+
+    const changed = (await db.select().from(events)).filter((e) => e.name === "lab.mode_changed");
+    expect(changed.map((e) => [e.actorId, e.payload])).toEqual([[admin.id, { from: "full", to: "quick" }]]);
   });
 
   it("403 WITH A TOKEN AND WITHOUT THE PERMISSION each family declares", async () => {

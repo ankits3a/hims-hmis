@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getToken } from "./lib/api";
 import { useAuth } from "./lib/auth";
+import { shownInMode, useLabMode } from "./lib/lab-mode";
+import type { LabMode } from "./lib/lab-mode";
 import { KeyboardProvider, ShortcutLegend } from "./lib/keyboard";
 import { PaletteProvider, usePalette } from "./components/command-palette";
 import { switchLanguage } from "./lib/i18n";
@@ -131,7 +133,8 @@ const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
  * several — the pharmacy office, whose menu entries each keep their old row's permission.
  */
-type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[] };
+/** Owner 2026-10-12 — `labMode`: a lab menu shown only while the lab runs that mode (`lib/lab-mode.ts`). */
+type NavEntry = { to: string; label: string; permission: string; group: NavGroup; anyOf?: readonly string[]; labMode?: LabMode | "never" };
 const navVisible = (e: NavEntry, can: (p: string) => boolean): boolean => can(e.permission) || (e.anyOf ?? []).some((p) => can(p));
 /**
  * Past this many places the bar stops being a row and becomes a wall: an owner-shaped grant drew
@@ -347,18 +350,18 @@ const NAV: readonly NavEntry[] = [
    * holds `reports.print` reaches the report through the desk rather than through a signing screen
    * they may not act on.
    */
-  { to: "/lab/desk", label: "nav.labDesk", permission: "lab.desk.operate", group: "lab" },
-  { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "lab" },
-  { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "lab" },
-  { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "lab" },
+  { to: "/lab/desk", label: "nav.labDesk", permission: "lab.desk.operate", group: "lab", labMode: "full" },
+  { to: "/lab/collection", label: "nav.labCollection", permission: "lab.collection.operate", group: "lab", labMode: "full" },
+  { to: "/lab/bench", label: "nav.labBench", permission: "lab.accession.operate", group: "lab", labMode: "full" },
+  { to: "/lab/verify", label: "nav.labVerify", permission: "lab.results.verify", group: "lab", labMode: "full" },
   /** PLAN 17c T5 — the fifth lab seat, the report centre, on the counter's own permission. */
-  { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab" },
-  { to: "/lab/quick", label: "nav.labQuick", permission: "lab.results.enter", group: "lab", anyOf: ["lab.desk.operate"] },
+  { to: "/lab/reports", label: "nav.labReports", permission: "lab.reports.print", group: "lab", labMode: "full" },
+  { to: "/lab/quick", label: "nav.labQuick", permission: "lab.results.enter", group: "lab", anyOf: ["lab.desk.operate"], labMode: "never" },
   // OWNER 2026-10-11 — the quick chain, the lab's everyday path: counter → collect → bench → reports.
-  { to: "/lab/counter", label: "nav.labCounter", permission: "lab.desk.operate", group: "lab" },
-  { to: "/lab/qcollect", label: "nav.labQCollect", permission: "lab.worklist.read", group: "lab" },
-  { to: "/lab/qbench", label: "nav.labQBench", permission: "lab.results.enter", group: "lab" },
-  { to: "/lab/qreports", label: "nav.labQReports", permission: "lab.reports.print", group: "lab" },
+  { to: "/lab/counter", label: "nav.labCounter", permission: "lab.desk.operate", group: "lab", labMode: "quick" },
+  { to: "/lab/qcollect", label: "nav.labQCollect", permission: "lab.worklist.read", group: "lab", labMode: "quick" },
+  { to: "/lab/qbench", label: "nav.labQBench", permission: "lab.results.enter", group: "lab", labMode: "quick" },
+  { to: "/lab/qreports", label: "nav.labQReports", permission: "lab.reports.print", group: "lab", labMode: "quick" },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
@@ -443,7 +446,9 @@ function ShellChrome(): React.ReactElement {
     document.addEventListener("mousedown", close);
     return () => { document.removeEventListener("mousedown", close); };
   }, [openGroup]);
-  const folded = NAV.filter((e) => navVisible(e, can)).length > NAV_FOLD_AT;
+  const labModeNow = useLabMode();
+  const show = (e: NavEntry): boolean => navVisible(e, can) && shownInMode(e.labMode, labModeNow);
+  const folded = NAV.filter(show).length > NAV_FOLD_AT;
   /* The clock ticks in IST — a hospital clock in the browser's zone is a clock nobody can act on. */
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -552,7 +557,7 @@ function ShellChrome(): React.ReactElement {
       >
         {NAV_GROUPS.map((group) => {
           /* One link per screen: a path listed under two grants (paper consultations) shows once to a login holding both. */
-          const entries = NAV.filter((e) => e.group === group && navVisible(e, can))
+          const entries = NAV.filter((e) => e.group === group && show(e))
             .filter((e, i, all) => all.findIndex((x) => x.to === e.to) === i);
           if (entries.length === 0) return null;
           /* A group of one is a place, not a list: it stays a link even when the bar folds. */
@@ -588,7 +593,7 @@ function ShellChrome(): React.ReactElement {
             </span>
           );
         })}
-        {NAV.every((entry) => !navVisible(entry, can)) ? (
+        {NAV.every((entry) => !show(entry)) ? (
           /*
            * PLAN 11h T6 — AN EMPTY NAV IS A SENTENCE, NOT A BLANK BAR. A person whose role holds
            * none of these was shown sixteen links and refused by every one. Showing nothing at

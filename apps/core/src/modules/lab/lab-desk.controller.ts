@@ -8,6 +8,7 @@ import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { previewInvoice, withIdempotency } from "../billing";
 import { bookLab, bookingRules, closeBooking, listBookings, saveBookingHours, slotsForDay } from "./bookings";
 import { addOnOrder, deskFind, labDoctors, tubePlan } from "./desk";
+import { labMode, setLabMode } from "./mode";
 import { commonOrderables, labFeeFree, recentLabOrders, walkInReadiness } from "./desk-picker";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { cancelLabItem, deskOrderAtCounter } from "./money";
@@ -110,6 +111,8 @@ const bookBody = z.object({
   note: z.string().max(300).nullish(),
 });
 const closeBookingBody = z.object({ reason: z.string().max(300).nullish() });
+const modeBody = z.object({ mode: z.enum(["quick", "full"]) });
+
 const hoursBody = z.object({
   open: z.string().regex(/^[0-2][0-9]:[0-5][0-9]$/),
   close: z.string().regex(/^[0-2][0-9]:[0-5][0-9]$/),
@@ -355,6 +358,27 @@ export class LabDeskController {
     try {
       await withTx(this.db, (tx) => saveBookingHours(tx, actor, input));
       return await bookingRules(this.db);
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * Owner 2026-10-12 — which lab runs, quick or full: every lab seat's menu reads it, so any lab grant
+   * reads this one word; only the lab's administrator changes it (an event records who and when).
+   */
+  @Get("mode")
+  @RequirePermission("lab.catalogue.read", "hospital", {
+    alsoAdmits: ["lab.desk.operate", "lab.worklist.read", "lab.results.enter", "lab.reports.print", "lab.collection.operate"],
+  })
+  async mode(): Promise<unknown> {
+    return { mode: await labMode(this.db) };
+  }
+
+  @Put("mode")
+  @RequirePermission("lab.catalogue.manage", "hospital")
+  async setMode(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const { mode } = parsed(modeBody, body);
+    try {
+      return { mode: await withTx(this.db, (tx) => setLabMode(tx, actor, mode)) };
     } catch (e) { toHttp(e); }
   }
 

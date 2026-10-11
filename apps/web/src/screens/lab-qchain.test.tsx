@@ -126,3 +126,24 @@ it("QUICK REPORTS — open a completed report, Print & Hand over records the han
   await waitFor(() => expect(screen.getByTestId("reports-toast")).toHaveTextContent("sent back"));
   expect(seen.some((s) => s.path === "/api/lab/quick/reports/q-1/send-back")).toBe(true);
 });
+
+it("OWNER 2026-10-12 — LAB MODE: in full mode a quick station says so and hides the quick stations; the admin switches with one confirm", async () => {
+  let mode = "full";
+  const seen = mockRoutes({
+    "GET /api/auth/me": ME(["lab.worklist.read", "lab.desk.operate", "lab.collection.operate", "lab.catalogue.read", "lab.catalogue.manage"]),
+    "GET /api/lab/desk/mode": () => ({ status: 200, body: { mode } }),
+    "PUT /api/lab/desk/mode": () => { mode = "quick"; return { status: 200, body: { mode: "quick" } }; },
+    "GET /api/lab/quick/collect": { status: 200, body: [] },
+  });
+  renderWithProviders(<LabQCollect />);
+  const off = await screen.findByTestId("lab-mode-off");
+  expect(off).toHaveTextContent("Quick lab mode is off");
+  // the station switch offers the full lab's stations, not the other quick ones
+  expect(screen.queryByRole("link", { name: "Lab counter" })).toBeNull();
+  expect(screen.getAllByRole("link", { name: "Collection" }).length).toBeGreaterThan(0);
+
+  await userEvent.click(within(off).getByRole("button", { name: "Quick" }));
+  await userEvent.click(screen.getByRole("button", { name: "Switch" }));
+  await waitFor(() => expect(seen.find((x) => x.method === "PUT")?.body).toEqual({ mode: "quick" }));
+  await waitFor(() => expect(screen.queryByTestId("lab-mode-off")).toBeNull());
+});

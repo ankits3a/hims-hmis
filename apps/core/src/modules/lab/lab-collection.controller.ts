@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { LabModeOnly } from "./mode";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -44,6 +45,7 @@ export class LabCollectionController {
 
   /** The phlebotomist's list: who is waiting, for which tube, and how long they have waited. */
   @Get("queue")
+  @LabModeOnly("full")
   @RequirePermission("lab.collection.operate", "hospital")
   async queue(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<unknown> {
     const filter = parsed(queueQuery, query);
@@ -53,6 +55,7 @@ export class LabCollectionController {
   /** One tube by its `S` number — what a scanner at the bench door resolves. */
   /** PLAN 17c T2 — the patients waiting for a LABEL, which the tube queue cannot show. */
   @Get("awaiting")
+  @LabModeOnly("full")
   @RequirePermission("lab.collection.operate", "hospital")
   async awaiting(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<unknown> {
     const filter = parsed(z.object({ serviceDate: isoDateSchema }), query);
@@ -60,6 +63,7 @@ export class LabCollectionController {
   }
 
   @Get("specimen/:specimenNo")
+  @LabModeOnly("full")
   @RequirePermission("lab.collection.operate", "hospital")
   async specimen(@Param("specimenNo") specimenNo: string): Promise<unknown> {
     try {
@@ -69,6 +73,7 @@ export class LabCollectionController {
   }
 
   @Post("labels")
+  @LabModeOnly("full")
   @RequirePermission("lab.collection.operate", "hospital")
   async labels(
     @CurrentActor() actor: Actor,
@@ -88,6 +93,7 @@ export class LabCollectionController {
   }
 
   @Post("collect")
+  @LabModeOnly("full")
   @RequirePermission("lab.collection.operate", "hospital")
   async draw(
     @CurrentActor() actor: Actor,

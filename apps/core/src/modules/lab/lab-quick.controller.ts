@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import { LabModeOnly } from "./mode";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
@@ -66,6 +67,7 @@ export class LabQuickController {
   }
 
   @Post("start")
+  @LabModeOnly("quick")
   @RequirePermission(LAB_DESK_OPERATE, "hospital")
   async start(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     const input = parsed(startBody, body);
@@ -73,6 +75,7 @@ export class LabQuickController {
   }
 
   @Get("queue")
+  @LabModeOnly("quick")
   @RequirePermission(LAB_RESULTS_ENTER, "hospital")
   async queue(@CurrentActor() actor: Actor): Promise<unknown> {
     return quickQueue(this.db, actor);
@@ -99,6 +102,7 @@ export class LabQuickController {
   }
 
   @Put("reports/:id")
+  @LabModeOnly("quick")
   @RequirePermission(LAB_RESULTS_ENTER, "hospital")
   async results(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
     const input = parsed(resultsBody, body);
@@ -111,6 +115,7 @@ export class LabQuickController {
 
   /** Lab orders still waiting for blood. Reception and the phlebotomist both read the worklist. */
   @Get("collect")
+  @LabModeOnly("quick")
   @RequirePermission("lab.worklist.read", "hospital")
   async collectQueue(@CurrentActor() actor: Actor): Promise<unknown> {
     return quickCollectQueue(this.db, actor);
@@ -118,6 +123,7 @@ export class LabQuickController {
 
   /** Blood collected — the counter or the phlebotomist (checked inside: either grant). */
   @Post("collect/:orderId")
+  @LabModeOnly("quick")
   @RequirePermission("lab.worklist.read", "hospital")
   async collect(@CurrentActor() actor: Actor, @Param("orderId") orderId: string): Promise<unknown> {
     try { return await withTx(this.db, (tx) => quickCollect(tx, actor, parsed(idSchema, orderId))); } catch (e) { quickHttp(e); }
@@ -125,6 +131,7 @@ export class LabQuickController {
 
   /** Completed reports waiting to be handed over, and today's hand-overs. */
   @Get("ready")
+  @LabModeOnly("quick")
   @RequirePermission(LAB_REPORTS_PRINT, "hospital")
   async ready(@CurrentActor() actor: Actor): Promise<unknown> {
     return quickReportsDesk(this.db, actor);
@@ -149,12 +156,14 @@ export class LabQuickController {
   }
 
   @Post("reports/:id/hand-over")
+  @LabModeOnly("quick")
   @RequirePermission(LAB_REPORTS_PRINT, "hospital")
   async handOver(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     try { return await withTx(this.db, (tx) => handOverQuick(tx, actor, parsed(idSchema, id))); } catch (e) { quickHttp(e); }
   }
 
   @Post("reports/:id/send-back")
+  @LabModeOnly("quick")
   @RequirePermission(LAB_RESULTS_ENTER, "hospital")
   async sendBack(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     try { return await withTx(this.db, (tx) => sendBackQuick(tx, actor, parsed(idSchema, id))); } catch (e) { quickHttp(e); }

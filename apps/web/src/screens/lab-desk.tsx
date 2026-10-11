@@ -9,7 +9,7 @@ import {
 } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "../lib/auth";
-import { LabStation, sexAge } from "./lab-seat";
+import { LabStation, sexAge, LabModeSwitch } from "./lab-seat";
 import type {
   DeskOrderRequest, WireDeskFindHit, WireDeskOrder, WireDuplicateWarning, WireLabDoctor, WireOrderable, WirePricedDraft,
 } from "../lib/lab-api";
@@ -485,6 +485,8 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
       ]}
       list={listPane}
     >
+      {/* Owner 2026-10-12 — the lab's administrator switches quick ↔ full from the lab's first seat. */}
+      <div className="pp" style={{ marginBottom: 10 }}><LabModeSwitch /></div>
       {/* ── walk-in with a slip · one field, three doors — owner 2026-10-11: drawn in /counter's paper-and-pine (`.pp`) ── */}
       <section className="space-y-3">
       {!focus && (
