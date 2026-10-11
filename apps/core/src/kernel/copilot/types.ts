@@ -56,6 +56,12 @@ export type CopilotAnswer = {
    * (`act.ts`) and sends THAT, never this field. Nothing is written until `POST /copilot/confirm`.
    */
   propose?: { args: unknown };
+  /**
+   * E2.1 — SEVERAL proposals for ONE human to pick from (an appointment's patient and time). Each is
+   * signed separately with its own subject; the clerk taps one and confirms it, so each still needs
+   * its own tap. `payload` says which option is which. Capped at `MAX_PROPOSALS` (`act.ts`).
+   */
+  proposeMany?: { args: unknown; subject: string | null }[];
 };
 
 /** Everything a tool is given, and deliberately nothing more. */
@@ -86,6 +92,12 @@ export type CopilotToolCtx = {
    * from here (the model's copy went out, and came back as a tool name, before any tool ran).
    */
   question: string;
+  /**
+   * E2.1 — the question AS TYPED, for a tool that must read words a placeholder hid (a doctor, a day,
+   * a patient's name — owner 2026-10-11: an appointment may be booked by name). Read on the server
+   * only, after routing: it never reaches a model, a log or the ledger. Absent in older test contexts.
+   */
+  typed?: string;
 };
 
 /**

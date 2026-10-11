@@ -11,6 +11,7 @@ import { upcomingOf } from "../lib/appointment-view";
 import type { WireAppointment, WireDepartment, WireDoctor, WireOpenVisitResult, WireRoom, WireSlot } from "../lib/opd-api";
 import { useRealtime } from "../lib/realtime";
 import { useCopilot } from "../lib/use-copilot";
+import { CopilotApptPicker } from "../components/copilot-appt-pick";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
@@ -475,7 +476,12 @@ function DayTab({
                       <span className="block">{patientLabel(apt.patient)}</span>
                       <span className="block mo" style={{ fontSize: 11, color: "var(--dim)" }}>{apt.patient?.uhid ?? "—"}</span>
                     </td>
-                    <td className="mo" style={{ whiteSpace: "nowrap" }}>{fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} /></td>
+                    <td className="mo" style={{ whiteSpace: "nowrap" }}>
+                      {fmtIst(apt.slotStart)} <TeleMark mode={apt.mode} />
+                      {apt.viaCopilot === true ? (
+                        <span data-testid={`appt-via-copilot-${apt.id}`} className="tag" style={{ marginLeft: 6, color: "var(--dim)" }}>{t("copilot.act.viaCopilot")}</span>
+                      ) : null}
+                    </td>
                     <td><StatusBadge status={apt.status} /></td>
                     <td>
                       <div className="flex flex-wrap gap-2" style={{ alignItems: "center" }}>
@@ -717,7 +723,12 @@ export function OpdAppointments(): React.ReactElement {
     a line to sneak in here. `patient-detail.tsx` and Desk One both hold the name already and pass
     it when they are wired.
   */
-  const copilot = useCopilot({ fallback: localAnswer, onNote: note, date });
+  /* E2.1 — a booking or move confirmed from the chat refreshes the book and the free times, as the screen's own dialogs do. */
+  const onActed = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["opd", "appointments"] });
+    void queryClient.invalidateQueries({ queryKey: ["opd", "slots"] });
+  }, [queryClient]);
+  const copilot = useCopilot({ fallback: localAnswer, onNote: note, date, onActed });
 
   /**
    * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -868,9 +879,14 @@ export function OpdAppointments(): React.ReactElement {
         onAsk={copilot.ask}
         placeholder={t("opdAppt.askPlaceholder")}
         idle={t("opdAppt.agentIdle")}
-        panel={copilot.report === null ? undefined : (
+        panel={copilot.report !== null ? (
           <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
-        )}
+        ) : copilot.pick !== null ? (
+          <CopilotApptPicker
+            pick={copilot.pick.pick} proposals={copilot.pick.proposals} busy={copilot.busy}
+            onConfirm={(p) => { void copilot.confirm(p); }} onDismiss={copilot.clearPick}
+          />
+        ) : undefined}
       />
     </PaperScreen>
   );

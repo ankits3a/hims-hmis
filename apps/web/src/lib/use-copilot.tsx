@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { askCopilot } from "./copilot-api";
+import { askCopilot, confirmCopilot } from "./copilot-api";
 import { checkCopilotNotice } from "./copilot-notice";
-import type { CopilotDayReport, CopilotReply } from "./copilot-api";
+import type { CopilotDayReport, CopilotProposal, CopilotReply } from "./copilot-api";
+import type { CopilotApptPick } from "@hmis/contracts";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -46,6 +47,11 @@ export type CopilotState = {
    */
   payload: unknown;
   clearPayload: () => void;
+  /** E2.1 — an appointment to pick (patient, then a time) and confirm. Null when the last answer offered none. */
+  pick: { pick: CopilotApptPick; proposals: CopilotProposal[] } | null;
+  /** The confirm tap: the server re-checks and writes, and its answer replaces the pick. */
+  confirm: (proposal: CopilotProposal) => Promise<void>;
+  clearPick: () => void;
 };
 
 export function useCopilot(opts: {
@@ -59,14 +65,17 @@ export function useCopilot(opts: {
   /** Every answer lands in the dock's log, as the screens already do for server outcomes. */
   onNote?: (text: string) => void;
   date?: string;
+  /** E2.1 — a confirmed act wrote something: the screen refreshes what it shows. */
+  onActed?: () => void;
 } = {}): CopilotState {
   const { t, i18n } = useTranslation();
   const [answer, setAnswer] = useState<string | null>(null);
   const [report, setReport] = useState<CopilotDayReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [payload, setPayload] = useState<unknown>(null);
+  const [pick, setPick] = useState<CopilotState["pick"]>(null);
 
-  const { terms, fallback, onNote, date } = opts;
+  const { terms, fallback, onNote, date, onActed } = opts;
 
   /*
     E0.1 — THE STAFF NOTICE (owner ruling 2026-10-10: notice first). Checked when the ask box first
@@ -83,6 +92,7 @@ export function useCopilot(opts: {
     setBusy(true);
     setReport(null);
     setPayload(null);
+    setPick(null);
     checkCopilotNotice();
     askCopilot(q, terms?.() ?? [], date, screenSlug())
       .then((reply: CopilotReply) => {
@@ -99,6 +109,8 @@ export function useCopilot(opts: {
         setAnswer(t(reply.answer.key, sayParams(reply.answer.key, reply.answer.params, t, i18n.language)));
         if (reply.intent === "my_day_report" && reply.answer.payload !== undefined) {
           setReport(reply.answer.payload as CopilotDayReport);
+        } else if (isApptPick(reply.answer.payload) && reply.proposals !== undefined) {
+          setPick({ pick: reply.answer.payload, proposals: reply.proposals });
         } else if (reply.answer.payload !== undefined) {
           setPayload(reply.answer.payload);
         }
@@ -114,18 +126,35 @@ export function useCopilot(opts: {
       .finally(() => { setBusy(false); });
   }, [t, i18n.language, terms, fallback, onNote, date]);
 
+  const confirm = useCallback(async (proposal: CopilotProposal): Promise<void> => {
+    setBusy(true);
+    try {
+      const res = await confirmCopilot(proposal);
+      setAnswer(t(res.answer.key, sayParams(res.answer.key, res.answer.params, t, i18n.language)));
+      setPick(null);
+      if (res.outcome === "done") onActed?.();
+    } catch {
+      setAnswer(t("copilot.answer.failed"));
+    } finally { setBusy(false); }
+  }, [t, i18n.language, onActed]);
+
   return {
     answer, report, busy, ask, dismissReport: useCallback(() => { setReport(null); }, []),
     payload, clearPayload: useCallback(() => { setPayload(null); }, []),
+    pick, confirm, clearPick: useCallback(() => { setPick(null); }, []),
   };
+}
+
+export function isApptPick(p: unknown): p is CopilotApptPick {
+  return typeof p === "object" && p !== null && (p as { kind?: unknown }).kind === "apptPick";
 }
 
 /* ═══ 20-U U9 — THE ROSTER'S ANSWERS IN THE BOARDS' VOICE ═══
  *
  * The roster tools send a day as its IST date and an instant as ISO; this says them as the boards do,
  * in the reader's language — "Saturday 10 Oct", "on Saturday 10 Oct at 22:00", "right now" — and an
- * empty name list as "nobody". Applied to the roster's keys only: another tool's `2028-01-31` (a
- * batch's expiry) means a date with a year and is left exactly as it came.
+ * empty name list as "nobody". Applied to the roster's keys and the appointment acts' (E2.1) only:
+ * another tool's `2028-01-31` (a batch's expiry) means a date with a year and is left as it came.
  */
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/;
@@ -143,7 +172,7 @@ function clockWords(at: Date): string {
 export function sayParams(
   key: string, params: Record<string, string | number>, t: Tr, lang: string,
 ): Record<string, string | number> {
-  if (!key.startsWith("copilot.answer.roster")) return params;
+  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string") { out[k] = v; continue; }

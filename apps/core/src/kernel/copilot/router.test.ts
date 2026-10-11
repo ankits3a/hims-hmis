@@ -1,5 +1,5 @@
 import { IdentifierLeak } from "./mask";
-import { intentNames } from "./phrasebook";
+import { modelIntentNames } from "./phrasebook";
 import { routeQuestion } from "./router";
 import type { ChoiceAnswer, ChoiceClient, ChooseInput, CompleteInput, InferenceClient } from "../inference/types";
 
@@ -285,7 +285,7 @@ describe("routeQuestion — TypeSafe first", () => {
     const sent = chooser.calls[0];
     expect(sent?.state).toEqual({ question: TAIL });
     expect(Object.keys(sent?.questions ?? {})).toEqual(["tool"]);
-    expect(Object.keys(sent?.questions.tool?.options ?? {}).sort()).toEqual([...intentNames(), "none"].sort());
+    expect(Object.keys(sent?.questions.tool?.options ?? {}).sort()).toEqual([...modelIntentNames(), "none"].sort());
     expect(JSON.stringify(sent)).not.toContain("U00110012");
   });
 });

@@ -25,6 +25,18 @@ export function ScanMark({ tint = color.agentFg, size = 22 }: { tint?: string; s
   );
 }
 
+/** The copilot mark: a speech bubble with a mint dot — drawn, like the scan mark, so the header needs no icon font. */
+export function AskMark({ tint = color.agentFg }: { tint?: string }) {
+  return (
+    <View style={{ width: 22, height: 20 }}>
+      <View style={{ width: 22, height: 16, borderRadius: 6, borderWidth: 2, borderColor: tint, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color.mint }} />
+      </View>
+      <View style={{ position: "absolute", left: 5, bottom: 0, width: 6, height: 6, borderLeftWidth: 2, borderBottomWidth: 2, borderColor: tint, transform: [{ skewY: "-30deg" }] }} />
+    </View>
+  );
+}
+
 /**
  * The pine band every screen opens with: the mark, the name, the language switch.
  *
@@ -32,12 +44,14 @@ export function ScanMark({ tint = color.agentFg, size = 22 }: { tint?: string; s
  * the same place — top right, first icon — on home and on every work screen, and no screen copies
  * it. It shows for a signed-in session only; a screen with no patient work passes `scan={false}`.
  */
-export function Band({ right, scan = true }: { right?: ReactNode; scan?: boolean }) {
+export function Band({ right, scan = true, copilot = true }: { right?: ReactNode; scan?: boolean; copilot?: boolean }) {
   const { t, toggle } = useI18n();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const session = useSessionOptional();
   const showScan = scan && session?.state.status === "signedIn";
+  // E1.3 — the copilot sits beside the scan mark, on every signed-in screen but its own.
+  const showCopilot = copilot && session?.state.status === "signedIn";
   return (
     <View style={[s.band, { paddingTop: insets.top + space.md }]}>
       <View style={s.row}>
@@ -50,6 +64,12 @@ export function Band({ right, scan = true }: { right?: ReactNode; scan?: boolean
           <Pressable onPress={() => router.push("/scan")} accessibilityRole="button" accessibilityLabel={t("mobile.scan.label")} hitSlop={4} testID="band-scan"
             style={({ pressed }) => [s.scan, pressed && { opacity: 0.6 }]}>
             <ScanMark />
+          </Pressable>
+        )}
+        {showCopilot && (
+          <Pressable onPress={() => router.push("/copilot")} accessibilityRole="button" accessibilityLabel={t("copilotPhone.title")} hitSlop={4} testID="band-copilot"
+            style={({ pressed }) => [s.copilot, pressed && { opacity: 0.6 }]}>
+            <AskMark />
           </Pressable>
         )}
         {right}
@@ -323,6 +343,7 @@ export const s = StyleSheet.create({
   brand: { color: "#fff", fontFamily: MONO, fontWeight: "700", fontSize: 15, letterSpacing: 1.5 },
   product: { color: color.agentDim, fontSize: 12, flexShrink: 1 },
   scan: { width: 40, height: 40, alignItems: "center", justifyContent: "center", marginVertical: -4 },
+  copilot: { width: 36, height: 40, alignItems: "center", justifyContent: "center", marginVertical: -4, marginLeft: -6 },
   lang: { minHeight: 32, paddingHorizontal: 10, justifyContent: "center", borderRadius: radius.sm, borderWidth: 1, borderColor: "rgba(217,239,228,.18)" },
   langText: { color: color.agentFg, fontSize: 13, fontWeight: "600" },
   staging: { marginTop: space.sm, color: color.gold, fontFamily: MONO, fontSize: 11, fontWeight: "700", letterSpacing: 1 },

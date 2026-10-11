@@ -38,6 +38,9 @@ export const COPILOT_EXTRA_TOOLS = Symbol("COPILOT_EXTRA_TOOLS");
 /** Plan E0.2: a proposal lives at most five minutes, whatever a tool asks for. */
 export const PROPOSAL_MAX_TTL_MS = 5 * 60 * 1000;
 
+/** E2.1 — at most this many proposals for one ask (five patients × three times, say). */
+export const MAX_PROPOSALS = 15;
+
 export const proposalSchema = z.object({
   v: z.literal(1),
   id: z.string().min(1).max(64),
