@@ -2721,6 +2721,11 @@
       "ok": "OK"
     },
     "answer": {
+      "actDone": "Done.",
+      "actExpired": "That expired. Ask again.",
+      "actInvalid": "Cannot confirm that. Ask again.",
+      "actAlreadyDone": "Already done.",
+      "actStateChanged": "Something changed. Nothing done — ask again.",
       "paused": "The copilot is paused just now. Use the screen for this.",
       "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
       "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
