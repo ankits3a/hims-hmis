@@ -10667,6 +10667,24 @@
       "p95": "Slow (p95)",
       "none": "—",
       "failed": "Could not load the copilot's health.",
+      "modelCalls": "AI calls",
+      "spend": "AI spend (estimate)",
+      "capped": "AI spend cap of ₹{{cap}} reached — the copilot answers from its phrasebook only until midnight IST.",
+      "capLine": "Daily cap ₹{{cap}}. Rupees are estimates from token counts.",
+      "halt": {
+        "title": "Halt switch",
+        "halted": "Halted",
+        "running": "Running",
+        "halt": "Halt",
+        "clear": "Resume",
+        "failed": "Could not change the halt switch.",
+        "scope": {
+          "read": "Answers",
+          "act": "Actions",
+          "draft": "Drafts",
+          "global": "Everything"
+        }
+      },
       "outcome": {
         "answered": "Answered",
         "notUnderstood": "Not understood",
@@ -10693,6 +10711,12 @@
       "failed": "I could not get an answer just now. Try the screen for this.",
       "notUnderstood": "I did not understand that. I can tell you whether a patient has been seen, how the queues look, what a patient owes, and I can pull your day report.",
       "noTool": "I understood the question, but nothing here answers it yet.",
+      "paused": "The copilot is paused just now. Use the screen for this.",
+      "actDone": "Done.",
+      "actExpired": "That expired. Ask again.",
+      "actInvalid": "Cannot confirm that. Ask again.",
+      "actAlreadyDone": "Already done.",
+      "actStateChanged": "Something changed. Nothing done — ask again.",
       "dayReport": "Your day report for {{date}} — {{sections}} sections, ready below.",
       "dayReportProvisional": "Your day so far on {{date}} — {{sections}} sections, ready below. The day has not closed, so these figures can still change.",
       "dayReportEmpty": "Nothing recorded under your name on {{date}} yet.",
@@ -15160,6 +15184,49 @@
       "aadhaar_key_not_configured": "Not set up yet",
       "too_many_attempts": "Too many tries · try tomorrow",
       "failed": "Not saved · try again"
+    }
+  },
+  "waiting": {
+    "title": "Waiting for me",
+    "nothing": "Nothing waiting on you.",
+    "oldest": "oldest {{age}}",
+    "kind": {
+      "lab": {
+        "criticalsMine_one": "lab critical on your patient",
+        "criticalsMine_other": "lab criticals on your patients",
+        "callsOpen_one": "critical call not yet read back",
+        "callsOpen_other": "critical calls not yet read back",
+        "reportsBack_one": "lab report back",
+        "reportsBack_other": "lab reports back"
+      },
+      "radiology": {
+        "criticalsMine_one": "imaging critical to acknowledge",
+        "criticalsMine_other": "imaging criticals to acknowledge",
+        "readsOverdue_one": "study past its reading time",
+        "readsOverdue_other": "studies past their reading time",
+        "unreadMine_one": "imaging report unread",
+        "unreadMine_other": "imaging reports unread"
+      },
+      "alerts": {
+        "unanswered_one": "alert not answered",
+        "unanswered_other": "alerts not answered"
+      },
+      "reminders": {
+        "today_one": "reminder still today",
+        "today_other": "reminders still today"
+      },
+      "roster": {
+        "dutiesToday_one": "duty today",
+        "dutiesToday_other": "duties today"
+      }
+    },
+    "where": {
+      "alerts": {
+        "unanswered": "in the bell"
+      },
+      "reminders": {
+        "today": "on the phone"
+      }
     }
   }
 }

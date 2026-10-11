@@ -6,6 +6,7 @@ import type { WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { PaperScreen } from "../components/paper-screen";
 import { RecordingCard } from "../components/recording-card";
+import { WaitingForMe } from "../components/waiting-for-me";
 import {
   COL, deskStat, hasCard, longDate, matchesFilter, metricsOf, outcomeTone, rowsOf, shiftDate, statusTone, summariseVisits,
 } from "./my-day-model";
@@ -491,6 +492,9 @@ export function MyDay(): React.ReactElement {
         </header>
         {error === null ? null : <p role="alert" className="myd-error">{error}</p>}
         {report.isPending ? <p className="myd-empty">{t("app.loading")}</p> : null}
+
+        {/* E1.4 / E1.5 — what is waiting on me, the same lines the phone draws (`GET /me/waiting`). */}
+        {isToday ? <WaitingForMe /> : null}
 
         {isToday && (isDoctor || visitsSection !== undefined) ? (
           <div className="myd-now" data-testid="myd-now">

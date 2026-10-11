@@ -1,5 +1,5 @@
 {
-  "id": "94e8d7af-233b-43f1-802f-bda4ca9b2e49",
+  "id": "149054a9-e841-4cd2-964f-f0badc95e64f",
   "prevId": "5aed2e68-347b-4462-b729-9a7358d8a052",
   "version": "7",
   "dialect": "postgresql",
@@ -28694,176 +28694,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.lab_bookings": {
-      "name": "lab_bookings",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "patient_id": {
-          "name": "patient_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "service_date": {
-          "name": "service_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "slot_start": {
-          "name": "slot_start",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "service_ids": {
-          "name": "service_ids",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'booked'"
-        },
-        "order_id": {
-          "name": "order_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "closed_by": {
-          "name": "closed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "closed_at": {
-          "name": "closed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "close_reason": {
-          "name": "close_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "lab_bookings_day_slot_idx": {
-          "name": "lab_bookings_day_slot_idx",
-          "columns": [
-            {
-              "expression": "service_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "slot_start",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_bookings_patient_idx": {
-          "name": "lab_bookings_patient_idx",
-          "columns": [
-            {
-              "expression": "patient_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "lab_bookings_patient_id_patients_id_fk": {
-          "name": "lab_bookings_patient_id_patients_id_fk",
-          "tableFrom": "lab_bookings",
-          "tableTo": "patients",
-          "columnsFrom": [
-            "patient_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "lab_bookings_order_id_orders_id_fk": {
-          "name": "lab_bookings_order_id_orders_id_fk",
-          "tableFrom": "lab_bookings",
-          "tableTo": "orders",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "lab_bookings_status_ck": {
-          "name": "lab_bookings_status_ck",
-          "value": "\"lab_bookings\".\"status\" in ('booked', 'fulfilled', 'cancelled', 'no_show')"
-        },
-        "lab_bookings_slot_ck": {
-          "name": "lab_bookings_slot_ck",
-          "value": "\"lab_bookings\".\"slot_start\" ~ '^[0-2][0-9]:[0-5][0-9]$'"
-        },
-        "lab_bookings_fulfilled_ck": {
-          "name": "lab_bookings_fulfilled_ck",
-          "value": "(\"lab_bookings\".\"status\" = 'fulfilled') = (\"lab_bookings\".\"order_id\" is not null)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.lab_catalogue_imports": {
       "name": "lab_catalogue_imports",
       "schema": "",
@@ -53267,6 +53097,33 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "model_calls": {
+          "name": "model_calls",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cost_micro_inr": {
+          "name": "cost_micro_inr",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "model_usage": {
+          "name": "model_usage",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "capped": {
+          "name": "capped",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         }
       },
       "indexes": {
@@ -53281,6 +53138,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "copilot_asks_spend_idx": {
+          "name": "copilot_asks_spend_idx",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cost_micro_inr",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "cost_micro_inr > 0",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -53306,6 +53185,53 @@
         "copilot_asks_ms_ck": {
           "name": "copilot_asks_ms_ck",
           "value": "\"copilot_asks\".\"ms\" >= 0"
+        },
+        "copilot_asks_cost_ck": {
+          "name": "copilot_asks_cost_ck",
+          "value": "\"copilot_asks\".\"model_calls\" >= 0 and \"copilot_asks\".\"cost_micro_inr\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.copilot_halts": {
+      "name": "copilot_halts",
+      "schema": "",
+      "columns": {
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "halted_by": {
+          "name": "halted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "halted_at": {
+          "name": "halted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "copilot_halts_scope_ck": {
+          "name": "copilot_halts_scope_ck",
+          "value": "\"copilot_halts\".\"scope\" in ('read', 'act', 'draft', 'global')"
         }
       },
       "isRLSEnabled": false
