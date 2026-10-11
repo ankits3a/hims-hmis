@@ -1229,6 +1229,13 @@ export const labQuickReports = pgTable(
     patientId: text("patient_id").notNull().references(() => patients.id),
     /** The OPD visit the slip names, when the counter found the patient by it. */
     encounterNo: text("encounter_no"),
+    /**
+     * Owner 2026-10-11 (the quick chain) — the lab ORDER whose blood this is, when the row came from
+     * /lab/qcollect (billed or free at /lab/counter). Null for a decision-0061 Start with no order.
+     */
+    orderId: text("order_id").references(() => orders.id),
+    /** The sample number stamped when blood was confirmed collected (`S…`, the specimen series). */
+    sampleNo: text("sample_no"),
     tests: jsonb("tests").notNull(),
     status: text("status").notNull().default("waiting"),
     collectedAt: timestamp("collected_at", { withTimezone: true }).notNull(),
@@ -1237,6 +1244,9 @@ export const labQuickReports = pgTable(
     summary: text("summary").notNull().default(""),
     reportedAt: timestamp("reported_at", { withTimezone: true }),
     reportedBy: text("reported_by"),
+    /** Owner 2026-10-11 — Print & Hand over at /lab/qreports: who gave the report to the patient, and when. */
+    handedOverAt: timestamp("handed_over_at", { withTimezone: true }),
+    handedOverBy: text("handed_over_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1244,11 +1254,20 @@ export const labQuickReports = pgTable(
   (t) => [
     index("lab_quick_reports_status_idx").on(t.status, t.collectedAt),
     index("lab_quick_reports_patient_idx").on(t.patientId, t.collectedAt),
-    check("lab_quick_reports_status_ck", sql`${t.status} in ('waiting', 'reported')`),
+    /** `draft` (owner 2026-10-11): values saved but not complete, or sent back from /lab/qreports. */
+    check("lab_quick_reports_status_ck", sql`${t.status} in ('waiting', 'draft', 'reported')`),
     /** Reported means someone reported it, and only then. */
     check(
       "lab_quick_reports_reported_ck",
       sql`(${t.status} = 'reported') = (${t.reportedAt} is not null and ${t.reportedBy} is not null)`,
     ),
+    /** Handed over only a reported report, and the hand-over names who. */
+    check(
+      "lab_quick_reports_handover_ck",
+      sql`(${t.handedOverAt} is null and ${t.handedOverBy} is null) or (${t.status} = 'reported' and ${t.handedOverAt} is not null and ${t.handedOverBy} is not null)`,
+    ),
+    /** One quick report per order: the blood is confirmed once. */
+    uniqueIndex("lab_quick_reports_order_ux").on(t.orderId),
+    uniqueIndex("lab_quick_reports_sample_ux").on(t.sampleNo),
   ],
 );

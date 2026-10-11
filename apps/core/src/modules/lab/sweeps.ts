@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lt } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
   labItems, labOrderables, labSlaBreaches, labSpecimenItems, labSpecimens, orderItems,
@@ -284,6 +284,12 @@ export async function sweepLabSla(
       eq(workflowInstances.defKey, LAB_ITEM_DEF_KEY),
       inArray(orderItems.status, [...LIVE_ITEM_STATUSES]),
       isNotNull(workflowInstances.stateEnteredAt),
+      /**
+       * Owner 2026-10-11 — an order the QUICK chain collected (`lab_quick_reports.order_id`) never
+       * walks the item workflow: its blood, results and report live in quick mode (decision 0061/0066).
+       * Its items stay `ordered` by design, so the sweep must not call them late.
+       */
+      sql`not exists (select 1 from lab_quick_reports q where q.order_id = ${orderItems.orderId})`,
     ));
 
   for (const item of live) {

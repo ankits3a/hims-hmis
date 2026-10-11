@@ -5,11 +5,14 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { withTx } from "../../kernel/db/client";
 import { httpError, idSchema, parsed } from "./lab-http";
 import {
-  getQuickReport, quickCatalogue, QuickEntryError, quickQueue, quickRanges, quickReportsForPatient, saveQuickResults,
-  startQuick,
+  getQuickReport, handOverQuick, quickCatalogue, quickCollect, quickCollectQueue, QuickEntryError, quickQueue, quickRanges,
+  quickReportsDesk, quickReportsForPatient, saveQuickResults, sendBackQuick, startQuick,
 } from "./quick";
+import { recordPhiAccess } from "../../kernel/phi/audit";
+import { patients } from "../../kernel/db/schema";
+import { eq } from "drizzle-orm";
 import { LAB_DESK_OPERATE } from "./desk";
-import { LAB_RESULTS_READ } from "./reports";
+import { LAB_REPORTS_PRINT, LAB_RESULTS_READ } from "./reports";
 import { LAB_RESULTS_ENTER } from "./results";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -30,6 +33,8 @@ const startBody = z.object({
 const resultsBody = z.object({
   lines: z.array(z.object({ analyteId: idSchema, value: z.string().max(200) })).max(300),
   summary: z.string().max(4000),
+  /** Owner 2026-10-11 — `false` is /lab/qbench's Save draft. */
+  complete: z.boolean().optional(),
 });
 
 const rangesQuery = z.object({
@@ -39,7 +44,10 @@ const rangesQuery = z.object({
 
 function quickHttp(e: unknown): never {
   if (e instanceof QuickEntryError) {
-    const status = e.code === "patient_not_found" || e.code === "report_not_found" ? 404 : 422;
+    const status = e.code === "patient_not_found" || e.code === "report_not_found" || e.code === "order_not_found" ? 404
+      : e.code === "not_permitted" ? 403
+      : e.code === "already_collected" || e.code === "already_handed_over" || e.code === "not_completed" ? 409
+      : 422;
     throw httpError(status, e.message, e.code, e.detail);
   }
   throw e;
@@ -95,5 +103,58 @@ export class LabQuickController {
     try {
       return await withTx(this.db, (tx) => saveQuickResults(tx, actor, { ...input, id: parsed(idSchema, id) }));
     } catch (e) { quickHttp(e); }
+  }
+
+  /* ═══ owner 2026-10-11 — the quick chain: /lab/qcollect, /lab/qreports ═══ */
+
+  /** Lab orders still waiting for blood. Reception and the phlebotomist both read the worklist. */
+  @Get("collect")
+  @RequirePermission("lab.worklist.read", "hospital")
+  async collectQueue(@CurrentActor() actor: Actor): Promise<unknown> {
+    return quickCollectQueue(this.db, actor);
+  }
+
+  /** Blood collected — the counter or the phlebotomist (checked inside: either grant). */
+  @Post("collect/:orderId")
+  @RequirePermission("lab.worklist.read", "hospital")
+  async collect(@CurrentActor() actor: Actor, @Param("orderId") orderId: string): Promise<unknown> {
+    try { return await withTx(this.db, (tx) => quickCollect(tx, actor, parsed(idSchema, orderId))); } catch (e) { quickHttp(e); }
+  }
+
+  /** Completed reports waiting to be handed over, and today's hand-overs. */
+  @Get("ready")
+  @RequirePermission(LAB_REPORTS_PRINT, "hospital")
+  async ready(@CurrentActor() actor: Actor): Promise<unknown> {
+    return quickReportsDesk(this.db, actor);
+  }
+
+  /**
+   * One completed report for printing at the hand-over counter. The counter holds the PRINT grant,
+   * not the results grant (17c §8.5's rule for the report centre), and pays for it the same way: one
+   * access-log row per read.
+   */
+  @Get("ready/:id")
+  @RequirePermission(LAB_REPORTS_PRINT, "hospital")
+  async readyOne(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    try {
+      const report = await getQuickReport(this.db, actor, parsed(idSchema, id));
+      if (report.status !== "reported") throw new QuickEntryError("not_completed", "this report is not complete");
+      /** `sealed` is the PATIENT's fact, not the reader's (`getReport`'s rule). */
+      const [p] = await this.db.select({ sealed: patients.isConfidential }).from(patients).where(eq(patients.id, report.patient.id));
+      await recordPhiAccess(this.db, { actor, patientId: report.patient.id, surface: "lab.quick_reports", sealed: p?.sealed ?? false, reason: null });
+      return report;
+    } catch (e) { quickHttp(e); }
+  }
+
+  @Post("reports/:id/hand-over")
+  @RequirePermission(LAB_REPORTS_PRINT, "hospital")
+  async handOver(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    try { return await withTx(this.db, (tx) => handOverQuick(tx, actor, parsed(idSchema, id))); } catch (e) { quickHttp(e); }
+  }
+
+  @Post("reports/:id/send-back")
+  @RequirePermission(LAB_RESULTS_ENTER, "hospital")
+  async sendBack(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    try { return await withTx(this.db, (tx) => sendBackQuick(tx, actor, parsed(idSchema, id))); } catch (e) { quickHttp(e); }
   }
 }

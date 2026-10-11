@@ -10,8 +10,8 @@ import { labManifest } from "./manifest";
  * `materials`, `membership`, `formulary` and `ot` convention, unchanged.
  */
 describe("the lab's event catalogue (Plan 17 T2)", () => {
-  it("declares thirty-two events, every one `lab.*`, in the lab's module namespace", () => {
-    expect(LAB_EVENTS).toHaveLength(32); // 0061: `quick_started`, `quick_reported`. owner 2026-10-11: `booking_made`, `booking_closed`, `booking_hours_changed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
+  it("declares thirty-four events, every one `lab.*`, in the lab's module namespace", () => {
+    expect(LAB_EVENTS).toHaveLength(34); // owner 2026-10-11 quick chain: `quick_handed_over`, `quick_sent_back`. 0061: `quick_started`, `quick_reported`. owner 2026-10-11: `booking_made`, `booking_closed`, `booking_hours_changed`. 17d: `tube_swap_suspected`, `specimen_relabelled`. 17-E T7: `result_chosen`. DD11: `night_release_reviewed`. F44: `reflex_refused`
     for (const event of LAB_EVENTS) {
       expect([event.name, event.module]).toEqual([event.name, "lab"]);
       expect(event.name.startsWith("lab.")).toBe(true);
@@ -42,7 +42,9 @@ describe("the lab's event catalogue (Plan 17 T2)", () => {
       "lab.notifiable_flagged",
       "lab.order_desked",
       /** Decision 0061 — quick mode: started at the counter, reported at the bench; no order, bill or signature. */
+      "lab.quick_handed_over",
       "lab.quick_reported",
+      "lab.quick_sent_back",
       "lab.quick_started",
       "lab.recollection_requested",
       "lab.reflex_added",

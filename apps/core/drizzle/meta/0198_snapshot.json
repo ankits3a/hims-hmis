@@ -1,5 +1,5 @@
 {
-  "id": "eca3866b-c40e-4974-a8d8-3aaa71f557a9",
+  "id": "3db7def3-3d06-4fdb-b065-64a059310fbe",
   "prevId": "149054a9-e841-4cd2-964f-f0badc95e64f",
   "version": "7",
   "dialect": "postgresql",
@@ -30444,6 +30444,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "order_id": {
+          "name": "order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sample_no": {
+          "name": "sample_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "tests": {
           "name": "tests",
           "type": "jsonb",
@@ -30491,6 +30503,18 @@
         },
         "reported_by": {
           "name": "reported_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handed_over_at": {
+          "name": "handed_over_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handed_over_by": {
+          "name": "handed_over_by",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -30558,6 +30582,36 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "lab_quick_reports_order_ux": {
+          "name": "lab_quick_reports_order_ux",
+          "columns": [
+            {
+              "expression": "order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lab_quick_reports_sample_ux": {
+          "name": "lab_quick_reports_sample_ux",
+          "columns": [
+            {
+              "expression": "sample_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -30573,6 +30627,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "lab_quick_reports_order_id_orders_id_fk": {
+          "name": "lab_quick_reports_order_id_orders_id_fk",
+          "tableFrom": "lab_quick_reports",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -30581,11 +30648,15 @@
       "checkConstraints": {
         "lab_quick_reports_status_ck": {
           "name": "lab_quick_reports_status_ck",
-          "value": "\"lab_quick_reports\".\"status\" in ('waiting', 'reported')"
+          "value": "\"lab_quick_reports\".\"status\" in ('waiting', 'draft', 'reported')"
         },
         "lab_quick_reports_reported_ck": {
           "name": "lab_quick_reports_reported_ck",
           "value": "(\"lab_quick_reports\".\"status\" = 'reported') = (\"lab_quick_reports\".\"reported_at\" is not null and \"lab_quick_reports\".\"reported_by\" is not null)"
+        },
+        "lab_quick_reports_handover_ck": {
+          "name": "lab_quick_reports_handover_ck",
+          "value": "(\"lab_quick_reports\".\"handed_over_at\" is null and \"lab_quick_reports\".\"handed_over_by\" is null) or (\"lab_quick_reports\".\"status\" = 'reported' and \"lab_quick_reports\".\"handed_over_at\" is not null and \"lab_quick_reports\".\"handed_over_by\" is not null)"
         }
       },
       "isRLSEnabled": false

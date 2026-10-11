@@ -1,16 +1,18 @@
-import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
-  labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients, users,
+  labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, orderItems, orders, patients, users,
 } from "../../kernel/db/schema";
-import { istDayWindow } from "../../kernel/approvals/cumulative";
+import { nextEpisodeNo } from "../../kernel/episodes/series";
+import { LIVE_ITEM_STATUSES } from "../../kernel/orders/transitions";
+import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { appendEvent } from "../../kernel/events/append";
 import { HOSPITAL } from "../../kernel/printing/document-kit";
 import { qrSvg } from "../../kernel/printing/qr";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
-import { labQuickReported, labQuickStarted } from "./events";
+import { labQuickHandedOver, labQuickReported, labQuickSentBack, labQuickStarted } from "./events";
 import { flagFor, resolveRange } from "./ranges";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -59,9 +61,12 @@ export type QuickChosenTest = { serviceId: string; code: string; nameEn: string 
 export type QuickPatient = { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null };
 
 export type QuickRow = {
-  id: string; status: "waiting" | "reported"; patient: QuickPatient; encounterNo: string | null;
+  id: string; status: "waiting" | "draft" | "reported"; patient: QuickPatient; encounterNo: string | null;
   tests: QuickChosenTest[]; collectedAt: string; collectedBy: string;
   reportedAt: string | null; reportedBy: string | null;
+  /** Owner 2026-10-11 — the quick chain's order, sample number and hand-over (null on a 0061 Start). */
+  orderId: string | null; orderNo: string | null; sampleNo: string | null;
+  handedOverAt: string | null; handedOverBy: string | null;
 };
 
 export type QuickReport = QuickRow & {
@@ -93,11 +98,14 @@ export type SaveQuickResultsInput = {
   id: string;
   lines: { analyteId: string; value: string }[];
   summary: string;
+  /** Owner 2026-10-11 — `false` is /lab/qbench's Save draft; absent or `true` completes the report. */
+  complete?: boolean;
 };
 
 export type QuickEntryErrorCode =
   | "patient_not_found" | "test_not_found" | "no_tests" | "blood_not_collected"
-  | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found";
+  | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found"
+  | "order_not_found" | "already_collected" | "not_completed" | "already_handed_over" | "not_permitted";
 
 export class QuickEntryError extends Error {
   constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
@@ -191,10 +199,15 @@ async function rowsWithPatients(
       administrativeGender: p.administrativeGender, dob: p.dob ? p.dob.toISOString().slice(0, 10) : null,
     });
   }
+  const orderIds = [...new Set(rows.map((r) => r.orderId).filter((x): x is string => x !== null))];
+  const orderNos = new Map(orderIds.length === 0 ? [] : (await exec.select({ id: orders.id, orderNo: orders.orderNo })
+    .from(orders).where(inArray(orders.id, orderIds))).map((o) => [o.id, o.orderNo]));
   return rows.map((r) => ({
-    id: r.id, status: r.status as "waiting" | "reported", patient: byId.get(r.patientId)!, encounterNo: r.encounterNo,
+    id: r.id, status: r.status as QuickRow["status"], patient: byId.get(r.patientId)!, encounterNo: r.encounterNo,
     tests: r.tests as QuickChosenTest[], collectedAt: r.collectedAt.toISOString(), collectedBy: r.collectedBy,
     reportedAt: r.reportedAt?.toISOString() ?? null, reportedBy: r.reportedBy,
+    orderId: r.orderId, orderNo: r.orderId === null ? null : orderNos.get(r.orderId) ?? null, sampleNo: r.sampleNo,
+    handedOverAt: r.handedOverAt?.toISOString() ?? null, handedOverBy: r.handedOverBy,
   }));
 }
 
@@ -207,7 +220,7 @@ export async function quickQueue(
   db: Db, actor: Actor, now: Date = new Date(),
 ): Promise<{ waiting: QuickRow[]; reportedToday: QuickRow[] }> {
   const waiting = await db.select().from(labQuickReports)
-    .where(eq(labQuickReports.status, "waiting")).orderBy(asc(labQuickReports.collectedAt)).limit(300);
+    .where(inArray(labQuickReports.status, ["waiting", "draft"])).orderBy(asc(labQuickReports.collectedAt)).limit(300);
   const reported = await db.select().from(labQuickReports)
     .where(and(eq(labQuickReports.status, "reported"), gte(labQuickReports.reportedAt, istDayWindow(now).start)))
     .orderBy(desc(labQuickReports.reportedAt)).limit(300);
@@ -288,12 +301,19 @@ export async function saveQuickResults(
     });
   }
 
-  const first = existing.status === "waiting";
+  if (existing.handedOverAt !== null) {
+    throw new QuickEntryError("already_handed_over", "this report has been handed over; it can no longer be changed");
+  }
+  const first = existing.status !== "reported" && existing.reportedAt === null;
+  const complete = input.complete !== false;
   await tx.update(labQuickReports).set({
-    lines, summary: input.summary, status: "reported",
-    reportedAt: existing.reportedAt ?? now, reportedBy: existing.reportedBy ?? actor.id,
+    lines, summary: input.summary,
+    ...(complete
+      ? { status: "reported", reportedAt: existing.reportedAt ?? now, reportedBy: existing.reportedBy ?? actor.id }
+      : { status: "draft", reportedAt: null, reportedBy: null }),
     updatedBy: actor.id, updatedAt: now,
   }).where(eq(labQuickReports.id, input.id));
+  if (!complete) return getQuickReport(tx, actor, input.id);
 
   await appendEvent(tx, labQuickReported.make({
     actor, patientId: existing.patientId, correlationId: input.id, occurredAt: now,
@@ -343,4 +363,133 @@ export async function quickReportsForPatient(
   const out: QuickReport[] = [];
   for (const r of shown) out.push(await getQuickReport(db, actor, r.id));
   return out;
+}
+
+/* ═══════════════ OWNER 2026-10-11 — THE QUICK CHAIN: counter → qcollect → qbench → qreports ═══════════════ */
+
+async function holdsAny(exec: Db | Tx, actor: Actor, permissions: readonly string[]): Promise<boolean> {
+  if (actor.type !== "user") return false;
+  for (const p of permissions) if (await hasPermission(exec, actor.id, p, "hospital")) return true;
+  return false;
+}
+
+export type QuickCollectRow = {
+  orderId: string; orderNo: string; encounterNo: string; placedAt: string; priority: string;
+  patient: QuickPatient; tests: QuickChosenTest[];
+};
+
+/**
+ * /lab/qcollect — every lab order of the last seven days still waiting for blood: its items are live,
+ * no quick report holds it, and no tube of the full workflow carries any of its items. Oldest first.
+ */
+export async function quickCollectQueue(db: Db, actor: Actor, now: Date = new Date()): Promise<QuickCollectRow[]> {
+  const since = new Date(now.getTime() - 7 * 86_400_000);
+  const items = await db
+    .select({
+      orderId: orders.id, orderNo: orders.orderNo, encounterNo: orders.encounterNo, placedAt: orders.placedAt,
+      priority: orders.priority, patientId: orders.patientId, serviceId: orderItems.serviceId,
+      code: labOrderables.code, nameEn: labOrderables.nameEn,
+    })
+    .from(orders)
+    .innerJoin(orderItems, eq(orderItems.orderId, orders.id))
+    .innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    .where(and(
+      eq(orders.kind, "lab"),
+      gte(orders.placedAt, since),
+      inArray(orderItems.status, [...LIVE_ITEM_STATUSES]),
+      sql`not exists (select 1 from lab_quick_reports q where q.order_id = ${orders.id})`,
+      sql`not exists (select 1 from lab_specimen_items si where si.order_item_id = ${orderItems.id} and si.active)`,
+    ))
+    .orderBy(asc(orders.placedAt));
+  const byOrder = new Map<string, { row: (typeof items)[number]; tests: QuickChosenTest[] }>();
+  for (const it of items) {
+    const g = byOrder.get(it.orderId) ?? { row: it, tests: [] };
+    if (!g.tests.some((t) => t.serviceId === it.serviceId)) g.tests.push({ serviceId: it.serviceId, code: it.code, nameEn: it.nameEn });
+    byOrder.set(it.orderId, g);
+  }
+  const people = byOrder.size === 0 ? [] : await db.select().from(patients)
+    .where(inArray(patients.id, [...new Set([...byOrder.values()].map((g) => g.row.patientId))]));
+  const pById = new Map<string, QuickPatient>();
+  for (const p of people) {
+    pById.set(p.id, {
+      id: p.id, uhid: p.uhid, display: await displayNameFor(db, actor, p),
+      administrativeGender: p.administrativeGender, dob: p.dob ? p.dob.toISOString().slice(0, 10) : null,
+    });
+  }
+  return [...byOrder.values()].map(({ row, tests }) => ({
+    orderId: row.orderId, orderNo: row.orderNo, encounterNo: row.encounterNo, placedAt: row.placedAt.toISOString(),
+    priority: row.priority, patient: pById.get(row.patientId)!, tests,
+  }));
+}
+
+/**
+ * BLOOD COLLECTED — the staff confirm it themselves (no label printing, no tube scan, owner
+ * 2026-10-11). The order becomes a quick report `waiting` for results, with a sample number from the
+ * specimen series, and moves to /lab/qbench. Once per order, enforced by a unique index.
+ */
+export async function quickCollect(tx: Tx, actor: Actor, orderId: string, now: Date = new Date()): Promise<QuickRow> {
+  if (!(await holdsAny(tx, actor, ["lab.desk.operate", "lab.collection.operate"]))) {
+    throw new QuickEntryError("not_permitted", "confirming blood collection is the lab counter's or the phlebotomist's act");
+  }
+  const [order] = await tx.select().from(orders).where(and(eq(orders.id, orderId), eq(orders.kind, "lab"))).for("update");
+  if (!order) throw new QuickEntryError("order_not_found", `no lab order ${orderId}`);
+  const [done] = await tx.select({ id: labQuickReports.id }).from(labQuickReports).where(eq(labQuickReports.orderId, orderId));
+  if (done) throw new QuickEntryError("already_collected", `blood for ${order.orderNo} is already confirmed`, { quickId: done.id });
+  const live = await tx.select({ serviceId: orderItems.serviceId, code: labOrderables.code, nameEn: labOrderables.nameEn })
+    .from(orderItems).innerJoin(labOrderables, eq(labOrderables.serviceId, orderItems.serviceId))
+    .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.status, [...LIVE_ITEM_STATUSES])));
+  if (live.length === 0) throw new QuickEntryError("no_tests", `${order.orderNo} has no test left to collect`);
+  const tests: QuickChosenTest[] = [];
+  for (const t of live) if (!tests.some((x) => x.serviceId === t.serviceId)) tests.push(t);
+  const sampleNo = await nextEpisodeNo(tx, "lab_specimen", istDayString(now));
+  const id = newId();
+  await tx.insert(labQuickReports).values({
+    id, patientId: order.patientId, encounterNo: order.encounterNo, orderId, sampleNo, tests, status: "waiting",
+    collectedAt: now, collectedBy: actor.id, createdAt: now, updatedBy: actor.id, updatedAt: now,
+  });
+  await appendEvent(tx, labQuickStarted.make({
+    actor, patientId: order.patientId, correlationId: id, occurredAt: now,
+    payload: { quickId: id, testCount: tests.length },
+  }));
+  const [row] = await rowsWithPatients(tx, actor, await tx.select().from(labQuickReports).where(eq(labQuickReports.id, id)));
+  return row!;
+}
+
+/** /lab/qreports — every completed report not yet handed over (any day), then today's hand-overs. */
+export async function quickReportsDesk(
+  db: Db, actor: Actor, now: Date = new Date(),
+): Promise<{ ready: QuickRow[]; handedOverToday: QuickRow[] }> {
+  const ready = await db.select().from(labQuickReports)
+    .where(and(eq(labQuickReports.status, "reported"), isNull(labQuickReports.handedOverAt)))
+    .orderBy(asc(labQuickReports.reportedAt)).limit(300);
+  const handed = await db.select().from(labQuickReports)
+    .where(and(eq(labQuickReports.status, "reported"), gte(labQuickReports.handedOverAt, istDayWindow(now).start)))
+    .orderBy(desc(labQuickReports.handedOverAt)).limit(300);
+  return { ready: await rowsWithPatients(db, actor, ready), handedOverToday: await rowsWithPatients(db, actor, handed) };
+}
+
+/** PRINT & HAND OVER — the report left the lab with the patient; it is then closed to edits. */
+export async function handOverQuick(tx: Tx, actor: Actor, id: string, now: Date = new Date()): Promise<QuickRow> {
+  const [r] = await tx.select().from(labQuickReports).where(eq(labQuickReports.id, id)).for("update");
+  if (!r) throw new QuickEntryError("report_not_found", `no quick report ${id}`);
+  if (r.status !== "reported") throw new QuickEntryError("not_completed", "only a completed report is handed over");
+  if (r.handedOverAt !== null) throw new QuickEntryError("already_handed_over", "this report has already been handed over");
+  await tx.update(labQuickReports).set({ handedOverAt: now, handedOverBy: actor.id, updatedBy: actor.id, updatedAt: now })
+    .where(eq(labQuickReports.id, id));
+  await appendEvent(tx, labQuickHandedOver.make({ actor, patientId: r.patientId, correlationId: id, occurredAt: now, payload: { quickId: id } }));
+  const [row] = await rowsWithPatients(tx, actor, await tx.select().from(labQuickReports).where(eq(labQuickReports.id, id)));
+  return row!;
+}
+
+/** SEND BACK TO QUICK BENCH — a completed report becomes a draft again; refused once handed over. */
+export async function sendBackQuick(tx: Tx, actor: Actor, id: string, now: Date = new Date()): Promise<QuickRow> {
+  const [r] = await tx.select().from(labQuickReports).where(eq(labQuickReports.id, id)).for("update");
+  if (!r) throw new QuickEntryError("report_not_found", `no quick report ${id}`);
+  if (r.handedOverAt !== null) throw new QuickEntryError("already_handed_over", "this report has been handed over; it can no longer be sent back");
+  if (r.status !== "reported") throw new QuickEntryError("not_completed", "only a completed report is sent back");
+  await tx.update(labQuickReports).set({ status: "draft", reportedAt: null, reportedBy: null, updatedBy: actor.id, updatedAt: now })
+    .where(eq(labQuickReports.id, id));
+  await appendEvent(tx, labQuickSentBack.make({ actor, patientId: r.patientId, correlationId: id, occurredAt: now, payload: { quickId: id } }));
+  const [row] = await rowsWithPatients(tx, actor, await tx.select().from(labQuickReports).where(eq(labQuickReports.id, id)));
+  return row!;
 }

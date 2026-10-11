@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { labBookingSettings, labBookings, labOrderables } from "../../kernel/db/schema";
+import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { appendEvent } from "../../kernel/events/append";
 import { getPatientSummaries, resolvePatientId } from "../patients";
 import { LabError } from "./errors";
@@ -73,15 +74,13 @@ export async function saveBookingHours(tx: Tx, actor: Actor, input: LabBookingRu
   }));
 }
 
-const IST_OFFSET_MS = 330 * 60_000;
 const DAY_MS = 86_400_000;
 
 function istToday(now: Date): string {
-  return new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+  return istDayString(now);
 }
 function istMinutesNow(now: Date): number {
-  const ist = new Date(now.getTime() + IST_OFFSET_MS);
-  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+  return Math.floor((now.getTime() - istDayWindow(now).start.getTime()) / 60_000);
 }
 function weekday(date: string): number {
   return new Date(`${date}T00:00:00Z`).getUTCDay();

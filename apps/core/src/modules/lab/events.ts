@@ -299,6 +299,12 @@ export const labQuickReported = defineEvent("lab.quick_reported", MODULE, z.obje
   quickId: id, lineCount: z.number().int().min(0), abnormalCount: z.number().int().min(0), edit: z.boolean(),
 }));
 
+/** Owner 2026-10-11 — Print & Hand over at /lab/qreports: the report left the lab with the patient. */
+export const labQuickHandedOver = defineEvent("lab.quick_handed_over", MODULE, z.object({ quickId: id }));
+
+/** Owner 2026-10-11 — a completed quick report sent back to the bench as a draft, before hand-over. */
+export const labQuickSentBack = defineEvent("lab.quick_sent_back", MODULE, z.object({ quickId: id }));
+
 /**
  * THE CATALOGUE OF THIS MODULE'S EVENTS, in one place, so `events.test.ts` can assert the grammar
  * and the module tag over ALL of them rather than over the ones a reader remembered to list.
@@ -330,5 +336,5 @@ export const LAB_EVENTS = [
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
   labBookingMade, labBookingClosed, labBookingHoursChanged,
-  labQuickStarted, labQuickReported,
+  labQuickStarted, labQuickReported, labQuickHandedOver, labQuickSentBack,
 ] as const;
