@@ -18,7 +18,7 @@
  * and writes the ids that route right today. It refuses if any item is unrecorded. Add the file it writes;
  * never edit an older floor file.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chooseRoute } from "../src/kernel/copilot/choice-route";
 import {
@@ -125,7 +125,12 @@ async function floor(): Promise<void> {
     process.exit(1);
   }
   const asOf = new Date().toISOString().slice(0, 10);
-  const path = join(ACCEPTANCE_EVAL_DIR, `floor-${asOf}.json`);
+  /*
+    A second floor on the same day (#672: a cue fix landed the day the set was frozen) takes the next free
+    suffix, `floor-<day>-2.json`, rather than refusing: the older file is never touched either way.
+  */
+  let path = join(ACCEPTANCE_EVAL_DIR, `floor-${asOf}.json`);
+  for (let n = 2; existsSync(path); n += 1) path = join(ACCEPTANCE_EVAL_DIR, `floor-${asOf}-${String(n)}.json`);
   const body = { asOf, n: scored.length, routedRight: routedRightIds.length, phrasebookOnly: phrasebookOnlyIds.length, routedRightIds, phrasebookOnlyIds };
   writeFileSync(path, `${JSON.stringify(body, null, 1)}\n`, { flag: "wx" }); // never overwrite a floor
   process.stderr.write(`wrote ${path}: routed right ${String(body.routedRight)}/${String(body.n)}, phrasebook-only ${String(body.phrasebookOnly)}/${String(body.n)}\n`);
