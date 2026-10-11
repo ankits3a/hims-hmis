@@ -31,6 +31,7 @@ Source: `apps/core/src/modules/billing/`
 - `cash-law.ts`
   - types: `TenderInput`
 - `config.ts`
+  - `feeOffNow(rules: ChargeRules, kind: FeeKind): boolean`
   - `loadBillingConfig(db: Db | Tx): Promise<BillingConfig>`
   - types: `BillingConfig`
 - `credit-notes.ts`

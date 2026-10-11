@@ -6,7 +6,9 @@ import { withTx } from "../../kernel/db/client";
 import { listOrdersForEncounter, listOrdersForPatient } from "../../kernel/orders/read";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { previewInvoice, withIdempotency } from "../billing";
+import { bookLab, closeBooking, listBookings, slotsForDay } from "./bookings";
 import { addOnOrder, deskFind, labDoctors, tubePlan } from "./desk";
+import { commonOrderables, labFeeFree } from "./desk-picker";
 import { cancelLabItem, deskOrderAtCounter } from "./money";
 import { idSchema, isoDateSchema, LAB_IDEMPOTENT_ROUTES, parsed, toHttp } from "./lab-http";
 import type { Actor } from "@hmis/contracts";
@@ -76,6 +78,8 @@ const orderBody = z.object({
     changeGivenPaise: z.number().int().nonnegative().optional(),
   }).optional(),
   credit: z.object({ reason: z.string().min(1).max(200), approvalId: idSchema.optional() }).optional(),
+  /** Owner 2026-10-11 — the patient arrived for this booking; it closes with the order. */
+  bookingId: idSchema.optional(),
 }).refine(
   (b) => (b.encounterNo === undefined) !== (b.walkIn === undefined),
   { message: "exactly one of encounterNo or walkIn" },
@@ -92,6 +96,19 @@ const addOnBody = z.object({
   credit: z.object({ reason: z.string().min(1).max(200), approvalId: idSchema.optional() }).optional(),
 });
 const cancelBody = z.object({ reason: z.string().min(1).max(300) });
+const slotsQuery = z.object({ serviceDate: isoDateSchema });
+const bookingsQuery = z.union([
+  z.object({ serviceDate: isoDateSchema, patientId: z.undefined() }),
+  z.object({ patientId: idSchema, serviceDate: z.undefined() }),
+]);
+const bookBody = z.object({
+  patientId: idSchema,
+  serviceDate: isoDateSchema,
+  slotStart: z.string().regex(/^[0-2][0-9]:[0-5][0-9]$/),
+  serviceIds: z.array(idSchema).min(1).max(40),
+  note: z.string().max(300).nullish(),
+});
+const closeBookingBody = z.object({ reason: z.string().max(300).nullish() });
 const findQuery = z.object({ q: z.string().max(80), serviceDate: isoDateSchema });
 const previewBody = z.object({
   patientId: idSchema,
@@ -244,6 +261,73 @@ export class LabDeskController {
       if (encounterNo) return await listOrdersForEncounter(this.db, actor, encounterNo);
       if (patientId) return await listOrdersForPatient(this.db, actor, patientId);
       return { orders: [], patientDisplayName: "—" };
+    } catch (e) { toHttp(e); }
+  }
+
+  /**
+   * OWNER 2026-10-11 — THE LAB FEE, AS ONE BOOLEAN. When it is off the desk skips its money step;
+   * billing's own switch reader is not the counter's to call (`desk-picker.ts`).
+   */
+  @Get("fee-state")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async feeState(): Promise<unknown> {
+    return { labFree: await labFeeFree(this.db) };
+  }
+
+  /** The new-walk-in picker's tap-chips: this lab's most ordered tests, topped up from a starter list. */
+  @Get("common")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async common(): Promise<unknown> {
+    return commonOrderables(this.db);
+  }
+
+  /** Owner 2026-10-11 — a day's slots with what is left in each (`bookings.ts`). */
+  @Get("bookings/slots")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async bookingSlots(@CurrentActor() actor: Actor, @Query("serviceDate") serviceDate?: string): Promise<unknown> {
+    const input = parsed(slotsQuery, { serviceDate });
+    try { return await slotsForDay(this.db, actor, input.serviceDate); } catch (e) { toHttp(e); }
+  }
+
+  /** A day's bookings (`?serviceDate=`) or one person's (`?patientId=`). */
+  @Get("bookings")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async bookings(
+    @CurrentActor() actor: Actor,
+    @Query("serviceDate") serviceDate?: string,
+    @Query("patientId") patientId?: string,
+  ): Promise<unknown> {
+    const input = parsed(bookingsQuery, { serviceDate, patientId });
+    try {
+      return await listBookings(this.db, actor, input.serviceDate !== undefined
+        ? { serviceDate: input.serviceDate } : { patientId: input.patientId! });
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("bookings")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async book(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(bookBody, body);
+    try { return await withTx(this.db, (tx) => bookLab(tx, actor, input)); } catch (e) { toHttp(e); }
+  }
+
+  @Post("bookings/:id/cancel")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async cancelBooking(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(closeBookingBody, body ?? {});
+    try {
+      await withTx(this.db, (tx) => closeBooking(tx, actor, id, "cancelled", input.reason ?? null));
+      return { ok: true };
+    } catch (e) { toHttp(e); }
+  }
+
+  @Post("bookings/:id/no-show")
+  @RequirePermission("lab.desk.operate", "hospital")
+  async noShowBooking(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
+    const input = parsed(closeBookingBody, body ?? {});
+    try {
+      await withTx(this.db, (tx) => closeBooking(tx, actor, id, "no_show", input.reason ?? null));
+      return { ok: true };
     } catch (e) { toHttp(e); }
   }
 }

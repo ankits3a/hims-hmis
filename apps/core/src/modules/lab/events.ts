@@ -288,6 +288,16 @@ export const labNotifiableFlagged = defineEvent("lab.notifiable_flagged", MODULE
  * THE CATALOGUE OF THIS MODULE'S EVENTS, in one place, so `events.test.ts` can assert the grammar
  * and the module tag over ALL of them rather than over the ones a reader remembered to list.
  */
+/** Owner 2026-10-11 — a future lab visit booked by day and slot (`bookings.ts`). Counts only. */
+export const labBookingMade = defineEvent("lab.booking_made", MODULE, z.object({
+  bookingId: id, patientId: id, serviceDate: z.string(), slotStart: z.string(), testCount: z.number().int().positive(),
+}));
+
+/** The booking's end: the patient arrived and was ordered, or it was cancelled, or they did not come. */
+export const labBookingClosed = defineEvent("lab.booking_closed", MODULE, z.object({
+  bookingId: id, patientId: id, outcome: z.enum(["fulfilled", "cancelled", "no_show"]), orderId: id.nullable(),
+}));
+
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
@@ -298,4 +308,5 @@ export const LAB_EVENTS = [
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
+  labBookingMade, labBookingClosed,
 ] as const;

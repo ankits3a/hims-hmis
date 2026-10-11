@@ -1146,3 +1146,38 @@ export const labPlateWells = pgTable(
     ),
   ],
 );
+
+/**
+ * OWNER 2026-10-11 — LAB BOOKINGS: a patient booked for a FUTURE day and time slot, with the tests
+ * already chosen (spec `SPEC-lab-desk-flow-2026-10-11.md`). A booking is not an order: nothing is
+ * billed or drawn until the patient arrives, and on that day the desk's Arrived turns it into the
+ * order in the same transaction (`order_id`). Cancel and no-show close it; a row is never deleted.
+ *
+ * `slot_start` is the IST wall-clock start ("08:15"). Capacity is enforced by the writer under an
+ * advisory lock on (service_date, slot_start), not by a constraint: the per-slot limit is a setting.
+ */
+export const labBookings = pgTable(
+  "lab_bookings",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    serviceDate: date("service_date").notNull(),
+    slotStart: text("slot_start").notNull(),
+    serviceIds: jsonb("service_ids").$type<string[]>().notNull(),
+    note: text("note"),
+    status: text("status").notNull().default("booked"),
+    orderId: text("order_id").references(() => orders.id),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closedBy: text("closed_by"),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closeReason: text("close_reason"),
+  },
+  (t) => [
+    index("lab_bookings_day_slot_idx").on(t.serviceDate, t.slotStart),
+    index("lab_bookings_patient_idx").on(t.patientId),
+    check("lab_bookings_status_ck", sql`${t.status} in ('booked', 'fulfilled', 'cancelled', 'no_show')`),
+    check("lab_bookings_slot_ck", sql`${t.slotStart} ~ '^[0-2][0-9]:[0-5][0-9]$'`),
+    check("lab_bookings_fulfilled_ck", sql`(${t.status} = 'fulfilled') = (${t.orderId} is not null)`),
+  ],
+);

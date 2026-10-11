@@ -263,6 +263,8 @@ export type DeskOrderRequest = {
   acknowledgedDuplicates?: string[];
   credit?: { reason: string };
   receipt?: { tenders: { mode: string; amountPaise: number }[] };
+  /** Owner 2026-10-11 — the patient arrived for this booking; it closes with the order. */
+  bookingId?: string;
 };
 
 export const placeLabOrder = (body: DeskOrderRequest, key: string): Promise<WireDeskOrder> =>
@@ -576,3 +578,39 @@ export function labErrorText(e: unknown): string {
   }
   return e instanceof Error ? e.message : String(e);
 }
+
+/* ─────────────── owner 2026-10-11 — the desk's new flow: fee state, common tests, bookings ─────────────── */
+
+/** True while Billing office → Fees has the lab fee switched off: the desk skips its money step. */
+export const labFeeState = (): Promise<{ labFree: boolean }> => api("GET", "/lab/desk/fee-state");
+
+export type WireCommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string };
+export const commonOrderables = (): Promise<WireCommonOrderable[]> => api("GET", "/lab/desk/common");
+
+export type WireOrderableDetail = {
+  orderable: WireOrderable & { requiresFasting?: boolean };
+  analytes: { id: string; code: string; nameEn: string; unit?: string | null }[];
+};
+/** One test's parameters, in report order — what a panel will report (Hb, WBC, platelets…). */
+export const orderableDetail = (serviceId: string): Promise<WireOrderableDetail> =>
+  api("GET", `/lab/catalogue/orderables/${encodeURIComponent(serviceId)}`);
+
+export type WireLabSlot = { start: string; booked: number; free: number; past: boolean };
+export type WireLabDaySlots = { serviceDate: string; closed: "past" | "too_far" | "closed_day" | null; perSlot: number; slots: WireLabSlot[] };
+export const labSlots = (serviceDate: string): Promise<WireLabDaySlots> =>
+  api("GET", `/lab/desk/bookings/slots?serviceDate=${serviceDate}`);
+
+export type WireLabBooking = {
+  id: string; serviceDate: string; slotStart: string; status: "booked" | "fulfilled" | "cancelled" | "no_show";
+  note: string | null; orderId: string | null; createdAt: string;
+  patient: { id: string; uhid: string; display: string; restricted: boolean };
+  tests: { serviceId: string; code: string; nameEn: string }[];
+};
+export const bookingsForDay = (serviceDate: string): Promise<WireLabBooking[]> =>
+  api("GET", `/lab/desk/bookings?serviceDate=${serviceDate}`);
+export const bookingsForPatient = (patientId: string): Promise<WireLabBooking[]> =>
+  api("GET", `/lab/desk/bookings?patientId=${encodeURIComponent(patientId)}`);
+export const bookLab = (body: { patientId: string; serviceDate: string; slotStart: string; serviceIds: string[]; note?: string }): Promise<{ bookingId: string }> =>
+  api("POST", "/lab/desk/bookings", body);
+export const cancelLabBooking = (id: string, reason?: string): Promise<{ ok: true }> =>
+  api("POST", `/lab/desk/bookings/${id}/cancel`, { reason: reason ?? null });

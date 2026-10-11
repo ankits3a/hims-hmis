@@ -12,6 +12,7 @@ import { issueInvoice } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { getEncounter, LAB_DEPARTMENT_CODE, openLabWalkinInTx } from "../opd";
 import { getPatientSummaries, listMergedLoserIds, resolvePatientId, searchPatients } from "../patients";
+import { fulfilBookingInTx } from "./bookings";
 import { duplicateWarnings } from "./duplicates";
 import { LabError } from "./errors";
 import { labAttributionUnverifiedFlagged, labOrderDesked } from "./events";
@@ -106,6 +107,11 @@ type DeskOrderBase = {
    * sets it; the counter's own order still needs the owner's credit approval to leave money unpaid.
    */
   holdUntilPaid?: { reason: string };
+  /**
+   * Owner 2026-10-11 — the patient ARRIVED for a booking: the booking closes in this order's own
+   * transaction (`fulfilBookingInTx`), so it is closed exactly when its order exists.
+   */
+  bookingId?: string;
   tags?: string[];
   placedAt?: Date;
 };
@@ -534,6 +540,10 @@ export async function deskOrder(
         reason: "no prescription image and no telephonic confirmation at the counter",
       },
     }));
+  }
+
+  if (input.bookingId !== undefined) {
+    await fulfilBookingInTx(tx, actor, input.bookingId, input.patientId, placed.orderId, now);
   }
 
   return {

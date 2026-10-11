@@ -213,6 +213,7 @@ it("the NAME door lists candidates to confirm; a patient with no visit goes thro
   expect(screen.getByTestId("patient-card")).toHaveTextContent("U23011886");
   expect(screen.getByTestId("patient-card")).toHaveTextContent(/walk-in visit/);
 
+  await userEvent.click(screen.getByRole("button", { name: "New walk-in" }));
   await userEvent.type(screen.getByLabelText("Add a test"), "cbc");
   await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
   await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
@@ -269,6 +270,7 @@ it("DD14 — a consent-class test cannot be ordered until the consent NAMES some
   renderWithProviders(<LabDesk />);
   await userEvent.type(screen.getByLabelText(/Scan the token/), "T-118{enter}");
   await waitFor(() => expect(screen.getByTestId("patient-card")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "New walk-in" }));
   await userEvent.type(screen.getByLabelText("Add a test"), "hiv");
   await waitFor(() => expect(screen.getByText(/HIV 1 & 2 antibody/)).toBeInTheDocument());
   expect(screen.getAllByText("[consent]").length).toBeGreaterThan(0);
@@ -328,6 +330,7 @@ it("F6 — with two active pathologists a walk-in must NAME one: Save waits for 
   renderWithProviders(<LabDesk />);
   await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
   await waitFor(() => expect(screen.getByTestId("patient-card")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "New walk-in" }));
   await userEvent.type(screen.getByLabelText("Add a test"), "cbc");
   await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
   await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
@@ -357,6 +360,7 @@ it("F7 — after a walk-in order the seat RE-FINDS by the minted visit and the n
   renderWithProviders(<LabDesk />);
   await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
   await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent(/walk-in visit/));
+  await userEvent.click(screen.getByRole("button", { name: "New walk-in" }));
   await userEvent.type(screen.getByLabelText("Add a test"), "cbc");
   await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
   await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
@@ -370,6 +374,8 @@ it("F7 — after a walk-in order the seat RE-FINDS by the minted visit and the n
   const second = seen.filter((s) => s.path === "/api/lab/desk/find")[1]!;
   expect(second).toBeDefined();
   /** A second order now names the visit and carries no walkIn. */
+  await userEvent.click(screen.getByRole("button", { name: "Back to this patient" }));
+  await userEvent.click(screen.getByRole("button", { name: "New walk-in" }));
   await userEvent.type(screen.getByLabelText("Add a test"), "cbc");
   await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
   await userEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
@@ -444,4 +450,119 @@ it("a typed suggestion is never auto-picked, even a single exact token hit; Ente
   expect(screen.queryByTestId("patient-card")).toBeNull();
   await userEvent.type(field, "8{enter}");
   await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent("Farida Khatoon"));
+});
+
+/* ═══ OWNER 2026-10-11 — from picking the patient to the sample (SPEC-lab-desk-flow-2026-10-11) ═══ */
+
+const NO_VISIT = { ...FARIDA, matchedOn: "uhid", visit: null };
+const COMMON = [{ serviceId: "svc-cbc", code: "CBC", nameEn: "Complete blood count", container: "edta", specimenType: "whole_blood" }];
+const HISTORY = {
+  patient: { id: "p-farida", uhid: "U23011884", display: "Farida Khatoon", restricted: false },
+  reports: [{
+    reportId: "rep-1", orderId: "o-old", orderNo: "L2609010001", encounterNo: "V2609010001", serviceDate: "2026-09-01",
+    version: 1, partial: false, publishedAt: "2026-09-01T10:00:00Z", channels: [], printCount: 1, orderables: ["LFT"], sensitive: false,
+    delivery: { allowed: true, reason: "settled", unpaidInvoiceIds: [], outstandingPaise: 0 }, deliveries: [], notice: null, snapshot: null,
+  }],
+  pending: [{ orderId: "o-open", orderNo: "L2609050002", serviceDate: "2026-09-05", orderables: ["TSH"], completedCount: 0, itemCount: 1 }],
+};
+
+it("DONE 1 — a patient with nothing advised: 'No test assigned today', the two big steps, and their lab history", async () => {
+  mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/reports/patient/p-farida": { status: 200, body: HISTORY },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await waitFor(() => expect(screen.getByTestId("no-test-today")).toHaveTextContent("No test assigned today"));
+  expect(screen.getByRole("button", { name: "New walk-in" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Future appointment" })).toBeInTheDocument();
+  /** Nothing is open below until the clerk chooses. */
+  expect(screen.queryByTestId("test-chooser")).toBeNull();
+  await waitFor(() => expect(screen.getByTestId("lab-history")).toHaveTextContent("LFT"));
+  expect(screen.getByTestId("lab-history")).toHaveTextContent(/TSH.*in progress · 0\/1/);
+});
+
+it("DONE 2 — lab fee Free: walk-in, tap CBC, Send to sample collection — no price, no tender, the order goes with no money block", async () => {
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/desk/fee-state": { status: 200, body: { labFree: true } },
+    "GET /api/lab/desk/common": { status: 200, body: COMMON },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/orders": { status: 201, body: { ...PLACED, encounterNo: "V2609020009", invoice: { ...PLACED.invoice, netPayablePaise: 0, creditExtended: false } } },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await waitFor(() => expect(screen.getByTestId("lab-free")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: "New walk-in" }));
+  await userEvent.click(await screen.findByRole("button", { name: /CBC/ }));
+  expect(screen.queryByRole("button", { name: "Check & price" })).toBeNull();
+  expect(screen.queryByLabelText(/Tender|Pay by/)).toBeNull();
+  await userEvent.click(screen.getByTestId("send-free"));
+  await waitFor(() => expect(screen.getByTestId("placed")).toHaveTextContent("V2609020009"));
+  expect(screen.getByTestId("placed")).toHaveTextContent(/no charge/);
+  const body = seen.find((s) => s.path === "/api/lab/desk/orders")!.body as Record<string, unknown>;
+  expect([body.receipt, body.credit, body.walkIn !== undefined, (body.items as unknown[]).length]).toEqual([undefined, undefined, true, 1]);
+  expect(seen.some((s) => s.path === "/api/lab/desk/preview")).toBe(false);
+  /** Next patient empties the desk. */
+  await userEvent.click(screen.getByRole("button", { name: "Next patient" }));
+  expect(screen.queryByTestId("patient-card")).toBeNull();
+});
+
+it("DONE 3 — Future appointment: a day, a free slot and a test book the visit; a full slot cannot be picked", async () => {
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/desk/common": { status: 200, body: COMMON },
+    "GET /api/lab/desk/bookings": { status: 200, body: [] },
+    "GET /api/lab/desk/bookings/slots": { status: 200, body: { serviceDate: "x", closed: null, perSlot: 4, slots: [
+      { start: "07:30", booked: 4, free: 0, past: false }, { start: "08:00", booked: 1, free: 3, past: false },
+    ] } },
+    "POST /api/lab/desk/bookings": { status: 201, body: { bookingId: "b-1" } },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "U23011884{enter}");
+  await userEvent.click(await screen.findByRole("button", { name: "Future appointment" }));
+  await waitFor(() => expect(screen.getByTestId("slot-grid")).toHaveTextContent("08:00"));
+  expect(screen.getByRole("button", { name: /07:30/ })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: /08:00/ }));
+  await userEvent.click(await screen.findByRole("button", { name: /CBC/ }));
+  await userEvent.click(screen.getByRole("button", { name: /^Book .* at 08:00$/ }));
+  await waitFor(() => expect(screen.getByTestId("booked-note")).toHaveTextContent(/Booked for .* at 08:00/));
+  const body = seen.find((s) => s.path === "/api/lab/desk/bookings" && s.method === "POST")!.body as Record<string, unknown>;
+  expect([body.patientId, body.slotStart, body.serviceIds]).toEqual(["p-farida", "08:00", ["svc-cbc"]]);
+});
+
+it("DONE 4 — Arrived on today's booking opens the order with the booked tests, and the order carries the booking", async () => {
+  const booking = {
+    id: "b-7", serviceDate: "2026-09-02", slotStart: "08:15", status: "booked", note: null, orderId: null, createdAt: "2026-09-01T05:00:00Z",
+    patient: { id: "p-farida", uhid: "U23011884", display: "Farida Khatoon", restricted: false },
+    tests: [{ serviceId: "svc-cbc", code: "CBC", nameEn: "Complete blood count" }],
+  };
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/bookings": (_b, url) => ({ status: 200, body: url.includes("serviceDate=") ? [booking] : [booking] }),
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [NO_VISIT], labDoctors: [] } },
+    "GET /api/lab/catalogue/orderables/svc-cbc": { status: 200, body: { orderable: CBC, analytes: [{ id: "a1", code: "HB", nameEn: "Haemoglobin" }] } },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/preview": { status: 200, body: { ...PRICED, lines: [PRICED.lines[0]], totals: { ...PRICED.totals, netPayablePaise: 30000 }, tubes: [] } },
+    "POST /api/lab/desk/orders": { status: 201, body: PLACED },
+  });
+  renderWithProviders(<LabDesk />);
+  const list = await screen.findByTestId("todays-bookings");
+  await waitFor(() => expect(list).toHaveTextContent("Farida Khatoon"));
+  await userEvent.click(within(list).getByRole("button", { name: "Arrived" }));
+  await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent("Farida Khatoon"));
+  await waitFor(() => expect(screen.getByText(/Complete blood count/)).toBeInTheDocument());
+  /** The parameters a test reports, one tap away. */
+  await userEvent.click(screen.getByRole("button", { name: "parameters CBC" }));
+  await waitFor(() => expect(screen.getByTestId("params-svc-cbc")).toHaveTextContent("Haemoglobin"));
+  await userEvent.click(screen.getByRole("button", { name: "Check & price" }));
+  await waitFor(() => expect(screen.getByTestId("money")).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Save/ }));
+  await waitFor(() => expect(seen.some((s) => s.path === "/api/lab/desk/orders")).toBe(true));
+  expect((seen.find((s) => s.path === "/api/lab/desk/orders")!.body as { bookingId?: string }).bookingId).toBe("b-7");
 });
