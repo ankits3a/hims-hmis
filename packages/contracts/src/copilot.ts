@@ -40,6 +40,18 @@ export const COPILOT_ANSWER_KEYS = [
   /** E0.3 — the copilot (or this kind of tool) is halted by the owner, IT, the steward or the duty manager. */
   "copilot.answer.paused",
 
+  /* ═══ E0.2 — propose → confirm → act: the confirm tap's own answers (a tool's success answer is its own) ═══ */
+  /** A generic "done" for an act whose tool has no sentence of its own. */
+  "copilot.answer.actDone",
+  /** The proposal is older than its five minutes. */
+  "copilot.answer.actExpired",
+  /** The proposal is not genuine, not this person's, or names no act tool. */
+  "copilot.answer.actInvalid",
+  /** This proposal was already confirmed once; nothing more was written. */
+  "copilot.answer.actAlreadyDone",
+  /** Something changed between the proposal and the tap (the slot was taken). Nothing was written. */
+  "copilot.answer.actStateChanged",
+
   /* ═══ my_day_report — the owner's "it should do it and give it to the user" ═══ */
   "copilot.answer.dayReport",
   /** The same report for a day that has not closed. Provisional is the server's, never the dock's. */

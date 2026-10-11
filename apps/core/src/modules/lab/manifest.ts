@@ -1,6 +1,7 @@
 import { interfaceDown, interfaceRestored } from "../../kernel/ops/events";
 import { LAB_INTERFACE_CONSUMER } from "./interface-status";
 import { LAB_RESOURCE_KINDS } from "./kinds";
+import { labWaitingCalls, labWaitingMine } from "./waiting";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -126,4 +127,6 @@ export const labManifest: ModuleManifest = {
     },
   ],
   resourceKinds: LAB_RESOURCE_KINDS,
+  /** E1.4 / E1.5 — what the lab has waiting on a person (`GET /me/waiting`); no desk card. */
+  desk: [labWaitingMine, labWaitingCalls],
 };

@@ -10634,6 +10634,11 @@
       "notUnderstood": "यह समझ नहीं आया। मैं बता सकता हूँ कि मरीज़ को डॉक्टर ने देखा या नहीं, लाइन कितनी है, मरीज़ का कितना बाकी है — और आपकी दिन की रिपोर्ट निकाल सकता हूँ।",
       "noTool": "सवाल समझ आया, पर इसका जवाब अभी यहाँ नहीं है।",
       "paused": "कोपायलट अभी रुका हुआ है। इसके लिए स्क्रीन का उपयोग करें।",
+      "actDone": "हो गया।",
+      "actExpired": "समय निकल गया। फिर से पूछें।",
+      "actInvalid": "इसकी पुष्टि नहीं हो सकती। फिर से पूछें।",
+      "actAlreadyDone": "पहले ही हो चुका है।",
+      "actStateChanged": "कुछ बदल गया। कुछ नहीं किया — फिर से पूछें।",
       "dayReport": "{{date}} की आपकी रिपोर्ट — {{sections}} हिस्से, नीचे तैयार है।",
       "dayReportProvisional": "{{date}} का अब तक का आपका काम — {{sections}} हिस्से, नीचे तैयार है। दिन बंद नहीं हुआ है, इसलिए आँकड़े बदल सकते हैं।",
       "dayReportEmpty": "{{date}} को आपके नाम पर अभी कुछ दर्ज नहीं है।",
@@ -15101,6 +15106,49 @@
       "aadhaar_key_not_configured": "अभी तैयार नहीं",
       "too_many_attempts": "बहुत बार · कल कोशिश करें",
       "failed": "सहेजा नहीं · फिर कोशिश करें"
+    }
+  },
+  "waiting": {
+    "title": "मेरे लिए बाकी",
+    "nothing": "आपके लिए कुछ बाकी नहीं।",
+    "oldest": "सबसे पुराना {{age}}",
+    "kind": {
+      "lab": {
+        "criticalsMine_one": "आपके मरीज़ का लैब क्रिटिकल",
+        "criticalsMine_other": "आपके मरीज़ों के लैब क्रिटिकल",
+        "callsOpen_one": "क्रिटिकल कॉल, रीड-बैक बाकी",
+        "callsOpen_other": "क्रिटिकल कॉल, रीड-बैक बाकी",
+        "reportsBack_one": "लैब रिपोर्ट आई",
+        "reportsBack_other": "लैब रिपोर्ट आईं"
+      },
+      "radiology": {
+        "criticalsMine_one": "इमेजिंग क्रिटिकल, स्वीकार करें",
+        "criticalsMine_other": "इमेजिंग क्रिटिकल, स्वीकार करें",
+        "readsOverdue_one": "स्टडी पढ़ने का समय निकला",
+        "readsOverdue_other": "स्टडी पढ़ने का समय निकला",
+        "unreadMine_one": "इमेजिंग रिपोर्ट नहीं खोली",
+        "unreadMine_other": "इमेजिंग रिपोर्ट नहीं खोलीं"
+      },
+      "alerts": {
+        "unanswered_one": "अलर्ट का जवाब बाकी",
+        "unanswered_other": "अलर्ट का जवाब बाकी"
+      },
+      "reminders": {
+        "today_one": "रिमाइंडर आज बाकी",
+        "today_other": "रिमाइंडर आज बाकी"
+      },
+      "roster": {
+        "dutiesToday_one": "ड्यूटी आज",
+        "dutiesToday_other": "ड्यूटी आज"
+      }
+    },
+    "where": {
+      "alerts": {
+        "unanswered": "घंटी में"
+      },
+      "reminders": {
+        "today": "फ़ोन पर"
+      }
     }
   }
 }
