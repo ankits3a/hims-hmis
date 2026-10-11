@@ -366,74 +366,101 @@ export function LabDesk(): React.ReactElement {
       ]}
       list={listPane}
     >
-      {/* ── walk-in with a slip · one field, three doors ── */}
+      {/* ── walk-in with a slip · one field, three doors — owner 2026-10-11: drawn in /counter's paper-and-pine (`.pp`) ── */}
       <section className="space-y-3">
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") find.mutate(); }}
-        >
-          <label className="flex-1 text-sm">
-            <span className="sr-only">{t("lab.desk.find")}</span>
-            <input
-              ref={fieldRef}
-              className="w-full rounded border border-input bg-card px-3 py-2 text-base"
-              placeholder={t("lab.desk.findPlaceholder")}
-              aria-label={t("lab.desk.find")}
-              value={q}
-              onChange={(e) => { setQ(e.target.value); setSuggesting(true); }}
-            />
-          </label>
-          <Button type="submit" disabled={find.isPending || q.trim() === ""}>{t("lab.desk.findGo")}</Button>
+      <div className="pp space-y-3" style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)" }}>
+        <div>
+          <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-.01em" }}>{t("lab.desk.whoTitle")}</div>
+          <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>{t("lab.desk.whoNote")}</div>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (q.trim() !== "") find.mutate(); }}>
+          <input
+            ref={fieldRef}
+            className="in"
+            style={{ height: 52, fontSize: 16 }}
+            placeholder={t("lab.desk.findPlaceholder")}
+            aria-label={t("lab.desk.find")}
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setSuggesting(true); }}
+          />
         </form>
 
+        <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="tag">
+            {hits === null || (suggesting && debounced.length < 2) ? t("lab.desk.notOnFile")
+              : hits.length === 0 ? t("lab.desk.noMatch") : t("lab.desk.notOneOfThese")}
+          </span>
+          <button type="button" className="pill" style={{ borderColor: "var(--green)", color: "var(--green)", fontWeight: 700 }}
+            onClick={() => setRegistering(true)}>
+            {t("lab.desk.registerNew")}
+          </button>
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>
+            {hits !== null && debounced.length >= 2
+              ? t("lab.desk.onFileFor", { count: hits.length, q: debounced })
+              : t("lab.desk.lanesHint")}
+          </span>
+        </div>
+
         {suggesting && debounced.length >= 2 && live.isFetching && (
-          <div className="rounded-md border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
+          <div className="box" style={{ padding: 20, textAlign: "center", color: "var(--faint)", borderStyle: "dashed" }}>
             {t("lab.desk.searching")}
           </div>
         )}
 
         {hits !== null && (selected === null || suggesting) && !(suggesting && (debounced.length < 2 || live.isFetching)) && (
-          <div className="space-y-1">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {hits.length === 0 && (
-              <p className="text-sm">
-                {t("lab.desk.noHit")}{" "}
-                <button type="button" className="underline" onClick={() => setRegistering(true)}>
+              <div className="box" style={{ padding: 22, textAlign: "center", color: "var(--dim)", borderStyle: "dashed" }}>
+                {t("lab.desk.noOneMatches", { q: q.trim() })}{" "}
+                <button type="button" style={{ color: "var(--green)", fontWeight: 700, textDecoration: "underline" }}
+                  onClick={() => setRegistering(true)}>
                   {t("lab.desk.registerNew")}
                 </button>
-              </p>
+              </div>
             )}
-            {hits.length > 1 && <p className="text-xs text-muted-foreground">{t("lab.desk.confirmByName")}</p>}
-            <ul className="space-y-2 text-sm" data-testid="find-hits">
+            {hits.length > 1 && <div style={{ fontSize: 11, color: "var(--faint)" }}>{t("lab.desk.confirmByName")}</div>}
+            <ul style={{ display: "flex", flexDirection: "column", gap: 8 }} data-testid="find-hits">
               {hits.map((h, i) => (
-                <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`}
-                  className={`flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 ${
-                    i === 0 ? "border-green-600 ring-2 ring-green-600/20" : "border-border"}`}>
-                  <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted font-semibold text-muted-foreground">
+                <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`} className="box"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 13, padding: "12px 15px", flexWrap: "wrap",
+                    ...(i === 0 ? { borderColor: "var(--green)", boxShadow: "0 0 0 3px var(--green-soft)" } : {}),
+                  }}>
+                  <div aria-hidden style={{
+                    width: 38, height: 38, borderRadius: 6, background: "var(--wash)", display: "flex",
+                    alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--dim)", flexShrink: 0,
+                  }}>
                     {initialsOf(h.patient.display)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-semibold">
+                  </div>
+                  <div style={{ width: 210, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
                       {h.patient.display}
-                      {h.patient.restricted && <span className="ml-1.5 rounded border border-red-300 px-1 text-xs text-red-700">restricted</span>}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">{sexAge(h.patient.administrativeGender, h.patient.dob)}</span>
-                  </span>
-                  <span className="hidden w-28 font-mono text-xs font-semibold sm:block">{h.patient.uhid}</span>
-                  <span className="hidden text-xs text-muted-foreground md:block">
-                    {h.visit === null ? t("lab.desk.noVisitToday")
-                      : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}`}
-                  </span>
-                  <span className="hidden rounded-full border border-border px-2 text-xs lg:inline">{t(`lab.desk.matchedOn.${h.matchedOn}`)}</span>
-                  <Button type="button" size="sm" variant={i === 0 ? "default" : "outline"}
+                      {h.patient.restricted && <span className="pill rd" style={{ height: 19, marginLeft: 6 }}>restricted</span>}
+                    </div>
+                    <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
+                      {sexAge(h.patient.administrativeGender, h.patient.dob)}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 1 }}>
+                      {h.visit === null ? t("lab.desk.noVisitToday")
+                        : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}${
+                          h.visit.departmentName === null ? "" : ` · ${h.visit.departmentName}`}`}
+                    </div>
+                  </div>
+                  <span className="mo" style={{ fontSize: 12, fontWeight: 600, width: 120 }}>{h.patient.uhid}</span>
+                  <div style={{ display: "flex", gap: 5, flexGrow: 1, flexWrap: "wrap" }}>
+                    <span className="pill on" style={{ height: 20 }}>{t(`lab.desk.matchedOn.${h.matchedOn}`)}</span>
+                  </div>
+                  <button type="button" className={i === 0 ? "sec grn" : "sec"}
                     aria-label={`${h.patient.display} · ${h.patient.uhid}`}
                     onClick={() => choose(h)}>
                     {t("lab.desk.pick")}
-                  </Button>
+                  </button>
                 </li>
               ))}
             </ul>
           </div>
         )}
+      </div>
 
         {registering && (
           <form

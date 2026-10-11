@@ -242,8 +242,8 @@ it("nobody on file: the four-field register opens in place and the new patient i
   });
   renderWithProviders(<LabDesk />);
   await userEvent.type(screen.getByLabelText(/Scan the token/), "Bimal Sahu{enter}");
-  await waitFor(() => expect(screen.getByText(/Nobody on file/)).toBeInTheDocument());
-  await userEvent.click(screen.getByRole("button", { name: "Register a new patient" }));
+  await waitFor(() => expect(screen.getByText(/No one on file matches/)).toBeInTheDocument());
+  await userEvent.click(screen.getAllByRole("button", { name: "Register a new patient" })[0]!);
   const form = screen.getByRole("form", { name: "Register a new patient" });
   await userEvent.type(within(form).getByLabelText("Name"), "Bimal Kumar Sahu");
   /* DESK-FIXES E — `POST /patients` refuses `age_or_dob_required`; the form does not offer the refusal. */
