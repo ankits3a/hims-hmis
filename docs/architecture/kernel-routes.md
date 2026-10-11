@@ -72,6 +72,7 @@ generated: { by: tools/arch/gen.mjs }
 |---|---|---|
 | POST | `/copilot/ask` | `copilot/copilot.controller.ts` |
 | POST | `/copilot/confirm` | `copilot/copilot.controller.ts` |
+| POST | `/copilot/feedback` | `copilot/copilot.controller.ts` |
 | POST | `/copilot/halt/clear` | `copilot/halt.controller.ts` |
 | POST | `/copilot/halt` | `copilot/halt.controller.ts` |
 | GET | `/copilot/health` | `copilot/copilot.controller.ts` |

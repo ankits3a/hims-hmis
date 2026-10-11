@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Logger, Optional, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Inject, Logger, NotFoundException, Optional, Post, Query } from "@nestjs/common";
 import { z } from "zod";
+import { newId } from "@hmis/contracts";
 import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
 import { hasPermission } from "../auth/permissions";
@@ -15,7 +16,7 @@ import { IdentifierLeak, rehydrate } from "./mask";
 import { COPILOT_NAME_SOURCE, loadDayNames, maskForAsk, nameDays, nameIndexFor } from "./names";
 import type { CopilotNameSource } from "./names";
 import * as router from "./router";
-import { acknowledgeNotice, noticeSeen, readCopilotHealth, recordAsk } from "./ledger";
+import { acknowledgeNotice, noticeSeen, readCopilotHealth, recordAsk, recordWrong } from "./ledger";
 import { asksHalted, listHalts, readCopilotGate } from "./halt";
 import { SpendMeter, inrToMicro } from "./spend";
 import type { CopilotGate } from "./halt";
@@ -64,8 +65,12 @@ const askBody = z.object({
    * its route's first path segment, never a full path: a path can carry a patient's id.
    */
   screen: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/).optional(),
+  /** E1.3 — where the question came from: a chip the phone offered, or the keyboard. The web sends none. */
+  source: z.enum(["chip", "typed"]).optional(),
 });
 
+/** E1.3 — the one-tap "Wrong" on an answer card. Only `true` exists: there is no "right" tap to record. */
+const feedbackBody = z.object({ askId: z.string().min(1).max(64), wrong: z.literal(true) });
 /** E0.2 — the confirm tap carries the proposal back exactly as the ask handed it out. */
 const confirmBody = z.object({ proposal: proposalSchema }).strict();
 
@@ -91,6 +96,8 @@ export type AskResponse = {
   /** `phrasebook` | `model` | `none` — the seat SAYS where the routing came from (`triage.ts`'s rule). */
   source: "phrasebook" | "model" | "none";
   intent: string | null;
+  /** E1.3 — this ask's ledger row, for a "Wrong" tap on its answer (`POST /copilot/feedback`). */
+  askId: string;
 };
 
 @Controller("copilot")
@@ -148,17 +155,18 @@ export class CopilotController {
       an answer the ledger could not record would break the G6(a) reconciliation silently.
     */
     const started = Date.now();
+    const askId = newId();
     const rec: Omit<AskRecord, "actor" | "ms"> = {
-      outcome: "error", route: "none", intent: null, answerKey: null, maskedQuestion: null, screen: null,
+      id: askId, outcome: "error", route: "none", intent: null, answerKey: null, maskedQuestion: null, screen: null,
     };
     try {
-      return await this.answer(actor, raw, rec);
+      return { ...await this.answer(actor, raw, rec), askId };
     } finally {
       await recordAsk(this.db, { ...rec, actor, ms: Date.now() - started });
     }
   }
 
-  private async answer(actor: Actor, raw: unknown, rec: Omit<AskRecord, "actor" | "ms">): Promise<AskResponse> {
+  private async answer(actor: Actor, raw: unknown, rec: Omit<AskRecord, "actor" | "ms">): Promise<Omit<AskResponse, "askId">> {
     if (actor.type !== "user") {
       rec.outcome = "refusedActor";
       throw new ForbiddenException("the copilot is a desk surface — user actors only");
@@ -169,6 +177,7 @@ export class CopilotController {
       throw new BadRequestException(parsed.error.issues[0]?.message ?? "invalid body");
     }
     rec.screen = parsed.data.screen ?? null;
+    rec.source = parsed.data.source ?? null;
 
     const now = new Date();
     const serviceDate = parsed.data.date ?? istDay(now);
@@ -347,6 +356,20 @@ export class CopilotController {
   async dismissNotice(@CurrentActor() actor: Actor): Promise<void> {
     if (actor.type !== "user") throw new ForbiddenException("user actors only");
     await acknowledgeNotice(this.db, actor.id);
+  }
+
+  /**
+   * E1.3 — "Wrong" on an answer card (goal G3b). Self-scoped structurally, like the notice: the row is
+   * written only when the ask was made by this same user, so it names no permission. Another
+   * person's ask id is indistinguishable from one that does not exist — 404 either way.
+   */
+  @Post("feedback")
+  @HttpCode(204)
+  async feedback(@CurrentActor() actor: Actor, @Body() raw: unknown): Promise<void> {
+    if (actor.type !== "user") throw new ForbiddenException("user actors only");
+    const parsed = feedbackBody.safeParse(raw);
+    if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? "invalid body");
+    if (!await recordWrong(this.db, actor.id, parsed.data.askId)) throw new NotFoundException("no such ask");
   }
 
   /**
