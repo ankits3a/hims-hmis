@@ -15,7 +15,7 @@ import { LabDesk, moneyBlockFor } from "./lab-desk";
 type Reply = { status: number; body: unknown };
 type Seen = { method: string; path: string; body: unknown }[];
 
-function mockRoutes(handlers: Record<string, Reply | ((body: unknown) => Reply)>): Seen {
+function mockRoutes(handlers: Record<string, Reply | ((body: unknown, url: string) => Reply)>): Seen {
   const seen: Seen = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -25,7 +25,7 @@ function mockRoutes(handlers: Record<string, Reply | ((body: unknown) => Reply)>
     seen.push({ method, path, body });
     const handler = handlers[`${method} ${path}`];
     if (handler === undefined) return new Response("{}", { status: 404 });
-    const reply = typeof handler === "function" ? handler(body) : handler;
+    const reply = typeof handler === "function" ? handler(body, raw) : handler;
     return new Response(JSON.stringify(reply.body), {
       status: reply.status, headers: { "Content-Type": "application/json" },
     });
@@ -400,18 +400,35 @@ it("F10 — a single MOBILE hit is a candidate to confirm, never auto-selected; 
  * Enter; a suggestion is a candidate to tap, never a pick — even one exact token hit — because a
  * half-typed `T-1` must not land on token 1's patient.
  */
-it("suggests while typing, with no Enter: a name brings the candidates, a tap picks one", async () => {
-  const seen = mockRoutes({
+it("suggests while typing, with no Enter: a name brings the candidates with guardian and last-4 mobile; a tap re-asks by the visit and fills the basket", async () => {
+  const urls: string[] = [];
+  const suggestion = {
+    ...FARIDA, matchedOn: "name",
+    patient: { ...FARIDA.patient, guardian: { name: "Abdul Khan", relation: "spouse" }, phoneLast4: "3343", phoneOf: "patient" },
+    visit: { ...FARIDA.visit, advised: [], advisedLoaded: false },
+  };
+  mockRoutes({
     "GET /api/lab/collection/queue": { status: 200, body: [] },
-    "GET /api/lab/desk/find": { status: 200, body: { hits: [{ ...FARIDA, matchedOn: "name" }], labDoctors: [] } },
+    "GET /api/lab/desk/find": (_b, url) => {
+      urls.push(url);
+      return { status: 200, body: { hits: [url.includes("suggest=1") ? suggestion : { ...FARIDA, matchedOn: "visit" }], labDoctors: [] } };
+    },
   });
   renderWithProviders(<LabDesk />);
   await userEvent.type(screen.getByLabelText(/Scan the token/), "farida");
   await waitFor(() => expect(screen.getByTestId("find-hits")).toHaveTextContent("Farida Khatoon"));
-  expect(seen.some((s) => s.path === "/api/lab/desk/find")).toBe(true);
+  expect(screen.getByTestId("find-hits")).toHaveTextContent("••••3343");
+  expect(screen.getByTestId("hit-guardian")).toHaveTextContent("Spouse: Abdul Khan");
+  /** Asked as a suggestion — no Rx lines, no logged read — and nothing picked yet. */
+  expect(urls.length).toBeGreaterThan(0);
+  expect(urls.every((u) => u.includes("suggest=1"))).toBe(true);
   expect(screen.queryByTestId("patient-card")).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: /Farida Khatoon/ }));
   await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent("Farida Khatoon"));
+  /** The pick re-asked by the visit number, and the basket holds the consult's lines from that answer. */
+  expect(urls.at(-1)).toMatch(/q=V2609010044/);
+  expect(urls.at(-1)).not.toMatch(/suggest=1/);
+  expect(screen.getByText(/Complete blood count/)).toBeInTheDocument();
   expect(screen.queryByTestId("find-hits")).toBeNull();
 });
 

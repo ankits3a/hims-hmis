@@ -176,7 +176,7 @@ export function LabDesk(): React.ReactElement {
   }, [q]);
   const live = useQuery({
     queryKey: ["lab", "desk-find", debounced, serviceDate],
-    queryFn: () => deskFind(debounced, serviceDate),
+    queryFn: () => deskFind(debounced, serviceDate, true),
     enabled: suggesting && debounced.length >= 2,
     retry: false,
   });
@@ -208,6 +208,20 @@ export function LabDesk(): React.ReactElement {
     setLines([]); setConsents({}); setReflexConsent(false); setPriority("routine"); setReferrerName("");
     setAcknowledged([]); setWarnings(null); setPriced(null); setPlaced(null); setError(null);
   }
+
+  /**
+   * A SUGGESTION carries no Rx lines (they are a logged read of the visit, never a keystroke's), so
+   * picking one re-asks by the visit number and fills the basket from that answer.
+   */
+  const pick = useMutation({
+    mutationFn: async (hit: WireDeskFindHit): Promise<WireDeskFindHit> => {
+      if (hit.visit === null || hit.visit.advisedLoaded !== false) return hit;
+      const full = await deskFind(hit.visit.encounterNo, serviceDate);
+      return full.hits.find((h) => h.visit?.encounterId === hit.visit!.encounterId) ?? hit;
+    },
+    onSuccess: (hit) => choose(hit),
+    onError: (e: unknown) => setError(labErrorText(e)),
+  });
 
   function choose(hit: WireDeskFindHit): void {
     setSuggesting(false);
@@ -439,7 +453,17 @@ export function LabDesk(): React.ReactElement {
                     </div>
                     <div className="mo" style={{ fontSize: 11, color: "var(--dim)" }}>
                       {sexAge(h.patient.administrativeGender, h.patient.dob)}
+                      {" · "}
+                      {h.patient.phoneLast4 == null ? t("lab.desk.noMobile")
+                        : `••••${h.patient.phoneLast4}${h.patient.phoneOf === "guardian" ? ` (${t("lab.desk.guardianMobile")})` : ""}`}
                     </div>
+                    {h.patient.guardian != null && (
+                      <div style={{ fontSize: 11.5, color: "var(--ink)", marginTop: 1 }} data-testid="hit-guardian">
+                        {h.patient.guardian.relation === null
+                          ? t("lab.desk.fatherHusband", { name: h.patient.guardian.name })
+                          : t("lab.desk.guardianOf", { name: h.patient.guardian.name, relation: t(`lab.desk.relation.${h.patient.guardian.relation}`, { defaultValue: h.patient.guardian.relation }) })}
+                      </div>
+                    )}
                     <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 1 }}>
                       {h.visit === null ? t("lab.desk.noVisitToday")
                         : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}${
@@ -452,7 +476,8 @@ export function LabDesk(): React.ReactElement {
                   </div>
                   <button type="button" className={i === 0 ? "sec grn" : "sec"}
                     aria-label={`${h.patient.display} · ${h.patient.uhid}`}
-                    onClick={() => choose(h)}>
+                    disabled={pick.isPending}
+                    onClick={() => pick.mutate(h)}>
                     {t("lab.desk.pick")}
                   </button>
                 </li>

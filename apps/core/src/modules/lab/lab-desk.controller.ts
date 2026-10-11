@@ -224,10 +224,12 @@ export class LabDeskController {
     @CurrentActor() actor: Actor,
     @Query("q") q?: string,
     @Query("serviceDate") serviceDate?: string,
+    @Query("suggest") suggest?: string,
   ): Promise<unknown> {
     const input = parsed(findQuery, { q: q ?? "", serviceDate });
     try {
-      return { hits: await deskFind(this.db, actor, input.q, input.serviceDate), labDoctors: await labDoctors(this.db) };
+      const hits = await deskFind(this.db, actor, input.q, input.serviceDate, { suggest: suggest === "1" });
+      return { hits, labDoctors: await labDoctors(this.db) };
     } catch (e) { toHttp(e); }
   }
 

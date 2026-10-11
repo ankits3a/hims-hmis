@@ -150,20 +150,28 @@ export type WireAdvisedLine = {
 
 export type WireDeskFindHit = {
   matchedOn: "token" | "visit" | "order" | "uhid" | "mobile" | "name";
-  patient: { id: string; uhid: string; display: string; administrativeGender: string; dob: string | null; restricted: boolean };
+  patient: {
+    id: string; uhid: string; display: string; administrativeGender: string; dob: string | null; restricted: boolean;
+    /** Owner 2026-10-11 — the card's tell-apart line: guardian and the last four of a mobile. */
+    guardian?: { name: string; relation: string | null } | null;
+    phoneLast4?: string | null;
+    phoneOf?: "patient" | "guardian" | null;
+  };
   visit: {
     encounterId: string; encounterNo: string; serviceDate: string; status: string;
     tokenNo: number | null; doctorName: string | null; doctorUserId: string | null; departmentName: string | null;
     referrerName: string | null;
     advised: WireAdvisedLine[];
+    /** False on a suggestion (`?suggest=1`): the seat re-asks by the visit number before filling the basket. */
+    advisedLoaded?: boolean;
   } | null;
   orders: { orderId: string; orderNo: string; status: string; itemCount: number }[];
 };
 
 export type WireLabDoctor = { id: string; displayName: string };
 
-export const deskFind = (q: string, serviceDate: string): Promise<{ hits: WireDeskFindHit[]; labDoctors: WireLabDoctor[] }> =>
-  api("GET", `/lab/desk/find?q=${encodeURIComponent(q)}&serviceDate=${serviceDate}`);
+export const deskFind = (q: string, serviceDate: string, suggest = false): Promise<{ hits: WireDeskFindHit[]; labDoctors: WireLabDoctor[] }> =>
+  api("GET", `/lab/desk/find?q=${encodeURIComponent(q)}&serviceDate=${serviceDate}${suggest ? "&suggest=1" : ""}`);
 
 export type WireDeliveryVerdict = {
   allowed: boolean;
