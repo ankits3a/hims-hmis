@@ -86,6 +86,10 @@ export function moneyBlockFor(
   return { receipt: { tenders: [{ mode: tender, amountPaise: paidPaise }] }, credit: { reason: creditReason } };
 }
 
+function initialsOf(name: string): string {
+  return name.split(/\s+/).filter((w) => w !== "").slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+}
+
 export function LabDesk(): React.ReactElement {
   const { t } = useTranslation();
   const { can } = useAuth();
@@ -102,6 +106,15 @@ export function LabDesk(): React.ReactElement {
   const [labDoctors, setLabDoctors] = useState<WireLabDoctor[]>([]);
   const [walkInDoctorId, setWalkInDoctorId] = useState("");
   const fieldRef = useRef<HTMLInputElement>(null);
+  /**
+   * OWNER 2026-10-11 — SUGGESTIONS WHILE TYPING, the way `/counter` does it: 180 ms after the last
+   * key and from two characters, the same `GET /lab/desk/find` answers into the list below the field.
+   * A suggestion is only ever a candidate the clerk taps (D4: names confirm, they never select); the
+   * exact-door auto-pick stays on Enter, which is what a scanner sends, so a half-typed `T-1` can never
+   * land on token 1's patient.
+   */
+  const [suggesting, setSuggesting] = useState(false);
+  const [debounced, setDebounced] = useState("");
 
   /* ── the order ── */
   const [lines, setLines] = useState<Line[]>([]);
@@ -157,9 +170,26 @@ export function LabDesk(): React.ReactElement {
     enabled: query.trim().length >= 2,
   });
 
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(q.trim()), 180);
+    return () => clearTimeout(id);
+  }, [q]);
+  const live = useQuery({
+    queryKey: ["lab", "desk-find", debounced, serviceDate],
+    queryFn: () => deskFind(debounced, serviceDate),
+    enabled: suggesting && debounced.length >= 2,
+    retry: false,
+  });
+  useEffect(() => {
+    if (!suggesting || live.data === undefined) return;
+    setHits(live.data.hits);
+    setLabDoctors(live.data.labDoctors);
+  }, [live.data, suggesting]);
+
   const find = useMutation({
     mutationFn: () => deskFind(q, serviceDate),
     onSuccess: (r) => {
+      setSuggesting(false);
       setHits(r.hits);
       setLabDoctors(r.labDoctors);
       setError(null);
@@ -180,6 +210,7 @@ export function LabDesk(): React.ReactElement {
   }
 
   function choose(hit: WireDeskFindHit): void {
+    setSuggesting(false);
     setSelected(hit);
     setRegistering(false);
     setWalkInDoctorId(""); // pass 2 NEW-4 — a decision the server refuses to make is not carried to the next patient
@@ -349,13 +380,19 @@ export function LabDesk(): React.ReactElement {
               placeholder={t("lab.desk.findPlaceholder")}
               aria-label={t("lab.desk.find")}
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => { setQ(e.target.value); setSuggesting(true); }}
             />
           </label>
           <Button type="submit" disabled={find.isPending || q.trim() === ""}>{t("lab.desk.findGo")}</Button>
         </form>
 
-        {hits !== null && selected === null && (
+        {suggesting && debounced.length >= 2 && live.isFetching && (
+          <div className="rounded-md border border-dashed border-border p-3 text-center text-sm text-muted-foreground">
+            {t("lab.desk.searching")}
+          </div>
+        )}
+
+        {hits !== null && (selected === null || suggesting) && !(suggesting && (debounced.length < 2 || live.isFetching)) && (
           <div className="space-y-1">
             {hits.length === 0 && (
               <p className="text-sm">
@@ -366,20 +403,32 @@ export function LabDesk(): React.ReactElement {
               </p>
             )}
             {hits.length > 1 && <p className="text-xs text-muted-foreground">{t("lab.desk.confirmByName")}</p>}
-            <ul className="divide-y divide-border rounded border border-border text-sm">
-              {hits.map((h) => (
-                <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`}>
-                  <button type="button" className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left hover:bg-muted"
+            <ul className="space-y-2 text-sm" data-testid="find-hits">
+              {hits.map((h, i) => (
+                <li key={`${h.patient.id}-${h.visit?.encounterId ?? "none"}`}
+                  className={`flex items-center gap-3 rounded-md border bg-card px-3 py-2.5 ${
+                    i === 0 ? "border-green-600 ring-2 ring-green-600/20" : "border-border"}`}>
+                  <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted font-semibold text-muted-foreground">
+                    {initialsOf(h.patient.display)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">
+                      {h.patient.display}
+                      {h.patient.restricted && <span className="ml-1.5 rounded border border-red-300 px-1 text-xs text-red-700">restricted</span>}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">{sexAge(h.patient.administrativeGender, h.patient.dob)}</span>
+                  </span>
+                  <span className="hidden w-28 font-mono text-xs font-semibold sm:block">{h.patient.uhid}</span>
+                  <span className="hidden text-xs text-muted-foreground md:block">
+                    {h.visit === null ? t("lab.desk.noVisitToday")
+                      : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}`}
+                  </span>
+                  <span className="hidden rounded-full border border-border px-2 text-xs lg:inline">{t(`lab.desk.matchedOn.${h.matchedOn}`)}</span>
+                  <Button type="button" size="sm" variant={i === 0 ? "default" : "outline"}
+                    aria-label={`${h.patient.display} · ${h.patient.uhid}`}
                     onClick={() => choose(h)}>
-                    <span>
-                      <span className="font-medium">{h.patient.display}</span>
-                      <span className="text-muted-foreground"> · {sexAge(h.patient.administrativeGender, h.patient.dob)} · {h.patient.uhid}</span>
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {h.visit === null ? t("lab.desk.noVisitToday")
-                        : `${h.visit.encounterNo}${h.visit.tokenNo === null ? "" : ` · T-${String(h.visit.tokenNo)}`}`}
-                    </span>
-                  </button>
+                    {t("lab.desk.pick")}
+                  </Button>
                 </li>
               ))}
             </ul>

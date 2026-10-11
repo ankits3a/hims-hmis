@@ -393,3 +393,38 @@ it("F10 — a single MOBILE hit is a candidate to confirm, never auto-selected; 
   expect(screen.queryByTestId("patient-card")).toBeNull();
 });
 
+
+/**
+ * OWNER 2026-10-11 — "the autosuggestion isn't happening when I am typing a patient name, ID,
+ * encounter ID … like what we have in /counter". The field now suggests as the clerk types, with no
+ * Enter; a suggestion is a candidate to tap, never a pick — even one exact token hit — because a
+ * half-typed `T-1` must not land on token 1's patient.
+ */
+it("suggests while typing, with no Enter: a name brings the candidates, a tap picks one", async () => {
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [{ ...FARIDA, matchedOn: "name" }], labDoctors: [] } },
+  });
+  renderWithProviders(<LabDesk />);
+  await userEvent.type(screen.getByLabelText(/Scan the token/), "farida");
+  await waitFor(() => expect(screen.getByTestId("find-hits")).toHaveTextContent("Farida Khatoon"));
+  expect(seen.some((s) => s.path === "/api/lab/desk/find")).toBe(true);
+  expect(screen.queryByTestId("patient-card")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: /Farida Khatoon/ }));
+  await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent("Farida Khatoon"));
+  expect(screen.queryByTestId("find-hits")).toBeNull();
+});
+
+it("a typed suggestion is never auto-picked, even a single exact token hit; Enter still is", async () => {
+  mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [{ ...FARIDA, matchedOn: "token" }], labDoctors: [] } },
+  });
+  renderWithProviders(<LabDesk />);
+  const field = screen.getByLabelText(/Scan the token/);
+  await userEvent.type(field, "T-11");
+  await waitFor(() => expect(screen.getByTestId("find-hits")).toHaveTextContent("Farida Khatoon"));
+  expect(screen.queryByTestId("patient-card")).toBeNull();
+  await userEvent.type(field, "8{enter}");
+  await waitFor(() => expect(screen.getByTestId("patient-card")).toHaveTextContent("Farida Khatoon"));
+});
