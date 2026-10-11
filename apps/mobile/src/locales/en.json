@@ -2721,6 +2721,7 @@
       "ok": "OK"
     },
     "answer": {
+      "paused": "The copilot is paused just now. Use the screen for this.",
       "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
       "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
       "failed": "I could not get an answer just now. Try the screen for this.",
