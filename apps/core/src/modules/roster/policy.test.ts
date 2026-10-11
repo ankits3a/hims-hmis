@@ -361,6 +361,8 @@ describe("roster — who may do what (V8, stress test §4)", () => {
     myLeave: "a read of the ACTOR's own leave, asked with the actor's own id",
     leaveToDecide: "a read — the requests waiting for the reader's decision, filtered by the same `publish` check the decision asks",
     leaveDeciders: "a read — who holds `publish` for a department, for the bell; no Actor",
+    leaveKindOf: "PURE: words in, a leave kind out (E2.2's chat); no database, no clock",
+    leaveDaysOf: "PURE: words and today's IST day in, the days out; no database, no clock of its own",
     leaveForAlert: "a read — one leave worded for a bell row (a name, a kind, days; never the reason); called from the kernel alerts consumer, no Actor",
     coverForAlert: "a read — one cover or swap worded for a bell row (staff names, the duty's window, never the note); called from the kernel alerts consumer, no Actor",
     amendmentIsOfCover: "a read — whether an amendment was applied by an approved cover, so `duty_changed` is not announced twice; no Actor",

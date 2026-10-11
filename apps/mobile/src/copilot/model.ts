@@ -1,5 +1,8 @@
 import { SEATS, type EffectivePermissions, type Seat } from "../seats";
-import type { CopilotApptPick } from "../../../../packages/contracts/src/copilot";
+import type { CopilotApptPick, CopilotCoverPick, CopilotLeavePick } from "../../../../packages/contracts/src/copilot";
+
+/** E2.1 / E2.2 — what an act's answer offers to pick and confirm. */
+export type CopilotActPick = CopilotApptPick | CopilotLeavePick | CopilotCoverPick;
 
 /**
  * E1.3 — THE COPILOT ON THE PHONE (decision 0064; spec /opt/hmis-context/SPEC-copilot-phone-2026-10-11.md).
@@ -20,6 +23,10 @@ export type ConfirmReply = { outcome: string; answer: CopilotAnswer };
 
 export function isApptPick(p: unknown): p is CopilotApptPick {
   return typeof p === "object" && p !== null && (p as { kind?: unknown }).kind === "apptPick";
+}
+export function isActPick(p: unknown): p is CopilotActPick {
+  const kind = typeof p === "object" && p !== null ? (p as { kind?: unknown }).kind : undefined;
+  return kind === "apptPick" || kind === "leavePick" || kind === "coverPick";
 }
 export type AskSource = "chip" | "typed";
 
@@ -94,10 +101,13 @@ function clockWords(at: Date): string {
 }
 
 export function sayParams(key: string, params: Record<string, string | number>, t: Tr, lang: string): Record<string, string | number> {
-  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt")) return params;
+  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string") { out[k] = v; continue; }
+    // E2.2 — a leave's kind is a code; said as My leave says it. A refusal's reason is the decider's own words.
+    if (k === "kind" && key.startsWith("copilot.answer.leave")) { const w = t(`myLeave.kind.${v}`); out[k] = w === `myLeave.kind.${v}` ? v : w; continue; }
+    if (k === "why") { out[k] = v; continue; }
     if (v === "") out[k] = t("copilot.when.nobody");
     else if (k === "when" && v === "now") out[k] = t("copilot.when.now");
     else if (ISO_DAY.test(v)) out[k] = dayWords(new Date(`${v}T12:00:00+05:30`), lang);

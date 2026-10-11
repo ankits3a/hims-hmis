@@ -101,7 +101,10 @@ and swaps, and the readers every other module asks ("who is on now", "which unit
   filing (`source='manual'`, requested by themselves); an OPD or manager entry tells nobody.
 - Leave decide is `publish` at the leave's department (hospital-wide still may). `/me/waiting`'s leave lines come
   from a SELF-GATED provider (`waitingSelfGated`), because a department head holds nothing hospital-wide.
-- `ask_cover` (copilot) only drafts (`roster_cover_draft`) and never writes; the human's tap calls the cover route.
+- `ask_cover` (copilot) writes nothing at the ask: since E2.2 (decision 0069) it answers with a `coverPick` whose
+  options are signed proposals; the person's Confirm runs `coverAct` (`copilot-acts.ts`) → `requestCover` as the person.
+  The matrix keeps `request_cover` / `request_absence` at `never` for the copilot itself. `copilot-acts.ts` also holds
+  `roster.leave_apply` (act) and `roster.leave_status` (read), both `privateQuestion` (no question text in the ledger).
   Copilot answer cards are LIGHT, never dark slabs (owner).
 - Board auto-print prints only to a destination granted to a relay (`duty_board_a4`); otherwise it records
   `no_printer` rather than failing.

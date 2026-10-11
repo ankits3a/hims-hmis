@@ -12,7 +12,8 @@ import {
 } from "./my-day-model";
 import type { Metric, ReportRow, StatusTone, VisitFilter } from "./my-day-model";
 import "./my-day.css";
-import { useCopilot } from "../lib/use-copilot";
+import { isApptPick, useCopilot } from "../lib/use-copilot";
+import { CopilotActPicker } from "../components/copilot-act-pick";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
@@ -580,7 +581,12 @@ export function MyDay(): React.ReactElement {
         <AgentDock
           answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
           placeholder={t("myDay.askPlaceholder")} idle={t("myDay.agentIdle")}
-          panel={copilot.report === null ? undefined : <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />}
+          panel={copilot.report !== null ? <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+            : copilot.pick !== null && !isApptPick(copilot.pick.pick) ? (
+              /* E2.2 — a leave, or a duty to hand on, asked from My day. */
+              <CopilotActPicker pick={copilot.pick.pick} proposals={copilot.pick.proposals} busy={copilot.busy}
+                onConfirm={(p) => { void copilot.confirm(p); }} onDismiss={copilot.clearPick} />
+            ) : undefined}
         />
       </div>
     </PaperScreen>

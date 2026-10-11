@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { askCopilot, confirmCopilot } from "./copilot-api";
 import { checkCopilotNotice } from "./copilot-notice";
 import type { CopilotDayReport, CopilotProposal, CopilotReply } from "./copilot-api";
-import type { CopilotApptPick } from "@hmis/contracts";
+import type { CopilotApptPick, CopilotCoverPick, CopilotLeavePick } from "@hmis/contracts";
+
+/** E2.1 / E2.2 — what an act's answer offers to pick and confirm: an appointment, a leave, a cover or swap. */
+export type CopilotActPick = CopilotApptPick | CopilotLeavePick | CopilotCoverPick;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -48,7 +51,7 @@ export type CopilotState = {
   payload: unknown;
   clearPayload: () => void;
   /** E2.1 — an appointment to pick (patient, then a time) and confirm. Null when the last answer offered none. */
-  pick: { pick: CopilotApptPick; proposals: CopilotProposal[] } | null;
+  pick: { pick: CopilotActPick; proposals: CopilotProposal[] } | null;
   /** The confirm tap: the server re-checks and writes, and its answer replaces the pick. */
   confirm: (proposal: CopilotProposal) => Promise<void>;
   clearPick: () => void;
@@ -109,7 +112,7 @@ export function useCopilot(opts: {
         setAnswer(t(reply.answer.key, sayParams(reply.answer.key, reply.answer.params, t, i18n.language)));
         if (reply.intent === "my_day_report" && reply.answer.payload !== undefined) {
           setReport(reply.answer.payload as CopilotDayReport);
-        } else if (isApptPick(reply.answer.payload) && reply.proposals !== undefined) {
+        } else if (isActPick(reply.answer.payload) && reply.proposals !== undefined) {
           setPick({ pick: reply.answer.payload, proposals: reply.proposals });
         } else if (reply.answer.payload !== undefined) {
           setPayload(reply.answer.payload);
@@ -148,6 +151,10 @@ export function useCopilot(opts: {
 export function isApptPick(p: unknown): p is CopilotApptPick {
   return typeof p === "object" && p !== null && (p as { kind?: unknown }).kind === "apptPick";
 }
+export function isActPick(p: unknown): p is CopilotActPick {
+  const kind = typeof p === "object" && p !== null ? (p as { kind?: unknown }).kind : undefined;
+  return kind === "apptPick" || kind === "leavePick" || kind === "coverPick";
+}
 
 /* ═══ 20-U U9 — THE ROSTER'S ANSWERS IN THE BOARDS' VOICE ═══
  *
@@ -172,10 +179,13 @@ function clockWords(at: Date): string {
 export function sayParams(
   key: string, params: Record<string, string | number>, t: Tr, lang: string,
 ): Record<string, string | number> {
-  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt")) return params;
+  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string") { out[k] = v; continue; }
+    // E2.2 — a leave's kind is a code (CL, comp_off); say it as My leave does. A refusal's reason is the decider's own words.
+    if (k === "kind" && key.startsWith("copilot.answer.leave")) { out[k] = t(`myLeave.kind.${v}`, { defaultValue: v }); continue; }
+    if (k === "why") { out[k] = v; continue; }
     if (v === "") out[k] = t("copilot.when.nobody");
     else if (k === "when" && v === "now") out[k] = t("copilot.when.now");
     else if (ISO_DAY.test(v)) out[k] = dayWords(new Date(`${v}T12:00:00+05:30`), lang);
