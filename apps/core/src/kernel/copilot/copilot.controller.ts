@@ -2,11 +2,14 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCod
 import { z } from "zod";
 import { CONFIG, DB, MODULE_REGISTRY } from "../tokens";
 import { CurrentActor, RequirePermission } from "../auth/decorators";
+import { hasPermission } from "../auth/permissions";
 import { istDayString as istDay } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
 import { chooserFor } from "../inference/openai-decisions";
 import { collectCopilotTools, permissionCheckFor, runTool } from "./catalog";
+import { COPILOT_EXTRA_TOOLS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
+import type { ConfirmOutcome, Proposal } from "./act";
 import { kernelCopilotTools } from "./kernel-tools";
 import { IdentifierLeak, rehydrate } from "./mask";
 import { COPILOT_NAME_SOURCE, loadDayNames, maskForAsk, nameDays, nameIndexFor } from "./names";
@@ -63,6 +66,9 @@ const askBody = z.object({
   screen: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/).optional(),
 });
 
+/** E0.2 — the confirm tap carries the proposal back exactly as the ask handed it out. */
+const confirmBody = z.object({ proposal: proposalSchema }).strict();
+
 /** The permission behind `GET /copilot/health` (declared by `deskManifest`). */
 export const COPILOT_HEALTH_READ = "copilot.health.read";
 const healthQuery = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
@@ -80,6 +86,8 @@ const PAUSED = "copilot.answer.paused" as const;
 
 export type AskResponse = {
   answer: CopilotAnswer;
+  /** E0.2 — present only when an ACT tool proposed a write: the web shows it and posts it to `/copilot/confirm` on one tap. */
+  proposal?: Proposal;
   /** `phrasebook` | `model` | `none` — the seat SAYS where the routing came from (`triage.ts`'s rule). */
   source: "phrasebook" | "model" | "none";
   intent: string | null;
@@ -90,6 +98,8 @@ export class CopilotController {
   private readonly tools: CopilotToolDecl[];
   private readonly nameSource: CopilotNameSource;
   private readonly logger = new Logger("copilot");
+  /** E0.2 — the proposal HMAC key, derived from `SECRET_KEY`. Never logged. */
+  private readonly proposalKey: Buffer;
 
   constructor(
     @Inject(DB) private readonly db: Db,
@@ -106,6 +116,12 @@ export class CopilotController {
       from `loadDayNames`; a test or the eval harness provides a fixed list (or none) under the token.
     */
     @Optional() @Inject(COPILOT_NAME_SOURCE) nameSource?: CopilotNameSource,
+    /*
+      E0.2 — TOOLS NO MANIFEST DECLARES, for the protocol's tests: `CopilotModule` provides an EMPTY
+      list, and only a test overrides it (with the "book a slot" fixture). Collected with the rest, so
+      the boot checks cover them.
+    */
+    @Optional() @Inject(COPILOT_EXTRA_TOOLS) extraTools: readonly CopilotToolDecl[] = [],
   ) {
     this.nameSource = nameSource ?? loadDayNames;
     /*
@@ -113,7 +129,8 @@ export class CopilotController {
       BOOT rather than on the first question somebody asks. `collectDeskProviders` refuses on the
       same schedule and for the same reason.
     */
-    this.tools = collectCopilotTools(registry, kernelCopilotTools(collectDeskProviders(registry)));
+    this.tools = collectCopilotTools(registry, [...kernelCopilotTools(collectDeskProviders(registry)), ...extraTools]);
+    this.proposalKey = proposalKey(cfg.secretKey);
   }
 
   @Post("ask")
@@ -250,14 +267,47 @@ export class CopilotController {
       question: masked,
     };
 
-    const answer = await runTool(tool, ctx, permissionCheckFor(ctx), gate.halts);
+    const { propose, ...answer } = await runTool(tool, ctx, permissionCheckFor(ctx), gate.halts);
+    /*
+      E0.2 — AN ACT TOOL PROPOSES; NOTHING IS WRITTEN HERE. The raw `propose` never leaves: only a
+      signed proposal does, and only from a declared act. Args that fail the tool's own schema make
+      no proposal and the clerk reads "failed" rather than a button that could never confirm.
+    */
+    let proposal: Proposal | undefined;
+    if (propose !== undefined && tool.kind === "act") {
+      proposal = issueProposal(this.proposalKey, tool, actor, propose, ctx.subject, new Date()) ?? undefined;
+      if (proposal === undefined) { answer.key = "copilot.answer.failed"; answer.params = {}; delete answer.payload; }
+    }
     rec.answerKey = answer.key;
     rec.outcome = answer.key === PAUSED ? "halted"
       : answer.key === "copilot.answer.notPermitted" ? "notPermitted"
       : answer.key === "copilot.answer.needSubject" ? "needSubject"
         : answer.key === "copilot.answer.failed" ? "failed"
           : "answered";
-    return { answer, source: routed.source, intent: routed.intent };
+    return { answer, source: routed.source, intent: routed.intent, ...(proposal !== undefined ? { proposal } : {}) };
+  }
+
+  /**
+   * E0.2 — THE ONE HUMAN TAP. Runs the proposal's act after re-reading everything it assumed: the
+   * signature, the caller, the expiry, the tool's kind, the halt, the permission and the state. No
+   * `@RequirePermission`: like `ask`, the gate is the TOOL's permission, read inside. Every refusal
+   * is a 200 with an answer key; only a malformed body is a 400.
+   */
+  @Post("confirm")
+  @HttpCode(200)
+  async confirm(@CurrentActor() actor: Actor, @Body() raw: unknown): Promise<{ outcome: ConfirmOutcome; answer: CopilotAnswer }> {
+    if (actor.type !== "user") throw new ForbiddenException("the copilot is a desk surface — user actors only");
+    const parsed = confirmBody.safeParse(raw);
+    if (!parsed.success) throw new BadRequestException("invalid proposal");
+    const now = new Date();
+    const gate = await readCopilotGate(this.db, now);
+    const res = await confirmProposal({
+      db: this.db, key: this.proposalKey, tools: this.tools, halts: gate.halts, now,
+      can: (permission) => hasPermission(this.db, actor.id, permission, "hospital"),
+    }, actor, parsed.data.proposal);
+    // The outcome and the tool only: never the args, the subject or the signature.
+    if (res.outcome !== "done") this.logger.log(`copilot confirm refused: ${res.outcome} (tool ${parsed.data.proposal.tool.slice(0, 64)})`);
+    return { outcome: res.outcome, answer: res.answer };
   }
 
   /**
