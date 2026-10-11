@@ -1,11 +1,11 @@
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Query } from "@nestjs/common";
-import { asc, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { APPOINTMENT_MODES, patientAbsentBody } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
-import { opdQueueEntries } from "../../kernel/db/schema";
+import { copilotActs, opdQueueEntries } from "../../kernel/db/schema";
 import { getPatientSummaries, PatientError } from "../patients";
 import { findTodaysVisits, requestSlipRetake, slipDay, slipReadback } from "./slips";
 import type { SlipDay, SlipReadback } from "./slips";
@@ -289,7 +289,8 @@ const escalationBody = z.object({
 });
 
 /** `teleDesk` is the DESK's money mark on a tele-call row (to pay / paid). It exists on this desk route only. */
-type AppointmentView = AppointmentRow & { patient: PatientSummary | null; teleDesk?: TeleDeskMark };
+/** `viaCopilot` (E2.1): booked or moved from the copilot chat — read from the `copilot_acts` row pointing at it. */
+type AppointmentView = AppointmentRow & { patient: PatientSummary | null; teleDesk?: TeleDeskMark; viaCopilot?: true };
 type VisitListItem = EncounterRow & { patient: PatientSummary | null; queueEntry: QueueEntryRow | null };
 /**
  * FD-32 — the visit read carries the two money marks, from the same derivation the vitals bay uses
@@ -1026,10 +1027,15 @@ export class OpdVisitsController {
     );
     const byPatient = new Map(summaries.map((s) => [s.requestedId, s] as const));
     const marks = await teleDeskMarks(this.db, items);
+    const viaCopilot = new Set(items.length === 0 ? [] : (await this.db.select({ id: copilotActs.resultRowId }).from(copilotActs)
+      .where(and(eq(copilotActs.resultModule, "opd"), inArray(copilotActs.resultRowId, items.map((a) => a.id))))).map((r) => r.id));
     return items.map((a) => {
       const patient = byPatient.get(a.patientId) ?? null;
       const teleDesk = marks.get(a.id);
-      return { ...appointmentForList(a, patient, withContact !== undefined), patient, ...(teleDesk === undefined ? {} : { teleDesk }) };
+      return {
+        ...appointmentForList(a, patient, withContact !== undefined), patient, ...(teleDesk === undefined ? {} : { teleDesk }),
+        ...(viaCopilot.has(a.id) ? { viaCopilot: true as const } : {}),
+      };
     });
   }
 }

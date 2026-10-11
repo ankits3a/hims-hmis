@@ -7,7 +7,9 @@ import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space, type } from "../theme";
 import { Band, Button, KeyboardScrollView, s as ui } from "../ui";
-import { PHONE_SCREEN, answerText, chipsFor, type AskReply, type AskSource } from "../copilot/model";
+import { ApptPick } from "../copilot/appt-pick";
+import { PHONE_SCREEN, answerText, chipsFor, isApptPick, type AskReply, type AskSource, type ConfirmReply, type CopilotProposal } from "../copilot/model";
+import type { CopilotApptPick } from "../../../../packages/contracts/src/copilot";
 
 /**
  * E1.3 — "COPILOT" (decision 0064; spec /opt/hmis-context/SPEC-copilot-phone-2026-10-11.md). Three
@@ -18,7 +20,11 @@ import { PHONE_SCREEN, answerText, chipsFor, type AskReply, type AskSource } fro
  * OK sit above the chips. Everything — box included — is inside the KeyboardScrollView, so the box
  * stays above the Android keyboard (the vc24 rule).
  */
-type Turn = { n: number; question: string; text: string | null; askId: string | null; report: boolean; wrong: "no" | "sending" | "yes" };
+type Turn = {
+  n: number; question: string; text: string | null; askId: string | null; report: boolean; wrong: "no" | "sending" | "yes";
+  /** E2.1 — an appointment to pick and confirm; gone once confirmed or dismissed. */
+  pick: { pick: CopilotApptPick; proposals: CopilotProposal[] } | null;
+};
 
 export function CopilotScreen() {
   const { t, lang } = useI18n();
@@ -49,7 +55,7 @@ export function CopilotScreen() {
     const q = question.trim();
     if (q === "" || busy) return;
     const n = ++counter.current;
-    setTurns((all) => [{ n, question: q, text: null, askId: null, report: false, wrong: "no" }, ...all]);
+    setTurns((all) => [{ n, question: q, text: null, askId: null, report: false, wrong: "no", pick: null }, ...all]);
     if (source === "typed") setText("");
     setBusy(true);
     try {
@@ -59,9 +65,22 @@ export function CopilotScreen() {
         // "Wrong" is for an answer; "I did not understand" is already counted as notUnderstood (G3a).
         askId: reply.source === "none" ? null : reply.askId ?? null,
         report: reply.intent === "my_day_report" && reply.answer.payload !== undefined,
+        pick: isApptPick(reply.answer.payload) && reply.proposals !== undefined ? { pick: reply.answer.payload, proposals: reply.proposals } : null,
       });
     } catch (e) {
       patch(n, { text: t(e instanceof NetworkError ? "copilotPhone.offline" : "copilot.answer.notUnderstood") });
+    } finally { setBusy(false); }
+  };
+
+  /* E2.1 — the confirm tap: the server re-checks and writes; its sentence replaces the pick. */
+  const confirm = async (turn: Turn, proposal: CopilotProposal): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await call<ConfirmReply>("POST", "/copilot/confirm", { proposal });
+      patch(turn.n, { text: answerText({ answer: res.answer, source: "phrasebook", intent: null }, t, lang), pick: null });
+    } catch (e) {
+      patch(turn.n, { text: t(e instanceof NetworkError ? "copilotPhone.offline" : "copilot.answer.failed") });
     } finally { setBusy(false); }
   };
 
@@ -118,6 +137,10 @@ export function CopilotScreen() {
             {turn.text === null
               ? <Text style={[type.body, { color: color.dim }]}>…</Text>
               : <Text testID={`copilot-answer-${String(turn.n)}`} style={[type.body, { color: color.ink }]}>{turn.text}</Text>}
+            {turn.pick !== null && (
+              <ApptPick n={turn.n} pick={turn.pick.pick} proposals={turn.pick.proposals} busy={busy}
+                onConfirm={(p) => { void confirm(turn, p); }} onDismiss={() => { patch(turn.n, { pick: null }); }} />
+            )}
             {turn.report && <Text testID={`copilot-report-${String(turn.n)}`} numberOfLines={1} style={[type.small, { color: color.dim }]}>{t("copilotPhone.report")}</Text>}
             {turn.askId !== null && (
               <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>

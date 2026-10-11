@@ -1,4 +1,5 @@
 import { SEATS, type EffectivePermissions, type Seat } from "../seats";
+import type { CopilotApptPick } from "../../../../packages/contracts/src/copilot";
 
 /**
  * E1.3 — THE COPILOT ON THE PHONE (decision 0064; spec /opt/hmis-context/SPEC-copilot-phone-2026-10-11.md).
@@ -8,7 +9,18 @@ import { SEATS, type EffectivePermissions, type Seat } from "../seats";
  * Nothing here is stored: the conversation lives in the screen's memory and ends with it.
  */
 export type CopilotAnswer = { key: string; params: Record<string, string | number>; payload?: unknown };
-export type AskReply = { answer: CopilotAnswer; source: "phrasebook" | "model" | "none"; intent: string | null; askId?: string };
+/** E2.1 — a signed proposal, posted back to `POST /copilot/confirm` exactly as it came; never read inside. */
+export type CopilotProposal = { id: string; [k: string]: unknown };
+export type AskReply = {
+  answer: CopilotAnswer; source: "phrasebook" | "model" | "none"; intent: string | null; askId?: string;
+  /** E2.1 — options to pick ONE of; `answer.payload` (`CopilotApptPick`) says which is which. */
+  proposals?: CopilotProposal[];
+};
+export type ConfirmReply = { outcome: string; answer: CopilotAnswer };
+
+export function isApptPick(p: unknown): p is CopilotApptPick {
+  return typeof p === "object" && p !== null && (p as { kind?: unknown }).kind === "apptPick";
+}
 export type AskSource = "chip" | "typed";
 
 /** The ledger's screen slug for every phone ask (the server's `screen` regex: lower-case, ≤40). */
@@ -60,7 +72,7 @@ export function chipsFor(p: EffectivePermissions): ChipKey[] {
   return out.slice(0, 3);
 }
 
-/* ═══ THE ROSTER'S ANSWERS IN THE BOARDS' VOICE — ported from apps/web/src/lib/use-copilot.tsx `sayParams` ═══
+/* ═══ ANSWERS IN THE BOARDS' VOICE (roster; E2.1 appointments) — ported from apps/web/src/lib/use-copilot.tsx `sayParams` ═══
  * The roster tools send a day as its IST date and an instant as ISO; they are said as the web says them,
  * so the phone's sentence is the web's sentence. Every other key's params pass through untouched. */
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -82,7 +94,7 @@ function clockWords(at: Date): string {
 }
 
 export function sayParams(key: string, params: Record<string, string | number>, t: Tr, lang: string): Record<string, string | number> {
-  if (!key.startsWith("copilot.answer.roster")) return params;
+  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string") { out[k] = v; continue; }

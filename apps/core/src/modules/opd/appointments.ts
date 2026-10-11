@@ -67,45 +67,56 @@ export async function bookAppointment(
   },
   now: Date = new Date(),
 ): Promise<{ appointment: AppointmentRow }> {
+  return withTx(db, (tx) => bookAppointmentInTx(tx, actor, input, now));
+}
+
+/**
+ * E2.1 — the booking inside a CALLER's transaction: the copilot's confirm commits the appointment
+ * and its `copilot_acts` row together (`kernel/copilot/act.ts`). Same checks, row and event as above.
+ */
+export async function bookAppointmentInTx(
+  tx: Tx,
+  actor: Actor,
+  input: Parameters<typeof bookAppointment>[2],
+  now: Date = new Date(),
+): Promise<{ appointment: AppointmentRow }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
-  const canonical = await resolvePatientId(db, input.patientId);
+  const canonical = await resolvePatientId(tx, input.patientId);
   if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${input.patientId}`);
   const how = modeAndPhone(input);
-  return withTx(db, async (tx) => {
-    const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
-    if (!doctor) throw new OpdError("unknown_doctor");
-    if (!doctor.active) throw new OpdError("doctor_inactive");
-    if (input.slotStart.getTime() < now.getTime()) throw new OpdError("slot_in_past", "the slot is in the past");
-    const serviceDate = istDate(input.slotStart);
-    await assertNotOnLeave(tx, doctor.id, serviceDate);
+  const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, input.doctorId)))[0];
+  if (!doctor) throw new OpdError("unknown_doctor");
+  if (!doctor.active) throw new OpdError("doctor_inactive");
+  if (input.slotStart.getTime() < now.getTime()) throw new OpdError("slot_in_past", "the slot is in the past");
+  const serviceDate = istDate(input.slotStart);
+  await assertNotOnLeave(tx, doctor.id, serviceDate);
 
-    const slots = await availableSlots(tx, doctor.id, serviceDate, now);
-    const slot = slots.find((s) => s.start.getTime() === input.slotStart.getTime());
-    if (!slot) throw new OpdError("invalid_slot", `${input.slotStart.toISOString()} is not a slot for doctor ${doctor.id}`);
+  const slots = await availableSlots(tx, doctor.id, serviceDate, now);
+  const slot = slots.find((s) => s.start.getTime() === input.slotStart.getTime());
+  if (!slot) throw new OpdError("invalid_slot", `${input.slotStart.toISOString()} is not a slot for doctor ${doctor.id}`);
 
-    const appointmentId = newId();
-    // Allocated BEFORE the insert, because it is a column of it — so a lost slot race (the
-    // onConflictDoNothing below) burns a number. Deliberate: this series is not gapless, and the
-    // alternative is a second round trip to keep a counter tidy that nothing audits.
-    const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
-    const inserted = await tx.insert(opdAppointments).values({
-      id: appointmentId, appointmentNo, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
-      serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
-      source: input.source ?? "desk", note: input.note ?? null, mode: how.mode, telePhone: how.telePhone,
-      bookedBy: actor.id, updatedBy: actor.id,
-    }).onConflictDoNothing().returning();
-    if (inserted.length === 0) throw new OpdError("slot_taken", `slot ${input.slotStart.toISOString()} for doctor ${doctor.id} is taken`);
-    const appointment = inserted[0]!;
+  const appointmentId = newId();
+  // Allocated BEFORE the insert, because it is a column of it — so a lost slot race (the
+  // onConflictDoNothing below) burns a number. Deliberate: this series is not gapless, and the
+  // alternative is a second round trip to keep a counter tidy that nothing audits.
+  const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
+  const inserted = await tx.insert(opdAppointments).values({
+    id: appointmentId, appointmentNo, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
+    serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
+    source: input.source ?? "desk", note: input.note ?? null, mode: how.mode, telePhone: how.telePhone,
+    bookedBy: actor.id, updatedBy: actor.id,
+  }).onConflictDoNothing().returning();
+  if (inserted.length === 0) throw new OpdError("slot_taken", `slot ${input.slotStart.toISOString()} for doctor ${doctor.id} is taken`);
+  const appointment = inserted[0]!;
 
-    await appendEvent(tx, appointmentBooked.make({
-      actor, patientId: canonical,
-      payload: {
-        appointmentId, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
-        serviceDate, slotStart: input.slotStart.toISOString(), source: appointment.source,
-      },
-    }));
-    return { appointment };
-  });
+  await appendEvent(tx, appointmentBooked.make({
+    actor, patientId: canonical,
+    payload: {
+      appointmentId, patientId: canonical, doctorId: doctor.id, departmentId: doctor.departmentId,
+      serviceDate, slotStart: input.slotStart.toISOString(), source: appointment.source,
+    },
+  }));
+  return { appointment };
 }
 
 /** Cancel-as-rescheduled + a new booked row, atomically: the flip's rescheduled_to_id is pre-generated so a losing
@@ -117,8 +128,19 @@ export async function rescheduleAppointment(
   input: { slotStart: Date; doctorId?: string; reason?: string; /** A tele-call's number may change with the move; the mode may not. */ telePhone?: string },
   now: Date = new Date(),
 ): Promise<{ from: AppointmentRow; to: AppointmentRow }> {
+  return withTx(db, (tx) => rescheduleAppointmentInTx(tx, actor, appointmentId, input, now));
+}
+
+/** E2.1 — the move inside a caller's transaction (the copilot's confirm). Same checks, rows and event as above. */
+export async function rescheduleAppointmentInTx(
+  tx: Tx,
+  actor: Actor,
+  appointmentId: string,
+  input: Parameters<typeof rescheduleAppointment>[3],
+  now: Date = new Date(),
+): Promise<{ from: AppointmentRow; to: AppointmentRow }> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
-  const loaded = (await db.select().from(opdAppointments).where(eq(opdAppointments.id, appointmentId)))[0];
+  const loaded = (await tx.select().from(opdAppointments).where(eq(opdAppointments.id, appointmentId)))[0];
   if (!loaded) throw new OpdError("unknown_appointment", `unknown appointment ${appointmentId}`);
   if (loaded.status !== "booked" && loaded.status !== "needs_rebooking") {
     throw new OpdError("appointment_state_conflict", `cannot reschedule from ${loaded.status}`);
@@ -131,56 +153,54 @@ export async function rescheduleAppointment(
     telePhone = next;
   }
   const targetDoctorId = input.doctorId ?? loaded.doctorId;
-  return withTx(db, async (tx) => {
-    const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, targetDoctorId)))[0];
-    if (!doctor) throw new OpdError("unknown_doctor");
-    if (!doctor.active) throw new OpdError("doctor_inactive");
-    if (input.slotStart.getTime() < now.getTime()) throw new OpdError("slot_in_past", "the slot is in the past");
-    const serviceDate = istDate(input.slotStart);
-    await assertNotOnLeave(tx, doctor.id, serviceDate);
+  const doctor = (await tx.select().from(opdDoctors).where(eq(opdDoctors.id, targetDoctorId)))[0];
+  if (!doctor) throw new OpdError("unknown_doctor");
+  if (!doctor.active) throw new OpdError("doctor_inactive");
+  if (input.slotStart.getTime() < now.getTime()) throw new OpdError("slot_in_past", "the slot is in the past");
+  const serviceDate = istDate(input.slotStart);
+  await assertNotOnLeave(tx, doctor.id, serviceDate);
 
-    const slots = await availableSlots(tx, doctor.id, serviceDate, now);
-    const slot = slots.find((s) => s.start.getTime() === input.slotStart.getTime());
-    if (!slot) throw new OpdError("invalid_slot", `${input.slotStart.toISOString()} is not a slot for doctor ${doctor.id}`);
+  const slots = await availableSlots(tx, doctor.id, serviceDate, now);
+  const slot = slots.find((s) => s.start.getTime() === input.slotStart.getTime());
+  if (!slot) throw new OpdError("invalid_slot", `${input.slotStart.toISOString()} is not a slot for doctor ${doctor.id}`);
 
-    const toId = newId();
-    const flipped = await tx
-      .update(opdAppointments)
-      .set({ status: "rescheduled", rescheduledToId: toId, updatedBy: actor.id, updatedAt: now })
-      .where(and(eq(opdAppointments.id, appointmentId), eq(opdAppointments.status, loaded.status)))
-      .returning();
-    if (flipped.length === 0) throw new OpdError("appointment_state_conflict", "moved concurrently");
-    const from = flipped[0]!;
+  const toId = newId();
+  const flipped = await tx
+    .update(opdAppointments)
+    .set({ status: "rescheduled", rescheduledToId: toId, updatedBy: actor.id, updatedAt: now })
+    .where(and(eq(opdAppointments.id, appointmentId), eq(opdAppointments.status, loaded.status)))
+    .returning();
+  if (flipped.length === 0) throw new OpdError("appointment_state_conflict", "moved concurrently");
+  const from = flipped[0]!;
 
-    // A reschedule is a NEW appointment, so it takes a new number on its new service date rather
-    // than carrying the old one across — the old row keeps its number and its 'rescheduled' status,
-    // which is what makes the paper trail readable when a patient quotes the number they were given.
-    const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
-    const inserted = await tx.insert(opdAppointments).values({
-      id: toId, appointmentNo, patientId: loaded.patientId, doctorId: doctor.id, departmentId: doctor.departmentId,
-      serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
-      source: loaded.source, note: loaded.note, rescheduledFromId: appointmentId,
-      mode: loaded.mode, telePhone, // a moved tele-call is still a tele-call — to the same number unless the desk gave another
-      // …and still PAID: the quote and its receipt move with it (owner 2026-10-09 — "carried to a re-booked slot").
-      advanceReceiptId: loaded.advanceReceiptId, advanceQuotePaise: loaded.advanceQuotePaise, advanceQuotedAt: loaded.advanceQuotedAt,
-      bookedBy: actor.id, updatedBy: actor.id,
-    }).onConflictDoNothing().returning();
-    if (inserted.length === 0) throw new OpdError("slot_taken", `slot ${input.slotStart.toISOString()} for doctor ${doctor.id} is taken`);
-    const to = inserted[0]!;
+  // A reschedule is a NEW appointment, so it takes a new number on its new service date rather
+  // than carrying the old one across — the old row keeps its number and its 'rescheduled' status,
+  // which is what makes the paper trail readable when a patient quotes the number they were given.
+  const appointmentNo = await nextEpisodeNo(tx, "appointment", serviceDate);
+  const inserted = await tx.insert(opdAppointments).values({
+    id: toId, appointmentNo, patientId: loaded.patientId, doctorId: doctor.id, departmentId: doctor.departmentId,
+    serviceDate, slotStart: input.slotStart, slotEnd: slot.end, status: "booked",
+    source: loaded.source, note: loaded.note, rescheduledFromId: appointmentId,
+    mode: loaded.mode, telePhone, // a moved tele-call is still a tele-call — to the same number unless the desk gave another
+    // …and still PAID: the quote and its receipt move with it (owner 2026-10-09 — "carried to a re-booked slot").
+    advanceReceiptId: loaded.advanceReceiptId, advanceQuotePaise: loaded.advanceQuotePaise, advanceQuotedAt: loaded.advanceQuotedAt,
+    bookedBy: actor.id, updatedBy: actor.id,
+  }).onConflictDoNothing().returning();
+  if (inserted.length === 0) throw new OpdError("slot_taken", `slot ${input.slotStart.toISOString()} for doctor ${doctor.id} is taken`);
+  const to = inserted[0]!;
 
-    await appendEvent(tx, appointmentRescheduled.make({
-      actor, patientId: loaded.patientId,
-      payload: {
-        fromAppointmentId: appointmentId, toAppointmentId: toId, patientId: loaded.patientId,
-        doctorId: doctor.id, departmentId: doctor.departmentId, serviceDate, slotStart: input.slotStart.toISOString(),
-        previousDoctorId: loaded.doctorId, previousSlotStart: loaded.slotStart.toISOString(),
-        // Owner 2026-10-05 — "wrong department": the move to another department records why.
-        ...(doctor.departmentId !== loaded.departmentId ? { previousDepartmentId: loaded.departmentId } : {}),
-        ...((input.reason ?? "").trim() === "" ? {} : { reason: input.reason!.trim() }),
-      },
-    }));
-    return { from, to };
-  });
+  await appendEvent(tx, appointmentRescheduled.make({
+    actor, patientId: loaded.patientId,
+    payload: {
+      fromAppointmentId: appointmentId, toAppointmentId: toId, patientId: loaded.patientId,
+      doctorId: doctor.id, departmentId: doctor.departmentId, serviceDate, slotStart: input.slotStart.toISOString(),
+      previousDoctorId: loaded.doctorId, previousSlotStart: loaded.slotStart.toISOString(),
+      // Owner 2026-10-05 — "wrong department": the move to another department records why.
+      ...(doctor.departmentId !== loaded.departmentId ? { previousDepartmentId: loaded.departmentId } : {}),
+      ...((input.reason ?? "").trim() === "" ? {} : { reason: input.reason!.trim() }),
+    },
+  }));
+  return { from, to };
 }
 
 export async function cancelAppointment(

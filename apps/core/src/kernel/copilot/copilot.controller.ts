@@ -9,7 +9,7 @@ import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
 import { chooserFor } from "../inference/openai-decisions";
 import { collectCopilotTools, permissionCheckFor, runTool } from "./catalog";
-import { COPILOT_EXTRA_TOOLS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
+import { COPILOT_EXTRA_TOOLS, MAX_PROPOSALS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
 import type { ConfirmOutcome, Proposal } from "./act";
 import { kernelCopilotTools } from "./kernel-tools";
 import { IdentifierLeak, rehydrate } from "./mask";
@@ -93,6 +93,8 @@ export type AskResponse = {
   answer: CopilotAnswer;
   /** E0.2 — present only when an ACT tool proposed a write: the web shows it and posts it to `/copilot/confirm` on one tap. */
   proposal?: Proposal;
+  /** E2.1 — several signed proposals to pick ONE from; the answer's `payload` says which is which. */
+  proposals?: Proposal[];
   /** `phrasebook` | `model` | `none` — the seat SAYS where the routing came from (`triage.ts`'s rule). */
   source: "phrasebook" | "model" | "none";
   intent: string | null;
@@ -274,9 +276,10 @@ export class CopilotController {
       subject: routed.slot === null || nameSlots.includes(routed.slot) ? null : rehydrate(routed.slot, slots),
       serviceDate,
       question: masked,
+      typed: parsed.data.question,
     };
 
-    const { propose, ...answer } = await runTool(tool, ctx, permissionCheckFor(ctx), gate.halts);
+    const { propose, proposeMany, ...answer } = await runTool(tool, ctx, permissionCheckFor(ctx), gate.halts);
     /*
       E0.2 — AN ACT TOOL PROPOSES; NOTHING IS WRITTEN HERE. The raw `propose` never leaves: only a
       signed proposal does, and only from a declared act. Args that fail the tool's own schema make
@@ -287,13 +290,24 @@ export class CopilotController {
       proposal = issueProposal(this.proposalKey, tool, actor, propose, ctx.subject, new Date()) ?? undefined;
       if (proposal === undefined) { answer.key = "copilot.answer.failed"; answer.params = {}; delete answer.payload; }
     }
+    /* E2.1 — the same, one signature per option: one bad option and none is offered. */
+    let proposals: Proposal[] | undefined;
+    if (proposeMany !== undefined && proposeMany.length > 0 && tool.kind === "act") {
+      const issued = proposeMany.length > MAX_PROPOSALS ? [null]
+        : proposeMany.map((m) => issueProposal(this.proposalKey, tool, actor, { args: m.args }, m.subject, now));
+      if (issued.every((p): p is Proposal => p !== null)) proposals = issued;
+      else { answer.key = "copilot.answer.failed"; answer.params = {}; delete answer.payload; }
+    }
     rec.answerKey = answer.key;
     rec.outcome = answer.key === PAUSED ? "halted"
       : answer.key === "copilot.answer.notPermitted" ? "notPermitted"
       : answer.key === "copilot.answer.needSubject" ? "needSubject"
         : answer.key === "copilot.answer.failed" ? "failed"
           : "answered";
-    return { answer, source: routed.source, intent: routed.intent, ...(proposal !== undefined ? { proposal } : {}) };
+    return {
+      answer, source: routed.source, intent: routed.intent,
+      ...(proposal !== undefined ? { proposal } : {}), ...(proposals !== undefined ? { proposals } : {}),
+    };
   }
 
   /**

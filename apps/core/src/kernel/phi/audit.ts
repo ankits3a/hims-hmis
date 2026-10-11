@@ -151,6 +151,8 @@ export type PhiSurface =
   | "copilot.visit_status"
   /** E1.6 — "what does U00110012 owe": a typed question about one patient's dues (billing/copilot-tools.ts). */
   | "copilot.patient_dues"
+  /** E2.1 — a patient offered for an appointment from the copilot chat (opd/copilot-appointments.ts). */
+  | "copilot.appointment"
   /**
    * ═══ PLAN 18a T3 / DD11 — THE FOUR IMAGING SURFACES, AND THIS IS AN APPEND AND NOTHING ELSE ═══
    *
