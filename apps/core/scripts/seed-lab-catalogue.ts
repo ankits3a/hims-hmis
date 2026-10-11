@@ -58,6 +58,12 @@ type Fixture = {
 };
 
 export const LAB_CATALOGUE_FIXTURE = resolve(__dirname, "..", "test", "fixtures", "lab-catalogue.json");
+/**
+ * Owner 2026-10-11 — the STANDARD catalogue: the golden fixture plus a large Indian lab's menu (583
+ * parameters, 331 tests). Its ranges are literature defaults marked for kit-insert review, so it is
+ * refused in production exactly as the fixture is. `LAB_CATALOGUE_FILE=<path>` seeds it instead.
+ */
+export const LAB_CATALOGUE_STANDARD = resolve(__dirname, "data", "lab-catalogue-standard.json");
 
 /** Deterministic, so a re-run UPDATES the same rows instead of minting a parallel catalogue. */
 export function serviceIdForLabCode(code: string): string {
@@ -196,7 +202,8 @@ async function main(): Promise<void> {
   const { db, pool } = createDb(url);
   const actor: Actor = { type: "user", id: process.env.SEED_ACTOR_ID ?? "seed-lab-catalogue" };
   try {
-    const report = await seedLabCatalogue(db, actor);
+    const file = process.env.LAB_CATALOGUE_FILE;
+    const report = await seedLabCatalogue(db, actor, file === undefined || file === "" ? undefined : loadLabCatalogue(file));
     console.log(`seed:lab-catalogue — ${JSON.stringify(report)}`);
   } finally {
     await pool.end();

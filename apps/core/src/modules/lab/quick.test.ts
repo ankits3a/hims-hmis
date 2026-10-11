@@ -133,6 +133,37 @@ describe("lab quick entry", () => {
     expect(await db.select().from(events).where(eq(events.name, "lab.quick_started"))).toHaveLength(1);
   });
 
+  it("OWNER 2026-10-11: a calculated parameter is the server's — computed from the typed inputs, flagged, rounded; its guard prints the reason; a typed value for it is ignored", async () => {
+    const ratio = newId();
+    const guarded = newId();
+    await db.insert(labAnalytes).values([
+      { id: ratio, code: "WBCHB", nameEn: "WBC per Hb", resultType: "formula", formula: "WBC / HB", unit: "ratio", decimals: 1,
+        createdBy: ACTOR.id, updatedBy: ACTOR.id },
+      { id: guarded, code: "HBX", nameEn: "Hb twice", resultType: "formula", formula: "HB * 2", formulaGuard: "HB > 5", unit: "g/dL",
+        decimals: 1, createdBy: ACTOR.id, updatedBy: ACTOR.id },
+    ]);
+    await db.insert(labOrderableAnalytes).values([
+      { serviceId: CBC, analyteId: ratio, position: 3 }, { serviceId: CBC, analyteId: guarded, position: 4 },
+    ]);
+    await db.insert(labReferenceRanges).values({
+      id: newId(), analyteId: ratio, sex: "any", low: "300", high: "800", ageMinDays: 0, ageMaxDays: 40000, source: "test",
+      effectiveFrom: "2026-01-01", createdBy: ACTOR.id,
+    });
+    const row = await start();
+    const r = await withTx(db, (tx) => saveQuickResults(tx, ACTOR, {
+      id: row.id, summary: "",
+      lines: [{ analyteId: hb, value: "10" }, { analyteId: wbc, value: "9999" }, { analyteId: ratio, value: "1" }],
+    }, NOW));
+    expect(r.lines.map((l) => [l.code, l.value, l.flag])).toEqual([
+      ["HB", "10", "L"], ["WBC", "9999", "N"], ["WBCHB", "999.9", "H"], ["HBX", "20.0", null],
+    ]);
+    // the guard fails (Hb 4 is not > 5): the reason, as text, with no flag and no unit
+    const low = await withTx(db, (tx) => saveQuickResults(tx, ACTOR, { id: row.id, summary: "", lines: [{ analyteId: hb, value: "4" }] }, NOW));
+    expect(low.lines.find((l) => l.code === "HBX")).toMatchObject({ value: "not calculable (HB > 5)", flag: null, unit: null });
+    // an input missing: the parameter waits, it is not a line yet
+    expect(low.lines.find((l) => l.code === "WBCHB")).toBeUndefined();
+  });
+
   it("blank values are dropped; a typo outside the absurd envelope and a non-number are refused", async () => {
     const row = await start();
     const r = await withTx(db, (tx) => saveQuickResults(tx, ACTOR, {

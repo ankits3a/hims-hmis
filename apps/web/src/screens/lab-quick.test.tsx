@@ -136,6 +136,45 @@ it("RESULTS — pick from the queue, every CBC parameter is on the form; Hb 9.2 
   });
 });
 
+it("OWNER 2026-10-11 — a calculated parameter fills itself, read-only, as its inputs are typed; its guard shows the reason; Save never sends it", async () => {
+  const LIPID: QuickCatalogue = {
+    tests: [{ serviceId: "s-lip", code: "LIPID", nameEn: "Lipid profile", analyteIds: ["a-tc", "a-hdl", "a-tg", "a-ldl"] }],
+    analytes: [
+      { analyteId: "a-tc", code: "TC", nameEn: "Total cholesterol", unit: "mg/dL", resultType: "numeric", decimals: 0, absurdLow: null, absurdHigh: null },
+      { analyteId: "a-hdl", code: "HDL", nameEn: "HDL cholesterol", unit: "mg/dL", resultType: "numeric", decimals: 0, absurdLow: null, absurdHigh: null },
+      { analyteId: "a-tg", code: "TG", nameEn: "Triglycerides", unit: "mg/dL", resultType: "numeric", decimals: 0, absurdLow: null, absurdHigh: null },
+      { analyteId: "a-ldl", code: "LDL", nameEn: "LDL cholesterol", unit: "mg/dL", resultType: "formula", decimals: 0, absurdLow: null, absurdHigh: null,
+        formula: "TC - HDL - TG / 5", formulaGuard: "TG < 400" },
+    ],
+  };
+  const ids = ["a-tc", "a-hdl", "a-tg", "a-ldl"];
+  const seen = mockRoutes({
+    "GET /api/auth/me": ME(["lab.desk.operate", "lab.results.enter", "lab.catalogue.read"]),
+    "GET /api/lab/quick/catalogue": { status: 200, body: LIPID },
+    "GET /api/lab/quick/queue": { status: 200, body: { waiting: [ROW], reportedToday: [] } },
+    "GET /api/lab/quick/reports/q-1": { status: 200, body: { ...ROW, tests: [{ serviceId: "s-lip", code: "LIPID", nameEn: "Lipid profile" }], analyteIds: ids, lines: [], summary: "" } },
+    "GET /api/lab/quick/ranges": { status: 200, body: { items: [] } },
+    "PUT /api/lab/quick/reports/q-1": { status: 200, body: { ...ROW, status: "reported", reportedAt: "2026-10-09T09:00:00.000Z", reportedBy: "u-1", analyteIds: ids, lines: [], summary: "" } },
+  });
+  renderWithProviders(<LabQuick />);
+  await userEvent.click(await screen.findByRole("button", { name: /Farida Khatoon/ }));
+  const ldl = await screen.findByLabelText("LDL cholesterol");
+  expect(ldl).toHaveAttribute("readonly");
+  expect(ldl).toHaveValue("");
+  await userEvent.type(screen.getByLabelText("Total cholesterol"), "200");
+  await userEvent.type(screen.getByLabelText("HDL cholesterol"), "50");
+  await userEvent.type(screen.getByLabelText("Triglycerides"), "150");
+  expect(ldl).toHaveValue("120");
+  await userEvent.clear(screen.getByLabelText("Triglycerides"));
+  await userEvent.type(screen.getByLabelText("Triglycerides"), "450");
+  expect(ldl).toHaveValue("not calculable (TG < 400)");
+
+  await userEvent.click(screen.getByRole("button", { name: "Save report" }));
+  await waitFor(() => expect(seen.some((x) => x.method === "PUT")).toBe(true));
+  const body = seen.find((x) => x.method === "PUT")!.body as { lines: { analyteId: string }[] };
+  expect(body.lines.map((l) => l.analyteId)).toEqual(["a-tc", "a-hdl", "a-tg"]);
+});
+
 const REPORTED = {
   ...ROW, status: "reported", reportedAt: "2026-10-09T09:00:00.000Z", reportedBy: "u-1",
   analyteIds: ["a-hb", "a-wbc"], groups: [{ title: "Complete blood count", analyteIds: ["a-hb", "a-wbc"] }],

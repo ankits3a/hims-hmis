@@ -10,6 +10,8 @@ import type { WireRecentLabOrder } from "./lab-api";
 export type QuickAnalyte = {
   analyteId: string; code: string; nameEn: string; unit: string | null; resultType: string;
   decimals: number; absurdLow: string | null; absurdHigh: string | null;
+  /** Owner 2026-10-11 — a calculated parameter (LDL, globulin …): filled on screen, recomputed by the server on save. */
+  formula?: string | null; formulaGuard?: string | null;
 };
 export type QuickTest = { serviceId: string; code: string; nameEn: string; analyteIds: string[] };
 export type QuickCatalogue = { tests: QuickTest[]; analytes: QuickAnalyte[] };

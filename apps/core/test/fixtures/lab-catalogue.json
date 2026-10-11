@@ -953,7 +953,7 @@
       "resultType": "formula",
       "unit": "mg/g",
       "decimals": 0,
-      "formula": "ALB_UR / UCREA",
+      "formula": "ALB_UR * 100 / UCREA",
       "formulaGuard": "UCREA > 0"
     },
     {

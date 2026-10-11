@@ -14,9 +14,11 @@ import { recordPhiAccess } from "../../kernel/phi/audit";
 import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
 import { labQuickHandedOver, labQuickReported, labQuickSentBack, labQuickStarted } from "./events";
 import { flagFor, resolveRange } from "./ranges";
+import { evaluateFormula, formulaInputCodes } from "./formula";
+import type { FormulaOutcome } from "./formula";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
-import type { RangeRow } from "./ranges";
+import type { RangeRow, ResolvedRange } from "./ranges";
 
 /**
  * QUICK MODE (owner 2026-10-09, decision 0061) — the lab without bills, tokens or signatures:
@@ -39,6 +41,8 @@ import type { RangeRow } from "./ranges";
 export type QuickAnalyte = {
   analyteId: string; code: string; nameEn: string; unit: string | null; resultType: string;
   decimals: number; absurdLow: string | null; absurdHigh: string | null;
+  /** Owner 2026-10-11 — a calculated parameter's expression, so the bench previews it. */
+  formula: string | null; formulaGuard: string | null;
 };
 export type QuickTest = { serviceId: string; code: string; nameEn: string; analyteIds: string[] };
 export type QuickCatalogue = { tests: QuickTest[]; analytes: QuickAnalyte[] };
@@ -131,6 +135,7 @@ export async function quickCatalogue(exec: Db | Tx): Promise<QuickCatalogue> {
     analytes: analyteRows.map((a) => ({
       analyteId: a.id, code: a.code, nameEn: a.nameEn, unit: a.unit, resultType: a.resultType,
       decimals: a.decimals, absurdLow: a.absurdLow, absurdHigh: a.absurdHigh,
+      formula: a.formula, formulaGuard: a.formulaGuard,
     })),
   };
 }
@@ -264,6 +269,49 @@ export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): P
 }
 
 /**
+ * The calculated lines of a quick report, from its typed lines — the full bench's rule (DD3,
+ * `results.ts`): a parameter waits until every input it names is typed; then it is a number rounded
+ * to its decimals and flagged against its range, or, when its guard fails (TG ≥ 400 for a Friedewald
+ * LDL) or it would divide by zero, the reason as text and no flag. Repeated until nothing new is
+ * computed, so a formula over a formula lands in the same save.
+ */
+export function calculatedLines(
+  analytes: (typeof labAnalytes.$inferSelect)[],
+  typed: QuickLine[],
+  rangeOf: (a: typeof labAnalytes.$inferSelect) => ResolvedRange,
+): QuickLine[] {
+  const formulas = analytes.filter((a) => a.resultType === "formula");
+  const codeOf = new Map(analytes.map((a) => [a.id, a.code]));
+  const siblings: Record<string, number | undefined> = {};
+  for (const l of typed) {
+    const n = Number(l.value);
+    const code = codeOf.get(l.analyteId);
+    if (code !== undefined && l.value.trim() !== "" && Number.isFinite(n)) siblings[code] = n;
+  }
+  const out: QuickLine[] = [];
+  for (let pass = 0; pass < formulas.length; pass += 1) {
+    let progressed = false;
+    for (const a of formulas) {
+      if (out.some((l) => l.analyteId === a.id)) continue;
+      if (!formulaInputCodes(a.formula, a.formulaGuard).every((c) => siblings[c] !== undefined)) continue;
+      let outcome: FormulaOutcome;
+      try { outcome = evaluateFormula(a, siblings); } catch { outcome = { computed: false, reason: "not calculable" }; }
+      const range = rangeOf(a);
+      const value = outcome.computed ? outcome.value.toFixed(Math.max(0, Math.min(6, a.decimals))) : outcome.reason;
+      if (outcome.computed) siblings[a.code] = Number(value);
+      out.push({
+        analyteId: a.id, code: a.code, nameEn: a.nameEn, unit: outcome.computed ? a.unit : null, value,
+        low: range.low, high: range.high, refText: range.text,
+        flag: outcome.computed ? flagFor(Number(value), range) : null,
+      });
+      progressed = true;
+    }
+    if (!progressed) break;
+  }
+  return out;
+}
+
+/**
  * Step 2 — the bench: the values and the summary. The server resolves every range and flag itself;
  * the screen's colours are only a preview. A numeric value outside the analyte's absurd envelope is
  * refused — a 92 typed for a haemoglobin of 9.2 is the typo this exists for. Saving again edits it.
@@ -274,7 +322,16 @@ export async function saveQuickResults(
   const [existing] = await tx.select().from(labQuickReports).where(eq(labQuickReports.id, input.id)).for("update");
   if (!existing) throw new QuickEntryError("report_not_found", `no quick report ${input.id}`);
   const subject = await subjectOf(tx, existing.patientId);
-  const ids = [...new Set(input.lines.map((l) => l.analyteId))];
+  /**
+   * OWNER 2026-10-11 — calculated parameters (LDL, globulin, A:G, indirect bilirubin …) are the
+   * SERVER's, as on the full bench (DD3): whatever the screen sent for one is dropped and the value is
+   * computed below from the typed inputs. So the report's formula analytes are read too, typed or not.
+   */
+  const chosen = existing.tests as QuickChosenTest[];
+  const reportAnalyteIds = chosen.length === 0 ? [] : (await tx.select({ analyteId: labOrderableAnalytes.analyteId })
+    .from(labOrderableAnalytes).where(inArray(labOrderableAnalytes.serviceId, chosen.map((t) => t.serviceId)))
+    .orderBy(asc(labOrderableAnalytes.position))).map((r) => r.analyteId);
+  const ids = [...new Set([...input.lines.map((l) => l.analyteId), ...reportAnalyteIds])];
   const analytes = ids.length === 0 ? [] : await tx.select().from(labAnalytes).where(inArray(labAnalytes.id, ids));
   const analyteById = new Map(analytes.map((a) => [a.id, a]));
   const rangeRows = ids.length === 0 ? [] : await tx.select().from(labReferenceRanges).where(inArray(labReferenceRanges.analyteId, ids));
@@ -283,6 +340,7 @@ export async function saveQuickResults(
   for (const l of input.lines) {
     const a = analyteById.get(l.analyteId);
     if (!a) throw new QuickEntryError("analyte_not_found", `no analyte ${l.analyteId}`);
+    if (a.resultType === "formula") continue;
     const value = l.value.trim();
     if (value === "") continue;
     const range = resolveRange(a, rangeRows.filter((r) => r.analyteId === a.id), subject, now);
@@ -300,6 +358,9 @@ export async function saveQuickResults(
       low: range.low, high: range.high, refText: range.text, flag,
     });
   }
+
+  const inReportOrder = [...analytes].sort((a, b) => reportAnalyteIds.indexOf(a.id) - reportAnalyteIds.indexOf(b.id));
+  lines.push(...calculatedLines(inReportOrder, lines, (a) => resolveRange(a, rangeRows.filter((r) => r.analyteId === a.id), subject, now)));
 
   if (existing.handedOverAt !== null) {
     throw new QuickEntryError("already_handed_over", "this report has been handed over; it can no longer be changed");

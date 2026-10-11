@@ -30,7 +30,8 @@ export async function labFeeFree(db: Db): Promise<boolean> {
  * THE COMMON TESTS — the tap-chips above the search: the tests this lab actually ordered most in
  * the last 90 days, topped up from a starter list so a new installation still offers something.
  */
-export const STARTER_COMMON_CODES = ["CBC", "FBS", "RBS", "HBA1C", "LFT", "KFT", "LIPID", "TSH", "URINE-RM", "ESR", "CRP", "WIDAL"];
+/** The catalogue's own codes (a code the catalogue does not hold simply never shows). */
+export const STARTER_COMMON_CODES = ["CBC", "GLUF", "GLUR", "HBA1C", "LFT", "RFT", "LIPID", "TFT", "TSH", "URINE", "ESR", "CRP", "WIDAL", "DENGUE", "MP"];
 
 export type CommonOrderable = { serviceId: string; code: string; nameEn: string; container: string; specimenType: string };
 

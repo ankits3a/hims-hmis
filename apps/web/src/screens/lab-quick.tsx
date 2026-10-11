@@ -8,6 +8,7 @@ import {
   draftSummary, previewFlag, quickCatalogue, quickQueue, quickRanges, quickReport, refText, saveQuickResults,
   startQuick, verifyCardQr,
 } from "../lib/lab-quick-api";
+import { evaluateFormula, formulaInputCodes } from "../../../../packages/contracts/src/lab-formula";
 import { Button } from "@/components/ui/button";
 import { LabStation, sexAge } from "./lab-seat";
 import { printQuickReport, QuickLabReports } from "./lab-quick-reports";
@@ -296,7 +297,7 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
   }, [report.data, rows]);
 
   const analyteById = useMemo(() => new Map((catalogue?.analytes ?? []).map((a) => [a.analyteId, a])), [catalogue]);
-  const list = rows ?? [];
+  const list = useMemo(() => rows ?? [], [rows]);
   const ids = list.map((r) => r.analyteId);
   const patientId = report.data?.patient.id;
   const ranges = useQuery({
@@ -306,7 +307,43 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
   });
   const rangeById = useMemo(() => new Map<string, QuickRange>((ranges.data?.items ?? []).map((r) => [r.analyteId, r])), [ranges.data]);
 
-  const previewLines: QuickLine[] = list.flatMap((r) => {
+  /**
+   * OWNER 2026-10-11 — CALCULATED PARAMETERS FILL THEMSELVES, with the server's own parser (shared from
+   * contracts): a value once every input it names is typed, the guard's reason as text when it fails.
+   * Only a preview — the server drops anything sent for them and computes them again on save.
+   */
+  const calculated = useMemo(() => {
+    const out = new Map<string, string>();
+    const siblings: Record<string, number | undefined> = {};
+    for (const r of list) {
+      const a = analyteById.get(r.analyteId);
+      const n = Number(r.value);
+      if (a && a.resultType !== "formula" && r.value.trim() !== "" && Number.isFinite(n)) siblings[a.code] = n;
+    }
+    const formulas = list.map((r) => analyteById.get(r.analyteId)).filter((a): a is QuickAnalyte => a?.resultType === "formula" && (a.formula ?? null) !== null);
+    for (let pass = 0; pass < formulas.length; pass += 1) {
+      let progressed = false;
+      for (const a of formulas) {
+        if (out.has(a.analyteId)) continue;
+        if (!formulaInputCodes(a.formula ?? null, a.formulaGuard ?? null).every((c) => siblings[c] !== undefined)) continue;
+        let value: string;
+        try {
+          const o = evaluateFormula({ code: a.code, formula: a.formula ?? null, formulaGuard: a.formulaGuard ?? null }, siblings);
+          value = o.computed ? o.value.toFixed(Math.max(0, Math.min(6, a.decimals))) : o.reason;
+        } catch { value = "not calculable"; }
+        if (Number.isFinite(Number(value))) siblings[a.code] = Number(value);
+        out.set(a.analyteId, value);
+        progressed = true;
+      }
+      if (!progressed) break;
+    }
+    return out;
+  }, [list, analyteById]);
+  const isCalc = (analyteId: string): boolean => analyteById.get(analyteId)?.resultType === "formula";
+  const valueOf = (r: Row): string => (isCalc(r.analyteId) ? calculated.get(r.analyteId) ?? "" : r.value);
+
+  const previewLines: QuickLine[] = list.flatMap((r0) => {
+    const r = { ...r0, value: valueOf(r0) };
     const a = analyteById.get(r.analyteId);
     if (!a) return [];
     const range = rangeById.get(r.analyteId);
@@ -320,7 +357,7 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
 
   const save = useMutation({
     mutationFn: (complete?: boolean) => saveQuickResults(id, {
-      lines: list.filter((r) => r.value.trim() !== ""), summary: shownSummary, ...(complete === undefined ? {} : { complete }),
+      lines: list.filter((r) => r.value.trim() !== "" && !isCalc(r.analyteId)), summary: shownSummary, ...(complete === undefined ? {} : { complete }),
     }),
     onSuccess: (r) => {
       setSaved(r);
@@ -349,7 +386,7 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
   function onValueKey(e: React.KeyboardEvent<HTMLInputElement>, index: number): void {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const next = list[index + 1];
+    const next = list.slice(index + 1).find((x) => !isCalc(x.analyteId));
     if (next) inputs.current.get(next.analyteId)?.focus();
     else document.getElementById("lab-quick-summary")?.focus();
   }
@@ -406,15 +443,19 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
                         aria-label={a?.nameEn ?? row.analyteId}
                         data-flag={flag ?? ""}
                         inputMode={a?.resultType === "numeric" ? "decimal" : "text"}
-                        value={row.value}
+                        {...(isCalc(row.analyteId) ? {
+                          readOnly: true, tabIndex: -1, title: t("lab.quick.calculated"), "data-calculated": "true",
+                        } : {})}
+                        value={valueOf(row)}
                         onChange={(e) => {
                           const v = e.target.value;
                           setRows((prev) => (prev ?? []).map((x) => (x.analyteId === row.analyteId ? { ...x, value: v } : x)));
                           setSaved(null);
                         }}
                         onKeyDown={(e) => onValueKey(e, i)}
-                        className={`w-24 rounded border bg-background px-2 py-1 text-base ${flag ? FLAG_CLASS[flag] ?? "" : ""}`}
+                        className={`${isCalc(row.analyteId) && !Number.isFinite(Number(valueOf(row))) ? "w-56 text-xs" : "w-24 text-base"} rounded border px-2 py-1 ${isCalc(row.analyteId) ? "bg-muted" : "bg-background"} ${flag ? FLAG_CLASS[flag] ?? "" : ""}`}
                       />
+                      {isCalc(row.analyteId) && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("lab.quick.calcTag")}</span>}
                       {flag !== null && flag !== "N" && (
                         <span className="text-xs font-bold" title={t(`lab.quick.flag_${flag}`)}>{flag}</span>
                       )}

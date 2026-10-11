@@ -4064,6 +4064,8 @@
       "summary": "Summary"
     },
     "quick": {
+      "calculated": "Calculated from the values above — the server works it out again on save",
+      "calcTag": "calc",
       "title": "Quick lab",
       "placeStart": "New patient: tests and sample",
       "placeResults": "Results",
