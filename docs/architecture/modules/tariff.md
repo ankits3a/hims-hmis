@@ -43,6 +43,19 @@ Source: `apps/core/src/modules/tariff/`
   - `upsertGstSettings(tx: Tx, actor: Actor, patch: Partial<GstSettings>): Promise<void>`
 - `gst.ts`
   - `computeGst(args: { cfg: GstCategoryConfig; settings: GstSettings; line: InvoiceLineInput; taxableBasePaise: number; qty: number; }): Priced…`
+- `ipd-rate-card.ts`
+  - `IPD_GST_CATEGORY`
+  - `IPD_IMPORT_NOTE`
+  - `IPD_RATED_CLASSES: readonly IpdBedClass[]`
+  - `IPD_TARIFF_CSV_COLUMNS`
+  - `importIpdTariff(db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date }): Promise<IpdImportReport>`
+  - `ipdRateCardGaps(db: Db, opts: { at: Date; tariffVersionId?: string }): Promise<IpdRateCard>`
+  - `ipdRateCardWarnings(db: Db, at: Date): Promise<ConfigError[]>`
+  - `ipdServiceCategory(cls: IpdBedClass, component: IpdRateComponent): string`
+  - `ipdServiceName(cls: IpdBedClass, component: IpdRateComponent): string`
+  - `parseIpdTariffCsv(text: string): IpdTariffParse`
+  - `resolveIpdImportActor(db: Db, username: string): Promise<Actor>`
+  - types: `IpdImportItem`, `IpdImportReport`, `IpdRateCard`, `IpdRateCardClass`, `IpdRateCell`, `IpdRateCellState`, `IpdTariffParse`, `IpdTariffRate`, `IpdTariffRowError`, `IpdTariffUnmapped`
 - `manifest.ts`
   - `tariffManifest: ModuleManifest`
 - `money.ts`
@@ -52,6 +65,7 @@ Source: `apps/core/src/modules/tariff/`
   - `inclusiveTaxHead(inclusivePaise: number, rateBps: number): number`
   - `percentAmount(grossPaise: number, bps: number): number`
   - `roundTotalToRupee(totalPaise: number): { roundedPaise: number; roundingPaise: number }`
+  - `rupeesTextToPaise(text: string): number | null`
   - `taxHead(basePaise: number, rateBps: number): number`
 - `pricing.ts`
   - `priceInvoiceLines(ctx: PricingContext, lines: InvoiceLineInput[]): PricedLine[]`
@@ -94,8 +108,8 @@ Source: `apps/core/src/modules/tariff/`
 
 Foreign keys into: —
 
-## HTTP routes (18)
+## HTTP routes (19)
 
-- `tariff.controller.ts` — 18: `/tariff/gst`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
+- `tariff.controller.ts` — 19: `/tariff/gst`, `/tariff/ipd-rate-card`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/tariff`

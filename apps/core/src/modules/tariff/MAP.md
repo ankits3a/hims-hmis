@@ -4,7 +4,7 @@ title: "tariff — module notes"
 description: "Why and traps of pricing: the pricing context and adjustment contest, GST, tariff version draft-to-activation, and regulated price clamps."
 resource: apps/core/src/modules/tariff
 tags: [tariff]
-generated: { by: agent:claude, at: 2026-10-07 }
+generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-05
 ---
@@ -33,6 +33,7 @@ Its engine is a pure, synchronous pricer: `PricingContext` + invoice lines in, `
 - `services.ts` — services CRUD, `appendRegulatedPrice` (append-only), `resolveRegulatedPrices`, `listPriceList`.
 - `rules.ts` — `adjustment_rules` CRUD and `loadRuleConfig`. `simulation.ts` — `simulateRevision` (old vs draft context).
 - `types.ts` — `PricingContext`, `InvoiceLineInput`, `PricedLine`, `RegulatedClamp`. `errors.ts` — `TariffError` codes and HTTP mapping.
+- `ipd-rate-card.ts` — E0.4 IPD rate card: `parseIpdTariffCsv`, `importIpdTariff` (incumbent CSV → draft), `ipdRateCardGaps` (go-live check), `ipdRateCardWarnings`. Script: `scripts/import-ipd-tariff.ts`.
 - `tariff.controller.ts` — routes and permission strings. `manifest.ts` — the five `tariff.*` permissions and the service search provider.
 
 ## 3. Main flows
@@ -77,6 +78,17 @@ In `priceLine`, only for `svc.regulated`:
 - Inclusive pharmacy lines convert the ceiling with `inclusiveOf` before comparing. The MRP is NOT converted.
 - `capUnitPaise` is applied after, to any service, with `<` not `<=`.
 
+### 3d. IPD rate card (E0.4, decision 0072 answer 2)
+Services: one per bed class × component, code `ipdRateServiceCode(cls, component)` from `@hmis/contracts` (`IPD_ROOM_PRIVATE`). Classes with `billsAs` (overflow) carry no rates (`IPD_RATED_CLASSES`).
+GST category (`ipdServiceCategory`): ward room → `room_rent` (₹5,000/day threshold rule); room in `hdu`/`icu`/`nicu`/`picu` → `room_rent_icu` (exempt); nursing, rmo, visit, cross_visit → `ipd_care` (exempt). Both new rows come from `scripts/seed-tariff.ts`, absent-only.
+
+1. `scripts/import-ipd-tariff.ts <csv> --by <user> [--apply]` → `importIpdTariff(db, actor, csv, {apply})`. Columns `incumbent_code, incumbent_name, bed_class, component, rate_rupees` (`rupeesTextToPaise`, string math).
+2. Whole file judged first (`parseIpdTariffCsv`). Bad class/component, duplicate class × component, rate not > 0 or not rupees, a missing gst_config row, or another version already draft/submitted → `{ok:false, errors}` naming every row; nothing written.
+3. A row with BOTH `bed_class` and `component` blank is an incumbent line that is not a daily rate: returned in `unmapped` (also on a refused file) and printed in full. Never dropped.
+4. Apply, one tx: create the missing services **inactive**, `createDraftVersion` copied from the version in force (none in force → empty draft), `setTariffItem` per rate. Never submits, never activates; the owner approves the draft on the normal road.
+5. `ipdRateCardGaps(db, {at, tariffVersionId?})`: every `needsRates` class × every component; a required component (`IPD_REQUIRED_RATE_COMPONENTS`) is missing when the service is absent, the version has no item, or the item is 0. `GET /tariff/ipd-rate-card?versionId=` (`tariff.read`) serves it; web panel `apps/web/src/screens/billing-office/ipd-rate-card.tsx` on Billing office → Prices.
+6. `ipdRateCardWarnings` prints `WARN ipd_rate_missing` lines in `scripts/validate-tariff-config.ts`. Warning only: it does not touch `validateTariffConfig`'s `ok`, the exit code or `kernel/ops/validate.ts`.
+
 ## 4. Invariants and traps
 
 - **Paise only.** `assertPaise` (`money.ts`) rejects non-integers and negatives. `priceLine` re-asserts `gross` and the taxable base, so a bad custom source fails loudly.
@@ -92,6 +104,10 @@ In `priceLine`, only for `svc.regulated`:
 - **Contest rules.** Rules are pre-capped at gross. The manual cap compares the ASK with exact integer math (`raw × 10000 > maxBps × gross`), never rounded.
 - **Errors.** Throw `TariffError` with a code; HTTP status comes from `tariffHttpStatus`. Other modules' http layers map it (`lab/lab-http.ts`, `radiology/radiology-http.ts`).
 - **Go-live gate.** `validateTariffConfig` is used by `kernel/ops/validate.ts` and `scripts/validate-tariff-config.ts`. A new category, regulated service or rule param must pass it.
+- **IPD services are inactive until IPD go-live.** `validateTariffConfig` reports every ACTIVE service with no price in the version in force; creating IPD services active would turn the gate red. The ipd-charges lane switches them on (and then the optional `rmo`/`cross_visit` services without a price must stay inactive or be priced).
+- **Ready means priced, not active.** `ipdRateCardGaps` counts a priced item as ready even while its service is still inactive (DECIDED, review #744): switching services on is the ipd-charges lane's act, not a rate-card gap.
+- **Imports are serialised.** `importIpdTariff` takes `pg_advisory_xact_lock` on a fixed key and re-reads draft/submitted versions inside the transaction; the pre-check outside it is only for the dry-run report. Rows whose cell count differs from the header's are refused (an unquoted `1,000` would read as ₹1).
+- **The IPD gap check is a warning.** IPD is not live (boot-check rule: a data state warns). Promote it into `validateTariffConfig` errors only at the IPD cutover; `context.test.ts` pins that function's exact return shape.
 - **Tests that pin behaviour.** `golden.test.ts` and `test/tariff-lifecycle.e2e.test.ts`. Both are needed to change pricing or the lifecycle.
 
 ## 5. Callers outside tariff (via `../tariff` index only)
@@ -106,4 +122,4 @@ In `priceLine`, only for `svc.regulated`:
 - `partners/sources.ts`, `partners/accrual.ts`, `partners/attribution.ts` — `AdjustmentSource`, `percentAmount`, `divHalfUp`.
 - `pharmacy/price.ts` — `inclusiveOf`. `pharmacy/bill.ts` — `listGstCategories`, `serviceCategoriesByIds`. `pharmacy/gst-slab.ts` — `serviceCategoriesByIds`, `updateService`. `pharmacy/sale-items.ts` — `createService`, `listServices`.
 - `radiology/setup.ts`, `radiology/advised.ts`, `radiology/supervisor.ts` — `listPriceList` (and `listGstCategories`, `listServices` in setup). `lab/verify.ts` — `TariffError`.
-- `kernel/ops/validate.ts` — `validateTariffConfig`. `kernel/modules/manifests.ts`, `kernel/worker/worker.module.ts` — `tariffManifest`.
+- `kernel/ops/validate.ts` — `validateTariffConfig`. `scripts/validate-tariff-config.ts` — also `ipdRateCardWarnings`. `scripts/import-ipd-tariff.ts` — `importIpdTariff`. `kernel/modules/manifests.ts`, `kernel/worker/worker.module.ts` — `tariffManifest`.

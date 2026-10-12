@@ -3185,6 +3185,22 @@
       "law": "The Pharmacy Act (section 42) asks that a registered pharmacist dispenses prescription medicines, and Schedule H1 sales need the prescriber on the register. With this on, the system no longer enforces the first — the hospital answers for it."
     }
   },
+  "ipdRateCard": {
+    "title": "IPD rate card",
+    "lead": "Daily inpatient rates by bed class. Go-live needs a room rent, a nursing charge and a visit fee for every class.",
+    "noAccess": "You do not have access to the price list.",
+    "versionLabel": "Version",
+    "versionInForce": "In force",
+    "versionPending": "Version {{no}} ({{status}})",
+    "status": { "draft": "draft", "submitted": "waiting for approval" },
+    "count": "{{ready}} classes ready to go live, {{missing}} missing",
+    "noVersion": "No tariff version is in force yet.",
+    "colClass": "Bed class",
+    "component": { "room": "Room rent", "nursing": "Nursing", "visit": "Doctor visit", "rmo": "RMO", "cross_visit": "Cross-consult" },
+    "optional": "optional",
+    "missing": "Missing",
+    "notSet": "Not set"
+  },
   "consultPrices": {
     "lead": "The OPD consultation prices in force.",
     "colNow": "In force",
