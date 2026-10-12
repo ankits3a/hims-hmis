@@ -50,6 +50,9 @@ export const tasks = pgTable(
     index("tasks_open_idx").on(t.state, t.dueAt).where(sql`${t.state} in ('created', 'assigned', 'accepted', 'in_progress')`),
     index("tasks_assignee_idx").on(t.assigneeId).where(sql`${t.state} in ('assigned', 'accepted', 'in_progress')`),
     index("tasks_place_idx").on(t.kind, t.placeResourceId, t.createdAt),
+    // The clock's two scans: held tasks by shift end, and assignments waiting to be accepted.
+    index("tasks_shift_end_idx").on(t.shiftEndsAt).where(sql`${t.state} in ('assigned', 'accepted', 'in_progress')`),
+    index("tasks_assigned_wait_idx").on(t.assignedAt).where(sql`${t.state} = 'assigned'`),
     check("tasks_state_ck", sql`${t.state} in ('created', 'assigned', 'accepted', 'in_progress', 'done', 'verified', 'cancelled')`),
     check("tasks_priority_ck", sql`${t.priority} in ('routine', 'urgent', 'stat')`),
     check("tasks_proof_needed_ck", sql`${t.proofNeeded} in ('none', 'tap', 'photo', 'scan', 'weight')`),
@@ -64,7 +67,10 @@ export const tasks = pgTable(
   ],
 );
 
-/** Append-only (a trigger refuses UPDATE and DELETE). `seq` equals the task's `version` after the act. */
+/**
+ * Append-only: triggers refuse UPDATE, DELETE and TRUNCATE (TRUNCATE only inside the test harness, which
+ * sets `hmis.truncate_ok`). `seq` equals the task's `version` after the act.
+ */
 export const taskEvents = pgTable(
   "task_events",
   {

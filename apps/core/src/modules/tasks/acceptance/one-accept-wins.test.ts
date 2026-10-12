@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
-import { W1, W2, actorOf, clockNow, minutes, seedTaskHospital } from "../../../../test/helpers/tasks";
+import { W1, W2, actorOf, clockNow, minutes, putOnDuty, seedTaskHospital } from "../../../../test/helpers/tasks";
 import { taskEvents, tasks } from "../../../kernel/db/schema";
 import { TaskError, acceptTask, raiseTask } from "../index";
 import type { Db } from "../../../kernel/db/client";
@@ -26,7 +26,9 @@ describe("acceptance — two workers tap Accept on one task", () => {
   beforeEach(async () => {
     await truncateAll(db);
     t0 = clockNow();
-    await seedTaskHospital(db, t0);
+    const h = await seedTaskHospital(db, t0);
+    // Both come on duty a minute after t0: tasks raised AT t0 wait in the pool, and both may accept from t0 + 1.
+    for (const w of [W1, W2]) await putOnDuty(db, h, w, minutes(t0, 1), minutes(t0, 600));
   });
 
   async function outcomes(taskId: string): Promise<PromiseSettledResult<unknown>[]> {
@@ -47,7 +49,7 @@ describe("acceptance — two workers tap Accept on one task", () => {
   }
 
   it("exactly one wins; the other is told already_taken; the row and the history name the winner", async () => {
-    // Nobody is rostered, so the task waits in the pool where both workers can see it.
+    // Nobody is on duty yet at t0, so the task waits in the pool where both workers can see it.
     const { task } = await raiseTask(db, actorOf(W1), { kind: "general" }, t0);
     expect(task.state).toBe("created");
 

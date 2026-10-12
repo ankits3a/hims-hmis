@@ -32,7 +32,7 @@ describe("TasksBoard (E0.1)", () => {
         { userId: "w2", name: "Worker Two", onDuty: true, open: 0, inProgress: 0 },
       ],
       toVerify: [],
-      counts: { open: 42, late: 1, pool: 1 },
+      counts: { open: 442, late: 1, pool: 1, notShown: 400 },
     };
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -53,6 +53,12 @@ describe("TasksBoard (E0.1)", () => {
     expect(within(rows[1]!).getByText(/Nobody yet/)).toBeInTheDocument();
     expect(within(floor).getByText("1 late · 2 open")).toBeInTheDocument();
     expect(screen.getByTestId("board-late")).toHaveTextContent("1late");
+  });
+
+  it("tasks the server did not send are counted in the header, never silently dropped", async () => {
+    renderWithProviders(<TasksBoard />);
+    expect(await screen.findByTestId("board-not-shown")).toHaveTextContent("400not on screen");
+    expect(screen.getByTestId("board-open")).toHaveTextContent("442open");
   });
 
   it("a floor with more rows than fit says +N more instead of scrolling", async () => {

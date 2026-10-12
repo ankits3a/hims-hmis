@@ -49,7 +49,9 @@ export function TasksBoard(): React.ReactElement {
   const [floorsRef, rows] = useRowsThatFit();
   const clock = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(now));
   const board = q.data;
-  const late = board === undefined ? 0 : board.floors.reduce((n, f) => n + f.tasks.filter((c) => Date.parse(c.dueAt) <= now).length, 0);
+  // The database's count (every open task, not only the rows sent), raised by rows that fell late since it was taken.
+  const late = board === undefined ? 0
+    : Math.max(board.counts.late, board.floors.reduce((n, f) => n + f.tasks.filter((c) => Date.parse(c.dueAt) <= now).length, 0));
 
   return (
     <PaperScreen testId="tasks-board" style={{ height: "var(--pp-h)" }}>
@@ -61,6 +63,9 @@ export function TasksBoard(): React.ReactElement {
               <span className="tk-count" data-testid="board-open"><b>{board.counts.open}</b>{t("tasks.board.open")}</span>
               <span className={late > 0 ? "tk-count late" : "tk-count"} data-testid="board-late"><b>{late}</b>{t("tasks.board.late")}</span>
               <span className="tk-count" data-testid="board-pool"><b>{board.counts.pool}</b>{t("tasks.board.pool")}</span>
+              {board.counts.notShown > 0 && (
+                <span className="tk-count late" data-testid="board-not-shown"><b>{board.counts.notShown}</b>{t("tasks.board.notShown")}</span>
+              )}
             </div>
           )}
           {q.isError && <span className="pill rd">{t("tasks.offline")}</span>}

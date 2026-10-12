@@ -101,7 +101,12 @@ export async function truncateAll(db: Db): Promise<void> {
     .join(" union all ");
   const dirty = (await db.execute(sql.raw(scan))).rows.map((row) => (row as { t: string }).t);
   if (dirty.length > 0) {
-    await db.execute(sql.raw(`truncate table ${dirty.map((t) => `"${t}"`).join(", ")} restart identity cascade`));
+    // `hmis.truncate_ok`, transaction-local: the one key an append-only table's TRUNCATE trigger lets through
+    // (`task_events`, migration *_tasks_engine). Production never sets it.
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('hmis.truncate_ok', 'test_harness', true)`);
+      await tx.execute(sql.raw(`truncate table ${dirty.map((t) => `"${t}"`).join(", ")} restart identity cascade`));
+    });
   }
   // Only sequences OWNED BY a column (the `seq` bigserials) are reset. A standalone sequence such
   // as `uhid_seq` is a business counter a migration positioned deliberately (above the reserved

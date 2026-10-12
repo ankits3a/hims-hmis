@@ -87,6 +87,8 @@ export const TASK_REFUSALS = {
   unknown_worker: { sentence: "This person cannot take tasks.", fix: "Pick an active member of staff." },
   not_found: { sentence: "This task does not exist.", fix: "Refresh the list." },
   already_taken: { sentence: "Someone else took this task.", fix: "Refresh and pick another task." },
+  not_on_duty: { sentence: "This person is not on duty now.", fix: "Take tasks during your rostered shift, or ask the supervisor to roster you." },
+  wrong_skill: { sentence: "This task needs a different skill.", fix: "Leave it for the staff who do this work." },
   not_yours: { sentence: "This task is assigned to someone else.", fix: "Ask the supervisor to assign it to you." },
   wrong_state: { sentence: "This step does not fit the task's stage.", fix: "Refresh to see where the task stands." },
   not_open: { sentence: "This task is already finished or cancelled.", fix: "Refresh the list." },
@@ -134,7 +136,8 @@ export type TaskBoardView = {
   workers: BoardWorker[];
   /** Done tasks waiting for a check. */
   toVerify: TaskCard[];
-  counts: { open: number; late: number; pool: number };
+  /** Counted in the database over every open task, not over the rows sent. */
+  counts: { open: number; late: number; pool: number; notShown: number };
 };
 
 /** Whole minutes past due at `now`; 0 when not late. Pure, shared by the board and its tests. */

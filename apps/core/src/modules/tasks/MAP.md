@@ -41,25 +41,32 @@ optional patient, priority, due time, skill, assignee (person today; team or mac
 ## 3. Main flows
 ### 3.1 Raise → dispatch
 `raiseTask`: unknown kind / place refused. With a place, a transaction advisory lock on (kind, place) is taken and an
-open task of the same kind and place raised within `MERGE_WINDOW_MS` (10 min) is MERGED (`merged_count + 1`, event
+open task of the same kind, place AND patient (null-safe) raised within `MERGE_WINDOW_MS` (10 min), read
+`FOR UPDATE` so a task closing under us is not merged into, is MERGED (`merged_count + 1`, event
 `merged`, `merged: true` returned). Otherwise a row is inserted (`due_at` = given or now + `doneWithinMin`) and
 `dispatchInto` offers it to `pickWorker`: holders of the skill's roles who are active, not on approved leave
 (roster `absentUserIds`) and inside a published PRESENCE duty (roster `dutiesOf`); fewest open tasks, ties by
 earliest shift start, then id. Nobody on → it stays `created` (the pool).
 
 ### 3.2 The worker's road
-assigned → `acceptTask` → accepted → `startTask` → in_progress → `completeTask` (proof checked) → done →
+assigned → `acceptTask` (refused `wrong_skill` without a role of the task's skill, `not_on_duty` without a
+covering presence duty — `assignTask` makes the same two checks) → accepted → `startTask` → in_progress → `completeTask` (proof checked) → done →
 `verifyTask` → verified (only kinds with `verifyRequired`). `returnToPool` from any held state; `cancelTask` from any
 open state (reason required).
 
 ### 3.3 The clock (`sweepTasks`)
-1. Shift over: held task with `shift_ends_at <= now` → back to the pool + `task.returned` notice to the kind's
+Every pass selects only rows it can act on (in SQL: the next rung actually due, the accept window actually
+past, a skill someone on duty holds), so a batch is never filled by rows it would skip; every pass and every
+row has its own try/catch, so one failure stops nothing else.
+1. Shift over: held task with `shift_ends_at <= now`, a NULL shift end and no duty now, or a holder on
+   approved leave now (roster `absentUserIds`) → back to the pool + `task.returned` notice to the kind's
    `escalateTo` role, unless the worker has a back-to-back duty (the end moves on, no event).
 2. Not accepted within `acceptWithinMin` → `redispatched` to the next worker (excluding the current one); nobody
    else → window restarts, no event.
 3. Pool → offered again, skipping the worker it was last returned from (`lastReturnedFrom`).
 4. Late → the next rung of the ladder (`ladderMin`, default due + 0 and due + 30 min) ONCE: `escalated_rung` is
-   raised under the row lock, event `escalated`, `task.late` notice (`kernel/alerts/notices.ts` `raiseNotice`,
+   raised under the row lock, event `escalated`, `task.late` notice IN THE SAME TRANSACTION (a failing bell
+   rolls the rung back and the next tick retries both) (`kernel/alerts/notices.ts` `raiseNotice`,
    source key `task:<id>:rung:<n>`).
 
 ## 4. Invariants and traps
@@ -70,14 +77,18 @@ open state (reason required).
 - **Exactly one accept wins** because `acceptTask` is ONE conditional UPDATE (`state in (created, assigned)` and
   unassigned-or-mine). Never turn it into read-then-write: `acceptance/one-accept-wins.test.ts` holds the row lock
   in a third session and was red against exactly that mutant.
-- `shift_ends_at` is set only when the assignee has a rostered presence duty. A supervisor's assignment to someone
-  with no roster row is never auto-returned — by design: no roster means the engine cannot know the shift.
+- Nobody holds a task off duty: accept and assign require a covering presence duty, and the clock returns a held
+  task whose holder has none (or is on leave).
 - **The kind registry is in-process.** A kind must be defined by code both the API and the worker import (an owning
   module's `index.ts`), or the worker's sweep sees an unknown kind (it falls back to a 5 min accept window and the
   default ladder, and tells no one, because `escalateTo` is unknown).
 - Skills are RBAC roles, not roster positions: the roster has no skill concept. `general` → `support_staff`.
 - Verification: the doer never verifies (`verifier_is_doer`); the verifier holds the kind's `verifierPermission`
   (default `tasks.supervise`). The `/verify` door admits `tasks.work` too, so a kind may name a narrower permission.
+- `task_events` refuses TRUNCATE too (statement trigger). The only way through is `hmis.truncate_ok =
+  'test_harness'`, set transaction-locally by `test/helpers/db.ts` `truncateAll`.
+- The board's counts are SQL over every open task; it sends at most `BOARD_ROW_LIMIT` rows and reports the rest
+  as `counts.notShown`. The requester's free-text note is on the worker's own card only, never the board.
 - No patient identity and no money on either surface (wall-board rule; decision 0058's spirit). `patient_id` is stored
   for the owning module, never rendered.
 - Notices carry kind, place and minutes late — never a patient.

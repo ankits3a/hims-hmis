@@ -1,5 +1,5 @@
 {
-  "id": "29f92f01-f6ef-4564-bc5c-7555f650a2fe",
+  "id": "9b1caabb-70f2-4e64-9634-645506cf3e09",
   "prevId": "0684ebdc-e631-48fc-928c-a7eaf0580318",
   "version": "7",
   "dialect": "postgresql",
@@ -54521,6 +54521,38 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_shift_end_idx": {
+          "name": "tasks_shift_end_idx",
+          "columns": [
+            {
+              "expression": "shift_ends_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" in ('assigned', 'accepted', 'in_progress')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_assigned_wait_idx": {
+          "name": "tasks_assigned_wait_idx",
+          "columns": [
+            {
+              "expression": "assigned_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" = 'assigned'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -67,6 +67,7 @@ describe("tasks — the clock and the read models", () => {
     expect(before.pool.map((c) => c.id)).toEqual([t.id]);
     expect(before.pool[0]).toMatchObject({ placeName: "Room 201", placeCode: "201", floorName: "Floor 2", label: "General task" });
     expect((await myTasks(db, SUP1, minutes(t0, 1))).pool).toEqual([]); // a supervisor holds no worker skill
+    await putOnDuty(db, h, W1, minutes(t0, 1), minutes(t0, 300));
     await acceptTask(db, actorOf(W1), { taskId: t.id }, minutes(t0, 1));
     const after = await myTasks(db, W1, minutes(t0, 2));
     expect(after.mine.map((c) => c.id)).toEqual([t.id]);

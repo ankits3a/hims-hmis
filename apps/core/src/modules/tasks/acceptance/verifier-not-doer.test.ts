@@ -1,16 +1,20 @@
 import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
-import { SUP1, SUP2, W2, actorOf, clockNow, minutes, seedTaskHospital } from "../../../../test/helpers/tasks";
+import { SUP1, SUP2, W2, actorOf, clockNow, minutes, putOnDuty, seedTaskHospital } from "../../../../test/helpers/tasks";
 import { tasks } from "../../../kernel/db/schema";
-import { SERVICES_SUPERVISOR_ROLE, TaskError, acceptTask, completeTask, defineTaskKind, raiseTask, startTask, verifyTask } from "../index";
+import {
+  SERVICES_SUPERVISOR_ROLE, TaskError, acceptTask, completeTask, defineSkill, defineTaskKind, raiseTask, startTask, verifyTask,
+} from "../index";
 import type { Db } from "../../../kernel/db/client";
 
 /**
  * DONE MEANS (spec §2 "verify step", §11 "a terminal clean that only a supervisor can verify"):
  * the person who did a task never verifies it, and a verifier holds the kind's permission.
  */
+// A skill supervisors also carry, so the doer here can be a supervisor (the case the rule exists for).
+defineSkill("acc_supervised_work", ["support_staff", SERVICES_SUPERVISOR_ROLE]);
 defineTaskKind({
-  kind: "acc_checked_clean", label: "Checked clean", skill: "general", acceptWithinMin: 5, doneWithinMin: 60,
+  kind: "acc_checked_clean", label: "Checked clean", skill: "acc_supervised_work", acceptWithinMin: 5, doneWithinMin: 60,
   escalateTo: SERVICES_SUPERVISOR_ROLE, proofNeeded: "none", verifyRequired: true, verifierPermission: "tasks.supervise",
 });
 
@@ -24,7 +28,8 @@ describe("acceptance — the verifier cannot be the doer", () => {
   beforeEach(async () => {
     await truncateAll(db);
     t0 = clockNow();
-    await seedTaskHospital(db, t0);
+    const h = await seedTaskHospital(db, t0);
+    await putOnDuty(db, h, SUP1, minutes(t0, 1), minutes(t0, 600));
   });
 
   it("the doer is refused verifier_is_doer; another supervisor verifies; a worker without the permission is refused", async () => {
