@@ -1,10 +1,6 @@
 import { readFileSync } from "node:fs";
-import { eq } from "drizzle-orm";
 import { createDb } from "../src/kernel/db/client";
-import { hasPermission } from "../src/kernel/auth/permissions";
-import { users } from "../src/kernel/db/schema";
-import { importIpdTariff, IPD_TARIFF_CSV_COLUMNS } from "../src/modules/tariff";
-import type { Actor } from "@hmis/contracts";
+import { importIpdTariff, IPD_TARIFF_CSV_COLUMNS, resolveIpdImportActor } from "../src/modules/tariff";
 
 /**
  * `node dist/scripts/import-ipd-tariff.js <file.csv> --by <username> [--apply]`
@@ -18,7 +14,7 @@ import type { Actor } from "@hmis/contracts";
  * A valid file makes a NEW DRAFT tariff version copied from the one in force, with the IPD rates set on
  * it, and prints old vs new per item. Dry run by default. It never submits and never activates: the
  * owner reviews the draft in the billing office's price list (IPD rate card) and the approval road puts
- * it in force. `--by` must hold `tariff.versions.draft`.
+ * it in force. `--by` must be an ACTIVE account holding `tariff.versions.draft`.
  */
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
@@ -34,10 +30,7 @@ async function main(): Promise<void> {
   const csv = readFileSync(file, "utf8");
   const { db, pool } = createDb(url);
   try {
-    const [u] = await db.select({ id: users.id }).from(users).where(eq(users.username, by));
-    if (!u) throw new Error(`no user ${by}`);
-    if (!(await hasPermission(db, u.id, "tariff.versions.draft", "hospital"))) throw new Error(`${by} does not hold tariff.versions.draft`);
-    const actor: Actor = { type: "user", id: u.id } as Actor;
+    const actor = await resolveIpdImportActor(db, by);
     const r = await importIpdTariff(db, actor, csv, { apply });
     const rupees = (p: number | null): string => (p === null ? "—" : `₹${(p / 100).toFixed(2)}`);
     if (!r.ok) {

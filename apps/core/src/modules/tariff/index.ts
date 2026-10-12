@@ -23,7 +23,7 @@ export { getGstSettings, listGstCategories, upsertGstCategory, upsertGstSettings
 export { assertPaise, divHalfUp, inclusiveOf, inclusiveTaxHead, percentAmount, roundTotalToRupee, rupeesTextToPaise, taxHead } from "./money";
 /** E0.4 — the IPD rate card: incumbent import into a draft, and the go-live gap check. */
 export {
-  importIpdTariff, ipdRateCardGaps, ipdRateCardWarnings, ipdServiceCategory, ipdServiceName, parseIpdTariffCsv,
+  importIpdTariff, ipdRateCardGaps, resolveIpdImportActor, ipdRateCardWarnings, ipdServiceCategory, ipdServiceName, parseIpdTariffCsv,
   IPD_GST_CATEGORY, IPD_IMPORT_NOTE, IPD_RATED_CLASSES, IPD_TARIFF_CSV_COLUMNS,
 } from "./ipd-rate-card";
 export type {

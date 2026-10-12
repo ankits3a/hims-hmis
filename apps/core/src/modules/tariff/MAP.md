@@ -105,6 +105,8 @@ GST category (`ipdServiceCategory`): ward room → `room_rent` (₹5,000/day thr
 - **Errors.** Throw `TariffError` with a code; HTTP status comes from `tariffHttpStatus`. Other modules' http layers map it (`lab/lab-http.ts`, `radiology/radiology-http.ts`).
 - **Go-live gate.** `validateTariffConfig` is used by `kernel/ops/validate.ts` and `scripts/validate-tariff-config.ts`. A new category, regulated service or rule param must pass it.
 - **IPD services are inactive until IPD go-live.** `validateTariffConfig` reports every ACTIVE service with no price in the version in force; creating IPD services active would turn the gate red. The ipd-charges lane switches them on (and then the optional `rmo`/`cross_visit` services without a price must stay inactive or be priced).
+- **Ready means priced, not active.** `ipdRateCardGaps` counts a priced item as ready even while its service is still inactive (DECIDED, review #744): switching services on is the ipd-charges lane's act, not a rate-card gap.
+- **Imports are serialised.** `importIpdTariff` takes `pg_advisory_xact_lock` on a fixed key and re-reads draft/submitted versions inside the transaction; the pre-check outside it is only for the dry-run report. Rows whose cell count differs from the header's are refused (an unquoted `1,000` would read as ₹1).
 - **The IPD gap check is a warning.** IPD is not live (boot-check rule: a data state warns). Promote it into `validateTariffConfig` errors only at the IPD cutover; `context.test.ts` pins that function's exact return shape.
 - **Tests that pin behaviour.** `golden.test.ts` and `test/tariff-lifecycle.e2e.test.ts`. Both are needed to change pricing or the lifecycle.
 

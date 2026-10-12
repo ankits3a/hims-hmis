@@ -54,6 +54,7 @@ Source: `apps/core/src/modules/tariff/`
   - `ipdServiceCategory(cls: IpdBedClass, component: IpdRateComponent): string`
   - `ipdServiceName(cls: IpdBedClass, component: IpdRateComponent): string`
   - `parseIpdTariffCsv(text: string): IpdTariffParse`
+  - `resolveIpdImportActor(db: Db, username: string): Promise<Actor>`
   - types: `IpdImportItem`, `IpdImportReport`, `IpdRateCard`, `IpdRateCardClass`, `IpdRateCell`, `IpdRateCellState`, `IpdTariffParse`, `IpdTariffRate`, `IpdTariffRowError`, `IpdTariffUnmapped`
 - `manifest.ts`
   - `tariffManifest: ModuleManifest`

@@ -1,9 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   IPD_BED_CLASSES, IPD_BED_CLASS_INFO, IPD_RATE_COMPONENTS, IPD_REQUIRED_RATE_COMPONENTS, ipdRateServiceCode,
 } from "@hmis/contracts";
 import type { Actor, IpdBedClass, IpdRateComponent } from "@hmis/contracts";
-import { services, tariffItems, tariffVersions } from "../../kernel/db/schema";
+import { services, tariffItems, tariffVersions, users } from "../../kernel/db/schema";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { listGstCategories } from "./gst-config";
 import { assertPaise, rupeesTextToPaise } from "./money";
@@ -97,6 +98,9 @@ export function parseIpdTariffCsv(text: string): IpdTariffParse {
   const lines = text.replace(/^﻿/, "").split(/\r?\n/);
   const header = splitCsvLine(lines[0] ?? "").map((h) => h.toLowerCase());
   const col: Record<string, number> = {};
+  for (const name of new Set(header.filter((h, i) => h !== "" && header.indexOf(h) !== i))) {
+    errors.push({ line: 1, problem: `header names "${name}" more than once` });
+  }
   for (const name of IPD_TARIFF_CSV_COLUMNS) {
     const at = header.indexOf(name);
     if (at < 0) errors.push({ line: 1, problem: `header has no "${name}" column (needs ${IPD_TARIFF_CSV_COLUMNS.join(", ")})` });
@@ -110,6 +114,11 @@ export function parseIpdTariffCsv(text: string): IpdTariffParse {
     if (raw.trim() === "") continue;
     const line = i + 1;
     const f = splitCsvLine(raw);
+    if (f.length !== header.length) {
+      // An unquoted "1,000" splits into two cells and would read as ₹1 (review #744): the shape is refused.
+      errors.push({ line, problem: `row has ${f.length} cells but the header has ${header.length} — quote a rate written with commas ("1,000")` });
+      continue;
+    }
     const get = (name: (typeof IPD_TARIFF_CSV_COLUMNS)[number]): string => f[col[name] ?? -1] ?? "";
     const incumbentCode = get("incumbent_code");
     const incumbentName = get("incumbent_name");
@@ -159,6 +168,23 @@ export type IpdImportReport =
       copiedFromVersionNo: number | null; servicesCreated: string[];
       draft: { versionId: string; versionNo: number } | null;
     };
+
+/** pg advisory lock key serialising IPD imports ("IPDR" as 4 bytes). */
+const IPD_IMPORT_LOCK_KEY = 0x49504452;
+class PendingVersion extends Error {
+  constructor(readonly pending: { versionNo: number; status: string }[]) { super("pending tariff version"); }
+}
+
+/**
+ * The person an import is recorded against: an ACTIVE account holding `tariff.versions.draft`
+ * (the `resolvePerson` rule in scripts/pharmacy-shelf-common.ts). Throws with the reason.
+ */
+export async function resolveIpdImportActor(db: Db, username: string): Promise<Actor> {
+  const [u] = await db.select({ id: users.id, active: users.active }).from(users).where(eq(users.username, username.trim()));
+  if (u === undefined || !u.active) throw new Error(`--by ${username}: no active account with that username`);
+  if (!(await hasPermission(db, u.id, "tariff.versions.draft", "hospital"))) throw new Error(`--by ${username} does not hold tariff.versions.draft`);
+  return { type: "user", id: u.id } as Actor;
+}
 
 export const IPD_IMPORT_NOTE = "IPD rate card carried over from the incumbent tariff line by line (E0.4) — for the owner's review";
 
@@ -210,24 +236,41 @@ export async function importIpdTariff(
     };
   }
 
-  const draft = await withTx(db, async (tx) => {
-    for (const item of items) {
-      if (item.serviceExists) continue;
-      const { serviceId } = await createService(tx, actor, {
-        code: item.serviceCode, name: ipdServiceName(item.bedClass, item.component), category: ipdServiceCategory(item.bedClass, item.component),
-      });
-      await updateService(tx, actor, serviceId, { active: false });
-      idByCode.set(item.serviceCode, serviceId);
-    }
-    const d = await createDraftVersion(tx, actor, {
-      notes: IPD_IMPORT_NOTE, ...(active === null ? {} : { copyFromVersionId: active.versionId }),
+  let draft: { versionId: string; versionNo: number };
+  try {
+    draft = await withTx(db, async (tx) => {
+      // Two imports at once must not both draft (review #744): serialise on one fixed key, then re-read the
+      // pending versions INSIDE the lock — the check above ran outside any transaction.
+      await tx.execute(sql`select pg_advisory_xact_lock(${IPD_IMPORT_LOCK_KEY})`);
+      const pendingNow = await tx.select({ versionNo: tariffVersions.versionNo, status: tariffVersions.status }).from(tariffVersions)
+        .where(inArray(tariffVersions.status, ["draft", "submitted"]));
+      if (pendingNow.length > 0) throw new PendingVersion(pendingNow);
+      const haveNow = await tx.select({ id: services.id, code: services.code }).from(services).where(inArray(services.code, codes));
+      for (const s of haveNow) idByCode.set(s.code, s.id);
+      for (const item of items) {
+        if (idByCode.has(item.serviceCode)) continue;
+        const { serviceId } = await createService(tx, actor, {
+          code: item.serviceCode, name: ipdServiceName(item.bedClass, item.component), category: ipdServiceCategory(item.bedClass, item.component),
+        });
+        await updateService(tx, actor, serviceId, { active: false });
+        idByCode.set(item.serviceCode, serviceId);
+      }
+      const d = await createDraftVersion(tx, actor, {
+        notes: IPD_IMPORT_NOTE, ...(active === null ? {} : { copyFromVersionId: active.versionId }),
     });
     for (const item of items) {
       assertPaise(item.pricePaise, `${item.serviceCode} price`);
       await setTariffItem(tx, actor, d.versionId, idByCode.get(item.serviceCode) as string, item.pricePaise);
     }
     return d;
-  });
+    });
+  } catch (e) {
+    if (!(e instanceof PendingVersion)) throw e;
+    return {
+      ok: false, unmapped: parsed.unmapped,
+      errors: e.pending.map((p) => ({ line: null, problem: `tariff version ${p.versionNo} is already ${p.status}; finish or reject it first` })),
+    };
+  }
   return {
     ok: true, applied: true, items, unmapped: parsed.unmapped,
     copiedFromVersionNo: active?.versionNo ?? null, servicesCreated: toCreate, draft,
