@@ -1554,7 +1554,7 @@ export function PatientDetail(): React.ReactElement {
               renderRow={renderRow}
               appointments={(can("opd.appointments.read") && (
               <>
-                <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.upcoming")}</h3>
+                <h3 className="pf-appt-h up">{t("profile.upcoming")}</h3>
                 {upcoming.length === 0 ? (
                   <p style={{ fontSize: 12.5, color: "var(--dim)", margin: 0 }} data-testid="upcoming-empty">{t(bookings.isPending ? "profile.upcomingReading" : "profile.upcomingNone")}</p>
                 ) : (
@@ -1576,7 +1576,7 @@ export function PatientDetail(): React.ReactElement {
                 )}
                 {earlier.length > 0 && (
                   <>
-                    <h3 style={{ margin: "18px 0 6px", fontSize: 15, fontWeight: 600 }}>{t("profile.apptHistory", { count: earlier.length })}</h3>
+                    <h3 className="pf-appt-h">{t("profile.apptHistory", { count: earlier.length })}</h3>
                     <div data-testid="appt-history">
                       {(showAllAppts ? earlier : earlier.slice(0, APPT_HISTORY_ROWS)).map((a) => (
                         <div key={a.id} style={{ borderBottom: "1px solid var(--line2)" }}>

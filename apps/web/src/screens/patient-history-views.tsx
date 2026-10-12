@@ -94,7 +94,7 @@ export function PatientHistory({ rows, renderRow, appointments, quickLab, showQu
     const shown = compact ? rs.slice(0, PREVIEW_ROWS) : rs;
     return (
       <>
-        {c === "lab" && showQuickLab && <div style={{ marginBottom: rs.length > 0 ? 10 : 0 }}>{quickLab(compact)}</div>}
+        {c === "lab" && showQuickLab && <div className="hv-ql" style={{ marginBottom: rs.length > 0 ? 10 : 0 }}>{quickLab(compact)}</div>}
         {shown.length > 0 && (compact ? rowsBox(shown) : byMonth(shown))}
       </>
     );

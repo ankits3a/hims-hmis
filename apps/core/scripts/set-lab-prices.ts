@@ -23,7 +23,7 @@ import type { Db } from "../src/kernel/db/client";
  * `tariff.versions.activate`. Only services that exist as lab services (`LABSVC-<code>`) are priced;
  * a code in the list with no service is reported, never invented. Dry run by default.
  */
-export const LAB_PRICE_NOTE = "Owner 2026-10-12: lab test prices inspired by Lal PathLabs and Apollo, authorised by the owner";
+export const LAB_PRICE_NOTE = "Owner 2026-10-12: lab test prices inspired by Lal PathLabs and Apollo, authorised by the owner; CBNAAT and AFB free under the national TB programme (decision 0071)";
 
 export async function setLabPrices(
   db: Db, by: string, apply: boolean, now: Date = new Date(),
