@@ -85,8 +85,6 @@ row has its own try/catch, so one failure stops nothing else.
 - Skills are RBAC roles, not roster positions: the roster has no skill concept. `general` → `support_staff`.
 - Verification: the doer never verifies (`verifier_is_doer`); the verifier holds the kind's `verifierPermission`
   (default `tasks.supervise`). The `/verify` door admits `tasks.work` too, so a kind may name a narrower permission.
-- `task_events` refuses TRUNCATE too (statement trigger). The only way through is `hmis.truncate_ok =
-  'test_harness'`, set transaction-locally by `test/helpers/db.ts` `truncateAll`.
 - The board's counts are SQL over every open task; it sends at most `BOARD_ROW_LIMIT` rows and reports the rest
   as `counts.notShown`. The requester's free-text note is on the worker's own card only, never the board.
 - No patient identity and no money on either surface (wall-board rule; decision 0058's spirit). `patient_id` is stored

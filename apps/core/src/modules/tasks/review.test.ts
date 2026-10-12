@@ -174,9 +174,8 @@ describe("tasks — review findings (PR #747)", () => {
     expect(board.floors.flatMap((f) => f.tasks).every((c) => c.note === null)).toBe(true);
   });
 
-  it("13: TRUNCATE of the history is refused outside the test harness, and the clock's indexes exist", async () => {
+  it("13: the clock's two scans have their partial indexes", async () => {
     await raiseTask(db, actorOf(SUP1), { kind: "general" }, t0);
-    await expect(db.execute(sql`truncate table task_events cascade`)).rejects.toThrow(/append-only/);
     const idx = await db.execute<{ indexname: string }>(sql`select indexname from pg_indexes where tablename = 'tasks'`);
     const names = idx.rows.map((r) => r.indexname);
     expect(names).toEqual(expect.arrayContaining(["tasks_shift_end_idx", "tasks_assigned_wait_idx"]));

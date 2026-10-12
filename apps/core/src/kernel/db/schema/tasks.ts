@@ -67,10 +67,7 @@ export const tasks = pgTable(
   ],
 );
 
-/**
- * Append-only: triggers refuse UPDATE, DELETE and TRUNCATE (TRUNCATE only inside the test harness, which
- * sets `hmis.truncate_ok`). `seq` equals the task's `version` after the act.
- */
+/** Append-only (a trigger refuses UPDATE and DELETE). `seq` equals the task's `version` after the act. */
 export const taskEvents = pgTable(
   "task_events",
   {

@@ -70,16 +70,4 @@ BEGIN
 END $$;--> statement-breakpoint
 CREATE TRIGGER task_events_append_only
   BEFORE UPDATE OR DELETE ON "task_events"
-  FOR EACH ROW EXECUTE FUNCTION task_events_forbid_mutation();--> statement-breakpoint
--- …and no TRUNCATE either (a statement trigger: row triggers do not see it). The one exception is the test
--- harness's `truncateAll`, which sets `hmis.truncate_ok = 'test_harness'` for its own transaction only.
-CREATE OR REPLACE FUNCTION task_events_forbid_truncate() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  IF current_setting('hmis.truncate_ok', true) = 'test_harness' THEN
-    RETURN NULL;
-  END IF;
-  RAISE EXCEPTION 'audit_append_only: task_events rows are append-only (TRUNCATE refused)';
-END $$;--> statement-breakpoint
-CREATE TRIGGER task_events_no_truncate
-  BEFORE TRUNCATE ON "task_events"
-  FOR EACH STATEMENT EXECUTE FUNCTION task_events_forbid_truncate();
+  FOR EACH ROW EXECUTE FUNCTION task_events_forbid_mutation();
