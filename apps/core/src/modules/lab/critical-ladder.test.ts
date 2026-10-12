@@ -7,11 +7,12 @@ import {
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
 import {
-  alerts, events, labAnalytes, labCriticalCalls, orgDepartments, patients, rosterAssignments, rosterPeriods,
+  alerts, events, labAnalytes, notifications, labCriticalCalls, orgDepartments, patients, rosterAssignments, rosterPeriods,
   rosterTeamMemberships, rosterTeams,
 } from "../../kernel/db/schema";
 import { alertsConsumer } from "../../kernel/alerts/consumer";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
+import { runReachLadder } from "../../kernel/notify/reach";
 import { kindSentence } from "../../kernel/push/phone-push";
 import { templateByKey } from "../../kernel/notify/templates";
 import { seedOrgDepartments, seedRosterPositions } from "../roster";
@@ -182,6 +183,34 @@ describe("lab critical ladder (E3.2)", () => {
     expect(await alertsFor(hod)).toEqual([]);
     const [call] = await db.select().from(labCriticalCalls).where(eq(labCriticalCalls.id, callId));
     expect(call!.ladderRung).toBe(1);
+  });
+
+  it("an unanswered alert IS relayed by the reach ladder, and the relay opens My Day (a screen a doctor can open)", async () => {
+    const { callId } = await criticalCall();
+    await deliver();
+    /** `alerts.created_at` is the database's own stamp, so the relay's clock is read off the row. */
+    const [raised] = await alertsFor(doc);
+    expect(await runReachLadder(db, new Date(raised!.createdAt.getTime() + 6 * 60_000))).toBeGreaterThan(0);
+    const relayed = await db.select().from(notifications).where(eq(notifications.refId, callId));
+    expect(relayed.map((n) => [n.userId, n.params.link])).toEqual([[doc, "/my-day"]]);
+  });
+
+  it("a read-back acknowledges every open alert of the call (owned, by the closer), and the reach ladder relays none of them", async () => {
+    const { callId } = await criticalCall();
+    await sweepLabCriticalLadder(db, after(15), RESOLVER_ON);
+    await deliver();
+    expect((await db.select().from(alerts).where(eq(alerts.refId, callId))).map((a) => a.userId).sort()).toEqual([doc, head].sort());
+
+    await withTx(db, (tx) => acknowledgeCritical(tx, fx.bench.actor, { callId, readback: "potassium six point eight" }, after(20)));
+
+    const acked = await db.select().from(alerts).where(eq(alerts.refId, callId));
+    expect(acked.map((a) => [a.ackKind, a.acknowledgedAt])).toEqual([["owned", after(20)], ["owned", after(20)]]);
+    const ackEvents = await db.select().from(events).where(eq(events.name, "alert.acknowledged"));
+    expect(ackEvents.map((e) => [e.actorId, (e.payload as { refId: string }).refId])).toEqual([[fx.bench.id, callId], [fx.bench.id, callId]]);
+
+    const raisedAt = acked[0]!.createdAt.getTime();
+    for (const m of [6, 11, 30, 120]) await runReachLadder(db, new Date(raisedAt + m * 60_000));
+    expect(await db.select().from(notifications).where(eq(notifications.refId, callId))).toEqual([]);
   });
 
   it("DONE 4 — no event, alert, phone push or relay carries the patient's name, UHID or the value", async () => {

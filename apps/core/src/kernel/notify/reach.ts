@@ -97,7 +97,9 @@ const RELAY_CHANNEL_ORDER: readonly ReachChannel[] = ["web_push", "whatsapp", "s
 /** The deep link the relay carries. Relative on purpose: the body is short and the app owns the host. */
 function linkFor(refType: string | null, refId: string | null): string {
   if (refType === "approval" && refId !== null) return `/approvals?focus=${refId}`;
-  if (refType === "lab_critical_call") return "/lab/bench";
+  // E3.2 (#595) — the ladder's people are doctors; `/lab/bench` needs `lab.criticals.close`. My Day's
+  // "Waiting for me" holds the doctor's open lab criticals, and every signed-in user can open it.
+  if (refType === "lab_critical_call") return "/my-day";
   return "/";
 }
 
