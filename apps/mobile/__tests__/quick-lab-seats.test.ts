@@ -33,4 +33,12 @@ describe("quick lab seats", () => {
   it("is milestone M7", () => {
     expect(seatsFor({ ...none, hospital: LAB }, "quick").map((s) => s.milestone)).toEqual(["M7", "M7", "M7"]);
   });
+
+  it("the Quick counter needs lab.desk.operate hospital-wide, and goes in Full mode", () => {
+    expect(seatsFor({ ...none, hospital: ["lab.desk.operate"] }, "quick").map((s) => s.key)).toEqual(["qcounter"]);
+    expect(seatsFor({ ...none, hospital: ["lab.desk.operate"] }, null).map((s) => s.key)).toEqual(["qcounter"]);
+    expect(seatsFor({ ...none, hospital: ["lab.desk.operate", ...LAB] }, "full")).toEqual([]);
+    expect(seatsFor({ hospital: [], scoped: { department: { d1: ["lab.desk.operate"] }, floor: {} } }, "quick")).toEqual([]);
+    expect(seatsFor({ ...none, hospital: ["lab.desk.operate", ...LAB] }, "quick").map((s) => s.key)).toEqual(["qcounter", "qcollect", "qbench", "qreports"]);
+  });
 });

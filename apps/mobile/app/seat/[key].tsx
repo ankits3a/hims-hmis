@@ -10,6 +10,7 @@ import { SlipDesk } from "../../src/screens/slip-desk";
 import { VitalsBay } from "../../src/screens/vitals-bay";
 import { QuickBench } from "../../src/screens/lab-qbench";
 import { QuickCollect } from "../../src/screens/lab-qcollect";
+import { QuickCounter } from "../../src/screens/lab-qcounter";
 import { QuickReports } from "../../src/screens/lab-qreports";
 import { useLabMode } from "../../src/lab/mode";
 import { scannedFrom } from "../../src/scan/card";
@@ -37,6 +38,7 @@ export default function SeatScreen() {
   if (seat.key === "counter") return <DeskOne scanned={scanned} />;
   if (seat.key === "onNow") return <RosterOnNow />;
   if (seat.key === "myDuties") return <RosterMyDuties />;
+  if (seat.key === "qcounter") return <QuickCounter />;
   if (seat.key === "qcollect") return <QuickCollect />;
   if (seat.key === "qbench") return <QuickBench />;
   if (seat.key === "qreports") return <QuickReports />;
