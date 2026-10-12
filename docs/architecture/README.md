@@ -36,6 +36,7 @@ flowchart LR
   billing[billing]
   cds[cds]
   formulary[formulary]
+  ipd[ipd]
   lab[lab]
   materials[materials]
   membership[membership]
@@ -113,6 +114,7 @@ flowchart LR
 | [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 51 | 16 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
+| [ipd](modules/ipd.md) | — | — | 0 | 0 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 77 | 25 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
@@ -161,6 +163,6 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
 | `tokens` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `worker` | — | alerts, approvals, auth, config, copilot, db, desk, events, modules, notify, obligations, ops, orders, push, reminders, resources, retention, tokens, workflow | — |
-| `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | 9 |
+| `workflow` | attendance, billing, ipd, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | 9 |
 
 Kernel HTTP routes: [kernel-routes.md](kernel-routes.md). Database: [schema.md](schema.md). Web screens: [web.md](web.md).
