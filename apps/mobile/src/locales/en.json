@@ -2742,6 +2742,12 @@
       "text": "Copilot questions are logged for 180 days for safety and quality. No one sees a per-person list.",
       "ok": "OK"
     },
+    "can": {
+      "visit_status": "whether a patient has been seen",
+      "queue_depth": "how the queues look",
+      "patient_dues": "what a patient owes",
+      "my_day_report": "for your day report"
+    },
     "answer": {
       "leavePickDay": "{{kind}} on {{from}}. Check it, then Confirm.",
       "leavePick": "{{kind}}, {{from}} to {{to}} ({{count}} days). Check it, then Confirm.",
@@ -2777,7 +2783,8 @@
       "notPermitted": "You do not have access to that. Ask whoever manages roles if you need it.",
       "needSubject": "Which patient? Give me a UHID or the visit number from their slip.",
       "failed": "I could not get an answer just now. Try the screen for this.",
-      "notUnderstood": "I did not understand that. I can tell you whether a patient has been seen, how the queues look, what a patient owes, and I can pull your day report.",
+      "notUnderstood": "I did not understand that.",
+      "notUnderstoodCan": "I did not understand that. You can ask me {{can}}.",
       "noTool": "I understood the question, but nothing here answers it yet.",
       "dayReport": "Your day report for {{date}} — {{sections}} sections, ready below.",
       "dayReportProvisional": "Your day so far on {{date}} — {{sections}} sections, ready below. The day has not closed, so these figures can still change.",
@@ -3049,7 +3056,31 @@
       "handedOver": "{{name}} · handed over",
       "sentBack": "{{name}} · sent back",
       "notSigned": "Not signed",
-      "printOnPc": "Print at the desk PC"
+      "printOnPc": "Print at the desk PC",
+      "sharePdf": "Share PDF",
+      "shareUnavailable": "Sharing not available",
+      "shareFailed": "PDF not shared",
+      "shareNotRecorded": "Shared; not recorded"
+    },
+    "ast": {
+      "title": "Sensitivity",
+      "empty": "Pick a panel",
+      "add": "Add antibiotic",
+      "addFree": "Add “{{name}}”",
+      "mic": "MIC",
+      "micUnit": "MIC µg/mL",
+      "noGrowth": "No growth · no table",
+      "remove": "Remove {{name}}",
+      "S": "Sensitive",
+      "I": "Intermediate",
+      "R": "Resistant",
+      "panels": {
+        "ent_urine": "Entero · urine",
+        "ent_other": "Entero · other",
+        "pse_aci": "Pseudo / Acineto",
+        "staph_ent": "Staph / Entero",
+        "strep": "Strep"
+      }
     },
     "ast": {
       "title": "Sensitivity",

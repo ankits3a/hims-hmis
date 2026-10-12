@@ -322,6 +322,16 @@ export const labQuickHandedOver = defineEvent("lab.quick_handed_over", MODULE, z
 export const labQuickSentBack = defineEvent("lab.quick_sent_back", MODULE, z.object({ quickId: id }));
 
 /**
+ * Owner 2026-10-12 — Share PDF on the phone (spec `SPEC-phone-report-pdf-share-2026-10-12.md`): who
+ * shared which completed quick report. The phone made the PDF and opened the share sheet; neither
+ * Android nor iOS says which app took it, so the channel is only "phone_share". The report itself is
+ * not changed and not marked handed over.
+ */
+export const labReportShared = defineEvent("lab.quick_report_shared", MODULE, z.object({
+  reportId: id, patientId: id, channel: z.literal("phone_share"),
+}));
+
+/**
  * THE CATALOGUE OF THIS MODULE'S EVENTS, in one place, so `events.test.ts` can assert the grammar
  * and the module tag over ALL of them rather than over the ones a reader remembered to list.
  */
@@ -357,6 +367,6 @@ export const LAB_EVENTS = [
   labReportAmended,
   labSlaBreached, labNotifiableFlagged,
   labBookingMade, labBookingClosed, labBookingHoursChanged,
-  labQuickStarted, labQuickReported, labQuickHandedOver, labQuickSentBack,
+  labQuickStarted, labQuickReported, labQuickHandedOver, labQuickSentBack, labReportShared,
   labModeChanged,
 ] as const;

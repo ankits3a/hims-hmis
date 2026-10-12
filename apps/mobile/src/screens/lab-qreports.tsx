@@ -8,6 +8,9 @@ import { Text } from "../text";
 import { color, space } from "../theme";
 import { Button, MONO, Note } from "../ui";
 import { AstView } from "../lab/ast";
+import { API_BASE } from "../config";
+import { phoneReportHtml, reportPdfName } from "../lab/report-html";
+import { shareReportPdf } from "../lab/report-pdf";
 
 /**
  * QUICK REPORTS ON THE PHONE (spec 2026-10-12; the web's /lab/qreports). Completed reports; open one
@@ -15,6 +18,10 @@ import { AstView } from "../lab/ast";
  * printing; the phone does not print (that stays on the desk PC or the HMIS Print program). **Send
  * back to bench** returns it as a draft, and is offered only to a holder of the results grant (the
  * route's own guard). No signing, no bill.
+ *
+ * **Share PDF** (owner 2026-10-12, spec `SPEC-phone-report-pdf-share-2026-10-12.md`) makes the desk's
+ * printed page into a PDF on the phone and opens the share sheet; the server records who shared it.
+ * Only for the print grant — the grant that prints the same page at the desk.
  */
 export function QuickReports() {
   const { t } = useI18n();
@@ -24,6 +31,8 @@ export function QuickReports() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const mayEnter = state.status === "signedIn" && state.me.permissions.hospital.includes("lab.results.enter");
+  const mayPrint = state.status === "signedIn" && state.me.permissions.hospital.includes("lab.reports.print");
+  const printedBy = state.status === "signedIn" ? state.username : null;
   const ready = desk.data?.ready ?? [];
   const handed = desk.data?.handedOverToday ?? [];
   const listError = desk.error !== null && desk.data === null ? labRefusal(desk.error, t) : null;
@@ -31,7 +40,7 @@ export function QuickReports() {
   if (openId !== null) {
     return (
       <Screen title={t("screen.qreports.title")} onBack={() => setOpenId(null)}>
-        <ReportView key={openId} id={openId} api={api} t={t} mayEnter={mayEnter}
+        <ReportView key={openId} id={openId} api={api} t={t} mayEnter={mayEnter} mayPrint={mayPrint} printedBy={printedBy}
           onDone={(text) => { setOpenId(null); setSaid(text); void desk.refresh(); }} />
       </Screen>
     );
@@ -64,9 +73,13 @@ export function QuickReports() {
 
 const FLAG_FG: Record<string, string> = { L: "#8a5a10", H: "#8a5a10", LL: color.red, HH: color.red };
 
-function ReportView({ id, api, t, mayEnter, onDone }: { id: string; api: QuickLabApi; t: T; mayEnter: boolean; onDone: (said: string) => void }) {
+function ReportView({ id, api, t, mayEnter, mayPrint, printedBy, onDone }: {
+  id: string; api: QuickLabApi; t: T; mayEnter: boolean; mayPrint: boolean; printedBy: string | null; onDone: (said: string) => void;
+}) {
   const one = usePoll(() => api.readyReport(id), 60_000);
   const [busy, setBusy] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareNote, setShareNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const r: QuickReport | null = one.data;
   if (r === null) {
@@ -79,6 +92,21 @@ function ReportView({ id, api, t, mayEnter, onDone }: { id: string; api: QuickLa
       onDone(t(what === "handOver" ? "quickLab.reports.handedOver" : "quickLab.reports.sentBack", { name: row.patient.display }));
     } catch (e) { setError(labRefusal(e, t)); }
     finally { setBusy(false); }
+  };
+  /**
+   * The server records the share once the share sheet closes WITHOUT an error. Neither Android nor iOS
+   * says which app took the file, or whether the person backed out of it, so "shared" is the most
+   * the phone can claim.
+   */
+  const share = async (): Promise<void> => {
+    setSharing(true);
+    setShareNote(null);
+    try {
+      const out = await shareReportPdf(phoneReportHtml(r, printedBy, API_BASE, new Date()), reportPdfName(r));
+      if (out === "unavailable") { setShareNote(t("quickLab.reports.shareUnavailable")); return; }
+      try { await api.shared(r.id); } catch { setShareNote(t("quickLab.reports.shareNotRecorded")); }
+    } catch { setShareNote(t("quickLab.reports.shareFailed")); }
+    finally { setSharing(false); }
   };
   const byId = new Map(r.lines.map((l) => [l.analyteId, l]));
   return (
@@ -122,6 +150,8 @@ function ReportView({ id, api, t, mayEnter, onDone }: { id: string; api: QuickLa
       </View>
       {error !== null && <Note tone="bad" testID="ql-error">{error}</Note>}
       <Button testID="qr-handover" label={t("quickLab.reports.handOver")} busy={busy} onPress={() => { void act("handOver"); }} />
+      {mayPrint && <Button testID="qr-share" kind="secondary" label={t("quickLab.reports.sharePdf")} busy={sharing} disabled={busy} onPress={() => { void share(); }} />}
+      {shareNote !== null && <Note tone="warn" testID="qr-share-note">{shareNote}</Note>}
       {mayEnter && <Button testID="qr-sendback" kind="secondary" label={`↩ ${t("quickLab.reports.sendBack")}`} disabled={busy} onPress={() => { void act("sendBack"); }} />}
       <Text style={{ fontSize: 12, color: color.faint, textAlign: "center" }} numberOfLines={1}>{t("quickLab.reports.printOnPc")}</Text>
     </ScrollView>

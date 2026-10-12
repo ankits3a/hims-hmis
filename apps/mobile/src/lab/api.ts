@@ -35,9 +35,13 @@ export type QuickRow = {
   orderId?: string | null; orderNo?: string | null; sampleNo?: string | null;
   handedOverAt?: string | null; handedOverBy?: string | null;
 };
-/** The phone reads no hospital header and no QR: it neither prints nor shows a bill. */
+/** The hospital header and the visit QR are read for Share PDF (owner 2026-10-12), the desk's printed page. */
 export type QuickReport = QuickRow & {
   analyteIds: string[]; groups: { title: string | null; analyteIds: string[] }[]; lines: QuickLine[]; summary: string;
+  collectedByName: string | null; reportedByName: string | null;
+  hospital: { name: string; address: string; hotline: string; emergency: string; email: string; website: string };
+  /** Server-drawn SVG of the visit number (the prescription footer's QR), or null with no visit. */
+  visitQrSvg: string | null;
   /** Owner 2026-10-12 — each culture test's antibiotic sensitivity table (absent on older servers). */
   ast?: AstBlock[];
 };
@@ -68,6 +72,8 @@ export function quickLabApi(call: Call) {
     readyReport: (id: string) => call<QuickReport>("GET", `/lab/quick/ready/${enc(id)}`),
     handOver: (id: string) => call<QuickRow>("POST", `/lab/quick/reports/${enc(id)}/hand-over`, {}),
     sendBack: (id: string) => call<QuickRow>("POST", `/lab/quick/reports/${enc(id)}/send-back`, {}),
+    /** Owner 2026-10-12 — the share sheet closed without an error: one audit record on the server. */
+    shared: (id: string) => call<{ reportId: string; sharedAt: string }>("POST", `/lab/quick/reports/${enc(id)}/shared`, {}),
     verifyQr: (payload: string) => call<QrVerifyResult>("POST", "/patients/qr/verify", { payload }),
   };
 }

@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  AST_PANELS, AST_RESULT_WORD, antibioticsFor, astName, fillPanel,
+  AST_PANELS, antibioticsFor, astName, fillPanel,
 } from "../../../../packages/contracts/src/lab-ast";
 import type { AstBlock, AstDraftRow, AstPanelId, AstRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
  * OWNER 2026-10-12 — THE ANTIBIOTIC SENSITIVITY TABLE of a culture (spec
- * `SPEC-lab-ast-table-2026-10-12.md`): the Quick Bench's editor, the on-screen preview and the
- * printed table. The panels, names and row rules are `packages/contracts/src/lab-ast.ts`, shared with
+ * `SPEC-lab-ast-table-2026-10-12.md`): the Quick Bench's editor and the on-screen preview (the
+ * printed table is `packages/contracts/src/lab-report-html.ts`'s). The panels, names and row rules are `packages/contracts/src/lab-ast.ts`, shared with
  * the server and the phone.
  */
 
@@ -123,25 +123,4 @@ export function AstPreview({ block, title }: { block: AstBlock; title: string })
   );
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
-
-/**
- * The PRINTED table: Antibiotic | Result | MIC (µg/mL), the result as a word with its letter, a
- * Resistant row in bold (a photocopy keeps bold, not colour), the MIC column only when a row has one.
- */
-export function astPrintHtml(block: AstBlock, title: string): string {
-  if (block.rows.length === 0) return "";
-  const e = escapeHtml;
-  const withMic = block.rows.some((r) => r.mic !== null);
-  const rows = block.rows.map((r) => {
-    const cell = (s: string): string => (r.result === "R" ? `<b>${s}</b>` : s);
-    return `<tr class="ast-${r.result}"><td class="name">${cell(e(astName(r.antibiotic)))}</td><td class="c">${cell(`${e(AST_RESULT_WORD[r.result])} (${r.result})`)}</td>`
-      + `${withMic ? `<td class="c">${cell(e(r.mic ?? "—"))}</td>` : ""}</tr>`;
-  }).join("");
-  return `<section class="test ast">
-      <div class="testhead"><h2>Antibiotic sensitivity — ${e(title)}</h2></div>
-      <table class="res"><thead><tr><th class="name">Antibiotic</th><th>Result</th>${withMic ? "<th>MIC (µg/mL)</th>" : ""}</tr></thead>
-      <tbody>${rows}</tbody></table></section>`;
-}
+/* The PRINTED table (`astPrintHtml`) lives with the printed report's template, `packages/contracts/src/lab-report-html.ts`, shared with the phone. */

@@ -138,3 +138,42 @@ it("the profile's card shows the antibiotic table when its values are opened", a
   expect(table).toHaveTextContent("Ampicillin");
   expect(table).toHaveTextContent("Resistant (R)");
 });
+
+/* ═══ owner 2026-10-12 — the phone's Share PDF (SPEC-phone-report-pdf-share-2026-10-12.md) ═══ */
+
+it("the phone's PDF page is the desk's printed page, byte for byte (only the desk's print-on-load line differs)", async () => {
+  const { phoneReportHtml } = await import("../../../../packages/contracts/src/lab-report-phone");
+  const { AUTO_PRINT_SCRIPT } = await import("../../../../packages/contracts/src/lab-report-html");
+  /** One instant for both: "Printed … at …" reads the clock. Fake Date only, set to the real now. */
+  const at = new Date();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(at);
+  try {
+    for (const report of [REPORT, URINE_REPORT, { ...REPORT, reportedAt: null, encounterNo: null, visitQrSvg: null }]) {
+      const desk = printed(report);
+      expect(desk.split(AUTO_PRINT_SCRIPT)).toHaveLength(2);
+      const phone = phoneReportHtml(report as unknown as QuickReport, "rohan.sinha", `${window.location.origin}/api`, at);
+      expect(phone).not.toContain("<script");
+      expect(desk.replace(AUTO_PRINT_SCRIPT, "")).toBe(phone);
+    }
+  } finally { vi.useRealTimers(); }
+});
+
+/*
+ * Owner 2026-10-12 (orchestrator's call) — a routine single test fits ONE A4 page, and no page holds the
+ * footer alone. Measured in headless Chromium (the desk's engine and Android's WebView): a 27-line CBC = 1
+ * page, a urine culture with its antibiotic table = 1 page, CBC + LFT + RFT + lipid = 2 pages with the
+ * footer on both. What jsdom cannot lay out is pinned as the rules that make it so.
+ */
+it("the printed layout: one body row per test, the closing block one row that moves whole, a footer-tall spacer, values at 9 pt", () => {
+  const html = printed({ ...REPORT, tests: [...REPORT.tests, { serviceId: "s-lft", code: "LFT", nameEn: "Liver function test" }],
+    groups: [...REPORT.groups, { title: "Liver function test", analyteIds: ["a-alt"] }],
+    lines: [...REPORT.lines, { analyteId: "a-alt", code: "ALT", nameEn: "SGPT (ALT)", unit: "U/L", value: "30", low: null, high: "40", refText: null, flag: "N" }] });
+  const body = html.slice(html.indexOf("<tbody>\n"), html.indexOf("</tbody>\n</table>"));
+  expect(body.match(/<tr><td><section class="test">/g)).toHaveLength(2);
+  expect(body).toMatch(/<tr class="close"><td>\n<div class="remarks">.*<div class="notes">.*Authorised by.*<\/td><\/tr>$/s);
+  expect(html).toContain(".page > tbody > tr.close { break-inside: avoid; }");
+  expect(html).toContain(".ftsp { height: 31mm; }");
+  expect(html).toContain("@media print { .ftfix { position: fixed; left: 0; right: 0; bottom: 0; } }");
+  expect(html).toMatch(/table\.res td \{[^}]*font-size: 12px;/);
+});

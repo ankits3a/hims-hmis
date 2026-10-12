@@ -157,6 +157,7 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
       asker's permissions: a login that could not note the shortage is not offered a draft of it.
     */
     intent: "draft_short_book_entry",
+    kind: "draft",
     permission: "pharmacy.dispense.place",
     needsSubject: false,
     async run(ctx): Promise<CopilotAnswer> {
@@ -192,6 +193,7 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
    */
   {
     intent: "draft_purchase_orders",
+    kind: "draft",
     permission: "materials.po.raise",
     needsSubject: false,
     async run(ctx): Promise<CopilotAnswer> {
@@ -224,6 +226,7 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
    */
   {
     intent: "draft_payment_run",
+    kind: "draft",
     permission: "materials.payments.prepare",
     needsSubject: false,
     async run(ctx): Promise<CopilotAnswer> {
@@ -254,6 +257,7 @@ export const pharmacyCopilotTools: readonly CopilotToolDecl[] = [
    */
   {
     intent: "draft_supplier_returns",
+    kind: "draft",
     permission: "materials.returns.manage",
     needsSubject: false,
     async run(ctx): Promise<CopilotAnswer> {

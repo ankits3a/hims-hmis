@@ -8,6 +8,7 @@ import { requireEnv } from "../src/kernel/config";
 import { createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
+import { ROLE_MODEL } from "../scripts/seed-roles";
 import { copilotAsks, phiAccessLog } from "../src/kernel/db/schema";
 import { opdEncounters } from "../src/kernel/db/schema/opd";
 import { formatUhid } from "../src/modules/patients/uhid";
@@ -239,8 +240,30 @@ describe("POST /copilot/ask — against a real database", () => {
 
     it("says honestly that it did not understand", async () => {
       const res = await ask(clerk.token, "what is the weather in mumbai").expect(200);
-      expect(res.body.answer.key).toBe("copilot.answer.notUnderstood");
+      expect(res.body.answer).toEqual({ key: "copilot.answer.notUnderstoodCan", params: { can: "visit_status,queue_depth,my_day_report" } });
       expect(res.body.source).toBe("none");
+    });
+
+    /*
+      #676 — the help sentence lists only what the asker may use, read from the seeded role model:
+      a doctor is never offered what a patient owes (owner: the doctor never sees payment); a cashier is.
+    */
+    it("offers a doctor no dues and a cashier dues, in the did-not-understand answer", async () => {
+      const as = async (roleKey: string): Promise<string> => {
+        await createRole(db, `${roleKey}_676`, roleKey);
+        for (const p of ROLE_MODEL.find((r) => r.roleKey === roleKey)?.permissions ?? []) await grantPermissionToRole(db, registry, `${roleKey}_676`, p);
+        const u = await mkUser(db, `${roleKey}_676_user`, [`${roleKey}_676`]);
+        const res = await ask(u.token, "what is the weather in mumbai").expect(200);
+        expect(res.body.answer.key).toBe("copilot.answer.notUnderstoodCan");
+        return res.body.answer.params.can as string;
+      };
+      expect((await as("doctor")).split(",")).not.toContain("patient_dues");
+      expect((await as("cashier")).split(",")).toContain("patient_dues");
+    });
+
+    it("offers a user who holds nothing only their own day report", async () => {
+      const res = await ask(stranger.token, "what is the weather in mumbai").expect(200);
+      expect(res.body.answer).toEqual({ key: "copilot.answer.notUnderstoodCan", params: { can: "my_day_report" } });
     });
 
     it("refuses an unauthenticated caller", async () => {

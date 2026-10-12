@@ -456,7 +456,28 @@ async function verifyResultInTx(
     );
   }
 
-  const ctx = await resultContext(tx, result.orderItemId);
+  /**
+   * THE LOSER OF THE RACE CAN ARRIVE HERE. Its status read above ran before the winner committed;
+   * by now the winner's commit has moved the item on, and `resultContext` refuses the item as not
+   * resultable. That is the same lost race the compare-and-set below reports, so it is reported with
+   * the same code: re-read the row, and if somebody else signed it, say `already_verified`.
+   */
+  let ctx: Awaited<ReturnType<typeof resultContext>>;
+  try {
+    ctx = await resultContext(tx, result.orderItemId);
+  } catch (e) {
+    if (e instanceof LabError && e.code === "item_not_resultable") {
+      const [fresh] = await tx.select({ status: labResults.verificationStatus }).from(labResults)
+        .where(eq(labResults.id, input.resultId));
+      if (fresh !== undefined && fresh.status !== "unverified") {
+        throw new LabError(
+          "already_verified",
+          `result ${input.resultId} was signed concurrently by another verifier`,
+        );
+      }
+    }
+    throw e;
+  }
 
   await assertReportable(tx, result, ctx);
 

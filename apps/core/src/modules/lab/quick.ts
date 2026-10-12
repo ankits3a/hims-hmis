@@ -12,7 +12,7 @@ import { HOSPITAL } from "../../kernel/printing/document-kit";
 import { qrSvg } from "../../kernel/printing/qr";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { displayNameFor, getPatient, listMergedLoserIds } from "../patients";
-import { labQuickHandedOver, labQuickReported, labQuickSentBack, labQuickStarted } from "./events";
+import { labQuickHandedOver, labQuickReported, labQuickSentBack, labQuickStarted, labReportShared } from "./events";
 import { flagFor, resolveRange } from "./ranges";
 import { evaluateFormula, formulaInputCodes } from "./formula";
 import type { FormulaOutcome } from "./formula";
@@ -580,6 +580,24 @@ export async function handOverQuick(tx: Tx, actor: Actor, id: string, now: Date 
   await appendEvent(tx, labQuickHandedOver.make({ actor, patientId: r.patientId, correlationId: id, occurredAt: now, payload: { quickId: id } }));
   const [row] = await rowsWithPatients(tx, actor, await tx.select().from(labQuickReports).where(eq(labQuickReports.id, id)));
   return row!;
+}
+
+/**
+ * SHARE PDF (owner 2026-10-12) — the phone shared a completed report's PDF. One audit event naming who
+ * and which report; nothing else is written (the report is neither changed nor handed over).
+ */
+export async function recordQuickShare(
+  tx: Tx, actor: Actor, id: string, now: Date = new Date(),
+): Promise<{ reportId: string; sharedAt: string }> {
+  const [r] = await tx.select({ patientId: labQuickReports.patientId, status: labQuickReports.status })
+    .from(labQuickReports).where(eq(labQuickReports.id, id));
+  if (!r) throw new QuickEntryError("report_not_found", `no quick report ${id}`);
+  if (r.status !== "reported") throw new QuickEntryError("not_completed", "only a completed report is shared");
+  await appendEvent(tx, labReportShared.make({
+    actor, patientId: r.patientId, correlationId: id, occurredAt: now,
+    payload: { reportId: id, patientId: r.patientId, channel: "phone_share" },
+  }));
+  return { reportId: id, sharedAt: now.toISOString() };
 }
 
 /** SEND BACK TO QUICK BENCH — a completed report becomes a draft again; refused once handed over. */
