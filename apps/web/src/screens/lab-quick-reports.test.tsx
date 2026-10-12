@@ -158,3 +158,22 @@ it("the phone's PDF page is the desk's printed page, byte for byte (only the des
     }
   } finally { vi.useRealTimers(); }
 });
+
+/*
+ * Owner 2026-10-12 (orchestrator's call) — a routine single test fits ONE A4 page, and no page holds the
+ * footer alone. Measured in headless Chromium (the desk's engine and Android's WebView): a 27-line CBC = 1
+ * page, a urine culture with its antibiotic table = 1 page, CBC + LFT + RFT + lipid = 2 pages with the
+ * footer on both. What jsdom cannot lay out is pinned as the rules that make it so.
+ */
+it("the printed layout: one body row per test, the closing block one row that moves whole, a footer-tall spacer, values at 9 pt", () => {
+  const html = printed({ ...REPORT, tests: [...REPORT.tests, { serviceId: "s-lft", code: "LFT", nameEn: "Liver function test" }],
+    groups: [...REPORT.groups, { title: "Liver function test", analyteIds: ["a-alt"] }],
+    lines: [...REPORT.lines, { analyteId: "a-alt", code: "ALT", nameEn: "SGPT (ALT)", unit: "U/L", value: "30", low: null, high: "40", refText: null, flag: "N" }] });
+  const body = html.slice(html.indexOf("<tbody>\n"), html.indexOf("</tbody>\n</table>"));
+  expect(body.match(/<tr><td><section class="test">/g)).toHaveLength(2);
+  expect(body).toMatch(/<tr class="close"><td>\n<div class="remarks">.*<div class="notes">.*Authorised by.*<\/td><\/tr>$/s);
+  expect(html).toContain(".page > tbody > tr.close { break-inside: avoid; }");
+  expect(html).toContain(".ftsp { height: 31mm; }");
+  expect(html).toContain("@media print { .ftfix { position: fixed; left: 0; right: 0; bottom: 0; } }");
+  expect(html).toMatch(/table\.res td \{[^}]*font-size: 12px;/);
+});
