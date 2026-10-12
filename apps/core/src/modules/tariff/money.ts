@@ -46,3 +46,14 @@ export function inclusiveOf(exclusivePaise: number, rateBps: number): number {
   assertPaise(exclusivePaise, "exclusive price");
   return Math.floor((exclusivePaise * (10000 + rateBps)) / 10000);
 }
+
+/**
+ * "1250", "1250.5", "1,250.00", "₹1250" → integer paise; null when the text is not a sum of rupees.
+ * String arithmetic only — never `parseFloat(x) * 100`, which turns 0.29 into 28.999….
+ */
+export function rupeesTextToPaise(text: string): number | null {
+  const clean = text.replace(/[₹,\s]/g, "");
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(clean)) return null;
+  const [whole = "0", frac = ""] = clean.split(".");
+  return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+}

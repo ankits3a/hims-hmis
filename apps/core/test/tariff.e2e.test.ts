@@ -445,4 +445,20 @@ describe("tariff e2e", () => {
     const versions = await request(app.getHttpServer()).get("/tariff/versions").set(...auth(readerToken)).expect(200);
     expect(versions.body.items.map((x: { id: string }) => x.id)).toContain(v.body.versionId);
   });
+
+  /** E0.4 — the IPD rate card read, on `tariff.read`: a reader sees it, no token is 401, an unknown version 404. */
+  it("IPD rate card over HTTP: a reader sees every rated class missing; a draft is readable by id", async () => {
+    await request(app.getHttpServer()).get("/tariff/ipd-rate-card").expect(401);
+    const none = await request(app.getHttpServer()).get("/tariff/ipd-rate-card").set(...auth(readerToken)).expect(200);
+    expect(none.body.version).toBeNull();
+    expect(none.body.ready).toBe(0);
+    expect(none.body.missing).toBe(none.body.classes.length);
+    expect(none.body.gaps[0]).toEqual({ bedClass: "general", missing: ["room", "nursing", "visit"] });
+
+    const v = await request(app.getHttpServer()).post("/tariff/versions").set(...auth(drafterToken)).send({}).expect(201);
+    const draft = await request(app.getHttpServer())
+      .get(`/tariff/ipd-rate-card?versionId=${v.body.versionId as string}`).set(...auth(readerToken)).expect(200);
+    expect(draft.body.version).toMatchObject({ versionId: v.body.versionId, status: "draft" });
+    await request(app.getHttpServer()).get("/tariff/ipd-rate-card?versionId=nope").set(...auth(readerToken)).expect(404);
+  });
 });
