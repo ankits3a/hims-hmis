@@ -4,6 +4,7 @@ import {
   labAnalytes, labCriticalCalls, labResults, orderItems, orders, patients,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
+import { acknowledgeAlertsAbout } from "../../kernel/alerts/alerts";
 import { displayName, resolvePatientId } from "../patients";
 import { LabError } from "./errors";
 import { currentValue } from "./results";
@@ -319,6 +320,12 @@ export async function acknowledgeCritical(
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .where(eq(labResults.id, call.resultId));
   const patientId = subject ? (await resolvePatientId(tx, subject.patientId)) ?? subject.patientId : undefined;
+
+  /**
+   * E3.2 (#595) — the chase is over, so every ladder alert still open for this call is acknowledged
+   * by the closer in this same transaction; the reach ladder relays nothing more about it.
+   */
+  await acknowledgeAlertsAbout(tx, actor, { refType: "lab_critical_call", refId: input.callId }, now, "closed by read-back");
 
   await appendEvent(tx, labCriticalAcknowledged.make({
     actor,

@@ -47,6 +47,9 @@ export const alertsManifest: ModuleManifest = {
     // `escalationTriggered.payloadSchema.parse` and fails the delivery rather than raising anything.
     { event: "imaging.critical_overdue", consumer: "kernel.alerts" },
     { event: "imaging.report_unread", consumer: "kernel.alerts" },
+    // E3.2 (#595) — a lab critical with no read-back, one rung at a time. Its branch is in
+    // `consumer.ts` in the same commit (the one-edit rule above).
+    { event: "lab.critical_overdue", consumer: "kernel.alerts" },
     // OBLIGATION SPINE T2 (2026-09-20) — FILING TELLS SOMEBODY. The approvals spine measured that
     // `approval.requested` reached neither surface: an approver learned a request existed only by
     // opening the screen and looking (phase-approvals-spine M2, handoff E4). This subscription

@@ -3,7 +3,7 @@ import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  events, labAnalytes, permissions, phiAccessLog, rolePermissions, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
+  events, labAnalytes, labCriticalCalls, permissions, phiAccessLog, rolePermissions, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, patients,
   registrationConfig, services,
 } from "../../kernel/db/schema";
 import { mkUser } from "../../../test/helpers/opd";
@@ -126,6 +126,9 @@ describe("lab quick entry", () => {
       id: row.id, summary: "", lines: [{ analyteId: hb, value: "4" }],
     }, NOW));
     expect(crit.lines[0]!.flag).toBe("LL");
+    // E3.2 (#595) / decision 0061 — a quick-entry critical opens no call, so the chase ladder never starts.
+    expect(await db.select().from(labCriticalCalls)).toEqual([]);
+    expect(await db.select().from(events).where(eq(events.name, "lab.critical_overdue"))).toEqual([]);
 
     const logged = await db.select().from(events).where(eq(events.name, "lab.quick_reported"));
     expect(logged.map((e) => (e.payload as { edit: boolean }).edit)).toEqual([false, true]);

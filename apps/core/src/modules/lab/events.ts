@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
+import { LAB_CHASE_RUNGS } from "../../kernel/db/schema/lab";
 
 /**
  * PLAN 17 T2 / DD18 — the lab's event surface. `entity.verb_past`, module carried separately (the
@@ -206,6 +207,21 @@ export const labCriticalAcknowledged = defineEvent("lab.critical_acknowledged", 
   callId: id, resultId: id, closedBy: id, attempts: z.number().int().nonnegative(), at: iso,
 }));
 
+/**
+ * E3.2 (#595) — a critical with no read-back reached a rung of the chase ladder: rung 0 (the
+ * ordering doctor) at open, then one rung every 15 minutes up to the HOD. `recipientIds` are the
+ * rung's people as the lab resolved them (empty = nobody named; the alerts consumer falls back).
+ *
+ * **No value, no patient, no analyte** — the alerts consumer fans this to a bell and a phone. The
+ * envelope's `patientId` is the audit path; nothing renders it.
+ */
+export const labCriticalOverdue = defineEvent("lab.critical_overdue", MODULE, z.object({
+  callId: id, resultId: id,
+  rung: z.enum(LAB_CHASE_RUNGS),
+  minutesOpen: z.number().int().nonnegative(),
+  recipientIds: z.array(id),
+}));
+
 export const labResultDeltaFlagged = defineEvent("lab.result_delta_flagged", MODULE, z.object({
   resultId: id, priorResultId: id, analyteId: id, patientId: id,
   priorValue: z.string().min(1), value: z.string().min(1),
@@ -345,7 +361,7 @@ export const LAB_EVENTS = [
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
   labSpecimenRejected, labSpecimenRelabelled, labRecollectionRequested,
   labResultEntered, labResultVerified, labResultChosen, labNightReleaseReviewed,
-  labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged,
+  labTubeSwapSuspected, labResultCriticalFlagged, labCriticalAcknowledged, labCriticalOverdue,
   labResultDeltaFlagged, labReflexAdded, labReflexRefused, labSodViolationBlocked,
   labReportPublished, labReportPrintBlocked, labReportReleasedUnpaid, labReportPrinted,
   labReportAmended,

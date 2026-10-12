@@ -11,7 +11,7 @@ import { sweepAppointmentNoShows } from "../../modules/opd/appointments";
 import { openDueTeleVisits } from "../../modules/opd/tele";
 import { sweepQueueNudges } from "../../modules/opd/queue-nudges";
 import { sweepBatchExpiry } from "../../modules/materials";
-import { sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
+import { sweepLabCriticalLadder, sweepLabNonReturn, sweepLabSla } from "../../modules/lab";
 import { collectOrderKinds } from "../orders/kinds";
 import { flagLateSurgeons } from "../../modules/ot";
 import { runDailyClose } from "../../modules/billing/daily-close";
@@ -498,6 +498,17 @@ export function registerAllJobs(
     name: "sweepLabSla",
     every: intervals.workerLabSweepIntervalMs,
     run: async (now) => { await sweepLabSla(db, now); },
+  });
+  /**
+   * E3.2 (#595) — THE LAB CRITICAL LADDER. Every minute, for `sweepCriticalChaser`'s reason: its
+   * rungs are 15 minutes apart, and a sweep coarser than the window it enforces cannot enforce it.
+   * A literal cadence, not a `JobIntervals` key (16c's reason). It writes a rung and one event; the
+   * alerts consumer turns that into a row in front of the rung's people.
+   */
+  scheduler.register({
+    name: "sweepLabCriticalLadder",
+    every: 60_000,
+    run: async (now) => { await sweepLabCriticalLadder(db, now); },
   });
   /**
    * PLAN 16c CLOSE / F11 — THE SIXTEENTH JOB, and it exists because a constant lied.

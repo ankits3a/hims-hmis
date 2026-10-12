@@ -62,6 +62,7 @@ flowchart LR
   lab --> billing
   lab --> opd
   lab --> patients
+  lab --> roster
   lab --> tariff
   materials --> formulary
   membership --> patients
@@ -113,7 +114,7 @@ flowchart LR
 | [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 51 | 16 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
-| [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 77 | 25 |
+| [lab](modules/lab.md) | billing, opd, patients, roster, tariff | abdm, ordering, radiology | 77 | 25 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, ordering, pharmacy, radiology | 164 | 32 |
@@ -124,7 +125,7 @@ flowchart LR
 | [pcpndt](modules/pcpndt.md) | — | radiology | 10 | 5 |
 | [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 183 | 32 |
 | [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 113 | 22 |
-| [roster](modules/roster.md) | — | opd, ot, radiology | 37 | 26 |
+| [roster](modules/roster.md) | — | lab, opd, ot, radiology | 37 | 26 |
 | [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 18 | 7 |
 
 ## Kernel subsystems
@@ -133,7 +134,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 
 | subsystem | used by modules | depends on kernel | routes |
 |---|---|---|---|
-| `alerts` | attendance, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
+| `alerts` | attendance, lab, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
 | `approvals` | abdm, aerb, attendance, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
 | `auth` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, attendance, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
