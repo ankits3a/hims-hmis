@@ -9,14 +9,42 @@ generated: { by: tools/arch/gen.mjs }
 # module `ipd`
 
 Source: `apps/core/src/modules/ipd/`
+· Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** —
 - **Used by modules:** —
-- **Kernel used:** `workflow`
+- **Kernel used:** `db`, `resources`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
-Nothing exported.
+- `admission-workflow.ts`
+  - `ADMISSION_TRANSITIONS: readonly AdmissionTransition[]`
+  - `ADMISSION_WORKFLOW_DEF_KEY`
+  - `IPD_ACTOR_ROLE_KEYS: Record<IpdActorKind, readonly string[]>`
+  - `admissionIntentFor(from: string, to: string): IpdIntentName | null`
+  - `admissionWorkflowDefinition: WorkflowDefinition`
+  - types: `AdmissionTransition`
+- `bed-attributes.ts`
+  - `IPD_BED_EQUIPMENT`
+  - `IPD_BED_RULE_CODES`
+  - `IPD_GENDER_RULES`
+  - `IPD_ISOLATION_TYPES`
+  - `IPD_UNIT_TYPES`
+  - `IPD_WARD_TYPES`
+  - `IpdBedAttributesSchema`
+  - `IpdWardAttributesSchema`
+  - `canonicalEquipment(list: readonly IpdBedEquipment[]): IpdBedEquipment[]`
+  - types: `IpdBedAttributes`, `IpdBedEquipment`, `IpdGenderRule`, `IpdIsolationType`, `IpdUnitType`, `IpdWardAttributes`, `IpdWardType`
+- `bed-layout.ts`
+  - `BED_LAYOUT_COLUMNS`
+  - `formatBedLayoutReport(r: BedLayoutReport): string`
+  - `loadBedLayout(db: Db, actor: Actor, rows: readonly BedLayoutRow[], opts: { apply?: boolean; siteId?: string } = {}): Promise<BedLayoutRepor…`
+  - `parseBedLayoutCsv(text: string): BedLayoutRow[]`
+  - `validateBedLayout(rows: readonly BedLayoutRow[]): { plan: BedLayoutPlan; problems: BedLayoutProblem[] }`
+  - types: `BedLayoutChange`, `BedLayoutColumn`, `BedLayoutPlan`, `BedLayoutProblem`, `BedLayoutReport`, `BedLayoutRow`
+- `errors.ts`
+  - `class IpdError`
+  - types: `IpdErrorCode`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
