@@ -23,6 +23,9 @@ sources: []
 AFB_OTHER (AFB smear, other specimens) are priced at ₹0. This changes one line of decision 0070, which said they
 were priced like any other test; the rest of 0070 stands.
 
+Also ruled the same day: *"keep thrombophilia and histopathology prices as what is priced in industry."* Those
+prices stay as decision 0070 set them (derived from the chains' walk-in prices); no change.
+
 ## DECIDED (standard practice, open to the owner's objection)
 
 - Only the tests the owner named are free. TB line-probe assay (TB_LPA) and liquid culture (TB_MGIT) keep their
