@@ -8,6 +8,8 @@ import { useSession } from "../session";
 import { Text, TextInput } from "../text";
 import { color, radius, space } from "../theme";
 import { Button, KeyboardScrollView, MONO, Note } from "../ui";
+import { AstEditor } from "../lab/ast";
+import { astForSave, astProblemText, cleanAstRows, isCultureCode, isNoGrowth, type AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
  * QUICK BENCH ON THE PHONE (spec 2026-10-12; the web's /lab/qbench and its results form). The
@@ -69,6 +71,8 @@ function BenchForm({ id, api, catalogue, t, onCompleted }: {
   const [draftSaved, setDraftSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Owner 2026-10-12 — each culture test's antibiotic rows, by service id. */
+  const [ast, setAst] = useState<Record<string, AstDraftRow[]>>({});
 
   useEffect(() => {
     let gone = false;
@@ -77,6 +81,7 @@ function BenchForm({ id, api, catalogue, t, onCompleted }: {
       const typed = new Map(r.lines.map((l) => [l.analyteId, l.value]));
       setReport(r);
       setRows(r.analyteIds.map((analyteId) => ({ analyteId, value: typed.get(analyteId) ?? "" })));
+      setAst(Object.fromEntries((r.ast ?? []).map((b) => [b.serviceId, b.rows])));
       // A draft keeps its typed summary, so a draft saved and reopened says what it said.
       if (r.summary !== "") { setSummary(r.summary); setSummaryEdited(true); }
       if (r.analyteIds.length > 0) {
@@ -96,11 +101,20 @@ function BenchForm({ id, api, catalogue, t, onCompleted }: {
     return <View style={{ padding: space.lg }}>{error !== null ? <Note tone="bad" testID="ql-error">{error}</Note> : <Text style={ls.sub}>{t("quickLab.loading")}</Text>}</View>;
   }
   const filled = list.filter((r) => r.value.trim() !== "").length;
+  /** "No growth" / "Sterile" in the organism line hides the antibiotic table and saves none. */
+  const cultures = report.tests.filter((x) => isCultureCode(x.code));
+  const organism = list.find((x) => byId.get(x.analyteId)?.code === "MIC_ORG")?.value ?? "";
+  const sterile = isNoGrowth(organism);
 
   const save = async (complete: boolean): Promise<void> => {
+    const astOut = astForSave(cultures, ast, organism);
+    for (const b of astOut) {
+      const c = cleanAstRows(b.rows);
+      if (!c.ok) { setError(astProblemText(c.problem)); return; }
+    }
     setBusy(true); setDraftSaved(false);
     try {
-      const out = await api.save(id, { lines: saveLines(list, byId), summary: shownSummary, complete });
+      const out = await api.save(id, { lines: saveLines(list, byId), summary: shownSummary, complete, ...(cultures.length > 0 ? { ast: astOut } : {}) });
       setError(null);
       if (complete && out.status === "reported") onCompleted(out);
       else setDraftSaved(true);
@@ -161,6 +175,12 @@ function BenchForm({ id, api, catalogue, t, onCompleted }: {
           })}
         </View>
       ))}
+      {cultures.map((x) => (sterile ? (
+        <Text key={x.serviceId} testID={`qb-ast-nogrowth-${x.code}`} style={ls.sub} numberOfLines={1}>{t("quickLab.ast.noGrowth")}</Text>
+      ) : (
+        <AstEditor key={x.serviceId} testCode={x.code} testName={x.nameEn} rows={ast[x.serviceId] ?? []} t={t}
+          onChange={(rows) => { setAst((prev) => ({ ...prev, [x.serviceId]: rows })); setDraftSaved(false); }} />
+      )))}
       <View style={{ gap: 6 }}>
         <Text style={ls.cap}>{t("quickLab.summary")}</Text>
         <TextInput testID="qb-summary" multiline value={shownSummary} onChangeText={(v) => { setSummary(v); setSummaryEdited(true); setDraftSaved(false); }}

@@ -1249,6 +1249,12 @@ export const labQuickReports = pgTable(
     collectedBy: text("collected_by").notNull(),
     lines: jsonb("lines").notNull().default(sql`'[]'::jsonb`),
     summary: text("summary").notNull().default(""),
+    /**
+     * Owner 2026-10-12 — the antibiotic sensitivity table of each culture test (`CS_*`), as
+     * `{ serviceId, rows: { antibiotic, result: S|I|R, mic } }[]` (`packages/contracts/src/lab-ast.ts`).
+     * Blank rows are never stored; a "No growth" culture stores none.
+     */
+    ast: jsonb("ast").notNull().default(sql`'[]'::jsonb`),
     reportedAt: timestamp("reported_at", { withTimezone: true }),
     reportedBy: text("reported_by"),
     /** Owner 2026-10-11 — Print & Hand over at /lab/qreports: who gave the report to the patient, and when. */

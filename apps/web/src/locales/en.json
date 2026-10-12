@@ -4072,6 +4072,24 @@
       "changeTests": "Change tests",
       "openQCollect": "Open Quick Collect"
     },
+    "ast": {
+      "title": "Antibiotic sensitivity",
+      "panel": "Panel",
+      "pickPanel": "Pick a panel…",
+      "add": "Add antibiotic",
+      "addHint": "Type a name or code",
+      "addFree": "Add “{{name}}”",
+      "remove": "Remove {{name}}",
+      "antibiotic": "Antibiotic",
+      "result": "Result",
+      "mic": "MIC",
+      "micUnit": "MIC (µg/mL)",
+      "S": "Sensitive",
+      "I": "Intermediate",
+      "R": "Resistant",
+      "noGrowth": "No growth — no sensitivity table.",
+      "empty": "Pick a panel or add an antibiotic."
+    },
     "qchain": {
       "collectTitle": "Quick Collect",
       "collectNote": "Patients whose tests are ordered. Collect the blood, then confirm it here — each confirmation stamps a sample number and sends the patient to Quick Bench.",

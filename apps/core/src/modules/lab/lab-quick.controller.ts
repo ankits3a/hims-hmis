@@ -38,6 +38,19 @@ const resultsBody = z.object({
   summary: z.string().max(4000),
   /** Owner 2026-10-11 — `false` is /lab/qbench's Save draft. */
   complete: z.boolean().optional(),
+  /**
+   * Owner 2026-10-12 — the antibiotic sensitivity tables. Loose here on purpose: the row rules (S/I/R,
+   * a plain-number MIC, blank rows dropped) are `cleanAstRows`'s, applied in `saveQuickResults`, whose
+   * 400 names the row.
+   */
+  ast: z.array(z.object({
+    serviceId: idSchema,
+    rows: z.array(z.object({
+      antibiotic: z.string().max(200),
+      result: z.string().max(20).nullable(),
+      mic: z.string().max(40).nullable(),
+    })).max(100),
+  })).max(30).optional(),
 });
 
 const rangesQuery = z.object({
@@ -45,11 +58,12 @@ const rangesQuery = z.object({
   analyteIds: z.string().max(20000).transform((s) => s.split(",").filter((x) => x !== "")),
 });
 
-function quickHttp(e: unknown): never {
+export function quickHttp(e: unknown): never {
   if (e instanceof QuickEntryError) {
     const status = e.code === "patient_not_found" || e.code === "report_not_found" || e.code === "order_not_found" ? 404
       : e.code === "not_permitted" ? 403
       : e.code === "already_collected" || e.code === "already_handed_over" || e.code === "not_completed" ? 409
+      : e.code === "ast_invalid" ? 400
       : 422;
     throw httpError(status, e.message, e.code, e.detail);
   }

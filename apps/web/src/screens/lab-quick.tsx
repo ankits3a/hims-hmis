@@ -9,6 +9,9 @@ import {
   startQuick, verifyCardQr,
 } from "../lib/lab-quick-api";
 import { evaluateFormula, formulaInputCodes } from "../../../../packages/contracts/src/lab-formula";
+import { astForSave, astProblemText, cleanAstRows, isCultureCode, isNoGrowth } from "../../../../packages/contracts/src/lab-ast";
+import type { AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
+import { AstEditor } from "./lab-ast";
 import { Button } from "@/components/ui/button";
 import { LabStation, sexAge } from "./lab-seat";
 import { printQuickReport, QuickLabReports } from "./lab-quick-reports";
@@ -283,6 +286,8 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
   const [saved, setSaved] = useState<QuickReport | null>(null);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** Owner 2026-10-12 — each culture test's antibiotic rows, by service id. */
+  const [ast, setAst] = useState<Record<string, AstDraftRow[]>>({});
   const inputs = useRef(new Map<string, HTMLInputElement>());
 
   useEffect(() => {
@@ -290,6 +295,7 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
     if (r === undefined || rows !== null) return;
     const typed = new Map(r.lines.map((l) => [l.analyteId, l.value]));
     setRows(r.analyteIds.map((analyteId) => ({ analyteId, value: typed.get(analyteId) ?? "" })));
+    setAst(Object.fromEntries((r.ast ?? []).map((b) => [b.serviceId, b.rows])));
     if (r.status === "reported") { setSummary(r.summary); setSummaryEdited(true); setSaved(r); }
     /** A draft (owner 2026-10-11) keeps its typed summary, so a draft saved and reopened says what it said. */
     else if (r.status === "draft" && r.summary !== "") { setSummary(r.summary); setSummaryEdited(true); }
@@ -355,9 +361,19 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
   });
   const shownSummary = summaryEdited ? summary : draftSummary(previewLines);
 
+  /**
+   * OWNER 2026-10-12 — the culture tests' antibiotic tables. "No growth" / "Sterile" in the organism
+   * line hides them and saves none; blank rows never leave the screen; the server applies the same rule.
+   */
+  const cultureTests = (report.data?.tests ?? []).filter((x) => isCultureCode(x.code));
+  const organism = list.find((x) => analyteById.get(x.analyteId)?.code === "MIC_ORG")?.value ?? "";
+  const sterile = isNoGrowth(organism);
+  const astPayload = astForSave(cultureTests, ast, organism);
+
   const save = useMutation({
     mutationFn: (complete?: boolean) => saveQuickResults(id, {
       lines: list.filter((r) => r.value.trim() !== "" && !isCalc(r.analyteId)), summary: shownSummary, ...(complete === undefined ? {} : { complete }),
+      ...(cultureTests.length > 0 ? { ast: astPayload } : {}),
     }),
     onSuccess: (r) => {
       setSaved(r);
@@ -368,6 +384,13 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
     },
     onError: (e) => setError(labErrorText(e)),
   });
+  function submit(complete?: boolean): void {
+    for (const b of astPayload) {
+      const c = cleanAstRows(b.rows);
+      if (!c.ok) { setError(`${cultureTests.find((x) => x.serviceId === b.serviceId)?.nameEn ?? ""} — ${astProblemText(c.problem)}`); return; }
+    }
+    save.mutate(complete);
+  }
 
   const q = search.trim().toLowerCase();
   const matches = useMemo(() => {
@@ -471,6 +494,13 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
         </table>
       </section>
 
+      {cultureTests.map((x) => (sterile ? (
+        <p key={x.serviceId} className="text-sm text-muted-foreground" data-testid={`ast-nogrowth-${x.code}`}>{t("lab.ast.noGrowth")}</p>
+      ) : (
+        <AstEditor key={x.serviceId} testCode={x.code} testName={x.nameEn} rows={ast[x.serviceId] ?? []}
+          onChange={(rows) => { setAst((prev) => ({ ...prev, [x.serviceId]: rows })); setSaved(null); }} />
+      )))}
+
       <section className="relative">
         <input
           aria-label={t("lab.quick.addParam")}
@@ -515,15 +545,15 @@ export function ResultsPanel({ id, catalogue, onBack, mode = "quick", onComplete
 
       {mode === "bench" ? (
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => save.mutate(false)} disabled={save.isPending}>{t("lab.qchain.saveDraft")}</Button>
-          <Button onClick={() => save.mutate(true)} disabled={filledCount === 0 || save.isPending}>{t("lab.qchain.saveComplete")}</Button>
+          <Button variant="outline" onClick={() => submit(false)} disabled={save.isPending}>{t("lab.qchain.saveDraft")}</Button>
+          <Button onClick={() => submit(true)} disabled={filledCount === 0 || save.isPending}>{t("lab.qchain.saveComplete")}</Button>
           {saved !== null && saved.status === "draft" && (
             <span role="status" className="text-sm text-green-700 dark:text-green-300">{t("lab.qchain.draftSaved")}</span>
           )}
         </div>
       ) : (
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => save.mutate(undefined)} disabled={filledCount === 0 || save.isPending}>
+        <Button onClick={() => submit(undefined)} disabled={filledCount === 0 || save.isPending}>
           {r.status === "reported" ? t("lab.quick.saveChanges") : t("lab.quick.save")}
         </Button>
         {saved !== null && (

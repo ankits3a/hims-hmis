@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -78,4 +78,63 @@ it("the printed page: letterhead, identity, flag WORDS beside coloured cells, re
   expect(html).toContain("Pravin Kumar Verma");
   expect(html).toMatch(/<div class="nm"><\/div><div class="ln">Authorised by<\/div>/);
   expect(html).toContain("Printed by <strong>rohan.sinha</strong> on ");
+});
+
+/* ═══ owner 2026-10-12 — the antibiotic sensitivity table (SPEC-lab-ast-table-2026-10-12.md) ═══ */
+
+const URINE_REPORT = {
+  ...REPORT, id: "q-2",
+  tests: [{ serviceId: "s-cs", code: "CS_URINE", nameEn: "Urine culture & sensitivity" }],
+  analyteIds: ["a-org"], groups: [{ title: "Urine culture & sensitivity", analyteIds: ["a-org"] }],
+  lines: [{ analyteId: "a-org", code: "MIC_ORG", nameEn: "Organism isolated", unit: null, value: "Escherichia coli", low: null, high: null, refText: null, flag: null }],
+  summary: "ESBL producer",
+  ast: [{ serviceId: "s-cs", rows: [
+    { antibiotic: "NIT", result: "S", mic: null },
+    { antibiotic: "AMP", result: "R", mic: "32" },
+    { antibiotic: "MEM", result: "S", mic: "0.25" },
+    { antibiotic: "CIP", result: "R", mic: null },
+    { antibiotic: "AMK", result: "S", mic: null },
+  ] }],
+};
+
+function printed(report: unknown): string {
+  let html = "";
+  vi.stubGlobal("open", vi.fn(() => ({ document: { write: (h: string) => { html += h; }, close: () => undefined } })));
+  printQuickReport(report as QuickReport, "rohan.sinha");
+  return html;
+}
+
+it("the printed culture: an Antibiotic | Result | MIC table after the culture's fields, exactly the 5 rows, R rows bold", () => {
+  const html = printed(URINE_REPORT);
+  expect(html).toContain("Antibiotic sensitivity — Urine culture &amp; sensitivity");
+  expect(html).toContain("<th>MIC (µg/mL)</th>");
+  expect(html.indexOf("Organism isolated")).toBeLessThan(html.indexOf("Antibiotic sensitivity"));
+  expect(html.match(/<tr class="ast-/g)).toHaveLength(5);
+  expect(html).toContain('<tr class="ast-R"><td class="name"><b>Ampicillin</b></td><td class="c"><b>Resistant (R)</b></td><td class="c"><b>32</b></td></tr>');
+  expect(html).toContain('<tr class="ast-R"><td class="name"><b>Ciprofloxacin</b></td><td class="c"><b>Resistant (R)</b></td><td class="c"><b>—</b></td></tr>');
+  expect(html).toContain('<tr class="ast-S"><td class="name">Nitrofurantoin</td><td class="c">Sensitive (S)</td><td class="c">—</td></tr>');
+  /** The free-text sensitivity summary stays as the remark. */
+  expect(html).toContain("ESBL producer");
+});
+
+it("the MIC column is left out when no row has a MIC; a No growth culture prints no table", () => {
+  const noMic = printed({ ...URINE_REPORT, ast: [{ serviceId: "s-cs", rows: [{ antibiotic: "AMP", result: "S", mic: null }] }] });
+  expect(noMic).toContain("Antibiotic sensitivity");
+  expect(noMic).not.toContain("MIC (µg/mL)");
+  const sterile = printed({
+    ...URINE_REPORT, ast: [],
+    lines: [{ ...URINE_REPORT.lines[0]!, value: "No growth after 48 hours" }],
+  });
+  expect(sterile).toContain("No growth after 48 hours");
+  expect(sterile).not.toContain("Antibiotic sensitivity");
+});
+
+it("the profile's card shows the antibiotic table when its values are opened", async () => {
+  stub([URINE_REPORT]);
+  renderWithProviders(<QuickLabReports patientId="p-1" />);
+  const card = await screen.findByTestId("quick-report-q-2");
+  await userEvent.click(within(card).getByRole("button", { name: "All values" }));
+  const table = within(card).getByTestId("ast-preview-s-cs");
+  expect(table).toHaveTextContent("Ampicillin");
+  expect(table).toHaveTextContent("Resistant (R)");
 });
