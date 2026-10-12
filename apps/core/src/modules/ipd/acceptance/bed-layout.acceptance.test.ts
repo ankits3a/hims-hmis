@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { IPD_BED_CLASSES } from "@hmis/contracts";
 import { events, resources } from "../../../kernel/db/schema";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
+import { mkBedLoader } from "../../../../test/helpers/ipd";
 import { BED_LAYOUT_COLUMNS, loadBedLayout, parseBedLayoutCsv } from "../index";
 import type { Actor, IpdBedClass } from "@hmis/contracts";
 import type { Db } from "../../../kernel/db/client";
@@ -19,7 +20,6 @@ import type { BedLayoutColumn } from "../index";
  *
  * Owner-approved checks are LOCKED once merged: add new ones, never edit these.
  */
-const ACTOR: Actor = { type: "user", id: "U-BED-LOADER" };
 const PLANNING_CSV = join(__dirname, "..", "..", "..", "..", "scripts", "data", "ipd-bed-layout.planning.csv");
 
 /**
@@ -48,7 +48,9 @@ describe("E0.3 bed layout loader — acceptance", () => {
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => teardown());
-  beforeEach(async () => { await truncateAll(db); });
+  /** Applying a layout needs `auth.users.manage`; a dry run needs no permission. */
+  let ACTOR: Actor;
+  beforeEach(async () => { await truncateAll(db); ACTOR = await mkBedLoader(db); });
 
   const resourceCount = async (): Promise<number> =>
     (await db.select({ n: sql<number>`count(*)::int` }).from(resources))[0]!.n;

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createDb } from "../src/kernel/db/client";
-import { formatBedLayoutReport, loadBedLayout, parseBedLayoutCsv } from "../src/modules/ipd";
+import { BED_LAYOUT_PERMISSION, formatBedLayoutReport, loadBedLayout, parseBedLayoutCsv } from "../src/modules/ipd";
 import { argValue, hasFlag, resolvePerson } from "./pharmacy-shelf-common";
 import type { BedLayoutReport } from "../src/modules/ipd";
 import type { Db } from "../src/kernel/db/client";
@@ -20,9 +20,9 @@ import type { Db } from "../src/kernel/db/client";
  *
  * `--by` names the person the rows are recorded against. DECIDED (E0.3): until the bed board lane
  * declares IPD's own bed-master permission, that person must hold `auth.users.manage` — the
- * technical administrator who sets the hospital up.
+ * technical administrator who sets the hospital up. `loadBedLayout` checks it again on --apply.
  */
-export const BED_LAYOUT_LOADER_PERMISSION = "auth.users.manage";
+export const BED_LAYOUT_LOADER_PERMISSION = BED_LAYOUT_PERMISSION;
 
 export async function runBedLayoutLoad(
   db: Db, argv: readonly string[], readFile: (path: string) => string = (p) => readFileSync(p, "utf8"),

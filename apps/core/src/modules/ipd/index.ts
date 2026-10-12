@@ -14,7 +14,7 @@ export type {
   IpdBedAttributes, IpdBedEquipment, IpdGenderRule, IpdIsolationType, IpdUnitType, IpdWardAttributes, IpdWardType,
 } from "./bed-attributes";
 export {
-  BED_LAYOUT_COLUMNS, formatBedLayoutReport, loadBedLayout, parseBedLayoutCsv, validateBedLayout,
+  BED_LAYOUT_COLUMNS, BED_LAYOUT_PERMISSION, formatBedLayoutReport, loadBedLayout, parseBedLayoutCsv, validateBedLayout,
 } from "./bed-layout";
 export type {
   BedLayoutChange, BedLayoutColumn, BedLayoutPlan, BedLayoutProblem, BedLayoutReport, BedLayoutRow,
