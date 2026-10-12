@@ -4,7 +4,9 @@
  */
 export type IpdErrorCode =
   /** A bed-layout file failed validation or disagrees with the registry; nothing was written. */
-  | "bed_layout_invalid";
+  | "bed_layout_invalid"
+  /** `apply` by an actor who does not hold the bed-layout permission; nothing was written. */
+  | "bed_layout_forbidden";
 
 export class IpdError extends Error {
   constructor(

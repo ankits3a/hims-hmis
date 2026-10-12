@@ -1,14 +1,15 @@
 import { eq } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
 import { resources } from "../../kernel/db/schema";
-import { KERNEL_RESOURCE_KINDS, createResource } from "../../kernel/resources";
+import { KERNEL_RESOURCE_KINDS, assignResource, createResource } from "../../kernel/resources";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
+import { mkBedLoader } from "../../../test/helpers/ipd";
 import { BED_LAYOUT_COLUMNS, formatBedLayoutReport, loadBedLayout, parseBedLayoutCsv, validateBedLayout } from "./index";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { BedLayoutColumn } from "./index";
 
-const ACTOR: Actor = { type: "user", id: "U-BED-LOADER" };
+const NOBODY: Actor = { type: "user", id: "U-NO-GRANTS" };
 
 const BASE: Record<BedLayoutColumn, string> = {
   floor_code: "F01", floor_name: "First floor", ward_code: "F01-MICU", ward_name: "Medical ICU", ward_kind: "ward",
@@ -46,13 +47,26 @@ describe("parseBedLayoutCsv and validateBedLayout (pure)", () => {
   });
 });
 
+describe("parseBedLayoutCsv refuses a malformed file", () => {
+  it("refuses a header that names a column twice", () => {
+    expect(() => parseBedLayoutCsv(`${BED_LAYOUT_COLUMNS.join(",")},bed_code\n`)).toThrow(/duplicate column bed_code/);
+  });
+
+  it("refuses a data row whose cell count differs from the header's, naming the row", () => {
+    const good = csv([{}]).split("\n")[1]!;
+    const text = `${BED_LAYOUT_COLUMNS.join(",")}\n${good}\n${good},extra\n${good.split(",").slice(0, -2).join(",")}`;
+    expect(() => parseBedLayoutCsv(text)).toThrow(/row 3: 19 cells, the header has 18[\s\S]*row 4: 16 cells, the header has 18/);
+  });
+});
+
 describe("loadBedLayout against the registry", () => {
   let db: Db;
   let teardown: () => Promise<void>;
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => teardown());
-  beforeEach(async () => { await truncateAll(db); });
+  let ACTOR: Actor;
+  beforeEach(async () => { await truncateAll(db); ACTOR = await mkBedLoader(db); });
 
   async function bed(code: string) {
     return (await db.select().from(resources).where(eq(resources.code, code)))[0]!;
@@ -97,5 +111,37 @@ describe("loadBedLayout against the registry", () => {
     const report = await loadBedLayout(db, ACTOR, parseBedLayoutCsv(csv([{}])));
     expect({ applied: report.applied, creates: report.create.length, writes: report.writes }).toEqual({ applied: false, creates: 4, writes: 0 });
     expect(await db.select().from(resources)).toEqual([]);
+  });
+
+  it("refuses --apply by a person without auth.users.manage, and writes nothing; a dry run needs no permission", async () => {
+    const rows = parseBedLayoutCsv(csv([{}]));
+    await expect(loadBedLayout(db, NOBODY, rows, { apply: true })).rejects.toMatchObject({ code: "bed_layout_forbidden" });
+    expect(await db.select().from(resources)).toEqual([]);
+    expect((await loadBedLayout(db, NOBODY, rows)).create).toHaveLength(4);
+  });
+
+  it("refuses a clinical attribute change on an occupied bed; an equipment-only change passes", async () => {
+    await loadBedLayout(db, ACTOR, parseBedLayoutCsv(csv([{}])), { apply: true });
+    const b1 = await bed("F01-MICU-B01");
+    await withTx(db, (tx) => assignResource(tx, ACTOR, KERNEL_RESOURCE_KINDS, b1.id, { occupantType: "admission", occupantRef: "ADM-1" }));
+
+    for (const change of [
+      { bed_class: "hdu", icu: "no" }, { gender_rule: "male" }, { isolation: "contact" }, { icu: "no" },
+    ] as Partial<Record<BedLayoutColumn, string>>[]) {
+      await expect(loadBedLayout(db, ACTOR, parseBedLayoutCsv(csv([change])), { apply: true }))
+        .rejects.toThrow(/row 2: bed F01-MICU-B01 is occupied; change its attributes after discharge/);
+    }
+    expect((await bed("F01-MICU-B01")).attributes).toEqual(b1.attributes);
+
+    const ok = await loadBedLayout(db, ACTOR, parseBedLayoutCsv(csv([{ equipment: "monitor;suction" }])), { apply: true });
+    expect(ok.update.map((u) => u.fields)).toEqual([["attributes.equipment"]]);
+  });
+
+  it("refuses a ward whose code is already a hall in the registry (and the reverse), case-insensitively", async () => {
+    await loadBedLayout(db, ACTOR, parseBedLayoutCsv(csv([{}])), { apply: true });
+    const before = await db.select().from(resources);
+    await expect(loadBedLayout(db, ACTOR, parseBedLayoutCsv(csv([{ ward_code: "f01-micu", ward_kind: "hall", bed_code: "F01-MICU-B09", room_code: "", room_name: "" }])), { apply: true }))
+      .rejects.toThrow(/row 2: hall f01-micu — the registry already has a ward with that code/);
+    expect(await db.select().from(resources)).toEqual(before);
   });
 });

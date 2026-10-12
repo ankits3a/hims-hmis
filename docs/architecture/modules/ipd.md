@@ -13,17 +13,10 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** —
 - **Used by modules:** —
-- **Kernel used:** `db`, `resources`, `workflow`
+- **Kernel used:** `auth`, `db`, `resources`
 
 ## Public API (`index.ts`), by declaring file
 
-- `admission-workflow.ts`
-  - `ADMISSION_TRANSITIONS: readonly AdmissionTransition[]`
-  - `ADMISSION_WORKFLOW_DEF_KEY`
-  - `IPD_ACTOR_ROLE_KEYS: Record<IpdActorKind, readonly string[]>`
-  - `admissionIntentFor(from: string, to: string): IpdIntentName | null`
-  - `admissionWorkflowDefinition: WorkflowDefinition`
-  - types: `AdmissionTransition`
 - `bed-attributes.ts`
   - `IPD_BED_EQUIPMENT`
   - `IPD_BED_RULE_CODES`
@@ -37,6 +30,7 @@ Source: `apps/core/src/modules/ipd/`
   - types: `IpdBedAttributes`, `IpdBedEquipment`, `IpdGenderRule`, `IpdIsolationType`, `IpdUnitType`, `IpdWardAttributes`, `IpdWardType`
 - `bed-layout.ts`
   - `BED_LAYOUT_COLUMNS`
+  - `BED_LAYOUT_PERMISSION`
   - `formatBedLayoutReport(r: BedLayoutReport): string`
   - `loadBedLayout(db: Db, actor: Actor, rows: readonly BedLayoutRow[], opts: { apply?: boolean; siteId?: string } = {}): Promise<BedLayoutRepor…`
   - `parseBedLayoutCsv(text: string): BedLayoutRow[]`

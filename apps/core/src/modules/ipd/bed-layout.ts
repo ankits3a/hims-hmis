@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { IPD_BED_CLASSES, IPD_BED_CLASS_INFO, IpdBedClassSchema } from "@hmis/contracts";
+import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { resources } from "../../kernel/db/schema";
 import { KERNEL_RESOURCE_KINDS, createResource, updateResource } from "../../kernel/resources";
@@ -35,6 +36,12 @@ export const BED_LAYOUT_COLUMNS = [
   "icu", "equipment", "daycare", "overflow",
 ] as const;
 export type BedLayoutColumn = (typeof BED_LAYOUT_COLUMNS)[number];
+
+/**
+ * Who may APPLY a layout (a dry run needs nothing). DECIDED (E0.3): the technical administrator's
+ * `auth.users.manage`, until the bed board lane declares IPD's own bed-master permission.
+ */
+export const BED_LAYOUT_PERMISSION = "auth.users.manage";
 
 /** One data row. `row` is the spreadsheet row number a person can find: the header is row 1. */
 export type BedLayoutRow = { row: number; cells: Partial<Record<BedLayoutColumn, string>> };
@@ -73,6 +80,7 @@ export function parseBedLayoutCsv(text: string): BedLayoutRow[] {
   const lines = text.replace(/^﻿/, "").split(/\r?\n/);
   let header: string[] | undefined;
   const rows: BedLayoutRow[] = [];
+  const ragged: string[] = [];
   lines.forEach((raw, idx) => {
     if (raw.trim() === "") return;
     if (header === undefined) {
@@ -88,14 +96,28 @@ export function parseBedLayoutCsv(text: string): BedLayoutRow[] {
           { missing, unknown },
         );
       }
+      const seen = new Set<string>();
+      const twice = header.filter((h) => (seen.has(h) ? true : (seen.add(h), false)));
+      if (twice.length > 0) {
+        throw new IpdError("bed_layout_invalid", `bed layout header refused: duplicate column ${[...new Set(twice)].join(", ")}`, { duplicate: twice });
+      }
       return;
     }
     const values = splitCsvLine(raw);
+    if (values.length !== header.length) {
+      ragged.push(`row ${String(idx + 1)}: ${String(values.length)} cells, the header has ${String(header.length)}`);
+      return;
+    }
     const cells: Partial<Record<BedLayoutColumn, string>> = {};
     header.forEach((h, i) => { cells[h as BedLayoutColumn] = values[i] ?? ""; });
     rows.push({ row: idx + 1, cells });
   });
   if (header === undefined) throw new IpdError("bed_layout_invalid", "bed layout file is empty — no header row");
+  // A short or long row has shifted columns (an unquoted comma, a lost cell): every value after the
+  // slip would be read under the wrong heading, so the file is refused rather than guessed at.
+  if (ragged.length > 0) {
+    throw new IpdError("bed_layout_invalid", `bed layout refused — ${String(ragged.length)} row(s) with the wrong number of cells:\n${ragged.map((r) => `  ${r}`).join("\n")}`, { ragged });
+  }
   return rows;
 }
 
@@ -299,6 +321,9 @@ export async function loadBedLayout(
 ): Promise<BedLayoutReport> {
   const apply = opts.apply ?? false;
   const siteId = opts.siteId ?? "main";
+  if (apply && (actor.type !== "user" || !(await hasPermission(db, actor.id, BED_LAYOUT_PERMISSION, "hospital")))) {
+    throw new IpdError("bed_layout_forbidden", `applying a bed layout needs ${BED_LAYOUT_PERMISSION}; a dry run needs no permission`, { permission: BED_LAYOUT_PERMISSION });
+  }
   const { plan, problems } = validateBedLayout(rows);
   if (rows.length === 0) problems.push({ row: null, code: "empty", message: "the file has no bed rows" });
   if (problems.length > 0) throw refusal(problems);
@@ -343,6 +368,13 @@ export async function loadBedLayout(
       // would compare equal to "under a floor not yet created" and be adopted.
       const parentIsNew = step.parentKey !== null && parentId === null;
       if (current === undefined) {
+        // A ward and a hall are two kinds, so the registry's unique index lets "F05-MED" be both —
+        // two places a person reads as one. Refused before either is created.
+        const twinKind = step.kind === "ward" ? "hall" : step.kind === "hall" ? "ward" : null;
+        if (twinKind !== null && existing.has(keyOf(twinKind, step.code))) {
+          conflicts.push({ row: step.row, code: "ward_hall_collision", message: `row ${String(step.row)}: ${step.kind} ${step.code} — the registry already has a ${twinKind} with that code` });
+          continue;
+        }
         idOf.set(step.key, null);
         report.create.push({ kind: step.kind, code: step.code, row: step.row });
         work.push({ step });
@@ -362,6 +394,13 @@ export async function loadBedLayout(
         ...(current.name !== step.name ? ["name"] : []),
         ...(step.attributes === undefined ? [] : attributeDiff(current.attributes, step.attributes).map((k) => `attributes.${k}`)),
       ];
+      // An occupied bed's clinical attributes are what its patient was placed by; changing them under
+      // the patient is a silent re-placement. The kernel has no `reserved` status, so occupied alone.
+      if (step.kind === "bed" && (current.status === "occupied" || current.occupantRef !== null)
+        && fields.some((f) => OCCUPIED_LOCKED.has(f))) {
+        conflicts.push({ row: step.row, code: "bed_occupied", message: `row ${String(step.row)}: bed ${step.code} is occupied; change its attributes after discharge (${fields.filter((f) => OCCUPIED_LOCKED.has(f)).join(", ")})` });
+        continue;
+      }
       if (fields.length === 0) report.unchanged += 1;
       else {
         report.update.push({ kind: step.kind, code: step.code, row: step.row, fields });
@@ -401,6 +440,9 @@ export async function loadBedLayout(
     return report;
   });
 }
+
+/** Bed attributes that may not change while a patient is in the bed. Equipment may. */
+const OCCUPIED_LOCKED = new Set(["class", "genderRule", "isolation", "icu", "daycare", "overflow"].map((k) => `attributes.${k}`));
 
 function refusal(problems: BedLayoutProblem[]): IpdError {
   return new IpdError(
