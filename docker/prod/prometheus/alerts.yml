@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance|lapseBedReservations"
           } > 300
         for: 2m
         labels:
@@ -152,6 +152,9 @@ groups:
           # leg 1a. A sync that never started is silent in the worst way: every screen keeps showing
           # yesterday's attendance as though it were today's.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="syncAttendance"})
+          # IPD BEDS E1.1 (#718) — the thirty-first, an INTERVAL job (60s), joining leg 1a. A lapse that never
+          # runs keeps a two-hour hold on a bed for ever: the board shows it reserved and no desk can take it.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="lapseBedReservations"})
         for: 5m
         labels:
           severity: critical

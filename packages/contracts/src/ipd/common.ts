@@ -28,8 +28,12 @@ export const IpdPositivePaiseSchema = z.number().int().positive();
 export const IpdIdempotencyKeySchema = z.uuid();
 export const IpdNoteSchema = z.string().trim().min(1).max(1000);
 
-/** §0B provenance: who or what produced a datum. A draft shows "Draft" until a named person signs it. */
-export const IPD_PROVENANCE_SOURCES = ["person", "device", "copilot_draft", "agent", "import"] as const;
+/**
+ * §0B provenance: who or what produced a datum. A draft shows "Draft" until a named person signs it.
+ * `system` (E1.1, DECIDED): a timer acting as the system actor — the 2-hour reservation lapse, the 24-hour
+ * advice expiry — so a clock's act is not mistaken for a person's or an agent's.
+ */
+export const IPD_PROVENANCE_SOURCES = ["person", "device", "copilot_draft", "agent", "import", "system"] as const;
 export const IpdProvenanceSchema = z.enum(IPD_PROVENANCE_SOURCES);
 
 /** Who signs a consent or form: the patient, a guardian (minor) or a nominated representative (no capacity). */

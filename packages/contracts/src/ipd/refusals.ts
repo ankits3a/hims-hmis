@@ -27,6 +27,8 @@ export const IPD_REFUSALS = {
   bed_gender_mismatch: { rule: "The bed's gender rule does not admit this patient.", fix: "Pick another bed" },
   bed_isolation_mismatch: { rule: "The bed does not support the isolation this patient needs.", fix: "Pick isolation bed" },
   bed_age_mismatch: { rule: "Paediatric beds are for children and adult beds for adults.", fix: "Pick another bed" },
+  bed_class_mismatch: { rule: "The bed's class differs from the class asked for, and no upgrade or downgrade was flagged.", fix: "Flag upgrade or downgrade" },
+  bed_not_incumbent: { rule: "Only a bed still held by the old system is released this way.", fix: "Open bed board" },
   bed_retired: { rule: "A retired bed cannot take a patient.", fix: "Pick another bed" },
   bed_reserved: { rule: "A reserved bed cannot be blocked or retired until its reservation ends.", fix: "Release reservation" },
   overflow_needs_duty_manager: { rule: "An overflow bed needs the duty manager's approval.", fix: "Ask duty manager" },

@@ -11,9 +11,9 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
-- **Depends on modules:** —
+- **Depends on modules:** `billing`, `patients`
 - **Used by modules:** —
-- **Kernel used:** `auth`, `db`, `resources`, `workflow`
+- **Kernel used:** `auth`, `db`, `events`, `modules`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -35,6 +35,8 @@ Source: `apps/core/src/modules/ipd/`
   - `IpdWardAttributesSchema`
   - `canonicalEquipment(list: readonly IpdBedEquipment[]): IpdBedEquipment[]`
   - types: `IpdBedAttributes`, `IpdBedEquipment`, `IpdGenderRule`, `IpdIsolationType`, `IpdUnitType`, `IpdWardAttributes`, `IpdWardType`
+- `bed-events.ts`
+  - `IPD_BED_EVENT_NAMES`
 - `bed-layout.ts`
   - `BED_LAYOUT_COLUMNS`
   - `BED_LAYOUT_PERMISSION`
@@ -43,8 +45,34 @@ Source: `apps/core/src/modules/ipd/`
   - `parseBedLayoutCsv(text: string): BedLayoutRow[]`
   - `validateBedLayout(rows: readonly BedLayoutRow[]): { plan: BedLayoutPlan; problems: BedLayoutProblem[] }`
   - types: `BedLayoutChange`, `BedLayoutColumn`, `BedLayoutPlan`, `BedLayoutProblem`, `BedLayoutReport`, `BedLayoutRow`
+- `bed-rules.ts`
+  - `PAEDIATRIC_AGE_LIMIT_YEARS`
+  - `checkBedRules(bed: BedRuleBed, patient: BedRulePatient, need: IpdBedNeed, classChange: "upgrade" | "downgrade" | undefined, ctx: BedRuleCon…`
+  - `placementGender(p: BedRulePatient, need: IpdBedNeed): "male" | "female" | null`
+  - types: `BedRuleBreach`, `BedRuleContext`, `BedRulePatient`
+- `beds-board.ts`
+  - `initialsOf(name: string): string`
+  - `readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean; now?: Date } = {}): Promise<IpdBedBoard>`
+- `beds.ts`
+  - `IPD_SYSTEM_ACTOR: Actor`
+  - `assignBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"assign_bed">>`
+  - `blockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"block_bed">>`
+  - `lapseBedReservations(db: Db, now: Date): Promise<{ lapsed: number }>`
+  - `markBedClean(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mark_bed_clean">>`
+  - `markBedCleanIn(tx: Tx, actor: Actor, bedId: string, cleanedAt: Date): Promise<Output<"mark_bed_clean">>`
+  - `markIncumbentBeds(db: Db, actor: Actor, lines: readonly IncumbentBedLine[], opts: { apply?: boolean; now?: Date } = {}): Promise<IncumbentB…`
+  - `nextRuleValidBeds(db: Db, actor: Actor, args: { bedId: string; patientId: string; need: IpdBedNeed; classChange?: "upgrade" | "downgrade"; …`
+  - `releaseBedOccupant(tx: Tx, actor: Actor, bedId: string, at: Date, opts: { terminal?: boolean } = {}): Promise<{ bedStatus: "cleaning" | "bl…`
+  - `releaseIncumbentBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"release_incumbent_bed">>`
+  - `releaseReservation(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"release_reservation">>`
+  - `reserveBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reserve_bed">>`
+  - `retireBed(db: Db, actor: Actor, input: { bedId: string; reason: string }, opts: Opts = {}): Promise<{ bedId: string }>`
+  - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
+  - types: `IncumbentBedLine`, `IncumbentBedReport`
 - `errors.ts`
   - `class IpdError`
+  - `class IpdRefusal`
+  - `ipdRefusalStatus(code: IpdRefusalCode): number`
   - types: `IpdErrorCode`
 - `goals/goal-events.ts`
   - `BED_AVAILABLE: BedStatus`
@@ -59,13 +87,28 @@ Source: `apps/core/src/modules/ipd/`
   - `intentEvent(intent: IpdIntentName, contains?: string): string`
 - `goals/goal-queries.ts`
   - `IPD_GOAL_QUERIES: Record<string, GoalQuery>`
+- `ipd.module.ts`
+  - `class IpdModule`
+- `manifest.ts`
+  - `IPD_BEDS_CLEAN`
+  - `IPD_BEDS_MANAGE`
+  - `IPD_BEDS_OVERFLOW`
+  - `IPD_BEDS_VIEW`
+  - `ipdManifest: ModuleManifest`
+- `realtime.ts`
+  - `IPD_REALTIME_NAMES: string[]`
+  - `IPD_TOPIC_SPACES: TopicSpace[]`
+  - `ipdTopicRouter: TopicRouter`
+  - `ipdTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[]`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-None under this name.
+`ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`
 
-## HTTP routes (0)
+Foreign keys into: `resources`
 
-None.
+## HTTP routes (8)
+
+- `beds.controller.ts` — 8: `/ipd/beds`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

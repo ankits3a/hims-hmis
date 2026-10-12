@@ -6,10 +6,13 @@ import { IpdIdempotencyKeySchema } from "./common";
 
 export * from "./common";
 export * from "./refusals";
+export * from "./bed-board";
+export { IpdBedNeedSchema, IpdClassChangeSchema } from "./intents-admit";
+export type { IpdBedNeed } from "./intents-admit";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see
- * intents-admit.ts), keyed by the name the copilot, HTTP routes and the workflow use.
+ * intents-admit.ts) and `release_incumbent_bed` (E1.1, DECIDED, same file), keyed by the name the copilot, HTTP routes and the workflow use.
  */
 export const IPD_INTENTS = {
   request_admission: admitIntents.requestAdmission,
@@ -29,6 +32,7 @@ export const IPD_INTENTS = {
   block_bed: admitIntents.blockBed,
   unblock_bed: admitIntents.unblockBed,
   mark_bed_clean: admitIntents.markBedClean,
+  release_incumbent_bed: admitIntents.releaseIncumbentBed,
   record_nursing_assessment: wardIntents.recordNursingAssessment,
   record_vitals: wardIntents.recordVitals,
   raise_task: wardIntents.raiseTask,

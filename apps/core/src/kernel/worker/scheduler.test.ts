@@ -28,6 +28,7 @@ import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
+import * as ipdBedsMod from "../../modules/ipd/beds";
 import * as opdTeleMod from "../../modules/opd/tele";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
@@ -425,6 +426,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("syncAttendance");
       return { ran: false, why: "not_configured" };
     }),
+    // IPD BEDS E1.1 (#718) — the thirty-first, stubbed on `modules/ipd/beds` (the file the index re-exports FROM).
+    // Its behaviour (lapse at 2 h, idempotent) is asserted in `modules/ipd/acceptance/beds.acceptance.test.ts` (iii).
+    jest.spyOn(ipdBedsMod, "lapseBedReservations").mockImplementation(async () => {
+      invoked.push("lapseBedReservations");
+      return { lapsed: 0 };
+    }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
       invoked.push("openDueTeleVisits");
@@ -534,6 +541,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
   "syncAttendance",
+  // IPD BEDS E1.1 (#718) — the THIRTY-FIRST, `every(60_000)`: a two-hour bed hold lapses back to available.
+  "lapseBedReservations",
 ];
 
 /**
