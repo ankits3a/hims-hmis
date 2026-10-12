@@ -16,6 +16,7 @@ import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
 import * as labSweepsMod from "../../modules/lab/sweeps";
+import * as labCriticalLadderMod from "../../modules/lab/critical-ladder";
 import * as pharmacyExpiryMod from "../../modules/pharmacy/expiry";
 import * as radiologyChasersMod from "../../modules/radiology/chasers";
 import * as radiologyEscalationsMod from "../../modules/radiology/escalations";
@@ -329,6 +330,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("sweepLabSla");
       return { breached: [] };
     }),
+    // E3.2 (#595) — un-stubbed, the lab critical ladder WRITES a rung and APPENDS an event; its
+    // behaviour is asserted in `modules/lab/critical-ladder.test.ts` on a fixture clock.
+    jest.spyOn(labCriticalLadderMod, "sweepLabCriticalLadder").mockImplementation(async () => {
+      invoked.push("sweepLabCriticalLadder");
+      return { chased: [] };
+    }),
     jest.spyOn(pharmacyExpiryMod, "sweepExpiredPicks").mockImplementation(async () => {
       invoked.push("sweepExpiredPharmacyPicks");
       return { cancelled: [] };
@@ -485,6 +492,8 @@ const THE_EIGHTEEN = [
    */
   "sweepLabNonReturn",
   "sweepLabSla",
+  /** E3.2 (#595) — the lab critical ladder, `every(60_000)`, registered right after `sweepLabSla`. */
+  "sweepLabCriticalLadder",
   /**
    * PLAN 16c CLOSE / F11 — the SIXTEENTH, registered last, which is where `jobs.ts` puts it. An
    * `every(60_000)` job that widened NOTHING: it takes its cadence as a literal, exactly as

@@ -10,6 +10,7 @@ import { transition } from "../../kernel/workflow/instances";
 import { getEncounter } from "../opd";
 import { resolvePatientId } from "../patients";
 import { analytesFor, rangesFor } from "./catalogue";
+import { startChase } from "./critical-ladder";
 import { LabError } from "./errors";
 import { evaluateFormula, formulaInputCodes } from "./formula";
 import { applicabilityBreach, applicabilityBreachText, flagFor, resolveRange } from "./ranges";
@@ -962,6 +963,8 @@ async function openCriticalCall(
       patientId: ctx.patientId, value: input.value, band: input.band,
     },
   }));
+  /** E3.2 (#595) — the chase starts with the call: an owner, rung 0, and the ordering doctor's alert. */
+  await startChase(tx, actor, { id: callId, resultId: input.resultId, openedAt: now, orderId: ctx.orderId, patientId: ctx.patientId });
   return callId;
 }
 

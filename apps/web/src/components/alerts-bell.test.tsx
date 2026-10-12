@@ -264,6 +264,24 @@ describe("AlertsBell", () => {
     expect(screen.getByTestId("alerts-open-al-3")).toHaveAttribute("href", "/opd/consult");
   });
 
+  it("E3.2 — a lab critical with no read-back opens the bench's critical calls", async () => {
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    setToken("tok-1");
+    mockRoutes({
+      "GET /api/auth/me": { status: 200, body: { actor: { type: "user", id: "u-1" } } },
+      "GET /api/alerts": {
+        status: 200,
+        body: { items: [alertRow({ id: "al-9", kind: "lab_critical", refType: "lab_critical_call", refId: "call-1" })], unreadCount: 1 },
+      },
+    });
+
+    renderWithRouter(<AlertsBell />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("alerts-bell-toggle"));
+
+    expect(await screen.findByTestId("alerts-open-al-9")).toHaveAttribute("href", "/lab/bench");
+  });
+
   it("hand over asks for a staff code and posts it; a cancelled prompt posts nothing", async () => {
     vi.stubGlobal("WebSocket", FakeWebSocket);
     setToken("tok-1");

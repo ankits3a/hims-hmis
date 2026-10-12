@@ -202,6 +202,8 @@ describe("kernel alerts consumer", () => {
       // front of a human declares a subscription rather than writing one.
       { event: "imaging.critical_overdue", consumer: ALERTS_CONSUMER },
       { event: "imaging.report_unread", consumer: ALERTS_CONSUMER },
+      // E3.2 (#595): a lab critical nobody has read back, one rung at a time. Read off the red run.
+      { event: "lab.critical_overdue", consumer: ALERTS_CONSUMER },
       // OBLIGATION SPINE T2: the SIXTH, and the one the approvals spine measured as missing (M2 /
       // E4): filing an approval notified nobody, ever. Every holder of the approver role gets a
       // row; the requester never does (O17: nobody decides what they filed).
@@ -253,6 +255,8 @@ describe("kernel alerts consumer", () => {
           "escalation.triggered", "notification.failed", "ops.mode_changed",
           // 18a-iii T5 — the two radiology chasers, on the same consumer.
           "imaging.critical_overdue", "imaging.report_unread",
+          // E3.2 (#595) — the lab critical ladder.
+          "lab.critical_overdue",
           // Obligation spine T2 — filing tells somebody.
           "approval.requested",
           // Obligation spine T1 — and this one says nobody has answered yet.

@@ -50,6 +50,8 @@ const DEEP_LINKS: Record<string, (refId: string) => { to: string; search: Record
   roster_duty: () => ({ to: "/roster/my-duties", search: {} }),
   // "Patients are waiting and you are not in" — the doctor's own line.
   opd_queue_session: () => ({ to: "/opd/consult", search: {} }),
+  // E3.2 (#595) — a lab critical nobody has read back: the bench's critical calls take the read-back.
+  lab_critical_call: () => ({ to: "/lab/bench", search: {} }),
 };
 
 function deepLinkFor(a: WireAlert): { to: string; search: Record<string, string> } | null {

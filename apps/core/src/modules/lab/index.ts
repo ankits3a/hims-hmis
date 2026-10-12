@@ -93,6 +93,11 @@ export {
 export type {
   AcknowledgeCriticalInput, AcknowledgeCriticalOutcome, CriticalAttempt, OpenCriticalCall,
 } from "./criticals";
+// ── E3.2 (#595) — the critical chase ladder and the G5 read-back report ──
+export {
+  LAB_CHASE_ACTOR, LAB_CHASE_RUNG_MINUTES, chaseRecipients, criticalReadbackByWeek, rungDue, sweepLabCriticalLadder,
+} from "./critical-ladder";
+export type { LabChaseResult, ReadbackWeek } from "./critical-ladder";
 // ── PLAN 17b T7 — the money rule, the delivery interlock, and the document ──
 // `money.ts` and `interlock.ts` are the close reviewer's first two files (§9.6): every threshold on
 // this phase's money path is in one of them, and `deliveryAllowed` is the function 22c-F, 24a and

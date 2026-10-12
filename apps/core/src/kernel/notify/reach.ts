@@ -46,6 +46,8 @@ const LANE_BY_KIND: Record<string, ReachLane> = {
   escalation: "now",
   respond_overdue: "now",
   manual_notify: "now",
+  // E3.2 (#595) — a lab critical with no read-back: the same urgency as an escalation.
+  lab_critical: "now",
   approval_requested: "today",
   operating_mode: "today",
 };
@@ -95,6 +97,7 @@ const RELAY_CHANNEL_ORDER: readonly ReachChannel[] = ["web_push", "whatsapp", "s
 /** The deep link the relay carries. Relative on purpose: the body is short and the app owns the host. */
 function linkFor(refType: string | null, refId: string | null): string {
   if (refType === "approval" && refId !== null) return `/approvals?focus=${refId}`;
+  if (refType === "lab_critical_call") return "/lab/bench";
   return "/";
 }
 

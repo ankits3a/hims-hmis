@@ -30,7 +30,7 @@ groups:
       - alert: HmisSchedulerJobStaleInterval
         expr: |
           hmis_scheduler_heartbeat_staleness_seconds{
-            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance"
+            job=~"runDispatchCycle|runDueTimers|sweepExpiredTempRoles|runNotifyPump|runReachLadder|sweepInterfaceHeartbeats|flagLateSurgeons|sweepLabSla|sweepExpiredPharmacyPicks|sweepCriticalChaser|sweepImagingEscalations|printRosterBoard|sweepStaffNotices|openDueTeleVisits|syncAttendance|sweepLabCriticalLadder"
           } > 300
         for: 2m
         labels:
@@ -123,6 +123,9 @@ groups:
           # 18-S RS10 T2: the HOD's escalations. A sweep that never ran raises nothing — which looks
           # exactly like a department with nothing late.
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepImagingEscalations"})
+          # E3.2 (#595): the lab critical ladder. A ladder that never ran chases nobody — which looks
+          # exactly like a lab whose criticals were all read back.
+          or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepLabCriticalLadder"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepUnreadWatchman"})
           or absent(hmis_scheduler_heartbeat_staleness_seconds{job="sweepRosterWindows"})
           # R9: the monthly draft. It runs daily and no-ops on 29 days in 30, but it still
