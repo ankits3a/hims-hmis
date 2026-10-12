@@ -3997,6 +3997,18 @@
     "clocks": "Clocks running"
   },
   "lab": {
+    "mode": {
+      "title": "Lab mode",
+      "quick": "Quick",
+      "full": "Full",
+      "confirm": "Switch the whole lab to {{mode}} mode? Every lab seat's menu changes.",
+      "yes": "Switch",
+      "no": "Cancel",
+      "fullOff": "Full lab mode is off",
+      "quickOff": "Quick lab mode is off",
+      "useQuick": "The lab runs in quick mode: use Lab counter, Quick Collect, Quick Bench and Quick Reports.",
+      "useFull": "The lab runs in full mode: use Lab desk, Collection, Bench, Verify and the report centre."
+    },
     "counter": {
       "viewReport": "View / print report",
       "printReport": "Print",

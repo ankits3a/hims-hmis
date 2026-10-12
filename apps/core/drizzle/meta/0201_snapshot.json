@@ -1,5 +1,5 @@
 {
-  "id": "7ffefc73-27c1-47c5-97cd-825852e47482",
+  "id": "584b027d-10cd-4e19-a34c-8d62fba11f4f",
   "prevId": "19ce3408-4b32-4808-b40e-b73a20375b07",
   "version": "7",
   "dialect": "postgresql",
@@ -28740,6 +28740,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "lab_mode": {
+          "name": "lab_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'quick'"
+        },
         "updated_by": {
           "name": "updated_by",
           "type": "text",
@@ -28767,6 +28774,10 @@
         "lab_booking_settings_hours_ck": {
           "name": "lab_booking_settings_hours_ck",
           "value": "\"lab_booking_settings\".\"open_at\" ~ '^[0-2][0-9]:[0-5][0-9]$' and \"lab_booking_settings\".\"close_at\" ~ '^[0-2][0-9]:[0-5][0-9]$' and \"lab_booking_settings\".\"open_at\" < \"lab_booking_settings\".\"close_at\""
+        },
+        "lab_booking_settings_mode_ck": {
+          "name": "lab_booking_settings_mode_ck",
+          "value": "\"lab_booking_settings\".\"lab_mode\" in ('quick', 'full')"
         },
         "lab_booking_settings_numbers_ck": {
           "name": "lab_booking_settings_numbers_ck",
@@ -53870,39 +53881,6 @@
           ]
         }
       },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.copilot_user_settings": {
-      "name": "copilot_user_settings",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "phone_enabled": {
-          "name": "phone_enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

@@ -325,6 +325,11 @@ export const labBookingHoursChanged = defineEvent("lab.booking_hours_changed", M
   daysAhead: z.number().int(), closedWeekdays: z.array(z.number().int()),
 }));
 
+/** Owner 2026-10-12 — the lab mode switched; who and when are the event's own actor and time. */
+export const labModeChanged = defineEvent("lab.mode_changed", MODULE, z.object({
+  from: z.enum(["quick", "full"]), to: z.enum(["quick", "full"]),
+}));
+
 export const LAB_EVENTS = [
   labOrderDesked, labAttributionUnverifiedFlagged,
   labLabelPrinted, labTubeMismatchFlagged, labSpecimenCollected, labSpecimenReceived,
@@ -337,4 +342,5 @@ export const LAB_EVENTS = [
   labSlaBreached, labNotifiableFlagged,
   labBookingMade, labBookingClosed, labBookingHoursChanged,
   labQuickStarted, labQuickReported, labQuickHandedOver, labQuickSentBack,
+  labModeChanged,
 ] as const;

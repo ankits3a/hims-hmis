@@ -101,6 +101,7 @@ Source: `apps/core/src/modules/lab/`
   - `labBookingMade`
   - `labCriticalAcknowledged`
   - `labLabelPrinted`
+  - `labModeChanged`
   - `labNightReleaseReviewed`
   - `labNotifiableFlagged`
   - `labOrderDesked`
@@ -254,12 +255,12 @@ Source: `apps/core/src/modules/lab/`
 
 Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (74)
+## HTTP routes (76)
 
 - `lab-bench.controller.ts` — 8: `/lab/bench`
 - `lab-catalogue.controller.ts` — 7: `/lab/catalogue`
 - `lab-collection.controller.ts` — 5: `/lab/collection`
-- `lab-desk.controller.ts` — 16: `/lab/desk`
+- `lab-desk.controller.ts` — 18: `/lab/desk`
 - `lab-instruments.controller.ts` — 4: `/lab/instruments`
 - `lab-quick.controller.ts` — 16: `/lab/quick`
 - `lab-verify.controller.ts` — 18: `/lab/reports`, `/lab/results`, `/lab/verify`
