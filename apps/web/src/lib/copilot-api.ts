@@ -16,12 +16,28 @@ export type CopilotAnswer = {
   payload?: unknown;
 };
 
+/**
+ * E0.2 / E2.1 — a signed proposal, handed back to `POST /copilot/confirm` exactly as it came. The web
+ * never reads inside it: what the clerk is shown comes from the answer's `payload`.
+ */
+export type CopilotProposal = { id: string; [k: string]: unknown };
+
 export type CopilotReply = {
   answer: CopilotAnswer;
   /** Where the routing came from. Shown to the clerk — `triage.ts`'s rule about hidden origins. */
   source: "phrasebook" | "model" | "none";
   intent: string | null;
+  /** E2.1 — options to pick ONE of; the answer's payload (`CopilotApptPick`) says which is which. */
+  proposals?: CopilotProposal[];
 };
+
+export type CopilotConfirmOutcome =
+  | "done" | "invalid" | "expired" | "notAct" | "halted" | "notPermitted" | "alreadyDone" | "stateChanged" | "failed";
+
+/** E0.2 — the one human tap: the server re-checks everything and writes, or answers why not. */
+export function confirmCopilot(proposal: CopilotProposal): Promise<{ outcome: CopilotConfirmOutcome; answer: CopilotAnswer }> {
+  return api<{ outcome: CopilotConfirmOutcome; answer: CopilotAnswer }>("POST", "/copilot/confirm", { proposal });
+}
 
 /** The day report's payload, when `intent` is `my_day_report`. Mirrors `kernel/desk`'s own shape. */
 export type CopilotDayReport = {
@@ -65,7 +81,29 @@ export type CopilotHealth = {
   byRoute: Record<"phrasebook" | "chooser" | "model" | "none", CopilotRouteTimings>;
   notUnderstoodShare: number | null;
   acts: number;
+  /** E0.5 — chooser + model calls that day and their ESTIMATED cost in rupees. */
+  modelCalls: number;
+  spendInr: number;
+  cappedAsks: number;
+  /** E0.5 — the daily cap (decision 0064) and whether today has reached it. */
+  capInr: number;
+  capped: boolean;
+  /** E0.3 — the halted scopes now. */
+  halts: { scope: CopilotHaltScope; haltedAt: string; reason: string | null }[];
 };
+
+export const COPILOT_HALT_SCOPES = ["read", "act", "draft", "global"] as const;
+export type CopilotHaltScope = (typeof COPILOT_HALT_SCOPES)[number];
+
+/** E0.3 — `POST /copilot/halt` (`copilot.halt.set`). */
+export function haltCopilot(scope: CopilotHaltScope, reason?: string): Promise<unknown> {
+  return api("POST", "/copilot/halt", reason === undefined ? { scope } : { scope, reason });
+}
+
+/** E0.3 — `POST /copilot/halt/clear` (`copilot.halt.clear`; global needs `copilot.halt.clear_global`). */
+export function clearCopilotHalt(scope: CopilotHaltScope): Promise<unknown> {
+  return api("POST", "/copilot/halt/clear", { scope });
+}
 
 export function getCopilotHealth(date?: string): Promise<CopilotHealth> {
   return api<CopilotHealth>("GET", date === undefined ? "/copilot/health" : `/copilot/health?date=${encodeURIComponent(date)}`);

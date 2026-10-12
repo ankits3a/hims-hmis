@@ -31,7 +31,12 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/formulary/admin` | `(redirect)` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
+| `/lab/counter` | `apps/web/src/screens/lab-desk` |
 | `/lab/desk` | `apps/web/src/screens/lab-desk` |
+| `/lab/qbench` | `apps/web/src/screens/lab-qchain` |
+| `/lab/qcollect` | `apps/web/src/screens/lab-qchain` |
+| `/lab/qreports` | `apps/web/src/screens/lab-qchain` |
+| `/lab/quick` | `apps/web/src/screens/lab-quick` |
 | `/lab/reports` | `apps/web/src/screens/lab-reports` |
 | `/lab/verify` | `apps/web/src/screens/lab-verify` |
 | `/login` | `apps/web/src/screens/login` |
@@ -99,6 +104,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/reports/opd-day` | `apps/web/src/screens/opd-report` |
 | `/roster/aebas` | `apps/web/src/screens/roster-aebas` |
 | `/roster/evidence` | `apps/web/src/screens/roster-evidence` |
+| `/roster/leave` | `apps/web/src/screens/my-leave` |
 | `/roster/month` | `apps/web/src/screens/roster-month` |
 | `/roster/my-duties` | `apps/web/src/screens/roster-my-duties` |
 | `/roster/on-now` | `apps/web/src/screens/roster-on-now` |

@@ -1,6 +1,7 @@
 import { opdAppointmentsDeskProvider, opdDeskProvider } from "./desk-provider";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 import { opdSearchProviders } from "./search-providers";
+import { opdAppointmentCopilotTools } from "./copilot-appointments";
 import { opdCopilotTools } from "./copilot-tools";
 
 /**
@@ -129,6 +130,6 @@ export const opdManifest: ModuleManifest = {
    * same style as `search` and `desk`: the arrays live in sibling files so this manifest stays a
    * declaration rather than an implementation.
    */
-  copilotTools: opdCopilotTools,
+  copilotTools: [...opdCopilotTools, ...opdAppointmentCopilotTools],
   subscriptions: [], // no dispatcher consumers in this plan; realtime rides the gateway's tail
 };

@@ -77,6 +77,7 @@ describe("the lab manifest (Plan 17 T2)", () => {
     expect(labManifest.menu.map((m) => m.path)).toEqual([
       "/lab/desk", "/lab/collection", "/lab/bench", "/lab/verify",
       "/lab/reports", // PLAN 17c T5 — the report centre, on the counter's `lab.reports.print`
+      "/lab/quick", // decision 0061 — quick entry, on `lab.results.enter`
     ]);
     for (const entry of labManifest.menu) {
       expect([entry.path, labManifest.permissions.includes(entry.permission)]).toEqual([entry.path, true]);

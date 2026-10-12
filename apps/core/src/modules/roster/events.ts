@@ -138,6 +138,17 @@ export const rosterAbsenceApproved = defineEvent("roster.absence_approved", MODU
 }));
 
 /**
+ * E2.2 (owner 2026-10-11) — A LEAVE WAS REFUSED. It says THAT, and to whom: the decider's reason is
+ * on the row only (V9), so the person's bell and phone say "not approved" and the reason is read on
+ * their own leave screen, in Waiting for me, or by asking the copilot.
+ */
+export const rosterAbsenceRefused = defineEvent("roster.absence_refused", MODULE, z.object({
+  absenceId: id(),
+  userId: id(),
+  decidedAt: instant(),
+}));
+
+/**
  * PHASE R (R8) — **THE OVERRIDE, EVENTED.**
  *
  * Doc 10 §3.9 rules post-night rest a hard block with an *evented* HOD override, and R-067 makes a
@@ -233,7 +244,7 @@ export const rosterModeWithdrawn = defineEvent("roster.mode_withdrawn", MODULE, 
 
 export const ROSTER_EVENTS = [
   rosterPeriodDrafted, rosterPeriodPublished, rosterPeriodSuperseded,
-  rosterDutyChanged, rosterAmendmentApplied, rosterAbsenceRequested, rosterAbsenceApproved,
+  rosterDutyChanged, rosterAmendmentApplied, rosterAbsenceRequested, rosterAbsenceApproved, rosterAbsenceRefused,
   rosterFindingAccepted,
   rosterCoverRequested, rosterCoverAnswered, rosterCoverDecided, rosterFlagRaised,
   rosterHolidayDeclared, rosterModeDeclared, rosterModeWithdrawn,

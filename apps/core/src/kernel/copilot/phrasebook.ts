@@ -24,7 +24,9 @@
 
 /** The tools a question can be routed to. `none` is the model's way of saying it recognised nothing. */
 export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns" | "find_duplicate_items"
-  | "roster.who_is_on" | "roster.unit_on_take" | "roster.my_duties" | "roster.ask_cover";
+  | "roster.who_is_on" | "roster.unit_on_take" | "roster.my_duties" | "roster.ask_cover"
+  | "appointment_book" | "appointment_move"
+  | "roster.leave_apply" | "roster.leave_status";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -241,6 +243,44 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("swap for"), S("swap my"), S("cover my"), S("cover for my"),
     W("koi"), W("कोई"),
   ],
+  /*
+    E2.1 — BOOK OR MOVE AN APPOINTMENT (act tools behind propose → confirm). "Appointment" alone is a
+    booking: "Dr Singh kal 10 baje U00110012 ka appointment" has no verb at all. A move verb outweighs
+    it (NOT_CUES below), so "appointment shift karo" is a move and never a second booking. These are
+    the floor ONLY (`FLOOR_ONLY_INTENTS`): a booking question names a patient, and no model is offered it.
+  */
+  appointment_book: [
+    S("appoint"), S("apoint"), S("apointment"), S("appt"), S("अपॉइंट"), S("अपोइंट"), S("book"), S("बुक"),
+    S("time de do"), S("time dena"), S("slot de"), S("milwa do"),
+    W("slot"), W("doctor se"),
+  ],
+  appointment_move: [
+    S("move"), S("shift kar"), S("pe shift"), S("par shift"), S("ko shift"), S("shift the"), S("shift appointment"), S("reschedul"), S("badal"), S("badl"), S("postpone"), S("prepone"),
+    S("aage kar"), S("aage badha"), S("peeche kar"), S("piche kar"), S("khiska"), S("बदल"), S("शिफ्ट"), S("खिसका"),
+    S("date change"), S("time change"), S("change the appointment"), S("change appointment"),
+  ],
+  /*
+    E2.2 — MY LEAVE (decision 0069). Asking for it ("kal CL chahiye", "20 se 22 oct chhutti") and asking
+    what became of it ("meri leave ka kya hua"). Floor ONLY (`FLOOR_ONLY_INTENTS`): what a person types
+    beside a leave may be why, so no model is offered these. Short kind codes are phrases ("cl chahiye"):
+    the floor matches substrings, and a bare `cl` is inside "clinic".
+  */
+  "roster.leave_apply": [
+    S("leave chahiye"), S("leave chahie"), S("leave lena"), S("leave leni"), S("leave le"), S("leave apply"), S("apply leave"),
+    S("apply for leave"), S("leave de do"), S("leave do"), S("chutti chahiye"), S("chhutti chahiye"), S("chutti lena"), S("chhutti lena"),
+    S("chutti le"), S("chhutti le"), S("chutti de"), S("chhutti de"), S("छुट्टी चाहिए"), S("छुट्टी ले"), S("छुट्टी दे"),
+    S("casual leave"), S("earned leave"), S("medical leave"), S("sick leave"), S("comp off"), S("compoff"),
+    S("cl chahiye"), S("el chahiye"), S("ml chahiye"), S("cl lena"), S("el lena"), S("ml lena"), S("cl le"), S("el le"), S("ml le"),
+    S("cl apply"), S("el apply"), S("ml apply"), S("need leave"), S("want leave"), S("take leave"), S("i need a leave"),
+    W("leave"), W("chutti"), W("chhutti"), W("छुट्टी"),
+  ],
+  "roster.leave_status": [
+    S("leave ka kya"), S("chutti ka kya"), S("chhutti ka kya"), S("छुट्टी का क्या"), S("leave status"), S("status of my leave"),
+    S("leave approve hui"), S("leave approve hua"), S("leave mili"), S("chutti mili"), S("chhutti mili"), S("छुट्टी मिली"),
+    S("leave mil gayi"), S("chutti mil gayi"), S("chhutti mil gayi"), S("leave sanction"), S("my leave"), S("meri leave"), S("meri chutti"),
+    S("meri chhutti"), S("मेरी छुट्टी"), S("leave approved"), S("was my leave"), S("is my leave"),
+    W("leave"), W("chutti"), W("chhutti"), W("छुट्टी"),
+  ],
 };
 
 /**
@@ -259,6 +299,19 @@ const NOT_WEIGHT = 3;
 const NOT_CUES: Partial<Record<CopilotIntent, string[]>> = {
   stock_on_shelf: ["bana do", "list bana", "return", "lautan", "लौटा", "supplier", "सप्लायर", "distributor"],
   draft_short_book_entry: ["printer", "paper", "toner", "cartridge"],
+  /* E2.1 — "short book" is the pharmacy's register, and a move is never a second booking. */
+  appointment_book: ["short book", "shortbook", "kitni", "kitne", "how many", "maine", "i booked", "did i book", "move", "shift", "reschedul", "badal", "badl", "postpone", "prepone",
+    "aage kar", "peeche kar", "piche kar", "khiska", "बदल", "शिफ्ट", "खिसका", "date change", "time change", "change the appointment", "change appointment"],
+  /* A duty swap is the roster's, and "doctor badal do" at the counter moves a VISIT today — never an appointment act. */
+  appointment_move: ["duty", "ड्यूटी", "night", "rota", "doctor badal", "doctor change", "department badal"],
+  /*
+    E2.2 — asking what became of a leave is not asking for one; and "is Dr Sharma on leave" (somebody
+    ELSE's leave, the OPD's question) is neither.
+  */
+  "roster.leave_apply": ["kya hua", "status", "leave mili", "chutti mili", "chhutti mili", "mil gayi", "approve hui", "approve hua", "approved", "sanction", "kab tak", "pending",
+    "on leave", "par hai", "pe hai", "par hain", "pe hain", "kaun", "who", "क्या हुआ", "मिली"],
+  "roster.leave_status": ["chahiye", "chahie", "lena", "leni", "apply", "de do", "चाहिए", "need", "want", "take leave",
+    "on leave", "par hai", "pe hai", "kaun", "who"],
 };
 
 const PLACEHOLDER_RE = /<<P\d+>>/;
@@ -365,6 +418,20 @@ export function matchIntent(question: string): IntentMatch | null {
  */
 export function intentNames(): CopilotIntent[] {
   return Object.keys(CUES) as CopilotIntent[];
+}
+
+/**
+ * E2.1 — INTENTS THE FLOOR ALONE MAY ROUTE. Booking and moving an appointment name a patient, often
+ * by a name the day's mask does not know (a future booking), so they are never offered on a model's
+ * menu: a question the floor does not recognise as a booking is "not understood", never guessed into
+ * one. Keeping them off the menu also keeps the menu — and the eval set's recordings — unchanged.
+ */
+export const FLOOR_ONLY_INTENTS = ["appointment_book", "appointment_move", "roster.leave_apply", "roster.leave_status"] as const satisfies readonly CopilotIntent[];
+export type ModelIntent = Exclude<CopilotIntent, (typeof FLOOR_ONLY_INTENTS)[number]>;
+
+/** The menu a model is offered: every intent except the floor-only ones. */
+export function modelIntentNames(): ModelIntent[] {
+  return intentNames().filter((i): i is ModelIntent => !(FLOOR_ONLY_INTENTS as readonly string[]).includes(i));
 }
 
 /**

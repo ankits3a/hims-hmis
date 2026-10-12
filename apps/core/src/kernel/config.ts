@@ -349,6 +349,18 @@ const configSchema = z.object({
   TRIAGE_CHOOSER_ORDER: z.string().default("typesafe"),
   COPILOT_CHOOSER_ORDER: z.string().default("openai,typesafe"),
   /**
+   * ═══ E0.5 — THE COPILOT'S AI SPEND CAP (decision 0064: ₹5,000 a day, owner 2026-10-10) ═══
+   *
+   * When the copilot's ESTIMATED spend since midnight IST reaches this, every ask routes by the
+   * phrasebook alone until the next midnight IST, and the Copilot health page says so. The estimate
+   * is tokens × the price table in `kernel/copilot/spend.ts`; COPILOT_PRICES_INR overrides any row of
+   * it as JSON `{"provider:model":{"in":<₹ per 1M input tokens>,"out":<₹ per 1M output tokens>}}`
+   * (providers: `chat`, `typesafe`, `openai`; `provider:*` covers a provider's every model). A
+   * malformed table refuses to boot: a typo here would otherwise price every call at the default.
+   */
+  COPILOT_DAILY_CAP_INR: z.coerce.number().nonnegative().default(5000),
+  COPILOT_PRICES_INR: z.string().default("{}"),
+  /**
    * ═══ THE AUTOMATIC MEDICINE-ALIAS PIPELINE (decision 0051, plan §7a, §14) — SHIPS OFF ═══
    *
    * `ALIAS_PIPELINE_ENABLED` is the kill switch, the `RETENTION_ENABLED` two-string spelling for the
@@ -629,6 +641,8 @@ export type AppConfig = {
   /** Who answers first, per job. Default `["typesafe"]` — today's behaviour. */
   triageChooserOrder: ("typesafe" | "openai")[];
   copilotChooserOrder: ("typesafe" | "openai")[];
+  /** E0.5 — the daily cap in rupees and the owner's price overrides (₹ per 1M tokens), merged over `spend.ts`'s defaults. */
+  copilotSpend: { dailyCapInr: number; prices: Record<string, { in: number; out: number }> };
   /** Decision 0051 — the medicine-alias pipeline. `enabled` is FALSE unless an operator says otherwise. */
   aliases: { enabled: boolean; chooserOrder: ("typesafe" | "openai")[]; chooserLine: number; reviewerLine: number; perRun: number; perDay: number };
   /** The waits' nightly learning (`FLOW_FINDINGS_ENABLED`, default true). */
@@ -888,6 +902,20 @@ function chooserOrderFrom(name: string, raw: string): ("typesafe" | "openai")[] 
   return out as ("typesafe" | "openai")[];
 }
 
+const priceTable = z.record(
+  z.string().regex(/^(chat|typesafe|openai):.+$/),
+  z.object({ in: z.number().nonnegative(), out: z.number().nonnegative() }).strict(),
+);
+
+/** E0.5 — `COPILOT_PRICES_INR`, or a boot refusal naming the variable. */
+function pricesFrom(raw: string): Record<string, { in: number; out: number }> {
+  let json: unknown;
+  try { json = JSON.parse(raw); } catch { throw new Error(`COPILOT_PRICES_INR must be JSON (got "${raw}")`); }
+  const out = priceTable.safeParse(json);
+  if (!out.success) throw new Error(`COPILOT_PRICES_INR: ${out.error.issues[0]?.message ?? "invalid"} — want {"provider:model":{"in":n,"out":n}}`);
+  return out.data;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (env === process.env) loadEnv();
   const parsed = configSchema.parse(env);
@@ -957,6 +985,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     decisions: { baseUrl: parsed.OPENAI_DECISIONS_BASE_URL, model: parsed.OPENAI_DECISIONS_MODEL, timeoutMs: parsed.OPENAI_DECISIONS_TIMEOUT_MS },
     triageChooserOrder: chooserOrderFrom("TRIAGE_CHOOSER_ORDER", parsed.TRIAGE_CHOOSER_ORDER),
     copilotChooserOrder: chooserOrderFrom("COPILOT_CHOOSER_ORDER", parsed.COPILOT_CHOOSER_ORDER),
+    copilotSpend: { dailyCapInr: parsed.COPILOT_DAILY_CAP_INR, prices: pricesFrom(parsed.COPILOT_PRICES_INR) },
     aliases: {
       enabled: parsed.ALIAS_PIPELINE_ENABLED,
       chooserOrder: chooserOrderFrom("ALIAS_CHOOSER_ORDER", parsed.ALIAS_CHOOSER_ORDER ?? parsed.TRIAGE_CHOOSER_ORDER),

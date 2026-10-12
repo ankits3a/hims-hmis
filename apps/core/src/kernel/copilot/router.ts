@@ -2,7 +2,7 @@ import { chooseRoute } from "./choice-route";
 import { assertNoIdentifiers } from "./mask";
 import { assertNoNames } from "./names";
 import type { NameIndex } from "./names";
-import { intentNames, matchIntent } from "./phrasebook";
+import { matchIntent, modelIntentNames } from "./phrasebook";
 import type { CopilotIntent } from "./phrasebook";
 import type { ChoiceClient, InferenceClient } from "../inference/types";
 
@@ -72,7 +72,7 @@ const PLACEHOLDER_RE = /^<<P\d+>>$/;
  * simply never route to the new tool.
  */
 function buildSystemPrompt(): string {
-  const menu = intentNames().join(" | ");
+  const menu = modelIntentNames().join(" | ");
   return [
     "You route ONE question from hospital counter staff (front desk, billing or pharmacy) to ONE tool.",
     `Reply with ONLY this JSON and nothing else: {"tool":"<${menu} | none>","slot":"<placeholder or empty>"}`,
@@ -196,11 +196,11 @@ function parseReply(reply: string, masked: string, slots: Record<string, string>
   if (typeof tool !== "string") return null;
 
   /*
-    THE CLOSED MENU. `intentNames()` is the phrasebook's own key set, so a tool that is not a real
-    tool — invented, renamed, or the model's `none` — cannot pass. This is the single check that
-    makes a hallucination harmless rather than dangerous.
+    THE CLOSED MENU. `modelIntentNames()` is the phrasebook's own key set, less the floor-only acts
+    (E2.1), so a tool that is not a real tool — invented, renamed, or the model's `none` — cannot
+    pass. This is the single check that makes a hallucination harmless rather than dangerous.
   */
-  const names: string[] = intentNames();
+  const names: string[] = modelIntentNames();
   if (!names.includes(tool)) return null;
 
   return {

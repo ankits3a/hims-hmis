@@ -37,6 +37,20 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.notUnderstood",
   /** Routed to an intent no module has shipped a tool for yet. Honest rather than a 500. */
   "copilot.answer.noTool",
+  /** E0.3 — the copilot (or this kind of tool) is halted by the owner, IT, the steward or the duty manager. */
+  "copilot.answer.paused",
+
+  /* ═══ E0.2 — propose → confirm → act: the confirm tap's own answers (a tool's success answer is its own) ═══ */
+  /** A generic "done" for an act whose tool has no sentence of its own. */
+  "copilot.answer.actDone",
+  /** The proposal is older than its five minutes. */
+  "copilot.answer.actExpired",
+  /** The proposal is not genuine, not this person's, or names no act tool. */
+  "copilot.answer.actInvalid",
+  /** This proposal was already confirmed once; nothing more was written. */
+  "copilot.answer.actAlreadyDone",
+  /** Something changed between the proposal and the tap (the slot was taken). Nothing was written. */
+  "copilot.answer.actStateChanged",
 
   /* ═══ my_day_report — the owner's "it should do it and give it to the user" ═══ */
   "copilot.answer.dayReport",
@@ -189,6 +203,101 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.rosterCoverNobody",
   "copilot.answer.rosterCoverNoDuty",
   "copilot.answer.rosterCoverNoDutyOn",
+
+  /*
+    ═══ E2.1 — book / move an appointment from chat (spec SPEC-copilot-appt-2026-10-11) ═══
+    The ask answers with a pick (patients and three free times, each a signed proposal); the confirm
+    answers with what was written, read back from the row. `when` is an ISO instant.
+  */
+  "copilot.answer.apptPick",
+  "copilot.answer.apptPickTime",
+  "copilot.answer.apptWhichPatient",
+  "copilot.answer.apptNoPatient",
+  "copilot.answer.apptWhichDoctor",
+  "copilot.answer.apptDoctorUnclear",
+  "copilot.answer.apptNoSlots",
+  "copilot.answer.apptNoSlotsOn",
+  "copilot.answer.apptNoneToMove",
+  "copilot.answer.apptNoMobile",
+  "copilot.answer.apptBooked",
+  "copilot.answer.apptMoved",
+  "copilot.answer.apptSlotTaken",
+  "copilot.answer.apptDoctorOnLeave",
+  "copilot.answer.apptPast",
+  "copilot.answer.apptChanged",
+
+  /*
+    ═══ E2.2 — leave, and a duty cover or swap, from chat (spec SPEC-copilot-leave-swap-2026-10-11) ═══
+    `from` / `to` are IST days; `kind` is CL | EL | ML | comp_off and the clients say it in words. A
+    refusal's `why` is the decider's own text, read back to its person only — never stored by the copilot.
+  */
+  "copilot.answer.leavePick",
+  "copilot.answer.leavePickDay",
+  "copilot.answer.leavePickKind",
+  "copilot.answer.leavePickKindDay",
+  "copilot.answer.leaveWhichDays",
+  "copilot.answer.leaveInPast",
+  "copilot.answer.leaveOverlaps",
+  "copilot.answer.leaveTooLong",
+  "copilot.answer.leaveKindNotHere",
+  "copilot.answer.leaveFiled",
+  "copilot.answer.leaveNone",
+  "copilot.answer.leaveStatusRequested",
+  "copilot.answer.leaveStatusApproved",
+  "copilot.answer.leaveStatusRefused",
+  "copilot.answer.leaveStatusCancelled",
+  "copilot.answer.coverAsked",
+  "copilot.answer.swapAsked",
+  "copilot.answer.coverRefused",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
+
+/**
+ * E2.1 — the pick an appointment ask hands back in `answer.payload`: one row per patient (book) or per
+ * live appointment (move), each with up to three free times. `proposal` indexes the ask response's
+ * `proposals` — the signed proposal that time confirms. `when`/`at`/`from` are ISO instants.
+ */
+export type CopilotApptRow = {
+  patient: { name: string; uhid: string; ageSex: string; phoneLast4: string | null };
+  doctor: string;
+  mode: "in_person" | "tele";
+  /** move: where the appointment is now. */
+  from: string | null;
+  fromDoctor?: string;
+  /** A tele-call and no mobile on record: no times; the booking screen can take a number. */
+  noMobile: boolean;
+  times: { at: string; proposal: number }[];
+};
+/**
+ * E2.2 — a leave to confirm: the days, and one option per kind (one when the kind was said). `proposal`
+ * indexes the ask response's `proposals`. No reason is carried: the chat never takes one.
+ */
+export type CopilotLeavePick = {
+  kind: "leavePick";
+  from: string;
+  to: string;
+  days: number;
+  options: { leave: "CL" | "EL" | "ML" | "comp_off"; proposal: number }[];
+};
+
+/**
+ * E2.2 — a duty to hand on: the asker's duty, and per person who can take it a cover (`give` null) and
+ * the swaps they could give back (one of THEIR duties of the same post). Instants are ISO.
+ */
+export type CopilotCoverDuty = { istDate: string; night: boolean; startsAt: string; endsAt: string };
+export type CopilotCoverPick = {
+  kind: "coverPick";
+  duty: CopilotCoverDuty & { post: string };
+  options: { name: string; grade: string; teamName: string; crossUnit: boolean; give: CopilotCoverDuty | null; proposal: number }[];
+  /** People who could take it but are not offered here (more than the card holds). */
+  more: number;
+};
+
+export type CopilotApptPick = {
+  kind: "apptPick";
+  action: "book" | "move";
+  /** The patient came from a search (mobile or name): the clerk taps the patient before a time. */
+  pickPatient: boolean;
+  rows: CopilotApptRow[];
+};

@@ -221,6 +221,10 @@ describe("kernel alerts consumer", () => {
       { event: "roster.cover_answered", consumer: ALERTS_CONSUMER },
       { event: "roster.cover_decided", consumer: ALERTS_CONSUMER },
       { event: "roster.duty_changed", consumer: ALERTS_CONSUMER },
+      // E2.2 (decision 0069) — a leave waiting reaches its deciders; the answer reaches the person.
+      { event: "roster.absence_requested", consumer: ALERTS_CONSUMER },
+      { event: "roster.absence_approved", consumer: ALERTS_CONSUMER },
+      { event: "roster.absence_refused", consumer: ALERTS_CONSUMER },
     ]);
 
     const registry = new ModuleRegistry();
@@ -257,6 +261,8 @@ describe("kernel alerts consumer", () => {
           "roster.flag_raised",
           // Mobile §3i — a person's own duties.
           "roster.cover_requested", "roster.cover_answered", "roster.cover_decided", "roster.duty_changed",
+          // E2.2 — leave waiting, and its answer.
+          "roster.absence_requested", "roster.absence_approved", "roster.absence_refused",
         ],
       },
     ]);

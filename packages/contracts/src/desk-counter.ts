@@ -21,6 +21,10 @@ export type CounterTimelineItem = {
   visitNo?: string; encounterId: string; serviceDate: string; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   referredFromEncounterId?: string | null;
+  /** Owner 2026-10-11 — the department's code; `LAB` is the lab desk's walk-in visit, not an OPD consultation. */
+  departmentCode?: string | null;
+  /** Owner 2026-10-11 — `opd`, `lab` or `pharmacy`; only an `opd` visit is the front desk's to seat or bill. */
+  type?: string;
 };
 
 export type CounterPricedLine = {
@@ -146,6 +150,11 @@ export function openVisitsToday(items: readonly CounterTimelineItem[], serviceDa
   const byId = new Map(items.map((i) => [i.encounterId, i] as const));
   return items
     .filter((i) => i.serviceDate.slice(0, 10) === serviceDate && !ENDED_VISIT_STATES.has(i.status))
+    /**
+     * Owner 2026-10-11 — a LABORATORY visit (opened by the lab counter for a walk-in) is not an OPD visit
+     * the front desk seats or bills: the lab billed it already. It stays in the patient's history.
+     */
+    .filter((i) => i.departmentCode !== "LAB" && (i.type ?? "opd") === "opd")
     .map((i) => {
       const fromId = i.referredFromEncounterId ?? null;
       const from = fromId === null ? undefined : byId.get(fromId);

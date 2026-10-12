@@ -1,12 +1,13 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import {
-  COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAsks, copilotNoticeAcks,
+  COPILOT_ASK_OUTCOMES, COPILOT_ROUTES, copilotActs, copilotAskFeedback, copilotAsks, copilotNoticeAcks,
 } from "../db/schema";
 import { withTx } from "../db/client";
 import { appendEvent } from "../events/append";
 import { copilotAsksPruned } from "./events";
 import type { CopilotAskOutcome, CopilotRoute } from "../db/schema";
+import type { ModelCall } from "./spend";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../db/client";
 
@@ -37,6 +38,8 @@ export const COPILOT_NOTICE_VERSION = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type AskRecord = {
+  /** The row's id when the caller must name it before it is written (the ask response carries it, E1.3). */
+  id?: string;
   actor: Actor;
   outcome: CopilotAskOutcome;
   route: CopilotRoute;
@@ -46,13 +49,17 @@ export type AskRecord = {
   maskedQuestion: string | null;
   screen: string | null;
   source?: "chip" | "typed" | null;
+  /** E0.5 — the chooser/model calls this ask made, priced (`spend.ts`). None on the phrasebook path. */
+  modelCalls?: readonly ModelCall[];
+  /** E0.5 — the day's cap was already reached, so this ask ran phrasebook-only. */
+  capped?: boolean;
   /** Tests only; production rows take the database's clock. */
   at?: Date;
 };
 
 /** Awaited by the controller BEFORE the answer leaves: an answer the ledger could not record is not sent. */
 export async function recordAsk(db: Db, r: AskRecord): Promise<string> {
-  const id = newId();
+  const id = r.id ?? newId();
   await db.insert(copilotAsks).values({
     id,
     ...(r.at !== undefined ? { at: r.at } : {}),
@@ -66,6 +73,10 @@ export async function recordAsk(db: Db, r: AskRecord): Promise<string> {
     maskedQuestion: r.maskedQuestion,
     screen: r.screen,
     source: r.source ?? null,
+    modelCalls: r.modelCalls?.length ?? 0,
+    costMicroInr: (r.modelCalls ?? []).reduce((n, c) => n + c.microInr, 0),
+    modelUsage: r.modelCalls === undefined || r.modelCalls.length === 0 ? null : r.modelCalls,
+    capped: r.capped ?? false,
   });
   return id;
 }
@@ -114,6 +125,12 @@ export async function runCopilotAskPrune(
     total += removed;
     if (removed < batchSize) break;
   }
+  /*
+    E1.3 — the "Wrong" taps go with their questions: same window, same nightly run. The feedback table
+    has no delete trigger (it holds a verdict, not the question), so a plain bounded delete suffices.
+  */
+  const cutoff = new Date(now.getTime() - COPILOT_ASK_RETAIN_DAYS * DAY_MS);
+  await db.delete(copilotAskFeedback).where(lt(copilotAskFeedback.at, cutoff));
   if (total > 0) {
     await withTx(db, (tx) =>
       appendEvent(tx, copilotAsksPruned.make({
@@ -143,6 +160,11 @@ export type CopilotHealth = {
   notUnderstoodShare: number | null;
   /** Act rows written that day (zero until E0.2 writes any). */
   acts: number;
+  /** E0.5 — chooser + model calls that day, and their ESTIMATED cost in rupees (2 decimals). */
+  modelCalls: number;
+  spendInr: number;
+  /** Asks that ran phrasebook-only because the cap had been reached. */
+  cappedAsks: number;
 };
 
 /** One IST day's totals. `date` is `YYYY-MM-DD`. */
@@ -151,7 +173,10 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
   const to = new Date(from.getTime() + DAY_MS);
 
   const asks = await db
-    .select({ actorType: copilotAsks.actorType, actorId: copilotAsks.actorId, outcome: copilotAsks.outcome, route: copilotAsks.route, ms: copilotAsks.ms })
+    .select({
+      actorType: copilotAsks.actorType, actorId: copilotAsks.actorId, outcome: copilotAsks.outcome, route: copilotAsks.route, ms: copilotAsks.ms,
+      modelCalls: copilotAsks.modelCalls, costMicroInr: copilotAsks.costMicroInr, capped: copilotAsks.capped,
+    })
     .from(copilotAsks)
     .where(and(gte(copilotAsks.at, from), lt(copilotAsks.at, to)));
   const [acts] = await db
@@ -175,6 +200,9 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
     byRoute,
     notUnderstoodShare: asks.length === 0 ? null : byOutcome.notUnderstood / asks.length,
     acts: acts?.n ?? 0,
+    modelCalls: asks.reduce((n, a) => n + a.modelCalls, 0),
+    spendInr: Math.round(asks.reduce((n, a) => n + a.costMicroInr, 0) / 10_000) / 100,
+    cappedAsks: asks.filter((a) => a.capped).length,
   };
 }
 
@@ -199,4 +227,18 @@ export async function noticeSeen(db: Db, userId: string): Promise<boolean> {
 /** Records the dismissal. First write wins; a second tap is a no-op. */
 export async function acknowledgeNotice(db: Db, userId: string): Promise<void> {
   await db.insert(copilotNoticeAcks).values({ userId, version: COPILOT_NOTICE_VERSION }).onConflictDoNothing();
+}
+
+/**
+ * E1.3 — records a "Wrong" tap on the asker's OWN ask. False when the ask is not theirs or does not
+ * exist (the controller answers 404 for both). First tap wins; a second is a no-op that still returns true.
+ */
+export async function recordWrong(db: Db, userId: string, askId: string): Promise<boolean> {
+  const own = await db
+    .select({ id: copilotAsks.id })
+    .from(copilotAsks)
+    .where(and(eq(copilotAsks.id, askId), eq(copilotAsks.actorType, "user"), eq(copilotAsks.actorId, userId)));
+  if (own.length === 0) return false;
+  await db.insert(copilotAskFeedback).values({ askId, userId, verdict: "wrong" }).onConflictDoNothing();
+  return true;
 }

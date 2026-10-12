@@ -6,12 +6,14 @@ import type { WireBriefPeriod, WireReportSection } from "../lib/desk-api";
 import { useAuth } from "../lib/auth";
 import { PaperScreen } from "../components/paper-screen";
 import { RecordingCard } from "../components/recording-card";
+import { WaitingForMe } from "../components/waiting-for-me";
 import {
   COL, deskStat, hasCard, longDate, matchesFilter, metricsOf, outcomeTone, rowsOf, shiftDate, statusTone, summariseVisits,
 } from "./my-day-model";
 import type { Metric, ReportRow, StatusTone, VisitFilter } from "./my-day-model";
 import "./my-day.css";
-import { useCopilot } from "../lib/use-copilot";
+import { isApptPick, useCopilot } from "../lib/use-copilot";
+import { CopilotActPicker } from "../components/copilot-act-pick";
 import { CopilotReport } from "../components/copilot-report";
 import { AgentDock, logged } from "../components/agent-dock";
 import type { AgentLine } from "../components/agent-dock";
@@ -492,6 +494,9 @@ export function MyDay(): React.ReactElement {
         {error === null ? null : <p role="alert" className="myd-error">{error}</p>}
         {report.isPending ? <p className="myd-empty">{t("app.loading")}</p> : null}
 
+        {/* E1.4 / E1.5 — what is waiting on me, the same lines the phone draws (`GET /me/waiting`). */}
+        {isToday ? <WaitingForMe /> : null}
+
         {isToday && (isDoctor || visitsSection !== undefined) ? (
           <div className="myd-now" data-testid="myd-now">
             <span className="myd-now-lead">{t("myDay.now.title")}</span>
@@ -576,7 +581,12 @@ export function MyDay(): React.ReactElement {
         <AgentDock
           answer={copilot.answer} log={agentLog} onAsk={copilot.ask}
           placeholder={t("myDay.askPlaceholder")} idle={t("myDay.agentIdle")}
-          panel={copilot.report === null ? undefined : <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />}
+          panel={copilot.report !== null ? <CopilotReport report={copilot.report} onDismiss={copilot.dismissReport} />
+            : copilot.pick !== null && !isApptPick(copilot.pick.pick) ? (
+              /* E2.2 — a leave, or a duty to hand on, asked from My day. */
+              <CopilotActPicker pick={copilot.pick.pick} proposals={copilot.pick.proposals} busy={copilot.busy}
+                onConfirm={(p) => { void copilot.confirm(p); }} onDismiss={copilot.clearPick} />
+            ) : undefined}
         />
       </div>
     </PaperScreen>

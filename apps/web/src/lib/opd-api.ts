@@ -128,6 +128,8 @@ export type WireAppointment = {
   mode?: "in_person" | "tele"; telePhone?: string | null;
   /** The desk's money mark on a tele-call (list route only): what it costs, and whether that is met. */
   teleDesk?: { amountPaise: number | null; covered: boolean };
+  /** E2.1 — booked or moved from the copilot chat (the server reads it from the copilot's act record). */
+  viaCopilot?: true;
   advanceReceiptId?: string | null; advanceQuotePaise?: number | null; advanceQuotedAt?: string | null;
   /** present on the list route, absent on the write routes' bare row */
   patient?: WirePatientSummary | null;
@@ -449,6 +451,8 @@ export type WireRxPrint = {
 export type WireTimelineItem = {
   /** Consult v2 — the visit's number, for the History browser. Optional: an older server sends none. */
   visitNo?: string;
+  /** Owner 2026-10-11 — `opd`, `lab` (the lab counter's walk-in) or `pharmacy`. Optional: an older server sends none (= opd). */
+  type?: string;
   encounterId: string; serviceDate: string; openedAt: string; status: string; visitType: string;
   doctorId: string | null; doctorName: string | null; departmentId: string | null; departmentName: string | null;
   diagnosis: string | null; icd10Code: string | null; prescriptionLineCount: number; dangerFlagged: boolean;

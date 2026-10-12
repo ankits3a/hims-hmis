@@ -40,6 +40,7 @@ Source: `apps/core/src/modules/opd/`
   - types: `AdvisedTest`, `ConsultStartGuard`, `VitalsStartGuard`
 - `encounters.ts`
   - `LAB_DEPARTMENT_CODE`
+  - `LAB_VISIT_TYPE`
   - `PHARMACY_VISIT_TYPE`
   - `counterState(db: Db, encounterId: string): Promise<CounterState | null>`
   - `findVisitByToken(db: Db, filter: { serviceDate: string; tokenNo: number }): Promise<EncounterRow | null>`
@@ -47,8 +48,8 @@ Source: `apps/core/src/modules/opd/`
   - `getVisit(db: Db, actor: Actor, encounterId: string): Promise<{ encounter: EncounterRow; queueEntries: QueueEntryRow[]; vitals: VitalsRow[];…`
   - `joinQueue(db: Db, actor: Actor, encounterId: string, now: Date = new Date()): Promise<JoinQueueResult>`
   - `listVisits(db: Db, filter: { status?: OpdVisitState; departmentId?: string; doctorId?: string; serviceDate?: string; patientId?: string; ty…`
-  - `openLabWalkin(db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date()): Promise<OpenVisitResult>`
-  - `openLabWalkinInTx(tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date): Promise<OpenVisitResult>`
+  - `openLabWalkin(db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date()): Promise<OpenVisitDeferredResult>`
+  - `openLabWalkinInTx(tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date): Promise<OpenVisitDeferredResult>`
   - `openPharmacyVisitInTx(tx: Tx, actor: Actor, input: { patientId: string; serviceDate: string }, now: Date): Promise<EncounterRow>`
   - `patientTimeline(db: Db, actor: Actor, patientId: string, limit = 50): Promise<TimelineItem[]>`
   - `reviewAnchorFor(db: Db | Tx, encounter: { patientId: string; departmentId: string | null; visitType: string; openedAt: Date; referredFromEn…`

@@ -70,6 +70,12 @@ export type OpenVisitInput = {
    * behaviour, and the appointment check-in path never defers.
    */
   join?: "queue" | "defer";
+  /**
+   * OWNER 2026-10-11 — `"lab"` is the lab counter's walk-in: a visit to the LABORATORY that is not an
+   * OPD consultation. Every OPD reader (doctor lists, OPD reports, fee hooks, the front desk) reads
+   * `type = 'opd'`, the way the pharmacy's own visit (`type = 'pharmacy'`) is kept out of them.
+   */
+  encounterType?: "opd" | "lab";
 };
 export type OpenVisitResult = {
   encounter: EncounterRow; queueEntry: QueueEntryRow; tokenNo: number; sessionId: string; roomId: string | null;
@@ -207,6 +213,7 @@ async function openVisitCore(
   const [encounter] = await tx.insert(opdEncounters).values({
     id: encounterId, visitNo, patientId: input.patientId, workflowInstanceId: instanceId, departmentId: dept.id, doctorId: doctor.id,
     appointmentId: input.appointment?.id ?? null, serviceDate, visitType,
+    ...(input.encounterType === "lab" ? { type: LAB_VISIT_TYPE } : {}),
     ...(tele ? { consultMode: "tele" } : {}),
     intendedPayer: input.intendedPayer ?? "self", referralSource: input.referralSource ?? null, referrerName: input.referrerName ?? null,
     referredFromEncounterId: input.referredFromEncounterId ?? null,
@@ -318,6 +325,16 @@ async function joinSessionInTx(
     moment the stamp has to be true is the moment paper comes out. The queue row keeps identifiers
     and nothing else, which is what it was for.
   */
+  /**
+   * OWNER 2026-10-11 — a LABORATORY visit (the lab desk's walk-in, `openLabWalkinInTx`) is not an OPD
+   * consultation and gets no OPD paper: no token slip, no A4 prescription sheet. The lab prints its own
+   * report. ("the visit created in lab counter is seen as OPD as I can see an OPD slip generated.")
+   */
+  const [deptRow] = encounter.departmentId === null ? [undefined]
+    : await tx.select({ code: opdDepartments.code }).from(opdDepartments).where(eq(opdDepartments.id, encounter.departmentId));
+  if (deptRow?.code === LAB_DEPARTMENT_CODE) {
+    return { queueEntry: queueEntry!, tokenNo, sessionId: session.id, roomId: session.roomId };
+  }
   await enqueuePrintJob(tx, {
     document: "opd_token_slip",
     params: { encounterId: encounter.id },
@@ -510,6 +527,8 @@ export async function reviewAnchorFor(
  * §9.9's runbook act.**
  */
 export const LAB_DEPARTMENT_CODE = "LAB";
+/** OWNER 2026-10-11 — the lab counter's walk-in visit type (see `openLabWalkinInTx`). */
+export const LAB_VISIT_TYPE = "lab";
 
 export type OpenLabWalkinInput = {
   patientId: string;
@@ -531,7 +550,7 @@ const LAB_WALKIN_CLOSED_STATES = ["completed", "abandoned"] as const;
 
 export async function openLabWalkinInTx(
   tx: Tx, actor: Actor, input: OpenLabWalkinInput & { chainIds: string[] }, now: Date,
-): Promise<OpenVisitResult> {
+): Promise<OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
 
   const dept = (await tx.select().from(opdDepartments).where(eq(opdDepartments.code, LAB_DEPARTMENT_CODE)))[0];
@@ -647,7 +666,16 @@ export async function openLabWalkinInTx(
     doctorId = labDoctors[0]!.id;
   }
 
+  /**
+   * OWNER 2026-10-11 — "if the visit in lab was walkin then how came an OPD slip is created? … if the
+   * report is handed to the patient then why is this visit still open?" The walk-in is a `lab` visit
+   * that joins NO OPD queue: no token, no OPD paper, no place on the pathologist's OPD list, and so
+   * nothing that stays "in the queue" after the report has gone home. The `V` number stays: the order,
+   * the bill and the report all hang off it.
+   */
   return await openVisitInTx(tx, actor, {
+    join: "defer",
+    encounterType: "lab",
     patientId: input.patientId,
     chainIds: input.chainIds,
     departmentId: dept.id,
@@ -701,7 +729,7 @@ export async function openPharmacyVisitInTx(
 /** Db-first: resolves the merge chain, then runs the walk-in on its own transaction. */
 export async function openLabWalkin(
   db: Db, actor: Actor, input: OpenLabWalkinInput, now: Date = new Date(),
-): Promise<OpenVisitResult> {
+): Promise<OpenVisitDeferredResult> {
   if (actor.type !== "user") throw new OpdError("user_actor_required");
   const canonical = await resolvePatientId(db, input.patientId);
   if (!canonical) throw new OpdError("patient_not_found", `unknown patient ${input.patientId}`);
@@ -1274,7 +1302,7 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
   });
   const chainIds = [canonical, ...(await listMergedLoserIds(db, canonical))];
   const rows = await db
-    .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name })
+    .select({ encounter: opdEncounters, doctorName: opdDoctors.displayName, departmentName: opdDepartments.name, departmentCode: opdDepartments.code })
     .from(opdEncounters)
     .leftJoin(opdDoctors, eq(opdEncounters.doctorId, opdDoctors.id))
     .leftJoin(opdDepartments, eq(opdEncounters.departmentId, opdDepartments.id))
@@ -1294,6 +1322,10 @@ export async function patientTimeline(db: Db, actor: Actor, patientId: string, l
     status: r.encounter.status, visitType: r.encounter.visitType,
     doctorId: r.encounter.doctorId, doctorName: r.doctorName,
     departmentId: r.encounter.departmentId, departmentName: r.departmentName,
+    /** Owner 2026-10-11 — `LAB` marks the lab desk's walk-in visit, which the front desk must not treat as OPD. */
+    departmentCode: r.departmentCode,
+    /** `opd`, `lab` (the lab counter's walk-in) or `pharmacy` — what kind of visit this row is. */
+    type: r.encounter.type,
     diagnosis: r.encounter.diagnosis, icd10Code: r.encounter.icd10Code,
     prescriptionLineCount: lineCounts.get(r.encounter.id) ?? 0, dangerFlagged: r.encounter.dangerFlagged,
     referredFromEncounterId: r.encounter.referredFromEncounterId,

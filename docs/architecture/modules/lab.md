@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
 - **Used by modules:** `abdm`, `ordering`, `radiology`
-- **Kernel used:** `approvals`, `auth`, `db`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
 ## Public API (`index.ts`), by declaring file
@@ -77,7 +77,7 @@ Source: `apps/core/src/modules/lab/`
   - `LAB_DESK_OPERATE`
   - `addOnOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: AddOnOrderInput, now: Date = new Date()): Promise<DeskOrderResult>`
   - `advisedTestItems(advised: readonly { serviceId: string }[]): DeskItemInput[]`
-  - `deskFind(db: Db, actor: Actor, q: string, serviceDate: string): Promise<DeskFindHit[]>`
+  - `deskFind(db: Db, actor: Actor, q: string, serviceDate: string, opts: { suggest?: boolean } = {}): Promise<DeskFindHit[]>`
   - `deskOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskOrderInput, now: Date = new Date()): Promise<DeskOrderResult>`
   - `deskWalkinOrder(tx: Tx, actor: Actor, decls: readonly OrderKindDecl[], input: DeskWalkinInput, now: Date = new Date()): Promise<DeskOrderRe…`
   - `drawRank(container: string): number`
@@ -97,11 +97,19 @@ Source: `apps/core/src/modules/lab/`
 - `events.ts`
   - `LAB_EVENTS`
   - `labAttributionUnverifiedFlagged`
+  - `labBookingClosed`
+  - `labBookingHoursChanged`
+  - `labBookingMade`
   - `labCriticalAcknowledged`
   - `labLabelPrinted`
+  - `labModeChanged`
   - `labNightReleaseReviewed`
   - `labNotifiableFlagged`
   - `labOrderDesked`
+  - `labQuickHandedOver`
+  - `labQuickReported`
+  - `labQuickSentBack`
+  - `labQuickStarted`
   - `labRecollectionRequested`
   - `labReflexAdded`
   - `labReflexRefused`
@@ -244,17 +252,18 @@ Source: `apps/core/src/modules/lab/`
 
 ## Tables (`kernel/db/schema/lab.ts`)
 
-`lab_analytes`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions`
+`lab_analytes`, `lab_booking_settings`, `lab_bookings`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions`
 
 Foreign keys into: `billing`, `ops`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (48)
+## HTTP routes (76)
 
 - `lab-bench.controller.ts` — 8: `/lab/bench`
 - `lab-catalogue.controller.ts` — 7: `/lab/catalogue`
 - `lab-collection.controller.ts` — 5: `/lab/collection`
-- `lab-desk.controller.ts` — 6: `/lab/desk`
+- `lab-desk.controller.ts` — 18: `/lab/desk`
 - `lab-instruments.controller.ts` — 4: `/lab/instruments`
+- `lab-quick.controller.ts` — 16: `/lab/quick`
 - `lab-verify.controller.ts` — 18: `/lab/reports`, `/lab/results`, `/lab/verify`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/lab`

@@ -711,6 +711,18 @@ export const staffAbsences = pgTable(
     aebasEnteredAt: timestamp("aebas_entered_at", { withTimezone: true }),
     aebasEnteredBy: text("aebas_entered_by").references(() => users.id),
     source: text("source").notNull().default("manual"),
+    /**
+     * E2.2 (owner 2026-10-11) — WHOSE LIST A FILED LEAVE WAITS IN. The department the person
+     * belonged to when they filed (their unit's department, else the department of a role they
+     * hold there); its `roster.periods.publish` holders decide it. NULL = no department found, so
+     * only a hospital-wide publisher sees it. Older rows (OPD, import) carry none.
+     */
+    departmentId: text("department_id").references(() => orgDepartments.id),
+    /**
+     * Why a leave was REFUSED, in the decider's words. Read by the person and the decider only
+     * (`redactReason` nulls it with `reason`); never on an event, a phone notice or a model call.
+     */
+    decisionNote: text("decision_note"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedBy: text("updated_by").notNull(),
@@ -718,6 +730,8 @@ export const staffAbsences = pgTable(
   },
   (t) => [
     index("staff_absences_user_window_idx").on(t.userId, t.startsAt),
+    index("staff_absences_department_status_idx").on(t.departmentId, t.status),
+    check("staff_absences_decision_note_ck", sql`${t.decisionNote} is null or length(${t.decisionNote}) between 1 and 280`),
     index("staff_absences_status_idx").on(t.status, t.startsAt),
     check("staff_absences_kind_ck", sql`${t.kind} in ('CL', 'EL', 'ML', 'maternity', 'paternity', 'comp_off', 'night_off', 'duty_off', 'deputation', 'academic', 'study', 'abstaining', 'unauthorised')`),
     check("staff_absences_status_ck", sql`${t.status} in ('requested', 'approved', 'rejected', 'cancelled')`),

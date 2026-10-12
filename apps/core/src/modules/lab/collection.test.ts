@@ -62,12 +62,11 @@ describe("the collection seat's queue (17c T2)", () => {
     }));
 
     /**
-     * CORRECTED BY EXECUTION: the phase document said a walk-in has no token. It has one — a lab
-     * walk-in is an OPD visit in the LAB department and `openVisitInTx` joins the pathologist's
-     * doctor-day queue, so the chair can call it out like any other. `null` is reserved for a
-     * visit that never joined a queue (RC-1's deferred `bill_first` join).
+     * OWNER 2026-10-11 — the phase document was right after all: a lab walk-in has NO token. It is a
+     * `lab` visit that joins no OPD queue ("how came an OPD slip is created?"), so it is not called
+     * out from the pathologist's OPD list; the chair calls it by name and order number.
      */
-    const [walkinEntry] = await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, walkin.encounter.id));
+    expect(await db.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, walkin.encounter.id))).toEqual([]);
     const awaiting = await awaitingLabels(db, fx.bench.actor, { serviceDate: fx.serviceDate });
     /**
      * STAT first, then arrival; the token rides the visit. Codes are ALL OR NOTHING by
@@ -77,12 +76,11 @@ describe("the collection seat's queue (17c T2)", () => {
      */
     expect(awaiting.map((r) => [r.orderGroupId, r.tokenNo, r.priority, r.orderableCodes])).toEqual([
       [placed.orderGroupId, entry!.tokenNo, "stat", []],
-      [placedWalkin.orderGroupId, walkinEntry!.tokenNo, "routine", []],
+      [placedWalkin.orderGroupId, null, "routine", []],
     ]);
     await grantPermissionToRole(db, fx.registry, "lab_technician", "orders.read.restricted");
     const cleared = await awaitingLabels(db, fx.bench.actor, { serviceDate: fx.serviceDate });
     expect(cleared.map((r) => r.orderableCodes)).toEqual([["CBC", "LFT"], ["TSH"]]);
-    expect(walkinEntry!.tokenNo).toBeGreaterThan(0);
     expect(awaiting[0]!.itemIds.sort()).toEqual([...placed.itemIds].sort());
     expect(awaiting[0]!.patientDisplay).toBe("Ram Kumar");
     expect(await collectionQueue(db, fx.bench.actor, { serviceDate: fx.serviceDate })).toEqual([]);
