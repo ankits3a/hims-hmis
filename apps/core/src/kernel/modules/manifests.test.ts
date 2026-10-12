@@ -201,13 +201,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // E0.1 TASK ENGINE (issue #713) — appended. It reaches into the roster through its index; owning
       // modules (housekeeping, bmw …) will import it, never the other way.
       "tasks",
+      // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. It raises its collection task through the tasks index.
+      "bmw",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(26); // E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(27); // E1.7 BIO-MEDICAL WASTE: 27; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(26);
+    expect(registry.all()).toHaveLength(27);
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -220,7 +222,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly ten enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly eleven enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -344,7 +346,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
     // (1l) E0.1 TASK ENGINE — `tasks`, APP-ONLY on the same terms: three permissions, no subscription;
     //      the worker runs `sweepTasks` and needs no permission to.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks"]);
+    // (1m) E1.7 BIO-MEDICAL WASTE — `bmw`, APP-ONLY on the same terms: three permissions, no subscription; its storage
+    //      clock rides `sweepTasks`, and the worker imports the bmw index for that (which also defines its task kind).
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

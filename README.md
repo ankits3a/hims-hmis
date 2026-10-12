@@ -1684,6 +1684,12 @@ by exactly one, started, done, and checked where its kind says. Three permission
 `tasks.view`, `tasks.work` and `tasks.supervise`; `duty_manager` holds `tasks.view` and `tasks.supervise`
 for the hours no supervisor is on. Nobody is assigned to either new role by any seed.
 
+**Bio-medical waste (issue #724, decision 0072, 2026-10-12).** Every waste bag is tracked from the ward to the
+common treatment facility, and the monthly report and the annual Form IV figures are read off the bag records.
+Three permissions guard it. `support_staff` holds `bmw.handle` (generate a bag and its label, weigh, collect,
+store); `services_supervisor` holds `bmw.view`, `bmw.handle` and `bmw.manage`; `admin` holds `bmw.view` and
+`bmw.manage` for the annual report and never handles a bag.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

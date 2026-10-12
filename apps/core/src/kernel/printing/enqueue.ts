@@ -90,7 +90,13 @@ export type PrintDocument =
    */
   | "roster_board"
   /** Decision 0047 — the test page an administrator sends to one counter's print program. Renderer in `computers.controller.ts`. */
-  | "print_test_page";
+  | "print_test_page"
+  /**
+   * E1.7 BIO-MEDICAL WASTE (issue #724) — the 75 × 50 mm sticker on every waste bag: category, place, date and time,
+   * weight line and the bag's bar code (BMW Rules 2016, Schedule IV label). Producer and renderer both in
+   * `modules/bmw/label.ts` (the renderer registered by the bmw module); params are the bag id only.
+   */
+  | "bmw_bag_label";
 
 /**
  * LOGICAL destinations, never CUPS queue names.
@@ -118,7 +124,12 @@ export type PrintDestination =
    * logical destination today: per-ward printers have no master data yet, and the relay owns which
    * physical queue(s) this maps to. A relay must be GRANTED it (`set-agent-print-destinations`).
    */
-  | "duty_board_a4";
+  | "duty_board_a4"
+  /**
+   * E1.7 BIO-MEDICAL WASTE — the waste-bag label printer (75 × 50 mm roll). One logical destination today, as for
+   * the duty board: per-ward label printers have no master data yet, and the relay owns which queue it maps to.
+   */
+  | "bmw_label";
 
 /**
  * WHERE EACH DOCUMENT GOES, from the owner's rulings and `PrinterChoice.dc.html`.
@@ -145,6 +156,8 @@ export const DESTINATION_OF: Record<PrintDocument, PrintDestination> = {
   roster_board: "duty_board_a4",
   // Born A4 like the prescription sheet, then sent to the one computer it tests (`sendJobToComputer`).
   print_test_page: "front_desk_a4",
+  // E1.7 — a waste bag's sticker never goes to a patient-facing desk's printer.
+  bmw_bag_label: "bmw_label",
 };
 
 /**

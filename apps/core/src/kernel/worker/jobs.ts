@@ -34,6 +34,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
+import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -707,6 +708,12 @@ export function registerAllJobs(
   scheduler.register({
     name: "sweepTasks",
     every: 60_000,
-    run: async (now) => { await sweepTasks(db, now); },
+    /*
+     * E1.7 BIO-MEDICAL WASTE (issue #724) — the waste STORAGE CLOCK rides this tick rather than holding a pool client
+     * of its own (the `runDueTimers` + `runDueReminders` shape): bags still on the premises warn at 36 h and alert at
+     * 48 h from generation. `finally`, so a failed task pass never silences the 48-hour alarm. Importing the bmw
+     * index here is ALSO what defines the `bmw_collection` task kind in the worker (tasks MAP §4).
+     */
+    run: async (now) => { try { await sweepTasks(db, now); } finally { await sweepBmwStorage(db, now); } },
   });
 }
