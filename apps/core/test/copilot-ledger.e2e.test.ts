@@ -134,7 +134,7 @@ describe("E0.1 — every copilot ask leaves one ledger row", () => {
       expect(Object.keys(res.body).sort()).toEqual(
         // E0.3/E0.5 added the cost meter, the cap and the halt switch — still nothing that names a person.
         ["acts", "askers", "asks", "byOutcome", "byRoute", "capInr", "capped", "cappedAsks", "date", "halts", "modelCalls",
-          "notUnderstoodShare", "spendInr"],
+          "notUnderstoodShare", "spendInr", "wrongShare", "wrongTaps"],
       );
       expect(JSON.stringify(res.body)).not.toContain(clerk.id);
       expect(JSON.stringify(res.body)).not.toContain("ledger_clerk");

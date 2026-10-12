@@ -10882,6 +10882,8 @@
       "asks": "Questions",
       "askers": "People who asked",
       "notUnderstoodShare": "Not understood",
+      "wrongTaps": "Wrong taps",
+      "wrongShare": "Wrong share",
       "acts": "Acts",
       "byOutcome": "How questions ended",
       "byRoute": "Who answered, and how fast",
