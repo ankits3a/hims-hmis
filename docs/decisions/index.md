@@ -93,3 +93,4 @@ Records without ✓ were transcribed by an agent and await the owner's check.
 | 0069 | 2026-10-11 | [Staff file their own leave; a copilot act confirmed by the person's own tap is the person's act; a refusal's reason never rides a notice](0069-staff-leave-and-copilot-confirmed-acts.md) | roster, leave, copilot, privacy | Ruled |  |
 | 0070 | 2026-10-12 | [Lab test prices: 331 tests priced at about 70–90% of Lal PathLabs / Apollo walk-in prices, put into force by the owner's authorisation](0070-lab-test-prices-2026-10.md) | lab, tariff, billing | Ruled |  |
 | 0071 | 2026-10-12 | [CBNAAT and AFB smear tests are free (₹0) under the national TB programme](0071-tb-programme-tests-free.md) | lab, tariff, billing | Ruled |  |
+| 0072 | 2026-10-12 | [IPD plan, goal targets and the five IPD answers](0072-ipd-plan-and-goal-targets.md) | ipd, billing, tariff, planning | Ruled |  |
