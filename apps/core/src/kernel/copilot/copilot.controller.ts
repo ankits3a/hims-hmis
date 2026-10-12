@@ -8,7 +8,7 @@ import { istDayString as istDay } from "../approvals/cumulative";
 import { collectDeskProviders } from "../desk/registry";
 import { openAiCompatibleClient } from "../inference/openai-compatible";
 import { chooserFor } from "../inference/openai-decisions";
-import { collectCopilotTools, permissionCheckFor, runTool } from "./catalog";
+import { collectCopilotTools, helpIntentsFor, permissionCheckFor, runTool } from "./catalog";
 import { COPILOT_EXTRA_TOOLS, MAX_PROPOSALS, confirmProposal, issueProposal, proposalKey, proposalSchema } from "./act";
 import type { ConfirmOutcome, Proposal } from "./act";
 import { kernelCopilotTools } from "./kernel-tools";
@@ -242,9 +242,14 @@ export class CopilotController {
     if (names !== null) rec.maskedQuestion = masked;
 
     if (routed === null) {
+      /* #676 — the help sentence names only what this asker may use; with nothing, it names nothing. */
+      const can = await helpIntentsFor(this.tools, (p) => hasPermission(this.db, actor.id, p, "hospital"));
+      const answer: CopilotAnswer = can.length === 0
+        ? { key: "copilot.answer.notUnderstood", params: {} }
+        : { key: "copilot.answer.notUnderstoodCan", params: { can: can.join(",") } };
       rec.outcome = "notUnderstood";
-      rec.answerKey = "copilot.answer.notUnderstood";
-      return { answer: { key: "copilot.answer.notUnderstood", params: {} }, source: "none", intent: null };
+      rec.answerKey = answer.key;
+      return { answer, source: "none", intent: null };
     }
     rec.route = routed.via;
     rec.intent = routed.intent;

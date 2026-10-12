@@ -179,6 +179,12 @@ function clockWords(at: Date): string {
 export function sayParams(
   key: string, params: Record<string, string | number>, t: Tr, lang: string,
 ): Record<string, string | number> {
+  // #676 — the abilities the server found this asker may use, said as a list in the asker's language.
+  if (key === "copilot.answer.notUnderstoodCan") {
+    const can = String(params.can ?? "").split(",").filter((c) => c !== "").map((c) => t(`copilot.can.${c}`, { defaultValue: c }));
+    const or = lang.startsWith("hi") ? " या " : " or ";
+    return { can: can.length < 2 ? can.join("") : `${can.slice(0, -1).join(", ")}${or}${can[can.length - 1]!}` };
+  }
   if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {

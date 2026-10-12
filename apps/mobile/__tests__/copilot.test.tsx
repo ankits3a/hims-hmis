@@ -99,6 +99,18 @@ describe("E1.3 — every web answer says the same on the phone", () => {
     expect(sayParams("copilot.answer.stockOnShelf", { expiry: "2028-01-31" }, t, "en")).toEqual({ expiry: "2028-01-31" });
   });
 
+  it("#676: says only the abilities the server found, as a list, in English and Hindi", () => {
+    const en_ = (k: string, v?: Record<string, string | number>) => translate("en", k, v);
+    const hi_ = (k: string, v?: Record<string, string | number>) => translate("hi", k, v);
+    const reply = (can: string) => ({ answer: { key: "copilot.answer.notUnderstoodCan", params: { can } }, source: "none" as const, intent: null });
+    expect(answerText(reply("visit_status,queue_depth,my_day_report"), en_, "en"))
+      .toBe("I did not understand that. You can ask me whether a patient has been seen, how the queues look or for your day report.");
+    expect(answerText(reply("my_day_report"), en_, "en")).toBe("I did not understand that. You can ask me for your day report.");
+    expect(answerText(reply("queue_depth,patient_dues"), hi_, "hi")).toBe("यह समझ नहीं आया। आप मुझसे पूछ सकते हैं: लाइन कितनी है या मरीज़ का कितना बाकी है।");
+    expect(en.copilot.can).toEqual(webEn.copilot.can);
+    expect(hi.copilot.can).toEqual(webHi.copilot.can);
+  });
+
   it("every phone label is one short line with no sentence, with the same keys in Hindi", () => {
     const leaves = (o: unknown, p = ""): [string, string][] => (typeof o === "string" ? [[p, o]] : Object.entries(o as Record<string, unknown>).flatMap(([k, v]) => leaves(v, `${p}.${k}`)));
     const enL = leaves(en.copilotPhone); const hiL = leaves(hi.copilotPhone);

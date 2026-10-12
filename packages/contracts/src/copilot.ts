@@ -35,6 +35,8 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.failed",
   /** Neither the phrasebook nor the model recognised the question. */
   "copilot.answer.notUnderstood",
+  /** #676 — the same, plus what the asker may ask: `can` is a comma list of intents the client says in words. */
+  "copilot.answer.notUnderstoodCan",
   /** Routed to an intent no module has shipped a tool for yet. Honest rather than a 500. */
   "copilot.answer.noTool",
   /** E0.3 — the copilot (or this kind of tool) is halted by the owner, IT, the steward or the duty manager. */
