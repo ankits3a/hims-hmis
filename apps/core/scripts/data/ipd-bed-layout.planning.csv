@@ -1,0 +1,1151 @@
+floor_code,floor_name,ward_code,ward_name,ward_kind,department,unit_type,room_code,room_name,bed_code,bed_class,gender_rule,isolation,negative_pressure,icu,equipment,daycare,overflow
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B01,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B02,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B03,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B04,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B05,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B06,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B07,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B08,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B09,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY1,Bay 1,F00-ER-B10,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B11,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B12,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B13,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B14,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B15,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B16,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B17,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B18,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B19,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY2,Bay 2,F00-ER-B20,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B21,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B22,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B23,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B24,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B25,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B26,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B27,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B28,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B29,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY3,Bay 3,F00-ER-B30,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B31,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B32,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B33,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B34,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B35,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B36,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B37,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B38,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B39,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY4,Bay 4,F00-ER-B40,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B41,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B42,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B43,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B44,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B45,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B46,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B47,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B48,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B49,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY5,Bay 5,F00-ER-B50,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B51,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B52,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B53,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B54,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B55,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B56,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B57,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B58,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B59,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-ER,Emergency,hall,CAS,ER,F00-ER-BAY6,Bay 6,F00-ER-B60,emergency,any,none,no,no,monitor;oxygen_point;suction,no,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B01,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B02,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B03,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B04,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B05,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B06,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B07,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B08,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B09,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY1,Bay 1,F00-DC-B10,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B11,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B12,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B13,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B14,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B15,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B16,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B17,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B18,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B19,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY2,Bay 2,F00-DC-B20,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B21,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B22,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B23,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B24,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B25,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B26,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B27,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B28,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B29,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY3,Bay 3,F00-DC-B30,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B31,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B32,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B33,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B34,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B35,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B36,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B37,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B38,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B39,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY4,Bay 4,F00-DC-B40,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B41,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B42,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B43,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B44,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B45,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B46,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B47,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B48,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B49,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY5,Bay 5,F00-DC-B50,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B51,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B52,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B53,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B54,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B55,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B56,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B57,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B58,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B59,daycare,any,none,no,no,oxygen_point,yes,no
+F00,Ground floor,F00-DC,Day care,hall,MULTI,DAYCARE,F00-DC-BAY6,Bay 6,F00-DC-B60,daycare,any,none,no,no,oxygen_point,yes,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-ISO1,Isolation room 1,F01-MICU-B01,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-ISO2,Isolation room 2,F01-MICU-B02,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B03,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B04,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B05,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B06,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B07,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B08,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B09,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B10,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B11,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY1,Bay 1,F01-MICU-B12,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B13,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B14,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B15,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B16,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B17,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B18,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B19,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B20,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B21,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY2,Bay 2,F01-MICU-B22,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B23,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B24,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B25,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B26,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B27,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B28,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B29,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B30,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B31,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY3,Bay 3,F01-MICU-B32,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B33,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B34,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B35,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B36,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B37,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B38,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B39,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-MICU,Medical ICU,ward,MED,MICU,F01-MICU-BAY4,Bay 4,F01-MICU-B40,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-ISO1,Isolation room 1,F01-SICU-B01,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-ISO2,Isolation room 2,F01-SICU-B02,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B03,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B04,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B05,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B06,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B07,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B08,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B09,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B10,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B11,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY1,Bay 1,F01-SICU-B12,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B13,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B14,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B15,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B16,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B17,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B18,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B19,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B20,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B21,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY2,Bay 2,F01-SICU-B22,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B23,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B24,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B25,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B26,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B27,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B28,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B29,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-SICU,Surgical ICU,ward,SUR,SICU,F01-SICU-BAY3,Bay 3,F01-SICU-B30,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-ISO1,Isolation room 1,F01-CCU-B01,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-ISO2,Isolation room 2,F01-CCU-B02,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B03,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B04,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B05,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B06,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B07,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B08,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B09,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B10,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B11,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY1,Bay 1,F01-CCU-B12,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B13,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B14,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B15,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B16,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B17,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B18,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B19,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B20,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B21,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY2,Bay 2,F01-CCU-B22,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B23,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B24,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B25,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B26,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B27,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B28,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B29,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CCU,Coronary care unit,ward,CARD,CCU,F01-CCU-BAY3,Bay 3,F01-CCU-B30,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-ISO1,Isolation room 1,F01-CTVSICU-B01,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-ISO2,Isolation room 2,F01-CTVSICU-B02,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B03,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B04,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B05,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B06,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B07,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B08,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B09,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B10,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B11,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY1,Bay 1,F01-CTVSICU-B12,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B13,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B14,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B15,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B16,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B17,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B18,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B19,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B20,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B21,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY2,Bay 2,F01-CTVSICU-B22,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY3,Bay 3,F01-CTVSICU-B23,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-CTVSICU,Cardiothoracic ICU,ward,CTVS,CTVS_ICU,F01-CTVSICU-BAY3,Bay 3,F01-CTVSICU-B24,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-ISO1,Isolation room 1,F01-NEUROICU-B01,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-ISO2,Isolation room 2,F01-NEUROICU-B02,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B03,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B04,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B05,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B06,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B07,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B08,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B09,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B10,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B11,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY1,Bay 1,F01-NEUROICU-B12,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B13,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B14,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B15,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B16,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B17,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B18,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B19,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B20,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B21,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY2,Bay 2,F01-NEUROICU-B22,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY3,Bay 3,F01-NEUROICU-B23,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-NEUROICU,Neuro ICU,ward,NEURO,NEURO_ICU,F01-NEUROICU-BAY3,Bay 3,F01-NEUROICU-B24,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-ISO1,Isolation room 1,F01-ONCOICU-B01,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-ISO2,Isolation room 2,F01-ONCOICU-B02,icu,any,airborne,yes,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B03,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B04,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B05,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B06,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B07,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B08,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B09,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B10,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B11,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY1,Bay 1,F01-ONCOICU-B12,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY2,Bay 2,F01-ONCOICU-B13,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY2,Bay 2,F01-ONCOICU-B14,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY2,Bay 2,F01-ONCOICU-B15,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-ONCOICU,Oncology ICU,ward,ONCO,ONCO_ICU,F01-ONCOICU-BAY2,Bay 2,F01-ONCOICU-B16,icu,any,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R01,Burns cubicle 01,F01-BURNS-B01,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R02,Burns cubicle 02,F01-BURNS-B02,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R03,Burns cubicle 03,F01-BURNS-B03,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R04,Burns cubicle 04,F01-BURNS-B04,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R05,Burns cubicle 05,F01-BURNS-B05,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R06,Burns cubicle 06,F01-BURNS-B06,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R07,Burns cubicle 07,F01-BURNS-B07,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R08,Burns cubicle 08,F01-BURNS-B08,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R09,Burns cubicle 09,F01-BURNS-B09,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-BURNS,Burns unit,ward,PLAS,BURNS,F01-BURNS-R10,Burns cubicle 10,F01-BURNS-B10,icu,any,contact,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B01,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B02,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B03,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B04,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B05,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B06,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B07,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B08,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B09,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY1,Bay 1,F01-HDU-B10,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B11,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B12,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B13,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B14,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B15,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B16,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B17,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B18,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B19,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY2,Bay 2,F01-HDU-B20,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B21,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B22,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B23,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B24,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B25,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B26,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B27,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B28,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B29,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY3,Bay 3,F01-HDU-B30,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B31,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B32,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B33,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B34,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B35,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B36,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B37,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B38,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B39,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY4,Bay 4,F01-HDU-B40,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY5,Bay 5,F01-HDU-B41,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY5,Bay 5,F01-HDU-B42,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY5,Bay 5,F01-HDU-B43,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY5,Bay 5,F01-HDU-B44,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY5,Bay 5,F01-HDU-B45,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F01,First floor,F01-HDU,High dependency unit,ward,MED,HDU,F01-HDU-BAY5,Bay 5,F01-HDU-B46,hdu,any,none,no,no,monitor;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B01,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B02,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B03,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B04,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B05,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B06,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B07,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B08,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B09,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY1,Bay 1,F02-NICU-B10,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B11,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B12,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B13,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B14,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B15,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B16,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B17,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B18,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B19,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY2,Bay 2,F02-NICU-B20,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B21,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B22,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B23,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B24,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B25,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B26,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B27,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B28,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B29,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY3,Bay 3,F02-NICU-B30,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B31,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B32,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B33,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B34,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B35,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B36,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B37,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B38,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B39,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-NICU,Neonatal ICU,ward,PED,NICU,F02-NICU-BAY4,Bay 4,F02-NICU-B40,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B01,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B02,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B03,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B04,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B05,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B06,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B07,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B08,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B09,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-SNCU,Sick newborn care unit,ward,PED,SNCU,F02-SNCU-BAY1,Bay 1,F02-SNCU-B10,nicu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R01,LDR room 01,F02-LDR-B01,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R02,LDR room 02,F02-LDR-B02,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R03,LDR room 03,F02-LDR-B03,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R04,LDR room 04,F02-LDR-B04,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R05,LDR room 05,F02-LDR-B05,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R06,LDR room 06,F02-LDR-B06,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R07,LDR room 07,F02-LDR-B07,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R08,LDR room 08,F02-LDR-B08,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R09,LDR room 09,F02-LDR-B09,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R10,LDR room 10,F02-LDR-B10,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R11,LDR room 11,F02-LDR-B11,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R12,LDR room 12,F02-LDR-B12,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R13,LDR room 13,F02-LDR-B13,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R14,LDR room 14,F02-LDR-B14,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R15,LDR room 15,F02-LDR-B15,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R16,LDR room 16,F02-LDR-B16,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R17,LDR room 17,F02-LDR-B17,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R18,LDR room 18,F02-LDR-B18,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R19,LDR room 19,F02-LDR-B19,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-LDR,"Labour, delivery and recovery",ward,OBG,LDR,F02-LDR-R20,LDR room 20,F02-LDR-B20,ldr,female,none,no,no,monitor;oxygen_point;suction,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B01,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B02,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B03,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B04,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B05,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B06,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B07,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B08,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B09,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY1,Bay 1,F02-PICU-B10,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B11,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B12,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B13,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B14,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B15,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B16,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B17,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B18,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B19,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F02,Second floor,F02-PICU,Paediatric ICU,ward,PED,PICU,F02-PICU-BAY2,Bay 2,F02-PICU-B20,picu,paediatric,none,no,yes,monitor;ventilator_ready;oxygen_point;suction;infusion_pumps,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY1,Bay 1,F03-MED-M-B01,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY1,Bay 1,F03-MED-M-B02,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY1,Bay 1,F03-MED-M-B03,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY1,Bay 1,F03-MED-M-B04,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY1,Bay 1,F03-MED-M-B05,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY1,Bay 1,F03-MED-M-B06,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY2,Bay 2,F03-MED-M-B07,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY2,Bay 2,F03-MED-M-B08,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY2,Bay 2,F03-MED-M-B09,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY2,Bay 2,F03-MED-M-B10,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY2,Bay 2,F03-MED-M-B11,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY2,Bay 2,F03-MED-M-B12,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY3,Bay 3,F03-MED-M-B13,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY3,Bay 3,F03-MED-M-B14,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY3,Bay 3,F03-MED-M-B15,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY3,Bay 3,F03-MED-M-B16,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY3,Bay 3,F03-MED-M-B17,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY3,Bay 3,F03-MED-M-B18,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY4,Bay 4,F03-MED-M-B19,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY4,Bay 4,F03-MED-M-B20,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY4,Bay 4,F03-MED-M-B21,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY4,Bay 4,F03-MED-M-B22,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY4,Bay 4,F03-MED-M-B23,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY4,Bay 4,F03-MED-M-B24,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY5,Bay 5,F03-MED-M-B25,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY5,Bay 5,F03-MED-M-B26,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY5,Bay 5,F03-MED-M-B27,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY5,Bay 5,F03-MED-M-B28,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY5,Bay 5,F03-MED-M-B29,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-M,Medicine — male general ward,hall,MED,WARD,F03-MED-M-BAY5,Bay 5,F03-MED-M-B30,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY1,Bay 1,F03-MED-F-B01,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY1,Bay 1,F03-MED-F-B02,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY1,Bay 1,F03-MED-F-B03,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY1,Bay 1,F03-MED-F-B04,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY1,Bay 1,F03-MED-F-B05,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY1,Bay 1,F03-MED-F-B06,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY2,Bay 2,F03-MED-F-B07,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY2,Bay 2,F03-MED-F-B08,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY2,Bay 2,F03-MED-F-B09,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY2,Bay 2,F03-MED-F-B10,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY2,Bay 2,F03-MED-F-B11,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY2,Bay 2,F03-MED-F-B12,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY3,Bay 3,F03-MED-F-B13,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY3,Bay 3,F03-MED-F-B14,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY3,Bay 3,F03-MED-F-B15,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY3,Bay 3,F03-MED-F-B16,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY3,Bay 3,F03-MED-F-B17,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY3,Bay 3,F03-MED-F-B18,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY4,Bay 4,F03-MED-F-B19,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY4,Bay 4,F03-MED-F-B20,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY4,Bay 4,F03-MED-F-B21,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY4,Bay 4,F03-MED-F-B22,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY4,Bay 4,F03-MED-F-B23,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY4,Bay 4,F03-MED-F-B24,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY5,Bay 5,F03-MED-F-B25,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY5,Bay 5,F03-MED-F-B26,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY5,Bay 5,F03-MED-F-B27,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY5,Bay 5,F03-MED-F-B28,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY5,Bay 5,F03-MED-F-B29,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-MED-F,Medicine — female general ward,hall,MED,WARD,F03-MED-F-BAY5,Bay 5,F03-MED-F-B30,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY1,Bay 1,F03-PULM-M-B01,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY1,Bay 1,F03-PULM-M-B02,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY1,Bay 1,F03-PULM-M-B03,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY1,Bay 1,F03-PULM-M-B04,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY1,Bay 1,F03-PULM-M-B05,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY1,Bay 1,F03-PULM-M-B06,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY2,Bay 2,F03-PULM-M-B07,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY2,Bay 2,F03-PULM-M-B08,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY2,Bay 2,F03-PULM-M-B09,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY2,Bay 2,F03-PULM-M-B10,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY2,Bay 2,F03-PULM-M-B11,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-M,Pulmonology — male general ward,hall,PULM,WARD,F03-PULM-M-BAY2,Bay 2,F03-PULM-M-B12,general,male,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY1,Bay 1,F03-PULM-F-B01,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY1,Bay 1,F03-PULM-F-B02,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY1,Bay 1,F03-PULM-F-B03,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY1,Bay 1,F03-PULM-F-B04,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY1,Bay 1,F03-PULM-F-B05,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY1,Bay 1,F03-PULM-F-B06,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY2,Bay 2,F03-PULM-F-B07,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY2,Bay 2,F03-PULM-F-B08,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY2,Bay 2,F03-PULM-F-B09,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY2,Bay 2,F03-PULM-F-B10,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY2,Bay 2,F03-PULM-F-B11,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-PULM-F,Pulmonology — female general ward,hall,PULM,WARD,F03-PULM-F-BAY2,Bay 2,F03-PULM-F-B12,general,female,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R01,Twin room 01,F03-SPVT-B01,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R01,Twin room 01,F03-SPVT-B02,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R02,Twin room 02,F03-SPVT-B03,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R02,Twin room 02,F03-SPVT-B04,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R03,Twin room 03,F03-SPVT-B05,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R03,Twin room 03,F03-SPVT-B06,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R04,Twin room 04,F03-SPVT-B07,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R04,Twin room 04,F03-SPVT-B08,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R05,Twin room 05,F03-SPVT-B09,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R05,Twin room 05,F03-SPVT-B10,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R06,Twin room 06,F03-SPVT-B11,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R06,Twin room 06,F03-SPVT-B12,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R07,Twin room 07,F03-SPVT-B13,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R07,Twin room 07,F03-SPVT-B14,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R08,Twin room 08,F03-SPVT-B15,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R08,Twin room 08,F03-SPVT-B16,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R09,Twin room 09,F03-SPVT-B17,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R09,Twin room 09,F03-SPVT-B18,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R10,Twin room 10,F03-SPVT-B19,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R10,Twin room 10,F03-SPVT-B20,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R11,Twin room 11,F03-SPVT-B21,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R11,Twin room 11,F03-SPVT-B22,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R12,Twin room 12,F03-SPVT-B23,semi_private,any,none,no,no,oxygen_point,no,no
+F03,Third floor,F03-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F03-SPVT-R12,Twin room 12,F03-SPVT-B24,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY1,Bay 1,F04-SUR-M-B01,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY1,Bay 1,F04-SUR-M-B02,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY1,Bay 1,F04-SUR-M-B03,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY1,Bay 1,F04-SUR-M-B04,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY1,Bay 1,F04-SUR-M-B05,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY1,Bay 1,F04-SUR-M-B06,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY2,Bay 2,F04-SUR-M-B07,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY2,Bay 2,F04-SUR-M-B08,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY2,Bay 2,F04-SUR-M-B09,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY2,Bay 2,F04-SUR-M-B10,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY2,Bay 2,F04-SUR-M-B11,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY2,Bay 2,F04-SUR-M-B12,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY3,Bay 3,F04-SUR-M-B13,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY3,Bay 3,F04-SUR-M-B14,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY3,Bay 3,F04-SUR-M-B15,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY3,Bay 3,F04-SUR-M-B16,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY3,Bay 3,F04-SUR-M-B17,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY3,Bay 3,F04-SUR-M-B18,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY4,Bay 4,F04-SUR-M-B19,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY4,Bay 4,F04-SUR-M-B20,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY4,Bay 4,F04-SUR-M-B21,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY4,Bay 4,F04-SUR-M-B22,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY4,Bay 4,F04-SUR-M-B23,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-M,General surgery — male general ward,hall,SUR,WARD,F04-SUR-M-BAY4,Bay 4,F04-SUR-M-B24,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY1,Bay 1,F04-SUR-F-B01,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY1,Bay 1,F04-SUR-F-B02,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY1,Bay 1,F04-SUR-F-B03,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY1,Bay 1,F04-SUR-F-B04,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY1,Bay 1,F04-SUR-F-B05,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY1,Bay 1,F04-SUR-F-B06,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY2,Bay 2,F04-SUR-F-B07,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY2,Bay 2,F04-SUR-F-B08,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY2,Bay 2,F04-SUR-F-B09,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY2,Bay 2,F04-SUR-F-B10,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY2,Bay 2,F04-SUR-F-B11,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY2,Bay 2,F04-SUR-F-B12,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY3,Bay 3,F04-SUR-F-B13,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY3,Bay 3,F04-SUR-F-B14,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY3,Bay 3,F04-SUR-F-B15,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY3,Bay 3,F04-SUR-F-B16,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY3,Bay 3,F04-SUR-F-B17,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY3,Bay 3,F04-SUR-F-B18,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY4,Bay 4,F04-SUR-F-B19,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY4,Bay 4,F04-SUR-F-B20,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY4,Bay 4,F04-SUR-F-B21,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY4,Bay 4,F04-SUR-F-B22,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY4,Bay 4,F04-SUR-F-B23,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SUR-F,General surgery — female general ward,hall,SUR,WARD,F04-SUR-F-BAY4,Bay 4,F04-SUR-F-B24,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY1,Bay 1,F04-GAST-M-B01,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY1,Bay 1,F04-GAST-M-B02,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY1,Bay 1,F04-GAST-M-B03,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY1,Bay 1,F04-GAST-M-B04,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY1,Bay 1,F04-GAST-M-B05,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY1,Bay 1,F04-GAST-M-B06,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY2,Bay 2,F04-GAST-M-B07,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY2,Bay 2,F04-GAST-M-B08,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY2,Bay 2,F04-GAST-M-B09,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY2,Bay 2,F04-GAST-M-B10,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY2,Bay 2,F04-GAST-M-B11,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-M,Gastroenterology — male general ward,hall,GAST,WARD,F04-GAST-M-BAY2,Bay 2,F04-GAST-M-B12,general,male,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY1,Bay 1,F04-GAST-F-B01,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY1,Bay 1,F04-GAST-F-B02,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY1,Bay 1,F04-GAST-F-B03,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY1,Bay 1,F04-GAST-F-B04,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY1,Bay 1,F04-GAST-F-B05,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY1,Bay 1,F04-GAST-F-B06,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY2,Bay 2,F04-GAST-F-B07,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY2,Bay 2,F04-GAST-F-B08,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY2,Bay 2,F04-GAST-F-B09,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY2,Bay 2,F04-GAST-F-B10,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY2,Bay 2,F04-GAST-F-B11,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-GAST-F,Gastroenterology — female general ward,hall,GAST,WARD,F04-GAST-F-BAY2,Bay 2,F04-GAST-F-B12,general,female,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R01,Twin room 01,F04-SPVT-B01,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R01,Twin room 01,F04-SPVT-B02,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R02,Twin room 02,F04-SPVT-B03,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R02,Twin room 02,F04-SPVT-B04,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R03,Twin room 03,F04-SPVT-B05,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R03,Twin room 03,F04-SPVT-B06,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R04,Twin room 04,F04-SPVT-B07,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R04,Twin room 04,F04-SPVT-B08,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R05,Twin room 05,F04-SPVT-B09,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R05,Twin room 05,F04-SPVT-B10,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R06,Twin room 06,F04-SPVT-B11,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R06,Twin room 06,F04-SPVT-B12,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R07,Twin room 07,F04-SPVT-B13,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R07,Twin room 07,F04-SPVT-B14,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R08,Twin room 08,F04-SPVT-B15,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R08,Twin room 08,F04-SPVT-B16,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R09,Twin room 09,F04-SPVT-B17,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R09,Twin room 09,F04-SPVT-B18,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R10,Twin room 10,F04-SPVT-B19,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R10,Twin room 10,F04-SPVT-B20,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R11,Twin room 11,F04-SPVT-B21,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R11,Twin room 11,F04-SPVT-B22,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R12,Twin room 12,F04-SPVT-B23,semi_private,any,none,no,no,oxygen_point,no,no
+F04,Fourth floor,F04-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F04-SPVT-R12,Twin room 12,F04-SPVT-B24,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY1,Bay 1,F05-ORT-M-B01,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY1,Bay 1,F05-ORT-M-B02,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY1,Bay 1,F05-ORT-M-B03,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY1,Bay 1,F05-ORT-M-B04,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY1,Bay 1,F05-ORT-M-B05,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY1,Bay 1,F05-ORT-M-B06,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY2,Bay 2,F05-ORT-M-B07,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY2,Bay 2,F05-ORT-M-B08,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY2,Bay 2,F05-ORT-M-B09,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY2,Bay 2,F05-ORT-M-B10,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY2,Bay 2,F05-ORT-M-B11,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY2,Bay 2,F05-ORT-M-B12,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY3,Bay 3,F05-ORT-M-B13,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY3,Bay 3,F05-ORT-M-B14,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY3,Bay 3,F05-ORT-M-B15,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY3,Bay 3,F05-ORT-M-B16,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY3,Bay 3,F05-ORT-M-B17,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-M,Orthopaedics — male general ward,hall,ORT,WARD,F05-ORT-M-BAY3,Bay 3,F05-ORT-M-B18,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY1,Bay 1,F05-ORT-F-B01,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY1,Bay 1,F05-ORT-F-B02,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY1,Bay 1,F05-ORT-F-B03,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY1,Bay 1,F05-ORT-F-B04,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY1,Bay 1,F05-ORT-F-B05,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY1,Bay 1,F05-ORT-F-B06,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY2,Bay 2,F05-ORT-F-B07,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY2,Bay 2,F05-ORT-F-B08,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY2,Bay 2,F05-ORT-F-B09,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY2,Bay 2,F05-ORT-F-B10,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY2,Bay 2,F05-ORT-F-B11,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY2,Bay 2,F05-ORT-F-B12,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY3,Bay 3,F05-ORT-F-B13,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY3,Bay 3,F05-ORT-F-B14,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY3,Bay 3,F05-ORT-F-B15,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY3,Bay 3,F05-ORT-F-B16,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY3,Bay 3,F05-ORT-F-B17,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ORT-F,Orthopaedics — female general ward,hall,ORT,WARD,F05-ORT-F-BAY3,Bay 3,F05-ORT-F-B18,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY1,Bay 1,F05-NEURO-M-B01,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY1,Bay 1,F05-NEURO-M-B02,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY1,Bay 1,F05-NEURO-M-B03,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY1,Bay 1,F05-NEURO-M-B04,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY1,Bay 1,F05-NEURO-M-B05,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY1,Bay 1,F05-NEURO-M-B06,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY2,Bay 2,F05-NEURO-M-B07,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY2,Bay 2,F05-NEURO-M-B08,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY2,Bay 2,F05-NEURO-M-B09,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY2,Bay 2,F05-NEURO-M-B10,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY2,Bay 2,F05-NEURO-M-B11,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-M,Neurology and neurosurgery — male general ward,hall,NEURO,WARD,F05-NEURO-M-BAY2,Bay 2,F05-NEURO-M-B12,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY1,Bay 1,F05-NEURO-F-B01,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY1,Bay 1,F05-NEURO-F-B02,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY1,Bay 1,F05-NEURO-F-B03,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY1,Bay 1,F05-NEURO-F-B04,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY1,Bay 1,F05-NEURO-F-B05,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY1,Bay 1,F05-NEURO-F-B06,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY2,Bay 2,F05-NEURO-F-B07,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY2,Bay 2,F05-NEURO-F-B08,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY2,Bay 2,F05-NEURO-F-B09,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY2,Bay 2,F05-NEURO-F-B10,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY2,Bay 2,F05-NEURO-F-B11,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-NEURO-F,Neurology and neurosurgery — female general ward,hall,NEURO,WARD,F05-NEURO-F-BAY2,Bay 2,F05-NEURO-F-B12,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-M,ENT — male general ward,hall,ENT,WARD,F05-ENT-M-BAY1,Bay 1,F05-ENT-M-B01,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-M,ENT — male general ward,hall,ENT,WARD,F05-ENT-M-BAY1,Bay 1,F05-ENT-M-B02,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-M,ENT — male general ward,hall,ENT,WARD,F05-ENT-M-BAY1,Bay 1,F05-ENT-M-B03,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-M,ENT — male general ward,hall,ENT,WARD,F05-ENT-M-BAY1,Bay 1,F05-ENT-M-B04,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-M,ENT — male general ward,hall,ENT,WARD,F05-ENT-M-BAY1,Bay 1,F05-ENT-M-B05,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-M,ENT — male general ward,hall,ENT,WARD,F05-ENT-M-BAY1,Bay 1,F05-ENT-M-B06,general,male,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-F,ENT — female general ward,hall,ENT,WARD,F05-ENT-F-BAY1,Bay 1,F05-ENT-F-B01,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-F,ENT — female general ward,hall,ENT,WARD,F05-ENT-F-BAY1,Bay 1,F05-ENT-F-B02,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-F,ENT — female general ward,hall,ENT,WARD,F05-ENT-F-BAY1,Bay 1,F05-ENT-F-B03,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-F,ENT — female general ward,hall,ENT,WARD,F05-ENT-F-BAY1,Bay 1,F05-ENT-F-B04,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-F,ENT — female general ward,hall,ENT,WARD,F05-ENT-F-BAY1,Bay 1,F05-ENT-F-B05,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-ENT-F,ENT — female general ward,hall,ENT,WARD,F05-ENT-F-BAY1,Bay 1,F05-ENT-F-B06,general,female,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R01,Twin room 01,F05-SPVT-B01,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R01,Twin room 01,F05-SPVT-B02,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R02,Twin room 02,F05-SPVT-B03,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R02,Twin room 02,F05-SPVT-B04,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R03,Twin room 03,F05-SPVT-B05,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R03,Twin room 03,F05-SPVT-B06,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R04,Twin room 04,F05-SPVT-B07,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R04,Twin room 04,F05-SPVT-B08,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R05,Twin room 05,F05-SPVT-B09,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R05,Twin room 05,F05-SPVT-B10,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R06,Twin room 06,F05-SPVT-B11,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R06,Twin room 06,F05-SPVT-B12,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R07,Twin room 07,F05-SPVT-B13,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R07,Twin room 07,F05-SPVT-B14,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R08,Twin room 08,F05-SPVT-B15,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R08,Twin room 08,F05-SPVT-B16,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R09,Twin room 09,F05-SPVT-B17,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R09,Twin room 09,F05-SPVT-B18,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R10,Twin room 10,F05-SPVT-B19,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R10,Twin room 10,F05-SPVT-B20,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R11,Twin room 11,F05-SPVT-B21,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R11,Twin room 11,F05-SPVT-B22,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R12,Twin room 12,F05-SPVT-B23,semi_private,any,none,no,no,oxygen_point,no,no
+F05,Fifth floor,F05-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F05-SPVT-R12,Twin room 12,F05-SPVT-B24,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY1,Bay 1,F06-OBG-F-B01,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY1,Bay 1,F06-OBG-F-B02,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY1,Bay 1,F06-OBG-F-B03,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY1,Bay 1,F06-OBG-F-B04,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY1,Bay 1,F06-OBG-F-B05,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY1,Bay 1,F06-OBG-F-B06,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY2,Bay 2,F06-OBG-F-B07,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY2,Bay 2,F06-OBG-F-B08,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY2,Bay 2,F06-OBG-F-B09,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY2,Bay 2,F06-OBG-F-B10,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY2,Bay 2,F06-OBG-F-B11,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY2,Bay 2,F06-OBG-F-B12,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY3,Bay 3,F06-OBG-F-B13,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY3,Bay 3,F06-OBG-F-B14,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY3,Bay 3,F06-OBG-F-B15,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY3,Bay 3,F06-OBG-F-B16,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY3,Bay 3,F06-OBG-F-B17,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY3,Bay 3,F06-OBG-F-B18,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY4,Bay 4,F06-OBG-F-B19,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY4,Bay 4,F06-OBG-F-B20,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY4,Bay 4,F06-OBG-F-B21,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY4,Bay 4,F06-OBG-F-B22,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY4,Bay 4,F06-OBG-F-B23,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY4,Bay 4,F06-OBG-F-B24,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY5,Bay 5,F06-OBG-F-B25,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY5,Bay 5,F06-OBG-F-B26,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY5,Bay 5,F06-OBG-F-B27,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY5,Bay 5,F06-OBG-F-B28,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY5,Bay 5,F06-OBG-F-B29,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY5,Bay 5,F06-OBG-F-B30,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY6,Bay 6,F06-OBG-F-B31,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY6,Bay 6,F06-OBG-F-B32,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY6,Bay 6,F06-OBG-F-B33,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY6,Bay 6,F06-OBG-F-B34,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY6,Bay 6,F06-OBG-F-B35,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-OBG-F,Obstetrics and gynaecology — female general ward,hall,OBG,WARD,F06-OBG-F-BAY6,Bay 6,F06-OBG-F-B36,general,female,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY1,Bay 1,F06-PED-B01,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY1,Bay 1,F06-PED-B02,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY1,Bay 1,F06-PED-B03,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY1,Bay 1,F06-PED-B04,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY1,Bay 1,F06-PED-B05,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY1,Bay 1,F06-PED-B06,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY2,Bay 2,F06-PED-B07,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY2,Bay 2,F06-PED-B08,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY2,Bay 2,F06-PED-B09,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY2,Bay 2,F06-PED-B10,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY2,Bay 2,F06-PED-B11,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY2,Bay 2,F06-PED-B12,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY3,Bay 3,F06-PED-B13,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY3,Bay 3,F06-PED-B14,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY3,Bay 3,F06-PED-B15,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY3,Bay 3,F06-PED-B16,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY3,Bay 3,F06-PED-B17,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY3,Bay 3,F06-PED-B18,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY4,Bay 4,F06-PED-B19,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY4,Bay 4,F06-PED-B20,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY4,Bay 4,F06-PED-B21,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY4,Bay 4,F06-PED-B22,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY4,Bay 4,F06-PED-B23,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY4,Bay 4,F06-PED-B24,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY5,Bay 5,F06-PED-B25,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY5,Bay 5,F06-PED-B26,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY5,Bay 5,F06-PED-B27,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY5,Bay 5,F06-PED-B28,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY5,Bay 5,F06-PED-B29,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-PED,Paediatrics — children's general ward,hall,PED,WARD,F06-PED-BAY5,Bay 5,F06-PED-B30,general,paediatric,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R01,Twin room 01,F06-SPVT-B01,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R01,Twin room 01,F06-SPVT-B02,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R02,Twin room 02,F06-SPVT-B03,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R02,Twin room 02,F06-SPVT-B04,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R03,Twin room 03,F06-SPVT-B05,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R03,Twin room 03,F06-SPVT-B06,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R04,Twin room 04,F06-SPVT-B07,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R04,Twin room 04,F06-SPVT-B08,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R05,Twin room 05,F06-SPVT-B09,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R05,Twin room 05,F06-SPVT-B10,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R06,Twin room 06,F06-SPVT-B11,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R06,Twin room 06,F06-SPVT-B12,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R07,Twin room 07,F06-SPVT-B13,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R07,Twin room 07,F06-SPVT-B14,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R08,Twin room 08,F06-SPVT-B15,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R08,Twin room 08,F06-SPVT-B16,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R09,Twin room 09,F06-SPVT-B17,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R09,Twin room 09,F06-SPVT-B18,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R10,Twin room 10,F06-SPVT-B19,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R10,Twin room 10,F06-SPVT-B20,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R11,Twin room 11,F06-SPVT-B21,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R11,Twin room 11,F06-SPVT-B22,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R12,Twin room 12,F06-SPVT-B23,semi_private,any,none,no,no,oxygen_point,no,no
+F06,Sixth floor,F06-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F06-SPVT-R12,Twin room 12,F06-SPVT-B24,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY1,Bay 1,F07-CARD-M-B01,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY1,Bay 1,F07-CARD-M-B02,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY1,Bay 1,F07-CARD-M-B03,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY1,Bay 1,F07-CARD-M-B04,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY1,Bay 1,F07-CARD-M-B05,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY1,Bay 1,F07-CARD-M-B06,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY2,Bay 2,F07-CARD-M-B07,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY2,Bay 2,F07-CARD-M-B08,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY2,Bay 2,F07-CARD-M-B09,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY2,Bay 2,F07-CARD-M-B10,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY2,Bay 2,F07-CARD-M-B11,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY2,Bay 2,F07-CARD-M-B12,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY3,Bay 3,F07-CARD-M-B13,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY3,Bay 3,F07-CARD-M-B14,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-M,Cardiology — male general ward,hall,CARD,WARD,F07-CARD-M-BAY3,Bay 3,F07-CARD-M-B15,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY1,Bay 1,F07-CARD-F-B01,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY1,Bay 1,F07-CARD-F-B02,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY1,Bay 1,F07-CARD-F-B03,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY1,Bay 1,F07-CARD-F-B04,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY1,Bay 1,F07-CARD-F-B05,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY1,Bay 1,F07-CARD-F-B06,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY2,Bay 2,F07-CARD-F-B07,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY2,Bay 2,F07-CARD-F-B08,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY2,Bay 2,F07-CARD-F-B09,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY2,Bay 2,F07-CARD-F-B10,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY2,Bay 2,F07-CARD-F-B11,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY2,Bay 2,F07-CARD-F-B12,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY3,Bay 3,F07-CARD-F-B13,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY3,Bay 3,F07-CARD-F-B14,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-CARD-F,Cardiology — female general ward,hall,CARD,WARD,F07-CARD-F-BAY3,Bay 3,F07-CARD-F-B15,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY1,Bay 1,F07-NEPH-M-B01,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY1,Bay 1,F07-NEPH-M-B02,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY1,Bay 1,F07-NEPH-M-B03,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY1,Bay 1,F07-NEPH-M-B04,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY1,Bay 1,F07-NEPH-M-B05,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY1,Bay 1,F07-NEPH-M-B06,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY2,Bay 2,F07-NEPH-M-B07,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY2,Bay 2,F07-NEPH-M-B08,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY2,Bay 2,F07-NEPH-M-B09,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY2,Bay 2,F07-NEPH-M-B10,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY2,Bay 2,F07-NEPH-M-B11,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-M,Nephrology — male general ward,hall,NEPH,WARD,F07-NEPH-M-BAY2,Bay 2,F07-NEPH-M-B12,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY1,Bay 1,F07-NEPH-F-B01,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY1,Bay 1,F07-NEPH-F-B02,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY1,Bay 1,F07-NEPH-F-B03,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY1,Bay 1,F07-NEPH-F-B04,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY1,Bay 1,F07-NEPH-F-B05,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY1,Bay 1,F07-NEPH-F-B06,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY2,Bay 2,F07-NEPH-F-B07,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY2,Bay 2,F07-NEPH-F-B08,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY2,Bay 2,F07-NEPH-F-B09,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY2,Bay 2,F07-NEPH-F-B10,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY2,Bay 2,F07-NEPH-F-B11,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-NEPH-F,Nephrology — female general ward,hall,NEPH,WARD,F07-NEPH-F-BAY2,Bay 2,F07-NEPH-F-B12,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY1,Bay 1,F07-URO-M-B01,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY1,Bay 1,F07-URO-M-B02,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY1,Bay 1,F07-URO-M-B03,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY1,Bay 1,F07-URO-M-B04,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY1,Bay 1,F07-URO-M-B05,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY1,Bay 1,F07-URO-M-B06,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY2,Bay 2,F07-URO-M-B07,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY2,Bay 2,F07-URO-M-B08,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY2,Bay 2,F07-URO-M-B09,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY2,Bay 2,F07-URO-M-B10,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY2,Bay 2,F07-URO-M-B11,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-M,Urology — male general ward,hall,URO,WARD,F07-URO-M-BAY2,Bay 2,F07-URO-M-B12,general,male,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY1,Bay 1,F07-URO-F-B01,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY1,Bay 1,F07-URO-F-B02,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY1,Bay 1,F07-URO-F-B03,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY1,Bay 1,F07-URO-F-B04,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY1,Bay 1,F07-URO-F-B05,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY1,Bay 1,F07-URO-F-B06,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY2,Bay 2,F07-URO-F-B07,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY2,Bay 2,F07-URO-F-B08,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY2,Bay 2,F07-URO-F-B09,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY2,Bay 2,F07-URO-F-B10,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY2,Bay 2,F07-URO-F-B11,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-URO-F,Urology — female general ward,hall,URO,WARD,F07-URO-F-BAY2,Bay 2,F07-URO-F-B12,general,female,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R01,Twin room 01,F07-SPVT-B01,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R01,Twin room 01,F07-SPVT-B02,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R02,Twin room 02,F07-SPVT-B03,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R02,Twin room 02,F07-SPVT-B04,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R03,Twin room 03,F07-SPVT-B05,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R03,Twin room 03,F07-SPVT-B06,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R04,Twin room 04,F07-SPVT-B07,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R04,Twin room 04,F07-SPVT-B08,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R05,Twin room 05,F07-SPVT-B09,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R05,Twin room 05,F07-SPVT-B10,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R06,Twin room 06,F07-SPVT-B11,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R06,Twin room 06,F07-SPVT-B12,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R07,Twin room 07,F07-SPVT-B13,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R07,Twin room 07,F07-SPVT-B14,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R08,Twin room 08,F07-SPVT-B15,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R08,Twin room 08,F07-SPVT-B16,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R09,Twin room 09,F07-SPVT-B17,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R09,Twin room 09,F07-SPVT-B18,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R10,Twin room 10,F07-SPVT-B19,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R10,Twin room 10,F07-SPVT-B20,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R11,Twin room 11,F07-SPVT-B21,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R11,Twin room 11,F07-SPVT-B22,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R12,Twin room 12,F07-SPVT-B23,semi_private,any,none,no,no,oxygen_point,no,no
+F07,Seventh floor,F07-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F07-SPVT-R12,Twin room 12,F07-SPVT-B24,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY1,Bay 1,F08-ONCO-M-B01,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY1,Bay 1,F08-ONCO-M-B02,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY1,Bay 1,F08-ONCO-M-B03,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY1,Bay 1,F08-ONCO-M-B04,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY1,Bay 1,F08-ONCO-M-B05,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY1,Bay 1,F08-ONCO-M-B06,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY2,Bay 2,F08-ONCO-M-B07,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY2,Bay 2,F08-ONCO-M-B08,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY2,Bay 2,F08-ONCO-M-B09,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY2,Bay 2,F08-ONCO-M-B10,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY2,Bay 2,F08-ONCO-M-B11,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-M,Oncology — male general ward,hall,ONCO,WARD,F08-ONCO-M-BAY2,Bay 2,F08-ONCO-M-B12,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY1,Bay 1,F08-ONCO-F-B01,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY1,Bay 1,F08-ONCO-F-B02,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY1,Bay 1,F08-ONCO-F-B03,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY1,Bay 1,F08-ONCO-F-B04,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY1,Bay 1,F08-ONCO-F-B05,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY1,Bay 1,F08-ONCO-F-B06,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY2,Bay 2,F08-ONCO-F-B07,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY2,Bay 2,F08-ONCO-F-B08,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY2,Bay 2,F08-ONCO-F-B09,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY2,Bay 2,F08-ONCO-F-B10,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY2,Bay 2,F08-ONCO-F-B11,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-ONCO-F,Oncology — female general ward,hall,ONCO,WARD,F08-ONCO-F-BAY2,Bay 2,F08-ONCO-F-B12,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-M,Ophthalmology — male general ward,hall,OPH,WARD,F08-OPH-M-BAY1,Bay 1,F08-OPH-M-B01,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-M,Ophthalmology — male general ward,hall,OPH,WARD,F08-OPH-M-BAY1,Bay 1,F08-OPH-M-B02,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-M,Ophthalmology — male general ward,hall,OPH,WARD,F08-OPH-M-BAY1,Bay 1,F08-OPH-M-B03,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-M,Ophthalmology — male general ward,hall,OPH,WARD,F08-OPH-M-BAY1,Bay 1,F08-OPH-M-B04,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-M,Ophthalmology — male general ward,hall,OPH,WARD,F08-OPH-M-BAY1,Bay 1,F08-OPH-M-B05,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-M,Ophthalmology — male general ward,hall,OPH,WARD,F08-OPH-M-BAY1,Bay 1,F08-OPH-M-B06,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-F,Ophthalmology — female general ward,hall,OPH,WARD,F08-OPH-F-BAY1,Bay 1,F08-OPH-F-B01,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-F,Ophthalmology — female general ward,hall,OPH,WARD,F08-OPH-F-BAY1,Bay 1,F08-OPH-F-B02,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-F,Ophthalmology — female general ward,hall,OPH,WARD,F08-OPH-F-BAY1,Bay 1,F08-OPH-F-B03,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-F,Ophthalmology — female general ward,hall,OPH,WARD,F08-OPH-F-BAY1,Bay 1,F08-OPH-F-B04,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-F,Ophthalmology — female general ward,hall,OPH,WARD,F08-OPH-F-BAY1,Bay 1,F08-OPH-F-B05,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-OPH-F,Ophthalmology — female general ward,hall,OPH,WARD,F08-OPH-F-BAY1,Bay 1,F08-OPH-F-B06,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY1,Bay 1,F08-PSY-M-B01,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY1,Bay 1,F08-PSY-M-B02,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY1,Bay 1,F08-PSY-M-B03,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY1,Bay 1,F08-PSY-M-B04,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY1,Bay 1,F08-PSY-M-B05,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY1,Bay 1,F08-PSY-M-B06,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY2,Bay 2,F08-PSY-M-B07,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY2,Bay 2,F08-PSY-M-B08,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY2,Bay 2,F08-PSY-M-B09,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY2,Bay 2,F08-PSY-M-B10,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY2,Bay 2,F08-PSY-M-B11,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-M,Psychiatry — male general ward,hall,PSY,WARD,F08-PSY-M-BAY2,Bay 2,F08-PSY-M-B12,general,male,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY1,Bay 1,F08-PSY-F-B01,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY1,Bay 1,F08-PSY-F-B02,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY1,Bay 1,F08-PSY-F-B03,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY1,Bay 1,F08-PSY-F-B04,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY1,Bay 1,F08-PSY-F-B05,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY1,Bay 1,F08-PSY-F-B06,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY2,Bay 2,F08-PSY-F-B07,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY2,Bay 2,F08-PSY-F-B08,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY2,Bay 2,F08-PSY-F-B09,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY2,Bay 2,F08-PSY-F-B10,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY2,Bay 2,F08-PSY-F-B11,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-PSY-F,Psychiatry — female general ward,hall,PSY,WARD,F08-PSY-F-BAY2,Bay 2,F08-PSY-F-B12,general,female,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R01,Twin room 01,F08-SPVT-B01,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R01,Twin room 01,F08-SPVT-B02,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R02,Twin room 02,F08-SPVT-B03,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R02,Twin room 02,F08-SPVT-B04,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R03,Twin room 03,F08-SPVT-B05,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R03,Twin room 03,F08-SPVT-B06,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R04,Twin room 04,F08-SPVT-B07,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R04,Twin room 04,F08-SPVT-B08,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R05,Twin room 05,F08-SPVT-B09,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R05,Twin room 05,F08-SPVT-B10,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R06,Twin room 06,F08-SPVT-B11,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R06,Twin room 06,F08-SPVT-B12,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R07,Twin room 07,F08-SPVT-B13,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R07,Twin room 07,F08-SPVT-B14,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R08,Twin room 08,F08-SPVT-B15,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R08,Twin room 08,F08-SPVT-B16,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R09,Twin room 09,F08-SPVT-B17,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R09,Twin room 09,F08-SPVT-B18,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R10,Twin room 10,F08-SPVT-B19,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R10,Twin room 10,F08-SPVT-B20,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R11,Twin room 11,F08-SPVT-B21,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R11,Twin room 11,F08-SPVT-B22,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R12,Twin room 12,F08-SPVT-B23,semi_private,any,none,no,no,oxygen_point,no,no
+F08,Eighth floor,F08-SPVT,Twin-sharing rooms,ward,MULTI,WARD,F08-SPVT-R12,Twin room 12,F08-SPVT-B24,semi_private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R001,Private room 001,F09-PVT-B001,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R002,Private room 002,F09-PVT-B002,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R003,Private room 003,F09-PVT-B003,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R004,Private room 004,F09-PVT-B004,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R005,Private room 005,F09-PVT-B005,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R006,Private room 006,F09-PVT-B006,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R007,Private room 007,F09-PVT-B007,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R008,Private room 008,F09-PVT-B008,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R009,Private room 009,F09-PVT-B009,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R010,Private room 010,F09-PVT-B010,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R011,Private room 011,F09-PVT-B011,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R012,Private room 012,F09-PVT-B012,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R013,Private room 013,F09-PVT-B013,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R014,Private room 014,F09-PVT-B014,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R015,Private room 015,F09-PVT-B015,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R016,Private room 016,F09-PVT-B016,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R017,Private room 017,F09-PVT-B017,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R018,Private room 018,F09-PVT-B018,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R019,Private room 019,F09-PVT-B019,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R020,Private room 020,F09-PVT-B020,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R021,Private room 021,F09-PVT-B021,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R022,Private room 022,F09-PVT-B022,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R023,Private room 023,F09-PVT-B023,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R024,Private room 024,F09-PVT-B024,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R025,Private room 025,F09-PVT-B025,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R026,Private room 026,F09-PVT-B026,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R027,Private room 027,F09-PVT-B027,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R028,Private room 028,F09-PVT-B028,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R029,Private room 029,F09-PVT-B029,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R030,Private room 030,F09-PVT-B030,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R031,Private room 031,F09-PVT-B031,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R032,Private room 032,F09-PVT-B032,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R033,Private room 033,F09-PVT-B033,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R034,Private room 034,F09-PVT-B034,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R035,Private room 035,F09-PVT-B035,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R036,Private room 036,F09-PVT-B036,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R037,Private room 037,F09-PVT-B037,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R038,Private room 038,F09-PVT-B038,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R039,Private room 039,F09-PVT-B039,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R040,Private room 040,F09-PVT-B040,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R041,Private room 041,F09-PVT-B041,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R042,Private room 042,F09-PVT-B042,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R043,Private room 043,F09-PVT-B043,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R044,Private room 044,F09-PVT-B044,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R045,Private room 045,F09-PVT-B045,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R046,Private room 046,F09-PVT-B046,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R047,Private room 047,F09-PVT-B047,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R048,Private room 048,F09-PVT-B048,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R049,Private room 049,F09-PVT-B049,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R050,Private room 050,F09-PVT-B050,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R051,Private room 051,F09-PVT-B051,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R052,Private room 052,F09-PVT-B052,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R053,Private room 053,F09-PVT-B053,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R054,Private room 054,F09-PVT-B054,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R055,Private room 055,F09-PVT-B055,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R056,Private room 056,F09-PVT-B056,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R057,Private room 057,F09-PVT-B057,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R058,Private room 058,F09-PVT-B058,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R059,Private room 059,F09-PVT-B059,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R060,Private room 060,F09-PVT-B060,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R061,Private room 061,F09-PVT-B061,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R062,Private room 062,F09-PVT-B062,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R063,Private room 063,F09-PVT-B063,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R064,Private room 064,F09-PVT-B064,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R065,Private room 065,F09-PVT-B065,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R066,Private room 066,F09-PVT-B066,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R067,Private room 067,F09-PVT-B067,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R068,Private room 068,F09-PVT-B068,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R069,Private room 069,F09-PVT-B069,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R070,Private room 070,F09-PVT-B070,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R071,Private room 071,F09-PVT-B071,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R072,Private room 072,F09-PVT-B072,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R073,Private room 073,F09-PVT-B073,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R074,Private room 074,F09-PVT-B074,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R075,Private room 075,F09-PVT-B075,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R076,Private room 076,F09-PVT-B076,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R077,Private room 077,F09-PVT-B077,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R078,Private room 078,F09-PVT-B078,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R079,Private room 079,F09-PVT-B079,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R080,Private room 080,F09-PVT-B080,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R081,Private room 081,F09-PVT-B081,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R082,Private room 082,F09-PVT-B082,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R083,Private room 083,F09-PVT-B083,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R084,Private room 084,F09-PVT-B084,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R085,Private room 085,F09-PVT-B085,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R086,Private room 086,F09-PVT-B086,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R087,Private room 087,F09-PVT-B087,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R088,Private room 088,F09-PVT-B088,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R089,Private room 089,F09-PVT-B089,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R090,Private room 090,F09-PVT-B090,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R091,Private room 091,F09-PVT-B091,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R092,Private room 092,F09-PVT-B092,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R093,Private room 093,F09-PVT-B093,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R094,Private room 094,F09-PVT-B094,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R095,Private room 095,F09-PVT-B095,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R096,Private room 096,F09-PVT-B096,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R097,Private room 097,F09-PVT-B097,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R098,Private room 098,F09-PVT-B098,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R099,Private room 099,F09-PVT-B099,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R100,Private room 100,F09-PVT-B100,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R101,Private room 101,F09-PVT-B101,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R102,Private room 102,F09-PVT-B102,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R103,Private room 103,F09-PVT-B103,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R104,Private room 104,F09-PVT-B104,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R105,Private room 105,F09-PVT-B105,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R106,Private room 106,F09-PVT-B106,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R107,Private room 107,F09-PVT-B107,private,any,none,no,no,oxygen_point,no,no
+F09,Ninth floor,F09-PVT,Private rooms,ward,MULTI,WARD,F09-PVT-R108,Private room 108,F09-PVT-B108,private,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R01,Deluxe room 01,F10-DLX-B01,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R02,Deluxe room 02,F10-DLX-B02,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R03,Deluxe room 03,F10-DLX-B03,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R04,Deluxe room 04,F10-DLX-B04,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R05,Deluxe room 05,F10-DLX-B05,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R06,Deluxe room 06,F10-DLX-B06,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R07,Deluxe room 07,F10-DLX-B07,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R08,Deluxe room 08,F10-DLX-B08,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R09,Deluxe room 09,F10-DLX-B09,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R10,Deluxe room 10,F10-DLX-B10,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R11,Deluxe room 11,F10-DLX-B11,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R12,Deluxe room 12,F10-DLX-B12,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R13,Deluxe room 13,F10-DLX-B13,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R14,Deluxe room 14,F10-DLX-B14,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R15,Deluxe room 15,F10-DLX-B15,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R16,Deluxe room 16,F10-DLX-B16,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R17,Deluxe room 17,F10-DLX-B17,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R18,Deluxe room 18,F10-DLX-B18,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R19,Deluxe room 19,F10-DLX-B19,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R20,Deluxe room 20,F10-DLX-B20,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R21,Deluxe room 21,F10-DLX-B21,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R22,Deluxe room 22,F10-DLX-B22,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R23,Deluxe room 23,F10-DLX-B23,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-DLX,Deluxe rooms,ward,MULTI,WARD,F10-DLX-R24,Deluxe room 24,F10-DLX-B24,deluxe,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R01,Suite 01,F10-STE-B01,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R02,Suite 02,F10-STE-B02,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R03,Suite 03,F10-STE-B03,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R04,Suite 04,F10-STE-B04,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R05,Suite 05,F10-STE-B05,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R06,Suite 06,F10-STE-B06,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R07,Suite 07,F10-STE-B07,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R08,Suite 08,F10-STE-B08,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R09,Suite 09,F10-STE-B09,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R10,Suite 10,F10-STE-B10,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R11,Suite 11,F10-STE-B11,suite,any,none,no,no,oxygen_point,no,no
+F10,Tenth floor,F10-STE,Suites,ward,MULTI,WARD,F10-STE-R12,Suite 12,F10-STE-B12,suite,any,none,no,no,oxygen_point,no,no
