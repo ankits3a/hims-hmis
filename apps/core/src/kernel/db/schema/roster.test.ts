@@ -442,7 +442,7 @@ describe("roster — 0109 structure", () => {
     expect(await constraintOf(slot("A5", "2026-10-12T20:00", "2026-10-13T08:00", { effective: true, userId: U2 }))).toBe("(accepted)");
     // a SUPERSEDED row that was live for the same window — the knowledge axis, not the duty axis
     expect(await constraintOf(slot("A6", "2026-10-12T20:00", "2026-10-13T08:00", {
-      effective: false, liveTo: at("2026-10-12T21:00"),
+      effective: false, liveFrom: at("2026-10-12T19:00"), liveTo: at("2026-10-12T21:00"),
     }))).toBe("(accepted)");
   });
 
@@ -529,7 +529,7 @@ describe("roster — 0109 structure", () => {
     ["a cover scope outside the vocabulary", { coverScope: "floor" }, "roster_assignments_cover_scope_ck"],
     ["an off-kind outside the vocabulary", { kind: "off", mode: null, offKind: "XX" }, "roster_assignments_off_kind_ck"],
     ["a call tier below the first rung", { callTier: 0 }, "roster_assignments_call_tier_ck"],
-    ["a row that is effective and already superseded", { effective: true, liveTo: at("2026-10-13T00:00") }, "roster_assignments_effective_ck"],
+    ["a row that is effective and already superseded", { effective: true, liveFrom: at("2026-10-12T00:00"), liveTo: at("2026-10-13T00:00") }, "roster_assignments_effective_ck"],
     ["a knowledge window that closes before it opens", { liveFrom: at("2026-10-13T00:00"), liveTo: at("2026-10-12T00:00") }, "roster_assignments_live_ck"],
     ["a confirmation with no time on it", { confirmedByUserId: U2 }, "roster_assignments_confirmed_ck"],
   ] as const)("refuses %s", async (_what, over, constraint) => {
