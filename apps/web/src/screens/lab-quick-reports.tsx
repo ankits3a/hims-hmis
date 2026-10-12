@@ -6,6 +6,7 @@ import { labErrorText } from "../lib/lab-api";
 import { quickReportsForPatient, refText } from "../lib/lab-quick-api";
 import { ageYearsFrom } from "./lab-seat";
 import { useAuth } from "../lib/auth";
+import { AstPreview, astPrintHtml } from "./lab-ast";
 import type { QuickLine, QuickReport } from "../lib/lab-quick-api";
 
 /**
@@ -66,6 +67,14 @@ export function printQuickReport(report: QuickReport, printedBy: string | null):
   const logo = `${window.location.origin}/print/hospital-logo.png`;
   const e = escapeHtml;
 
+  /**
+   * Owner 2026-10-12 — a culture's antibiotic table prints right after that test's own table; one
+   * whose test drew no table of its own (a parameter shared with an earlier test) prints after all.
+   */
+  const testName = (serviceId: string): string => report.tests.find((x) => x.serviceId === serviceId)?.nameEn ?? "";
+  const astPrinted = new Set<string>();
+  const astOf = (title: string | null): string => (report.ast ?? []).filter((b) => testName(b.serviceId) === title)
+    .map((b) => { astPrinted.add(b.serviceId); return astPrintHtml(b, testName(b.serviceId)); }).join("");
   const tables = report.groups.map((g, i) => {
     const filled = g.analyteIds.map((id) => byId.get(id)).filter((l): l is QuickLine => l !== undefined);
     if (filled.length === 0) return "";
@@ -78,8 +87,9 @@ export function printQuickReport(report: QuickReport, printedBy: string | null):
     return `<section class="test">
       <div class="testhead"><h2>${e(g.title ?? "Other parameters")}</h2>${i === 0 ? `<div class="legend">Colours indicate: <span class="lg ab">Abnormal</span><span class="lg cr">Critical</span><span class="lg ok">Normal</span></div>` : ""}</div>
       <table class="res"><thead><tr><th class="name">Test name</th><th>${e(istDateOnly(reportedIso))}</th><th>Unit</th><th>Flag</th><th>Biological ref. interval</th></tr></thead>
-      <tbody>${rows}</tbody></table></section>`;
-  }).join("");
+      <tbody>${rows}</tbody></table></section>${astOf(g.title)}`;
+  }).join("") + (report.ast ?? []).filter((b) => !astPrinted.has(b.serviceId))
+    .map((b) => astPrintHtml(b, testName(b.serviceId))).join("");
 
   const header = `<div class="hd">
     <div class="brand"><img src="${e(logo)}" alt="" onerror="this.style.display='none'"><div class="dept">Laboratory Medicine</div></div>
@@ -270,6 +280,9 @@ function ReportCard({ report, compact, onOpen }: { report: QuickReport; compact:
           </tbody>
         </table>
       )}
+      {open && (report.ast ?? []).map((b) => (
+        <div key={b.serviceId} className="mt-2"><AstPreview block={b} title={report.tests.find((x) => x.serviceId === b.serviceId)?.nameEn ?? ""} /></div>
+      ))}
       {open && compact && report.summary.trim() !== "" && <p className="mt-1 whitespace-pre-wrap text-sm">{report.summary}</p>}
     </li>
   );

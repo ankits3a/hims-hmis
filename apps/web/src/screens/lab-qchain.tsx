@@ -9,6 +9,7 @@ import {
 import { LabStation, sexAge } from "./lab-seat";
 import { ResultsPanel } from "./lab-quick";
 import { istStamp, printQuickReport } from "./lab-quick-reports";
+import { AstPreview } from "./lab-ast";
 import type { QuickCollectRow, QuickReport, QuickRow } from "../lib/lab-quick-api";
 
 /**
@@ -211,13 +212,18 @@ const FLAG_COLOUR: Record<string, string> = { L: "var(--gold)", H: "var(--gold)"
 export function ReportPreview({ report }: { report: QuickReport }): React.ReactElement {
   const { t } = useTranslation();
   const byId = new Map(report.lines.map((l) => [l.analyteId, l]));
+  /** Owner 2026-10-12 — a culture's antibiotic table sits right after that test's own fields. */
+  const testName = (serviceId: string): string => report.tests.find((x) => x.serviceId === serviceId)?.nameEn ?? "";
+  const shownGroups = report.groups.filter((g) => g.analyteIds.some((id) => byId.has(id)));
+  const astUnder = (title: string | null) => (report.ast ?? []).filter((b) => testName(b.serviceId) === title);
+  const astLeft = (report.ast ?? []).filter((b) => !shownGroups.some((g) => g.title === testName(b.serviceId)));
   return (
     <div className="box" style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }} data-testid="report-preview">
       {report.groups.map((g, gi) => {
         const lines = g.analyteIds.map((id) => byId.get(id)).filter((l) => l !== undefined);
         if (lines.length === 0) return null;
         return (
-          <div key={gi}>
+          <div key={gi} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div className="tag" style={{ marginBottom: 6 }}>{g.title ?? t("lab.qchain.otherParams")}</div>
             <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
               <tbody>
@@ -233,9 +239,11 @@ export function ReportPreview({ report }: { report: QuickReport }): React.ReactE
                 ))}
               </tbody>
             </table>
+            {astUnder(g.title).map((b) => <AstPreview key={b.serviceId} block={b} title={testName(b.serviceId)} />)}
           </div>
         );
       })}
+      {astLeft.map((b) => <AstPreview key={b.serviceId} block={b} title={testName(b.serviceId)} />)}
       {report.summary !== "" && <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}><b>{t("lab.qchain.summary")}:</b> {report.summary}</div>}
       <div style={{ fontSize: 11.5, color: "var(--faint)" }}>{t("lab.qchain.notSigned")}</div>
     </div>

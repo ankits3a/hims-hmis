@@ -1,5 +1,6 @@
 import { ApiError, NetworkError } from "../api";
 import type { LabMode } from "../seats";
+import type { AstBlock, AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
  * QUICK LAB ON THE PHONE (spec 2026-10-12) — the wire contract of `lab-quick.controller.ts`, copied
@@ -37,12 +38,17 @@ export type QuickRow = {
 /** The phone reads no hospital header and no QR: it neither prints nor shows a bill. */
 export type QuickReport = QuickRow & {
   analyteIds: string[]; groups: { title: string | null; analyteIds: string[] }[]; lines: QuickLine[]; summary: string;
+  /** Owner 2026-10-12 — each culture test's antibiotic sensitivity table (absent on older servers). */
+  ast?: AstBlock[];
 };
 export type QuickCollectRow = {
   orderId: string; orderNo: string; encounterNo: string; placedAt: string; priority: string;
   patient: QuickPatient; tests: QuickChosenTest[];
 };
-export type SaveQuickResults = { lines: { analyteId: string; value: string }[]; summary: string; complete: boolean };
+export type SaveQuickResults = {
+  lines: { analyteId: string; value: string }[]; summary: string; complete: boolean;
+  ast?: { serviceId: string; rows: AstDraftRow[] }[];
+};
 export type QrVerifyResult = { ok: true; patient: { id: string; uhid: string; name: string } } | { ok: false; reason: string };
 
 const enc = encodeURIComponent;

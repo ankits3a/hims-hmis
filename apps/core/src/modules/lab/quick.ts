@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { cleanAstRows, astProblemText, isCultureCode, isNoGrowth, newId } from "@hmis/contracts";
 import {
   labAnalytes, labOrderableAnalytes, labOrderables, labQuickReports, labReferenceRanges, orderItems, orders, patients, users,
 } from "../../kernel/db/schema";
@@ -16,7 +16,7 @@ import { labQuickHandedOver, labQuickReported, labQuickSentBack, labQuickStarted
 import { flagFor, resolveRange } from "./ranges";
 import { evaluateFormula, formulaInputCodes } from "./formula";
 import type { FormulaOutcome } from "./formula";
-import type { Actor } from "@hmis/contracts";
+import type { Actor, AstBlock, AstDraftRow } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { RangeRow, ResolvedRange } from "./ranges";
 
@@ -92,6 +92,8 @@ export type QuickReport = QuickRow & {
   visitQrSvg: string | null;
   lines: QuickLine[];
   summary: string;
+  /** Owner 2026-10-12 — each culture test's antibiotic sensitivity table (`[]` when none). */
+  ast: AstBlock[];
 };
 
 export type StartQuickInput = {
@@ -104,12 +106,18 @@ export type SaveQuickResultsInput = {
   summary: string;
   /** Owner 2026-10-11 — `false` is /lab/qbench's Save draft; absent or `true` completes the report. */
   complete?: boolean;
+  /**
+   * Owner 2026-10-12 — the antibiotic tables of the report's culture tests. ABSENT keeps what is stored
+   * (an older screen that knows no table cannot wipe one); present replaces every table.
+   */
+  ast?: { serviceId: string; rows: AstDraftRow[] }[];
 };
 
 export type QuickEntryErrorCode =
   | "patient_not_found" | "test_not_found" | "no_tests" | "blood_not_collected"
   | "analyte_not_found" | "value_not_numeric" | "value_absurd" | "report_not_found"
-  | "order_not_found" | "already_collected" | "not_completed" | "already_handed_over" | "not_permitted";
+  | "order_not_found" | "already_collected" | "not_completed" | "already_handed_over" | "not_permitted"
+  | "ast_invalid";
 
 export class QuickEntryError extends Error {
   constructor(readonly code: QuickEntryErrorCode, message: string, readonly detail?: unknown) {
@@ -257,7 +265,7 @@ export async function getQuickReport(exec: Db | Tx, actor: Actor, id: string): P
   const names = new Map((await exec.select({ id: users.id, fullName: users.fullName }).from(users)
     .where(inArray(users.id, people))).map((u) => [u.id, u.fullName]));
   return {
-    ...row!, analyteIds: ordered, groups, lines, summary: r.summary,
+    ...row!, analyteIds: ordered, groups, lines, summary: r.summary, ast: r.ast as AstBlock[],
     collectedByName: names.get(r.collectedBy) ?? null,
     reportedByName: r.reportedBy === null ? null : names.get(r.reportedBy) ?? null,
     hospital: {
@@ -365,10 +373,12 @@ export async function saveQuickResults(
   if (existing.handedOverAt !== null) {
     throw new QuickEntryError("already_handed_over", "this report has been handed over; it can no longer be changed");
   }
+  /** An older screen sends no `ast`: what is stored stays, unless the organism now says "No growth". */
+  const ast = astTables(chosen, lines, analytes, input.ast ?? (existing.ast as AstBlock[]));
   const first = existing.status !== "reported" && existing.reportedAt === null;
   const complete = input.complete !== false;
   await tx.update(labQuickReports).set({
-    lines, summary: input.summary,
+    lines, summary: input.summary, ast,
     ...(complete
       ? { status: "reported", reportedAt: existing.reportedAt ?? now, reportedBy: existing.reportedBy ?? actor.id }
       : { status: "draft", reportedAt: null, reportedBy: null }),
@@ -386,6 +396,36 @@ export async function saveQuickResults(
   }));
 
   return getQuickReport(tx, actor, input.id);
+}
+
+/**
+ * OWNER 2026-10-12 — the antibiotic tables as stored. Each names a culture test of THIS report
+ * (`CS_*`; fungal culture has none), at most once; the rows pass `cleanAstRows` (blank rows drop, S/I/R
+ * only, MIC a plain number, a refusal names the row); a table left with no rows is not stored. When
+ * the organism line reads "No growth" / "Sterile" nothing is stored, whatever the screen sent.
+ */
+function astTables(
+  chosen: readonly QuickChosenTest[], lines: readonly QuickLine[], analytes: readonly (typeof labAnalytes.$inferSelect)[],
+  input: readonly { serviceId: string; rows: AstDraftRow[] }[],
+): AstBlock[] {
+  const organismIds = new Set(analytes.filter((a) => a.code === "MIC_ORG").map((a) => a.id));
+  const sterile = lines.some((l) => organismIds.has(l.analyteId) && isNoGrowth(l.value));
+  const out: AstBlock[] = [];
+  for (const block of input) {
+    const test = chosen.find((t) => t.serviceId === block.serviceId);
+    if (test === undefined || !isCultureCode(test.code)) {
+      throw new QuickEntryError("ast_invalid", "an antibiotic table belongs only to a culture test of this report", { serviceId: block.serviceId });
+    }
+    if (out.some((b) => b.serviceId === block.serviceId)) {
+      throw new QuickEntryError("ast_invalid", `${test.nameEn}: one antibiotic table per test`, { serviceId: block.serviceId });
+    }
+    const clean = cleanAstRows(block.rows);
+    if (!clean.ok) {
+      throw new QuickEntryError("ast_invalid", `${test.nameEn} — ${astProblemText(clean.problem)}`, { serviceId: block.serviceId, row: clean.problem.index });
+    }
+    if (!sterile && clean.rows.length > 0) out.push({ serviceId: block.serviceId, rows: clean.rows });
+  }
+  return out;
 }
 
 /**
