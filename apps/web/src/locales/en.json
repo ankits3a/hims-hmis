@@ -15789,7 +15789,7 @@
       "noFloor": "No floor",
       "floorOpen": "{{count}} open",
       "floorLate": "{{count}} late · {{open}} open",
-      "more": "+{{count}} more",
+      "notShown": "not on screen", "more": "+{{count}} more",
      
       "unassigned": "Nobody yet",
       "workers": "Workers",
@@ -15808,7 +15808,7 @@
       "unknown_worker": "Cannot take tasks",
       "not_found": "Task gone",
       "already_taken": "Someone took it",
-      "not_yours": "Not your task",
+      "not_on_duty": "Not on duty now", "wrong_skill": "Not your kind of task", "not_yours": "Not your task",
       "wrong_state": "Refresh — task moved on",
       "not_open": "Task already closed",
       "stale": "Changed — refresh",

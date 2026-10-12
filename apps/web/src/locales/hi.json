@@ -15789,7 +15789,7 @@
       "noFloor": "मंज़िल नहीं",
       "floorOpen": "{{count}} खुले",
       "floorLate": "{{count}} देर · {{open}} खुले",
-      "more": "+{{count}} और",
+      "notShown": "स्क्रीन पर नहीं", "more": "+{{count}} और",
      
       "unassigned": "अभी किसी को नहीं",
       "workers": "कर्मचारी",
@@ -15808,7 +15808,7 @@
       "unknown_worker": "काम नहीं ले सकते",
       "not_found": "काम नहीं मिला",
       "already_taken": "किसी और ने ले लिया",
-      "not_yours": "आपका काम नहीं",
+      "not_on_duty": "अभी ड्यूटी पर नहीं", "wrong_skill": "यह काम आपके हिस्से का नहीं", "not_yours": "आपका काम नहीं",
       "wrong_state": "रीफ़्रेश करें",
       "not_open": "काम बंद हो चुका",
       "stale": "बदल गया — रीफ़्रेश करें",

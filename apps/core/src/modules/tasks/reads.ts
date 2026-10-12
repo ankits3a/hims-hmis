@@ -13,6 +13,9 @@ import type { TaskRow } from "./engine";
  */
 const OPEN = ["created", "assigned", "accepted", "in_progress"];
 const PRIORITY_RANK: Record<string, number> = { stat: 0, urgent: 1, routine: 2 };
+const PRIORITY_SQL = sql`case ${tasks.priority} when 'stat' then 0 when 'urgent' then 1 else 2 end`;
+/** The most rows the board sends; the counts are over every open task regardless. */
+export const BOARD_ROW_LIMIT = 400;
 
 type Place = { name: string; code: string; floorId: string | null; floorName: string | null };
 
@@ -44,7 +47,8 @@ async function namesOf(exec: Db | Tx, ids: readonly string[]): Promise<Map<strin
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-async function cards(exec: Db | Tx, rows: readonly TaskRow[]): Promise<TaskCard[]> {
+/** `withNote: false` for the board and the wall: free text typed by a requester stays on the worker's own card. */
+async function cards(exec: Db | Tx, rows: readonly TaskRow[], opts: { withNote: boolean }): Promise<TaskCard[]> {
   const places = await placesOf(exec, [...new Set(rows.map((r) => r.placeResourceId).filter((p): p is string => p !== null))]);
   const names = await namesOf(exec, [...new Set(rows.filter((r) => r.assigneeKind === "person").map((r) => r.assigneeId!))]);
   return rows.map((r) => {
@@ -53,7 +57,7 @@ async function cards(exec: Db | Tx, rows: readonly TaskRow[]): Promise<TaskCard[
       id: r.id, kind: r.kind, label: taskKind(r.kind)?.label ?? r.kind,
       priority: r.priority as TaskPriority, state: r.state as TaskState,
       placeResourceId: r.placeResourceId, placeName: place?.name ?? null, placeCode: place?.code ?? null,
-      floorName: place?.floorName ?? null, note: r.note,
+      floorName: place?.floorName ?? null, note: opts.withNote ? r.note : null,
       dueAt: r.dueAt.toISOString(), createdAt: r.createdAt.toISOString(),
       assigneeId: r.assigneeId, assigneeName: r.assigneeId === null ? null : names.get(r.assigneeId) ?? null,
       proofNeeded: r.proofNeeded as TaskProofKind, verifyRequired: r.verifyRequired,
@@ -77,11 +81,13 @@ export async function myTasks(db: Db, userId: string, now: Date = new Date()): P
       if ((await db.transaction((t) => usersHoldingRole(t, role))).includes(userId)) { mySkills.push(skill); break; }
     }
   }
-  const pool = mySkills.length === 0 ? [] : (await db.select().from(tasks).where(and(
+  // Ordered by priority THEN due time in the database, before the limit: a STAT task is never cut off
+  // behind twenty earlier routine ones.
+  const pool = mySkills.length === 0 ? [] : await db.select().from(tasks).where(and(
     eq(tasks.state, "created"), isNull(tasks.assigneeId), inArray(tasks.skill, mySkills),
-  )).orderBy(asc(tasks.dueAt)).limit(20)).sort(urgentFirst);
+  )).orderBy(PRIORITY_SQL, asc(tasks.dueAt)).limit(20);
 
-  return { serverNow: now.toISOString(), mine: await cards(db, mine), pool: await cards(db, pool) };
+  return { serverNow: now.toISOString(), mine: await cards(db, mine, { withNote: true }), pool: await cards(db, pool, { withNote: true }) };
 }
 
 /**
@@ -90,10 +96,15 @@ export async function myTasks(db: Db, userId: string, now: Date = new Date()): P
  * skill, plus anyone still holding an open task, with their load.
  */
 export async function taskBoard(db: Db, now: Date = new Date()): Promise<TaskBoardView> {
-  const open = await db.select().from(tasks).where(inArray(tasks.state, OPEN)).orderBy(asc(tasks.dueAt)).limit(400);
+  const open = await db.select().from(tasks).where(inArray(tasks.state, OPEN)).orderBy(asc(tasks.dueAt)).limit(BOARD_ROW_LIMIT);
+  const totals = (await db.select({
+    open: sql<number>`count(*)::int`,
+    late: sql<number>`count(*) filter (where ${tasks.dueAt} <= ${now.toISOString()}::timestamptz)::int`,
+    pool: sql<number>`count(*) filter (where ${tasks.state} = 'created')::int`,
+  }).from(tasks).where(inArray(tasks.state, OPEN)))[0]!;
   const toVerify = await db.select().from(tasks).where(and(eq(tasks.state, "done"), eq(tasks.verifyRequired, true)))
     .orderBy(asc(tasks.doneAt)).limit(50);
-  const openCards = await cards(db, open);
+  const openCards = await cards(db, open, { withNote: false });
   const isLate = (c: TaskCard): boolean => Date.parse(c.dueAt) <= now.getTime();
   const sortCards = (a: TaskCard, b: TaskCard): number =>
     (Number(isLate(b)) - Number(isLate(a)))
@@ -128,7 +139,7 @@ export async function taskBoard(db: Db, now: Date = new Date()): Promise<TaskBoa
     serverNow: now.toISOString(),
     floors,
     workers,
-    toVerify: await cards(db, toVerify),
-    counts: { open: openCards.length, late: openCards.filter(isLate).length, pool: open.filter((r) => r.state === "created").length },
+    toVerify: await cards(db, toVerify, { withNote: false }),
+    counts: { open: totals.open, late: totals.late, pool: totals.pool, notShown: Math.max(0, totals.open - openCards.length) },
   };
 }

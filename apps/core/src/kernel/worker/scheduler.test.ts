@@ -430,7 +430,7 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
     // behaviour (shift end, re-dispatch, the pool, the ladder) is asserted in `modules/tasks/sweep.test.ts` and `acceptance/`.
     jest.spyOn(tasksSweepMod, "sweepTasks").mockImplementation(async () => {
       invoked.push("sweepTasks");
-      return { returned: 0, redispatched: 0, dispatched: 0, escalated: 0 };
+      return { returned: 0, redispatched: 0, dispatched: 0, escalated: 0, failed: 0 };
     }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {

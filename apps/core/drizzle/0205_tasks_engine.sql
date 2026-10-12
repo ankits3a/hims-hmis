@@ -61,6 +61,8 @@ CREATE INDEX "task_events_at_idx" ON "task_events" USING btree ("at");--> statem
 CREATE INDEX "tasks_open_idx" ON "tasks" USING btree ("state","due_at") WHERE "tasks"."state" in ('created', 'assigned', 'accepted', 'in_progress');--> statement-breakpoint
 CREATE INDEX "tasks_assignee_idx" ON "tasks" USING btree ("assignee_id") WHERE "tasks"."state" in ('assigned', 'accepted', 'in_progress');--> statement-breakpoint
 CREATE INDEX "tasks_place_idx" ON "tasks" USING btree ("kind","place_resource_id","created_at");--> statement-breakpoint
+CREATE INDEX "tasks_shift_end_idx" ON "tasks" USING btree ("shift_ends_at") WHERE "tasks"."state" in ('assigned', 'accepted', 'in_progress');--> statement-breakpoint
+CREATE INDEX "tasks_assigned_wait_idx" ON "tasks" USING btree ("assigned_at") WHERE "tasks"."state" = 'assigned';--> statement-breakpoint
 -- E0.1 TASK ENGINE — a task's history is corrected by a further row, never by an edit: no UPDATE, no DELETE.
 CREATE OR REPLACE FUNCTION task_events_forbid_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

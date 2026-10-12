@@ -6,7 +6,8 @@ import {
 import { hasPermission } from "../../kernel/auth/permissions";
 import { resources, taskEvents, tasks, users } from "../../kernel/db/schema";
 import { TaskError } from "./errors";
-import { requireTaskKind, taskKind } from "./kinds";
+import { requireTaskKind, skillRoles, taskKind } from "./kinds";
+import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { dutyCovering, pickWorker } from "./dispatch";
 import type { Actor, TaskAct, TaskEventSource, TaskSource } from "@hmis/contracts";
 import type { z } from "zod";
@@ -98,14 +99,19 @@ export async function raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Dat
     if (place !== null) {
       const found = await t.select({ id: resources.id }).from(resources).where(eq(resources.id, place));
       if (found.length === 0) throw new TaskError("unknown_place", { placeResourceId: place });
-      await t.execute(sql`select pg_advisory_xact_lock(hashtext(${`tasks:${kind.kind}:${place}`}))`);
+      const patient = input.patientId ?? null;
+      await t.execute(sql`select pg_advisory_xact_lock(hashtext(${`tasks:${kind.kind}:${place}:${patient ?? "-"}`}))`);
+      // FOR UPDATE: a task being closed under us is re-read after its commit; if it is no longer open it is
+      // not returned, and this request becomes a task of its own instead of a merge into a closed one.
+      // The merge key includes the patient (null-safe): a different patient is never the same request.
       const open = (await t.select().from(tasks).where(and(
         eq(tasks.kind, kind.kind),
         eq(tasks.placeResourceId, place),
+        sql`${tasks.patientId} is not distinct from ${patient}`,
         inArray(tasks.state, [...OPEN]),
         gte(tasks.createdAt, new Date(now.getTime() - MERGE_WINDOW_MS)),
-      )).orderBy(desc(tasks.createdAt)).limit(1))[0];
-      if (open !== undefined) {
+      )).orderBy(desc(tasks.createdAt)).limit(1).for("update"))[0];
+      if (open !== undefined && OPEN.includes(open.state)) {
         const row = await update(t, open.id, { mergedCount: sql`${tasks.mergedCount} + 1` }, now);
         await logEvent(t, row, "merged", actor, source, now, { note: input.note ?? null });
         return { task: row, merged: true };
@@ -150,9 +156,11 @@ export async function assignTask(exec: Exec, actor: Actor, raw: unknown, now: Da
     if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
     const worker = (await t.select({ id: users.id, active: users.active }).from(users).where(eq(users.id, input.userId)))[0];
     if (worker === undefined || !worker.active) throw new TaskError("unknown_worker", { userId: input.userId });
+    await requireSkill(t, input.userId, row.skill, row.id);
     const duty = await dutyCovering(t, input.userId, now);
+    if (duty === null) throw new TaskError("not_on_duty", { taskId: row.id, userId: input.userId });
     const next = await update(t, row.id, {
-      state: "assigned", assigneeKind: "person", assigneeId: input.userId, assignedAt: now, shiftEndsAt: duty?.endsAt ?? null,
+      state: "assigned", assigneeKind: "person", assigneeId: input.userId, assignedAt: now, shiftEndsAt: duty.endsAt,
     }, now);
     await logEvent(t, next, "assigned", actor, eventSource(actor), now, { to: input.userId, from: row.assigneeId, by: "supervisor" });
     return next;
@@ -171,6 +179,13 @@ export async function acceptTask(exec: Exec, actor: Actor, raw: unknown, now: Da
   const input = parse(taskRefInput, raw);
   const duty = await dutyCovering(exec, actor.id, now);
   return tx(exec, async (t) => {
+    // Only a task this worker could actually take is checked for skill and duty; anything else falls
+    // through to the conditional UPDATE, whose refusal (already_taken, not_open …) is the truer answer.
+    const seen = (await t.select().from(tasks).where(eq(tasks.id, input.taskId)))[0];
+    if (seen !== undefined && ["created", "assigned"].includes(seen.state) && (seen.assigneeId === null || seen.assigneeId === actor.id)) {
+      await requireSkill(t, actor.id, seen.skill, seen.id);
+      if (duty === null) throw new TaskError("not_on_duty", { taskId: seen.id });
+    }
     const won = (await t.update(tasks).set({
       state: "accepted", assigneeKind: "person", assigneeId: actor.id, assignedAt: sql`coalesce(${tasks.assignedAt}, ${now.toISOString()}::timestamptz)`,
       shiftEndsAt: duty?.endsAt ?? null, ...bump(now),
@@ -194,6 +209,11 @@ export async function acceptTask(exec: Exec, actor: Actor, raw: unknown, now: Da
 }
 
 /* ═══════════════════════════════ start, done ═══════════════════════════════ */
+
+/** The worker must hold one of the roles the task's skill maps to (`skillRoles`). */
+async function requireSkill(t: Exec, userId: string, skill: string, taskId: string): Promise<void> {
+  if (!(await actorHoldsAnyRole(t as Tx, userId, [...skillRoles(skill)]))) throw new TaskError("wrong_skill", { taskId, skill });
+}
 
 function requireMine(row: TaskRow, actor: Actor): void {
   if (row.assigneeKind !== "person" || row.assigneeId !== actor.id) throw new TaskError("not_yours", { taskId: row.id });

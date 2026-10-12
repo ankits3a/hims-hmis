@@ -38,8 +38,14 @@ describe("tasks — intents and refusals", () => {
   });
 
   const raise = (over: Record<string, unknown> = {}) => raiseTask(db, actorOf(SUP1), { kind: "general", ...over }, t0).then((r) => r.task);
+  /**
+   * W1 and W2 come on duty a minute after t0: a task raised AT t0 waits in the pool, and both may take it
+   * from t0 + 1 (accepting off duty is refused `not_on_duty`).
+   */
+  const onDutySoon = async () => { for (const w of [W1, W2]) await putOnDuty(db, h, w, minutes(t0, 1), minutes(t0, 600)); };
   /** A task W1 holds in progress. */
   const inProgress = async (kind = "general") => {
+    await onDutySoon();
     const t = await raise({ kind });
     await acceptTask(db, actorOf(W1), { taskId: t.id }, minutes(t0, 1));
     return startTask(db, actorOf(W1), { taskId: t.id }, minutes(t0, 2));
@@ -68,12 +74,14 @@ describe("tasks — intents and refusals", () => {
   });
 
   it("already_taken: accepting a task someone else holds", async () => {
+    await onDutySoon();
     const t = await raise();
     await acceptTask(db, actorOf(W1), { taskId: t.id }, minutes(t0, 1));
     expect(await refusal(acceptTask(db, actorOf(W2), { taskId: t.id }, minutes(t0, 1)))).toBe("already_taken");
   });
 
   it("not_yours: starting, finishing or handing back another worker's task", async () => {
+    await onDutySoon();
     const t = await raise();
     await acceptTask(db, actorOf(W1), { taskId: t.id }, minutes(t0, 1));
     expect(await refusal(startTask(db, actorOf(W2), { taskId: t.id }, minutes(t0, 2)))).toBe("not_yours");
@@ -103,6 +111,7 @@ describe("tasks — intents and refusals", () => {
   });
 
   it("stale: a version that is no longer the task's", async () => {
+    await onDutySoon();
     const t = await raise();
     await acceptTask(db, actorOf(W1), { taskId: t.id }, minutes(t0, 1));
     expect(await refusal(cancelTask(db, actorOf(SUP1), { taskId: t.id, version: t.version, reason: "dup" }, minutes(t0, 2)))).toBe("stale");
@@ -167,6 +176,7 @@ describe("tasks — intents and refusals", () => {
   });
 
   it("returnToPool: the worker hands back; a supervisor may take any task back", async () => {
+    await onDutySoon();
     const t = await raise();
     await acceptTask(db, actorOf(W1), { taskId: t.id }, minutes(t0, 1));
     const back = await returnToPool(db, actorOf(W1), { taskId: t.id, reason: "lift not working" }, minutes(t0, 2));
