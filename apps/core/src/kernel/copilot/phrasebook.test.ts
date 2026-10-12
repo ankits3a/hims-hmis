@@ -296,3 +296,15 @@ describe("matchIntent — #672, the wrong tool grabbed first", () => {
     expect(cueWords()).not.toContain("printer");
   });
 });
+
+describe("E2.3 — a reminder about a thing is a reminder, not the thing", () => {
+  it.each([
+    "kal 10 baje yaad dilana leave chahiye",
+    "yaad dilana 4 baje appointment book karna",
+    "remind me at 6 who is on call tonight",
+    "yaad dila do 2 baje bed 5 ka bill baaki hai kitna",
+    "remind me at 3 to check stock of paracetamol",
+  ])("%s", (q) => {
+    expect(matchIntent(q)?.intent).toBe("reminders.create");
+  });
+});

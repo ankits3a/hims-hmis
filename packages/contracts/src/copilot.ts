@@ -249,6 +249,18 @@ export const COPILOT_ANSWER_KEYS = [
   "copilot.answer.coverAsked",
   "copilot.answer.swapAsked",
   "copilot.answer.coverRefused",
+
+  /*
+    ═══ E2.3 — a reminder from chat (spec SPEC-copilot-reminders-2026-10-12) ═══
+    `when` is an ISO instant. The reminder's own words ride the pick payload only, never a param.
+  */
+  "copilot.answer.reminderPick",
+  "copilot.answer.reminderWhatTime",
+  "copilot.answer.reminderPast",
+  "copilot.answer.reminderWhat",
+  "copilot.answer.reminderTooLong",
+  "copilot.answer.reminderLimit",
+  "copilot.answer.reminderSet",
 ] as const;
 
 export type CopilotAnswerKey = (typeof COPILOT_ANSWER_KEYS)[number];
@@ -292,6 +304,18 @@ export type CopilotCoverPick = {
   options: { name: string; grade: string; teamName: string; crossUnit: boolean; give: CopilotCoverDuty | null; proposal: number }[];
   /** People who could take it but are not offered here (more than the card holds). */
   more: number;
+};
+
+/**
+ * E2.3 — a reminder to confirm: the person's own words, the first time it rings (ISO) and how it
+ * repeats (`ReminderRepeat`: none | daily | mon_sat | weekly). One option, so `proposal` is 0.
+ */
+export type CopilotReminderPick = {
+  kind: "reminderPick";
+  text: string;
+  at: string;
+  repeat: "none" | "daily" | "mon_sat" | "weekly";
+  proposal: number;
 };
 
 export type CopilotApptPick = {
