@@ -24,6 +24,8 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { rosterManifest } from "../../modules/roster";
 import { attendanceManifest } from "../../modules/attendance";
 import { orderingManifest } from "../../modules/ordering";
+import { tasksManifest } from "../../modules/tasks";
+import { bmwManifest } from "../../modules/bmw";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -189,4 +191,10 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // TEST ORDERING (owner 2026-10-10, decision 0067) — appended. No permission of its own; the outside-test
   // menu entry and the free-test consumer.
   orderingManifest,
+  // E0.1 TASK ENGINE (issue #713) — appended. Three permissions, two menu entries, no subscription. API only, the
+  // `roster` shape: the worker runs `sweepTasks` and needs no permission to.
+  tasksManifest,
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. Three permissions, two menu entries, no subscription. API only, the
+  // `tasks` shape: the storage clock rides the task clock's job and needs no permission to.
+  bmwManifest,
 ];

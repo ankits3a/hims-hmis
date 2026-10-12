@@ -20,6 +20,9 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/billing/dues` | `apps/web/src/screens/billing-dues` |
 | `/billing/office` | `apps/web/src/screens/billing-office` |
 | `/billing/session` | `apps/web/src/screens/billing-session` |
+| `/bmw` | `apps/web/src/screens/bmw-board` |
+| `/bmw/handle` | `apps/web/src/screens/bmw-handle` |
+| `/bmw/reports` | `apps/web/src/screens/bmw-reports` |
 | `/change-password` | `apps/web/src/screens/change-password` |
 | `/copilot-health` | `apps/web/src/screens/copilot-health` |
 | `/counter` | `apps/web/src/screens/desk-one/desk-one` |
@@ -109,3 +112,5 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/roster/my-duties` | `apps/web/src/screens/roster-my-duties` |
 | `/roster/on-now` | `apps/web/src/screens/roster-on-now` |
 | `/staff` | `apps/web/src/screens/staff-reports` |
+| `/tasks` | `apps/web/src/screens/my-tasks` |
+| `/tasks/board` | `apps/web/src/screens/tasks-board` |

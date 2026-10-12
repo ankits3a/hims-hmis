@@ -21,6 +21,7 @@ flowchart LR
   approvals[approvals] --> workflow[workflow]
   attendance[attendance] --> auth[auth]
   billing[billing] --> patients[patients]
+  bmw[bmw] --> resources[resources]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
   lab[lab] --> billing[billing]
@@ -72,6 +73,8 @@ flowchart LR
   roster[roster] --> auth[auth]
   roster[roster] --> org[org]
   roster[roster] --> resources[resources]
+  tasks[tasks] --> patients[patients]
+  tasks[tasks] --> resources[resources]
 ```
 
 | file | owner | tables |
@@ -83,6 +86,7 @@ flowchart LR
 | `attendance.ts` | module attendance | `att_app_marks`, `att_days`, `att_holidays`, `att_leaves`, `att_meeting_requests`, `att_on_duty`, `att_punches`, `att_roster`, `att_shifts`, `att_staff`, `att_sync_state` |
 | `auth.ts` | kernel | `agents`, `auth_devices`, `auth_sessions`, `auth_throttle`, `break_glass_grants`, `permissions`, `phone_push_sends`, `role_assignments`, `role_permissions`, `roles`, `sod_pairs`, `temp_role_grants`, `user_totp`, `users` |
 | `billing.ts` | module billing | `allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_vouchers` |
+| `bmw.ts` | module bmw | `bmw_bag_events`, `bmw_bags`, `bmw_disputes`, `bmw_manifests` |
 | `clinical-coding.ts` | kernel | `icd10_codes`, `icd11_map_loads`, `icd11_map_rows` |
 | `copilot.ts` | kernel | `copilot_acts`, `copilot_ask_feedback`, `copilot_asks`, `copilot_halts`, `copilot_notice_acks`, `copilot_user_settings` |
 | `desk.ts` | kernel | `user_day_facts` |
@@ -116,5 +120,6 @@ flowchart LR
 | `roster.ts` | module roster | `roster_amendments`, `roster_assignments`, `roster_bed_allotments`, `roster_board_prints`, `roster_cover_requests`, `roster_cycle_entries`, `roster_cycle_overlays`, `roster_cycles`, `roster_delegations`, `roster_duty_windows`, `roster_escalation_targets`, `roster_findings`, `roster_flags`, `roster_holidays`, `roster_mode_declarations`, `roster_officiating`, `roster_periods`, `roster_positions`, `roster_requirements`, `roster_rule_profiles`, `roster_rules`, `roster_shift_defs`, `roster_team_memberships`, `roster_teams`, `staff_absences`, `staff_credentials` |
 | `search.ts` | kernel | `search_audit` |
 | `tariff.ts` | module tariff | `adjustment_rules`, `gst_config`, `gst_settings`, `regulated_prices`, `services`, `tariff_items`, `tariff_versions` |
+| `tasks.ts` | module tasks | `task_events`, `tasks` |
 | `worker.ts` | kernel | `event_dead_letters`, `event_deliveries`, `scheduler_heartbeats` |
 | `workflow.ts` | kernel | `workflow_definition_approvals`, `workflow_definitions`, `workflow_instances`, `workflow_timers`, `workflow_transitions` |

@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import type { Db } from "../db/client";
 import type { ModuleRegistry } from "../modules/loader";
 import type { Handler } from "../events/subscriptions";
@@ -33,6 +34,8 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
+import { sweepTasks } from "../../modules/tasks";
+import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -697,4 +700,49 @@ export function registerAllJobs(
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
   });
+  /**
+   * E0.1 TASK ENGINE (issue #713) — THE TASK CLOCK, every minute: a worker whose shift ended hands
+   * their tasks back to the pool, an assignment not accepted in its window goes to the next worker,
+   * the pool is offered again, and a late task climbs its ladder ONCE per rung. Small batches; each
+   * act re-checks its precondition under the row lock, so a second tick changes nothing.
+   */
+  scheduler.register({
+    name: "sweepTasks",
+    every: 60_000,
+    /*
+     * E1.7 BIO-MEDICAL WASTE (issue #724) — the waste STORAGE CLOCK rides this tick rather than holding a pool client
+     * of its own (the `runDueTimers` + `runDueReminders` shape): bags still on the premises warn at 36 h and alert at
+     * 48 h from generation. `runTaskAndWasteClocks` runs each in its own try/catch, so a failure in either never stops
+     * or masks the other. Importing the bmw
+     * index here is ALSO what defines the `bmw_collection` task kind in the worker (tasks MAP §4).
+     */
+    run: async (now) => { await runTaskAndWasteClocks(db, now); },
+  });
+}
+
+const clockLog = new Logger("worker.sweepTasks");
+
+/**
+ * E1.7 (PR #749 review) — the task clock and the waste storage clock share one tick. Each runs in its own try/catch
+ * and logs its own failure, so a failure in either never stops the other (the 48-hour alarm still rings when the
+ * task sweep throws) and never masks it: the first failure is rethrown after both have run, so the scheduler still
+ * records the tick as failed. `sweeps` is injectable for `task-clock.test.ts`.
+ */
+export async function runTaskAndWasteClocks(
+  db: Db, now: Date, sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage } = { sweepTasks, sweepBmwStorage },
+): Promise<void> {
+  let first: unknown = undefined;
+  try {
+    await sweeps.sweepTasks(db, now);
+  } catch (e) {
+    clockLog.error(`sweepTasks failed: ${e instanceof Error ? e.message : String(e)}`);
+    first = e;
+  }
+  try {
+    await sweeps.sweepBmwStorage(db, now);
+  } catch (e) {
+    clockLog.error(`sweepBmwStorage failed: ${e instanceof Error ? e.message : String(e)}`);
+    first ??= e;
+  }
+  if (first !== undefined) throw first;
 }

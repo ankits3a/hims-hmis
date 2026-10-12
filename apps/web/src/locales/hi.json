@@ -76,11 +76,17 @@
       "pharmacy": "फार्मेसी",
       "billing": "बिलिंग",
       "stores": "स्टोर",
+      "services": "सेवाएँ",
       "admin": "प्रशासन"
     },
     "staffReports": "स्टाफ़ रिपोर्ट",
     "outsideTests": "बाहर की जाँचें",
     "copilotHealth": "कोपायलट हेल्थ",
+    "myTasks": "मेरे काम",
+    "taskBoard": "काम बोर्ड",
+    "bmwHandle": "कचरा थैले",
+    "bmwBoard": "कचरा बोर्ड",
+    "bmwReports": "कचरा रिपोर्ट",
     "labDesk": "लैब डेस्क",
     "labCollection": "नमूना संग्रह",
     "labBench": "बेंच",
@@ -15611,6 +15617,209 @@
       "approved": "मंज़ूर",
       "rejected": "मंज़ूर नहीं",
       "cancelled": "वापस ली"
+    }
+  },
+  "bmw": {
+    "offline": "नेटवर्क नहीं",
+    "cytotoxic": "साइटोटॉक्सिक",
+    "category": {
+      "yellow": "पीला",
+      "red": "लाल",
+      "white_translucent": "सफ़ेद · नुकीला",
+      "blue": "नीला · कांच"
+    },
+    "state": {
+      "generated": "वार्ड में",
+      "collected": "रास्ते में",
+      "stored": "स्टोर में",
+      "handed_over": "सौंपा गया",
+      "treated": "निपटाया गया",
+      "disputed": "वज़न विवाद"
+    },
+    "clock": {
+      "ok": "{{count}} घं",
+      "warning": "{{count}} घं · चेतावनी",
+      "alert": "{{count}} घं · {{limit}} घं से ज़्यादा"
+    },
+    "board": {
+      "title": "कचरा बोर्ड",
+      "onSite": "परिसर में",
+      "warning": "36 घं+",
+      "alert": "{{limit}} घं से ज़्यादा",
+      "todayBags": "थैले आज · {{kg}}",
+      "onSiteTitle": "परिसर में — 48 घंटे की घड़ी",
+      "oldestFirst": "सबसे पुराने पहले",
+      "none": "परिसर में कोई थैला नहीं",
+      "more": "+{{count}} और",
+      "todayTitle": "आज वार्ड अनुसार",
+      "noneToday": "आज कोई थैला नहीं",
+      "bags": "{{count}} थैले",
+      "nextPickup": "अगला उठान",
+      "noManifest": "अभी कोई सौंपना नहीं",
+      "lastManifest": "पिछला: {{no}} · {{at}} · {{bags}} थैले",
+      "disputes": "वज़न विवाद",
+      "noDisputes": "कोई खुला विवाद नहीं",
+      "gapHeavy": "+{{pct}} %",
+      "gapLight": "−{{pct}} %",
+      "weights": "हमारा {{ours}} · उनका {{theirs}}",
+      "weightGap": "वज़न अंतर"
+    },
+    "handle": {
+      "title": "कचरा थैले",
+      "scanTitle": "थैला स्कैन करें",
+      "scanPlaceholder": "बार कोड",
+      "find": "खोजें",
+      "newTitle": "नया थैला",
+      "place": "जगह",
+      "pickPlace": "वार्ड या कमरा चुनें",
+      "cytoYellow": "साइटोटॉक्सिक (केवल पीला)",
+      "labelSent": "लेबल भेजा · {{code}}",
+      "labelHere": "लेबल छप रहा · {{code}}",
+      "collect": "तौलें · ले जाएँ",
+      "store": "तौलें · स्टोर करें",
+      "collected": "ले लिया ✓",
+      "stored": "स्टोर में ✓",
+      "wardWeight": "वार्ड पर वज़न",
+      "centralWeight": "स्टोर पर वज़न",
+      "nothingToDo": "यहाँ कुछ नहीं करना",
+      "recent": "आज"
+    },
+    "reports": {
+      "monthly": "मासिक रिपोर्ट",
+      "formIv": "फ़ॉर्म IV — श्रेणी अनुसार मात्रा (kg)",
+      "month": "महीना",
+      "year": "वर्ष",
+      "csv": "CSV डाउनलोड",
+      "category": "श्रेणी",
+      "categoryKg": "श्रेणी (kg)",
+      "genBags": "बने थैले",
+      "genKg": "बना kg",
+      "outBags": "सौंपे थैले",
+      "outKg": "सौंपा kg",
+      "treatedBags": "निपटाए थैले",
+      "treatedKg": "निपटाया kg",
+      "disputedBags": "इनमें विवादित",
+      "total": "कुल",
+      "footnote": "{{unweighed}} थैले बिना तौले · {{disputes}} खुले विवाद",
+      "perDay": "{{days}} दिनों में औसत {{kg}} kg प्रतिदिन",
+      "line": {
+        "yellow": "पीला",
+        "yellow_cytotoxic": "इनमें साइटोटॉक्सिक",
+        "red": "लाल",
+        "white_translucent": "सफ़ेद (पारभासी)",
+        "blue": "नीला"
+      },
+      "mon": {
+        "01": "जन",
+        "02": "फ़र",
+        "03": "मार्च",
+        "04": "अप्रै",
+        "05": "मई",
+        "06": "जून",
+        "07": "जुला",
+        "08": "अग",
+        "09": "सित",
+        "10": "अक्टू",
+        "11": "नव",
+        "12": "दिस"
+      }
+    },
+    "refusal": {
+      "failed": "नहीं हुआ",
+      "bad_input": "अधूरा अनुरोध",
+      "unknown_place": "जगह नहीं मिली",
+      "unknown_bag": "ऐसा थैला नहीं",
+      "cytotoxic_not_yellow": "साइटोटॉक्सिक: केवल पीला",
+      "already_weighed": "पहले से तौला",
+      "weight_needed": "पहले तौलें",
+      "wrong_state": "गलत क़दम — फिर स्कैन करें",
+      "already_handed_over": "पहले ही सौंपा",
+      "not_stored": "अभी स्टोर में नहीं",
+      "duplicate_bag": "थैला दो बार",
+      "unknown_manifest": "मैनिफ़ेस्ट नहीं मिला",
+      "not_on_manifest": "इस मैनिफ़ेस्ट पर नहीं",
+      "category_not_on_manifest": "यह रंग मैनिफ़ेस्ट पर नहीं",
+      "weight_given_twice": "वज़न दो बार दिया",
+      "slip_too_light": "पर्ची बहुत हल्की",
+      "already_recorded": "पहले से दर्ज",
+      "unknown_dispute": "विवाद नहीं मिला",
+      "dispute_closed": "विवाद बंद",
+      "bad_period": "गलत महीना या वर्ष"
+    }
+  },
+  "tasks": {
+    "loading": "लोड हो रहा है…",
+    "offline": "नेटवर्क नहीं",
+    "noPlace": "जगह नहीं बताई",
+    "askedAgain": "{{count}}× माँगा",
+    "kind": {
+      "general": "सामान्य काम"
+    },
+    "priority": {
+      "urgent": "जल्दी",
+      "stat": "तुरंत"
+    },
+    "state": {
+      "created": "इंतज़ार में",
+      "assigned": "सौंपा गया",
+      "accepted": "लिया गया",
+      "in_progress": "चल रहा है",
+      "done": "हो गया",
+      "verified": "जाँचा गया",
+      "cancelled": "रद्द"
+    },
+    "act": {
+      "accept": "लें",
+      "start": "शुरू करें",
+      "done": "हो गया"
+    },
+    "clock": {
+      "late": "{{count}} मिनट देर",
+      "dueIn": "{{count}} मिनट में",
+      "dueAt": "{{at}} तक"
+    },
+    "mine": {
+      "title": "मेरे काम",
+      "none": "अभी कोई काम नहीं",
+      "pool": "लेने के लिए खुले"
+    },
+    "board": {
+      "title": "काम बोर्ड",
+      "open": "खुले",
+      "late": "देर से",
+      "pool": "इंतज़ार में",
+      "none": "कोई खुला काम नहीं",
+      "noFloor": "मंज़िल नहीं",
+      "floorOpen": "{{count}} खुले",
+      "floorLate": "{{count}} देर · {{open}} खुले",
+      "notShown": "स्क्रीन पर नहीं", "more": "+{{count}} और",
+     
+      "unassigned": "अभी किसी को नहीं",
+      "workers": "कर्मचारी",
+      "noWorkers": "ड्यूटी पर कोई नहीं",
+      "load": "{{count}} खुले",
+      "onDuty": "ड्यूटी पर",
+      "offDuty": "ड्यूटी से बाहर",
+      "busy": "{{count}} चल रहे",
+      "toVerify": "जाँचने को ({{count}})"
+    },
+    "refusal": {
+      "failed": "नहीं हुआ",
+      "bad_input": "अनुरोध अधूरा",
+      "unknown_kind": "अनजान काम",
+      "unknown_place": "जगह नहीं मिली",
+      "unknown_worker": "काम नहीं ले सकते",
+      "not_found": "काम नहीं मिला",
+      "already_taken": "किसी और ने ले लिया",
+      "not_on_duty": "अभी ड्यूटी पर नहीं", "wrong_skill": "यह काम आपके हिस्से का नहीं", "not_yours": "आपका काम नहीं",
+      "wrong_state": "रीफ़्रेश करें",
+      "not_open": "काम बंद हो चुका",
+      "stale": "बदल गया — रीफ़्रेश करें",
+      "proof_missing": "सबूत चाहिए",
+      "no_verify_step": "जाँच का चरण नहीं",
+      "verifier_is_doer": "करने वाला नहीं जाँच सकता",
+      "not_permitted": "अनुमति नहीं",
+      "reason_required": "कारण लिखें"
     }
   }
 }
