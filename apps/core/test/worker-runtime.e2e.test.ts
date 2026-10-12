@@ -206,6 +206,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** E0.1 TASK ENGINE (issue #713) — `every(60_000)`: the task clock (shift end, re-dispatch, the pool, the ladder). */
+  "sweepTasks",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;

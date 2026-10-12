@@ -29,6 +29,7 @@ import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
 import * as opdTeleMod from "../../modules/opd/tele";
+import * as tasksSweepMod from "../../modules/tasks/sweep";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
 import * as tempRolesMod from "../auth/temp-roles";
@@ -425,6 +426,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("syncAttendance");
       return { ran: false, why: "not_configured" };
     }),
+    // E0.1 TASK ENGINE (issue #713) — stubbed on `modules/tasks/sweep`, the module the index re-exports FROM. Its
+    // behaviour (shift end, re-dispatch, the pool, the ladder) is asserted in `modules/tasks/sweep.test.ts` and `acceptance/`.
+    jest.spyOn(tasksSweepMod, "sweepTasks").mockImplementation(async () => {
+      invoked.push("sweepTasks");
+      return { returned: 0, redispatched: 0, dispatched: 0, escalated: 0 };
+    }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
       invoked.push("openDueTeleVisits");
@@ -534,6 +541,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
   "syncAttendance",
+  // E0.1 TASK ENGINE (issue #713) — the THIRTIETH, `every(60_000)`: shift end, re-dispatch, the pool, the escalation ladder.
+  "sweepTasks",
 ];
 
 /**
