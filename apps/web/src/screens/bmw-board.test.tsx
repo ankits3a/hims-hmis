@@ -24,7 +24,7 @@ describe("BmwBoard (E1.7)", () => {
       serverNow: new Date(NOW).toISOString(),
       onSite: [
         bag({ id: "a", barcode: "BMWR261010000001", category: "red", generatedAt: ago(50.5) }),
-        bag({ id: "w", barcode: "BMWY261011000002", generatedAt: ago(38) }),
+        bag({ id: "w", barcode: "BMWY261011000002", generatedAt: ago(38.5) }),
         ...Array.from({ length: 60 }, (_, i) => bag({ id: `n${i}`, barcode: `BMWB2610120001${String(i).padStart(2, "0")}`, category: "blue", generatedAt: ago(3) })),
       ],
       counts: { onSite: 62, warning: 1, alert: 1, stored: 62, generatedToday: 4, gramsToday: 5400 },

@@ -98,3 +98,6 @@
 .pp .bw-table tr.sub td:first-child { padding-left: 26px; }
 .pp .bw-table tr.tot td { font-weight: 700; border-top: 2px solid var(--line); }
 .pp .bw-table.wide td, .pp .bw-table.wide th { padding: 7px 8px; }
+.pp .bw-report > header { flex-wrap: nowrap; }
+.pp .bw-report > header input { width: 190px; flex: 0 0 190px; }
+.pp .bw-report > header .bw-btn { width: auto; flex: 0 0 auto; }

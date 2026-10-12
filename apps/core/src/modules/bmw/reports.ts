@@ -1,5 +1,6 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { BMW_REPORT_LINES } from "@hmis/contracts";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { bmwBags, bmwDisputes } from "../../kernel/db/schema";
 import { toCsv } from "../../kernel/report/csv";
 import { BmwError } from "./errors";
@@ -19,8 +20,8 @@ import type { Db } from "../../kernel/db/client";
  *
  * Periods are IST calendar months. `yellow_cytotoxic` is the cytotoxic part of yellow: shown, never added to totals.
  */
-const IST_OFFSET_MS = 330 * 60_000;
-const istMonthStart = (year: number, month1: number): Date => new Date(Date.UTC(year, month1 - 1, 1) - IST_OFFSET_MS);
+/** 00:00 IST on the 1st: the IST day window around noon UTC of the 1st (the kernel clock, no copy of its offset). */
+const istMonthStart = (year: number, month1: number): Date => istDayWindow(new Date(Date.UTC(year, month1 - 1, 1, 12))).start;
 
 type LineKey = BmwReportLine["line"];
 const lineOf = (category: string, cytotoxic: boolean): LineKey[] =>

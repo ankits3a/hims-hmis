@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
@@ -49,7 +49,6 @@ export function BmwHandle(): React.ReactElement {
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const scanRef = useRef<HTMLInputElement | null>(null);
   const places = q.data?.places ?? [];
-  useEffect(() => { if (place === "" && places.length > 0 && places.length === 1) setPlace(places[0]!.id); }, [place, places]);
 
   const fail = (e: unknown): void => {
     const c = bmwRefusal(e);

@@ -44,6 +44,10 @@ describe("BmwHandle (E1.7)", () => {
 
   it("a colour button makes a bag at the picked place and says the label was sent", async () => {
     renderWithProviders(<BmwHandle />);
+    expect(screen.getByTestId("bmw-new-red")).toBeDisabled(); // no place picked yet
+    await screen.findByRole("option", { name: "Ward 3 · Floor 2" });
+    fireEvent.change(screen.getByTestId("bmw-place"), { target: { value: "r1" } });
+    expect(localStorage.getItem("hmis.bmw.place")).toBe("r1"); // remembered on this phone
     await waitFor(() => expect(screen.getByTestId("bmw-new-red")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("bmw-new-red"));
     await waitFor(() => expect(posts).toHaveLength(1));

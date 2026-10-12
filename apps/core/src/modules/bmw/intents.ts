@@ -7,7 +7,7 @@ import { istDayString } from "../../kernel/approvals/cumulative";
 import { bmwBagEvents, bmwBags, bmwDisputes, bmwManifests, resources, tasks } from "../../kernel/db/schema";
 import { enqueuePrintJob } from "../../kernel/printing/enqueue";
 import { relayServes } from "../../kernel/printing/served";
-import { acceptTask, cancelTask, completeTask, raiseTask, startTask } from "../tasks";
+import { TaskError, acceptTask, cancelTask, completeTask, raiseTask, startTask } from "../tasks";
 import { BmwError } from "./errors";
 import { BMW_COLLECTION_TASK } from "./kinds";
 import { BAG_LABEL_DOCUMENT, drawBagLabel } from "./label";
@@ -132,7 +132,8 @@ export async function recordDeptWeight(exec: Exec, actor: Actor, raw: unknown, n
 
 /**
  * The handler scans the bag at the ward and takes it. Unweighed bags are weighed in the same act (`grams`).
- * When it was the place's last waiting bag, the place's `bmw_collection` task is closed with this scan as proof.
+ * When it was the place's last waiting bag, the place's `bmw_collection` task is closed with this scan as proof — or
+ * cancelled ("Bags collected") when the collector cannot hold it (not on duty, not of the skill).
  */
 export async function collectBag(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<BagRow> {
   const input = parse(collectBagInput, raw);
@@ -166,7 +167,17 @@ async function closeCollectionTask(t: Tx, actor: Actor, bag: BagRow, now: Date):
       continue;
     }
     let row = task;
-    if (row.state === "created" || row.state === "assigned") row = await acceptTask(t, actor, { taskId: row.id }, now);
+    if (row.state === "created" || row.state === "assigned") {
+      try {
+        row = await acceptTask(t, actor, { taskId: row.id }, now);
+      } catch (e) {
+        // The collector may not hold the task (off the roster, or a supervisor without the skill): the bags are
+        // still collected, so the task is closed as cancelled rather than left for someone to walk to an empty ward.
+        if (!(e instanceof TaskError) || (e.code !== "not_on_duty" && e.code !== "wrong_skill")) throw e;
+        await cancelTask(t, BMW_SYSTEM, { taskId: row.id, reason: "Bags collected" }, now);
+        continue;
+      }
+    }
     if (row.state === "accepted") row = await startTask(t, actor, { taskId: row.id }, now);
     await completeTask(t, actor, { taskId: row.id, proof: { kind: "scan", code: bag.barcode } }, now);
   }
