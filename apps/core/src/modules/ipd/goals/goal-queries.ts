@@ -4,7 +4,7 @@ import type { SQL } from "drizzle-orm";
 import type { Db } from "../../../kernel/db/client";
 import {
   BED_AVAILABLE, BED_CLEANING, EV, EWS_ACK_KINDS, IPD_ACT_EVENTS, IPD_GOAL_CLEAN_REASONS, IPD_GOAL_EVENTS,
-  IPD_GOAL_TEMPLATES, TIMED_INTENTS,
+  IPD_GOAL_TEMPLATES, STAY_END_EVENTS, SYSTEM_PROVENANCE, TIMED_INTENTS,
 } from "./goal-events";
 import type { GoalBreakdownRow, GoalMeasured, GoalNotInstrumented, GoalQuery, GoalRunArgs } from "./types";
 
@@ -83,20 +83,31 @@ async function shareGoal(db: Db, a: GoalRunArgs, measures: SQL): Promise<GoalMea
   };
 }
 
+/** A payload field as a non-negative integer, or null when it is not one (never a cast error). */
+const intField = (field: string): SQL => sql`case when payload->>${field} ~ '^[0-9]{1,9}$' then (payload->>${field})::int end`;
+/** A payload field as a non-negative number, or null when it is not one. */
+const numField = (field: string): SQL => sql`case when payload->>${field} ~ '^[0-9]{1,12}([.][0-9]+)?$' then (payload->>${field})::numeric end`;
+const IST_DATE = (d: Date): SQL => sql`to_char(${ts(d)} at time zone 'Asia/Kolkata', 'YYYY-MM-DD')`;
+
 const inWindow = (col: SQL, a: GoalRunArgs): SQL => sql`${col} >= ${ts(a.from)} and ${col} < ${ts(a.to)}`;
 const ADM = sql`payload->>'admissionId'`;
 
 // ─────────────────────────────────────────── the goals ───────────────────────────────────────────
 
-/** G1 — new admissions recorded in HMIS ÷ all new admissions (HMIS + incumbent) per the midnight census. */
+/**
+ * G1 — new admissions recorded in HMIS ÷ all new admissions (HMIS + incumbent) per the midnight census. A re-run
+ * for one census date supersedes the earlier run (the latest per date counts); a malformed count counts nothing.
+ */
 async function g1(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
   const census = await rows<{ item: string; at: Date; hmis: number; incumbent: number; beds: number | null }>(db, sql`
-    select payload->>'censusDate' as item, occurred_at as at,
-           coalesce((payload->>'hmisAdmissions')::int, 0) as hmis,
-           coalesce((payload->>'incumbentAdmissions')::int, 0) as incumbent,
-           (payload->>'incumbentOccupiedBeds')::int as beds
-    from events where name = ${IPD_GOAL_EVENTS.censusTaken} and ${inWindow(sql`occurred_at`, a)}
-    order by occurred_at, seq`);
+    select item, at, hmis, incumbent, beds from (
+      select distinct on (payload->>'censusDate') payload->>'censusDate' as item, occurred_at as at,
+             coalesce(${intField("hmisAdmissions")}, 0) as hmis,
+             coalesce(${intField("incumbentAdmissions")}, 0) as incumbent,
+             ${intField("incumbentOccupiedBeds")} as beds
+      from events where name = ${IPD_GOAL_EVENTS.censusTaken} and ${inWindow(sql`occurred_at`, a)}
+      order by payload->>'censusDate', occurred_at desc, seq desc
+    ) latest_run order by at, item`);
   const num = census.reduce((s, c) => s + c.hmis, 0);
   const den = census.reduce((s, c) => s + c.hmis + c.incumbent, 0);
   const latest = census.at(-1);
@@ -121,21 +132,20 @@ const g2 = (db: Db, a: GoalRunArgs) => durationGoal(db, a, sql`
   where ${inWindow(sql`f.at`, a)}`);
 
 /**
- * G3 — a bed's move into cleaning → its next move, when that move is cleaning → available; routine and
- * terminal by the reason on the move into cleaning. Looks back 7 days before the window for the start.
+ * G3 — each release of a bed from cleaning to available in the window, measured from the LAST move into
+ * cleaning before it, however old; routine and terminal by the reason on that move into cleaning.
  */
 const g3 = (db: Db, a: GoalRunArgs) => durationGoal(db, a, sql`
-  select resource_id as item, grp, next_at as at, extract(epoch from (next_at - h_at)) / 60.0 as minutes
-  from (
-    select h.resource_id, h.to_status, h.at as h_at,
-           case when h.reason = ${IPD_GOAL_CLEAN_REASONS.terminal} then 'terminal' else 'routine' end as grp,
-           lead(h.at) over w as next_at, lead(h.from_status) over w as next_from, lead(h.to_status) over w as next_to
-    from resource_status_history h join resources r on r.id = h.resource_id and r.kind = 'bed'
-    where h.at >= ${ts(a.from)} - interval '7 days' and h.at < ${ts(a.to)}
-    window w as (partition by h.resource_id order by h.seq)
-  ) t
-  where to_status = ${BED_CLEANING} and next_from = ${BED_CLEANING} and next_to = ${BED_AVAILABLE}
-    and ${inWindow(sql`next_at`, a)}`);
+  select h.resource_id as item, h.at, extract(epoch from (h.at - c.at)) / 60.0 as minutes,
+         case when c.reason = ${IPD_GOAL_CLEAN_REASONS.terminal} then 'terminal' else 'routine' end as grp
+  from resource_status_history h
+  join resources r on r.id = h.resource_id and r.kind = 'bed'
+  cross join lateral (
+    select c.at, c.reason from resource_status_history c
+    where c.resource_id = h.resource_id and c.seq < h.seq and c.to_status = ${BED_CLEANING}
+    order by c.seq desc limit 1
+  ) c
+  where h.from_status = ${BED_CLEANING} and h.to_status = ${BED_AVAILABLE} and ${inWindow(sql`h.at`, a)}`);
 
 /** G4 — the latest fit declaration before the gate scan → the scan; cashless = a payer authorisation on file. */
 const g4 = (db: Db, a: GoalRunArgs) => durationGoal(db, a, sql`
@@ -152,11 +162,16 @@ const g4 = (db: Db, a: GoalRunArgs) => durationGoal(db, a, sql`
   ) f
   where f.fit_at is not null`);
 
-/** G5b — rent lines beyond the first for one admission and one night. */
+/**
+ * G5b — rent lines beyond the first for one admission and one night (`rentDate`, an IST date), over every
+ * posting whenever it was made: the window selects NIGHTS, so a late re-run is still caught.
+ */
 async function g5b(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
   const groups = await rows<{ admission_id: string; rent_date: string; lines: number }>(db, sql`
     select ${ADM} as admission_id, payload->>'rentDate' as rent_date, count(*)::int as lines
-    from events where name = ${IPD_GOAL_EVENTS.rentPosted} and ${inWindow(sql`occurred_at`, a)}
+    from events where name = ${IPD_GOAL_EVENTS.rentPosted}
+      and payload->>'rentDate' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      and payload->>'rentDate' >= ${IST_DATE(a.from)} and payload->>'rentDate' < ${IST_DATE(a.to)}
     group by 1, 2 order by 2, 1`);
   const lines = groups.reduce((s, g) => s + g.lines, 0);
   const dupes = groups.reduce((s, g) => s + g.lines - 1, 0);
@@ -166,10 +181,13 @@ async function g5b(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
 /** G6a — doses given with a wristband scan and a label scan ÷ all doses given, by ward. */
 const g6a = (db: Db, a: GoalRunArgs) => shareGoal(db, a, sql`
   select event_id as item, coalesce(payload->>'wardId', 'unknown') as grp, occurred_at as at,
-         (payload->'patientCheck'->>'kind' = 'scan' and coalesce(btrim(payload->>'labelCode'), '') <> '') as hit
+         coalesce(payload->'patientCheck'->>'kind' = 'scan' and coalesce(btrim(payload->>'labelCode'), '') <> '', false) as hit
   from events where name = ${EV.doseGiven} and ${inWindow(sql`occurred_at`, a)}`);
 
-/** G7 — early-warning breaches acknowledged by a doctor within 30 minutes (inclusive) ÷ all breaches. */
+/**
+ * G7 — early-warning breaches acknowledged by a doctor within 30 minutes (inclusive) ÷ all breaches. One breach
+ * per alertId: a re-raised alert is the same breach, clocked from its first raise.
+ */
 const g7 = (db: Db, a: GoalRunArgs) => shareGoal(db, a, sql`
   select b.payload->>'alertId' as item, coalesce(b.payload->>'wardId', 'unknown') as grp, b.occurred_at as at,
          exists (
@@ -178,9 +196,16 @@ const g7 = (db: Db, a: GoalRunArgs) => shareGoal(db, a, sql`
              and k.payload->>'byKind' in (${sql.join(EWS_ACK_KINDS.map((k) => sql`${k}`), sql`, `)})
              and k.occurred_at >= b.occurred_at and k.occurred_at <= b.occurred_at + interval '30 minutes'
          ) as hit
-  from events b where b.name = ${IPD_GOAL_EVENTS.ewsBreached} and ${inWindow(sql`b.occurred_at`, a)}`);
+  from (
+    select distinct on (payload->>'alertId') payload, occurred_at from events
+    where name = ${IPD_GOAL_EVENTS.ewsBreached} and payload->>'alertId' is not null
+    order by payload->>'alertId', occurred_at, seq
+  ) b where ${inWindow(sql`b.occurred_at`, a)}`);
 
-/** G8 — medians of the client's act timings: admission minutes and taps, dose seconds, vitals typed / voice. */
+/**
+ * G8 — medians of the client's act timings: admission minutes and taps, dose seconds, vitals typed / voice.
+ * A timing that is not a number, or not in [0, 24 h), is a broken report and is left out.
+ */
 async function g8(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
   const measures: { key: string; where: SQL; expr: SQL }[] = [
     { key: "admit_minutes", where: sql`intent = ${TIMED_INTENTS.admit}`, expr: sql`ms / 60000.0` },
@@ -194,9 +219,11 @@ async function g8(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
     percentile_cont(0.5) within group (order by ${m.expr}) filter (where ${m.where}) as ${sql.raw(`p${i}`)}`), sql`,`);
   const [agg] = await rows<Row>(db, sql`
     with t as (
-      select payload->>'intent' as intent, (payload->>'durationMs')::numeric as ms, (payload->>'taps')::numeric as taps,
-             payload->>'inputMode' as mode
-      from events where name = ${IPD_GOAL_EVENTS.intentTimed} and ${inWindow(sql`occurred_at`, a)}
+      select * from (
+        select payload->>'intent' as intent, ${numField("durationMs")} as ms, ${numField("taps")} as taps,
+               payload->>'inputMode' as mode
+        from events where name = ${IPD_GOAL_EVENTS.intentTimed} and ${inWindow(sql`occurred_at`, a)}
+      ) raw where ms >= 0 and ms < 86400000
     )
     select ${cols} from t`);
   const breakdown = measures
@@ -207,15 +234,28 @@ async function g8(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
 }
 
 /**
- * G10 — daily-totals messages sent ÷ settled (sent, expired, undeliverable); queued/sending are still in flight
- * and suppressed means the family opted out. Breakdown `tracker_opened`: discharges whose tracker link was opened.
+ * G10 — eligible admissions that got at least one daily-totals message delivered in the window ÷ eligible
+ * admissions. Eligible: admitted before the window closes, not ended (discharge, LAMA, abscond, death) before
+ * it opens, and not opted out — an admission whose only daily-totals messages in the window were suppressed
+ * (family opted out / sensitive admission) is left out. A message names its admission by `ref_type =
+ * 'admission'`, `ref_id = admissionId` (DECIDED, E0.5); "delivered" is notify status `sent` until delivery
+ * receipts exist. Breakdown `tracker_opened`: discharges whose tracker link was opened.
  */
 async function g10(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
+  const ends = sql.join(STAY_END_EVENTS.map((n) => sql`${n}`), sql`, `);
+  const msg = (status: SQL) => sql`exists (
+    select 1 from notifications n
+    where n.template_key = ${IPD_GOAL_TEMPLATES.dailyTotals} and n.ref_type = 'admission' and n.ref_id = s.adm
+      and n.status = ${status} and ${inWindow(sql`n.occurred_at`, a)})`;
   const share = await shareGoal(db, a, sql`
-    select id as item, template_key as grp, occurred_at as at, status = 'sent' as hit
-    from notifications
-    where template_key = ${IPD_GOAL_TEMPLATES.dailyTotals} and status in ('sent', 'expired', 'undeliverable')
-      and ${inWindow(sql`occurred_at`, a)}`);
+    select s.adm as item, 'all' as grp, greatest(s.admitted_at, ${ts(a.from)}) as at, ${msg(sql`'sent'`)} as hit
+    from (
+      select ${ADM} as adm, min(occurred_at) as admitted_at from events
+      where name = ${EV.admitted} and occurred_at < ${ts(a.to)} group by 1
+    ) s
+    where not exists (
+        select 1 from events e where e.name in (${ends}) and e.payload->>'admissionId' = s.adm and e.occurred_at < ${ts(a.from)})
+      and not (${msg(sql`'suppressed'`)} and not ${msg(sql`'sent'`)})`);
   const [t] = await rows<{ n: number; opened: number }>(db, sql`
     select count(distinct d.adm)::int as n,
            (count(distinct d.adm) filter (where exists (
@@ -226,16 +266,24 @@ async function g10(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
   return { ...share, breakdown };
 }
 
-/** G11b — IPD acts whose event has a blank actor or no §0B provenance (`payload.provenance`). */
+/**
+ * G11b — IPD acts whose event has a blank actor or no provenance. `payload.provenance` is a §0B source, either
+ * as a string or as `{ source }`; a system act (a timer lapse, an expiry) carries `{ source: "system" }` and is
+ * attributed (DECIDED, coordinator 2026-10-12).
+ */
 async function g11b(db: Db, a: GoalRunArgs): Promise<GoalMeasured> {
   const names = sql.join(IPD_ACT_EVENTS.map((n) => sql`${n}`), sql`, `);
-  const sources = sql.join(IPD_PROVENANCE_SOURCES.map((s) => sql`${s}`), sql`, `);
+  const sources = sql.join([...IPD_PROVENANCE_SOURCES, SYSTEM_PROVENANCE].map((s) => sql`${s}`), sql`, `);
   const [pop] = await rows<{ n: number }>(db, sql`
     select count(*)::int as n from events where name in (${names}) and ${inWindow(sql`occurred_at`, a)}`);
   const bad = await rows<Row>(db, sql`
     select event_id as item, name, occurred_at as at, actor_type, actor_id
     from events where name in (${names}) and ${inWindow(sql`occurred_at`, a)}
-      and (btrim(actor_id) = '' or coalesce(payload->>'provenance', '') not in (${sources}))
+      and (btrim(actor_id) = '' or coalesce(
+        case jsonb_typeof(payload->'provenance')
+          when 'string' then payload->>'provenance'
+          when 'object' then payload->'provenance'->>'source'
+        end, '') not in (${sources}))
     order by occurred_at, seq`);
   const n = pop?.n ?? 0;
   return { status: "measured", value: n === 0 ? null : bad.length, denominator: n, rows: bad };

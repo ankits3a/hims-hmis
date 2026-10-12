@@ -25,8 +25,15 @@ async function main(): Promise<void> {
   try {
     const out = [];
     for (const q of Object.values(IPD_GOAL_QUERIES)) {
-      const r = await q.run(db, { from, to });
-      out.push({ id: q.id, title: q.title, unit: q.unit, target: q.target, window: q.window, ...r, rows: r.rows.length });
+      const head = { id: q.id, title: q.title, unit: q.unit, target: q.target, window: q.window };
+      try {
+        const r = await q.run(db, { from, to });
+        out.push({ ...head, ...r, rows: r.rows.length });
+      } catch (e) {
+        // One broken goal must not hide the other seventeen: report it and go on; the exit code says so.
+        out.push({ ...head, status: "error" as const, error: e instanceof Error ? e.message : String(e) });
+        process.exitCode = 1;
+      }
     }
     if (process.argv.includes("--json")) {
       console.log(JSON.stringify({ from, to, goals: out }, null, 2));
@@ -34,7 +41,8 @@ async function main(): Promise<void> {
     }
     console.log(`IPD goal ledger  ${from.toISOString()} → ${to.toISOString()}`);
     for (const g of out) {
-      const value = g.status === "not_instrumented" ? `not instrumented — ${g.source}` : `${g.value ?? "no data"} ${g.unit}`;
+      const value = g.status === "error" ? `ERROR — ${g.error}`
+        : g.status === "not_instrumented" ? `not instrumented — ${g.source}` : `${g.value ?? "no data"} ${g.unit}`;
       const extra = g.status === "measured" && g.breakdown?.length
         ? `  [${g.breakdown.map((b) => `${b.key}=${b.value ?? "—"}`).join(", ")}]`
         : "";

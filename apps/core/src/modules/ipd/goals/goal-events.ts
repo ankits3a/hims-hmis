@@ -29,7 +29,16 @@ export const EV = {
   gatePassScanned: intentEvent("scan_gate_pass", "gate_pass.scanned"),
   discharged: intentEvent("scan_gate_pass", "admission.discharged"),
   doseGiven: intentEvent("administer_dose"),
+  lama: intentEvent("record_lama"),
+  absconded: intentEvent("record_abscond"),
+  deceased: intentEvent("record_death"),
 } as const;
+
+/** The events that end a stay (G10 eligibility). */
+export const STAY_END_EVENTS: readonly string[] = [EV.discharged, EV.lama, EV.absconded, EV.deceased];
+
+/** The provenance source a system act (timer lapse, expiry) carries: `{ source: "system" }` (G11b). */
+export const SYSTEM_PROVENANCE = "system";
 
 /** Every event any IPD intent emits: the population of "acts" G11b audits. */
 export const IPD_ACT_EVENTS: readonly string[] = [

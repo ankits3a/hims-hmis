@@ -55,6 +55,8 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_GOAL_CLEAN_REASONS`
   - `IPD_GOAL_EVENTS`
   - `IPD_GOAL_TEMPLATES`
+  - `STAY_END_EVENTS: readonly string[]`
+  - `SYSTEM_PROVENANCE`
   - `TIMED_INTENTS`
   - `intentEvent(intent: IpdIntentName, contains?: string): string`
 - `goals/goal-queries.ts`
