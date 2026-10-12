@@ -1,5 +1,6 @@
 import { istDayString as istDay } from "../approvals/cumulative";
 import { loadReport } from "../desk/registry";
+import { reminderCreateTool } from "../reminders/copilot-act";
 import type { CopilotAnswer, CopilotToolDecl } from "./types";
 import type { DeskProvider } from "../desk/types";
 
@@ -76,5 +77,7 @@ export function kernelCopilotTools(providers: DeskProvider[]): CopilotToolDecl[]
         };
       },
     },
+    /* E2.3 — a person's own reminder, set after one confirm (`kernel/reminders/copilot-act.ts`). */
+    reminderCreateTool,
   ];
 }
