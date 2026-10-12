@@ -136,6 +136,22 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
     expect((await rows())[2]!.outcome).not.toBe("halted");
   });
 
+  it("#678: a draft halt pauses the pharmacy draft tools; clearing it lets them answer again", async () => {
+    await createRole(db, "buyer", "Buyer");
+    await grantPermissionToRole(db, registry, "buyer", "materials.po.raise");
+    const buyer = await mkUser(db, "halt_buyer", ["buyer"]);
+    const askAs = (q: string) => http().post("/copilot/ask").set("Authorization", `Bearer ${buyer.token}`).send({ question: q });
+
+    await halt(owner.token, "draft").expect(200);
+    const paused = await askAs("draft purchase orders").expect(200);
+    expect([paused.body.intent, paused.body.answer.key]).toEqual(["draft_purchase_orders", "copilot.answer.paused"]);
+
+    await clear(owner.token, "draft").expect(200);
+    const open = await askAs("draft purchase orders").expect(200);
+    expect(open.body.intent).toBe("draft_purchase_orders");
+    expect(open.body.answer.key).not.toBe("copilot.answer.paused");
+  });
+
   it("done-means 6/7: a model call is recorded with tokens and ₹; at the cap the next ask makes ZERO model calls and health says capped", async () => {
     expect((await health(owner.token)).body).toMatchObject({ capInr: 0.01, capped: false, modelCalls: 0, spendInr: 0 });
 
@@ -150,7 +166,7 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
 
     const second = await ask("what colour is the canteen wall").expect(200);
     expect(modelCalls).toBe(1); // capped: nothing left the box
-    expect(second.body.answer.key).toBe("copilot.answer.notUnderstood");
+    expect(second.body.answer.key).toBe("copilot.answer.notUnderstoodCan");
     expect((await rows())[1]).toMatchObject({ capped: true, modelCalls: 0, costMicroInr: 0, route: "none" });
     // The phrasebook still answers what it knows.
     expect((await ask("kitna wait hai").expect(200)).body.source).toBe("phrasebook");

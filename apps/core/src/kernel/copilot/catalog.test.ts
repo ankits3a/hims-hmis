@@ -56,6 +56,16 @@ describe("collectCopilotTools", () => {
     expect(() => collectCopilotTools(reg)).toThrow(/queue_depth/);
   });
 
+  it("refuses at boot a draft_* tool not declared kind \"draft\", and the reverse (#678)", () => {
+    // An untagged draft tool answers straight through a draft halt.
+    const untagged = registryOf([manifest("pharmacy", [tool({ intent: "draft_purchase_orders" })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(untagged)).toThrow(/draft_purchase_orders/);
+    const misnamed = registryOf([manifest("opd", [tool({ kind: "draft" })], ["opd.queue.read"])]);
+    expect(() => collectCopilotTools(misnamed)).toThrow(/queue_depth/);
+    const tagged = registryOf([manifest("pharmacy", [tool({ intent: "draft_purchase_orders", kind: "draft" })], ["opd.queue.read"])]);
+    expect(collectCopilotTools(tagged)).toHaveLength(1);
+  });
+
   it("refuses at boot on a permission no manifest declares", () => {
     const reg = registryOf([manifest("opd", [tool({ permission: "opd.invented" })], ["opd.queue.read"])]);
     expect(() => collectCopilotTools(reg)).toThrow(/opd\.invented/);

@@ -3,6 +3,7 @@ import { toolHalted } from "./halt";
 import { CopilotError } from "./types";
 import type { CopilotHaltScope } from "../db/schema";
 import type { CopilotAnswer, CopilotToolCtx, CopilotToolDecl } from "./types";
+import type { CopilotIntent } from "./phrasebook";
 import type { ModuleRegistry } from "../modules/loader";
 
 /**
@@ -55,6 +56,20 @@ export function collectCopilotTools(
         "act_undeclared",
         `copilot tool "${t.intent}" must declare kind "act" and an act block together — ` +
           "a write without kind \"act\" slips the act halt, and kind \"act\" without a write has nothing to confirm",
+      );
+    }
+
+    /*
+      #678 — A DRAFT IS NAMED AND DECLARED TOGETHER. The plan's `draft_*` intents prepare something a
+      person then reviews; the draft halt stops tools declared `kind: "draft"`. A `draft_*` tool left
+      untagged answers straight through a draft halt, and a tagged tool not named `draft_*` hides
+      from whoever reads the phrasebook.
+    */
+    if (t.intent.startsWith("draft_") !== (t.kind === "draft")) {
+      throw new CopilotError(
+        "draft_undeclared",
+        `copilot tool "${t.intent}" must be named draft_* and declare kind "draft" together — ` +
+          "an untagged draft tool answers through a draft halt",
       );
     }
 
@@ -144,4 +159,20 @@ export async function toolPermitted(tool: Pick<CopilotToolDecl, "permission" | "
 async function admitted(permissions: readonly string[], can: PermissionCheck): Promise<boolean> {
   for (const p of permissions) if (await can(p)) return true;
   return false;
+}
+
+/**
+ * #676 — what "I did not understand" offers instead: the help sentence's abilities, in this order,
+ * kept to the ones THIS asker may use. A doctor is never offered what a patient owes (owner: the
+ * doctor never sees payment); a cashier is. Checked exactly as `runTool` checks, before anything runs.
+ */
+export const HELP_INTENTS: readonly CopilotIntent[] = ["visit_status", "queue_depth", "patient_dues", "my_day_report"];
+
+export async function helpIntentsFor(tools: readonly CopilotToolDecl[], can: PermissionCheck): Promise<CopilotIntent[]> {
+  const out: CopilotIntent[] = [];
+  for (const intent of HELP_INTENTS) {
+    const tool = tools.find((t) => t.intent === intent);
+    if (tool !== undefined && await toolPermitted(tool, can)) out.push(intent);
+  }
+  return out;
 }

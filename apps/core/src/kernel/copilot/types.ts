@@ -206,7 +206,7 @@ export type CopilotActSpec<A = unknown> = {
 export const defineAct = <A>(spec: CopilotActSpec<A>): CopilotActSpec => spec as CopilotActSpec;
 
 export class CopilotError extends Error {
-  constructor(readonly code: "duplicate_tool" | "undeclared_permission" | "act_undeclared", message: string) {
+  constructor(readonly code: "duplicate_tool" | "undeclared_permission" | "act_undeclared" | "draft_undeclared", message: string) {
     super(message);
     this.name = "CopilotError";
   }
