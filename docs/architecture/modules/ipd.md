@@ -23,6 +23,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_ACTOR_ROLE_KEYS: Record<IpdActorKind, readonly string[]>`
   - `admissionIntentFor(from: string, to: string): IpdIntentName | null`
   - `admissionWorkflowDefinition: WorkflowDefinition`
+  - `requestedBudgetMinutes(requestedAt: Date, plannedFor?: Date): number`
   - types: `AdmissionTransition`
 - `bed-attributes.ts`
   - `IPD_BED_EQUIPMENT`

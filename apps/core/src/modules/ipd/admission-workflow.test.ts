@@ -1,7 +1,7 @@
 import { IPD_INTENTS } from "@hmis/contracts";
 import { defineWorkflow, WorkflowValidationError } from "../../kernel/workflow/definition";
 import {
-  ADMISSION_TRANSITIONS, ADMISSION_WORKFLOW_DEF_KEY, IPD_ACTOR_ROLE_KEYS, admissionIntentFor, admissionWorkflowDefinition,
+  ADMISSION_TRANSITIONS, ADMISSION_WORKFLOW_DEF_KEY, requestedBudgetMinutes, IPD_ACTOR_ROLE_KEYS, admissionIntentFor, admissionWorkflowDefinition,
 } from "./admission-workflow";
 
 /**
@@ -85,5 +85,13 @@ describe("the IPD admission workflow definition", () => {
   it("a definition with a dangling state is refused by the engine (the validator is live, not decorative)", () => {
     const broken = { ...def, states: [...def.states, { name: "limbo", sla: { minutes: 5, alerting: "record_only" } }] };
     expect(() => defineWorkflow(broken)).toThrow(WorkflowValidationError);
+  });
+
+  it("an advance booking's requested clock runs to plannedFor + 24 h, not request time + 24 h", () => {
+    const at = new Date("2030-01-01T10:00:00.000Z");
+    expect(requestedBudgetMinutes(at)).toBe(1440);
+    expect(requestedBudgetMinutes(at, new Date("2030-01-01T09:00:00.000Z"))).toBe(1440);
+    expect(requestedBudgetMinutes(at, new Date("2030-01-04T10:00:00.000Z"))).toBe(3 * 1440 + 1440);
+    expect(requestedBudgetMinutes(at, new Date("2030-01-01T10:00:30.000Z"))).toBe(1441);
   });
 });

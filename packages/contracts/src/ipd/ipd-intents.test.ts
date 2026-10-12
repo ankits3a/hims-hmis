@@ -1,5 +1,9 @@
+import { z } from "zod";
 import {
+  IPD_CLOCK_SKEW_MS,
   IPD_INTENTS,
+  IpdProvenanceRecordSchema,
+  ipdIsInFuture,
   IPD_INTENT_NAMES,
   IPD_REFUSALS,
   ipdIdempotencyScope,
@@ -205,5 +209,52 @@ describe("IPD metadata", () => {
     expect(keys).toContain("payments");
     expect(keys).toContain("amountPaise");
     expect(ipdSchemaKeys(IPD_INTENTS.administer_dose.input)).toEqual(expect.arrayContaining(["wristbandCode", "overrideReason", "pinProof"]));
+  });
+});
+
+describe("review fixes on PR #745 (cross-field rules live in the contract, not a screen)", () => {
+  const parse = (name: IpdIntentName, patch: Record<string, unknown>) =>
+    IPD_INTENTS[name].input.safeParse({ ...IPD_SAMPLE_INPUTS[name], ...patch }).success;
+
+  it("admit: an approved waiver names its approval; scheme and emergency exemptions need none", () => {
+    expect(parse("admit", { deposit: { exempt: "approved_waiver" } })).toBe(false);
+    expect(parse("admit", { deposit: { exempt: "approved_waiver", approvalId: id(30) } })).toBe(true);
+    expect(parse("admit", { deposit: { exempt: "scheme" } })).toBe(true);
+    expect(parse("admit", { deposit: { exempt: "emergency_not_stabilised" } })).toBe(true);
+  });
+
+  it("administer_dose can refuse a give stamped in the future (2-minute skew allowance)", () => {
+    expect(IPD_INTENTS.administer_dose.refusals).toContain("time_in_future");
+    const now = new Date("2030-01-01T10:00:00.000Z");
+    expect(ipdIsInFuture("2030-01-01T10:01:59.000Z", now)).toBe(false);
+    expect(ipdIsInFuture("2030-01-01T10:02:01.000Z", now)).toBe(true);
+    expect(IPD_CLOCK_SKEW_MS).toBe(120_000);
+  });
+
+  it("record_vitals: at least one value, or refused with none; a device id only and always with a device source", () => {
+    expect(parse("record_vitals", { values: {} })).toBe(false);
+    expect(parse("record_vitals", { values: {}, refused: true, source: "person", deviceId: undefined })).toBe(true);
+    expect(parse("record_vitals", { refused: true })).toBe(false);
+    expect(parse("record_vitals", { deviceId: undefined })).toBe(false);
+    expect(parse("record_vitals", { source: "person" })).toBe(false);
+    expect(parse("record_vitals", { source: "person", deviceId: undefined })).toBe(true);
+  });
+
+  it("settle_final_bill: each settlement kind carries what it rests on", () => {
+    expect(parse("settle_final_bill", { payments: [] })).toBe(false);
+    expect(parse("settle_final_bill", { settlement: "dues_approved" })).toBe(false);
+    expect(parse("settle_final_bill", { settlement: "dues_approved", duesApprovalId: id(31) })).toBe(true);
+    expect(parse("settle_final_bill", { settlement: "insurer_pending_undertaking" })).toBe(false);
+    expect(parse("settle_final_bill", { settlement: "insurer_pending_undertaking", undertakingDocumentId: id(32) })).toBe(true);
+  });
+
+  it("provenance allows a system act: { source: system, actor: system }", () => {
+    expect(IpdProvenanceRecordSchema.safeParse({ source: "system", actor: "system" }).success).toBe(true);
+    expect(IpdProvenanceRecordSchema.safeParse({ source: "robot", actor: "system" }).success).toBe(false);
+  });
+
+  it("ipdSchemaKeys walks tuple and lazy schemas", () => {
+    const nested = z.lazy(() => z.object({ rows: z.tuple([z.object({ visitFeeRupees: z.number() })]) }));
+    expect(ipdSchemaKeys(nested)).toEqual(expect.arrayContaining(["rows", "visitFeeRupees"]));
   });
 });
