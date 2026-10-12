@@ -1,0 +1,154 @@
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { PaperScreen } from "../components/paper-screen";
+import { fetchTaskBoard } from "../lib/tasks-api";
+import { clockOf, kindLabel, useServerNow } from "./my-tasks";
+import type { BoardFloor, BoardWorker, TaskCard } from "@hmis/contracts";
+import "./tasks.css";
+
+/**
+ * ═══ E0.1 TASK ENGINE (issue #713) — THE SUPERVISOR'S TASK BOARD (16:9) ═══
+ *
+ * Open work by floor, the latest first, each with a live clock in words ("12 min late") beside a coloured
+ * edge — the word carries the meaning, the colour only repeats it; floors with the most late work lead. On the right, every worker on duty
+ * and their load. Designed for 1920 × 1080, tested down to 1366 × 768, and it never scrolls the page:
+ * a floor with more rows than fit says "+N more" instead.
+ */
+const ROW_PX = 52;
+/** A floor's heading and its "+N more" line: what the rows cannot use inside a column. */
+const FLOOR_CHROME_PX = 44 + 36;
+
+/**
+ * How many rows fit in a floor column, MEASURED from the column area itself (a ResizeObserver), so the
+ * board never grows a scrollbar whatever the shell above it measures. Before the first measure (and in
+ * jsdom, which lays nothing out) it guesses from the window.
+ */
+function useRowsThatFit(): [React.RefObject<HTMLDivElement | null>, number] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const fromWindow = (): number => Math.max(3, Math.floor(((typeof window === "undefined" ? 900 : window.innerHeight) - 330) / ROW_PX));
+  const [rows, setRows] = useState(fromWindow);
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      const h = el.clientHeight;
+      if (h > 0) setRows(Math.max(2, Math.floor((h - FLOOR_CHROME_PX) / ROW_PX)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, rows];
+}
+
+export function TasksBoard(): React.ReactElement {
+  const { t, i18n } = useTranslation();
+  const lang = (i18n.language as string | undefined) ?? "en";
+  const q = useQuery({ queryKey: ["tasks", "board"], queryFn: fetchTaskBoard, refetchInterval: 15_000 });
+  const now = useServerNow(q.data?.serverNow);
+  const [floorsRef, rows] = useRowsThatFit();
+  const clock = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(now));
+  const board = q.data;
+  const late = board === undefined ? 0 : board.floors.reduce((n, f) => n + f.tasks.filter((c) => Date.parse(c.dueAt) <= now).length, 0);
+
+  return (
+    <PaperScreen testId="tasks-board" style={{ height: "var(--pp-h)" }}>
+      <div className="tk-board">
+        <div className="tk-head">
+          <h1>{t("tasks.board.title")}</h1>
+          {board !== undefined && (
+            <div className="tk-sum">
+              <span className="tk-count" data-testid="board-open"><b>{board.counts.open}</b>{t("tasks.board.open")}</span>
+              <span className={late > 0 ? "tk-count late" : "tk-count"} data-testid="board-late"><b>{late}</b>{t("tasks.board.late")}</span>
+              <span className="tk-count" data-testid="board-pool"><b>{board.counts.pool}</b>{t("tasks.board.pool")}</span>
+            </div>
+          )}
+          {q.isError && <span className="pill rd">{t("tasks.offline")}</span>}
+          <span className="tk-now" data-testid="board-clock">{clock}</span>
+        </div>
+        <div className="tk-main">
+          <div className="tk-floors" ref={floorsRef}>
+            {board !== undefined && board.floors.length === 0 && (
+              <div className="box tk-floor"><div className="tk-empty" data-testid="board-none">{t("tasks.board.none")}</div></div>
+            )}
+            {(board?.floors ?? []).map((f) => <Floor key={f.floorName ?? "-"} f={f} now={now} lang={lang} rows={rows} />)}
+          </div>
+          <div className="tk-side">
+            <Workers workers={board?.workers ?? []} />
+            {(board?.toVerify.length ?? 0) > 0 && (
+              <section className="box tk-verify" data-testid="board-verify">
+                <header>{t("tasks.board.toVerify", { count: board!.toVerify.length })}</header>
+                {board!.toVerify.slice(0, 4).map((c) => (
+                  <div key={c.id} className="tk-worker"><span className="n">{kindLabel(c, t)}</span><span className="c">{c.placeCode ?? ""}</span></div>
+                ))}
+              </section>
+            )}
+          </div>
+        </div>
+      </div>
+    </PaperScreen>
+  );
+}
+
+function Floor({ f, now, lang, rows }: { f: BoardFloor; now: number; lang: string; rows: number }): React.ReactElement {
+  const { t } = useTranslation();
+  const lateHere = f.tasks.filter((c) => Date.parse(c.dueAt) <= now).length;
+  const shown = f.tasks.length > rows ? f.tasks.slice(0, rows) : f.tasks;
+  return (
+    <section className="box tk-floor" data-testid={`floor-${f.floorName ?? "none"}`}>
+      <header>
+        <b>{f.floorName ?? t("tasks.board.noFloor")}</b>
+        <span className={lateHere > 0 ? "pill rd" : "pill"}>
+          {lateHere > 0 ? t("tasks.board.floorLate", { count: lateHere, open: f.tasks.length }) : t("tasks.board.floorOpen", { count: f.tasks.length })}
+        </span>
+      </header>
+      <div className="tk-rows">
+        {shown.map((c) => <Row key={c.id} c={c} now={now} lang={lang} />)}
+        {shown.length < f.tasks.length && (
+          <div className="tk-more" data-testid="floor-more">{t("tasks.board.more", { count: f.tasks.length - shown.length })}</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function Row({ c, now, lang }: { c: TaskCard; now: number; lang: string }): React.ReactElement {
+  const { t } = useTranslation();
+  const clock = clockOf(c.dueAt, now, t, lang);
+  const who = c.assigneeName ?? t("tasks.board.unassigned");
+  return (
+    <div className={`tk-row ${clock.tone}`} data-testid={`row-${c.id}`}>
+      <span className="bar" />
+      <span style={{ minWidth: 0 }}>
+        <div className="t1">{c.placeName ?? t("tasks.noPlace")}</div>
+        <div className="t2">
+          {c.priority !== "routine" && <b className={c.priority === "stat" ? "tk-clock late" : "tk-clock soon"}>{t(`tasks.priority.${c.priority}`)} · </b>}
+          {kindLabel(c, t)} · {who} · {t(`tasks.state.${c.state}`)}
+        </div>
+      </span>
+      <span className={`r tk-clock ${clock.tone}`} data-testid="row-clock">{clock.text}</span>
+    </div>
+  );
+}
+
+function Workers({ workers }: { workers: BoardWorker[] }): React.ReactElement {
+  const { t } = useTranslation();
+  const max = Math.max(1, ...workers.map((w) => w.open));
+  return (
+    <section className="box tk-workers" data-testid="board-workers">
+      <header>{t("tasks.board.workers")}</header>
+      {workers.length === 0 && <div className="tk-more">{t("tasks.board.noWorkers")}</div>}
+      {workers.map((w) => (
+        <div key={w.userId} className="tk-worker" data-testid={`worker-${w.userId}`}>
+          <span className="n">{w.name}</span>
+          <span className="c">{t("tasks.board.load", { count: w.open })}</span>
+          <span className="s">
+            <span className="tk-load"><i style={{ width: `${Math.round((w.open / max) * 100)}%` }} /></span>
+            <span>{w.onDuty ? t("tasks.board.onDuty") : t("tasks.board.offDuty")}</span>
+            {w.inProgress > 0 && <span>· {t("tasks.board.busy", { count: w.inProgress })}</span>}
+          </span>
+        </div>
+      ))}
+    </section>
+  );
+}
