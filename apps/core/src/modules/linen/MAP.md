@@ -82,9 +82,9 @@ two counts (issued includes borrowed in; returned = soiled + infected + borrowed
 - Idempotency: a per-tap `idempotencyKey` makes a double tap one act (movements: kind + ward + key; counts: ward + key;
   batches: key). The phone mints a fresh key per Save.
 - Never hand-write the IST offset: batch numbers use `istDayString`, windows `istDayWindow` (`ist-clock-parity`).
-- **The kind registry is in-process** (tasks MAP §4): the API defines `linen_change` by loading this index. The worker
-  does NOT import linen today, so a late linen change task gets the engine's default ladder and no one is told until the
-  worker imports this index. Whoever wires the first call from IPD must add that import (the bmw lane's pattern).
+- **The kind registry is in-process** (tasks MAP §4): the API defines `linen_change` by loading this index; the worker
+  defines it by importing `LINEN_CHANGE_TASK` into `kernel/worker/worker.module.ts` (`WORKER_TASK_KINDS`, pinned by
+  `kernel/worker/task-kinds.test.ts`). The linen manifest itself stays API-only.
 - No patient and no money on either screen; `raiseLinenChange` passes a patient id through to the task only.
 
 ## 5. Who calls linen
