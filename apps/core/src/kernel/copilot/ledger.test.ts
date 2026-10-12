@@ -142,9 +142,28 @@ describe("E0.1 — the copilot ledger at the database", () => {
     expect(h.byRoute.model.p50Ms).toBeNull();
     expect(h.acts).toBe(1);
     expect(Object.keys(h).sort()).toEqual(
-      ["acts", "askers", "asks", "byOutcome", "byRoute", "cappedAsks", "date", "modelCalls", "notUnderstoodShare", "spendInr"], // E0.5: + the cost meter, still no per-person field
+      ["acts", "askers", "asks", "byOutcome", "byRoute", "cappedAsks", "date", "modelCalls", "notUnderstoodShare", "spendInr",
+        "wrongShare", "wrongTaps"], // E0.5: + the cost meter; G3b: + Wrong taps — still no per-person field
     );
     expect(JSON.stringify(h)).not.toMatch(/u-1|u-2/);
+  });
+
+  it("G3b (#673): the day's Wrong taps ÷ answered asks — another day's tap not counted, null with no asks", async () => {
+    const tapped = await anAsk(0);
+    await anAsk(0, { actor: { type: "user", id: "u-2" } });
+    const otherDay = await anAsk(3 * DAY);
+    expect(await recordWrong(db, "u-1", tapped)).toBe(true);
+    expect(await recordWrong(db, "u-1", otherDay)).toBe(true);
+
+    const h = await readCopilotHealth(db, istToday());
+    expect(h.asks).toBe(2);
+    expect(h.wrongTaps).toBe(1);
+    expect(h.wrongShare).toBeCloseTo(0.5);
+    expect(JSON.stringify(h)).not.toMatch(/u-1|u-2/);
+
+    const empty = await readCopilotHealth(db, "2001-01-01");
+    expect(empty.wrongTaps).toBe(0);
+    expect(empty.wrongShare).toBeNull();
   });
 
   it("the staff notice: unseen until acknowledged, then seen for good; acknowledging twice is harmless", async () => {

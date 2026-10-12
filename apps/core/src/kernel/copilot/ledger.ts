@@ -158,6 +158,10 @@ export type CopilotHealth = {
   byRoute: Record<CopilotRoute, RouteTimings>;
   /** notUnderstood ÷ asks (goal G3a); null on a day with no asks. */
   notUnderstoodShare: number | null;
+  /** G3b — "Wrong" taps on that day's asks (the ask's day, not the tap's). A count, never who tapped. */
+  wrongTaps: number;
+  /** wrongTaps ÷ answered asks that day (goal G3b); null on a day with no answered asks. */
+  wrongShare: number | null;
   /** Act rows written that day (zero until E0.2 writes any). */
   acts: number;
   /** E0.5 — chooser + model calls that day, and their ESTIMATED cost in rupees (2 decimals). */
@@ -183,6 +187,11 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
     .select({ n: sql<number>`count(*)::int` })
     .from(copilotActs)
     .where(and(gte(copilotActs.at, from), lt(copilotActs.at, to)));
+  const [wrong] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(copilotAskFeedback)
+    .innerJoin(copilotAsks, eq(copilotAsks.id, copilotAskFeedback.askId))
+    .where(and(eq(copilotAskFeedback.verdict, "wrong"), gte(copilotAsks.at, from), lt(copilotAsks.at, to)));
 
   const byOutcome = Object.fromEntries(COPILOT_ASK_OUTCOMES.map((o) => [o, 0])) as Record<CopilotAskOutcome, number>;
   for (const a of asks) byOutcome[a.outcome as CopilotAskOutcome] += 1;
@@ -199,6 +208,8 @@ export async function readCopilotHealth(db: Db, date: string): Promise<CopilotHe
     byOutcome,
     byRoute,
     notUnderstoodShare: asks.length === 0 ? null : byOutcome.notUnderstood / asks.length,
+    wrongTaps: wrong?.n ?? 0,
+    wrongShare: byOutcome.answered === 0 ? null : (wrong?.n ?? 0) / byOutcome.answered,
     acts: acts?.n ?? 0,
     modelCalls: asks.reduce((n, a) => n + a.modelCalls, 0),
     spendInr: Math.round(asks.reduce((n, a) => n + a.costMicroInr, 0) / 10_000) / 100,
