@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** —
 - **Used by modules:** —
-- **Kernel used:** `workflow`
+- **Kernel used:** `db`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
