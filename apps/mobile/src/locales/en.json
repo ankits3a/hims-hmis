@@ -1089,6 +1089,18 @@
     "myDuties": {
       "title": "My duties",
       "hint": "Your duties this month, swaps and covers."
+    },
+    "qcollect": {
+      "title": "Quick Collect",
+      "hint": "Waiting for blood"
+    },
+    "qbench": {
+      "title": "Quick Bench",
+      "hint": "Enter results"
+    },
+    "qreports": {
+      "title": "Quick Reports",
+      "hint": "Hand over reports"
     }
   },
   "vitalsBay": {
@@ -2976,6 +2988,60 @@
       "approved": "Approved",
       "rejected": "Not approved",
       "cancelled": "Taken back"
+    }
+  },
+  "quickLab": {
+    "loading": "Loading…",
+    "summary": "Summary",
+    "otherParams": "Other parameters",
+    "yearShort": "y",
+    "sex": {
+      "m": "M",
+      "f": "F",
+      "o": "O"
+    },
+    "collect": {
+      "find": "UHID or order no.",
+      "scan": "Scan card",
+      "waitingCount": "Waiting · {{n}}",
+      "waiting": "waiting {{minutes}} min",
+      "collected": "Blood collected",
+      "done": "{{name}} · {{sample}}",
+      "empty": "Nobody waiting",
+      "notWaiting": "Not waiting for blood",
+      "badCard": "Card not valid"
+    },
+    "bench": {
+      "count": "To report · {{n}}",
+      "collectedAt": "collected {{at}}",
+      "draft": "Draft",
+      "empty": "Bench is empty",
+      "calc": "CALC",
+      "saveDraft": "Save draft",
+      "saveComplete": "Save & Complete",
+      "draftSaved": "Draft saved",
+      "completed": "{{name}} · completed"
+    },
+    "reports": {
+      "count": "Ready · {{n}}",
+      "completedAt": "completed {{at}}",
+      "empty": "No reports ready",
+      "handedToday": "Handed over today · {{n}}",
+      "handOver": "Hand over",
+      "sendBack": "Send back to bench",
+      "handedOver": "{{name}} · handed over",
+      "sentBack": "{{name}} · sent back",
+      "notSigned": "Not signed",
+      "printOnPc": "Print at the desk PC"
+    },
+    "err": {
+      "lab_mode_off": "Lab is in Full mode",
+      "not_completed": "Report not complete",
+      "not_found": "Not found",
+      "forbidden": "Not allowed",
+      "conflict": "Changed elsewhere · reopen",
+      "offline": "No connection",
+      "failed": "Could not save"
     }
   }
 }

@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import { useI18n } from "../i18n";
 import { useNotifications } from "../notifications";
 import { seatsFor } from "../seats";
+import { useLabMode } from "../lab/mode";
 import { useSession } from "../session";
 import { color, radius, space, TOUCH, type } from "../theme";
 import { APP_VERSION, APP_VERSION_CODE } from "../config";
@@ -68,7 +69,11 @@ export function SeatHome() {
   const me = signedIn ? state.me : null;
   const user = signedIn ? state.me.actor.id : "";
   const permissions = useMemo(() => me?.permissions.hospital ?? [], [me]);
-  const seatKeys = useMemo(() => (me === null ? [] : seatsFor(me.permissions).map((s) => s.key)), [me]);
+  // Owner 2026-10-12 — the quick-lab screens show only while the lab runs Quick.
+  const labMode = useLabMode();
+  // Keyed on the list itself, so a mode read that hides nothing does not reload the home.
+  const seatList = me === null ? "" : seatsFor(me.permissions, labMode).map((s) => s.key).join(",");
+  const seatKeys = useMemo(() => (seatList === "" ? [] : seatList.split(",") as ReturnType<typeof seatsFor>[number]["key"][]), [seatList]);
   const [home, setHome] = useState<{ sources: Sources; at: number; header: HeaderFacts; unread: number | null; recording?: RecordingReport | null; owner?: OwnerHome | null; pace?: MyPace | null } | null>(() => (lastHome !== null && lastHome.user === user ? lastHome : null));
   /** What this phone last drew before it was closed — counts only, shown when nothing can be read (`home/cache.ts`). */
   const [cold, setCold] = useState<ColdHome | null>(null);
@@ -188,7 +193,7 @@ export function SeatHome() {
     setAsked("yes");
   }, [fetcher]);
   if (state.status !== "signedIn") return null;
-  const seats = seatsFor(state.me.permissions);
+  const seats = seatsFor(state.me.permissions, labMode);
   const who = headerOf(state.me.profile, state.username, home?.header ?? null, t);
   const needs = model === null ? [] : showAll ? model.allNeeds : model.needs;
   const badgeOf = (key: string) => model?.work.find((w) => w.key === key) ?? null;
