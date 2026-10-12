@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import { renderWithProviders as render } from "../test-utils";
 import userEvent from "@testing-library/user-event";
 import { CopilotActPicker } from "./copilot-act-pick";
-import type { CopilotCoverPick, CopilotLeavePick } from "@hmis/contracts";
+import type { CopilotCoverPick, CopilotLeavePick, CopilotReminderPick } from "@hmis/contracts";
 import type { CopilotProposal } from "../lib/copilot-api";
 
 /** E2.2 — pick a kind (or a person), see the card, Confirm sends THAT proposal; nothing is sent before. */
@@ -47,5 +47,20 @@ describe("CopilotActPicker (E2.2)", () => {
     await userEvent.click(screen.getByTestId("copilot-act-back"));
     expect(screen.queryByTestId("copilot-act-confirm")).toBeNull();
     expect(sent).toEqual([]);
+  });
+});
+
+describe("CopilotActPicker (E2.3 — a reminder)", () => {
+  it("opens on the card: the person's words, when it rings and how it repeats; Confirm sends the one proposal", async () => {
+    const sent: CopilotProposal[] = [];
+    const pick: CopilotReminderPick = { kind: "reminderPick", text: "see bed 12", at: "2026-11-20T10:30:00.000Z", repeat: "daily", proposal: 0 };
+    render(<CopilotActPicker pick={pick} proposals={proposals} busy={false} onConfirm={(p) => sent.push(p)} onDismiss={() => undefined} />);
+    expect(screen.getByTestId("copilot-act-pick")).toHaveTextContent("Set this reminder?");
+    const card = screen.getByTestId("copilot-act-confirm");
+    expect(card).toHaveTextContent("see bed 12");
+    expect(screen.getByTestId("copilot-act-detail")).toHaveTextContent("on Friday 20 Nov at 16:00 · Every day");
+    expect(screen.queryByTestId("copilot-act-back")).toBeNull();
+    await userEvent.click(screen.getByTestId("copilot-act-confirm-go"));
+    expect(sent).toEqual([{ id: "p0" }]);
   });
 });

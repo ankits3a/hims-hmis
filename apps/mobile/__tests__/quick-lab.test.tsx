@@ -359,3 +359,81 @@ describe("Quick Reports", () => {
     expect(await screen.findByTestId("qr-handover")).not.toHaveTextContent(/Hand over/);
   });
 });
+
+/* ═══════════════════════ owner 2026-10-12 — antibiotic sensitivity table ═══════════════════════ */
+
+describe("Quick Bench — antibiotic sensitivity (owner 2026-10-12)", () => {
+  const URINE = { serviceId: "s-cs", code: "CS_URINE", nameEn: "Urine culture & sensitivity" };
+  const CULT_CAT = {
+    tests: [{ ...URINE, analyteIds: ["a-org"] }],
+    analytes: [{ analyteId: "a-org", code: "MIC_ORG", nameEn: "Organism isolated", unit: null, resultType: "text", decimals: 0, absurdLow: null, absurdHigh: null }],
+  };
+  function world() {
+    const base = row("r1", RAM, "waiting", { tests: [URINE] });
+    const report = { ...base, analyteIds: ["a-org"], groups: [], lines: [], summary: "", ast: [], collectedByName: null, reportedByName: null, hospital: { name: "", address: "", hotline: "", emergency: "", email: "", website: "" }, visitQrSvg: null };
+    return server(["lab.results.enter"], {
+      "GET /lab/quick/queue": () => ({ status: 200, body: { waiting: [base], reportedToday: [] } }),
+      "GET /lab/quick/catalogue": () => ({ status: 200, body: CULT_CAT }),
+      "GET /lab/quick/reports/r1": () => ({ status: 200, body: report }),
+      "GET /lab/quick/ranges": () => ({ status: 200, body: { items: [] } }),
+      "PUT /lab/quick/reports/r1": () => ({ status: 200, body: { ...report, status: "reported" } }),
+    });
+  }
+  async function open(w: ReturnType<typeof world>, organism: string) {
+    await mount(w.fetcher, <QuickBench />);
+    await fireEvent.press(await screen.findByTestId("qb-row-r1"));
+    await fireEvent.changeText(await screen.findByTestId("qb-input-a-org"), organism);
+  }
+
+  it("the urine panel fills the table; 3 S + 2 R are what Save & Complete sends; a bad MIC is stopped first", async () => {
+    const w = world();
+    await open(w, "Escherichia coli");
+    await fireEvent.press(await screen.findByTestId("qb-ast-panel-ent_urine"));
+    expect(screen.getByTestId("qb-ast-row-NIT")).toHaveTextContent(/Nitrofurantoin/);
+    for (const [code, x] of [["AMP", "R"], ["CIP", "R"], ["NIT", "S"], ["MEM", "S"], ["AMK", "S"]] as const) {
+      await fireEvent.press(screen.getByTestId(`qb-ast-${code}-${x}`));
+    }
+    await fireEvent.changeText(screen.getByTestId("qb-ast-mic-AMP"), ">32");
+    await fireEvent.press(screen.getByTestId("qb-complete"));
+    expect(await screen.findByTestId("ql-error")).toHaveTextContent(/row 1 \(Ampicillin\): the MIC must be a plain number/);
+    expect(w.of("PUT /lab/quick/reports/r1")).toHaveLength(0);
+
+    await fireEvent.changeText(screen.getByTestId("qb-ast-mic-AMP"), "32");
+    await fireEvent.press(screen.getByTestId("qb-complete"));
+    await screen.findByTestId("qb-done");
+    const sent = w.of("PUT /lab/quick/reports/r1")[0]!.body as { ast: unknown };
+    expect(sent.ast).toEqual([{ serviceId: "s-cs", rows: [
+      { antibiotic: "AMP", result: "R", mic: "32" },
+      { antibiotic: "MEM", result: "S", mic: null },
+      { antibiotic: "AMK", result: "S", mic: null },
+      { antibiotic: "CIP", result: "R", mic: null },
+      { antibiotic: "NIT", result: "S", mic: null },
+    ] }]);
+  });
+
+  it("“No growth” hides the table and sends no rows", async () => {
+    const w = world();
+    await open(w, "No growth");
+    expect(screen.getByTestId("qb-ast-nogrowth-CS_URINE")).toHaveTextContent("No growth · no table");
+    expect(screen.queryByTestId("qb-ast-CS_URINE")).toBeNull();
+    await fireEvent.press(screen.getByTestId("qb-complete"));
+    await screen.findByTestId("qb-done");
+    expect((w.of("PUT /lab/quick/reports/r1")[0]!.body as { ast: unknown }).ast).toEqual([{ serviceId: "s-cs", rows: [] }]);
+  });
+
+  it("Quick Reports shows the table with the result words", async () => {
+    const done = row("r2", SITA, "reported", { tests: [URINE] });
+    const w = server(["lab.reports.print"], {
+      "GET /lab/quick/ready": () => ({ status: 200, body: { ready: [done], handedOverToday: [] } }),
+      "GET /lab/quick/ready/r2": () => ({ status: 200, body: {
+        ...done, analyteIds: ["a-org"], groups: [{ title: URINE.nameEn, analyteIds: ["a-org"] }],
+        lines: [{ analyteId: "a-org", code: "MIC_ORG", nameEn: "Organism isolated", unit: null, value: "E. coli", low: null, high: null, refText: null, flag: null }],
+        summary: "", ast: [{ serviceId: "s-cs", rows: [{ antibiotic: "AMP", result: "R", mic: null }, { antibiotic: "NIT", result: "S", mic: null }] }],
+      } }),
+    });
+    await mount(w.fetcher, <QuickReports />);
+    await fireEvent.press(await screen.findByTestId("qr-row-r2"));
+    expect(await screen.findByTestId("qr-ast-row-AMP")).toHaveTextContent(/Ampicillin.*Resistant \(R\)/);
+    expect(screen.getByTestId("qr-ast-row-NIT")).toHaveTextContent(/Sensitive \(S\)/);
+  });
+});

@@ -8,7 +8,7 @@ import { withTx } from "../db/client";
 import { userReminders } from "../db/schema";
 import { raiseNotice } from "../alerts/notices";
 import type { Actor, ReminderRepeat, ReminderRow } from "@hmis/contracts";
-import type { Db } from "../db/client";
+import type { Db, Tx } from "../db/client";
 
 /**
  * ═══ E1.2 — PERSONAL REMINDERS (decision 0064; spec /opt/hmis-context/SPEC-reminders-2026-10-11.md) ═══
@@ -65,6 +65,20 @@ const active = (userId: string) => and(eq(userReminders.userId, userId), isNull(
  * counted under a per-person transaction lock so two taps at once cannot make the 21st.
  */
 export async function createReminder(db: Db, actor: Actor, input: unknown, now: Date = new Date()): Promise<ReminderRow> {
+  return withTx(db, (tx) => createReminderIn(tx, actor, input, now));
+}
+
+/** The active reminders a person holds now: what the 20 is counted against. */
+export async function activeReminderCount(db: Db | Tx, userId: string): Promise<number> {
+  const [held] = await db.select({ n: count() }).from(userReminders).where(active(userId));
+  return held?.n ?? 0;
+}
+
+/**
+ * `createReminder` inside a transaction the caller holds — E2.3's confirmed copilot act, which writes
+ * the reminder and its `copilot_acts` row together. Same checks, same lock, same row.
+ */
+export async function createReminderIn(tx: Tx, actor: Actor, input: unknown, now: Date = new Date()): Promise<ReminderRow> {
   const userId = requireUser(actor);
   const parsed = createReminderBody.safeParse(input);
   if (!parsed.success) throw new RemindersError("invalid_reminder", parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
@@ -73,13 +87,10 @@ export async function createReminder(db: Db, actor: Actor, input: unknown, now: 
   if (due.getTime() < now.getTime() + REMINDER_MIN_LEAD_MS) throw new RemindersError("invalid_reminder", "at: must be at least a minute ahead");
   if (due.getTime() > now.getTime() + REMINDER_MAX_AHEAD_DAYS * DAY_MS) throw new RemindersError("invalid_reminder", "at: at most a year ahead");
 
-  return withTx(db, async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`user_reminders:${userId}`}))`);
-    const [held] = await tx.select({ n: count() }).from(userReminders).where(active(userId));
-    if ((held?.n ?? 0) >= REMINDER_MAX_ACTIVE) throw new RemindersError("reminder_limit");
-    const [row] = await tx.insert(userReminders).values({ id: newId(), userId, text, dueAt: due, repeat, createdAt: now }).returning();
-    return rowOut(row!);
-  });
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`user_reminders:${userId}`}))`);
+  if ((await activeReminderCount(tx, userId)) >= REMINDER_MAX_ACTIVE) throw new RemindersError("reminder_limit");
+  const [row] = await tx.insert(userReminders).values({ id: newId(), userId, text, dueAt: due, repeat, createdAt: now }).returning();
+  return rowOut(row!);
 }
 
 /** The actor's active reminders, soonest first. */

@@ -26,7 +26,8 @@
 export type CopilotIntent = "visit_status" | "queue_depth" | "patient_dues" | "my_day_report" | "stock_on_shelf" | "paid_not_collected" | "draft_short_book_entry" | "draft_purchase_orders" | "draft_payment_run" | "draft_supplier_returns" | "find_duplicate_items"
   | "roster.who_is_on" | "roster.unit_on_take" | "roster.my_duties" | "roster.ask_cover"
   | "appointment_book" | "appointment_move"
-  | "roster.leave_apply" | "roster.leave_status";
+  | "roster.leave_apply" | "roster.leave_status"
+  | "reminders.create";
 
 export type IntentMatch = {
   intent: CopilotIntent;
@@ -281,6 +282,15 @@ const CUES: Record<CopilotIntent, Cue[]> = {
     S("meri chhutti"), S("मेरी छुट्टी"), S("leave approved"), S("was my leave"), S("is my leave"),
     W("leave"), W("chutti"), W("chhutti"), W("छुट्टी"),
   ],
+  /*
+    E2.3 — A REMINDER (#593). "remind me at 4 to see bed 12", "kal 9 baje yaad dilana". Floor ONLY: the
+    words of a reminder are the person's own and may name a patient. The asking word and the phrase
+    around it both score, so the rest of the sentence ("see bed 12", "apply leave") cannot outvote it.
+  */
+  "reminders.create": [
+    S("remind me"), S("remind"), S("reminder laga"), S("reminder set"), S("set a reminder"), S("set reminder"), S("reminder"),
+    S("yaad dila"), S("yaad kara"), W("yaad"), S("याद दिला"), S("याद करा"), W("याद"),
+  ],
 };
 
 /**
@@ -313,6 +323,12 @@ const NOT_CUES: Partial<Record<CopilotIntent, string[]>> = {
   "roster.leave_status": ["chahiye", "chahie", "lena", "leni", "apply", "de do", "चाहिए", "need", "want", "take leave",
     "on leave", "par hai", "pe hai", "kaun", "who"],
 };
+
+/**
+ * E2.3 — the words that ask for a reminder count AGAINST every other intent: "remind me at 4 to check
+ * the stock", "yaad dilana leave apply karna" are a reminder about a thing, never the thing itself.
+ */
+const REMINDER_ASKS = ["remind", "yaad dila", "yaad kara", "याद दिला", "याद करा"];
 
 const PLACEHOLDER_RE = /<<P\d+>>/;
 
@@ -371,6 +387,7 @@ const NORMALISED_CUES: Record<CopilotIntent, Cue[]> = Object.fromEntries(
       cues.push({ token, weight: cue.weight });
     }
     for (const not of NOT_CUES[intent] ?? []) cues.push({ token: normalise(not), weight: -NOT_WEIGHT });
+    if (intent !== "reminders.create") for (const not of REMINDER_ASKS) cues.push({ token: normalise(not), weight: -NOT_WEIGHT });
     return [intent, cues];
   }),
 ) as Record<CopilotIntent, Cue[]>;
@@ -426,7 +443,7 @@ export function intentNames(): CopilotIntent[] {
  * menu: a question the floor does not recognise as a booking is "not understood", never guessed into
  * one. Keeping them off the menu also keeps the menu — and the eval set's recordings — unchanged.
  */
-export const FLOOR_ONLY_INTENTS = ["appointment_book", "appointment_move", "roster.leave_apply", "roster.leave_status"] as const satisfies readonly CopilotIntent[];
+export const FLOOR_ONLY_INTENTS = ["appointment_book", "appointment_move", "roster.leave_apply", "roster.leave_status", "reminders.create"] as const satisfies readonly CopilotIntent[];
 export type ModelIntent = Exclude<CopilotIntent, (typeof FLOOR_ONLY_INTENTS)[number]>;
 
 /** The menu a model is offered: every intent except the floor-only ones. */

@@ -7,6 +7,7 @@ import { useSession } from "../session";
 import { Text } from "../text";
 import { color, space } from "../theme";
 import { Button, MONO, Note } from "../ui";
+import { AstView } from "../lab/ast";
 
 /**
  * QUICK REPORTS ON THE PHONE (spec 2026-10-12; the web's /lab/qreports). Completed reports; open one
@@ -107,9 +108,15 @@ function ReportView({ id, api, t, mayEnter, onDone }: { id: string; api: QuickLa
                   </View>
                 );
               })}
+              {(r.ast ?? []).filter((b) => r.tests.find((x) => x.serviceId === b.serviceId)?.nameEn === g.title).map((b) => (
+                <AstView key={b.serviceId} block={b} title={g.title ?? ""} t={t} />
+              ))}
             </View>
           );
         })}
+        {(r.ast ?? []).filter((b) => !r.groups.some((g) => g.analyteIds.some((x) => byId.has(x)) && r.tests.find((x) => x.serviceId === b.serviceId)?.nameEn === g.title)).map((b) => (
+          <AstView key={b.serviceId} block={b} title={r.tests.find((x) => x.serviceId === b.serviceId)?.nameEn ?? ""} t={t} />
+        ))}
         {r.summary !== "" && <Text style={{ fontSize: 13.5, color: color.ink }}><Text style={{ fontWeight: "700" }}>{t("quickLab.summary")}: </Text>{r.summary}</Text>}
         <Text style={{ fontSize: 11.5, color: color.faint }}>{t("quickLab.reports.notSigned")}</Text>
       </View>

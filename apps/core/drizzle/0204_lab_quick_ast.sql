@@ -1,0 +1,1 @@
+ALTER TABLE "lab_quick_reports" ADD COLUMN "ast" jsonb DEFAULT '[]'::jsonb NOT NULL;

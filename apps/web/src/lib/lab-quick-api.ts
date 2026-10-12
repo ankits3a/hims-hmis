@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type { WireRecentLabOrder } from "./lab-api";
+import type { AstBlock, AstDraftRow } from "../../../../packages/contracts/src/lab-ast";
 
 /**
  * QUICK MODE (decision 0061) — the wire contract of `lab-quick.controller.ts`, transcribed. The
@@ -40,10 +41,16 @@ export type QuickReport = QuickRow & {
   hospital: { name: string; address: string; hotline: string; emergency: string; email: string; website: string };
   /** Server-drawn SVG of the visit number (the prescription footer's QR), or null with no visit. */
   visitQrSvg: string | null;
+  /** Owner 2026-10-12 — each culture test's antibiotic sensitivity table (absent on older servers). */
+  ast?: AstBlock[];
 };
 export type QuickQueue = { waiting: QuickRow[]; reportedToday: QuickRow[] };
 export type StartQuick = { patientId: string; encounterNo: string | null; serviceIds: string[]; bloodCollected: boolean };
-export type SaveQuickResults = { lines: { analyteId: string; value: string }[]; summary: string; complete?: boolean };
+export type SaveQuickResults = {
+  lines: { analyteId: string; value: string }[]; summary: string; complete?: boolean;
+  /** Owner 2026-10-12 — every culture test's table; the server drops blank rows and refuses bad ones. */
+  ast?: { serviceId: string; rows: AstDraftRow[] }[];
+};
 
 export const quickCatalogue = (): Promise<QuickCatalogue> => api("GET", "/lab/quick/catalogue");
 export const quickRanges = (patientId: string, analyteIds: readonly string[]): Promise<{ items: QuickRange[] }> =>

@@ -147,3 +147,93 @@ it("OWNER 2026-10-12 — LAB MODE: in full mode a quick station says so and hide
   await waitFor(() => expect(seen.find((x) => x.method === "PUT")?.body).toEqual({ mode: "quick" }));
   await waitFor(() => expect(screen.queryByTestId("lab-mode-off")).toBeNull());
 });
+
+/* ═══ owner 2026-10-12 — the antibiotic sensitivity table (SPEC-lab-ast-table-2026-10-12.md) ═══ */
+
+const URINE = { serviceId: "s-cs", code: "CS_URINE", nameEn: "Urine culture & sensitivity" };
+const CULTURE_CATALOGUE: QuickCatalogue = {
+  tests: [{ ...URINE, analyteIds: ["a-org", "a-sum"] }],
+  analytes: [
+    { analyteId: "a-org", code: "MIC_ORG", nameEn: "Organism isolated", unit: null, resultType: "text", decimals: 0, absurdLow: null, absurdHigh: null },
+    { analyteId: "a-sum", code: "MIC_AST", nameEn: "Sensitivity summary", unit: null, resultType: "text", decimals: 0, absurdLow: null, absurdHigh: null },
+  ],
+};
+const CULTURE_ROW = { ...ROW, tests: [URINE] };
+
+function cultureBench(): Seen {
+  return mockRoutes({
+    "GET /api/auth/me": ME(["lab.results.enter", "lab.catalogue.read"]),
+    "GET /api/lab/quick/catalogue": { status: 200, body: CULTURE_CATALOGUE },
+    "GET /api/lab/quick/queue": { status: 200, body: { waiting: [CULTURE_ROW], reportedToday: [] } },
+    "GET /api/lab/quick/reports/q-1": { status: 200, body: { ...CULTURE_ROW, analyteIds: ["a-org", "a-sum"], groups: [], lines: [], summary: "", ast: [] } },
+    "GET /api/lab/quick/ranges": { status: 200, body: { items: [] } },
+    "PUT /api/lab/quick/reports/q-1": { status: 200, body: { ...REPORT, tests: [URINE], ast: [] } },
+  });
+}
+
+it("QUICK BENCH — a urine culture: the urine panel fills the table; 3 S + 2 R and a MIC are what Save & Complete sends; a bad MIC is stopped", async () => {
+  const seen = cultureBench();
+  renderWithProviders(<LabQBench />);
+  await userEvent.click(await within(await screen.findByTestId("bench-queue")).findByRole("button", { name: "Enter results Farida Khatoon" }));
+  await userEvent.type(await screen.findByLabelText("Organism isolated"), "Escherichia coli");
+  const block = await screen.findByTestId("ast-CS_URINE");
+  await userEvent.selectOptions(within(block).getByLabelText("Panel"), "ent_urine");
+  expect(within(block).getByTestId("ast-row-NIT")).toHaveTextContent("Nitrofurantoin");
+  expect(within(block).getByTestId("ast-row-FOS")).toHaveTextContent("Fosfomycin");
+  expect(within(block).getAllByRole("group")).toHaveLength(17);
+  for (const [name, word] of [["Ampicillin", "Resistant"], ["Ciprofloxacin", "Resistant"], ["Nitrofurantoin", "Sensitive"], ["Meropenem", "Sensitive"], ["Amikacin", "Sensitive"]]) {
+    await userEvent.click(within(block).getByRole("button", { name: `${name} ${word}` }));
+  }
+  await userEvent.type(within(block).getByLabelText("Meropenem MIC"), "≤0.25");
+  await userEvent.click(screen.getByRole("button", { name: "Save & Complete" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("row 2 (Meropenem): the MIC must be a plain number");
+  expect(seen.filter((s) => s.method === "PUT")).toHaveLength(0);
+
+  await userEvent.clear(within(block).getByLabelText("Meropenem MIC"));
+  await userEvent.type(within(block).getByLabelText("Meropenem MIC"), "0.25");
+  /** A row can be removed; one can be typed free. */
+  await userEvent.click(within(block).getByRole("button", { name: "Remove Colistin" }));
+  expect(within(block).queryByTestId("ast-row-COL")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Save & Complete" }));
+  await waitFor(() => expect(seen.filter((s) => s.method === "PUT")).toHaveLength(1));
+  const body = seen.find((s) => s.method === "PUT")!.body as { ast: unknown };
+  expect(body.ast).toEqual([{ serviceId: "s-cs", rows: [
+    { antibiotic: "AMP", result: "R", mic: null },
+    { antibiotic: "MEM", result: "S", mic: "0.25" },
+    { antibiotic: "AMK", result: "S", mic: null },
+    { antibiotic: "CIP", result: "R", mic: null },
+    { antibiotic: "NIT", result: "S", mic: null },
+  ] }]);
+});
+
+it("QUICK BENCH — “No growth” hides the antibiotic table and saves none", async () => {
+  const seen = cultureBench();
+  renderWithProviders(<LabQBench />);
+  await userEvent.click(await within(await screen.findByTestId("bench-queue")).findByRole("button", { name: "Enter results Farida Khatoon" }));
+  await screen.findByTestId("ast-CS_URINE");
+  await userEvent.type(screen.getByLabelText("Organism isolated"), "No growth");
+  expect(screen.queryByTestId("ast-CS_URINE")).toBeNull();
+  expect(screen.getByTestId("ast-nogrowth-CS_URINE")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Save & Complete" }));
+  await waitFor(() => expect(seen.filter((s) => s.method === "PUT")).toHaveLength(1));
+  expect((seen.find((s) => s.method === "PUT")!.body as { ast: unknown }).ast).toEqual([{ serviceId: "s-cs", rows: [] }]);
+});
+
+it("QUICK REPORTS — the preview shows the antibiotic table after the culture's fields", async () => {
+  mockRoutes({
+    "GET /api/auth/me": ME(["lab.reports.print"]),
+    "GET /api/lab/quick/ready": { status: 200, body: { ready: [{ ...CULTURE_ROW, status: "reported", reportedAt: REPORT.reportedAt, reportedBy: "u-1" }], handedOverToday: [] } },
+    "GET /api/lab/quick/ready/q-1": { status: 200, body: {
+      ...REPORT, tests: [URINE], analyteIds: ["a-org"], groups: [{ title: URINE.nameEn, analyteIds: ["a-org"] }],
+      lines: [{ analyteId: "a-org", code: "MIC_ORG", nameEn: "Organism isolated", unit: null, value: "E. coli", low: null, high: null, refText: null, flag: null }],
+      ast: [{ serviceId: "s-cs", rows: [{ antibiotic: "AMP", result: "R", mic: "32" }, { antibiotic: "NIT", result: "S", mic: null }] }],
+    } },
+  });
+  renderWithProviders(<LabQReports />);
+  await userEvent.click(within(await screen.findByTestId("ready-list")).getByRole("button", { name: "Open Farida Khatoon" }));
+  const table = await screen.findByTestId("ast-preview-s-cs");
+  expect(table).toHaveTextContent("Ampicillin");
+  expect(table).toHaveTextContent("Resistant (R)");
+  expect(table).toHaveTextContent("MIC (µg/mL)");
+  expect(table).toHaveTextContent("Nitrofurantoin");
+});
