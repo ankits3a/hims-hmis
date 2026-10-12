@@ -11,16 +11,62 @@ import {
  */
 
 const IsolationSchema = z.enum(["none", "contact", "droplet", "airborne"]);
+/**
+ * E1.2 (ipd-admit, DECIDED): how a consent was taken. A tablet signature or an OTP to the attendant files a document
+ * (`documentId`); the fallback is the paper form, ticked "paper consent signed" with the witness's name. OTP and
+ * e-sign integration are later work: until then `otp` and `tablet_signature` carry the captured document.
+ */
+export const IPD_CONSENT_METHODS = ["tablet_signature", "otp", "paper"] as const;
 const ConsentSchema = z.strictObject({
   signedBy: IpdSignerSchema,
-  documentId: IpdIdSchema,
+  /** The filed consent document. Required unless the method is `paper` (then the witness stands for it). */
+  documentId: IpdIdSchema.optional(),
   /** Required by the intent (not the schema) when `signedBy` is `representative`: why the patient cannot. */
   representativeReason: IpdNoteSchema.optional(),
-});
+  method: z.enum(IPD_CONSENT_METHODS).optional(),
+  /** Who signed, when not the patient (guardian, representative), and their relation to the patient. */
+  signerName: z.string().trim().min(1).max(120).optional(),
+  relation: z.string().trim().min(1).max(40).optional(),
+  witnessName: z.string().trim().min(1).max(120).optional(),
+  language: z.enum(["hi", "en"]).optional(),
+})
+  .refine((c) => c.method === "paper" || c.documentId !== undefined, { message: "a consent names its document unless signed on paper", path: ["documentId"] })
+  .refine((c) => c.method !== "paper" || c.witnessName !== undefined, { message: "a paper consent names its witness", path: ["witnessName"] })
+  .refine((c) => c.signedBy === "patient" || (c.signerName !== undefined && c.relation !== undefined), { message: "a guardian or representative is named with their relation", path: ["signerName"] });
+export type IpdConsent = z.infer<typeof ConsentSchema>;
+export { ConsentSchema as IpdConsentSchema };
 const BandSizeSchema = z.enum(["adult", "paediatric", "neonatal"]);
 /** Burns or amputation → ankle band (§4.2). */
 const BandSiteSchema = z.enum(["wrist", "ankle"]);
-const BandOutput = z.strictObject({ bandId: IpdIdSchema, bandSerial: z.string().min(1), printedAt: IpdInstantSchema });
+/**
+ * E1.2 — what the thermal band carries (§2 answer 4): identity, admission, bed, and every alert IN WORDS, because
+ * colour alone is not an identifier. `barcode` (Code 128) and `qr` encode the band serial; a scanner resolves the
+ * serial against the band register, so a voided band fails.
+ */
+export const IpdBandPayloadSchema = z.strictObject({
+  name: z.string(),
+  uhid: z.string(),
+  ageSex: z.string(),
+  dob: z.string().nullable(),
+  admissionNo: z.string(),
+  admittedOn: z.string(),
+  bedCode: z.string().nullable(),
+  consultant: z.string(),
+  /** "Allergy: Penicillin (severe)"; "Allergy: none recorded" when the record holds none. */
+  allergyWords: z.array(z.string()),
+  /** Other alerts in words: "MLC", "Isolation: airborne". */
+  alertWords: z.array(z.string()),
+  /** Newborn: the mother's name rides on the band (§4.2). */
+  motherName: z.string().nullable(),
+  size: z.enum(["adult", "paediatric", "neonatal"]),
+  site: z.enum(["wrist", "ankle"]),
+  barcode: z.string(),
+  qr: z.string(),
+});
+export type IpdBandPayload = z.infer<typeof IpdBandPayloadSchema>;
+const BandOutput = z.strictObject({
+  bandId: IpdIdSchema, bandSerial: z.string().min(1), printedAt: IpdInstantSchema, band: IpdBandPayloadSchema,
+});
 
 export const requestAdmission = ipdIntent({
   input: ipdInput({
@@ -35,6 +81,10 @@ export const requestAdmission = ipdIntent({
     plannedFor: IpdInstantSchema.optional(),
     provisionalDiagnosis: IpdNoteSchema,
     mlc: z.boolean(),
+    /** E1.2: the department the patient is admitted under (OPD department code). */
+    department: z.string().trim().min(1).max(16).optional(),
+    /** §4.1 edge: placement preference when the recorded gender is other or unknown. Never displayed. */
+    placeAs: z.enum(["male", "female"]).optional(),
   }),
   output: z.strictObject({
     admissionId: IpdIdSchema,
@@ -175,7 +225,7 @@ export const admit = ipdIntent({
   refusals: [
     "admission_not_found", "admission_wrong_state", "admission_already_open", "incumbent_stay_open", "advice_expired",
     "icu_needs_intensivist", "bed_not_available", "bed_gender_mismatch", "bed_isolation_mismatch", "bed_age_mismatch",
-    "consent_missing", "representative_reason_missing", "deposit_required",
+    "consent_missing", "representative_reason_missing", "deposit_required", "plan_missing",
   ],
   actors: ["desk", "duty_manager"],
   copilotProposable: true,
@@ -208,7 +258,8 @@ export const assignBed = ipdIntent({
 });
 
 export const printBand = ipdIntent({
-  input: ipdInput({ admissionId: IpdIdSchema, printerId: IpdIdSchema, size: BandSizeSchema, site: BandSiteSchema }),
+  /** `printerId` = an enrolled print computer; absent = printed from the desk's browser (decision 0045). */
+  input: ipdInput({ admissionId: IpdIdSchema, printerId: IpdIdSchema.optional(), size: BandSizeSchema, site: BandSiteSchema }),
   output: BandOutput,
   refusals: ["admission_not_found", "admission_wrong_state", "printer_offline", "band_already_printed"],
   actors: ["desk", "nurse"],
@@ -222,7 +273,7 @@ export const printBand = ipdIntent({
 export const reprintBand = ipdIntent({
   input: ipdInput({
     admissionId: IpdIdSchema,
-    printerId: IpdIdSchema,
+    printerId: IpdIdSchema.optional(),
     size: BandSizeSchema,
     site: BandSiteSchema,
     reason: z.enum(["damaged", "unreadable", "allergy_added", "details_changed", "uhid_merged"]),
@@ -282,6 +333,10 @@ export const takeDeposit = ipdIntent({
     }),
     /** PM-JAY/scheme: the approver's mark that a line is non-covered (§6). */
     nonCoveredApprovalId: IpdIdSchema.optional(),
+    /** The UPI/card settlement reference the ledger needs for any tender but cash. */
+    tenderRef: z.string().trim().min(1).max(64).optional(),
+    /** Cash at the PAN threshold (Rule 114B): the payer's PAN, or Form 60. */
+    panNumber: z.string().trim().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/).optional(),
   }),
   output: z.strictObject({
     receiptId: IpdIdSchema,
@@ -291,7 +346,7 @@ export const takeDeposit = ipdIntent({
   }),
   refusals: [
     "admission_not_found", "admission_wrong_state", "scheme_patient_no_deposit", "cash_limit_reached",
-    "deposit_before_stabilisation",
+    "deposit_before_stabilisation", "plan_missing",
   ],
   actors: ["desk", "billing"],
   copilotProposable: false,
@@ -356,5 +411,166 @@ export const markBedClean = ipdIntent({
   agentTier: "none",
   undo: "entered_in_error",
   events: ["ipd.bed.cleaned"],
+  idempotent: true,
+});
+
+// ═══════════════════════════════════ E1.2 (ipd-admit) — acts the §0B list does not name ═══════════════════════════════════
+
+/** Who pays (§2 answer 5). The six kinds the payer record and the deposit rules read. */
+export const IPD_PAYER_KINDS = ["cash", "insurance_cashless", "insurance_reimbursement", "pmjay", "state_scheme", "corporate"] as const;
+export const IpdPayerKindSchema = z.enum(IPD_PAYER_KINDS);
+export type IpdPayerKind = z.infer<typeof IpdPayerKindSchema>;
+
+/** How the deposit was decided (decision 0072 answer 3). Every basis but the zero ones reads the active tariff. */
+export const IPD_DEPOSIT_BASES = [
+  "medical_class_days", "icu_class_days", "surgery_estimate_share", "scheme_zero", "cashless_non_payables", "emergency_exempt",
+] as const;
+
+/**
+ * DECIDED (E1.2) — the desk's payer-and-estimate step (§4.9 B "payer and estimate"): the payer kind, the coverage it
+ * rests on, the class and the plan. It computes the deposit from the active tariff (never a typed number) and
+ * records it on the admission; `take_deposit` and `admit` read it. Before admission only: a payer change after
+ * admission is `record_payer_auth`'s `payer_change` entry with counselling.
+ */
+export const planAdmission = ipdIntent({
+  input: ipdInput({
+    admissionId: IpdIdSchema,
+    payerKind: IpdPayerKindSchema,
+    /** The patient's coverage row (insurer, scheme or corporate) this admission rests on; absent for cash. */
+    coverageId: IpdIdSchema.optional(),
+    requestedClass: IpdBedClassSchema,
+    /** Medical (3 class days) or a planned surgery (50 % of the procedure estimate or package). */
+    plan: z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("medical") }),
+      z.strictObject({ kind: z.literal("surgical"), procedureEstimatePaise: IpdPositivePaiseSchema }),
+    ]),
+  }),
+  output: z.strictObject({
+    admissionId: IpdIdSchema,
+    requestedClass: IpdBedClassSchema,
+    /** Three days of the class's daily charges from the active tariff (the estimate shown beside the deposit). */
+    estimatePaise: IpdPaiseSchema,
+    depositRequiredPaise: IpdPaiseSchema,
+    depositBasis: z.enum(IPD_DEPOSIT_BASES),
+  }),
+  refusals: ["admission_not_found", "admission_wrong_state", "rate_missing", "advice_expired"],
+  actors: ["desk", "billing"],
+  copilotProposable: true,
+  agentTier: "none",
+  undo: "undo_window",
+  events: ["ipd.admission.planned"],
+  idempotent: true,
+});
+
+/** The "still to do" items an emergency admission carries until someone fills them (§4.9 B emergency lane). */
+export const IPD_ADMISSION_INCOMPLETE = ["consent", "payer", "band", "stabilised", "diagnosis"] as const;
+export type IpdAdmissionIncomplete = (typeof IPD_ADMISSION_INCOMPLETE)[number];
+
+/**
+ * §4.9 B — the emergency lane: one tap admits onto a bed with the least identity the patient has; no deposit before
+ * stabilisation (decision 0072); consent, payer, band and diagnosis catch up and the admission reads "incomplete"
+ * until they do. ICU still needs the intensivist's approval: a clerk alone cannot put a patient in ICU.
+ */
+export const emergencyAdmit = ipdIntent({
+  input: ipdInput({
+    patientId: IpdIdSchema,
+    bedId: IpdIdSchema,
+    consultantId: IpdUserRefSchema,
+    isolation: IsolationSchema,
+    provisionalDiagnosis: IpdNoteSchema.optional(),
+    mlc: z.boolean(),
+    placeAs: z.enum(["male", "female"]).optional(),
+    intensivistApprovalId: IpdIdSchema.optional(),
+  }),
+  output: z.strictObject({
+    admissionId: IpdIdSchema,
+    admissionNo: z.string().min(1),
+    encounterId: IpdIdSchema,
+    state: z.literal("admitted"),
+    bedId: IpdIdSchema,
+    admittedAt: IpdInstantSchema,
+    incomplete: z.array(z.enum(IPD_ADMISSION_INCOMPLETE)),
+  }),
+  refusals: [
+    "patient_not_found", "patient_deceased", "admission_already_open", "icu_needs_intensivist", ...BED_RULE_REFUSALS,
+  ],
+  actors: ["desk", "duty_manager"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "entered_in_error",
+  events: ["ipd.admission.requested", "ipd.admission.admitted", "ipd.bed.occupied"],
+  idempotent: true,
+});
+
+/**
+ * §4.2 edge — an admission made on paper during downtime, entered afterwards with the paper's own times and its
+ * reserved serial. The serial is unique: a second entry of one paper form is refused, showing the first.
+ */
+export const backfillDowntime = ipdIntent({
+  input: ipdInput({
+    paperSerial: z.string().trim().min(1).max(32),
+    patientId: IpdIdSchema,
+    bedId: IpdIdSchema,
+    consultantId: IpdUserRefSchema,
+    requestedClass: IpdBedClassSchema,
+    isolation: IsolationSchema,
+    provisionalDiagnosis: IpdNoteSchema,
+    mlc: z.boolean(),
+    payerKind: IpdPayerKindSchema,
+    /** The paper form's times; never later than now. */
+    requestedAt: IpdInstantSchema,
+    admittedAt: IpdInstantSchema,
+    consent: ConsentSchema,
+    /** The paper deposit receipt's number, when one was written. */
+    paperReceiptNo: z.string().trim().min(1).max(32).optional(),
+    placeAs: z.enum(["male", "female"]).optional(),
+    classChange: IpdClassChangeSchema.optional(),
+    intensivistApprovalId: IpdIdSchema.optional(),
+  }).refine((b) => new Date(b.requestedAt).getTime() <= new Date(b.admittedAt).getTime(), {
+    message: "the request cannot be later than the admission", path: ["requestedAt"],
+  }),
+  output: z.strictObject({
+    admissionId: IpdIdSchema,
+    admissionNo: z.string().min(1),
+    encounterId: IpdIdSchema,
+    state: z.literal("admitted"),
+    bedId: IpdIdSchema,
+    admittedAt: IpdInstantSchema,
+  }),
+  refusals: [
+    "patient_not_found", "patient_deceased", "admission_already_open", "downtime_serial_used", "time_in_future",
+    "icu_needs_intensivist", "representative_reason_missing", ...BED_RULE_REFUSALS,
+  ],
+  actors: ["desk", "duty_manager"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "entered_in_error",
+  events: ["ipd.admission.backfilled", "ipd.admission.admitted", "ipd.bed.occupied"],
+  idempotent: true,
+});
+
+/** Consent that caught up after an emergency admission (or was retaken). */
+export const recordConsent = ipdIntent({
+  input: ipdInput({ admissionId: IpdIdSchema, consent: ConsentSchema }),
+  output: z.strictObject({ admissionId: IpdIdSchema, consentAt: IpdInstantSchema }),
+  refusals: ["admission_not_found", "admission_wrong_state", "representative_reason_missing"],
+  actors: ["desk", "nurse"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "entered_in_error",
+  events: ["ipd.admission.consented"],
+  idempotent: true,
+});
+
+/** The treating team marks an emergency patient stabilised; only then may the desk ask for a deposit. */
+export const recordStabilised = ipdIntent({
+  input: ipdInput({ admissionId: IpdIdSchema, stabilisedAt: IpdInstantSchema }),
+  output: z.strictObject({ admissionId: IpdIdSchema, stabilisedAt: IpdInstantSchema }),
+  refusals: ["admission_not_found", "admission_wrong_state", "time_in_future"],
+  actors: ["doctor", "resident", "nurse"],
+  copilotProposable: true,
+  agentTier: "none",
+  undo: "entered_in_error",
+  events: ["ipd.admission.stabilised"],
   idempotent: true,
 });

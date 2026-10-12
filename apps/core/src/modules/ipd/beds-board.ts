@@ -1,9 +1,10 @@
-import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { IPD_BED_CLASS_INFO, IPD_CLEANING_OVERDUE_MINUTES } from "@hmis/contracts";
-import { ipdBedBlocks, ipdBedReservations, ipdBedStays, resourceStatusHistory, resources } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdBedBlocks, ipdBedReservations, ipdBedStays, resourceStatusHistory, resources } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema, IpdWardAttributesSchema } from "./bed-attributes";
 import type {
+  IpdBedClass, IpdWaitingCard,
   Actor, IpdBedBoard, IpdBoardBed, IpdBoardBedStatus, IpdBoardCounts, IpdBoardFloor, IpdBoardWard,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -199,5 +200,23 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
     for (const w of f.wards) w.beds.sort(byCode);
   }
   next24h.cleaningOver60.sort((a, b) => b.minutes - a.minutes);
-  return { asOf: now.toISOString(), wall, totals, floors: floorList, next24h };
+  // E1.2 — the waiting column: open admission requests, oldest first (wall: initials only).
+  const open = await db.select().from(ipdAdmissions).where(inArray(ipdAdmissions.state, ["requested", "reserved"]))
+    .orderBy(asc(ipdAdmissions.requestedAt)).limit(100);
+  const waitNames = new Map((await getPatientSummaries(db, actor, open.map((a) => a.patientId)))
+    .map((p) => [p.requestedId, { name: p.restricted ? p.alias : p.name, uhid: p.uhid }] as const));
+  const heldCode = new Map(reservations.map((r) => [r.admissionId, byId.get(r.bedId)?.code ?? null] as const));
+  const waitingCards: IpdWaitingCard[] = open.map((a) => {
+    const who = waitNames.get(a.patientId);
+    return {
+      admissionId: a.id, state: a.state as "requested" | "reserved", source: a.source as IpdWaitingCard["source"],
+      initials: initialsOf(who?.name ?? who?.uhid ?? "?"), name: wall ? null : who?.name ?? null,
+      requestedClass: a.requestedClass as IpdBedClass, isolation: a.isolation as IpdWaitingCard["isolation"], icu: a.icu,
+      requestedAt: a.requestedAt.toISOString(),
+      waitMinutes: Math.max(0, Math.floor((now.getTime() - a.requestedAt.getTime()) / 60_000)),
+      reservedBedCode: heldCode.get(a.id) ?? null,
+    };
+  });
+  totals.waiting = { count: waitingCards.length, longestMinutes: waitingCards.length === 0 ? null : Math.max(...waitingCards.map((w) => w.waitMinutes)) };
+  return { asOf: now.toISOString(), wall, totals, waiting: waitingCards, floors: floorList, next24h };
 }

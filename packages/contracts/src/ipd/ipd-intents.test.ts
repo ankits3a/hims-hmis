@@ -45,6 +45,22 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   reprint_band: {
     idempotencyKey: key(8), admissionId: id(3), printerId: id(8), size: "adult", site: "ankle", reason: "damaged",
   },
+  plan_admission: {
+    idempotencyKey: key(41), admissionId: id(3), payerKind: "cash", requestedClass: "private", plan: { kind: "medical" },
+  },
+  emergency_admit: {
+    idempotencyKey: key(42), patientId: id(1), bedId: id(4), consultantId: USER, isolation: "none", mlc: true,
+  },
+  backfill_downtime: {
+    idempotencyKey: key(43), paperSerial: "DT-0001", patientId: id(1), bedId: id(4), consultantId: USER,
+    requestedClass: "general", isolation: "none", provisionalDiagnosis: "synthetic", mlc: false, payerKind: "cash",
+    requestedAt: AT, admittedAt: AT, consent: { signedBy: "patient", method: "paper", witnessName: "Synthetic Witness" },
+  },
+  record_consent: {
+    idempotencyKey: key(44), admissionId: id(3),
+    consent: { signedBy: "guardian", method: "tablet_signature", documentId: id(6), signerName: "Synthetic Guardian", relation: "mother" },
+  },
+  record_stabilised: { idempotencyKey: key(45), admissionId: id(3), stabilisedAt: AT },
   record_payer_auth: {
     idempotencyKey: key(9), admissionId: id(3), payerKind: "insurance_cashless", payerRef: id(9),
     entry: "initial", preAuthNumber: "FAKE-PA-0001", status: "approved", approvedAmountPaise: 5_000_000,
@@ -214,6 +230,33 @@ describe("IPD metadata", () => {
     expect(keys).toContain("payments");
     expect(keys).toContain("amountPaise");
     expect(ipdSchemaKeys(IPD_INTENTS.administer_dose.input)).toEqual(expect.arrayContaining(["wristbandCode", "overrideReason", "pinProof"]));
+  });
+});
+
+describe("E1.2 ipd-admit contract rules", () => {
+  const parse = (name: IpdIntentName, patch: Record<string, unknown>) =>
+    IPD_INTENTS[name].input.safeParse({ ...IPD_SAMPLE_INPUTS[name], ...patch }).success;
+
+  it("consent: a document unless on paper; paper names a witness; a guardian or representative is named with relation", () => {
+    expect(parse("record_consent", { consent: { signedBy: "patient" } })).toBe(false);
+    expect(parse("record_consent", { consent: { signedBy: "patient", documentId: id(6) } })).toBe(true);
+    expect(parse("record_consent", { consent: { signedBy: "patient", method: "paper" } })).toBe(false);
+    expect(parse("record_consent", { consent: { signedBy: "patient", method: "paper", witnessName: "W" } })).toBe(true);
+    expect(parse("record_consent", { consent: { signedBy: "guardian", documentId: id(6) } })).toBe(false);
+  });
+
+  it("backfill: the paper request cannot be later than the paper admission", () => {
+    expect(parse("backfill_downtime", { requestedAt: "2030-01-01T11:00:00.000+05:30", admittedAt: AT })).toBe(false);
+    expect(parse("backfill_downtime", { requestedAt: "2030-01-01T09:00:00.000+05:30", admittedAt: AT })).toBe(true);
+  });
+
+  it("plan: a surgical plan carries its procedure estimate", () => {
+    expect(parse("plan_admission", { plan: { kind: "surgical" } })).toBe(false);
+    expect(parse("plan_admission", { plan: { kind: "surgical", procedureEstimatePaise: 10_000_000 } })).toBe(true);
+  });
+
+  it("the old consent shape (signedBy + documentId) still parses for admit", () => {
+    expect(parse("admit", {})).toBe(true);
   });
 });
 

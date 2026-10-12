@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IpdBedClassSchema } from "../ipd-bed-classes";
 import { IpdIdSchema, IpdInstantSchema } from "./common";
+import { IpdWaitingCardSchema } from "./admissions";
 
 /**
  * E1.1 (#718) — THE BEDS CAPACITY BOARD's read model (spec §4.9 A) and the bed routes. One shape for the web board,
@@ -98,9 +99,11 @@ export const IpdBedBoardSchema = z.object({
     outsideCensus: z.object({ occupied: n, total: n }),
     /** Beds released since IST midnight. Expected discharges come with ipd-discharge. */
     dischargesToday: n,
-    /** Admission requests arrive with ipd-admit; until then the column is empty. */
+    /** Open admission requests (requested or reserved) — E1.2 fills it. */
     waiting: z.object({ count: n, longestMinutes: n.nullable() }),
   }),
+  /** E1.2 — the requests waiting for a bed, oldest first (the left column). */
+  waiting: z.array(IpdWaitingCardSchema),
   floors: z.array(IpdBoardFloorSchema),
   next24h: z.object({
     cleaningOver60: z.array(z.object({ bedId: IpdIdSchema, bedCode: z.string(), wardName: z.string(), minutes: n })),

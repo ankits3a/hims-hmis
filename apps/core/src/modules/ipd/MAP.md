@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes on kernel resource rows and the bed-layout loader (E0.3), and the bed intents, reservations with a 2-hour lapse, blocks, incumbent beds and the Beds capacity board (E1.1)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), and admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources]
+tags: [ipd, beds, resources, admission]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -46,6 +46,21 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - `packages/contracts/src/ipd/bed-board.ts` — board schema, routes, topic, `IpdRefusalBody`.
 - `scripts/mark-incumbent-beds.ts` — `--file`, `--by` (holds `ipd.beds.manage`), `--apply`. Not a seed.
 - `apps/web/src/screens/ipd-beds.tsx` — the board (route `/ipd/beds`, `?wall=1` for wall displays).
+
+- `admissions.ts` (E1.2) — `requestAdmission`, `cancelAdmission`, `admit`, `emergencyAdmit`, `backfillDowntime`,
+  `recordConsent`, `recordStabilised`, `incompleteOf`. `admission-core.ts` — lock/read, `moveAdmission` (workflow
+  instance + mirror in one tx, engine refusals → IPD words), `mintAdmissionNo` (`IP26-000123`), and the links the bed
+  intents call (`linkReservation`, `linkReservationEnded`, `linkPlacement`).
+- `deposit.ts` — `IPD_DEPOSIT_POLICY` (decision 0072's days and percentages), `quoteDeposit` (pure), `planAdmission`,
+  `takeDeposit` (thin wrapper over billing `recordReceipt`), `ipdNonPayableDepositCode`.
+- `payer.ts` — `recordPayerAuth` (the manual authorisation record). `bands.ts` — `printBand`, `reprintBand`,
+  `allergyWords`. `approval-types.ts` — the three IPD approval types and `registerIpdApprovalTypes` (go-live step).
+- `admission-read.ts` — the desk's reads (view, quotes, bed proposals, OPD advice, consultants, `askApproval`).
+- `admissions.controller.ts` — `/ipd/admissions/*` (`IPD_ADMIT_ROUTES`). `admission-events.ts` — the events.
+- `kernel/db/schema/ipd.ts` — `ipd_admissions`, `ipd_payer_auths`, `ipd_admission_deposits`, `ipd_bands` (migration
+  `ipd_admit`). `packages/contracts/src/ipd/admissions.ts` — read models and routes.
+- `apps/web/src/screens/ipd-admit.tsx` — the Admit sheet (`/ipd/admit`, `?admission=<id>`); the Beds board's waiting
+  column links to it.
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -100,6 +115,31 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - Until ipd-admit: `admissionId` is the caller's request id and the bed intents carry `patientId` + `need`; ipd-admit
   derives both from the admission. `reserve_bed` does not yet emit `ipd.admission.reserved` (no admission record).
 
+### Admission (E1.2)
+- ONE workflow instance per admission (`ipd_admission` definition, Class A): `ipd_admissions.state` mirrors it and
+  every move goes through `moveAdmission` in the same transaction. The workflow checks ROLES (front_office,
+  front_office_supervisor, duty_manager for desk acts; doctor for requests); the intent checks PERMISSIONS. A user with
+  the permission but none of those roles is refused `ipd_forbidden` by the engine.
+- One open admission per patient: checked first (refused `admission_already_open` with the first admission in
+  `detail`) and enforced by the partial unique index `ipd_admissions_open_patient_ux`; a lost race maps to the same
+  refusal (the insert runs in a savepoint).
+- `admit`, `emergencyAdmit` and `backfillDowntime` place the patient through `assignBedIn` INSIDE their own
+  transaction (bed rules re-checked under the bed lock). Lock order: the beds lane's advisory admission lock, room, bed,
+  then the `ipd_admissions` row.
+- Money: every rupee comes from the active tariff (`IPD_<ROOM|NURSING|VISIT>_<CLASS>`; cashless non-payables
+  `IPD_NONPAY_DEPOSIT_<CLASS>`). A missing component refuses `rate_missing` with `detail.class`, `detail.missing`,
+  `detail.serviceCodes`. Deposit = 3 class days (ICU 3 ICU days), surgery 50 % of the typed estimate rounded up to the
+  rupee, PM-JAY/state scheme ₹0, emergency before stabilisation ₹0. Doctor-facing outputs carry no money (0058).
+- `admit` needs a receipt linked to the admission covering `depositRequiredPaise`, or an exemption matching the plan's
+  basis (scheme, emergency, cashless at ₹0) or a granted `ipd_deposit_waiver` approval.
+- ICU class (icu, nicu, picu — HDU is not ICU) needs a GRANTED `ipd_icu_admission` approval on the admission (the
+  emergency lane: on the patient). Approvers: medical_superintendent or an `intensivist` role holder.
+- A scheme patient's receipt needs a granted `ipd_non_covered_line` approval on the admission, and at most its amount.
+- Band QR/barcode carry the band SERIAL (`<IP no>-<n>`); one live band per admission (partial unique); a reprint voids
+  the old one with its reason. Allergies print in words; "Allergy: none recorded" when none.
+- Downtime back-fill keeps the paper's request and admission times on the row, the stay and the events; the paper
+  serial is upper-cased and unique.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -124,8 +164,22 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E1.1) The bed-layout loader still applies with `auth.users.manage` (`BED_LAYOUT_PERMISSION`); moving it to
   `ipd.beds.manage` is owed.
 
+- (E1.2) GO-LIVE STEPS, not seeds: the `ipd_admission` workflow definition must be drafted, approved (owner + MS) and
+  activated, and `registerIpdApprovalTypes(db, activator)` run. Until then every request answers
+  `admission_workflow_inactive` (503) and an approval request `approval_type_missing`.
+- (E1.2) `takeDeposit` writes the billing receipt (its own transaction) and then the admission link: if the link
+  write fails the money is still on the patient's advance; retrying the same idempotency key links it.
+- (E1.2) The bed intents still accept a request id with NO admission row (the approved E1.1 acceptance tests use
+  one); with a real admission they check the caller's patient and need against the row (`state_changed`). So
+  `ipd_bed_reservations.admission_id` / `ipd_bed_stays.admission_id` still have no FK to `ipd_admissions`.
+- (E1.2) The thermal relay has no `ipd_wristband` print document (a kernel print-outbox edit, owed): the band
+  prints from the desk's browser at band size; a named `printerId` is only checked to be alive.
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
   `scripts/mark-incumbent-beds.ts` (cutover). ipd-admit, ipd-transfer, ipd-discharge and housekeeping call
   `assignBed`/`reserveBed`, `releaseBedOccupant` and `markBedCleanIn`.
+- (E1.2) `admit`/`emergencyAdmit`/`backfillDowntime` call `assignBedIn` and `endAdmissionHolds`; the Beds board reads
+  open requests for its waiting column (`beds-board.ts`); ipd-charges (E2.1) reads `ipd_admissions` (payer, deposit)
+  and `ipd_admission_deposits`; eMAR resolves band serials against `ipd_bands`.

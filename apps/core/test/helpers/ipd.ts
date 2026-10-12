@@ -2,7 +2,13 @@ import { grantPermissionToRole, syncPermissions } from "../../src/kernel/auth/pe
 import { authManifest } from "../../src/kernel/auth/manifest";
 import { ModuleRegistry } from "../../src/kernel/modules/loader";
 import { ensureRole, mkPatient, mkUser, seedOpdBase } from "./opd";
-import { ipdManifest } from "../../src/modules/ipd";
+import { admissionWorkflowDefinition, ipdManifest, ipdNonPayableDepositCode, registerIpdApprovalTypes } from "../../src/modules/ipd";
+import { ipdRateServiceCode } from "@hmis/contracts";
+import { approveRequest } from "../../src/kernel/approvals/decisions";
+import { activateDefinition, approveDefinition, createDraft } from "../../src/kernel/workflow/definitions";
+import { createDraftVersion, createService, setTariffItem, submitVersion, activateVersion } from "../../src/modules/tariff";
+import { openSession } from "../../src/modules/billing/sessions";
+import { seedBillingBase } from "./billing";
 import { patientsManifest } from "../../src/modules/patients";
 import { KERNEL_RESOURCE_KINDS, createResource } from "../../src/kernel/resources";
 import { withTx } from "../../src/kernel/db/client";
@@ -79,4 +85,71 @@ export async function mkBedWorld(db: Db): Promise<BedWorld> {
       return (await mkPatient(db, desk, { name: name ?? `Test Patient ${String(n)}`, sex, ageYears, phone, ...guardian })).id;
     },
   };
+}
+
+// ═══ E1.2 — the admission desk: an active admission workflow, the IPD approval types and a priced rate card ═══
+
+/** Per-day rates (paise) on the fixture tariff. `private` is deliberately NOT priced (the `rate_missing` leg). */
+export const ADMIT_RATES = {
+  general: { room: 150_000, nursing: 50_000, visit: 80_000 },
+  icu: { room: 600_000, nursing: 200_000, visit: 150_000 },
+} as const;
+export const ADMIT_NONPAY_GENERAL = 500_000;
+
+export type AdmitWorld = BedWorld & {
+  admitDesk: Actor; doctor: Actor; ms: Actor; billingManager: Actor; owner: Actor;
+};
+
+/**
+ * `mkBedWorld` plus: billing's base (an activated tariff, cashier roles, SoD pairs), the admission workflow ACTIVATED
+ * the governance way (owner + MS approve, a third person activates), the three IPD approval types registered, the
+ * IPD rate card priced for general and ICU, and the people: `admitDesk` (front_office, the four admission strings and
+ * the bed strings, an open cashier drawer), `doctor` (raises requests only), `ms` (decides ICU approvals), and
+ * `billingManager` (decides non-covered lines).
+ */
+export async function mkAdmitWorld(db: Db): Promise<AdmitWorld> {
+  const w = await mkBedWorld(db);
+  const base = await seedBillingBase(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  await syncPermissions(db, registry);
+  await ensureRole(db, "front_office");
+  for (const p of ["ipd.beds.view", "ipd.beds.manage", "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print"]) {
+    await grantPermissionToRole(db, registry, "front_office", p);
+  }
+  await ensureRole(db, "doctor");
+  await grantPermissionToRole(db, registry, "doctor", "ipd.admit.request");
+  const admitDesk = (await mkUser(db, "adm.desk", ["front_office"])).actor;
+  const doctor = (await mkUser(db, "adm.doctor", ["doctor"])).actor;
+  const ms = (await mkUser(db, "adm.ms", ["medical_superintendent"])).actor;
+  const billingManager = (await mkUser(db, "adm.bm", ["billing_manager"])).actor;
+
+  const draft = await createDraft(db, base.drafter, admissionWorkflowDefinition);
+  await approveDefinition(db, base.owner, { definitionId: draft.definitionId, roleKey: "owner", note: "fixture" });
+  await approveDefinition(db, ms, { definitionId: draft.definitionId, roleKey: "medical_superintendent", note: "fixture" });
+  await activateDefinition(db, base.activator, draft.definitionId);
+  await registerIpdApprovalTypes(db, base.activator);
+
+  const services: Record<string, string> = {};
+  const codes: [string, number][] = [];
+  for (const [cls, r] of Object.entries(ADMIT_RATES)) {
+    for (const [component, price] of Object.entries(r)) codes.push([ipdRateServiceCode(cls as "general", component as "room"), price]);
+  }
+  codes.push([ipdNonPayableDepositCode("general"), ADMIT_NONPAY_GENERAL]);
+  for (const [code] of codes) {
+    services[code] = (await withTx(db, (tx) => createService(tx, base.drafter, { code, name: code, category: "consultation" }))).serviceId;
+  }
+  const version = await withTx(db, async (tx) => {
+    const d = await createDraftVersion(tx, base.drafter, { copyFromVersionId: base.tariffVersionId });
+    for (const [code, price] of codes) await setTariffItem(tx, base.drafter, d.versionId, services[code]!, price);
+    return d;
+  });
+  const submitted = await withTx(db, (tx) => submitVersion(tx, base.drafter, version.versionId));
+  await approveRequest(db, base.owner, { approvalId: submitted.approvalId, note: "ipd fixture tariff" });
+  await activateVersion(db, base.activator, version.versionId, new Date("2026-01-02T00:00:00Z"));
+
+  await openSession(db, admitDesk, 0);
+  return { ...w, admitDesk, doctor, ms, billingManager, owner: base.owner };
 }

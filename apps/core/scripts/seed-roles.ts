@@ -88,6 +88,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
       "ipd.beds.manage",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -131,6 +133,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.beds.view",
       "ipd.beds.manage",
       "ipd.beds.clean",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -222,6 +226,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
+      "ipd.admit.request",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.visits.read",
@@ -703,6 +709,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
+      "ipd.payer.manage",
       /**
        * PLAN 17 T2 / DD6 — **THE INTERLOCK'S OVERRIDE, AND IT LIVES HERE RATHER THAN IN THE LAB.**
        *
@@ -1111,6 +1119,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
+      // IPD ADMISSION E1.2 (#719) — the duty manager runs the admission desk at night (and the emergency lane).
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
     ],
   },
   /**

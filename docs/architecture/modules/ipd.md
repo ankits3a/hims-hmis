@@ -11,12 +11,22 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
-- **Depends on modules:** `billing`, `patients`
+- **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
-- **Kernel used:** `auth`, `db`, `events`, `modules`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
+- `admission-events.ts`
+  - `IPD_ADMISSION_BOARD_EVENT_NAMES`
+- `admission-read.ts`
+  - `askApproval(db: Db, actor: Actor, admissionId: string, body: { kind: IpdApprovalKind; note: string; amountPaise?: number }): Promise<{ appr…`
+  - `bedProposalsFor(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdBedProposal[]>`
+  - `consultantChoices(db: Db, actor: Actor): Promise<{ userId: string; name: string; department: string | null }[]>`
+  - `listDeskAdmissions(db: Db, actor: Actor, at: Date = new Date()): Promise<IpdAdmissionView[]>`
+  - `quotesFor(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdClassQuote[]>`
+  - `recentAdvice(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdAdvice[]>`
+  - `viewAdmission(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdAdmissionView>`
 - `admission-workflow.ts`
   - `ADMISSION_TRANSITIONS: readonly AdmissionTransition[]`
   - `ADMISSION_WORKFLOW_DEF_KEY`
@@ -25,6 +35,24 @@ Source: `apps/core/src/modules/ipd/`
   - `admissionWorkflowDefinition: WorkflowDefinition`
   - `requestedBudgetMinutes(requestedAt: Date, plannedFor?: Date): number`
   - types: `AdmissionTransition`
+- `admissions.ts`
+  - `admit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"admit">>`
+  - `backfillDowntime(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"backfill_downtime">>`
+  - `cancelAdmission(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_admission">>`
+  - `emergencyAdmit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"emergency_admit">>`
+  - `incompleteOf(a: AdmissionRow, bandPrinted: boolean): IpdAdmissionIncomplete[]`
+  - `recordConsent(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_consent">>`
+  - `recordStabilised(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_stabilised">>`
+  - `requestAdmission(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"request_admission">>`
+- `approval-types.ts`
+  - `IPD_APPROVAL_TYPES: readonly IpdApprovalTypeSpec[]`
+  - `IPD_APPROVAL_TYPE_KEYS: Record<IpdApprovalKind, string>`
+  - `ipdApprovalDefinition(spec: IpdApprovalTypeSpec)`
+  - `registerIpdApprovalTypes(db: Db, activator: Actor): Promise<{ registered: string[] }>`
+- `bands.ts`
+  - `allergyWords(rows: { substance: string; severity: string | null; status: string }[]): string[]`
+  - `printBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"print_band">>`
+  - `reprintBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reprint_band">>`
 - `bed-attributes.ts`
   - `IPD_BED_EQUIPMENT`
   - `IPD_BED_RULE_CODES`
@@ -57,19 +85,32 @@ Source: `apps/core/src/modules/ipd/`
 - `beds.ts`
   - `IPD_SYSTEM_ACTOR: Actor`
   - `assignBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"assign_bed">>`
+  - `assignBedIn(tx: Tx, db: Db, actor: Actor, input: BedPlacementInput, at: Date, ctx: PlacementContext, opts: { viaAdmit?: boolean } = {}): Pr…`
   - `blockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"block_bed">>`
+  - `endAdmissionHolds(tx: Tx, actor: Actor, admissionId: string, at: Date): Promise<string | null>`
   - `lapseBedReservations(db: Db, now: Date): Promise<{ lapsed: number }>`
   - `markBedClean(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mark_bed_clean">>`
   - `markBedCleanIn(tx: Tx, actor: Actor, bedId: string, cleanedAt: Date): Promise<Output<"mark_bed_clean">>`
   - `markIncumbentBeds(db: Db, actor: Actor, lines: readonly IncumbentBedLine[], opts: { apply?: boolean; now?: Date } = {}): Promise<IncumbentB…`
   - `nextRuleValidBeds(db: Db, actor: Actor, args: { bedId: string; patientId: string; need: IpdBedNeed; classChange?: "upgrade" | "downgrade"; …`
+  - `placementContext(db: Db, actor: Actor, patientId: string, at: Date): Promise<PlacementContext>`
+  - `proposeBeds(db: Db, actor: Actor, args: { patientId: string; need: IpdBedNeed; at: Date; heldBedId?: string | null; limit?: number }): Prom…`
+  - `readBedFacts(db: Db | Tx, bedId: string): Promise<{ id: string; code: string; class: IpdBedClass; icu: boolean }>`
   - `releaseBedOccupant(tx: Tx, actor: Actor, bedId: string, at: Date, opts: { terminal?: boolean } = {}): Promise<{ bedStatus: "cleaning" | "bl…`
   - `releaseIncumbentBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"release_incumbent_bed">>`
   - `releaseReservation(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"release_reservation">>`
   - `reserveBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reserve_bed">>`
   - `retireBed(db: Db, actor: Actor, input: { bedId: string; reason: string }, opts: Opts = {}): Promise<{ bedId: string }>`
   - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
-  - types: `IncumbentBedLine`, `IncumbentBedReport`
+  - types: `BedPlacementInput`, `IncumbentBedLine`, `IncumbentBedReport`, `PlacementContext`
+- `deposit.ts`
+  - `IPD_DEPOSIT_COMPONENTS`
+  - `IPD_DEPOSIT_POLICY`
+  - `ipdNonPayableDepositCode(cls: IpdBedClass): string`
+  - `planAdmission(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"plan_admission">>`
+  - `quoteDeposit(prices: PriceBook, args: DepositQuoteArgs): DepositQuote`
+  - `takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"take_deposit">>`
+  - types: `DepositQuote`, `DepositQuoteArgs`
 - `errors.ts`
   - `class IpdError`
   - `class IpdRefusal`
@@ -93,11 +134,17 @@ Source: `apps/core/src/modules/ipd/`
 - `ipd.module.ts`
   - `class IpdModule`
 - `manifest.ts`
+  - `IPD_ADMIT`
+  - `IPD_ADMIT_REQUEST`
+  - `IPD_BAND_PRINT`
   - `IPD_BEDS_CLEAN`
   - `IPD_BEDS_MANAGE`
   - `IPD_BEDS_OVERFLOW`
   - `IPD_BEDS_VIEW`
+  - `IPD_PAYER_MANAGE`
   - `ipdManifest: ModuleManifest`
+- `payer.ts`
+  - `recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_payer_auth">>`
 - `realtime.ts`
   - `IPD_REALTIME_NAMES: string[]`
   - `IPD_TOPIC_SPACES: TopicSpace[]`
@@ -106,12 +153,13 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`
+`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_payer_auths`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (8)
+## HTTP routes (27)
 
+- `admissions.controller.ts` — 19: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

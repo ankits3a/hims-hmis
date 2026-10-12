@@ -7,12 +7,18 @@ import { IpdIdempotencyKeySchema } from "./common";
 export * from "./common";
 export * from "./refusals";
 export * from "./bed-board";
-export { IpdBedNeedSchema, IpdClassChangeSchema } from "./intents-admit";
-export type { IpdBedNeed } from "./intents-admit";
+export {
+  IPD_ADMISSION_INCOMPLETE, IPD_CONSENT_METHODS, IPD_DEPOSIT_BASES, IPD_PAYER_KINDS, IpdBandPayloadSchema, IpdBedNeedSchema,
+  IpdClassChangeSchema, IpdConsentSchema, IpdPayerKindSchema,
+} from "./intents-admit";
+export type { IpdAdmissionIncomplete, IpdBandPayload, IpdBedNeed, IpdConsent, IpdPayerKind } from "./intents-admit";
+export * from "./admissions";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see
- * intents-admit.ts) and `release_incumbent_bed` (E1.1, DECIDED, same file), keyed by the name the copilot, HTTP routes and the workflow use.
+ * intents-admit.ts), `release_incumbent_bed` (E1.1, DECIDED, same file) and E1.2's `plan_admission`,
+ * `emergency_admit`, `backfill_downtime`, `record_consent` and `record_stabilised` (DECIDED, same file), keyed by
+ * the name the copilot, HTTP routes and the workflow use.
  */
 export const IPD_INTENTS = {
   request_admission: admitIntents.requestAdmission,
@@ -25,6 +31,11 @@ export const IPD_INTENTS = {
   reprint_band: admitIntents.reprintBand,
   record_payer_auth: admitIntents.recordPayerAuth,
   take_deposit: admitIntents.takeDeposit,
+  plan_admission: admitIntents.planAdmission,
+  emergency_admit: admitIntents.emergencyAdmit,
+  backfill_downtime: admitIntents.backfillDowntime,
+  record_consent: admitIntents.recordConsent,
+  record_stabilised: admitIntents.recordStabilised,
   start_transfer: wardIntents.startTransfer,
   accept_handover: wardIntents.acceptHandover,
   swap_beds: wardIntents.swapBeds,

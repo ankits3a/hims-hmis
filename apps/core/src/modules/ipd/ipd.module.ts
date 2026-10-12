@@ -1,6 +1,7 @@
 import { Injectable, Module, OnModuleInit } from "@nestjs/common";
 import { RealtimeGateway } from "../../kernel/realtime/gateway";
 import { RealtimeModule } from "../../kernel/realtime/realtime.module";
+import { IpdAdmissionsController } from "./admissions.controller";
 import { IpdBedsController } from "./beds.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 
@@ -20,7 +21,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController],
+  controllers: [IpdBedsController, IpdAdmissionsController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

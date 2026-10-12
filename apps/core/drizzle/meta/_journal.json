@@ -1443,6 +1443,13 @@
       "when": 1791845024991,
       "tag": "0205_ipd_beds",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1791845815247,
+      "tag": "0206_ipd_admit",
+      "breakpoints": true
     }
   ]
 }

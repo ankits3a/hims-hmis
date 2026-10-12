@@ -47,8 +47,11 @@ export const IPD_REFUSALS = {
   no_band_to_reprint: { rule: "There is no band to reprint for this admission.", fix: "Print band" },
   payer_change_needs_counselling: { rule: "A payer change after admission needs signed counselling.", fix: "Record counselling" },
   auth_out_of_order: { rule: "An authorisation entry must follow the one before it.", fix: "Open authorisation" },
+  plan_missing: { rule: "The admission's payer, class and plan must be recorded first.", fix: "Record payer and plan" },
+  downtime_serial_used: { rule: "This paper serial is already entered for another admission.", fix: "Open that admission" },
 
   /* ═══ Money (§2.3, §4.2, §4.3) ═══ */
+  rate_missing: { rule: "A rate this estimate needs is not set on the active tariff.", fix: "Ask billing to set the rate" },
   scheme_patient_no_deposit: { rule: "Scheme patients pay nothing unless an approver marks a line non-covered.", fix: "Ask approver" },
   cash_limit_reached: { rule: "Cash from one payer is capped by law at under two lakh rupees a day.", fix: "Use another tender" },
   deposit_before_stabilisation: { rule: "No deposit is asked before an emergency patient is stabilised.", fix: "Defer deposit" },
