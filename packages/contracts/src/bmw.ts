@@ -70,6 +70,8 @@ export const generateBagInput = z.object({
   placeResourceId: id,
   /** Weighed at the point of generation already: saves the department weighing step. */
   deptWeightGrams: grams.optional(),
+  /** One per TAP (the phone mints a fresh one): a double tap or a retried request makes one bag, not two. */
+  idempotencyKey: z.string().trim().min(8).max(64).optional(),
 }).strict();
 export type GenerateBagInput = z.infer<typeof generateBagInput>;
 
@@ -123,6 +125,8 @@ export const BMW_REFUSALS = {
   unknown_manifest: { sentence: "This manifest does not exist.", fix: "Pick a manifest from the list." },
   not_on_manifest: { sentence: "This bag is not on the manifest.", fix: "Check the bar code against the manifest." },
   category_not_on_manifest: { sentence: "The manifest has no bags of this colour.", fix: "Check the colour on the facility's slip." },
+  weight_given_twice: { sentence: "A bag has a weight of its own and is also in its colour's slip.", fix: "Give that colour per bag or as one slip, not both." },
+  slip_too_light: { sentence: "The slip weight is too small to share over these bags.", fix: "Enter the facility's weight for each bag." },
   already_recorded: { sentence: "The facility's weight is already recorded.", fix: "Open a dispute if it is wrong." },
   unknown_dispute: { sentence: "This dispute does not exist.", fix: "Refresh the board." },
   dispute_closed: { sentence: "This dispute is already closed.", fix: "Refresh the board." },
@@ -212,6 +216,8 @@ export type BmwReportLine = {
   handedOverGrams: number;
   treatedBags: number;
   treatedGrams: number;
+  /** Of the treated bags, those whose category's weight is in dispute (DECIDED: treated is a fact; the dispute is about weight). */
+  disputedBags: number;
 };
 
 export type BmwMonthlyReport = {

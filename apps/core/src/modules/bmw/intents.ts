@@ -68,6 +68,15 @@ async function lockByBarcode(t: Tx, barcode: string): Promise<BagRow> {
   return row;
 }
 
+/**
+ * One collection at a time per place: generating a bag and collecting the place's last waiting bag both take this
+ * transaction lock first, so a bag sealed while the last one is being taken is never merged into a task that is
+ * about to close (it raises a fresh one). It also serialises double taps at one place for the idempotency check.
+ */
+async function lockPlaceCollection(t: Tx, placeResourceId: string): Promise<void> {
+  await t.execute(sql`select pg_advisory_xact_lock(hashtext(${`bmw:collection:${placeResourceId}`}))`);
+}
+
 /** The bar code: BMW + colour letter(s) + IST date YYMMDD + a six-digit serial from `bmw_bag_serial`. Never reused. */
 export function formatBarcode(category: BmwCategory, cytotoxic: boolean, now: Date, serial: number): string {
   const day = istDayString(now).replace(/-/g, "").slice(2);
@@ -91,12 +100,25 @@ export async function generateBag(exec: Exec, actor: Actor, raw: unknown, now: D
     const place = (await t.select({ id: resources.id, name: resources.name, status: resources.status }).from(resources)
       .where(eq(resources.id, input.placeResourceId)))[0];
     if (place === undefined || place.status === "retired") throw new BmwError("unknown_place", { placeResourceId: input.placeResourceId });
+    await lockPlaceCollection(t, place.id);
+    if (input.idempotencyKey !== undefined) {
+      const seen = (await t.select().from(bmwBags).where(and(
+        eq(bmwBags.placeResourceId, place.id), eq(bmwBags.category, input.category), eq(bmwBags.idempotencyKey, input.idempotencyKey),
+      )))[0];
+      if (seen !== undefined) {
+        // The same tap again: the same bag. Its label is already printing (relay) or is drawn again for this browser.
+        const label: BmwLabelDelivery = relay ? { via: "relay", jobId: null }
+          : { via: "browser", document: drawBagLabel({ ...seen, category: seen.category as BmwCategory, placeName: place.name }) };
+        return { bag: seen, label, taskId: null };
+      }
+    }
     const serial = Number((await t.execute<{ n: string }>(sql`select nextval('bmw_bag_serial') as n`)).rows[0]!.n);
     const barcode = formatBarcode(input.category, cytotoxic, now, serial);
     const inserted = (await t.insert(bmwBags).values({
       id: newId(), barcode, category: input.category, cytotoxic, placeResourceId: place.id, generatedAt: now, generatedBy: actor.id,
       deptWeightGrams: input.deptWeightGrams ?? null, deptWeighedAt: input.deptWeightGrams === undefined ? null : now,
-      state: "generated", source: actor.type === "agent" ? "agent" : "person", createdAt: now, updatedAt: now, version: 1,
+      state: "generated", source: actor.type === "agent" ? "agent" : "person", idempotencyKey: input.idempotencyKey ?? null,
+      createdAt: now, updatedAt: now, version: 1,
     }).returning())[0]!;
     await t.insert(bmwBagEvents).values({
       bagId: inserted.id, seq: 1, act: "generated", actorType: actor.type, actorId: actor.id, source: sourceOf(actor), at: now,
@@ -154,6 +176,7 @@ export async function collectBag(exec: Exec, actor: Actor, raw: unknown, now: Da
 
 /** The place's collection task is done when no bag waits there any more. Held by someone else: cancelled, not stolen. */
 async function closeCollectionTask(t: Tx, actor: Actor, bag: BagRow, now: Date): Promise<void> {
+  await lockPlaceCollection(t, bag.placeResourceId);
   const waiting = (await t.select({ n: sql<number>`count(*)::int` }).from(bmwBags)
     .where(and(eq(bmwBags.placeResourceId, bag.placeResourceId), eq(bmwBags.state, "generated"), ne(bmwBags.id, bag.id))))[0]!.n;
   if (waiting > 0) return;
@@ -311,15 +334,19 @@ export async function recordCbwtfWeight(exec: Exec, actor: Actor, raw: unknown, 
     for (const c of input.byCategory ?? []) {
       const ofCat = bags.filter((b) => b.category === c.category);
       if (ofCat.length === 0) throw new BmwError("category_not_on_manifest", { category: c.category });
+      const twice = ofCat.filter((b) => weight.has(b.id));
+      if (twice.length > 0) throw new BmwError("weight_given_twice", { category: c.category, barcodes: twice.map((b) => b.barcode) });
       const shares = allocate(c.grams, ofCat.map((b) => b.deptWeightGrams ?? 0));
+      // A bag the facility took cannot weigh nothing: a slip too light to give every bag a gram is refused, not rounded away.
+      if (shares.some((g) => g <= 0)) throw new BmwError("slip_too_light", { category: c.category, grams: c.grams, bags: ofCat.length });
       ofCat.forEach((b, i) => weight.set(b.id, { grams: shares[i]!, allocated: true }));
     }
-    const weighed = bags.map((b) => (weight.has(b.id) ? { ...b, cbwtfWeightGrams: weight.get(b.id)!.grams } : b));
-    const gaps = gapsOf(weighed.filter((b) => weight.has(b.id)));
+    // Exactly the bags that will be written — the gap is computed from these and nothing else.
+    const written = bags.filter((b) => weight.has(b.id)).map((b) => ({ ...b, cbwtfWeightGrams: weight.get(b.id)!.grams }));
+    const gaps = gapsOf(written);
     const flagged = new Set(gaps.filter((g) => g.flagged).map((g) => g.category));
-    for (const b of bags) {
-      const w = weight.get(b.id);
-      if (w === undefined || w.grams <= 0) continue;
+    for (const b of written) {
+      const w = weight.get(b.id)!;
       await actOn(t, b.id, { cbwtfWeightGrams: w.grams }, "cbwtf_weighed", actor, now, { grams: w.grams, allocated: w.allocated });
       const disputed = flagged.has(b.category as BmwCategory);
       await actOn(t, b.id, { state: disputed ? "disputed" : "treated", treatedAt: now }, disputed ? "disputed" : "treated", actor, now);

@@ -75,6 +75,19 @@ over the bag rows — nobody types a number.
   yellow and never added to totals. Month edges come from `kernel/approvals/cumulative.ts` `istDayWindow` — never a
   copy of the offset (`test/ist-clock-parity`).
 - The web imports only TYPES from `@hmis/contracts`; `apps/web/src/lib/bmw-api.ts` repeats the 36/48 lines and the colour list.
+- **DECIDED (review of PR #749): a disputed bag counts as treated** — treatment is a fact; the dispute is about the
+  weight. The monthly report carries "of which disputed" in its own column.
+- `recordCbwtfWeight` refuses a bag weighed both per bag and in its colour's slip (`weight_given_twice`) and a slip too
+  light to give every bag a gram (`slip_too_light`); the gap is computed from exactly the bags written.
+- **One collection at a time per place**: `generateBag` and `closeCollectionTask` both take
+  `pg_advisory_xact_lock(hashtext('bmw:collection:<place>'))` first, so a bag sealed while the last one is collected
+  raises a fresh task instead of merging into one about to close (`review.test.ts` 3).
+- **Double taps**: the phone sends a fresh `idempotencyKey` per tap; the server returns the same bag for the same
+  (place, colour, key), backed by the partial unique index `bmw_bags_idempotency_uq`.
+- **Nobody to tell**: no `services_supervisor` holder → the storage alarm goes to `admin`; nobody there either → an
+  error log and `unnotified` in the result. The tick runs both clocks via `kernel/worker/jobs.ts`
+  `runTaskAndWasteClocks`, each in its own try/catch; the first failure is rethrown after both ran.
+- Board counts are SQL `count(*)` over the whole table, not the shown list (capped at 300).
 - No patient anywhere: a bag belongs to a place. Notices carry counts and place names only.
 
 ## 5. Who calls bmw

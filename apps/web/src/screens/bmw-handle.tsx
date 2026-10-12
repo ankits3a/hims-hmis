@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
 import { printDocumentHere } from "../lib/browser-print";
-import { BMW_CATEGORIES, bmwRefusal, collectBagApi, fetchBag, fetchBmwHandler, generateBagApi, kg, storeBagApi } from "../lib/bmw-api";
+import { BMW_CATEGORIES, bmwRefusal, collectBagApi, fetchBag, fetchBmwHandler, generateBagApi, kg, newTapKey, storeBagApi } from "../lib/bmw-api";
 import { Swatch, clockWords } from "./bmw-board";
 import { useServerNow } from "./my-tasks";
 import type { BmwBagCard, BmwCategory } from "@hmis/contracts";
@@ -56,7 +56,7 @@ export function BmwHandle(): React.ReactElement {
   };
 
   const make = useMutation({
-    mutationFn: (category: BmwCategory) => generateBagApi(category, place, category === "yellow" && cyto),
+    mutationFn: (category: BmwCategory) => generateBagApi(category, place, category === "yellow" && cyto, newTapKey()),
     onSuccess: (r) => {
       setNotice({ ok: true, text: t(r.label.via === "relay" ? "bmw.handle.labelSent" : "bmw.handle.labelHere", { code: r.bag.barcode }) });
       if (r.label.via === "browser") void printDocumentHere(r.label.document);

@@ -35,19 +35,19 @@ describe("acceptance — the monthly report and Form IV are read off the bags", 
     const m1 = await handOverManifest(db, actorOf(SUP1), { barcodes: [a, b, c], cbwtfName: "Bihar Biocare CBWTF", vehicleNo: "BR06GA1234" }, IST("2026-03-03T10:00:00"));
     await recordCbwtfWeight(db, actorOf(SUP1), { manifestId: m1.id, byCategory: [{ category: "yellow", grams: 2010 }], byBag: [{ barcode: c, grams: 505 }] }, IST("2026-03-04T12:00:00"));
     const m2 = await handOverManifest(db, actorOf(SUP1), { barcodes: [d], cbwtfName: "Bihar Biocare CBWTF", vehicleNo: "BR06GA1234" }, IST("2026-04-01T10:00:00"));
-    await recordCbwtfWeight(db, actorOf(SUP1), { manifestId: m2.id, byBag: [{ barcode: d, grams: 290 }] }, IST("2026-04-02T10:00:00"));
+    await recordCbwtfWeight(db, actorOf(SUP1), { manifestId: m2.id, byBag: [{ barcode: d, grams: 270 }] }, IST("2026-04-02T10:00:00")); // 10 % light: disputed, still treated
 
     const bags = await db.select().from(bmwBags);
     const expected = (month: string): Record<Line, Omit<BmwReportLine, "line" | "subsetOf">> => {
       const out = {} as Record<Line, Omit<BmwReportLine, "line" | "subsetOf">>;
       for (const l of ["yellow", "yellow_cytotoxic", "red", "white_translucent", "blue"] as Line[]) {
-        out[l] = { generatedBags: 0, generatedGrams: 0, handedOverBags: 0, handedOverGrams: 0, treatedBags: 0, treatedGrams: 0 };
+        out[l] = { generatedBags: 0, generatedGrams: 0, handedOverBags: 0, handedOverGrams: 0, treatedBags: 0, treatedGrams: 0, disputedBags: 0 };
       }
       for (const x of bags) {
         for (const l of linesOf(x.category, x.cytotoxic)) {
           if (istMonth(x.generatedAt) === month) { out[l].generatedBags += 1; out[l].generatedGrams += x.deptWeightGrams ?? 0; }
           if (istMonth(x.handedOverAt) === month) { out[l].handedOverBags += 1; out[l].handedOverGrams += x.centralWeightGrams ?? x.deptWeightGrams ?? 0; }
-          if (istMonth(x.treatedAt) === month) { out[l].treatedBags += 1; out[l].treatedGrams += x.cbwtfWeightGrams ?? 0; }
+          if (istMonth(x.treatedAt) === month) { out[l].treatedBags += 1; out[l].treatedGrams += x.cbwtfWeightGrams ?? 0; if (x.state === "disputed") out[l].disputedBags += 1; }
         }
       }
       return out;
@@ -67,7 +67,9 @@ describe("acceptance — the monthly report and Form IV are read off the bags", 
     expect(march.lines.find((l) => l.line === "white_translucent")).toMatchObject({ generatedBags: 1, handedOverBags: 0 });
     expect(march.totals).toMatchObject({ generatedBags: 5, generatedGrams: 2800 });
     expect(march.unweighedBags).toBe(1);
-    expect(monthlyReportCsv(march)).toContain("Yellow,2,2.000,2,2.000,2,2.010");
+    expect(monthlyReportCsv(march)).toContain("Yellow,2,2.000,2,2.000,2,2.010,0");
+    const april = await monthlyReport(db, "2026-04");
+    expect(april.lines.find((l) => l.line === "white_translucent")).toMatchObject({ treatedBags: 1, disputedBags: 1 });
 
     const form = await formIvReport(db, "2026", IST("2027-01-05T12:00:00"));
     for (const m of form.months) {

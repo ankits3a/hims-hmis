@@ -1,5 +1,5 @@
 {
-  "id": "c6fff8da-3533-48e0-a4a3-4bf535232e3a",
+  "id": "88fbbb16-e4b6-41bc-bd44-be2248b35c91",
   "prevId": "9b1caabb-70f2-4e64-9634-645506cf3e09",
   "version": "7",
   "dialect": "postgresql",
@@ -54873,6 +54873,12 @@
           "notNull": true,
           "default": "'person'"
         },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -54907,6 +54913,34 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_bags_idempotency_uq": {
+          "name": "bmw_bags_idempotency_uq",
+          "columns": [
+            {
+              "expression": "place_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "category",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"bmw_bags\".\"idempotency_key\" is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}

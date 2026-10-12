@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import type { Db } from "../db/client";
 import type { ModuleRegistry } from "../modules/loader";
 import type { Handler } from "../events/subscriptions";
@@ -711,9 +712,37 @@ export function registerAllJobs(
     /*
      * E1.7 BIO-MEDICAL WASTE (issue #724) — the waste STORAGE CLOCK rides this tick rather than holding a pool client
      * of its own (the `runDueTimers` + `runDueReminders` shape): bags still on the premises warn at 36 h and alert at
-     * 48 h from generation. `finally`, so a failed task pass never silences the 48-hour alarm. Importing the bmw
+     * 48 h from generation. `runTaskAndWasteClocks` runs each in its own try/catch, so a failure in either never stops
+     * or masks the other. Importing the bmw
      * index here is ALSO what defines the `bmw_collection` task kind in the worker (tasks MAP §4).
      */
-    run: async (now) => { try { await sweepTasks(db, now); } finally { await sweepBmwStorage(db, now); } },
+    run: async (now) => { await runTaskAndWasteClocks(db, now); },
   });
+}
+
+const clockLog = new Logger("worker.sweepTasks");
+
+/**
+ * E1.7 (PR #749 review) — the task clock and the waste storage clock share one tick. Each runs in its own try/catch
+ * and logs its own failure, so a failure in either never stops the other (the 48-hour alarm still rings when the
+ * task sweep throws) and never masks it: the first failure is rethrown after both have run, so the scheduler still
+ * records the tick as failed. `sweeps` is injectable for `task-clock.test.ts`.
+ */
+export async function runTaskAndWasteClocks(
+  db: Db, now: Date, sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage } = { sweepTasks, sweepBmwStorage },
+): Promise<void> {
+  let first: unknown = undefined;
+  try {
+    await sweeps.sweepTasks(db, now);
+  } catch (e) {
+    clockLog.error(`sweepTasks failed: ${e instanceof Error ? e.message : String(e)}`);
+    first = e;
+  }
+  try {
+    await sweeps.sweepBmwStorage(db, now);
+  } catch (e) {
+    clockLog.error(`sweepBmwStorage failed: ${e instanceof Error ? e.message : String(e)}`);
+    first ??= e;
+  }
+  if (first !== undefined) throw first;
 }

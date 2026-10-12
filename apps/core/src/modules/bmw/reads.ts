@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
-import { BMW_CATEGORIES, BMW_ON_SITE_STATES, bmwClockLevel, bmwGapFlagged } from "@hmis/contracts";
+import { BMW_CATEGORIES, BMW_LIMIT_HOURS, BMW_ON_SITE_STATES, BMW_WARN_HOURS, bmwGapFlagged } from "@hmis/contracts";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { bmwBags, bmwDisputes, bmwManifests, resources } from "../../kernel/db/schema";
 import { BmwError } from "./errors";
@@ -105,15 +105,23 @@ export async function bmwBoard(db: Db, now: Date = new Date()): Promise<BmwBoard
     id: last.id, manifestNo: last.manifestNo, cbwtfName: last.cbwtfName, vehicleNo: last.vehicleNo, handedOverAt: last.handedOverAt.toISOString(),
     bags: last.bagCount, deptGrams: Object.values(last.totals).reduce((n, t) => n + t.deptGrams, 0), cbwtfRecorded: last.cbwtfRecordedAt !== null,
   };
-  const levels = onSite.map((b) => bmwClockLevel(b.generatedAt, now));
+  // Counted over the whole table, never off the shown list (which stops at ON_SITE_SHOWN).
+  const warnAt = new Date(now.getTime() - BMW_WARN_HOURS * 3_600_000);
+  const limitAt = new Date(now.getTime() - BMW_LIMIT_HOURS * 3_600_000);
+  const c = (await db.select({
+    onSite: sql<number>`count(*)::int`,
+    warning: sql<number>`(count(*) filter (where ${bmwBags.generatedAt} <= ${warnAt.toISOString()}::timestamptz and ${bmwBags.generatedAt} > ${limitAt.toISOString()}::timestamptz))::int`,
+    alert: sql<number>`(count(*) filter (where ${bmwBags.generatedAt} <= ${limitAt.toISOString()}::timestamptz))::int`,
+    stored: sql<number>`(count(*) filter (where ${bmwBags.state} = 'stored'))::int`,
+  }).from(bmwBags).where(inArray(bmwBags.state, [...BMW_ON_SITE_STATES])))[0]!;
   return {
     serverNow: now.toISOString(),
     onSite,
     counts: {
-      onSite: onSite.length,
-      warning: levels.filter((l) => l === "warning").length,
-      alert: levels.filter((l) => l === "alert").length,
-      stored: onSite.filter((b) => b.state === "stored").length,
+      onSite: c.onSite,
+      warning: c.warning,
+      alert: c.alert,
+      stored: c.stored,
       generatedToday: today.reduce((n, w) => n + w.bags, 0),
       gramsToday: today.reduce((n, w) => n + w.grams, 0),
     },

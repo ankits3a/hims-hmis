@@ -1,4 +1,5 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { BMW_REPORT_LINES } from "@hmis/contracts";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { bmwBags, bmwDisputes } from "../../kernel/db/schema";
@@ -17,6 +18,8 @@ import type { Db } from "../../kernel/db/client";
  *   generated   — bags whose `generated_at` falls in the period; weight = the department's.
  *   handed over — bags whose `handed_over_at` falls in the period; weight = the central store's (department's if absent).
  *   treated     — bags whose `treated_at` falls in the period (the facility's receipt, disputed or not); weight = the facility's.
+ *   disputed    — of those, the bags whose category's weight is in dispute: its own column. DECIDED (review of PR #749):
+ *                 a disputed bag IS treated — treatment is a fact; the dispute is about the weight.
  *
  * Periods are IST calendar months. `yellow_cytotoxic` is the cytotoxic part of yellow: shown, never added to totals.
  */
@@ -36,12 +39,12 @@ function parseMonth(month: string): { year: number; m: number } {
 type Sum = { bags: number; grams: number };
 async function sumBy(
   db: Db, column: typeof bmwBags.generatedAt | typeof bmwBags.handedOverAt | typeof bmwBags.treatedAt,
-  weight: ReturnType<typeof sql<number>>, from: Date, to: Date,
+  weight: ReturnType<typeof sql<number>>, from: Date, to: Date, extra?: SQL,
 ): Promise<Map<LineKey, Sum>> {
   const rows = await db.select({
     category: bmwBags.category, cytotoxic: bmwBags.cytotoxic,
     bags: sql<number>`count(*)::int`, grams: sql<number>`coalesce(sum(${weight}), 0)::int`,
-  }).from(bmwBags).where(and(gte(column, from), lt(column, to))).groupBy(bmwBags.category, bmwBags.cytotoxic);
+  }).from(bmwBags).where(and(gte(column, from), lt(column, to), extra)).groupBy(bmwBags.category, bmwBags.cytotoxic);
   const out = new Map<LineKey, Sum>();
   for (const r of rows) {
     for (const line of lineOf(r.category, r.cytotoxic)) {
@@ -61,12 +64,14 @@ export async function monthlyReport(db: Db, month: string): Promise<BmwMonthlyRe
   const generated = await sumBy(db, bmwBags.generatedAt, sql<number>`${bmwBags.deptWeightGrams}`, from, to);
   const handed = await sumBy(db, bmwBags.handedOverAt, sql<number>`coalesce(${bmwBags.centralWeightGrams}, ${bmwBags.deptWeightGrams})`, from, to);
   const treated = await sumBy(db, bmwBags.treatedAt, sql<number>`${bmwBags.cbwtfWeightGrams}`, from, to);
+  const disputed = await sumBy(db, bmwBags.treatedAt, sql<number>`${bmwBags.cbwtfWeightGrams}`, from, to, eq(bmwBags.state, "disputed"));
   const zero: Sum = { bags: 0, grams: 0 };
   const lines: BmwReportLine[] = BMW_REPORT_LINES.map((line) => ({
     line, subsetOf: line === "yellow_cytotoxic" ? "yellow" : null,
     generatedBags: (generated.get(line) ?? zero).bags, generatedGrams: (generated.get(line) ?? zero).grams,
     handedOverBags: (handed.get(line) ?? zero).bags, handedOverGrams: (handed.get(line) ?? zero).grams,
     treatedBags: (treated.get(line) ?? zero).bags, treatedGrams: (treated.get(line) ?? zero).grams,
+    disputedBags: (disputed.get(line) ?? zero).bags,
   }));
   const counted = lines.filter((l) => l.subsetOf === null);
   const total = (k: keyof Omit<BmwReportLine, "line" | "subsetOf">): number => counted.reduce((n, l) => n + l[k], 0);
@@ -78,7 +83,7 @@ export async function monthlyReport(db: Db, month: string): Promise<BmwMonthlyRe
     totals: {
       generatedBags: total("generatedBags"), generatedGrams: total("generatedGrams"),
       handedOverBags: total("handedOverBags"), handedOverGrams: total("handedOverGrams"),
-      treatedBags: total("treatedBags"), treatedGrams: total("treatedGrams"),
+      treatedBags: total("treatedBags"), treatedGrams: total("treatedGrams"), disputedBags: total("disputedBags"),
     },
     unweighedBags: unweighed, openDisputes,
   };
@@ -119,9 +124,9 @@ const LINE_NAMES: Record<LineKey, string> = {
 const kg = (g: number): string => (g / 1000).toFixed(3);
 
 export function monthlyReportCsv(r: BmwMonthlyReport): string {
-  const head = ["Category", "Bags generated", "kg generated", "Bags handed over", "kg handed over", "Bags treated", "kg treated"];
+  const head = ["Category", "Bags generated", "kg generated", "Bags handed over", "kg handed over", "Bags treated", "kg treated", "of which disputed"];
   const row = (name: string, l: Omit<BmwReportLine, "line" | "subsetOf">): string[] => [
-    name, String(l.generatedBags), kg(l.generatedGrams), String(l.handedOverBags), kg(l.handedOverGrams), String(l.treatedBags), kg(l.treatedGrams),
+    name, String(l.generatedBags), kg(l.generatedGrams), String(l.handedOverBags), kg(l.handedOverGrams), String(l.treatedBags), kg(l.treatedGrams), String(l.disputedBags),
   ];
   return toCsv([head, ...r.lines.map((l) => row(LINE_NAMES[l.line], l)), row("Total", r.totals)]);
 }

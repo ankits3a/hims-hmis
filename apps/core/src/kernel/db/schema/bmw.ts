@@ -61,12 +61,15 @@ export const bmwBags = pgTable(
     cbwtfWeightGrams: integer("cbwtf_weight_grams"),
     treatedAt: timestamp("treated_at", { withTimezone: true }),
     source: text("source").notNull().default("person"),
+    /** The phone's per-tap key: a double tap at the same place and colour is the same bag. */
+    idempotencyKey: text("idempotency_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: integer("version").notNull().default(1),
   },
   (t) => [
     uniqueIndex("bmw_bags_barcode_uq").on(t.barcode),
+    uniqueIndex("bmw_bags_idempotency_uq").on(t.placeResourceId, t.category, t.idempotencyKey).where(sql`${t.idempotencyKey} is not null`),
     index("bmw_bags_on_site_idx").on(t.state, t.generatedAt).where(sql`${t.state} in ('generated', 'collected', 'stored')`),
     index("bmw_bags_generated_idx").on(t.generatedAt),
     index("bmw_bags_place_idx").on(t.placeResourceId, t.generatedAt),

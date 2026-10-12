@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { and, asc, eq, inArray, lte } from "drizzle-orm";
 import { BMW_LIMIT_HOURS, BMW_ON_SITE_STATES, BMW_WARN_HOURS, bmwClockLevel } from "@hmis/contracts";
 import { raiseNotice } from "../../kernel/alerts/notices";
@@ -22,8 +23,12 @@ import type { Db } from "../../kernel/db/client";
  * `now` is the tick's.
  */
 export const BMW_CLOCK_BATCH = 500;
+/** Nobody holds the BMW supervisor role (a new site, a vacancy): the administration is told instead. */
+export const BMW_FALLBACK_ROLE = "admin";
+const log = new Logger("bmw.clock");
 
-export type BmwClockResult = { warning: number; alert: number; noticesRaised: number };
+/** `unnotified` counts the breaching BAGS that reached no one: no supervisor and no admin to tell. */
+export type BmwClockResult = { warning: number; alert: number; noticesRaised: number; unnotified: number };
 
 export async function sweepBmwStorage(db: Db, now: Date = new Date()): Promise<BmwClockResult> {
   const warnBefore = new Date(now.getTime() - BMW_WARN_HOURS * 3_600_000);
@@ -32,7 +37,7 @@ export async function sweepBmwStorage(db: Db, now: Date = new Date()): Promise<B
   }).from(bmwBags).innerJoin(resources, eq(resources.id, bmwBags.placeResourceId))
     .where(and(inArray(bmwBags.state, [...BMW_ON_SITE_STATES]), lte(bmwBags.generatedAt, warnBefore)))
     .orderBy(asc(bmwBags.generatedAt)).limit(BMW_CLOCK_BATCH);
-  const out: BmwClockResult = { warning: 0, alert: 0, noticesRaised: 0 };
+  const out: BmwClockResult = { warning: 0, alert: 0, noticesRaised: 0, unnotified: 0 };
   if (rows.length === 0) return out;
 
   type Bucket = { level: "warning" | "alert"; hour: string; bags: number; places: Set<string>; oldest: Date };
@@ -49,7 +54,13 @@ export async function sweepBmwStorage(db: Db, now: Date = new Date()): Promise<B
     if (r.generatedAt < b.oldest) b.oldest = r.generatedAt;
     buckets.set(key, b);
   }
-  const holders = await db.transaction((t) => usersHoldingRole(t, BMW_SUPERVISOR_ROLE));
+  let holders = await db.transaction((t) => usersHoldingRole(t, BMW_SUPERVISOR_ROLE));
+  if (holders.length === 0) holders = await db.transaction((t) => usersHoldingRole(t, BMW_FALLBACK_ROLE));
+  if (holders.length === 0 && buckets.size > 0) {
+    out.unnotified = out.warning + out.alert;
+    log.error(`bio-medical waste storage clock: ${String(out.alert)} bags over ${String(BMW_LIMIT_HOURS)} h and ${String(out.warning)} over ${String(BMW_WARN_HOURS)} h, and NOBODY holds ${BMW_SUPERVISOR_ROLE} or ${BMW_FALLBACK_ROLE} to tell`);
+    return out;
+  }
   for (const b of buckets.values()) {
     const hours = Math.floor((now.getTime() - b.oldest.getTime()) / 3_600_000);
     const title = b.level === "alert" ? `Waste over ${String(BMW_LIMIT_HOURS)} h · ${String(b.bags)} bags` : `Waste ${String(hours)} h · ${String(b.bags)} bags`;

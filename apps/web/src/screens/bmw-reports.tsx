@@ -35,18 +35,18 @@ export function BmwReports(): React.ReactElement {
           </header>
           <table className="bw-table">
             <thead>
-              <tr><th>{t("bmw.reports.category")}</th><th>{t("bmw.reports.genBags")}</th><th>{t("bmw.reports.genKg")}</th><th>{t("bmw.reports.outBags")}</th><th>{t("bmw.reports.outKg")}</th><th>{t("bmw.reports.treatedBags")}</th><th>{t("bmw.reports.treatedKg")}</th></tr>
+              <tr><th>{t("bmw.reports.category")}</th><th>{t("bmw.reports.genBags")}</th><th>{t("bmw.reports.genKg")}</th><th>{t("bmw.reports.outBags")}</th><th>{t("bmw.reports.outKg")}</th><th>{t("bmw.reports.treatedBags")}</th><th>{t("bmw.reports.treatedKg")}</th><th>{t("bmw.reports.disputedBags")}</th></tr>
             </thead>
             <tbody>
               {(m.data?.lines ?? []).map((l) => (
                 <tr key={l.line} className={l.subsetOf === null ? "" : "sub"} data-testid={`monthly-${l.line}`}>
-                  <td>{line(l.line)}</td><td>{l.generatedBags}</td><td>{kg3(l.generatedGrams)}</td><td>{l.handedOverBags}</td><td>{kg3(l.handedOverGrams)}</td><td>{l.treatedBags}</td><td>{kg3(l.treatedGrams)}</td>
+                  <td>{line(l.line)}</td><td>{l.generatedBags}</td><td>{kg3(l.generatedGrams)}</td><td>{l.handedOverBags}</td><td>{kg3(l.handedOverGrams)}</td><td>{l.treatedBags}</td><td>{kg3(l.treatedGrams)}</td><td data-testid={`monthly-${l.line}-disputed`}>{l.disputedBags}</td>
                 </tr>
               ))}
               {m.data !== undefined && (
                 <tr className="tot" data-testid="monthly-total">
                   <td>{t("bmw.reports.total")}</td><td>{m.data.totals.generatedBags}</td><td>{kg3(m.data.totals.generatedGrams)}</td><td>{m.data.totals.handedOverBags}</td>
-                  <td>{kg3(m.data.totals.handedOverGrams)}</td><td>{m.data.totals.treatedBags}</td><td>{kg3(m.data.totals.treatedGrams)}</td>
+                  <td>{kg3(m.data.totals.handedOverGrams)}</td><td>{m.data.totals.treatedBags}</td><td>{kg3(m.data.totals.treatedGrams)}</td><td>{m.data.totals.disputedBags}</td>
                 </tr>
               )}
             </tbody>

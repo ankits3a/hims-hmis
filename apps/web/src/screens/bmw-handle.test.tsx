@@ -51,8 +51,14 @@ describe("BmwHandle (E1.7)", () => {
     await waitFor(() => expect(screen.getByTestId("bmw-new-red")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("bmw-new-red"));
     await waitFor(() => expect(posts).toHaveLength(1));
-    expect(posts[0]!.body).toEqual({ category: "red", placeResourceId: "r1" });
+    expect(posts[0]!.body).toEqual({ category: "red", placeResourceId: "r1", idempotencyKey: expect.stringMatching(/^.{8,64}$/) });
     expect(await screen.findByTestId("bmw-notice")).toHaveTextContent("Label sent · BMWR261012000009");
+    // PR #749 review 7 — a fresh key per tap: the server dedupes a double tap on the SAME key, never two taps.
+    await waitFor(() => expect(screen.getByTestId("bmw-new-red")).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId("bmw-new-red"));
+    await waitFor(() => expect(posts).toHaveLength(2));
+    const keys = posts.map((p) => (p.body as { idempotencyKey: string }).idempotencyKey);
+    expect(keys[1]).not.toBe(keys[0]);
   });
 
   it("scan → weigh in kg → take: the weight goes as grams and the scan box clears", async () => {

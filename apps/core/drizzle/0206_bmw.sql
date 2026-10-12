@@ -33,6 +33,7 @@ CREATE TABLE "bmw_bags" (
 	"cbwtf_weight_grams" integer,
 	"treated_at" timestamp with time zone,
 	"source" text DEFAULT 'person' NOT NULL,
+	"idempotency_key" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
@@ -86,6 +87,7 @@ ALTER TABLE "bmw_bags" ADD CONSTRAINT "bmw_bags_manifest_id_bmw_manifests_id_fk"
 ALTER TABLE "bmw_disputes" ADD CONSTRAINT "bmw_disputes_manifest_id_bmw_manifests_id_fk" FOREIGN KEY ("manifest_id") REFERENCES "public"."bmw_manifests"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "bmw_bag_events_at_idx" ON "bmw_bag_events" USING btree ("at");--> statement-breakpoint
 CREATE UNIQUE INDEX "bmw_bags_barcode_uq" ON "bmw_bags" USING btree ("barcode");--> statement-breakpoint
+CREATE UNIQUE INDEX "bmw_bags_idempotency_uq" ON "bmw_bags" USING btree ("place_resource_id","category","idempotency_key") WHERE "bmw_bags"."idempotency_key" is not null;--> statement-breakpoint
 CREATE INDEX "bmw_bags_on_site_idx" ON "bmw_bags" USING btree ("state","generated_at") WHERE "bmw_bags"."state" in ('generated', 'collected', 'stored');--> statement-breakpoint
 CREATE INDEX "bmw_bags_generated_idx" ON "bmw_bags" USING btree ("generated_at");--> statement-breakpoint
 CREATE INDEX "bmw_bags_place_idx" ON "bmw_bags" USING btree ("place_resource_id","generated_at");--> statement-breakpoint

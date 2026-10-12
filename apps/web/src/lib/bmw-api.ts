@@ -10,8 +10,12 @@ export const fetchBmwBoard = () => api<BmwBoardView>("GET", "/bmw/board");
 export const fetchBmwHandler = () => api<BmwHandlerView>("GET", "/bmw/handler");
 export const fetchBag = (barcode: string) => api<BmwBagCard>("GET", `/bmw/bags/${encodeURIComponent(barcode.trim().toUpperCase())}`);
 
-export const generateBagApi = (category: BmwCategory, placeResourceId: string, cytotoxic: boolean) =>
-  api<GenerateBagResult>("POST", "/bmw/bags", { category, placeResourceId, ...(cytotoxic ? { cytotoxic: true } : {}) });
+/** A fresh key per TAP (PR #749 review): a double tap or a retried request is the same bag on the server. */
+export const newTapKey = (): string =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `tap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+export const generateBagApi = (category: BmwCategory, placeResourceId: string, cytotoxic: boolean, idempotencyKey: string) =>
+  api<GenerateBagResult>("POST", "/bmw/bags", { category, placeResourceId, ...(cytotoxic ? { cytotoxic: true } : {}), idempotencyKey });
 
 const bagAct = (verb: "weight" | "collect" | "store", barcode: string, grams?: number) =>
   api<BmwBagCard>("POST", `/bmw/bags/${encodeURIComponent(barcode)}/${verb}`, grams === undefined ? {} : { grams });
