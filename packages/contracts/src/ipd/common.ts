@@ -28,13 +28,22 @@ export const IpdPositivePaiseSchema = z.number().int().positive();
 export const IpdIdempotencyKeySchema = z.uuid();
 export const IpdNoteSchema = z.string().trim().min(1).max(1000);
 
-/**
- * §0B provenance: who or what produced a datum. A draft shows "Draft" until a named person signs it.
- * `system` (E1.1, DECIDED): a timer acting as the system actor — the 2-hour reservation lapse, the 24-hour
- * advice expiry — so a clock's act is not mistaken for a person's or an agent's.
- */
+/** §0B provenance: who or what produced a datum. A draft shows "Draft" until a named person signs it. */
 export const IPD_PROVENANCE_SOURCES = ["person", "device", "copilot_draft", "agent", "import", "system"] as const;
 export const IpdProvenanceSchema = z.enum(IPD_PROVENANCE_SOURCES);
+/**
+ * The provenance an act writes. DECIDED (orchestrator, PR #745): a system-driven act — the advice expiry's
+ * cancel_admission, the reservation lapse — writes `{ source: "system", actor: "system" }`.
+ */
+export const IpdProvenanceRecordSchema = z.strictObject({ source: IpdProvenanceSchema, actor: z.string().min(1).max(64) });
+export type IpdProvenanceRecord = z.infer<typeof IpdProvenanceRecordSchema>;
+
+/** DECIDED (PR #745): a stamped time may run ahead of the server's clock by at most 2 minutes (device skew). */
+export const IPD_CLOCK_SKEW_MS = 2 * 60_000;
+/** True when `at` is later than the server's `now` plus the skew allowance: refuse `time_in_future`. */
+export function ipdIsInFuture(at: string, now: Date): boolean {
+  return new Date(at).getTime() > now.getTime() + IPD_CLOCK_SKEW_MS;
+}
 
 /** Who signs a consent or form: the patient, a guardian (minor) or a nominated representative (no capacity). */
 export const IpdSignerSchema = z.enum(["patient", "guardian", "representative"]);
@@ -120,6 +129,8 @@ export function ipdSchemaKeys(schema: z.ZodType): string[] {
         for (const [k, v] of Object.entries(def.shape as Record<string, unknown>)) { keys.add(k); walk(v); }
         return;
       case "array": walk(def.element); return;
+      case "tuple": for (const i of def.items as unknown[]) walk(i); walk(def.rest); return;
+      case "lazy": walk((def.getter as () => unknown)()); return;
       case "union": for (const o of def.options as unknown[]) walk(o); return;
       case "intersection": walk(def.left); walk(def.right); return;
       case "record": walk(def.valueType); return;

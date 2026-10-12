@@ -1,4 +1,5 @@
 import { IPD_INTENTS, IPD_REFUSALS, ipdSchemaKeys } from "@hmis/contracts";
+import { z } from "zod";
 import { defineWorkflow } from "../../../kernel/workflow/definition";
 import { ADMISSION_TRANSITIONS, admissionWorkflowDefinition } from "../admission-workflow";
 
@@ -22,6 +23,9 @@ const SPEC_0B_STATES = [
   "discharged", "lama", "absconded", "deceased", "transferred_out", "cancelled",
 ];
 const SPEC_0B_TERMINALS = ["discharged", "lama", "absconded", "deceased", "transferred_out", "cancelled"];
+
+/** Money vocabulary a doctor surface must never carry, matched anywhere in a key, any case. */
+const MONEY_WORDS = /paise|rupee|amount|fee|charge|dues|payable|price|deposit|bill/i;
 
 const intents = IPD_INTENTS as Record<string, (typeof IPD_INTENTS)[keyof typeof IPD_INTENTS]>;
 
@@ -59,7 +63,15 @@ describe("IPD intents — done means (E0.2, #714)", () => {
     const doctorIntents = Object.entries(intents).filter(([, d]) => d.actors.includes("doctor") || d.actors.includes("resident"));
     expect(doctorIntents.length).toBeGreaterThan(5);
     for (const [name, def] of doctorIntents) {
-      expect([name, ipdSchemaKeys(def.output).filter((k) => /paise$/i.test(k))]).toEqual([name, []]);
+      expect([name, ipdSchemaKeys(def.output).filter((k) => MONEY_WORDS.test(k))]).toEqual([name, []]);
+    }
+  });
+
+  it("the money check sees a money key nested inside lazy and tuple schemas", () => {
+    const leak = z.object({ visit: z.lazy(() => z.tuple([z.object({ consultantFee: z.number() })])) });
+    expect(ipdSchemaKeys(leak).filter((k) => MONEY_WORDS.test(k))).toEqual(["consultantFee"]);
+    for (const k of ["depositTotal", "billNo", "duesBalance", "patientPayable", "roomCharge", "unitPrice", "amountRupees"]) {
+      expect([k, MONEY_WORDS.test(k)]).toEqual([k, true]);
     }
   });
 

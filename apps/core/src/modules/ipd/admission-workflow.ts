@@ -88,6 +88,20 @@ const rolesFor = (t: AdmissionTransition): string[] => {
   return [...roles];
 };
 
+const DAY_MINUTES = 1440;
+
+/**
+ * PR #745 review — the `requested` budget for one admission. The kernel lays an SLA from STATE ENTRY and has no
+ * deferred start, but `rescheduleBudget(tx, instanceId, minutes)` re-lays it from that same anchor. So an advance
+ * booking keeps its clock honest by the ipd-admit lane calling, right after `startInstance`:
+ *   `rescheduleBudget(tx, instanceId, requestedBudgetMinutes(requestedAt, plannedFor))`
+ * which ends the clock at plannedFor + 24 h (the advice expiry), never at request time + 24 h. Same-day: 24 h.
+ */
+export function requestedBudgetMinutes(requestedAt: Date, plannedFor?: Date): number {
+  const ahead = plannedFor === undefined ? 0 : plannedFor.getTime() - requestedAt.getTime();
+  return ahead > 0 ? Math.ceil(ahead / 60_000) + DAY_MINUTES : DAY_MINUTES;
+}
+
 const recordOnly = (minutes: number) => ({ minutes, alerting: "record_only" as const });
 
 export const admissionWorkflowDefinition: WorkflowDefinition = defineWorkflow({
@@ -97,7 +111,7 @@ export const admissionWorkflowDefinition: WorkflowDefinition = defineWorkflow({
   initialState: "requested",
   states: [
     // Advice expires 24 h after its planned date; the expiry is a timer calling cancel_admission.
-    { name: "requested", sla: recordOnly(1440) },
+    { name: "requested", sla: recordOnly(DAY_MINUTES) }, // advance bookings: requestedBudgetMinutes
     // A reservation lapses after 2 h; the lapse is a timer calling release_reservation.
     { name: "reserved", sla: recordOnly(120) },
     { name: "admitted", sla: recordOnly(10080) },

@@ -118,7 +118,7 @@ export const administerDose = ipdIntent({
   refusals: [
     "order_not_found", "order_not_active", "wristband_scan_required", "wrong_patient_scanned", "wrong_drug_scanned",
     "outside_due_window", "second_nurse_required", "second_nurse_same_person", "prn_interval_not_met",
-    "prn_daily_max_reached", "weight_required", "dose_already_recorded", "give_expired",
+    "prn_daily_max_reached", "weight_required", "dose_already_recorded", "give_expired", "time_in_future",
   ],
   actors: ["nurse"],
   copilotProposable: false,

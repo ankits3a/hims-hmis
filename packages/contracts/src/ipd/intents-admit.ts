@@ -157,7 +157,9 @@ export const admit = ipdIntent({
     /** Exactly one of a receipt or a recorded exemption; the intent refuses `deposit_required` otherwise. */
     deposit: z.union([
       z.strictObject({ receiptId: IpdIdSchema }),
-      z.strictObject({ exempt: z.enum(["emergency_not_stabilised", "scheme", "cashless_no_non_payables", "approved_waiver"]), approvalId: IpdIdSchema.optional() }),
+      z.strictObject({ exempt: z.enum(["emergency_not_stabilised", "scheme", "cashless_no_non_payables", "approved_waiver"]), approvalId: IpdIdSchema.optional() })
+        // A waiver is an approver's act: it names the approval. Scheme and emergency exemptions are rules, not favours.
+        .refine((d) => d.exempt !== "approved_waiver" || d.approvalId !== undefined, { message: "an approved waiver needs approvalId", path: ["approvalId"] }),
     ]),
     /** The intensivist's approval record, required for an ICU-class bed. */
     intensivistApprovalId: IpdIdSchema.optional(),

@@ -169,6 +169,12 @@ export const recordVitals = ipdIntent({
     }),
     /** The person confirmed a value outside physiological limits (the typo guard). */
     confirmedOutOfRange: z.literal(true).optional(),
+  }).superRefine((v, ctx) => {
+    const given = Object.values(v.values).some((x) => x !== undefined);
+    if (v.refused === true && given) ctx.addIssue({ code: "custom", path: ["values"], message: "refused observations carry no values" });
+    if (v.refused !== true && !given) ctx.addIssue({ code: "custom", path: ["values"], message: "at least one value, or refused" });
+    if (v.source === "device" && v.deviceId === undefined) ctx.addIssue({ code: "custom", path: ["deviceId"], message: "a device reading names its device" });
+    if (v.source !== "device" && v.deviceId !== undefined) ctx.addIssue({ code: "custom", path: ["deviceId"], message: "only a device reading names a device" });
   }),
   output: z.strictObject({
     vitalsId: IpdIdSchema,

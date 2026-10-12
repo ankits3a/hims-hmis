@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
-import { IPD_BED_CLASS_INFO, IPD_INTENTS, IPD_RESERVATION_HOLD_MINUTES, newId } from "@hmis/contracts";
+import { IPD_BED_CLASS_INFO, IPD_INTENTS, IPD_RESERVATION_HOLD_MINUTES, ipdIsInFuture, newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
 import { ipdBedBlocks, ipdBedReservations, ipdBedStays, resources } from "../../kernel/db/schema";
@@ -43,8 +43,6 @@ const CLEAN_ROUTINE = "clean:routine";
 const CLEAN_TERMINAL = "clean:terminal";
 /** The 48-hour billed-class protection when the booked class is full (§4.2). */
 const PROTECT_HOURS = 48;
-/** A cleaned-at time this far ahead of the server clock is a wrong phone clock, not a cleaning (§4.10 edge 18). */
-const CLOCK_SKEW_MS = 60_000;
 
 export const IPD_SYSTEM_ACTOR: Actor = { type: "system", id: "ipd-reservation-lapse" };
 
@@ -534,7 +532,8 @@ export async function markBedClean(db: Db, actor: Actor, raw: unknown, opts: Opt
   await requirePermission(db, actor, IPD_BEDS_CLEAN);
   const now = opts.now ?? new Date();
   const cleanedAt = new Date(input.cleanedAt);
-  if (cleanedAt.getTime() > now.getTime() + CLOCK_SKEW_MS) throw new IpdRefusal("time_in_future");
+  // A cleaned-at time ahead of the server clock past the shared skew allowance is a wrong phone clock (§4.10 edge 18).
+  if (ipdIsInFuture(input.cleanedAt, now)) throw new IpdRefusal("time_in_future");
   return once(db, actor, "mark_bed_clean", input.idempotencyKey, input, () => withTx(db, (tx) => markBedCleanIn(tx, actor, input.bedId, cleanedAt)), now);
 }
 
