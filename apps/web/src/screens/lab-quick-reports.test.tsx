@@ -142,7 +142,7 @@ it("the profile's card shows the antibiotic table when its values are opened", a
 /* ═══ owner 2026-10-12 — the phone's Share PDF (SPEC-phone-report-pdf-share-2026-10-12.md) ═══ */
 
 it("the phone's PDF page is the desk's printed page, byte for byte (only the desk's print-on-load line differs)", async () => {
-  const { phoneReportHtml } = await import("../../../mobile/src/lab/report-html");
+  const { phoneReportHtml } = await import("../../../../packages/contracts/src/lab-report-phone");
   const { AUTO_PRINT_SCRIPT } = await import("../../../../packages/contracts/src/lab-report-html");
   /** One instant for both: "Printed … at …" reads the clock. Fake Date only, set to the real now. */
   const at = new Date();
