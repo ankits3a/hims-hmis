@@ -3049,7 +3049,11 @@
       "handedOver": "{{name}} · सौंपी गई",
       "sentBack": "{{name}} · वापस भेजी",
       "notSigned": "हस्ताक्षर नहीं",
-      "printOnPc": "प्रिंट डेस्क PC पर"
+      "printOnPc": "प्रिंट डेस्क PC पर",
+      "sharePdf": "PDF भेजें",
+      "shareUnavailable": "शेयर उपलब्ध नहीं",
+      "shareFailed": "PDF नहीं भेजी गई",
+      "shareNotRecorded": "भेजी गई; दर्ज नहीं हुई"
     },
     "ast": {
       "title": "संवेदनशीलता",

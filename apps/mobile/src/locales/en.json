@@ -3049,7 +3049,11 @@
       "handedOver": "{{name}} · handed over",
       "sentBack": "{{name}} · sent back",
       "notSigned": "Not signed",
-      "printOnPc": "Print at the desk PC"
+      "printOnPc": "Print at the desk PC",
+      "sharePdf": "Share PDF",
+      "shareUnavailable": "Sharing not available",
+      "shareFailed": "PDF not shared",
+      "shareNotRecorded": "Shared; not recorded"
     },
     "ast": {
       "title": "Sensitivity",
