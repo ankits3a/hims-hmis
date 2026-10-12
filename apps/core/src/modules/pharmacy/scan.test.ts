@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { openSessionFor } from "../../../test/helpers/billing";
 import { MON, MON2, issueRx, line, seedPharmacyBase, stockIn } from "../../../test/helpers/pharmacy";
@@ -70,7 +70,7 @@ describe("scanning the pack at the pick (pharmacy P13)", () => {
     await verifyDispense(db, fx.pharmacist.actor, fx.decls, r.dispense.id, { lines: [{ lineIdx: 0, qtyBase: 10 }] }, MON2);
     return r.dispense.id;
   }
-  const pickedEvent = async () => (await db.select().from(events).where(eq(events.name, "dispense.picked")))
+  const pickedEvent = async () => (await db.select().from(events).where(eq(events.name, "dispense.picked")).orderBy(asc(events.seq)))
     .map((e) => (e.payload as { lines: unknown[] }).lines);
 
   it("picks FEFO's batch on a plain pack scan, and the batch a GS1 scan names", async () => {
