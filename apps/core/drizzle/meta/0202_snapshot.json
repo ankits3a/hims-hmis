@@ -1,5 +1,5 @@
 {
-  "id": "b2321045-d781-4cd1-8f47-5e6b06a9b20c",
+  "id": "bef5770f-3966-4322-b186-192918f8a680",
   "prevId": "584b027d-10cd-4e19-a34c-8d62fba11f4f",
   "version": "7",
   "dialect": "postgresql",
@@ -36020,7 +36020,7 @@
         },
         "imaging_studies_authorised_by_ck": {
           "name": "imaging_studies_authorised_by_ck",
-          "value": "\"imaging_studies\".\"authorised_by\" is null or \"imaging_studies\".\"authorised_by\" in ('invoice', 'payer_branch', 'daycare', 'stat', 'free')"
+          "value": "\"imaging_studies\".\"authorised_by\" is null or \"imaging_studies\".\"authorised_by\" in ('invoice', 'payer_branch', 'daycare', 'stat')"
         },
         "imaging_studies_dose_ck": {
           "name": "imaging_studies_dose_ck",
@@ -53886,6 +53886,39 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.copilot_user_settings": {
+      "name": "copilot_user_settings",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "phone_enabled": {
+          "name": "phone_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.user_reminders": {
       "name": "user_reminders",
       "schema": "",
@@ -53999,130 +54032,6 @@
         "user_reminders_text_ck": {
           "name": "user_reminders_text_ck",
           "value": "char_length(\"user_reminders\".\"text\") between 1 and 80"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.outside_tests": {
-      "name": "outside_tests",
-      "schema": "",
-      "columns": {
-        "service_id": {
-          "name": "service_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name_en": {
-          "name": "name_en",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "site": {
-          "name": "site",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'outside'"
-        },
-        "department": {
-          "name": "department",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "active": {
-          "name": "active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "outside_tests_active_idx": {
-          "name": "outside_tests_active_idx",
-          "columns": [
-            {
-              "expression": "active",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "outside_tests_service_id_services_id_fk": {
-          "name": "outside_tests_service_id_services_id_fk",
-          "tableFrom": "outside_tests",
-          "tableTo": "services",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "outside_tests_code_unique": {
-          "name": "outside_tests_code_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "code"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "outside_tests_site_ck": {
-          "name": "outside_tests_site_ck",
-          "value": "\"outside_tests\".\"site\" in ('outside', 'in_hospital')"
-        },
-        "outside_tests_department_ck": {
-          "name": "outside_tests_department_ck",
-          "value": "\"outside_tests\".\"site\" = 'outside' or \"outside_tests\".\"department\" is not null"
         }
       },
       "isRLSEnabled": false

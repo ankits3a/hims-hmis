@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { I18nProvider } from "../src/i18n";
+import { I18nProvider, useI18n } from "../src/i18n";
 import { DoctorQueue } from "../src/screens/doctor-queue";
 import { SessionProvider, useSession } from "../src/session";
 
@@ -109,7 +109,10 @@ function world(q = queue(), extra: Record<string, Route> = {}) {
   return { ...s, state };
 }
 
+/** The language switch Settings uses (owner 2026-10-11: it left the band once signed in). */
+let langToggle: (() => void) | null = null;
 function Gate() {
+  langToggle = useI18n().toggle;
   const { state } = useSession();
   return state.status === "signedIn" ? <DoctorQueue /> : null;
 }
@@ -558,7 +561,8 @@ describe("the doctor's OPD line on a phone", () => {
     const w = world();
     await mount(w.fetcher);
     await screen.findByTestId("line-row-13");
-    await fireEvent.press(screen.getByTestId("lang-toggle"));
+    // PHONE SETTINGS (owner 2026-10-11) — signed in, the language is switched in Settings; the same toggle.
+    await act(async () => { langToggle!(); });
     expect(screen.getByTestId("line-longest")).toHaveTextContent("सबसे लंबी प्रतीक्षा 41 मिनट");
   });
 });

@@ -44,6 +44,10 @@ describe("set-lab-prices", () => {
     NOW = new Date(Date.now() + 1000);
   });
 
+  it("CBNAAT and AFB smears are free under the national TB programme (owner 2026-10-12, decision 0071)", () => {
+    expect([LAB_PRICES_2026_10.CBNAAT, LAB_PRICES_2026_10.AFB_SPUT, LAB_PRICES_2026_10.AFB_OTHER]).toEqual([0, 0, 0]);
+  });
+
   it("refuses a person without both tariff grants", async () => {
     await expect(setLabPrices(db, "clerk", true, NOW)).rejects.toThrow(/does not hold tariff.versions.draft/);
   });

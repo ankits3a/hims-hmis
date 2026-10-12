@@ -1282,6 +1282,11 @@ describe("deploy.sh configuration seeding (Plan 11g / DD2, close review MAJOR 1)
       expect(byDir.stderr).toMatch(/that is production's/);
     });
 
+    it("uat-reset.sh seeds the STANDARD lab catalogue, which ships in the image (#643)", () => {
+      const sh = readFileSync(UAT_RESET_SH, "utf8");
+      expect(sh).toMatch(/-e LAB_CATALOGUE=standard api node dist\/scripts\/seed-lab-catalogue\.js/);
+    });
+
     it("uat-reset.sh runs the DEPLOY'S seed list, in the deploy's order", () => {
       const source = readFileSync(UAT_RESET_SH, "utf8");
       const match = /for seed in ([\s\S]*?); do/.exec(source);

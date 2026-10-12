@@ -3,7 +3,8 @@
  * inspired from Lal PathLabs and Apollo lab. I authorize you to add prices on my behalf (user admin)."
  *
  * Set at roughly 70–90% of those chains' walk-in prices for the same test (2025–26), rounded to tens;
- * packages below the sum of their parts; COVID tests under the state caps. Put into force by
+ * packages below the sum of their parts; COVID tests under the state caps. CBNAAT and AFB smears are
+ * ₹0: the owner made them free under the national TB programme the same day (decision 0071). Put into force by
  * `set-lab-prices.ts` as a new tariff version. A TypeScript module so it ships in the server image.
  */
 export const LAB_PRICES_2026_10: Readonly<Record<string, number>> = {
@@ -14,8 +15,8 @@ export const LAB_PRICES_2026_10: Readonly<Record<string, number>> = {
   ACTH: 1300,
   ADSDNA: 1200,
   AEC: 150,
-  AFB_OTHER: 200,
-  AFB_SPUT: 150,
+  AFB_OTHER: 0, // free under the national TB programme (decision 0071)
+  AFB_SPUT: 0, // free under the national TB programme (decision 0071)
   AFP: 750,
   AF_ADA: 500,
   AF_BIO: 450,
@@ -72,7 +73,7 @@ export const LAB_PRICES_2026_10: Readonly<Record<string, number>> = {
   CARDIAC: 1800,
   CARD_RISK: 2500,
   CBC: 300,
-  CBNAAT: 2500,
+  CBNAAT: 0, // free under the national TB programme (decision 0071)
   CBZ: 900,
   CEA: 750,
   CELIAC: 1800,
