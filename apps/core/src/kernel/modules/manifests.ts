@@ -25,6 +25,7 @@ import { rosterManifest } from "../../modules/roster";
 import { attendanceManifest } from "../../modules/attendance";
 import { orderingManifest } from "../../modules/ordering";
 import { tasksManifest } from "../../modules/tasks";
+import { linenManifest } from "../../modules/linen";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -193,4 +194,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // E0.1 TASK ENGINE (issue #713) — appended. Three permissions, two menu entries, no subscription. API only, the
   // `roster` shape: the worker runs `sweepTasks` and needs no permission to.
   tasksManifest,
+  // E2.4 LINEN (issue #728) — appended. Three permissions, two menu entries, no subscription, no worker job. API only, the
+  // `tasks` shape: the weekly variance is computed on read.
+  linenManifest,
 ];

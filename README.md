@@ -1684,6 +1684,13 @@ by exactly one, started, done, and checked where its kind says. Three permission
 `tasks.view`, `tasks.work` and `tasks.supervise`; `duty_manager` holds `tasks.view` and `tasks.supervise`
 for the hours no supervisor is on. Nobody is assigned to either new role by any seed.
 
+**Linen (issue #728, decision 0072, 2026-10-12).** Par stock per ward from its beds and their class, soiled and
+infected linen counted apart, laundry out and in with short deliveries recorded, and a weekly loss per ward and item.
+Three permissions guard it. `support_staff` holds `linen.handle` (top up, soiled and infected returns, ward counts,
+laundry out and in, borrowing, a condemn request); `services_supervisor` holds `linen.view`, `linen.handle` and
+`linen.manage`; `admin` holds `linen.view` and `linen.manage` for par levels and condemn approvals and never
+handles linen.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

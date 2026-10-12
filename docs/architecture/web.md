@@ -39,6 +39,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/lab/quick` | `apps/web/src/screens/lab-quick` |
 | `/lab/reports` | `apps/web/src/screens/lab-reports` |
 | `/lab/verify` | `apps/web/src/screens/lab-verify` |
+| `/linen` | `apps/web/src/screens/linen-board` |
+| `/linen/handle` | `apps/web/src/screens/linen-handle` |
 | `/login` | `apps/web/src/screens/login` |
 | `/materials/counts` | `(redirect)` |
 | `/materials/grn` | `(redirect)` |

@@ -1967,15 +1967,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  // E2.4 LINEN (issue #728) — the administration reads the linen board and holds the par levels and the condemn
+  // approvals (a write-off needs a second person); it does not count or carry linen.
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "linen.view", "linen.manage"] },
   /**
    * E0.1 TASK ENGINE (issue #713, decision 0072) — no housekeeping or nursing-supervisor role existed, so two are
    * minted, by the standard Indian corporate-hospital split: the people who DO service work (ward attendants,
    * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
    * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
    */
-  { roleKey: "support_staff", permissions: ["tasks.work"] },
-  { roleKey: "services_supervisor", permissions: ["tasks.view", "tasks.work", "tasks.supervise"] },
+  // E2.4 LINEN (issue #728) — the ward attendants and linen handlers top up, return soiled and infected linen, count,
+  // send and receive laundry and raise a condemn (`linen.handle`); the services supervisor is the linen supervisor: the
+  // board, par levels and condemn approvals. DECIDED by the standard Indian corporate-hospital split.
+  { roleKey: "support_staff", permissions: ["tasks.work", "linen.handle"] },
+  {
+    roleKey: "services_supervisor",
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "linen.view", "linen.handle", "linen.manage"],
+  },
 ];
 
 /**

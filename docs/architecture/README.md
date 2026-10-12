@@ -37,6 +37,7 @@ flowchart LR
   cds[cds]
   formulary[formulary]
   lab[lab]
+  linen[linen]
   materials[materials]
   membership[membership]
   opd[opd]
@@ -64,6 +65,7 @@ flowchart LR
   lab --> opd
   lab --> patients
   lab --> tariff
+  linen --> tasks
   materials --> formulary
   membership --> patients
   membership --> tariff
@@ -116,6 +118,7 @@ flowchart LR
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 77 | 25 |
+| [linen](modules/linen.md) | tasks | — | 14 | 7 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, lab, ordering, pharmacy, radiology | 164 | 32 |
@@ -128,7 +131,7 @@ flowchart LR
 | [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 113 | 22 |
 | [roster](modules/roster.md) | — | opd, ot, radiology, tasks | 37 | 26 |
 | [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 18 | 7 |
-| [tasks](modules/tasks.md) | roster | — | 11 | 2 |
+| [tasks](modules/tasks.md) | roster | linen | 11 | 2 |
 
 ## Kernel subsystems
 
@@ -137,18 +140,18 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | subsystem | used by modules | depends on kernel | routes |
 |---|---|---|---|
 | `alerts` | attendance, opd, roster, tasks | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
-| `approvals` | abdm, aerb, attendance, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
-| `auth` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | config, crypto, db, events, modules, printing, push, tokens | 33 |
+| `approvals` | abdm, aerb, attendance, billing, lab, linen, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
+| `auth` | abdm, aerb, attendance, billing, formulary, lab, linen, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, attendance, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | billing, opd, pharmacy, roster | approvals, auth, config, db, desk, events, inference, modules, reminders, search, tokens | 10 |
 | `crypto` | abdm, billing, opd, patients | — | — |
-| `db` | abdm, aerb, attendance, billing, cds, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | — | — |
+| `db` | abdm, aerb, attendance, billing, cds, formulary, lab, linen, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | — | — |
 | `desk` | attendance, billing, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | 10 |
 | `documents` | patients, pharmacy | — | — |
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
 | `events` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | db, worker | — |
 | `inference` | opd | auth, config, db, search, tokens | 1 |
-| `modules` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | alerts, approvals, auth, copilot, desk, ops, orders, resources, search, workflow | — |
+| `modules` | abdm, aerb, attendance, billing, formulary, lab, linen, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | alerts, approvals, auth, copilot, desk, ops, orders, resources, search, workflow | — |
 | `notify` | abdm, lab, pharmacy, radiology | auth, config, db, events, modules, tokens, workflow | 4 |
 | `obligations` | — | alerts, db, events, modules, workflow | — |
 | `ops` | lab, pharmacy | auth, config, crypto, db, events, modules, tokens | 11 |
@@ -159,10 +162,10 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `realtime` | lab, opd | auth, db, tokens | — |
 | `reminders` | — | alerts, auth, copilot, db, tokens | 3 |
 | `report` | billing, opd, pharmacy | — | — |
-| `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
+| `resources` | aerb, lab, linen, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
 | `retention` | — | db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
-| `tokens` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | — | — |
+| `tokens` | abdm, aerb, attendance, billing, formulary, lab, linen, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks | — | — |
 | `worker` | — | alerts, approvals, auth, config, copilot, db, desk, events, modules, notify, obligations, ops, orders, push, reminders, resources, retention, tokens, workflow | — |
 | `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff, tasks | auth, db, events, modules, tokens | 9 |
 

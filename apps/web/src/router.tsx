@@ -27,6 +27,8 @@ import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
 import { MyTasks } from "./screens/my-tasks";
 import { TasksBoard } from "./screens/tasks-board";
+import { LinenBoard } from "./screens/linen-board";
+import { LinenHandle } from "./screens/linen-handle";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CopilotNoticeHost } from "./components/copilot-notice";
@@ -296,6 +298,9 @@ const NAV: readonly NavEntry[] = [
   // `tasksManifest.menu`. Their own group: service work (cleaning, waste, porters) is neither a desk nor a ward.
   { to: "/tasks", label: "nav.myTasks", permission: "tasks.work", group: "services" },
   { to: "/tasks/board", label: "nav.taskBoard", permission: "tasks.view", group: "services", anyOf: ["tasks.supervise"] },
+  // E2.4 LINEN (issue #728) — the handler's phone and the supervisor's board; paths and permissions match `linenManifest.menu`.
+  { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
+  { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1094,6 +1099,20 @@ const myTasksRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/tasks",
   component: MyTasks,
+});
+
+/** E2.4 LINEN (issue #728) — the linen supervisor's board: 16:9, wards below par first, laundry out and in, weekly loss. */
+const linenBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen",
+  component: LinenBoard,
+});
+
+/** E2.4 — the linen handler's phone (390 px, Hindi first): pick a ward, count with big steppers, save. */
+const linenHandleRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen/handle",
+  component: LinenHandle,
 });
 
 /** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
@@ -1924,6 +1943,8 @@ export const router = createRouter({
       myLeaveRoute,
       // E0.1 TASK ENGINE — +2, `/tasks` and `/tasks/board`. `caddyfile-parity.test.ts` pins the count.
       myTasksRoute, tasksBoardRoute,
+      // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
+      linenBoardRoute, linenHandleRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
     ]),
