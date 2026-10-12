@@ -1089,6 +1089,22 @@
     "myDuties": {
       "title": "मेरी ड्यूटी",
       "hint": "इस महीने आपकी ड्यूटी, अदला-बदली और कवर।"
+    },
+    "qcounter": {
+      "title": "क्विक काउंटर",
+      "hint": "वॉक-इन या लैब बुकिंग"
+    },
+    "qcollect": {
+      "title": "क्विक सैंपल",
+      "hint": "ब्लड सैंपल बाकी"
+    },
+    "qbench": {
+      "title": "क्विक बेंच",
+      "hint": "रिज़ल्ट भरें"
+    },
+    "qreports": {
+      "title": "क्विक रिपोर्ट",
+      "hint": "रिपोर्ट सौंपें"
     }
   },
   "vitalsBay": {
@@ -2751,6 +2767,13 @@
       "coverAsked": "{{name}} से आपकी ड्यूटी लेने को कहा। जवाब मेरी ड्यूटी में आएगा।",
       "swapAsked": "{{name}} से अदला-बदली को कहा। जवाब मेरी ड्यूटी में आएगा।",
       "coverRefused": "वे अब यह ड्यूटी नहीं ले सकते। फिर पूछें कि कौन ले सकता है।",
+      "reminderPick": "{{when}} याद दिलाऊँ? देख लें, फिर पक्का करें।",
+      "reminderWhatTime": "कितने बजे? \"4 बजे\", \"कल सुबह 9\" या \"30 मिनट बाद\" कहें।",
+      "reminderPast": "वह समय निकल गया। बाद का समय कहें।",
+      "reminderWhat": "किस बात की याद? कुछ शब्दों में कहें।",
+      "reminderTooLong": "80 अक्षरों से कम रखें।",
+      "reminderLimit": "आपके 20 रिमाइंडर हैं। पहले एक हटाएँ।",
+      "reminderSet": "रिमाइंडर लग गया, {{when}}।",
       "actDone": "हो गया।",
       "actExpired": "समय निकल गया। फिर से पूछें।",
       "actInvalid": "इसकी पुष्टि नहीं हो सकती। फिर से पूछें।",
@@ -2858,6 +2881,12 @@
       "noTimes": "कोई समय खाली नहीं",
       "book": "यह बुक करें?",
       "move": "इस पर बदलें?",
+      "reminder": "यह रिमाइंडर लगाएँ?",
+      "repeat_none": "एक बार",
+      "repeat_daily": "रोज़",
+      "repeat_mon_sat": "सोम–शनि",
+      "repeat_weekly": "हर हफ़्ते",
+      "openReminders": "रिमाइंडर",
       "viaCopilot": "कोपायलट से"
     },
     "when": {
@@ -2983,6 +3012,108 @@
       "approved": "मंज़ूर",
       "rejected": "मंज़ूर नहीं",
       "cancelled": "वापस ली"
+    }
+  },
+  "quickLab": {
+    "loading": "लोड हो रहा है…",
+    "summary": "सारांश",
+    "otherParams": "अन्य पैरामीटर",
+    "yearShort": "व",
+    "sex": {
+      "m": "पु",
+      "f": "म",
+      "o": "अ"
+    },
+    "collect": {
+      "find": "UHID या ऑर्डर नं.",
+      "scan": "कार्ड स्कैन",
+      "waitingCount": "प्रतीक्षा · {{n}}",
+      "waiting": "{{minutes}} मिनट से",
+      "collected": "ब्लड लिया गया",
+      "done": "{{name}} · {{sample}}",
+      "empty": "कोई प्रतीक्षा में नहीं",
+      "notWaiting": "ब्लड के लिए नहीं",
+      "badCard": "कार्ड मान्य नहीं"
+    },
+    "bench": {
+      "count": "रिपोर्ट बाकी · {{n}}",
+      "collectedAt": "सैंपल {{at}}",
+      "draft": "ड्राफ्ट",
+      "empty": "बेंच खाली है",
+      "calc": "गणना",
+      "saveDraft": "ड्राफ्ट सेव",
+      "saveComplete": "सेव और पूरा",
+      "draftSaved": "ड्राफ्ट सेव हुआ",
+      "completed": "{{name}} · पूरा"
+    },
+    "reports": {
+      "count": "तैयार · {{n}}",
+      "completedAt": "पूरा {{at}}",
+      "empty": "कोई रिपोर्ट तैयार नहीं",
+      "handedToday": "आज सौंपी · {{n}}",
+      "handOver": "सौंपें",
+      "sendBack": "बेंच पर वापस",
+      "handedOver": "{{name}} · सौंपी गई",
+      "sentBack": "{{name}} · वापस भेजी",
+      "notSigned": "हस्ताक्षर नहीं",
+      "printOnPc": "प्रिंट डेस्क PC पर"
+    },
+    "err": {
+      "lab_mode_off": "लैब फुल मोड में है",
+      "not_completed": "रिपोर्ट पूरी नहीं",
+      "not_found": "नहीं मिला",
+      "forbidden": "अनुमति नहीं",
+      "conflict": "कहीं और बदला · फिर खोलें",
+      "offline": "कनेक्शन नहीं",
+      "failed": "सेव नहीं हुआ"
+    }
+  },
+  "quickCounter": {
+    "find": "नाम, UHID, फ़ोन या टोकन",
+    "register": "नहीं मिला · डेस्क पर रजिस्टर करें",
+    "noVisit": "आज कोई विज़िट नहीं",
+    "advised": "आज सलाह",
+    "advisedBy": "{{doctor}} की सलाह",
+    "noAdvice": "आज कोई जाँच नहीं",
+    "free": "लैब मुफ़्त · बिल नहीं",
+    "orderAdvised": "सलाह वाली जाँच ({{n}})",
+    "walkIn": "वॉक-इन (आज)",
+    "future": "आगे की अपॉइंटमेंट",
+    "recent": "पिछली जाँचें",
+    "noHistory": "अभी कोई जाँच नहीं",
+    "searchTests": "जाँच खोजें · CBC, LFT",
+    "chosen": "जाँचें · {{n}}",
+    "remove": "हटाएँ",
+    "noParams": "पैरामीटर नहीं",
+    "consentBy": "सहमति ली",
+    "pathologist": "पैथोलॉजिस्ट",
+    "send": "कलेक्ट पर भेजें",
+    "next": "आगे · बिल ({{n}})",
+    "total": "कुल",
+    "upiRef": "UPI रेफ़रेंस",
+    "cardRef": "कार्ड स्लिप नं. (वैकल्पिक)",
+    "collect": "{{amount}} लें · कलेक्ट पर भेजें",
+    "sendNoCharge": "कलेक्ट पर भेजें",
+    "duplicates": "हाल में हुई · टिक करें",
+    "sent": "{{name}} · क्विक सैंपल पर भेजा",
+    "booked": "बुक · {{name}} · {{day}} {{slot}}",
+    "today": "आज",
+    "pickDay": "दिन",
+    "pickSlot": "समय",
+    "pickTests": "जाँचें",
+    "full": "भरा",
+    "left": "{{n}} बाकी",
+    "bookPickSlot": "समय चुनें",
+    "book": "बुक {{day}} {{slot}}",
+    "dayClosed": {
+      "past": "दिन बीत गया",
+      "too_far": "बहुत आगे",
+      "closed_day": "लैब बंद"
+    },
+    "blocked": {
+      "no_lab_department": "लैब विभाग नहीं",
+      "lab_department_inactive": "लैब विभाग बंद",
+      "no_pathologist": "पैथोलॉजिस्ट नहीं"
     }
   }
 }

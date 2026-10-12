@@ -1,8 +1,8 @@
 import { SEATS, type EffectivePermissions, type Seat } from "../seats";
-import type { CopilotApptPick, CopilotCoverPick, CopilotLeavePick } from "../../../../packages/contracts/src/copilot";
+import type { CopilotApptPick, CopilotCoverPick, CopilotLeavePick, CopilotReminderPick } from "../../../../packages/contracts/src/copilot";
 
-/** E2.1 / E2.2 — what an act's answer offers to pick and confirm. */
-export type CopilotActPick = CopilotApptPick | CopilotLeavePick | CopilotCoverPick;
+/** E2.1–E2.3 — what an act's answer offers to pick and confirm. */
+export type CopilotActPick = CopilotApptPick | CopilotLeavePick | CopilotCoverPick | CopilotReminderPick;
 
 /**
  * E1.3 — THE COPILOT ON THE PHONE (decision 0064; spec /opt/hmis-context/SPEC-copilot-phone-2026-10-11.md).
@@ -26,7 +26,7 @@ export function isApptPick(p: unknown): p is CopilotApptPick {
 }
 export function isActPick(p: unknown): p is CopilotActPick {
   const kind = typeof p === "object" && p !== null ? (p as { kind?: unknown }).kind : undefined;
-  return kind === "apptPick" || kind === "leavePick" || kind === "coverPick";
+  return kind === "apptPick" || kind === "leavePick" || kind === "coverPick" || kind === "reminderPick";
 }
 export type AskSource = "chip" | "typed";
 
@@ -56,6 +56,10 @@ export const SEAT_CHIPS: Record<Seat["key"], ChipKey[]> = {
   slips: ["queue", "myDuty", "myDay"],
   onNow: ["myDuty", "myNight", "myDay"],
   myDuties: ["myDuty", "myNight", "myDay"],
+  qcounter: ["myDuty", "myNight", "myDay"],
+  qcollect: ["myDuty", "myNight", "myDay"],
+  qbench: ["myDuty", "myNight", "myDay"],
+  qreports: ["myDuty", "myNight", "myDay"],
 };
 
 function holds(p: EffectivePermissions, permission: string | null): boolean {
@@ -107,7 +111,7 @@ export function sayParams(key: string, params: Record<string, string | number>, 
     const or = lang.startsWith("hi") ? " या " : " or ";
     return { can: can.length < 2 ? can.join("") : `${can.slice(0, -1).join(", ")}${or}${can[can.length - 1]!}` };
   }
-  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave")) return params;
+  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave") && !key.startsWith("copilot.answer.reminder")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string") { out[k] = v; continue; }

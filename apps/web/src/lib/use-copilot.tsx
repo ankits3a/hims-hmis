@@ -3,10 +3,10 @@ import { useTranslation } from "react-i18next";
 import { askCopilot, confirmCopilot } from "./copilot-api";
 import { checkCopilotNotice } from "./copilot-notice";
 import type { CopilotDayReport, CopilotProposal, CopilotReply } from "./copilot-api";
-import type { CopilotApptPick, CopilotCoverPick, CopilotLeavePick } from "@hmis/contracts";
+import type { CopilotApptPick, CopilotCoverPick, CopilotLeavePick, CopilotReminderPick } from "@hmis/contracts";
 
-/** E2.1 / E2.2 — what an act's answer offers to pick and confirm: an appointment, a leave, a cover or swap. */
-export type CopilotActPick = CopilotApptPick | CopilotLeavePick | CopilotCoverPick;
+/** E2.1–E2.3 — what an act's answer offers to pick and confirm: an appointment, a leave, a cover or swap, a reminder. */
+export type CopilotActPick = CopilotApptPick | CopilotLeavePick | CopilotCoverPick | CopilotReminderPick;
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -153,7 +153,7 @@ export function isApptPick(p: unknown): p is CopilotApptPick {
 }
 export function isActPick(p: unknown): p is CopilotActPick {
   const kind = typeof p === "object" && p !== null ? (p as { kind?: unknown }).kind : undefined;
-  return kind === "apptPick" || kind === "leavePick" || kind === "coverPick";
+  return kind === "apptPick" || kind === "leavePick" || kind === "coverPick" || kind === "reminderPick";
 }
 
 /* ═══ 20-U U9 — THE ROSTER'S ANSWERS IN THE BOARDS' VOICE ═══
@@ -185,7 +185,7 @@ export function sayParams(
     const or = lang.startsWith("hi") ? " या " : " or ";
     return { can: can.length < 2 ? can.join("") : `${can.slice(0, -1).join(", ")}${or}${can[can.length - 1]!}` };
   }
-  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave")) return params;
+  if (!key.startsWith("copilot.answer.roster") && !key.startsWith("copilot.answer.appt") && !key.startsWith("copilot.answer.leave") && !key.startsWith("copilot.answer.reminder")) return params;
   const out: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string") { out[k] = v; continue; }
