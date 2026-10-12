@@ -7,7 +7,7 @@ export { tasksManifest, TASKS_SUPERVISE, TASKS_VIEW, TASKS_WORK } from "./manife
 export { TasksModule } from "./tasks.module";
 export {
   DEFAULT_LADDER_MIN, GENERAL_TASK, SERVICES_SUPERVISOR_ROLE, SUPPORT_STAFF_ROLE,
-  allSkills, defineSkill, defineTaskKind, requireTaskKind, skillRoles, taskKind, taskKinds,
+  allSkills, defineSkill, defineTaskKind, requireTaskKind, skillRoles, taskKind, taskKinds, verifierPermissionsOf,
 } from "./kinds";
 export type { TaskKindDecl } from "./kinds";
 export { TaskError, taskHttpStatus } from "./errors";
@@ -18,6 +18,6 @@ export {
 export type { ActOptions, RaiseResult, TaskRow } from "./engine";
 export { dutyCovering, onDutyForSkill, openLoad, pickWorker } from "./dispatch";
 export type { OnDutyWorker } from "./dispatch";
-export { SWEEP_ACTOR, SWEEP_BATCH, sweepTasks } from "./sweep";
+export { SWEEP_ACTOR, SWEEP_BATCH, nudgeTask, sweepTasks } from "./sweep";
 export type { SweepResult } from "./sweep";
-export { myTasks, taskBoard } from "./reads";
+export { findTasks, getTask, myTasks, taskBoard } from "./reads";

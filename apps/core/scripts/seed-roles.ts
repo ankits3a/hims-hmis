@@ -1114,6 +1114,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
       "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
       "tasks.view", "tasks.supervise",
+      // E1.4 HOUSEKEEPING (issue #721) — the housekeeping board out of hours (not the terminal-clean check).
+      "housekeeping.view",
     ],
   },
   /**
@@ -1988,7 +1990,15 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
    */
   { roleKey: "support_staff", permissions: ["tasks.work"] },
-  { roleKey: "services_supervisor", permissions: ["tasks.view", "tasks.work", "tasks.supervise"] },
+  /**
+   * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
+   * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
+   * control keeps with the supervisor alone. A routine clean is also checked by `ipd.beds.clean` holders.
+   */
+  {
+    roleKey: "services_supervisor",
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "housekeeping.view", "housekeeping.verify_terminal"],
+  },
 ];
 
 /**

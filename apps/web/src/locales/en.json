@@ -86,6 +86,7 @@
     "copilotHealth": "Copilot health",
     "myTasks": "My tasks",
     "taskBoard": "Task board",
+    "housekeeping": "Housekeeping",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -15705,6 +15706,8 @@
       "none": "None now",
       "cleaning": "Cleaning over 60 min",
       "cleaningItem": "{{bed}} · {{minutes}} min",
+      "nudge": "Nudge housekeeping",
+      "nudged": "Housekeeping nudged",
       "blocked": "Blocked past return date"
     },
     "live": "Live · updated",
@@ -15788,7 +15791,11 @@
     "noPlace": "No place given",
     "askedAgain": "Asked {{count}}×",
     "kind": {
-      "general": "General task"
+      "general": "General task",
+      "bed_clean_routine": "Bed clean",
+      "bed_clean_terminal": "Terminal clean",
+      "spill": "Spill clean",
+      "room_inspection": "Room inspection"
     },
     "priority": {
       "urgent": "Urgent",
@@ -15854,7 +15861,32 @@
       "no_verify_step": "No check step",
       "verifier_is_doer": "Doer cannot check",
       "not_permitted": "Not allowed",
-      "reason_required": "Say why"
+      "reason_required": "Say why",
+      "nudged_recently": "Nudged a few min ago"
+    }
+  },
+  "housekeeping": {
+    "title": "Housekeeping",
+    "terminal": "Supervisor checks",
+    "check": "Check",
+    "checked": "Checked",
+    "clean": {
+      "line": "Cleaning · {{minutes}} min",
+      "minutes": "{{minutes}} min",
+      "by": "assigned to {{who}}",
+      "pool": "waiting for a cleaner",
+      "done": "Cleaned · waiting for check",
+      "late": "late",
+      "terminal": "Terminal clean",
+      "verify": "Verify clean",
+      "verified": "Clean checked · bed free",
+      "nudge": "Nudge housekeeping",
+      "nudged": "Housekeeping nudged"
+    },
+    "refusal": {
+      "terminal_needs_supervisor": "Supervisor checks terminal cleans",
+      "not_a_clean": "Not a housekeeping task",
+      "bad_input": "Request incomplete"
     }
   }
 }

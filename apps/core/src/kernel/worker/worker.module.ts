@@ -39,6 +39,7 @@ import {
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
+import { HOUSEKEEPING_BED_CONSUMER, bedTurnoverConsumer, housekeepingManifest } from "../../modules/housekeeping";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -200,6 +201,11 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // install and the `workerConsumers` entry are ONE edit (`buildSubscriptionBus`).
         registry.install(abdmManifest);
         registry.install(orderingManifest);
+        // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events -> `housekeeping.bed_turnover`: a bed released
+        // into cleaning raises its one cleaning task; a bed leaving cleaning cancels it. Installed in BOTH processes
+        // (the pharmacy shape); this install and the `workerConsumers` entry are ONE edit. Importing the module also
+        // defines its task kinds in the worker, so the task clock knows their windows and ladders.
+        registry.install(housekeepingManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -313,6 +319,9 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // Decision 0067 — the other half of `orderingManifest`'s `consultation.completed` /
     // `prescription.paper_transcribed` declaration: free tests order themselves. One without the other is a boot error.
     [ORDERING_FREE_TESTS_CONSUMER]: freeTestsConsumer(db),
+    // E1.4 HOUSEKEEPING — the other half of `housekeepingManifest`'s three bed subscriptions. One without the other
+    // is a boot error.
+    [HOUSEKEEPING_BED_CONSUMER]: bedTurnoverConsumer(db),
     [PHARMACY_RX_ISSUED_CONSUMER]: rxIssuedConsumer(db),
     // PHARMACY P6 (patient messages) — the bill's message, once per invoice. `pharmacyManifest` declares
     // `dispense.handed_over` and `retail.sold` -> `pharmacy.patient_messages` in the commit that adds this

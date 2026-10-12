@@ -6,7 +6,7 @@ import {
 import { hasPermission } from "../../kernel/auth/permissions";
 import { resources, taskEvents, tasks, users } from "../../kernel/db/schema";
 import { TaskError } from "./errors";
-import { requireTaskKind, skillRoles, taskKind } from "./kinds";
+import { requireTaskKind, skillRoles, taskKind, verifierPermissionsOf } from "./kinds";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { dutyCovering, pickWorker } from "./dispatch";
 import type { Actor, TaskAct, TaskEventSource, TaskSource } from "@hmis/contracts";
@@ -263,12 +263,19 @@ export async function verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Da
     if (!row.verifyRequired) throw new TaskError("no_verify_step", { taskId: row.id });
     if (row.state !== "done") throw new TaskError(row.state === "verified" || row.state === "cancelled" ? "not_open" : "wrong_state", { taskId: row.id, state: row.state });
     if (row.doneBy === actor.id) throw new TaskError("verifier_is_doer", { taskId: row.id });
-    const permission = taskKind(row.kind)?.verifierPermission ?? "tasks.supervise";
-    if (actor.type !== "system" && !(await hasPermission(t as unknown as Db, actor.id, permission, "hospital"))) {
-      throw new TaskError("not_permitted", { taskId: row.id, permission });
+    const decl = taskKind(row.kind);
+    const permissions = verifierPermissionsOf(decl);
+    if (actor.type !== "system") {
+      let admitted = false;
+      for (const p of permissions) {
+        if (await hasPermission(t as unknown as Db, actor.id, p, "hospital")) { admitted = true; break; }
+      }
+      if (!admitted) throw new TaskError("not_permitted", { taskId: row.id, permission: permissions.join(" or ") });
     }
     const next = await update(t, row.id, { state: "verified", verifiedBy: actor.id, verifiedAt: now }, now);
     await logEvent(t, next, "verified", actor, eventSource(actor), now, {});
+    // The owning module's consequence of a passed check, in the SAME transaction (housekeeping: the bed is free).
+    if (decl?.onVerified !== undefined) await decl.onVerified(t, next, actor, now);
     return next;
   });
 }
@@ -329,6 +336,8 @@ export async function returnToPool(
     return next;
   });
 }
+
+export { eventSource };
 
 /** For the sweep: the event writer, so every state change the clock makes carries the same history. */
 export { logEvent as appendTaskEvent, update as updateTaskRow, lockTask };

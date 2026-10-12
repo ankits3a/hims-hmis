@@ -1684,6 +1684,12 @@ by exactly one, started, done, and checked where its kind says. Three permission
 `tasks.view`, `tasks.work` and `tasks.supervise`; `duty_manager` holds `tasks.view` and `tasks.supervise`
 for the hours no supervisor is on. Nobody is assigned to either new role by any seed.
 
+**Housekeeping (E1.4, issue #721, decision 0072, built 2026-10-12, awaiting owner review).** Every bed released
+into cleaning raises exactly one cleaning task on the task engine; the bed is free only when the clean is checked.
+`housekeeping.view` (services_supervisor, duty_manager) opens the housekeeping board at `/housekeeping`;
+`housekeeping.verify_terminal` is held by `services_supervisor` alone — a terminal clean (isolation bed, infection,
+death) is checked by the housekeeping supervisor. A routine clean may also be checked by a holder of `ipd.beds.clean`.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

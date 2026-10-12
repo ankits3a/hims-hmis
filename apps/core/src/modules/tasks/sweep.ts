@@ -5,7 +5,9 @@ import { resources, taskEvents, tasks } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { DEFAULT_LADDER_MIN, allSkills, taskKind, taskKinds } from "./kinds";
 import { dutyCovering, onDutyForSkill, pickWorker } from "./dispatch";
-import { appendTaskEvent, dispatchInto, lockTask, updateTaskRow } from "./engine";
+import { appendTaskEvent, dispatchInto, eventSource, lockTask, updateTaskRow } from "./engine";
+import { TaskError } from "./errors";
+import { TASK_NUDGE_WINDOW_MIN, taskRefInput } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
 import type { SQL } from "drizzle-orm";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -200,22 +202,56 @@ async function lastReturnedFrom(db: Db, taskId: string): Promise<string | null> 
 }
 
 /** The bell notice to every holder of the kind's escalation role. The key absorbs a second run. */
-async function tellSupervisors(db: Db | Tx, row: TaskRow, why: "late" | "returned", now: Date, sourceKey: string): Promise<void> {
+async function tellSupervisors(
+  db: Db | Tx, row: TaskRow, why: "late" | "returned" | "nudge", now: Date, sourceKey: string, also: readonly string[] = [],
+): Promise<void> {
   const kind = taskKind(row.kind);
   const role = kind?.escalateTo;
-  if (role === undefined) return;
-  const holders = await usersHoldingRole(db as Tx, role);
+  const holders = [...new Set([...(role === undefined ? [] : await usersHoldingRole(db as Tx, role)), ...also])];
   if (holders.length === 0) return;
   const place = row.placeResourceId === null ? null
     : (await (db as Db).select({ name: resources.name }).from(resources).where(eq(resources.id, row.placeResourceId)))[0]?.name ?? null;
   const label = kind?.label ?? row.kind;
   const minutes = Math.max(0, Math.floor((now.getTime() - row.dueAt.getTime()) / 60_000));
-  const title = why === "late" ? `Task late: ${label}` : `Task back in pool: ${label}`;
-  const body = [place, why === "late" ? `${minutes} min late` : "worker off shift"].filter((s) => s !== null).join(" · ");
+  const title = why === "late" ? `Task late: ${label}` : why === "nudge" ? `Nudge: ${label}` : `Task back in pool: ${label}`;
+  const body = [place, why === "returned" ? "worker off shift" : minutes > 0 ? `${minutes} min late` : "please hurry"]
+    .filter((s) => s !== null).join(" · ");
   for (const userId of holders) {
     await raiseNotice(db as Db, {
-      userId, kind: why === "late" ? "task.late" : "task.returned", title, body,
+      userId, kind: why === "late" ? "task.late" : why === "nudge" ? "task.nudge" : "task.returned", title, body,
       refType: "task", refId: row.id, sourceKey, at: now,
     });
   }
+}
+
+/* ═══════════════════════════════ nudge — a person escalates now ═══════════════════════════════ */
+
+/**
+ * A person escalates an open task now ("Nudge housekeeping" on the Beds board): an `escalated` event marked
+ * `nudge`, and a bell to the kind's escalation role and to the worker holding it. The ladder's own rung is not
+ * moved (the clock still climbs on time). A second nudge on the same task within `TASK_NUDGE_WINDOW_MIN`
+ * is refused: one bell, not a stream. The caller's door checks who may nudge.
+ */
+export async function nudgeTask(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
+  const parsed = taskRefInput.safeParse(raw);
+  if (!parsed.success) throw new TaskError("bad_input", { issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) });
+  const input = parsed.data;
+  return tx(db, async (t) => {
+    const row = await lockTask(t, input.taskId);
+    if (input.version !== undefined && input.version !== row.version) throw new TaskError("stale", { taskId: row.id });
+    if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
+    const since = new Date(now.getTime() - TASK_NUDGE_WINDOW_MIN * 60_000);
+    const recent = await t.select({ seq: taskEvents.seq }).from(taskEvents).where(and(
+      eq(taskEvents.taskId, row.id), eq(taskEvents.act, "escalated"), sql`${taskEvents.at} > ${since.toISOString()}::timestamptz`,
+      sql`(${taskEvents.detail} ->> 'nudge') = 'true'`,
+    )).limit(1);
+    if (recent.length > 0) throw new TaskError("nudged_recently", { taskId: row.id });
+    const next = await updateTaskRow(t, row.id, {}, now);
+    await appendTaskEvent(t, next, "escalated", actor, eventSource(actor), now, {
+      nudge: true, rung: row.escalatedRung, minutesLate: Math.max(0, Math.floor((now.getTime() - row.dueAt.getTime()) / 60_000)),
+    });
+    const holder = row.assigneeKind === "person" && row.assigneeId !== null ? [row.assigneeId] : [];
+    await tellSupervisors(t, next, "nudge", now, `task:${next.id}:nudge:${next.version}`, holder);
+    return next;
+  });
 }

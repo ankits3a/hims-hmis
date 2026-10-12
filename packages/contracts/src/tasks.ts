@@ -98,6 +98,7 @@ export const TASK_REFUSALS = {
   verifier_is_doer: { sentence: "The person who did a task cannot check it.", fix: "Ask another supervisor to check it." },
   not_permitted: { sentence: "You may not check this kind of task.", fix: "Ask a supervisor who may." },
   reason_required: { sentence: "Say why.", fix: "Type a short reason." },
+  nudged_recently: { sentence: "This task was nudged a few minutes ago.", fix: "Wait five minutes, or call the supervisor." },
 } as const satisfies Record<string, { sentence: string; fix: string }>;
 export type TaskRefusalCode = keyof typeof TASK_REFUSALS;
 
@@ -139,6 +140,9 @@ export type TaskBoardView = {
   /** Counted in the database over every open task, not over the rows sent. */
   counts: { open: number; late: number; pool: number; notShown: number };
 };
+
+/** A second nudge on one task inside this window is refused (`nudged_recently`): one bell, not a stream. */
+export const TASK_NUDGE_WINDOW_MIN = 5;
 
 /** Whole minutes past due at `now`; 0 when not late. Pure, shared by the board and its tests. */
 export function minutesLate(dueAt: string | Date, now: Date): number {

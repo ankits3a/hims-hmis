@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { tasks, users } from "../../kernel/db/schema";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
 import { allSkills, skillRoles, taskKind } from "./kinds";
@@ -95,14 +95,16 @@ export async function myTasks(db: Db, userId: string, now: Date = new Date()): P
  * priority and due time; floors with the most late work first. Workers: everyone on duty for any
  * skill, plus anyone still holding an open task, with their load.
  */
-export async function taskBoard(db: Db, now: Date = new Date()): Promise<TaskBoardView> {
-  const open = await db.select().from(tasks).where(inArray(tasks.state, OPEN)).orderBy(asc(tasks.dueAt)).limit(BOARD_ROW_LIMIT);
+export async function taskBoard(db: Db, now: Date = new Date(), opts: { kinds?: readonly string[] } = {}): Promise<TaskBoardView> {
+  // An owning module's board (housekeeping) is the same board over its own kinds only.
+  const ofKinds = opts.kinds === undefined ? [] : [inArray(tasks.kind, [...opts.kinds])];
+  const open = await db.select().from(tasks).where(and(inArray(tasks.state, OPEN), ...ofKinds)).orderBy(asc(tasks.dueAt)).limit(BOARD_ROW_LIMIT);
   const totals = (await db.select({
     open: sql<number>`count(*)::int`,
     late: sql<number>`count(*) filter (where ${tasks.dueAt} <= ${now.toISOString()}::timestamptz)::int`,
     pool: sql<number>`count(*) filter (where ${tasks.state} = 'created')::int`,
-  }).from(tasks).where(inArray(tasks.state, OPEN)))[0]!;
-  const toVerify = await db.select().from(tasks).where(and(eq(tasks.state, "done"), eq(tasks.verifyRequired, true)))
+  }).from(tasks).where(and(inArray(tasks.state, OPEN), ...ofKinds)))[0]!;
+  const toVerify = await db.select().from(tasks).where(and(eq(tasks.state, "done"), eq(tasks.verifyRequired, true), ...ofKinds))
     .orderBy(asc(tasks.doneAt)).limit(50);
   const openCards = await cards(db, open, { withNote: false });
   const isLate = (c: TaskCard): boolean => Date.parse(c.dueAt) <= now.getTime();
@@ -142,4 +144,25 @@ export async function taskBoard(db: Db, now: Date = new Date()): Promise<TaskBoa
     toVerify: await cards(db, toVerify, { withNote: false }),
     counts: { open: totals.open, late: totals.late, pool: totals.pool, notShown: Math.max(0, totals.open - openCards.length) },
   };
+}
+
+/**
+ * For an owning module: its own tasks, by kind and optionally place, state and age. Housekeeping asks
+ * "is there already a clean for this bed since its release?" and "which cleans are open on this bed?".
+ */
+export async function findTasks(
+  exec: Db | Tx,
+  q: { kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date; limit?: number },
+): Promise<TaskRow[]> {
+  if (q.kinds.length === 0) return [];
+  return (exec as Db).select().from(tasks).where(and(
+    inArray(tasks.kind, [...q.kinds]),
+    ...(q.placeResourceId === undefined ? [] : [eq(tasks.placeResourceId, q.placeResourceId)]),
+    ...(q.states === undefined ? [] : [inArray(tasks.state, [...q.states])]),
+    ...(q.createdSince === undefined ? [] : [sql`${tasks.createdAt} >= ${q.createdSince.toISOString()}::timestamptz`]),
+  )).orderBy(desc(tasks.createdAt)).limit(q.limit ?? 500);
+}
+
+export async function getTask(exec: Db | Tx, taskId: string): Promise<TaskRow | null> {
+  return (await (exec as Db).select().from(tasks).where(eq(tasks.id, taskId)))[0] ?? null;
 }

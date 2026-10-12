@@ -175,3 +175,61 @@ describe("Beds capacity board (E1.1)", () => {
     expect(screen.getByTestId("ipd-beds-offline")).toBeInTheDocument();
   });
 });
+
+describe("Beds board — housekeeping's cleaning clocks (E1.4)", () => {
+  const CLEAN_BED = "F05-MED-F-B02";
+  function withCleans(perms: string[], clean: Record<string, unknown>): { posted: string[] } {
+    const posted: string[] = [];
+    const bedId = boardOf(false).floors[0]!.wards[0]!.beds[1]!.id;
+    setToken("stub-token");
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (raw.startsWith("/api/auth/me")) {
+        return new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } } }), { status: 200 });
+      }
+      if (raw.includes("/housekeeping/bed-cleans")) {
+        return new Response(JSON.stringify({ serverNow: new Date().toISOString(), cleans: [{
+          bedId, taskId: "01FAKETASK0000000000000001", kind: "bed_clean_routine", terminal: false, state: "in_progress",
+          raisedAt: new Date().toISOString(), dueAt: new Date().toISOString(), minutes: 72, late: true, assigneeInitials: "A. K.",
+          escalatedRung: 1, version: 4, ...clean,
+        }] }), { status: 200 });
+      }
+      if (init?.method === "POST") posted.push(raw);
+      return new Response(JSON.stringify({ id: "x", state: "verified", version: 5 }), { status: 200 });
+    }));
+    return { posted };
+  }
+
+  it("a cleaning bed says its clock and who has it, and the blockers list nudges housekeeping", async () => {
+    // The board's fixture is built from `bed()`, whose ids move with every call: read the ids the screen will see.
+    const user = userEvent.setup();
+    const fixture = boardOf(false);
+    api.getBedBoard.mockReset().mockImplementation(async () => fixture);
+    const bedId = fixture.floors[0]!.wards[0]!.beds[1]!.id;
+    const { posted } = withCleans(["ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean"], { bedId });
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    expect(await screen.findByRole("img", { name: `${CLEAN_BED} · Cleaning · 72 min · assigned to A. K. · late` })).toBeInTheDocument();
+    const slow = await screen.findByTestId("ipd-beds-slow-cleans");
+    expect(slow).toHaveTextContent(`${CLEAN_BED} · 72 min · A. K. · late`);
+    await user.click(within(slow).getByRole("button", { name: "Nudge housekeeping" }));
+    expect(await within(slow).findByText("✓ Housekeeping nudged")).toBeInTheDocument();
+    expect(posted).toEqual(["/api/housekeeping/cleans/01FAKETASK0000000000000001/nudge"]);
+  });
+
+  it("a cleaned bed waiting for its check offers Verify clean (not the hand tap) and frees the bed", async () => {
+    const user = userEvent.setup();
+    const fixture = boardOf(false);
+    api.getBedBoard.mockReset().mockImplementation(async () => fixture);
+    const bedId = fixture.floors[0]!.wards[0]!.beds[1]!.id;
+    const { posted } = withCleans(["ipd.beds.view", "ipd.beds.clean"], { bedId, state: "done", late: false });
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    await user.click(await screen.findByTestId("ipd-ward-F05-MED-F"));
+    const drawer = await screen.findByTestId("ipd-ward-drawer");
+    await user.click(within(drawer).getByTestId(`ipd-bed-${CLEAN_BED}`));
+    expect(await within(drawer).findByTestId("ipd-bed-clean")).toHaveTextContent("Cleaned · waiting for check");
+    expect(within(drawer).queryByRole("button", { name: "Mark clean" })).toBeNull();
+    await user.click(within(drawer).getByRole("button", { name: "Verify clean" }));
+    expect(await within(drawer).findByText("✓ Clean checked · bed free")).toBeInTheDocument();
+    expect(posted).toEqual(["/api/housekeeping/cleans/01FAKETASK0000000000000001/verify"]);
+  });
+});

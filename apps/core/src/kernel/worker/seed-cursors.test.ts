@@ -16,6 +16,7 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../m
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
+import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -168,6 +169,12 @@ describe("seedCursors", () => {
          * `max(seq)`, it orders only for consults completed after it ships.
          */
         ORDERING_FREE_TESTS_CONSUMER,
+        /**
+         * E1.4 HOUSEKEEPING (issue #721) — from zero it would walk every bed release and status change since
+         * the resource registry opened. Each would raise nothing (the bed's current status is re-read), but a
+         * no-op is not a reason to walk them. Seeded at `max(seq)`, it begins with the next release.
+         */
+        HOUSEKEEPING_BED_CONSUMER,
       ].sort());
   });
 

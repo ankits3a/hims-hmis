@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/tasks/`
 · Notes: [MAP.md](../../../apps/core/src/modules/tasks/MAP.md)
 
 - **Depends on modules:** `roster`
-- **Used by modules:** —
+- **Used by modules:** `housekeeping`
 - **Kernel used:** `alerts`, `auth`, `db`, `modules`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -51,6 +51,7 @@ Source: `apps/core/src/modules/tasks/`
   - `skillRoles(skill: string): readonly string[]`
   - `taskKind(kind: string): TaskKindDecl | undefined`
   - `taskKinds(): TaskKindDecl[]`
+  - `verifierPermissionsOf(decl: TaskKindDecl | undefined): readonly string[]`
   - types: `TaskKindDecl`
 - `manifest.ts`
   - `TASKS_SUPERVISE`
@@ -58,11 +59,14 @@ Source: `apps/core/src/modules/tasks/`
   - `TASKS_WORK`
   - `tasksManifest: ModuleManifest`
 - `reads.ts`
+  - `findTasks(exec: Db | Tx, q: { kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date; limit?: …`
+  - `getTask(exec: Db | Tx, taskId: string): Promise<TaskRow | null>`
   - `myTasks(db: Db, userId: string, now: Date = new Date()): Promise<MyTasksView>`
-  - `taskBoard(db: Db, now: Date = new Date()): Promise<TaskBoardView>`
+  - `taskBoard(db: Db, now: Date = new Date(), opts: { kinds?: readonly string[] } = {}): Promise<TaskBoardView>`
 - `sweep.ts`
   - `SWEEP_ACTOR: Actor`
   - `SWEEP_BATCH`
+  - `nudgeTask(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `sweepTasks(db: Db, now: Date = new Date()): Promise<SweepResult>`
   - types: `SweepResult`
 - `tasks.module.ts`

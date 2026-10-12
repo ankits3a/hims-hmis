@@ -25,3 +25,4 @@ export * from "./lab-ast";
 export * from "./ipd-bed-classes";
 export * from "./ipd";
 export * from "./tasks";
+export * from "./housekeeping";

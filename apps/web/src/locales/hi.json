@@ -86,6 +86,7 @@
     "copilotHealth": "कोपायलट हेल्थ",
     "myTasks": "मेरे काम",
     "taskBoard": "काम बोर्ड",
+    "housekeeping": "हाउसकीपिंग",
     "labDesk": "लैब डेस्क",
     "labCollection": "नमूना संग्रह",
     "labBench": "बेंच",
@@ -15705,6 +15706,8 @@
       "none": "अभी कोई नहीं",
       "cleaning": "60 मिनट से ज़्यादा सफ़ाई",
       "cleaningItem": "{{bed}} · {{minutes}} मिनट",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
+      "nudged": "याद दिलाया",
       "blocked": "वापसी की तारीख़ पार, अब भी बंद"
     },
     "live": "लाइव · अपडेट",
@@ -15788,7 +15791,11 @@
     "noPlace": "जगह नहीं बताई",
     "askedAgain": "{{count}}× माँगा",
     "kind": {
-      "general": "सामान्य काम"
+      "general": "सामान्य काम",
+      "bed_clean_routine": "बेड सफ़ाई (Bed clean)",
+      "bed_clean_terminal": "टर्मिनल सफ़ाई (Terminal clean)",
+      "spill": "फैलाव सफ़ाई (Spill clean)",
+      "room_inspection": "कमरा जाँच (Room inspection)"
     },
     "priority": {
       "urgent": "जल्दी",
@@ -15854,7 +15861,32 @@
       "no_verify_step": "जाँच का चरण नहीं",
       "verifier_is_doer": "करने वाला नहीं जाँच सकता",
       "not_permitted": "अनुमति नहीं",
-      "reason_required": "कारण लिखें"
+      "reason_required": "कारण लिखें",
+      "nudged_recently": "कुछ मिनट पहले याद दिलाया"
+    }
+  },
+  "housekeeping": {
+    "title": "हाउसकीपिंग",
+    "terminal": "सुपरवाइज़र जाँचेगा",
+    "check": "जाँचें",
+    "checked": "जाँचा गया",
+    "clean": {
+      "line": "सफ़ाई · {{minutes}} मिनट",
+      "minutes": "{{minutes}} मिनट",
+      "by": "{{who}} को सौंपा",
+      "pool": "सफ़ाईकर्मी की प्रतीक्षा",
+      "done": "साफ़ · जाँच बाकी",
+      "late": "देर",
+      "terminal": "टर्मिनल सफ़ाई",
+      "verify": "सफ़ाई जाँचें",
+      "verified": "सफ़ाई जाँची · बेड ख़ाली",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
+      "nudged": "याद दिलाया"
+    },
+    "refusal": {
+      "terminal_needs_supervisor": "टर्मिनल सफ़ाई सुपरवाइज़र जाँचता है",
+      "not_a_clean": "हाउसकीपिंग का काम नहीं",
+      "bad_input": "अनुरोध अधूरा"
     }
   }
 }
