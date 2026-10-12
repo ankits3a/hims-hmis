@@ -1,5 +1,5 @@
 {
-  "id": "abf9b277-921e-4afa-8f11-28d7338adffd",
+  "id": "eb4535bc-9ef9-43f2-99a6-b1428e341ade",
   "prevId": "9b1caabb-70f2-4e64-9634-645506cf3e09",
   "version": "7",
   "dialect": "postgresql",
@@ -54320,6 +54320,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "placed_as": {
+          "name": "placed_as",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -54425,6 +54431,19 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "ipd_bed_reservations_patient_id_patients_id_fk": {
+          "name": "ipd_bed_reservations_patient_id_patients_id_fk",
+          "tableFrom": "ipd_bed_reservations",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -54434,6 +54453,10 @@
         "ipd_bed_reservations_status_ck": {
           "name": "ipd_bed_reservations_status_ck",
           "value": "\"ipd_bed_reservations\".\"status\" in ('active', 'released', 'lapsed', 'consumed')"
+        },
+        "ipd_bed_reservations_placed_as_ck": {
+          "name": "ipd_bed_reservations_placed_as_ck",
+          "value": "\"ipd_bed_reservations\".\"placed_as\" is null or \"ipd_bed_reservations\".\"placed_as\" in ('male', 'female')"
         }
       },
       "isRLSEnabled": false
@@ -54465,6 +54488,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "placed_as": {
+          "name": "placed_as",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "bed_class": {
           "name": "bed_class",
@@ -54577,12 +54606,37 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "ipd_bed_stays_patient_id_patients_id_fk": {
+          "name": "ipd_bed_stays_patient_id_patients_id_fk",
+          "tableFrom": "ipd_bed_stays",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "ipd_bed_stays_bed_class_ck": {
+          "name": "ipd_bed_stays_bed_class_ck",
+          "value": "\"ipd_bed_stays\".\"bed_class\" in ('general', 'semi_private', 'private', 'deluxe', 'suite', 'hdu', 'icu', 'nicu', 'picu', 'ldr', 'daycare', 'emergency', 'overflow')"
+        },
+        "ipd_bed_stays_billed_class_ck": {
+          "name": "ipd_bed_stays_billed_class_ck",
+          "value": "\"ipd_bed_stays\".\"billed_class\" in ('general', 'semi_private', 'private', 'deluxe', 'suite', 'hdu', 'icu', 'nicu', 'picu', 'ldr', 'daycare', 'emergency', 'overflow')"
+        },
+        "ipd_bed_stays_placed_as_ck": {
+          "name": "ipd_bed_stays_placed_as_ck",
+          "value": "\"ipd_bed_stays\".\"placed_as\" is null or \"ipd_bed_stays\".\"placed_as\" in ('male', 'female')"
+        },
         "ipd_bed_stays_class_change_ck": {
           "name": "ipd_bed_stays_class_change_ck",
           "value": "\"ipd_bed_stays\".\"class_change\" is null or \"ipd_bed_stays\".\"class_change\" in ('upgrade', 'downgrade')"

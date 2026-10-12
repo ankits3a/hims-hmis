@@ -71,7 +71,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   under the contract's idempotency key (`withIdempotency`, route `ipd:<intent>`) → lock → re-check state and rules
   → write + event. A refusal is `IpdRefusal` (contract code, `rule`, `fix`, `bedRule` such as "Female-only bed",
   `detail`); HTTP 404 for `*_not_found`, 403 for the overflow gate, 409 otherwise (`IpdRefusalBody`).
-- LOCK ORDER: the bed's parent (room or ward) FOR UPDATE, then the bed, then IPD rows. The parent lock serialises a
+- LOCK ORDER: the admission (advisory xact lock on `ipd_admission:<id>`, reserve/assign), then the bed's parent
+  (room or ward) FOR UPDATE, then the bed, then IPD rows — `releaseBedOccupant` and the incumbent marker too (its
+  dry run takes no lock). An open-stay unique violation maps to `admission_wrong_state`, never a 500. The parent lock serialises a
   twin room's two beds (gender fixed by the first occupant or holder until empty) and is also what makes two desks
   racing for one bed answer "bed just taken" with `detail.nextBeds` instead of the kernel's raw `already_occupied`.
 - Kernel statuses only. Reserved = kernel `available` + an active `ipd_bed_reservations` row (partial unique: one
@@ -79,6 +81,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `pending_release` and `releaseBedOccupant` applies it. Occupant triad: `ipd_admission` / admission id, with the
   patient and billed class on the open `ipd_bed_stays` row (partial unique per bed and per admission). Incumbent:
   occupant `incumbent`/`incumbent` + `attributes.incumbent: true` (+ optional `incumbentGender`).
+- Room gender comes from `placed_as` on open stays and live holds (and `incumbentGender`); a first holder with no
+  recorded gender locks the room as unknown (`room_gender_unknown`, "Room gender not recorded — set it first").
+- A hold past `expiresAt` is lapsed inline by any act that meets it (`currentHold`), not only by the minute job.
 - DECIDED: a hold may be placed on an available OR cleaning bed; assignment needs `available`. One live hold per
   admission (a new one ends the old as `plan_changed`); assignment consumes the admission's own hold.
 - The lapse is `lapseBedReservations(db, now)`, every minute (`kernel/worker/jobs.ts`), system actor

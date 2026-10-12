@@ -23,6 +23,7 @@ flowchart LR
   billing[billing] --> patients[patients]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
+  ipd[ipd] --> patients[patients]
   ipd[ipd] --> resources[resources]
   lab[lab] --> billing[billing]
   lab[lab] --> ops[ops]

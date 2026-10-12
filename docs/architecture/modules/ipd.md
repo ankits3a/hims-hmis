@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `patients`
-- **Used by modules:** —
+- **Used by modules:** `housekeeping`
 - **Kernel used:** `auth`, `db`, `events`, `modules`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -108,7 +108,7 @@ Source: `apps/core/src/modules/ipd/`
 
 `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`
 
-Foreign keys into: `resources`
+Foreign keys into: `patients`, `resources`
 
 ## HTTP routes (8)
 
