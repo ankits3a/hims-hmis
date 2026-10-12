@@ -118,3 +118,6 @@ export * from "./ordering";
 export * from "./copilot";
 // E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
 export * from "./reminders";
+// E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
+// References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
+export * from "./tasks";
