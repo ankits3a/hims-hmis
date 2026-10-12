@@ -78,11 +78,14 @@
       "pharmacy": "फार्मेसी",
       "billing": "बिलिंग",
       "stores": "स्टोर",
+      "services": "सेवाएँ",
       "admin": "प्रशासन"
     },
     "staffReports": "स्टाफ़ रिपोर्ट",
     "outsideTests": "बाहर की जाँचें",
     "copilotHealth": "कोपायलट हेल्थ",
+    "myTasks": "मेरे काम",
+    "taskBoard": "काम बोर्ड",
     "labDesk": "लैब डेस्क",
     "labCollection": "नमूना संग्रह",
     "labBench": "बेंच",
@@ -15777,6 +15780,81 @@
       "reason": "कारण",
       "expectedBack": "वापसी कब",
       "note": "टिप्पणी"
+    }
+  },
+  "tasks": {
+    "loading": "लोड हो रहा है…",
+    "offline": "नेटवर्क नहीं",
+    "noPlace": "जगह नहीं बताई",
+    "askedAgain": "{{count}}× माँगा",
+    "kind": {
+      "general": "सामान्य काम"
+    },
+    "priority": {
+      "urgent": "जल्दी",
+      "stat": "तुरंत"
+    },
+    "state": {
+      "created": "इंतज़ार में",
+      "assigned": "सौंपा गया",
+      "accepted": "लिया गया",
+      "in_progress": "चल रहा है",
+      "done": "हो गया",
+      "verified": "जाँचा गया",
+      "cancelled": "रद्द"
+    },
+    "act": {
+      "accept": "लें",
+      "start": "शुरू करें",
+      "done": "हो गया"
+    },
+    "clock": {
+      "late": "{{count}} मिनट देर",
+      "dueIn": "{{count}} मिनट में",
+      "dueAt": "{{at}} तक"
+    },
+    "mine": {
+      "title": "मेरे काम",
+      "none": "अभी कोई काम नहीं",
+      "pool": "लेने के लिए खुले"
+    },
+    "board": {
+      "title": "काम बोर्ड",
+      "open": "खुले",
+      "late": "देर से",
+      "pool": "इंतज़ार में",
+      "none": "कोई खुला काम नहीं",
+      "noFloor": "मंज़िल नहीं",
+      "floorOpen": "{{count}} खुले",
+      "floorLate": "{{count}} देर · {{open}} खुले",
+      "notShown": "स्क्रीन पर नहीं", "more": "+{{count}} और",
+     
+      "unassigned": "अभी किसी को नहीं",
+      "workers": "कर्मचारी",
+      "noWorkers": "ड्यूटी पर कोई नहीं",
+      "load": "{{count}} खुले",
+      "onDuty": "ड्यूटी पर",
+      "offDuty": "ड्यूटी से बाहर",
+      "busy": "{{count}} चल रहे",
+      "toVerify": "जाँचने को ({{count}})"
+    },
+    "refusal": {
+      "failed": "नहीं हुआ",
+      "bad_input": "अनुरोध अधूरा",
+      "unknown_kind": "अनजान काम",
+      "unknown_place": "जगह नहीं मिली",
+      "unknown_worker": "काम नहीं ले सकते",
+      "not_found": "काम नहीं मिला",
+      "already_taken": "किसी और ने ले लिया",
+      "not_on_duty": "अभी ड्यूटी पर नहीं", "wrong_skill": "यह काम आपके हिस्से का नहीं", "not_yours": "आपका काम नहीं",
+      "wrong_state": "रीफ़्रेश करें",
+      "not_open": "काम बंद हो चुका",
+      "stale": "बदल गया — रीफ़्रेश करें",
+      "proof_missing": "सबूत चाहिए",
+      "no_verify_step": "जाँच का चरण नहीं",
+      "verifier_is_doer": "करने वाला नहीं जाँच सकता",
+      "not_permitted": "अनुमति नहीं",
+      "reason_required": "कारण लिखें"
     }
   }
 }

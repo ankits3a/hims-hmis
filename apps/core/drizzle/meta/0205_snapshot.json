@@ -1,5 +1,5 @@
 {
-  "id": "8423bcf4-06d3-49eb-a093-abb7fdf1ac1f",
+  "id": "9b1caabb-70f2-4e64-9634-645506cf3e09",
   "prevId": "0684ebdc-e631-48fc-928c-a7eaf0580318",
   "version": "7",
   "dialect": "postgresql",
@@ -54167,8 +54167,117 @@
       },
       "isRLSEnabled": false
     },
-    "public.ipd_bed_blocks": {
-      "name": "ipd_bed_blocks",
+    "public.task_events": {
+      "name": "task_events",
+      "schema": "",
+      "columns": {
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "act": {
+          "name": "act",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "task_events_at_idx": {
+          "name": "task_events_at_idx",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "task_events_task_id_tasks_id_fk": {
+          "name": "task_events_task_id_tasks_id_fk",
+          "tableFrom": "task_events",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "task_events_task_id_seq_pk": {
+          "name": "task_events_task_id_seq_pk",
+          "columns": [
+            "task_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "task_events_act_ck": {
+          "name": "task_events_act_ck",
+          "value": "\"task_events\".\"act\" in ('raised', 'merged', 'assigned', 'redispatched', 'accepted', 'started', 'done', 'verified', 'cancelled', 'returned', 'escalated')"
+        },
+        "task_events_source_ck": {
+          "name": "task_events_source_ck",
+          "value": "\"task_events\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import', 'system')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tasks": {
+      "name": "tasks",
       "schema": "",
       "columns": {
         "id": {
@@ -54177,35 +54286,143 @@
           "primaryKey": true,
           "notNull": true
         },
-        "bed_id": {
-          "name": "bed_id",
+        "kind": {
+          "name": "kind",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
+        "place_resource_id": {
+          "name": "place_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "priority": {
+          "name": "priority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'routine'"
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skill": {
+          "name": "skill",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "reason": {
-          "name": "reason",
+        "assignee_kind": {
+          "name": "assignee_kind",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "assignee_id": {
+          "name": "assignee_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_at": {
+          "name": "assigned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shift_ends_at": {
+          "name": "shift_ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proof_needed": {
+          "name": "proof_needed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "proof": {
+          "name": "proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verify_required": {
+          "name": "verify_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'created'"
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "note": {
           "name": "note",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "expected_return_at": {
-          "name": "expected_return_at",
+        "merged_count": {
+          "name": "merged_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "escalated_rung": {
+          "name": "escalated_rung",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "done_by": {
+          "name": "done_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "done_at": {
+          "name": "done_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "verified_by": {
+          "name": "verified_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "requested_by": {
           "name": "requested_by",
@@ -54213,62 +54430,154 @@
           "primaryKey": false,
           "notNull": true
         },
-        "requested_at": {
-          "name": "requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "applied_at": {
-          "name": "applied_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ended_by": {
-          "name": "ended_by",
+        "source": {
+          "name": "source",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "'person'"
         },
-        "ended_at": {
-          "name": "ended_at",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "now()"
         },
-        "end_note": {
-          "name": "end_note",
-          "type": "text",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {
-        "ipd_bed_blocks_live_bed_ux": {
-          "name": "ipd_bed_blocks_live_bed_ux",
+        "tasks_open_idx": {
+          "name": "tasks_open_idx",
           "columns": [
             {
-              "expression": "bed_id",
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
-          "isUnique": true,
-          "where": "\"ipd_bed_blocks\".\"status\" in ('pending_release', 'active')",
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" in ('created', 'assigned', 'accepted', 'in_progress')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_assignee_idx": {
+          "name": "tasks_assignee_idx",
+          "columns": [
+            {
+              "expression": "assignee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" in ('assigned', 'accepted', 'in_progress')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_place_idx": {
+          "name": "tasks_place_idx",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "place_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_shift_end_idx": {
+          "name": "tasks_shift_end_idx",
+          "columns": [
+            {
+              "expression": "shift_ends_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" in ('assigned', 'accepted', 'in_progress')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_assigned_wait_idx": {
+          "name": "tasks_assigned_wait_idx",
+          "columns": [
+            {
+              "expression": "assigned_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" = 'assigned'",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
       "foreignKeys": {
-        "ipd_bed_blocks_bed_id_resources_id_fk": {
-          "name": "ipd_bed_blocks_bed_id_resources_id_fk",
-          "tableFrom": "ipd_bed_blocks",
+        "tasks_place_resource_id_resources_id_fk": {
+          "name": "tasks_place_resource_id_resources_id_fk",
+          "tableFrom": "tasks",
           "tableTo": "resources",
           "columnsFrom": [
-            "bed_id"
+            "place_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tasks_patient_id_patients_id_fk": {
+          "name": "tasks_patient_id_patients_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
           ],
           "columnsTo": [
             "id"
@@ -54281,311 +54590,49 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "ipd_bed_blocks_status_ck": {
-          "name": "ipd_bed_blocks_status_ck",
-          "value": "\"ipd_bed_blocks\".\"status\" in ('pending_release', 'active', 'ended', 'cancelled')"
+        "tasks_state_ck": {
+          "name": "tasks_state_ck",
+          "value": "\"tasks\".\"state\" in ('created', 'assigned', 'accepted', 'in_progress', 'done', 'verified', 'cancelled')"
         },
-        "ipd_bed_blocks_reason_ck": {
-          "name": "ipd_bed_blocks_reason_ck",
-          "value": "\"ipd_bed_blocks\".\"reason\" in ('maintenance', 'infection_control', 'deep_clean', 'staff_shortage', 'other')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.ipd_bed_reservations": {
-      "name": "ipd_bed_reservations",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
+        "tasks_priority_ck": {
+          "name": "tasks_priority_ck",
+          "value": "\"tasks\".\"priority\" in ('routine', 'urgent', 'stat')"
         },
-        "bed_id": {
-          "name": "bed_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
+        "tasks_proof_needed_ck": {
+          "name": "tasks_proof_needed_ck",
+          "value": "\"tasks\".\"proof_needed\" in ('none', 'tap', 'photo', 'scan', 'weight')"
         },
-        "admission_id": {
-          "name": "admission_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
+        "tasks_source_ck": {
+          "name": "tasks_source_ck",
+          "value": "\"tasks\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import')"
         },
-        "patient_id": {
-          "name": "patient_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
+        "tasks_assignee_kind_ck": {
+          "name": "tasks_assignee_kind_ck",
+          "value": "\"tasks\".\"assignee_kind\" is null or \"tasks\".\"assignee_kind\" in ('person', 'team', 'machine')"
         },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
+        "tasks_assignee_pair_ck": {
+          "name": "tasks_assignee_pair_ck",
+          "value": "(\"tasks\".\"assignee_kind\" is null) = (\"tasks\".\"assignee_id\" is null)"
         },
-        "reserved_by": {
-          "name": "reserved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
+        "tasks_assignee_state_ck": {
+          "name": "tasks_assignee_state_ck",
+          "value": "\"tasks\".\"state\" not in ('assigned', 'accepted', 'in_progress') or \"tasks\".\"assignee_id\" is not null"
         },
-        "reserved_at": {
-          "name": "reserved_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
+        "tasks_pool_unassigned_ck": {
+          "name": "tasks_pool_unassigned_ck",
+          "value": "\"tasks\".\"state\" <> 'created' or \"tasks\".\"assignee_id\" is null"
         },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
+        "tasks_cancel_reason_ck": {
+          "name": "tasks_cancel_reason_ck",
+          "value": "\"tasks\".\"state\" <> 'cancelled' or char_length(\"tasks\".\"cancel_reason\") > 0"
         },
-        "ended_by": {
-          "name": "ended_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+        "tasks_note_ck": {
+          "name": "tasks_note_ck",
+          "value": "\"tasks\".\"note\" is null or char_length(\"tasks\".\"note\") <= 280"
         },
-        "ended_at": {
-          "name": "ended_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "end_reason": {
-          "name": "end_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "ipd_bed_reservations_live_bed_ux": {
-          "name": "ipd_bed_reservations_live_bed_ux",
-          "columns": [
-            {
-              "expression": "bed_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"ipd_bed_reservations\".\"status\" = 'active'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ipd_bed_reservations_due_idx": {
-          "name": "ipd_bed_reservations_due_idx",
-          "columns": [
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"ipd_bed_reservations\".\"status\" = 'active'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ipd_bed_reservations_admission_idx": {
-          "name": "ipd_bed_reservations_admission_idx",
-          "columns": [
-            {
-              "expression": "admission_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ipd_bed_reservations_bed_id_resources_id_fk": {
-          "name": "ipd_bed_reservations_bed_id_resources_id_fk",
-          "tableFrom": "ipd_bed_reservations",
-          "tableTo": "resources",
-          "columnsFrom": [
-            "bed_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "ipd_bed_reservations_status_ck": {
-          "name": "ipd_bed_reservations_status_ck",
-          "value": "\"ipd_bed_reservations\".\"status\" in ('active', 'released', 'lapsed', 'consumed')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.ipd_bed_stays": {
-      "name": "ipd_bed_stays",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "bed_id": {
-          "name": "bed_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "admission_id": {
-          "name": "admission_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "patient_id": {
-          "name": "patient_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bed_class": {
-          "name": "bed_class",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "billed_class": {
-          "name": "billed_class",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "protected_until": {
-          "name": "protected_until",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "class_change": {
-          "name": "class_change",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "started_by": {
-          "name": "started_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ended_by": {
-          "name": "ended_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "ended_at": {
-          "name": "ended_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "ipd_bed_stays_open_bed_ux": {
-          "name": "ipd_bed_stays_open_bed_ux",
-          "columns": [
-            {
-              "expression": "bed_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"ipd_bed_stays\".\"ended_at\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ipd_bed_stays_open_admission_ux": {
-          "name": "ipd_bed_stays_open_admission_ux",
-          "columns": [
-            {
-              "expression": "admission_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"ipd_bed_stays\".\"ended_at\" is null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ipd_bed_stays_patient_idx": {
-          "name": "ipd_bed_stays_patient_idx",
-          "columns": [
-            {
-              "expression": "patient_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ipd_bed_stays_bed_id_resources_id_fk": {
-          "name": "ipd_bed_stays_bed_id_resources_id_fk",
-          "tableFrom": "ipd_bed_stays",
-          "tableTo": "resources",
-          "columnsFrom": [
-            "bed_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "ipd_bed_stays_class_change_ck": {
-          "name": "ipd_bed_stays_class_change_ck",
-          "value": "\"ipd_bed_stays\".\"class_change\" is null or \"ipd_bed_stays\".\"class_change\" in ('upgrade', 'downgrade')"
+        "tasks_counts_ck": {
+          "name": "tasks_counts_ck",
+          "value": "\"tasks\".\"merged_count\" >= 0 and \"tasks\".\"escalated_rung\" >= 0 and \"tasks\".\"version\" >= 1"
         }
       },
       "isRLSEnabled": false

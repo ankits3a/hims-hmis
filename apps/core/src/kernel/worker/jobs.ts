@@ -34,6 +34,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { lapseBedReservations } from "../../modules/ipd";
+import { sweepTasks } from "../../modules/tasks";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -708,5 +709,16 @@ export function registerAllJobs(
     name: "lapseBedReservations",
     every: 60_000,
     run: async (now) => { await lapseBedReservations(db, now); },
+  });
+  /**
+   * E0.1 TASK ENGINE (issue #713) — THE TASK CLOCK, every minute: a worker whose shift ended hands
+   * their tasks back to the pool, an assignment not accepted in its window goes to the next worker,
+   * the pool is offered again, and a late task climbs its ladder ONCE per rung. Small batches; each
+   * act re-checks its precondition under the row lock, so a second tick changes nothing.
+   */
+  scheduler.register({
+    name: "sweepTasks",
+    every: 60_000,
+    run: async (now) => { await sweepTasks(db, now); },
   });
 }
