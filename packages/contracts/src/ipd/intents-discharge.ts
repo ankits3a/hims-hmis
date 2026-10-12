@@ -110,6 +110,10 @@ export const settleFinalBill = ipdIntent({
     payments: z.array(z.strictObject({ tender: IpdTenderSchema, amountPaise: IpdPositivePaiseSchema })).max(10),
     duesApprovalId: IpdIdSchema.optional(),
     undertakingDocumentId: IpdIdSchema.optional(),
+  }).superRefine((v, ctx) => {
+    if (v.settlement === "paid" && v.payments.length === 0) ctx.addIssue({ code: "custom", path: ["payments"], message: "paid needs at least one payment" });
+    if (v.settlement === "dues_approved" && v.duesApprovalId === undefined) ctx.addIssue({ code: "custom", path: ["duesApprovalId"], message: "dues need their approval" });
+    if (v.settlement === "insurer_pending_undertaking" && v.undertakingDocumentId === undefined) ctx.addIssue({ code: "custom", path: ["undertakingDocumentId"], message: "an undertaking needs its document" });
   }),
   output: z.strictObject({
     billId: IpdIdSchema,

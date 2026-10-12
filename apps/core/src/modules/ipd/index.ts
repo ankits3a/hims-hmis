@@ -22,6 +22,7 @@ export type {
 // E0.2 — the admission workflow definition (states and the intent that drives each transition).
 export {
   ADMISSION_WORKFLOW_DEF_KEY, ADMISSION_TRANSITIONS, IPD_ACTOR_ROLE_KEYS, admissionIntentFor, admissionWorkflowDefinition,
+  requestedBudgetMinutes,
 } from "./admission-workflow";
 export type { AdmissionTransition } from "./admission-workflow";
 // E0.5 — one named query per IPD goal (plan §1, §6).
