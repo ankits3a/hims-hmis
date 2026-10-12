@@ -36,6 +36,7 @@ flowchart LR
   billing[billing]
   cds[cds]
   formulary[formulary]
+  ipd[ipd]
   lab[lab]
   materials[materials]
   membership[membership]
@@ -113,6 +114,7 @@ flowchart LR
 | [billing](modules/billing.md) | membership, opd, patients, tariff | lab, opd, ordering, ot, partners, pharmacy, radiology | 51 | 16 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
+| [ipd](modules/ipd.md) | — | — | 0 | 0 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 77 | 25 |
 | [materials](modules/materials.md) | formulary | opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
@@ -135,11 +137,11 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 |---|---|---|---|
 | `alerts` | attendance, opd, roster | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
 | `approvals` | abdm, aerb, attendance, billing, lab, materials, membership, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
-| `auth` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
+| `auth` | abdm, aerb, attendance, billing, formulary, ipd, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, attendance, billing, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | billing, opd, pharmacy, roster | approvals, auth, config, db, desk, events, inference, modules, reminders, search, tokens | 10 |
 | `crypto` | abdm, billing, opd, patients | — | — |
-| `db` | abdm, aerb, attendance, billing, cds, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
+| `db` | abdm, aerb, attendance, billing, cds, formulary, ipd, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `desk` | attendance, billing, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | 10 |
 | `documents` | patients, pharmacy | — | — |
 | `episodes` | billing, lab, materials, opd, ot, pharmacy, radiology | db | — |
@@ -156,11 +158,11 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `realtime` | lab, opd | auth, db, tokens | — |
 | `reminders` | — | alerts, auth, copilot, db, tokens | 3 |
 | `report` | billing, opd, pharmacy | — | — |
-| `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
+| `resources` | aerb, ipd, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
 | `retention` | — | db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
 | `tokens` | abdm, aerb, attendance, billing, formulary, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `worker` | — | alerts, approvals, auth, config, copilot, db, desk, events, modules, notify, obligations, ops, orders, push, reminders, resources, retention, tokens, workflow | — |
-| `workflow` | attendance, billing, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | 9 |
+| `workflow` | attendance, billing, ipd, lab, materials, membership, opd, ot, patients, pharmacy, radiology, roster, tariff | auth, db, events, modules, tokens | 9 |
 
 Kernel HTTP routes: [kernel-routes.md](kernel-routes.md). Database: [schema.md](schema.md). Web screens: [web.md](web.md).

@@ -1,0 +1,68 @@
+import * as admitIntents from "./intents-admit";
+import * as dischargeIntents from "./intents-discharge";
+import * as medIntents from "./intents-meds";
+import * as wardIntents from "./intents-ward";
+import { IpdIdempotencyKeySchema } from "./common";
+
+export * from "./common";
+export * from "./refusals";
+
+/**
+ * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see
+ * intents-admit.ts), keyed by the name the copilot, HTTP routes and the workflow use.
+ */
+export const IPD_INTENTS = {
+  request_admission: admitIntents.requestAdmission,
+  cancel_admission: admitIntents.cancelAdmission,
+  reserve_bed: admitIntents.reserveBed,
+  release_reservation: admitIntents.releaseReservation,
+  admit: admitIntents.admit,
+  assign_bed: admitIntents.assignBed,
+  print_band: admitIntents.printBand,
+  reprint_band: admitIntents.reprintBand,
+  record_payer_auth: admitIntents.recordPayerAuth,
+  take_deposit: admitIntents.takeDeposit,
+  start_transfer: wardIntents.startTransfer,
+  accept_handover: wardIntents.acceptHandover,
+  swap_beds: wardIntents.swapBeds,
+  change_class: wardIntents.changeClass,
+  block_bed: admitIntents.blockBed,
+  unblock_bed: admitIntents.unblockBed,
+  mark_bed_clean: admitIntents.markBedClean,
+  record_nursing_assessment: wardIntents.recordNursingAssessment,
+  record_vitals: wardIntents.recordVitals,
+  raise_task: wardIntents.raiseTask,
+  complete_task: wardIntents.completeTask,
+  sign_round: wardIntents.signRound,
+  place_ip_order: medIntents.placeIpOrder,
+  verify_order: medIntents.verifyOrder,
+  issue_med: medIntents.issueMed,
+  administer_dose: medIntents.administerDose,
+  hold_dose: medIntents.holdDose,
+  refuse_dose: medIntents.refuseDose,
+  record_infusion_event: medIntents.recordInfusionEvent,
+  declare_fit: dischargeIntents.declareFit,
+  cancel_fit: dischargeIntents.cancelFit,
+  confirm_charges: dischargeIntents.confirmCharges,
+  sign_summary: dischargeIntents.signSummary,
+  settle_final_bill: dischargeIntents.settleFinalBill,
+  issue_gate_pass: dischargeIntents.issueGatePass,
+  scan_gate_pass: dischargeIntents.scanGatePass,
+  record_lama: dischargeIntents.recordLama,
+  record_abscond: dischargeIntents.recordAbscond,
+  record_death: dischargeIntents.recordDeath,
+} as const;
+
+export type IpdIntentName = keyof typeof IPD_INTENTS;
+export const IPD_INTENT_NAMES = Object.keys(IPD_INTENTS) as IpdIntentName[];
+
+/**
+ * The idempotency scope of one request: `ipd:<intent>:<key>`. Two different intents never collide on one key,
+ * and a key's case never splits one retry into two acts. Throws on an unknown intent or a malformed key.
+ */
+export function ipdIdempotencyScope(intent: IpdIntentName, key: string): string {
+  if (!Object.prototype.hasOwnProperty.call(IPD_INTENTS, intent)) throw new Error(`unknown IPD intent "${intent}"`);
+  const parsed = IpdIdempotencyKeySchema.safeParse(key.toLowerCase());
+  if (!parsed.success) throw new Error(`idempotency key for "${intent}" must be a uuid`);
+  return `ipd:${intent}:${parsed.data}`;
+}
