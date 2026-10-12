@@ -82,7 +82,7 @@ step "3/5 migrations and the configuration seeds, from inside the image"
 compose run --rm api node dist/scripts/migrate.js
 for seed in seed-cursors.js seed-ops.js seed-opd.js seed-patients.js seed-billing.js \
             seed-tariff.js seed-membership.js seed-formulary-interactions.js seed-materials.js \
-            seed-ot.js seed-pharmacy.js seed-lab.js; do
+            seed-ot.js seed-pharmacy.js seed-lab.js seed-outside-tests.js; do
   compose run --rm api node "dist/scripts/$seed" >/dev/null || die "$seed failed"
   note "ran $seed"
 done

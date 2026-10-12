@@ -164,7 +164,7 @@ export const degradedModeChanged = defineEvent(
 export const feeSwitchChanged = defineEvent(
   "fee_switch.changed",
   MODULE,
-  z.object({ kind: z.enum(["opdConsult", "lab"]), off: z.boolean() }),
+  z.object({ kind: z.enum(["opdConsult", "lab", "imaging"]), off: z.boolean() }),
 );
 
 export const documentEnteredInError = defineEvent(

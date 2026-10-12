@@ -110,6 +110,9 @@ export * from "./abdm"; // ABDM S0 — the message log
 // STAFF ATTENDANCE (owner 2026-10-09) — the copy of the attendance system's data. Reads `auth.users`
 // (the one link, `att_staff.user_id`) and nothing else; nothing reads it but `modules/attendance`.
 export * from "./attendance";
+// THE OUTSIDE-TEST CATALOGUE (owner 2026-10-10, decision 0067) — ECG, echo and the like, advised by the
+// doctor and done outside until the hospital has the facility. References `services` only.
+export * from "./ordering";
 // E0.1 — the copilot ledger (decision 0064): asks, acts and the staff notice. References nothing
 // (plain-text actor ids, the `phi-access` reasoning), so it sits downstream of no table.
 export * from "./copilot";

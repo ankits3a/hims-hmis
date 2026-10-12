@@ -108,7 +108,7 @@ export {
 } from "./chasers";
 export type { CriticalChaseResult, UnreadChaseResult } from "./chasers";
 export {
-  authorisationOf, encounterPayer, hasBillDecision, linkInvoiceLine, openBillDecisions,
+  authorisationOf, encounterPayer, hasBillDecision, imagingFreeAt, linkInvoiceLine, openBillDecisions,
   raiseBillDecision, resolveBillDecision,
 } from "./money";
 export type { AuthorisationEncounterFacts, AuthorisationStudyFacts } from "./money";

@@ -479,7 +479,7 @@ export const fetchCreditRequest = (approvalId: string): Promise<WireCreditReques
   api<WireCreditRequest>("GET", `/billing/credit-requests/${encodeURIComponent(approvalId)}`);
 
 /** Owner, 2026-10-01 — the fee switches (`GET`/`PUT /billing/fee-switches`). Off means free. */
-export type FeeKind = "opdConsult" | "lab";
+export type FeeKind = "opdConsult" | "lab" | "imaging";
 export type WireFeeSwitches = {
   switches: { kind: FeeKind; off: boolean; changedAt: string | null; changedBy: string | null }[];
   consultPaise: { new: number | null; renewal: number | null };
