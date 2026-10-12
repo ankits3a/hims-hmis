@@ -3056,7 +3056,31 @@
       "handedOver": "{{name}} · सौंपी गई",
       "sentBack": "{{name}} · वापस भेजी",
       "notSigned": "हस्ताक्षर नहीं",
-      "printOnPc": "प्रिंट डेस्क PC पर"
+      "printOnPc": "प्रिंट डेस्क PC पर",
+      "sharePdf": "PDF भेजें",
+      "shareUnavailable": "शेयर उपलब्ध नहीं",
+      "shareFailed": "PDF नहीं भेजी गई",
+      "shareNotRecorded": "भेजी गई; दर्ज नहीं हुई"
+    },
+    "ast": {
+      "title": "संवेदनशीलता",
+      "empty": "पैनल चुनें",
+      "add": "एंटीबायोटिक जोड़ें",
+      "addFree": "“{{name}}” जोड़ें",
+      "mic": "MIC",
+      "micUnit": "MIC µg/mL",
+      "noGrowth": "वृद्धि नहीं · तालिका नहीं",
+      "remove": "{{name}} हटाएँ",
+      "S": "संवेदनशील",
+      "I": "मध्यवर्ती",
+      "R": "प्रतिरोधी",
+      "panels": {
+        "ent_urine": "एंटेरो · मूत्र",
+        "ent_other": "एंटेरो · अन्य",
+        "pse_aci": "स्यूडो / एसिनेटो",
+        "staph_ent": "स्टैफ / एंटेरो",
+        "strep": "स्ट्रेप"
+      }
     },
     "ast": {
       "title": "संवेदनशीलता",

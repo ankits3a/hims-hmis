@@ -7,7 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { httpError, idSchema, parsed } from "./lab-http";
 import {
   getQuickReport, handOverQuick, quickCatalogue, quickCollect, quickCollectQueue, QuickEntryError, quickQueue, quickRanges,
-  quickReportsDesk, quickReportsForPatient, saveQuickResults, sendBackQuick, startQuick,
+  quickReportsDesk, quickReportsForPatient, recordQuickShare, saveQuickResults, sendBackQuick, startQuick,
 } from "./quick";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { hasPermission } from "../../kernel/auth/permissions";
@@ -174,6 +174,18 @@ export class LabQuickController {
   @RequirePermission(LAB_REPORTS_PRINT, "hospital")
   async handOver(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
     try { return await withTx(this.db, (tx) => handOverQuick(tx, actor, parsed(idSchema, id))); } catch (e) { quickHttp(e); }
+  }
+
+  /**
+   * Owner 2026-10-12 — Share PDF on the phone: the phone made the PDF from the report it read at
+   * `GET ready/:id` and the share sheet closed without an error. Recorded under the PRINT grant, the
+   * grant that prints the same page at the desk.
+   */
+  @Post("reports/:id/shared")
+  @LabModeOnly("quick")
+  @RequirePermission(LAB_REPORTS_PRINT, "hospital")
+  async shared(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    try { return await withTx(this.db, (tx) => recordQuickShare(tx, actor, parsed(idSchema, id))); } catch (e) { quickHttp(e); }
   }
 
   @Post("reports/:id/send-back")

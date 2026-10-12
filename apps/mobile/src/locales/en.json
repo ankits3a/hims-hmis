@@ -3056,7 +3056,31 @@
       "handedOver": "{{name}} · handed over",
       "sentBack": "{{name}} · sent back",
       "notSigned": "Not signed",
-      "printOnPc": "Print at the desk PC"
+      "printOnPc": "Print at the desk PC",
+      "sharePdf": "Share PDF",
+      "shareUnavailable": "Sharing not available",
+      "shareFailed": "PDF not shared",
+      "shareNotRecorded": "Shared; not recorded"
+    },
+    "ast": {
+      "title": "Sensitivity",
+      "empty": "Pick a panel",
+      "add": "Add antibiotic",
+      "addFree": "Add “{{name}}”",
+      "mic": "MIC",
+      "micUnit": "MIC µg/mL",
+      "noGrowth": "No growth · no table",
+      "remove": "Remove {{name}}",
+      "S": "Sensitive",
+      "I": "Intermediate",
+      "R": "Resistant",
+      "panels": {
+        "ent_urine": "Entero · urine",
+        "ent_other": "Entero · other",
+        "pse_aci": "Pseudo / Acineto",
+        "staph_ent": "Staph / Entero",
+        "strep": "Strep"
+      }
     },
     "ast": {
       "title": "Sensitivity",
