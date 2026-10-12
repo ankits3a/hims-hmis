@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Index from "../app/index";
 import { I18nProvider } from "../src/i18n";
-import { SessionProvider } from "../src/session";
+import { SessionProvider, useSession } from "../src/session";
+import { SettingsScreen } from "../src/screens/settings";
 import { _forgetDeviceForTests } from "../src/device";
 import { Platform } from "react-native";
 
@@ -52,12 +53,19 @@ const ME = {
   permissions: { hospital: ["opd.vitals.record", "roster.read"], scoped: { department: {}, floor: {} } },
 };
 
-async function mount(fetcher: typeof fetch) {
+/** PHONE SETTINGS (owner 2026-10-11) — Log out and the account live behind the gear; tests that need them draw Settings beside home. */
+function SettingsWhenSignedIn() {
+  const { state } = useSession();
+  return state.status === "signedIn" ? <SettingsScreen /> : null;
+}
+
+async function mount(fetcher: typeof fetch, withSettings = false) {
   return await render(
     <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}>
       <I18nProvider>
         <SessionProvider fetcher={fetcher}>
           <Index />
+          {withSettings && <SettingsWhenSignedIn />}
         </SessionProvider>
       </I18nProvider>
     </SafeAreaProvider>,
@@ -88,9 +96,9 @@ describe("sign-in flow", () => {
       "GET /auth/me": () => ({ status: 200, body: ME }),
       "POST /auth/logout": () => ({ status: 204 }),
     });
-    await mount(fetcher);
+    await mount(fetcher, true);
     await signIn();
-    await fireEvent.press(await screen.findByTestId("logout"));
+    await fireEvent.press(await screen.findByTestId("settings-logout"));
     await signIn();
     await screen.findByTestId("seat-vitals");
     expect(bodies).toHaveLength(2);
@@ -130,15 +138,22 @@ describe("sign-in flow", () => {
     expect(screen.getByTestId("username")).toBeTruthy();
   });
 
-  it("the home screen leads to 'This phone and my account'", async () => {
+  it("the gear leads to Settings, and Settings to 'This phone and my account' (owner 2026-10-11)", async () => {
     const { fetcher } = server({
       "POST /auth/login": () => ({ status: 200, body: { token: "t1" } }),
       "GET /auth/me": () => ({ status: 200, body: ME }),
     });
-    await mount(fetcher);
+    await mount(fetcher, true);
     await signIn();
-    await fireEvent.press(await screen.findByTestId("account-open"));
+    // The home no longer carries the account row, Log out, the language word or the Reminders card.
+    await screen.findByTestId("seat-vitals");
+    for (const gone of ["account-open", "logout", "lang-toggle", "reminders-card-add"]) expect(screen.queryByTestId(gone)).toBeNull();
+    await fireEvent.press(screen.getAllByTestId("band-settings")[0]!);
+    expect(mockPush).toHaveBeenCalledWith("/settings");
+    await fireEvent.press(screen.getByTestId("settings-account"));
     expect(mockPush).toHaveBeenCalledWith("/account");
+    await fireEvent.press(screen.getByTestId("settings-reminders"));
+    expect(mockPush).toHaveBeenCalledWith("/reminders");
   });
 
   it("signs in and offers only the screens the role allows", async () => {
@@ -160,9 +175,10 @@ describe("sign-in flow", () => {
     expect(home.map((c) => c.split("?")[0]).sort()).toEqual([
       // STAFF ATTENDANCE (2026-10-09): +1, the person's own attendance card — ONE read, whatever the role.
       // "Add your Aadhaar" (2026-10-09): +1, `/me/identity` — whether the home draws the card. ONE read, whatever the role.
-      // E1.2 personal reminders (2026-10-11): +1, `/reminders` — the person's own reminders line. ONE read, whatever the role.
+      // E1.2 personal reminders (2026-10-11): `/reminders` was +1; PHONE SETTINGS (owner 2026-10-11) moved Reminders into Settings, so the home no longer reads it.
+      // PHONE SETTINGS (owner 2026-10-11): +1, `/copilot/setting` — whether the band shows the copilot. ONE read per sign-in.
       // E1.4 / E1.5 waiting for me (2026-10-11): +1, `/me/waiting` — the card at the top of the home. ONE read, whatever the role.
-      "GET /alerts", "GET /attendance/me", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/identity", "GET /me/team", "GET /me/waiting", "GET /opd/bench", "GET /opd/reports/recording", "GET /reminders", "GET /roster/my-duties",
+      "GET /alerts", "GET /attendance/me", "GET /copilot/setting", "GET /me/brief", "GET /me/brief", "GET /me/brief", "GET /me/desk", "GET /me/identity", "GET /me/team", "GET /me/waiting", "GET /opd/bench", "GET /opd/reports/recording", "GET /roster/my-duties",
     ]);
   });
 
@@ -220,9 +236,9 @@ describe("sign-in flow", () => {
       "GET /auth/me": () => ({ status: 200, body: ME }),
       "POST /auth/logout": () => ({ status: 204 }),
     });
-    await mount(fetcher);
+    await mount(fetcher, true);
     await signIn();
-    await fireEvent.press(await screen.findByTestId("logout"));
+    await fireEvent.press(await screen.findByTestId("settings-logout"));
     await waitFor(() => expect(screen.getByTestId("username")).toBeTruthy());
     expect(calls).toContain("POST /auth/logout");
   });

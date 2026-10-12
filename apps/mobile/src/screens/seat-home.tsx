@@ -26,7 +26,6 @@ import { rosterApi } from "../roster/api";
 import { ALL_READ } from "../attendance/api";
 import { AttendanceCard, attendanceCache, useAttendanceHome } from "../attendance/home-card";
 import { AadhaarCard, AadhaarSheet, useSelfIdentity } from "../attendance/aadhaar-card";
-import { ReminderCard, useReminders } from "../reminders/card";
 import { WaitingCard, useWaiting } from "../waiting/card";
 import { clockWords, type NeedKind, type Tone } from "../home/rules";
 
@@ -64,7 +63,7 @@ function LockedTile({ t, n, testID }: { t: (key: string, vars?: Record<string, s
 export function SeatHome() {
   const { t } = useI18n();
   const router = useRouter();
-  const { state, logout, fetcher, call } = useSession();
+  const { state, fetcher, call } = useSession();
   const signedIn = state.status === "signedIn";
   const me = signedIn ? state.me : null;
   const user = signedIn ? state.me.actor.id : "";
@@ -88,9 +87,6 @@ export function SeatHome() {
   /* The person's own attendance: ONE read beside the home's, made by the home's own refresh (`attendance/home-card.tsx`). */
   const attendance = useAttendanceHome(call, signedIn ? user : "");
   const reloadAttendance = attendance.reload;
-  /* E1.2 — the person's own reminders: one line under attendance, read on the same refresh. */
-  const reminders = useReminders(call, signedIn);
-  const reloadReminders = reminders.reload;
   /* E1.4 / E1.5 — what is waiting for me: one read (`GET /me/waiting`), the card at the top of the home. */
   const waiting = useWaiting(call, signedIn);
   const reloadWaiting = waiting.reload;
@@ -104,7 +100,6 @@ export function SeatHome() {
     const now = Date.now();
     void reloadAttendance();
     void reloadIdentity();
-    void reloadReminders();
     void reloadWaiting();
     const loaded = await loadHome(call, permissions, seatKeys, now);
     if (!alive.current) return;
@@ -117,7 +112,7 @@ export function SeatHome() {
       setOnline(false);
     }
     if (byHand) setRefreshing(false);
-  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity, reloadReminders, reloadWaiting]);
+  }, [signedIn, call, permissions, seatKeys, user, reloadAttendance, reloadIdentity, reloadWaiting]);
   useEffect(() => {
     if (user === "") return;
     let gone = false;
@@ -258,10 +253,7 @@ export function SeatHome() {
                 </View>
               )}
             </Pressable>
-            <Pressable onPress={() => { void homeCache.clear(); void attendanceCache.clear(); void logout(); }} accessibilityRole="button" hitSlop={8} testID="logout"
-              style={{ minHeight: 32, paddingHorizontal: 10, justifyContent: "center" }}>
-              <Text style={{ color: color.agentFg, fontSize: 13, fontWeight: "600" }}>{t("app.logout")}</Text>
-            </Pressable>
+            {/* PHONE SETTINGS (owner 2026-10-11) — Log out lives in Settings (the gear), as "Log out of this phone". */}
           </View>
         }
       />
@@ -308,7 +300,7 @@ export function SeatHome() {
         <WaitingCard t={t} lines={waiting.lines} push={router.push} />
         <AttendanceCard t={t} home={attendance} onOpen={() => router.push("/attendance")}
           onConfirm={(date) => router.push({ pathname: "/attendance", params: { confirm: date } })} />
-        <ReminderCard t={t} items={reminders.items} onOpen={() => router.push("/reminders")} />
+        {/* PHONE SETTINGS (owner 2026-10-11) — Reminders open from Settings; their notifications and the Waiting line stay. */}
         {/* E2.2 — My leave: every person has it, so it is a line on every home, not a seat. */}
         <Pressable testID="home-my-leave" accessibilityRole="button" onPress={() => router.push("/my-leave")}
           style={{ minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: space.sm }}>
@@ -527,11 +519,7 @@ export function SeatHome() {
             <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
           </Pressable>
         )}
-        <Pressable testID="account-open" accessibilityRole="button" onPress={() => router.push("/account")}
-          style={({ pressed }) => ({ minHeight: TOUCH, flexDirection: "row", alignItems: "center", gap: space.md, paddingHorizontal: space.lg, borderWidth: 1, borderColor: color.line, borderRadius: radius.lg, backgroundColor: pressed ? color.wash : color.card })}>
-          <Text style={[type.body, { color: color.ink, fontWeight: "600", flex: 1 }]}>{t("mobile.account.open")}</Text>
-          <Text style={{ color: color.faint, fontSize: 22 }}>›</Text>
-        </Pressable>
+        {/* PHONE SETTINGS (owner 2026-10-11) — This phone and My account open from Settings. */}
         <View style={{ marginTop: space.md, gap: 6 }}>
           <Tag tone="faint">{`HMIS ${t("login.product")}`}</Tag>
           <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space.md }}>
