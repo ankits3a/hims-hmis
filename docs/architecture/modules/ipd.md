@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** —
 - **Used by modules:** —
-- **Kernel used:** `db`, `resources`, `workflow`
+- **Kernel used:** `auth`, `db`, `resources`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -37,6 +37,7 @@ Source: `apps/core/src/modules/ipd/`
   - types: `IpdBedAttributes`, `IpdBedEquipment`, `IpdGenderRule`, `IpdIsolationType`, `IpdUnitType`, `IpdWardAttributes`, `IpdWardType`
 - `bed-layout.ts`
   - `BED_LAYOUT_COLUMNS`
+  - `BED_LAYOUT_PERMISSION`
   - `formatBedLayoutReport(r: BedLayoutReport): string`
   - `loadBedLayout(db: Db, actor: Actor, rows: readonly BedLayoutRow[], opts: { apply?: boolean; siteId?: string } = {}): Promise<BedLayoutRepor…`
   - `parseBedLayoutCsv(text: string): BedLayoutRow[]`

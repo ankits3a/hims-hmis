@@ -45,8 +45,14 @@ There is no manifest, Nest module, route or permission yet: nothing here is reac
 - The loader never deletes, retires, moves or revives. An IPD bed (a bed row whose attributes carry `class`)
   missing from the file is reported as "not in file" and left alone. A code already used by a place under a
   different parent, or by a retired place, refuses the file: moving and un-retiring are a person's acts.
-- Dry run is the default. `--by` must hold `auth.users.manage` (DECIDED until the bed board declares IPD's own
-  bed-master permission): `scripts/load-bed-layout.ts` `BED_LAYOUT_LOADER_PERMISSION`.
+- Dry run is the default and needs no permission. Applying needs `auth.users.manage` (DECIDED until the bed
+  board declares IPD's own bed-master permission): `bed-layout.ts` `BED_LAYOUT_PERMISSION`, checked inside
+  `loadBedLayout` (`bed_layout_forbidden`) and by the script's `--by`.
+- The parser refuses a duplicate header name and any row whose cell count differs from the header's.
+- An occupied bed's class, gender rule, isolation, ICU, day-care or overflow attribute never changes by file
+  (`bed_occupied` refuses the file); equipment may. The kernel has no `reserved` bed status yet: when E1 adds
+  reservation, add it to this rule.
+- A ward and a hall may not share a code (`ward_hall_collision`), though the registry's index would allow it.
 
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
