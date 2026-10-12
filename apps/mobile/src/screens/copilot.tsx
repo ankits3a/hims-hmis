@@ -24,6 +24,8 @@ type Turn = {
   n: number; question: string; text: string | null; askId: string | null; report: boolean; wrong: "no" | "sending" | "yes";
   /** E2.1 — an appointment to pick and confirm; gone once confirmed or dismissed. */
   pick: { pick: CopilotActPick; proposals: CopilotProposal[] } | null;
+  /** E2.3 — a reminder was just set: the answer offers the Reminders screen. */
+  reminders?: boolean;
 };
 
 export function CopilotScreen() {
@@ -78,7 +80,7 @@ export function CopilotScreen() {
     setBusy(true);
     try {
       const res = await call<ConfirmReply>("POST", "/copilot/confirm", { proposal });
-      patch(turn.n, { text: answerText({ answer: res.answer, source: "phrasebook", intent: null }, t, lang), pick: null });
+      patch(turn.n, { text: answerText({ answer: res.answer, source: "phrasebook", intent: null }, t, lang), pick: null, reminders: res.answer.key === "copilot.answer.reminderSet" });
     } catch (e) {
       patch(turn.n, { text: t(e instanceof NetworkError ? "copilotPhone.offline" : "copilot.answer.failed") });
     } finally { setBusy(false); }
@@ -145,6 +147,11 @@ export function CopilotScreen() {
             {turn.pick !== null && turn.pick.pick.kind !== "apptPick" && (
               <ActPick n={turn.n} pick={turn.pick.pick} proposals={turn.pick.proposals} busy={busy}
                 onConfirm={(p) => { void confirm(turn, p); }} onDismiss={() => { patch(turn.n, { pick: null }); }} />
+            )}
+            {turn.reminders === true && (
+              <View style={{ flexDirection: "row" }}>
+                <Button kind="secondary" label={t("copilot.act.openReminders")} testID={`copilot-reminders-${String(turn.n)}`} onPress={() => { router.push("/reminders"); }} />
+              </View>
             )}
             {turn.report && <Text testID={`copilot-report-${String(turn.n)}`} numberOfLines={1} style={[type.small, { color: color.dim }]}>{t("copilotPhone.report")}</Text>}
             {turn.askId !== null && (

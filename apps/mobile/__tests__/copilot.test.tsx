@@ -357,3 +357,41 @@ describe("E2.2 — leave and a duty cover from the chat on the phone", () => {
     }
   });
 });
+
+describe("E2.3 — a reminder from the chat on the phone", () => {
+  beforeEach(async () => {
+    mockPush.mockClear();
+    await jest.requireMock<{ setItemAsync: (k: string, v: string) => Promise<void> }>("expo-secure-store")
+      .setItemAsync("hmis.session", JSON.stringify({ token: "t1", username: "asha", since: "2026-10-07T03:30:00.000Z" }));
+  });
+  const AT = "2026-11-20T10:30:00.000Z";
+  const PICK = {
+    answer: { key: "copilot.answer.reminderPick", params: { when: AT }, payload: { kind: "reminderPick", text: "see bed 12", at: AT, repeat: "none", proposal: 0 } },
+    proposals: [{ id: "r" }], source: "phrasebook", intent: "reminders.create", askId: "a9",
+  };
+  const SET = { outcome: "done", answer: { key: "copilot.answer.reminderSet", params: { when: AT } } };
+
+  it("the card opens on the reminder itself; Confirm posts the one proposal, and the answer offers Reminders", async () => {
+    const s = server({ "GET /copilot/notice": { status: 200, body: { seen: true } }, "POST /copilot/ask": { status: 200, body: PICK }, "POST /copilot/confirm": { status: 200, body: SET } });
+    await mount(s.fetcher);
+    await fireEvent.changeText(await screen.findByTestId("copilot-input"), "remind me at 4 to see bed 12");
+    await fireEvent.press(screen.getByTestId("copilot-ask"));
+    expect(await screen.findByTestId("copilot-answer-1")).toHaveTextContent(/^Remind you on Friday 20 Nov at 16:00\? Check it, then Confirm\.$/);
+    expect(screen.getByTestId("copilot-act-confirm-1")).toHaveTextContent(/see bed 12/);
+    expect(screen.getByTestId("copilot-act-detail-1")).toHaveTextContent(/^on Friday 20 Nov at 16:00 · Once$/);
+    expect(s.calls.filter((c) => c.key === "POST /copilot/confirm")).toEqual([]);
+    await fireEvent.press(screen.getByTestId("copilot-act-confirm-go-1"));
+    await waitFor(() => expect(screen.queryByTestId("copilot-act-pick-1")).toBeNull());
+    expect(s.calls.filter((c) => c.key === "POST /copilot/confirm").map((c) => c.body)).toEqual([{ proposal: { id: "r" } }]);
+    expect(screen.getByTestId("copilot-answer-1")).toHaveTextContent(/^Reminder set on Friday 20 Nov at 16:00\.$/);
+    await fireEvent.press(screen.getByTestId("copilot-reminders-1"));
+    expect(mockPush).toHaveBeenCalledWith("/reminders");
+  });
+
+  it("carries the web's reminder words, in English and Hindi", () => {
+    for (const k of ["reminder", "repeat_none", "repeat_daily", "repeat_mon_sat", "repeat_weekly", "openReminders"]) {
+      expect((en.copilot.act as Record<string, string>)[k]).toBe((webEn.copilot.act as Record<string, string>)[k]);
+      expect((hi.copilot.act as Record<string, string>)[k]).toBe((webHi.copilot.act as Record<string, string>)[k]);
+    }
+  });
+});
