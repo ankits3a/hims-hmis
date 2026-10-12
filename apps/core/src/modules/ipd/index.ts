@@ -24,3 +24,5 @@ export {
   ADMISSION_WORKFLOW_DEF_KEY, ADMISSION_TRANSITIONS, IPD_ACTOR_ROLE_KEYS, admissionIntentFor, admissionWorkflowDefinition,
 } from "./admission-workflow";
 export type { AdmissionTransition } from "./admission-workflow";
+// E0.5 — one named query per IPD goal (plan §1, §6).
+export * from "./goals";

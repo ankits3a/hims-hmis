@@ -13,10 +13,17 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** —
 - **Used by modules:** —
-- **Kernel used:** `auth`, `db`, `resources`
+- **Kernel used:** `auth`, `db`, `resources`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
+- `admission-workflow.ts`
+  - `ADMISSION_TRANSITIONS: readonly AdmissionTransition[]`
+  - `ADMISSION_WORKFLOW_DEF_KEY`
+  - `IPD_ACTOR_ROLE_KEYS: Record<IpdActorKind, readonly string[]>`
+  - `admissionIntentFor(from: string, to: string): IpdIntentName | null`
+  - `admissionWorkflowDefinition: WorkflowDefinition`
+  - types: `AdmissionTransition`
 - `bed-attributes.ts`
   - `IPD_BED_EQUIPMENT`
   - `IPD_BED_RULE_CODES`
@@ -39,6 +46,19 @@ Source: `apps/core/src/modules/ipd/`
 - `errors.ts`
   - `class IpdError`
   - types: `IpdErrorCode`
+- `goals/goal-events.ts`
+  - `BED_AVAILABLE: BedStatus`
+  - `BED_CLEANING: BedStatus`
+  - `EV`
+  - `EWS_ACK_KINDS: readonly IpdActorKind[]`
+  - `IPD_ACT_EVENTS: readonly string[]`
+  - `IPD_GOAL_CLEAN_REASONS`
+  - `IPD_GOAL_EVENTS`
+  - `IPD_GOAL_TEMPLATES`
+  - `TIMED_INTENTS`
+  - `intentEvent(intent: IpdIntentName, contains?: string): string`
+- `goals/goal-queries.ts`
+  - `IPD_GOAL_QUERIES: Record<string, GoalQuery>`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
