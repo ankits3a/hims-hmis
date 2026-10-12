@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { IPD_BEDS_TOPIC, IpdBedBoardSchema, newId } from "@hmis/contracts";
-import { events } from "../../kernel/db/schema";
+import { events, ipdBedReservations, ipdBedStays, resources } from "../../kernel/db/schema";
+import { withTx } from "../../kernel/db/client";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { mkBedWorld } from "../../../test/helpers/ipd";
 import {
   assignBed, blockBed, ipdTopicsFor, markBedClean, markIncumbentBeds, readBedBoard, releaseIncumbentBed,
-  releaseReservation, reserveBed, unblockBed,
+  releaseBedOccupant, releaseReservation, reserveBed, unblockBed,
 } from "./index";
 import type { IpdBedNeed } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -116,5 +117,114 @@ describe("E1.1 bed intents and the capacity board", () => {
     expect(ipdTopicsFor({ name: "ipd.bed.cleaned", payload: {} })).toEqual([IPD_BEDS_TOPIC]);
     expect(ipdTopicsFor({ name: "resource.released", payload: { kind: "bed" } })).toEqual([IPD_BEDS_TOPIC]);
     expect(ipdTopicsFor({ name: "resource.status_changed", payload: { kind: "theatre" } })).toEqual([]);
+  });
+});
+
+describe("E1.1 review fixes (PR #748)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+  let w: BedWorld;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+  beforeEach(async () => { await truncateAll(db); w = await mkBedWorld(db); });
+
+  const act = (bedId: string, patientId: string, admissionId = newId(), need: IpdBedNeed = GENERAL) => ({
+    idempotencyKey: randomUUID(), admissionId, bedId, patientId, need,
+  });
+  const SYS = { type: "system" as const, id: "test-release" };
+  const UNKNOWN_ROOM = { code: "room_gender_unknown", bedRule: "Room gender not recorded — set it first" };
+
+  it("RED 1: female first in a twin room refuses a male; once she leaves, a male is placed", async () => {
+    const r1 = await w.bed("V-T1", {}, "room");
+    const r2 = await w.bed("V-T2", {}, "room");
+    await assignBed(db, w.desk, act(r1, await w.patient("female")));
+    const man = await w.patient("male");
+    await expect(assignBed(db, w.desk, act(r2, man))).rejects.toMatchObject({ code: "bed_gender_mismatch", bedRule: "Shared room is female" });
+    await withTx(db, (tx) => releaseBedOccupant(tx, SYS, r1, new Date()));
+    await expect(assignBed(db, w.desk, act(r2, man))).resolves.toMatchObject({ bedId: r2 });
+  });
+
+  it("RED 1: an unknown-gender first occupant locks the room as unknown; a male is refused with the fix", async () => {
+    const r1 = await w.bed("V-U1", {}, "room");
+    const r2 = await w.bed("V-U2", {}, "room");
+    const other = await w.patient("other");
+    await assignBed(db, w.desk, act(r1, other));
+    const refused = assignBed(db, w.desk, act(r2, await w.patient("male")));
+    await expect(refused).rejects.toMatchObject({ ...UNKNOWN_ROOM, fix: "Set room gender" });
+  });
+
+  it("RED 1: an incumbent with no recorded gender holds the room as unknown", async () => {
+    await w.bed("V-I1", {}, "room");
+    const r2 = await w.bed("V-I2", {}, "room");
+    await markIncumbentBeds(db, w.desk, [{ code: "V-I1" }], { apply: true });
+    await expect(assignBed(db, w.desk, act(r2, await w.patient("male")))).rejects.toMatchObject(UNKNOWN_ROOM);
+  });
+
+  it("3: one admission sent to two beds at once (different rooms) — one wins, the other is a refusal, never a raw error", async () => {
+    const inRoom = await w.bed("V-A1", {}, "room");
+    const inWard = await w.bed("V-A2");
+    const p = await w.patient("female");
+    const admissionId = newId();
+    const results = await Promise.allSettled([
+      assignBed(db, w.desk, act(inRoom, p, admissionId)),
+      assignBed(db, w.dutyManager, act(inWard, p, admissionId)),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const lost = results.find((r): r is PromiseRejectedResult => r.status === "rejected")!;
+    expect(lost.reason).toMatchObject({ code: "admission_wrong_state" });
+  });
+
+  it("4: an assignment after the hold's expiry treats the hold as lapsed, for its own admission and for anyone else", async () => {
+    const a = await w.bed("V-L1");
+    const b = await w.bed("V-L2");
+    const t0 = new Date(Date.now() - 3 * 3_600_000);
+    const later = new Date(t0.getTime() + 2 * 3_600_000);
+    const p = await w.patient("male");
+    const own = newId();
+    const heldA = await reserveBed(db, w.desk, act(a, p, own), { now: t0 });
+    await expect(assignBed(db, w.desk, act(a, p, own), { now: later })).resolves.toMatchObject({ bedId: a });
+    const [ra] = await db.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, heldA.reservationId));
+    expect(ra!.status).toBe("lapsed");
+    await reserveBed(db, w.desk, act(b, await w.patient("male")), { now: t0 });
+    await expect(assignBed(db, w.desk, act(b, await w.patient("male")), { now: later })).resolves.toMatchObject({ bedId: b });
+  });
+
+  it("5: a dry run of the incumbent marker takes no lock; the release seam waits for the room", async () => {
+    const r1 = await w.bed("V-D1", {}, "room");
+    let free: () => void = () => undefined;
+    const barrier = new Promise<void>((r) => { free = r; });
+    const holder = withTx(db, async (tx) => {
+      await tx.select().from(resources).where(eq(resources.id, r1)).for("update");
+      await barrier;
+    });
+    const dry = markIncumbentBeds(db, w.desk, [{ code: "V-D1" }]);
+    const state = await Promise.race([dry.then(() => "done"), new Promise((r) => setTimeout(() => r("blocked"), 1500))]);
+    free();
+    await holder;
+    expect(state).toBe("done");
+
+    await assignBed(db, w.desk, act(r1, await w.patient("female")));
+    let freeRoom: () => void = () => undefined;
+    const roomBarrier = new Promise<void>((r) => { freeRoom = r; });
+    const roomHolder = withTx(db, async (tx) => {
+      await tx.select().from(resources).where(eq(resources.id, w.roomId)).for("update");
+      await roomBarrier;
+    });
+    const release = withTx(db, (tx) => releaseBedOccupant(tx, SYS, r1, new Date()));
+    const rel = await Promise.race([release.then(() => "done"), new Promise((r) => setTimeout(() => r("pending"), 800))]);
+    freeRoom();
+    await roomHolder;
+    await release;
+    expect(rel).toBe("pending");
+  });
+
+  it("6: a stay's classes are IPD classes and its patient must exist", async () => {
+    const bed = await w.bed("V-C1");
+    const row = { bedId: bed, admissionId: newId(), startedBy: "t", startedAt: new Date() };
+    await expect(db.insert(ipdBedStays).values({ id: newId(), ...row, patientId: await w.patient("male"), bedClass: "platinum", billedClass: "general" }))
+      .rejects.toThrow(/ipd_bed_stays_bed_class_ck/);
+    await expect(db.insert(ipdBedStays).values({ id: newId(), ...row, patientId: newId(), bedClass: "general", billedClass: "general" }))
+      .rejects.toThrow(/foreign key/);
   });
 });

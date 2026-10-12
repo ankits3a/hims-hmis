@@ -28,8 +28,11 @@ export type BedRulePatient = {
   ageYears: number | null;
 };
 export type BedRuleContext = {
-  /** The twin-share room's gender, fixed by its first occupant until the room is empty; null when empty or not a room. */
-  roomGender: "male" | "female" | null;
+  /**
+   * The twin-share room's gender, fixed by its first occupant or holder until the room is empty; null when empty or
+   * not a room; `unknown` when that first holder's gender is not recorded — the room then takes nobody beside them.
+   */
+  roomGender: "male" | "female" | "unknown" | null;
   /** The actor holds `ipd.beds.overflow` (the duty manager). */
   mayUseOverflow: boolean;
 };
@@ -81,6 +84,9 @@ export function checkBedRules(
   const gender = placementGender(patient, need);
   if (a.genderRule === "male" && gender !== "male") return { code: "bed_gender_mismatch", bedRule: "Male-only bed" };
   if (a.genderRule === "female" && gender !== "female") return { code: "bed_gender_mismatch", bedRule: "Female-only bed" };
+  if (a.genderRule === "any" && ctx.roomGender === "unknown") {
+    return { code: "room_gender_unknown", bedRule: "Room gender not recorded — set it first" };
+  }
   if (a.genderRule === "any" && ctx.roomGender !== null && gender !== ctx.roomGender) {
     return { code: "bed_gender_mismatch", bedRule: ctx.roomGender === "male" ? "Shared room is male" : "Shared room is female" };
   }

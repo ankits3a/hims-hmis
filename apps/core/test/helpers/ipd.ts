@@ -30,7 +30,7 @@ export type BedWorld = {
   desk: Actor; dutyManager: Actor; cleaner: Actor; viewer: Actor; nobody: Actor;
   floorId: string; wardId: string; roomId: string;
   bed(code: string, attrs?: Partial<Record<keyof typeof IPD_BED_DEFAULTS, unknown>>, parent?: "ward" | "room"): Promise<string>;
-  patient(sex: "male" | "female", ageYears?: number, name?: string): Promise<string>;
+  patient(sex: "male" | "female" | "other", ageYears?: number, name?: string): Promise<string>;
 };
 
 /**

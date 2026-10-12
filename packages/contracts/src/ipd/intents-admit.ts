@@ -111,7 +111,7 @@ const bedActShape = {
 
 const BED_RULE_REFUSALS = [
   "patient_not_found", "bed_not_found", "bed_not_available", "bed_gender_mismatch", "bed_isolation_mismatch", "bed_age_mismatch",
-  "bed_class_mismatch", "bed_retired", "overflow_needs_duty_manager",
+  "bed_class_mismatch", "room_gender_unknown", "bed_retired", "overflow_needs_duty_manager",
 ] as const;
 
 export const reserveBed = ipdIntent({

@@ -1,6 +1,16 @@
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { patients } from "./patients";
 import { resources } from "./resources";
+
+/**
+ * `IPD_BED_CLASSES` (packages/contracts/src/ipd-bed-classes.ts), retyped because drizzle-kit loads this file without
+ * the workspace packages. `modules/ipd/bed-classes-parity.test.ts` holds the two equal.
+ */
+export const IPD_BED_CLASS_VALUES = [
+  "general", "semi_private", "private", "deluxe", "suite", "hdu", "icu", "nicu", "picu", "ldr", "daycare", "emergency", "overflow",
+] as const;
+const CLASS_LIST = sql.raw(IPD_BED_CLASS_VALUES.map((c) => `'${c}'`).join(", "));
 
 /**
  * E1.1 (#718) — IPD's bed facts that are not the bed itself (spec SPEC-ipd-core §4.1).
@@ -12,16 +22,18 @@ import { resources } from "./resources";
  * database fact, not a read-then-write hope. The bed's kernel status stays `available` while reserved; the board
  * overlays `reserved` from here.
  *
- * `bed_id` references the kernel `resources` row. `admission_id` and `patient_id` are plain text: the admission
- * table arrives with ipd-admit, and `patients` is another module's table.
+ * `bed_id` references the kernel `resources` row and `patient_id` the patient. `admission_id` has NO foreign key
+ * yet: `ipd_admissions` arrives with the ipd-admit lane, which adds it. `placed_as` is the gender the patient was
+ * placed as (recorded, or stated for other/unknown); null = not recorded, which locks a twin room as "unknown".
  */
 export const ipdBedReservations = pgTable(
   "ipd_bed_reservations",
   {
     id: text("id").primaryKey(),
     bedId: text("bed_id").notNull().references(() => resources.id),
-    admissionId: text("admission_id").notNull(),
-    patientId: text("patient_id").notNull(),
+    admissionId: text("admission_id").notNull(), // no FK yet — ipd_admissions comes with ipd-admit
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    placedAs: text("placed_as"),
     /** active → released (a person) | lapsed (the 2-hour job) | consumed (the patient was put on the bed). */
     status: text("status").notNull(),
     reservedBy: text("reserved_by").notNull(),
@@ -36,6 +48,7 @@ export const ipdBedReservations = pgTable(
     index("ipd_bed_reservations_due_idx").on(t.expiresAt).where(sql`${t.status} = 'active'`),
     index("ipd_bed_reservations_admission_idx").on(t.admissionId),
     check("ipd_bed_reservations_status_ck", sql`${t.status} in ('active', 'released', 'lapsed', 'consumed')`),
+    check("ipd_bed_reservations_placed_as_ck", sql`${t.placedAs} is null or ${t.placedAs} in ('male', 'female')`),
   ],
 );
 
@@ -77,8 +90,9 @@ export const ipdBedStays = pgTable(
   {
     id: text("id").primaryKey(),
     bedId: text("bed_id").notNull().references(() => resources.id),
-    admissionId: text("admission_id").notNull(),
-    patientId: text("patient_id").notNull(),
+    admissionId: text("admission_id").notNull(), // no FK yet — ipd_admissions comes with ipd-admit
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    placedAs: text("placed_as"),
     bedClass: text("bed_class").notNull(),
     billedClass: text("billed_class").notNull(),
     protectedUntil: timestamp("protected_until", { withTimezone: true }),
@@ -92,6 +106,9 @@ export const ipdBedStays = pgTable(
     uniqueIndex("ipd_bed_stays_open_bed_ux").on(t.bedId).where(sql`${t.endedAt} is null`),
     uniqueIndex("ipd_bed_stays_open_admission_ux").on(t.admissionId).where(sql`${t.endedAt} is null`),
     index("ipd_bed_stays_patient_idx").on(t.patientId),
+    check("ipd_bed_stays_bed_class_ck", sql`${t.bedClass} in (${CLASS_LIST})`),
+    check("ipd_bed_stays_billed_class_ck", sql`${t.billedClass} in (${CLASS_LIST})`),
+    check("ipd_bed_stays_placed_as_ck", sql`${t.placedAs} is null or ${t.placedAs} in ('male', 'female')`),
     check("ipd_bed_stays_class_change_ck", sql`${t.classChange} is null or ${t.classChange} in ('upgrade', 'downgrade')`),
   ],
 );
