@@ -1,5 +1,6 @@
-import { and, count, countDistinct, eq, gte, inArray, isNotNull, isNull, min } from "drizzle-orm";
+import { and, count, countDistinct, eq, inArray, isNotNull, isNull, min, sql } from "drizzle-orm";
 import { labCriticalCalls, labReports, labResults, orderItems, orders } from "../../kernel/db/schema";
+import { DOCTOR_SCREEN } from "./doctor-read";
 import { waitingItem } from "../../kernel/desk/waiting";
 import type { WaitingItem } from "@hmis/contracts";
 import { noDeskCards } from "../../kernel/desk/types";
@@ -10,24 +11,24 @@ import type { DeskProvider, DeskProviderCtx } from "../../kernel/desk/types";
  *
  * The doctor's two: critical calls still open on orders they are the RESPONSIBLE clinician of
  * (`orders.ordering_clinician_id`, DD6 — never the login that typed it), and reports that came back
- * in the last day. The lab's one: every critical call the bench has not yet closed with a read-back.
+ * and no treating doctor has opened yet. The lab's one: every critical call the bench has not yet
+ * closed with a read-back.
  *
  * Counts and the oldest instant only — no patient, no test, no value — see `kernel/desk/waiting.ts`.
  */
 
 /**
- * "Back" means published in the last 24 hours. DECIDED: the lab keeps no doctor-read stamp
- * (`lab_report_deliveries` has a `doctor_screen` channel nothing writes), so this line ages out
- * rather than closes; a day matches the imaging Watchman's window (`UNREAD_REPORT_HOURS`).
+ * "Back" means published and not yet opened by a treating doctor (#682): the first read is a
+ * `doctor_screen` row in `lab_report_deliveries` (`doctor-read.ts`), and the line CLOSES on it, as
+ * imaging's `radiology.unreadMine` closes on `first_read_at`. No age cap — imaging's line has none,
+ * and a report nobody opened for two days is more waiting, not less.
+ *
+ * A report is current while it is the published or amended version — never a superseded one.
  */
-export const LAB_REPORTS_BACK_HOURS = 24;
-
-/** A report is current while it is the published or amended version — never a superseded one. */
 const CURRENT = ["published", "amended"] as const;
 
 async function mine(ctx: DeskProviderCtx): Promise<WaitingItem[]> {
   const me = ctx.actor.id;
-  const since = new Date(ctx.now.getTime() - LAB_REPORTS_BACK_HOURS * 3_600_000);
   const [crit] = await ctx.db
     .select({ n: count(), oldest: min(labCriticalCalls.openedAt) })
     .from(labCriticalCalls)
@@ -43,7 +44,8 @@ async function mine(ctx: DeskProviderCtx): Promise<WaitingItem[]> {
       eq(orders.orderingClinicianId, me),
       inArray(labReports.status, [...CURRENT]),
       isNotNull(labReports.publishedAt),
-      gte(labReports.publishedAt, since),
+      sql`not exists (select 1 from lab_report_deliveries d
+        where d.report_id = ${labReports.id} and d.channel = ${DOCTOR_SCREEN})`,
     ));
   return [
     waitingItem("lab.criticalsMine", crit?.n ?? 0, crit?.oldest ?? null),
