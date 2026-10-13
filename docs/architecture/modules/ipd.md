@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
-- **Depends on modules:** `billing`, `formulary`, `opd`, `ordering`, `patients`, `roster`, `tariff`
+- **Depends on modules:** `billing`, `formulary`, `materials`, `opd`, `ordering`, `patients`, `pharmacy`, `roster`, `tariff`
 - **Used by modules:** `diet`, `housekeeping`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
@@ -231,6 +231,52 @@ Source: `apps/core/src/modules/ipd/`
   - `readSummary(db: Db, actor: Actor, admissionId: string): Promise<IpdSummaryView>`
   - `saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdSummaryView>`
   - `signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_summary">>`
+- `emar-cards.ts`
+  - `IPD_NEW_ORDER_HOURS`
+  - `dueDoseCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `newOrderCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+- `emar-doses.ts`
+  - `cancelFutureDosesIn(tx: Tx, actor: Actor, o: Pick<IpdOrderRow, "id" | "admissionId" | "patientId">, at: Date): Promise<number>`
+  - `scheduleDosesIn(tx: Tx, o: IpdOrderRow, from: Date, to: Date, at: Date): Promise<number>`
+- `emar-events.ts`
+  - `IPD_EMAR_ALLERGY_CONSUMER`
+  - `IPD_EMAR_EVENT_NAMES: readonly string[]`
+- `emar-read.ts`
+  - `readEmarDue(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdEmarDueList>`
+  - `readEmarPatient(db: Db, actor: Actor, admissionId: string, opts: { now?: Date; from?: Date; to?: Date } = {}): Promise<IpdEmarPatient>`
+  - `readLabelSheet(db: Db, actor: Actor, issueId: string): Promise<IpdEmarLabelSheet>`
+  - `readOverrideCounts(db: Db, actor: Actor, opts: { now?: Date; days?: number } = {}): Promise<IpdEmarOverrideCounts>`
+  - `readPharmacyQueue(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdEmarPharmacyQueue>`
+  - `readWardChart(db: Db, actor: Actor, opts: { wardId?: string; now?: Date; day?: Date } = {}): Promise<IpdEmarWardChart>`
+  - `scanAtBedside(db: Db, actor: Actor, input: { wristbandCode?: string; admissionId?: string; labelCode?: string }, opts: { now?: Date } = {})…`
+- `emar-rules.ts`
+  - `dueTimesFor(o: { frequency: string; startAt: Date; stopAt: Date | null; durationDays: number | null }, from: Date, to: Date): Date[]`
+  - `giveTiming(slot: { dueAt: Date; windowMinutes: number; reofferedAt: Date | null }, at: Date): "early" | "open" | "late" | "closed"`
+  - `isHighAlert(itemFlag: boolean, narcotic: boolean, w: DrugWords): boolean`
+  - `isTimeCritical(antibiotic: boolean, w: DrugWords): boolean`
+  - `prnState(given: readonly Date[], prn: { minIntervalMinutes: number; max24h: number }, at: Date): { nextAt: Date | null; in24h: number; capp…`
+- `emar.ts`
+  - `EMAR_SYSTEM_ACTOR: Actor`
+  - `IPD_EMAR_NURSE_ROLES`
+  - `administerDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"administer_dose">>`
+  - `emarAllergyConsumer(db: Db): Handler`
+  - `holdDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"hold_dose">>`
+  - `issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"issue_med">>`
+  - `markDoseInError(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"mark_dose_in_error">>`
+  - `missDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"miss_dose">>`
+  - `recheckOrdersForAllergy(tx: Tx, payload: { patientId: string; allergyId: string; substance: string }, at: Date): Promise<number>`
+  - `recordInfusionEvent(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"record_infusion_event">>`
+  - `recordNarcoticWastage(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"record_narcotic_wastage">>`
+  - `refuseDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"refuse_dose">>`
+  - `reofferHeldDoses(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"reoffer_held_doses">>`
+  - `resolveAllergyFlag(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"resolve_allergy_flag">>`
+  - `returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"return_med">>`
+  - `secondCheck(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"second_check">>`
+  - `signVerbalOrder(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"sign_verbal_order">>`
+  - `sweepIpdEmar(db: Db, now: Date): Promise<EmarSweepResult>`
+  - `verifyFindingsOf(db: Db | Tx, o: IpdOrderRow, drug: EmarDrug | undefined, at: Date): Promise<{ findings: IpdEmarFinding[]; interactionDataP…`
+  - `verifyOrder(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"verify_order">>`
+  - types: `EmarSweepResult`
 - `encounter.ts`
   - `IPD_ADMISSION_NO_RE`
   - `IPD_ADMISSION_PREFIX`
@@ -375,6 +421,10 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_DISCHARGE_DECLARE`
   - `IPD_DISCHARGE_EXIT`
   - `IPD_DISCHARGE_VIEW`
+  - `IPD_EMAR_GIVE`
+  - `IPD_EMAR_ISSUE`
+  - `IPD_EMAR_VERIFY`
+  - `IPD_EMAR_VIEW`
   - `IPD_EWS_RESPOND`
   - `IPD_FAMILY_ISSUE`
   - `IPD_GATE_PASS`
@@ -447,13 +497,14 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (107)
+## HTTP routes (129)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
+- `emar.controller.ts` — 22: `/ipd/emar`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `nursing.controller.ts` — 12: `/ipd/nursing`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
