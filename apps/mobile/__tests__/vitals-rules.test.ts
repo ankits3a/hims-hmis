@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  ambiguousMessage, buildBody, classifyDoor, emptyTiles, applyTake, missMessage, missingFor, parseTake, resolveDoor, takeError, tempNote,
-  tileSetFor,
+  ambiguousMessage, buildBody, classifyDoor, emptyTiles, applyTake, missMessage, missingFor, mirrorFor, parseTake, resolveDoor, takeError,
+  tempNote, tileSetFor,
 } from "../src/vitals/rules";
 import type { WireBenchRow, WirePreStage } from "../src/vitals/rules";
 
@@ -51,6 +51,32 @@ describe("a temperature, °F or °C, sensed from the number", () => {
   it("refuses a number in neither band", () => {
     expect(parseTake("tempC", "50")).toBeNull();
     expect(takeError("tempC", "50")).toBe("tempUnit");
+  });
+});
+
+describe("a number typed with a comma or a stray dot", () => {
+  it.each([["92,5", 92.5], ["92.", 92], [".5", 0.5], [" 92,5 ", 92.5]])("reads height %s as %s", (raw, n) => {
+    expect(parseTake("heightCm", raw)).toBe(n);
+  });
+  it("reads a comma temperature too", () => {
+    expect(parseTake("tempC", "98,6")).toBe(37);
+    expect(tempNote("37,2")).toEqual({ unit: "C", c: 37.2, f: 99 });
+  });
+  it("still refuses what is not one number", () => {
+    for (const raw of ["9,2,5", "92..5", ".", "abc", "9 2"]) expect(parseTake("heightCm", raw)).toBeNull();
+  });
+});
+
+describe("a child's height is expected to change", () => {
+  const ranges = {
+    bands: [], gates: { adultWeightFloorKg: 25, heightDeltaCm: 3, spo2ProbeFloorPct: 75 }, muacBands: { samUnderCm: 11.5, mamUnderCm: 12.5 },
+  } as unknown as Parameters<typeof mirrorFor>[3];
+  const last = { heightCm: 92 } as WirePreStage["last"];
+  it("does not hold a growing child's height", () => {
+    expect(mirrorFor("heightCm", 98, 4, ranges, last, emptyTiles().heightCm)).toBeNull();
+  });
+  it("still holds an adult's height that moved 3 cm", () => {
+    expect(mirrorFor("heightCm", 98, 40, ranges, last, emptyTiles().heightCm)).toEqual({ kind: "shrinking_adult", key: "heightCm", value: 98, last: 92 });
   });
 });
 
