@@ -8,6 +8,7 @@ import { rescheduleBudget } from "../../kernel/workflow/timers";
 import { advanceOf } from "../billing";
 import { getEncounter } from "../opd";
 import { getPatient } from "../patients";
+import { resolveActiveTariffVersion } from "../tariff";
 import { ADMISSION_WORKFLOW_DEF_KEY, requestedBudgetMinutes } from "./admission-workflow";
 import {
   alreadyOpen, holdsPermission, isIcuClass, isOpenAdmissionRace, lockAdmission, mintAdmissionNo, moveAdmission, needOf,
@@ -242,6 +243,7 @@ export async function admit(db: Db, actor: Actor, raw: unknown, opts: Opts = {})
     checkConsent(input.consent);
     const need = needOf(a);
     const ctx = await placementContext(db, actor, a.patientId, at);
+    const tariffVersionId = await tariffLockAt(db, at);
     return withNextRuleValidBeds(db, actor, { bedId: input.bedId, patientId: a.patientId, need, at }, () => withTx(db, async (tx) => {
       await assignBedIn(tx, db, actor, { admissionId: a.id, bedId: input.bedId, patientId: a.patientId, need }, at, ctx, { viaAdmit: true });
       const locked = await lockAdmission(tx, a.id);
@@ -256,7 +258,7 @@ export async function admit(db: Db, actor: Actor, raw: unknown, opts: Opts = {})
       await moveAdmission(tx, actor, locked, "admitted", at, {
         admissionYear: no.year, admissionSerial: no.serial, admissionNo: no.admissionNo, admittedAt: at, admittedBy: actor.id,
         consent: consentRecord(input.consent, actor), consentAt: at, icuApprovalId,
-        depositExemption: dep.exemption, depositExemptionApprovalId: dep.approvalId,
+        depositExemption: dep.exemption, depositExemptionApprovalId: dep.approvalId, tariffVersionId,
       });
       await appendEvent(tx, admissionAdmitted.make({
         payload: {
@@ -268,6 +270,15 @@ export async function admit(db: Db, actor: Actor, raw: unknown, opts: Opts = {})
       return { admissionId: a.id, encounterId: a.id, state: "admitted" as const, bedId: input.bedId, admittedAt: at.toISOString() };
     }));
   }, at);
+}
+
+/**
+ * E2.1 (#725) — THE TARIFF LOCK: the version in force at the admitted instant, recorded on the admission by every admit
+ * path. The running bill prices every day of the stay from it; a revision activated later never reaches this stay. No
+ * active tariff → null (care never waits for money); the bill then lists a `tariff_missing` exception per day.
+ */
+async function tariffLockAt(db: Db, at: Date): Promise<string | null> {
+  return (await resolveActiveTariffVersion(db, at))?.versionId ?? null;
 }
 
 // ═══════════════════════════════════════════ the emergency lane ═══════════════════════════════════════════
@@ -304,6 +315,7 @@ export async function emergencyAdmit(db: Db, actor: Actor, raw: unknown, opts: O
     const icuApprovalId = bed.icu ? await requireIcuApproval(db, input.intensivistApprovalId, [admissionId]) : null;
     const need: IpdBedNeed = { requestedClass: bed.class, isolation: input.isolation, icu: bed.icu, ...(input.placeAs ? { placeAs: input.placeAs } : {}) };
     const ctx = await placementContext(db, actor, patientId, at);
+    const tariffVersionId = await tariffLockAt(db, at);
     return withNextRuleValidBeds(db, actor, { bedId: input.bedId, patientId, need, at }, () => withTx(db, async (tx) => {
       const instanceId = await startAdmissionInstance(tx, admissionId, patientId, at);
       await insertAdmission(tx, {
@@ -323,7 +335,7 @@ export async function emergencyAdmit(db: Db, actor: Actor, raw: unknown, opts: O
       const no = await mintAdmissionNo(tx, at);
       await moveAdmission(tx, actor, a, "admitted", at, {
         admissionYear: no.year, admissionSerial: no.serial, admissionNo: no.admissionNo, admittedAt: at, admittedBy: actor.id,
-        depositExemption: "emergency_not_stabilised",
+        depositExemption: "emergency_not_stabilised", tariffVersionId,
       });
       await appendEvent(tx, admissionAdmitted.make({
         payload: { admissionId, patientId, bedId: input.bedId, admissionNo: no.admissionNo, source: "er", provenance },
@@ -369,6 +381,7 @@ export async function backfillDowntime(db: Db, actor: Actor, raw: unknown, opts:
     const icuApprovalId = icu ? await requireIcuApproval(db, input.intensivistApprovalId, [patientId]) : null;
     const need: IpdBedNeed = { requestedClass: input.requestedClass, isolation: input.isolation, icu, ...(input.placeAs ? { placeAs: input.placeAs } : {}) };
     const ctx = await placementContext(db, actor, patientId, admittedAt);
+    const tariffVersionId = await tariffLockAt(db, admittedAt);
     try {
       return await withTx(db, async (tx) => {
         const instanceId = await startAdmissionInstance(tx, admissionId, patientId, requestedAt);
@@ -398,7 +411,7 @@ export async function backfillDowntime(db: Db, actor: Actor, raw: unknown, opts:
         const no = await mintAdmissionNo(tx, admittedAt);
         await moveAdmission(tx, actor, a, "admitted", now, {
           admissionYear: no.year, admissionSerial: no.serial, admissionNo: no.admissionNo, admittedAt, admittedBy: actor.id,
-          consent: consentRecord(input.consent, actor), consentAt: admittedAt,
+          consent: consentRecord(input.consent, actor), consentAt: admittedAt, tariffVersionId,
         }, `downtime paper ${serial}`);
         await appendEvent(tx, admissionAdmitted.make({
           payload: { admissionId, patientId, bedId: input.bedId, admissionNo: no.admissionNo, source: "downtime", provenance },

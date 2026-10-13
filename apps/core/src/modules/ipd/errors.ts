@@ -19,7 +19,17 @@ export type IpdErrorCode =
   /** E1.2 — the approval type an act needs is not registered yet (a go-live step registers it). */
   | "approval_type_missing"
   /** E1.2 review — a non-covered line asked without its amount. */
-  | "non_covered_amount_required";
+  | "non_covered_amount_required"
+  /** E2.1 — the nightly charge run failed for at least one admission (the others posted); `detail.failed`. */
+  | "charges_post_failed"
+  /** E2.1 — a reversal without a reason. */
+  | "reversal_reason_required"
+  /** E2.1 — no charge line with that id. */
+  | "charge_line_not_found"
+  /** E2.1 — a reversal line cannot itself be reversed. */
+  | "charge_line_is_reversal"
+  /** E2.1 — the line already has its reversal (`detail.reversalLineId`). */
+  | "charge_line_already_reversed";
 
 export class IpdError extends Error {
   constructor(

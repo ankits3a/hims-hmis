@@ -16001,5 +16001,85 @@
       "admittedAt": "भर्ती समय (कागज़)",
       "save": "भर्ती दर्ज करें"
     }
+  },
+  "ipdBill": {
+    "title": "अंतरिम बिल",
+    "loading": "बिल लोड हो रहा है…",
+    "loadFailed": "बिल लोड नहीं हुआ। फिर से कोशिश करें।",
+    "forbidden": "आपको भर्ती मरीज़ों के बिल देखने की अनुमति नहीं है।",
+    "notFound": "ऐसी कोई भर्ती नहीं मिली।",
+    "backToBeds": "बेड",
+    "print": "प्रिंट",
+    "factsLabel": "भर्ती",
+    "admitted": "भर्ती",
+    "discharged": "छुट्टी",
+    "inBed": "बेड पर",
+    "payer": "भुगतानकर्ता",
+    "tariff": "टैरिफ़",
+    "tariffVersion": "संस्करण {{no}} (भर्ती पर तय)",
+    "postedThrough": "यहाँ तक दर्ज",
+    "linesLabel": "दिन के अनुसार शुल्क",
+    "noLines": "अभी कोई शुल्क दर्ज नहीं।",
+    "todayNote": "कमरा, नर्सिंग और आरएमओ शुल्क दिन खत्म होने पर आधी रात के बाद दर्ज होते हैं; आज का शुल्क अभी बिल में नहीं है।",
+    "col": {
+      "item": "मद",
+      "code": "कोड",
+      "qty": "मात्रा",
+      "rate": "दर",
+      "gst": "जीएसटी",
+      "amount": "राशि"
+    },
+    "reversal": "वापसी",
+    "reversed": "वापस लिया",
+    "exempt": "छूट",
+    "totalsLabel": "कुल",
+    "gross": "शुल्क",
+    "discount": "छूट",
+    "gst": "जीएसटी",
+    "total": "कुल (पूर्णांकित)",
+    "deposit": "जमा राशि",
+    "due": "बकाया",
+    "depositLeft": "बची जमा",
+    "exceptionsLabel": "दर्ज नहीं",
+    "exceptionsTitle": "दर्ज नहीं ({{count}})",
+    "exceptionsFix": "गायब दर का अनुमान कभी नहीं लगाया जाता। बिलिंग टैरिफ़ में दर जोड़ती है; बिल डेस्क दिन को हल करता है।",
+    "movesLabel": "बेड और बदलाव",
+    "movesTitle": "बेड और बदलाव",
+    "billsAs": "बिल दर",
+    "now": "अभी",
+    "reason": {
+      "rate_missing": "दर नहीं",
+      "tariff_missing": "टैरिफ़ नहीं"
+    },
+    "component": {
+      "room": "कमरा किराया",
+      "nursing": "नर्सिंग",
+      "rmo": "आरएमओ",
+      "visit": "कंसल्टेंट विज़िट",
+      "cross_visit": "क्रॉस-कंसल्टेशन"
+    },
+    "class": {
+      "general": "जनरल वार्ड",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट कमरा",
+      "deluxe": "डीलक्स कमरा",
+      "suite": "सुइट",
+      "hdu": "एचडीयू",
+      "icu": "आईसीयू",
+      "nicu": "एनआईसीयू",
+      "picu": "पीआईसीयू",
+      "ldr": "एलडीआर",
+      "daycare": "डे केयर",
+      "emergency": "इमरजेंसी",
+      "overflow": "अतिरिक्त बेड"
+    },
+    "payerKind": {
+      "cash": "नकद",
+      "insurance_cashless": "बीमा (कैशलेस)",
+      "insurance_reimbursement": "बीमा (प्रतिपूर्ति)",
+      "pmjay": "पीएम-जय",
+      "state_scheme": "राज्य योजना",
+      "corporate": "कॉरपोरेट"
+    }
   }
 }

@@ -1450,6 +1450,13 @@
       "when": 1791848951480,
       "tag": "0206_ipd_admit",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1791851165538,
+      "tag": "0207_ipd_charges",
+      "breakpoints": true
     }
   ]
 }

@@ -105,6 +105,23 @@ Source: `apps/core/src/modules/ipd/`
   - `retireBed(db: Db, actor: Actor, input: { bedId: string; reason: string }, opts: Opts = {}): Promise<{ bedId: string }>`
   - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
   - types: `BedPlacementInput`, `IncumbentBedLine`, `IncumbentBedReport`, `PlacementContext`
+- `charge-days.ts`
+  - `DISCHARGE_FREE_UNTIL_MS`
+  - `TRANSIT_UNDER_MS`
+  - `classRank(cls: IpdBedClass): number`
+  - `ipdChargeableDays(stays: readonly ChargeStay[], admittedAt: Date, dischargedAt: Date | null, upToIstDate: string): ChargeableDay[]`
+  - `rentClassOf(cls: IpdBedClass): IpdBedClass | null`
+  - types: `ChargeStay`, `ChargeableDay`
+- `charges.ts`
+  - `IPD_DAILY_COMPONENTS`
+  - `IPD_ENDED_STATES`
+  - `IPD_NIGHTLY_ACTOR: Actor`
+  - `postAdmissionCharges(db: Db, admissionId: string, opts: { upToIstDate: string; now: Date; cache?: PricingCache }): Promise<AdmissionPostRes…`
+  - `postConsultantVisit(tx: Tx, input: ConsultantVisitInput): Promise<ConsultantVisitResult>`
+  - `postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyResult>`
+  - `priceComponent(ctx: PricingContext, cls: IpdBedClass, component: IpdRateComponent): Priced`
+  - `reverseChargeLine(db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {}): Promise<{ reversalLine…`
+  - types: `AdmissionPostResult`, `ConsultantVisitInput`, `ConsultantVisitResult`, `NightlyResult`
 - `deposit.ts`
   - `IPD_DEPOSIT_COMPONENTS`
   - `IPD_DEPOSIT_POLICY`
@@ -135,6 +152,8 @@ Source: `apps/core/src/modules/ipd/`
   - `intentEvent(intent: IpdIntentName, contains?: string): string`
 - `goals/goal-queries.ts`
   - `IPD_GOAL_QUERIES: Record<string, GoalQuery>`
+- `interim-bill.ts`
+  - `readInterimBill(db: Db, actor: Actor, admissionId: string): Promise<IpdInterimBill>`
 - `ipd.module.ts`
   - `class IpdModule`
 - `manifest.ts`
@@ -145,6 +164,8 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_BEDS_MANAGE`
   - `IPD_BEDS_OVERFLOW`
   - `IPD_BEDS_VIEW`
+  - `IPD_BILL_VIEW`
+  - `IPD_CHARGES_REVERSE`
   - `IPD_PAYER_MANAGE`
   - `ipdManifest: ModuleManifest`
 - `payer.ts`
@@ -157,13 +178,13 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_payer_auths`
+`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_payer_auths`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (29)
+## HTTP routes (30)
 
-- `admissions.controller.ts` — 21: `/ipd/admissions`
+- `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

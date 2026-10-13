@@ -13,6 +13,7 @@ export {
 } from "./intents-admit";
 export type { IpdAdmissionIncomplete, IpdBandPayload, IpdBedNeed, IpdConsent, IpdPayerKind } from "./intents-admit";
 export * from "./admissions";
+export * from "./charges";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see

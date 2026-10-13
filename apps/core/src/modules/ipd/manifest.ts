@@ -18,6 +18,11 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *   ipd.payer.manage   the manual authorisation record (pre-auth, enhancements, final approval, payer change)
  *   ipd.band.print     print and reprint the wristband
  *
+ * E2.1 (#725) adds the running bill's two (spec §4.3, §4.9 H). NO DOCTOR ROLE HOLDS EITHER (decision 0058):
+ *
+ *   ipd.bill.view       read an admission's interim bill (lines, totals, deposit, balance) — billing and front office
+ *   ipd.charges.reverse post a reversal line against a wrong charge (never an edit) — the billing manager
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). No subscriptions: the 2-hour reservation
  * lapse is a scheduler job (`kernel/worker/jobs.ts` `lapseBedReservations`), so the worker does not install this
  * manifest.
@@ -30,6 +35,8 @@ export const IPD_ADMIT_REQUEST = "ipd.admit.request";
 export const IPD_ADMIT = "ipd.admit";
 export const IPD_PAYER_MANAGE = "ipd.payer.manage";
 export const IPD_BAND_PRINT = "ipd.band.print";
+export const IPD_BILL_VIEW = "ipd.bill.view";
+export const IPD_CHARGES_REVERSE = "ipd.charges.reverse";
 
 export const ipdManifest: ModuleManifest = {
   key: "ipd",
@@ -40,6 +47,7 @@ export const ipdManifest: ModuleManifest = {
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
+    IPD_BILL_VIEW, IPD_CHARGES_REVERSE,
   ],
   subscriptions: [],
 };

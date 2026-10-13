@@ -29,6 +29,7 @@ import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { IpdBeds } from "./screens/ipd-beds";
 import { IpdAdmit } from "./screens/ipd-admit";
+import { IpdBill } from "./screens/ipd-bill";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -770,6 +771,16 @@ const ipdAdmitRoute = createRoute({
     admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
   }),
   component: IpdAdmit,
+});
+
+/**
+ * E2.1 (#725) — the interim bill of one admission (spec §4.3, §4.9 H). No nav entry: it opens from an admission. The
+ * server serves it under `ipd.bill.view` only (billing and front office; never a doctor, decision 0058).
+ */
+const ipdBillRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admissions/$admissionId/bill",
+  component: IpdBill,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1870,7 +1881,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
