@@ -12,6 +12,7 @@ import {
 } from "./admission-core";
 import { admissionPlanned, depositTaken } from "./admission-events";
 import { IPD_APPROVAL_TYPE_KEYS, grantedApproval } from "./approval-types";
+import { evaluateDepositLadderSafely } from "./deposit-ladder";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_ADMIT } from "./manifest";
 import type { Actor, IpdBedClass, IpdClassQuote, IpdIntentName, IpdPayerKind } from "@hmis/contracts";
@@ -288,7 +289,7 @@ export async function takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts
   if (done !== null) return done;
   let patientId: string | null = null;
   try {
-    return await withTx(db, async (tx) => {
+    const taken = await withTx(db, async (tx) => {
       const a = await lockAdmission(tx, input.admissionId);
       patientId = a.patientId;
       const again = await priorDeposit(tx, actor.id, key, a.id);
@@ -329,6 +330,10 @@ export async function takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts
         depositTotalPaise: await depositPaidPaise(tx, a.id),
       };
     });
+    // E2.3 (#727): a receipt moves the deposit ladder (a top-up re-arms a fired level). After the commit, caught and logged
+    // (review 8): the money is taken whatever the ladder does, and the nightly run evaluates every admission again.
+    await evaluateDepositLadderSafely(db, input.admissionId, at, "deposit");
+    return taken;
   } catch (e) {
     if (e instanceof BillingError && e.code === "cash_threshold_blocked" && patientId !== null) {
       await recordCashThresholdBlocked(db, actor, patientId, e.detail as CashThresholdDetail);

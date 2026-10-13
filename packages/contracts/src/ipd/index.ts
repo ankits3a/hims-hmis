@@ -18,6 +18,8 @@ export * from "./charges";
 export * from "./payer";
 // E3.1 (#729) — the transfer panel and the handover list.
 export * from "./transfers";
+// E2.3 (#727) — the deposit ladder and the bill desk.
+export * from "./bill-desk";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see
