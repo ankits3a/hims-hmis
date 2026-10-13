@@ -40,7 +40,10 @@ const key = (): string => randomUUID();
 const NOW = new Date();
 const ago = (minutes: number): Date => new Date(NOW.getTime() - minutes * 60_000);
 const CARD_KEYS = ["ipd.bed_proposal", "ipd.discharge_blocked", "ipd.deposit_low", "ipd.cleaning_overdue"] as const;
-const M4_CARD_KEYS = ["due_dose", "overdue_vitals", "new_order", "ews_rising", "handover_pending", "assessment_due"];
+// Card types still waiting for their M4 epic (eMAR). E4.1 nursing built overdue_vitals, ews_rising,
+// handover_pending and assessment_due with real providers; nursing.acceptance.test.ts covers them.
+// Narrowed on the owner's word, 2026-10-14.
+const M4_CARD_KEYS = ["due_dose", "new_order"];
 
 describe("E5.1 Now cards + E5.2 Bed Flow — acceptance", () => {
   let db: Db;
