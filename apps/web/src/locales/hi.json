@@ -94,6 +94,7 @@
     "labQCollect": "त्वरित संग्रह",
     "labQBench": "त्वरित बेंच",
     "labQReports": "त्वरित रिपोर्ट",
+    "labMetrics": "लैब आंकड़े",
     "pharmacyCounter": "दवा वितरण काउंटर",
     "pharmacyDesk": "फ़ार्मेसी डेस्क",
     "pharmacyItems": "फ़ार्मेसी बिक्री वस्तुएँ",
@@ -15611,6 +15612,60 @@
       "approved": "मंज़ूर",
       "rejected": "मंज़ूर नहीं",
       "cancelled": "वापस ली"
+    }
+  },
+  "labMetrics": {
+    "title": "लैब आंकड़े",
+    "period": "अवधि",
+    "periods": {
+      "today": "आज",
+      "week": "इस सप्ताह",
+      "month": "इस महीने",
+      "custom": "चुनें"
+    },
+    "from": "से",
+    "to": "तक",
+    "legend": "मिनट: माध्यिका / 90% · n = संख्या",
+    "badRange": "शुरुआत की तारीख अंत से पहले हो",
+    "failed": "लोड नहीं हुआ",
+    "loading": "लोड हो रहा है…",
+    "empty": "कोई आंकड़ा नहीं",
+    "bySource": "स्रोत अनुसार गिनती",
+    "byTest": "जांच अनुसार गिनती",
+    "reportTimes": "रिपोर्ट समय",
+    "testTimes": "जांच समय, चरण अनुसार",
+    "paramTimes": "पैरामीटर समय",
+    "total": "कुल",
+    "sources": {
+      "opd": "OPD",
+      "ipd": "IPD",
+      "walk_in": "वॉक-इन"
+    },
+    "modes": {
+      "machine": "मशीन",
+      "manual": "हाथ से"
+    },
+    "cols": {
+      "source": "स्रोत",
+      "orders": "ऑर्डर",
+      "tests": "जांचें",
+      "published": "जारी",
+      "delivered": "दी गई",
+      "test": "जांच",
+      "parameter": "पैरामीटर",
+      "entry": "प्रविष्टि",
+      "step": "चरण",
+      "time": "समय"
+    },
+    "steps": {
+      "placedToPublished": "ऑर्डर → जारी",
+      "receivedToPublished": "सैंपल → जारी",
+      "publishedToDelivered": "जारी → दी गई",
+      "placedToCollected": "ऑर्डर → सैंपल",
+      "collectedToReceived": "सैंपल → प्राप्त",
+      "receivedToEntered": "प्राप्त → दर्ज",
+      "enteredToVerified": "दर्ज → सत्यापित",
+      "placedToVerified": "ऑर्डर → सत्यापित"
     }
   }
 }

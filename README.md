@@ -1218,6 +1218,12 @@ held report could be released by nobody.
 | `lab.reports.amend` | ✓ | | | | |
 | `lab.reports.release_unpaid` | | | | ✓ | |
 | `lab.orders.place` | ✓ | | | ✓ | |
+| `lab.metrics.read` | ✓ | | | | |
+
+**Lab numbers (owner request 2026-10-13, #768).** `/lab/metrics` shows the lab's counts (orders,
+tests, reports published and delivered, by source and by test) and its turnaround times (median and
+90th percentile per report, per test step and per parameter), aggregate only and naming nobody.
+`lab.metrics.read` is held by `owner`, `admin` and `pathologist`, and any other role may be granted it.
 
 Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
 `lab.results.read` and `lab.catalogue.read`** — the doctor orders the test and reads the result, and
