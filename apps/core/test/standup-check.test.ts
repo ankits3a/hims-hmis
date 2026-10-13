@@ -120,6 +120,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   ops: "kernel — operating mode, interfaces, downtime kits",
   attendance: "a copy of the attendance machine's records and its read routes — configured by three secret files and a switch, not commissioned like a department",
   ordering: "DECISION 0067 — not a department: the door every doctor screen orders tests through and the outside-test list. The lab and imaging it routes to are the departments; it has nothing of its own to commission",
+  passes: "E1.3 (#720) — not a department: attendant and visitor passes ride the IPD admission desk and the security desk; nothing of its own to commission (visiting hours are a contract constant)",
   resources: "kernel — the registry the departments' theatres and benches live in",
   orders: "kernel — the order envelope; claimed by lab and radiology, owned by neither",
   desk: "cross-cutting — the front-desk shell; its commissioning IS `front-desk`'s",

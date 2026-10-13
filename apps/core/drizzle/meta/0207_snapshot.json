@@ -1,6 +1,6 @@
 {
-  "id": "af526d13-1e1b-465c-814b-77ab3062fb79",
-  "prevId": "71360897-4587-468a-b121-a155f452723d",
+  "id": "3fc78717-d3e0-42fd-b3db-c9fff69353a9",
+  "prevId": "903cacde-bfd8-4a64-8f46-75ea03d2dfb6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -54231,6 +54231,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "taken_by": {
           "name": "taken_by",
           "type": "text",
@@ -54250,6 +54256,27 @@
           "columns": [
             {
               "expression": "receipt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_admission_deposits_key_ux": {
+          "name": "ipd_admission_deposits_key_ux",
+          "columns": [
+            {
+              "expression": "taken_by",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -54540,6 +54567,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "deposit_check_pending": {
+          "name": "deposit_check_pending",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "cancel_reason": {
           "name": "cancel_reason",

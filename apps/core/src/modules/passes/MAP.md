@@ -32,7 +32,7 @@ an admission expires the moment the stay ends (discharge, refer-out, LAMA, absco
   `pass_admission_flags` (custody, visitor ban). Migration `passes` (0207 in the lane; renumbered at merge).
 - `modules/ipd/admission-place.ts` — `admissionPlace` (state, open stay, bed, ward) and the event names; passes reads
   IPD only through it.
-- Web: `apps/web/src/screens/ipd-passes.tsx` (`/ipd/passes?admission=`), `passes-scan.tsx` (`/passes/scan`).
+- Web: `apps/web/src/screens/ipd-passes.tsx` (`/ipd/passes?admission=`), `apps/web/src/screens/passes-scan.tsx` (`/passes/scan`).
 
 ## 3. Invariants
 - The QR is the opaque `token` (24 random bytes, base64url) and nothing else. Events carry ids, never the token or

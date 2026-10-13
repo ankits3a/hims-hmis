@@ -12,13 +12,20 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** —
+- **Used by modules:** `passes`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
 - `admission-events.ts`
   - `IPD_ADMISSION_BOARD_EVENT_NAMES`
+- `admission-place.ts`
+  - `IPD_ADMISSION_ENDED_EVENT_NAMES`
+  - `IPD_ENDED_STATES`
+  - `IPD_PLACED_STATES`
+  - `IPD_TRANSFER_ACCEPTED_EVENT_NAME`
+  - `admissionPlace(db: Db | Tx, admissionId: string): Promise<AdmissionPlace | null>`
+  - types: `AdmissionPlace`
 - `admission-read.ts`
   - `askApproval(db: Db, actor: Actor, admissionId: string, body: { kind: IpdApprovalKind; note: string; amountPaise?: number }): Promise<{ appr…`
   - `askEmergencyIcuApproval(db: Db, actor: Actor, body: { patientId: string; note: string }): Promise<{ approvalId: string; admissionId: string…`
@@ -78,6 +85,7 @@ Source: `apps/core/src/modules/ipd/`
   - types: `BedLayoutChange`, `BedLayoutColumn`, `BedLayoutPlan`, `BedLayoutProblem`, `BedLayoutReport`, `BedLayoutRow`
 - `bed-rules.ts`
   - `PAEDIATRIC_AGE_LIMIT_YEARS`
+  - `ageInYears(dob: Date | string | null, at: Date): number | null`
   - `checkBedRules(bed: BedRuleBed, patient: BedRulePatient, need: IpdBedNeed, classChange: "upgrade" | "downgrade" | undefined, ctx: BedRuleCon…`
   - `placementGender(p: BedRulePatient, need: IpdBedNeed): "male" | "female" | null`
   - types: `BedRuleBreach`, `BedRuleContext`, `BedRulePatient`
