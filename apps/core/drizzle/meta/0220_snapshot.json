@@ -1,6 +1,6 @@
 {
-  "id": "086260e3-0548-4447-8506-d86b9412f8e1",
-  "prevId": "0389bc2f-1f81-4c49-be3c-1965cea82050",
+  "id": "96461415-8113-4f63-893e-a4ff01d3a41c",
+  "prevId": "0684ebdc-e631-48fc-928c-a7eaf0580318",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -54167,6 +54167,588 @@
       },
       "isRLSEnabled": false
     },
+    "public.task_events": {
+      "name": "task_events",
+      "schema": "",
+      "columns": {
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "act": {
+          "name": "act",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "task_events_at_idx": {
+          "name": "task_events_at_idx",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "task_events_task_id_tasks_id_fk": {
+          "name": "task_events_task_id_tasks_id_fk",
+          "tableFrom": "task_events",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "task_events_task_id_seq_pk": {
+          "name": "task_events_task_id_seq_pk",
+          "columns": [
+            "task_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "task_events_act_ck": {
+          "name": "task_events_act_ck",
+          "value": "\"task_events\".\"act\" in ('raised', 'merged', 'assigned', 'redispatched', 'accepted', 'started', 'done', 'verified', 'cancelled', 'returned', 'escalated')"
+        },
+        "task_events_source_ck": {
+          "name": "task_events_source_ck",
+          "value": "\"task_events\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import', 'system')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tasks": {
+      "name": "tasks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "place_resource_id": {
+          "name": "place_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "priority": {
+          "name": "priority",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'routine'"
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skill": {
+          "name": "skill",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignee_kind": {
+          "name": "assignee_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assignee_id": {
+          "name": "assignee_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "assigned_at": {
+          "name": "assigned_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shift_ends_at": {
+          "name": "shift_ends_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "proof_needed": {
+          "name": "proof_needed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "proof": {
+          "name": "proof",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verify_required": {
+          "name": "verify_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'created'"
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "merged_count": {
+          "name": "merged_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "escalated_rung": {
+          "name": "escalated_rung",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "done_by": {
+          "name": "done_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "done_at": {
+          "name": "done_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verified_by": {
+          "name": "verified_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'person'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "source_ref": {
+          "name": "source_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "raised_at": {
+          "name": "raised_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "tasks_open_idx": {
+          "name": "tasks_open_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" in ('created', 'assigned', 'accepted', 'in_progress')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_assignee_idx": {
+          "name": "tasks_assignee_idx",
+          "columns": [
+            {
+              "expression": "assignee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" in ('assigned', 'accepted', 'in_progress')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_place_idx": {
+          "name": "tasks_place_idx",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "place_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_source_ref_ux": {
+          "name": "tasks_source_ref_ux",
+          "columns": [
+            {
+              "expression": "source_ref",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"tasks\".\"source_ref\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_shift_end_idx": {
+          "name": "tasks_shift_end_idx",
+          "columns": [
+            {
+              "expression": "shift_ends_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" in ('assigned', 'accepted', 'in_progress')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tasks_assigned_wait_idx": {
+          "name": "tasks_assigned_wait_idx",
+          "columns": [
+            {
+              "expression": "assigned_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"tasks\".\"state\" = 'assigned'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tasks_place_resource_id_resources_id_fk": {
+          "name": "tasks_place_resource_id_resources_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "place_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tasks_patient_id_patients_id_fk": {
+          "name": "tasks_patient_id_patients_id_fk",
+          "tableFrom": "tasks",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tasks_state_ck": {
+          "name": "tasks_state_ck",
+          "value": "\"tasks\".\"state\" in ('created', 'assigned', 'accepted', 'in_progress', 'done', 'verified', 'cancelled')"
+        },
+        "tasks_priority_ck": {
+          "name": "tasks_priority_ck",
+          "value": "\"tasks\".\"priority\" in ('routine', 'urgent', 'stat')"
+        },
+        "tasks_proof_needed_ck": {
+          "name": "tasks_proof_needed_ck",
+          "value": "\"tasks\".\"proof_needed\" in ('none', 'tap', 'photo', 'scan', 'weight')"
+        },
+        "tasks_source_ck": {
+          "name": "tasks_source_ck",
+          "value": "\"tasks\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import')"
+        },
+        "tasks_assignee_kind_ck": {
+          "name": "tasks_assignee_kind_ck",
+          "value": "\"tasks\".\"assignee_kind\" is null or \"tasks\".\"assignee_kind\" in ('person', 'team', 'machine')"
+        },
+        "tasks_assignee_pair_ck": {
+          "name": "tasks_assignee_pair_ck",
+          "value": "(\"tasks\".\"assignee_kind\" is null) = (\"tasks\".\"assignee_id\" is null)"
+        },
+        "tasks_assignee_state_ck": {
+          "name": "tasks_assignee_state_ck",
+          "value": "\"tasks\".\"state\" not in ('assigned', 'accepted', 'in_progress') or \"tasks\".\"assignee_id\" is not null"
+        },
+        "tasks_pool_unassigned_ck": {
+          "name": "tasks_pool_unassigned_ck",
+          "value": "\"tasks\".\"state\" <> 'created' or \"tasks\".\"assignee_id\" is null"
+        },
+        "tasks_cancel_reason_ck": {
+          "name": "tasks_cancel_reason_ck",
+          "value": "\"tasks\".\"state\" <> 'cancelled' or char_length(\"tasks\".\"cancel_reason\") > 0"
+        },
+        "tasks_note_ck": {
+          "name": "tasks_note_ck",
+          "value": "\"tasks\".\"note\" is null or char_length(\"tasks\".\"note\") <= 280"
+        },
+        "tasks_counts_ck": {
+          "name": "tasks_counts_ck",
+          "value": "\"tasks\".\"merged_count\" >= 0 and \"tasks\".\"escalated_rung\" >= 0 and \"tasks\".\"version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ipd_admission_conditions": {
+      "name": "ipd_admission_conditions",
+      "schema": "",
+      "columns": {
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "word": {
+          "name": "word",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "set_by": {
+          "name": "set_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "set_at": {
+          "name": "set_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "family_off_reason": {
+          "name": "family_off_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "family_off_by": {
+          "name": "family_off_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "family_off_at": {
+          "name": "family_off_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ipd_admission_conditions_admission_id_ipd_admissions_id_fk": {
+          "name": "ipd_admission_conditions_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "ipd_admission_conditions",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ipd_admission_conditions_word_ck": {
+          "name": "ipd_admission_conditions_word_ck",
+          "value": "\"ipd_admission_conditions\".\"word\" is null or \"ipd_admission_conditions\".\"word\" in ('stable', 'improving', 'serious', 'critical')"
+        },
+        "ipd_admission_conditions_off_ck": {
+          "name": "ipd_admission_conditions_off_ck",
+          "value": "\"ipd_admission_conditions\".\"family_off_reason\" is null or \"ipd_admission_conditions\".\"family_off_reason\" in ('psychiatric', 'hiv', 'mtp', 'pocso', 'patient_request', 'other')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.ipd_admission_deposits": {
       "name": "ipd_admission_deposits",
       "schema": "",
@@ -55012,6 +55594,186 @@
         "ipd_bed_blocks_reason_ck": {
           "name": "ipd_bed_blocks_reason_ck",
           "value": "\"ipd_bed_blocks\".\"reason\" in ('maintenance', 'infection_control', 'deep_clean', 'staff_shortage', 'other')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ipd_bed_proposals": {
+      "name": "ipd_bed_proposals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bed_id": {
+          "name": "bed_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bed_code": {
+          "name": "bed_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reasons": {
+          "name": "reasons",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "proposed_at": {
+          "name": "proposed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome_bed_id": {
+          "name": "outcome_bed_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "withdraw_reason": {
+          "name": "withdraw_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ipd_bed_proposals_open_admission_ux": {
+          "name": "ipd_bed_proposals_open_admission_ux",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ipd_bed_proposals\".\"ended_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_bed_proposals_open_bed_ux": {
+          "name": "ipd_bed_proposals_open_bed_ux",
+          "columns": [
+            {
+              "expression": "bed_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ipd_bed_proposals\".\"ended_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_bed_proposals_ended_idx": {
+          "name": "ipd_bed_proposals_ended_idx",
+          "columns": [
+            {
+              "expression": "ended_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_bed_proposals_admission_id_ipd_admissions_id_fk": {
+          "name": "ipd_bed_proposals_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "ipd_bed_proposals",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ipd_bed_proposals_patient_id_patients_id_fk": {
+          "name": "ipd_bed_proposals_patient_id_patients_id_fk",
+          "tableFrom": "ipd_bed_proposals",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ipd_bed_proposals_bed_id_resources_id_fk": {
+          "name": "ipd_bed_proposals_bed_id_resources_id_fk",
+          "tableFrom": "ipd_bed_proposals",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "bed_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ipd_bed_proposals_outcome_ck": {
+          "name": "ipd_bed_proposals_outcome_ck",
+          "value": "\"ipd_bed_proposals\".\"outcome\" is null or \"ipd_bed_proposals\".\"outcome\" in ('accepted', 'overridden', 'withdrawn')"
+        },
+        "ipd_bed_proposals_ended_ck": {
+          "name": "ipd_bed_proposals_ended_ck",
+          "value": "(\"ipd_bed_proposals\".\"outcome\" is null) = (\"ipd_bed_proposals\".\"ended_at\" is null)"
+        },
+        "ipd_bed_proposals_withdrawn_ck": {
+          "name": "ipd_bed_proposals_withdrawn_ck",
+          "value": "(\"ipd_bed_proposals\".\"outcome\" = 'withdrawn') = (\"ipd_bed_proposals\".\"withdraw_reason\" is not null)"
         }
       },
       "isRLSEnabled": false
@@ -56004,6 +56766,230 @@
       },
       "isRLSEnabled": false
     },
+    "public.ipd_daily_totals": {
+      "name": "ipd_daily_totals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bill_date": {
+          "name": "bill_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notification_id": {
+          "name": "notification_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ipd_daily_totals_day_ux": {
+          "name": "ipd_daily_totals_day_ux",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bill_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_daily_totals_admission_id_ipd_admissions_id_fk": {
+          "name": "ipd_daily_totals_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "ipd_daily_totals",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ipd_daily_totals_outcome_ck": {
+          "name": "ipd_daily_totals_outcome_ck",
+          "value": "\"ipd_daily_totals\".\"outcome\" in ('queued', 'no_attendant_phone', 'sealed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ipd_deposit_alerts": {
+      "name": "ipd_deposit_alerts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level": {
+          "name": "level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "threshold_bp": {
+          "name": "threshold_bp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "used_bp": {
+          "name": "used_bp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_payable_paise": {
+          "name": "patient_payable_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "deposit_held_paise": {
+          "name": "deposit_held_paise",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fired_at": {
+          "name": "fired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rearmed_at": {
+          "name": "rearmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ipd_deposit_alerts_live_ux": {
+          "name": "ipd_deposit_alerts_live_ux",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "level",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ipd_deposit_alerts\".\"rearmed_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_deposit_alerts_admission_idx": {
+          "name": "ipd_deposit_alerts_admission_idx",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fired_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_deposit_alerts_admission_id_ipd_admissions_id_fk": {
+          "name": "ipd_deposit_alerts_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "ipd_deposit_alerts",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ipd_deposit_alerts_level_ck": {
+          "name": "ipd_deposit_alerts_level_ck",
+          "value": "\"ipd_deposit_alerts\".\"level\" in ('top_up', 'escalate')"
+        },
+        "ipd_deposit_alerts_money_ck": {
+          "name": "ipd_deposit_alerts_money_ck",
+          "value": "\"ipd_deposit_alerts\".\"patient_payable_paise\" >= 0 and \"ipd_deposit_alerts\".\"deposit_held_paise\" >= 0 and \"ipd_deposit_alerts\".\"used_bp\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.ipd_discharge_confirmations": {
       "name": "ipd_discharge_confirmations",
       "schema": "",
@@ -56433,6 +57419,546 @@
           "value": "(\"ipd_discharges\".\"status\" = 'cancelled') = (\"ipd_discharges\".\"cancel_reason\" is not null)"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.ipd_family_callbacks": {
+      "name": "ipd_family_callbacks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "link_id": {
+          "name": "link_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ipd_family_callbacks_open_idx": {
+          "name": "ipd_family_callbacks_open_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_family_callbacks_admission_idx": {
+          "name": "ipd_family_callbacks_admission_idx",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_family_callbacks_link_idx": {
+          "name": "ipd_family_callbacks_link_idx",
+          "columns": [
+            {
+              "expression": "link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_family_callbacks_admission_id_ipd_admissions_id_fk": {
+          "name": "ipd_family_callbacks_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "ipd_family_callbacks",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ipd_family_callbacks_link_id_ipd_family_links_id_fk": {
+          "name": "ipd_family_callbacks_link_id_ipd_family_links_id_fk",
+          "tableFrom": "ipd_family_callbacks",
+          "tableTo": "ipd_family_links",
+          "columnsFrom": [
+            "link_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ipd_family_callbacks_status_ck": {
+          "name": "ipd_family_callbacks_status_ck",
+          "value": "\"ipd_family_callbacks\".\"status\" in ('open', 'done')"
+        },
+        "ipd_family_callbacks_closed_ck": {
+          "name": "ipd_family_callbacks_closed_ck",
+          "value": "(\"ipd_family_callbacks\".\"status\" = 'done') = (\"ipd_family_callbacks\".\"closed_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ipd_family_links": {
+      "name": "ipd_family_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "patient_id": {
+          "name": "patient_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attendant_kind": {
+          "name": "attendant_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attendant_ref": {
+          "name": "attendant_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone_hash": {
+          "name": "phone_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone_masked": {
+          "name": "phone_masked",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consent": {
+          "name": "consent",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_by": {
+          "name": "issued_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_reason": {
+          "name": "revoked_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_by": {
+          "name": "revoked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ipd_family_links_token_ux": {
+          "name": "ipd_family_links_token_ux",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_family_links_live_ux": {
+          "name": "ipd_family_links_live_ux",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ipd_family_links\".\"status\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_family_links_admission_id_ipd_admissions_id_fk": {
+          "name": "ipd_family_links_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "ipd_family_links",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ipd_family_links_patient_id_patients_id_fk": {
+          "name": "ipd_family_links_patient_id_patients_id_fk",
+          "tableFrom": "ipd_family_links",
+          "tableTo": "patients",
+          "columnsFrom": [
+            "patient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ipd_family_links_status_ck": {
+          "name": "ipd_family_links_status_ck",
+          "value": "\"ipd_family_links\".\"status\" in ('active', 'revoked', 'expired')"
+        },
+        "ipd_family_links_kind_ck": {
+          "name": "ipd_family_links_kind_ck",
+          "value": "\"ipd_family_links\".\"attendant_kind\" in ('guardian', 'deposit_payer')"
+        },
+        "ipd_family_links_revoked_ck": {
+          "name": "ipd_family_links_revoked_ck",
+          "value": "(\"ipd_family_links\".\"status\" = 'active') = (\"ipd_family_links\".\"revoked_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ipd_family_otps": {
+      "name": "ipd_family_otps",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "link_id": {
+          "name": "link_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code_hash": {
+          "name": "code_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_hash": {
+          "name": "device_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_at": {
+          "name": "failed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ipd_family_otps_link_idx": {
+          "name": "ipd_family_otps_link_idx",
+          "columns": [
+            {
+              "expression": "link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sent_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_family_otps_link_id_ipd_family_links_id_fk": {
+          "name": "ipd_family_otps_link_id_ipd_family_links_id_fk",
+          "tableFrom": "ipd_family_otps",
+          "tableTo": "ipd_family_links",
+          "columnsFrom": [
+            "link_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ipd_family_sessions": {
+      "name": "ipd_family_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "link_id": {
+          "name": "link_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_hash": {
+          "name": "device_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ipd_family_sessions_token_ux": {
+          "name": "ipd_family_sessions_token_ux",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_family_sessions_link_idx": {
+          "name": "ipd_family_sessions_link_idx",
+          "columns": [
+            {
+              "expression": "link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_family_sessions_link_id_ipd_family_links_id_fk": {
+          "name": "ipd_family_sessions_link_id_ipd_family_links_id_fk",
+          "tableFrom": "ipd_family_sessions",
+          "tableTo": "ipd_family_links",
+          "columnsFrom": [
+            "link_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.ipd_final_bills": {
@@ -57781,6 +59307,3061 @@
         "ipd_transfers_cancel_ck": {
           "name": "ipd_transfers_cancel_ck",
           "value": "(\"ipd_transfers\".\"status\" = 'cancelled') = (\"ipd_transfers\".\"cancel_reason\" is not null) and (\"ipd_transfers\".\"cancel_reason\" is null or \"ipd_transfers\".\"cancel_reason\" in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other', 'hold_lapsed'))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bmw_bag_events": {
+      "name": "bmw_bag_events",
+      "schema": "",
+      "columns": {
+        "bag_id": {
+          "name": "bag_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "act": {
+          "name": "act",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {
+        "bmw_bag_events_at_idx": {
+          "name": "bmw_bag_events_at_idx",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bmw_bag_events_bag_id_bmw_bags_id_fk": {
+          "name": "bmw_bag_events_bag_id_bmw_bags_id_fk",
+          "tableFrom": "bmw_bag_events",
+          "tableTo": "bmw_bags",
+          "columnsFrom": [
+            "bag_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "bmw_bag_events_bag_id_seq_pk": {
+          "name": "bmw_bag_events_bag_id_seq_pk",
+          "columns": [
+            "bag_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "bmw_bag_events_act_ck": {
+          "name": "bmw_bag_events_act_ck",
+          "value": "\"bmw_bag_events\".\"act\" in ('generated', 'dept_weighed', 'collected', 'stored', 'handed_over', 'cbwtf_weighed', 'treated', 'disputed', 'resolved')"
+        },
+        "bmw_bag_events_source_ck": {
+          "name": "bmw_bag_events_source_ck",
+          "value": "\"bmw_bag_events\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import', 'system')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bmw_bags": {
+      "name": "bmw_bags",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "barcode": {
+          "name": "barcode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cytotoxic": {
+          "name": "cytotoxic",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "place_resource_id": {
+          "name": "place_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generated_at": {
+          "name": "generated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generated_by": {
+          "name": "generated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dept_weight_grams": {
+          "name": "dept_weight_grams",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dept_weighed_at": {
+          "name": "dept_weighed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collected_at": {
+          "name": "collected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "collected_by": {
+          "name": "collected_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "central_weight_grams": {
+          "name": "central_weight_grams",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_in_at": {
+          "name": "storage_in_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "stored_by": {
+          "name": "stored_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'generated'"
+        },
+        "handed_over_at": {
+          "name": "handed_over_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "manifest_id": {
+          "name": "manifest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cbwtf_weight_grams": {
+          "name": "cbwtf_weight_grams",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "treated_at": {
+          "name": "treated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'person'"
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "bmw_bags_barcode_uq": {
+          "name": "bmw_bags_barcode_uq",
+          "columns": [
+            {
+              "expression": "barcode",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_bags_idempotency_uq": {
+          "name": "bmw_bags_idempotency_uq",
+          "columns": [
+            {
+              "expression": "place_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "category",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"bmw_bags\".\"idempotency_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_bags_on_site_idx": {
+          "name": "bmw_bags_on_site_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"bmw_bags\".\"state\" in ('generated', 'collected', 'stored')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_bags_generated_idx": {
+          "name": "bmw_bags_generated_idx",
+          "columns": [
+            {
+              "expression": "generated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_bags_place_idx": {
+          "name": "bmw_bags_place_idx",
+          "columns": [
+            {
+              "expression": "place_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_bags_manifest_idx": {
+          "name": "bmw_bags_manifest_idx",
+          "columns": [
+            {
+              "expression": "manifest_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bmw_bags_place_resource_id_resources_id_fk": {
+          "name": "bmw_bags_place_resource_id_resources_id_fk",
+          "tableFrom": "bmw_bags",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "place_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "bmw_bags_manifest_id_bmw_manifests_id_fk": {
+          "name": "bmw_bags_manifest_id_bmw_manifests_id_fk",
+          "tableFrom": "bmw_bags",
+          "tableTo": "bmw_manifests",
+          "columnsFrom": [
+            "manifest_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "bmw_bags_category_ck": {
+          "name": "bmw_bags_category_ck",
+          "value": "\"bmw_bags\".\"category\" in ('yellow', 'red', 'white_translucent', 'blue')"
+        },
+        "bmw_bags_cytotoxic_ck": {
+          "name": "bmw_bags_cytotoxic_ck",
+          "value": "not \"bmw_bags\".\"cytotoxic\" or \"bmw_bags\".\"category\" = 'yellow'"
+        },
+        "bmw_bags_state_ck": {
+          "name": "bmw_bags_state_ck",
+          "value": "\"bmw_bags\".\"state\" in ('generated', 'collected', 'stored', 'handed_over', 'treated', 'disputed')"
+        },
+        "bmw_bags_weights_ck": {
+          "name": "bmw_bags_weights_ck",
+          "value": "coalesce(\"bmw_bags\".\"dept_weight_grams\", 1) > 0 and coalesce(\"bmw_bags\".\"central_weight_grams\", 1) > 0 and coalesce(\"bmw_bags\".\"cbwtf_weight_grams\", 1) > 0"
+        },
+        "bmw_bags_manifest_ck": {
+          "name": "bmw_bags_manifest_ck",
+          "value": "(\"bmw_bags\".\"state\" in ('handed_over', 'treated', 'disputed')) = (\"bmw_bags\".\"manifest_id\" is not null)"
+        },
+        "bmw_bags_source_ck": {
+          "name": "bmw_bags_source_ck",
+          "value": "\"bmw_bags\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import')"
+        },
+        "bmw_bags_version_ck": {
+          "name": "bmw_bags_version_ck",
+          "value": "\"bmw_bags\".\"version\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bmw_disputes": {
+      "name": "bmw_disputes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "manifest_id": {
+          "name": "manifest_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dept_grams": {
+          "name": "dept_grams",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cbwtf_grams": {
+          "name": "cbwtf_grams",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gap_basis_points": {
+          "name": "gap_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "opened_by": {
+          "name": "opened_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolution_note": {
+          "name": "resolution_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "bmw_disputes_manifest_category_uq": {
+          "name": "bmw_disputes_manifest_category_uq",
+          "columns": [
+            {
+              "expression": "manifest_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "category",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_disputes_open_idx": {
+          "name": "bmw_disputes_open_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"bmw_disputes\".\"state\" = 'open'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "bmw_disputes_manifest_id_bmw_manifests_id_fk": {
+          "name": "bmw_disputes_manifest_id_bmw_manifests_id_fk",
+          "tableFrom": "bmw_disputes",
+          "tableTo": "bmw_manifests",
+          "columnsFrom": [
+            "manifest_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "bmw_disputes_state_ck": {
+          "name": "bmw_disputes_state_ck",
+          "value": "\"bmw_disputes\".\"state\" in ('open', 'resolved')"
+        },
+        "bmw_disputes_category_ck": {
+          "name": "bmw_disputes_category_ck",
+          "value": "\"bmw_disputes\".\"category\" in ('yellow', 'red', 'white_translucent', 'blue')"
+        },
+        "bmw_disputes_resolved_ck": {
+          "name": "bmw_disputes_resolved_ck",
+          "value": "(\"bmw_disputes\".\"state\" = 'resolved') = (\"bmw_disputes\".\"resolved_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.bmw_manifests": {
+      "name": "bmw_manifests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "manifest_no": {
+          "name": "manifest_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cbwtf_name": {
+          "name": "cbwtf_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vehicle_no": {
+          "name": "vehicle_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operator_name": {
+          "name": "operator_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handed_over_at": {
+          "name": "handed_over_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "handed_over_by": {
+          "name": "handed_over_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bag_count": {
+          "name": "bag_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "totals": {
+          "name": "totals",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cbwtf_recorded_at": {
+          "name": "cbwtf_recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cbwtf_recorded_by": {
+          "name": "cbwtf_recorded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cbwtf_totals": {
+          "name": "cbwtf_totals",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "bmw_manifests_no_uq": {
+          "name": "bmw_manifests_no_uq",
+          "columns": [
+            {
+              "expression": "manifest_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "bmw_manifests_at_idx": {
+          "name": "bmw_manifests_at_idx",
+          "columns": [
+            {
+              "expression": "handed_over_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "bmw_manifests_counts_ck": {
+          "name": "bmw_manifests_counts_ck",
+          "value": "\"bmw_manifests\".\"bag_count\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.linen_condemn_requests": {
+      "name": "linen_condemn_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ward_resource_id": {
+          "name": "ward_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "item_code": {
+          "name": "item_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'requested'"
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decision_note": {
+          "name": "decision_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "linen_condemn_requests_open_idx": {
+          "name": "linen_condemn_requests_open_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"linen_condemn_requests\".\"state\" = 'requested'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "linen_condemn_requests_ward_resource_id_resources_id_fk": {
+          "name": "linen_condemn_requests_ward_resource_id_resources_id_fk",
+          "tableFrom": "linen_condemn_requests",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "ward_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_condemn_requests_item_code_linen_items_code_fk": {
+          "name": "linen_condemn_requests_item_code_linen_items_code_fk",
+          "tableFrom": "linen_condemn_requests",
+          "tableTo": "linen_items",
+          "columnsFrom": [
+            "item_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "linen_condemn_requests_state_ck": {
+          "name": "linen_condemn_requests_state_ck",
+          "value": "\"linen_condemn_requests\".\"state\" in ('requested', 'approved', 'rejected')"
+        },
+        "linen_condemn_requests_qty_ck": {
+          "name": "linen_condemn_requests_qty_ck",
+          "value": "\"linen_condemn_requests\".\"qty\" > 0"
+        },
+        "linen_condemn_requests_decided_ck": {
+          "name": "linen_condemn_requests_decided_ck",
+          "value": "(\"linen_condemn_requests\".\"state\" = 'requested') = (\"linen_condemn_requests\".\"decided_at\" is null)"
+        },
+        "linen_condemn_requests_four_eyes_ck": {
+          "name": "linen_condemn_requests_four_eyes_ck",
+          "value": "\"linen_condemn_requests\".\"decided_by\" is null or \"linen_condemn_requests\".\"decided_by\" <> \"linen_condemn_requests\".\"requested_by\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.linen_items": {
+      "name": "linen_items",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "units_per_set": {
+          "name": "units_per_set",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 100
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "linen_items_units_ck": {
+          "name": "linen_items_units_ck",
+          "value": "\"linen_items\".\"units_per_set\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.linen_laundry_batches": {
+      "name": "linen_laundry_batches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "batch_no": {
+          "name": "batch_no",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "infected": {
+          "name": "infected",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vendor_name": {
+          "name": "vendor_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'sent'"
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent_by": {
+          "name": "sent_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pieces_sent": {
+          "name": "pieces_sent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_by": {
+          "name": "received_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pieces_received": {
+          "name": "pieces_received",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "linen_laundry_batches_no_uq": {
+          "name": "linen_laundry_batches_no_uq",
+          "columns": [
+            {
+              "expression": "batch_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_laundry_batches_idempotency_uq": {
+          "name": "linen_laundry_batches_idempotency_uq",
+          "columns": [
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"linen_laundry_batches\".\"idempotency_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_laundry_batches_open_idx": {
+          "name": "linen_laundry_batches_open_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"linen_laundry_batches\".\"state\" = 'sent'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_laundry_batches_sent_idx": {
+          "name": "linen_laundry_batches_sent_idx",
+          "columns": [
+            {
+              "expression": "sent_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "linen_laundry_batches_state_ck": {
+          "name": "linen_laundry_batches_state_ck",
+          "value": "\"linen_laundry_batches\".\"state\" in ('sent', 'received', 'short')"
+        },
+        "linen_laundry_batches_pieces_ck": {
+          "name": "linen_laundry_batches_pieces_ck",
+          "value": "\"linen_laundry_batches\".\"pieces_sent\" > 0 and coalesce(\"linen_laundry_batches\".\"pieces_received\", 0) >= 0"
+        },
+        "linen_laundry_batches_received_ck": {
+          "name": "linen_laundry_batches_received_ck",
+          "value": "(\"linen_laundry_batches\".\"state\" = 'sent') = (\"linen_laundry_batches\".\"received_at\" is null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.linen_movements": {
+      "name": "linen_movements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_code": {
+          "name": "item_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ward_resource_id": {
+          "name": "ward_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_ward_resource_id": {
+          "name": "to_ward_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "condemn_request_id": {
+          "name": "condemn_request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "linen_movements_ward_idx": {
+          "name": "linen_movements_ward_idx",
+          "columns": [
+            {
+              "expression": "ward_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_movements_to_ward_idx": {
+          "name": "linen_movements_to_ward_idx",
+          "columns": [
+            {
+              "expression": "to_ward_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"linen_movements\".\"to_ward_resource_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_movements_batch_idx": {
+          "name": "linen_movements_batch_idx",
+          "columns": [
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"linen_movements\".\"batch_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_movements_at_idx": {
+          "name": "linen_movements_at_idx",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_movements_idempotency_uq": {
+          "name": "linen_movements_idempotency_uq",
+          "columns": [
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ward_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"linen_movements\".\"idempotency_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "linen_movements_item_code_linen_items_code_fk": {
+          "name": "linen_movements_item_code_linen_items_code_fk",
+          "tableFrom": "linen_movements",
+          "tableTo": "linen_items",
+          "columnsFrom": [
+            "item_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_movements_ward_resource_id_resources_id_fk": {
+          "name": "linen_movements_ward_resource_id_resources_id_fk",
+          "tableFrom": "linen_movements",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "ward_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_movements_to_ward_resource_id_resources_id_fk": {
+          "name": "linen_movements_to_ward_resource_id_resources_id_fk",
+          "tableFrom": "linen_movements",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "to_ward_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_movements_batch_id_linen_laundry_batches_id_fk": {
+          "name": "linen_movements_batch_id_linen_laundry_batches_id_fk",
+          "tableFrom": "linen_movements",
+          "tableTo": "linen_laundry_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_movements_condemn_request_id_linen_condemn_requests_id_fk": {
+          "name": "linen_movements_condemn_request_id_linen_condemn_requests_id_fk",
+          "tableFrom": "linen_movements",
+          "tableTo": "linen_condemn_requests",
+          "columnsFrom": [
+            "condemn_request_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "linen_movements_kind_ck": {
+          "name": "linen_movements_kind_ck",
+          "value": "\"linen_movements\".\"kind\" in ('issue_to_ward', 'return_soiled', 'return_infected', 'laundry_out', 'laundry_in', 'condemn', 'transfer_between_wards')"
+        },
+        "linen_movements_qty_ck": {
+          "name": "linen_movements_qty_ck",
+          "value": "\"linen_movements\".\"qty\" > 0"
+        },
+        "linen_movements_ward_ck": {
+          "name": "linen_movements_ward_ck",
+          "value": "(\"linen_movements\".\"kind\" in ('issue_to_ward', 'return_soiled', 'return_infected', 'transfer_between_wards')) <= (\"linen_movements\".\"ward_resource_id\" is not null)"
+        },
+        "linen_movements_transfer_ck": {
+          "name": "linen_movements_transfer_ck",
+          "value": "(\"linen_movements\".\"kind\" = 'transfer_between_wards') = (\"linen_movements\".\"to_ward_resource_id\" is not null) and (\"linen_movements\".\"to_ward_resource_id\" is null or \"linen_movements\".\"to_ward_resource_id\" <> \"linen_movements\".\"ward_resource_id\")"
+        },
+        "linen_movements_batch_ck": {
+          "name": "linen_movements_batch_ck",
+          "value": "(\"linen_movements\".\"kind\" in ('laundry_out', 'laundry_in')) = (\"linen_movements\".\"batch_id\" is not null)"
+        },
+        "linen_movements_condemn_ck": {
+          "name": "linen_movements_condemn_ck",
+          "value": "(\"linen_movements\".\"kind\" = 'condemn') = (\"linen_movements\".\"condemn_request_id\" is not null)"
+        },
+        "linen_movements_source_ck": {
+          "name": "linen_movements_source_ck",
+          "value": "\"linen_movements\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import', 'system')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.linen_par_levels": {
+      "name": "linen_par_levels",
+      "schema": "",
+      "columns": {
+        "ward_resource_id": {
+          "name": "ward_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_code": {
+          "name": "item_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "par": {
+          "name": "par",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "set_by": {
+          "name": "set_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "set_at": {
+          "name": "set_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "linen_par_levels_ward_resource_id_resources_id_fk": {
+          "name": "linen_par_levels_ward_resource_id_resources_id_fk",
+          "tableFrom": "linen_par_levels",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "ward_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_par_levels_item_code_linen_items_code_fk": {
+          "name": "linen_par_levels_item_code_linen_items_code_fk",
+          "tableFrom": "linen_par_levels",
+          "tableTo": "linen_items",
+          "columnsFrom": [
+            "item_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "linen_par_levels_ward_resource_id_item_code_pk": {
+          "name": "linen_par_levels_ward_resource_id_item_code_pk",
+          "columns": [
+            "ward_resource_id",
+            "item_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "linen_par_levels_par_ck": {
+          "name": "linen_par_levels_par_ck",
+          "value": "\"linen_par_levels\".\"par\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.linen_variances": {
+      "name": "linen_variances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'laundry_short'"
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_code": {
+          "name": "item_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sent": {
+          "name": "sent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received": {
+          "name": "received",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "short": {
+          "name": "short",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_by": {
+          "name": "recorded_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "linen_variances_batch_item_uq": {
+          "name": "linen_variances_batch_item_uq",
+          "columns": [
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_variances_at_idx": {
+          "name": "linen_variances_at_idx",
+          "columns": [
+            {
+              "expression": "recorded_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "linen_variances_batch_id_linen_laundry_batches_id_fk": {
+          "name": "linen_variances_batch_id_linen_laundry_batches_id_fk",
+          "tableFrom": "linen_variances",
+          "tableTo": "linen_laundry_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_variances_item_code_linen_items_code_fk": {
+          "name": "linen_variances_item_code_linen_items_code_fk",
+          "tableFrom": "linen_variances",
+          "tableTo": "linen_items",
+          "columnsFrom": [
+            "item_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "linen_variances_kind_ck": {
+          "name": "linen_variances_kind_ck",
+          "value": "\"linen_variances\".\"kind\" in ('laundry_short')"
+        },
+        "linen_variances_short_ck": {
+          "name": "linen_variances_short_ck",
+          "value": "\"linen_variances\".\"short\" > 0 and \"linen_variances\".\"short\" = \"linen_variances\".\"sent\" - \"linen_variances\".\"received\" and \"linen_variances\".\"received\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.linen_ward_counts": {
+      "name": "linen_ward_counts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ward_resource_id": {
+          "name": "ward_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_code": {
+          "name": "item_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "on_hand": {
+          "name": "on_hand",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "counted_at": {
+          "name": "counted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "counted_by": {
+          "name": "counted_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'person'"
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "linen_ward_counts_ward_idx": {
+          "name": "linen_ward_counts_ward_idx",
+          "columns": [
+            {
+              "expression": "ward_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "counted_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "linen_ward_counts_idempotency_uq": {
+          "name": "linen_ward_counts_idempotency_uq",
+          "columns": [
+            {
+              "expression": "ward_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"linen_ward_counts\".\"idempotency_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "linen_ward_counts_ward_resource_id_resources_id_fk": {
+          "name": "linen_ward_counts_ward_resource_id_resources_id_fk",
+          "tableFrom": "linen_ward_counts",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "ward_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "linen_ward_counts_item_code_linen_items_code_fk": {
+          "name": "linen_ward_counts_item_code_linen_items_code_fk",
+          "tableFrom": "linen_ward_counts",
+          "tableTo": "linen_items",
+          "columnsFrom": [
+            "item_code"
+          ],
+          "columnsTo": [
+            "code"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "linen_ward_counts_on_hand_ck": {
+          "name": "linen_ward_counts_on_hand_ck",
+          "value": "\"linen_ward_counts\".\"on_hand\" >= 0"
+        },
+        "linen_ward_counts_source_ck": {
+          "name": "linen_ward_counts_source_ck",
+          "value": "\"linen_ward_counts\".\"source\" in ('person', 'device', 'copilot_draft', 'agent', 'import', 'system')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.maintenance_ticket_events": {
+      "name": "maintenance_ticket_events",
+      "schema": "",
+      "columns": {
+        "ticket_id": {
+          "name": "ticket_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "act": {
+          "name": "act",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_type": {
+          "name": "actor_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "maintenance_ticket_events_ticket_id_maintenance_tickets_id_fk": {
+          "name": "maintenance_ticket_events_ticket_id_maintenance_tickets_id_fk",
+          "tableFrom": "maintenance_ticket_events",
+          "tableTo": "maintenance_tickets",
+          "columnsFrom": [
+            "ticket_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "maintenance_ticket_events_ticket_id_seq_pk": {
+          "name": "maintenance_ticket_events_ticket_id_seq_pk",
+          "columns": [
+            "ticket_id",
+            "seq"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "maintenance_ticket_events_act_ck": {
+          "name": "maintenance_ticket_events_act_ck",
+          "value": "\"maintenance_ticket_events\".\"act\" in ('raised', 'reported_again', 'dispatched', 'fixed', 'closed', 'cancelled')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.maintenance_tickets": {
+      "name": "maintenance_tickets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "number": {
+          "name": "number",
+          "type": "serial",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "place_resource_id": {
+          "name": "place_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_kind": {
+          "name": "item_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_tag": {
+          "name": "item_tag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "urgency": {
+          "name": "urgency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "raised_by": {
+          "name": "raised_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bed_block_id": {
+          "name": "bed_block_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'open'"
+        },
+        "due_at": {
+          "name": "due_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fixed_by": {
+          "name": "fixed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fixed_at": {
+          "name": "fixed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_by": {
+          "name": "closed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replacement_flag": {
+          "name": "replacement_flag",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "maintenance_tickets_number_ux": {
+          "name": "maintenance_tickets_number_ux",
+          "columns": [
+            {
+              "expression": "number",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "maintenance_tickets_open_idx": {
+          "name": "maintenance_tickets_open_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "due_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"maintenance_tickets\".\"state\" in ('open', 'fixed')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "maintenance_tickets_place_idx": {
+          "name": "maintenance_tickets_place_idx",
+          "columns": [
+            {
+              "expression": "place_resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "item_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "maintenance_tickets_tag_idx": {
+          "name": "maintenance_tickets_tag_idx",
+          "columns": [
+            {
+              "expression": "item_tag",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"maintenance_tickets\".\"item_tag\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "maintenance_tickets_block_idx": {
+          "name": "maintenance_tickets_block_idx",
+          "columns": [
+            {
+              "expression": "bed_block_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"maintenance_tickets\".\"bed_block_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "maintenance_tickets_task_idx": {
+          "name": "maintenance_tickets_task_idx",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "maintenance_tickets_place_resource_id_resources_id_fk": {
+          "name": "maintenance_tickets_place_resource_id_resources_id_fk",
+          "tableFrom": "maintenance_tickets",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "place_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "maintenance_tickets_bed_block_id_ipd_bed_blocks_id_fk": {
+          "name": "maintenance_tickets_bed_block_id_ipd_bed_blocks_id_fk",
+          "tableFrom": "maintenance_tickets",
+          "tableTo": "ipd_bed_blocks",
+          "columnsFrom": [
+            "bed_block_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "maintenance_tickets_task_id_tasks_id_fk": {
+          "name": "maintenance_tickets_task_id_tasks_id_fk",
+          "tableFrom": "maintenance_tickets",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "maintenance_tickets_state_ck": {
+          "name": "maintenance_tickets_state_ck",
+          "value": "\"maintenance_tickets\".\"state\" in ('open', 'fixed', 'closed', 'cancelled')"
+        },
+        "maintenance_tickets_item_ck": {
+          "name": "maintenance_tickets_item_ck",
+          "value": "\"maintenance_tickets\".\"item_kind\" in ('bed', 'oxygen_point', 'suction', 'monitor', 'fixture', 'electrical', 'plumbing', 'ac', 'other')"
+        },
+        "maintenance_tickets_category_ck": {
+          "name": "maintenance_tickets_category_ck",
+          "value": "\"maintenance_tickets\".\"category\" in ('general', 'biomedical')"
+        },
+        "maintenance_tickets_urgency_ck": {
+          "name": "maintenance_tickets_urgency_ck",
+          "value": "\"maintenance_tickets\".\"urgency\" in ('routine', 'urgent', 'critical')"
+        },
+        "maintenance_tickets_source_ck": {
+          "name": "maintenance_tickets_source_ck",
+          "value": "\"maintenance_tickets\".\"source\" in ('person', 'device', 'block')"
+        },
+        "maintenance_tickets_description_ck": {
+          "name": "maintenance_tickets_description_ck",
+          "value": "char_length(\"maintenance_tickets\".\"description\") between 1 and 500"
+        },
+        "maintenance_tickets_fixed_ck": {
+          "name": "maintenance_tickets_fixed_ck",
+          "value": "\"maintenance_tickets\".\"state\" not in ('fixed', 'closed') or \"maintenance_tickets\".\"fixed_at\" is not null"
+        },
+        "maintenance_tickets_closed_ck": {
+          "name": "maintenance_tickets_closed_ck",
+          "value": "\"maintenance_tickets\".\"state\" <> 'closed' or (\"maintenance_tickets\".\"closed_at\" is not null and \"maintenance_tickets\".\"closed_by\" is not null)"
+        },
+        "maintenance_tickets_cancel_ck": {
+          "name": "maintenance_tickets_cancel_ck",
+          "value": "\"maintenance_tickets\".\"state\" <> 'cancelled' or char_length(\"maintenance_tickets\".\"cancel_reason\") > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pass_admission_flags": {
+      "name": "pass_admission_flags",
+      "schema": "",
+      "columns": {
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "police_custody": {
+          "name": "police_custody",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "custody_note": {
+          "name": "custody_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visitor_ban_reason": {
+          "name": "visitor_ban_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visitor_ban_scope": {
+          "name": "visitor_ban_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visitor_ban_by": {
+          "name": "visitor_ban_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visitor_ban_at": {
+          "name": "visitor_ban_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pass_admission_flags_admission_id_ipd_admissions_id_fk": {
+          "name": "pass_admission_flags_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "pass_admission_flags",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pass_events": {
+      "name": "pass_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pass_id": {
+          "name": "pass_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "pass_events_pass_idx": {
+          "name": "pass_events_pass_idx",
+          "columns": [
+            {
+              "expression": "pass_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pass_events_admission_idx": {
+          "name": "pass_events_admission_idx",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pass_events_pass_id_passes_id_fk": {
+          "name": "pass_events_pass_id_passes_id_fk",
+          "tableFrom": "pass_events",
+          "tableTo": "passes",
+          "columnsFrom": [
+            "pass_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pass_events_kind_ck": {
+          "name": "pass_events_kind_ck",
+          "value": "\"pass_events\".\"kind\" in ('issued', 'revoked', 'expired', 'paused', 'resumed', 'moved', 'custody_set', 'custody_cleared')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pass_scans": {
+      "name": "pass_scans",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "pass_id": {
+          "name": "pass_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ward_id": {
+          "name": "ward_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "gate": {
+          "name": "gate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scanned_by": {
+          "name": "scanned_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "at": {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "pass_scans_pass_idx": {
+          "name": "pass_scans_pass_idx",
+          "columns": [
+            {
+              "expression": "pass_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pass_scans_at_idx": {
+          "name": "pass_scans_at_idx",
+          "columns": [
+            {
+              "expression": "at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "pass_scans_pass_id_passes_id_fk": {
+          "name": "pass_scans_pass_id_passes_id_fk",
+          "tableFrom": "pass_scans",
+          "tableTo": "passes",
+          "columnsFrom": [
+            "pass_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pass_scans_result_ck": {
+          "name": "pass_scans_result_ck",
+          "value": "\"pass_scans\".\"result\" in ('valid', 'wrong_ward', 'outside_hours', 'expired', 'revoked', 'paused', 'unknown')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.passes": {
+      "name": "passes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "linked_admission_id": {
+          "name": "linked_admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_name": {
+          "name": "holder_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_phone": {
+          "name": "holder_phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "holder_relation": {
+          "name": "holder_relation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ward_id": {
+          "name": "ward_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_to": {
+          "name": "valid_to",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pause_reason": {
+          "name": "pause_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replaced_by": {
+          "name": "replaced_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "replaces": {
+          "name": "replaces",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issued_by": {
+          "name": "issued_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "passes_token_ux": {
+          "name": "passes_token_ux",
+          "columns": [
+            {
+              "expression": "token",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "passes_admission_idx": {
+          "name": "passes_admission_idx",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "passes_linked_admission_idx": {
+          "name": "passes_linked_admission_idx",
+          "columns": [
+            {
+              "expression": "linked_admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"passes\".\"linked_admission_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "passes_admission_id_ipd_admissions_id_fk": {
+          "name": "passes_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "passes",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "passes_linked_admission_id_ipd_admissions_id_fk": {
+          "name": "passes_linked_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "passes",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "linked_admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "passes_ward_id_resources_id_fk": {
+          "name": "passes_ward_id_resources_id_fk",
+          "tableFrom": "passes",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "ward_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "passes_kind_ck": {
+          "name": "passes_kind_ck",
+          "value": "\"passes\".\"kind\" in ('attendant', 'visitor', 'parent_stay', 'nicu_mother', 'police_guard', 'lounge')"
+        },
+        "passes_state_ck": {
+          "name": "passes_state_ck",
+          "value": "\"passes\".\"state\" in ('active', 'revoked', 'expired', 'paused')"
+        },
+        "passes_ended_ck": {
+          "name": "passes_ended_ck",
+          "value": "(\"passes\".\"state\" in ('revoked', 'expired')) = (\"passes\".\"ended_at\" is not null)"
+        },
+        "passes_token_len_ck": {
+          "name": "passes_token_len_ck",
+          "value": "length(\"passes\".\"token\") >= 20"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transport_requests": {
+      "name": "transport_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_resource_id": {
+          "name": "from_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_resource_id": {
+          "name": "to_resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_note": {
+          "name": "to_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "oxygen": {
+          "name": "oxygen",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "monitor": {
+          "name": "monitor",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "isolation": {
+          "name": "isolation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "escort_required": {
+          "name": "escort_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "escort_reason": {
+          "name": "escort_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "escort_user_id": {
+          "name": "escort_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "escort_added_by": {
+          "name": "escort_added_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "escort_added_at": {
+          "name": "escort_added_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "oxygen_checked_by": {
+          "name": "oxygen_checked_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "oxygen_checked_at": {
+          "name": "oxygen_checked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handover_band_serial": {
+          "name": "handover_band_serial",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handover_at": {
+          "name": "handover_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handover_refusals": {
+          "name": "handover_refusals",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "transport_requests_task_ux": {
+          "name": "transport_requests_task_ux",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "transport_requests_admission_idx": {
+          "name": "transport_requests_admission_idx",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transport_requests_task_id_tasks_id_fk": {
+          "name": "transport_requests_task_id_tasks_id_fk",
+          "tableFrom": "transport_requests",
+          "tableTo": "tasks",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transport_requests_admission_id_ipd_admissions_id_fk": {
+          "name": "transport_requests_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "transport_requests",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transport_requests_from_resource_id_resources_id_fk": {
+          "name": "transport_requests_from_resource_id_resources_id_fk",
+          "tableFrom": "transport_requests",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "from_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transport_requests_to_resource_id_resources_id_fk": {
+          "name": "transport_requests_to_resource_id_resources_id_fk",
+          "tableFrom": "transport_requests",
+          "tableTo": "resources",
+          "columnsFrom": [
+            "to_resource_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "transport_requests_kind_ck": {
+          "name": "transport_requests_kind_ck",
+          "value": "\"transport_requests\".\"kind\" in ('patient_move', 'sample_run', 'document_run')"
+        },
+        "transport_requests_mode_ck": {
+          "name": "transport_requests_mode_ck",
+          "value": "\"transport_requests\".\"mode\" is null or \"transport_requests\".\"mode\" in ('wheelchair', 'stretcher', 'bed', 'walking')"
+        },
+        "transport_requests_isolation_ck": {
+          "name": "transport_requests_isolation_ck",
+          "value": "\"transport_requests\".\"isolation\" in ('none', 'contact', 'droplet', 'airborne')"
+        },
+        "transport_requests_reason_ck": {
+          "name": "transport_requests_reason_ck",
+          "value": "\"transport_requests\".\"reason\" is null or \"transport_requests\".\"reason\" in ('admit', 'transfer', 'imaging', 'ot', 'discharge', 'other')"
+        },
+        "transport_requests_escort_reason_ck": {
+          "name": "transport_requests_escort_reason_ck",
+          "value": "\"transport_requests\".\"escort_reason\" is null or \"transport_requests\".\"escort_reason\" in ('critical_care_bed', 'high_risk_flag', 'requested')"
+        },
+        "transport_requests_move_admission_ck": {
+          "name": "transport_requests_move_admission_ck",
+          "value": "\"transport_requests\".\"kind\" <> 'patient_move' or \"transport_requests\".\"admission_id\" is not null"
+        },
+        "transport_requests_to_ck": {
+          "name": "transport_requests_to_ck",
+          "value": "\"transport_requests\".\"to_resource_id\" is not null or char_length(\"transport_requests\".\"to_note\") > 0"
+        },
+        "transport_requests_to_note_ck": {
+          "name": "transport_requests_to_note_ck",
+          "value": "\"transport_requests\".\"to_note\" is null or char_length(\"transport_requests\".\"to_note\") <= 120"
         }
       },
       "isRLSEnabled": false
