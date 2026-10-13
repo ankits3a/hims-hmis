@@ -951,6 +951,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // COPILOT HALT E0.3 (plan, decision 0064; built overnight 2026-10-11, awaiting owner review) —
       // the owner throws and clears every halt, and is the ONLY one who may clear a global halt.
       "copilot.halt.set", "copilot.halt.clear", "copilot.halt.clear_global",
+      // LAB NUMBERS (owner 2026-10-13, #768) — the lab's counts and turnaround times. Aggregate only; names nobody.
+      "lab.metrics.read",
     ],
   },
   {
@@ -1479,6 +1481,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "orders.read",
       "orders.cancel",
       "billing.credit.extend",
+      // LAB NUMBERS (owner 2026-10-13, #768) — the lab head reads the lab's counts and turnaround times.
+      "lab.metrics.read",
     ],
   },
   {
@@ -1962,7 +1966,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read"] },
 ];
 
 /**

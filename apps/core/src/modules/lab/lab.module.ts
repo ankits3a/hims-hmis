@@ -6,6 +6,7 @@ import { LabCatalogueController } from "./lab-catalogue.controller";
 import { LabCollectionController } from "./lab-collection.controller";
 import { LabDeskController } from "./lab-desk.controller";
 import { LabInstrumentsController } from "./lab-instruments.controller";
+import { LabMetricsController } from "./lab-metrics.controller";
 import { LabQuickController } from "./lab-quick.controller";
 import { LabVerifyController } from "./lab-verify.controller";
 import { LAB_TOPIC_SPACES, labTopicRouter } from "./realtime";
@@ -41,7 +42,7 @@ class LabRealtimeRegistrar implements OnModuleInit {
   imports: [RealtimeModule],
   controllers: [
     LabCatalogueController, LabDeskController, LabCollectionController, LabBenchController,
-    LabVerifyController, LabInstrumentsController, LabQuickController,
+    LabVerifyController, LabInstrumentsController, LabQuickController, LabMetricsController,
   ],
   providers: [LabRealtimeRegistrar],
 })

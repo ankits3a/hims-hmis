@@ -94,6 +94,7 @@
     "labQCollect": "Quick Collect",
     "labQBench": "Quick Bench",
     "labQReports": "Quick Reports",
+    "labMetrics": "Lab numbers",
     "pharmacyCounter": "Dispense counter",
     "pharmacyDesk": "Pharmacy desk",
     "pharmacyItems": "Pharmacy sale items",
@@ -15611,6 +15612,60 @@
       "approved": "Approved",
       "rejected": "Not approved",
       "cancelled": "Taken back"
+    }
+  },
+  "labMetrics": {
+    "title": "Lab numbers",
+    "period": "Period",
+    "periods": {
+      "today": "Today",
+      "week": "This week",
+      "month": "This month",
+      "custom": "Custom"
+    },
+    "from": "From",
+    "to": "To",
+    "legend": "Minutes: median / 90% · n = count",
+    "badRange": "From must be on or before To",
+    "failed": "Could not load",
+    "loading": "Loading…",
+    "empty": "No data",
+    "bySource": "Counts by source",
+    "byTest": "Counts by test",
+    "reportTimes": "Report time",
+    "testTimes": "Test time by step",
+    "paramTimes": "Parameter time",
+    "total": "Total",
+    "sources": {
+      "opd": "OPD",
+      "ipd": "IPD",
+      "walk_in": "Walk-in"
+    },
+    "modes": {
+      "machine": "Machine",
+      "manual": "Manual"
+    },
+    "cols": {
+      "source": "Source",
+      "orders": "Orders",
+      "tests": "Tests",
+      "published": "Published",
+      "delivered": "Delivered",
+      "test": "Test",
+      "parameter": "Parameter",
+      "entry": "Entry",
+      "step": "Step",
+      "time": "Time"
+    },
+    "steps": {
+      "placedToPublished": "Order → published",
+      "receivedToPublished": "Sample → published",
+      "publishedToDelivered": "Published → delivered",
+      "placedToCollected": "Order → collected",
+      "collectedToReceived": "Collected → received",
+      "receivedToEntered": "Received → entered",
+      "enteredToVerified": "Entered → verified",
+      "placedToVerified": "Order → verified"
     }
   }
 }
