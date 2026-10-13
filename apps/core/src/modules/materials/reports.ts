@@ -600,3 +600,25 @@ export async function purchaseAdjustmentsBetween(db: Db | Tx, from: string, to: 
     ...closed.map(({ closedAt, ...c }): PurchaseAdjustment => ({ kind: "closed", ...c, date: istDay(closedAt!) })),
   ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.no.localeCompare(b.no)));
 }
+
+// ═══════════════════════════════════ goods received, in totals (#777) ═══════════════════════════════════
+
+/**
+ * #777 — HOSPITAL NUMBERS: the goods received in an instant window `[start, end)` — GRNs POSTED in it
+ * (a draft or a QC that never posted moved no stock), and what was accepted at the GRN's own unit
+ * cost per base unit (`qty_accepted_base × unit_cost_paise`, the value the ledger's batch carries).
+ * A posted GRN that accepted nothing (every line rejected) received nothing and is not counted.
+ * Every store, as the office's purchase register reads every supplier bill. No actor: the gate is the caller's.
+ */
+export async function grnReceivedTotals(db: Db | Tx, start: Date, end: Date): Promise<{ grns: number; valuePaise: number }> {
+  const rows = await db.execute(sql`
+    select count(*) as n, coalesce(sum(v), 0) as paise from (
+      select g.id, sum(gl.qty_accepted_base::bigint * gl.unit_cost_paise) as v
+      from grns g join grn_lines gl on gl.grn_id = g.id
+      where g.status = 'posted' and g.posted_at >= ${start.toISOString()}::timestamptz and g.posted_at < ${end.toISOString()}::timestamptz
+      group by g.id
+      having sum(gl.qty_accepted_base) > 0
+    ) x`);
+  const r = rows.rows[0] as { n?: unknown; paise?: unknown } | undefined;
+  return { grns: Number(r?.n ?? 0), valuePaise: Number(r?.paise ?? 0) };
+}

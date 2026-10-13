@@ -1225,6 +1225,15 @@ tests, reports published and delivered, by source and by test) and its turnaroun
 90th percentile per report, per test step and per parameter), aggregate only and naming nobody.
 `lab.metrics.read` is held by `owner`, `admin` and `pathologist`, and any other role may be granted it.
 
+**Hospital numbers (owner request 2026-10-13, #777).** `/reports/numbers` gathers the lab's numbers
+with imaging's and the pharmacy's, one tab each, a tab shown only to a holder of its permission
+(`/lab/metrics` now opens its Lab tab). Imaging: orders, studies done, reports signed and handed over,
+by source and by modality, with median and 90th-percentile times. Pharmacy: bills, sales, returns and
+net (the sales register's own figures), prescriptions dispensed in full, in part or not at all, the
+top ten items and the goods received; margin only for a holder of `pharmacy.reports.margin`.
+`radiology.metrics.read` is held by `owner`, `admin` and `radiologist`, and any other role may be granted it.
+`pharmacy.metrics.read` is held by `owner`, `admin` and `pharmacy_incharge`, and any other role may be granted it.
+
 Thirty-four grants are held outside that table. **`doctor` gains `lab.orders.place`,
 `lab.results.read` and `lab.catalogue.read`** — the doctor orders the test and reads the result, and
 `lab.results.read` is the safety grant of the whole phase: the delivery interlock holds a printed
@@ -1289,6 +1298,7 @@ floor raised, and the override demands a reason and is evented.
 | `radiology.pacs.interface` | | | | | ✓ | | | |
 | `radiology.pacs.reconcile` | ✓ | ✓ | | | | | | |
 | `radiology.contrast.record` | ✓ | ✓ | | | | | ✓ | |
+| `radiology.metrics.read` | ✓ | | | | | | | |
 | `pcpndt.registrations.manage` | | | | ✓ | | | | |
 | `pcpndt.registrations.read` | ✓ | | | ✓ | | | | |
 | `pcpndt.form_f.write` | ✓ | | | | | | | |
@@ -1478,6 +1488,7 @@ owner. Nobody approves a discount they asked for.
 | `pharmacy.downtime.enter` | ✓ | | |
 | `pharmacy.reports.read` | | | ✓ |
 | `pharmacy.reports.margin` | | | ✓ |
+| `pharmacy.metrics.read` | | | ✓ |
 | `pharmacy.ndps.custody` | ✓ | | ✓ |
 | `pharmacy.ndps.witness` | ✓ | | ✓ |
 | `pharmacy.licences.manage` | | | ✓ |

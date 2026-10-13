@@ -122,8 +122,8 @@ flowchart LR
 | [partners](modules/partners.md) | billing, membership, patients, tariff | — | 10 | 7 |
 | [patients](modules/patients.md) | — | abdm, aerb, billing, lab, membership, opd, ot, partners, pharmacy, radiology | 31 | 8 |
 | [pcpndt](modules/pcpndt.md) | — | radiology | 10 | 5 |
-| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 183 | 32 |
-| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 113 | 22 |
+| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 184 | 32 |
+| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 114 | 22 |
 | [roster](modules/roster.md) | — | opd, ot, radiology | 37 | 26 |
 | [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 18 | 7 |
 
@@ -155,7 +155,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `push` | — | alerts, db, events, modules | — |
 | `realtime` | lab, opd | auth, db, tokens | — |
 | `reminders` | — | alerts, auth, copilot, db, tokens | 3 |
-| `report` | billing, opd, pharmacy | — | — |
+| `report` | billing, lab, opd, pharmacy, radiology | db | — |
 | `resources` | aerb, lab, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
 | `retention` | — | db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
