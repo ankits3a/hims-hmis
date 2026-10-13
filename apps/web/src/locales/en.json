@@ -17596,6 +17596,15 @@
     }
   },
   "ipdBillDesk": {
+    "orderCancel": {
+      "order_cancelled_after_bill": "{{name}} · {{date}} — cancelled after the bill",
+      "order_cancelled_after_work": "{{name}} · {{date}} — cancelled after the sample",
+      "reason": "Reason (required)",
+      "keep": "Keep charge",
+      "reverse": "Reverse after void",
+      "done": "Cancelled order settled",
+      "failed": "Could not save — try again"
+    },
     "title": "Bill desk",
     "subtitle": "Exceptions only",
     "asOf": "as of {{at}}",

@@ -433,7 +433,9 @@ describe("#785 — lab and imaging orders post to the IPD running bill", () => {
     expect((await orderLines(admissionId)).filter((l) => l.source === "ipd.reversal")).toEqual([]);
     const open = (await db.select().from(ipdChargeExceptions).where(eq(ipdChargeExceptions.admissionId, admissionId))).filter((x) => x.resolvedAt === null);
     expect(open.map((x) => [x.reason, x.component, x.key.split(":")[3]])).toEqual([["order_cancelled_after_bill", "lab", line.orderItemId]]);
-    expect((await readBillDesk(db, w.billDesk, at)).rows.find((r) => r.admissionId === admissionId)!.reasons).toContain("order_cancelled_after_bill");
+    const deskRow = (await readBillDesk(db, w.billDesk, at)).rows.find((r) => r.admissionId === admissionId)!;
+    expect(deskRow.reasons).toContain("order_cancelled_after_bill");
+    expect(deskRow.orderCancels?.map((c) => [c.chargeLineId, c.reason])).toEqual([[line.id, "order_cancelled_after_bill"]]);
     // Billing voids the bill (#763) and reverses the line: the decision closes.
     await db.update(ipdFinalBills).set({ voidedAt: ist("2026-03-11T12:00:00"), voidedBy: w.billDesk.id, voidReason: "Fixture void", voidApprovalId: "fixture" } as never).where(eq(ipdFinalBills.id, billId));
     await reverseChargeLine(db, w.billDesk, { chargeLineId: line.id, reason: "Test cancelled before sample" }, { now: ist("2026-03-11T12:05:00") });

@@ -3,7 +3,7 @@ import { Logger } from "@nestjs/common";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { IPD_BILLDESK_REASONS } from "@hmis/contracts";
 import {
-  ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdDepositAlerts, ipdPayerAuths, patients, resources,
+  ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines, ipdDepositAlerts, ipdPayerAuths, patients, resources,
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { holdsPermission, requireIpdPermission } from "./admission-core";
@@ -78,6 +78,18 @@ export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date())
     list.push({ exceptionId: x.id, serviceDate: x.serviceDate ?? "", consultantId: x.key.split(":")[3] ?? "" });
     backdated.set(x.admissionId, list);
   }
+  // #785: late-cancelled orders, by admission, for the Keep charge / Reverse after void buttons.
+  const orderCancels = new Map<string, { chargeLineId: string; reason: "order_cancelled_after_bill" | "order_cancelled_after_work"; serviceName: string; serviceDate: string }[]>();
+  for (const x of await db.select({ admissionId: ipdChargeExceptions.admissionId, key: ipdChargeExceptions.key, reason: ipdChargeExceptions.reason })
+    .from(ipdChargeExceptions).where(and(isNull(ipdChargeExceptions.resolvedAt),
+      inArray(ipdChargeExceptions.reason, ["order_cancelled_after_bill", "order_cancelled_after_work"])))) {
+    const line = (await db.select({ id: ipdChargeLines.id, serviceName: ipdChargeLines.serviceName, serviceDate: ipdChargeLines.serviceDate })
+      .from(ipdChargeLines).where(and(eq(ipdChargeLines.orderItemId, x.key.split(":")[3] ?? ""), eq(ipdChargeLines.source, "ipd.order"))))[0];
+    if (line === undefined) continue;
+    const list = orderCancels.get(x.admissionId) ?? [];
+    list.push({ chargeLineId: line.id, reason: x.reason as "order_cancelled_after_bill", serviceName: line.serviceName, serviceDate: line.serviceDate });
+    orderCancels.set(x.admissionId, list);
+  }
   const consultantNames = await userNames(db, [...backdated.values()].flat().map((b) => b.consultantId));
   // Downtime deposits nobody has checked yet.
   for (const a of await db.select({ id: ipdAdmissions.id, at: ipdAdmissions.admittedAt }).from(ipdAdmissions)
@@ -151,6 +163,7 @@ export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date())
           exceptionId: b.exceptionId, serviceDate: b.serviceDate, consultantName: consultantNames.get(b.consultantId) ?? b.consultantId,
         })),
       } : {}),
+      ...(orderCancels.has(a.id) ? { orderCancels: orderCancels.get(a.id)! } : {}),
     });
   }
   rows.sort((x, y) => RANK.get(x.reasons[0]!)! - RANK.get(y.reasons[0]!)! || (x.since ?? "").localeCompare(y.since ?? ""));

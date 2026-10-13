@@ -58,6 +58,11 @@ export const IpdBillDeskRowSchema = z.object({
   backdatedVisits: z.array(z.object({
     exceptionId: z.string(), serviceDate: z.string(), consultantName: z.string(),
   })).optional(),
+  /** #785: lab / imaging lines whose order was cancelled late — billing keeps the charge or reverses it (after a void). */
+  orderCancels: z.array(z.object({
+    chargeLineId: z.string(), reason: z.enum(["order_cancelled_after_bill", "order_cancelled_after_work"]),
+    serviceName: z.string(), serviceDate: z.string(),
+  })).optional(),
 });
 export type IpdBillDeskRow = z.infer<typeof IpdBillDeskRowSchema>;
 
