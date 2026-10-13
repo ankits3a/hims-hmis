@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
-- **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
+- **Depends on modules:** `billing`, `opd`, `patients`, `roster`, `tariff`
 - **Used by modules:** `diet`, `housekeeping`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
@@ -293,6 +293,36 @@ Source: `apps/core/src/modules/ipd/`
   - `rankNowRows(rows: readonly NowRow[]): DeskRow[]`
   - `stuckStepOf(args: { state: string; declaredAt: Date; confirmations: Parameters<typeof pendingDepartments>[0]; summarySignedAt: Date | null;…`
   - types: `Identity`, `NowRow`, `StuckStep`
+- `nursing-cards.ts`
+  - `assessmentDueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `ewsRisingCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `handoverPendingCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `overdueVitalsCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+- `nursing-events.ts`
+  - `IPD_NURSING_EVENT_NAMES: readonly string[]`
+- `nursing-read.ts`
+  - `listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdShiftHandoverList>`
+  - `nextDueOf(f: DueFacts, now: Date): { kind: "vitals" | "assessment"; dueAt: Date; overdue: boolean } | null`
+  - `readHandoverDraft(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdHandoverDraft>`
+  - `readMyShift(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdMyShift>`
+  - `readNurseStation(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdNurseStation>`
+  - `readNursingChart(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdNursingChart>`
+- `nursing.ts`
+  - `IPD_NURSING_STATES`
+  - `acceptShiftHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ handoverId: string; acceptedAt: string }>`
+  - `acknowledgeEwsAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ alertId: string; acknowledgedAt: string | null; seenAt:…`
+  - `addNursingNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ noteId: string; lateEntry: boolean }>`
+  - `dutyDoctorsFor(tx: Tx, a: Pick<AdmissionRow, "consultantId" | "department">, at: Date): Promise<string[]>`
+  - `giveShiftHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ handoverId: string; supersedes: string | null }>`
+  - `ioDayStart(at: Date): Date`
+  - `isNightIst(at: Date): boolean`
+  - `recordIntakeOutput(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ entryId: string; lateEntry: boolean }>`
+  - `recordNursingAssessment(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_nursing_assessment">>`
+  - `recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_vitals">>`
+  - `scoreContextOf(db: Db | Tx, a: Pick<AdmissionRow, "id" | "patientId" | "department">, at: Date): Promise<ScoreContext>`
+  - `shiftOf(at: Date): { key: IpdShiftKey; startsAt: Date; endsAt: Date }`
+  - `sweepIpdNursing(db: Db, now: Date, hooks: { beforeRow?: (admissionId: string) => void } = {}): Promise<NursingSweepResult>`
+  - types: `NursingSweepResult`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
   - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
@@ -312,6 +342,7 @@ Source: `apps/core/src/modules/ipd/`
 - `permissions.ts`
   - `IPD_ADMIT`
   - `IPD_ADMIT_REQUEST`
+  - `IPD_ASSESSMENT_RECORD`
   - `IPD_BAND_PRINT`
   - `IPD_BEDS_CLEAN`
   - `IPD_BEDS_MANAGE`
@@ -326,14 +357,18 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_DISCHARGE_DECLARE`
   - `IPD_DISCHARGE_EXIT`
   - `IPD_DISCHARGE_VIEW`
+  - `IPD_EWS_RESPOND`
   - `IPD_FAMILY_ISSUE`
   - `IPD_GATE_PASS`
   - `IPD_GATE_SCAN`
   - `IPD_MORTUARY_MANAGE`
+  - `IPD_NURSING_VIEW`
   - `IPD_PAYER_MANAGE`
   - `IPD_PAYER_TERMS`
+  - `IPD_SHIFT_HANDOVER`
   - `IPD_TRANSFER_ACCEPT`
   - `IPD_TRANSFER_START`
+  - `IPD_VITALS_RECORD`
 - `realtime.ts`
   - `IPD_REALTIME_NAMES: string[]`
   - `IPD_TOPIC_SPACES: TopicSpace[]`
@@ -358,11 +393,11 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
+`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_vitals`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (84)
+## HTTP routes (96)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
@@ -370,6 +405,7 @@ Foreign keys into: `patients`, `resources`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
+- `nursing.controller.ts` — 12: `/ipd/nursing`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
 - `transfers.controller.ts` — 7: `/ipd/transfers`
 

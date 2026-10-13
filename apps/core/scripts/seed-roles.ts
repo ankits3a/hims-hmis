@@ -2174,6 +2174,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift",
       "ipd.beds.view", "ipd.beds.clean", "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm",
       "maintenance.raise", "maintenance.confirm", "transport.request",
+      // INTEGRATION (ipd-stage, DECIDED — owed by diet's MAP §5): the ward nurse sees the diet, marks NPO and serves.
+      "diet.view", "diet.npo", "diet.serve", "diet.clinical.view",
     ],
   },
   {
@@ -2183,11 +2185,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.beds.view", "ipd.beds.clean", "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm",
       "ipd.family.issue",
       "maintenance.raise", "maintenance.confirm", "transport.request",
+      // INTEGRATION (ipd-stage, DECIDED — owed by diet's MAP §5): as the ward nurse.
+      "diet.view", "diet.npo", "diet.serve", "diet.clinical.view",
     ],
   },
   {
     roleKey: "nursing_superintendent",
-    permissions: ["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue"],
+    // INTEGRATION (ipd-stage, DECIDED): the nursing superintendent reads the diet (`diet.view`, `diet.clinical.view`).
+    permissions: ["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue", "diet.view", "diet.clinical.view"],
   },
   /**
    * E4.4 DIET (issue #736, decision 0072) — no dietary role existed, so two are minted by the standard Indian
