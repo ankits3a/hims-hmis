@@ -68,8 +68,11 @@ export const IPD_REFUSALS = {
   not_receiving_ward: { rule: "Only a nurse on the receiving ward can accept the handover.", fix: "Ask receiving nurse" },
   sender_cannot_accept: { rule: "The nurse who sent the patient cannot also accept them.", fix: "Ask receiving nurse" },
   swap_same_admission: { rule: "A swap needs two different patients.", fix: "Pick second patient" },
+  swap_isolation: { rule: "A patient in isolation cannot swap beds: the bed needs a terminal clean.", fix: "Use a transfer" },
+  transfer_hold_lapsed: { rule: "The target bed's hold ran out before the handover was accepted.", fix: "Start the transfer again" },
   class_unchanged: { rule: "The patient is already in this class.", fix: "Pick another class" },
   room_rent_cap_not_acknowledged: { rule: "The room-rent cap warning must be shown before an upgrade consent.", fix: "Show cap warning" },
+  class_not_ward: { rule: "A class change in place is for ward room classes only.", fix: "Start a transfer" },
 
   /* ═══ Nursing and tasks (§4.5) ═══ */
   assessment_already_recorded: { rule: "The nursing admission assessment is already recorded.", fix: "Add reassessment" },

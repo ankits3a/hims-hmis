@@ -16,6 +16,7 @@ import type { BedActInput, BlockReason, ReleaseReason } from "../lib/ipd-beds-ap
 import { cleanRefusal, fetchBedCleans, nudgeCleanApi, verifyCleanApi } from "../lib/housekeeping-api";
 import { confirmTicketApi, fetchBedTickets, maintenanceRefusal } from "../lib/maintenance-api";
 import { RaiseTicketSheet } from "./maintenance-raise";
+import { TransferPanel } from "./ipd-transfer-panel";
 import "../styles/paper-pine.css";
 import "./ipd-beds.css";
 
@@ -395,6 +396,7 @@ export function IpdBeds(): React.ReactElement {
           mayManage={!wall && can("ipd.beds.manage")} mayClean={!wall && can("ipd.beds.clean")} onDone={load}
           cleans={cleans} mayVerify={!wall && (can("ipd.beds.clean") || can("housekeeping.verify_terminal"))} mayNudge={mayNudge}
           tickets={tickets} mayRaise={!wall && can("maintenance.raise")} mayConfirmRepair={!wall && (can("ipd.beds.clean") || can("maintenance.confirm"))}
+          mayTransfer={!wall && can("ipd.transfer.start")} mayClass={!wall && can("ipd.admit")}
         />
       ) : null}
     </div>
@@ -462,7 +464,7 @@ function WardCard({ ward, onOpen, cleans, tickets }: {
 
 function WardDrawer(p: {
   ward: IpdBoardWard; wall: boolean; selected: string | null; onSelect: (id: string | null) => void; onClose: () => void;
-  mayManage: boolean; mayClean: boolean; onDone: () => void;
+  mayManage: boolean; mayClean: boolean; onDone: () => void; mayTransfer: boolean; mayClass: boolean;
   cleans: Map<string, BedCleanView> | null; mayVerify: boolean; mayNudge: boolean;
   tickets: Map<string, BedTicketView> | null; mayRaise: boolean; mayConfirmRepair: boolean;
 }): React.ReactElement {
@@ -490,7 +492,7 @@ function WardDrawer(p: {
           {bed !== null ? (
             <BedActs key={bed.id} bed={bed} mayManage={p.mayManage} mayClean={p.mayClean} onDone={p.onDone}
               clean={bed.status === "cleaning" ? p.cleans?.get(bed.id) ?? null : null} mayVerify={p.mayVerify} mayNudge={p.mayNudge}
-              repair={p.tickets?.get(bed.id) ?? null} mayRaise={p.mayRaise} mayConfirmRepair={p.mayConfirmRepair} />
+              repair={p.tickets?.get(bed.id) ?? null} mayRaise={p.mayRaise} mayConfirmRepair={p.mayConfirmRepair} mayTransfer={p.mayTransfer} mayClass={p.mayClass} />
           ) : (
             <span className="dim" style={{ fontSize: 13 }}>{t("ipdBeds.pickBed")}</span>
           )}
@@ -498,7 +500,9 @@ function WardDrawer(p: {
             {orderedBeds(p.ward).map((b) => (
               <button key={b.id} type="button" className="ipdb-tile" aria-pressed={b.id === p.selected} onClick={() => p.onSelect(b.id)} data-testid={`ipd-bed-${b.code}`}>
                 <span className="code"><i className={`ipdb-dot s-${b.status}`} aria-hidden="true" />{b.code}</span>
-                <span className="word">{t(`ipdBeds.status.${b.status}`)}</span>
+                <span className="word">{t(`ipdBeds.status.${b.status}`)}{b.transfer ? (
+                  <em className={`ipdt-mark ${b.transfer.role}`}>{b.transfer.role === "origin" ? `⇢ ${t("ipdTransfer.mark.origin")}` : `⇠ ${t("ipdTransfer.mark.target")}`}</em>
+                ) : null}</span>
                 <span className="who">{tileLine(b, p.wall, t, b.status === "cleaning" ? p.cleans?.get(b.id) : undefined, p.tickets?.get(b.id))}</span>
               </button>
             ))}
@@ -519,10 +523,10 @@ function tileLine(b: IpdBoardBed, wall: boolean, t: T, clean?: BedCleanView, rep
   return t(`ipdBeds.class.${b.class}`);
 }
 
-function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge, repair, mayRaise, mayConfirmRepair }: {
+function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge, repair, mayRaise, mayConfirmRepair, mayTransfer = false, mayClass = false }: {
   bed: IpdBoardBed; mayManage: boolean; mayClean: boolean; onDone: () => void;
   clean: BedCleanView | null; mayVerify: boolean; mayNudge: boolean;
-  repair: BedTicketView | null; mayRaise: boolean; mayConfirmRepair: boolean;
+  repair: BedTicketView | null; mayRaise: boolean; mayConfirmRepair: boolean; mayTransfer?: boolean; mayClass?: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [act, setAct] = useState<Act>(null);
@@ -656,6 +660,10 @@ function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge,
       ) : null}
       {failed ? <span role="alert" style={{ color: "var(--red)", fontSize: 13 }}>{t("ipdBeds.actFailed")}</span> : null}
       {ok !== null ? <span className="ipdb-ok" role="status">✓ {ok}</span> : null}
+      {/* E3.1 (#729): transfer, swap and class change for the patient on this bed. */}
+      {bed.occupant?.admissionId && (mayTransfer || mayClass) && act === null ? (
+        <TransferPanel admissionId={bed.occupant.admissionId} mayTransfer={mayTransfer} mayClass={mayClass} onDone={onDone} />
+      ) : null}
     </div>
   );
 }

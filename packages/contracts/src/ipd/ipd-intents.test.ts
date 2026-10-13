@@ -74,6 +74,7 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
     idempotencyKey: key(11), admissionId: id(3), toBedId: id(10), reason: "clinical_step_up", handover: SBAR,
   },
   accept_handover: { idempotencyKey: key(12), transferId: id(11) },
+  cancel_transfer: { idempotencyKey: key(46), transferId: id(11), reason: "patient_deteriorated", note: "synthetic" },
   swap_beds: { idempotencyKey: key(13), admissionIdA: id(3), admissionIdB: id(12), reason: "gender_fix" },
   change_class: {
     idempotencyKey: key(14), admissionId: id(3), toClass: "private",

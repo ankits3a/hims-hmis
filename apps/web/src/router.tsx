@@ -43,6 +43,7 @@ import { IpdAdmit } from "./screens/ipd-admit";
 import { IpdPasses } from "./screens/ipd-passes";
 import { PassesScan } from "./screens/passes-scan";
 import { IpdBill } from "./screens/ipd-bill";
+import { IpdHandovers } from "./screens/ipd-handovers";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -381,6 +382,8 @@ const NAV: readonly NavEntry[] = [
   // E1.3 (#720) — attendant and visitor passes and the guard's scan; paths and permissions match `passesManifest.menu`.
   { to: "/ipd/passes", label: "nav.ipdPasses", permission: "passes.issue", group: "wards" },
   { to: "/passes/scan", label: "nav.passScan", permission: "passes.scan", group: "wards" },
+  // E3.1 (#729) — the receiving ward's handover list; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/handovers", label: "nav.ipdHandovers", permission: "ipd.transfer.accept", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -834,6 +837,13 @@ const ipdBillRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/ipd/admissions/$admissionId/bill",
   component: IpdBill,
+});
+
+/** E3.1 (#729) — "Waiting for you": handovers the receiving nurse accepts (spec §4.4). Phone-usable at 390 px. */
+const ipdHandoversRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/handovers",
+  component: IpdHandovers,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -2018,7 +2028,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

@@ -1162,6 +1162,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.bill.view",
       // E1.6 TRANSPORT (#723) — asks for moves at night and runs the transport board when no supervisor is on.
       "transport.request", "transport.manage",
+      // IPD TRANSFER E3.1 (#729) — starts and accepts transfers (and swaps beds) until the ipd-nursing lane seeds
+      // ward_nurse / nursing_supervisor; README "IPD transfer" prose. The sender may never accept their own handover.
+      "ipd.transfer.start", "ipd.transfer.accept",
     ],
   },
   /**
