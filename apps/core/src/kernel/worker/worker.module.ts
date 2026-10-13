@@ -39,6 +39,7 @@ import {
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
+import { IPD_FAMILY_STOP_CONSUMER, familyStopConsumer, ipdManifest } from "../../modules/ipd";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -200,6 +201,9 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // install and the `workerConsumers` entry are ONE edit (`buildSubscriptionBus`).
         registry.install(abdmManifest);
         registry.install(orderingManifest);
+        // E3.3 (#731) — `ipdManifest`'s one subscription: `ipd.admission.deceased` / `.absconded` -> `ipd.family_stop`
+        // (death and absconding revoke the family link). The install and the `workerConsumers` entry are ONE edit.
+        registry.install(ipdManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -321,6 +325,8 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // PLAN 15 T5 / DD9 — the scan's asynchronous half. `otManifest` declares
     // `material.consumed` -> `ot.implant_confirmed` in the commit that adds this line.
     [OT_IMPLANT_CONFIRMED_CONSUMER]: implantConfirmedConsumer(db),
+    // E3.3 (#731) — the other half of `ipdManifest`'s subscription: death and absconding revoke the family link.
+    [IPD_FAMILY_STOP_CONSUMER]: familyStopConsumer(db),
     /**
      * PLAN 17-E T7b — the EIGHTH, and the other half of the lab's first subscription. `labManifest`
      * declares `interface.down` and `interface.restored` -> `lab.interface_status` in the commit that

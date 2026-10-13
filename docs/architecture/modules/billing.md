@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/billing/`
 · Notes: [MAP.md](../../../apps/core/src/modules/billing/MAP.md)
 
 - **Depends on modules:** `membership`, `opd`, `patients`, `tariff`
-- **Used by modules:** `lab`, `opd`, `ordering`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `ipd`, `lab`, `opd`, `ordering`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `phi`, `printing`, `report`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -29,7 +29,7 @@ Source: `apps/core/src/modules/billing/`
 - `billing.module.ts`
   - `class BillingModule`
 - `cash-law.ts`
-  - types: `TenderInput`
+  - types: `CashThresholdDetail`, `TenderInput`
 - `config.ts`
   - `feeOffAt(rules: ChargeRules, kind: FeeKind, at: Date): boolean`
   - `feeOffNow(rules: ChargeRules, kind: FeeKind): boolean`
@@ -119,15 +119,19 @@ Source: `apps/core/src/modules/billing/`
   - `markEnteredInError(db: Db, actor: Actor, input: { receiptId: string; reason: string }, now: Date = new Date()): Promise<MarkEnteredInErrorR…`
   - `patientBalance(db: Db, actor: Actor, patientId: string): Promise<PatientBalance>`
   - `receiptUnallocatedPaise(exec: Db | Tx, receiptId: string): Promise<{ patientId: string; totalPaise: number; unallocatedPaise: number; enter…`
+  - `recordCashThresholdBlocked(db: Db, actor: Actor, patientId: string, detail: CashThresholdDetail): Promise<void>`
   - `recordReceipt(db: Db, actor: Actor, input: RecordReceiptInput, now: Date = new Date()): Promise<RecordReceiptResult>`
+  - `recordReceiptInTx(tx: Tx, actor: Actor, input: RecordReceiptInput, now: Date = new Date(), opts: { purpose?: string } = {}): Promise<Record…`
+  - `registerReceiptGuard(key: string, guard: ReceiptGuard): () => void`
   - `releaseInvoiceSurplusOnTx(tx: Tx, actor: Actor, input: { invoiceId: string; amountPaise: number; reason: string }, now: Date = new Date()):…`
   - `reverseAllocation(db: Db, actor: Actor, input: { allocationId: string; reason?: string }, now: Date = new Date()): Promise<ReverseAllocatio…`
-  - types: `AllocationRow`, `DueRow`, `PatientBalance`, `ReceiptRow`
+  - types: `AllocationRow`, `DueRow`, `PatientBalance`, `ReceiptGuard`, `ReceiptRow`
 - `refunds.ts`
   - `issueRefundVoucher(db: Db, actor: Actor, rawInput: IssueRefundVoucherInput, now: Date = new Date()): Promise<IssueRefundVoucherResult>`
   - `payRefundVoucher(db: Db, actor: Actor, rawInput: PayRefundVoucherInput, now: Date = new Date()): Promise<PayRefundVoucherResult>`
+  - `registerAdvanceRefundListener(key: string, listener: AdvanceRefundListener): () => void`
   - `requestRefund(db: Db, actor: Actor, rawInput: RequestRefundInput): Promise<RequestRefundResult>`
-  - types: `RefundKind`, `RefundMethod`, `RefundVoucherRow`
+  - types: `AdvanceRefundListener`, `RefundKind`, `RefundMethod`, `RefundVoucherRow`
 - `report-reads.ts`
   - `billingDocumentByNo(exec: Db | Tx, typed: string): Promise<BillingDocRef | null>`
   - `creditNotesBetween(exec: Db | Tx, from: string, to: string): Promise<CreditNoteRead[]>`

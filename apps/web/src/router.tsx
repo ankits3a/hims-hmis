@@ -27,6 +27,14 @@ import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
+import { IpdBeds } from "./screens/ipd-beds";
+import { IpdAdmit } from "./screens/ipd-admit";
+import { IpdBill } from "./screens/ipd-bill";
+import { IpdHandovers } from "./screens/ipd-handovers";
+import { IpdDischarge } from "./screens/ipd-discharge";
+import { IpdBillDesk } from "./screens/ipd-bill-desk";
+import { FamilyPage } from "./screens/ipd-family";
+import { IpdFamilyCallbacks } from "./screens/ipd-family-callbacks";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -127,9 +135,9 @@ import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
  * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
  * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
  */
-type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
+type NavGroup = "desk" | "patients" | "opd" | "wards" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
@@ -340,6 +348,18 @@ const NAV: readonly NavEntry[] = [
    * open it on. It is reached from the list, which is where a nurse actually is when they need it.
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
+  // E1.1 (#718) — the Beds capacity board; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
+  // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
+  // E3.1 (#729) — the receiving ward's handover list; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/handovers", label: "nav.ipdHandovers", permission: "ipd.transfer.accept", group: "wards" },
+  // E3.2 (#730) — the discharge desk; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/discharge", label: "nav.ipdDischarge", permission: "ipd.discharge.view", group: "wards" },
+  // E2.3 (#727) — the bill desk (exceptions only); path and permission match `ipdManifest.menu`.
+  { to: "/ipd/bill-desk", label: "nav.ipdBillDesk", permission: "ipd.billdesk.view", group: "wards" },
+  // E3.3 (#731) — the ward desk's family callback requests; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/family-callbacks", label: "nav.ipdFamilyCalls", permission: "ipd.family.issue", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -674,6 +694,14 @@ const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelH
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginScreen });
 
 /**
+ * E3.3 (#731) — THE FAMILY PAGE, A SIBLING OF `/login` AND NOT A CHILD OF THE SHELL: the registered attendant opens it on
+ * their own phone with no staff session (`authedRoute` would bounce them to /login). The token in the FRAGMENT (`#…`, never
+ * sent to a server, review #764) and the OTP
+ * session cookie are its only credentials; the API checks both on every call.
+ */
+const familyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/family", component: () => <FamilyPage /> });
+
+/**
  * PLAN 11e T6 / D6 — `/change-password` IS A SIBLING OF `/login`, NOT A CHILD OF THE SHELL.
  *
  * A person in the forced-change state (11e D1) is refused 403 on every route except this one and
@@ -740,6 +768,77 @@ const staffReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/staff",
   component: StaffReports,
+});
+
+/**
+ * E1.1 (#718) — the Beds capacity board (spec §4.9 A). A command board: it owns the viewport (16:9, no page
+ * scroll) and draws its own header. `?wall=1` is the wall display — the server sends initials, never names.
+ */
+const ipdBedsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/beds",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { wall?: string } => ({
+    wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+  }),
+  component: IpdBeds,
+});
+
+/** E1.2 (#719) — Admit, one flowing sheet (spec §4.9 B). `?admission=<id>` opens a request (the Beds board links it). */
+const ipdAdmitRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admit",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdAdmit,
+});
+
+/**
+ * E2.1 (#725) — the interim bill of one admission (spec §4.3, §4.9 H). No nav entry: it opens from an admission. The
+ * server serves it under `ipd.bill.view` only (billing and front office; never a doctor, decision 0058).
+ */
+const ipdBillRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admissions/$admissionId/bill",
+  component: IpdBill,
+});
+
+/** E3.1 (#729) — "Waiting for you": handovers the receiving nurse accepts (spec §4.4). Phone-usable at 390 px. */
+const ipdHandoversRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/handovers",
+  component: IpdHandovers,
+});
+
+/**
+ * E3.2 (#730) — the discharge desk (spec §4.7, §4.9 F): the cascade's admissions, one admission's steps with clocks and
+ * blockers, the final bill and the gate pass prints. `?admission=<id>` opens one admission.
+ */
+const ipdDischargeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/discharge",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdDischarge,
+});
+
+/**
+ * E2.3 (#727) — the bill desk (spec §4.3 deposit ladder, §4.9 H): exceptions only, each row opens the interim bill.
+ * Served under `ipd.billdesk.view` (billing, front-office supervisor, duty manager, owner; never a doctor, decision 0058).
+ */
+const ipdBillDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/bill-desk",
+  component: IpdBillDesk,
+});
+
+/** E3.3 (#731) — the ward desk's family callbacks (`ipd.family.issue`). Phone-usable at 390 px. */
+const ipdFamilyCallbacksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/family-callbacks",
+  component: IpdFamilyCallbacks,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1838,9 +1937,10 @@ const legacyVitalsBayRoute = createRoute({
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
+    familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdHandoversRoute, ipdDischargeRoute, ipdBillDeskRoute, ipdFamilyCallbacksRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
