@@ -24,6 +24,8 @@ export * from "./bill-desk";
 export * from "./discharge";
 // E3.3 (#731) — the family link: OTP to the registered attendant, condition word, totals, tracker, callbacks.
 export * from "./family";
+// E4.1 (#733) — nursing: the early-warning scores, the nurse station, my shift, the chart, I/O, notes, shift handover.
+export * from "./nursing";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see

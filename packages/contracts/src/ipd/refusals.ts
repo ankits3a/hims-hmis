@@ -83,6 +83,7 @@ export const IPD_REFUSALS = {
   assessment_already_recorded: { rule: "The nursing admission assessment is already recorded.", fix: "Add reassessment" },
   value_needs_confirm: { rule: "A value outside physiological limits must be confirmed before it is saved.", fix: "Confirm value" },
   time_in_future: { rule: "A time cannot be later than now.", fix: "Fix the time" },
+  observation_too_old: { rule: "A set taken more than 24 hours ago cannot be charted as a new set.", fix: "Write a nursing note" },
   device_not_registered: { rule: "Only a registered device may send readings.", fix: "Register device" },
   task_not_found: { rule: "No task has this id.", fix: "Open tasks" },
   task_closed: { rule: "The task is already closed.", fix: "Open tasks" },

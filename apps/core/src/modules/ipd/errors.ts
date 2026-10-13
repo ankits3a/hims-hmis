@@ -75,7 +75,14 @@ export type IpdErrorCode =
   | "family_otp_unavailable"
   | "family_phone_changed"
   | "family_session_required"
-  | "family_callback_limit";
+  | "family_callback_limit"
+  /** E4.1 (#733) — nursing: no such shift handover; it was accepted or superseded; its giver cannot accept it; no such
+   * early-warning alert; the alert already cleared. */
+  | "shift_handover_not_found"
+  | "shift_handover_not_open"
+  | "shift_handover_own"
+  | "ews_alert_not_found"
+  | "ews_alert_closed";
 
 export class IpdError extends Error {
   constructor(

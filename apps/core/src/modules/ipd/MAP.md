@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow]
+tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -142,6 +142,20 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   rule for many beds, one holder rule with `roomGender`). `kernel/db/schema/ipd.ts` — `ipd_bed_proposals` (migration
   `ipd_bed_flow`). Contracts: `IpdBedFlowProposal`, `IpdWaitingCard.flow` / `.uhid`, board `totals.predictedDischargesTomorrow`.
   Web: the Beds board's waiting cards (`apps/web/src/screens/ipd-beds.tsx`): proposal, reasons, Confirm.
+
+- (E4.1 #733) `nursing.ts` — the acts: `recordNursingAssessment`, `recordVitals` (§0B intents), `recordIntakeOutput`,
+  `addNursingNote`, `giveShiftHandover`, `acceptShiftHandover`, `acknowledgeEwsAlert`; the minute job `sweepIpdNursing`;
+  `scoreContextOf` (which chart), `dutyDoctorsFor`, `shiftOf`, `isNightIst`, `ioDayStart`, `istDayIndex`, `istClock`,
+  `latestScores`, `lastSetAt`, `outOfRange`. `nursing-read.ts` — `readNurseStation` (board C), `readMyShift` (board D1),
+  `readNursingChart`, `readHandoverDraft` (SBAR from records, each line with its source), `listShiftHandovers`, `nextDueOf`.
+  `nursing-cards.ts` — the four Now cards. `nursing-events.ts`, `nursing.controller.ts` (`IPD_NURSING_ROUTES`).
+  `packages/contracts/src/ipd/ews.ts` — THE SCORE TABLES (NEWS2 RCP 2017, MEOWS CEMACH/Singh 2012, PEWS Brighton +
+  APLS normals), `ewsKindFor`, `scoreEws`, `ewsNotifies`, `ewsNextDueMinutes`; `packages/contracts/src/ipd/nursing.ts` —
+  read models, act inputs, limits, routes, topic `ipd_nursing:board`. `kernel/db/schema/ipd.ts` — `ipd_nursing_assessments`,
+  `ipd_vitals`, `ipd_nursing_alerts`, `ipd_intake_output`, `ipd_nursing_notes`, `ipd_shift_handovers` (migration
+  `ipd_nursing`). Web: `apps/web/src/screens/ipd-ward.tsx` (`/ipd/ward`, board C), `apps/web/src/screens/ipd-my-shift.tsx`
+  (`/ipd/my-shift`, board D1), the shift handover section of `apps/web/src/screens/ipd-handovers.tsx`,
+  `apps/web/src/lib/ipd-nursing-api.ts` (with the offline vitals queue).
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -367,9 +381,8 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   (`endReservation` with `lapsed`: the minute job or an act meeting it) the transfer is cancelled `hold_lapsed`, the
   admission returns to `admitted` and `ipd.transfer.cancelled` goes out. Asking for the class already in effect revokes a
   pending class change. The panel's targets re-derive each candidate's twin-room gender (`bedRoomGender`).
-- Permissions (DECIDED): `ipd.transfer.start` and `ipd.transfer.accept` are held by `duty_manager` alone until the
-  ipd-nursing lane seeds `ward_nurse` / `nursing_supervisor` (the workflow already names those roles); the duty manager
-  is also an `accept_handover` actor in the contract.
+- Permissions (DECIDED): `ipd.transfer.start` and `ipd.transfer.accept` are held by `duty_manager`, `ward_nurse` and
+  `nursing_supervisor` (E4.1 seeded the nursing roles); the duty manager is also an `accept_handover` actor in the contract.
 
 ### Deposit ladder, daily totals, bill desk (E2.3, #727)
 - USED = the payer split's patient-payable total ÷ the deposit held (`depositHeldPaise`: receipts − advance refunds). A
@@ -575,9 +588,62 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   the proposed bed by `reserve_bed` or `admit` is `accepted`, onto any other bed `overridden`.
 - The web words a refused Confirm by its refusal CODE (`ipdBeds.flow.refused.<code>`), never the server's English.
 - Tomorrow's predicted discharges = live `ipd_discharges` with `fit_when = 'tomorrow'` declared since IST midnight (marks only).
-- OWED TO M4 (no source data in this stack; no stub, no fake rows): `due_dose` (eMAR), `overdue_vitals` (nursing
-  observations), `new_order` (ipd-orders), `ews_rising` (EWS scores), `handover_pending` (nurse shift handover; transfer
-  handovers already have `/ipd/handovers`), `assessment_due` (nursing assessments). Each is a new provider + permission.
+- OWED TO M4 (no source data in this stack; no stub, no fake rows): `due_dose` (eMAR), `new_order` (ipd-orders). Each is a
+  new provider + permission. E4.1 (#733) filled `overdue_vitals`, `ews_rising`, `handover_pending` and `assessment_due`.
+
+### Nursing (E4.1, #733)
+- WHICH SCORE (`ewsKindFor`): under 16 → PEWS; pregnant / ≤ 42 days postpartum (the assessment's `obstetric`) → MEOWS; a
+  woman under department `OBG` or on an `ldr` bed → MEOWS unless the assessment answered `none`; else NEWS2 (unknown age →
+  NEWS2). The tables are the published charts written out with their citations; `packages/contracts/src/ipd/ews.test.ts` probes every band edge.
+- ONE ALERT PER BREACH (`ipd_nursing_alerts`, partial unique "one open ews alert per admission"; review of b0334887): the
+  first set at the notify band (`ewsNotifies`: low–medium and up — NEWS2 5+ or a single 3) opens it and tells the duty
+  doctor. While it stands EVERY in-breach set writes its band into `band` (it may go DOWN); a set whose band is ABOVE the
+  band last seen re-raises THE SAME alert id (G7 reads it as the same breach) and tells them again (notice key
+  `ipd.ews:<alertId>:<vitalsId>:<band>`) — so high → medium → high and medium → low–medium → medium each re-notify. A set
+  below the band clears it; the next breach is a new row. Only the LATEST set by time taken moves the alert (§4.10 edge 25).
+- STAMP ONLY WHEN SOMEBODY WAS TOLD: `notified_at` (and `doctor_reached`), the assessment alert's `notified_at` and
+  `supervisor_told_at` are written only when a notice actually went out; the minute sweep retries every unstamped one.
+- THE DUTY DOCTOR (DECIDED): the admission's consultant + the `ward_jr` a PUBLISHED roster has on for the department now
+  (`whoIsOn` source `published` only), ACTIVE users only. With no doctor to tell, the NURSING FALLBACK CHAIN is told at
+  once (`nursingFallback`: active nursing supervisors, else the nursing superintendent, else the duty manager; empty → the
+  sweep retries) and the record_vitals answer says `doctorReached: false` ("No doctor reached — call" on the phone and
+  station). `high` also tells the chain.
+- ACKNOWLEDGEMENT (DECIDED, rapid-response practice): only a DOCTOR's (doctor / resident role, `EWS_ACK_KINDS`) is
+  `acknowledged_*` and stops the 10-minute step to the chain; a nurse's or supervisor's is `seen_*`. The note is kept
+  (`ack_note`, the event's `note`), so `ipd.ews.acknowledged` is NOT on the realtime fan-out.
+- G7's instrument events are `ipd.ews.breached` / `ipd.ews.acknowledged` (`goals/goal-events.ts`); they are NOT any intent's
+  event (the goal acceptance test pins that). `byKind` comes from the acknowledger's roles (`actorKindOf`). A replay of a
+  set answers what the first act raised, read back from its breach event (`raisedBy`).
+- SEALED patients: notices say "Sealed patient" and nothing else (no bed, no IP number, `whereWords`); the station card
+  nulls bed code, consultant, IP number and day of stay.
+- APPEND-ONLY: `ipd_vitals`, `ipd_intake_output`, `ipd_nursing_notes`, `ipd_nursing_assessments` refuse UPDATE and DELETE
+  by trigger (`ipd_nursing_forbid_mutation`, migration `ipd_nursing`). A reassessment, when built, is a new row.
+- SWEEP ISOLATION: each row runs in its own transaction inside try/catch; a failing row is logged and counted (`failed`).
+- ASSESSMENT DUE: one hour after admission (`IPD_ASSESSMENT_DUE_MINUTES`); the minute sweep raises ONE `assessment_overdue`
+  alert per admission ever (partial unique), told to the nursing supervisors; admissions older than 3 days are left to
+  the Now card (a cutover backlog never floods the bell). One assessment per admission (`assessment_already_recorded`).
+- VITALS are append-only; the typo guard (`IPD_VITALS_LIMITS`, systolic above diastolic) refuses `value_needs_confirm`
+  until `confirmedOutOfRange`; a refused set is a row with `refused` and no score; a device reading is refused
+  `device_not_registered` (no monitor registry — spec §5 Phase 2). TIME BOUNDS: future beyond the 2-minute skew refused;
+  older than 24 h refused `observation_too_old`; past the 30-minute queue accepted with `late_reason = 'offline'`; typed
+  15+ min after taken `typed_late` (dual-stamped either way).
+- OFFLINE (§0B): only vitals queue on the phone (`apps/web/src/lib/ipd-nursing-api.ts`), ≤ 30 min, stamped with the time taken. The
+  phone drops a set only on a FINAL 4xx refusal (keeps it on 5xx / 408 / 429 / network), names every dropped set (time,
+  patient) with "record on paper", re-reads storage before each write, and ages sets by the SERVER's clock (`asOf`). The
+  server records a replay ONCE by the client's idempotency key twice over: the idempotency ledger (same person) and
+  `ipd_vitals.client_key` unique (any path; a racing loser answers the winner's row).
+- NEXT DUE (DECIDED from RCP chart 3): no assessment → the assessment; else last set + 12 h (NEWS2 0) / 4 h (1–4) /
+  1 h (single 3, 5–6) / 15 min (7+); no set yet → admission + 1 h. A doctor-set frequency is owed to ipd-orders.
+- SHIFTS 08–14 / 14–20 / 20–08 IST; night mode 22:00–06:00 IST from the SERVER's clock (`night` on the read); the I/O day
+  starts 08:00 IST. A shift handover is per patient: given by one nurse, accepted by another (`shift_handover_own`); a
+  newer one supersedes one not accepted. Transfers keep their own SBAR on `ipd_transfers` (`/ipd/handovers` shows both).
+- NOW CARDS, one permission each, the permission of the act that answers it: `ipd.overdue_vitals` → `ipd.vitals.record`,
+  `ipd.assessment_due` → `ipd.assessment.record`, `ipd.ews_rising` → `ipd.ews.respond`, `ipd.handover_pending` →
+  `ipd.handover.shift`. Hospital-wide top five (no nurse-to-ward assignment yet; the station and the phone filter by ward).
+- ROLES (DECIDED): `ward_nurse`, `nursing_supervisor`, `nursing_superintendent` (seed-roles; nobody assigned). NONE holds
+  `ipd.condition.set`. The supervisor and the superintendent hold `ipd.family.issue` (the family's callbacks go to the nurse
+  in charge); all three are on `IPD_CLINICAL_ROLES` (never a money notice). Ward nurse and supervisor now also start and
+  accept transfers and confirm the ward at discharge.
 
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
@@ -673,12 +739,25 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.3) `ipdManifest` now has a subscription, so the WORKER installs it (`kernel/modules/manifests.test.ts`, `kernel/worker/seed-cursors.test.ts`,
   `apps/core/test/worker-runtime.e2e.test.ts` censuses moved). The stop consumer constant lives in `family-events.ts` to avoid a
   manifest ↔ family import cycle.
-- (E3.3) No ward-nurse role is seeded: callbacks go to front office / supervisor / duty manager; `ipd.condition.set` is the
-  doctor's until ipd-nursing seeds nursing roles.
+- (E3.3, superseded by E4.1) The nursing roles are seeded: the nursing supervisor and superintendent work the family's
+  callbacks too; `ipd.condition.set` stays the doctor's alone.
 
 - (E5.2) `.ipdb` at ≤ 760 px is now one PAGE-scrolling column (`ipd-beds.css`); the bill desk shares `.ipdb` and inherits it.
 - (E5.2) `readBedFlow` writes on read; the Beds board (not the wall) and the `ipd.bed_proposal` card both call it. Lane test
   DBs that applied an older 0213 must be dropped if the migration is regenerated.
+
+- (E4.1) SEAMS LEFT OPEN: a missed vitals set is a Now card, not yet a task (§4.5 "becomes a task" — needs a nursing task
+  kind on the task engine); Morse/Braden reassessment tasks likewise (`tasksRaised: 0`); pressure-injury photos need the
+  documents upload on the assessment form (the web sends none); allergies typed at assessment are not yet written to the
+  patient master (`patients` `addAllergy`); doctor-set vitals frequency, NEWS2 SpO2 scale 2 and the PEWS +2 for
+  nebulisers / post-op vomiting wait for ipd-orders and eMAR; `not_receiving_ward` and "my patients" wait for a
+  nurse-to-ward roster assignment; nurse-to-patient ratio on the station waits for the roster.
+- (E4.1) VERIFY BEFORE GO-LIVE (owed): the MEOWS rows against Singh et al. 2012 Table 1 (page cited as p. 13), the
+  Brighton PEWS rows against Monaghan 2005 (page cited as p. 33) and the APLS age bands (Table 1.1) — printed pages and every
+  threshold row, by a clinician, against the printed sources (`packages/contracts/src/ipd/ews.ts` marks each).
+- (E4.1) A new scheduler job (`sweepIpdNursing`, 60 s) moved the five job censuses and the worker pool (27 → 28).
+- (E4.1) `packages/contracts/src/ipd/ews.ts` lives in CONTRACTS (the phone scores at once with the same tables); the server re-scores every set and
+  is the authority. Changing a table changes both sides in one commit.
 
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
@@ -703,3 +782,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `issueInvoice`, `previewInvoice`, `requestRefund`, `receiptUnallocatedPaise` are called inside the settle transaction.
 - (E5.1/E5.2) `kernel/desk` collects the five IPD providers from `ipdManifest.desk`; `readBedBoard` calls `readBedFlow`;
   `reserveBed` / `assignBedIn` call `settleBedProposalIn`; `cancelAdmission` calls `withdrawBedProposalIn`.
+- (E4.1) `kernel/worker/jobs.ts` (`sweepIpdNursing`, every 60 s); `kernel/desk` collects the four nursing providers from
+  `ipdManifest.desk`; the realtime router fans nursing events (and every bed event) to `ipd_nursing:board`; the goal
+  query G7 reads `ipd.ews.breached` / `ipd.ews.acknowledged`.

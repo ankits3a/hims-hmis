@@ -210,6 +210,8 @@ const THE_EIGHTEEN = [
   "sweepTasks",
   /** IPD BEDS E1.1 (#718) — `every(60_000)`: a two-hour bed hold lapses back to available. */
   "lapseBedReservations",
+  /** IPD NURSING E4.1 (#733) — `every(60_000)`: assessment overdue after an hour; an early warning unacknowledged for 10 minutes. */
+  "sweepIpdNursing",
   /** IPD CHARGES E2.1 (#725) — `dailyIst("00:05")`: the running bill's nightly rent, nursing and RMO posting. */
   "postNightlyIpdCharges",
 ];

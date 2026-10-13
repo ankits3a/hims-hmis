@@ -159,7 +159,9 @@
     "ipdBillDesk": "Bill desk",
     "ipdDischarge": "Discharge",
     "ipdFamilyCalls": "Family calls",
-    "adminWorkflows": "Workflows"
+    "adminWorkflows": "Workflows",
+    "ipdWard": "Nurse station",
+    "ipdMyShift": "My shift"
   },
   "palette": {
     "title": "Search",
@@ -3823,6 +3825,18 @@
         "note": "who sent this patient — one slip per visit, commission accrues",
         "unit": "attributed today"
       }
+    },
+    "ipdOverdueVitals": {
+      "title": "Vitals overdue"
+    },
+    "ipdEwsRising": {
+      "title": "Early-warning score rising"
+    },
+    "ipdAssessmentDue": {
+      "title": "Nursing assessment due"
+    },
+    "ipdHandoverPending": {
+      "title": "Shift handovers to accept"
     }
   },
   "report": {
@@ -18096,5 +18110,298 @@
     "noPrice": "No price in force",
     "done_one": "{{count}} service switched on.",
     "done_other": "{{count}} services switched on."
+  },
+  "ipdNursing": {
+    "live": "Live",
+    "offline": "Offline · last update {{time}}",
+    "offlineNever": "Offline · not loaded yet",
+    "queued_one": "{{count}} set queued",
+    "queued_other": "{{count}} sets queued",
+    "offlineActs": "No network — vitals only",
+    "night": "Night",
+    "day": "Day",
+    "loading": "Loading…",
+    "loadFailed": "Could not load. Retrying.",
+    "forbidden": "You do not have access to this ward screen.",
+    "actFailed": "Not saved. Try again.",
+    "cancel": "Cancel",
+    "close": "Close",
+    "back": "Back",
+    "incomplete": "incomplete set",
+    "noScoreYet": "{{kind}} · no set yet",
+    "ack": "Acknowledge",
+    "acked": "Acknowledged",
+    "alert": "Alert · {{band}}",
+    "lateEntry": "late entry, typed {{time}}",
+    "transferring": "Transfer waiting for acceptance",
+    "dueIn": "in {{span}}",
+    "overdueBy": "overdue {{span}}",
+    "dur": {
+      "justNow": "just now",
+      "min": "{{n}} min",
+      "hourMin": "{{h}} h {{m}} min"
+    },
+    "due": {
+      "vitals": "Vitals",
+      "assessment": "Assessment",
+      "ews": "Score alert",
+      "handover": "Handover"
+    },
+    "kind": {
+      "news2": "NEWS2",
+      "meows": "MEOWS",
+      "pews": "PEWS"
+    },
+    "band": {
+      "low": "Low",
+      "low_medium": "Single red",
+      "medium": "Urgent",
+      "high": "Emergency"
+    },
+    "trend": {
+      "up": "rising",
+      "down": "falling",
+      "flat": "steady"
+    },
+    "chip": {
+      "allergy": "Allergy",
+      "fall_risk": "Fall risk",
+      "pressure_risk": "Pressure risk",
+      "isolation": "Isolation",
+      "name_alert": "Name alert",
+      "obstetric": "Obstetric"
+    },
+    "shift": {
+      "morning": "Morning shift",
+      "evening": "Evening shift",
+      "night": "Night shift"
+    },
+    "discharge": {
+      "fit_declared": "Fit for discharge",
+      "discharging": "Discharging"
+    },
+    "source": {
+      "person": "typed",
+      "device": "device",
+      "copilot_draft": "copilot draft",
+      "agent": "agent",
+      "import": "import",
+      "system": "system"
+    },
+    "bed": {
+      "free": "Free",
+      "freeSince": "Free · since {{time}}",
+      "cleaning": "Cleaning",
+      "cleaningFor": "Cleaning · {{span}}",
+      "available": "Free",
+      "reserved": "Reserved",
+      "blocked": "Blocked",
+      "incumbent": "Old system",
+      "occupied": "Occupied",
+      "day": "Day {{n}}"
+    },
+    "top": {
+      "census": "{{n}} / {{total}} beds",
+      "free": "{{n}} free",
+      "expected": "{{n}} expected",
+      "discharges": "{{n}} discharges today",
+      "overdue": "{{n}} overdue",
+      "alerts": "{{n}} score alerts",
+      "handovers": "{{n}} handovers waiting"
+    },
+    "ward": {
+      "title": "Nurse station",
+      "wards": "Wards",
+      "beds": "Beds",
+      "noWard": "No ward to show.",
+      "needsMeOn": "Needs me first",
+      "bedOrder": "Bed order",
+      "openChart": "Open the nursing chart for bed {{bed}}"
+    },
+    "chart": {
+      "title": "Nursing chart",
+      "addVitals": "Add vitals",
+      "noVitals": "No vitals charted yet.",
+      "trend": "Score trend",
+      "trendCaption": "{{kind}} · last {{n}} sets",
+      "time": "Time",
+      "score": "Score",
+      "by": "By",
+      "refused": "Patient refused observations",
+      "tab": {
+        "vitals": "Vitals",
+        "assessment": "Assessment",
+        "io": "Intake / output",
+        "notes": "Notes"
+      }
+    },
+    "v": {
+      "title": "Vitals",
+      "temperatureC": "Temp",
+      "pulse": "Pulse",
+      "respRate": "Resp rate",
+      "systolic": "BP sys",
+      "diastolic": "BP dia",
+      "spo2": "SpO₂",
+      "painScore": "Pain",
+      "capRefillSec": "Cap refill",
+      "onOxygen": "Oxygen",
+      "consciousness": "Consciousness",
+      "air": "Air",
+      "oxygen": "Oxygen",
+      "typeToScore": "Type a value to see the score",
+      "check": "Check",
+      "edit": "Edit",
+      "save": "Save",
+      "confirmSave": "Confirm and save",
+      "confirmAsk": "Unusual value — check it",
+      "unusual": "unusual",
+      "refused": "Patient refused",
+      "queued": "Queued — will send",
+      "refusedSaved": "Refusal recorded",
+      "saved": "Saved",
+      "savedScore": "Saved · {{kind}} {{value}}"
+    },
+    "avpu": {
+      "alert": "Alert",
+      "confused": "Confused",
+      "voice": "Voice",
+      "pain": "Pain",
+      "unresponsive": "Unresp."
+    },
+    "assess": {
+      "morse": "Morse fall score",
+      "braden": "Braden score",
+      "pain": "Pain score",
+      "nutrition": "Nutrition screen",
+      "allergies": "Allergies",
+      "allergiesHint": "comma separated; blank if none",
+      "allergiesConfirmed": "Allergies checked with patient or attendant",
+      "noAllergies": "No known allergies",
+      "lines": "Lines and devices",
+      "obstetric": "Pregnant or after delivery",
+      "recorded": "Recorded",
+      "save": "Save assessment",
+      "saved": "Assessment saved",
+      "pressurePhotos": "Photograph pressure injuries in Documents.",
+      "morseRisk": {
+        "low": "low risk",
+        "moderate": "moderate risk",
+        "high": "high risk"
+      },
+      "bradenRisk": {
+        "none": "no risk",
+        "mild": "mild risk",
+        "moderate": "moderate risk",
+        "high": "high risk",
+        "very_high": "very high risk"
+      },
+      "nutritionOpt": {
+        "no_risk": "No risk",
+        "at_risk": "At risk",
+        "malnourished": "Malnourished"
+      },
+      "obstetricOpt": {
+        "unanswered": "Not asked",
+        "none": "No",
+        "pregnant": "Pregnant",
+        "postpartum": "Within 42 days of delivery"
+      }
+    },
+    "line": {
+      "peripheral_iv": "IV cannula",
+      "central_line": "Central line",
+      "urinary_catheter": "Urinary catheter",
+      "ng_tube": "NG tube",
+      "drain": "Drain",
+      "tracheostomy": "Tracheostomy",
+      "oxygen": "Oxygen",
+      "other": "Other"
+    },
+    "io": {
+      "in": "In",
+      "out": "Out",
+      "kind": "Kind",
+      "ml": "Volume in ml",
+      "add": "Add",
+      "saved": "Entry saved",
+      "totals": "Since {{since}}: in {{inMl}} ml · out {{outMl}} ml · balance {{balance}} ml",
+      "k": {
+        "oral": "Oral",
+        "iv": "IV",
+        "ng_feed": "NG feed",
+        "blood": "Blood",
+        "urine": "Urine",
+        "drain": "Drain",
+        "vomit": "Vomit",
+        "stool": "Stool",
+        "ng_aspirate": "NG aspirate"
+      }
+    },
+    "notes": {
+      "category": "Category",
+      "text": "Note",
+      "add": "Add note",
+      "saved": "Note saved",
+      "cat": {
+        "general": "General",
+        "fall": "Fall",
+        "pain": "Pain",
+        "wound": "Wound",
+        "behaviour": "Behaviour",
+        "escalation": "Escalation",
+        "refused_care": "Refused care"
+      }
+    },
+    "shiftPage": {
+      "title": "My shift",
+      "now": "Now",
+      "nothingDue": "Nothing due now",
+      "patientsTitle": "My patients",
+      "patients_one": "{{count}} patient",
+      "patients_other": "{{count}} patients"
+    },
+    "handover": {
+      "title": "Handover",
+      "ready_one": "Handover · {{count}}",
+      "ready_other": "Handover · {{count}}",
+      "toAccept_one": "{{count}} to accept",
+      "toAccept_other": "{{count}} to accept",
+      "waiting": "Waiting for you",
+      "give": "Give handover",
+      "giveBtn": "Give",
+      "draft": "Draft SBAR",
+      "done": "Given",
+      "given": "Handover given",
+      "accept": "Accept",
+      "accepted": "Handover accepted",
+      "from": "From {{name}} · {{time}}",
+      "shiftTitle": "Shift handover",
+      "noneWaiting": "No shift handover waiting.",
+      "youGave": "You gave this handover"
+    },
+    "sbar": {
+      "situation": "Situation",
+      "background": "Background",
+      "assessment": "Assessment",
+      "recommendation": "Recommendation"
+    },
+    "sbarSource": {
+      "vitals": "vitals",
+      "assessment": "assessment",
+      "io": "I/O",
+      "note": "note",
+      "admission": "admission"
+    },
+    "noDoctorReached": "No doctor reached — call",
+    "seenNoDoctor": "Seen · doctor not yet",
+    "dropped": {
+      "title": "Not sent",
+      "patient": "Patient",
+      "expired": "over 30 min old",
+      "refused": "refused by server",
+      "paper": "Record these on paper.",
+      "done": "Done"
+    }
   }
 }

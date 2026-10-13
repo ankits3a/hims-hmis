@@ -55,8 +55,9 @@ const DEFAULT_POOL_MAX = 20;
  * 20 (API) + 26 (worker) still fits `max_connections = 100` with the exporter and pgBackRest.
  * 25 -> 26 (2026-10-13): IPD's `lapseBedReservations` (60 s), EIGHTEEN interval jobs: 18 + 8 = 26.
  * 26 -> 27 (ipd-stage integration): both of the above together, NINETEEN interval jobs: 19 + 8 = 27.
+ * 27 -> 28 (E4.1 #733): IPD nursing's `sweepIpdNursing` (60 s), TWENTY interval jobs: 20 + 8 = 28.
  */
-export const DEFAULT_WORKER_POOL_MAX = 27;
+export const DEFAULT_WORKER_POOL_MAX = 28;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
 
 function readPositiveInt(key: string, fallback: number): number {

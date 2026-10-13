@@ -30,6 +30,7 @@ import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
 import * as ipdBedsMod from "../../modules/ipd/beds";
 import * as ipdChargesMod from "../../modules/ipd/charges";
+import * as ipdNursingMod from "../../modules/ipd/nursing";
 import * as opdTeleMod from "../../modules/opd/tele";
 import * as tasksSweepMod from "../../modules/tasks/sweep";
 import * as dispatcherMod from "../events/dispatcher";
@@ -440,6 +441,12 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("lapseBedReservations");
       return { lapsed: 0 };
     }),
+    // IPD NURSING E4.1 (#733) — the thirty-fourth, stubbed on `modules/ipd/nursing` (the file the index re-exports FROM).
+    // Its behaviour (one assessment-overdue alert, the 10-minute supervisor step) is asserted in `modules/ipd/acceptance/`.
+    jest.spyOn(ipdNursingMod, "sweepIpdNursing").mockImplementation(async () => {
+      invoked.push("sweepIpdNursing");
+      return { assessmentOverdue: 0, ewsUnacked: 0, ewsRetried: 0, failed: 0 };
+    }),
     // IPD CHARGES E2.1 (#725) — the thirty-second, stubbed on `modules/ipd/charges` (the file the index re-exports FROM).
     // Its behaviour (idempotent, catches up a missed night) is asserted in `modules/ipd/acceptance/charges.acceptance.test.ts` (iv).
     jest.spyOn(ipdChargesMod, "postNightlyIpdCharges").mockImplementation(async () => {
@@ -559,6 +566,8 @@ const THE_EIGHTEEN = [
   "sweepTasks",
   // IPD BEDS E1.1 (#718) — the THIRTY-FIRST, `every(60_000)`: a two-hour bed hold lapses back to available.
   "lapseBedReservations",
+  // IPD NURSING E4.1 (#733) — the THIRTY-FOURTH, `every(60_000)`: assessment overdue after an hour; an unacknowledged early warning.
+  "sweepIpdNursing",
   // IPD CHARGES E2.1 (#725) — the THIRTY-SECOND, `dailyIst("00:05")`: the running bill's nightly posting.
   "postNightlyIpdCharges",
 ];

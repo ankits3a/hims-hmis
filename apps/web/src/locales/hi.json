@@ -159,7 +159,9 @@
     "ipdBillDesk": "बिल डेस्क",
     "ipdDischarge": "डिस्चार्ज",
     "ipdFamilyCalls": "परिवार के कॉल",
-    "adminWorkflows": "वर्कफ़्लो"
+    "adminWorkflows": "वर्कफ़्लो",
+    "ipdWard": "नर्स स्टेशन",
+    "ipdMyShift": "मेरी शिफ्ट"
   },
   "palette": {
     "title": "खोज",
@@ -3823,6 +3825,18 @@
         "note": "मरीज़ को किसने भेजा — एक विज़िट एक पर्ची, कमीशन जुड़ता है",
         "unit": "आज जोड़े गए"
       }
+    },
+    "ipdOverdueVitals": {
+      "title": "वाइटल्स बकाया"
+    },
+    "ipdEwsRising": {
+      "title": "चेतावनी स्कोर बढ़ रहा"
+    },
+    "ipdAssessmentDue": {
+      "title": "नर्सिंग आकलन बाकी"
+    },
+    "ipdHandoverPending": {
+      "title": "शिफ्ट हैंडओवर स्वीकार करने हैं"
     }
   },
   "report": {
@@ -18096,5 +18110,298 @@
     "noPrice": "लागू मूल्य नहीं",
     "done_one": "{{count}} सेवा चालू हुई।",
     "done_other": "{{count}} सेवाएँ चालू हुईं।"
+  },
+  "ipdNursing": {
+    "live": "लाइव",
+    "offline": "ऑफ़लाइन · अंतिम अपडेट {{time}}",
+    "offlineNever": "ऑफ़लाइन · अभी लोड नहीं हुआ",
+    "queued_one": "{{count}} सेट कतार में",
+    "queued_other": "{{count}} सेट कतार में",
+    "offlineActs": "नेटवर्क नहीं — केवल वाइटल्स",
+    "night": "रात",
+    "day": "दिन",
+    "loading": "लोड हो रहा है…",
+    "loadFailed": "लोड नहीं हुआ। फिर कोशिश हो रही है।",
+    "forbidden": "इस वार्ड स्क्रीन की अनुमति आपके पास नहीं है।",
+    "actFailed": "सेव नहीं हुआ। फिर कोशिश करें।",
+    "cancel": "रद्द करें",
+    "close": "बंद करें",
+    "back": "वापस",
+    "incomplete": "अधूरा सेट",
+    "noScoreYet": "{{kind}} · अभी कोई सेट नहीं",
+    "ack": "स्वीकार करें",
+    "acked": "स्वीकार किया",
+    "alert": "अलर्ट · {{band}}",
+    "lateEntry": "देर से दर्ज, {{time}} पर टाइप",
+    "transferring": "ट्रांसफ़र स्वीकृति की प्रतीक्षा में",
+    "dueIn": "{{span}} में",
+    "overdueBy": "{{span}} से बकाया",
+    "dur": {
+      "justNow": "अभी",
+      "min": "{{n}} मिनट",
+      "hourMin": "{{h}} घं {{m}} मिनट"
+    },
+    "due": {
+      "vitals": "वाइटल्स",
+      "assessment": "आकलन",
+      "ews": "स्कोर अलर्ट",
+      "handover": "हैंडओवर"
+    },
+    "kind": {
+      "news2": "NEWS2",
+      "meows": "MEOWS",
+      "pews": "PEWS"
+    },
+    "band": {
+      "low": "कम",
+      "low_medium": "एक लाल",
+      "medium": "तुरंत",
+      "high": "आपात"
+    },
+    "trend": {
+      "up": "बढ़ रहा",
+      "down": "घट रहा",
+      "flat": "स्थिर"
+    },
+    "chip": {
+      "allergy": "एलर्जी",
+      "fall_risk": "गिरने का जोखिम",
+      "pressure_risk": "दबाव घाव जोखिम",
+      "isolation": "आइसोलेशन",
+      "name_alert": "नाम अलर्ट",
+      "obstetric": "प्रसूति"
+    },
+    "shift": {
+      "morning": "सुबह की शिफ्ट",
+      "evening": "शाम की शिफ्ट",
+      "night": "रात की शिफ्ट"
+    },
+    "discharge": {
+      "fit_declared": "डिस्चार्ज योग्य",
+      "discharging": "डिस्चार्ज हो रहा"
+    },
+    "source": {
+      "person": "टाइप किया",
+      "device": "उपकरण",
+      "copilot_draft": "कोपायलट ड्राफ्ट",
+      "agent": "एजेंट",
+      "import": "आयात",
+      "system": "सिस्टम"
+    },
+    "bed": {
+      "free": "खाली",
+      "freeSince": "खाली · {{time}} से",
+      "cleaning": "सफ़ाई",
+      "cleaningFor": "सफ़ाई · {{span}}",
+      "available": "खाली",
+      "reserved": "आरक्षित",
+      "blocked": "बंद",
+      "incumbent": "पुराना सिस्टम",
+      "occupied": "भरा",
+      "day": "दिन {{n}}"
+    },
+    "top": {
+      "census": "{{n}} / {{total}} बेड",
+      "free": "{{n}} खाली",
+      "expected": "{{n}} आने वाले",
+      "discharges": "आज {{n}} डिस्चार्ज",
+      "overdue": "{{n}} बकाया",
+      "alerts": "{{n}} स्कोर अलर्ट",
+      "handovers": "{{n}} हैंडओवर बाकी"
+    },
+    "ward": {
+      "title": "नर्स स्टेशन",
+      "wards": "वार्ड",
+      "beds": "बेड",
+      "noWard": "दिखाने को कोई वार्ड नहीं।",
+      "needsMeOn": "ज़रूरी पहले",
+      "bedOrder": "बेड क्रम",
+      "openChart": "बेड {{bed}} का नर्सिंग चार्ट खोलें"
+    },
+    "chart": {
+      "title": "नर्सिंग चार्ट",
+      "addVitals": "वाइटल्स जोड़ें",
+      "noVitals": "अभी कोई वाइटल्स नहीं।",
+      "trend": "स्कोर रुझान",
+      "trendCaption": "{{kind}} · पिछले {{n}} सेट",
+      "time": "समय",
+      "score": "स्कोर",
+      "by": "किसने",
+      "refused": "मरीज़ ने जाँच से मना किया",
+      "tab": {
+        "vitals": "वाइटल्स",
+        "assessment": "आकलन",
+        "io": "इनटेक / आउटपुट",
+        "notes": "नोट्स"
+      }
+    },
+    "v": {
+      "title": "वाइटल्स",
+      "temperatureC": "तापमान",
+      "pulse": "नब्ज़",
+      "respRate": "साँस दर",
+      "systolic": "बीपी ऊपर",
+      "diastolic": "बीपी नीचे",
+      "spo2": "SpO₂",
+      "painScore": "दर्द",
+      "capRefillSec": "कैप रिफ़िल",
+      "onOxygen": "ऑक्सीजन",
+      "consciousness": "होश",
+      "air": "हवा",
+      "oxygen": "ऑक्सीजन",
+      "typeToScore": "स्कोर देखने के लिए मान लिखें",
+      "check": "जाँचें",
+      "edit": "बदलें",
+      "save": "सेव करें",
+      "confirmSave": "पुष्टि कर सेव करें",
+      "confirmAsk": "असामान्य मान — जाँच लें",
+      "unusual": "असामान्य",
+      "refused": "मरीज़ ने मना किया",
+      "queued": "कतार में — भेजा जाएगा",
+      "refusedSaved": "मना करना दर्ज",
+      "saved": "सेव हुआ",
+      "savedScore": "सेव · {{kind}} {{value}}"
+    },
+    "avpu": {
+      "alert": "सजग",
+      "confused": "भ्रमित",
+      "voice": "आवाज़",
+      "pain": "दर्द",
+      "unresponsive": "बेहोश"
+    },
+    "assess": {
+      "morse": "मोर्स गिरने का स्कोर",
+      "braden": "ब्रैडन स्कोर",
+      "pain": "दर्द स्कोर",
+      "nutrition": "पोषण जाँच",
+      "allergies": "एलर्जी",
+      "allergiesHint": "कॉमा से अलग; न हो तो खाली",
+      "allergiesConfirmed": "एलर्जी मरीज़ या परिजन से पूछी",
+      "noAllergies": "कोई ज्ञात एलर्जी नहीं",
+      "lines": "लाइन और उपकरण",
+      "obstetric": "गर्भवती या प्रसव के बाद",
+      "recorded": "दर्ज",
+      "save": "आकलन सेव करें",
+      "saved": "आकलन सेव हुआ",
+      "pressurePhotos": "दबाव घावों की फ़ोटो दस्तावेज़ों में लें।",
+      "morseRisk": {
+        "low": "कम जोखिम",
+        "moderate": "मध्यम जोखिम",
+        "high": "अधिक जोखिम"
+      },
+      "bradenRisk": {
+        "none": "जोखिम नहीं",
+        "mild": "हल्का जोखिम",
+        "moderate": "मध्यम जोखिम",
+        "high": "अधिक जोखिम",
+        "very_high": "बहुत अधिक जोखिम"
+      },
+      "nutritionOpt": {
+        "no_risk": "जोखिम नहीं",
+        "at_risk": "जोखिम में",
+        "malnourished": "कुपोषित"
+      },
+      "obstetricOpt": {
+        "unanswered": "नहीं पूछा",
+        "none": "नहीं",
+        "pregnant": "गर्भवती",
+        "postpartum": "प्रसव के 42 दिन के भीतर"
+      }
+    },
+    "line": {
+      "peripheral_iv": "आईवी कैनुला",
+      "central_line": "सेंट्रल लाइन",
+      "urinary_catheter": "पेशाब कैथेटर",
+      "ng_tube": "एनजी ट्यूब",
+      "drain": "ड्रेन",
+      "tracheostomy": "ट्रेकियोस्टोमी",
+      "oxygen": "ऑक्सीजन",
+      "other": "अन्य"
+    },
+    "io": {
+      "in": "अंदर",
+      "out": "बाहर",
+      "kind": "प्रकार",
+      "ml": "मात्रा मि.ली. में",
+      "add": "जोड़ें",
+      "saved": "प्रविष्टि सेव हुई",
+      "totals": "{{since}} से: अंदर {{inMl}} मि.ली. · बाहर {{outMl}} मि.ली. · संतुलन {{balance}} मि.ली.",
+      "k": {
+        "oral": "मुँह से",
+        "iv": "आईवी",
+        "ng_feed": "एनजी फ़ीड",
+        "blood": "रक्त",
+        "urine": "पेशाब",
+        "drain": "ड्रेन",
+        "vomit": "उल्टी",
+        "stool": "मल",
+        "ng_aspirate": "एनजी एस्पिरेट"
+      }
+    },
+    "notes": {
+      "category": "श्रेणी",
+      "text": "नोट",
+      "add": "नोट जोड़ें",
+      "saved": "नोट सेव हुआ",
+      "cat": {
+        "general": "सामान्य",
+        "fall": "गिरना",
+        "pain": "दर्द",
+        "wound": "घाव",
+        "behaviour": "व्यवहार",
+        "escalation": "सूचना ऊपर",
+        "refused_care": "देखभाल से मना"
+      }
+    },
+    "shiftPage": {
+      "title": "मेरी शिफ्ट",
+      "now": "अभी",
+      "nothingDue": "अभी कुछ बाकी नहीं",
+      "patientsTitle": "मेरे मरीज़",
+      "patients_one": "{{count}} मरीज़",
+      "patients_other": "{{count}} मरीज़"
+    },
+    "handover": {
+      "title": "हैंडओवर",
+      "ready_one": "हैंडओवर · {{count}}",
+      "ready_other": "हैंडओवर · {{count}}",
+      "toAccept_one": "{{count}} स्वीकार करने हैं",
+      "toAccept_other": "{{count}} स्वीकार करने हैं",
+      "waiting": "आपकी प्रतीक्षा में",
+      "give": "हैंडओवर दें",
+      "giveBtn": "दें",
+      "draft": "SBAR ड्राफ्ट",
+      "done": "दिया",
+      "given": "हैंडओवर दिया",
+      "accept": "स्वीकार करें",
+      "accepted": "हैंडओवर स्वीकार",
+      "from": "{{name}} से · {{time}}",
+      "shiftTitle": "शिफ्ट हैंडओवर",
+      "noneWaiting": "कोई शिफ्ट हैंडओवर बाकी नहीं।",
+      "youGave": "यह हैंडओवर आपने दिया"
+    },
+    "sbar": {
+      "situation": "स्थिति",
+      "background": "पृष्ठभूमि",
+      "assessment": "आकलन",
+      "recommendation": "सुझाव"
+    },
+    "sbarSource": {
+      "vitals": "वाइटल्स",
+      "assessment": "आकलन",
+      "io": "I/O",
+      "note": "नोट",
+      "admission": "भर्ती"
+    },
+    "noDoctorReached": "डॉक्टर तक नहीं पहुँचा — फ़ोन करें",
+    "seenNoDoctor": "देखा · डॉक्टर अभी नहीं",
+    "dropped": {
+      "title": "नहीं भेजा गया",
+      "patient": "मरीज़",
+      "expired": "30 मिनट से पुराना",
+      "refused": "सर्वर ने अस्वीकार किया",
+      "paper": "इन्हें काग़ज़ पर दर्ज करें।",
+      "done": "ठीक है"
+    }
   }
 }

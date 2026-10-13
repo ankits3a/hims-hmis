@@ -372,6 +372,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.discharge.view", "ipd.discharge.declare", "ipd.discharge.exit",
       // IPD FAMILY E3.3 (#731, decision 0072) — sets the condition word the family sees and turns the family link off for a sensitive admission; README "IPD family link" prose.
       "ipd.condition.set",
+      // IPD NURSING E4.1 (#733) — reads the nurse station and the nursing chart, records vitals on a round, and acknowledges an
+      // early-warning alert (G7 counts a doctor's acknowledgement); README "IPD nursing" prose.
+      "ipd.nursing.view", "ipd.vitals.record", "ipd.ews.respond",
     ],
   },
   /**
@@ -1199,6 +1202,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.discharge.view", "ipd.discharge.confirm", "ipd.gate.pass", "ipd.gate.scan", "ipd.discharge.exit", "ipd.mortuary.manage",
       // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
       "ipd.family.issue",
+      // IPD NURSING E4.1 (#733) — the nurse station at night (oversight; records nothing clinical); README "IPD nursing" prose.
+      "ipd.nursing.view",
     ],
   },
   /**
@@ -2151,6 +2156,36 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "maintenance_staff",
     permissions: ["tasks.view", "tasks.work", "maintenance.view", "maintenance.work", "maintenance.raise"],
   },
+  /**
+   * IPD NURSING E4.1 (#733, decision 0072) — THE WARD NURSING ROLES, which no seed had: the admission workflow, the
+   * transfer and the discharge cascade already NAME `ward_nurse` and `nursing_supervisor` (`admission-workflow.ts`
+   * `IPD_ACTOR_ROLE_KEYS`, `discharge.ts` `IPD_DEPARTMENT_ROLES.ward`). DECIDED by the standard Indian corporate-hospital
+   * ladder: staff nurse (`ward_nurse`) → shift in-charge / nursing supervisor (`nursing_supervisor`) → nursing
+   * superintendent (`nursing_superintendent`, the head of nursing). NONE holds `ipd.condition.set`: the condition word
+   * the family sees is the doctor's alone. The family's callback requests go to the nurse in charge (spec §4.9 G), so
+   * `nursing_supervisor` holds `ipd.family.issue`. NOBODY is assigned to these roles by any seed.
+   */
+  {
+    roleKey: "ward_nurse",
+    permissions: [
+      "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift",
+      "ipd.beds.view", "ipd.beds.clean", "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm",
+      "maintenance.raise", "maintenance.confirm", "transport.request",
+    ],
+  },
+  {
+    roleKey: "nursing_supervisor",
+    permissions: [
+      "ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.ews.respond",
+      "ipd.beds.view", "ipd.beds.clean", "ipd.transfer.start", "ipd.transfer.accept", "ipd.discharge.view", "ipd.discharge.confirm",
+      "ipd.family.issue",
+      "maintenance.raise", "maintenance.confirm", "transport.request",
+    ],
+  },
+  {
+    roleKey: "nursing_superintendent",
+    permissions: ["ipd.nursing.view", "ipd.ews.respond", "ipd.beds.view", "ipd.discharge.view", "ipd.family.issue"],
+  },
 ];
 
 /**
@@ -2415,6 +2450,10 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
   services_supervisor: "Services Supervisor (task board: assigns, cancels and verifies service tasks)",
   maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
+  // IPD NURSING E4.1 (#733) — the ward nursing ladder.
+  ward_nurse: "Ward Nurse (staff nurse: vitals, assessment, intake/output, notes, shift handover, transfers)",
+  nursing_supervisor: "Nursing Supervisor (shift in-charge: the ward's nurses, early-warning escalations, family callbacks)",
+  nursing_superintendent: "Nursing Superintendent (head of nursing: every ward's station and escalations)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

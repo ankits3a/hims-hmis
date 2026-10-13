@@ -1768,8 +1768,8 @@ pre-auth number stay with `ipd.payer.manage`.
 
 **IPD transfer (E3.1, decision 0072, built 2026-10-13, awaiting owner review).** The Transfer panel in the Beds board
 drawer and the receiving ward's handover list at `/ipd/handovers`. `ipd.transfer.start` and `ipd.transfer.accept` are
-held by `duty_manager` until the nursing roles are seeded — the sender starts a transfer with its SBAR handover, the
-receiving nurse accepts it, and the sender may never accept their own. A class change in place rides `ipd.admit`.
+held by `duty_manager`, `ward_nurse` and `nursing_supervisor` — the sender starts a transfer with its SBAR handover,
+the receiving nurse accepts it, and the sender may never accept their own. A class change in place rides `ipd.admit`.
 
 **IPD bill desk (E2.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.billdesk.view` is held by `cashier`,
 `billing_manager`, `front_office_supervisor`, `duty_manager` and `owner` — the exceptions-only bill desk and its deposit
@@ -1785,6 +1785,17 @@ role is seeded. Nobody is detained for dues: an unpaid balance goes to the billi
 `front_office`, `front_office_supervisor` and `duty_manager` — the ward desk issues the attendant's link (an OTP to the
 registered phone only) and works the family's callback requests; `ipd.condition.set` is held by `doctor` — the condition
 word the family sees is set by the treating team, never by a model. Off for sealed and medico-legal admissions.
+
+**IPD nursing (E4.1, decision 0072, built 2026-10-13, awaiting owner review).** Three ward nursing roles are seeded:
+`ward_nurse`, `nursing_supervisor` and `nursing_superintendent`. `ipd.nursing.view` (the nurse station at `/ipd/ward`,
+my shift at `/ipd/my-shift`, the nursing chart) is held by the three nursing roles, `doctor` and `duty_manager`;
+`ipd.vitals.record` (vitals, intake/output, notes) by `ward_nurse`, `nursing_supervisor` and `doctor`;
+`ipd.assessment.record` and `ipd.handover.shift` by `ward_nurse` and `nursing_supervisor`; `ipd.ews.respond` (acknowledge
+an early-warning alert) by `doctor`, `nursing_supervisor` and `nursing_superintendent`. The ward nurse and the supervisor
+also mark beds clean, start and accept transfers, confirm the ward at discharge, raise and confirm repairs and ask for a
+porter; the supervisor and the superintendent work the family's callback requests (`ipd.family.issue`). No nursing role
+holds `ipd.condition.set` — the condition word is the doctor's. NEWS2 5+ or any single 3 (MEOWS and PEWS by their own
+charts) tells the duty doctor once per breach, and again only when the score gets a band worse.
 
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
