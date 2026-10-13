@@ -221,6 +221,14 @@ export const ipdPayerAuths = pgTable(
     coversFrom: timestamp("covers_from", { withTimezone: true }),
     provisionalCashlessSigned: boolean("provisional_cashless_signed").notNull(),
     counsellingDocumentId: text("counselling_document_id"),
+    /**
+     * E2.2 (#726) — the letter's money terms, typed by the TPA desk. Null = not stated on THIS entry: the split reads
+     * the latest stated value of each (`modules/ipd/payer-split.ts`). Never defaulted: no cap typed, no cap applied.
+     * Room-rent cap per day as paise, or as basis points of the coverage's sum insured (100 = 1 %); co-pay in bp.
+     */
+    roomRentCapPaise: bigint("room_rent_cap_paise", { mode: "number" }),
+    roomRentCapSiBp: integer("room_rent_cap_si_bp"),
+    coPayBp: integer("co_pay_bp"),
     recordedBy: text("recorded_by").notNull(),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
   },
@@ -228,6 +236,10 @@ export const ipdPayerAuths = pgTable(
     index("ipd_payer_auths_admission_idx").on(t.admissionId, t.recordedAt),
     check("ipd_payer_auths_entry_ck", sql`${t.entry} in ('initial', 'enhancement', 'final', 'denial', 'payer_change')`),
     check("ipd_payer_auths_status_ck", sql`${t.status} in ('requested', 'approved', 'partially_approved', 'denied', 'final_approved')`),
+    check("ipd_payer_auths_terms_ck", sql`(${t.roomRentCapPaise} is null or ${t.roomRentCapPaise} > 0)
+      and (${t.roomRentCapSiBp} is null or ${t.roomRentCapSiBp} between 1 and 10000) and (${t.coPayBp} is null or ${t.coPayBp} between 0 and 10000)`),
+    // Review RED 1: one entry states the cap ONE way — absolute or % of sum insured, never both.
+    check("ipd_payer_auths_one_cap_ck", sql`${t.roomRentCapPaise} is null or ${t.roomRentCapSiBp} is null`),
   ],
 );
 
@@ -392,5 +404,53 @@ export const ipdChargeExceptions = pgTable(
     check("ipd_charge_exceptions_component_ck", sql`${t.component} is null or ${t.component} in (${CHARGE_COMPONENTS_SQL})`),
     check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed')`),
     check("ipd_charge_exceptions_shape_ck", sql`(${t.reason} = 'posting_failed') = (${t.component} is null) and (${t.component} is null) = (${t.serviceDate} is null)`),
+  ],
+);
+
+// ═══════════════════════════════════ E2.2 (#726) — payer authorisation and bill split ═══════════════════════════════════
+
+/**
+ * The non-payables list (spec §4.3 payer split): service codes or tariff categories an insurer never pays (IRDAI's
+ * non-medical items). Configuration the TPA desk keeps; a row is retired, never deleted. Starts EMPTY (DECIDED, E2.2):
+ * no IRDAI non-medical category exists as a tariff category today, so none is seeded.
+ */
+export const ipdPayerNonPayables = pgTable(
+  "ipd_payer_non_payables",
+  {
+    id: text("id").primaryKey(),
+    /** `service` (a tariff service code) or `category` (a tariff service category). */
+    matchKind: text("match_kind").notNull(),
+    matchValue: text("match_value").notNull(),
+    reason: text("reason").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    retiredBy: text("retired_by"),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("ipd_payer_non_payables_live_ux").on(t.matchKind, sql`lower(${t.matchValue})`).where(sql`${t.retiredAt} is null`),
+    check("ipd_payer_non_payables_kind_ck", sql`${t.matchKind} in ('service', 'category')`),
+  ],
+);
+
+/**
+ * The payer split as it was PRINTED on an interim bill (spec E2.2 §2: the split is computed on read; a printed paper
+ * is evidence, so what it said is kept). Append-only: one row per print, the whole split as jsonb.
+ */
+export const ipdPayerSplitSnapshots = pgTable(
+  "ipd_payer_split_snapshots",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    kind: text("kind").notNull(),
+    payerPaise: bigint("payer_paise", { mode: "number" }).notNull(),
+    patientPaise: bigint("patient_paise", { mode: "number" }).notNull(),
+    split: jsonb("split").$type<Record<string, unknown>>().notNull(),
+    printedBy: text("printed_by").notNull(),
+    printedAt: timestamp("printed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("ipd_payer_split_snapshots_admission_idx").on(t.admissionId, t.printedAt),
+    check("ipd_payer_split_snapshots_kind_ck", sql`${t.kind} in ('interim')`),
   ],
 );

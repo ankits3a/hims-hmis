@@ -16947,7 +16947,8 @@
       "requestedAt": "Requested at (paper)",
       "admittedAt": "Admitted at (paper)",
       "save": "Enter admission"
-    }
+    },
+    "capWarning": "Room-rent cap"
   },
   "maintenance": {
     "title": "Maintenance",
@@ -17244,6 +17245,49 @@
       "pmjay": "PM-JAY",
       "state_scheme": "State scheme",
       "corporate": "Corporate"
+    },
+    "split": {
+      "printFailed": "Could not record — try again",
+      "title": "Payer split",
+      "label": "Payer split",
+      "payer": "Payer pays",
+      "patient": "Patient pays",
+      "patientDue": "Patient due",
+      "patientLeft": "Deposit left (patient share)",
+      "preAuth": "Pre-auth {{no}}",
+      "approved": "Approved {{amount}}",
+      "nonCovered": "Approved non-covered",
+      "colPayer": "Payer",
+      "colPatient": "Patient",
+      "state": {
+        "none": "No authorisation",
+        "pending": "Awaiting authorisation",
+        "approved": "Authorised",
+        "denied": "Denied"
+      },
+      "mode": {
+        "cash": "Cash",
+        "reimbursement": "Reimbursement",
+        "insured": "Cashless",
+        "scheme": "Scheme"
+      },
+      "why": {
+        "non_payable": "Non-payable",
+        "room_rent_over_cap": "Over room cap",
+        "room_rent_cap_proportional": "Cap proportional",
+        "co_pay": "Co-pay",
+        "over_approved_amount": "Over approved",
+        "denied": "Denied",
+        "cash": "Cash",
+        "auth_pending": "Awaiting auth",
+        "scheme": "Scheme",
+        "reversed": "Reversed",
+        "non_covered": "Non-covered"
+      },
+      "exception": {
+        "cash_consent_missing": "Cash consent missing",
+        "room_rent_cap_unresolved": "Cap % needs sum insured"
+      }
     }
   },
   "transport": {

@@ -302,6 +302,22 @@ export const recordPayerAuth = ipdIntent({
     /** The patient signed at admission that cashless is provisional (§4.2). */
     provisionalCashlessSigned: z.boolean(),
     counsellingDocumentId: IpdIdSchema.optional(),
+    /**
+     * E2.2 (#726) — the letter's money terms, as the insurer or corporate states them. Absent = not stated on this
+     * entry (an earlier entry's value stands). Room-rent cap per day in paise, OR in basis points of the coverage's
+     * sum insured (100 = 1 %); co-pay in basis points (1000 = 10 %). Never defaulted by the hospital.
+     */
+    roomRentCapPaise: IpdPositivePaiseSchema.optional(),
+    roomRentCapSiBp: z.number().int().min(1).max(10_000).optional(),
+    coPayBp: z.number().int().min(0).max(10_000).optional(),
+    /**
+     * E2.2 review 6 — the patient's coverage row this payer rests on. A `payer_change` moves it with the payer kind
+     * (absent = none, e.g. cash); an `initial` that sets the payer sets it. A % room-rent cap resolves against it.
+     */
+    coverageId: IpdIdSchema.optional(),
+  }).refine((v) => v.roomRentCapPaise === undefined || v.roomRentCapSiBp === undefined, {
+    message: "State the room-rent cap one way: per day in paise, or as a % of sum insured — not both",
+    path: ["roomRentCapSiBp"],
   }),
   output: z.strictObject({
     authId: IpdIdSchema,
@@ -310,7 +326,7 @@ export const recordPayerAuth = ipdIntent({
     /** Pre-auth approved after admission covers from the admission date (insurer practice). */
     coversFrom: IpdInstantSchema.nullable(),
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", "payer_change_needs_counselling", "auth_out_of_order", "rate_missing"],
+  refusals: ["admission_not_found", "admission_wrong_state", "payer_change_needs_counselling", "auth_out_of_order", "rate_missing", "state_changed"],
   actors: ["desk", "billing"],
   copilotProposable: false,
   agentTier: "none",

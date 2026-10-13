@@ -70,7 +70,7 @@ export {
 export type { AdmissionPlace } from "./admission-place";
 export { ageInYears } from "./bed-rules";
 // E2.1 (#725) — the running bill: the day rule, the nightly posting job, the rounds visit seam, reversals, the interim bill.
-export { IPD_BILL_VIEW, IPD_CHARGES_REVERSE } from "./manifest";
+export { IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS } from "./manifest";
 export { DISCHARGE_FREE_UNTIL_MS, TRANSIT_UNDER_MS, classRank, ipdChargeableDays, rentClassOf } from "./charge-days";
 export type { ChargeStay, ChargeableDay } from "./charge-days";
 export {
@@ -82,3 +82,12 @@ export { readInterimBill } from "./interim-bill";
 // E1.6 TRANSPORT (#723) — an admission's movable facts (current bed, critical-care class) and the wristband scan.
 export { CRITICAL_CARE_BED_CLASSES, admissionForTransport, movableAdmissions, resolveBandScan } from "./transport-seam";
 export type { BandScan, TransportAdmissionFacts } from "./transport-seam";
+// E2.2 (#726) — the payer split: the pure engine, its inputs, the cap warning, printed snapshots, the non-payables list.
+export {
+  CAP_EXEMPT_CLASSES, PROPORTIONAL_COMPONENTS, capWarningOf, splitBill, splitModeOf, splitTermsOf,
+} from "./payer-split";
+export type { AuthRowInput, NonPayables, SplitLineInput, SplitTerms } from "./payer-split";
+export {
+  addPayerNonPayable, computePayerSplit, listPayerNonPayables, retirePayerNonPayable, roomRentCapWarning,
+} from "./payer-bill";
+export { printInterimBillSnapshot } from "./interim-bill";

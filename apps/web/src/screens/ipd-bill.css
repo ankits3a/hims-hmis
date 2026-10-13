@@ -69,6 +69,16 @@
 .ipdb-moves li { border-left: 3px solid var(--green); padding-left: 10px; }
 .ipdb-error { color: var(--red); font-weight: 600; }
 
+/* E2.2 (#726) — the payer split card and the per-line reason chips. */
+.ipdb-split .row { display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 0; font-size: 14px; }
+.ipdb-split .row.total { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; font-size: 16px; font-weight: 600; }
+.ipdb-split .row.balance { font-weight: 600; border-radius: 6px; padding: 8px 10px; margin-top: 4px; }
+.ipdb-split .row.balance.due { background: var(--red-soft); color: var(--red); }
+.ipdb-split .row.balance.left { background: var(--green-soft); color: var(--green); }
+.ipdb-words { margin: 6px 0; padding-left: 18px; font-size: 13px; }
+.ipdb-why { margin-top: 2px; }
+.ipdb-why .ipdb-tag { font-size: 10px; color: var(--dim); }
+
 @media (max-width: 1500px) { .ipdb-grid { grid-template-columns: minmax(0, 1fr) 320px; } }
 @media (max-width: 900px) {
   .ipdb { padding: 16px; }

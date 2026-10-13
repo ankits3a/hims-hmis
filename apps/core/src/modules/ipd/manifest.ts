@@ -23,6 +23,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *   ipd.bill.view       read an admission's interim bill (lines, totals, deposit, balance) — billing and front office
  *   ipd.charges.reverse post a reversal line against a wrong charge (never an edit) — the billing manager
  *
+ * E2.2 (#726, review 11) adds one. NO DOCTOR ROLE HOLDS IT (decision 0058):
+ *
+ *   ipd.payer.terms     type the letter's money terms (room-rent cap, co-pay) on the authorisation record and keep
+ *                       the non-payables list — the billing manager (the TPA desk sits in billing). Status and
+ *                       pre-auth number stay with `ipd.payer.manage` (front office).
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). No subscriptions: the 2-hour reservation
  * lapse is a scheduler job (`kernel/worker/jobs.ts` `lapseBedReservations`), so the worker does not install this
  * manifest.
@@ -37,6 +43,7 @@ export const IPD_PAYER_MANAGE = "ipd.payer.manage";
 export const IPD_BAND_PRINT = "ipd.band.print";
 export const IPD_BILL_VIEW = "ipd.bill.view";
 export const IPD_CHARGES_REVERSE = "ipd.charges.reverse";
+export const IPD_PAYER_TERMS = "ipd.payer.terms";
 
 export const ipdManifest: ModuleManifest = {
   key: "ipd",
@@ -47,7 +54,7 @@ export const ipdManifest: ModuleManifest = {
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
-    IPD_BILL_VIEW, IPD_CHARGES_REVERSE,
+    IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS,
   ],
   subscriptions: [],
 };

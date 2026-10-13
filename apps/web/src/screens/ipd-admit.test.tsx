@@ -73,6 +73,18 @@ describe("Admit — one flowing sheet (E1.2)", () => {
     expect(screen.getByRole("button", { name: "Admit and print band" })).toBeDisabled();
   });
 
+  it("E2.2: a class over the insurer's room-rent cap carries the warning in words on its card", async () => {
+    api.getQuotes.mockResolvedValue([
+      QUOTES[0]!,
+      { ...QUOTES[1]!, perDay: { room: 400_000, nursing: 90_000, visit: 120_000 }, missing: [], estimatePaise: 1_830_000, depositPaise: 500_000,
+        capWarning: { targetClass: "private", capPerDayPaise: 200_000, rentPerDayPaise: 400_000, overPerDayPaise: 200_000, payerShareBp: 5_000,
+          words: "Over cap by ₹2,000/day; insurer pays 50 % of nursing, RMO, visits" } },
+    ]);
+    renderWithRouter(<IpdAdmit />, `/ipd/admit?admission=${ADM}`);
+    const classes = await screen.findByRole("radiogroup", { name: "Room class" });
+    expect(await within(classes).findByText("Over cap by ₹2,000/day; insurer pays 50 % of nursing, RMO, visits")).toBeInTheDocument();
+  });
+
   it("walks payer → bed → consent → deposit → admit, then prints the band with the allergy written on it", async () => {
     const user = userEvent.setup();
     renderWithRouter(<IpdAdmit />, `/ipd/admit?admission=${ADM}`);

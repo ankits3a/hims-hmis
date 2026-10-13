@@ -342,6 +342,8 @@ export function IpdAdmit(): React.ReactElement {
                           <span className="dim">{t("ipdAdmit.roomPerDay")} <span className="mono ink">{fmtRupees(q.perDay.room)}</span> · {t("ipdAdmit.stayEst")} <span className="mono ink">{q.estimatePaise === null ? "—" : fmtRupees(q.estimatePaise)}</span></span>
                         )}
                         <span className="ipda-class-dep">{t("ipdAdmit.depositLabel")} <span className="mono">{q.depositPaise === null ? "—" : fmtRupees(q.depositPaise)}</span></span>
+                        {/* E2.2 (#726): the room-rent cap warning before the class is chosen (§4.3, §4.9 B). */}
+                        {q.capWarning === null || q.capWarning === undefined ? null : <span className="ipda-note warn" title={t("ipdAdmit.capWarning")}>{q.capWarning.words}</span>}
                       </button>
                     );
                   })}
