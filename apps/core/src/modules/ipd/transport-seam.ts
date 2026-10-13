@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import { ipdAdmissions, ipdBands, ipdBedStays, resources } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdBands, ipdBedStays, patients, resources } from "../../kernel/db/schema";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
@@ -57,7 +57,11 @@ export async function movableAdmissions(exec: Db | Tx, limit = 2000): Promise<Tr
   }));
 }
 
-export type BandScan = { admissionId: string; serial: string; live: boolean };
+/**
+ * `uhidMatches`: the QR form carries the patient's UHID — null when the scan was the bare serial (Code 128), false
+ * when the QR's UHID is not the band's patient's (a forged or mis-printed code).
+ */
+export type BandScan = { admissionId: string; serial: string; live: boolean; uhidMatches: boolean | null };
 
 /**
  * What a wristband scan says. The band's Code 128 carries its SERIAL; its QR carries `IPDBAND1|<serial>|<uhid>`
@@ -65,10 +69,19 @@ export type BandScan = { admissionId: string; serial: string; live: boolean };
  */
 export async function resolveBandScan(exec: Db | Tx, code: string): Promise<BandScan | null> {
   const raw = code.trim();
-  const serial = raw.startsWith("IPDBAND1|") ? (raw.split("|")[1] ?? "").trim() : raw;
+  const qr = raw.startsWith("IPDBAND1|");
+  const parts = raw.split("|");
+  const serial = qr ? (parts[1] ?? "").trim() : raw;
   if (serial === "") return null;
-  const band = (await (exec as Db).select({ admissionId: ipdBands.admissionId, serial: ipdBands.serial, status: ipdBands.status })
-    .from(ipdBands).where(eq(ipdBands.serial, serial)))[0];
+  const band = (await (exec as Db).select({
+    admissionId: ipdBands.admissionId, serial: ipdBands.serial, status: ipdBands.status, uhid: patients.uhid,
+  }).from(ipdBands).innerJoin(ipdAdmissions, eq(ipdAdmissions.id, ipdBands.admissionId))
+    .leftJoin(patients, eq(patients.id, ipdAdmissions.patientId))
+    .where(eq(ipdBands.serial, serial)))[0];
   if (band === undefined) return null;
-  return { admissionId: band.admissionId, serial: band.serial, live: band.status === "printed" };
+  const qrUhid = qr ? (parts[2] ?? "").trim() : null;
+  return {
+    admissionId: band.admissionId, serial: band.serial, live: band.status === "printed",
+    uhidMatches: qrUhid === null ? null : band.uhid !== null && qrUhid === band.uhid,
+  };
 }

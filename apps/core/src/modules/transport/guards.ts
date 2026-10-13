@@ -1,9 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import { raiseNotice } from "../../kernel/alerts/notices";
 import { usersHoldingRole } from "../../kernel/workflow/roles";
-import { transportRequests } from "../../kernel/db/schema";
+import { transportRequests, users } from "../../kernel/db/schema";
+import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { resolveBandScan } from "../ipd";
 import { TransportRefusal } from "./errors";
+import { ESCORT_ROLE_KEYS } from "./names";
 import { isHighRiskForTransport } from "./risk";
 import type { Actor, TaskProof } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -16,6 +18,16 @@ export async function requestOfTask(exec: Db | Tx, taskId: string, lock = false)
   const q = (exec as Db).select().from(transportRequests).where(eq(transportRequests.taskId, taskId));
   const row = (await (lock ? q.for("update") : q))[0];
   return row ?? null;
+}
+
+/**
+ * May this user escort NOW: active, and holding a nurse or doctor role (a permanent assignment or an unexpired
+ * temporary grant — `actorHoldsAnyRole`'s predicate, the same one `escortCandidates` lists by).
+ */
+export async function escortIsClinical(exec: Db | Tx, userId: string): Promise<boolean> {
+  const u = (await (exec as Db).select({ active: users.active }).from(users).where(eq(users.id, userId)))[0];
+  if (u === undefined || !u.active) return false;
+  return actorHoldsAnyRole(exec as Tx, userId, [...ESCORT_ROLE_KEYS]);
 }
 
 /**
@@ -32,11 +44,17 @@ export async function escortNeeded(exec: Db | Tx, req: TransportRequestRow): Pro
  * THE START RULE (spec §6), run inside the engine's `startTask` transaction (`beforeStart`). A patient move with an
  * escort required cannot start until an escort is recorded; an oxygen move cannot start before the cylinder check.
  */
-export async function patientMoveMayStart(tx: Tx, task: TaskRow): Promise<void> {
+export async function patientMoveMayStart(tx: Tx, task: TaskRow, actor: Actor): Promise<void> {
   const req = await requestOfTask(tx, task.id, true);
   if (req === null) throw new TransportRefusal("not_transport", { taskId: task.id });
   if (req.escortUserId === null && await escortNeeded(tx, req)) {
     throw new TransportRefusal("escort_required", { taskId: task.id, escortReason: req.escortReason ?? "critical_care_bed" });
+  }
+  if (req.escortUserId !== null) {
+    // The escort recorded before the task changed hands may now be the porter starting it.
+    if (req.escortUserId === actor.id || req.escortUserId === task.assigneeId) throw new TransportRefusal("escort_is_porter", { taskId: task.id });
+    // Re-checked at start: an escort deactivated or whose temporary role lapsed since is no escort.
+    if (!(await escortIsClinical(tx, req.escortUserId))) throw new TransportRefusal("escort_not_clinical", { taskId: task.id });
   }
   if (req.oxygen && req.oxygenCheckedAt === null) throw new TransportRefusal("oxygen_not_checked", { taskId: task.id });
 }
@@ -58,6 +76,7 @@ export async function patientMoveHandover(tx: Tx, task: TaskRow, proof: TaskProo
     refusal.afterRefusal = (db) => recordRefusedHandover(db, req.id, task, record, now);
     throw refusal;
   }
+  if (band.uhidMatches === false) throw new TransportRefusal("band_mismatch", { taskId: task.id });
   if (!band.live) throw new TransportRefusal("band_void", { taskId: task.id });
   await (tx as Db).update(transportRequests).set({
     handoverBandSerial: band.serial, handoverAt: now, updatedAt: now,

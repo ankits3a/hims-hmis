@@ -11,6 +11,7 @@ import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { dutyCovering, pickWorker } from "./dispatch";
 import type { Actor, TaskAct, TaskEventSource, TaskSource } from "@hmis/contracts";
 import type { z } from "zod";
+import { PgTransaction } from "drizzle-orm/pg-core";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -29,6 +30,12 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type TaskRow = typeof tasks.$inferSelect;
 export type Exec = Db | Tx;
 export type ActOptions = { asSupervisor?: boolean; source?: TaskSource };
+/**
+ * `recordDb`: the ROOT database, for a caller acting inside its own transaction. A refusal's record (`afterRefusal`)
+ * must survive the caller's rollback, so it is written there; without it, such a refusal inside a caller's
+ * transaction fails loudly instead of losing the record.
+ */
+export type HookOptions = { recordDb?: Db };
 /** `closeDone`: an owning module may also cancel a task that is done but not yet checked (the place moved on). */
 export type CancelOptions = { closeDone?: boolean };
 
@@ -86,12 +93,16 @@ const tx = <T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> => (exec as Db
  * An act whose kind hook may refuse: the act's transaction rolls back, THEN the refusal's own record (if it carries one)
  * is written in a separate transaction, and the refusal is rethrown. A failing record never hides the refusal.
  */
-async function hooked<T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> {
+async function hooked<T>(exec: Exec, fn: (t: Tx) => Promise<T>, opts: HookOptions): Promise<T> {
   try {
     return await tx(exec, fn);
   } catch (e) {
     if (e instanceof TaskKindRefusal && e.afterRefusal !== undefined) {
-      try { await e.afterRefusal(exec as Db); } catch (recordFailed) { console.error("task refusal record failed", recordFailed); }
+      const root = opts.recordDb ?? (exec instanceof PgTransaction ? null : exec as Db);
+      if (root === null) {
+        throw new Error(`task refusal "${e.code}" must leave a record, and a caller's transaction would roll it back: pass { recordDb }`, { cause: e });
+      }
+      try { await e.afterRefusal(root); } catch (recordFailed) { console.error("task refusal record failed", recordFailed); }
     }
     throw e;
   }
@@ -247,7 +258,7 @@ function requireMine(row: TaskRow, actor: Actor): void {
   if (row.assigneeKind !== "person" || row.assigneeId !== actor.id) throw new TaskError("not_yours", { taskId: row.id });
 }
 
-export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
+export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow> {
   const input = parse(taskRefInput, raw);
   return hooked(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
@@ -261,10 +272,10 @@ export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Dat
     const next = await update(t, row.id, { state: "in_progress" }, now);
     await logEvent(t, next, "started", actor, eventSource(actor), now, {});
     return next;
-  });
+  }, opts);
 }
 
-export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
+export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow> {
   const input = parse(completeTaskInput, raw);
   return hooked(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
@@ -283,7 +294,7 @@ export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: 
     }, now);
     await logEvent(t, next, "done", actor, eventSource(actor), now, input.proof === undefined ? {} : { proof: input.proof.kind });
     return next;
-  });
+  }, opts);
 }
 
 /* ═══════════════════════════════ verify ═══════════════════════════════ */

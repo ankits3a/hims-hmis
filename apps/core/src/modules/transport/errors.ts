@@ -9,7 +9,8 @@ export function transportHttpStatus(code: TransportRefusalCode): number {
     case "oxygen_not_checked":
     case "already_started":
     case "wrong_patient":
-    case "band_void": return 409;
+    case "band_void":
+    case "band_mismatch": return 409;
     default: return 400;
   }
 }

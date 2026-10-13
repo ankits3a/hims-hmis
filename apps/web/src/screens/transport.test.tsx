@@ -107,6 +107,16 @@ describe("transport (E1.6)", () => {
     expect(await screen.findByTestId("my-tasks-notice")).toHaveTextContent("WRONG PATIENT · stop");
   });
 
+  it("a patient move in progress always ends at the wristband scan, even before its details load", async () => {
+    mine = { ...mine, mine: [card({ state: "in_progress" })] };
+    details = [];
+    renderWithProviders(<MyTasks />);
+    const c = await screen.findByTestId("task-m1");
+    expect(within(c).getByTestId("band-scan")).toBeInTheDocument();
+    await userEvent.type(within(c).getByTestId("band-input"), "IP-26-00012-1{Enter}");
+    expect(posted[0]!.body).toEqual({ version: 3, proof: { kind: "scan", code: "IP-26-00012-1" } });
+  });
+
   it("a tap-proof task's Done sends the tap", async () => {
     mine = { ...mine, mine: [card({ id: "s1", kind: "sample_run", label: "Sample run", state: "in_progress", proofNeeded: "tap" })] };
     details = [detail({ taskId: "s1", kind: "sample_run", mode: null, oxygen: false, monitor: false, escortRequired: false, escortState: "not_needed", patientName: null, admissionNo: null })];

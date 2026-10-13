@@ -16203,7 +16203,8 @@
       "scan_required": "Scan wristband",
       "band_unknown": "Band not known",
       "band_void": "Old band · scan new band",
-      "wrong_patient": "WRONG PATIENT · stop"
+      "wrong_patient": "WRONG PATIENT · stop",
+      "band_mismatch": "Band code does not match patient · stop"
     }
   }
 }

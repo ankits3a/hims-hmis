@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
 import { acceptTask, doneTask, fetchMyTasks, lateMinutes, startTask, taskRefusal } from "../lib/tasks-api";
-import { TRANSPORT_KIND_SET, fetchTransportDetails } from "../lib/transport-api";
-import { TransportPanel, refusalText } from "./transport-card";
+import { PATIENT_MOVE_KIND, TRANSPORT_KIND_SET, fetchTransportDetails } from "../lib/transport-api";
+import { BandScanForm, TransportPanel, refusalText } from "./transport-card";
 import type { TaskCard, TaskProof, TransportDetail } from "@hmis/contracts";
 import "./tasks.css";
 
@@ -126,6 +126,8 @@ function Card({ c, now, lang, busy, pool = false, detail, onAct, onNotice }: {
       {c.note !== null && c.note !== "" && <div className="note">{c.note}</div>}
       {detail !== undefined ? (
         <TransportPanel c={c} d={detail} verb={verb} pool={pool} busy={busy} onAct={onAct} onNotice={onNotice} />
+      ) : c.kind === PATIENT_MOVE_KIND && c.state === "in_progress" && !pool ? (
+        <BandScanForm taskId={c.id} busy={busy} onScan={(code) => onAct("done", { kind: "scan", code })} />
       ) : (
         <button
           type="button" className={pool ? "tk-act take" : "tk-act"} disabled={busy}

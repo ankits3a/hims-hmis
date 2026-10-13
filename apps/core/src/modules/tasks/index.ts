@@ -15,7 +15,7 @@ export {
   DISPATCH_ACTOR, MERGE_WINDOW_MS, acceptTask, assignTask, cancelTask, cancelTasksForPlace, completeTask, raiseTask,
   returnToPool, startTask, verifyTask,
 } from "./engine";
-export type { ActOptions, CancelOptions, RaiseResult, TaskRow } from "./engine";
+export type { ActOptions, CancelOptions, HookOptions, RaiseResult, TaskRow } from "./engine";
 export { dutyCovering, onDutyForSkill, openLoad, pickWorker } from "./dispatch";
 export type { OnDutyWorker } from "./dispatch";
 export { SWEEP_ACTOR, SWEEP_BATCH, nudgeTask, sweepTasks } from "./sweep";

@@ -1,14 +1,13 @@
-import { eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { TRANSPORT_KINDS, addEscortInput, newId, oxygenCheckInput, requestTransportInput } from "@hmis/contracts";
-import { resources, transportRequests, users } from "../../kernel/db/schema";
-import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
+import { resources, tasks, transportRequests } from "../../kernel/db/schema";
 import { admissionForTransport } from "../ipd";
-import { TaskError, getTask, raiseTask } from "../tasks";
+import { MERGE_WINDOW_MS, TaskError, getTask, raiseTask } from "../tasks";
 import { TransportRefusal } from "./errors";
-import { requestOfTask } from "./guards";
+import { escortIsClinical, requestOfTask } from "./guards";
 import { ESCORT_ROLE_KEYS } from "./names";
 import { isHighRiskForTransport } from "./risk";
-import type { Actor, EscortReason, RequestTransportInput } from "@hmis/contracts";
+import type { Actor, EscortReason, RequestTransportInput, TransportIsolation } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { TaskRow } from "../tasks";
@@ -35,6 +34,15 @@ async function placeExists(t: Exec, id: string): Promise<void> {
   const found = await (t as Db).select({ id: resources.id }).from(resources).where(eq(resources.id, id));
   if (found.length === 0) throw new TransportRefusal("unknown_place", { placeResourceId: id });
 }
+
+/** DECIDED: a merge keeps the STRICTER precaution and the STRONGER escort reason — never the weaker of two askers'. */
+const ISOLATION_RANK: Record<TransportIsolation, number> = { none: 0, contact: 1, droplet: 2, airborne: 3 };
+const ESCORT_RANK: Record<EscortReason, number> = { requested: 1, high_risk_flag: 2, critical_care_bed: 3 };
+const stricterIsolation = (a: string, b: string): TransportIsolation =>
+  (ISOLATION_RANK[a as TransportIsolation] ?? 0) >= (ISOLATION_RANK[b as TransportIsolation] ?? 0) ? a as TransportIsolation : b as TransportIsolation;
+const strongerEscort = (a: EscortReason | null, b: EscortReason | null): EscortReason | null =>
+  a === null ? b : b === null ? a : ESCORT_RANK[a] >= ESCORT_RANK[b] ? a : b;
+const OPEN_STATES = ["created", "assigned", "accepted", "in_progress"] as const;
 
 export type TransportRequestResult = { task: TaskRow; request: TransportRequestRow; merged: boolean; duplicate: boolean };
 
@@ -63,9 +71,27 @@ export async function requestTransport(exec: Exec, actor: Actor, raw: unknown, n
     if (from !== null) await placeExists(t, from);
     if (input.toResourceId !== undefined) await placeExists(t, input.toResourceId);
 
+    const mode = isMove ? (input.mode ?? "wheelchair") : null;
+    const toResourceId = input.toResourceId ?? null;
+    const toNote = input.toNote ?? null;
+    // DECIDED: the engine would merge this into the open task of the same kind, place and patient raised within ten
+    // minutes. If THAT task goes somewhere else or another way, it is a different move: raise it as its own task.
+    let sourceRef = input.sourceRef;
+    if (sourceRef === undefined && from !== null) {
+      await t.execute(sql`select pg_advisory_xact_lock(hashtext(${`tasks:${input.kind}:${from}:${patientId ?? "-"}`}))`);
+      const candidate = (await t.select({ to: transportRequests.toResourceId, toNote: transportRequests.toNote, mode: transportRequests.mode })
+        .from(tasks).innerJoin(transportRequests, eq(transportRequests.taskId, tasks.id))
+        .where(and(
+          eq(tasks.kind, input.kind), eq(tasks.placeResourceId, from), sql`${tasks.patientId} is not distinct from ${patientId}`,
+          inArray(tasks.state, [...OPEN_STATES]), gte(tasks.createdAt, new Date(now.getTime() - MERGE_WINDOW_MS)),
+        )).orderBy(desc(tasks.createdAt)).limit(1))[0];
+      if (candidate !== undefined && (candidate.to !== toResourceId || (candidate.to === null && candidate.toNote !== toNote) || candidate.mode !== mode)) {
+        sourceRef = `transport:distinct:${newId()}`;
+      }
+    }
     const raised = await raiseTask(t, actor, {
       kind: input.kind, placeResourceId: from, patientId, priority: input.priority, note: input.note,
-      ...(input.sourceRef === undefined ? {} : { sourceRef: input.sourceRef }),
+      ...(sourceRef === undefined ? {} : { sourceRef }),
     }, now).catch((e: unknown) => {
       if (e instanceof TaskError && e.code === "unknown_place") throw new TransportRefusal("unknown_place");
       throw e;
@@ -73,20 +99,22 @@ export async function requestTransport(exec: Exec, actor: Actor, raw: unknown, n
     const existing = await requestOfTask(t, raised.task.id, true);
     if (existing !== null) {
       if (raised.duplicate === true) return { task: raised.task, request: existing, merged: false, duplicate: true };
-      // MERGED: the first request's places and mode stand; a flag either asker raised is kept.
+      // MERGED (same place, destination and mode): a flag either asker raised is kept; the stricter isolation and the
+      // stronger escort reason win.
+      const reason = strongerEscort(existing.escortReason as EscortReason | null, escortReason);
       const upgraded = (await t.update(transportRequests).set({
         oxygen: existing.oxygen || input.oxygen === true,
         monitor: existing.monitor || input.monitor === true,
-        escortRequired: existing.escortRequired || escortReason !== null,
-        escortReason: existing.escortReason ?? escortReason,
+        isolation: stricterIsolation(existing.isolation, input.isolation ?? "none"),
+        escortRequired: existing.escortRequired || reason !== null,
+        escortReason: reason,
         updatedAt: now,
       }).where(eq(transportRequests.id, existing.id)).returning())[0]!;
       return { task: raised.task, request: upgraded, merged: raised.merged, duplicate: false };
     }
     const request = (await t.insert(transportRequests).values({
       id: newId(), taskId: raised.task.id, kind: input.kind, admissionId: input.admissionId ?? null,
-      fromResourceId: from, toResourceId: input.toResourceId ?? null, toNote: input.toNote ?? null,
-      mode: isMove ? (input.mode ?? "wheelchair") : null,
+      fromResourceId: from, toResourceId, toNote, mode,
       oxygen: input.oxygen === true, monitor: input.monitor === true, isolation: input.isolation ?? "none",
       reason: input.reason ?? null, escortRequired: escortReason !== null, escortReason,
       requestedBy: actor.id, createdAt: now, updatedAt: now,
@@ -126,8 +154,7 @@ export async function addEscort(exec: Exec, actor: Actor, raw: unknown, now: Dat
     const { task, req } = await openBeforeStart(t, input.taskId, input.version);
     if (req.kind !== TRANSPORT_KINDS.patientMove) throw new TransportRefusal("not_transport", { taskId: task.id });
     if (task.assigneeId === input.escortUserId) throw new TransportRefusal("escort_is_porter", { taskId: task.id });
-    const u = (await t.select({ active: users.active }).from(users).where(eq(users.id, input.escortUserId)))[0];
-    if (u === undefined || !u.active || !(await actorHoldsAnyRole(t, input.escortUserId, [...ESCORT_ROLE_KEYS]))) {
+    if (!(await escortIsClinical(t, input.escortUserId))) {
       throw new TransportRefusal("escort_not_clinical", { escortUserId: input.escortUserId });
     }
     return (await t.update(transportRequests).set({
@@ -148,11 +175,15 @@ export async function recordOxygenCheck(exec: Exec, actor: Actor, raw: unknown, 
 }
 
 /** Active users who may escort (the request sheet's and the porter's picker). */
+/** Same predicate as `escortIsClinical` (`actorHoldsAnyRole`): a permanent role, or an unexpired temporary grant. */
 export async function escortCandidates(db: Db, limit = 400): Promise<{ userId: string; name: string }[]> {
+  const keys = sql.join(ESCORT_ROLE_KEYS.map((k) => sql`${k}`), sql`, `);
   const rows = await db.execute<{ id: string; full_name: string }>(sql`
     select distinct u.id, u.full_name from users u
-    join role_assignments ra on ra.user_id = u.id
-    where u.active and ra.role_key in (${sql.join(ESCORT_ROLE_KEYS.map((k) => sql`${k}`), sql`, `)})
+    where u.active and (
+      exists (select 1 from role_assignments ra where ra.user_id = u.id and ra.role_key in (${keys}))
+      or exists (select 1 from temp_role_grants tg where tg.user_id = u.id and tg.role_key in (${keys}) and tg.expires_at > now())
+    )
     order by u.full_name limit ${limit}`);
   return rows.rows.map((r) => ({ userId: r.id, name: r.full_name }));
 }

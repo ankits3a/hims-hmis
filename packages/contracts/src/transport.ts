@@ -26,7 +26,7 @@ export const TRANSPORT_ISOLATION = ["none", "contact", "droplet", "airborne"] as
 export type TransportIsolation = (typeof TRANSPORT_ISOLATION)[number];
 export const TRANSPORT_REASONS = ["admit", "transfer", "imaging", "ot", "discharge", "other"] as const;
 export type TransportReason = (typeof TRANSPORT_REASONS)[number];
-/** Why an escort is required: the bed's critical-care class, or the requester's high-risk flag. */
+/** Why an escort is required: the bed's critical-care class, or the requester's high-risk flag. Strongest first. */
 export const ESCORT_REASONS = ["critical_care_bed", "high_risk_flag", "requested"] as const;
 export type EscortReason = (typeof ESCORT_REASONS)[number];
 
@@ -87,6 +87,7 @@ export const TRANSPORT_REFUSALS = {
   scan_required: { sentence: "Scan the patient's wristband to hand over.", fix: "Scan wristband" },
   band_unknown: { sentence: "This wristband is not known.", fix: "Scan the band on the patient's wrist." },
   band_void: { sentence: "This wristband was replaced.", fix: "Scan the patient's new band." },
+  band_mismatch: { sentence: "This band's code does not match its patient.", fix: "Stop. Call the ward nurse to check the band." },
   wrong_patient: { sentence: "Wrong patient: this band is another patient's.", fix: "Stop. Scan the band of the patient you moved." },
 } as const satisfies Record<string, { sentence: string; fix: string }>;
 export type TransportRefusalCode = keyof typeof TRANSPORT_REFUSALS;

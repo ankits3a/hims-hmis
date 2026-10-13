@@ -22,6 +22,28 @@ export function refusalText(code: string | null, t: T): string {
   return t(`tasks.refusal.${code}`, { defaultValue: t(`transport.refusal.${code}`, { defaultValue: failed }) });
 }
 
+/**
+ * The wristband scan at Done. A patient move ALWAYS ends here — "My tasks" renders it even when the transport
+ * details have not loaded, so a plain Done (which the server refuses) is never offered.
+ */
+export function BandScanForm({ taskId, busy, onScan }: { taskId: string; busy: boolean; onScan: (code: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [code, setCode] = useState("");
+  const scan = (): void => { const v = code.trim(); if (v !== "") onScan(v); };
+  return (
+    <form className="trc-scan" onSubmit={(e) => { e.preventDefault(); scan(); }} data-testid="band-scan">
+      <label htmlFor={`band-${taskId}`}>{t("transport.scan.label")}</label>
+      <input
+        id={`band-${taskId}`} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="characters"
+        placeholder={t("transport.scan.placeholder")} data-testid="band-input"
+      />
+      <button type="submit" className="tk-act" disabled={busy || code.trim() === ""} data-testid="task-done">
+        {t("transport.scan.handover")}
+      </button>
+    </form>
+  );
+}
+
 export function TransportPanel({ c, d, verb, pool, busy, onAct, onNotice }: {
   c: TaskCard; d: TransportDetail; verb: "accept" | "start" | "done"; pool: boolean; busy: boolean;
   onAct: (verb: "accept" | "start" | "done", proof?: TaskProof) => void; onNotice: (text: string | null) => void;
@@ -31,7 +53,6 @@ export function TransportPanel({ c, d, verb, pool, busy, onAct, onNotice }: {
   const isMove = d.kind === PATIENT_MOVE_KIND;
   const beforeStart = !pool && (c.state === "assigned" || c.state === "accepted");
   const [picking, setPicking] = useState(false);
-  const [code, setCode] = useState("");
   const escorts = useQuery({ queryKey: ["transport", "escorts"], queryFn: fetchEscorts, enabled: picking, staleTime: 60_000 });
   const step = useMutation({
     mutationFn: (a: { kind: "escort"; userId: string } | { kind: "oxygen" }) =>
@@ -41,7 +62,6 @@ export function TransportPanel({ c, d, verb, pool, busy, onAct, onNotice }: {
   });
   const escortWords = d.escortState === "waiting" ? t("transport.escort.waiting")
     : d.escortState === "with_escort" ? t("transport.escort.with", { name: d.escortName ?? "" }) : null;
-  const scan = (): void => { const v = code.trim(); if (v !== "") onAct("done", { kind: "scan", code: v }); };
 
   return (
     <div className="trc" data-testid={`transport-${c.id}`}>
@@ -86,16 +106,7 @@ export function TransportPanel({ c, d, verb, pool, busy, onAct, onNotice }: {
         </button>
       )}
       {isMove && !pool && c.state === "in_progress" ? (
-        <form className="trc-scan" onSubmit={(e) => { e.preventDefault(); scan(); }} data-testid="band-scan">
-          <label htmlFor={`band-${c.id}`}>{t("transport.scan.label")}</label>
-          <input
-            id={`band-${c.id}`} value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="characters"
-            placeholder={t("transport.scan.placeholder")} data-testid="band-input"
-          />
-          <button type="submit" className="tk-act" disabled={busy || code.trim() === ""} data-testid="task-done">
-            {t("transport.scan.handover")}
-          </button>
-        </form>
+        <BandScanForm taskId={c.id} busy={busy} onScan={(code) => onAct("done", { kind: "scan", code })} />
       ) : (
         <button
           type="button" className={pool ? "tk-act take" : "tk-act"} disabled={busy}

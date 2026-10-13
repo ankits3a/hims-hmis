@@ -30,12 +30,12 @@ Source: `apps/core/src/modules/tasks/`
   - `assignTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `cancelTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: CancelOptions = {}): Promise<TaskRow>`
   - `cancelTasksForPlace(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<string[]>`
-  - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<RaiseResult>`
   - `returnToPool(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: ActOptions = {}): Promise<TaskRow>`
-  - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
-  - types: `ActOptions`, `CancelOptions`, `RaiseResult`, `TaskRow`
+  - types: `ActOptions`, `CancelOptions`, `HookOptions`, `RaiseResult`, `TaskRow`
 - `errors.ts`
   - `class TaskError`
   - `class TaskKindRefusal`

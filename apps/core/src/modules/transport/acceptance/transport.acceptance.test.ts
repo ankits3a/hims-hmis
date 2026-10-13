@@ -78,7 +78,8 @@ describe("E1.6 transport — acceptance", () => {
     await expect(completeTask(db, porter, { taskId: r.task.id })).rejects.toMatchObject({ code: "proof_missing" });
     const still = (await db.select().from(tasks).where(eq(tasks.id, r.task.id)))[0]!;
     expect(still.state).toBe("in_progress");
-    await expect(completeTask(db, porter, { taskId: r.task.id, proof: { kind: "scan", code: `IPDBAND1|${p.band}|U0000000` } }))
+    // The patient's own band (its Code 128 serial; the QR form's UHID is checked in review.test.ts) completes it.
+    await expect(completeTask(db, porter, { taskId: r.task.id, proof: { kind: "scan", code: p.band } }))
       .resolves.toMatchObject({ state: "done" });
     const req = (await db.select().from(transportRequests).where(eq(transportRequests.taskId, r.task.id)))[0]!;
     expect(req.handoverBandSerial).toBe(p.band);

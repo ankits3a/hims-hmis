@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { TRANSPORT_KIND_LIST, OPEN_TASK_STATES } from "@hmis/contracts";
 import { resources, tasks, transportRequests, users } from "../../kernel/db/schema";
 import { admissionForTransport, initialsOf, movableAdmissions } from "../ipd";
@@ -42,7 +42,9 @@ export async function transportDetails(db: Db, actor: Actor, taskIds: readonly s
   const ids = [...new Set(taskIds)].slice(0, 100);
   if (ids.length === 0) return { details: [] };
   const rows = await db.select({ r: transportRequests, patientId: tasks.patientId }).from(transportRequests)
-    .innerJoin(tasks, eq(tasks.id, transportRequests.taskId)).where(inArray(transportRequests.taskId, ids));
+    .innerJoin(tasks, eq(tasks.id, transportRequests.taskId))
+    // Only the asker's own tasks and the pool: never another porter's card (a patient's name rides on it).
+    .where(and(inArray(transportRequests.taskId, ids), or(eq(tasks.assigneeId, actor.id), eq(tasks.state, "created"))));
   const places = await placeNames(db, rows.flatMap((x) => [x.r.fromResourceId, x.r.toResourceId]));
   const escorts = await userNames(db, rows.map((x) => x.r.escortUserId));
   const summaries = await getPatientSummaries(db, actor, rows.map((x) => x.patientId).filter((p): p is string => p !== null));
@@ -87,7 +89,8 @@ export async function transportBoard(db: Db, now: Date = new Date()): Promise<Tr
     rows.push({
       taskId: c.id, kind: c.kind as TransportKind, state: c.state, priority: c.priority,
       fromName: r?.fromResourceId != null ? places.get(r.fromResourceId) ?? c.placeName : c.placeName,
-      toName: r === undefined ? null : r.toResourceId === null ? r.toNote : places.get(r.toResourceId) ?? r.toNote,
+      // A wall: a register place's name only, never the requester's free text (it may carry a name or a diagnosis).
+      toName: r?.toResourceId != null ? places.get(r.toResourceId) ?? null : null,
       mode: (r?.mode ?? null) as TransportMode | null, oxygen: r?.oxygen ?? false, monitor: r?.monitor ?? false,
       isolation: (r?.isolation ?? "none") as TransportIsolation, escortState: esc.state,
       porterInitials: c.assigneeName === null ? null : initialsOf(c.assigneeName),
@@ -101,7 +104,8 @@ export async function transportBoard(db: Db, now: Date = new Date()): Promise<Tr
     .where(and(inArray(tasks.state, [...OPEN_TASK_STATES]), WAITING_ESCORT_SQL)))[0]!.n;
   return {
     serverNow: base.serverNow, rows,
-    workers: base.workers,
+    // A wall: porters by initials only.
+    workers: base.workers.map((w) => ({ ...w, name: initialsOf(w.name) })),
     counts: { ...base.counts, waitingEscort: waiting },
   };
 }
