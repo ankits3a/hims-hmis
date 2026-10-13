@@ -18047,7 +18047,12 @@
       "noTrays": "कोई ट्रे नहीं",
       "build": "अभी बनाएँ",
       "print": "छापें",
-      "dispatch": "भेजें"
+      "dispatch": "भेजें",
+      "changed": "बदला — फिर छापें",
+      "reprint": "बदलाव छापें",
+      "printedOk": "छप गया? {{ward}}",
+      "printedYes": "हाँ, छप गया",
+      "printedNo": "नहीं"
     },
     "print": {
       "title": "{{ward}} — {{meal}}, {{date}}",
@@ -18059,7 +18064,8 @@
       "pref": "पसंद",
       "tube": "ट्यूब फ़ीड",
       "allergies": "एलर्जी",
-      "npoNoTray": "NPO — ट्रे नहीं"
+      "npoNoTray": "NPO — ट्रे नहीं",
+      "changesOnly": "केवल बदलाव"
     },
     "ward": {
       "title": "आहार पत्रक",
@@ -18130,7 +18136,9 @@
       "line_not_found": "ट्रे नहीं मिली।",
       "line_withdrawn": "ट्रे हटाई गई — न परोसें।",
       "list_not_dispatched": "ट्रॉली अभी नहीं भेजी।",
-      "cutoff_after_serve": "अंतिम समय परोसने से पहले हो।"
+      "cutoff_after_serve": "अंतिम समय परोसने से पहले हो।",
+      "rounds_overlap": "भोजन के समय क्रम में हों, आपस में न टकराएँ।",
+      "list_changed_since_print": "छपने के बाद सूची बदली — पहले बदलाव छापें।"
     }
   }
 }

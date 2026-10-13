@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
 import { useAuth } from "../lib/auth";
+import { istWallToIso } from "../lib/opd-api";
 import {
   dietRefusal, fetchDietCatalogue, fetchDietWards, fetchWardSheet, istClock, liftNpoApi, orderDietApi, requestConsultApi, serveLineApi,
   startNpoApi,
@@ -71,27 +72,31 @@ function BedCard({ r, sheet }: { r: DietWardSheetRow; sheet: DietWardSheetView }
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const ok = (k: string): void => { setNotice({ ok: true, text: t(k) }); setPanel(null); void qc.invalidateQueries({ queryKey: ["diet"] }); };
   const fail = (e: unknown): void => setNotice({ ok: false, text: t(`diet.refusal.${dietRefusal(e) ?? "failed"}`, { defaultValue: t("diet.refusal.failed") }) });
-  const lift = useMutation({ mutationFn: () => liftNpoApi(r.npo!.id, "Lifted at the ward"), onSuccess: () => ok("diet.ward.saved.lifted"), onError: fail });
+  const lift = useMutation({ mutationFn: (npoId: string) => liftNpoApi(npoId, "Lifted at the ward"), onSuccess: () => ok("diet.ward.saved.lifted"), onError: fail });
   const serve = useMutation({ mutationFn: (o: "delivered" | "refused") => serveLineApi(r.nextLine!.id, o), onSuccess: () => ok("diet.ward.saved.served"), onError: fail });
   const line = r.nextLine;
   const canServe = can("diet.serve") && line !== null && line.state === "active" && line.served === null
     && (sheet.next.state === "dispatched" || sheet.next.state === "delivered");
 
   return (
-    <section className={`box dw-card${r.npo !== null ? " npo" : ""}`} data-testid={`dw-bed-${r.admissionId}`}>
+    <section className={`box dw-card${r.npos.length > 0 ? " npo" : ""}`} data-testid={`dw-bed-${r.admissionId}`}>
       <div className="dw-top">
         <span className="dw-bed">{r.bedCode ?? "—"}</span>
         <span className="dw-name" data-testid="dw-name">{r.patient.name}</span>
         {r.patient.uhid !== "" && <span className="dw-uhid">{r.patient.uhid}</span>}
       </div>
-      {r.npo !== null && (
-        <div className="dw-npo" data-testid="dw-npo">
-          <b>{t("diet.ward.npo")}</b> · {r.npo.endsAt === null
-            ? t("diet.ward.npoSince", { at: istClock(r.npo.startsAt) })
-            : t("diet.ward.npoWindow", { from: istClock(r.npo.startsAt), to: istClock(r.npo.endsAt) })}
-          <span className="dw-why"> · {r.npo.reason}</span>
+      {/* Review item 15: every live NPO, now or ahead, each with its own Lift. */}
+      {r.npos.map((n) => (
+        <div key={n.id} className="dw-npo" data-testid="dw-npo">
+          <b>{t("diet.ward.npo")}</b> · {n.endsAt === null
+            ? t("diet.ward.npoSince", { at: istClock(n.startsAt) })
+            : t("diet.ward.npoWindow", { from: istClock(n.startsAt), to: istClock(n.endsAt) })}
+          <span className="dw-why"> · {n.reason}</span>
+          {can("diet.npo") && (
+            <button type="button" className="dw-btn ghost dw-lift" disabled={lift.isPending} onClick={() => lift.mutate(n.id)} data-testid="dw-lift-npo"><Two k="diet.ward.liftNpo" /></button>
+          )}
         </div>
-      )}
+      ))}
       <div className="dw-diet" data-testid="dw-diet">
         {r.order === null
           ? <span className="dw-flag">{t("diet.ward.noOrder")}</span>
@@ -115,8 +120,7 @@ function BedCard({ r, sheet }: { r: DietWardSheetRow; sheet: DietWardSheetView }
           </>
         )}
         {can("diet.order") && <button type="button" className="dw-btn ghost" onClick={() => setPanel(panel === "order" ? null : "order")} data-testid="dw-order"><Two k="diet.ward.orderDiet" /></button>}
-        {can("diet.npo") && r.npo === null && <button type="button" className="dw-btn red" onClick={() => setPanel(panel === "npo" ? null : "npo")} data-testid="dw-set-npo"><Two k="diet.ward.setNpo" /></button>}
-        {can("diet.npo") && r.npo !== null && <button type="button" className="dw-btn ghost" disabled={lift.isPending} onClick={() => lift.mutate()} data-testid="dw-lift-npo"><Two k="diet.ward.liftNpo" /></button>}
+        {can("diet.npo") && <button type="button" className="dw-btn red" onClick={() => setPanel(panel === "npo" ? null : "npo")} data-testid="dw-set-npo"><Two k="diet.ward.setNpo" /></button>}
         {(can("diet.order") || can("diet.npo")) && !r.consultOpen && (
           <button type="button" className="dw-btn ghost" onClick={() => setPanel(panel === "consult" ? null : "consult")} data-testid="dw-ask"><Two k="diet.ward.askDietician" /></button>
         )}
@@ -166,7 +170,7 @@ function NpoPanel({ r, onOk, onFail }: { r: DietWardSheetRow; onOk: () => void; 
   const [reason, setReason] = useState("");
   const [until, setUntil] = useState("");
   const save = useMutation({
-    mutationFn: () => startNpoApi({ admissionId: r.admissionId, reason: reason.trim(), ...(until === "" ? {} : { endsAt: new Date(`${until}:00+05:30`).toISOString() }) }),
+    mutationFn: () => startNpoApi({ admissionId: r.admissionId, reason: reason.trim(), ...(until === "" ? {} : { endsAt: istWallToIso(until) }) }),
     onSuccess: onOk, onError: onFail,
   });
   return (

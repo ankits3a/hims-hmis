@@ -18047,7 +18047,12 @@
       "noTrays": "No trays",
       "build": "Build now",
       "print": "Print",
-      "dispatch": "Dispatch"
+      "dispatch": "Dispatch",
+      "changed": "Changed — reprint",
+      "reprint": "Reprint changes",
+      "printedOk": "Printed OK? {{ward}}",
+      "printedYes": "Yes, printed",
+      "printedNo": "No"
     },
     "print": {
       "title": "{{ward}} — {{meal}}, {{date}}",
@@ -18059,7 +18064,8 @@
       "pref": "Pref.",
       "tube": "Tube feed",
       "allergies": "Allergies",
-      "npoNoTray": "NPO — no tray"
+      "npoNoTray": "NPO — no tray",
+      "changesOnly": "changes only"
     },
     "ward": {
       "title": "Diet sheet",
@@ -18130,7 +18136,9 @@
       "line_not_found": "Tray not found.",
       "line_withdrawn": "Tray withdrawn — do not serve.",
       "list_not_dispatched": "Trolley not sent yet.",
-      "cutoff_after_serve": "Cut-off must be before serve."
+      "cutoff_after_serve": "Cut-off must be before serve.",
+      "rounds_overlap": "Meal rounds must run in order without overlapping.",
+      "list_changed_since_print": "The list changed after printing — reprint the changes first."
     }
   }
 }

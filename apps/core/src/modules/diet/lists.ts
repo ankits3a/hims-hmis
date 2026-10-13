@@ -8,7 +8,8 @@ import { DietRefusal } from "./errors";
 import { dietListBuilt, dietListDispatched, dietTrayServed } from "./events";
 import { requirePermission } from "./guard";
 import { DIET_ACTOR, DIET_KITCHEN, DIET_SERVE } from "./names";
-import { dueSlots, mealRounds, slotOf } from "./rounds";
+import { dueSlots, mealRounds, missedSlots, slotOf } from "./rounds";
+import { tellKitchen } from "./notices";
 import { exclusiveListsLock, npoCovering, trayFor } from "./trays";
 import type { Actor, DietMeal } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -83,8 +84,19 @@ export async function buildLists(db: Db, actor: Actor, raw: unknown, now: Date =
 
 /** THE MEAL CLOCK (worker, every minute on the task clock's tick): every meal past its cut-off and not yet served. */
 export async function buildDueLists(db: Db, now: Date = new Date()): Promise<number> {
+  const rounds = await mealRounds(db);
   let n = 0;
-  for (const slot of dueSlots(await mealRounds(db), now)) n += (await buildSlot(db, DIET_ACTOR, slot, now)).length;
+  for (const slot of dueSlots(rounds, now)) n += (await buildSlot(db, DIET_ACTOR, slot, now)).length;
+  // Review item 12: a meal whose serve time passed in the last two hours with a ward that had patients and no list
+  // (the worker was down through the cut-off) is a MISSED list — the kitchen is told once per meal.
+  for (const slot of missedSlots(rounds, now)) {
+    const built = new Set((await listsOfSlot(db, slot.date, slot.meal)).map((l) => l.wardId));
+    const wards = new Map((await placedCensus(db)).map((p) => [p.wardId, p.wardName] as const));
+    const missing = [...wards].filter(([id]) => !built.has(id)).map(([, name]) => name);
+    if (missing.length === 0) continue;
+    await db.transaction((t) => tellKitchen(t, `Meal list missed · ${slot.meal}`, `${slot.date} ${slot.meal}: no list for ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}`,
+      `${slot.date}:${slot.meal}`, `diet-missed:${slot.date}:${slot.meal}`, now));
+  }
   return n;
 }
 
@@ -94,14 +106,17 @@ async function lockedList(t: Tx, listId: string): Promise<typeof dietMealLists.$
   return list;
 }
 
-/** The kitchen printed the A4 list and the tray labels. The first print is kept; a reprint changes nothing. */
+/** The kitchen confirmed the A4 list and the tray labels came out ("Printed OK?" on the screen). */
 export async function markPrinted(db: Db, actor: Actor, listId: string, now: Date = new Date()): Promise<{ id: string; printedAt: string }> {
   await requirePermission(db, actor, DIET_KITCHEN);
   return db.transaction(async (t) => {
     const list = await lockedList(t, listId);
-    if (list.printedAt !== null) return { id: list.id, printedAt: list.printedAt.toISOString() };
-    await t.update(dietMealLists).set({ printedAt: now, printedBy: actor.id }).where(eq(dietMealLists.id, list.id));
-    return { id: list.id, printedAt: now.toISOString() };
+    // The first print is kept in `printed_at`; every print (a reprint of the changes) moves `last_printed_at` and clears
+    // `changed_since_print`, which re-opens dispatch.
+    await t.update(dietMealLists).set({
+      printedAt: list.printedAt ?? now, printedBy: list.printedBy ?? actor.id, lastPrintedAt: now, changedSincePrint: false,
+    }).where(eq(dietMealLists.id, list.id));
+    return { id: list.id, printedAt: (list.printedAt ?? now).toISOString() };
   });
 }
 
@@ -112,12 +127,16 @@ export async function dispatchList(db: Db, actor: Actor, listId: string, now: Da
     const list = await lockedList(t, listId);
     if (list.dispatchedAt !== null) throw new DietRefusal("list_already_dispatched", { listId });
     if (list.printedAt === null) throw new DietRefusal("list_not_printed", { listId });
+    // Review item 1: the paper on the trolley must be the truth — a change after print waits for the reprint.
+    if (list.changedSincePrint) throw new DietRefusal("list_changed_since_print", { listId });
     const due = list.serveAt.getTime() > now.getTime() ? new Date(list.serveAt.getTime() + 15 * 60_000) : new Date(now.getTime() + 30 * 60_000);
     const { task } = await raiseTask(t, DIET_ACTOR, {
       kind: DIET_TASK_KINDS.delivery, placeResourceId: list.wardId, sourceRef: `diet-list:${list.id}`, dueAt: due.toISOString(),
       note: `${list.meal} trolley`,
     }, now);
     await t.update(dietMealLists).set({ dispatchedAt: now, dispatchedBy: actor.id, deliveryTaskId: task.id }).where(eq(dietMealLists.id, list.id));
+    // Review item 6: the load's task covers exactly the trays on this trolley.
+    await t.update(dietMealLines).set({ onLoad: true }).where(and(eq(dietMealLines.listId, list.id), eq(dietMealLines.state, "active")));
     await appendEvent(t, dietListDispatched.make({ actor, correlationId: list.id, payload: { listId: list.id, wardId: list.wardId, taskId: task.id } }));
     return { id: list.id, taskId: task.id };
   });

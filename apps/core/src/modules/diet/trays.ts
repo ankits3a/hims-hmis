@@ -1,10 +1,11 @@
 import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import { DIET_TASK_KINDS, newId } from "@hmis/contracts";
-import { dietMealLines, dietMealLists, dietNpo, dietOrders } from "../../kernel/db/schema";
+import { DIET_TASK_KINDS, dietEntry, newId } from "@hmis/contracts";
+import { dietMealLines, dietMealLists, dietNpo, dietOrders, resources } from "../../kernel/db/schema";
 import { admissionPlace } from "../ipd";
 import { raiseTask } from "../tasks";
 import "./kinds";
 import { DIET_ACTOR } from "./names";
+import { tellWardAndKitchen } from "./notices";
 import type { DietCode, DietPreference, DietWithdrawReason } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -68,21 +69,54 @@ const END_REASON: Record<string, DietWithdrawReason> = {
   discharged: "discharged", lama: "lama", absconded: "absconded", deceased: "deceased", transferred_out: "transferred_out",
 };
 
-const MEAL_WORDS: Record<string, string> = { breakfast: "breakfast", lunch: "lunch", evening: "evening tea", dinner: "dinner" };
+export const MEAL_WORDS: Record<string, string> = { breakfast: "breakfast", lunch: "lunch", evening: "evening tea", dinner: "dinner" };
 
-/** Tell a ward on the task engine (its own list changed after it was printed). One task per line and cause. */
-export async function tellWard(
-  tx: Tx, wardId: string, patientId: string, note: string, sourceRef: string, now: Date,
-): Promise<void> {
-  await raiseTask(tx, DIET_ACTOR, {
-    kind: DIET_TASK_KINDS.wardNotice, placeResourceId: wardId, patientId, note: note.slice(0, 280), sourceRef, priority: "urgent",
+type ListRow = typeof dietMealLists.$inferSelect;
+type LineRow = typeof dietMealLines.$inferSelect;
+type Change = "withdrawn" | "added" | "changed";
+
+/**
+ * ═══ AFTER PRINT, THE PAPER MUST NOT GO STALE (DECIDED, review of 01d53113) ═══
+ * A list never printed changes silently (the print will show the truth). Once printed:
+ *   · before dispatch — the list is marked `changed_since_print` (dispatch refused until reprint), the line `changed_at`
+ *     (the reprint shows the changes, highlighted), and the ward and kitchen are told;
+ *   · after dispatch — the ward and kitchen are told "do not serve" (withdrawn) or "tray missing — a separate tray
+ *     follows" (added / changed); an added or changed tray leaves the load (`on_load` false) and gets its OWN delivery
+ *     task, so the trolley's Done never marks it delivered.
+ */
+async function afterChange(
+  tx: Tx, list: ListRow, line: LineRow, change: Change, what: string, wardName: string, now: Date, cause?: string,
+): Promise<number> {
+  if (list.printedAt === null) return 0;
+  const words = cause === undefined ? what : `${cause}: ${what}`;
+  const meal = MEAL_WORDS[list.meal] ?? list.meal;
+  const key = `${line.id}:${change}:${String(now.getTime())}`;
+  let said = words;
+  if (list.dispatchedAt === null) {
+    await tx.update(dietMealLists).set({ changedSincePrint: true }).where(eq(dietMealLists.id, list.id));
+    await tx.update(dietMealLines).set({ changedAt: now }).where(eq(dietMealLines.id, line.id));
+    said = `${words} — list changed, reprint before dispatch`;
+  } else if (change === "withdrawn") {
+    said = `${words} — do not serve; take the tray back`;
+  } else {
+    const { task } = await raiseTask(tx, DIET_ACTOR, {
+      kind: DIET_TASK_KINDS.delivery, placeResourceId: list.wardId, patientId: line.patientId, priority: "urgent",
+      sourceRef: `diet-tray:${key}`.slice(0, 128), note: `${meal} tray · bed ${line.bedCode ?? "?"}`,
+    }, now);
+    await tx.update(dietMealLines).set({ onLoad: false, trayTaskId: task.id, changedAt: now }).where(eq(dietMealLines.id, line.id));
+    said = `${words} — tray missing from the trolley; a separate tray follows`;
+  }
+  await tellWardAndKitchen(tx, {
+    wardId: list.wardId, wardName, bedCode: line.bedCode, admissionId: line.admissionId, patientId: line.patientId, meal, words: said, key,
   }, now);
+  return 1;
 }
 
 export type ReconcileResult = { withdrawn: number; added: number; told: number };
 
 /** Bring every list still ahead to the tray rules for this admission. Call inside the caller's transaction. */
-export async function reconcileIn(tx: Tx, admissionId: string, now: Date): Promise<ReconcileResult> {
+/** `cause` (e.g. "OT cancelled — NPO lifted") opens every notice this pass raises, so the ward reads why. */
+export async function reconcileIn(tx: Tx, admissionId: string, now: Date, cause?: string): Promise<ReconcileResult> {
   const out: ReconcileResult = { withdrawn: 0, added: 0, told: 0 };
   await sharedListsLock(tx);
   const place = await admissionPlace(tx, admissionId);
@@ -99,65 +133,64 @@ export async function reconcileIn(tx: Tx, admissionId: string, now: Date): Promi
   ));
   const lineOf = new Map(lines.map((l) => [l.listId, l] as const));
   const tray = await trayFor(tx, admissionId);
+  const wardNames = new Map((await tx.select({ id: resources.id, name: resources.name }).from(resources)
+    .where(inArray(resources.id, [...new Set(lists.map((l) => l.wardId))]))).map((r) => [r.id, r.name] as const));
+  const label = (code: string): string => dietEntry(code as DietCode).label;
 
   for (const list of lists) {
     const line = lineOf.get(list.id);
-    const meal = MEAL_WORDS[list.meal] ?? list.meal;
+    const wardName = wardNames.get(list.wardId) ?? "ward";
     const here = place.placed && place.wardId === list.wardId;
     if (!here) {
       if (line === undefined || line.state !== "active") continue;
       const reason: DietWithdrawReason = place.ended ? (END_REASON[place.state] ?? "discharged") : "transferred";
-      await tx.update(dietMealLines).set({ state: "withdrawn", withdrawnReason: reason, withdrawnAt: now }).where(eq(dietMealLines.id, line.id));
+      const [after] = await tx.update(dietMealLines).set({ state: "withdrawn", withdrawnReason: reason, withdrawnAt: now })
+        .where(eq(dietMealLines.id, line.id)).returning();
       out.withdrawn += 1;
-      // DONE MEANS: a transfer after the list was printed updates the list AND tells the old ward.
-      if (reason === "transferred" && list.printedAt !== null) {
-        const to = place.wardName ?? "another ward";
-        await tellWard(tx, list.wardId, place.patientId,
-          `Bed ${line.bedCode ?? "?"}: patient moved to ${to}. Do not serve ${meal} here${list.dispatchedAt !== null ? " — take the tray back" : ""}.`,
-          `diet-moved:${line.id}`, now);
-        out.told += 1;
-      }
+      const words = reason === "transferred" ? `moved to ${place.wardName ?? "another ward"}` : `stay ended (${reason})`;
+      out.told += await afterChange(tx, list, after!, "withdrawn", words, wardName, now, cause);
       continue;
     }
     const npo = await npoCovering(tx, place.patientId, list.serveAt);
     if (line === undefined) {
-      await tx.insert(dietMealLines).values({
+      const [added] = await tx.insert(dietMealLines).values({
         id: newId(), listId: list.id, admissionId, patientId: place.patientId, bedId: place.bedId, bedCode: place.bedCode,
         code: tray.code, preference: tray.preference, tube: tray.tube, defaulted: tray.defaulted, late: true,
         state: npo === null ? "active" : "withdrawn", withdrawnReason: npo === null ? null : "npo", withdrawnAt: npo === null ? null : now,
         createdAt: now,
-      }).onConflictDoNothing();
-      if (npo === null) out.added += 1;
-      continue;
-    }
-    if (npo !== null && line.state === "active") {
-      await tx.update(dietMealLines).set({ state: "withdrawn", withdrawnReason: "npo", withdrawnAt: now }).where(eq(dietMealLines.id, line.id));
-      out.withdrawn += 1;
-      if (list.printedAt !== null) {
-        await tellWard(tx, list.wardId, place.patientId,
-          `Bed ${line.bedCode ?? "?"}: NPO. Do not serve ${meal}${list.dispatchedAt !== null ? " — take the tray back" : ""}.`,
-          `diet-npo:${line.id}:${npo.id}`, now);
-        out.told += 1;
+      }).onConflictDoNothing().returning();
+      if (added !== undefined && npo === null) {
+        out.added += 1;
+        out.told += await afterChange(tx, list, added, "added", `added late — ${label(tray.code)}`, wardName, now, cause);
       }
       continue;
     }
-    if (npo === null && line.state === "withdrawn") {
-      await tx.update(dietMealLines).set({
-        state: "active", withdrawnReason: null, withdrawnAt: null, late: true, bedId: place.bedId, bedCode: place.bedCode,
-        code: tray.code, preference: tray.preference, tube: tray.tube, defaulted: tray.defaulted,
-      }).where(eq(dietMealLines.id, line.id));
-      out.added += 1;
+    if (npo !== null && line.state === "active") {
+      const [after] = await tx.update(dietMealLines).set({ state: "withdrawn", withdrawnReason: "npo", withdrawnAt: now })
+        .where(eq(dietMealLines.id, line.id)).returning();
+      out.withdrawn += 1;
+      out.told += await afterChange(tx, list, after!, "withdrawn", "NPO", wardName, now, cause);
       continue;
     }
-    // Same ward, same state: keep the bed current; change the diet only while the trolley has not left.
+    if (npo === null && line.state === "withdrawn") {
+      const [after] = await tx.update(dietMealLines).set({
+        state: "active", withdrawnReason: null, withdrawnAt: null, late: true, bedId: place.bedId, bedCode: place.bedCode,
+        code: tray.code, preference: tray.preference, tube: tray.tube, defaulted: tray.defaulted,
+      }).where(eq(dietMealLines.id, line.id)).returning();
+      out.added += 1;
+      out.told += await afterChange(tx, list, after!, "added", `back on the list — ${label(tray.code)}`, wardName, now, cause);
+      continue;
+    }
+    // Same ward, same state: keep the bed current; a diet change follows the print rules above.
     const bedMoved = line.bedId !== place.bedId;
-    const dietMoved = list.dispatchedAt === null && line.state === "active"
+    const dietMoved = line.state === "active" && line.served === null
       && (line.code !== tray.code || line.preference !== tray.preference || line.tube !== tray.tube || line.defaulted !== tray.defaulted);
     if (bedMoved || dietMoved) {
-      await tx.update(dietMealLines).set({
+      const [after] = await tx.update(dietMealLines).set({
         bedId: place.bedId, bedCode: place.bedCode,
         ...(dietMoved ? { code: tray.code, preference: tray.preference, tube: tray.tube, defaulted: tray.defaulted } : {}),
-      }).where(eq(dietMealLines.id, line.id));
+      }).where(eq(dietMealLines.id, line.id)).returning();
+      if (dietMoved) out.told += await afterChange(tx, list, after!, "changed", `diet now ${label(tray.code)} (was ${label(line.code)})`, wardName, now, cause);
     }
   }
   return out;

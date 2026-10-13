@@ -6,15 +6,15 @@ import "./kinds";
 export { dietManifest } from "./manifest";
 export {
   DIETICIAN_ROLE, DIET_ACTOR, DIET_CONSUMER, DIET_KITCHEN, DIET_MANAGE, DIET_NPO, DIET_ORDER, DIET_PERMISSIONS, DIET_SERVE, DIET_VIEW,
-  KITCHEN_ROLE,
+  DIET_CLINICAL_VIEW, KITCHEN_ROLE,
 } from "./names";
 export { DIET_DELIVERY_TASK, DIET_WARD_NOTICE_TASK, DIET_WARD_SKILL } from "./kinds";
 export { DietModule } from "./diet.module";
 export { DietRefusal, dietHttpStatus } from "./errors";
 export { DIET_EVENTS } from "./events";
-export { dietConsumer, handleDietEvent } from "./consumer";
+export { backfillOtNpo, dietConsumer, handleDietEvent } from "./consumer";
 export { buildDueLists, buildLists, buildSlot, dispatchList, markPrinted, serveLine } from "./lists";
-export { completeConsult, endStay, liftNpo, liftOtNpo, npoForOtBooking, orderDiet, requestConsult, setMealRound, startNpo } from "./orders";
+export { completeConsult, endStay, liftNpo, liftOtNpo, npoForOtBooking, orderDiet, syncOtNpo, requestConsult, setMealRound, startNpo } from "./orders";
 export { consultQueue, dietWards, kitchenBoard, readList, wardSheet } from "./reads";
 export { dueSlots, istDayStart, mealRounds, nextSlot, slotOf } from "./rounds";
 export type { MealSlot } from "./rounds";

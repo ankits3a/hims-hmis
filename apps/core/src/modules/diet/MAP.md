@@ -78,11 +78,34 @@ A leaf: it imports `ipd`, `tasks`, `patients` (types) only through their `index.
 - **Installed in BOTH processes** (the passes shape): the manifest's subscriptions need `workerConsumers`' entry in the
   same commit; the worker also needs the two task kinds (`WORKER_TASK_KINDS`, pinned by
   `kernel/worker/task-kinds.test.ts`).
-- OT postponement emits NO event (`ot/booking.ts` `postponeCase`): a postponed case keeps its old NPO day until a
-  person lifts it. Owed to the OT lane (an event), not patched here.
+- **The printed paper is never stale at dispatch** (DECIDED, review of 01d53113, `trays.ts` `afterChange`). After print,
+  any change (NPO, lift, diet change, a tray added by an admission or a transfer, a tray removed) marks the list
+  `changed_since_print`, stamps the line `changed_at`, and tells the ward (a `diet_ward_notice` task naming bed and patient,
+  alias if sealed, plus bells to `diet.npo` / `diet.serve` holders) and the kitchen (bells to `diet.kitchen`); dispatch
+  answers `list_changed_since_print` until the kitchen reprints — and the reprint carries only the changed lines,
+  highlighted. The screen marks a list printed only after "Printed OK?". After dispatch a change says "do not serve" or
+  "tray missing"; an added or changed tray leaves the load (`on_load` false) and gets its OWN `diet_delivery` task.
+- Bells carry ward, bed and meal — never a patient (GC6, `kernel/alerts/notices.ts`); the task note names the patient.
+- **OT dates.** OT moves a case's date with NO event (`postponeCase`; `list.resequenced` only re-orders a day; there is no
+  other date-change path). So diet re-reads the cases: on `list.published` for that day and at deploy
+  (`workerBackfills` → `backfillOtNpo`, every case from today on). One NPO row per case (`source_ref`): a new date or a
+  rebooking after a lift moves the same row; a cancelled case's NPO is lifted. A postponed case's NPO therefore moves
+  when its new day's list is published (or at the next deploy), not at the postponement itself.
+- A stay end lifts the admission's NPOs AND the patient's NPOs written before the admission (admission id null).
+- Without `diet.clinical.view` (the kitchen) the ward sheet carries no order note, NPO reason ("NPO") or provenance ids.
+- A consumer payload diet cannot read is logged and THROWN (the dispatcher retries); unrelated events are ignored.
+- The meal clock tells the kitchen (`diet.list_missed`, once per meal) when a meal was served in the last two hours with a
+  ward that had patients and no list (the worker was down through the cut-off).
+- Meal rounds are validated in order, without overlap (each serve at or before the next cut-off).
 - Tests pass explicit instants; the meal clock and every act take `now`. Never pin a date the code reads from the clock.
 
-## 5. Who calls diet
+## 5. Integration steps (owed when ipd-nursing merges)
+- Grant the nursing roles (`ward_nurse`, `nursing_supervisor`) `diet.view`, `diet.npo`, `diet.serve` and
+  `diet.clinical.view` in `scripts/seed-roles.ts` (+ README prose, `apps/core/test/seed-roles.test.ts` pairs). The OPD key `nurse` is not
+  touched. Then ward notices reach the ward's nurses by permission (`notices.ts` `holdersOf`); once nurses are assigned to
+  wards, narrow `holdersOf` to the ward's own.
+
+## 6. Who calls diet
 - kernel: `app.module.ts` (`DietModule`), `kernel/modules/manifests.ts`, `kernel/worker/worker.module.ts` (install +
   `dietConsumer` + task kinds), `kernel/worker/jobs.ts` (`buildDueLists` on the task-clock tick), `kernel/desk` (card).
 - Owed (later lanes): the nursing nutrition screen flags patients for the dietician (ipd-nursing); late-meal small stock;

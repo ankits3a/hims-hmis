@@ -105,6 +105,10 @@ export const dietMealLists = pgTable(
     builtBy: text("built_by").notNull(),
     printedAt: timestamp("printed_at", { withTimezone: true }),
     printedBy: text("printed_by"),
+    /** The newest print (a reprint after a change); `printed_at` keeps the first. */
+    lastPrintedAt: timestamp("last_printed_at", { withTimezone: true }),
+    /** A line changed after the newest print: dispatch is refused until the kitchen reprints. */
+    changedSincePrint: boolean("changed_since_print").notNull().default(false),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     dispatchedBy: text("dispatched_by"),
     deliveryTaskId: text("delivery_task_id"),
@@ -139,6 +143,12 @@ export const dietMealLines = pgTable(
     served: text("served"),
     servedAt: timestamp("served_at", { withTimezone: true }),
     servedBy: text("served_by"),
+    /** Last change after the list was printed (the reprint highlights these). */
+    changedAt: timestamp("changed_at", { withTimezone: true }),
+    /** On the trolley the kitchen dispatched: the load's delivery task covers it. */
+    onLoad: boolean("on_load").notNull().default(false),
+    /** A tray added or changed after dispatch travels on its own task. */
+    trayTaskId: text("tray_task_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (t) => [

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
 import { useAuth } from "../lib/auth";
 import { buildListsApi, dietRefusal, dispatchListApi, fetchKitchenBoard, istClock, markPrintedApi } from "../lib/diet-api";
+import { todayIst } from "../lib/opd-api";
 import { useServerNow } from "./my-tasks";
 import type { DietCode, DietKitchenBoardView, DietLineView, DietListView, DietMeal } from "@hmis/contracts";
 import "./diet.css";
@@ -56,6 +57,13 @@ export function DietKitchen(): React.ReactElement {
   const now = useServerNow(q.data?.serverNow, 30_000);
   const [gridRef, fit] = useCardsThatFit();
   const [printing, setPrinting] = useState<{ l: DietListView; n: number } | null>(null);
+  // Review item 17: a list is marked printed only when the kitchen says the paper came out ("Printed OK?").
+  const [confirming, setConfirming] = useState<DietListView | null>(null);
+  const qc = useQueryClient();
+  const confirm = useMutation({
+    mutationFn: (id: string) => markPrintedApi(id),
+    onSuccess: () => { setConfirming(null); void qc.invalidateQueries({ queryKey: ["diet"] }); },
+  });
   const board = q.data;
   const lists = board?.lists ?? [];
   const shown = lists.length > fit ? lists.slice(0, Math.max(1, fit - 1)) : lists;
@@ -79,11 +87,19 @@ export function DietKitchen(): React.ReactElement {
           <div className="dk-meals" role="group" aria-label={t("diet.kitchen.mealSwitch")}>
             {MEALS.map((m) => (
               <button key={m} type="button" className={board?.meal === m ? "dk-tab on" : "dk-tab"} data-testid={`dk-tab-${m}`}
-                onClick={() => setPick({ meal: m, date: board?.date ?? new Date(now).toISOString().slice(0, 10) })}>
+                onClick={() => setPick({ meal: m, date: board?.date ?? todayIst(new Date(now)) })}>
                 {t(`diet.meal.${m}`)}
               </button>
             ))}
           </div>
+          {confirming !== null && (
+            <span className="dk-confirm" data-testid="dk-confirm">
+              {t("diet.kitchen.printedOk", { ward: confirming.wardName })}
+              <button type="button" className="dk-btn" disabled={confirm.isPending || confirming.id === null}
+                onClick={() => { if (confirming.id !== null) confirm.mutate(confirming.id); }} data-testid="dk-confirm-yes">{t("diet.kitchen.printedYes")}</button>
+              <button type="button" className="dk-btn ghost" onClick={() => setConfirming(null)} data-testid="dk-confirm-no">{t("diet.kitchen.printedNo")}</button>
+            </span>
+          )}
           <span className="dk-now">{istClock(new Date(now).toISOString())}</span>
         </div>
         <div className="dk-grid" ref={gridRef} data-testid="dk-grid">
@@ -91,7 +107,7 @@ export function DietKitchen(): React.ReactElement {
           {shown.map((l) => <WardCard key={l.wardId} l={l} board={board!} onPrint={() => setPrinting((p) => ({ l, n: (p?.n ?? 0) + 1 }))} />)}
           {shown.length < lists.length && <div className="dk-more" data-testid="dk-more">{t("diet.kitchen.more", { count: lists.length - shown.length })}</div>}
         </div>
-        {printing !== null && board !== undefined && <PrintSheet key={printing.n} l={printing.l} board={board} />}
+        {printing !== null && board !== undefined && <PrintSheet key={printing.n} l={printing.l} board={board} onPrinted={() => setConfirming(printing.l)} />}
       </div>
     </PaperScreen>
   );
@@ -113,6 +129,7 @@ function WardCard({ l, board, onPrint }: { l: DietListView; board: DietKitchenBo
       <header>
         <b>{l.wardName}</b>
         <span className={`dk-state ${l.state}`} data-testid="dk-state">{t(`diet.listState.${l.state}`)}</span>
+        {l.changedSincePrint && <span className="dk-changed" data-testid="dk-changed">{t("diet.kitchen.changed")}</span>}
       </header>
       <div className="dk-nums">
         <span><b data-testid="dk-card-trays">{l.counts.trays}</b>{t("diet.kitchen.trays")}</span>
@@ -129,9 +146,11 @@ function WardCard({ l, board, onPrint }: { l: DietListView; board: DietKitchenBo
           <button type="button" className="dk-btn" disabled={build.isPending} onClick={() => build.mutate()} data-testid="dk-build">{t("diet.kitchen.build")}</button>
         )}
         {kitchen && l.id !== null && (
-          <button type="button" className="dk-btn ghost" onClick={onPrint} data-testid="dk-print">{t("diet.kitchen.print")}</button>
+          <button type="button" className={l.changedSincePrint ? "dk-btn" : "dk-btn ghost"} onClick={onPrint} data-testid="dk-print">
+            {t(l.changedSincePrint ? "diet.kitchen.reprint" : "diet.kitchen.print")}
+          </button>
         )}
-        {kitchen && l.state === "printed" && (
+        {kitchen && l.state === "printed" && !l.changedSincePrint && (
           <button type="button" className="dk-btn" disabled={dispatch.isPending} onClick={() => dispatch.mutate()} data-testid="dk-dispatch">{t("diet.kitchen.dispatch")}</button>
         )}
         {err !== null && <span className="dk-err">{err}</span>}
@@ -144,22 +163,24 @@ const PREF_SHORT: Record<string, string> = { veg: "V", non_veg: "NV", jain: "J" 
 
 /** The A4 list and the tray labels for one ward. Printing it marks the list printed (the first print is kept). */
 /** The sheet stays mounted after printing (hidden on screen); a new Print tap remounts it (`key`) and prints again. */
-function PrintSheet({ l, board }: { l: DietListView; board: DietKitchenBoardView }): React.ReactElement {
+function PrintSheet({ l, board, onPrinted }: { l: DietListView; board: DietKitchenBoardView; onPrinted: () => void }): React.ReactElement {
   const { t } = useTranslation();
-  const qc = useQueryClient();
+  const printed = useRef(onPrinted);
   useEffect(() => {
-    const id = setTimeout(() => {
-      window.print();
-      if (l.id !== null) void markPrintedApi(l.id).finally(() => { void qc.invalidateQueries({ queryKey: ["diet"] }); });
-    }, 50);
+    const id = setTimeout(() => { window.print(); printed.current(); }, 50);
     return () => clearTimeout(id);
-  }, [l.id, qc]);
-  const trays = l.lines.filter((x) => x.state === "active");
+  }, [l.id]);
+  // A REPRINT after a change carries only the changed lines, highlighted (the first print carries them all).
+  const since = l.lastPrintedAt === null ? null : Date.parse(l.lastPrintedAt);
+  const changed = (x: DietLineView): boolean => since !== null && x.changedAt !== null && Date.parse(x.changedAt) > since;
+  const reprint = l.changedSincePrint && since !== null;
+  const rows = reprint ? l.lines.filter(changed) : l.lines;
+  const trays = rows.filter((x) => x.state === "active");
   const meal = t(`diet.meal.${board.meal}`);
   return (
     <section className="dk-print" data-testid="dk-print-sheet">
       <div className="dk-a4">
-        <h1>{t("diet.print.title", { ward: l.wardName, meal, date: board.date })}</h1>
+        <h1>{t("diet.print.title", { ward: l.wardName, meal, date: board.date })}{reprint ? ` — ${t("diet.print.changesOnly")}` : ""}</h1>
         <p className="dk-sub">{t("diet.print.serve", { at: istClock(l.serveAt), count: trays.length })}</p>
         <table>
           <thead>
@@ -169,13 +190,13 @@ function PrintSheet({ l, board }: { l: DietListView; board: DietKitchenBoardView
             </tr>
           </thead>
           <tbody>
-            {l.lines.map((x) => <PrintRow key={x.id} x={x} />)}
+            {rows.map((x) => <PrintRow key={x.id} x={x} chg={changed(x)} />)}
           </tbody>
         </table>
       </div>
       <div className="dk-labels">
         {trays.map((x) => (
-          <div key={x.id} className="dk-label" data-testid={`dk-label-${x.admissionId}`}>
+          <div key={x.id} className={changed(x) ? "dk-label chg" : "dk-label"} data-testid={`dk-label-${x.admissionId}`}>
             <div className="l1"><b>{x.bedCode ?? "—"}</b> · {l.wardName}</div>
             <div className="l2" data-testid="dk-label-name">{x.patient.name}</div>
             <div className="l3" data-testid="dk-label-uhid">{x.patient.sealed ? "" : x.patient.uhid}</div>
@@ -188,18 +209,18 @@ function PrintSheet({ l, board }: { l: DietListView; board: DietKitchenBoardView
   );
 }
 
-function PrintRow({ x }: { x: DietLineView }): React.ReactElement {
+function PrintRow({ x, chg }: { x: DietLineView; chg: boolean }): React.ReactElement {
   const { t } = useTranslation();
   if (x.state === "withdrawn") {
     return (
-      <tr className="out">
+      <tr className={chg ? "out chg" : "out"}>
         <td>{x.bedCode ?? "—"}</td><td>{x.patient.name}</td><td>{x.patient.sealed ? "" : x.patient.uhid}</td>
         <td colSpan={4}>{x.withdrawnReason === "npo" ? t("diet.print.npoNoTray") : t(`diet.withdrawn.${x.withdrawnReason ?? "npo"}`)}</td>
       </tr>
     );
   }
   return (
-    <tr>
+    <tr className={chg ? "chg" : undefined}>
       <td>{x.bedCode ?? "—"}</td><td>{x.patient.name}</td><td>{x.patient.sealed ? "" : x.patient.uhid}</td>
       <td>{t(`diet.code.${x.code}`)}{x.late ? ` (${t("diet.kitchen.late")})` : ""}</td>
       <td>{t(`diet.pref.${x.preference}`)}</td><td>{x.tube ?? ""}</td><td className="alg">{x.allergies.join(", ")}</td>

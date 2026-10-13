@@ -251,7 +251,7 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     roleKey: "doctor",
     permissions: [
       // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
-      "diet.view", "diet.order", "diet.npo",
+      "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
       "ipd.admit.request",
       // PASSES E1.3 (#720) — a doctor's visitor ban: pause visitor passes with a reason, and lift it.
@@ -2158,10 +2158,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * E4.4 DIET (issue #736, decision 0072) — no dietary role existed, so two are minted by the standard Indian
    * corporate-hospital split: the DIETICIAN (clinical nutrition: orders and changes diets, NPO, the consult queue, the
    * meal rounds' cut-offs, and the kitchen's lists when the kitchen is short) and the KITCHEN STAFF (food service:
-   * build, print and dispatch the meal lists). The ward nurse gets `diet.view`, `diet.npo` and `diet.serve` when the ipd-nursing
+   * build, print and dispatch the meal lists). The ward nurse gets `diet.view`, `diet.npo`, `diet.serve` and `diet.clinical.view` when the ipd-nursing
    * lane seeds the nursing roles (the `transport.request` precedent). NOBODY is assigned by any seed.
    */
-  { roleKey: "dietician", permissions: ["diet.view", "diet.order", "diet.npo", "diet.serve", "diet.kitchen", "diet.manage", "tasks.view"] },
+  { roleKey: "dietician", permissions: ["diet.view", "diet.order", "diet.npo", "diet.serve", "diet.kitchen", "diet.manage", "diet.clinical.view", "tasks.view"] },
   { roleKey: "kitchen_staff", permissions: ["diet.view", "diet.kitchen"] },
 ];
 

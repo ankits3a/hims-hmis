@@ -123,6 +123,8 @@ export const DIET_REFUSALS = {
   line_withdrawn: { rule: "This tray was withdrawn (NPO, transfer or discharge).", fix: "Do not serve" },
   list_not_dispatched: { rule: "The kitchen has not sent this list yet.", fix: "Wait for the trolley" },
   cutoff_after_serve: { rule: "The cut-off must come before the serve time.", fix: "Fix the times" },
+  rounds_overlap: { rule: "Meal rounds must run in order (breakfast, lunch, evening, dinner) without overlapping.", fix: "Fix the times" },
+  list_changed_since_print: { rule: "The list changed after it was printed.", fix: "Reprint the changes" },
 } as const;
 export type DietRefusalCode = keyof typeof DIET_REFUSALS;
 
@@ -142,13 +144,17 @@ export type DietLineView = {
   preference: DietPreference; tube: string | null; allergies: string[]; defaulted: boolean; late: boolean;
   state: (typeof DIET_LINE_STATES)[number]; withdrawnReason: DietWithdrawReason | null;
   served: (typeof DIET_SERVE_OUTCOMES)[number] | null;
+  /** Changed after the newest print: the reprint highlights it. */
+  changedAt: string | null;
+  /** On the dispatched trolley (a tray added after dispatch travels on its own task). */
+  onLoad: boolean;
 };
 
 export type DietListState = "preview" | "built" | "printed" | "dispatched" | "delivered";
 
 export type DietListView = {
   id: string | null; wardId: string; wardName: string; meal: DietMeal; date: string; serveAt: string; state: DietListState;
-  builtAt: string | null; printedAt: string | null; dispatchedAt: string | null; deliveredAt: string | null;
+  builtAt: string | null; printedAt: string | null; lastPrintedAt: string | null; changedSincePrint: boolean; dispatchedAt: string | null; deliveredAt: string | null;
   counts: { trays: number; npo: number; withdrawn: number; late: number; byDiet: Partial<Record<DietCode, number>> };
   lines: DietLineView[];
 };
@@ -160,9 +166,14 @@ export type DietKitchenBoardView = {
 export type DietMealRoundView = { meal: DietMeal; cutoffMinute: number; serveMinute: number };
 
 export type DietWardSheetRow = {
-  admissionId: string; bedCode: string | null; patient: DietPatient; order: DietOrderView | null; npo: DietNpoView | null;
+  admissionId: string; bedCode: string | null; patient: DietPatient; order: DietOrderView | null;
+  /** Every live NPO (now or ahead), earliest first; each can be lifted. */
+  npos: DietNpoView[];
   allergies: string[]; consultOpen: boolean; nextLine: DietLineView | null;
 };
+/** Without `diet.clinical.view` (the kitchen): no order note, no NPO reason, no provenance ids. */
+export const DIET_CLINICAL_VIEW = "diet.clinical.view";
+
 export type DietWardSheetView = {
   serverNow: string; wardId: string; wardName: string; next: { meal: DietMeal; date: string; listId: string | null; state: DietListState };
   rows: DietWardSheetRow[];

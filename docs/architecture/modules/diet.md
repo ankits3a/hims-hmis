@@ -11,14 +11,15 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/diet/`
 · Notes: [MAP.md](../../../apps/core/src/modules/diet/MAP.md)
 
-- **Depends on modules:** `ipd`, `tasks`
+- **Depends on modules:** `ipd`, `ot`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `tokens`
-- **Subscribes to events:** `IPD_ADMITTED_EVENT`, `IPD_BED_SWAPPED_EVENT`, `IPD_TRANSFER_ACCEPTED_EVENT_NAME`, `OT_BOOKED_EVENT`, `OT_CANCELLED_EVENT`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `tokens`
+- **Subscribes to events:** `IPD_ADMITTED_EVENT`, `IPD_BED_SWAPPED_EVENT`, `IPD_TRANSFER_ACCEPTED_EVENT_NAME`, `OT_BOOKED_EVENT`, `OT_CANCELLED_EVENT`, `OT_LIST_PUBLISHED_EVENT`
 
 ## Public API (`index.ts`), by declaring file
 
 - `consumer.ts`
+  - `backfillOtNpo(db: Db, now: Date = new Date()): Promise<number>`
   - `dietConsumer(db: Db): Handler`
   - `handleDietEvent(db: Db, e: DispatchedEvent, now: Date = new Date()): Promise<void>`
 - `desk.ts`
@@ -46,6 +47,7 @@ Source: `apps/core/src/modules/diet/`
 - `names.ts`
   - `DIETICIAN_ROLE`
   - `DIET_ACTOR: Actor`
+  - `DIET_CLINICAL_VIEW`
   - `DIET_CONSUMER`
   - `DIET_KITCHEN`
   - `DIET_MANAGE`
@@ -65,6 +67,7 @@ Source: `apps/core/src/modules/diet/`
   - `requestConsult(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<{ id: string }>`
   - `setMealRound(db: Db, actor: Actor, raw: DietIntentInput<"set_meal_round"> | unknown, now: Date = new Date()): Promise<void>`
   - `startNpo(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<string>`
+  - `syncOtNpo(db: Db, q: { listDate?: string; fromDate?: string }, now: Date = new Date()): Promise<number>`
 - `reads.ts`
   - `consultQueue(db: Db, reader: Actor, now: Date = new Date()): Promise<DietConsultView[]>`
   - `dietWards(db: Db): Promise<DietWard[]>`

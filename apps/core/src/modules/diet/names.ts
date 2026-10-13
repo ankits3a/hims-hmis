@@ -7,7 +7,9 @@ export const DIET_NPO = "diet.npo";
 export const DIET_SERVE = "diet.serve";
 export const DIET_KITCHEN = "diet.kitchen";
 export const DIET_MANAGE = "diet.manage";
-export const DIET_PERMISSIONS = [DIET_VIEW, DIET_ORDER, DIET_NPO, DIET_SERVE, DIET_KITCHEN, DIET_MANAGE] as const;
+/** Review item 14: the order note, the NPO reason and the provenance ids — doctors, dieticians, nurses; never the kitchen. */
+export const DIET_CLINICAL_VIEW = "diet.clinical.view";
+export const DIET_PERMISSIONS = [DIET_VIEW, DIET_ORDER, DIET_NPO, DIET_SERVE, DIET_KITCHEN, DIET_MANAGE, DIET_CLINICAL_VIEW] as const;
 
 /** The worker's consumer for IPD's admission events and OT's booking events (`workerConsumers`). */
 export const DIET_CONSUMER = "diet.reconcile";
@@ -24,3 +26,5 @@ export const IPD_BED_SWAPPED_EVENT = "ipd.bed.swapped";
 /** OT's events (`modules/ot/events.ts`): a booking sets NPO for the surgery day; a cancellation lifts it. */
 export const OT_BOOKED_EVENT = "daycare.booked";
 export const OT_CANCELLED_EVENT = "case.cancelled";
+/** A day's list published: diet re-reads that day's cases (OT moves a date with no event of its own). */
+export const OT_LIST_PUBLISHED_EVENT = "list.published";

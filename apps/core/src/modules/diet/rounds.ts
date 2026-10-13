@@ -50,8 +50,18 @@ export function nextSlot(rounds: readonly DietMealRoundView[], now: Date): MealS
   return slotOf(rounds[0]!, nextIstDate(nextIstDate(today)));
 }
 
-/** Today's slots whose cut-off has passed and whose serve time has not: the lists the clock owes. */
+/**
+ * Today's slots whose cut-off has passed and whose serve time has not: the lists the clock owes. `buildSlot` builds the
+ * wards still without a list, so a ward that filled after the first build (or a tick after a restart) is built too.
+ */
 export function dueSlots(rounds: readonly DietMealRoundView[], now: Date): MealSlot[] {
   const today = istDayString(now);
   return rounds.map((r) => slotOf(r, today)).filter((s) => s.cutoffAt.getTime() <= now.getTime() && now.getTime() < s.serveAt.getTime());
+}
+
+/** Today's slots served within the last two hours: a list missing for one of them was missed by the clock. */
+export function missedSlots(rounds: readonly DietMealRoundView[], now: Date): MealSlot[] {
+  const today = istDayString(now);
+  return rounds.map((r) => slotOf(r, today))
+    .filter((s) => s.serveAt.getTime() <= now.getTime() && now.getTime() - s.serveAt.getTime() <= 2 * 3_600_000);
 }

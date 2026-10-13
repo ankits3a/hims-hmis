@@ -70,6 +70,7 @@ flowchart LR
   bmw --> tasks
   cds --> formulary
   diet --> ipd
+  diet --> ot
   diet --> tasks
   housekeeping --> ipd
   housekeeping --> tasks
@@ -141,7 +142,7 @@ flowchart LR
 | [billing](modules/billing.md) | membership, opd, patients, tariff | ipd, lab, opd, ordering, ot, partners, passes, pharmacy, radiology | 51 | 16 |
 | [bmw](modules/bmw.md) | tasks | — | 14 | 4 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
-| [diet](modules/diet.md) | ipd, tasks | — | 17 | 6 |
+| [diet](modules/diet.md) | ipd, ot, tasks | — | 17 | 6 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
 | [ipd](modules/ipd.md) | billing, opd, patients, tariff | diet, housekeeping, maintenance, passes, transport | 80 | 29 |
@@ -152,7 +153,7 @@ flowchart LR
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, ipd, lab, ordering, pharmacy, radiology | 165 | 32 |
 | [ordering](modules/ordering.md) | billing, lab, opd, radiology | — | 4 | 1 |
-| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | radiology | 53 | 12 |
+| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | diet, radiology | 53 | 12 |
 | [partners](modules/partners.md) | billing, membership, patients, tariff | — | 10 | 7 |
 | [passes](modules/passes.md) | billing, ipd, patients | — | 9 | 4 |
 | [patients](modules/patients.md) | — | abdm, aerb, billing, ipd, lab, membership, opd, ot, partners, passes, pharmacy, radiology, transport | 31 | 8 |
@@ -170,7 +171,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 
 | subsystem | used by modules | depends on kernel | routes |
 |---|---|---|---|
-| `alerts` | attendance, bmw, ipd, maintenance, opd, roster, tasks, transport | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
+| `alerts` | attendance, bmw, diet, ipd, maintenance, opd, roster, tasks, transport | approvals, auth, db, events, modules, notify, ops, realtime, reminders, tokens, workflow | 3 |
 | `approvals` | abdm, aerb, attendance, billing, bmw, diet, ipd, lab, linen, materials, membership, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff | alerts, auth, db, events, modules, phi, tokens, workflow | 7 |
 | `auth` | abdm, aerb, attendance, billing, bmw, diet, formulary, housekeeping, ipd, lab, linen, maintenance, materials, membership, opd, ordering, ot, partners, passes, patients, pcpndt, pharmacy, radiology, roster, tariff, tasks, transport | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, attendance, billing, ipd, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |

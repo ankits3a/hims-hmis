@@ -7,12 +7,12 @@ export const iso = (minutes: number): string => new Date(NOW + minutes * 60_000)
 export const line = (over: Partial<DietLineView>): DietLineView => ({
   id: "l1", admissionId: "a1", bedCode: "W1-B01", patient: { name: "Ramesh Kumar", uhid: "UH-1001", sealed: false }, code: "diabetic",
   label: "Diabetic", preference: "veg", tube: null, allergies: [], defaulted: false, late: false, state: "active", withdrawnReason: null,
-  served: null, ...over,
+  served: null, changedAt: null, onLoad: false, ...over,
 });
 
 export const list = (over: Partial<DietListView>): DietListView => ({
   id: "list1", wardId: "w1", wardName: "Medical Ward 1", meal: "lunch", date: "2026-10-13", serveAt: iso(60), state: "built",
-  builtAt: iso(-10), printedAt: null, dispatchedAt: null, deliveredAt: null,
+  builtAt: iso(-10), printedAt: null, lastPrintedAt: null, changedSincePrint: false, dispatchedAt: null, deliveredAt: null,
   counts: { trays: 2, npo: 1, withdrawn: 0, late: 0, byDiet: { diabetic: 1, ryles_feed: 1 } }, lines: [], ...over,
 });
 
@@ -30,13 +30,17 @@ export const sheetView = (): DietWardSheetView => ({
   rows: [
     {
       admissionId: "a1", bedCode: "W1-B01", patient: { name: "Ramesh Kumar", uhid: "UH-1001", sealed: false },
-      order: null, npo: { id: "n1", startsAt: iso(-60), endsAt: null, reason: "Pre-op", provenance: { source: "nurse", by: "u", at: iso(-60) }, live: true },
+      order: null,
+      npos: [
+        { id: "n1", startsAt: iso(-60), endsAt: null, reason: "Pre-op", provenance: { source: "nurse", by: "u", at: iso(-60) }, live: true },
+        { id: "n2", startsAt: iso(24 * 60), endsAt: null, reason: "Colonoscopy prep", provenance: { source: "doctor", by: "u", at: iso(-30) }, live: false },
+      ],
       allergies: ["Allergy: Peanut (severe)"], consultOpen: false, nextLine: line({ state: "withdrawn", withdrawnReason: "npo" }),
     },
     {
       admissionId: "a2", bedCode: "W1-B02", patient: { name: "Sita Devi", uhid: "UH-1002", sealed: false },
       order: { id: "o2", code: "ryles_feed", label: "Ryle's tube feed", preference: "veg", tubeVolumeMl: 200, tubeEveryHours: 3, note: null, startedAt: iso(-120), provenance: { source: "doctor", by: "u", at: iso(-120) } },
-      npo: null, allergies: [], consultOpen: true, nextLine: line({ id: "l2", admissionId: "a2", code: "ryles_feed" }),
+      npos: [], allergies: [], consultOpen: true, nextLine: line({ id: "l2", admissionId: "a2", code: "ryles_feed" }),
     },
   ],
 });

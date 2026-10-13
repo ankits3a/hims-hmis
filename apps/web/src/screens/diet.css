@@ -128,3 +128,9 @@
 @media (max-width: 760px) {
   .pp .dc-row { grid-template-columns: minmax(0, 1fr); }
 }
+/* Review of 01d53113: each live NPO lifts on its own; changed lines are highlighted on the reprint. */
+.pp .dw-npo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pp .dw-npo .dw-lift { margin-left: auto; min-height: 44px; }
+.pp .dk-changed { color: var(--red); font-weight: 700; }
+.pp .dk-confirm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; }
+@media print { .dk-print tr.chg td, .dk-print .dk-label.chg { background: #fff3b0 !important; font-weight: 700 !important; } }

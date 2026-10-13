@@ -1,9 +1,16 @@
 import { and, eq } from "drizzle-orm";
 import { DIET_TASK_KINDS } from "@hmis/contracts";
-import { dietMealLines, patients, tasks } from "../../../kernel/db/schema";
+import { alerts, dietMealLines, dietMealLists, dietNpo, patients, tasks } from "../../../kernel/db/schema";
+import { withTx } from "../../../kernel/db/client";
+import { mkOtPatient, seedOtBase } from "../../../../test/helpers/ot";
+import { bookCase, cancelCase, postponeCase } from "../../ot";
+import { getTask } from "../../tasks";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { ist, mkDietWorld, otEvent } from "../../../../test/helpers/diet";
-import { buildSlot, handleDietEvent, kitchenBoard, markPrinted, orderDiet, readList, startNpo } from "../index";
+import {
+  DIET_DELIVERY_TASK, DietRefusal, backfillOtNpo, buildSlot, dispatchList, handleDietEvent, istDayStart, kitchenBoard, markPrinted, orderDiet,
+  readList, startNpo,
+} from "../index";
 import type { Db } from "../../../kernel/db/client";
 import type { DietWorld } from "../../../../test/helpers/diet";
 
@@ -112,6 +119,7 @@ describe("E4.4 diet — acceptance", () => {
     const a = await w.admitAt("general", ist("2026-03-10T09:00:00"));
     await db.update(patients).set({ sensitiveContext: true, alias: "Guest K" }).where(eq(patients.id, a.patientId));
     const real = (await db.select().from(patients).where(eq(patients.id, a.patientId)))[0]!;
+    expect(real.uhid.length).toBeGreaterThan(3); // a real UHID exists, so its absence below means something
     const [listId] = await buildSlot(db, w.kitchen, await w.slot("lunch", "2026-03-11"), ist("2026-03-11T10:31:00"));
     const view = (await readList(db, w.kitchen, listId!))!;
     const label = view.lines.find((l) => l.admissionId === a.admissionId)!;
@@ -119,5 +127,129 @@ describe("E4.4 diet — acceptance", () => {
     expect(JSON.stringify(view)).not.toContain(real.uhid);
     expect(JSON.stringify(view)).not.toContain(real.name);
     expect(label.bedCode).not.toBeNull();
+  });
+
+  // ═══ Review of 01d53113 — the printed paper must never be stale at dispatch (DECIDED) ═══
+
+  const listRow = async (id: string) => (await db.select().from(dietMealLists).where(eq(dietMealLists.id, id)))[0]!;
+  const lineOf = async (listId: string, admissionId: string) =>
+    (await db.select().from(dietMealLines).where(and(eq(dietMealLines.listId, listId), eq(dietMealLines.admissionId, admissionId))))[0]!;
+  const bells = async (userId: string, kind: string) => db.select().from(alerts).where(and(eq(alerts.userId, userId), eq(alerts.kind, kind)));
+  const refusalCode = async (p: Promise<unknown>): Promise<string> => {
+    try { await p; } catch (e) { if (e instanceof DietRefusal) return e.code; throw e; }
+    throw new Error("expected a refusal");
+  };
+
+  it("(vi) NPO after print: the list is marked changed, the kitchen and the ward are told, dispatch waits for the reprint", async () => {
+    const a = await w.admitAt("general", ist("2026-03-10T09:00:00"));
+    const [listId] = await buildSlot(db, w.kitchen, await w.slot("lunch", "2026-03-11"), ist("2026-03-11T10:31:00"));
+    await markPrinted(db, w.kitchen, listId!, ist("2026-03-11T10:40:00"));
+    await startNpo(db, w.nurse, { admissionId: a.admissionId, reason: "CT abdomen" }, ist("2026-03-11T11:00:00"));
+    expect((await listRow(listId!)).changedSincePrint).toBe(true);
+    expect((await lineOf(listId!, a.admissionId)).changedAt?.toISOString()).toBe(ist("2026-03-11T11:00:00").toISOString());
+    expect(await bells(w.kitchen.id, "diet.kitchen_change")).toHaveLength(1);
+    expect(await bells(w.nurse.id, "diet.ward_change")).toHaveLength(1);
+    const told = await db.select().from(tasks).where(eq(tasks.kind, DIET_TASK_KINDS.wardNotice));
+    expect(told.map((t) => t.placeResourceId)).toEqual([w.wardId]);
+    expect(told[0]!.note).toContain("NPO");
+    expect(await refusalCode(dispatchList(db, w.kitchen, listId!, ist("2026-03-11T11:10:00")))).toBe("list_changed_since_print");
+    await markPrinted(db, w.kitchen, listId!, ist("2026-03-11T11:15:00"));
+    await dispatchList(db, w.kitchen, listId!, ist("2026-03-11T11:20:00"));
+  });
+
+  it("(vii) a diet change after print goes the same way: changed, told, gated; the reprint carries the new diet", async () => {
+    const a = await w.admitAt("general", ist("2026-03-10T09:00:00"));
+    const [listId] = await buildSlot(db, w.kitchen, await w.slot("lunch", "2026-03-11"), ist("2026-03-11T10:31:00"));
+    await markPrinted(db, w.kitchen, listId!, ist("2026-03-11T10:40:00"));
+    await orderDiet(db, w.dietDoctor, { admissionId: a.admissionId, code: "renal", preference: "veg" }, ist("2026-03-11T11:00:00"));
+    expect(await lineOf(listId!, a.admissionId)).toMatchObject({ code: "renal", state: "active" });
+    expect((await listRow(listId!)).changedSincePrint).toBe(true);
+    expect(await bells(w.kitchen.id, "diet.kitchen_change")).toHaveLength(1);
+    expect(await refusalCode(dispatchList(db, w.kitchen, listId!, ist("2026-03-11T11:10:00")))).toBe("list_changed_since_print");
+  });
+
+  it("(viii) a transfer INTO a printed list adds a late tray, tells the kitchen and the NEW ward, and gates dispatch", async () => {
+    const a = await w.admitAt("general", ist("2026-03-10T09:00:00"));
+    const other = await w.bed2("D-W2-B9");
+    // Ward 2 already has a patient, so its lunch list exists and is printed before the move.
+    const b = await w.admitAt("general", ist("2026-03-10T09:05:00"));
+    await w.transfer(b.admissionId, other, ist("2026-03-10T12:00:00"));
+    const lists = await buildSlot(db, w.kitchen, await w.slot("lunch", "2026-03-11"), ist("2026-03-11T10:31:00"));
+    expect(lists).toHaveLength(2);
+    for (const l of lists) await markPrinted(db, w.kitchen, l, ist("2026-03-11T10:40:00"));
+    const target = await w.bed2("D-W2-B1");
+    await w.transfer(a.admissionId, target, ist("2026-03-11T11:00:00"));
+    await w.deliver(a.admissionId, ist("2026-03-11T11:02:00"));
+    const newList = (await db.select().from(dietMealLists).where(eq(dietMealLists.wardId, w.ward2Id)))[0]!;
+    expect(await lineOf(newList.id, a.admissionId)).toMatchObject({ state: "active", late: true });
+    expect(newList.changedSincePrint).toBe(true);
+    const notices = await db.select().from(tasks).where(eq(tasks.kind, DIET_TASK_KINDS.wardNotice));
+    expect(notices.map((t) => t.placeResourceId).sort()).toEqual([w.wardId, w.ward2Id].sort()); // old ward AND new ward
+    expect(await bells(w.kitchen.id, "diet.kitchen_change")).toHaveLength(2);
+    expect(await refusalCode(dispatchList(db, w.kitchen, newList.id, ist("2026-03-11T11:10:00")))).toBe("list_changed_since_print");
+  });
+
+  it("(ix) a tray added after DISPATCH (late admission) gets its own tray task; the trolley's Done does not mark it delivered", async () => {
+    await w.admitAt("general", ist("2026-03-10T09:00:00"));
+    const [listId] = await buildSlot(db, w.kitchen, await w.slot("lunch", "2026-03-11"), ist("2026-03-11T10:31:00"));
+    await markPrinted(db, w.kitchen, listId!, ist("2026-03-11T10:40:00"));
+    const { taskId } = await dispatchList(db, w.kitchen, listId!, ist("2026-03-11T12:00:00"));
+    const late = await w.admitAt("general", ist("2026-03-11T12:05:00"));
+    await w.deliver(late.admissionId, ist("2026-03-11T12:06:00"));
+    const line = await lineOf(listId!, late.admissionId);
+    expect(line).toMatchObject({ state: "active", late: true, onLoad: false });
+    expect(line.trayTaskId).not.toBeNull();
+    expect(await bells(w.kitchen.id, "diet.kitchen_change")).toHaveLength(1);
+    await withTx(db, async (tx) => DIET_DELIVERY_TASK.onDone!(tx, (await getTask(tx, taskId))!, w.dietician, ist("2026-03-11T12:25:00")));
+    expect((await lineOf(listId!, late.admissionId)).served).toBeNull();
+    await withTx(db, async (tx) => DIET_DELIVERY_TASK.onDone!(tx, (await getTask(tx, line.trayTaskId!))!, w.dietician, ist("2026-03-11T12:30:00")));
+    expect((await lineOf(listId!, late.admissionId)).served).toBe("delivered");
+  });
+
+  it("(x) a transfer OUT of a dispatched list: do not serve, the old ward and the kitchen told", async () => {
+    const a = await w.admitAt("general", ist("2026-03-10T09:00:00"));
+    const [listId] = await buildSlot(db, w.kitchen, await w.slot("lunch", "2026-03-11"), ist("2026-03-11T10:31:00"));
+    await markPrinted(db, w.kitchen, listId!, ist("2026-03-11T10:40:00"));
+    await dispatchList(db, w.kitchen, listId!, ist("2026-03-11T12:00:00"));
+    await w.transfer(a.admissionId, await w.bed2("D-W2-B1"), ist("2026-03-11T12:05:00"));
+    await w.deliver(a.admissionId, ist("2026-03-11T12:07:00"));
+    expect(await lineOf(listId!, a.admissionId)).toMatchObject({ state: "withdrawn", withdrawnReason: "transferred" });
+    const told = await db.select().from(tasks).where(eq(tasks.kind, DIET_TASK_KINDS.wardNotice));
+    expect(told[0]!.note).toContain("do not serve");
+    expect(await bells(w.kitchen.id, "diet.kitchen_change")).toHaveLength(1);
+  });
+});
+
+describe("E4.4 diet — OT bookings made before the deploy (review items 7 and 9)", () => {
+  let db: Db;
+  let teardown: () => Promise<void>;
+
+  beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
+  afterAll(async () => teardown());
+
+  it("(xi) the deploy backfill gives a booked case its NPO once; a postponement moves it; a cancellation lifts it", async () => {
+    await truncateAll(db);
+    const f = await seedOtBase(db);
+    const patientId = await mkOtPatient(db, f.coordinator, "Sunita Devi");
+    const kase = await bookCase(db, f.coordinator, {
+      patientId, procedureCode: "GYN-DNC-01", procedureClass: "gynae_dnc", surgeonId: f.surgeon.id, listDate: "2026-09-02", payerClass: "self_pay",
+    });
+    const now = ist("2026-09-01T10:00:00");
+    expect(await db.select().from(dietNpo)).toHaveLength(0); // booked before diet's consumer existed
+    expect(await backfillOtNpo(db, now)).toBe(1);
+    expect(await backfillOtNpo(db, now)).toBe(0); // idempotent on the case's source_ref
+    const [npo] = await db.select().from(dietNpo);
+    expect(npo).toMatchObject({ patientId, sourceRef: `ot-case:${kase.caseId}`, liftedAt: null });
+    expect(npo!.startsAt.toISOString()).toBe(istDayStart("2026-09-02").toISOString());
+
+    await postponeCase(db, f.coordinator, { caseId: kase.caseId, reason: "patient_unfit", newListDate: "2026-09-04" });
+    await handleDietEvent(db, otEvent("list.published", { listDate: "2026-09-04" }, now), now);
+    const moved = await db.select().from(dietNpo);
+    expect(moved).toHaveLength(1);
+    expect(moved[0]!.startsAt.toISOString()).toBe(istDayStart("2026-09-04").toISOString());
+
+    await cancelCase(db, f.coordinator, { caseId: kase.caseId, reason: "patient declined", attribution: "patient" });
+    await backfillOtNpo(db, now);
+    expect((await db.select().from(dietNpo))[0]!.liftedAt).not.toBeNull();
   });
 });

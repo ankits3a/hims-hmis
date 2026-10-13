@@ -1,14 +1,17 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import { DIET_INTENTS, dietEntry, newId } from "@hmis/contracts";
-import { dietConsults, dietMealRounds, dietNpo, dietOrders, ipdAdmissions } from "../../kernel/db/schema";
+import { dietConsults, dietMealRounds, dietNpo, dietOrders, ipdAdmissions, otCases } from "../../kernel/db/schema";
+import { istDayString } from "../../kernel/approvals/cumulative";
+import { caseState } from "../ot";
 import { appendEvent } from "../../kernel/events/append";
 import { IPD_PLACED_STATES, admissionPlace } from "../ipd";
 import { DietRefusal } from "./errors";
 import { dietConsultCompleted, dietConsultRequested, dietNpoLifted, dietNpoStarted, dietOrdered } from "./events";
 import { holds, requirePermission, sourceOf } from "./guard";
 import { DIET_ACTOR, DIET_MANAGE, DIET_NPO, DIET_ORDER } from "./names";
-import { istDayStart, nextIstDate } from "./rounds";
-import { liveOrderOf, lockAdmission, reconcileIn, tellWard } from "./trays";
+import { istDayStart, mealRounds, nextIstDate } from "./rounds";
+import { liveOrderOf, lockAdmission, reconcileIn } from "./trays";
+import { tellWardAndKitchen } from "./notices";
 import type { Actor, DietIntentInput } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -103,6 +106,9 @@ export async function startNpo(db: Db, actor: Actor, raw: unknown, now: Date = n
   });
 }
 
+/** Who acts for an OT booking (the NPO it sets, the lift its cancellation makes). */
+const OT_ACTOR: Actor = { type: "system", id: "diet-ot-booking" };
+
 /** The patient's placed admission, if any (an OT booking names a patient, not an admission). */
 async function placedAdmissionOf(exec: Db | Tx, patientId: string): Promise<string | null> {
   const row = (await (exec as Db).select({ id: ipdAdmissions.id }).from(ipdAdmissions)
@@ -110,19 +116,20 @@ async function placedAdmissionOf(exec: Db | Tx, patientId: string): Promise<stri
   return row?.id ?? null;
 }
 
-async function liftIn(t: Tx, actor: Actor, npo: typeof dietNpo.$inferSelect, reason: string, now: Date): Promise<string | null> {
+async function liftIn(t: Tx, actor: Actor, npo: typeof dietNpo.$inferSelect, reason: string, now: Date): Promise<{ admissionId: string | null; told: number }> {
   const source = await sourceOf(t, actor);
   await t.update(dietNpo).set({ liftedAt: now, liftedBy: actor.id, liftReason: reason }).where(eq(dietNpo.id, npo.id));
   await appendEvent(t, dietNpoLifted.make({
     actor, correlationId: npo.admissionId ?? npo.patientId, patientId: npo.patientId, occurredAt: now,
-    payload: { npoId: npo.id, patientId: npo.patientId, source: npo.source === "ot_booking" ? "ot_booking" : source },
+    payload: { npoId: npo.id, patientId: npo.patientId, source: actor.id === OT_ACTOR.id ? "ot_booking" : source },
   }));
   const admissionId = npo.admissionId ?? (await placedAdmissionOf(t, npo.patientId));
+  let told = 0;
   if (admissionId !== null) {
     await lockAdmission(t, admissionId);
-    await reconcileIn(t, admissionId, now);
+    told = (await reconcileIn(t, admissionId, now, `${reason} — NPO lifted`)).told;
   }
-  return admissionId;
+  return { admissionId, told };
 }
 
 export async function liftNpo(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<{ id: string }> {
@@ -139,12 +146,13 @@ export async function liftNpo(db: Db, actor: Actor, raw: unknown, now: Date = ne
 
 // ─────────────────────────────────────────── OT ───────────────────────────────────────────
 
-const OT_ACTOR: Actor = { type: "system", id: "diet-ot-booking" };
 
 /**
  * An OT booking for `listDate` → NPO from 00:00 IST that day to the end of that IST day (DECIDED: the surgeon's
- * post-op order resumes the diet; a day-end bound means a forgotten NPO cannot starve a patient for days). One row per
- * case (`source_ref`), so a redelivery writes nothing. A patient already on a bed has the lists still ahead fixed now.
+ * post-op order resumes the diet; a day-end bound means a forgotten NPO cannot starve a patient for days). ONE row per
+ * case (`source_ref`): a redelivery with the same date writes nothing; the same case on a NEW date (a rebooking, a
+ * postponement seen by the list sync) or a lifted row brought back moves that row to the new window — the row is
+ * replaced in place, never duplicated. A patient already on a bed has the lists still ahead fixed now.
  */
 export async function npoForOtBooking(
   db: Db, input: { caseId: string; patientId: string; listDate: string }, now: Date = new Date(),
@@ -152,19 +160,30 @@ export async function npoForOtBooking(
   return db.transaction(async (t) => {
     const admissionId = await placedAdmissionOf(t, input.patientId);
     if (admissionId !== null) await lockAdmission(t, admissionId);
-    const id = newId();
+    const sourceRef = `ot-case:${input.caseId}`;
     const startsAt = istDayStart(input.listDate);
     const endsAt = istDayStart(nextIstDate(input.listDate));
-    const ins = await t.insert(dietNpo).values({
-      id, patientId: input.patientId, admissionId, startsAt, endsAt, reason: `OT booked for ${input.listDate}`,
-      source: "ot_booking", sourceRef: `ot-case:${input.caseId}`, setBy: OT_ACTOR.id, setAt: now,
-    }).onConflictDoNothing().returning({ id: dietNpo.id });
-    if (ins.length === 0) return null;
+    const reason = `OT booked for ${input.listDate}`;
+    const prior = (await t.select().from(dietNpo).where(eq(dietNpo.sourceRef, sourceRef)).for("update"))[0];
+    let id: string;
+    if (prior === undefined) {
+      id = newId();
+      const ins = await t.insert(dietNpo).values({
+        id, patientId: input.patientId, admissionId, startsAt, endsAt, reason, source: "ot_booking", sourceRef, setBy: OT_ACTOR.id, setAt: now,
+      }).onConflictDoNothing().returning({ id: dietNpo.id });
+      if (ins.length === 0) return null;
+    } else {
+      if (prior.liftedAt === null && prior.startsAt.getTime() === startsAt.getTime()) return null;
+      id = prior.id;
+      await t.update(dietNpo).set({
+        startsAt, endsAt, reason, admissionId: admissionId ?? prior.admissionId, setAt: now, liftedAt: null, liftedBy: null, liftReason: null,
+      }).where(eq(dietNpo.id, prior.id));
+    }
     await appendEvent(t, dietNpoStarted.make({
       actor: OT_ACTOR, correlationId: admissionId ?? input.patientId, patientId: input.patientId, occurredAt: now,
       payload: {
         npoId: id, patientId: input.patientId, admissionId, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(),
-        source: "ot_booking", sourceRef: `ot-case:${input.caseId}`,
+        source: "ot_booking", sourceRef,
       },
     }));
     if (admissionId !== null) await reconcileIn(t, admissionId, now);
@@ -172,21 +191,43 @@ export async function npoForOtBooking(
   });
 }
 
-/** The OT case was cancelled: its NPO lifts, the lists follow, and the patient's ward is told. */
+/** The OT case was cancelled: its NPO lifts, the lists follow, and the patient's ward (and the kitchen) are told. */
 export async function liftOtNpo(db: Db, caseId: string, now: Date = new Date()): Promise<string | null> {
   return db.transaction(async (t) => {
     const npo = (await t.select().from(dietNpo).where(eq(dietNpo.sourceRef, `ot-case:${caseId}`)).for("update"))[0];
     if (npo === undefined || npo.liftedAt !== null) return null;
-    const admissionId = await liftIn(t, OT_ACTOR, npo, "OT case cancelled", now);
-    if (admissionId !== null && (npo.endsAt === null || npo.endsAt.getTime() > now.getTime())) {
+    const { admissionId, told } = await liftIn(t, OT_ACTOR, npo, "OT cancelled", now);
+    // A printed list that changed has already told the ward and the kitchen (`reconcileIn`); otherwise say it once here.
+    if (admissionId !== null && told === 0 && (npo.endsAt === null || npo.endsAt.getTime() > now.getTime())) {
       const place = await admissionPlace(t, admissionId);
       if (place?.placed === true && place.wardId !== null) {
-        await tellWard(t, place.wardId, place.patientId,
-          `Bed ${place.bedCode ?? "?"}: OT cancelled — NPO lifted. Diet as ordered from the next meal.`, `diet-npo-lift:${npo.id}`, now);
+        await tellWardAndKitchen(t, {
+          wardId: place.wardId, wardName: place.wardName ?? "ward", bedCode: place.bedCode, admissionId, patientId: place.patientId,
+          meal: "next meal", words: "OT cancelled — NPO lifted; diet as ordered", key: `npo-lift:${npo.id}:${String(now.getTime())}`,
+        }, now);
       }
     }
     return npo.id;
   });
+}
+
+/**
+ * THE OT SYNC. OT moves a case's date without an event of its own (`postponeCase` writes the new `list_date` and emits
+ * nothing; `list.resequenced` only re-orders a day). So diet re-reads the CASES: on `list.published` for that day, and
+ * at deploy (`workerBackfills`) for every case from today on. A live case gets its NPO for its CURRENT date (the
+ * row moves if the date moved); a cancelled one has its NPO lifted. Idempotent.
+ */
+export async function syncOtNpo(db: Db, q: { listDate?: string; fromDate?: string }, now: Date = new Date()): Promise<number> {
+  const where = q.listDate !== undefined ? eq(otCases.listDate, q.listDate) : gte(otCases.listDate, q.fromDate ?? istDayString(now));
+  const cases = await db.select({ id: otCases.id, patientId: otCases.patientId, listDate: otCases.listDate }).from(otCases).where(where);
+  let n = 0;
+  for (const c of cases) {
+    const state = await caseState(db, c.id);
+    if (state === "cancelled") {
+      if ((await liftOtNpo(db, c.id, now)) !== null) n += 1;
+    } else if ((await npoForOtBooking(db, { caseId: c.id, patientId: c.patientId, listDate: c.listDate }, now)) !== null) n += 1;
+  }
+  return n;
 }
 
 // ─────────────────────────────────────────── consults ───────────────────────────────────────────
@@ -242,6 +283,11 @@ export async function setMealRound(db: Db, actor: Actor, raw: DietIntentInput<"s
   await requirePermission(db, actor, DIET_MANAGE);
   const input = parse(DIET_INTENTS.set_meal_round, raw);
   if (input.cutoffMinute >= input.serveMinute) throw new DietRefusal("cutoff_after_serve");
+  // Review item 11: the four rounds run in order and do not overlap — each serve is at or before the next cut-off.
+  const rounds = (await mealRounds(db)).map((r) => (r.meal === input.meal ? { ...r, cutoffMinute: input.cutoffMinute, serveMinute: input.serveMinute } : r));
+  for (let i = 1; i < rounds.length; i += 1) {
+    if (rounds[i - 1]!.serveMinute > rounds[i]!.cutoffMinute) throw new DietRefusal("rounds_overlap", { before: rounds[i - 1]!.meal, after: rounds[i]!.meal });
+  }
   await db.insert(dietMealRounds).values({ meal: input.meal, cutoffMinute: input.cutoffMinute, serveMinute: input.serveMinute, updatedBy: actor.id, updatedAt: now })
     .onConflictDoUpdate({ target: dietMealRounds.meal, set: { cutoffMinute: input.cutoffMinute, serveMinute: input.serveMinute, updatedBy: actor.id, updatedAt: now } });
 }
@@ -258,8 +304,9 @@ export async function endStay(db: Db, admissionId: string, now: Date = new Date(
     const place = await admissionPlace(t, admissionId);
     if (place === null || !place.ended) return;
     await t.update(dietOrders).set({ endedAt: now, endedReason: place.state }).where(and(eq(dietOrders.admissionId, admissionId), isNull(dietOrders.endedAt)));
+    // Review item 10: also the patient's NPOs written before the admission existed (admission id null).
     await t.update(dietNpo).set({ liftedAt: now, liftedBy: DIET_ACTOR.id, liftReason: `stay ended (${place.state})` })
-      .where(and(eq(dietNpo.admissionId, admissionId), isNull(dietNpo.liftedAt), sql`(${dietNpo.endsAt} is null or ${dietNpo.endsAt} > ${now.toISOString()}::timestamptz)`));
+      .where(and(or(eq(dietNpo.admissionId, admissionId), and(isNull(dietNpo.admissionId), eq(dietNpo.patientId, place.patientId))), isNull(dietNpo.liftedAt), sql`(${dietNpo.endsAt} is null or ${dietNpo.endsAt} > ${now.toISOString()}::timestamptz)`));
     await t.update(dietConsults).set({ state: "cancelled", closedBy: DIET_ACTOR.id, closedAt: now, note: `stay ended (${place.state})` })
       .where(and(eq(dietConsults.admissionId, admissionId), eq(dietConsults.state, "open")));
     await reconcileIn(t, admissionId, now);

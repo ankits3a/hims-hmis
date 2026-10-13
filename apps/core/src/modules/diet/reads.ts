@@ -5,6 +5,8 @@ import { allergyWords, nowIdentities, placedCensus } from "../ipd";
 import { linesOfLists, listsOfSlot } from "./lists";
 import { mealRounds, nextSlot, slotOf } from "./rounds";
 import { npoCovering, trayFor } from "./trays";
+import { holds } from "./guard";
+import { DIET_CLINICAL_VIEW } from "./names";
 import type {
   Actor, DietCode, DietConsultView, DietKitchenBoardView, DietLineView, DietListState, DietListView, DietMeal, DietNpoView,
   DietOrderView, DietPatient, DietPreference, DietProvenance, DietSource, DietWard, DietWardSheetView, DietWithdrawReason,
@@ -53,6 +55,7 @@ function lineView(l: LineRow, who: Map<string, NowIdentity>, allergies: Map<stri
     label: dietEntry(l.code as DietCode).label, preference: l.preference as DietPreference, tube: l.tube,
     allergies: allergies.get(l.patientId) ?? [], defaulted: l.defaulted, late: l.late, state: l.state as "active" | "withdrawn",
     withdrawnReason: l.withdrawnReason as DietWithdrawReason | null, served: l.served as "delivered" | "refused" | null,
+    changedAt: l.changedAt?.toISOString() ?? null, onLoad: l.onLoad,
   };
 }
 
@@ -80,7 +83,8 @@ function countsOf(lines: readonly DietLineView[]): DietListView["counts"] {
 function listView(l: ListRow, wardName: string, lines: DietLineView[]): DietListView {
   return {
     id: l.id, wardId: l.wardId, wardName, meal: l.meal as DietMeal, date: l.serviceDate, serveAt: l.serveAt.toISOString(), state: stateOf(l),
-    builtAt: l.builtAt.toISOString(), printedAt: l.printedAt?.toISOString() ?? null, dispatchedAt: l.dispatchedAt?.toISOString() ?? null,
+    builtAt: l.builtAt.toISOString(), printedAt: l.printedAt?.toISOString() ?? null, lastPrintedAt: l.lastPrintedAt?.toISOString() ?? null,
+    changedSincePrint: l.changedSincePrint, dispatchedAt: l.dispatchedAt?.toISOString() ?? null,
     deliveredAt: l.deliveredAt?.toISOString() ?? null, counts: countsOf(lines), lines,
   };
 }
@@ -100,6 +104,7 @@ async function previewLines(db: Db, people: readonly PlacedPatient[], slot: Meal
       id: `preview:${p.admissionId}`, admissionId: p.admissionId, bedCode: p.bedCode, patient: patientOf(who, p.admissionId), code: tray.code,
       label: dietEntry(tray.code).label, preference: tray.preference, tube: tray.tube, allergies: allergies.get(p.patientId) ?? [],
       defaulted: tray.defaulted, late: false, state: npo === null ? "active" : "withdrawn", withdrawnReason: npo === null ? null : "npo", served: null,
+      changedAt: null, onLoad: false,
     });
   }
   return out;
@@ -127,7 +132,7 @@ export async function kitchenBoard(db: Db, reader: Actor, now: Date = new Date()
     const lines = await previewLines(db, people, slot, who, allergies);
     lists.push({
       id: null, wardId, wardName: people[0]!.wardName, meal: slot.meal, date: slot.date, serveAt: slot.serveAt.toISOString(), state: "preview",
-      builtAt: null, printedAt: null, dispatchedAt: null, deliveredAt: null, counts: countsOf(lines), lines,
+      builtAt: null, printedAt: null, lastPrintedAt: null, changedSincePrint: false, dispatchedAt: null, deliveredAt: null, counts: countsOf(lines), lines,
     });
   }
   lists.sort((a, b) => a.wardName.localeCompare(b.wardName));
@@ -148,20 +153,25 @@ export async function readList(db: Db, reader: Actor, listId: string): Promise<D
   return listView(l, names.get(l.wardId) ?? "—", lines.map((x) => lineView(x, who, allergies)));
 }
 
-const prov = (source: string, by: string, at: Date, ref: string | null = null): DietProvenance => ({ source: source as DietSource, by, at: at.toISOString(), ref });
+/**
+ * Review item 14 (DECIDED): a reader without `diet.clinical.view` (the kitchen) sees the TRAY only — no order note, no
+ * NPO reason (it reads "NPO"), and provenance with the source but no person id and no source reference.
+ */
+const prov = (clinical: boolean, source: string, by: string, at: Date, ref: string | null = null): DietProvenance =>
+  ({ source: source as DietSource, by: clinical ? by : "", at: at.toISOString(), ref: clinical ? ref : null });
 
-function orderView(o: typeof dietOrders.$inferSelect): DietOrderView {
+function orderView(o: typeof dietOrders.$inferSelect, clinical = true): DietOrderView {
   return {
     id: o.id, code: o.code as DietCode, label: dietEntry(o.code as DietCode).label, preference: o.preference as DietPreference,
-    tubeVolumeMl: o.tubeVolumeMl, tubeEveryHours: o.tubeEveryHours, note: o.note, startedAt: o.startedAt.toISOString(),
-    provenance: prov(o.source, o.orderedBy, o.startedAt),
+    tubeVolumeMl: o.tubeVolumeMl, tubeEveryHours: o.tubeEveryHours, note: clinical ? o.note : null, startedAt: o.startedAt.toISOString(),
+    provenance: prov(clinical, o.source, o.orderedBy, o.startedAt),
   };
 }
 
-function npoView(n: typeof dietNpo.$inferSelect, now: Date): DietNpoView {
+function npoView(n: typeof dietNpo.$inferSelect, now: Date, clinical = true): DietNpoView {
   return {
-    id: n.id, startsAt: n.startsAt.toISOString(), endsAt: n.endsAt?.toISOString() ?? null, reason: n.reason,
-    provenance: prov(n.source, n.setBy, n.setAt, n.sourceRef), live: n.startsAt.getTime() <= now.getTime(),
+    id: n.id, startsAt: n.startsAt.toISOString(), endsAt: n.endsAt?.toISOString() ?? null, reason: clinical ? n.reason : "NPO",
+    provenance: prov(clinical, n.source, n.setBy, n.setAt, n.sourceRef), live: n.startsAt.getTime() <= now.getTime(),
   };
 }
 
@@ -184,16 +194,17 @@ export async function wardSheet(db: Db, reader: Actor, wardId: string, now: Date
   const who = await identities(db, reader, people.map((p) => ({ id: p.admissionId, patientId: p.patientId })));
   const allergies = await allergiesOf(db, patientIds);
   const consultSet = new Set(consults.map((c) => c.a));
+  const clinical = await holds(db, reader, DIET_CLINICAL_VIEW);
   return {
     serverNow: now.toISOString(), wardId, wardName: names.get(wardId) ?? "—",
     next: { meal: slot.meal, date: slot.date, listId: list?.id ?? null, state: list === undefined ? "preview" : stateOf(list) },
     rows: people.map((p) => {
       const o = orders.find((x) => x.admissionId === p.admissionId);
-      const n = npos.find((x) => x.patientId === p.patientId);
       const line = lines.find((x) => x.admissionId === p.admissionId);
       return {
-        admissionId: p.admissionId, bedCode: p.bedCode, patient: patientOf(who, p.admissionId), order: o === undefined ? null : orderView(o),
-        npo: n === undefined ? null : npoView(n, now), allergies: allergies.get(p.patientId) ?? [], consultOpen: consultSet.has(p.admissionId),
+        admissionId: p.admissionId, bedCode: p.bedCode, patient: patientOf(who, p.admissionId), order: o === undefined ? null : orderView(o, clinical),
+        // Review item 15: every live NPO (now or ahead), each its own row to lift.
+        npos: npos.filter((x) => x.patientId === p.patientId).map((x) => npoView(x, now, clinical)), allergies: allergies.get(p.patientId) ?? [], consultOpen: consultSet.has(p.admissionId),
         nextLine: line === undefined ? null : lineView(line, who, allergies),
       };
     }),

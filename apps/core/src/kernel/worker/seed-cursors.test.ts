@@ -21,6 +21,7 @@ import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
 import { DIET_CONSUMER } from "../../modules/diet";
 import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
+import { workerBackfills } from "./worker.module";
 
 const mkInput = (name: string) => ({
   name, version: 1, occurredAt: new Date(),
@@ -217,6 +218,11 @@ describe("seedCursors", () => {
    * 5000 inserts, the same knob dispatcher.test.ts's own suite overrides explicitly for
    * determinism (its "does not redeliver ... re-reads" case sets `lookback: 5_000`).
    */
+  /** The state a seeded cursor skips, rebuilt at deploy: housekeeping's owed cleans, diet's OT NPOs (review item 7). */
+  it("workerBackfills names exactly housekeeping's bed turnover and diet's OT NPO sync", () => {
+    expect(Object.keys(workerBackfills(db)).sort()).toEqual([DIET_CONSUMER, HOUSEKEEPING_BED_CONSUMER].sort());
+  });
+
   it("V10 — leaves a newly-seeded consumer at max(seq); the next cycle delivers nothing", async () => {
     for (let i = 0; i < 4; i += 1) {
       await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));

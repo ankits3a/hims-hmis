@@ -4,7 +4,7 @@ import { grantPermissionToRole, syncPermissions } from "../../src/kernel/auth/pe
 import { authManifest } from "../../src/kernel/auth/manifest";
 import { events } from "../../src/kernel/db/schema";
 import { ModuleRegistry } from "../../src/kernel/modules/loader";
-import { DIET_PERMISSIONS, dietManifest, handleDietEvent, mealRounds, slotOf } from "../../src/modules/diet";
+import { DIET_PERMISSIONS, dietManifest, handleDietEvent, istDayStart, mealRounds, slotOf } from "../../src/modules/diet";
 import { acceptHandover, ipdManifest, startTransfer } from "../../src/modules/ipd";
 import { patientsManifest } from "../../src/modules/patients";
 import { tasksManifest } from "../../src/modules/tasks";
@@ -31,7 +31,12 @@ export type DietWorld = TransferWorld & {
   deliver(admissionId: string, now: Date): Promise<void>;
 };
 
-export const ist = (s: string): Date => new Date(`${s}+05:30`);
+/** "YYYY-MM-DDTHH:MM[:SS]" read as IST wall time, through the shared IST helper (no hand-written offset). */
+export const ist = (s: string): Date => {
+  const [date, time = "00:00:00"] = s.split("T");
+  const [h = 0, m = 0, sec = 0] = time.split(":").map(Number);
+  return new Date(istDayStart(date!).getTime() + ((h * 60 + m) * 60 + sec) * 1000);
+};
 
 const SBAR = { situation: "Stable", background: "Synthetic", assessment: "Synthetic", recommendation: "Synthetic" };
 
@@ -41,15 +46,17 @@ export async function mkDietWorld(db: Db): Promise<DietWorld> {
   for (const m of [authManifest, patientsManifest, ipdManifest, tasksManifest, dietManifest]) registry.install(m);
   await syncPermissions(db, registry);
   const grants: Record<string, readonly string[]> = {
-    doctor: ["diet.view", "diet.order", "diet.npo"],
-    nurse: ["diet.view", "diet.npo", "diet.serve"],
+    doctor: ["diet.view", "diet.order", "diet.npo", "diet.clinical.view"],
+    // The ward nurse's grants arrive with ipd-nursing at integration; the fixture plays her with the OPD `nurse` key.
+    nurse: ["diet.view", "diet.npo", "diet.serve", "diet.clinical.view"],
     dietician: DIET_PERMISSIONS,
     kitchen_staff: ["diet.view", "diet.kitchen"],
     support_staff: ["tasks.work", "diet.serve"],
   };
   for (const [role, perms] of Object.entries(grants)) {
     await ensureRole(db, role);
-    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+    // Only strings the manifest declares (a census run against an older diet commit must fail on behaviour, not here).
+    for (const p of perms) if (registry.allPermissions().includes(p)) await grantPermissionToRole(db, registry, role, p);
   }
   const dietDoctor = (await mkUser(db, "diet.doctor", ["doctor"])).actor;
   const nurse = (await mkUser(db, "diet.nurse", ["nurse"])).actor;
@@ -75,6 +82,11 @@ export async function mkDietWorld(db: Db): Promise<DietWorld> {
 }
 
 /** A synthetic OT event as the dispatcher hands it (the OT booking lane's own suite proves the emit). */
-export function otEvent(name: "daycare.booked" | "case.cancelled", payload: Record<string, unknown>, at: Date): DispatchedEvent {
+export function otEvent(name: "daycare.booked" | "case.cancelled" | "list.published", payload: Record<string, unknown>, at: Date): DispatchedEvent {
+  return { seq: 1, eventId: randomUUID(), name, payload, patientId: null, correlationId: null, occurredAt: at } as DispatchedEvent;
+}
+
+/** A stay-ending IPD event as the dispatcher hands it (the discharge lane's own suite proves the emit). */
+export function ipdEvent(name: string, payload: Record<string, unknown>, at: Date): DispatchedEvent {
   return { seq: 1, eventId: randomUUID(), name, payload, patientId: null, correlationId: null, occurredAt: at } as DispatchedEvent;
 }

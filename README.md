@@ -1732,7 +1732,8 @@ and `kitchen_staff`. `diet.order` (doctor, dietician) orders a diet; `diet.npo` 
 a ward nurse may do that and nothing else once the nursing lane seeds her role; `diet.view` (doctor, dietician,
 kitchen_staff) reads the sheet and the board; `diet.serve` (support_staff, dietician) taps a tray delivered or refused;
 `diet.kitchen` (kitchen_staff, dietician) builds, prints and dispatches the meal lists; and `diet.manage` (dietician)
-sets the meal rounds' cut-offs and works the consult queue. No diet screen shows money.
+sets the meal rounds' cut-offs and works the consult queue. `diet.clinical.view` (doctor, dietician) shows the order
+note, the NPO reason and who set them; without it (the kitchen) a reader sees the tray only. No diet screen shows money.
 
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
