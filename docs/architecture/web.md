@@ -47,6 +47,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/handovers` | `apps/web/src/screens/ipd-handovers` |
 | `/ipd/my-shift` | `apps/web/src/screens/ipd-my-shift` |
 | `/ipd/passes` | `apps/web/src/screens/ipd-passes` |
+| `/ipd/rounds` | `apps/web/src/screens/ipd-rounds` |
+| `/ipd/rounds/$admissionId` | `apps/web/src/screens/ipd-rounds` |
 | `/ipd/ward` | `apps/web/src/screens/ipd-ward` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
