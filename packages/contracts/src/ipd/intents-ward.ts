@@ -26,6 +26,8 @@ export const startTransfer = ipdIntent({
     toBedId: IpdIdSchema,
     reason: z.enum([
       "clinical_step_up", "clinical_step_down", "post_op", "isolation", "gender_fix", "patient_request", "bed_management",
+      // E3.1 review (#759): the bed needs repair — hospital-initiated, so the lower class is kept.
+      "maintenance",
     ]),
     handover: SbarSchema,
     intensivistApprovalId: IpdIdSchema.optional(),
@@ -67,6 +69,8 @@ export const acceptHandover = ipdIntent({
     "transfer_not_found", "transfer_not_open", "not_receiving_ward", "sender_cannot_accept",
     // E3.1 (#729): the reserved target bed is re-checked under its lock at acceptance.
     "bed_not_available", "state_changed",
+    // E3.1 review (#759): the target's hold ran out before acceptance.
+    "transfer_hold_lapsed",
   ],
   // E3.1 (DECIDED): the duty manager accepts at night (no ward_nurse / nursing_supervisor role is seeded yet).
   actors: ["nurse", "supervisor", "duty_manager"],
@@ -106,6 +110,9 @@ export const swapBeds = ipdIntent({
     admissionIdA: IpdIdSchema,
     admissionIdB: IpdIdSchema,
     reason: z.enum(["gender_fix", "isolation_fix", "clinical", "patient_request"]),
+    /** E3.1 review (#759): a patient moving onto an ICU bed from a ward bed needs a granted intensivist approval. */
+    intensivistApprovalIdA: IpdIdSchema.optional(),
+    intensivistApprovalIdB: IpdIdSchema.optional(),
   }),
   output: z.strictObject({
     a: z.strictObject({ admissionId: IpdIdSchema, bedId: IpdIdSchema }),
@@ -116,6 +123,8 @@ export const swapBeds = ipdIntent({
     "bed_gender_mismatch", "bed_isolation_mismatch", "state_changed",
     // E3.1 (#729): both patients are checked against every rule of the other's bed.
     "bed_age_mismatch", "bed_class_mismatch", "room_gender_unknown", "overflow_needs_duty_manager", "patient_not_found",
+    // E3.1 review (#759)
+    "icu_needs_intensivist", "swap_isolation",
   ],
   actors: ["nurse", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,

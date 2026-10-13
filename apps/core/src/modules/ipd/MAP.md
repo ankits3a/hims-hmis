@@ -244,6 +244,15 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   future-dated stay; `charges.ts` `staysOf` folds it in (`applyClassChanges`) so the day rule decides the noon day
   (highest class held over an hour). It binds its stay: a move before noon leaves it behind. A newer change supersedes
   one not yet in effect.
+- Review #759: $ DECIDED — a HOSPITAL-initiated move (bed_management, isolation, gender_fix, maintenance; a swap for
+  gender_fix / isolation_fix) bills at the LOWER of the class billed before and the new bed's class (`protectBookedClass`
+  on the new stay); a patient-requested or clinical move bills the new bed's class.
+- Review #759: a swap refuses an isolated patient (`swap_isolation` — the bed needs a terminal clean: use a transfer) and
+  applies start's ICU gate per patient (`intensivistApprovalIdA/B`); `askApproval` takes `icu` for an admitted ward
+  patient (step-up). Accept refuses a lapsed hold (`transfer_hold_lapsed`); wherever a transfer's hold lapses
+  (`endReservation` with `lapsed`: the minute job or an act meeting it) the transfer is cancelled `hold_lapsed`, the
+  admission returns to `admitted` and `ipd.transfer.cancelled` goes out. Asking for the class already in effect revokes a
+  pending class change. The panel's targets re-derive each candidate's twin-room gender (`bedRoomGender`).
 - Permissions (DECIDED): `ipd.transfer.start` and `ipd.transfer.accept` are held by `duty_manager` alone until the
   ipd-nursing lane seeds `ward_nurse` / `nursing_supervisor` (the workflow already names those roles); the duty manager
   is also an `accept_handover` actor in the contract.

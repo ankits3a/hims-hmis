@@ -21,6 +21,7 @@ export type IpdSbar = z.infer<typeof IpdSbarSchema>;
 
 export const IPD_TRANSFER_REASONS = [
   "clinical_step_up", "clinical_step_down", "post_op", "isolation", "gender_fix", "patient_request", "bed_management",
+  "maintenance",
 ] as const;
 
 /** One handover waiting for the receiving ward's nurse. */

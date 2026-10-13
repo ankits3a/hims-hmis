@@ -56375,7 +56375,7 @@
         },
         "ipd_transfers_reason_ck": {
           "name": "ipd_transfers_reason_ck",
-          "value": "\"ipd_transfers\".\"reason\" in ('clinical_step_up', 'clinical_step_down', 'post_op', 'isolation', 'gender_fix', 'patient_request', 'bed_management')"
+          "value": "\"ipd_transfers\".\"reason\" in ('clinical_step_up', 'clinical_step_down', 'post_op', 'isolation', 'gender_fix', 'patient_request', 'bed_management', 'maintenance')"
         },
         "ipd_transfers_beds_ck": {
           "name": "ipd_transfers_beds_ck",
@@ -56387,7 +56387,7 @@
         },
         "ipd_transfers_cancel_ck": {
           "name": "ipd_transfers_cancel_ck",
-          "value": "(\"ipd_transfers\".\"status\" = 'cancelled') = (\"ipd_transfers\".\"cancel_reason\" is not null) and (\"ipd_transfers\".\"cancel_reason\" is null or \"ipd_transfers\".\"cancel_reason\" in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other'))"
+          "value": "(\"ipd_transfers\".\"status\" = 'cancelled') = (\"ipd_transfers\".\"cancel_reason\" is not null) and (\"ipd_transfers\".\"cancel_reason\" is null or \"ipd_transfers\".\"cancel_reason\" in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other', 'hold_lapsed'))"
         }
       },
       "isRLSEnabled": false

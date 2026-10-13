@@ -167,7 +167,8 @@ export async function askApproval(
 ): Promise<{ approvalId: string }> {
   await requireIpdPermission(db, actor, IPD_ADMIT);
   const a = await readAdmission(db, admissionId);
-  if (body.kind === "icu" && !a.icu) throw new IpdRefusal("admission_wrong_state", "Not an ICU admission");
+  // E3.1 review (#759): an admitted ward patient may need an ICU step-up (a transfer or swap onto an ICU bed).
+  if (body.kind === "icu" && !a.icu && a.state !== "admitted") throw new IpdRefusal("admission_wrong_state", "Not an ICU admission");
   // Review RED 2: a non-covered line names its amount — the cap every receipt is held to.
   if (body.kind === "non_covered" && body.amountPaise === undefined) {
     throw new IpdError("non_covered_amount_required", "a non-covered line must name its amount in paise");

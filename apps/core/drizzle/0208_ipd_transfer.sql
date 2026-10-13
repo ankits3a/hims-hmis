@@ -42,10 +42,10 @@ CREATE TABLE "ipd_transfers" (
 	"cancel_reason" text,
 	"cancel_note" text,
 	CONSTRAINT "ipd_transfers_status_ck" CHECK ("ipd_transfers"."status" in ('open', 'accepted', 'cancelled')),
-	CONSTRAINT "ipd_transfers_reason_ck" CHECK ("ipd_transfers"."reason" in ('clinical_step_up', 'clinical_step_down', 'post_op', 'isolation', 'gender_fix', 'patient_request', 'bed_management')),
+	CONSTRAINT "ipd_transfers_reason_ck" CHECK ("ipd_transfers"."reason" in ('clinical_step_up', 'clinical_step_down', 'post_op', 'isolation', 'gender_fix', 'patient_request', 'bed_management', 'maintenance')),
 	CONSTRAINT "ipd_transfers_beds_ck" CHECK ("ipd_transfers"."from_bed_id" <> "ipd_transfers"."to_bed_id"),
 	CONSTRAINT "ipd_transfers_ended_ck" CHECK (("ipd_transfers"."status" = 'open') = ("ipd_transfers"."ended_at" is null)),
-	CONSTRAINT "ipd_transfers_cancel_ck" CHECK (("ipd_transfers"."status" = 'cancelled') = ("ipd_transfers"."cancel_reason" is not null) and ("ipd_transfers"."cancel_reason" is null or "ipd_transfers"."cancel_reason" in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other')))
+	CONSTRAINT "ipd_transfers_cancel_ck" CHECK (("ipd_transfers"."status" = 'cancelled') = ("ipd_transfers"."cancel_reason" is not null) and ("ipd_transfers"."cancel_reason" is null or "ipd_transfers"."cancel_reason" in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other', 'hold_lapsed')))
 );
 --> statement-breakpoint
 ALTER TABLE "ipd_class_changes" ADD CONSTRAINT "ipd_class_changes_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

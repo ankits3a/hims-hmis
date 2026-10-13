@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { IPD_BED_CLASS_INFO, IPD_INTENTS, IPD_RESERVATION_HOLD_MINUTES, ipdIsInFuture, newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { ipdBedBlocks, ipdBedReservations, ipdBedStays, resources } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdBedBlocks, ipdBedReservations, ipdBedStays, ipdTransfers, resources } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import {
   KERNEL_RESOURCE_KINDS, assignResource, changeResourceStatus, releaseResource, retireResource, updateResource,
@@ -10,7 +10,8 @@ import {
 import { withIdempotency } from "../billing";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema } from "./bed-attributes";
-import { admissionAdvisoryLock, linkPlacement, linkReservation, linkReservationEnded } from "./admission-core";
+import { admissionAdvisoryLock, linkPlacement, linkReservation, linkReservationEnded, moveAdmission } from "./admission-core";
+import { transferCancelled } from "./transfer-events";
 import {
   bedAssigned, bedBlocked, bedCleaned, bedIncumbentReleased, bedOccupied, bedReservationReleased, bedReserved,
   bedUnblocked,
@@ -279,6 +280,28 @@ async function endReservation(
   await appendEvent(tx, bedReservationReleased.make({
     payload: { reservationId: r.id, bedId: r.bedId, bedCode, admissionId: r.admissionId, reason, provenance: provenanceOf(actor) },
     actor, correlationId: r.admissionId, patientId: r.patientId, occurredAt: at,
+  }));
+  // E3.1 review (#759): a transfer whose target hold lapses is over — closed here, wherever the lapse is met.
+  if (reason === "lapsed") await closeLapsedTransferIn(tx, r.id, at);
+}
+
+/**
+ * E3.1 review (#759) — the transfer that held this reservation is cancelled with reason `hold_lapsed` and the admission
+ * returns to `admitted` on its origin bed (it never left). Lock order: the bed is held by the caller; then the
+ * admission row, then the transfer row (accept's order after its bed locks).
+ */
+async function closeLapsedTransferIn(tx: Tx, reservationId: string, at: Date): Promise<void> {
+  const peek = (await tx.select().from(ipdTransfers).where(and(eq(ipdTransfers.reservationId, reservationId), eq(ipdTransfers.status, "open"))))[0];
+  if (peek === undefined) return;
+  const a = (await tx.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, peek.admissionId)).for("update"))[0];
+  const t = (await tx.select().from(ipdTransfers).where(eq(ipdTransfers.id, peek.id)).for("update"))[0]!;
+  if (t.status !== "open") return;
+  await tx.update(ipdTransfers).set({ status: "cancelled", endedBy: IPD_SYSTEM_ACTOR.id, endedAt: at, cancelReason: "hold_lapsed" })
+    .where(eq(ipdTransfers.id, t.id));
+  if (a?.state === "transferring") await moveAdmission(tx, IPD_SYSTEM_ACTOR, a, "admitted", at, {}, "cancel_transfer: hold_lapsed");
+  await appendEvent(tx, transferCancelled.make({
+    payload: { transferId: t.id, admissionId: t.admissionId, fromBedId: t.fromBedId, toBedId: t.toBedId, reason: "hold_lapsed", provenance: "system" },
+    actor: IPD_SYSTEM_ACTOR, correlationId: t.admissionId, patientId: t.patientId, occurredAt: at,
   }));
 }
 
@@ -833,4 +856,12 @@ export async function bedWithWard(db: Db | Tx, bedId: string): Promise<{ id: str
     parent = (await db.select({ id: resources.id, name: resources.name, kind: resources.kind, parentId: resources.parentId }).from(resources).where(eq(resources.id, parent.parentId)))[0];
   }
   return { ...facts, wardId: parent?.id ?? null, wardName: parent?.name ?? null };
+}
+
+/** E3.1 review (#759): a bed's twin-room gender as a placement would see it (a read for proposals; acts re-check under lock). */
+export async function bedRoomGender(db: Db | Tx, bedId: string): Promise<"male" | "female" | "unknown" | null> {
+  const row = (await db.select({ parentId: resources.parentId }).from(resources).where(eq(resources.id, bedId)))[0];
+  if (row?.parentId == null) return null;
+  const parent = (await db.select({ kind: resources.kind }).from(resources).where(eq(resources.id, row.parentId)))[0];
+  return parent?.kind === "room" ? roomGender(db as Tx, row.parentId, bedId) : null;
 }

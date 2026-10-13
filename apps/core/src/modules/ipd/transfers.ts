@@ -15,7 +15,7 @@ import { grantedApproval } from "./approval-types";
 import { IpdBedAttributesSchema } from "./bed-attributes";
 import { ageInYears, checkBedRules } from "./bed-rules";
 import {
-  assignBedIn, bedWithWard, endHoldIn, holdBedForTransferIn, lockBedsInOrder, placementContext, readBedFacts,
+  assignBedIn, bedRoomGender, bedWithWard, endHoldIn, holdBedForTransferIn, lockBedsInOrder, placementContext, readBedFacts,
   releaseBedOccupant, vacateBedForSwapIn, withNextRuleValidBeds,
 } from "./beds";
 import { initialsOf } from "./beds-board";
@@ -92,6 +92,28 @@ async function escalationDue(tx: Tx, instanceId: string): Promise<Date | null> {
     isNull(workflowTimers.firedAt), isNull(workflowTimers.cancelledAt),
   )).orderBy(desc(workflowTimers.dueAt)).limit(1))[0];
   return rung?.dueAt ?? null;
+}
+
+/**
+ * E3.1 review (#759) — $ DECIDED: a HOSPITAL-initiated move (bed management, isolation, gender fix, maintenance; a swap
+ * for a gender or isolation fix) bills at the LOWER of the class the patient was billed at and the new bed's class —
+ * the patient does not pay for the hospital's move. A patient-requested or clinical move bills the new bed's class.
+ * Returns the class to protect, or undefined when the new bed's own class is the answer.
+ */
+const HOSPITAL_INITIATED = new Set(["bed_management", "isolation", "gender_fix", "maintenance", "isolation_fix"]);
+
+async function billedClassAt(tx: Tx, stay: typeof ipdBedStays.$inferSelect, at: Date): Promise<IpdBedClass> {
+  const changes = await tx.select().from(ipdClassChanges)
+    .where(and(eq(ipdClassChanges.stayId, stay.id), eq(ipdClassChanges.status, "active"))).orderBy(asc(ipdClassChanges.effectiveFrom));
+  return (changes.filter((c) => c.effectiveFrom.getTime() <= at.getTime()).at(-1)?.toClass ?? stay.billedClass) as IpdBedClass;
+}
+
+function protectedClassFor(reason: string, current: IpdBedClass, target: IpdBedClass): IpdBedClass | undefined {
+  if (!HOSPITAL_INITIATED.has(reason)) return undefined;
+  const was = rentClassOf(current);
+  const now = rentClassOf(target);
+  if (was === null || now === null) return undefined;
+  return classRank(was) < classRank(now) ? was : undefined;
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -189,9 +211,17 @@ export async function acceptHandover(db: Db, actor: Actor, raw: unknown, opts: O
       if (a.state !== "transferring") throw new IpdRefusal("state_changed", undefined, { state: a.state });
       const origin = await openStayOf(tx, a.id);
       if (origin?.bedId !== t.fromBedId) throw new IpdRefusal("state_changed", "Patient moved");
+      // Review #759: the hold must still be live — a lapsed hold is not silently re-taken (the lapse job closes it).
+      const hold = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, t.reservationId)))[0];
+      if (hold?.status !== "active" || hold.expiresAt.getTime() <= at.getTime()) {
+        throw new IpdRefusal("transfer_hold_lapsed", undefined, { reservationId: t.reservationId, expiresAt: hold?.expiresAt.toISOString() ?? null });
+      }
+      const protectBookedClass = protectedClassFor(t.reason, await billedClassAt(tx, origin, at), target.class);
 
       await releaseBedOccupant(tx, actor, t.fromBedId, at, { terminal: a.isolation !== "none" });
-      await assignBedIn(tx, db, actor, { admissionId: a.id, bedId: t.toBedId, patientId: a.patientId, need }, at, ctx, { viaAdmit: true });
+      await assignBedIn(tx, db, actor, {
+        admissionId: a.id, bedId: t.toBedId, patientId: a.patientId, need, ...(protectBookedClass === undefined ? {} : { protectBookedClass }),
+      }, at, ctx, { viaAdmit: true });
       await moveAdmission(tx, actor, a, "admitted", at, {}, "accept_handover");
       await tx.update(ipdTransfers).set({ status: "accepted", endedBy: actor.id, endedAt: at }).where(eq(ipdTransfers.id, t.id));
       await appendEvent(tx, transferAccepted.make({
@@ -274,13 +304,29 @@ export async function swapBeds(db: Db, actor: Actor, raw: unknown, opts: Opts = 
         if (adm.state === "transferring") throw new IpdRefusal("transfer_already_open", undefined, { admissionId: adm.id });
         if (adm.state !== "admitted") throw new IpdRefusal("admission_wrong_state", undefined, { admissionId: adm.id, state: adm.state });
       }
-      if ((await openStayOf(tx, a.id))?.bedId !== bedA.id || (await openStayOf(tx, b.id))?.bedId !== bedB.id) {
-        throw new IpdRefusal("state_changed", "Patient moved");
+      const stayA = await openStayOf(tx, a.id);
+      const stayB = await openStayOf(tx, b.id);
+      if (stayA?.bedId !== bedA.id || stayB?.bedId !== bedB.id) throw new IpdRefusal("state_changed", "Patient moved");
+      // Review #759: an isolated patient's bed needs a terminal clean before anyone else lies in it — a transfer, not a swap.
+      for (const adm of [a, b]) {
+        if (adm.isolation !== "none") throw new IpdRefusal("swap_isolation", undefined, { admissionId: adm.id, isolation: adm.isolation });
       }
+      // Review #759: the start_transfer ICU gate, per patient — onto an ICU bed from a ward bed needs a granted approval.
+      for (const [adm, from, to, approvalId] of [[a, bedA, bedB, input.intensivistApprovalIdA], [b, bedB, bedA, input.intensivistApprovalIdB]] as const) {
+        if (to.icu && !from.icu && await grantedApproval(tx, approvalId, "icu", [adm.id, adm.patientId]) === null) {
+          throw new IpdRefusal("icu_needs_intensivist", undefined, { admissionId: adm.id, approvalId: approvalId ?? null, action: "request_approval" });
+        }
+      }
+      const protectA = protectedClassFor(input.reason, await billedClassAt(tx, stayA, at), bedB.class);
+      const protectB = protectedClassFor(input.reason, await billedClassAt(tx, stayB, at), bedA.class);
       await vacateBedForSwapIn(tx, actor, bedA.id, at);
       await vacateBedForSwapIn(tx, actor, bedB.id, at);
-      await assignBedIn(tx, db, actor, { admissionId: a.id, bedId: bedB.id, patientId: a.patientId, need: transferNeed(a, bedB) }, at, ctxA, { viaAdmit: true });
-      await assignBedIn(tx, db, actor, { admissionId: b.id, bedId: bedA.id, patientId: b.patientId, need: transferNeed(b, bedA) }, at, ctxB, { viaAdmit: true });
+      await assignBedIn(tx, db, actor, {
+        admissionId: a.id, bedId: bedB.id, patientId: a.patientId, need: transferNeed(a, bedB), ...(protectA === undefined ? {} : { protectBookedClass: protectA }),
+      }, at, ctxA, { viaAdmit: true });
+      await assignBedIn(tx, db, actor, {
+        admissionId: b.id, bedId: bedA.id, patientId: b.patientId, need: transferNeed(b, bedA), ...(protectB === undefined ? {} : { protectBookedClass: protectB }),
+      }, at, ctxB, { viaAdmit: true });
       await appendEvent(tx, bedSwapped.make({
         payload: { admissionIdA: a.id, admissionIdB: b.id, bedIdA: bedA.id, bedIdB: bedB.id, reason: input.reason, provenance: provenanceOf(actor) },
         actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
@@ -329,8 +375,24 @@ export async function changeClass(db: Db, actor: Actor, raw: unknown, opts: Opts
       .where(and(eq(ipdClassChanges.stayId, stay.id), eq(ipdClassChanges.status, "active"))).orderBy(asc(ipdClassChanges.effectiveFrom));
     const pending = changes.filter((c) => c.effectiveFrom.getTime() > at.getTime());
     const inEffect = changes.filter((c) => c.effectiveFrom.getTime() <= at.getTime()).at(-1);
+    // Compared with the class once the pending rows are superseded (review #759): asking for the class in effect
+    // REVOKES a pending change; with nothing pending it is `class_unchanged`.
     const fromClass = (inEffect?.toClass ?? stay.billedClass) as IpdBedClass;
-    if (fromClass === input.toClass) throw new IpdRefusal("class_unchanged", undefined, { billedClass: fromClass });
+    if (fromClass === input.toClass) {
+      if (pending.length === 0) throw new IpdRefusal("class_unchanged", undefined, { billedClass: fromClass });
+      for (const p of pending) {
+        await tx.update(ipdClassChanges).set({ status: "superseded", supersededAt: at }).where(eq(ipdClassChanges.id, p.id));
+        await appendEvent(tx, admissionClassChanged.make({
+          payload: {
+            admissionId: a.id, classChangeId: p.id, stayId: stay.id, fromClass: p.toClass as IpdBedClass, toClass: fromClass,
+            direction: classRank(fromClass) > classRank(rentClassOf(p.toClass as IpdBedClass) ?? (p.toClass as IpdBedClass)) ? "upgrade" : "downgrade",
+            effectiveFrom: at.toISOString(), provenance: provenanceOf(actor),
+          },
+          actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
+        }));
+      }
+      return { admissionId: a.id, toClass: input.toClass, effectiveFrom: at.toISOString() };
+    }
     const direction = classRank(input.toClass) > classRank(rentClassOf(fromClass) ?? fromClass) ? "upgrade" as const : "downgrade" as const;
     if (direction === "upgrade" && !input.roomRentCapAcknowledged) throw new IpdRefusal("room_rent_cap_not_acknowledged");
 
@@ -447,7 +509,9 @@ export async function transferOptions(db: Db, actor: Actor, admissionId: string,
       if (!parsed.success) continue;
       const attrs = parsed.data;
       const need = { ...needOf(a), requestedClass: attrs.class, icu: attrs.icu };
-      if (checkBedRules({ code: b.code, attributes: attrs }, ctx.patient, need, undefined, { roomGender: null, mayUseOverflow: ctx.mayUseOverflow }) !== null) continue;
+      // Review #759: the twin room's gender per candidate, as `holdBedForTransferIn` will check it.
+      const roomGender = await bedRoomGender(db, b.id);
+      if (checkBedRules({ code: b.code, attributes: attrs }, ctx.patient, need, undefined, { roomGender, mayUseOverflow: ctx.mayUseOverflow }) !== null) continue;
       const placed = await bedWithWard(db, b.id);
       const reasons = [attrs.genderRule === "any" ? "Any gender" : attrs.genderRule === "female" ? "Female bay" : attrs.genderRule === "male" ? "Male bay" : "Paediatric"];
       if (attrs.icu) reasons.push("ICU");

@@ -438,13 +438,13 @@ export const ipdTransfers = pgTable(
     check("ipd_transfers_status_ck", sql`${t.status} in ('open', 'accepted', 'cancelled')`),
     check(
       "ipd_transfers_reason_ck",
-      sql`${t.reason} in ('clinical_step_up', 'clinical_step_down', 'post_op', 'isolation', 'gender_fix', 'patient_request', 'bed_management')`,
+      sql`${t.reason} in ('clinical_step_up', 'clinical_step_down', 'post_op', 'isolation', 'gender_fix', 'patient_request', 'bed_management', 'maintenance')`,
     ),
     check("ipd_transfers_beds_ck", sql`${t.fromBedId} <> ${t.toBedId}`),
     check("ipd_transfers_ended_ck", sql`(${t.status} = 'open') = (${t.endedAt} is null)`),
     check(
       "ipd_transfers_cancel_ck",
-      sql`(${t.status} = 'cancelled') = (${t.cancelReason} is not null) and (${t.cancelReason} is null or ${t.cancelReason} in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other'))`,
+      sql`(${t.status} = 'cancelled') = (${t.cancelReason} is not null) and (${t.cancelReason} is null or ${t.cancelReason} in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other', 'hold_lapsed'))`,
     ),
   ],
 );
