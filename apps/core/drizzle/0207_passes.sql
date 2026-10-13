@@ -3,6 +3,7 @@ CREATE TABLE "pass_admission_flags" (
 	"police_custody" boolean DEFAULT false NOT NULL,
 	"custody_note" text,
 	"visitor_ban_reason" text,
+	"visitor_ban_scope" text,
 	"visitor_ban_by" text,
 	"visitor_ban_at" timestamp with time zone,
 	"updated_by" text NOT NULL,

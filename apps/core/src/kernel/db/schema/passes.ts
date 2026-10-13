@@ -105,6 +105,8 @@ export const passAdmissionFlags = pgTable(
     policeCustody: boolean("police_custody").notNull().default(false),
     custodyNote: text("custody_note"),
     visitorBanReason: text("visitor_ban_reason"),
+    /** `visitors` (a doctor's ban) or `all` (a manager paused every pass): only passes.manage lifts `all`. */
+    visitorBanScope: text("visitor_ban_scope"),
     visitorBanBy: text("visitor_ban_by"),
     visitorBanAt: timestamp("visitor_ban_at", { withTimezone: true }),
     updatedBy: text("updated_by").notNull(),

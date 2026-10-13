@@ -1,6 +1,6 @@
 import { PASS_KINDS, PASS_SCAN_RESULTS, PASS_STATES } from "@hmis/contracts";
 import { PASS_KIND_VALUES, PASS_SCAN_RESULT_VALUES, PASS_STATE_VALUES } from "../../kernel/db/schema";
-import { entitlementFor, inVisitingHours, istMinuteOfDay, scanResult } from "./policy";
+import { ENTITLEMENT_KINDS, TIMED_PASS_KINDS, entitlementFor, inVisitingHours, istMinuteOfDay, scanResult } from "./policy";
 import type { ScanFacts } from "./policy";
 
 /** E1.3 (#720) — the pure pass rules. Instants are built from IST clock times on an arbitrary day; nothing reads a clock. */
@@ -20,6 +20,11 @@ describe("passes policy", () => {
     ["general", 8, "parent_stay", 1], ["private", 8, "parent_stay", 2],
   ] as const)("%s bed, age %d: %s × %d", (bedClass, ageYears, kind, max) => {
     expect(entitlementFor({ bedClass, ageYears, policeCustody: false })).toMatchObject({ kind, max });
+  });
+
+  it("no entitlement kind is timed: the entitlement count may ignore valid_to (DECIDED, review of #755)", () => {
+    expect(ENTITLEMENT_KINDS.filter((k) => TIMED_PASS_KINDS.includes(k))).toEqual([]);
+    expect(TIMED_PASS_KINDS).toEqual(["visitor"]);
   });
 
   it("police custody overrides the class: two police guard passes", () => {

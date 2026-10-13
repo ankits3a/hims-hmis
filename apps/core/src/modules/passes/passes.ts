@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { PASS_INTENTS, newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
@@ -66,10 +66,13 @@ async function placedOf(tx: Tx, admissionId: string): Promise<AdmissionPlace> {
   return place;
 }
 
-export type Flags = { policeCustody: boolean; visitorBanReason: string | null; visitorBanAt: Date | null };
+export type Flags = { policeCustody: boolean; visitorBanReason: string | null; visitorBanAt: Date | null; visitorBanScope: string | null };
 export async function flagsOf(db: Db | Tx, admissionId: string): Promise<Flags> {
   const f = (await db.select().from(passAdmissionFlags).where(eq(passAdmissionFlags.admissionId, admissionId)))[0];
-  return { policeCustody: f?.policeCustody ?? false, visitorBanReason: f?.visitorBanReason ?? null, visitorBanAt: f?.visitorBanAt ?? null };
+  return {
+    policeCustody: f?.policeCustody ?? false, visitorBanReason: f?.visitorBanReason ?? null, visitorBanAt: f?.visitorBanAt ?? null,
+    visitorBanScope: f?.visitorBanScope ?? null,
+  };
 }
 async function writeFlags(tx: Tx, admissionId: string, actor: Actor, at: Date, set: Partial<typeof passAdmissionFlags.$inferInsert>): Promise<void> {
   await tx.insert(passAdmissionFlags).values({ admissionId, updatedBy: actor.id, updatedAt: at, ...set })
@@ -77,11 +80,12 @@ async function writeFlags(tx: Tx, admissionId: string, actor: Actor, at: Date, s
 }
 
 /** The patient's line on a pass: the name, or for a sealed / VIP patient the alias — never the name. */
-export async function patientFacts(db: Db, patientId: string, at: Date): Promise<{ label: string; uhid: string | null; ageYears: number | null }> {
+export type PatientFacts = { label: string; uhid: string | null; ageYears: number | null; restricted: boolean };
+export async function patientFacts(db: Db, patientId: string, at: Date): Promise<PatientFacts> {
   const s = (await getPatientSummaries(db, PASS_CARD_VIEWER, [patientId]))[0];
-  if (s === undefined) return { label: "Patient", uhid: null, ageYears: null };
+  if (s === undefined) return { label: "Patient", uhid: null, ageYears: null, restricted: true };
   const label = s.restricted ? (s.alias ?? "Restricted record") : (s.name ?? "Patient");
-  return { label, uhid: s.uhid, ageYears: ageInYears(s.dob, at) };
+  return { label, uhid: s.uhid, ageYears: ageInYears(s.dob, at), restricted: s.restricted };
 }
 
 async function liveCount(tx: Tx, admissionId: string, kinds: readonly PassKind[], at?: Date): Promise<number> {
@@ -164,6 +168,9 @@ async function issueNicuMother(
 ): Promise<{ passIds: string[] }> {
   if (flags.policeCustody) throw new PassRefusal("police_custody_guard_only");
   if (input.babyAdmissionId === undefined) throw new PassRefusal("baby_admission_required");
+  // The baby's lock too (mother's first, then the baby's — the only path that holds two): the baby's discharge
+  // cannot slip between this check and the insert and leave a live pass to a stay that has ended.
+  await lockPasses(tx, input.babyAdmissionId);
   const baby = await admissionPlace(tx, input.babyAdmissionId);
   if (baby === null || !baby.placed || baby.bedClass !== "nicu") {
     throw new PassRefusal("baby_not_in_nicu", { babyAdmissionId: input.babyAdmissionId, babyBedClass: baby?.bedClass ?? null });
@@ -263,7 +270,10 @@ export async function pausePasses(db: Db, actor: Actor, raw: unknown, opts: Opts
       .where(and(eq(passes.admissionId, place.admissionId), eq(passes.state, "active"), ...kinds)).returning({ id: passes.id });
     const ids = rows.map((r) => r.id);
     for (const passId of ids) await logEvent(tx, actor, at, place.admissionId, "paused", passId, input.reason, { scope: input.scope });
-    await writeFlags(tx, place.admissionId, actor, at, { visitorBanReason: input.reason, visitorBanBy: actor.id, visitorBanAt: at });
+    // A doctor's visitor ban never narrows a manager's pause-all: the scope only widens.
+    const prior = await flagsOf(tx, place.admissionId);
+    const scope = prior.visitorBanScope === "all" ? "all" : input.scope;
+    await writeFlags(tx, place.admissionId, actor, at, { visitorBanReason: input.reason, visitorBanBy: actor.id, visitorBanAt: at, visitorBanScope: scope });
     await appendEvent(tx, passesPaused.make({
       payload: { admissionId: place.admissionId, passIds: ids, scope: input.scope }, actor, correlationId: place.admissionId,
       patientId: place.patientId, occurredAt: at,
@@ -282,13 +292,14 @@ export async function resumePasses(db: Db, actor: Actor, raw: unknown, opts: Opt
     await lockPasses(tx, input.admissionId);
     const place = await placeOf(tx, input.admissionId);
     const flags = await flagsOf(tx, place.admissionId);
+    if (!manager && flags.visitorBanScope === "all") throw new PassRefusal("resume_needs_manage");
     const kinds = manager ? [] : [eq(passes.kind, "visitor")];
     const rows = await tx.update(passes).set({ state: "active", pauseReason: null })
       .where(and(eq(passes.admissionId, place.admissionId), eq(passes.state, "paused"), ...kinds)).returning({ id: passes.id });
     if (rows.length === 0 && flags.visitorBanReason === null) throw new PassRefusal("nothing_paused");
     const ids = rows.map((r) => r.id);
     for (const passId of ids) await logEvent(tx, actor, at, place.admissionId, "resumed", passId, input.note ?? null);
-    await writeFlags(tx, place.admissionId, actor, at, { visitorBanReason: null, visitorBanBy: null, visitorBanAt: null });
+    await writeFlags(tx, place.admissionId, actor, at, { visitorBanReason: null, visitorBanBy: null, visitorBanAt: null, visitorBanScope: null });
     await appendEvent(tx, passesResumed.make({
       payload: { admissionId: place.admissionId, passIds: ids }, actor, correlationId: place.admissionId,
       patientId: place.patientId, occurredAt: at,
@@ -362,22 +373,47 @@ export async function expireAdmissionPasses(
 /**
  * A ward transfer accepted: the admission's live passes now open the NEW ward (read live from IPD, so the event's
  * payload shape does not matter). A NICU mother pass follows the baby, not the mother, and is left alone.
+ *
+ * Then the new bed's class re-entitles (review of #755): a pass of a kind the new class does not give (attendants on a
+ * move to ICU, where the family gets a lounge pass on request) or beyond its count (private → general keeps the
+ * earliest) is revoked with the reason "transfer to <class>". Idempotent: a second delivery moves and revokes nothing.
  */
-export async function movePassesToCurrentWard(db: Db, admissionId: string, at: Date, actor: Actor = PASSES_SYSTEM_ACTOR): Promise<{ movedPassIds: string[] }> {
+export async function movePassesToCurrentWard(
+  db: Db, admissionId: string, at: Date, actor: Actor = PASSES_SYSTEM_ACTOR,
+): Promise<{ movedPassIds: string[]; revokedPassIds: string[] }> {
   return withTx(db, async (tx) => {
     await lockPasses(tx, admissionId);
     const place = await admissionPlace(tx, admissionId);
-    if (place === null || place.wardId === null) return { movedPassIds: [] };
+    if (place === null || place.wardId === null) return { movedPassIds: [], revokedPassIds: [] };
     const rows = await tx.update(passes).set({ wardId: place.wardId }).where(and(
       eq(passes.admissionId, admissionId), inArray(passes.state, [...LIVE_STATES]), ne(passes.kind, "nicu_mother"),
       or(isNull(passes.wardId), ne(passes.wardId, place.wardId)),
     )).returning({ id: passes.id });
     const ids = rows.map((r) => r.id);
-    if (ids.length === 0) return { movedPassIds: [] };
-    for (const passId of ids) await logEvent(tx, actor, at, admissionId, "moved", passId, null, { wardId: place.wardId });
-    await appendEvent(tx, passesMoved.make({
-      payload: { admissionId, passIds: ids, wardId: place.wardId }, actor, correlationId: admissionId, patientId: place.patientId, occurredAt: at,
-    }));
-    return { movedPassIds: ids };
+    if (ids.length > 0) {
+      for (const passId of ids) await logEvent(tx, actor, at, admissionId, "moved", passId, null, { wardId: place.wardId });
+      await appendEvent(tx, passesMoved.make({
+        payload: { admissionId, passIds: ids, wardId: place.wardId }, actor, correlationId: admissionId, patientId: place.patientId, occurredAt: at,
+      }));
+    }
+    const flags = await flagsOf(tx, admissionId);
+    const { ageYears } = await patientFacts(db, place.patientId, at);
+    const ent = entitlementFor({ bedClass: place.bedClass, ageYears, policeCustody: flags.policeCustody });
+    const live = await tx.select({ id: passes.id, kind: passes.kind }).from(passes).where(and(
+      eq(passes.admissionId, admissionId), inArray(passes.state, [...LIVE_STATES]), inArray(passes.kind, [...ENTITLEMENT_KINDS]),
+    )).orderBy(asc(passes.issuedAt), asc(passes.id));
+    const keep = live.filter((p) => p.kind === ent.kind).slice(0, ent.max).map((p) => p.id);
+    const revoke = live.filter((p) => !keep.includes(p.id)).map((p) => p.id);
+    const reason = `transfer to ${place.bedClass ?? "another bed"}`;
+    if (revoke.length > 0) {
+      await tx.update(passes).set({ state: "revoked", endReason: reason, endedAt: at, endedBy: actor.id }).where(inArray(passes.id, revoke));
+      for (const passId of revoke) {
+        await logEvent(tx, actor, at, admissionId, "revoked", passId, reason);
+        await appendEvent(tx, passRevoked.make({
+          payload: { admissionId, passId, reason, replacedBy: null }, actor, correlationId: admissionId, patientId: place.patientId, occurredAt: at,
+        }));
+      }
+    }
+    return { movedPassIds: ids, revokedPassIds: revoke };
   });
 }

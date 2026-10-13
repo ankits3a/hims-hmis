@@ -50,7 +50,7 @@ export function PassCardPrint({ card }: { card: PassCard }): React.ReactElement 
           <div className="small">{card.validTo === null ? t("passes.card.untilDischarge") : `${t("passes.card.until")} ${timeIst(card.validTo)}`}</div>
           {card.visitingHours ? <div className="small">{t("passes.card.hours", { hours: card.visitingHours })}</div> : null}
         </div>
-        <QRCodeSVG value={card.token} size={96} level="M" />
+        {card.token === null ? null : <QRCodeSVG value={card.token} size={96} level="M" />}
       </div>
       <div className="psd-card-foot small">{t("passes.card.foot")}</div>
     </div>
@@ -212,7 +212,7 @@ export function IpdPasses(): React.ReactElement {
                           <td><span className={`psd-state ${p.state}`}>{t(`passes.state.${p.state}`)}</span></td>
                           <td className="small">{p.validTo === null ? t("passes.card.untilDischarge") : timeIst(p.validTo)}</td>
                           <td className="psd-row-acts">
-                            <button type="button" className="psd-btn sm" onClick={() => doPrint(p)}>{t("passes.print")}</button>
+                            {p.token === null ? null : <button type="button" className="psd-btn sm" onClick={() => doPrint(p)}>{t("passes.print")}</button>}
                             {can("passes.issue") ? <button type="button" className="psd-btn sm" disabled={busy} onClick={() => { void act(() => reissuePass(p.passId, "lost")); }}>{t("passes.lost")}</button> : null}
                           </td>
                         </tr>

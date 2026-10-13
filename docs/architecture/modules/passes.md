@@ -39,7 +39,7 @@ Source: `apps/core/src/modules/passes/`
   - `expireAdmissionPasses(db: Db, args: { admissionId: string; reason: PassEndReason; at: Date; causationEvent?: string | null; actor?: Actor }…`
   - `issuePasses(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ passIds: string[] }>`
   - `issueVisitorPass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ passIds: string[] }>`
-  - `movePassesToCurrentWard(db: Db, admissionId: string, at: Date, actor: Actor = PASSES_SYSTEM_ACTOR): Promise<{ movedPassIds: string[] }>`
+  - `movePassesToCurrentWard(db: Db, admissionId: string, at: Date, actor: Actor = PASSES_SYSTEM_ACTOR): Promise<{ movedPassIds: string[]; revok…`
   - `newPassToken(): string`
   - `pausePasses(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ pausedPassIds: string[] }>`
   - `reissuePass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ passId: string; revokedPassId: string }>`

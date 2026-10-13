@@ -106,6 +106,7 @@ export const PASS_REFUSALS = {
   visitors_banned: { rule: "The doctor has stopped visitors for this patient.", fix: "Ask the doctor" },
   pause_needs_manage: { rule: "Pausing attendant passes needs the passes manager; a doctor stops visitors only.", fix: "Stop visitors only" },
   nothing_paused: { rule: "No pass of this admission is paused.", fix: "Open passes" },
+  resume_needs_manage: { rule: "Every pass was paused by the passes manager; only the manager allows them again.", fix: "Ask the duty manager" },
 } as const;
 export type PassRefusalCode = keyof typeof PASS_REFUSALS;
 export type PassRefusalBody = { statusCode: number; code: PassRefusalCode; message: string; rule: string; fix: string; detail?: Record<string, unknown> };
@@ -113,11 +114,13 @@ export type PassRefusalBody = { statusCode: number; code: PassRefusalCode; messa
 /** What a pass card prints. The patient line is the ALIAS for a sealed or VIP patient — never the name. */
 export type PassCard = {
   passId: string;
-  token: string;
+  /** The QR payload: only for a reader who holds passes.issue (who prints it). Null for everyone else. */
+  token: string | null;
   kind: PassKind;
   state: PassState;
   holderName: string;
   holderRelation: string;
+  /** The alias for a sealed / VIP patient, whose card then carries no IP number, ward or bed either. */
   patientLabel: string;
   uhid: string | null;
   admissionNo: string | null;

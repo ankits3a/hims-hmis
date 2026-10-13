@@ -1,5 +1,5 @@
 {
-  "id": "3fc78717-d3e0-42fd-b3db-c9fff69353a9",
+  "id": "56b9c8f5-fd90-4d91-92f7-e8f9ee6bb748",
   "prevId": "903cacde-bfd8-4a64-8f46-75ea03d2dfb6",
   "version": "7",
   "dialect": "postgresql",
@@ -55523,6 +55523,12 @@
         },
         "visitor_ban_reason": {
           "name": "visitor_ban_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "visitor_ban_scope": {
+          "name": "visitor_ban_scope",
           "type": "text",
           "primaryKey": false,
           "notNull": false

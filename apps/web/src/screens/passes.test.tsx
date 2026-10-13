@@ -96,6 +96,14 @@ describe("Passes at the admission desk (E1.3)", () => {
     expect(alert).toHaveTextContent("Fix: Issue a new pass");
   });
 
+  it("a reader without passes.issue gets no token: the pass shows, with no Print button", async () => {
+    stubAuth(["passes.pause"]);
+    api.getAdmissionPasses.mockResolvedValue(view({ passes: [card({ token: null })] }));
+    renderWithRouter(<IpdPasses />, `/ipd/passes?admission=${ADM}`);
+    expect(await screen.findByRole("cell", { name: /Ravi Kumar/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Print" })).toBeNull();
+  });
+
   it("a sealed patient's panel shows the alias the server sends, and custody shows its banner", async () => {
     stubAuth(["passes.issue", "passes.manage"]);
     api.getAdmissionPasses.mockResolvedValue(view({ patientLabel: "Patient Neem", policeCustody: true, entitlement: { kind: "police_guard", max: 2, live: 0, basis: "Police custody: police guard only" }, passes: [] }));

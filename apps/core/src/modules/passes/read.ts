@@ -9,7 +9,7 @@ import { ENTITLEMENT_KINDS, SCAN_WORDS, entitlementFor, inVisitingHours, scanRes
 import { hasPermission } from "../../kernel/auth/permissions";
 import type { Actor, PassAdmissionView, PassCard, PassKind, PassScanAnswer, PassState, PassWard } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
-import type { PassRow } from "./passes";
+import type { PassRow, PatientFacts } from "./passes";
 
 /**
  * E1.3 (#720) — THE READS: an admission's passes for the desk (with what it is entitled to), a printable card, the
@@ -29,11 +29,18 @@ async function wardNames(db: Db, ids: (string | null)[]): Promise<Map<string, st
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-function cardOf(p: PassRow, patient: { label: string; uhid: string | null }, admissionNo: string | null, wardName: string | null, bedCode: string | null): PassCard {
+/**
+ * One card. The token only for a reader who may print it (passes.issue); a sealed / VIP patient's card carries the
+ * alias and NOT the IP number, ward or bed — the paper travels, and a bed number finds the patient as well as a name.
+ */
+function cardOf(
+  p: PassRow, patient: PatientFacts, admissionNo: string | null, wardName: string | null, bedCode: string | null, withToken: boolean,
+): PassCard {
+  const sealed = patient.restricted;
   return {
-    passId: p.id, token: p.token, kind: p.kind as PassKind, state: p.state as PassState,
-    holderName: p.holderName, holderRelation: p.holderRelation, patientLabel: patient.label, uhid: patient.uhid, admissionNo,
-    wardName, bedCode, validFrom: p.validFrom.toISOString(), validTo: p.validTo === null ? null : p.validTo.toISOString(),
+    passId: p.id, token: withToken ? p.token : null, kind: p.kind as PassKind, state: p.state as PassState,
+    holderName: p.holderName, holderRelation: p.holderRelation, patientLabel: patient.label, uhid: patient.uhid,
+    admissionNo: sealed ? null : admissionNo, wardName: sealed ? null : wardName, bedCode: sealed ? null : bedCode, validFrom: p.validFrom.toISOString(), validTo: p.validTo === null ? null : p.validTo.toISOString(),
     visitingHours: p.kind === "visitor" ? PASS_VISITING_HOURS.label : null,
   };
 }
@@ -41,6 +48,7 @@ function cardOf(p: PassRow, patient: { label: string; uhid: string | null }, adm
 /** The desk's view of one admission: where the patient lies, custody, the ban, the entitlement and every pass. */
 export async function viewAdmissionPasses(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<PassAdmissionView> {
   await anyOf(db, actor, [PASSES_ISSUE, PASSES_PAUSE, PASSES_MANAGE]);
+  const withToken = actor.type === "system" || await hasPermission(db, actor.id, PASSES_ISSUE, "hospital");
   const place = await admissionPlace(db, admissionId);
   if (place === null) throw new PassRefusal("admission_not_found");
   const flags = await flagsOf(db, admissionId);
@@ -59,7 +67,7 @@ export async function viewAdmissionPasses(db: Db, actor: Actor, admissionId: str
       live: rows.filter((r) => r.kind === "visitor" && live(r)).length, max: PASS_MAX_LIVE_VISITORS,
       hours: PASS_VISITING_HOURS.label, open: inVisitingHours(now),
     },
-    passes: rows.map((r) => cardOf(r, patient, place.admissionNo, r.wardId === null ? null : (wards.get(r.wardId) ?? null), r.kind === "nicu_mother" ? null : place.bedCode)),
+    passes: rows.map((r) => cardOf(r, patient, place.admissionNo, r.wardId === null ? null : (wards.get(r.wardId) ?? null), r.kind === "nicu_mother" ? null : place.bedCode, withToken)),
   };
 }
 
@@ -87,8 +95,10 @@ export async function scanPass(db: Db, actor: Actor, raw: unknown, opts: { now?:
   const ended = (place?.ended ?? true) || (linked?.ended ?? false);
   const result = scanResult({ state: p.state as PassState, kind: p.kind as PassKind, validTo: p.validTo, wardId: p.wardId, admissionEnded: ended }, at, input.wardId);
   await record(result, p.id);
-  const wardName = p.wardId === null ? null : ((await wardNames(db, [p.wardId])).get(p.wardId) ?? null);
-  const bedCode = p.kind === "nicu_mother" ? (linked?.bedCode ?? null) : (place?.bedCode ?? null);
+  // A sealed / VIP patient: the guard hears "Valid" (the ward was still checked) and no place at all.
+  const sealed = place === null ? true : (await patientFacts(db, place.patientId, at)).restricted;
+  const wardName = sealed || p.wardId === null ? null : ((await wardNames(db, [p.wardId])).get(p.wardId) ?? null);
+  const bedCode = sealed ? null : p.kind === "nicu_mother" ? (linked?.bedCode ?? null) : (place?.bedCode ?? null);
   const word = result === "valid" && wardName !== null ? `${SCAN_WORDS.valid} · ${wardName}` : SCAN_WORDS[result];
   return { result, word, kind: p.kind as PassKind, holderName: p.holderName, wardName, bedCode, at: at.toISOString() };
 }

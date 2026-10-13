@@ -37,7 +37,14 @@ export function entitlementFor(f: EntitlementFacts): Entitlement {
   return { kind: "attendant", max, basis: `${words}: ${String(max)} attendant${max === 1 ? "" : "s"}` };
 }
 
-/** Kinds that count against the bedside entitlement (the visitor and the NICU mother pass do not). */
+/** Kinds whose pass carries a `valid_to` (ends by the clock, not only by an act). */
+export const TIMED_PASS_KINDS: readonly PassKind[] = ["visitor"];
+/**
+ * Kinds that count against the bedside entitlement (the visitor and the NICU mother pass do not).
+ * DECIDED (review of #755): the entitlement count ignores `valid_to`, because none of these kinds is timed — every one
+ * lives until an act ends it. `policy.test.ts` pins that this list and `TIMED_PASS_KINDS` never meet; a timed kind
+ * added here would need the count to filter on `valid_to` (as the visitor count does).
+ */
 export const ENTITLEMENT_KINDS: readonly PassKind[] = ["attendant", "parent_stay", "lounge", "police_guard"];
 
 const IST_OFFSET_MS = 330 * 60_000;
