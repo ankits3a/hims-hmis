@@ -49,7 +49,6 @@ function Line({ l }: { l: IpdChargeLineView }): React.ReactElement {
 }
 
 function Day({ d }: { d: IpdBillDay }): React.ReactElement {
-  const { t } = useTranslation();
   return (
     <tbody className="ipdb-day">
       <tr className="ipdb-dayhead">
