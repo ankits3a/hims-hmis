@@ -700,7 +700,8 @@ export const ipdDischargeSummaries = pgTable(
 /**
  * The final bill (spec §4.7): ONE billing invoice for the admission's PATIENT-payable portion, composed from the
  * non-reversed running-bill lines; deposits applied, excess refunded (a refund request), any unpaid balance recorded as
- * dues against the signed undertaking — never a detention; the dues approval follows the exit. One per admission.
+ * dues against the signed undertaking — never a detention; the dues approval follows the exit. One LIVE final bill per
+ * admission (#763: plus its supplementary bills; a voided bill keeps its row, voided by documents — never deleted).
  * Integer paise: `total_paise` = Σ the non-reversed lines' net; `patient_paise` = the invoice before rounding (as billing
  * prices it); `payer_paise` = total − patient (the claim). payer + patient = total, always.
  */
@@ -732,9 +733,41 @@ export const ipdFinalBills = pgTable(
     split: jsonb("split").$type<Record<string, unknown>>().notNull(),
     settledBy: text("settled_by").notNull(),
     settledAt: timestamp("settled_at", { withTimezone: true }).notNull(),
+    /**
+     * #763 — `final` (seq 0) or `supplementary` (seq 1, 2…): charges that accrued after a settled final bill are composed
+     * as a further invoice for the same admission. One LIVE bill per (admission, seq); a voided bill keeps its row.
+     */
+    kind: text("kind").notNull().default("final"),
+    seq: integer("seq").notNull().default(0),
+    /** #763 — the running-bill lines this bill composed (a reversed pair included): the next bill composes the rest. */
+    lineIds: jsonb("line_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /**
+     * #763 — a bill settled BEFORE migration `ipd_suppbill` has no `line_ids`: it covers the lines posted by its settlement
+     * (time fallback). The migration marks every such row true; every bill settled since is false and covers exactly its list.
+     */
+    coverByTime: boolean("cover_by_time").notNull().default(false),
+    /**
+     * #763 — THE VOID: billing voids a settled bill with a granted `ipd_bill_void` approval (requester ≠ approver) and a
+     * reason. The money moves are documents — a correction credit note against the invoice, the deposit allocations
+     * reversed — never an edit of the invoice; this row only records that it happened.
+     */
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidedBy: text("voided_by"),
+    voidReason: text("void_reason"),
+    voidApprovalId: text("void_approval_id"),
+    creditNoteId: text("credit_note_id"),
+    creditNoteNo: text("credit_note_no"),
+    /** #763 — the excess-deposit refund request this bill raised was cancelled by the void (its voucher never issues). */
+    refundCancelledAt: timestamp("refund_cancelled_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("ipd_final_bills_admission_ux").on(t.admissionId),
+    uniqueIndex("ipd_final_bills_live_ux").on(t.admissionId, t.seq).where(sql`${t.voidedAt} is null`),
+    index("ipd_final_bills_admission_idx").on(t.admissionId),
+    check("ipd_final_bills_kind_ck", sql`(${t.kind} = 'final' and ${t.seq} = 0) or (${t.kind} = 'supplementary' and ${t.seq} > 0)`),
+    check(
+      "ipd_final_bills_void_ck",
+      sql`(${t.voidedAt} is null) = (${t.voidedBy} is null) and (${t.voidedAt} is null or (coalesce(btrim(${t.voidReason}), '') <> '' and ${t.voidApprovalId} is not null))`,
+    ),
     check("ipd_final_bills_settlement_ck", sql`${t.settlement} in ('paid', 'refund_due', 'dues_recorded', 'insurer_pending_undertaking')`),
     check(
       "ipd_final_bills_money_ck",
@@ -761,10 +794,16 @@ export const ipdPayerClaims = pgTable(
     status: text("status").notNull(),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    /** #763 — a voided bill withdraws its claim (status `withdrawn`); the row is kept. */
+    withdrawnBy: text("withdrawn_by"),
+    withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("ipd_payer_claims_admission_ux").on(t.admissionId),
-    check("ipd_payer_claims_status_ck", sql`${t.status} in ('pending', 'filed', 'settled', 'rejected')`),
+    // #763: one claim per bill (a supplementary bill carries its own claim row).
+    uniqueIndex("ipd_payer_claims_bill_ux").on(t.finalBillId),
+    index("ipd_payer_claims_admission_idx").on(t.admissionId),
+    check("ipd_payer_claims_status_ck", sql`${t.status} in ('pending', 'filed', 'settled', 'rejected', 'withdrawn')`),
+    check("ipd_payer_claims_withdrawn_ck", sql`(${t.status} = 'withdrawn') = (${t.withdrawnAt} is not null)`),
     check("ipd_payer_claims_money_ck", sql`${t.claimPaise} > 0`),
   ],
 );

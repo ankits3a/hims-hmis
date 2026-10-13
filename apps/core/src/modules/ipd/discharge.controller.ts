@@ -5,7 +5,10 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { BillingError, billingHttpStatus } from "../billing";
 import { TariffError } from "../tariff";
 import { cancelFit, confirmCharges, declareFit, readSummary, saveSummaryDraft, signSummary } from "./discharge";
-import { askDuesApproval, listBillDesk, prepareFinalBill, readFinalBill, recordDuesApproval, settleFinalBill } from "./discharge-bill";
+import { askBillVoid, voidBill } from "./bill-void";
+import {
+  askDuesApproval, listBillDesk, prepareFinalBill, prepareSupplementaryBill, readFinalBill, recordDuesApproval, settleFinalBill, settleSupplementaryBill,
+} from "./discharge-bill";
 import {
   issueGatePass, listMortuary, receiveBody, recordAbscond, recordDeath, recordLama, recordPoliceClearance, releaseBody, scanGatePass,
 } from "./discharge-exit";
@@ -19,6 +22,7 @@ import type {
   Actor, IpdDischargeBillDesk, IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill, IpdMortuaryEntry, IpdRefusalBody, IpdSummaryView,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import type { VoidBillResult } from "./bill-void";
 
 /**
  * E3.2 (#730) — the discharge routes (`IPD_DISCHARGE_ROUTES`). Thin: each route is its intent function, which re-checks
@@ -103,6 +107,31 @@ export class IpdDischargeController {
   @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
   async settle(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await settleFinalBill(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  // #763 — the supplementary bill (charges after the live bills) and the void, on the bill desk.
+  @Post("discharge/bill/supplementary/prepare")
+  @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
+  async prepareSupplementary(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<IpdFinalBill> {
+    try { return await prepareSupplementaryBill(this.db, actor, prepareBody.parse(body).admissionId); } catch (e) { toHttp(e); }
+  }
+
+  @Post("discharge/bill/supplementary/settle")
+  @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
+  async settleSupplementary(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await settleSupplementaryBill(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("discharge/bill/void/ask")
+  @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
+  async askVoid(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ approvalId: string }> {
+    try { return await askBillVoid(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("discharge/bill/void")
+  @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
+  async voidBill(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<VoidBillResult> {
+    try { return await voidBill(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
   @Post("discharge/bill/ask-dues")

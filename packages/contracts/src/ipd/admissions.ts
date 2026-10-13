@@ -164,7 +164,8 @@ export type IpdAdvice = z.infer<typeof IpdAdviceSchema>;
 
 /** The approval kinds the desk may ask for on an admission (kernel approvals). */
 /** E3.2 (#730): `discharge_dues` — leaving with an unpaid balance (billing manager or MS; never a detention). */
-export const IPD_APPROVAL_KINDS = ["icu", "non_covered", "deposit_waiver", "discharge_dues"] as const;
+/** #763: `bill_void` — voiding a settled final or supplementary bill (billing manager or owner; requester ≠ approver). */
+export const IPD_APPROVAL_KINDS = ["icu", "non_covered", "deposit_waiver", "discharge_dues", "bill_void"] as const;
 export type IpdApprovalKind = (typeof IPD_APPROVAL_KINDS)[number];
 
 export const IPD_ADMIT_ROUTES = {

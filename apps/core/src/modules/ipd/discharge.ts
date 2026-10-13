@@ -1,4 +1,4 @@
-import { and, asc, eq, gte } from "drizzle-orm";
+import { and, asc, eq, gte, isNull } from "drizzle-orm";
 import { IPD_INTENTS, IpdSaveSummaryDraftSchema, IpdSummaryContentSchema, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
@@ -146,8 +146,9 @@ export async function cancelFit(db: Db, actor: Actor, raw: unknown, opts: Opts =
     const a = await lockAdmission(tx, input.admissionId);
     if (a.state !== "fit_declared" && a.state !== "discharging") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
     if (!isTreatingConsultant(a, actor)) throw new IpdRefusal("not_treating_consultant");
-    // Review #762 RED 3 ($): a settled final bill must be voided by billing first (the void flow is owed — see MAP.md).
-    const settledBill = (await tx.select({ id: ipdFinalBills.id }).from(ipdFinalBills).where(eq(ipdFinalBills.admissionId, a.id)))[0];
+    // Review #762 RED 3 ($): a LIVE settled bill must be voided by billing first (#763: `void_bill`); a voided one is no bar.
+    const settledBill = (await tx.select({ id: ipdFinalBills.id }).from(ipdFinalBills)
+      .where(and(eq(ipdFinalBills.admissionId, a.id), isNull(ipdFinalBills.voidedAt))))[0];
     if (settledBill !== undefined) throw new IpdRefusal("final_bill_exists", undefined, { finalBillId: settledBill.id });
     const d = await activeDischarge(tx, a.id);
     const confirmed = d === undefined ? 0 : (await confirmationsOf(tx, d.id)).filter((c) => c.confirmedAt !== null).length;

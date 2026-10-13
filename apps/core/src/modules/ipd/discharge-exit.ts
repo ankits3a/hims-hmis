@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { IPD_INTENTS, IpdPoliceClearanceSchema, IpdReceiveBodySchema, IpdReleaseBodySchema, ipdIsInFuture, newId } from "@hmis/contracts";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
   ipdAdmissions, ipdBedStays, ipdChargeLines, ipdDischargeSummaries, ipdDischarges, ipdGatePasses, ipdMortuaryRegister, ipdStayExits, ipdTransfers, users,
@@ -9,7 +10,9 @@ import { withIdempotency } from "../billing";
 import { getPatientSummaries } from "../patients";
 import { holdsPermission, lockAdmission, moveAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
 import { endHoldIn, releaseBedOccupant } from "./beds";
-import { finalBillRow } from "./discharge-bill";
+import { hasUnbilledLines, liveBills } from "./bill-cover";
+import { postAdmissionCharges } from "./charges";
+import { finalBillRow, recordSupplementaryDuesIn } from "./discharge-bill";
 import { activeDischarge, confirmationsOf, ensureSummaryDraft, pendingDepartments } from "./discharge";
 import {
   admissionAbsconded, admissionDeceased, admissionDischarged, admissionLama, gatePassIssued, gatePassScanned, mortuaryReceived,
@@ -132,13 +135,23 @@ export async function issueGatePass(db: Db, actor: Actor, raw: unknown, opts: Op
     if (summary?.status !== "signed") throw new IpdRefusal("summary_unsigned", undefined, { status: summary?.status ?? "none" });
     const bill = await finalBillRow(tx, a.id);
     if (bill === undefined) throw new IpdRefusal("bill_unsettled");
+    // #763: after the settlement day the stay may have run on (another night, services). Post the running bill as if the
+    // patient leaves now — the settlement day stays closed — and ask for the supplementary bill when anything waits. ⚖ The
+    // dues path stays open: a supplementary bill settled with dues recorded lets the pass issue.
+    await postAdmissionCharges(tx as unknown as Db, a.id, { upToIstDate: istDayString(at), now: at, presumedDischargeAt: at });
+    if (await hasUnbilledLines(tx, a.id)) {
+      // ⚖ Review RED 2: the final bill's no-detention path, never stricter — the signed undertaking records the waiting
+      // charges as a supplementary bill's dues right here (deposit still available applied first); no payment, no approval.
+      if (input.undertakingDocumentId === undefined) throw new IpdRefusal("supplementary_unsettled");
+      await recordSupplementaryDuesIn(tx, actor, a, input.undertakingDocumentId, at);
+    }
     const referOut = d.disposition === "transfer_out";
     if (referOut && input.receivingHospital === undefined) throw new IpdRefusal("receiving_hospital_missing");
 
     await moveAdmission(tx, actor, a, "discharging", at, {}, "issue_gate_pass");
     const gatePassId = newId();
     const code = gatePassCode();
-    const duesRecorded = bill.duesPaise > 0;
+    const duesRecorded = (await liveBills(tx, a.id)).some((b) => b.duesPaise > 0);
     await tx.insert(ipdGatePasses).values({
       id: gatePassId, admissionId: a.id, code, kind: referOut ? "transfer_out" : "discharge", status: "issued", duesRecorded,
       receivingHospital: referOut ? input.receivingHospital! : null, followUpAppointmentId: input.followUpAppointmentId ?? null,

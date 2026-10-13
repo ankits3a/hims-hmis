@@ -45,6 +45,22 @@ export type IpdErrorCode =
   | "mortuary_entry_not_found"
   | "mortuary_wrong_state"
   | "identity_check_same_person"
+  /**
+   * #763 — the supplementary bill and the void: a reversal of a line a settled bill took (void the bill first); no live
+   * bill with that id on the admission; already voided; a newer live bill must be voided first; the void needs a granted
+   * `ipd_bill_void` approval decided by someone other than its requester; the bill's refund voucher is already issued
+   * (the money is out — the void is refused); no charge waits for a supplementary bill.
+   */
+  | "charge_line_billed"
+  | "bill_not_found"
+  | "bill_already_voided"
+  | "void_newer_bill_first"
+  | "void_needs_approval"
+  | "refund_issued"
+  | "nothing_to_bill"
+  /** #763 review — a void while an issued gate pass is not yet scanned (⚖); the payer has settled the bill's claim. */
+  | "gate_pass_live"
+  | "payer_claim_settled"
   /** E3.2 — ⚖ an MLC body is released only after the police clearance is recorded. */
   | "police_clearance_required"
   /** E3.3 (#731) — the family link: refused for this admission (`detail.reason`: sealed, mlc, family_off, no_attendant_phone,

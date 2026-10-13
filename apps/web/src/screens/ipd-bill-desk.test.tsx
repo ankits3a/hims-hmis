@@ -11,6 +11,8 @@ import type { IpdBillDesk, IpdBillDeskRow } from "@hmis/contracts";
 
 const api = vi.hoisted(() => ({ getBillDesk: vi.fn(), retryPosting: vi.fn(), getInterimBill: vi.fn(), printInterimBill: vi.fn() }));
 vi.mock("../lib/ipd-bill-api", () => api);
+// #763: the settled-bills panel under the list has its own wire (tested in ipd-settled-bills.test.tsx); silent here.
+vi.mock("../lib/ipd-discharge-api", () => ({ getSettledBills: vi.fn(() => Promise.reject(new Error("not in this test"))) }));
 
 const id = (n: number): string => `01FAKE${String(n).padStart(20, "0")}`;
 

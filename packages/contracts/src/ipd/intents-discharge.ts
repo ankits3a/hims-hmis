@@ -45,7 +45,7 @@ export const cancelFit = ipdIntent({
     stepsStopped: z.number().int().nonnegative(),
     gatePassVoided: z.boolean(),
   }),
-  // E3.2 review: refused once the final bill is settled (`final_bill_exists` — billing voids it first; void flow owed).
+  // E3.2 review: refused while a settled final bill is live (`final_bill_exists` — billing voids it first, #763).
   refusals: ["admission_not_found", "admission_wrong_state", "not_treating_consultant", "final_bill_exists"],
   actors: ["doctor"],
   copilotProposable: true,
@@ -157,6 +157,11 @@ export const issueGatePass = ipdIntent({
     followUpAppointmentId: IpdIdSchema.optional(),
     /** A refer-out: the confirmed receiving hospital. */
     receivingHospital: z.strictObject({ name: z.string().trim().min(1).max(160), confirmedBy: IpdNoteSchema }).optional(),
+    /**
+     * #763 ⚖: charges after the settled bill (another night, services) and nothing paid — the patient's signed undertaking
+     * (an existing patient document) records them as a supplementary bill's dues here, at the gate; never a detention.
+     */
+    undertakingDocumentId: IpdIdSchema.optional(),
   }),
   output: z.strictObject({
     gatePassId: IpdIdSchema,
@@ -168,7 +173,7 @@ export const issueGatePass = ipdIntent({
   }),
   refusals: [
     "admission_not_found", "admission_wrong_state", "charges_unconfirmed", "summary_unsigned", "bill_unsettled",
-    "receiving_hospital_missing",
+    "receiving_hospital_missing", "supplementary_unsettled",
   ],
   // E3.2 (DECIDED): the duty manager issues at night, when the desk and billing are not on.
   actors: ["billing", "desk", "nurse", "duty_manager"],
