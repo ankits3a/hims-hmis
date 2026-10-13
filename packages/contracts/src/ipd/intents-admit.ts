@@ -75,8 +75,47 @@ export const cancelAdmission = ipdIntent({
   idempotent: true,
 });
 
+/**
+ * E1.1 (DECIDED) — what the patient needs from a bed. Until ipd-admit lands there is no admission record to read
+ * it from, so the bed intents carry it beside `admissionId`; ipd-admit derives it from the admission and refuses
+ * (`state_changed`) when a caller's copy disagrees with the record.
+ */
+export const IpdBedNeedSchema = z.strictObject({
+  requestedClass: IpdBedClassSchema,
+  isolation: IsolationSchema,
+  /** The patient needs an ICU-flagged bed. An ICU bed refuses a patient who does not. */
+  icu: z.boolean(),
+  /**
+   * §4.1 edge: a patient whose recorded gender is other or unknown is placed by their stated preference. Recorded
+   * on the act, never displayed on the board.
+   */
+  placeAs: z.enum(["male", "female"]).optional(),
+});
+export type IpdBedNeed = z.infer<typeof IpdBedNeedSchema>;
+
+/** A ward-class bed above (upgrade) or below (downgrade) the class asked for, flagged by the person who chose it. */
+export const IpdClassChangeSchema = z.enum(["upgrade", "downgrade"]);
+
+/**
+ * E1.1 (DECIDED) — `admissionId` is the admission request's id. ipd-admit mints it at request_admission; until
+ * then the caller's request reference stands in for it, and every bed event carries it so the goal queries (G2)
+ * correlate the request with its first bed act.
+ */
+const bedActShape = {
+  admissionId: IpdIdSchema,
+  bedId: IpdIdSchema,
+  patientId: IpdIdSchema,
+  need: IpdBedNeedSchema,
+  classChange: IpdClassChangeSchema.optional(),
+};
+
+const BED_RULE_REFUSALS = [
+  "patient_not_found", "bed_not_found", "bed_not_available", "bed_gender_mismatch", "bed_isolation_mismatch", "bed_age_mismatch",
+  "bed_class_mismatch", "room_gender_unknown", "bed_retired", "overflow_needs_duty_manager",
+] as const;
+
 export const reserveBed = ipdIntent({
-  input: ipdInput({ admissionId: IpdIdSchema, bedId: IpdIdSchema }),
+  input: ipdInput(bedActShape),
   output: z.strictObject({
     reservationId: IpdIdSchema,
     bedId: IpdIdSchema,
@@ -84,10 +123,7 @@ export const reserveBed = ipdIntent({
     /** Two hours after the reservation; it lapses back to available on its own. */
     expiresAt: IpdInstantSchema,
   }),
-  refusals: [
-    "admission_not_found", "admission_wrong_state", "bed_not_found", "bed_not_available", "bed_gender_mismatch",
-    "bed_isolation_mismatch", "bed_age_mismatch", "bed_retired", "overflow_needs_duty_manager", "advice_expired",
-  ],
+  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "advice_expired"],
   actors: ["desk", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
   agentTier: "T2",
@@ -152,8 +188,7 @@ export const admit = ipdIntent({
 /** Places an admitted patient on a bed without a reservation, or on a higher class while the booked one is full. */
 export const assignBed = ipdIntent({
   input: ipdInput({
-    admissionId: IpdIdSchema,
-    bedId: IpdIdSchema,
+    ...bedActShape,
     /** Booked class full → temporary higher class billed at this booked class for 48 hours (§4.2). */
     protectBookedClass: IpdBedClassSchema.optional(),
   }),
@@ -163,10 +198,7 @@ export const assignBed = ipdIntent({
     billedClass: IpdBedClassSchema,
     protectedUntil: IpdInstantSchema.nullable(),
   }),
-  refusals: [
-    "admission_not_found", "admission_wrong_state", "bed_not_found", "bed_not_available", "bed_gender_mismatch",
-    "bed_isolation_mismatch", "bed_age_mismatch", "bed_retired", "overflow_needs_duty_manager", "icu_needs_intensivist",
-  ],
+  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "icu_needs_intensivist"],
   actors: ["desk", "nurse", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
   agentTier: "T2",
@@ -296,6 +328,22 @@ export const unblockBed = ipdIntent({
   agentTier: "none",
   undo: "undo_window",
   events: ["ipd.bed.unblocked"],
+  idempotent: true,
+});
+
+/**
+ * E1.1 (DECIDED) — not in the §0B list, which names "incumbent-occupied beds … released by a tap when the incumbent
+ * discharges" (§4.1) but no act. The bed goes to cleaning (or to its block, when one waits for the release).
+ */
+export const releaseIncumbentBed = ipdIntent({
+  input: ipdInput({ bedId: IpdIdSchema, note: IpdNoteSchema.optional() }),
+  output: z.strictObject({ bedId: IpdIdSchema, bedStatus: IpdBedStatusSchema }),
+  refusals: ["bed_not_found", "bed_not_incumbent"],
+  actors: ["desk", "supervisor", "duty_manager"],
+  copilotProposable: true,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.bed.incumbent_released"],
   idempotent: true,
 });
 

@@ -208,6 +208,8 @@ const THE_EIGHTEEN = [
   "syncAttendance",
   /** E0.1 TASK ENGINE (issue #713) — `every(60_000)`: the task clock (shift end, re-dispatch, the pool, the ladder). */
   "sweepTasks",
+  /** IPD BEDS E1.1 (#718) — `every(60_000)`: a two-hour bed hold lapses back to available. */
+  "lapseBedReservations",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;

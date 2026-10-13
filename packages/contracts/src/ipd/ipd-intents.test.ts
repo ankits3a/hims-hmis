@@ -30,13 +30,17 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
     requestedClass: "general", isolation: "none", plannedFor: AT, provisionalDiagnosis: "synthetic", mlc: false,
   },
   cancel_admission: { idempotencyKey: key(2), admissionId: id(3), reason: "patient_declined", note: "synthetic" },
-  reserve_bed: { idempotencyKey: key(3), admissionId: id(3), bedId: id(4) },
+  reserve_bed: { idempotencyKey: key(3), admissionId: id(3), bedId: id(4), patientId: id(1), need: { requestedClass: "general", isolation: "none", icu: false } },
   release_reservation: { idempotencyKey: key(4), reservationId: id(5), reason: "plan_changed" },
   admit: {
     idempotencyKey: key(5), admissionId: id(3), bedId: id(4),
     consent: { signedBy: "patient", documentId: id(6) }, deposit: { receiptId: id(7) },
   },
-  assign_bed: { idempotencyKey: key(6), admissionId: id(3), bedId: id(4), protectBookedClass: "private" },
+  assign_bed: {
+    idempotencyKey: key(6), admissionId: id(3), bedId: id(4), patientId: id(1),
+    need: { requestedClass: "general", isolation: "airborne", icu: false, placeAs: "female" }, classChange: "upgrade",
+    protectBookedClass: "private",
+  },
   print_band: { idempotencyKey: key(7), admissionId: id(3), printerId: id(8), size: "adult", site: "wrist" },
   reprint_band: {
     idempotencyKey: key(8), admissionId: id(3), printerId: id(8), size: "adult", site: "ankle", reason: "damaged",
@@ -62,6 +66,7 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   block_bed: { idempotencyKey: key(15), bedId: id(4), reason: "maintenance", note: "synthetic", expectedReturnAt: AT },
   unblock_bed: { idempotencyKey: key(16), bedId: id(4) },
   mark_bed_clean: { idempotencyKey: key(17), bedId: id(4), cleanedAt: AT, checklistDone: true },
+  release_incumbent_bed: { idempotencyKey: key(40), bedId: id(4), note: "synthetic" },
   record_nursing_assessment: {
     idempotencyKey: key(18), admissionId: id(3), happenedAt: AT, source: "person",
     morse: 25, braden: 18, nutrition: "no_risk", allergyChecked: true, allergies: [], painScore: 2,

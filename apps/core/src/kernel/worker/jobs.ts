@@ -34,6 +34,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
+import { lapseBedReservations } from "../../modules/ipd";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -708,5 +709,16 @@ export function registerAllJobs(
     name: "sweepTasks",
     every: 60_000,
     run: async (now) => { await sweepTasks(db, now); },
+  });
+  /*
+   * IPD BEDS E1.1 (#718) — a bed held for a patient lapses back after two hours (spec §4.1). Every minute,
+   * the `sweepExpiredPharmacyPicks` cadence: a hold is a promise to a desk, and a coarser sweep would keep a
+   * bed off the board past its time. Idempotent (each lapse re-checks under the bed's lock); a tick with
+   * nothing due runs one indexed read (`ipd_bed_reservations_due_idx`) and writes nothing.
+   */
+  scheduler.register({
+    name: "lapseBedReservations",
+    every: 60_000,
+    run: async (now) => { await lapseBedReservations(db, now); },
   });
 }

@@ -53,6 +53,7 @@ const DEFAULT_POOL_MAX = 20;
  * `syncAttendance` (120 s) arrived together, making SEVENTEEN interval jobs: 17 + 8 = 25.
  * 25 -> 26 (2026-10-12): the task engine's `sweepTasks` (60 s), EIGHTEEN interval jobs: 18 + 8 = 26.
  * 20 (API) + 26 (worker) still fits `max_connections = 100` with the exporter and pgBackRest.
+ * 25 -> 26 (2026-10-13): IPD's `lapseBedReservations` (60 s), EIGHTEEN interval jobs: 18 + 8 = 26.
  */
 export const DEFAULT_WORKER_POOL_MAX = 26;
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;

@@ -29,6 +29,7 @@ import { MyTasks } from "./screens/my-tasks";
 import { TasksBoard } from "./screens/tasks-board";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
+import { IpdBeds } from "./screens/ipd-beds";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -130,9 +131,9 @@ import { LabMetrics } from "./screens/lab-metrics";
  * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
  * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
  */
-type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "services" | "billing" | "admin";
+type NavGroup = "desk" | "patients" | "opd" | "wards" | "imaging" | "lab" | "theatre" | "pharmacy" | "services" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "services", "billing", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "imaging", "lab", "theatre", "pharmacy", "services", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
@@ -347,6 +348,8 @@ const NAV: readonly NavEntry[] = [
    * open it on. It is reached from the list, which is where a nurse actually is when they need it.
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
+  // E1.1 (#718) — the Beds capacity board; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -749,6 +752,20 @@ const staffReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/staff",
   component: StaffReports,
+});
+
+/**
+ * E1.1 (#718) — the Beds capacity board (spec §4.9 A). A command board: it owns the viewport (16:9, no page
+ * scroll) and draws its own header. `?wall=1` is the wall display — the server sends initials, never names.
+ */
+const ipdBedsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/beds",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { wall?: string } => ({
+    wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+  }),
+  component: IpdBeds,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1870,7 +1887,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

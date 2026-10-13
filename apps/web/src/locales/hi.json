@@ -65,11 +65,13 @@
     "otList": "ऑपरेशन थिएटर सूची",
     "otBook": "डे-केयर केस बुक करें",
     "otRecovery": "रिकवरी",
+    "ipdBeds": "बेड",
     "counterDesk": "डेस्क वन",
     "group": {
       "desk": "डेस्क",
       "patients": "मरीज़",
       "opd": "ओपीडी",
+      "wards": "वार्ड",
       "imaging": "इमेजिंग",
       "lab": "लैब",
       "theatre": "ओटी",
@@ -15765,6 +15767,170 @@
       "verifier_is_doer": "करने वाला नहीं जाँच सकता",
       "not_permitted": "अनुमति नहीं",
       "reason_required": "कारण लिखें"
+    }
+  },
+  "ipdBeds": {
+    "title": "बेड",
+    "allFloors": "सभी मंज़िलें",
+    "find": "मरीज़, UHID या बेड खोजें",
+    "notFound": "कुछ नहीं मिला",
+    "wallMode": "वॉल मोड · नाम छिपाएँ",
+    "showNames": "नाम दिखाएँ",
+    "home": "होम",
+    "totals": "अस्पताल का योग",
+    "stat": {
+      "occupied": "भरे",
+      "occupiedSub": "{{pct}} % · {{reserved}} आरक्षित",
+      "overflow": "अतिरिक्त {{occupied}} / {{total}} · क्षमता नहीं",
+      "free": "अभी ख़ाली",
+      "noneFree": "कोई बेड ख़ाली नहीं",
+      "cleaning": "सफ़ाई",
+      "cleaningSub": "{{n}} 60 मिनट से ज़्यादा",
+      "blocked": "बंद",
+      "blockedSub": "{{n}} वापसी की तारीख़ पार",
+      "discharges": "आज की छुट्टियाँ",
+      "dischargesSub": "अनुमान बाद में",
+      "waiting": "बेड की प्रतीक्षा",
+      "waitingSub": "भर्ती के साथ आएगा",
+      "longest": "सबसे लंबी {{minutes}} मिनट"
+    },
+    "classShort": {
+      "general": "जनरल",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट",
+      "deluxe": "डीलक्स",
+      "suite": "सुइट",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "डे केयर",
+      "emergency": "ER",
+      "overflow": "अतिरिक्त"
+    },
+    "class": {
+      "general": "जनरल वार्ड",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट कमरा",
+      "deluxe": "डीलक्स कमरा",
+      "suite": "सुइट",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "डे केयर",
+      "emergency": "इमरजेंसी",
+      "overflow": "अतिरिक्त बेड"
+    },
+    "waiting": {
+      "title": "बेड की प्रतीक्षा",
+      "empty": "कोई प्रतीक्षा में नहीं",
+      "emptySub": "भर्ती के अनुरोध यहाँ दिखेंगे"
+    },
+    "floors": "मंज़िलें",
+    "floorsHint": "{{total}} में से {{shown}} दिख रही · मंज़िल चुनें",
+    "pickFloor": "मंज़िल चुनें",
+    "floorCount": "{{occupied}} / {{total}} बेड",
+    "loading": "बेड लोड हो रहे हैं…",
+    "loadFailed": "बेड लोड नहीं हो सके",
+    "noBeds": "कोई बेड दर्ज नहीं",
+    "status": {
+      "occupied": "भरा",
+      "incumbent": "पुराना सिस्टम",
+      "available": "ख़ाली",
+      "reserved": "आरक्षित",
+      "cleaning": "सफ़ाई",
+      "blocked": "बंद"
+    },
+    "full": "भरा हुआ",
+    "notInCensus": "जनगणना में नहीं",
+    "next": {
+      "title": "अगले 24 घंटे",
+      "discharges": "आज छुट्टी",
+      "forecast": "अनुमान बाद में आएगा"
+    },
+    "blockers": {
+      "title": "रुकावटें",
+      "none": "अभी कोई नहीं",
+      "cleaning": "60 मिनट से ज़्यादा सफ़ाई",
+      "cleaningItem": "{{bed}} · {{minutes}} मिनट",
+      "blocked": "वापसी की तारीख़ पार, अब भी बंद"
+    },
+    "live": "लाइव · अपडेट",
+    "offline": "ऑफ़लाइन · आख़िरी अपडेट {{time}}",
+    "offlineNever": "ऑफ़लाइन · अभी अपडेट नहीं",
+    "outsideCensus": "डे केयर और ER {{occupied}} / {{total}} · जनगणना में नहीं",
+    "print": "बेड बोर्ड प्रिंट करें",
+    "close": "बंद करें",
+    "pickBed": "बेड चुनें",
+    "cancel": "रद्द करें",
+    "actFailed": "सेव नहीं हुआ — फिर कोशिश करें",
+    "until": "{{time}} तक",
+    "since": "{{time}} से",
+    "back": "वापसी {{time}}",
+    "blockReason": {
+      "maintenance": "मरम्मत",
+      "infection_control": "संक्रमण नियंत्रण",
+      "deep_clean": "गहरी सफ़ाई",
+      "staff_shortage": "स्टाफ़ की कमी",
+      "other": "अन्य"
+    },
+    "releaseReason": {
+      "plan_changed": "योजना बदली",
+      "bed_unsuitable": "बेड उपयुक्त नहीं",
+      "other": "अन्य"
+    },
+    "gender": {
+      "male": "केवल पुरुष",
+      "female": "केवल महिला",
+      "any": "कोई भी",
+      "paediatric": "बच्चे"
+    },
+    "isolation": {
+      "none": "आइसोलेशन नहीं",
+      "contact": "संपर्क आइसोलेशन",
+      "droplet": "ड्रॉपलेट आइसोलेशन",
+      "airborne": "हवा से फैलने वाला आइसोलेशन"
+    },
+    "icu": "ICU बेड",
+    "overflowBed": "अतिरिक्त · ड्यूटी मैनेजर की मंज़ूरी",
+    "blockedLine": "बंद",
+    "blockOnReleaseLine": "ख़ाली होने पर बंद",
+    "reservedLine": "{{time}} तक आरक्षित",
+    "act": {
+      "reserve": "2 घंटे आरक्षित करें",
+      "assign": "बेड दें",
+      "releaseReservation": "आरक्षण हटाएँ",
+      "clean": "साफ़ हुआ",
+      "releaseIncumbent": "ख़ाली करें",
+      "unblock": "खोलें",
+      "block": "बंद करें",
+      "blockOnRelease": "ख़ाली होने पर बंद"
+    },
+    "done": {
+      "clean": "साफ़ दर्ज हुआ",
+      "released": "सफ़ाई के लिए ख़ाली",
+      "unblocked": "खुल गया",
+      "reserved": "2 घंटे के लिए आरक्षित",
+      "assigned": "बेड दिया गया",
+      "blocked": "बंद हुआ",
+      "reservationReleased": "आरक्षण हटा"
+    },
+    "form": {
+      "patientId": "मरीज़ ID",
+      "admissionId": "भर्ती संदर्भ",
+      "class": "माँगी गई श्रेणी",
+      "isolation": "आइसोलेशन",
+      "classChange": "श्रेणी बदलाव",
+      "noChange": "वही श्रेणी",
+      "upgrade": "ऊपर",
+      "downgrade": "नीचे",
+      "icu": "ICU चाहिए",
+      "reason": "कारण",
+      "expectedBack": "वापसी कब",
+      "note": "टिप्पणी"
     }
   }
 }

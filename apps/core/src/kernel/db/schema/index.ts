@@ -121,3 +121,5 @@ export * from "./reminders";
 // E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
 // References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
 export * from "./tasks";
+// E1.1 (#718) — IPD bed reservations and blocks. References `resources` (the bed) and nothing of any module's.
+export * from "./ipd";
