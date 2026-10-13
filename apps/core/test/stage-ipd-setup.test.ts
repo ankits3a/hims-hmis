@@ -1,13 +1,16 @@
 import { eq, inArray } from "drizzle-orm";
 import { IPD_RATE_COMPONENTS } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { services, tariffVersions } from "../src/kernel/db/schema";
+import { events, roleAssignments, services, tariffVersions } from "../src/kernel/db/schema";
+import { createUser } from "../src/kernel/auth/identity";
+import { assignRole, createRole } from "../src/kernel/auth/permissions";
+import { roleAssigned } from "../src/kernel/auth/events";
 import { withTx } from "../src/kernel/db/client";
 import { listDefinitions } from "../src/kernel/workflow/definitions";
 import { getApprovalType } from "../src/kernel/approvals/types";
 import { ADMISSION_WORKFLOW_DEF_KEY, IPD_APPROVAL_TYPE_KEYS } from "../src/modules/ipd";
 import { IPD_RATED_CLASSES, parseIpdTariffCsv, upsertGstCategory } from "../src/modules/tariff";
-import { assertStagingOnly, stageIpdSetup } from "../scripts/stage-ipd-setup";
+import { TESTING_ROLES, assertStagingOnly, grantTestingRoles, stageIpdSetup } from "../scripts/stage-ipd-setup";
 import { UAT_SAMPLE_MARKER, uatSampleTariffCsv } from "../scripts/fixtures/ipd-uat-sample-tariff";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -84,5 +87,37 @@ describe("stageIpdSetup against a database", () => {
     expect((await db.select().from(tariffVersions).where(inArray(tariffVersions.status, ["submitted", "activated"])))).toEqual([]);
     expect((await listDefinitions(db, ADMISSION_WORKFLOW_DEF_KEY)).filter((d) => d.status === "active")).toEqual([]);
     expect((await db.select().from(services).where(eq(services.active, true))).filter((s) => s.code.startsWith("IPD_"))).toEqual([]);
+  });
+
+  it("(d) grants the testing roles to the ONE all-roles account only, with a role.assigned event each; a rerun grants nothing; a tie refuses", async () => {
+    const mk = async (username: string, roleKeys: string[]): Promise<string> => {
+      const { id } = await createUser(db, { username, fullName: username, password: "p1234567" });
+      for (const roleKey of roleKeys) await assignRole(db, { userId: id, roleKey, scopeType: "hospital" });
+      return id;
+    };
+    for (const k of ["owner", "admin", "cashier", ...TESTING_ROLES]) await createRole(db, k, k);
+    const all = await mk("allroles", ["owner", "admin", "cashier"]);
+    const other = await mk("secondowner", ["owner", "admin"]);
+    const nurse = await mk("plain", ["cashier"]);
+
+    const first = await grantTestingRoles(db);
+    expect(first).toMatchObject({ action: "granted", granted: [...TESTING_ROLES], already: [], missingRoles: [] });
+    const rows = await db.select().from(roleAssignments);
+    const of = (id: string): string[] => rows.filter((r) => r.userId === id).map((r) => r.roleKey).sort();
+    expect(of(all)).toEqual(["owner", "admin", "cashier", ...TESTING_ROLES].sort());
+    expect(of(other)).toEqual(["admin", "owner"]);
+    expect(of(nurse)).toEqual(["cashier"]);
+    const ev = (await db.select().from(events)).filter((e) => e.name === roleAssigned.name);
+    expect(ev.map((e) => (e.payload as { userId: string; roleKey: string }).roleKey).sort()).toEqual([...TESTING_ROLES].sort());
+    expect(ev.every((e) => (e.payload as { userId: string }).userId === all)).toBe(true);
+
+    expect(await grantTestingRoles(db)).toMatchObject({ action: "already", granted: [], already: [...TESTING_ROLES] });
+    expect((await db.select().from(events)).filter((e) => e.name === roleAssigned.name)).toHaveLength(TESTING_ROLES.length);
+
+    // a second account with as many roles → not unique → refused, nothing written
+    await mk("twin", ["owner", "admin", "cashier", ...TESTING_ROLES]);
+    const before = (await db.select().from(roleAssignments)).length;
+    expect(await grantTestingRoles(db)).toMatchObject({ action: "refused" });
+    expect((await db.select().from(roleAssignments)).length).toBe(before);
   });
 });
