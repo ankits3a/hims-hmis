@@ -3723,6 +3723,9 @@
       "exceptions": "Posting exceptions"
     },
     "ipdFamilyCallbacks": { "title": "Family asked for a call", "open": "Waiting for a call" },
+    "ipdBedProposal": { "title": "Bed proposals to confirm" },
+    "ipdDischargeBlocked": { "title": "Discharges stuck" },
+    "ipdCleaningOverdue": { "title": "Cleaning over 60 min" },
     "schemes": {
       "title": "Schemes in play",
       "note": "what a patient can walk in holding — attach it before the bill, never after",
@@ -15664,6 +15667,7 @@
       "blockedSub": "{{n}} past return date",
       "discharges": "Discharges today",
       "dischargesSub": "Expected comes later",
+      "tomorrow": "{{n}} fit for discharge tomorrow",
       "waiting": "Waiting for a bed",
       "waitingSub": "Comes with admissions",
       "longest": "Longest {{minutes}} min"
@@ -15698,6 +15702,7 @@
       "emergency": "Emergency",
       "overflow": "Overflow bed"
     },
+    "flow": { "tag": "Bed Flow", "why": "Why this bed", "none": "No free bed passes every rule", "confirm": "Confirm {{bed}}", "failed": "Could not hold the bed — try again" },
     "waiting": {
       "title": "Waiting for a bed",
       "empty": "No one waiting",

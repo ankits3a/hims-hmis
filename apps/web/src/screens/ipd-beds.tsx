@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type {
-  IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody,
+  IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody, IpdWaitingCard,
 } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
@@ -28,8 +28,10 @@ import "./ipd-beds.css";
  * - The PAGE never scrolls at 1920×1080 or 1366×768 (owner rule: command boards fit 16:9). Desktop opens on all
  *   floors as the board does; when they outgrow the centre column it scrolls inside itself, and a floor chip
  *   narrows it to one. The wall display shows one floor at a time and cycles them.
- * - No Bed Flow card and no "N proposals" pill — proposals are a later lane, and this board shows no number it
- *   cannot source. The waiting column lists open admission requests (E1.2), each linking to the Admit sheet.
+ * - The waiting column lists open admission requests (E1.2), each linking to the Admit sheet. E5.2 (#739): a request
+ *   with no bed held carries BED FLOW's proposal (the best rule-valid bed, with its reasons) and a Confirm button
+ *   that calls `reserve_bed` on that bed — the act re-checks every rule; Bed Flow never places anyone itself. No
+ *   proposal on the wall display. Still no "N proposals" pill: the board shows no number it cannot source.
  * - "Next 24 hours" shows today's discharges (beds released since midnight) and says "Forecast comes later";
  *   blockers are only what the server measures (cleaning over 60 min, blocked past return date).
  * - A ward card opens a drawer of bed tiles; acts live there (the board's drag-and-drop arrives with the
@@ -166,6 +168,23 @@ export function IpdBeds(): React.ReactElement {
     void navigate({ to: "/ipd/beds", search: wall ? {} : { wall: "1" } } as never);
   };
 
+  // E5.2 (#739) — Confirm = `reserve_bed` on the proposed bed (the proposal carries the request's patient and need).
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [flowError, setFlowError] = useState<{ admissionId: string; text: string } | null>(null);
+  const confirmFlow = (p: NonNullable<IpdWaitingCard["flow"]>): void => {
+    setConfirming(p.admissionId);
+    setFlowError(null);
+    reserveBed({ admissionId: p.admissionId, bedId: p.bedId, patientId: p.patientId, need: p.need }).then(
+      () => { setConfirming(null); load(); },
+      (e: unknown) => {
+        setConfirming(null);
+        const r = refusalOf(e);
+        setFlowError({ admissionId: p.admissionId, text: r === null ? t("ipdBeds.flow.failed") : r.bedRule ?? r.rule });
+        load();
+      },
+    );
+  };
+
   const tot = board?.totals;
   const pct = tot && tot.census.total > 0 ? ((tot.census.occupied / tot.census.total) * 100).toFixed(1) : null;
   const freeLine = tot
@@ -205,7 +224,8 @@ export function IpdBeds(): React.ReactElement {
         <Stat label={t("ipdBeds.stat.free")} value={tot ? String(tot.free) : "—"} sub={freeLine || (tot ? t("ipdBeds.stat.noneFree") : "")} tone={tot && tot.free === 0 ? "bad" : undefined} />
         <Stat label={t("ipdBeds.stat.cleaning")} value={tot ? String(tot.cleaning) : "—"} sub={tot ? t("ipdBeds.stat.cleaningSub", { n: tot.cleaningOver60 }) : ""} tone={tot && tot.cleaningOver60 > 0 ? "warn" : undefined} />
         <Stat label={t("ipdBeds.stat.blocked")} value={tot ? String(tot.blocked) : "—"} sub={tot ? t("ipdBeds.stat.blockedSub", { n: tot.blockedPastReturn }) : ""} tone={tot && tot.blockedPastReturn > 0 ? "warn" : undefined} />
-        <Stat label={t("ipdBeds.stat.discharges")} value={tot ? String(tot.dischargesToday) : "—"} sub={t("ipdBeds.stat.dischargesSub")} />
+        <Stat label={t("ipdBeds.stat.discharges")} value={tot ? String(tot.dischargesToday) : "—"}
+          sub={tot && tot.predictedDischargesTomorrow !== undefined ? t("ipdBeds.stat.tomorrow", { n: tot.predictedDischargesTomorrow }) : t("ipdBeds.stat.dischargesSub")} />
         <Stat label={t("ipdBeds.stat.waiting")} value={tot ? String(tot.waiting.count) : "—"}
           sub={tot && tot.waiting.longestMinutes !== null ? t("ipdBeds.stat.longest", { minutes: tot.waiting.longestMinutes }) : t("ipdBeds.stat.waitingSub")} />
       </section>
@@ -226,7 +246,7 @@ export function IpdBeds(): React.ReactElement {
             <div key={w.admissionId} className="ipdb-card ipdb-wait" data-testid="ipd-beds-waiting-card">
               <div className="ipdb-wait-top">
                 <span className="ipdb-wait-av" aria-hidden="true">{w.initials}</span>
-                <span className="ipdb-wait-who"><b>{w.name ?? w.initials}</b><span className="dim">{t(`ipdAdmit.source.${w.source}`)}</span></span>
+                <span className="ipdb-wait-who"><b>{w.name ?? w.initials}</b><span className="dim">{w.uhid ? `${w.uhid} · ` : ""}{t(`ipdAdmit.source.${w.source}`)}</span></span>
                 <span className="mono ipdb-wait-clock">{t("ipdBeds.waiting.wait", { minutes: w.waitMinutes })}</span>
               </div>
               <span className="dim ipdb-wait-need">
@@ -235,8 +255,35 @@ export function IpdBeds(): React.ReactElement {
                 {w.icu && !["icu", "nicu", "picu"].includes(w.requestedClass) ? ` · ${t("ipdBeds.waiting.icu")}` : ""}
                 {w.reservedBedCode !== null ? ` · ${t("ipdBeds.waiting.held", { bed: w.reservedBedCode })}` : ""}
               </span>
-              {!wall && can("ipd.admit") ? (
-                <Link to="/ipd/admit" search={{ admission: w.admissionId }} className="ipdb-btn sm">{t("ipdBeds.waiting.open")}</Link>
+              {!wall && w.flow ? (
+                // E5.2 (#739) — Bed Flow's proposal: the bed, why (the rules it passed, why it won), Confirm.
+                <div className="ipdb-flow" data-testid="ipd-beds-flow">
+                  <div className="ipdb-flow-head">
+                    <span className="ipdb-flow-tag">{t("ipdBeds.flow.tag")}</span>
+                    <b className="mono">{w.flow.bedCode}</b>
+                    {w.flow.wardName !== null ? <span className="dim">{w.flow.wardName}</span> : null}
+                  </div>
+                  <ul className="ipdb-flow-why" aria-label={t("ipdBeds.flow.why")}>
+                    {w.flow.reasons.map((r) => <li key={r}>{r}</li>)}
+                  </ul>
+                  {flowError !== null && flowError.admissionId === w.admissionId ? (
+                    <span role="alert" className="ipdb-flow-err">{flowError.text}</span>
+                  ) : null}
+                </div>
+              ) : null}
+              {!wall && w.flow === null ? <span className="dim ipdb-wait-need" data-testid="ipd-beds-flow-none">{t("ipdBeds.flow.none")}</span> : null}
+              {!wall ? (
+                <div className="ipdb-wait-acts">
+                  {w.flow && can("ipd.beds.manage") ? (
+                    <button type="button" className="ipdb-btn sm pri" disabled={confirming === w.admissionId}
+                      onClick={() => confirmFlow(w.flow!)} data-testid="ipd-beds-flow-confirm">
+                      {t("ipdBeds.flow.confirm", { bed: w.flow.bedCode })}
+                    </button>
+                  ) : null}
+                  {can("ipd.admit") ? (
+                    <Link to="/ipd/admit" search={{ admission: w.admissionId }} className="ipdb-btn sm">{t("ipdBeds.waiting.open")}</Link>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ))}
