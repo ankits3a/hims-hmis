@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { IPD_BED_CLASS_INFO, IPD_CLEANING_OVERDUE_MINUTES } from "@hmis/contracts";
 import { ipdBedBlocks, ipdBedReservations, ipdBedStays, resourceStatusHistory, resources } from "../../kernel/db/schema";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema, IpdWardAttributesSchema } from "./bed-attributes";
 import type {
@@ -18,13 +19,6 @@ import type { Db } from "../../kernel/db/client";
  * patients by their alias's initials, as `getPatientSummaries` restricts them).
  */
 
-const IST_OFFSET_MS = 5.5 * 3_600_000;
-const DAY_MS = 86_400_000;
-
-function istMidnight(now: Date): Date {
-  const ist = now.getTime() + IST_OFFSET_MS;
-  return new Date(Math.floor(ist / DAY_MS) * DAY_MS - IST_OFFSET_MS);
-}
 
 export function initialsOf(name: string): string {
   const words = name.split(/\s+/).filter((w) => /^[\p{L}]/u.test(w));
@@ -75,7 +69,7 @@ export async function readBedBoard(db: Db, actor: Actor, opts: { wall?: boolean;
     for (const r of rows) enteredAt.set(r.resourceId, r.at);
   }
 
-  const midnight = istMidnight(now);
+  const midnight = istDayWindow(now).start; // the hospital clock (ist-clock-parity), never a local copy
   const [released] = await db.select({ n: sql<number>`count(*)::int` }).from(resourceStatusHistory)
     .innerJoin(resources, eq(resources.id, resourceStatusHistory.resourceId))
     .where(and(
