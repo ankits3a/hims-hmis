@@ -33,6 +33,7 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
+import { lapseBedReservations, postNightlyIpdCharges } from "../../modules/ipd";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -83,6 +84,12 @@ const COPILOT_ASK_PRUNE_IST = "01:20";
  * which is A5, and it is the reason this is a sweep rather than an incremental append.
  */
 const USER_DAY_ROLLUP_IST = "02:00";
+/**
+ * E2.1 (#725) — the IPD nightly charges: five past IST midnight, once the day being billed is over. It posts every
+ * unposted chargeable day up to YESTERDAY, so a night the worker missed is posted on the next run with its own dates;
+ * a failed run retries on the next tick (the scheduler keys daily memory on `last_ok_at`).
+ */
+const IPD_NIGHTLY_CHARGES_IST = "00:05";
 
 /**
  * Amendment 6 (the plan's own resolution to the T2/T4 wave-order contradiction; spike
@@ -696,5 +703,26 @@ export function registerAllJobs(
     name: "syncAttendance",
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
+  });
+  /*
+   * IPD BEDS E1.1 (#718) — a bed held for a patient lapses back after two hours (spec §4.1). Every minute,
+   * the `sweepExpiredPharmacyPicks` cadence: a hold is a promise to a desk, and a coarser sweep would keep a
+   * bed off the board past its time. Idempotent (each lapse re-checks under the bed's lock); a tick with
+   * nothing due runs one indexed read (`ipd_bed_reservations_due_idx`) and writes nothing.
+   */
+  scheduler.register({
+    name: "lapseBedReservations",
+    every: 60_000,
+    run: async (now) => { await lapseBedReservations(db, now); },
+  });
+  /**
+   * E2.1 (#725) — THE THIRTY-SECOND JOB, `dailyIst` 00:05: rent, nursing and RMO lines for every admission, one per
+   * admission, day and component (a unique index — a rerun posts nothing). Batches of admissions, each in its own
+   * transaction; idempotent and multi-process-safe on its own.
+   */
+  scheduler.register({
+    name: "postNightlyIpdCharges",
+    dailyIst: IPD_NIGHTLY_CHARGES_IST,
+    run: async (now) => { await postNightlyIpdCharges(db, now); },
   });
 }

@@ -27,6 +27,9 @@ import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
+import { IpdBeds } from "./screens/ipd-beds";
+import { IpdAdmit } from "./screens/ipd-admit";
+import { IpdBill } from "./screens/ipd-bill";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -127,9 +130,9 @@ import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
  * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
  * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
  */
-type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
+type NavGroup = "desk" | "patients" | "opd" | "wards" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "wards", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
@@ -340,6 +343,10 @@ const NAV: readonly NavEntry[] = [
    * open it on. It is reached from the list, which is where a nurse actually is when they need it.
    * `otManifest.menu` declares the same three, so the two tables agree.
    */
+  // E1.1 (#718) — the Beds capacity board; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
+  // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -740,6 +747,40 @@ const staffReportsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/staff",
   component: StaffReports,
+});
+
+/**
+ * E1.1 (#718) — the Beds capacity board (spec §4.9 A). A command board: it owns the viewport (16:9, no page
+ * scroll) and draws its own header. `?wall=1` is the wall display — the server sends initials, never names.
+ */
+const ipdBedsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/beds",
+  staticData: { fullViewport: true },
+  validateSearch: (search: Record<string, unknown>): { wall?: string } => ({
+    wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
+  }),
+  component: IpdBeds,
+});
+
+/** E1.2 (#719) — Admit, one flowing sheet (spec §4.9 B). `?admission=<id>` opens a request (the Beds board links it). */
+const ipdAdmitRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admit",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdAdmit,
+});
+
+/**
+ * E2.1 (#725) — the interim bill of one admission (spec §4.3, §4.9 H). No nav entry: it opens from an admission. The
+ * server serves it under `ipd.bill.view` only (billing and front office; never a doctor, decision 0058).
+ */
+const ipdBillRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admissions/$admissionId/bill",
+  component: IpdBill,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1840,7 +1881,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

@@ -2,13 +2,15 @@
 import { createDb, withTx } from "../src/kernel/db/client";
 import { appendEvent } from "../src/kernel/events/append";
 import { requireEnv } from "../src/kernel/config";
-import { configValidated, validateTariffConfig } from "../src/modules/tariff";
+import { configValidated, ipdRateCardWarnings, validateTariffConfig } from "../src/modules/tariff";
 
 async function main(): Promise<void> {
   const { db, pool } = createDb(requireEnv("DATABASE_URL"));
   try {
     const report = await validateTariffConfig(db, new Date());
     for (const err of report.errors) console.log(`ERROR ${err.code}: ${err.detail}`);
+    // E0.4 — the IPD rate card go-live check. WARNINGS only while IPD is not live: they never change ok or the exit code.
+    for (const w of await ipdRateCardWarnings(db, new Date())) console.log(`WARN ${w.code}: ${w.detail}`);
     console.log(`config-validation: ok=${String(report.ok)} errors=${report.errors.length} caSigned=${String(report.caSigned)}`);
     const { eventId } = await withTx(db, (tx) =>
       appendEvent(tx, configValidated.make({
