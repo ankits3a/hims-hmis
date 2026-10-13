@@ -1,14 +1,15 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { IPD_INTENTS, newId } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
-  approvals, ipdAdmissionDeposits, ipdAdmissions, ipdChargeLines, ipdFinalBills, ipdPayerClaims, ipdStayExits, patientDocuments, refundVouchers,
+  approvals, ipdAdmissionDeposits, ipdAdmissions, ipdChargeLines, ipdFinalBills, ipdGatePasses, ipdPayerClaims, ipdStayExits, patientDocuments, refundVouchers,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { issueInvoice, previewInvoice, receiptUnallocatedPaise, requestRefund } from "../billing";
+import { issueInvoice, previewInvoice, receiptUnallocatedPaise, requestRefund, withIdempotency } from "../billing";
 import { holdsPermission, lockAdmission, onceIpd, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
-import { grantedApproval, requestIpdApproval } from "./approval-types";
+import { IPD_APPROVAL_TYPE_KEYS, grantedApproval, requestIpdApproval } from "./approval-types";
+import { coveredLineIds, hasUnbilledLines, liveBills } from "./bill-cover";
 import { postAdmissionCharges } from "./charges";
 import { activeDischarge, confirmationsOf, pendingDepartments } from "./discharge";
 import { billSettled } from "./discharge-events";
@@ -21,6 +22,7 @@ import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { InvoiceLineInput } from "../tariff";
 import type { AdmissionRow } from "./admission-core";
+import type { BillRow } from "./bill-cover";
 
 /**
  * E3.2 (#730) — THE FINAL BILL (spec SPEC-ipd-core §4.7; the OT's `composeDischargeBill` / `settleDischargeBill` pattern).
@@ -65,8 +67,12 @@ type Output<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["output"]
 type Opts = { now?: Date };
 type ChargeLineRow = typeof ipdChargeLines.$inferSelect;
 
-/** The admission states in which a final bill may be composed and settled (the cascade, and every other ending). */
-const BILLABLE: ReadonlySet<string> = new Set(["fit_declared", "lama", "absconded", "deceased"]);
+/**
+ * The admission states in which a final bill may be composed and settled (the cascade, and every other ending). #763: a
+ * void re-opens the bill in `discharging` (its gate pass is voided with it) or after the exit (`discharged`,
+ * `transferred_out`) — a gate pass needs a settled bill, so in those states a fresh settle only follows a void.
+ */
+const BILLABLE: ReadonlySet<string> = new Set(["fit_declared", "lama", "absconded", "deceased", "discharging", "discharged", "transferred_out"]);
 const TENDERS: Record<string, "cash" | "upi" | "card"> = { cash: "cash", upi: "upi", card: "card" };
 
 export type ComposedFinalBill = {
@@ -80,19 +86,26 @@ export type ComposedFinalBill = {
   depositHeldPaise: number;
 };
 
-export async function composeFinalBill(db: Db | Tx, a: AdmissionRow): Promise<ComposedFinalBill> {
-  const lines = await db.select().from(ipdChargeLines).where(eq(ipdChargeLines.admissionId, a.id))
+/**
+ * Composes a bill from the running bill's lines. `take` picks the lines this bill is about (#763): the lines no live bill
+ * has taken for a new bill, or the bill's own lines for a settled view. The payer split is computed over ALL the stay's
+ * lines (approvals and co-pay are consumed in posting order across the whole stay — review $2), and each picked line
+ * keeps its share. `billVersion` stays the count of all the admission's lines (append-only).
+ */
+export async function composeFinalBill(db: Db | Tx, a: AdmissionRow, take?: (line: ChargeLineRow) => boolean): Promise<ComposedFinalBill> {
+  const all = await db.select().from(ipdChargeLines).where(eq(ipdChargeLines.admissionId, a.id))
     .orderBy(asc(ipdChargeLines.serviceDate), asc(ipdChargeLines.postedAt), asc(ipdChargeLines.id));
-  const reversed = new Set(lines.flatMap((l) => (l.reversalOf === null ? [] : [l.reversalOf])));
-  const split = await computePayerSplit(db, a, lines);
+  const reversed = new Set(all.flatMap((l) => (l.reversalOf === null ? [] : [l.reversalOf])));
+  const split = await computePayerSplit(db, a, all);
   const byId = new Map(split.lines.map((l) => [l.lineId, l] as const));
+  const lines = take === undefined ? all : all.filter(take);
   const live = lines.filter((l) => l.reversalOf === null && !reversed.has(l.id)).map((line) => {
     const s = byId.get(line.id);
     return { line, payerPaise: s?.payerPaise ?? 0, patientPaise: s?.patientPaise ?? line.netPaise };
   });
   const sum = (f: (x: (typeof live)[number]) => number) => live.reduce((t, x) => t + f(x), 0);
   return {
-    billVersion: lines.length, lines, live, split,
+    billVersion: all.length, lines, live, split,
     totalPaise: sum((x) => x.line.netPaise), payerPaise: sum((x) => x.payerPaise), patientPaise: sum((x) => x.patientPaise),
     depositHeldPaise: await depositHeldPaise(db, a),
   };
@@ -142,10 +155,26 @@ export function assertPayerAccounted(payerPaise: number, payerKind: string | nul
   if (payerPaise > 0 && payerKind === null) throw new IpdRefusal("payer_kind_missing", undefined, { payerPaise });
 }
 
-type FinalBillRow = typeof ipdFinalBills.$inferSelect;
+type FinalBillRow = BillRow;
 
+/** The admission's LIVE final bill (seq 0, not voided), if any (#763: a voided bill keeps its row and counts for nothing). */
 export async function finalBillRow(db: Db | Tx, admissionId: string): Promise<FinalBillRow | undefined> {
-  return (await db.select().from(ipdFinalBills).where(eq(ipdFinalBills.admissionId, admissionId)))[0];
+  return (await liveBills(db, admissionId)).find((b) => b.kind === "final");
+}
+
+/** #763 — the lines no live bill has taken yet (the next bill's), as a `take` for `composeFinalBill`. */
+export async function unbilledTake(db: Db | Tx, admissionId: string): Promise<(line: ChargeLineRow) => boolean> {
+  const bills = await liveBills(db, admissionId);
+  const lines = await db.select({ id: ipdChargeLines.id, postedAt: ipdChargeLines.postedAt }).from(ipdChargeLines)
+    .where(eq(ipdChargeLines.admissionId, admissionId));
+  const covered = coveredLineIds(bills, lines);
+  return (l) => !covered.has(l.id);
+}
+
+/** #763 — the lines one settled bill took (a bill written before #763: those posted by its settlement). */
+function billTake(row: FinalBillRow): (line: ChargeLineRow) => boolean {
+  const own = new Set(row.lineIds);
+  return own.size > 0 ? (l) => own.has(l.id) : (l) => l.postedAt.getTime() <= row.settledAt.getTime();
 }
 
 /** Review #762 item 10: `refund_pending` until billing issues the voucher against the refund approval. */
@@ -163,22 +192,29 @@ type DeskException = IpdFinalBill["exceptions"][number];
  * - `settled_not_exited` $ — the bill was final at settlement and the patient is still in by the next IST day (the
  *   nightly job no longer posts: a supplementary bill is owed);
  * - `ended_after_bill` — a LAMA / abscond / death recorded after the bill (⚖ never blocked; reconcile);
- * - `refund_pending` — the excess-deposit refund's voucher is not issued yet.
+ * - `refund_pending` — the excess-deposit refund's voucher is not issued yet;
+ * - `supplementary_owed` (#763) — lines no live bill has taken (days after the settlement day, later services).
  */
 async function deskExceptions(db: Db | Tx, a: AdmissionRow, row: FinalBillRow, at: Date): Promise<DeskException[]> {
   const out: DeskException[] = [];
-  if (row.duesPaise > 0 && row.duesApprovalId === null) out.push("dues_awaiting_approval");
-  if ((a.state === "fit_declared" || a.state === "discharging") && istDayString(at) > istDayString(row.settledAt)) out.push("settled_not_exited");
+  const bills = await liveBills(db, a.id);
+  if (bills.some((b) => b.duesPaise > 0 && b.duesApprovalId === null)) out.push("dues_awaiting_approval");
+  // #763: measured from the NEWEST live bill — a supplementary bill settled today clears yesterday's prompt.
+  const lastSettled = bills.reduce((t, b) => (b.settledAt.getTime() > t.getTime() ? b.settledAt : t), row.settledAt);
+  if ((a.state === "fit_declared" || a.state === "discharging") && istDayString(at) > istDayString(lastSettled)) out.push("settled_not_exited");
   const exit = (await db.select({ recordedAt: ipdStayExits.recordedAt }).from(ipdStayExits).where(eq(ipdStayExits.admissionId, a.id)))[0];
   if (exit !== undefined && exit.recordedAt.getTime() >= row.settledAt.getTime()) out.push("ended_after_bill");
-  if ((await refundStateOf(db, row)) === "refund_pending") out.push("refund_pending");
+  for (const b of bills) {
+    if ((await refundStateOf(db, b)) === "refund_pending") { out.push("refund_pending"); break; }
+  }
+  if (await hasUnbilledLines(db, a.id)) out.push("supplementary_owed");
   return out;
 }
 
 /** The final bill as the cashier reads it (money: `ipd.discharge.bill` or `ipd.bill.view` only — never a doctor). */
 export async function finalBillView(db: Db, a: AdmissionRow, at: Date = new Date()): Promise<IpdFinalBill> {
-  const c = await composeFinalBill(db, a);
   const row = await finalBillRow(db, a.id);
+  const c = await composeFinalBill(db, a, row === undefined ? await unbilledTake(db, a.id) : billTake(row));
   const lines = c.live.map(({ line, payerPaise, patientPaise }) => ({
     lineId: line.id, serviceDate: line.serviceDate, serviceName: line.serviceName, component: line.component, qty: line.qty,
     netPaise: line.netPaise, payerPaise, patientPaise,
@@ -254,10 +290,14 @@ export async function recordDuesApproval(
   const at = opts.now ?? new Date();
   return withTx(db, async (tx) => {
     const a = await lockAdmission(tx, body.admissionId);
-    const row = (await tx.select().from(ipdFinalBills).where(eq(ipdFinalBills.admissionId, a.id)).for("update"))[0];
-    if (row === undefined || row.duesPaise === 0) throw new IpdRefusal("bill_unsettled", "No dues on this admission");
+    // #763: the live bills (final first) whose dues wait for an approval; the approval goes to the first it covers.
+    const waiting = (await tx.select().from(ipdFinalBills).where(and(eq(ipdFinalBills.admissionId, a.id), isNull(ipdFinalBills.voidedAt)))
+      .orderBy(asc(ipdFinalBills.seq)).for("update")).filter((b) => b.duesPaise > 0 && b.duesApprovalId === null);
+    const any = waiting[0] ?? (await liveBills(tx, a.id)).find((b) => b.duesPaise > 0);
+    if (any === undefined) throw new IpdRefusal("bill_unsettled", "No dues on this admission");
     const ok = await grantedApproval(tx, body.approvalId, "discharge_dues", [a.id]);
     const req = (await tx.select({ requesterId: approvals.requesterId }).from(approvals).where(eq(approvals.id, body.approvalId)))[0];
+    const row = waiting.find((b) => ok !== null && (ok.amountPaise === null || ok.amountPaise >= b.duesPaise)) ?? any;
     if (ok === null || (ok.amountPaise !== null && ok.amountPaise < row.duesPaise) || req === undefined || ok.decidedBy === req.requesterId) {
       throw new IpdRefusal("dues_need_approval", "The approval must be granted, cover the dues, and not be the requester's own", { duesPaise: row.duesPaise });
     }
@@ -266,20 +306,47 @@ export async function recordDuesApproval(
   });
 }
 
-/** The bill desk: settled bills with an open question (see `deskExceptions`), newest first. */
+/** #763 — how long a settled bill stays on the desk without an open question (so billing can find it to void). */
+export const IPD_SETTLED_BILL_RECENT_DAYS = 7;
+
+/** #763 — the newest void approval asked for each bill (any status), for the desk's Void act. */
+async function voidApprovalsOf(db: Db | Tx, billIds: readonly string[]): Promise<Map<string, { approvalId: string; status: "pending" | "granted" | "rejected" }>> {
+  const out = new Map<string, { approvalId: string; status: "pending" | "granted" | "rejected" }>();
+  if (billIds.length === 0) return out;
+  const rows = await db.select({ id: approvals.id, subjectId: approvals.subjectId, status: approvals.status }).from(approvals)
+    .where(and(eq(approvals.typeKey, IPD_APPROVAL_TYPE_KEYS.bill_void), inArray(approvals.subjectId, [...billIds])))
+    .orderBy(asc(approvals.requestedAt));
+  for (const r of rows) out.set(r.subjectId, { approvalId: r.id, status: r.status as "pending" | "granted" | "rejected" });
+  return out;
+}
+
+/**
+ * The bill desk: admissions with a live final bill that carry an open question (see `deskExceptions`), plus (#763) every
+ * live final bill settled in the last `IPD_SETTLED_BILL_RECENT_DAYS` days — the desk's Supplementary and Void acts start
+ * here. Newest first; each row lists the admission's live bills.
+ */
 export async function listBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<IpdDischargeBillDesk> {
   await requireIpdPermission(db, actor, IPD_DISCHARGE_BILL);
   const at = opts.now ?? new Date();
+  const recent = new Date(at.getTime() - IPD_SETTLED_BILL_RECENT_DAYS * 24 * 3_600_000);
   const rows = await db.select({ bill: ipdFinalBills, adm: ipdAdmissions }).from(ipdFinalBills)
     .innerJoin(ipdAdmissions, eq(ipdAdmissions.id, ipdFinalBills.admissionId))
+    .where(and(eq(ipdFinalBills.seq, 0), isNull(ipdFinalBills.voidedAt)))
     .orderBy(desc(ipdFinalBills.settledAt)).limit(300);
   const out: IpdDischargeBillDesk["rows"] = [];
   for (const { bill, adm } of rows) {
     const exceptions = await deskExceptions(db, adm, bill, at);
-    if (exceptions.length === 0) continue;
+    const bills = await liveBills(db, adm.id);
+    if (exceptions.length === 0 && !bills.some((b) => b.settledAt.getTime() >= recent.getTime())) continue;
+    const asked = await voidApprovalsOf(db, bills.map((b) => b.id));
     out.push({
       admissionId: adm.id, admissionNo: adm.admissionNo, state: adm.state as IpdDischargeBillDesk["rows"][number]["state"], billNo: bill.invoiceNo,
-      duesPaise: bill.duesPaise, refundPaise: bill.refundPaise, settledAt: bill.settledAt.toISOString(), exceptions,
+      duesPaise: bills.reduce((t, b) => t + b.duesPaise, 0), refundPaise: bills.reduce((t, b) => t + b.refundPaise, 0),
+      settledAt: bill.settledAt.toISOString(), exceptions,
+      bills: bills.map((b) => ({
+        billId: b.id, kind: b.kind as "final" | "supplementary", seq: b.seq, billNo: b.invoiceNo, totalPaise: b.totalPaise, patientPaise: b.patientPaise,
+        duesPaise: b.duesPaise, refundPaise: b.refundPaise, settledAt: b.settledAt.toISOString(), voidApproval: asked.get(b.id) ?? null,
+      })),
     });
   }
   return { rows: out };
@@ -305,6 +372,59 @@ async function checkUndertaking(tx: Tx, patientId: string, documentId: string): 
 }
 
 export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_final_bill">> {
+  return settleBill(db, actor, raw, "final", opts);
+}
+
+/**
+ * #763 — THE SUPPLEMENTARY BILL: the charges that accrued after the live bills (days after the settlement day, later
+ * services) composed as a further invoice for the same admission ("Supplementary bill 1, 2…"), settled exactly like the
+ * final bill — same payer split (the payer's portion is its own claim row), same deposit, tender, refund and ⚖ dues rules.
+ * The body is `settle_final_bill`'s.
+ */
+export async function settleSupplementaryBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_final_bill">> {
+  return settleBill(db, actor, raw, "supplementary", opts);
+}
+
+/**
+ * #763 — the cashier's read of the supplementary bill: posts the running bill up to now as if the patient leaves now (the
+ * settlement day of a live bill stays closed — `bill-cover.ts`) and answers the lines no live bill has taken.
+ */
+export async function prepareSupplementaryBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill> {
+  await requireIpdPermission(db, actor, IPD_DISCHARGE_BILL);
+  const at = opts.now ?? new Date();
+  const a = await readAdmission(db, admissionId);
+  if ((await finalBillRow(db, a.id)) === undefined) throw new IpdRefusal("bill_unsettled", "No settled final bill on this admission");
+  await postAdmissionCharges(db, a.id, { upToIstDate: istDayString(at), now: at, presumedDischargeAt: a.endedAt ?? at });
+  const fresh = await readAdmission(db, admissionId);
+  const c = await composeFinalBill(db, fresh, await unbilledTake(db, a.id));
+  const p = await priceFinalBill(db, fresh, c, at);
+  const available = await depositAvailablePaise(db, fresh, c.depositHeldPaise);
+  return {
+    admissionId: a.id, admissionNo: a.admissionNo, billVersion: c.billVersion,
+    lines: c.live.map(({ line, payerPaise, patientPaise }) => ({
+      lineId: line.id, serviceDate: line.serviceDate, serviceName: line.serviceName, component: line.component, qty: line.qty,
+      netPaise: line.netPaise, payerPaise, patientPaise,
+    })),
+    totalPaise: p.totalPaise, payerPaise: p.payerPaise, patientPaise: p.patientPaise, patientRoundedPaise: p.patientRoundedPaise,
+    depositHeldPaise: available, balancePaise: p.patientRoundedPaise - available, payerKind: a.payerKind, settled: null, exceptions: [],
+  };
+}
+
+/**
+ * #763 — the deposit a new bill may still use: the deposit held (receipts less issued advance refunds) less what the live
+ * bills applied and less the refunds they raised that are not issued yet (DECIDED $: a refund already promised to the
+ * patient is left alone — the desk voids and re-settles if it should be netted instead).
+ */
+async function depositAvailablePaise(db: Db | Tx, a: AdmissionRow, held: number): Promise<number> {
+  let used = 0;
+  for (const b of await liveBills(db, a.id)) {
+    used += b.depositAppliedPaise;
+    if ((await refundStateOf(db, b)) === "refund_pending") used += b.refundPaise;
+  }
+  return Math.max(0, held - used);
+}
+
+async function settleBill(db: Db, actor: Actor, raw: unknown, kind: "final" | "supplementary", opts: Opts): Promise<Output<"settle_final_bill">> {
   const input: Input<"settle_final_bill"> = IPD_INTENTS.settle_final_bill.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_DISCHARGE_BILL);
   const tenders = input.payments.map((p) => {
@@ -313,19 +433,32 @@ export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: 
     return { mode, amountPaise: p.amountPaise, ...(p.ref === undefined ? {} : { refText: p.ref }) };
   });
   const at = opts.now ?? new Date();
-  return onceIpd(db, actor, "settle_final_bill", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+  const work = () => withTx(db, async (tx) => {
     const a = await lockAdmission(tx, input.admissionId);
-    if (!BILLABLE.has(a.state)) throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
-    if ((await finalBillRow(tx, a.id)) !== undefined) throw new IpdRefusal("final_bill_exists");
-    if (a.state === "fit_declared") {
-      const d = await activeDischarge(tx, a.id);
-      const pending = d === undefined ? [] : pendingDepartments(await confirmationsOf(tx, d.id));
-      if (pending.length > 0) throw new IpdRefusal("charges_unconfirmed", undefined, { pending });
+    const live = await liveBills(tx, a.id);
+    let seq = 0;
+    if (kind === "final") {
+      if (!BILLABLE.has(a.state)) throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
+      if (live.length > 0) throw new IpdRefusal("final_bill_exists");
+      if (a.state === "fit_declared") {
+        const d = await activeDischarge(tx, a.id);
+        const pending = d === undefined ? [] : pendingDepartments(await confirmationsOf(tx, d.id));
+        if (pending.length > 0) throw new IpdRefusal("charges_unconfirmed", undefined, { pending });
+      }
+      if (a.state === "discharging" && (await tx.select({ id: ipdGatePasses.id }).from(ipdGatePasses)
+        .where(and(eq(ipdGatePasses.admissionId, a.id), eq(ipdGatePasses.status, "issued")))).length > 0) {
+        throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
+      }
+    } else {
+      if (!live.some((b) => b.kind === "final")) throw new IpdRefusal("bill_unsettled", "No settled final bill on this admission");
+      seq = live.reduce((m, b) => Math.max(m, b.seq), 0) + 1;
     }
-    // RED 1: the settle posts the running bill itself, up to the presumed exit (= now; RED 4), before composing.
+    // RED 1: the settle posts the running bill itself, up to the presumed exit (= now; RED 4), before composing. #763: the
+    // settlement day of a live bill stays closed (`postAdmissionCharges`).
     await postAdmissionCharges(tx as unknown as Db, a.id, { upToIstDate: istDayString(at), now: at, presumedDischargeAt: a.endedAt ?? at });
-    const c = await composeFinalBill(tx, a);
+    const c = await composeFinalBill(tx, a, await unbilledTake(tx, a.id));
     if (c.billVersion !== input.billVersion) throw new IpdRefusal("bill_changed", undefined, { billVersion: c.billVersion });
+    if (kind === "supplementary" && c.live.length === 0) throw new IpdError("nothing_to_bill", "no charge waits for a supplementary bill");
     const p = await priceFinalBill(tx, a, c, at);
     // Item 11: the split's inputs (payer record, non-payables, deposits) are not in the line count — the amount the
     // cashier read is the check.
@@ -337,8 +470,9 @@ export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: 
     if (tenderedPaise > netPaise) {
       throw new IpdError("tender_exceeds_bill", "record what is applied to the bill and give the change", { tenderedPaise, netPayablePaise: netPaise });
     }
-    // RED 6: the deposit available is the receipts less the advance refunds already issued (`depositHeldPaise`).
-    const held = c.depositHeldPaise;
+    // RED 6: the deposit available is the receipts less the advance refunds already issued (`depositHeldPaise`); #763: less
+    // what the live bills already applied or promised back.
+    const held = await depositAvailablePaise(tx, a, c.depositHeldPaise);
     const deposits = await depositReceipts(tx, a.id);
     let toCover = netPaise - tenderedPaise;
     let heldLeft = held;
@@ -365,6 +499,7 @@ export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: 
       if (ok !== null && (ok.amountPaise === null || ok.amountPaise >= duesPaise)) duesApproval = { id: ok.id, by: ok.decidedBy };
     }
 
+    const label = kind === "final" ? "IPD final bill" : `IPD supplementary bill ${String(seq)}`;
     let invoice: { invoiceId: string; invoiceNo: string } | null = null;
     if (p.lines.length > 0) {
       const issued = await issueInvoice(tx as unknown as Db, actor, {
@@ -372,8 +507,8 @@ export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: 
         patientId: a.patientId,
         lines: p.lines,
         ...(settleFromReceipts.length > 0 ? { settleFromReceipts } : {}),
-        ...(tenders.length > 0 ? { receipt: { tenders, note: `IPD final bill ${a.admissionNo ?? a.id}` } } : {}),
-        ...(duesPaise > 0 ? { holdUntilPaid: { reason: `IPD dues on discharge ${a.admissionNo ?? a.id} — undertaking ${input.undertakingDocumentId ?? ""}` } } : {}),
+        ...(tenders.length > 0 ? { receipt: { tenders, note: `${label} ${a.admissionNo ?? a.id}` } } : {}),
+        ...(duesPaise > 0 ? { holdUntilPaid: { reason: `${label} dues ${a.admissionNo ?? a.id} — undertaking ${input.undertakingDocumentId ?? ""}` } } : {}),
       }, at);
       invoice = { invoiceId: issued.invoiceId, invoiceNo: issued.invoiceNo };
     }
@@ -383,7 +518,7 @@ export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: 
     if (excess > 0 && input.settlement !== "insurer_pending_undertaking") {
       const refund = await requestRefund(tx as unknown as Db, actor, {
         patientId: a.patientId, kind: "advance_refund", amountPaise: excess, reasonClass: "genuine",
-        reason: `IPD deposit exceeded the final bill for ${a.admissionNo ?? a.id}`,
+        reason: `IPD deposit exceeded the ${kind === "final" ? "final" : "supplementary"} bill for ${a.admissionNo ?? a.id}`,
       });
       refundPaise = excess;
       refundApprovalId = refund.approvalId;
@@ -397,9 +532,10 @@ export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: 
       settlement: input.settlement, duesApprovalId: duesApproval?.id ?? null, duesApprovedBy: duesApproval?.by ?? null,
       duesApprovedAt: duesApproval === null ? null : at,
       undertakingDocumentId: input.undertakingDocumentId ?? null, split: c.split as unknown as Record<string, unknown>,
-      settledBy: actor.id, settledAt: at,
+      settledBy: actor.id, settledAt: at, kind, seq, lineIds: c.lines.map((l) => l.id),
     });
     if (p.payerPaise > 0) {
+      // A supplementary bill's payer portion is its own claim row (the payer seam takes one claim per bill).
       await tx.insert(ipdPayerClaims).values({
         id: newId(), admissionId: a.id, finalBillId, payerKind: a.payerKind!, coverageId: a.coverageId, preAuthNumber: c.split.preAuthNumber,
         claimPaise: p.payerPaise, status: "pending", createdBy: actor.id, createdAt: at,
@@ -410,8 +546,10 @@ export async function settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: 
       actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
     }));
     return {
-      billId: finalBillId, billNo: invoice?.invoiceNo ?? `NIL-${a.admissionNo ?? a.id}`, totalPaise: p.totalPaise,
+      billId: finalBillId, billNo: invoice?.invoiceNo ?? `NIL-${a.admissionNo ?? a.id}${seq === 0 ? "" : `-S${String(seq)}`}`, totalPaise: p.totalPaise,
       payerPayablePaise: p.payerPaise, patientPayablePaise: p.patientPaise, paidPaise: tenderedPaise, refundPaise, duesPaise,
     };
-  }), at);
+  });
+  if (kind === "final") return onceIpd(db, actor, "settle_final_bill", input.idempotencyKey, input, work, at);
+  return withIdempotency(db, { actorId: actor.id, route: "ipd:settle_supplementary_bill", key: input.idempotencyKey.toLowerCase() }, input, work, at);
 }

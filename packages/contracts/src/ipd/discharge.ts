@@ -118,11 +118,31 @@ export const IpdFinalBillSchema = z.object({
     settledAt: IpdInstantSchema,
   }).nullable(),
   /** The bill desk's open questions on this bill (see `IPD_BILL_DESK_EXCEPTIONS`). */
-  exceptions: z.array(z.enum(["settled_not_exited", "ended_after_bill", "dues_awaiting_approval", "refund_pending"])),
+  exceptions: z.array(z.enum(["settled_not_exited", "ended_after_bill", "dues_awaiting_approval", "refund_pending", "supplementary_owed"])),
 });
 
-/** E3.2 review — what the bill desk must still do about a settled bill. */
-export const IPD_BILL_DESK_EXCEPTIONS = ["settled_not_exited", "ended_after_bill", "dues_awaiting_approval", "refund_pending"] as const;
+/**
+ * E3.2 review — what the bill desk must still do about a settled bill. #763: `supplementary_owed` — charges posted after the
+ * live bills (another night, services) wait for a supplementary bill.
+ */
+export const IPD_BILL_DESK_EXCEPTIONS = ["settled_not_exited", "ended_after_bill", "dues_awaiting_approval", "refund_pending", "supplementary_owed"] as const;
+
+/** #763 — one settled bill of an admission: the final bill (seq 0) or a supplementary bill (seq 1, 2…). */
+export const IpdSettledBillSchema = z.object({
+  billId: IpdIdSchema,
+  kind: z.enum(["final", "supplementary"]),
+  seq: z.number().int().nonnegative(),
+  billNo: z.string().nullable(),
+  totalPaise: IpdPaiseSchema,
+  patientPaise: IpdPaiseSchema,
+  duesPaise: IpdPaiseSchema,
+  refundPaise: IpdPaiseSchema,
+  settledAt: IpdInstantSchema,
+  /** The void asked for this bill: the approval and its state (null when none was asked). */
+  voidApproval: z.object({ approvalId: IpdIdSchema, status: z.enum(["pending", "granted", "rejected"]) }).nullable(),
+});
+export type IpdSettledBill = z.infer<typeof IpdSettledBillSchema>;
+
 export const IpdDischargeBillDeskSchema = z.object({
   rows: z.array(z.object({
     admissionId: IpdIdSchema,
@@ -133,7 +153,25 @@ export const IpdDischargeBillDeskSchema = z.object({
     refundPaise: IpdPaiseSchema,
     settledAt: IpdInstantSchema,
     exceptions: z.array(z.enum(IPD_BILL_DESK_EXCEPTIONS)),
+    /** #763 — the admission's LIVE bills, final first; the newest is the one a void may take. */
+    bills: z.array(IpdSettledBillSchema),
   })),
+});
+
+/** #763 — ask billing's approval to void a settled bill (`ipd_bill_void`; the approver is never the requester). */
+export const IpdAskBillVoidSchema = z.strictObject({
+  admissionId: IpdIdSchema,
+  billId: IpdIdSchema,
+  reason: z.string().trim().min(1).max(500),
+});
+
+/** #763 — void a settled bill with its GRANTED approval: credit note, claim withdrawn, refund request cancelled, running bill reopened. */
+export const IpdVoidBillSchema = z.strictObject({
+  idempotencyKey: IpdIdempotencyKeySchema,
+  admissionId: IpdIdSchema,
+  billId: IpdIdSchema,
+  approvalId: IpdIdSchema,
+  reason: z.string().trim().min(1).max(500),
 });
 export type IpdDischargeBillDesk = z.infer<typeof IpdDischargeBillDeskSchema>;
 export type IpdFinalBill = z.infer<typeof IpdFinalBillSchema>;
@@ -265,6 +303,10 @@ export const IPD_DISCHARGE_ROUTES = {
   askDues: "/ipd/discharge/bill/ask-dues",
   duesApproval: "/ipd/discharge/bill/dues-approval",
   billDesk: "/ipd/discharge/bill-desk",
+  supplementaryPrepare: "/ipd/discharge/bill/supplementary/prepare",
+  supplementarySettle: "/ipd/discharge/bill/supplementary/settle",
+  askVoid: "/ipd/discharge/bill/void/ask",
+  voidBill: "/ipd/discharge/bill/void",
   issueGatePass: "/ipd/discharge/gate-pass",
   scanGatePass: "/ipd/discharge/gate-pass/scan",
   lama: "/ipd/discharge/lama",

@@ -16066,7 +16066,45 @@
     "retried_one": "फिर से किया — {{count}} पंक्ति पोस्ट",
     "retried_other": "फिर से किया — {{count}} पंक्तियाँ पोस्ट",
     "retryFailed": "फिर से करना विफल — दोबारा कोशिश करें",
-    "careNote": "पैसे के लिए इलाज कभी नहीं रुकता: जमा चेतावनी केवल डेस्क और प्रबंधन को बताती है।"
+    "careNote": "पैसे के लिए इलाज कभी नहीं रुकता: जमा चेतावनी केवल डेस्क और प्रबंधन को बताती है।",
+    "settled": {
+      "title": "निपटाए गए बिल",
+      "empty": "किसी निपटाए बिल पर काम बाकी नहीं।",
+      "finalBill": "अंतिम बिल",
+      "supplementaryBill": "पूरक बिल {{n}}",
+      "supplementary": "पूरक बिल",
+      "askVoid": "रद्द करने की अनुमति माँगें",
+      "voidBill": "बिल रद्द करें",
+      "voidWaiting": "रद्द करना अनुमति की प्रतीक्षा में",
+      "reason": "कारण",
+      "reasonNeeded": "कारण लिखें",
+      "voidAsked": "अनुमति माँगी गई — बिलिंग मैनेजर की प्रतीक्षा",
+      "voided": "बिल रद्द — क्रेडिट नोट जारी",
+      "failed": "नहीं हो सका — फिर कोशिश करें",
+      "suppLines_one": "{{count}} शुल्क",
+      "suppLines_other": "{{count}} शुल्क",
+      "suppPatient": "मरीज़ {{amount}}",
+      "suppBalance": "लेना है {{amount}}",
+      "cash": "नकद प्राप्त ₹",
+      "undertaking": "वचन-पत्र दस्तावेज़",
+      "undertakingNeeded": "बकाया के लिए हस्ताक्षरित वचन-पत्र चाहिए",
+      "settle": "निपटाएँ",
+      "cancel": "रद्द",
+      "suppSettled": "पूरक बिल {{billNo}} निपटाया गया",
+      "exception": {
+        "settled_not_exited": "निपटा, पर गए नहीं",
+        "ended_after_bill": "बिल के बाद समाप्त",
+        "dues_awaiting_approval": "बकाया: अनुमति बाकी",
+        "refund_pending": "रिफंड बाकी",
+        "supplementary_owed": "पूरक बिल बाकी"
+      },
+      "refusal": {
+        "refund_issued": "रिफंड दिया जा चुका — रद्द नहीं हो सकता",
+        "void_needs_approval": "दूसरे व्यक्ति की अनुमति चाहिए",
+        "void_newer_bill_first": "पहले नया बिल रद्द करें",
+        "bill_already_voided": "पहले ही रद्द"
+      }
+    }
   },
   "ipdBill": {
     "postingFailed": "रात की पोस्टिंग विफल ({{count}} प्रयास) — बिल डेस्क दोबारा चलाएगा",

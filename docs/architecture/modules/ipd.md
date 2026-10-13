@@ -119,6 +119,12 @@ Source: `apps/core/src/modules/ipd/`
   - `readBillDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdBillDesk>`
   - `retryFromBillDesk(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<AdmissionPostResult>`
   - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; ladderFailed: string[]; dailyTotals: DailyTotalsResult | null …`
+- `bill-void.ts`
+  - `askBillVoid(db: Db, actor: Actor, raw: unknown): Promise<{ approvalId: string }>`
+  - `ipdRefundVoucherGuard: RefundVoucherGuard`
+  - `registerIpdRefundVoucherGuard(): () => void`
+  - `voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<VoidBillResult>`
+  - types: `VoidBillResult`
 - `charge-days.ts`
   - `DISCHARGE_FREE_UNTIL_MS`
   - `TRANSIT_UNDER_MS`
@@ -174,15 +180,18 @@ Source: `apps/core/src/modules/ipd/`
   - `takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<DepositOut>`
   - types: `DepositQuote`, `DepositQuoteArgs`
 - `discharge-bill.ts`
+  - `IPD_SETTLED_BILL_RECENT_DAYS`
   - `askDuesApproval(db: Db, actor: Actor, body: { admissionId: string; amountPaise: number; note: string }): Promise<{ approvalId: string }>`
   - `assertPayerAccounted(payerPaise: number, payerKind: string | null): void`
-  - `composeFinalBill(db: Db | Tx, a: AdmissionRow): Promise<ComposedFinalBill>`
+  - `composeFinalBill(db: Db | Tx, a: AdmissionRow, take?: (line: ChargeLineRow) => boolean): Promise<ComposedFinalBill>`
   - `listBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<IpdDischargeBillDesk>`
   - `prepareFinalBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
+  - `prepareSupplementaryBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
   - `priceFinalBill(db: Db | Tx, a: AdmissionRow, c: ComposedFinalBill, at: Date): Promise<PricedFinalBill>`
   - `readFinalBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
   - `recordDuesApproval(db: Db, actor: Actor, body: { admissionId: string; approvalId: string }, opts: Opts = {}): Promise<{ admissionId: string…`
   - `settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_final_bill">>`
+  - `settleSupplementaryBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_final_bill">>`
 - `discharge-events.ts`
   - `IPD_DISCHARGE_EVENT_NAMES`
 - `discharge-exit.ts`
@@ -335,13 +344,13 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (80)
+## HTTP routes (84)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
-- `discharge.controller.ts` — 23: `/ipd/discharge`, `/ipd/mortuary`
+- `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
 - `transfers.controller.ts` — 7: `/ipd/transfers`

@@ -102,6 +102,10 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ipd_discharge_dues`. `packages/contracts/src/ipd/discharge.ts` — tracker, board, summary content, final bill, mortuary,
   routes; `packages/contracts/src/ipd/intents-discharge.ts` — `billing` department, tender `ref`, `witnessName`, death `cause`, `mortuaryEntryId`.
   `apps/web/src/screens/ipd-discharge.tsx` (`/ipd/discharge`, `?admission=`), `apps/web/src/lib/ipd-discharge-api.ts`.
+  (#763) `bill-cover.ts` — `liveBills`, `coveredLineIds`, `closedThroughOf`, `lineIsBilled`, `hasUnbilledLines`.
+  `discharge-bill.ts` — `prepareSupplementaryBill`, `settleSupplementaryBill`, `unbilledTake`. `bill-void.ts` — `askBillVoid`,
+  `voidBill`, `ipdRefundVoucherGuard` / `registerIpdRefundVoucherGuard`. Approval `ipd_bill_void`; event `ipd.bill.voided`;
+  migration `ipd_suppbill`. Web: `apps/web/src/screens/ipd-settled-bills.tsx` (on the bill desk).
 
 - (E2.3) `deposit-ladder.ts` — `IPD_DEPOSIT_LADDER` (7,500 / 9,000 bp), `IPD_DEPOSIT_RECIPIENT_ROLES`, `IPD_CLINICAL_ROLES`,
   `depositPosition` (split + deposit held + used bp + balances), `evaluateDepositLadder(db, admissionId, now)`,
@@ -401,7 +405,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
     instant) under the admission lock, then composes; the bill is final at settlement. A gate scan after 14:00 the same
     day adds nothing (the hospital's delay).
   - $ RED 2: the nightly job skips an admission with a final bill. A settled patient still in by the next IST day is the
-    bill desk's `settled_not_exited` (computed on read). Supplementary bill and void flow are owed: issue #763.
+    bill desk's `settled_not_exited` (computed on read). Superseded by #763 below (posting resumes after the settle day).
   - $ RED 3: `cancel_fit` refuses `final_bill_exists` ("Ask billing to void the bill", #763). ⚖ LAMA / abscond / death
     still end the stay after a final bill (bill desk `ended_after_bill`); without one, an ending stamped before the
     posted charges' cover (per live line: min(the IST midnight ending its date, its posting instant)) refuses
@@ -424,6 +428,38 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   - 14: a payer portion with no payer refuses `payer_kind_missing` (`assertPayerAccounted`; unreachable today — the split
     reads the payer from the admission — kept so a claim is never silently dropped).
   - 15: requester ≠ approver: the approvals kernel refuses it (`assertNotSodPair`); `recordDuesApproval` re-checks.
+- SUPPLEMENTARY BILL AND VOID (#763, all DECIDED $ / ⚖, standard Indian corporate hospital practice):
+  - COVER (`bill-cover.ts`): an admission has a final bill (seq 0) and supplementary bills (seq 1, 2…); one LIVE bill per
+    (admission, seq) (`ipd_final_bills_live_ux`). Each bill records the lines it composed (`line_ids`, reversed pairs
+    included); the next bill composes the rest. A pre-#763 row (empty list) covers the lines posted by its settlement.
+  - $ THE SETTLE DAY IS CLOSED BY ITS BILL (RED 4 kept): `postAdmissionCharges` never posts a day on or before a live bill's
+    IST settlement day. The nightly job posts every in-bed admission again (RED 2's skip is gone): a patient still in a bed
+    through the next day — or leaving after 14:00 on it — is charged for it, and those lines wait for the supplementary
+    bill (desk exception `supplementary_owed`; `settled_not_exited` measured from the newest live bill).
+  - `prepareSupplementaryBill` / `settleSupplementaryBill` (routes `…/bill/supplementary/prepare|settle`, `ipd.discharge.bill`,
+    the settle body is `settle_final_bill`'s) = the final bill's settle on the uncovered lines: same payer split (computed
+    over the WHOLE stay, each line keeps its share), its own claim row (`ipd_payer_claims` is one per bill now), deposit,
+    tenders, refund and ⚖ dues rules. Deposit available to it = held − Σ live bills' deposit applied − their refunds not yet
+    issued ($: a promised refund is left alone; void and re-settle to net it). Refuses `bill_unsettled` with no live final
+    bill, `nothing_to_bill` when nothing waits.
+  - GATE PASS: with a live final bill it posts up to now (presumed exit now; the settle day stays closed) and refuses
+    `supplementary_unsettled` while lines wait. ⚖ A supplementary bill settled `dues_recorded` (undertaking, no payment, no
+    approval) lets the pass issue (`duesRecorded` = any live bill has dues). The scan never reads the bill.
+  - VOID (`bill-void.ts`): `askBillVoid` (`ipd.discharge.bill`, reason) files `ipd_bill_void` (subject = the bill; approver
+    billing manager, or owner); the engine refuses a self-approval and `voidBill` re-checks it (`void_needs_approval`).
+    Newest first (`void_newer_bill_first`). One tx under the admission lock: refund voucher issued → `refund_issued`
+    (refused); else the refund is cancelled (`refund_cancelled_at`; a pending request is rejected when the voider may decide
+    it) and billing's voucher guard (`registerRefundVoucherGuard`, registered by `IpdModule`) refuses its voucher from then
+    on; a `correction` credit note against the invoice; `releaseInvoiceSurplusOnTx` reverses the invoice's allocations;
+    money paid at the counter on the bill is ADOPTED as the stay's deposit (`ipd_admission_deposits` row naming that
+    receipt) so the re-settle applies it; the claim → `withdrawn`; a live gate pass → void (`bill_voided`); event
+    `ipd.bill.voided` (ids only). Voiding reopens the running bill: `cancel_fit` proceeds, the nightly posts the reopened
+    days, and the next settle composes ONE new bill. Settle is allowed again in `discharging` (pass voided), `discharged`
+    and `transferred_out`; `issue_gate_pass` re-issues from `discharging` when no pass is live.
+  - A reversal of a line a live bill took refuses `charge_line_billed` (void the bill first).
+  - Web: the bill desk (`/ipd/bill-desk`) shows "Settled bills" (`apps/web/src/screens/ipd-settled-bills.tsx`, `GET
+    /ipd/discharge/bill-desk` — exceptions plus the last `IPD_SETTLED_BILL_RECENT_DAYS` days): Supplementary bill (cash or
+    dues + undertaking) and Ask to void / Void bill on the newest bill. No money on any doctor screen (0058).
 - MORTUARY: a death opens the register row (`expected`); `receiveBody` needs a second person (two-person identity check);
   `releaseBody` needs police clearance for an MLC and NEVER reads the bill (⚖ a body is never held for money).
 - MONEY OFF DOCTORS (0058): declare_fit / cancel_fit / sign_summary / record_death answers carry no money keys (acceptance
@@ -596,8 +632,15 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   workflow's 3-hour SLA tells the duty manager); `medicines_not_returned` (pharmacy returns) and
   `medicine_not_on_active_order` wait for the eMAR / ipd-orders lanes; the mortuary handover and MCCD are register rows, not
   tasks (`taskIds` is empty); claim filing, the family tracker link (E3.3) and the AI drafter (M5) are later lanes.
-- (E3.2) Superseded by review #762: cancel_fit refuses after the final bill and the nightly job skips a settled admission;
-  the supplementary bill and the void flow are issue #763.
+- (E3.2) Superseded by review #762, then #763: cancel_fit refuses while a LIVE bill exists (void it first); the nightly job
+  posts again after the settlement day (supplementary bill).
+- (#763) Migration `ipd_suppbill` replaced `ipd_final_bills_admission_ux` / `ipd_payer_claims_admission_ux` (one per
+  admission) with one live bill per (admission, seq) and one claim per bill. Anything that read "the" final bill by
+  admission alone must use `finalBillRow` / `liveBills` (a voided row stays).
+- (#763) The approvals kernel has no "cancelled" state: a granted refund approval stays granted after a void; only billing's
+  voucher guard stops it. A voucher issued in a process that did not register the guard would pass — `IpdModule` registers
+  it in the API process (vouchers are issued there only).
+- (#763) Go-live: `registerIpdApprovalTypes` now also registers `ipd_bill_void` (run it again — idempotent).
 - (E3.2) Re-pricing on the invoice uses TODAY's active tariff version with the frozen unit as `prepaidUnitPaise`: a service
   removed from the active version since posting refuses `tariff_item_missing`; a GST rate change re-taxes the line. Member
   benefits (flag-gated) could discount a self-pay line on the invoice — the invoice is billing's truth.

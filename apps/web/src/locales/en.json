@@ -16066,7 +16066,45 @@
     "retried_one": "Retried — {{count}} line posted",
     "retried_other": "Retried — {{count}} lines posted",
     "retryFailed": "Retry failed — try again",
-    "careNote": "Care never stops for money: the deposit ladder only tells the desk and management."
+    "careNote": "Care never stops for money: the deposit ladder only tells the desk and management.",
+    "settled": {
+      "title": "Settled bills",
+      "empty": "No settled bill needs the desk.",
+      "finalBill": "Final bill",
+      "supplementaryBill": "Supplementary bill {{n}}",
+      "supplementary": "Supplementary bill",
+      "askVoid": "Ask to void",
+      "voidBill": "Void bill",
+      "voidWaiting": "Void waiting for approval",
+      "reason": "Reason",
+      "reasonNeeded": "Give a reason",
+      "voidAsked": "Void asked — waiting for the billing manager",
+      "voided": "Bill voided — credit note issued",
+      "failed": "Could not do that — try again",
+      "suppLines_one": "{{count}} charge",
+      "suppLines_other": "{{count}} charges",
+      "suppPatient": "Patient {{amount}}",
+      "suppBalance": "To collect {{amount}}",
+      "cash": "Cash received ₹",
+      "undertaking": "Undertaking document",
+      "undertakingNeeded": "Dues need the signed undertaking",
+      "settle": "Settle",
+      "cancel": "Cancel",
+      "suppSettled": "Supplementary bill {{billNo}} settled",
+      "exception": {
+        "settled_not_exited": "Settled, not out",
+        "ended_after_bill": "Ended after bill",
+        "dues_awaiting_approval": "Dues: approval due",
+        "refund_pending": "Refund pending",
+        "supplementary_owed": "Supplementary bill owed"
+      },
+      "refusal": {
+        "refund_issued": "Refund already paid out — cannot void",
+        "void_needs_approval": "Needs another person's approval",
+        "void_newer_bill_first": "Void the newer bill first",
+        "bill_already_voided": "Already voided"
+      }
+    }
   },
   "ipdBill": {
     "postingFailed": "Nightly posting failed ({{count}} tries) — the bill desk retries it",

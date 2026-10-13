@@ -122,6 +122,8 @@ export const IPD_REFUSALS = {
   consultant_cosign_required: { rule: "A resident's entry needs the consultant's co-sign.", fix: "Send for co-sign" },
   summary_unsigned: { rule: "The discharge summary must be signed before the patient leaves.", fix: "Sign summary" },
   bill_unsettled: { rule: "The final bill must be settled or its dues approved.", fix: "Open final bill" },
+  // #763: charges after the settled bill (another night, services) need their supplementary bill — paid, or dues recorded.
+  supplementary_unsettled: { rule: "Charges after the final bill need a supplementary bill settled or dues recorded.", fix: "Settle supplementary bill" },
   receiving_hospital_missing: { rule: "A transfer out needs a confirmed receiving hospital.", fix: "Add hospital" },
   gate_pass_not_found: { rule: "No gate pass has this code.", fix: "Call the desk" },
   gate_pass_void: { rule: "The gate pass was voided.", fix: "Call the desk" },

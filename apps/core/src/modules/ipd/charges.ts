@@ -7,6 +7,7 @@ import { ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines, opdDoc
 import { appendEvent } from "../../kernel/events/append";
 import { TariffError, loadPricingContext, priceInvoiceLines, resolveActiveTariffVersion } from "../tariff";
 import { admissionAdvisoryLock, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
+import { closedThroughOf, lineIsBilled, liveBills } from "./bill-cover";
 import { ipdChargeableDays, rentClassOf } from "./charge-days";
 import { applyClassChanges, classChangesOf } from "./class-change";
 import { evaluateDepositLadderSafely } from "./deposit-ladder";
@@ -193,7 +194,10 @@ export async function postAdmissionCharges(
     }
     const ctx = versionId === null ? null : await pricingFor(tx as unknown as Db, cache, versionId, opts.now);
     const stays = await staysOf(tx, a.id);
-    const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a) ?? opts.presumedDischargeAt ?? null, opts.upToIstDate);
+    // #763: a day a live bill closed (its settlement day and before) is never posted behind it; a void reopens it.
+    const closed = closedThroughOf(await liveBills(tx, a.id));
+    const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a) ?? opts.presumedDischargeAt ?? null, opts.upToIstDate)
+      .filter((d) => closed === null || d.date > closed);
     const done = new Set((await tx.select({ d: ipdChargeLines.serviceDate, c: ipdChargeLines.component }).from(ipdChargeLines)
       .where(and(eq(ipdChargeLines.admissionId, a.id), eq(ipdChargeLines.source, "ipd.nightly")))).map((r) => `${r.d}:${r.c}`));
     const todo = days.flatMap((d) => IPD_DAILY_COMPONENTS.filter((c) => !done.has(`${d.date}:${c}`)).map((c) => ({ ...d, component: c })));
@@ -288,12 +292,10 @@ export async function postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyR
   const rows = await db.select({ id: ipdAdmissions.id, skip: sql<boolean>`${quarantined}` }).from(ipdAdmissions).where(and(
     isNotNull(ipdAdmissions.admittedAt),
     or(
-      // E3.2 review (#762, RED 2): a settled final bill closes the running bill — the job never posts behind it (a stay
-      // still open the next IST day is the bill desk's `settled_not_exited` exception; a supplementary bill is owed).
-      and(
-        inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
-        sql`not exists (select 1 from ipd_final_bills fb where fb.admission_id = "ipd_admissions"."id")`,
-      ),
+      // #763 (was review #762 RED 2): a settled bill closes the days up to its settlement day (`postAdmissionCharges`
+      // never posts behind it); a patient still in a bed after that day is posted again — the supplementary bill's lines
+      // (the bill desk's `settled_not_exited` / `supplementary_owed`).
+      inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
       and(
         inArray(ipdAdmissions.state, [...IPD_ENDED_STATES]),
         or(
@@ -454,6 +456,8 @@ export async function reverseChargeLine(
     await admissionAdvisoryLock(tx, line.admissionId);
     const done = (await tx.select({ id: ipdChargeLines.id }).from(ipdChargeLines).where(eq(ipdChargeLines.reversalOf, line.id)))[0];
     if (done !== undefined) throw new IpdError("charge_line_already_reversed", "this line is already reversed", { reversalLineId: done.id });
+    // #763: a line a settled bill took is corrected by voiding that bill first — never by a reversal behind the invoice.
+    if (await lineIsBilled(tx, line.admissionId, line.id)) throw new IpdError("charge_line_billed", "a settled bill took this line: void the bill first");
     const id = newId();
     // The advisory lock serialises reversals; the unique index is the backstop, answered in the same words.
     await tx.insert(ipdChargeLines).values({

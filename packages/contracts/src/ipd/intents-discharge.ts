@@ -45,7 +45,7 @@ export const cancelFit = ipdIntent({
     stepsStopped: z.number().int().nonnegative(),
     gatePassVoided: z.boolean(),
   }),
-  // E3.2 review: refused once the final bill is settled (`final_bill_exists` — billing voids it first; void flow owed).
+  // E3.2 review: refused while a settled final bill is live (`final_bill_exists` — billing voids it first, #763).
   refusals: ["admission_not_found", "admission_wrong_state", "not_treating_consultant", "final_bill_exists"],
   actors: ["doctor"],
   copilotProposable: true,
@@ -168,7 +168,7 @@ export const issueGatePass = ipdIntent({
   }),
   refusals: [
     "admission_not_found", "admission_wrong_state", "charges_unconfirmed", "summary_unsigned", "bill_unsettled",
-    "receiving_hospital_missing",
+    "receiving_hospital_missing", "supplementary_unsettled",
   ],
   // E3.2 (DECIDED): the duty manager issues at night, when the desk and billing are not on.
   actors: ["billing", "desk", "nurse", "duty_manager"],

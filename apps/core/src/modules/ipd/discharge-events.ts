@@ -34,6 +34,11 @@ export const billSettled = defineEvent("ipd.bill.settled", MODULE, z.object({
   admissionId: id, finalBillId: id, invoiceId: id.nullable(), provenance: IpdProvenanceSchema,
 }));
 
+/** #763 — a settled bill voided (its credit note, the approval). Ids only: no money, no reason text (0058). */
+export const billVoided = defineEvent("ipd.bill.voided", MODULE, z.object({
+  admissionId: id, billId: id, creditNoteId: id.nullable(), approvalId: id, provenance: IpdProvenanceSchema,
+}));
+
 export const gatePassIssued = defineEvent("ipd.gate_pass.issued", MODULE, z.object({
   admissionId: id, gatePassId: id, kind: z.enum(["discharge", "transfer_out"]), provenance: IpdProvenanceSchema,
 }));

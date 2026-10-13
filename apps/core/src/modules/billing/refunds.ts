@@ -547,6 +547,8 @@ export async function issueRefundVoucher(
     if (already !== undefined) {
       throw new BillingError("voucher_state_conflict", `this approval already issued voucher ${already.voucherNo}`, { voucherNo: already.voucherNo });
     }
+    // IPD #763 — a module that raised this refund may have cancelled it since (under this same approval-row lock).
+    for (const guard of refundVoucherGuards.values()) await guard(tx, { approvalId: input.approvalId, patientId: target.patientId, at: now });
     if (input.kind === "invoice_refund") {
       const invoiceId = target.invoiceId!; // an invoice_refund always resolves one (resolveTarget)
       await lockInvoice(tx, invoiceId);
@@ -635,6 +637,21 @@ export async function issueRefundVoucher(
  * ladder (an advance refund lowers the deposit held). Registered by the listening module at boot, like
  * `registerReceiptGuard`. A listener's failure is logged and swallowed — the refund is issued whatever it does.
  */
+/**
+ * IPD #763 — A REFUND ITS RAISER HAS CANCELLED NEVER ISSUES. The approvals kernel has no "cancelled" state, so a granted
+ * refund approval cannot be taken back; the module that raised the request (the IPD bill void) registers a guard here, and
+ * `issueRefundVoucher` asks every guard INSIDE its transaction, after it has locked the approval row — the void locks the
+ * same row first, so a void and a voucher can never both win. A guard refuses by throwing (a `BillingError`). Additive:
+ * no existing signature changed. Registered by the owning module at boot, like `registerReceiptGuard`.
+ */
+export type RefundVoucherGuard = (tx: Tx, ctx: { approvalId: string; patientId: string; at: Date }) => Promise<void>;
+const refundVoucherGuards = new Map<string, RefundVoucherGuard>();
+
+export function registerRefundVoucherGuard(key: string, guard: RefundVoucherGuard): () => void {
+  refundVoucherGuards.set(key, guard);
+  return () => { if (refundVoucherGuards.get(key) === guard) refundVoucherGuards.delete(key); };
+}
+
 export type AdvanceRefundListener = (db: Db, args: { patientId: string; at: Date }) => Promise<void>;
 const advanceRefundListeners = new Map<string, AdvanceRefundListener>();
 const refundLog = new Logger("billing.refunds");

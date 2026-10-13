@@ -146,7 +146,9 @@ export async function dischargeBlockedCard(ctx: DeskProviderCtx): Promise<DeskCa
   const dIds = [...discharges.values()].map((d) => d.id);
   const confirmations = dIds.length === 0 ? [] : await db.select().from(ipdDischargeConfirmations).where(inArray(ipdDischargeConfirmations.dischargeId, dIds));
   const summaries = new Map((await db.select().from(ipdDischargeSummaries).where(inArray(ipdDischargeSummaries.admissionId, ids))).map((s) => [s.admissionId, s] as const));
-  const bills = new Map((await db.select().from(ipdFinalBills).where(inArray(ipdFinalBills.admissionId, ids))).map((b) => [b.admissionId, b] as const));
+  // #763: the LIVE final bill only (a voided bill keeps its row; a supplementary bill is not the discharge step's bill).
+  const bills = new Map((await db.select().from(ipdFinalBills).where(and(inArray(ipdFinalBills.admissionId, ids), eq(ipdFinalBills.seq, 0),
+    isNull(ipdFinalBills.voidedAt)))).map((b) => [b.admissionId, b] as const));
   const passes = new Map((await db.select().from(ipdGatePasses).where(and(inArray(ipdGatePasses.admissionId, ids), eq(ipdGatePasses.status, "issued"))))
     .map((p) => [p.admissionId, p] as const));
 

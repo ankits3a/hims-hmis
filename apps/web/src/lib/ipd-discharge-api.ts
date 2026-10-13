@@ -1,6 +1,6 @@
 import { api, newIdempotencyKey } from "./api";
 import type {
-  IpdDischargeBoard, IpdDischargeDepartment, IpdDischargeTracker, IpdFinalBill, IpdSummaryContent, IpdSummaryView,
+  IpdDischargeBillDesk, IpdDischargeBoard, IpdDischargeDepartment, IpdDischargeTracker, IpdFinalBill, IpdSummaryContent, IpdSummaryView,
 } from "@hmis/contracts";
 
 /**
@@ -19,6 +19,11 @@ const R = {
   settle: "/ipd/discharge/bill/settle",
   askDues: "/ipd/discharge/bill/ask-dues",
   gatePass: "/ipd/discharge/gate-pass",
+  settledBills: "/ipd/discharge/bill-desk",
+  supplementaryPrepare: "/ipd/discharge/bill/supplementary/prepare",
+  supplementarySettle: "/ipd/discharge/bill/supplementary/settle",
+  askVoid: "/ipd/discharge/bill/void/ask",
+  voidBill: "/ipd/discharge/bill/void",
   scan: "/ipd/discharge/gate-pass/scan",
 } as const;
 
@@ -58,6 +63,19 @@ export const settleFinalBill = (idempotencyKey: string, b: {
 }): Promise<{ billNo: string }> => api("POST", R.settle, { idempotencyKey, ...b }, idempotencyKey);
 export const askDuesApproval = (admissionId: string, amountPaise: number, note: string): Promise<{ approvalId: string }> =>
   api("POST", R.askDues, { admissionId, amountPaise, note });
+
+/** #763 — the bill desk's settled bills (open questions, and the last few days' bills): Supplementary bill and Void bill start here. */
+export const getSettledBills = (): Promise<IpdDischargeBillDesk> => api("GET", R.settledBills);
+export const prepareSupplementaryBill = (admissionId: string): Promise<IpdFinalBill> => api("POST", R.supplementaryPrepare, { admissionId });
+/** Same body as the final bill's settle; one idempotency key per attempt (review #762 item 12). */
+export const settleSupplementaryBill = (idempotencyKey: string, b: {
+  admissionId: string; billVersion: number; patientPayablePaise: number; settlement: Settlement;
+  payments: { tender: Tender; amountPaise: number; ref?: string }[]; undertakingDocumentId?: string;
+}): Promise<{ billNo: string }> => api("POST", R.supplementarySettle, { idempotencyKey, ...b }, idempotencyKey);
+export const askBillVoid = (admissionId: string, billId: string, reason: string): Promise<{ approvalId: string }> =>
+  api("POST", R.askVoid, { admissionId, billId, reason });
+export const voidBill = (admissionId: string, billId: string, approvalId: string, reason: string): Promise<{ creditNoteNo: string | null }> =>
+  post(R.voidBill, { admissionId, billId, approvalId, reason });
 
 export const issueGatePass = (admissionId: string, receivingHospital?: { name: string; confirmedBy: string }): Promise<{ code: string }> =>
   post(R.gatePass, { admissionId, ...(receivingHospital === undefined ? {} : { receivingHospital }) });
