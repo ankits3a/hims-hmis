@@ -29,3 +29,4 @@ export * from "./bmw";
 export * from "./linen";
 export * from "./housekeeping";
 export * from "./maintenance";
+export * from "./passes";

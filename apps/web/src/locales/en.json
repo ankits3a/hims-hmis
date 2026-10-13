@@ -150,7 +150,9 @@
     "rosterAebas": "AEBAS to-do",
     "housekeeping": "Housekeeping",
     "ipdAdmit": "Admit",
-    "maintenance": "Maintenance"
+    "maintenance": "Maintenance",
+    "ipdPasses": "Passes",
+    "passScan": "Pass scan"
   },
   "palette": {
     "title": "Search",
@@ -17073,6 +17075,88 @@
       "verifier_is_doer": "The technician cannot confirm their own repair.",
       "not_permitted": "You may not confirm this repair.",
       "repair_ticket_open": "Close the repair ticket first."
+    }
+  },
+  "passes": {
+    "title": "Passes",
+    "subtitle": "Attendant and visitor passes",
+    "toScan": "Scan passes",
+    "admitted": "Admitted patients",
+    "noneAdmitted": "No admitted patient on this list.",
+    "pick": "Pick an admitted patient to see their passes.",
+    "issuedOf": "{{live}} of {{max}} issued",
+    "entitled": "entitled",
+    "custodyOn": "Police custody: police guard passes only",
+    "banOn": "Visitors stopped by the doctor: {{reason}}",
+    "issueTitle": "Attendant pass",
+    "kindLabel": "Pass",
+    "babyAdmission": "Baby's admission id (NICU)",
+    "issue": "Issue pass",
+    "visitorTitle": "Visitor pass",
+    "visitorHours": "Visiting hours {{hours}} · {{live}} of {{max}} live",
+    "visitorClosed": "closed now",
+    "issueVisitor": "Issue visitor pass",
+    "live": "Live passes",
+    "noneLive": "No live pass.",
+    "endedCount": "{{n}} ended (revoked or expired)",
+    "print": "Print",
+    "lost": "Lost — reissue",
+    "manageTitle": "Doctor's ban and custody",
+    "reason": "Reason",
+    "stopVisitors": "Stop visitors",
+    "resume": "Allow again",
+    "custodySet": "Police custody",
+    "custodyClear": "End police custody",
+    "fix": "Fix",
+    "holder": {
+      "name": "Name",
+      "phone": "Mobile (optional)",
+      "relation": "Relation"
+    },
+    "col": {
+      "kind": "Pass",
+      "holder": "Holder",
+      "state": "State",
+      "until": "Valid until"
+    },
+    "state": {
+      "active": "Live",
+      "paused": "Paused",
+      "revoked": "Revoked",
+      "expired": "Expired"
+    },
+    "kind": {
+      "attendant": "Attendant",
+      "visitor": "Visitor",
+      "parent_stay": "Parent stay",
+      "nicu_mother": "NICU mother",
+      "police_guard": "Police guard",
+      "lounge": "ICU lounge"
+    },
+    "card": {
+      "patient": "Patient",
+      "untilDischarge": "Until discharge",
+      "until": "Until",
+      "hours": "Visiting hours {{hours}}",
+      "foot": "Show at the ward door. Lost? Tell the desk at once — the old pass stops working."
+    },
+    "scan": {
+      "title": "Pass scan",
+      "door": "Door",
+      "mainGate": "Main gate (no ward check)",
+      "ready": "Scan a pass",
+      "token": "Scan or type the pass code",
+      "check": "Check",
+      "recent": "Recent scans",
+      "result": {
+        "valid": "Valid",
+        "wrong_ward": "Wrong ward",
+        "outside_hours": "Outside visiting hours",
+        "expired": "Expired",
+        "revoked": "Revoked",
+        "paused": "Paused",
+        "unknown": "Not a pass"
+      }
     }
   }
 }

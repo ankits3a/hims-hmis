@@ -30,6 +30,7 @@ import { bmwManifest } from "../../modules/bmw";
 import { linenManifest } from "../../modules/linen";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
+import { passesManifest } from "../../modules/passes";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -211,4 +212,6 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // E1.5 MAINTENANCE (issue #722) — appended. Five permissions and one menu entry; no subscription, no job. The API
   // mounts its routes; the worker imports the module only to define the two repair kinds for the task clock.
   maintenanceManifest,
+  // E1.3 (#720) — attendant and visitor passes; its one consumer runs in the worker too.
+  passesManifest,
 ];

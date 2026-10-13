@@ -28,6 +28,7 @@ import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
+import { passesManifest } from "../../modules/passes";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -96,6 +97,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   orderingManifest, // DECISION 0067 — both processes
   housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
   maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
+  passesManifest, // E1.3 (#720) — both processes
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -214,13 +216,14 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "housekeeping",
       // E1.5 MAINTENANCE (issue #722) — appended. A leaf: it reaches into tasks and ipd through their indexes.
       "maintenance",
+      "passes", // PASSES E1.3 (#720): attendant and visitor passes
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(31); // E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(32); // PASSES E1.3: 27, passes; //; E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(31); // IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
+    expect(registry.all()).toHaveLength(32); // PASSES E1.3; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -449,7 +452,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "ordering",
       // E1.4 HOUSEKEEPING (issue #721) — the bed-turnover consumer (`housekeeping.bed_turnover`); installed in both.
       "housekeeping",
+      // E1.3 (#720) — the passes consumer (`passes.admission`); installed in both processes.
+      "passes",
     ]);
-    expect(workerKeys).toHaveLength(21); // E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(22); // E1.3: 20 -> 21, `passes`; //; E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

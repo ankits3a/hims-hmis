@@ -125,6 +125,7 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   bmw: "E1.7 BIO-MEDICAL WASTE (issue #724) — DECIDED not a department: a statutory register over every ward's waste, run by the services supervisor's existing staff. It owns no seats, no theatres and no master data a go-live must commission (the treatment facility's name is typed on each manifest)",
   linen: "E2.4 LINEN (issue #728) — DECIDED not a department: a ledger over every ward's linen, run by the services supervisor's existing staff. It owns no seats and no master data a go-live must commission (the item catalogue ships seeded and par is computed from the beds)",
   ordering: "DECISION 0067 — not a department: the door every doctor screen orders tests through and the outside-test list. The lab and imaging it routes to are the departments; it has nothing of its own to commission",
+  passes: "E1.3 (#720) — not a department: attendant and visitor passes ride the IPD admission desk and the security desk; nothing of its own to commission (visiting hours are a contract constant)",
   resources: "kernel — the registry the departments' theatres and benches live in",
   orders: "kernel — the order envelope; claimed by lab and radiology, owned by neither",
   desk: "cross-cutting — the front-desk shell; its commissioning IS `front-desk`'s",

@@ -17,6 +17,7 @@ import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
 import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
+import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -175,6 +176,12 @@ describe("seedCursors", () => {
          * release, and `workerBackfills` gives every bed already in cleaning its one clean.
          */
         HOUSEKEEPING_BED_CONSUMER,
+        /**
+         * E1.3 (#720) — passes. Its unseeded cursor would walk every stay-ending IPD event since the first
+         * admission; each would find no live pass and write nothing (passes did not exist), but it would still walk
+         * them. Seeded at `max(seq)`, it begins with the next discharge.
+         */
+        PASSES_ADMISSION_CONSUMER,
       ].sort());
   });
 

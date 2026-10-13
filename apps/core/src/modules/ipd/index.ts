@@ -63,3 +63,9 @@ export { IPD_APPROVAL_TYPES, IPD_APPROVAL_TYPE_KEYS, ipdApprovalDefinition, regi
 export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 export { assignBedIn, endAdmissionHolds, placementContext, proposeBeds, readBedFacts } from "./beds";
 export type { BedPlacementInput, PlacementContext } from "./beds";
+// E1.3 (#720) — where an admission is, and the stay-ending and transfer event names, for the companion modules (passes).
+export {
+  IPD_ADMISSION_ENDED_EVENT_NAMES, IPD_ENDED_STATES, IPD_PLACED_STATES, IPD_TRANSFER_ACCEPTED_EVENT_NAME, admissionPlace,
+} from "./admission-place";
+export type { AdmissionPlace } from "./admission-place";
+export { ageInYears } from "./bed-rules";

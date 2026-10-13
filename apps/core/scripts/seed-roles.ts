@@ -92,6 +92,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       // E1.5 MAINTENANCE (issue #722) — the desk reports a fault it sees (Beds board "Report a fault").
       "maintenance.raise",
+      // PASSES E1.3 (#720, decision 0072) — the admission desk issues attendant and visitor passes; README passes prose.
+      "passes.issue",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -139,6 +141,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       // E1.5 MAINTENANCE (issue #722) — reports a fault; confirms a repair through `ipd.beds.clean` (the kind's verifier list).
       "maintenance.raise",
+      // PASSES E1.3 (#720) — issues passes, and records police custody or pauses every pass; README passes prose.
+      "passes.issue", "passes.manage",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -232,6 +236,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
       "ipd.admit.request",
+      // PASSES E1.3 (#720) — a doctor's visitor ban: pause visitor passes with a reason, and lift it.
+      "passes.pause",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.visits.read",
@@ -981,6 +987,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
+      // PASSES E1.3 (#720) — a visitor ban, and the manager's pause and police custody.
+      "passes.pause", "passes.manage",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1134,7 +1142,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       // E1.5 MAINTENANCE (issue #722) — the maintenance board, raise, confirm a repair and cancel or re-dispatch a ticket out of hours.
       "maintenance.view", "maintenance.raise", "maintenance.confirm", "maintenance.manage",
+      // PASSES E1.3 (#720) — the duty manager holds all four at night: issue, scan at a door, a ban, custody.
+      "passes.issue", "passes.scan", "passes.pause", "passes.manage",
     ],
+  },
+  /**
+   * PASSES E1.3 (#720, decision 0072) — THE GUARD AT THE WARD DOOR. No role for security existed; the scan needs one.
+   * It scans and does nothing else: no patient record, no bed board. Its scan answer names the pass holder and the
+   * ward, never the patient.
+   */
+  {
+    roleKey: "security_guard",
+    permissions: ["passes.scan"],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -2281,6 +2300,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14). Not an OPD station — a governance seat, held by
   // ONE person on purpose. The key is what the code matches on; if the org chart calls the person
   // something else, the TITLE changes here and the key does not.
+  security_guard: "Security Guard (scans attendant and visitor passes at the ward door)",
   staff_auditor: "Staff Auditor (reads a named colleague's figures, and may open the patient rows behind them)",
   daycare_coordinator: "Day-care Coordinator (books cases, chases gates, publishes the list)",
   // PLAN 17 T2 / DD16, 2026-08-29. None of the four is an OPD station — a bench is not a consulting
