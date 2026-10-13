@@ -18157,10 +18157,10 @@
     },
     "remoteHint": "फ़ोन या वीडियो से समीक्षा — दूर से समीक्षा के रूप में दर्ज",
     "soap": {
-      "subjective": "लक्षण (S)",
-      "objective": "जाँच (O)",
-      "assessment": "आकलन (A)",
-      "plan": "योजना (P)"
+      "subjective": "लक्षण · S",
+      "objective": "जाँच · O",
+      "assessment": "आकलन · A",
+      "plan": "योजना · P"
     },
     "fitLabel": "छुट्टी योग्य",
     "fitButton": {
