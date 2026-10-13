@@ -1,6 +1,7 @@
 import * as admitIntents from "./intents-admit";
 import * as dischargeIntents from "./intents-discharge";
 import * as medIntents from "./intents-meds";
+import * as roundIntents from "./intents-rounds";
 import * as wardIntents from "./intents-ward";
 import { IpdIdempotencyKeySchema } from "./common";
 
@@ -24,6 +25,12 @@ export * from "./bill-desk";
 export * from "./discharge";
 // E3.3 (#731) — the family link: OTP to the registered attendant, condition word, totals, tracker, callbacks.
 export * from "./family";
+// E4.2 (#734) — rounds: the doctor's list, the patient's round page, the order event contract eMAR consumes.
+export * from "./rounds";
+export { IPD_DRUG_ROUTES, IpdDrugOrderSchema } from "./intents-meds";
+export type { IpdDrugOrder } from "./intents-meds";
+export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";
+export type { IpdRoundSoap } from "./intents-ward";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see
@@ -69,6 +76,12 @@ export const IPD_INTENTS = {
   hold_dose: medIntents.holdDose,
   refuse_dose: medIntents.refuseDose,
   record_infusion_event: medIntents.recordInfusionEvent,
+  // E4.2 (#734, DECIDED) — the round's co-sign, the cross-consult, and stopping or cancelling an inpatient order.
+  cosign_round: roundIntents.cosignRound,
+  request_consult: roundIntents.requestConsult,
+  close_consult: roundIntents.closeConsult,
+  stop_ip_order: medIntents.stopIpOrder,
+  cancel_ip_order: medIntents.cancelIpOrder,
   declare_fit: dischargeIntents.declareFit,
   cancel_fit: dischargeIntents.cancelFit,
   confirm_charges: dischargeIntents.confirmCharges,

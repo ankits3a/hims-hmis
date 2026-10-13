@@ -153,3 +153,21 @@ export {
   IPD_DISCHARGE_STEP_STUCK_MINUTES, bedProposalCard, cleaningOverdueCard, dischargeBlockedCard, rankNowRows, stuckStepOf,
 } from "./now-cards";
 export type { NowRow, StuckStep } from "./now-cards";
+// E4.2 (#734) — rounds: sign (S/O/A/P, bedside or remote; resident drafts co-signed), fit from the round, inpatient
+// orders (drugs; lab and imaging through the ordering door), cross-consults, the 08:00 cover and 14:00 nudge clock,
+// and the eMAR's seams on the order contract (`ipd.order.placed|stopped|cancelled`, `readIpdOrder`,
+// `activeIpdOrdersOf`, `markIpdOrderIssuedIn`).
+export { IPD_ORDER_PLACE, IPD_ROUND_SIGN } from "./permissions";
+export { IPD_CONSULT_NOTICE_KIND, closeConsult, cosignRound, requestConsult, signRound } from "./rounds";
+export {
+  activeIpdOrdersOf, cancelIpOrder, drugFactsOf, markIpdOrderIssuedIn, placeIpOrder, readIpdOrder, stopIpOrder,
+} from "./orders";
+export type { IpdOrderOpts, IpdOrderRow } from "./orders";
+export { readRoundPatient, readRoundsList, roundsConsultantChoices } from "./rounds-read";
+export {
+  IPD_COVER_KIND, IPD_ROUND_NUDGE_HEAD_KIND, IPD_ROUND_NUDGE_KIND, IPD_ROUNDS_REF_TYPE, applyCovers, nudgeUnrounded, sweepIpdRoundsClock,
+} from "./rounds-clock";
+export { coveringConsultantFor, unitHeadFor } from "./rounds-team";
+export { declareFitIn } from "./discharge";
+export { orderCancelled, orderPlaced, orderStopped, roundSigned } from "./rounds-events";
+export { IPD_ADMISSION_PREFIX, registerIpdEncounterResolver } from "./encounter";

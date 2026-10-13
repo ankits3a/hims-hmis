@@ -2,14 +2,14 @@ import { depositLowCard } from "./bill-desk";
 import { familyCallbacksCard } from "./family";
 import { bedProposalCard, cleaningOverdueCard, dischargeBlockedCard } from "./now-cards";
 import {
-  IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+  IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
 } from "./permissions";
 import { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
 import { admissionAbsconded, admissionDeceased } from "./discharge-events";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 export {
-  IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+  IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
 } from "./permissions";
 
 /**
@@ -72,6 +72,13 @@ export {
  *   ipd.condition.set   set the condition word the family sees and turn the family link off for a sensitive admission —
  *                       the doctor (nursing roles join when ipd-nursing seeds them). Clinical; no money.
  *
+ * E4.2 (#734) adds the rounds' two (spec §4.5A, §4.9 E). Clinical; no money on either (decision 0058):
+ *
+ *   ipd.round.sign      read the doctor's rounds list and a patient's round page, sign a round (a resident's is a draft
+ *                       until co-signed), co-sign, ask for and close a cross-consult — the doctor
+ *   ipd.order.place     place, stop and cancel inpatient orders (drugs; lab and imaging through the ordering door, which
+ *                       still asks `orders.place` and the department's own permission) — the doctor
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). The 2-hour reservation lapse is a scheduler job (`kernel/worker/jobs.ts`
  * `lapseBedReservations`); the one subscription is E3.3's family-link stop, so the worker installs this manifest.
  */
@@ -89,6 +96,8 @@ export const ipdManifest: ModuleManifest = {
     { label: "Discharge", path: "/ipd/discharge", permission: IPD_DISCHARGE_VIEW },
     // E3.3 (#731) — the ward desk's family callback requests.
     { label: "Family calls", path: "/ipd/family-callbacks", permission: IPD_FAMILY_ISSUE },
+    // E4.2 (#734) — the doctor's inpatient rounds list.
+    { label: "Rounds", path: "/ipd/rounds", permission: IPD_ROUND_SIGN },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
@@ -100,6 +109,8 @@ export const ipdManifest: ModuleManifest = {
     IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE,
     // E3.3 (#731)
     IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+    // E4.2 (#734)
+    IPD_ROUND_SIGN, IPD_ORDER_PLACE,
   ],
   // E3.3 (#731) — death and absconding revoke the family link (`familyStopConsumer`, registered in the worker's
   // `workerConsumers` in the same commit; its cursor is seeded at deploy by `seedCursors`).

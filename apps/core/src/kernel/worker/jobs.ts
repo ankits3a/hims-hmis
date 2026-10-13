@@ -35,7 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly } from "../../modules/ipd";
+import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdRoundsClock } from "../../modules/ipd";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
@@ -666,7 +666,12 @@ export function registerAllJobs(
     name: "sweepStaffNotices",
     every: 60_000,
     // An approval past its deadline tells its deciders once (decision 0043) — same clock, same job.
-    run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now); },
+    // E4.2 (#734): the inpatient rounds clock (08:00 cover hand-over, 14:00 / 16:00 round nudges) rides this tick too —
+    // no job (and no pool client) of its own; it runs last, so a failure there never keeps the others from running.
+    run: async (now) => {
+      await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now);
+      await sweepIpdRoundsClock(db, now);
+    },
   });
   /**
    * MEDICINE NICKNAMES (owner 2026-10-08: "switch ON medicine nicknames") — the words doctors typed

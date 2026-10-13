@@ -11,9 +11,9 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
-- **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
+- **Depends on modules:** `billing`, `formulary`, `opd`, `ordering`, `patients`, `roster`, `tariff`
 - **Used by modules:** `housekeeping`, `maintenance`, `passes`, `transport`
-- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
 ## Public API (`index.ts`), by declaring file
@@ -221,9 +221,13 @@ Source: `apps/core/src/modules/ipd/`
   - `cancelFit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_fit">>`
   - `confirmCharges(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"confirm_charges">>`
   - `declareFit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_fit">>`
+  - `declareFitIn(tx: Tx, actor: Actor, a: AdmissionRow, input: Pick<Input<"declare_fit">, "when" | "disposition" | "note">, at: Date): Promise<…`
   - `readSummary(db: Db, actor: Actor, admissionId: string): Promise<IpdSummaryView>`
   - `saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdSummaryView>`
   - `signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_summary">>`
+- `encounter.ts`
+  - `IPD_ADMISSION_PREFIX`
+  - `registerIpdEncounterResolver(): () => void`
 - `errors.ts`
   - `class IpdError`
   - `class IpdRefusal`
@@ -289,6 +293,15 @@ Source: `apps/core/src/modules/ipd/`
   - `rankNowRows(rows: readonly NowRow[]): DeskRow[]`
   - `stuckStepOf(args: { state: string; declaredAt: Date; confirmations: Parameters<typeof pendingDepartments>[0]; summarySignedAt: Date | null;…`
   - types: `NowRow`, `StuckStep`
+- `orders.ts`
+  - `activeIpdOrdersOf(exec: Db | Tx, admissionId: string, kinds: readonly string[] = ["drug", "lab", "imaging"]): Promise<IpdOrderRow[]>`
+  - `cancelIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick<IpdOrderOpts, "now"> = {}): Promise<Output<"cancel_ip_order">>`
+  - `drugFactsOf(o: IpdOrderRow): IpdOrderDrugFacts | null`
+  - `markIpdOrderIssuedIn(tx: Tx, orderId: string, at: Date): Promise<boolean>`
+  - `placeIpOrder(db: Db, actor: Actor, raw: unknown, opts: IpdOrderOpts = {}): Promise<Output<"place_ip_order">>`
+  - `readIpdOrder(exec: Db | Tx, orderId: string): Promise<IpdOrderRow | null>`
+  - `stopIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick<IpdOrderOpts, "now"> = {}): Promise<Output<"stop_ip_order">>`
+  - types: `IpdOrderOpts`, `IpdOrderRow`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
   - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
@@ -326,8 +339,10 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_GATE_PASS`
   - `IPD_GATE_SCAN`
   - `IPD_MORTUARY_MANAGE`
+  - `IPD_ORDER_PLACE`
   - `IPD_PAYER_MANAGE`
   - `IPD_PAYER_TERMS`
+  - `IPD_ROUND_SIGN`
   - `IPD_TRANSFER_ACCEPT`
   - `IPD_TRANSFER_START`
 - `realtime.ts`
@@ -335,6 +350,32 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_TOPIC_SPACES: TopicSpace[]`
   - `ipdTopicRouter: TopicRouter`
   - `ipdTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[]`
+- `rounds-clock.ts`
+  - `IPD_COVER_KIND`
+  - `IPD_ROUNDS_REF_TYPE`
+  - `IPD_ROUND_NUDGE_HEAD_KIND`
+  - `IPD_ROUND_NUDGE_KIND`
+  - `applyCovers(db: Db, at: Date, now: Date): Promise<number>`
+  - `nudgeUnrounded(db: Db, now: Date, heads: boolean): Promise<number>`
+  - `sweepIpdRoundsClock(db: Db, now: Date): Promise<{ covers: number; nudges: number }>`
+- `rounds-events.ts`
+  - `orderCancelled`
+  - `orderPlaced`
+  - `orderStopped`
+  - `roundSigned`
+- `rounds-read.ts`
+  - `readRoundPatient(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<IpdRoundPatient>`
+  - `readRoundsList(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdRoundsList>`
+  - `roundsConsultantChoices(db: Db, actor: Actor): Promise<{ userId: string; name: string; department: string | null }[]>`
+- `rounds-team.ts`
+  - `coveringConsultantFor(exec: Db | Tx, consultantId: string, at: Date, units?: Map<string, string>): Promise<string | null>`
+  - `unitHeadFor(exec: Db | Tx, consultantId: string, at: Date, units?: Map<string, string>): Promise<string | null>`
+- `rounds.ts`
+  - `IPD_CONSULT_NOTICE_KIND`
+  - `closeConsult(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"close_consult">>`
+  - `cosignRound(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cosign_round">>`
+  - `requestConsult(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"request_consult">>`
+  - `signRound(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_round">>`
 - `transfer-events.ts`
   - `IPD_TRANSFER_EVENT_NAMES`
 - `transfers.ts`
@@ -358,7 +399,7 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (84)
+## HTTP routes (94)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
@@ -367,6 +408,7 @@ Foreign keys into: `patients`, `resources`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
+- `rounds.controller.ts` — 10: `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
 - `transfers.controller.ts` — 7: `/ipd/transfers`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

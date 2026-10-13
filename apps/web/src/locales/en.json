@@ -159,7 +159,8 @@
     "ipdBillDesk": "Bill desk",
     "ipdDischarge": "Discharge",
     "ipdFamilyCalls": "Family calls",
-    "adminWorkflows": "Workflows"
+    "adminWorkflows": "Workflows",
+    "ipdRounds": "Rounds"
   },
   "palette": {
     "title": "Search",
@@ -18095,5 +18096,161 @@
     "noPrice": "No price in force",
     "done_one": "{{count}} service switched on.",
     "done_other": "{{count}} services switched on."
+  },
+  "ipdRounds": {
+    "title": "Rounds",
+    "counts": "{{total}} patients · {{pending}} to see today",
+    "loading": "Loading…",
+    "failed": "Could not load — try again",
+    "forbidden": "Rounds are for doctors on the treating team",
+    "empty": "No inpatients on your list today",
+    "sealed": "Sealed patient",
+    "boardedOn": "On {{ward}}",
+    "boardedHint": "Lying on another department's ward",
+    "day": "Day {{n}}",
+    "activeOrders_one": "{{count}} active order",
+    "activeOrders_other": "{{count}} active orders",
+    "today": {
+      "none": "Not seen today",
+      "draft": "Draft round",
+      "remote": "Remote review",
+      "signed": "Seen today"
+    },
+    "why": {
+      "own": "My patient",
+      "covering": "Covering · {{name}}",
+      "unit": "Unit · {{name}}",
+      "consult": "Consult · {{name}}"
+    },
+    "fit": {
+      "today": "Fit today",
+      "tomorrow": "Fit tomorrow"
+    },
+    "cosignQueue": "Waiting for your co-sign",
+    "draftBy": "Draft by {{name}} · {{time}}",
+    "cosign": "Co-sign",
+    "cosignedBy": "Co-signed by {{name}}",
+    "draft": "Draft",
+    "under": "Under {{name}}",
+    "coveredBy": "Covered by {{name}}",
+    "dx": "Diagnosis",
+    "notOnTeam": "You are not on this patient's treating team",
+    "history": "Rounds",
+    "noRounds": "No signed round yet",
+    "vitals": "Latest vitals",
+    "vitalsPending": "Vitals appear here once the ward nursing records are live",
+    "signTitle": "Today's round",
+    "modeLabel": "Where",
+    "mode": {
+      "bedside": "Bedside",
+      "remote_review": "Remote review"
+    },
+    "remoteHint": "Phone or video review — recorded as a remote review",
+    "soap": {
+      "subjective": "Subjective",
+      "objective": "Objective",
+      "assessment": "Assessment",
+      "plan": "Plan"
+    },
+    "fitLabel": "Fit for discharge",
+    "fitButton": {
+      "today": "Today",
+      "tomorrow": "Tomorrow"
+    },
+    "sign": "Sign round",
+    "signAndFit": "Sign round · start discharge",
+    "kind": {
+      "consultant": "Consultant",
+      "resident": "Resident"
+    },
+    "source": {
+      "typed": "Typed",
+      "voice": "Voice",
+      "copilot_draft": "Copilot draft"
+    },
+    "sourceHint": "Where the words came from",
+    "orders": "Orders",
+    "addDrug": "+ Medicine",
+    "addTests": "+ Tests",
+    "noOrders": "No active order",
+    "endedOrders_one": "{{count}} ended order",
+    "endedOrders_other": "{{count}} ended orders",
+    "orderKind": {
+      "drug": "Medicine",
+      "lab": "Lab",
+      "imaging": "Imaging"
+    },
+    "orderStatus": {
+      "active": "Active",
+      "stopped": "Stopped",
+      "cancelled": "Cancelled"
+    },
+    "verification": {
+      "pending": "Awaiting pharmacist",
+      "verified": "Verified",
+      "rejected": "Pharmacist rejected",
+      "query": "Pharmacist query"
+    },
+    "antibiotic": "Antibiotic",
+    "until": "Till {{time}}",
+    "forDays_one": "For {{count}} day",
+    "forDays_other": "For {{count}} days",
+    "returnOwed": "Return to pharmacy owed",
+    "stop": "Stop",
+    "cancelOrder": "Cancel order",
+    "reason": "Reason",
+    "back": "Back",
+    "drugSearch": "Search medicine — 2 letters",
+    "change": "Change",
+    "dose": "Dose",
+    "unit": "Unit",
+    "route": "Route",
+    "frequency": "How often",
+    "days": "Days",
+    "stopDate": "Stop date",
+    "placeOrder": "Place order",
+    "routes": {
+      "oral": "Oral",
+      "iv": "IV",
+      "im": "IM",
+      "sc": "SC",
+      "inhaled": "Inhaled",
+      "topical": "Topical",
+      "rectal": "Rectal",
+      "sublingual": "Sublingual",
+      "ng": "NG tube",
+      "other": "Other"
+    },
+    "indication": "Why — clinical indication",
+    "outside": "done outside — not ordered here",
+    "remove": "Remove",
+    "consults": "Consults",
+    "askColleague": "Ask a colleague",
+    "consultant": "Consultant",
+    "question": "Question for the consultant",
+    "urgent": "Urgent",
+    "sendConsult": "Send request",
+    "closeConsult": "Close consult",
+    "askedBy": "Asked by {{name}} · {{time}}",
+    "refused": {
+      "failed": "Could not save — try again",
+      "admission_wrong_state": "The patient is not in a bed now",
+      "not_treating_team": "Only the treating or consulted team may do this",
+      "not_treating_consultant": "Only the treating consultant may do this",
+      "consultant_cosign_required": "A resident's round needs the consultant's co-sign",
+      "time_in_future": "The time is later than now",
+      "antibiotic_stop_date_required": "An antibiotic needs a stop date",
+      "duration_required": "Add a duration or a stop date",
+      "medicine_not_found": "Medicine not in the formulary",
+      "duplicate_order": "This medicine is already ordered by this route",
+      "order_kind_not_here": "Place this order on its own screen",
+      "test_not_orderable": "The department could not take this test",
+      "order_not_active": "The order is already stopped or cancelled",
+      "order_already_issued": "Already issued — stop it instead",
+      "round_not_awaiting_cosign": "Already co-signed",
+      "consultant_not_found": "Pick an active consultant",
+      "consult_already_open": "This consultant is already asked",
+      "consult_closed": "The consult is already closed"
+    }
   }
 }

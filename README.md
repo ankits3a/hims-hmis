@@ -1786,6 +1786,12 @@ role is seeded. Nobody is detained for dues: an unpaid balance goes to the billi
 registered phone only) and works the family's callback requests; `ipd.condition.set` is held by `doctor` — the condition
 word the family sees is set by the treating team, never by a model. Off for sealed and medico-legal admissions.
 
+**IPD rounds (E4.2, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.round.sign` and `ipd.order.place` are
+held by `doctor` — the Rounds list at `/ipd/rounds` (own, unit and consulted patients, boarded ones marked with their
+ward), the round page (sign a S/O/A/P round; a resident's round waits for the consultant's co-sign), cross-consults, and
+inpatient orders: drugs from the formulary (an antibiotic needs a stop date), lab and imaging through the ordering door.
+A consultant's bedside round is the day's visit; a remote review is not. No money on any of it.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

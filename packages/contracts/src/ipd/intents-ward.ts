@@ -282,25 +282,47 @@ export const completeTask = ipdIntent({
 });
 
 /**
- * The round sign. One chargeable visit per consultant per patient per day posts from here, but the doctor sees
- * no money (decision 0058): the output says signed or awaiting co-sign, never a fee.
+ * The round sign (E4.2 #734, spec §4.5A). A structured S/O/A/P note with its source. A consultant's bedside round posts
+ * the day's visit through the charges seam (one chargeable visit per consultant per patient per day); a remote review
+ * is recorded as such and posts none. A resident's or intern's round is a draft until the treating consultant
+ * co-signs it (`cosign_round`). "Fit for discharge" on the round starts the discharge cascade (`declare_fit`) in the
+ * same act — the treating consultant's only. The doctor sees no money (decision 0058): the output never says
+ * whether a visit was charged.
  */
+const RoundTextSchema = z.string().trim().max(2000);
+export const IpdRoundSoapSchema = z.strictObject({
+  subjective: RoundTextSchema.optional(),
+  objective: RoundTextSchema.optional(),
+  assessment: RoundTextSchema.optional(),
+  plan: RoundTextSchema.optional(),
+}).refine((s) => Object.values(s).some((v) => typeof v === "string" && v.length > 0), { message: "write at least one of S, O, A, P" });
+export type IpdRoundSoap = z.infer<typeof IpdRoundSoapSchema>;
+/** Where the note's words came from (§0B provenance): typed by the person, dictated, or a copilot draft they signed. */
+export const IPD_ROUND_SOURCES = ["typed", "voice", "copilot_draft"] as const;
+
 export const signRound = ipdIntent({
   input: ipdInput({
     admissionId: IpdIdSchema,
     seenAt: IpdInstantSchema,
     mode: z.enum(["bedside", "remote_review"]),
-    note: IpdNoteSchema,
-    /** A consultant co-signing a resident's draft. */
-    coSignOfRoundId: IpdIdSchema.optional(),
+    soap: IpdRoundSoapSchema,
+    source: z.enum(IPD_ROUND_SOURCES).optional(),
+    /** "Fit for discharge: today / tomorrow" from the plan bar — starts the discharge cascade. Consultant only. */
+    fit: z.strictObject({ when: z.enum(["today", "tomorrow"]), disposition: z.enum(["home", "transfer_out"]) }).optional(),
   }),
   output: z.strictObject({
     roundId: IpdIdSchema,
     status: z.enum(["signed", "awaiting_cosign"]),
     signedBy: IpdUserRefSchema,
     seenAt: IpdInstantSchema,
+    mode: z.enum(["bedside", "remote_review"]),
+    /** The discharge clock started by this round (null when no fit was declared). */
+    fitDeclaredAt: IpdInstantSchema.nullable(),
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", "not_treating_team", "time_in_future", "consultant_cosign_required"],
+  refusals: [
+    "admission_not_found", "admission_wrong_state", "not_treating_team", "time_in_future", "consultant_cosign_required",
+    "not_treating_consultant",
+  ],
   actors: ["doctor", "resident"],
   copilotProposable: true,
   agentTier: "none",

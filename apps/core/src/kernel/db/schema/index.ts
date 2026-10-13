@@ -123,6 +123,8 @@ export * from "./reminders";
 export * from "./tasks";
 // E1.1 (#718) — IPD bed reservations and blocks. References `resources` (the bed) and nothing of any module's.
 export * from "./ipd";
+// E4.2 (#734) — rounds, inpatient orders, cross-consults. References `ipd_admissions` and `patients`.
+export * from "./ipd-rounds";
 // E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
 // References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
 export * from "./bmw";

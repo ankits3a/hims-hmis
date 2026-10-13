@@ -6,7 +6,8 @@ import { ensureRole, mkPatient, mkUser, seedOpdBase } from "./opd";
 import { admissionWorkflowDefinition, ipdManifest, ipdNonPayableDepositCode, registerIpdApprovalTypes } from "../../src/modules/ipd";
 import { ipdRateServiceCode, newId } from "@hmis/contracts";
 import { and, eq, isNull } from "drizzle-orm";
-import { ipdAdmissions, ipdBedStays, opdDepartments, opdDoctors } from "../../src/kernel/db/schema";
+import { formularyMedicines, ipdAdmissions, ipdBedStays, opdDepartments, opdDoctors, roles, rosterTeamMemberships, rosterTeams } from "../../src/kernel/db/schema";
+import { orgDepartmentByCode, seedOrgDepartments, seedRosterPositions } from "../../src/modules/roster";
 import { emergencyAdmit } from "../../src/modules/ipd";
 import { listServices, resolveActiveTariffVersion } from "../../src/modules/tariff";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
@@ -337,4 +338,93 @@ export async function mkDischargeWorld(db: Db): Promise<DischargeWorld> {
   const witness = (await mkUser(db, "dis.witness", ["duty_manager"])).actor;
   await openSession(db, cashier, 0);
   return { ...w, cashier, duty: w.sender, witness };
+}
+
+// ═══ E4.2 — rounds: a clinical unit on the roster, a unit head, a consultant from another unit, a resident ═══
+
+export type RoundsWorld = DischargeWorld & {
+  /** The admitting consultant (`doctor`, on the doctor master): faculty of MED Unit I. */
+  consultant: Actor;
+  /** The head of MED Unit I (on the doctor master). */
+  head: Actor;
+  /** A junior resident of MED Unit I (doctor role, NOT on the doctor master). */
+  unitResident: Actor;
+  /** A consultant heading SUR Unit I (on the doctor master) — the cross-consultant. */
+  cross: Actor;
+  /** A doctor in no unit and on no patient's team. */
+  outsider: Actor;
+  /** Admit onto a MED-ward bed (department MED) at `at`. */
+  admitMed(at: Date, consultantId?: string): Promise<{ admissionId: string; patientId: string }>;
+  /** Move the stay onto a bed in the SUR ward (boarding), written directly like `move`. */
+  board(admissionId: string, at: Date): Promise<void>;
+  /** A formulary medicine; `aware` makes it an antibiotic by the formulary's own class. */
+  medicine(name: string, aware?: "Access" | "Watch" | "Reserve"): Promise<string>;
+};
+
+export async function mkRoundsWorld(db: Db): Promise<RoundsWorld> {
+  const w = await mkDischargeWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  await syncPermissions(db, registry);
+  for (const p of ["ipd.round.sign", "ipd.order.place"]) await grantPermissionToRole(db, registry, "doctor", p);
+  const head = (await mkUser(db, "rnd.head", ["doctor"])).actor;
+  const outsider = (await mkUser(db, "rnd.outsider", ["doctor"])).actor;
+  const dept = (await db.select({ id: opdDepartments.id }).from(opdDepartments).where(eq(opdDepartments.code, "IPDT")))[0]!.id;
+  await db.insert(opdDoctors).values({
+    id: newId(), userId: head.id, displayName: "Dr Head", code: "DR-9003", registrationNo: "BMC/3", departmentId: dept, createdBy: "t", updatedBy: "t",
+  });
+
+  for (const key of ["doctor", "duty_manager", "radiologist", "pathologist", "anaesthetist", "pharmacy"]) {
+    await db.insert(roles).values({ key, title: key }).onConflictDoNothing();
+  }
+  await seedOrgDepartments(db);
+  await seedRosterPositions(db);
+  const by = { createdBy: w.doctor.id, updatedBy: w.doctor.id };
+  const since = new Date("2026-01-01T00:00:00Z");
+  const med = (await orgDepartmentByCode(db, "MED"))!.id;
+  const sur = (await orgDepartmentByCode(db, "SUR"))!.id;
+  const medU1 = newId();
+  const surU1 = newId();
+  await db.insert(rosterTeams).values([
+    { id: medU1, kind: "clinical_unit", departmentId: med, code: "T-MED-U1", name: "General Medicine Unit I", active: true, validFrom: since, ...by },
+    { id: surU1, kind: "clinical_unit", departmentId: sur, code: "T-SUR-U1", name: "General Surgery Unit I", active: true, validFrom: since, ...by },
+  ] as never);
+  const member = (teamId: string, userId: string, roleInTeam: string, positionKey: string, grade: string) =>
+    ({ id: newId(), teamId, userId, positionKey, grade, roleInTeam, startsAt: since, ...by });
+  await db.insert(rosterTeamMemberships).values([
+    member(medU1, head.id, "head", "unit_head", "professor"),
+    member(medU1, w.doctor.id, "faculty", "faculty_on_call", "associate_professor"),
+    member(medU1, w.resident.id, "junior_resident", "ward_jr", "jr2"),
+    member(surU1, w.crossUserId, "head", "unit_head", "professor"),
+  ] as never);
+
+  let n = 0;
+  return {
+    ...w, consultant: w.doctor, head, unitResident: w.resident, cross: { type: "user", id: w.crossUserId }, outsider,
+    admitMed: async (at, consultantId) => {
+      const done = await w.admitAt("general", at);
+      await db.update(ipdAdmissions).set({ department: "MED", ...(consultantId ? { consultantId } : {}) }).where(eq(ipdAdmissions.id, done.admissionId));
+      return done;
+    },
+    board: async (admissionId, at) => {
+      n += 1;
+      const bedId = await w.bed2(`R-SUR-${String(n)}`, { class: "general" });
+      const open = (await db.select().from(ipdBedStays).where(and(eq(ipdBedStays.admissionId, admissionId), isNull(ipdBedStays.endedAt))))[0]!;
+      await db.update(ipdBedStays).set({ endedAt: at, endedBy: w.admitDesk.id }).where(eq(ipdBedStays.id, open.id));
+      await db.insert(ipdBedStays).values({
+        id: newId(), bedId, admissionId, patientId: open.patientId, placedAs: open.placedAs, bedClass: "general", billedClass: "general",
+        startedBy: w.admitDesk.id, startedAt: at,
+      });
+    },
+    medicine: async (name, aware) => {
+      const id = newId();
+      await db.insert(formularyMedicines).values({
+        id, brandName: name, nameNormalized: name.toLowerCase(), form: "injection", strengthLabel: "1 g",
+        awareCategory: aware ?? null, createdBy: "t", updatedBy: "t",
+      } as never);
+      return id;
+    },
+  };
 }

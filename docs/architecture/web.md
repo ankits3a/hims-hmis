@@ -43,6 +43,8 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/family-callbacks` | `apps/web/src/screens/ipd-family-callbacks` |
 | `/ipd/handovers` | `apps/web/src/screens/ipd-handovers` |
 | `/ipd/passes` | `apps/web/src/screens/ipd-passes` |
+| `/ipd/rounds` | `apps/web/src/screens/ipd-rounds` |
+| `/ipd/rounds/$admissionId` | `apps/web/src/screens/ipd-rounds` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |

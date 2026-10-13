@@ -27,3 +27,6 @@ export const IPD_MORTUARY_MANAGE = "ipd.mortuary.manage";
 export const IPD_BILLDESK_VIEW = "ipd.billdesk.view";
 export const IPD_FAMILY_ISSUE = "ipd.family.issue";
 export const IPD_CONDITION_SET = "ipd.condition.set";
+// E4.2 (#734) — rounds and inpatient orders (the doctor's; clinical, no money).
+export const IPD_ROUND_SIGN = "ipd.round.sign";
+export const IPD_ORDER_PLACE = "ipd.order.place";

@@ -372,6 +372,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.discharge.view", "ipd.discharge.declare", "ipd.discharge.exit",
       // IPD FAMILY E3.3 (#731, decision 0072) — sets the condition word the family sees and turns the family link off for a sensitive admission; README "IPD family link" prose.
       "ipd.condition.set",
+      // IPD ROUNDS E4.2 (#734) — the rounds list and round page, sign / co-sign a round, cross-consults; inpatient orders
+      // (drugs; lab and imaging through the ordering door). Clinical, no money (0058); README "IPD rounds" prose.
+      "ipd.round.sign", "ipd.order.place",
     ],
   },
   /**
