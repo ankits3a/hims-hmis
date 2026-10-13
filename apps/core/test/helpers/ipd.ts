@@ -18,6 +18,12 @@ import { seedBillingBase } from "./billing";
 import { patientsManifest } from "../../src/modules/patients";
 import { KERNEL_RESOURCE_KINDS, createResource } from "../../src/kernel/resources";
 import { withTx } from "../../src/kernel/db/client";
+import { pharmacyManifest } from "../../src/modules/pharmacy";
+import { setPin } from "../../src/kernel/auth/identity";
+import { addMedicine, addSalt } from "../../src/modules/formulary";
+import { createStore, postMovement, registerItem } from "../../src/modules/materials";
+import { printBand } from "../../src/modules/ipd";
+import * as schema from "../../src/kernel/db/schema";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../src/kernel/db/client";
 
@@ -475,5 +481,87 @@ export async function mkRoundsWorld(db: Db): Promise<RoundsWorld> {
       } as never);
       return id;
     },
+  };
+}
+
+// ═══ E4.3 — the eMAR: two ward nurses with PINs, a pharmacist, the pharmacy store and stocked medicines ═══
+
+export type EmarWorld = RoundsWorld & {
+  /** ward_nurse with `ipd.emar.give` / `.view`, a PIN each (`pins`). */
+  nurse: Actor; nurse2: Actor;
+  /** The pharmacist (`pharmacy` role): `ipd.emar.verify`, `.issue`, `.view`. */
+  pharmacist: Actor;
+  /** Username and PIN of each person who may type a second check (the consultant is NOT a nurse). */
+  pins: Record<"nurse" | "nurse2" | "consultant", { username: string; pin: string }>;
+  storeId: string;
+  /** A formulary medicine stocked at PHARM-OPD: an item (with the NABH flags), a sale item and a batch of `qty`. */
+  stocked(name: string, opts?: {
+    highAlert?: boolean; lasa?: boolean; lasaNote?: string; aware?: "Access" | "Watch" | "Reserve"; narcotic?: boolean;
+    form?: string; strength?: string; qty?: number; moiety?: string; drugClass?: string;
+  }): Promise<{ medicineId: string; itemId: string; batchId: string }>;
+  /** Prints the admission's wristband and answers its serial (what a scan reads). */
+  band(admissionId: string): Promise<string>;
+};
+
+export async function mkEmarWorld(db: Db): Promise<EmarWorld> {
+  const w = await mkRoundsWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  registry.install(pharmacyManifest);
+  await syncPermissions(db, registry);
+  const grants: Record<string, string[]> = {
+    ward_nurse: ["ipd.emar.view", "ipd.emar.give", "ipd.nursing.view", "ipd.band.print", "pharmacy.incidents.record"],
+    pharmacy: ["ipd.emar.view", "ipd.emar.verify", "ipd.emar.issue"],
+    doctor: ["ipd.emar.view"],
+  };
+  for (const [role, perms] of Object.entries(grants)) {
+    await ensureRole(db, role);
+    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+  }
+  const nurse = await mkUser(db, "emar.nurse", ["ward_nurse"]);
+  const nurse2 = await mkUser(db, "emar.nurse2", ["ward_nurse"]);
+  const pharmacist = await mkUser(db, "emar.pharmacist", ["pharmacy"]);
+  await setPin(db, nurse.id, "4321");
+  await setPin(db, nurse2.id, "8642");
+  await setPin(db, w.doctor.id, "1357");
+  const doctorName = (await db.select({ u: schema.users.username }).from(schema.users).where(eq(schema.users.id, w.doctor.id)))[0]!.u;
+  const HEAD: Actor = { type: "user", id: "01HMATERIALSHEAD00000000001" };
+  const { resourceId: storeId } = await withTx(db, (tx) => createStore(tx, HEAD, { code: "PHARM-OPD", name: "Pharmacy" }));
+  let n = 0;
+  return {
+    ...w, nurse: nurse.actor, nurse2: nurse2.actor, pharmacist: pharmacist.actor, storeId,
+    pins: { nurse: { username: "emar.nurse", pin: "4321" }, nurse2: { username: "emar.nurse2", pin: "8642" }, consultant: { username: doctorName, pin: "1357" } },
+    stocked: async (name, opts = {}) => {
+      n += 1;
+      const { medicineId } = await withTx(db, async (tx) => {
+        const saltName = opts.moiety ?? `${name} moiety`;
+        const had = (await tx.select({ id: schema.formularySalts.id }).from(schema.formularySalts).where(eq(schema.formularySalts.name, saltName)))[0];
+        const salt = had !== undefined ? { saltId: had.id } : await addSalt(tx, w.admitDesk, { name: saltName, drugClass: opts.drugClass ?? null, ndpsClass: opts.narcotic === true ? "narcotic" : null });
+        return addMedicine(tx, w.admitDesk, {
+          brandName: name, form: opts.form ?? "tablet", routeClass: "systemic", strengthLabel: opts.strength ?? "500 mg", scheduleFlag: "H",
+          salts: [{ saltId: salt.saltId, strength: opts.strength ?? "500 mg" }],
+        });
+      });
+      if (opts.aware !== undefined) await db.update(formularyMedicines).set({ awareCategory: opts.aware } as never).where(eq(formularyMedicines.id, medicineId));
+      const itemId = await withTx(db, async (tx) => (await registerItem(tx, HEAD, {
+        code: `EM-${String(n)}`, name, class: "drug", baseUom: "tablet", batchTracked: true, formularyMedicineId: medicineId, gstRateBps: 1200,
+        highAlert: opts.highAlert ?? false, lasa: opts.lasa ?? false, lasaNote: opts.lasaNote ?? null,
+        uoms: [{ uom: "strip", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
+      } as never)).itemId);
+      const serviceId = newId();
+      await db.insert(schema.services).values({ id: serviceId, code: `PH-EM-${String(n)}`, name, category: "pharmacy", createdBy: HEAD.id, updatedBy: HEAD.id } as never);
+      await db.insert(schema.pharmacySaleItems).values({ itemId, serviceId, createdBy: HEAD.id, updatedBy: HEAD.id });
+      const batchId = newId();
+      await db.insert(schema.stockBatches).values({
+        id: batchId, itemId, batchNo: `B-${String(n)}`, expiryDate: "2030-12-31", mrpPaise: 1000, mrpUom: "strip", landedCostPaise: 500, ownership: "owned", createdBy: HEAD.id,
+      } as never);
+      await withTx(db, (tx) => postMovement(tx, HEAD, {
+        resourceId: storeId, batchId, qtyDelta: opts.qty ?? 100, reason: "grn", refType: "test", refId: batchId, occurredAt: new Date("2026-01-01T00:00:00Z"),
+      }));
+      return { medicineId, itemId, batchId };
+    },
+    band: async (admissionId) => (await printBand(db, w.admitDesk, { idempotencyKey: randomUUID(), admissionId, size: "adult", site: "wrist" })).bandSerial,
   };
 }

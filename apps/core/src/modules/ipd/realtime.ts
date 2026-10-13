@@ -5,6 +5,7 @@ import { IPD_TRANSFER_EVENT_NAMES } from "./transfer-events";
 import { IPD_DISCHARGE_EVENT_NAMES } from "./discharge-events";
 import { IPD_BEDS_VIEW, IPD_NURSING_VIEW } from "./manifest";
 import { IPD_NURSING_EVENT_NAMES } from "./nursing-events";
+import { IPD_EMAR_EVENT_NAMES } from "./emar-events";
 import type { TailedEvent } from "../../kernel/realtime/tail";
 import type { TopicRouter, TopicSpace } from "../../kernel/realtime/gateway";
 
@@ -33,12 +34,14 @@ const BOARD_NAMES: readonly string[] = [
   ...IPD_DISCHARGE_EVENT_NAMES,
 ];
 
-export const IPD_REALTIME_NAMES: string[] = [...BOARD_NAMES, ...RESOURCE_NAMES, ...IPD_NURSING_EVENT_NAMES];
+export const IPD_REALTIME_NAMES: string[] = [...BOARD_NAMES, ...RESOURCE_NAMES, ...IPD_NURSING_EVENT_NAMES, ...IPD_EMAR_EVENT_NAMES];
 
 export function ipdTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[] {
   // E4.1 (#733): a bed act also moves the station (a patient arrives or leaves); a nursing act moves only the station.
   if (BOARD_NAMES.includes(e.name)) return [IPD_BEDS_TOPIC, IPD_NURSING_TOPIC];
   if (IPD_NURSING_EVENT_NAMES.includes(e.name)) return [IPD_NURSING_TOPIC];
+  // E4.3 (#735): a dose, a verify, an issue moves the phone and the ward MAR (ids only in the payloads).
+  if (IPD_EMAR_EVENT_NAMES.includes(e.name)) return [IPD_NURSING_TOPIC];
   const kind = (e.payload as { kind?: unknown } | null)?.kind;
   return typeof kind === "string" && PLACE_KINDS.has(kind) ? [IPD_BEDS_TOPIC] : [];
 }

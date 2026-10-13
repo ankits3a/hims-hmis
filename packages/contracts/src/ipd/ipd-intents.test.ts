@@ -128,6 +128,18 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   hold_dose: { idempotencyKey: key(27), orderId: id(18), doseDueAt: AT, reason: "npo" },
   refuse_dose: { idempotencyKey: key(28), orderId: id(18), doseDueAt: AT, reason: "patient_refused" },
   record_infusion_event: { idempotencyKey: key(29), orderId: id(18), event: "start", rateMlPerHour: 50, at: AT },
+  miss_dose: { idempotencyKey: key(61), orderId: id(18), doseDueAt: AT, reason: "no_stock" },
+  reoffer_held_doses: { idempotencyKey: key(62), admissionId: id(3), reason: "npo_lifted" },
+  mark_dose_in_error: {
+    idempotencyKey: key(63), actId: id(27), kind: "medication_incident", reason: "synthetic", incident: { type: "wrong_dose", category: "C" },
+  },
+  second_check: { idempotencyKey: key(64), purpose: "high_alert_dose", username: "fake.nurse", pin: "0000" },
+  sign_verbal_order: { idempotencyKey: key(65), orderId: id(18) },
+  record_narcotic_wastage: {
+    idempotencyKey: key(66), orderId: id(18), qty: 0.5, unit: "ml", reason: "synthetic", witness: { userId: USER2, pinProof: "fake-proof" },
+  },
+  return_med: { idempotencyKey: key(67), issueId: id(28), units: 4, reason: "order stopped" },
+  resolve_allergy_flag: { idempotencyKey: key(68), flagId: id(29), note: "doctor stopped" },
   declare_fit: { idempotencyKey: key(30), admissionId: id(3), when: "today", disposition: "home" },
   cancel_fit: { idempotencyKey: key(31), admissionId: id(3), reason: "synthetic worsening" },
   confirm_charges: { idempotencyKey: key(32), admissionId: id(3), department: "pharmacy" },

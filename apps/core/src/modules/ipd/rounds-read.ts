@@ -37,7 +37,7 @@ import type { IpdOrderRow } from "./orders";
 
 type Place = { bedCode: string | null; wardCode: string | null; wardName: string | null; wardDepartment: string | null };
 
-async function placesOf(db: Db, admissionIds: readonly string[]): Promise<Map<string, Place>> {
+export async function placesOf(db: Db, admissionIds: readonly string[]): Promise<Map<string, Place>> {
   const out = new Map<string, Place>();
   const wardIds = new Map<string, string>();
   for (const id of admissionIds) {
@@ -56,7 +56,7 @@ async function placesOf(db: Db, admissionIds: readonly string[]): Promise<Map<st
 const boardedOf = (a: AdmissionRow, p: Place | undefined): boolean =>
   a.department !== null && p?.wardDepartment != null && p.wardDepartment.toUpperCase() !== a.department.toUpperCase();
 
-async function identitiesOf(db: Db, reader: Actor, admissions: readonly AdmissionRow[], at: Date): Promise<Map<string, IpdRoundIdentity>> {
+export async function identitiesOf(db: Db, reader: Actor, admissions: readonly AdmissionRow[], at: Date): Promise<Map<string, IpdRoundIdentity>> {
   const who = await nowIdentities(db, reader, admissions);
   const people = new Map((await getPatientSummaries(db, reader, admissions.map((a) => a.patientId))).map((p) => [p.requestedId, p] as const));
   const out = new Map<string, IpdRoundIdentity>();

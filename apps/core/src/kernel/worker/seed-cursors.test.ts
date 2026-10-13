@@ -19,7 +19,7 @@ import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
 import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
 import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
 import { DIET_CONSUMER } from "../../modules/diet";
-import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
+import { IPD_EMAR_ALLERGY_CONSUMER, IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
 import { workerBackfills } from "./worker.module";
 
@@ -190,6 +190,11 @@ describe("seedCursors", () => {
          * since the IPD lanes began; each would find no live link and do nothing — harmless by construction, seeded anyway.
          */
         IPD_FAMILY_STOP_CONSUMER,
+        /**
+         * E4.3 (#735) — the eMAR's allergy re-check. Unseeded, it would walk every `allergy.recorded` since the first
+         * patient; each would find no active inpatient drug order and do nothing. Seeded at `max(seq)`.
+         */
+        IPD_EMAR_ALLERGY_CONSUMER,
         /**
          * E4.4 DIET (#736) — unseeded, it would walk every admission, transfer and stay ending since IPD began and
          * every OT booking since the mini-OT (writing an NPO for each past case). Seeded at `max(seq)`.

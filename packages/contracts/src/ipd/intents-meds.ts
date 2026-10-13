@@ -62,7 +62,12 @@ export const placeIpOrder = ipdIntent({
       priority: z.enum(["routine", "urgent", "stat"]).optional(),
     }).optional(),
     /** An emergency verbal order recorded by a nurse after read-back; the doctor signs within 24 hours. */
-    verbal: z.strictObject({ fromDoctorId: IpdUserRefSchema, readBack: z.literal(true) }).optional(),
+    verbal: z.strictObject({
+      fromDoctorId: IpdUserRefSchema,
+      readBack: z.literal(true),
+      /** E4.3 (#735) — why it could not wait for the doctor's own order (verbal orders are emergency-only, §4.6). */
+      emergency: IpdNoteSchema,
+    }).optional(),
     note: IpdNoteSchema.optional(),
     /** The round this order was written on (E4.2 review: round orders are linked). */
     roundId: IpdIdSchema.optional(),
@@ -119,16 +124,28 @@ export const cancelIpOrder = ipdIntent({
   idempotent: true,
 });
 
+/**
+ * E4.3 (#735) — the pharmacist's verification. The server runs the four checks itself (allergy — salt-aware, the OPD
+ * prescription's matcher; interaction — the formulary's adopted pairs; dose — the order's ceiling and weight; duplicate
+ * therapy — the same moiety or the same duplicate class on another active order) and answers the findings. `checks`
+ * are the pharmacist's ticks: `verified` needs all four ticked, and any finding needs the pharmacist's `note`.
+ * A prescriber's allergy override arrives flagged: verifying it needs `note` too.
+ */
 export const verifyOrder = ipdIntent({
   input: ipdInput({
     orderId: IpdIdSchema,
     decision: z.enum(["verified", "rejected", "query"]),
     checks: z.strictObject({ allergy: z.boolean(), interaction: z.boolean(), dose: z.boolean(), duplicate: z.boolean() }),
-    /** Required by the intent when the decision is not `verified`. */
+    /** Required by the intent when the decision is not `verified`, and when the checks found anything. */
     note: IpdNoteSchema.optional(),
   }),
-  output: z.strictObject({ orderId: IpdIdSchema, status: z.enum(["verified", "rejected", "query"]) }),
-  refusals: ["order_not_found", "order_not_pending", "allergy_conflict", "state_changed"],
+  output: z.strictObject({
+    orderId: IpdIdSchema,
+    status: z.enum(["verified", "rejected", "query"]),
+    /** The doses scheduled from the order (0 for SOS / PRN, 1 for STAT). */
+    dosesScheduled: z.number().int().nonnegative(),
+  }),
+  refusals: ["order_not_found", "order_not_pending", "order_not_active", "allergy_conflict", "checks_incomplete", "verify_note_required", "state_changed"],
   actors: ["pharmacist"],
   copilotProposable: false,
   agentTier: "none",
@@ -137,18 +154,28 @@ export const verifyOrder = ipdIntent({
   idempotent: true,
 });
 
-/** Issue with a patient-specific label per unit or strip: Indian strips often carry no barcode (§4.6). */
+/**
+ * Issue with a patient-specific label per unit or strip: Indian strips often carry no barcode (§4.6). E4.3 (#735): the
+ * stock leaves the pharmacy store through the materials ledger (FEFO when no batch is named); `stripSize` units share one
+ * label (1 = a label per unit). A PATIENT'S OWN MEDICINE (`ownMedicine`) moves no stock and is never charged: the
+ * pharmacist has checked it (name, strength, expiry — `ownBatch`), labels it and it is stored on the ward.
+ * `labelPrinterId` names a print computer that must be alive; without it the labels print from the browser.
+ */
 export const issueMed = ipdIntent({
   input: ipdInput({
     orderId: IpdIdSchema,
-    units: z.number().int().positive(),
-    batchId: IpdIdSchema,
-    labelPrinterId: IpdIdSchema,
+    units: z.number().int().positive().max(500),
+    batchId: IpdIdSchema.optional(),
+    labelPrinterId: IpdIdSchema.optional(),
     /** The patient's own medicine: verified, labelled, stored, never charged. */
     ownMedicine: z.boolean(),
+    /** Units that share one label (a strip). 1 = one label per unit. */
+    stripSize: z.number().int().positive().max(100).optional(),
+    /** Own medicine only: what the pharmacist read off the pack. */
+    ownBatch: z.strictObject({ batchNo: z.string().trim().min(1).max(64), expiry: z.iso.date() }).optional(),
   }),
   output: z.strictObject({ issueId: IpdIdSchema, units: z.number().int().positive(), labelIds: z.array(IpdIdSchema).min(1) }),
-  refusals: ["order_not_found", "order_not_verified", "order_not_active", "stock_short", "printer_offline"],
+  refusals: ["order_not_found", "order_not_verified", "order_not_active", "stock_short", "printer_offline", "medicine_not_stocked", "own_medicine_unchecked"],
   actors: ["pharmacist"],
   copilotProposable: false,
   agentTier: "none",
@@ -174,6 +201,10 @@ export const administerDose = ipdIntent({
     /** High-alert drugs: a second nurse's PIN, proven by a short-lived token from the PIN check. */
     secondNurse: z.strictObject({ userId: IpdUserRefSchema, pinProof: z.string().min(1).max(256) }).optional(),
     weightKg: z.number().positive().max(400).optional(),
+    /** E4.3 (#735) — a look-alike / sound-alike drug: the nurse confirmed the tall-man name on the screen. */
+    lasaConfirmed: z.literal(true).optional(),
+    /** E4.3 (#735) — a missed dose given late (inside the catch-up window) says why. */
+    lateReason: IpdNoteSchema.optional(),
   }),
   output: z.strictObject({
     administrationId: IpdIdSchema,
@@ -185,6 +216,7 @@ export const administerDose = ipdIntent({
     "order_not_found", "order_not_active", "wristband_scan_required", "wrong_patient_scanned", "wrong_drug_scanned",
     "outside_due_window", "second_nurse_required", "second_nurse_same_person", "prn_interval_not_met",
     "prn_daily_max_reached", "weight_required", "dose_already_recorded", "give_expired", "time_in_future",
+    "lasa_confirm_required", "allergy_conflict", "dose_not_found", "late_reason_required", "order_not_verified",
   ],
   actors: ["nurse"],
   copilotProposable: false,
@@ -202,7 +234,7 @@ export const holdDose = ipdIntent({
   }),
   /** NPO or off the ward: the dose re-offers when the patient returns (§4.6). */
   output: z.strictObject({ holdId: IpdIdSchema, reofferOnReturn: z.boolean() }),
-  refusals: ["order_not_found", "order_not_active", "dose_already_recorded"],
+  refusals: ["order_not_found", "order_not_active", "dose_already_recorded", "dose_not_found"],
   actors: ["nurse", "doctor"],
   copilotProposable: false,
   agentTier: "none",
@@ -218,7 +250,7 @@ export const refuseDose = ipdIntent({
     note: IpdNoteSchema.optional(),
   }),
   output: z.strictObject({ refusalId: IpdIdSchema, doctorNotified: z.boolean() }),
-  refusals: ["order_not_found", "order_not_active", "dose_already_recorded"],
+  refusals: ["order_not_found", "order_not_active", "dose_already_recorded", "dose_not_found"],
   actors: ["nurse"],
   copilotProposable: false,
   agentTier: "none",
@@ -236,11 +268,146 @@ export const recordInfusionEvent = ipdIntent({
     secondNurse: z.strictObject({ userId: IpdUserRefSchema, pinProof: z.string().min(1).max(256) }).optional(),
   }),
   output: z.strictObject({ infusionEventId: IpdIdSchema, infusionState: z.enum(["running", "paused", "stopped"]) }),
-  refusals: ["order_not_found", "order_not_active", "infusion_out_of_order", "second_nurse_required", "time_in_future"],
+  refusals: ["order_not_found", "order_not_active", "infusion_out_of_order", "second_nurse_required", "second_nurse_same_person", "time_in_future", "order_not_verified"],
   actors: ["nurse"],
   copilotProposable: false,
   agentTier: "none",
   undo: "entered_in_error",
   events: ["ipd.infusion.recorded"],
+  idempotent: true,
+});
+
+// ═══════════════════════════════════════ E4.3 (#735) — the eMAR's own acts (DECIDED, §4.6) ═══════════════════════════════════════
+
+/** A scheduled dose nobody gave by the end of its window is MISSED by the minute sweep; a nurse may record it first, with why. */
+export const missDose = ipdIntent({
+  input: ipdInput({
+    ...DoseSlot,
+    reason: z.enum(["no_stock", "patient_away", "omitted", "other"]),
+    note: IpdNoteSchema.optional(),
+  }),
+  output: z.strictObject({ missId: IpdIdSchema }),
+  refusals: ["order_not_found", "dose_not_found", "dose_already_recorded"],
+  actors: ["nurse"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "entered_in_error",
+  events: ["ipd.dose.missed"],
+  idempotent: true,
+});
+
+/** NPO lifted or the patient back on the ward: every dose held "re-offer on return" is offered again (§4.6). */
+export const reofferHeldDoses = ipdIntent({
+  input: ipdInput({ admissionId: IpdIdSchema, reason: z.enum(["back_on_ward", "npo_lifted"]) }),
+  output: z.strictObject({ reoffered: z.number().int().nonnegative() }),
+  refusals: ["admission_not_found", "admission_wrong_state"],
+  actors: ["nurse"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.dose.reoffered"],
+  idempotent: true,
+});
+
+/**
+ * A recorded outcome that was wrong: never deleted, never edited. `entered_in_error` marks a record that never happened
+ * (wrong patient's chart); `medication_incident` keeps the dose as GIVEN and opens the pharmacy's medication-incident
+ * register entry (NCC MERP stage `administration`).
+ */
+export const markDoseInError = ipdIntent({
+  input: ipdInput({
+    actId: IpdIdSchema,
+    kind: z.enum(["entered_in_error", "medication_incident"]),
+    reason: IpdNoteSchema,
+    incident: z.strictObject({
+      type: z.enum(["wrong_drug", "wrong_strength", "wrong_dose", "wrong_patient", "wrong_route", "lasa_mixup", "omission", "other"]),
+      category: z.enum(["C", "D", "E", "F", "G", "H", "I"]),
+    }).optional(),
+  }),
+  output: z.strictObject({ correctionId: IpdIdSchema, incidentNo: z.string().nullable() }),
+  refusals: ["dose_act_not_found", "dose_act_already_corrected", "incident_details_required"],
+  actors: ["nurse", "supervisor"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.dose.corrected"],
+  idempotent: true,
+});
+
+/**
+ * The second nurse proves presence at the first nurse's phone with THEIR username and PIN: the answer is a short-lived,
+ * single-use proof (`pinProof`) bound to the first nurse. Never the same person; the checker must hold a nursing role.
+ */
+export const secondCheck = ipdIntent({
+  input: ipdInput({
+    purpose: z.enum(["high_alert_dose", "infusion", "narcotic_wastage"]),
+    username: z.string().trim().min(1).max(64),
+    pin: z.string().min(4).max(12),
+  }),
+  output: z.strictObject({ pinProof: z.string().min(1), userId: IpdUserRefSchema, name: z.string(), expiresAt: IpdInstantSchema }),
+  refusals: ["second_nurse_same_person", "second_nurse_not_confirmed", "second_nurse_not_nurse"],
+  actors: ["nurse"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.second_check.passed"],
+  idempotent: true,
+});
+
+/** The doctor named on a verbal order (or a treating consultant) signs it within 24 hours. */
+export const signVerbalOrder = ipdIntent({
+  input: ipdInput({ orderId: IpdIdSchema }),
+  output: z.strictObject({ orderId: IpdIdSchema, signedAt: IpdInstantSchema }),
+  refusals: ["order_not_found", "verbal_order_not_found", "verbal_order_signed", "not_treating_team"],
+  actors: ["doctor", "resident"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.verbal_order.signed"],
+  idempotent: true,
+});
+
+/** A narcotic dose part-used or dropped: the wastage goes on the ward register with a second nurse as witness. */
+export const recordNarcoticWastage = ipdIntent({
+  input: ipdInput({
+    orderId: IpdIdSchema,
+    qty: z.number().positive().max(10_000),
+    unit: z.enum(DOSE_UNITS),
+    reason: IpdNoteSchema,
+    witness: z.strictObject({ userId: IpdUserRefSchema, pinProof: z.string().min(1).max(256) }),
+  }),
+  output: z.strictObject({ entryId: IpdIdSchema }),
+  refusals: ["order_not_found", "not_a_narcotic", "second_nurse_required", "second_nurse_same_person"],
+  actors: ["nurse"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "entered_in_error",
+  events: ["ipd.narcotic.wasted"],
+  idempotent: true,
+});
+
+/** Unused issued units back to the pharmacy (order stopped after issue, discharge): stock in, the units credited. */
+export const returnMed = ipdIntent({
+  input: ipdInput({ issueId: IpdIdSchema, units: z.number().int().positive().max(500), reason: IpdNoteSchema }),
+  output: z.strictObject({ returnId: IpdIdSchema, units: z.number().int().positive(), creditedUnits: z.number().int().nonnegative() }),
+  refusals: ["issue_not_found", "return_exceeds_issue"],
+  actors: ["pharmacist"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.med.returned"],
+  idempotent: true,
+});
+
+/** An allergy added after the order: the pharmacist closes the open flag once the doctor has decided (or the order stops). */
+export const resolveAllergyFlag = ipdIntent({
+  input: ipdInput({ flagId: IpdIdSchema, note: IpdNoteSchema }),
+  output: z.strictObject({ flagId: IpdIdSchema, resolvedAt: IpdInstantSchema }),
+  refusals: ["allergy_flag_not_found", "allergy_flag_resolved"],
+  actors: ["pharmacist"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.allergy_flag.resolved"],
   idempotent: true,
 });

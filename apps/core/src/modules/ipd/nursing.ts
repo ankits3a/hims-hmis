@@ -365,7 +365,7 @@ export async function dutyDoctorsFor(tx: Tx, a: Pick<AdmissionRow, "consultantId
 }
 
 /** Active holders of a role. */
-async function activeHolders(tx: Tx, role: string): Promise<string[]> {
+export async function activeHolders(tx: Tx, role: string): Promise<string[]> {
   return (await activeUserIds(tx, [...new Set(await usersHoldingRole(tx, role))])).sort();
 }
 
@@ -386,7 +386,7 @@ export async function nursingFallback(tx: Tx): Promise<string[]> {
  * The words a notice may carry about where the patient is: bed and IP number — or, for a SEALED patient
  * (`patients.sensitive_context`), "Sealed patient" and nothing else (no bed, no admission number; review #767).
  */
-async function whereWords(tx: Tx, a: Pick<AdmissionRow, "id" | "patientId" | "admissionNo">): Promise<{ words: string[]; wardId: string | null }> {
+export async function whereWords(tx: Tx, a: Pick<AdmissionRow, "id" | "patientId" | "admissionNo">): Promise<{ words: string[]; wardId: string | null }> {
   const bed = await bedCodeOf(tx, a.id);
   const sealed = (await tx.select({ s: patients.sensitiveContext }).from(patients).where(eq(patients.id, a.patientId)))[0]?.s === true;
   if (sealed) return { words: [SEALED_WORDS], wardId: bed.wardId };

@@ -29,6 +29,8 @@ export * from "./family";
 export * from "./nursing";
 // E4.2 (#734) — rounds: the doctor's list, the patient's round page, the order event contract eMAR consumes.
 export * from "./rounds";
+// E4.3 (#735) — the eMAR: verify queue, the MAR, the bedside, labels, override counts.
+export * from "./emar";
 export { IPD_DRUG_ROUTES, IpdDrugOrderSchema } from "./intents-meds";
 export type { IpdDrugOrder } from "./intents-meds";
 export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";
@@ -84,6 +86,16 @@ export const IPD_INTENTS = {
   close_consult: roundIntents.closeConsult,
   stop_ip_order: medIntents.stopIpOrder,
   cancel_ip_order: medIntents.cancelIpOrder,
+  // E4.3 (#735, DECIDED) — the eMAR's own acts beside §0B's five: miss, re-offer, correction, the second nurse's PIN,
+  // the verbal order's signature, narcotic wastage, the return to pharmacy and the allergy flag.
+  miss_dose: medIntents.missDose,
+  reoffer_held_doses: medIntents.reofferHeldDoses,
+  mark_dose_in_error: medIntents.markDoseInError,
+  second_check: medIntents.secondCheck,
+  sign_verbal_order: medIntents.signVerbalOrder,
+  record_narcotic_wastage: medIntents.recordNarcoticWastage,
+  return_med: medIntents.returnMed,
+  resolve_allergy_flag: medIntents.resolveAllergyFlag,
   declare_fit: dischargeIntents.declareFit,
   cancel_fit: dischargeIntents.cancelFit,
   confirm_charges: dischargeIntents.confirmCharges,

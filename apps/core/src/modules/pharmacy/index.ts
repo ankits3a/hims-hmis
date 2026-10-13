@@ -118,6 +118,10 @@ export type {
 export { acceptRetailReturn, findRetailSaleByInvoiceNo } from "./retail-returns";
 export type { RetailReturnInput, RetailReturnResult } from "./retail-returns";
 export { setShelfLocation, shelfLocationsFor } from "./shelf-locations";
+/** IPD E4.3 (#735) — the ward issue reads the stocked item for a medicine; the incident register takes an administration-stage error. */
+export { shelfByMedicine, shelfItemForMedicine } from "./shelf";
+export type { ShelfEntry } from "./shelf";
+export { recordIncident } from "./incidents";
 /** Consult v2 — the doctor's read of the shelf: sellable count per medicine, and alternatives at zero. */
 export { stockForDoctor } from "./doctor-stock";
 export type { DoctorStock, DoctorStockAlternative } from "./doctor-stock";
