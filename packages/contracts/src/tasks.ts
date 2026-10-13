@@ -58,6 +58,10 @@ export const raiseTaskInput = z.object({
   dueAt: z.iso.datetime({ offset: true }).optional(),
   note: z.string().trim().max(280).optional(),
   source: z.enum(TASK_SOURCES).optional(),
+  /** An owning module's key for the request (e.g. `resource-event:<seq>`): a second raise with it returns the first task. */
+  sourceRef: z.string().trim().min(1).max(128).optional(),
+  /** ISO instant the need arose (a bed's release). Absent: now. */
+  raisedAt: z.iso.datetime({ offset: true }).optional(),
 }).strict();
 export type RaiseTaskInput = z.infer<typeof raiseTaskInput>;
 

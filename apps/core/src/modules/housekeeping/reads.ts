@@ -1,6 +1,6 @@
-import { inArray } from "drizzle-orm";
-import { BED_CLEAN_KINDS, HOUSEKEEPING_KINDS, HOUSEKEEPING_KIND_LIST, HOUSEKEEPING_TARGET_MIN, OPEN_TASK_STATES } from "@hmis/contracts";
-import { users } from "../../kernel/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { BED_CLEAN_KINDS, HOUSEKEEPING_KINDS, HOUSEKEEPING_KIND_LIST, OPEN_TASK_STATES } from "@hmis/contracts";
+import { resources, users } from "../../kernel/db/schema";
 import { findTasks, taskBoard } from "../tasks";
 import type { BedCleanView, BedCleansView, HousekeepingBoardView, HousekeepingKind, TaskState } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -18,9 +18,14 @@ export function initials(name: string): string {
 
 export async function bedCleans(db: Db, now: Date = new Date()): Promise<BedCleansView> {
   const rows = await findTasks(db, { kinds: BED_CLEAN_KINDS, states: [...OPEN_TASK_STATES, "done"], limit: 2000 });
+  // Only beds still waiting to be cleaned: a bed the board shows available or occupied has no clock, whatever a
+  // not-yet-cancelled task says (the consumer may be a tick behind).
+  const places = [...new Set(rows.map((r) => r.placeResourceId).filter((x): x is string => x !== null))];
+  const cleaning = places.length === 0 ? new Set<string>() : new Set((await db.select({ id: resources.id }).from(resources)
+    .where(and(inArray(resources.id, places), eq(resources.status, "cleaning")))).map((r) => r.id));
   const newest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
-    if (r.placeResourceId === null) continue;
+    if (r.placeResourceId === null || !cleaning.has(r.placeResourceId)) continue;
     const cur = newest.get(r.placeResourceId);
     if (cur === undefined || r.createdAt > cur.createdAt) newest.set(r.placeResourceId, r);
   }
@@ -28,9 +33,8 @@ export async function bedCleans(db: Db, now: Date = new Date()): Promise<BedClea
   const names = ids.length === 0 ? new Map<string, string>()
     : new Map((await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, ids))).map((u) => [u.id, u.name]));
   const cleans: BedCleanView[] = [...newest.values()].map((r) => {
-    const window = r.kind === HOUSEKEEPING_KINDS.terminal ? HOUSEKEEPING_TARGET_MIN.terminal : HOUSEKEEPING_TARGET_MIN.routine;
-    // Raised at the bed's release: the due time is the release plus the kind's target.
-    const raisedAt = new Date(r.dueAt.getTime() - window * 60_000);
+    // Stored when raised (the bed's release); a row from before the column falls back to its creation.
+    const raisedAt = r.raisedAt ?? r.createdAt;
     return {
       bedId: r.placeResourceId!, taskId: r.id, kind: r.kind as HousekeepingKind, terminal: r.kind === HOUSEKEEPING_KINDS.terminal,
       state: r.state as TaskState, raisedAt: raisedAt.toISOString(), dueAt: r.dueAt.toISOString(),

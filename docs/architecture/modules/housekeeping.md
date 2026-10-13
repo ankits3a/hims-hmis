@@ -44,10 +44,11 @@ Source: `apps/core/src/modules/housekeeping/`
   - `bedCleans(db: Db, now: Date = new Date()): Promise<BedCleansView>`
   - `housekeepingBoard(db: Db, now: Date = new Date()): Promise<HousekeepingBoardView>`
 - `turnover.ts`
+  - `backfillBedCleans(db: Db, now: Date = new Date()): Promise<number>`
   - `bedTurnoverConsumer(db: Db): Handler`
-  - `cancelBedCleans(db: Db, bedId: string, why: string, now: Date = new Date()): Promise<string[]>`
+  - `cancelBedCleans(db: Db, bedId: string, why: string, at: Date, now: Date = new Date()): Promise<string[]>`
   - `handleBedEvent(db: Db, e: DispatchedEvent, now: Date = new Date()): Promise<TurnoverResult>`
-  - `raiseBedClean(db: Db, bedId: string, at: Date, reason: string | null, now: Date = new Date()): Promise<TaskRow | null>`
+  - `raiseBedClean(db: Db, bedId: string, source: { sourceRef: string; at: Date; reason: string | null }, now: Date = new Date()): Promise<TaskR…`
   - types: `TurnoverResult`
 
 ## Tables (`kernel/db/schema/housekeeping.ts`)

@@ -8,7 +8,7 @@ export { HOUSEKEEPING_ACTOR, HOUSEKEEPING_BED_CONSUMER, HOUSEKEEPING_VERIFY_TERM
 export { BED_CLEAN_ROUTINE, BED_CLEAN_TERMINAL, HOUSEKEEPING_ROUND_SKILL, HOUSEKEEPING_SKILL, ROOM_INSPECTION, SPILL } from "./kinds";
 export { HousekeepingModule } from "./housekeeping.module";
 export { HousekeepingRefusal, housekeepingHttpStatus } from "./errors";
-export { bedTurnoverConsumer, cancelBedCleans, handleBedEvent, raiseBedClean } from "./turnover";
+export { backfillBedCleans, bedTurnoverConsumer, cancelBedCleans, handleBedEvent, raiseBedClean } from "./turnover";
 export type { TurnoverResult } from "./turnover";
 export { nudgeClean, verifyClean } from "./cleans";
 export { bedCleans, housekeepingBoard } from "./reads";

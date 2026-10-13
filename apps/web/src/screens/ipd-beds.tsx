@@ -318,7 +318,7 @@ export function IpdBeds(): React.ReactElement {
                     <span className="d" title={cleanLine(c, t)}>
                       <b className="mono">{code}</b> · {cleanLine(c, t, true)}{c.terminal ? ` · ${t("housekeeping.clean.terminal")}` : ""}
                     </span>
-                    {mayNudge && c.state !== "done" ? <NudgeButton taskId={c.taskId} /> : null}
+                    {mayNudge && c.state !== "done" ? <NudgeButton taskId={c.taskId} onDone={load} /> : null}
                   </span>
                 ))}
                 {slowCleans.length > SLOW_SHOWN ? <span className="d">{t("tasks.board.more", { count: slowCleans.length - SLOW_SHOWN })}</span> : null}
@@ -376,7 +376,7 @@ function Stat(p: { label: string; value: string; of?: string; sub: string; sub2?
 }
 
 /** "Nudge housekeeping": escalates the clean now; a second nudge within five minutes is refused (said in words). */
-function NudgeButton({ taskId }: { taskId: string }): React.ReactElement {
+function NudgeButton({ taskId, onDone }: { taskId: string; onDone: () => void }): React.ReactElement {
   const { t } = useTranslation();
   const [state, setState] = useState<"idle" | "busy" | "done" | string>("idle");
   if (state === "done") return <span className="ipdb-ok" role="status">✓ {t("housekeeping.clean.nudged")}</span>;
@@ -384,7 +384,8 @@ function NudgeButton({ taskId }: { taskId: string }): React.ReactElement {
   return (
     <button type="button" className="ipdb-btn sm" disabled={state === "busy"} onClick={() => {
       setState("busy");
-      nudgeCleanApi(taskId).then(() => setState("done"), (e: unknown) => {
+      // A nudge bumps the task's version: refetch, so the board never acts on what it read before.
+      nudgeCleanApi(taskId).then(() => { setState("done"); onDone(); }, (e: unknown) => {
         const r = cleanRefusal(e);
         setState(r === null ? t("ipdBeds.actFailed") : t(`tasks.refusal.${r.code}`, { defaultValue: r.message }));
       });
@@ -555,7 +556,7 @@ function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge 
       {clean !== null ? (
         <span style={{ fontSize: 13, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} data-testid="ipd-bed-clean">
           <span>{cleanLine(clean, t)}{clean.terminal ? ` · ${t("housekeeping.clean.terminal")}` : ""}</span>
-          {mayNudge && clean.state !== "done" ? <NudgeButton taskId={clean.taskId} /> : null}
+          {mayNudge && clean.state !== "done" ? <NudgeButton taskId={clean.taskId} onDone={onDone} /> : null}
         </span>
       ) : null}
       {buttons.length > 0 && act === null ? (

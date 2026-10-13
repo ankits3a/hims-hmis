@@ -170,9 +170,9 @@ describe("seedCursors", () => {
          */
         ORDERING_FREE_TESTS_CONSUMER,
         /**
-         * E1.4 HOUSEKEEPING (issue #721) — from zero it would walk every bed release and status change since
-         * the resource registry opened. Each would raise nothing (the bed's current status is re-read), but a
-         * no-op is not a reason to walk them. Seeded at `max(seq)`, it begins with the next release.
+         * E1.4 HOUSEKEEPING (issue #721) — from zero it would walk every bed release since the registry opened
+         * and raise (and at once cancel) a clean for each. Seeded at `max(seq)`, it begins with the next
+         * release, and `workerBackfills` gives every bed already in cleaning its one clean.
          */
         HOUSEKEEPING_BED_CONSUMER,
       ].sort());

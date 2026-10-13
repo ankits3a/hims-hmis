@@ -28,14 +28,14 @@ Source: `apps/core/src/modules/tasks/`
   - `MERGE_WINDOW_MS`
   - `acceptTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `assignTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
-  - `cancelTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `cancelTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: CancelOptions = {}): Promise<TaskRow>`
   - `cancelTasksForPlace(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<string[]>`
   - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<RaiseResult>`
   - `returnToPool(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: ActOptions = {}): Promise<TaskRow>`
   - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
-  - types: `ActOptions`, `RaiseResult`, `TaskRow`
+  - types: `ActOptions`, `CancelOptions`, `RaiseResult`, `TaskRow`
 - `errors.ts`
   - `class TaskError`
   - `taskHttpStatus(code: TaskRefusalCode): number`
@@ -59,7 +59,7 @@ Source: `apps/core/src/modules/tasks/`
   - `TASKS_WORK`
   - `tasksManifest: ModuleManifest`
 - `reads.ts`
-  - `findTasks(exec: Db | Tx, q: { kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date; limit?: …`
+  - `findTasks(exec: Db | Tx, q: { kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date; raisedUn…`
   - `getTask(exec: Db | Tx, taskId: string): Promise<TaskRow | null>`
   - `myTasks(db: Db, userId: string, now: Date = new Date()): Promise<MyTasksView>`
   - `taskBoard(db: Db, now: Date = new Date(), opts: { kinds?: readonly string[] } = {}): Promise<TaskBoardView>`

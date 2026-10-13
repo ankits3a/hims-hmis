@@ -91,6 +91,9 @@ row has its own try/catch, so one failure stops nothing else.
 - `nudgeTask` (sweep.ts): a person escalates an open task now — an `escalated` event with `detail.nudge`, a
   `task.nudge` bell to the kind's escalation role and the holder; the ladder's rung is not moved; a second nudge
   within `TASK_NUDGE_WINDOW_MIN` (5) is refused `nudged_recently`.
+- `raiseTask` input `sourceRef` (unique, `tasks_source_ref_ux`): one task per owning-module source — a second raise
+  returns the first task with `duplicate: true` and skips the merge window. `raisedAt` stores when the need arose.
+  `cancelTask(..., { closeDone: true })` lets an owning module also cancel a done-but-unchecked task.
 - `taskBoard(db, now, { kinds })` is the same board over an owning module's kinds; `findTasks` / `getTask` let an owning
   module read its own tasks without touching the table.
 - The board's counts are SQL over every open task; it sends at most `BOARD_ROW_LIMIT` rows and reports the rest

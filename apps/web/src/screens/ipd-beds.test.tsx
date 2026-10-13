@@ -178,8 +178,9 @@ describe("Beds capacity board (E1.1)", () => {
 
 describe("Beds board — housekeeping's cleaning clocks (E1.4)", () => {
   const CLEAN_BED = "F05-MED-F-B02";
-  function withCleans(perms: string[], clean: Record<string, unknown>): { posted: string[] } {
+  function withCleans(perms: string[], clean: Record<string, unknown>): { posted: string[]; reads: { n: number } } {
     const posted: string[] = [];
+    const reads = { n: 0 };
     const bedId = boardOf(false).floors[0]!.wards[0]!.beds[1]!.id;
     setToken("stub-token");
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -188,6 +189,7 @@ describe("Beds board — housekeeping's cleaning clocks (E1.4)", () => {
         return new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: perms, scoped: { department: {}, floor: {} } } }), { status: 200 });
       }
       if (raw.includes("/housekeeping/bed-cleans")) {
+        reads.n += 1;
         return new Response(JSON.stringify({ serverNow: new Date().toISOString(), cleans: [{
           bedId, taskId: "01FAKETASK0000000000000001", kind: "bed_clean_routine", terminal: false, state: "in_progress",
           raisedAt: new Date().toISOString(), dueAt: new Date().toISOString(), minutes: 72, late: true, assigneeInitials: "A. K.",
@@ -197,7 +199,7 @@ describe("Beds board — housekeeping's cleaning clocks (E1.4)", () => {
       if (init?.method === "POST") posted.push(raw);
       return new Response(JSON.stringify({ id: "x", state: "verified", version: 5 }), { status: 200 });
     }));
-    return { posted };
+    return { posted, reads };
   }
 
   it("a cleaning bed says its clock and who has it, and the blockers list nudges housekeeping", async () => {
@@ -206,13 +208,15 @@ describe("Beds board — housekeeping's cleaning clocks (E1.4)", () => {
     const fixture = boardOf(false);
     api.getBedBoard.mockReset().mockImplementation(async () => fixture);
     const bedId = fixture.floors[0]!.wards[0]!.beds[1]!.id;
-    const { posted } = withCleans(["ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean"], { bedId });
+    const { posted, reads } = withCleans(["ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean"], { bedId });
     renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
     expect(await screen.findByRole("img", { name: `${CLEAN_BED} · Cleaning · 72 min · assigned to A. K. · late` })).toBeInTheDocument();
     const slow = await screen.findByTestId("ipd-beds-slow-cleans");
     expect(slow).toHaveTextContent(`${CLEAN_BED} · 72 min · A. K. · late`);
+    const before = reads.n;
     await user.click(within(slow).getByRole("button", { name: "Nudge housekeeping" }));
-    expect(await within(slow).findByText("✓ Housekeeping nudged")).toBeInTheDocument();
+    // The nudge bumped the task's version: the board reads the clocks again.
+    await waitFor(() => expect(reads.n).toBeGreaterThan(before));
     expect(posted).toEqual(["/api/housekeeping/cleans/01FAKETASK0000000000000001/nudge"]);
   });
 

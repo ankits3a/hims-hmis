@@ -13,7 +13,8 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  * The subscription is the bed's own kernel events: released into cleaning, moved into or out of cleaning, assigned.
  * INSTALLED IN BOTH PROCESSES (the pharmacy shape): the API mounts the routes; the worker runs the subscription,
  * and its handler is `workerConsumers`' `housekeeping.bed_turnover` entry — one without the other is a boot error.
- * Importing this module also defines its task kinds, which both processes need (tasks MAP §4).
+ * Importing this module also defines its task kinds, which both processes need (tasks MAP §4). Its seeded cursor
+ * skips older releases; `workerBackfills` (run by `seedCursors`) gives every bed already in cleaning its clean.
  */
 export { HOUSEKEEPING_VERIFY_TERMINAL, HOUSEKEEPING_VIEW };
 

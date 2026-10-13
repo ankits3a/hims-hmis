@@ -11,7 +11,7 @@ import type { TaskRow } from "../tasks";
 /**
  * THE TWO HOUSEKEEPING INTENTS a person calls. The doors check who may knock; these check the rest.
  *
- * `verifyClean` — the check of a cleaned bed. A terminal clean is refused up front to anyone without
+ * `verifyClean` — the check of a cleaned bed (state, not version, decides — see below). A terminal clean is refused up front to anyone without
  * `housekeeping.verify_terminal`, with the rule and the fix in words; the engine's `verifyTask` then enforces the
  * kind's verifier list again (the backstop for any other door), refuses the doer (`verifier_is_doer`), and, in its
  * own transaction, runs the kind's `onVerified`: the bed becomes available (ipd `markBedCleanIn`).
@@ -34,7 +34,10 @@ export async function verifyClean(db: Db, actor: Actor, raw: unknown, now: Date 
     && !(await hasPermission(db, actor.id, HOUSEKEEPING_VERIFY_TERMINAL, "hospital"))) {
     throw new HousekeepingRefusal("terminal_needs_supervisor", { taskId: task.id });
   }
-  return verifyTask(db, actor, input, now);
+  // DECIDED (PR #750 review, finding 6): the check compares STATE, not version. The only change a clean takes after
+  // the screen read it is a nudge (which bumps the version) — and the engine still refuses anything not `done`, a
+  // doer, or a verifier without the kind's permission. So the screen's version is not sent on.
+  return verifyTask(db, actor, { taskId: input.taskId }, now);
 }
 
 export async function nudgeClean(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {

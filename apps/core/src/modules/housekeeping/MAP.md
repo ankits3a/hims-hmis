@@ -46,24 +46,31 @@ A leaf: it imports `tasks` and `ipd` only through their `index.ts`; nothing impo
   `apps/core/test/helpers/housekeeping.ts` (`mkHousekeepingWorld`, `deliverBedEvents`).
 
 ## 3. Main flows
-- **Release → task.** ipd `releaseBedOccupant` → kernel `resource.released` (status `cleaning`); the reason
-  (`clean:routine` / `clean:terminal`) is only in `resource_status_history`, read by (bed, to_status, the event's own
-  `occurred_at`). An unblock into cleaning is `resource.status_changed` with the reason on the payload. Terminal =
-  reason `clean:terminal` OR the bed's isolation ≠ none. Due = the event's instant + 45 / 90 min.
-- **Exactly one.** Per-bed advisory lock; a bed-clean task for this bed created at/after the event's instant = seen →
-  nothing. The bed must still be in `cleaning`. The engine's 10-minute merge rule is a second net.
+- **Release → task.** ipd `releaseBedOccupant` → kernel `resource.released` (status `cleaning`, payload `reason`
+  `clean:routine` / `clean:terminal`; for older events the status history row of that instant is the fallback). An
+  unblock into cleaning is `resource.status_changed` with the reason. Terminal = `clean:terminal` OR isolation ≠ none.
+  `raised_at` = the event's instant; due = that + 45 / 90 min.
+- **Exactly one, decided by the event.** The clean's `source_ref` is `resource-event:<seq>` (unique index
+  `tasks_source_ref_ux`): a second delivery returns the first task. A release ALWAYS records its clean; if the bed has
+  already moved on when it is handled, the clean is raised and cancelled at once ("Bed re-occupied before cleaning").
+- **Seeding.** `seedCursors` (deploy, before the worker starts) puts the consumer at `max(seq)` and then runs
+  `workerBackfills` → `backfillBedCleans`: every IPD bed in cleaning with no clean owed gets one, keyed on the event that
+  put it there. Idempotent; runs every deploy.
 - **Check → bed free.** `verifyTask` (engine) checks the kind's verifier list and the doer, marks verified, then runs
   `onVerified` in its transaction → `markBedCleanIn` (ipd). A bed no longer in cleaning is left alone.
 - **Bed leaves cleaning any other way** (hand tap "Mark clean", block, assignment) → the consumer cancels the bed's
-  OPEN cleans with the reason. A `done` clean waiting for its check is not open and stays for the supervisor.
+  cleans raised up to that event's instant that are open OR done-unchecked (engine `cancelTask` `closeDone`), whatever
+  the bed's status now. The clocks (`bedCleans`) show only beds whose status is `cleaning`.
+- **Verify compares state, not version** (DECIDED): the only change after the screen's read is a nudge, which bumps the
+  version; the engine still refuses anything not `done`. The Beds board refetches after a nudge.
 
 ## 4. Invariants and traps
 - **Installed in BOTH processes.** The manifest's three subscriptions need `workerConsumers`' entry (one edit, or the
   worker refuses to boot), and importing the module defines the kinds — the worker's task clock needs their windows.
   Censuses that move with a consumer: `kernel/modules/manifests.test.ts` (worker shared list),
   `kernel/worker/seed-cursors.test.ts`, `test/worker-runtime.e2e.test.ts`.
-- The consumer re-reads the bed at handling time, so late, duplicated or out-of-order delivery is safe; never decide
-  from the payload alone.
+- Duplicates are stopped by `source_ref`, not by the clock or the bed's present status; cancellation is bounded by the
+  event's instant, so a late event never cancels a newer clean.
 - OT recovery bays are kernel `bed` rows too: only beds whose attributes parse as IPD bed attributes are housekept.
 - The Beds board sees the cleaner's INITIALS only (it is also a wall display); the supervisor board shows names (the
   task engine's board), never a patient.

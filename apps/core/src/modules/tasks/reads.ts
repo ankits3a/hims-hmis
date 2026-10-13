@@ -152,7 +152,11 @@ export async function taskBoard(db: Db, now: Date = new Date(), opts: { kinds?: 
  */
 export async function findTasks(
   exec: Db | Tx,
-  q: { kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date; limit?: number },
+  q: {
+    kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date;
+    /** Raised (or, for older rows, created) at or before this instant. */
+    raisedUntil?: Date; limit?: number;
+  },
 ): Promise<TaskRow[]> {
   if (q.kinds.length === 0) return [];
   return (exec as Db).select().from(tasks).where(and(
@@ -160,6 +164,7 @@ export async function findTasks(
     ...(q.placeResourceId === undefined ? [] : [eq(tasks.placeResourceId, q.placeResourceId)]),
     ...(q.states === undefined ? [] : [inArray(tasks.state, [...q.states])]),
     ...(q.createdSince === undefined ? [] : [sql`${tasks.createdAt} >= ${q.createdSince.toISOString()}::timestamptz`]),
+    ...(q.raisedUntil === undefined ? [] : [sql`coalesce(${tasks.raisedAt}, ${tasks.createdAt}) <= ${q.raisedUntil.toISOString()}::timestamptz`]),
   )).orderBy(desc(tasks.createdAt)).limit(q.limit ?? 500);
 }
 

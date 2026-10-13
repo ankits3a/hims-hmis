@@ -39,7 +39,7 @@ import {
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
-import { HOUSEKEEPING_BED_CONSUMER, bedTurnoverConsumer, housekeepingManifest } from "../../modules/housekeeping";
+import { HOUSEKEEPING_BED_CONSUMER, backfillBedCleans, bedTurnoverConsumer, housekeepingManifest } from "../../modules/housekeeping";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -391,4 +391,17 @@ export function shutdownWorker(
   })().catch((err: unknown) => {
     logger.error("worker: shutdown failed", err);
   });
+}
+
+/**
+ * E1.4 (PR #750 review) — WHAT A CONSUMER OWES FOR THE EVENTS ITS SEEDED CURSOR SKIPS. `seedCursors` (deploy step
+ * "cursor seeding", before the worker starts) puts a new consumer at `max(seq)`; a consumer whose job is a projection
+ * of current state names a backfill here, and `seedCursors` runs every one after seeding. Each must be idempotent: the
+ * step runs on every deploy.
+ */
+export function workerBackfills(db: Db): Record<string, () => Promise<number>> {
+  return {
+    // Every IPD bed already in cleaning with no clean owed gets its one clean (keyed on the event that put it there).
+    [HOUSEKEEPING_BED_CONSUMER]: () => backfillBedCleans(db),
+  };
 }
