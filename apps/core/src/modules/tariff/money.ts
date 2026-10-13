@@ -46,3 +46,21 @@ export function inclusiveOf(exclusivePaise: number, rateBps: number): number {
   assertPaise(exclusivePaise, "exclusive price");
   return Math.floor((exclusivePaise * (10000 + rateBps)) / 10000);
 }
+
+/**
+ * "1250", "1250.5", "1,250.00", "1,00,000", "₹1250" → integer paise; null when the text is not a sum of rupees.
+ * String arithmetic only — never `parseFloat(x) * 100`, which turns 0.29 into 28.999….
+ */
+export function rupeesTextToPaise(text: string): number | null {
+  const trimmed = text.replace(/[₹\s]/g, "");
+  // Grouping is checked BEFORE the commas go: "1,2,3" is not 123 (review #744). Plain digits, Western
+  // (1,000,000) or Indian (10,00,000) grouping, then up to two decimals.
+  const plain = /^\d+(\.\d{1,2})?$/;
+  const western = /^\d{1,3}(,\d{3})+(\.\d{1,2})?$/;
+  const indian = /^\d{1,2}(,\d{2})*,\d{3}(\.\d{1,2})?$/;
+  if (!plain.test(trimmed) && !western.test(trimmed) && !indian.test(trimmed)) return null;
+  const clean = trimmed.replace(/,/g, "");
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(clean)) return null;
+  const [whole = "0", frac = ""] = clean.split(".");
+  return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+}

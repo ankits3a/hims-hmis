@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/patients/`
 
 - **Depends on modules:** —
-- **Used by modules:** `abdm`, `aerb`, `billing`, `lab`, `membership`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `abdm`, `aerb`, `billing`, `ipd`, `lab`, `membership`, `opd`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `documents`, `events`, `modules`, `phi`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -31,6 +31,7 @@ Source: `apps/core/src/modules/patients/`
   - `listAllergies(db: Db, patientId: string): Promise<AllergyRow[]>`
   - types: `AllergyRow`
 - `coverages.ts`
+  - `coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null>`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`
   - types: `CoverageRow`
 - `display-name.ts`

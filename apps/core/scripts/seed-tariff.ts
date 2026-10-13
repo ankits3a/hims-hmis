@@ -44,7 +44,7 @@ const actor: Actor = { type: "system", id: "seed" };
 const activator: Actor = { type: "user", id: "seed-tariff" };
 
 /**
- * CONFIG_A — the GST category rows (five, the three medicine slabs, and 18-S RS4's `investigation`). Every rate/threshold is a DEV PLACEHOLDER — CA sign-off
+ * CONFIG_A — the GST category rows (five, the three medicine slabs, 18-S RS4's `investigation` and E0.4's two IPD rows). Every rate/threshold is a DEV PLACEHOLDER — CA sign-off
  * required (§19). Exempt categories still carry their would-be `rateBps` deliberately (D4/§3.14
  * defence: "exempt flag honoured" reads differently from "rate happens to be zero").
  */
@@ -89,6 +89,31 @@ const GST_CATEGORIES = [
     rateBps: 500, // DEV PLACEHOLDER — CA sign-off required (§19)
     specialRule: "room_rent_daily_threshold" as const,
     thresholdPaise: 500000, // DEV PLACEHOLDER — CA sign-off required (§19): ₹5,000/day (D-3)
+  },
+  /**
+   * E0.4 — the IPD rate card's two categories (decision 0072; `modules/tariff/ipd-rate-card.ts`).
+   * Room rent in a critical-care bed (ICU, CCU, ICCU, NICU — HDU and PICU read with them) is exempt
+   * whatever the daily amount (Notification 12/2017-CT(R) entry 46 as amended 2022 taxes only rooms
+   * "other than ICU/CCU/ICCU/NICU"); nursing, RMO and consultant-visit charges to an inpatient are
+   * exempt healthcare. Both 0% for the same reason `investigation` is. No service uses either until
+   * the IPD importer creates its (inactive) services, so writing these rows flips nothing. A CA
+   * confirms the SAC at the first filing (§19). Written only when absent, like every row here.
+   */
+  {
+    category: "room_rent_icu",
+    sacCode: "999311", // CA confirms at the first filing (§19)
+    exempt: true,
+    rateBps: 0,
+    specialRule: null,
+    thresholdPaise: null,
+  },
+  {
+    category: "ipd_care",
+    sacCode: "999311", // CA confirms at the first filing (§19)
+    exempt: true,
+    rateBps: 0,
+    specialRule: null,
+    thresholdPaise: null,
   },
   {
     category: "pharmacy",
