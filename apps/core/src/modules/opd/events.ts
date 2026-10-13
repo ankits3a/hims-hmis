@@ -271,6 +271,17 @@ export const visitPatientAbsentUndone = defineEvent("visit.patient_absent_undone
   markedBy: id,
 }));
 
+/**
+ * #773 — a desk correction ("Wrong department? Move patient", "change the doctor") closed a visit
+ * whose vitals were already taken; its ACTIVE chart rows now belong to the replacement visit
+ * (`vitals-carry.ts`). The rows keep their recorder and time; this names the move.
+ */
+export const visitVitalsMoved = defineEvent("visit.vitals_moved", MODULE, z.object({
+  patientId: id, ...where,
+  fromEncounterId: id, toEncounterId: id,
+  vitalsIds: z.array(id).min(1),
+}));
+
 export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, z.object({
   encounterId: id, patientId: id, vitalsId: id, ...where,
   flags: z.array(dangerFlagSchema).min(1),

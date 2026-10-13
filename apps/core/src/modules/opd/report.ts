@@ -6,7 +6,7 @@ import { loadOpdConfig } from "./config";
 import { LAB_DEPARTMENT_CODE } from "./encounters";
 import { addDays, ageYearsAt, istDate, istHourMinute, istWeekday } from "./time";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -202,7 +202,7 @@ export function isCorrection(e: RangeEncounter, sameDay: readonly RangeEncounter
  * The dashboards (`range.ts`, `desk-provider.ts`) leave these out of "visits opened", so a phone tile
  * and the report cannot disagree about a visit the desk moved: one rule, here.
  */
-export async function correctionIdsIn(db: Db, from: string, to: string): Promise<Set<string>> {
+export async function correctionIdsIn(db: Db | Tx, from: string, to: string): Promise<Set<string>> {
   const fields = {
     id: opdEncounters.id, visitNo: opdEncounters.visitNo, patientId: opdEncounters.patientId,
     departmentId: opdEncounters.departmentId, doctorId: opdEncounters.doctorId, status: opdEncounters.status,

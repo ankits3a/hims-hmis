@@ -114,6 +114,7 @@ Source: `apps/core/src/modules/opd/`
   - `visitPatientAbsentUndone`
   - `visitReclassified`
   - `visitTransferred`
+  - `visitVitalsMoved`
   - `vitalsAmended`
   - `vitalsDangerFlagged`
   - `vitalsRecheckDemanded`

@@ -42,6 +42,8 @@ export const OPD_REALTIME_NAMES = [
   "visit.patient_absent",
   // #771 — and its undo: the token leaves the doctor's line and the bench gains it back.
   "visit.patient_absent_undone",
+  // #773 — a corrected visit's chart moved to its replacement: the bench loses the row, the doctor's line gains it.
+  "visit.vitals_moved",
 ];
 type P = { doctorId?: string; fromDoctorId?: string; toDoctorId?: string; serviceDate?: string; roomId?: string | null; encounterId?: string };
 
