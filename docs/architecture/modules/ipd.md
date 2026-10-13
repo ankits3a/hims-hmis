@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
 ## Public API (`index.ts`), by declaring file
@@ -218,7 +218,7 @@ Source: `apps/core/src/modules/ipd/`
   - `readFamilyBillDetails(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyBillD…`
   - `readFamilyView(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyView>`
   - `requestFamilyCallback(db: Db, token: string, cookies: { device?: string; session?: string }, text: string, at: Date = new Date()): Promise<…`
-  - `sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, at: Date = new Date()): Promise<{ phoneMasked: string; expi…`
+  - `sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, opts: { at?: Date; secretKey: Buffer }): Promise<{ phoneMas…`
   - `verifyFamilyOtp(db: Db, token: string, deviceId: string, code: string, at: Date = new Date()): Promise<{ sessionToken: string; expiresAt: D…`
 - `family.ts`
   - `closeFamilyCallback(db: Db, actor: Actor, callbackId: string, note: string, opts: { now?: Date } = {}): Promise<{ closed: boolean }>`
@@ -226,7 +226,7 @@ Source: `apps/core/src/modules/ipd/`
   - `familyCallbacksCard(db: Db): Promise<DeskCard[]>`
   - `familyStopConsumer(db: Db): Handler`
   - `handleFamilyStop(tx: Tx, eventId: string, name: string, payload: unknown): Promise<{ handled: boolean; revoked: boolean }>`
-  - `issueFamilyLink(db: Db, actor: Actor, admissionId: string, input: IpdIssueFamilyLink, opts: { now?: Date } = {}): Promise<IpdFamilyLinkIssu…`
+  - `issueFamilyLink(db: Db, actor: Actor, admissionId: string, input: IpdIssueFamilyLink, opts: { now?: Date; secretKey: Buffer }): Promise<Ipd…`
   - `listFamilyCallbacks(db: Db, actor: Actor, opts: { status?: "open" | "done" } = {}): Promise<IpdFamilyCallbackList>`
   - `readFamilyPanel(db: Db, actor: Actor, admissionId: string): Promise<IpdFamilyPanel>`
   - `revokeFamilyLink(db: Db, actor: Actor, linkId: string, opts: { now?: Date } = {}): Promise<{ revoked: boolean }>`
@@ -252,6 +252,24 @@ Source: `apps/core/src/modules/ipd/`
 - `ipd.module.ts`
   - `class IpdModule`
 - `manifest.ts`
+  - `ipdManifest: ModuleManifest`
+- `payer-bill.ts`
+  - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
+  - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
+  - `listPayerNonPayables(db: Db, actor: Actor): Promise<IpdNonPayable[]>`
+  - `retirePayerNonPayable(db: Db, actor: Actor, id: string, at: Date = new Date()): Promise<void>`
+  - `roomRentCapWarning(db: Db, actor: Actor, admissionId: string, targetClass: IpdBedClass, at: Date = new Date()): Promise<IpdRoomRentCapWarni…`
+- `payer-split.ts`
+  - `CAP_EXEMPT_CLASSES: ReadonlySet<IpdBedClass>`
+  - `PROPORTIONAL_COMPONENTS: ReadonlySet<IpdRateComponent>`
+  - `capWarningOf(cls: IpdBedClass, capPerDayPaise: number | null, rentPerDayPaise: number | null): { targetClass: IpdBedClass; capPerDayPaise: …`
+  - `splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, nonPayables: NonPayables = NO_NON_PAYABLES): IpdPayerSplit`
+  - `splitModeOf(payerKind: string | null): SplitMode`
+  - `splitTermsOf(payerKind: string | null, rows: readonly AuthRowInput[], sumInsuredPaise: number | null, schemeNonCoveredPaise: number): Split…`
+  - types: `AuthRowInput`, `NonPayables`, `SplitLineInput`, `SplitTerms`
+- `payer.ts`
+  - `recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_payer_auth">>`
+- `permissions.ts`
   - `IPD_ADMIT`
   - `IPD_ADMIT_REQUEST`
   - `IPD_BAND_PRINT`
@@ -276,23 +294,6 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_PAYER_TERMS`
   - `IPD_TRANSFER_ACCEPT`
   - `IPD_TRANSFER_START`
-  - `ipdManifest: ModuleManifest`
-- `payer-bill.ts`
-  - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
-  - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
-  - `listPayerNonPayables(db: Db, actor: Actor): Promise<IpdNonPayable[]>`
-  - `retirePayerNonPayable(db: Db, actor: Actor, id: string, at: Date = new Date()): Promise<void>`
-  - `roomRentCapWarning(db: Db, actor: Actor, admissionId: string, targetClass: IpdBedClass, at: Date = new Date()): Promise<IpdRoomRentCapWarni…`
-- `payer-split.ts`
-  - `CAP_EXEMPT_CLASSES: ReadonlySet<IpdBedClass>`
-  - `PROPORTIONAL_COMPONENTS: ReadonlySet<IpdRateComponent>`
-  - `capWarningOf(cls: IpdBedClass, capPerDayPaise: number | null, rentPerDayPaise: number | null): { targetClass: IpdBedClass; capPerDayPaise: …`
-  - `splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, nonPayables: NonPayables = NO_NON_PAYABLES): IpdPayerSplit`
-  - `splitModeOf(payerKind: string | null): SplitMode`
-  - `splitTermsOf(payerKind: string | null, rows: readonly AuthRowInput[], sumInsuredPaise: number | null, schemeNonCoveredPaise: number): Split…`
-  - types: `AuthRowInput`, `NonPayables`, `SplitLineInput`, `SplitTerms`
-- `payer.ts`
-  - `recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_payer_auth">>`
 - `realtime.ts`
   - `IPD_REALTIME_NAMES: string[]`
   - `IPD_TOPIC_SPACES: TopicSpace[]`

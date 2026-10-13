@@ -54,7 +54,7 @@ export function IpdFamilyCallbacks(): React.ReactElement {
         {list?.rows.map((c) => (
           <li key={c.id} className={`ipdfc-row ${c.status}`}>
             <div className="top">
-              <b>{c.patientName ?? "—"}</b>
+              <b>{c.privacy === "sealed" ? t("ipdFamilyCalls.sealed") : c.patientName ?? "—"}</b>
               <span className="mono">{[c.bedCode, c.wardName].filter(Boolean).join(" · ")}</span>
               <span className="mono when">{when(c.createdAt)}</span>
             </div>

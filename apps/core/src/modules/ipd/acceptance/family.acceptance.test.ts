@@ -32,6 +32,8 @@ const ist = (s: string): Date => new Date(`${s}+05:30`);
 const key = (): string => randomUUID();
 const PAPER = { signedBy: "patient" as const, method: "paper" as const, witnessName: "Desk Witness" };
 const ATTENDANT_PHONE = "9812345678";
+/** The server secret the phone HMAC is keyed with (the test env's `SECRET_KEY`). */
+const KEY = Buffer.from(process.env.SECRET_KEY ?? "0".repeat(64), "hex");
 const CONSENT = { consentedBy: "Sita Devi", relation: "spouse" as const, method: "verbal" as const };
 
 /** A recording SMS sender: what was sent, to whom. */
@@ -89,19 +91,19 @@ describe("E3.3 family link — acceptance", () => {
     }, { now: new Date(ist(at).getTime() + 30 * 60_000) });
     return { admissionId: done.admissionId, patientId };
   };
-  const tokenOf = (path: string): string => path.replace("/family/", "");
+  const tokenOf = (path: string): string => path.replace("/family#", "");
   /** Issue, send, verify on device `dev`: the attendant's verified session cookies. */
   const verified = async (admissionId: string, at: string, dev = "device-aaaaaaaaaaaaaaaaaaaa") => {
-    const issued = await issueFamilyLink(db, desk, admissionId, { consent: CONSENT }, { now: ist(at) });
+    const issued = await issueFamilyLink(db, desk, admissionId, { consent: CONSENT }, { now: ist(at), secretKey: KEY });
     const token = tokenOf(issued.path);
-    await sendFamilyOtp(db, token, dev, sender, ist(at));
+    await sendFamilyOtp(db, token, dev, sender, { at: ist(at), secretKey: KEY });
     const s = await verifyFamilyOtp(db, token, dev, sender.sent.at(-1)!.otp, ist(at));
     return { token, cookies: { device: dev, session: s.sessionToken }, linkId: issued.linkId };
   };
 
   it("(i) the OTP goes only to the registered attendant's phone; a different phone or another browser cannot receive or verify", async () => {
     const { admissionId } = await admitWithAttendant("2026-03-10T10:00:00");
-    const issued = await issueFamilyLink(db, desk, admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:00:00") });
+    const issued = await issueFamilyLink(db, desk, admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:00:00"), secretKey: KEY });
     expect(issued.phoneMasked).toBe("******5678");
     const token = tokenOf(issued.path);
     // Before the OTP the page shows only the masked phone: no name, no ward.
@@ -109,7 +111,7 @@ describe("E3.3 family link — acceptance", () => {
     expect(gate).toEqual({ status: "needs_otp", phoneMasked: "******5678", purpose: "inpatient_updates" });
 
     // The code goes to the registered phone — the caller has no way to name a number.
-    await sendFamilyOtp(db, token, "device-aaaaaaaaaaaaaaaaaaaa", sender, ist("2026-03-10T11:02:00"));
+    await sendFamilyOtp(db, token, "device-aaaaaaaaaaaaaaaaaaaa", sender, { at: ist("2026-03-10T11:02:00"), secretKey: KEY });
     expect(sender.sent).toHaveLength(1);
     expect(sender.sent[0]!.to).toBe(ATTENDANT_PHONE);
     const code = sender.sent[0]!.otp;
@@ -128,15 +130,15 @@ describe("E3.3 family link — acceptance", () => {
 
     // The attendant's phone on record changes: the old link sends nothing to the new number (a new link is needed).
     await db.update(ipdAdmissionDeposits).set({ payerPhone: "9000000001" }).where(eq(ipdAdmissionDeposits.admissionId, admissionId));
-    expect((await refusal(sendFamilyOtp(db, token, "device-aaaaaaaaaaaaaaaaaaaa", sender, ist("2026-03-10T11:10:00")))).code).toBe("family_phone_changed");
+    expect((await refusal(sendFamilyOtp(db, token, "device-aaaaaaaaaaaaaaaaaaaa", sender, { at: ist("2026-03-10T11:10:00"), secretKey: KEY }))).code).toBe("family_phone_changed");
     expect(sender.sent).toHaveLength(1);
 
     // Rate limit: three sends an hour.
-    const again = await issueFamilyLink(db, desk, admissionId, { consent: CONSENT }, { now: ist("2026-03-10T12:00:00") });
+    const again = await issueFamilyLink(db, desk, admissionId, { consent: CONSENT }, { now: ist("2026-03-10T12:00:00"), secretKey: KEY });
     expect(again.phoneMasked).toBe("******0001");
     const t2 = tokenOf(again.path);
-    for (const m of ["01", "02", "03"]) await sendFamilyOtp(db, t2, "device-aaaaaaaaaaaaaaaaaaaa", sender, ist(`2026-03-10T12:${m}:00`));
-    expect((await refusal(sendFamilyOtp(db, t2, "device-aaaaaaaaaaaaaaaaaaaa", sender, ist("2026-03-10T12:04:00")))).code).toBe("family_otp_limit");
+    for (const m of ["01", "02", "03"]) await sendFamilyOtp(db, t2, "device-aaaaaaaaaaaaaaaaaaaa", sender, { at: ist(`2026-03-10T12:${m}:00`), secretKey: KEY });
+    expect((await refusal(sendFamilyOtp(db, t2, "device-aaaaaaaaaaaaaaaaaaaa", sender, { at: ist("2026-03-10T12:04:00"), secretKey: KEY }))).code).toBe("family_otp_limit");
     expect(sender.sent.slice(1).every((x) => x.to === "9000000001")).toBe(true);
     // The re-issue revoked the first link.
     expect((await familyGate(db, token, {}, ist("2026-03-10T12:05:00"))).status).toBe("closed");
@@ -152,19 +154,19 @@ describe("E3.3 family link — acceptance", () => {
   it("(ii) a sealed, a medico-legal or a team-switched-off admission refuses the link, and a live link closes when the patient is sealed", async () => {
     const sealed = await admitWithAttendant("2026-03-10T10:00:00");
     await db.update(patients).set({ sensitiveContext: true }).where(eq(patients.id, sealed.patientId));
-    const e1 = await refusal(issueFamilyLink(db, desk, sealed.admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:00:00") }));
+    const e1 = await refusal(issueFamilyLink(db, desk, sealed.admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:00:00"), secretKey: KEY }));
     expect(e1.code).toBe("family_link_refused");
     expect(e1.detail).toEqual({ reason: "sealed" });
     expect((await readFamilyPanel(db, desk, sealed.admissionId)).blocked).toBe("sealed");
 
     const mlc = await admitWithAttendant("2026-03-10T10:00:00");
     await db.update(ipdAdmissions).set({ mlc: true }).where(eq(ipdAdmissions.id, mlc.admissionId));
-    expect((await refusal(issueFamilyLink(db, desk, mlc.admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:00:00") }))).detail).toEqual({ reason: "mlc" });
+    expect((await refusal(issueFamilyLink(db, desk, mlc.admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:00:00"), secretKey: KEY }))).detail).toEqual({ reason: "mlc" });
 
     const psych = await admitWithAttendant("2026-03-10T10:00:00");
     const live = await verified(psych.admissionId, "2026-03-10T11:00:00");
     await setCondition(db, w.doctor, psych.admissionId, { word: "stable", familyOff: "psychiatric" }, { now: ist("2026-03-10T11:30:00") });
-    expect((await refusal(issueFamilyLink(db, desk, psych.admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:31:00") }))).detail).toEqual({ reason: "family_off" });
+    expect((await refusal(issueFamilyLink(db, desk, psych.admissionId, { consent: CONSENT }, { now: ist("2026-03-10T11:31:00"), secretKey: KEY }))).detail).toEqual({ reason: "family_off" });
     // Turning it off revoked the live link.
     expect((await db.select().from(ipdFamilyLinks).where(eq(ipdFamilyLinks.id, live.linkId)))[0]).toMatchObject({ status: "revoked", revokedReason: "family_off" });
     expect((await refusal(readFamilyView(db, live.token, live.cookies, ist("2026-03-10T11:32:00")))).code).toBe("family_link_closed");
@@ -197,7 +199,7 @@ describe("E3.3 family link — acceptance", () => {
     await deliver(dead.admissionId, "ipd.admission.deceased");
     expect((await db.select().from(ipdFamilyLinks).where(eq(ipdFamilyLinks.id, d.linkId)))[0]).toMatchObject({ status: "revoked", revokedReason: "deceased" });
     expect(await db.select().from(events).where(and(eq(events.name, "ipd.family.link_revoked"), eq(events.correlationId, dead.admissionId)))).toHaveLength(1);
-    expect((await refusal(sendFamilyOtp(db, d.token, d.cookies.device, sender, ist("2026-03-10T18:12:00")))).code).toBe("family_link_closed");
+    expect((await refusal(sendFamilyOtp(db, d.token, d.cookies.device, sender, { at: ist("2026-03-10T18:12:00"), secretKey: KEY }))).code).toBe("family_link_closed");
 
     const gone = await admitWithAttendant("2026-03-10T10:00:00");
     const g = await verified(gone.admissionId, "2026-03-10T11:00:00");

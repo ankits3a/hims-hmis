@@ -5,9 +5,10 @@ import { withTx } from "../../kernel/db/client";
 import {
   eventIdempotency, ipdAdmissionConditions, ipdAdmissions, ipdBedStays, ipdFamilyCallbacks, ipdFamilyLinks, patients,
 } from "../../kernel/db/schema";
+import { hmacSign } from "../../kernel/crypto";
 import { appendEvent } from "../../kernel/events/append";
 import { maskPhone } from "../../kernel/notify/mask";
-import { getPatientSummaries } from "../patients";
+import { getPatientSummaries, patientUpdated } from "../patients";
 import { admissionAdvisoryLock, holdsPermission, readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
 import { bedWithWard } from "./beds";
@@ -16,7 +17,7 @@ import { IPD_LADDER_STATES } from "./deposit-ladder";
 import { IpdError } from "./errors";
 import { IPD_FAMILY_STOP_CONSUMER, conditionSet, familyCallbackClosed, familyLinkIssued, familyLinkRevoked } from "./family-events";
 import { admissionAbsconded, admissionDeceased } from "./discharge-events";
-import { IPD_CONDITION_SET, IPD_FAMILY_ISSUE } from "./manifest";
+import { IPD_CONDITION_SET, IPD_FAMILY_ISSUE } from "./permissions";
 import type {
   Actor, IpdConditionWord, IpdFamilyCallback, IpdFamilyCallbackList, IpdFamilyLinkIssued, IpdFamilyPanel, IpdIssueFamilyLink,
   IpdSetCondition,
@@ -54,6 +55,13 @@ export const sha256 = (s: string): string => createHash("sha256").update(s).dige
 /** A phone as the registry stores it, digits only, the last ten (Indian mobile). */
 export const normalisePhone = (p: string): string => p.replace(/\D/g, "").slice(-10);
 
+/**
+ * Review #764 — the phone kept with a link is an HMAC-SHA256 under the server's `SECRET_KEY` (kernel/crypto `hmacSign`, the
+ * badge token's primitive), domain-separated, so a copy of the table does not give back the number by trying the ten-digit
+ * space. Compared only by recomputing it.
+ */
+export const familyPhoneDigest = (secretKey: Buffer, phone: string): string => hmacSign(secretKey, `hmis.ipd.family.phone.v1|${normalisePhone(phone)}`);
+
 type Blocked = IpdFamilyPanel["blocked"];
 const OPEN_STATES = IPD_LADDER_STATES as readonly string[];
 
@@ -81,7 +89,7 @@ async function liveLink(db: Db | Tx, admissionId: string) {
   return (await db.select().from(ipdFamilyLinks).where(and(eq(ipdFamilyLinks.admissionId, admissionId), eq(ipdFamilyLinks.status, "active"))))[0];
 }
 
-type RevokeReason = "deceased" | "absconded" | "reissued" | "family_off" | "desk";
+type RevokeReason = "deceased" | "absconded" | "reissued" | "family_off" | "sealed" | "desk";
 
 async function revokeIn(tx: Tx, link: typeof ipdFamilyLinks.$inferSelect, reason: RevokeReason, actor: Actor, now: Date): Promise<void> {
   await tx.update(ipdFamilyLinks).set({ status: "revoked", revokedAt: now, revokedReason: reason, revokedBy: actor.id })
@@ -94,7 +102,7 @@ async function revokeIn(tx: Tx, link: typeof ipdFamilyLinks.$inferSelect, reason
 
 /** Issue (or re-issue) the family link for an admission. The token is answered once and kept only as a hash. */
 export async function issueFamilyLink(
-  db: Db, actor: Actor, admissionId: string, input: IpdIssueFamilyLink, opts: { now?: Date } = {},
+  db: Db, actor: Actor, admissionId: string, input: IpdIssueFamilyLink, opts: { now?: Date; secretKey: Buffer },
 ): Promise<IpdFamilyLinkIssued> {
   await requireIpdPermission(db, actor, IPD_FAMILY_ISSUE);
   const now = opts.now ?? new Date();
@@ -119,14 +127,15 @@ export async function issueFamilyLink(
     const linkId = newId();
     await tx.insert(ipdFamilyLinks).values({
       id: linkId, admissionId: a.id, patientId: a.patientId, tokenHash: sha256(token), attendantKind: to.kind, attendantRef: to.ref,
-      phoneHash: sha256(phone), phoneMasked: maskPhone(phone), purpose: IPD_FAMILY_PURPOSE, consent: input.consent, status: "active",
+      phoneHash: familyPhoneDigest(opts.secretKey, phone), phoneMasked: maskPhone(phone), purpose: IPD_FAMILY_PURPOSE, consent: input.consent, status: "active",
       issuedBy: actor.id, issuedAt: now,
     });
     await appendEvent(tx, familyLinkIssued.make({
       actor, occurredAt: now, correlationId: a.id, patientId: a.patientId,
       payload: { admissionId: a.id, linkId, attendantKind: to.kind, relation: input.consent.relation, method: input.consent.method, provenance: "person" },
     }));
-    return { linkId, path: `/family/${token}`, phoneMasked: maskPhone(phone) };
+    // The token rides in the FRAGMENT: a browser never sends it to the server, so no access log can keep it (#764).
+    return { linkId, path: `/family#${token}`, phoneMasked: maskPhone(phone) };
   });
 }
 
@@ -193,7 +202,9 @@ async function callbackRows(db: Db, actor: Actor, where: ReturnType<typeof eq> |
     id: ipdFamilyCallbacks.id, admissionId: ipdFamilyCallbacks.admissionId, text: ipdFamilyCallbacks.text, status: ipdFamilyCallbacks.status,
     createdAt: ipdFamilyCallbacks.createdAt, closedAt: ipdFamilyCallbacks.closedAt, closedBy: ipdFamilyCallbacks.closedBy, note: ipdFamilyCallbacks.note,
     phoneMasked: ipdFamilyLinks.phoneMasked, patientId: ipdFamilyLinks.patientId,
+    sealed: patients.sensitiveContext, confidential: patients.isConfidential,
   }).from(ipdFamilyCallbacks).innerJoin(ipdFamilyLinks, eq(ipdFamilyLinks.id, ipdFamilyCallbacks.linkId))
+    .innerJoin(patients, eq(patients.id, ipdFamilyLinks.patientId))
     .where(where).orderBy(asc(ipdFamilyCallbacks.createdAt)).limit(200);
   if (rows.length === 0) return [];
   const people = new Map((await getPatientSummaries(db, actor, rows.map((r) => r.patientId))).map((p) => [p.id, p] as const));
@@ -206,10 +217,13 @@ async function callbackRows(db: Db, actor: Actor, where: ReturnType<typeof eq> |
   }
   return rows.map((r) => {
     const p = people.get(r.patientId);
-    const bed = beds.get(r.admissionId) ?? null;
+    // Review #764: a SEALED patient (D-31) shows no name, bed or ward ("Sealed patient" on the screen); a CONFIDENTIAL one
+    // keeps the alias rule and shows no bed or ward. `restricted` alone tracks only `isConfidential`.
+    const privacy = r.sealed ? "sealed" as const : r.confidential ? "confidential" as const : null;
+    const bed = privacy === null ? beds.get(r.admissionId) ?? null : null;
     return {
-      id: r.id, admissionId: r.admissionId, patientName: p === undefined ? null : p.restricted ? p.alias : p.name,
-      bedCode: bed?.code ?? null, wardName: bed?.wardName ?? null, text: r.text, phoneMasked: r.phoneMasked,
+      id: r.id, admissionId: r.admissionId, patientName: privacy === "sealed" || p === undefined ? null : p.restricted ? p.alias : p.name,
+      bedCode: bed?.code ?? null, wardName: bed?.wardName ?? null, privacy, text: r.text, phoneMasked: r.phoneMasked,
       status: r.status as "open" | "done", createdAt: r.createdAt.toISOString(), closedAt: r.closedAt?.toISOString() ?? null,
       closedBy: r.closedBy === null ? null : names.get(r.closedBy) ?? r.closedBy, note: r.note,
     };
@@ -228,9 +242,11 @@ export async function closeFamilyCallback(db: Db, actor: Actor, callbackId: stri
   return withTx(db, async (tx) => {
     const cb = (await tx.select().from(ipdFamilyCallbacks).where(eq(ipdFamilyCallbacks.id, callbackId)))[0];
     if (cb === undefined) throw new IpdError("family_callback_not_found", "No callback request has this id.");
-    if (cb.status === "done") return { closed: false };
-    await tx.update(ipdFamilyCallbacks).set({ status: "done", closedAt: now, closedBy: actor.id, note })
-      .where(and(eq(ipdFamilyCallbacks.id, cb.id), eq(ipdFamilyCallbacks.status, "open")));
+    await admissionAdvisoryLock(tx, cb.admissionId);
+    // Review #764: the close is the conditional UPDATE itself; only the call that moved the row writes the event.
+    const moved = await tx.update(ipdFamilyCallbacks).set({ status: "done", closedAt: now, closedBy: actor.id, note })
+      .where(and(eq(ipdFamilyCallbacks.id, cb.id), eq(ipdFamilyCallbacks.status, "open"))).returning({ id: ipdFamilyCallbacks.id });
+    if (moved.length === 0) return { closed: false };
     const a = await readAdmission(tx, cb.admissionId);
     await appendEvent(tx, familyCallbackClosed.make({
       actor, occurredAt: now, correlationId: cb.admissionId, patientId: a.patientId,
@@ -282,6 +298,7 @@ export async function handleFamilyStop(tx: Tx, eventId: string, name: string, pa
   const claimed = await tx.insert(eventIdempotency).values({ idempotencyKey: `${IPD_FAMILY_STOP_CONSUMER}:${eventId}`, eventId })
     .onConflictDoNothing({ target: eventIdempotency.idempotencyKey }).returning({ eventId: eventIdempotency.eventId });
   if (claimed.length === 0) return { handled: false, revoked: false };
+  if (name === patientUpdated.name) return { handled: true, revoked: await revokeOnSeal(tx, payload) };
   const reason: RevokeReason | null = name === admissionDeceased.name ? "deceased" : name === admissionAbsconded.name ? "absconded" : null;
   const admissionId = (payload as { admissionId?: unknown } | null)?.admissionId;
   if (reason === null || typeof admissionId !== "string") return { handled: true, revoked: false };
@@ -292,9 +309,26 @@ export async function handleFamilyStop(tx: Tx, eventId: string, name: string, pa
   return { handled: true, revoked: true };
 }
 
+/**
+ * Review #764 — a patient SEALED after the link was issued (`patient.updated` with `sensitiveContext` → true): every live
+ * link of that patient is revoked on that path. The public side's read-time block stays as the belt. (An admission's MLC
+ * flag is set only at admission, when the issue refuses, so it has no later path to watch.)
+ */
+async function revokeOnSeal(tx: Tx, payload: unknown): Promise<boolean> {
+  const p = payload as { patientId?: unknown; changes?: { field?: unknown; to?: unknown }[] } | null;
+  if (typeof p?.patientId !== "string" || !Array.isArray(p.changes)) return false;
+  if (!p.changes.some((c) => c.field === "sensitiveContext" && c.to === "true")) return false;
+  const live = await tx.select().from(ipdFamilyLinks).where(and(eq(ipdFamilyLinks.patientId, p.patientId), eq(ipdFamilyLinks.status, "active")));
+  for (const link of live) {
+    await admissionAdvisoryLock(tx, link.admissionId);
+    await revokeIn(tx, link, "sealed", SYSTEM, new Date());
+  }
+  return live.length > 0;
+}
+
 export function familyStopConsumer(db: Db): Handler {
   return async (e: DispatchedEvent): Promise<void> => {
-    if (e.name !== admissionDeceased.name && e.name !== admissionAbsconded.name) return;
+    if (e.name !== admissionDeceased.name && e.name !== admissionAbsconded.name && e.name !== patientUpdated.name) return;
     await withTx(db, (tx) => handleFamilyStop(tx, e.eventId, e.name, e.payload));
   };
 }

@@ -28,7 +28,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/reconcile` | `apps/web/src/screens/instrument-reconcile` |
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
-| `/family/$token` | `apps/web/src/screens/ipd-family` |
+| `/family` | `apps/web/src/screens/ipd-family` |
 | `/formulary/admin` | `(redirect)` |
 | `/ipd/admissions/$admissionId/bill` | `apps/web/src/screens/ipd-bill` |
 | `/ipd/admit` | `apps/web/src/screens/ipd-admit` |

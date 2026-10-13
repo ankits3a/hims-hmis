@@ -144,7 +144,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `auth` | abdm, aerb, attendance, billing, formulary, ipd, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | config, crypto, db, events, modules, printing, push, tokens | 33 |
 | `config` | abdm, attendance, billing, ipd, membership, opd, ot, partners, patients, pharmacy, radiology | — | — |
 | `copilot` | billing, opd, pharmacy, roster | approvals, auth, config, db, desk, events, inference, modules, reminders, search, tokens | 10 |
-| `crypto` | abdm, billing, opd, patients | — | — |
+| `crypto` | abdm, billing, ipd, opd, patients | — | — |
 | `db` | abdm, aerb, attendance, billing, cds, formulary, ipd, lab, materials, membership, opd, ordering, ot, partners, patients, pcpndt, pharmacy, radiology, roster, tariff | — | — |
 | `desk` | attendance, billing, ipd, lab, membership, opd, partners, patients, pharmacy, radiology, roster | approvals, auth, db, events, modules, reminders, report, tokens, workflow | 10 |
 | `documents` | patients, pharmacy | — | — |

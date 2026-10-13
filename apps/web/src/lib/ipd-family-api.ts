@@ -5,7 +5,7 @@ import type {
 
 /**
  * E3.3 (#731) — the family link's wire. Staff calls carry the staff session; the PUBLIC calls carry nothing but the token
- * in the path — the browser sends the http-only device and session cookies the API set (same origin, `/api/ipd/family`).
+ * in the body — the browser sends the http-only device and session cookies the API set (same origin, `/api/ipd/family`).
  * Paths copied from `IPD_FAMILY_ROUTES` (the web bundle imports the contract package for types only).
  */
 const enc = encodeURIComponent;
@@ -34,21 +34,22 @@ export function closeFamilyCallback(callbackId: string, note: string): Promise<{
 }
 
 // ═══ public (the attendant's phone) ═══
+// Review #764: every call is a POST with the token in the BODY — the edge's access log keeps paths.
 export function getFamilyGate(token: string): Promise<IpdFamilyGate> {
-  return api("GET", `/ipd/family/${enc(token)}`);
+  return api("POST", "/ipd/family/gate", { token });
 }
 export function sendFamilyOtp(token: string): Promise<{ phoneMasked: string; expiresAt: string }> {
-  return api("POST", `/ipd/family/${enc(token)}/otp`);
+  return api("POST", "/ipd/family/otp", { token });
 }
 export function verifyFamilyOtp(token: string, code: string): Promise<{ verified: true; expiresAt: string }> {
-  return api("POST", `/ipd/family/${enc(token)}/verify`, { code });
+  return api("POST", "/ipd/family/verify", { token, code });
 }
 export function getFamilyView(token: string): Promise<IpdFamilyView> {
-  return api("GET", `/ipd/family/${enc(token)}/view`);
+  return api("POST", "/ipd/family/view", { token });
 }
 export function getFamilyBillDetails(token: string): Promise<IpdFamilyBillDetails> {
-  return api("POST", `/ipd/family/${enc(token)}/bill-details`);
+  return api("POST", "/ipd/family/bill-details", { token });
 }
 export function requestFamilyCallback(token: string, text: string): Promise<{ callbackId: string; status: "open" }> {
-  return api("POST", `/ipd/family/${enc(token)}/callback`, { text });
+  return api("POST", "/ipd/family/callback", { token, text });
 }

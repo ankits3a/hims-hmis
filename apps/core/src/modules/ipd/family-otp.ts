@@ -86,6 +86,11 @@ export class LoggingFamilyOtpSender implements FamilyOtpSender {
 /** The runtime's sender: SMS on a real gateway, else the logging sender. */
 export function familyOtpSender(cfg: AppConfig, env: NodeJS.ProcessEnv = process.env): FamilyOtpSender {
   const e = familyOtpEnv(env);
+  // Review #764 — a production process with the log opt-in set REFUSES TO BOOT (the controller builds this at start-up):
+  // the switch is for staging walk-throughs only, and production must never be one config line from logging OTPs.
+  if (e.production && e.toLog) {
+    throw new Error("IPD_FAMILY_OTP_TO_LOG=true is set in production; the family OTP is never logged in production. Unset it to start.");
+  }
   const sms = adaptersFor(cfg).sms;
   if (sms.sink === true) return new LoggingFamilyOtpSender(e.production, e.toLog);
   return new SmsFamilyOtpSender(sms, e.dltTemplateId);

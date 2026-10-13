@@ -939,6 +939,8 @@ export const ipdFamilyOtps = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     attempts: integer("attempts").notNull().default(0),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /** The SMS could not be sent (marked after the commit); a failed challenge neither counts as a send nor verifies. */
+    failedAt: timestamp("failed_at", { withTimezone: true }),
   },
   (t) => [index("ipd_family_otps_link_idx").on(t.linkId, t.sentAt)],
 );
@@ -977,6 +979,8 @@ export const ipdFamilyCallbacks = pgTable(
   (t) => [
     index("ipd_family_callbacks_open_idx").on(t.status, t.createdAt),
     index("ipd_family_callbacks_admission_idx").on(t.admissionId),
+    // The per-link daily cap counts by (link, created_at).
+    index("ipd_family_callbacks_link_idx").on(t.linkId, t.createdAt),
     check("ipd_family_callbacks_status_ck", sql`${t.status} in ('open', 'done')`),
     check("ipd_family_callbacks_closed_ck", sql`(${t.status} = 'done') = (${t.closedAt} is not null)`),
   ],

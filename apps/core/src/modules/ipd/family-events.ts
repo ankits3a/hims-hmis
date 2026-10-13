@@ -17,7 +17,7 @@ export const familyLinkIssued = defineEvent("ipd.family.link_issued", MODULE, z.
 }));
 
 export const familyLinkRevoked = defineEvent("ipd.family.link_revoked", MODULE, z.object({
-  admissionId: id, linkId: id, reason: z.enum(["deceased", "absconded", "reissued", "family_off", "desk"]), provenance: IpdProvenanceSchema,
+  admissionId: id, linkId: id, reason: z.enum(["deceased", "absconded", "reissued", "family_off", "sealed", "desk"]), provenance: IpdProvenanceSchema,
 }));
 
 export const familyOtpSent = defineEvent("ipd.family.otp_sent", MODULE, z.object({

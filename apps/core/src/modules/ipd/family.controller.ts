@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post, Put, Query, Req, Res } from "@nestjs/common";
 import {
-  IpdCloseCallbackSchema, IpdFamilyCallbackRequestSchema, IpdFamilyOtpSchema, IpdIssueFamilyLinkSchema, IpdSetConditionSchema,
+  IpdCloseCallbackSchema, IpdFamilyCallbackRequestSchema, IpdFamilyOtpSchema, IpdFamilyTokenBodySchema, IpdIssueFamilyLinkSchema,
+  IpdSetConditionSchema,
 } from "@hmis/contracts";
 import { CONFIG, DB } from "../../kernel/tokens";
 import { CurrentActor, Public, RequirePermission } from "../../kernel/auth/decorators";
@@ -13,7 +14,8 @@ import {
   familyGate, readFamilyBillDetails, readFamilyView, requestFamilyCallback, sendFamilyOtp, verifyFamilyOtp,
 } from "./family-public";
 import { familyOtpSender } from "./family-otp";
-import { IPD_CONDITION_SET, IPD_DISCHARGE_VIEW, IPD_FAMILY_ISSUE } from "./manifest";
+import { FamilyAddressThrottle } from "./family-throttle";
+import { IPD_CONDITION_SET, IPD_DISCHARGE_VIEW, IPD_FAMILY_ISSUE } from "./permissions";
 import type { z } from "zod";
 import type {
   Actor, IpdFamilyBillDetails, IpdFamilyCallbackList, IpdFamilyGate, IpdFamilyLinkIssued, IpdFamilyPanel, IpdFamilyView,
@@ -25,8 +27,8 @@ import type { FamilyOtpSender } from "./family-otp";
 /**
  * E3.3 (#731) — the family link over HTTP (`IPD_FAMILY_ROUTES`).
  *
- * STAFF routes carry `@RequirePermission` like every other. The PUBLIC routes (`/ipd/family/:token…`) are `@Public()` to
- * the staff AuthGuard — the attendant holds no staff session — and authenticate themselves: the link token in the path,
+ * STAFF routes carry `@RequirePermission` like every other. The PUBLIC routes (`POST /ipd/family/*`) are `@Public()` to
+ * the staff AuthGuard — the attendant holds no staff session — and authenticate themselves: the link token in the body,
  * a device cookie and (after the OTP) a session cookie, both http-only, `SameSite=Strict`, scoped to `/api/ipd/family`
  * (the browser's path; Caddy strips `/api`). Refusals use 401 (verify first), 404/410 (closed), 429 (limits).
  */
@@ -35,7 +37,7 @@ const DEVICE_COOKIE = "hmis_fdev";
 const SESSION_COOKIE = "hmis_fses";
 const DEVICE_DAYS = 30;
 
-type Req = { headers: Record<string, string | string[] | undefined>; secure?: boolean };
+export type Req = { headers: Record<string, string | string[] | undefined>; secure?: boolean; ip?: string };
 type Res = { setHeader(name: string, value: string | string[]): void; getHeader(name: string): unknown };
 
 function cookiesOf(req: Req): { device?: string; session?: string } {
@@ -54,10 +56,21 @@ function cookiesOf(req: Req): { device?: string; session?: string } {
   return out;
 }
 
+/**
+ * Review #764: `Secure` always in production; elsewhere (plain-HTTP dev) it follows the request. `req.secure` is Express's
+ * own reading of the edge's forwarded protocol under `trust proxy` (http-hardening.ts) — no header is read here, so the
+ * edge log's credential-header census (caddyfile-hardening.test.ts) is unchanged.
+ */
+export function cookieSecure(req: Req, env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV === "production" || req.secure === true;
+}
+
+export function familyCookie(name: string, value: string, maxAgeSeconds: number, secure: boolean): string {
+  return `${name}=${value}; Path=${COOKIE_PATH}; Max-Age=${String(maxAgeSeconds)}; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
+}
+
 function addCookie(req: Req, res: Res, name: string, value: string, maxAgeSeconds: number): void {
-  const proto = req.headers["x-forwarded-proto"];
-  const secure = req.secure === true || proto === "https";
-  const cookie = `${name}=${value}; Path=${COOKIE_PATH}; Max-Age=${String(maxAgeSeconds)}; HttpOnly; SameSite=Strict${secure ? "; Secure" : ""}`;
+  const cookie = familyCookie(name, value, maxAgeSeconds, cookieSecure(req));
   const prev = res.getHeader("Set-Cookie");
   const list = Array.isArray(prev) ? prev.map(String) : typeof prev === "string" ? [prev] : [];
   res.setHeader("Set-Cookie", [...list, cookie]);
@@ -74,7 +87,7 @@ function deviceOf(req: Req, res: Res): string {
 
 const STATUS: Partial<Record<string, number>> = {
   ipd_forbidden: 403, family_link_not_found: 404, family_callback_not_found: 404, family_link_closed: 410, family_otp_limit: 429,
-  family_callback_limit: 429, family_session_required: 401, family_otp_invalid: 401, family_otp_unavailable: 503,
+  family_callback_limit: 429, family_rate_limited: 429, family_session_required: 401, family_otp_invalid: 401, family_otp_unavailable: 503,
 };
 
 function toHttp(e: unknown): never {
@@ -94,9 +107,12 @@ function parse<S extends z.ZodType>(schema: S, body: unknown): z.infer<S> {
 @Controller("ipd")
 export class IpdFamilyController {
   private readonly sender: FamilyOtpSender;
+  private readonly secretKey: Buffer;
+  private readonly throttle = new FamilyAddressThrottle();
 
   constructor(@Inject(DB) private readonly db: Db, @Inject(CONFIG) cfg: AppConfig) {
     this.sender = familyOtpSender(cfg);
+    this.secretKey = cfg.secretKey;
   }
 
   // ═══ staff ═══
@@ -111,7 +127,7 @@ export class IpdFamilyController {
   @RequirePermission(IPD_FAMILY_ISSUE, "hospital")
   async issue(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<IpdFamilyLinkIssued> {
     const input = parse(IpdIssueFamilyLinkSchema, body);
-    try { return await issueFamilyLink(this.db, actor, id, input); } catch (e) { toHttp(e); }
+    try { return await issueFamilyLink(this.db, actor, id, input, { secretKey: this.secretKey }); } catch (e) { toHttp(e); }
   }
 
   @Post("family-links/:id/revoke")
@@ -143,54 +159,74 @@ export class IpdFamilyController {
   }
 
   // ═══ public: the attendant's phone ═══
+  // Review #764: POST only, the link token in the BODY — the edge's access log keeps every path (Caddyfile `access_log`,
+  // path deliberately unredacted) and the API itself writes no request log. Each call passes the per-address cap first.
+
+  private admit(req: Req): void {
+    if (!this.throttle.allow(req.ip ?? "unknown")) {
+      throw new HttpException({ statusCode: 429, code: "family_rate_limited", message: "Too many requests. Please wait a few minutes." }, 429);
+    }
+  }
 
   @Public()
-  @Get("family/:token")
-  async gate(@Param("token") token: string, @Req() req: Req, @Res({ passthrough: true }) res: Res): Promise<IpdFamilyGate> {
+  @Post("family/gate")
+  @HttpCode(200)
+  async gate(@Body() body: unknown, @Req() req: Req, @Res({ passthrough: true }) res: Res): Promise<IpdFamilyGate> {
+    this.admit(req);
+    const { token } = parse(IpdFamilyTokenBodySchema, body);
     deviceOf(req, res);
     try { return await familyGate(this.db, token, cookiesOf(req)); } catch (e) { toHttp(e); }
   }
 
   @Public()
-  @Post("family/:token/otp")
+  @Post("family/otp")
   @HttpCode(200)
-  async otp(@Param("token") token: string, @Req() req: Req, @Res({ passthrough: true }) res: Res): Promise<{ phoneMasked: string; expiresAt: string }> {
+  async otp(@Body() body: unknown, @Req() req: Req, @Res({ passthrough: true }) res: Res): Promise<{ phoneMasked: string; expiresAt: string }> {
+    this.admit(req);
+    const { token } = parse(IpdFamilyTokenBodySchema, body);
     const device = deviceOf(req, res);
-    try { return await sendFamilyOtp(this.db, token, device, this.sender); } catch (e) { toHttp(e); }
+    try { return await sendFamilyOtp(this.db, token, device, this.sender, { secretKey: this.secretKey }); } catch (e) { toHttp(e); }
   }
 
   @Public()
-  @Post("family/:token/verify")
+  @Post("family/verify")
   @HttpCode(200)
-  async verify(@Param("token") token: string, @Body() body: unknown, @Req() req: Req, @Res({ passthrough: true }) res: Res): Promise<{ verified: true; expiresAt: string }> {
+  async verify(@Body() body: unknown, @Req() req: Req, @Res({ passthrough: true }) res: Res): Promise<{ verified: true; expiresAt: string }> {
+    this.admit(req);
     const input = parse(IpdFamilyOtpSchema, body);
     const device = cookiesOf(req).device;
     if (device === undefined) throw new HttpException({ statusCode: 401, code: "family_otp_invalid", message: "Please ask for a new code." }, 401);
     try {
-      const s = await verifyFamilyOtp(this.db, token, device, input.code);
+      const s = await verifyFamilyOtp(this.db, input.token, device, input.code);
       addCookie(req, res, SESSION_COOKIE, s.sessionToken, Math.max(1, Math.floor((s.expiresAt.getTime() - Date.now()) / 1000)));
       return { verified: true, expiresAt: s.expiresAt.toISOString() };
     } catch (e) { toHttp(e); }
   }
 
   @Public()
-  @Get("family/:token/view")
-  async view(@Param("token") token: string, @Req() req: Req): Promise<IpdFamilyView> {
+  @Post("family/view")
+  @HttpCode(200)
+  async view(@Body() body: unknown, @Req() req: Req): Promise<IpdFamilyView> {
+    this.admit(req);
+    const { token } = parse(IpdFamilyTokenBodySchema, body);
     try { return await readFamilyView(this.db, token, cookiesOf(req)); } catch (e) { toHttp(e); }
   }
 
   @Public()
-  @Post("family/:token/bill-details")
+  @Post("family/bill-details")
   @HttpCode(200)
-  async billDetails(@Param("token") token: string, @Req() req: Req): Promise<IpdFamilyBillDetails> {
+  async billDetails(@Body() body: unknown, @Req() req: Req): Promise<IpdFamilyBillDetails> {
+    this.admit(req);
+    const { token } = parse(IpdFamilyTokenBodySchema, body);
     try { return await readFamilyBillDetails(this.db, token, cookiesOf(req)); } catch (e) { toHttp(e); }
   }
 
   @Public()
-  @Post("family/:token/callback")
+  @Post("family/callback")
   @HttpCode(200)
-  async callback(@Param("token") token: string, @Body() body: unknown, @Req() req: Req): Promise<{ callbackId: string; status: "open" }> {
+  async callback(@Body() body: unknown, @Req() req: Req): Promise<{ callbackId: string; status: "open" }> {
+    this.admit(req);
     const input = parse(IpdFamilyCallbackRequestSchema, body);
-    try { return await requestFamilyCallback(this.db, token, cookiesOf(req), input.text); } catch (e) { toHttp(e); }
+    try { return await requestFamilyCallback(this.db, input.token, cookiesOf(req), input.text); } catch (e) { toHttp(e); }
   }
 }

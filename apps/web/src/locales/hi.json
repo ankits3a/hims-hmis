@@ -16648,6 +16648,7 @@
     "closedBy": "{{name}}: {{note}}"
   },
   "ipdFamilyCalls": {
+    "sealed": "सील्ड मरीज़",
     "title": "परिवार के कॉल बैक अनुरोध",
     "show": "दिखाएँ",
     "open": "प्रतीक्षा में",
