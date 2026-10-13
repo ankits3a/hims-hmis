@@ -27,7 +27,8 @@ export const ADMISSION_WORKFLOW_DEF_KEY = "ipd_admission";
  * checks the device is registered); an agent never transitions — its proposal is confirmed by a person.
  */
 export const IPD_ACTOR_ROLE_KEYS: Record<IpdActorKind, readonly string[]> = {
-  desk: ["front_office"],
+  // E1.2 (DECIDED): the front-office supervisor runs the admission desk too (the seed grants both the ipd.admit set).
+  desk: ["front_office", "front_office_supervisor"],
   nurse: ["ward_nurse"],
   doctor: ["doctor"],
   resident: ["resident"],

@@ -66,6 +66,7 @@
     "otBook": "Book day-care case",
     "otRecovery": "Recovery",
     "ipdBeds": "Beds",
+    "ipdAdmit": "Admit",
     "counterDesk": "Desk One",
     "group": {
       "desk": "Desk",
@@ -15677,7 +15678,11 @@
     "waiting": {
       "title": "Waiting for a bed",
       "empty": "No one waiting",
-      "emptySub": "Admission requests appear here"
+      "emptySub": "Admission requests appear here",
+      "open": "Open in Admit",
+      "held": "Held · {{bed}}",
+      "wait": "{{minutes}} min",
+      "icu": "ICU"
     },
     "floors": "Floors",
     "floorsHint": "Showing {{shown}} of {{total}} · pick a floor",
@@ -15887,6 +15892,208 @@
       "terminal_needs_supervisor": "Supervisor checks terminal cleans",
       "not_a_clean": "Not a housekeeping task",
       "bad_input": "Request incomplete"
+    }
+  },
+  "ipdAdmit": {
+    "findPatient": "Scan the UHID card, or type name, UHID or mobile",
+    "title": "Admit",
+    "subtitle": "Admission desk · one flowing sheet",
+    "openRequests": "Open requests",
+    "pickRequest": "Open requests ({{n}})",
+    "newRequest": "New request",
+    "toBeds": "Beds board",
+    "incomplete": "incomplete",
+    "patient": "Patient",
+    "uhid": "UHID",
+    "ipNo": "IP",
+    "noAllergy": "No allergy recorded",
+    "isolation": "Isolation",
+    "emptyTitle": "Pick an open request or raise a new one",
+    "emptySub": "Requests from OPD advice, the emergency lane and downtime paper all land in the list above.",
+    "adviceFrom": "From {{name}} · {{time}}",
+    "diagnosis": "Diagnosis",
+    "consultant": "Consultant",
+    "department": "Department",
+    "validUntil": "Advice valid until",
+    "payer": "Payer",
+    "payerAside": "Rates from the active tariff",
+    "plan": "Plan",
+    "planMedical": "Medical",
+    "planSurgical": "Planned surgery",
+    "procedureEstimate": "Procedure estimate ₹",
+    "schemeZero": "Scheme patient: ₹0 to pay, now and at discharge",
+    "roomClass": "Room class",
+    "freeBeds": "{{n}} free",
+    "rateMissing": "Rate not set ({{what}}) · Ask billing to set the rate",
+    "roomPerDay": "Room",
+    "stayEst": "3-day est.",
+    "depositLabel": "Deposit",
+    "heldUntil": "Held for you until {{time}}",
+    "flowHead": "Bed Flow · {{n}} beds that pass every rule for {{cls}}",
+    "noBeds": "No free bed passes every rule right now",
+    "chosen": "Chosen · held",
+    "readyNow": "Ready now",
+    "consentLang": "Consent language",
+    "signedBy": "Signed by",
+    "signerName": "Name",
+    "relation": "Relation",
+    "repReason": "Why the patient cannot sign",
+    "paperSigned": "Paper consent signed",
+    "witness": "Witness",
+    "consentLater": "Tablet signature and OTP to the attendant come later; the paper form is the record today.",
+    "admitAndPrint": "Admit and print band",
+    "fix": "Fix",
+    "checklist": "Before admitting",
+    "done": "done",
+    "todoWord": "to do",
+    "fromAdvice": "From OPD advice",
+    "noAdvice": "No OPD advice to admit in the last 48 hours — pick the patient and the advising doctor.",
+    "change": "Change",
+    "raise": "Raise admission request",
+    "bed": "Bed",
+    "step": {
+      "advice": "Admission advice",
+      "payer": "Payer and room class",
+      "bed": "Bed",
+      "consent": "Consent",
+      "deposit": "Deposit"
+    },
+    "check": {
+      "advice": "Advice",
+      "payer": "Payer and class",
+      "bed": "Bed held",
+      "consent": "Consent",
+      "deposit": "Deposit or exemption",
+      "icu": "Intensivist approval"
+    },
+    "payerKind": {
+      "cash": "Cash",
+      "insurance_cashless": "Cashless",
+      "insurance_reimbursement": "Reimbursement",
+      "pmjay": "PM-JAY",
+      "state_scheme": "State scheme",
+      "corporate": "Corporate"
+    },
+    "payerRel": {
+      "self": "Self",
+      "relative": "Relative",
+      "employer": "Employer",
+      "other": "Other"
+    },
+    "signer": {
+      "patient": "Patient",
+      "guardian": "Guardian",
+      "representative": "Representative"
+    },
+    "tender": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    },
+    "iso": {
+      "none": "None",
+      "contact": "Contact",
+      "droplet": "Droplet",
+      "airborne": "Airborne"
+    },
+    "source": {
+      "opd_advice": "OPD advice",
+      "ot_daycare_conversion": "Day-care conversion",
+      "er": "Emergency",
+      "direct": "Direct",
+      "transfer_in": "Transfer in",
+      "downtime": "Downtime paper"
+    },
+    "state": {
+      "requested": "requested",
+      "reserved": "bed held",
+      "admitted": "admitted",
+      "transferring": "transferring",
+      "fit_declared": "fit declared",
+      "discharging": "discharging",
+      "discharged": "discharged",
+      "lama": "LAMA",
+      "absconded": "absconded",
+      "deceased": "deceased",
+      "transferred_out": "transferred out",
+      "cancelled": "cancelled"
+    },
+    "basis": {
+      "medical_class_days": "3 days of class charges",
+      "icu_class_days": "3 ICU days",
+      "surgery_estimate_share": "50 % of the procedure estimate",
+      "scheme_zero": "Scheme: nothing to pay",
+      "cashless_non_payables": "For items the insurer does not pay",
+      "downtime_backfill": "Downtime: paper deposit to check",
+      "emergency_exempt": "No deposit before stabilisation"
+    },
+    "exempt": {
+      "scheme": "Exempt: scheme patient",
+      "emergency_not_stabilised": "Exempt: emergency, not yet stabilised",
+      "cashless_no_non_payables": "Exempt: no non-payables deposit for this class"
+    },
+    "deposit": {
+      "required": "Deposit",
+      "paid": "paid",
+      "receipt": "receipt",
+      "tender": "Tender",
+      "ref": "Reference",
+      "payer": "Paid by",
+      "take": "Take {{amount}}",
+      "planFirst": "Pick payer and class first",
+      "takeFirst": "Take the deposit first"
+    },
+    "icu": {
+      "needed": "ICU needs an intensivist's approval",
+      "waiting": "Approval asked · waiting for the intensivist",
+      "granted": "Intensivist approved",
+      "request": "Request approval",
+      "note": "ICU admission requested at the admission desk"
+    },
+    "after": {
+      "title": "After admission",
+      "admitted": "Admitted at {{time}} · {{bed}}",
+      "ipNo": "IP number {{no}}",
+      "bed": "Bed {{bed}} occupied",
+      "band": "Band printed · allergy written on the band",
+      "deposit": "Deposit {{amount}} on account",
+      "later": "Ward nurse, porter and family message come with their lanes"
+    },
+    "todo": {
+      "consent": "Consent to take",
+      "payer": "Payer to record",
+      "band": "Band to print",
+      "stabilised": "Stabilisation to mark (then the deposit)",
+      "diagnosis": "Diagnosis to add"
+    },
+    "band": {
+      "title": "Wristband",
+      "print": "Print band"
+    },
+    "estimate": {
+      "title": "Estimate",
+      "head": "Estimate · {{cls}} · {{days}} days",
+      "room": "Room rent · 3 days",
+      "nursing": "Nursing · 3 days",
+      "visit": "Consultant visit · 3 days",
+      "total": "Total",
+      "none": "Pick a class to see the estimate",
+      "foot": "From the active tariff. Medicines, tests and procedures are billed as they happen."
+    },
+    "emergency": {
+      "open": "Emergency admit",
+      "title": "Emergency admit — one tap",
+      "sub": "Patient and bed only. No deposit before stabilisation; consent, payer, band and diagnosis catch up.",
+      "admit": "Admit now"
+    },
+    "downtime": {
+      "open": "Downtime paper",
+      "title": "Enter a downtime admission",
+      "sub": "The paper form's serial and its own times. A serial is entered once.",
+      "serial": "Paper serial",
+      "requestedAt": "Requested at (paper)",
+      "admittedAt": "Admitted at (paper)",
+      "save": "Enter admission"
     }
   }
 }

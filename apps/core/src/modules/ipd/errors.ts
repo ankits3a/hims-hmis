@@ -11,7 +11,15 @@ export type IpdErrorCode =
   /** `apply` by an actor who does not hold the bed-layout permission; nothing was written. */
   | "bed_layout_forbidden"
   /** E1.1 — a bed act by an actor who does not hold its permission (the route guard's check, re-made inside). */
-  | "ipd_forbidden";
+  | "ipd_forbidden"
+  /** E1.2 — the admission workflow definition is not active yet (a go-live governance step activates it). */
+  | "admission_workflow_inactive"
+  /** E1.2 — a tender the billing ledger does not take (it takes cash, UPI and card). */
+  | "tender_not_supported"
+  /** E1.2 — the approval type an act needs is not registered yet (a go-live step registers it). */
+  | "approval_type_missing"
+  /** E1.2 review — a non-covered line asked without its amount. */
+  | "non_covered_amount_required";
 
 export class IpdError extends Error {
   constructor(

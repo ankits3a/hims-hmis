@@ -30,6 +30,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/seat/figures` | `(redirect)` |
 | `/formulary/admin` | `(redirect)` |
 | `/housekeeping` | `apps/web/src/screens/housekeeping-board` |
+| `/ipd/admit` | `apps/web/src/screens/ipd-admit` |
 | `/ipd/beds` | `apps/web/src/screens/ipd-beds` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |

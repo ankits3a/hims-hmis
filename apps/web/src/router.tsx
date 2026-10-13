@@ -31,6 +31,7 @@ import { HousekeepingBoard } from "./screens/housekeeping-board";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { IpdBeds } from "./screens/ipd-beds";
+import { IpdAdmit } from "./screens/ipd-admit";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -351,6 +352,8 @@ const NAV: readonly NavEntry[] = [
    */
   // E1.1 (#718) — the Beds capacity board; path and permission match `ipdManifest.menu`.
   { to: "/ipd/beds", label: "nav.ipdBeds", permission: "ipd.beds.view", group: "wards" },
+  // E1.2 (#719) — the Admit sheet; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -765,6 +768,16 @@ const ipdBedsRoute = createRoute({
     wall: search.wall === "1" || search.wall === 1 || search.wall === true ? "1" : undefined,
   }),
   component: IpdBeds,
+});
+
+/** E1.2 (#719) — Admit, one flowing sheet (spec §4.9 B). `?admission=<id>` opens a request (the Beds board links it). */
+const ipdAdmitRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/admit",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdAdmit,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1886,7 +1899,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
