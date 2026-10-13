@@ -47,6 +47,21 @@ Source: `apps/core/src/modules/ipd/`
 - `errors.ts`
   - `class IpdError`
   - types: `IpdErrorCode`
+- `goals/goal-events.ts`
+  - `BED_AVAILABLE: BedStatus`
+  - `BED_CLEANING: BedStatus`
+  - `EV`
+  - `EWS_ACK_KINDS: readonly IpdActorKind[]`
+  - `IPD_ACT_EVENTS: readonly string[]`
+  - `IPD_GOAL_CLEAN_REASONS`
+  - `IPD_GOAL_EVENTS`
+  - `IPD_GOAL_TEMPLATES`
+  - `STAY_END_EVENTS: readonly string[]`
+  - `SYSTEM_PROVENANCE`
+  - `TIMED_INTENTS`
+  - `intentEvent(intent: IpdIntentName, contains?: string): string`
+- `goals/goal-queries.ts`
+  - `IPD_GOAL_QUERIES: Record<string, GoalQuery>`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
