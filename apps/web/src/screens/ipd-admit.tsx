@@ -12,7 +12,7 @@ import { searchPatients } from "../lib/patients-api";
 import type { WirePatientHit } from "../lib/patients-api";
 import { getBedBoard, refusalOf, reserveBed } from "../lib/ipd-beds-api";
 import {
-  admitPatient, askApproval, backfillDowntime, emergencyAdmit, getAdmission, getBedProposals, getQuotes, listAdmissions,
+  admitPatient, askApproval, askEmergencyIcuApproval, backfillDowntime, emergencyAdmit, getAdmission, getBedProposals, getQuotes, listAdmissions,
   listAdvice, listConsultants, planAdmission, printBand, requestAdmission, takeDeposit,
 } from "../lib/ipd-admit-api";
 import type { BandResult, Consultant, ConsentInput, DepositChoice } from "../lib/ipd-admit-api";
@@ -580,7 +580,9 @@ function EmergencyLane({ onDone }: { onDone: (admissionId: string) => void }): R
   const [bed, setBed] = useState("");
   const [mlc, setMlc] = useState(false);
   const [error, setError] = useState<Refusal | null>(null);
+  const [icuAsk, setIcuAsk] = useState<{ approvalId: string; admissionId: string } | null>(null);
   useEffect(() => { listConsultants().then(setConsultants, () => setConsultants([])); }, []);
+  const needsIcu = error !== null && "code" in error && error.code === "icu_needs_intensivist";
   return (
     <section aria-label={t("ipdAdmit.emergency.title")} className="ipda-card ipda-form ipda-er">
       <h2>{t("ipdAdmit.emergency.title")}</h2>
@@ -605,10 +607,16 @@ function EmergencyLane({ onDone }: { onDone: (admissionId: string) => void }): R
         <label className="ipda-tick"><input type="checkbox" checked={mlc} onChange={(e) => setMlc(e.target.checked)} />MLC</label>
       </div>
       <RefusalNote r={error} />
+      {needsIcu && icuAsk === null && patient !== null ? (
+        <button type="button" className="ipda-btn" onClick={() => {
+          askEmergencyIcuApproval(patient.id, t("ipdAdmit.icu.note")).then(setIcuAsk, (e) => setError(refusalText(e)));
+        }}>{t("ipdAdmit.icu.request")}</button>
+      ) : null}
+      {icuAsk !== null ? <span className="ipda-note warn">{t("ipdAdmit.icu.waiting")}</span> : null}
       <button type="button" className="ipda-admit danger" disabled={patient === null || bed === "" || consultantId === ""} onClick={() => {
         if (patient === null) return;
         setError(null);
-        emergencyAdmit({ patientId: patient.id, bedId: bed, consultantId, isolation: "none", mlc })
+        emergencyAdmit({ patientId: patient.id, bedId: bed, consultantId, isolation: "none", mlc, ...(icuAsk ? { admissionId: icuAsk.admissionId, intensivistApprovalId: icuAsk.approvalId } : {}) })
           .then((r) => onDone(r.admissionId), (e) => setError(refusalText(e)));
       }}>{t("ipdAdmit.emergency.admit")}</button>
     </section>

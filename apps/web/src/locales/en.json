@@ -15916,6 +15916,7 @@
       "surgery_estimate_share": "50 % of the procedure estimate",
       "scheme_zero": "Scheme: nothing to pay",
       "cashless_non_payables": "For items the insurer does not pay",
+      "downtime_backfill": "Downtime: paper deposit to check",
       "emergency_exempt": "No deposit before stabilisation"
     },
     "exempt": {

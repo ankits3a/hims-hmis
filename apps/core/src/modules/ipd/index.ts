@@ -48,12 +48,15 @@ export {
 export {
   admit, backfillDowntime, cancelAdmission, emergencyAdmit, incompleteOf, recordConsent, recordStabilised, requestAdmission,
 } from "./admissions";
-export { IPD_DEPOSIT_COMPONENTS, IPD_DEPOSIT_POLICY, ipdNonPayableDepositCode, planAdmission, quoteDeposit, takeDeposit } from "./deposit";
+export {
+  IPD_DEPOSIT_COMPONENTS, IPD_DEPOSIT_POLICY, ipdNonPayableDepositCode, ipdSchemeReceiptGuard, planAdmission, quoteDeposit,
+  registerIpdReceiptGuard, takeDeposit,
+} from "./deposit";
 export type { DepositQuote, DepositQuoteArgs } from "./deposit";
 export { allergyWords, printBand, reprintBand } from "./bands";
 export { recordPayerAuth } from "./payer";
 export {
-  askApproval, bedProposalsFor, consultantChoices, listDeskAdmissions, quotesFor, recentAdvice, viewAdmission,
+  askApproval, askEmergencyIcuApproval, bedProposalsFor, pendingDepositChecks, consultantChoices, listDeskAdmissions, quotesFor, recentAdvice, viewAdmission,
 } from "./admission-read";
 export { IPD_APPROVAL_TYPES, IPD_APPROVAL_TYPE_KEYS, ipdApprovalDefinition, registerIpdApprovalTypes } from "./approval-types";
 export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";

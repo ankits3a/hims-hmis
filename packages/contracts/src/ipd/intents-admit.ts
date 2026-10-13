@@ -116,7 +116,7 @@ export const cancelAdmission = ipdIntent({
     note: IpdNoteSchema.optional(),
   }),
   output: z.strictObject({ admissionId: IpdIdSchema, state: z.literal("cancelled"), releasedBedId: IpdIdSchema.nullable() }),
-  refusals: ["admission_not_found", "admission_wrong_state", "state_changed"],
+  refusals: ["admission_not_found", "admission_wrong_state", "state_changed", "deposit_not_refunded"],
   actors: ["desk", "doctor", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",
@@ -310,7 +310,7 @@ export const recordPayerAuth = ipdIntent({
     /** Pre-auth approved after admission covers from the admission date (insurer practice). */
     coversFrom: IpdInstantSchema.nullable(),
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", "payer_change_needs_counselling", "auth_out_of_order"],
+  refusals: ["admission_not_found", "admission_wrong_state", "payer_change_needs_counselling", "auth_out_of_order", "rate_missing"],
   actors: ["desk", "billing"],
   copilotProposable: false,
   agentTier: "none",
@@ -424,6 +424,8 @@ export type IpdPayerKind = z.infer<typeof IpdPayerKindSchema>;
 /** How the deposit was decided (decision 0072 answer 3). Every basis but the zero ones reads the active tariff. */
 export const IPD_DEPOSIT_BASES = [
   "medical_class_days", "icu_class_days", "surgery_estimate_share", "scheme_zero", "cashless_non_payables", "emergency_exempt",
+  /** Review #7 (DECIDED): a downtime admission's deposit was settled on paper; the bill desk checks it. */
+  "downtime_backfill",
 ] as const;
 
 /**
@@ -448,8 +450,11 @@ export const planAdmission = ipdIntent({
   output: z.strictObject({
     admissionId: IpdIdSchema,
     requestedClass: IpdBedClassSchema,
-    /** Three days of the class's daily charges from the active tariff (the estimate shown beside the deposit). */
-    estimatePaise: IpdPaiseSchema,
+    /**
+     * Three days of the class's daily charges from the active tariff (the estimate shown beside the deposit); null
+     * when the class carries no daily rates (an emergency bay) and the deposit does not need them.
+     */
+    estimatePaise: IpdPaiseSchema.nullable(),
     depositRequiredPaise: IpdPaiseSchema,
     depositBasis: z.enum(IPD_DEPOSIT_BASES),
   }),
@@ -480,7 +485,14 @@ export const emergencyAdmit = ipdIntent({
     provisionalDiagnosis: IpdNoteSchema.optional(),
     mlc: z.boolean(),
     placeAs: z.enum(["male", "female"]).optional(),
+    /**
+     * Review #10: an ICU bed's approval is scoped to the ADMISSION. The desk asks first (the server mints the admission
+     * id the approval names) and sends that id here with the approval; the admission is created under it.
+     */
+    admissionId: IpdIdSchema.optional(),
     intensivistApprovalId: IpdIdSchema.optional(),
+  }).refine((b) => b.intensivistApprovalId === undefined || b.admissionId !== undefined, {
+    message: "an ICU approval names the admission it was asked for", path: ["admissionId"],
   }),
   output: z.strictObject({
     admissionId: IpdIdSchema,

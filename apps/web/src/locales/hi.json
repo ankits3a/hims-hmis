@@ -15916,6 +15916,7 @@
       "surgery_estimate_share": "प्रक्रिया अनुमान का 50 %",
       "scheme_zero": "योजना: कुछ नहीं देना",
       "cashless_non_payables": "बीमा जो नहीं देता उसके लिए",
+      "downtime_backfill": "डाउनटाइम: कागज़ी जमा जाँचनी है",
       "emergency_exempt": "स्थिर होने से पहले कोई जमा नहीं"
     },
     "exempt": {

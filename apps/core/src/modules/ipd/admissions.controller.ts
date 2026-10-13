@@ -6,7 +6,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { ApprovalError } from "../../kernel/approvals/types";
 import { BillingError, billingHttpStatus } from "../billing";
 import {
-  askApproval, bedProposalsFor, consultantChoices, listDeskAdmissions, quotesFor, recentAdvice, viewAdmission,
+  askApproval, askEmergencyIcuApproval, bedProposalsFor, consultantChoices, listDeskAdmissions, pendingDepositChecks, quotesFor,
+  recentAdvice, viewAdmission,
 } from "./admission-read";
 import {
   admit, backfillDowntime, cancelAdmission, emergencyAdmit, recordConsent, recordStabilised, requestAdmission,
@@ -50,7 +51,9 @@ const approvalBody = z.strictObject({
   kind: z.enum(IPD_APPROVAL_KINDS),
   note: z.string().trim().min(1).max(500),
   amountPaise: z.number().int().positive().optional(),
-});
+}).refine((b) => b.kind !== "non_covered" || b.amountPaise !== undefined, { message: "a non-covered line names its amount", path: ["amountPaise"] });
+
+const emergencyApprovalBody = z.strictObject({ patientId: z.ulid(), note: z.string().trim().min(1).max(500) });
 
 @Controller("ipd/admissions")
 export class IpdAdmissionsController {
@@ -72,6 +75,18 @@ export class IpdAdmissionsController {
   @RequirePermission(IPD_ADMIT_REQUEST, "hospital")
   async consultants(@CurrentActor() actor: Actor): Promise<unknown> {
     try { return { items: await consultantChoices(this.db, actor) }; } catch (e) { toHttp(e); }
+  }
+
+  @Get("deposit-checks")
+  @RequirePermission(IPD_ADMIT, "hospital")
+  async depositChecks(@CurrentActor() actor: Actor): Promise<unknown> {
+    try { return { items: await pendingDepositChecks(this.db, actor) }; } catch (e) { toHttp(e); }
+  }
+
+  @Post("emergency/icu-approval")
+  @RequirePermission(IPD_ADMIT, "hospital")
+  async emergencyIcuApproval(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await askEmergencyIcuApproval(this.db, actor, emergencyApprovalBody.parse(body)); } catch (e) { toHttp(e); }
   }
 
   @Get(":id")

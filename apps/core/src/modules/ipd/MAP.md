@@ -124,16 +124,27 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `detail`) and enforced by the partial unique index `ipd_admissions_open_patient_ux`; a lost race maps to the same
   refusal (the insert runs in a savepoint).
 - `admit`, `emergencyAdmit` and `backfillDowntime` place the patient through `assignBedIn` INSIDE their own
-  transaction (bed rules re-checked under the bed lock). Lock order: the beds lane's advisory admission lock, room, bed,
-  then the `ipd_admissions` row.
+  transaction (bed rules re-checked under the bed lock); `admit` judges plan, ICU approval and deposit on the LOCKED
+  row. LOCK ORDER: every act on an admission first takes its advisory lock (`admissionAdvisoryLock`, shared with the
+  bed intents and taken by `lockAdmission`); then placing acts take room → bed → admission row, `cancelAdmission`
+  takes the row → the beds of its holds, money acts take the row → billing's rows.
 - Money: every rupee comes from the active tariff (`IPD_<ROOM|NURSING|VISIT>_<CLASS>`; cashless non-payables
   `IPD_NONPAY_DEPOSIT_<CLASS>`). A missing component refuses `rate_missing` with `detail.class`, `detail.missing`,
-  `detail.serviceCodes`. Deposit = 3 class days (ICU 3 ICU days), surgery 50 % of the typed estimate rounded up to the
-  rupee, PM-JAY/state scheme ₹0, emergency before stabilisation ₹0. Doctor-facing outputs carry no money (0058).
+  `detail.serviceCodes` — only when the DEPOSIT needs the missing rate (a ₹0 basis stands, estimate shown as n/a).
+  Deposit = 3 class days (ICU 3 ICU days), surgery 50 % of the typed estimate, PM-JAY/state scheme ₹0, emergency
+  before stabilisation ₹0, downtime back-fill `downtime_backfill` (paper; `deposit_check_pending` until the bill desk
+  takes or checks it — `GET /ipd/admissions/deposit-checks`). DECIDED: the surgery share rounds UP to the whole rupee
+  (deposits are collected in whole rupees). A payer change re-quotes the deposit. Doctor outputs carry no money (0058).
+- `takeDeposit`: the billing receipt (`recordReceiptInTx`) and the link commit in ONE transaction; the intent's
+  idempotency key is a unique column on the link, so a retry finds the committed pair and never takes money twice.
+- Scheme cap: Σ GRANTED non-covered approvals (each names its amount) ≥ Σ every receipt of the patient since the
+  request (entered-in-error excepted), checked under the admission row lock — on the desk's deposit AND on billing's
+  generic receipt route via the receipt guard (`registerIpdReceiptGuard`, registered by `IpdModule`; billing's seam
+  `registerReceiptGuard`). A cancel with a deposit still on account refuses `deposit_not_refunded`.
 - `admit` needs a receipt linked to the admission covering `depositRequiredPaise`, or an exemption matching the plan's
   basis (scheme, emergency, cashless at ₹0) or a granted `ipd_deposit_waiver` approval.
-- ICU class (icu, nicu, picu — HDU is not ICU) needs a GRANTED `ipd_icu_admission` approval on the admission (the
-  emergency lane: on the patient). Approvers: medical_superintendent or an `intensivist` role holder.
+- ICU class (icu, nicu, picu — HDU is not ICU) needs a GRANTED `ipd_icu_admission` approval on the admission. The
+  emergency lane asks first (`askEmergencyIcuApproval` mints the admission id the approval names) and admits under it. Approvers: medical_superintendent or an `intensivist` role holder.
 - A scheme patient's receipt needs a granted `ipd_non_covered_line` approval on the admission, and at most its amount.
 - Band QR/barcode carry the band SERIAL (`<IP no>-<n>`); one live band per admission (partial unique); a reprint voids
   the old one with its reason. Allergies print in words; "Allergy: none recorded" when none.
@@ -167,8 +178,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E1.2) GO-LIVE STEPS, not seeds: the `ipd_admission` workflow definition must be drafted, approved (owner + MS) and
   activated, and `registerIpdApprovalTypes(db, activator)` run. Until then every request answers
   `admission_workflow_inactive` (503) and an approval request `approval_type_missing`.
-- (E1.2) `takeDeposit` writes the billing receipt (its own transaction) and then the admission link: if the link
-  write fails the money is still on the patient's advance; retrying the same idempotency key links it.
 - (E1.2) The bed intents still accept a request id with NO admission row (the approved E1.1 acceptance tests use
   one); with a real admission they check the caller's patient and need against the row (`state_changed`). So
   `ipd_bed_reservations.admission_id` / `ipd_bed_stays.admission_id` still have no FK to `ipd_admissions`.

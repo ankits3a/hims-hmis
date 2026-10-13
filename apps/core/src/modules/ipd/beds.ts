@@ -10,7 +10,7 @@ import {
 import { withIdempotency } from "../billing";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema } from "./bed-attributes";
-import { linkPlacement, linkReservation, linkReservationEnded } from "./admission-core";
+import { admissionAdvisoryLock, linkPlacement, linkReservation, linkReservationEnded } from "./admission-core";
 import {
   bedAssigned, bedBlocked, bedCleaned, bedIncumbentReleased, bedOccupied, bedReservationReleased, bedReserved,
   bedUnblocked,
@@ -149,8 +149,9 @@ async function roomGender(tx: Tx, roomId: string | null, bedId: string): Promise
 }
 
 /** Serialises every act on one admission (one bed per admission), taken before the room and bed locks. */
+/** The admission's advisory lock (one definition, `admission-core.ts`, shared with the admission intents). */
 async function lockAdmission(tx: Tx, admissionId: string): Promise<void> {
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd_admission:${admissionId}`}))`);
+  await admissionAdvisoryLock(tx, admissionId);
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -351,6 +352,8 @@ async function releaseReservationCore(
   return withTx(db, async (tx) => {
     const peek = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, input.reservationId)))[0];
     if (peek === undefined) throw new IpdRefusal("reservation_not_found");
+    // E1.2 lock order: the admission's advisory lock before the bed (cancel takes it, then the row, then the bed).
+    await lockAdmission(tx, peek.admissionId);
     const { row } = await lockBed(tx, peek.bedId);
     const r = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, input.reservationId)).for("update"))[0]!;
     if (r.status !== "active") throw new IpdRefusal("reservation_ended", undefined, { status: r.status });

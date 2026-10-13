@@ -34,8 +34,9 @@ export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceR
  * Reaching around this index into `receipts.ts` would be the §4 violation; widening the index by
  * one export is the sanctioned way, and it exposes nothing `patientBalance` did not already.
  */
-export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise, releaseInvoiceSurplusOnTx } from "./receipts";
-export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
+export { recordReceipt, recordReceiptInTx, registerReceiptGuard, recordCashThresholdBlocked, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise, releaseInvoiceSurplusOnTx } from "./receipts";
+export type { PatientBalance, DueRow, ReceiptRow, AllocationRow, ReceiptGuard } from "./receipts";
+export type { CashThresholdDetail } from "./cash-law";
 export { issueCreditNote, listCreditNotes } from "./credit-notes";
 /** PHARMACY P12 — the leakage triangle's billed leg (read-only). */
 export { creditedInvoiceLineIdsBetween, invoiceLineCredits } from "./credit-notes";

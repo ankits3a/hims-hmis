@@ -5,9 +5,10 @@ import { ipdAdmissions, ipdPayerAuths } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { lockAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
 import { payerAuthRecorded } from "./admission-events";
+import { loadPriceBook, planOf, quoteOrRefuse } from "./deposit";
 import { IpdRefusal } from "./errors";
 import { IPD_PAYER_MANAGE } from "./manifest";
-import type { Actor, IpdIntentName } from "@hmis/contracts";
+import type { Actor, IpdBedClass, IpdIntentName } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db } from "../../kernel/db/client";
 
@@ -30,6 +31,7 @@ export async function recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: 
   const input: Input<"record_payer_auth"> = IPD_INTENTS.record_payer_auth.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_PAYER_MANAGE);
   const at = opts.now ?? new Date();
+  const prices = await loadPriceBook(db, at);
   return onceIpd(db, actor, "record_payer_auth", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const a = await lockAdmission(tx, input.admissionId);
     if (!LIVE.has(a.state)) throw new IpdRefusal("admission_wrong_state");
@@ -63,8 +65,16 @@ export async function recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: 
       counsellingDocumentId: input.counsellingDocumentId ?? null, recordedBy: actor.id, recordedAt: at,
     });
     // The payer of record: set by the initial entry when the plan named none, and moved forward by a payer change.
+    // Review #11: a new payer re-quotes the deposit from the tariff (a scheme drops it to ₹0, cash raises it to the
+    // class days) — the deposit rule never runs on a stale basis. A missing rate refuses here, as at planning.
     if (input.entry === "payer_change" || (input.entry === "initial" && a.payerKind === null)) {
-      await tx.update(ipdAdmissions).set({ payerKind: input.payerKind, updatedAt: at }).where(eq(ipdAdmissions.id, a.id));
+      const q = quoteOrRefuse(prices, {
+        payerKind: input.payerKind, requestedClass: a.requestedClass as IpdBedClass, plan: planOf(a),
+        emergencyUnstabilised: a.source === "er" && a.stabilisedAt === null,
+      });
+      await tx.update(ipdAdmissions).set({
+        payerKind: input.payerKind, estimatePaise: q.estimatePaise, depositRequiredPaise: q.depositPaise, depositBasis: q.basis, updatedAt: at,
+      }).where(eq(ipdAdmissions.id, a.id));
     }
     await appendEvent(tx, payerAuthRecorded.make({
       payload: { admissionId: a.id, authId, entry: input.entry, status: input.status, provenance: provenanceOf(actor) },

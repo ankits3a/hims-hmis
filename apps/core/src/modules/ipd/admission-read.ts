@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
   events, ipdAdmissionDeposits, ipdAdmissions, ipdBands, ipdBedReservations, ipdBedStays, resources,
@@ -13,7 +14,7 @@ import { initialsOf } from "./beds-board";
 import { ageInYears } from "./bed-rules";
 import { proposeBeds } from "./beds";
 import { classQuotes, depositPaidPaise } from "./deposit";
-import { IpdRefusal } from "./errors";
+import { IpdError, IpdRefusal } from "./errors";
 import { IPD_ADMIT, IPD_ADMIT_REQUEST } from "./manifest";
 import type {
   Actor, IpdAdmissionView, IpdAdvice, IpdApprovalKind, IpdBedClass, IpdBedProposal, IpdClassQuote,
@@ -77,7 +78,7 @@ async function toViews(db: Db, actor: Actor, rows: AdmissionRow[], at: Date): Pr
       requestedClass: a.requestedClass as IpdBedClass, isolation: a.isolation as IpdAdmissionView["isolation"], icu: a.icu,
       requestedAt: a.requestedAt.toISOString(), plannedFor: a.plannedFor?.toISOString() ?? null, expiresAt: a.expiresAt.toISOString(),
       payerKind: a.payerKind, coverageId: a.coverageId, estimatePaise: a.estimatePaise, depositRequiredPaise: a.depositRequiredPaise,
-      depositBasis: a.depositBasis, depositPaidPaise: await depositPaidPaise(db, a.id),
+      depositBasis: a.depositBasis, depositPaidPaise: await depositPaidPaise(db, a.id), depositCheckPending: a.depositCheckPending,
       deposits: deps.filter((d) => d.admissionId === a.id).map((d) => ({
         receiptId: d.receiptId, receiptNo: d.receiptNo, amountPaise: d.amountPaise, takenAt: d.takenAt.toISOString(),
       })),
@@ -167,10 +168,34 @@ export async function askApproval(
   await requireIpdPermission(db, actor, IPD_ADMIT);
   const a = await readAdmission(db, admissionId);
   if (body.kind === "icu" && !a.icu) throw new IpdRefusal("admission_wrong_state", "Not an ICU admission");
+  // Review RED 2: a non-covered line names its amount — the cap every receipt is held to.
+  if (body.kind === "non_covered" && body.amountPaise === undefined) {
+    throw new IpdError("non_covered_amount_required", "a non-covered line must name its amount in paise");
+  }
   return withTx(db, (tx) => requestIpdApproval(tx, actor, {
     kind: body.kind, subjectId: a.id, patientId: a.patientId, note: body.note,
     ...(body.amountPaise === undefined ? {} : { amountPaise: body.amountPaise }),
   }));
+}
+
+/**
+ * Review #10 — the emergency lane's ICU approval, asked BEFORE the admission exists: the server mints the admission id
+ * the approval names, and `emergencyAdmit` creates the admission under that id. Scoped to one admission, never to the
+ * patient at large.
+ */
+export async function askEmergencyIcuApproval(db: Db, actor: Actor, body: { patientId: string; note: string }): Promise<{ approvalId: string; admissionId: string }> {
+  await requireIpdPermission(db, actor, IPD_ADMIT);
+  const admissionId = newId();
+  const { approvalId } = await withTx(db, (tx) => requestIpdApproval(tx, actor, { kind: "icu", subjectId: admissionId, patientId: body.patientId, note: body.note }));
+  return { approvalId, admissionId };
+}
+
+/** Review #7 — the bill desk's list: downtime admissions whose paper deposit is not yet checked. */
+export async function pendingDepositChecks(db: Db, actor: Actor, at: Date = new Date()): Promise<IpdAdmissionView[]> {
+  await requireIpdPermission(db, actor, IPD_ADMIT);
+  const rows = await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.depositCheckPending, true))
+    .orderBy(asc(ipdAdmissions.requestedAt)).limit(200);
+  return toViews(db, actor, rows, at);
 }
 
 export { IPD_APPROVAL_SUBJECT };

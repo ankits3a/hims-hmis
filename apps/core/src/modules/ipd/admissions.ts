@@ -5,6 +5,7 @@ import { ipdAdmissionDeposits, ipdAdmissions, users } from "../../kernel/db/sche
 import { appendEvent } from "../../kernel/events/append";
 import { startInstance } from "../../kernel/workflow/instances";
 import { rescheduleBudget } from "../../kernel/workflow/timers";
+import { advanceOf } from "../billing";
 import { getEncounter } from "../opd";
 import { getPatient } from "../patients";
 import { ADMISSION_WORKFLOW_DEF_KEY, requestedBudgetMinutes } from "./admission-workflow";
@@ -42,6 +43,7 @@ type Output<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["output"]
 type Opts = { now?: Date };
 
 const DAY_MS = 86_400_000;
+const SCHEME: ReadonlySet<string> = new Set(["pmjay", "state_scheme"]);
 const ENDED_STATES = ["discharged", "lama", "absconded", "deceased", "transferred_out"];
 const IST_OFFSET_MS = 330 * 60_000;
 const istDay = (d: Date): string => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
@@ -70,7 +72,7 @@ function consentRecord(c: IpdConsent, actor: Actor): Record<string, unknown> {
 }
 
 /** ICU needs the intensivist's GRANTED approval on this admission (or, for the emergency lane, on the patient). */
-async function requireIcuApproval(db: Db, approvalId: string | undefined, subjects: string[]): Promise<string> {
+async function requireIcuApproval(db: Db | Tx, approvalId: string | undefined, subjects: string[]): Promise<string> {
   const ok = await grantedApproval(db, approvalId, "icu", subjects);
   if (ok === null) {
     throw new IpdRefusal("icu_needs_intensivist", undefined, { approvalId: approvalId ?? null, action: "request_approval" });
@@ -170,9 +172,15 @@ export async function cancelAdmission(db: Db, actor: Actor, raw: unknown, opts: 
     const peek = await readAdmission(db, input.admissionId);
     if (peek.state !== "requested" && peek.state !== "reserved") throw new IpdRefusal("admission_wrong_state", undefined, { state: peek.state });
     return withTx(db, async (tx) => {
-      const releasedBedId = await endAdmissionHolds(tx, actor, peek.id, at);
+      // Review #8: the admission (advisory lock, then the row) first, then the beds of its holds.
       const a = await lockAdmission(tx, peek.id);
       if (a.state !== "requested" && a.state !== "reserved") throw new IpdRefusal("state_changed");
+      // Review #9: money taken for this admission and still on the patient's account is refunded first (billing's
+      // refund route); the cancel never strands a deposit. DECIDED: what is still owed back = min(Σ deposits, advance).
+      const paid = await depositPaidPaise(tx, a.id);
+      const onAccount = paid > 0 ? Math.min(paid, await advanceOf(tx, a.patientId)) : 0;
+      if (onAccount > 0) throw new IpdRefusal("deposit_not_refunded", undefined, { depositPaise: paid, onAccountPaise: onAccount });
+      const releasedBedId = await endAdmissionHolds(tx, actor, a.id, at);
       await moveAdmission(tx, actor, a, "cancelled", at, { cancelReason: input.reason, endedAt: at, endedBy: actor.id }, input.note);
       await appendEvent(tx, admissionCancelled.make({
         payload: { admissionId: a.id, reason: input.reason, releasedBedId, provenance: provenanceOf(actor) },
@@ -192,7 +200,7 @@ const EXEMPTION_BASIS: Record<string, string> = {
 };
 
 /** The deposit rule at the moment of admission: a receipt that covers what the plan requires, or a valid exemption. */
-async function checkDeposit(db: Db, a: AdmissionRow, deposit: Input<"admit">["deposit"]): Promise<{ exemption: string | null; approvalId: string | null }> {
+async function checkDeposit(db: Db | Tx, a: AdmissionRow, deposit: Input<"admit">["deposit"]): Promise<{ exemption: string | null; approvalId: string | null }> {
   const required = a.depositRequiredPaise ?? 0;
   if ("receiptId" in deposit) {
     const paid = await depositPaidPaise(db, a.id);
@@ -231,15 +239,19 @@ export async function admit(db: Db, actor: Actor, raw: unknown, opts: Opts = {})
     const other = await openAdmissionOf(db, a.patientId, a.id);
     if (other !== undefined) throw alreadyOpen(other);
     if (a.payerKind === null || a.depositRequiredPaise === null) throw new IpdRefusal("plan_missing");
-    const icuApprovalId = a.icu ? await requireIcuApproval(db, input.intensivistApprovalId, [a.id]) : null;
     checkConsent(input.consent);
-    const dep = await checkDeposit(db, a, input.deposit);
     const need = needOf(a);
     const ctx = await placementContext(db, actor, a.patientId, at);
     return withNextRuleValidBeds(db, actor, { bedId: input.bedId, patientId: a.patientId, need, at }, () => withTx(db, async (tx) => {
       await assignBedIn(tx, db, actor, { admissionId: a.id, bedId: input.bedId, patientId: a.patientId, need }, at, ctx, { viaAdmit: true });
       const locked = await lockAdmission(tx, a.id);
-      if (locked.state !== a.state || locked.depositRequiredPaise !== a.depositRequiredPaise) throw new IpdRefusal("state_changed");
+      // Review #5: the plan, the ICU approval and the deposit are judged on the LOCKED row, not the earlier read.
+      if (locked.state !== a.state || locked.requestedClass !== a.requestedClass || locked.isolation !== a.isolation) {
+        throw new IpdRefusal("state_changed");
+      }
+      if (locked.payerKind === null || locked.depositRequiredPaise === null) throw new IpdRefusal("plan_missing");
+      const icuApprovalId = locked.icu ? await requireIcuApproval(tx, input.intensivistApprovalId, [locked.id]) : null;
+      const dep = await checkDeposit(tx, locked, input.deposit);
       const no = await mintAdmissionNo(tx, at);
       await moveAdmission(tx, actor, locked, "admitted", at, {
         admissionYear: no.year, admissionSerial: no.serial, admissionNo: no.admissionNo, admittedAt: at, admittedBy: actor.id,
@@ -284,10 +296,14 @@ export async function emergencyAdmit(db: Db, actor: Actor, raw: unknown, opts: O
     const first = await openAdmissionOf(db, patientId);
     if (first !== undefined) throw alreadyOpen(first);
     const bed = await readBedFacts(db, input.bedId);
-    const icuApprovalId = bed.icu ? await requireIcuApproval(db, input.intensivistApprovalId, [patientId]) : null;
+    const admissionId = input.admissionId ?? newId();
+    if (input.admissionId !== undefined && (await db.select({ id: ipdAdmissions.id }).from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId))).length > 0) {
+      throw new IpdRefusal("admission_already_open", undefined, { admissionId });
+    }
+    // Review #10: the approval names THIS admission (the id the desk asked under), never just the patient.
+    const icuApprovalId = bed.icu ? await requireIcuApproval(db, input.intensivistApprovalId, [admissionId]) : null;
     const need: IpdBedNeed = { requestedClass: bed.class, isolation: input.isolation, icu: bed.icu, ...(input.placeAs ? { placeAs: input.placeAs } : {}) };
     const ctx = await placementContext(db, actor, patientId, at);
-    const admissionId = newId();
     return withNextRuleValidBeds(db, actor, { bedId: input.bedId, patientId, need, at }, () => withTx(db, async (tx) => {
       const instanceId = await startAdmissionInstance(tx, admissionId, patientId, at);
       await insertAdmission(tx, {
@@ -348,7 +364,9 @@ export async function backfillDowntime(db: Db, actor: Actor, raw: unknown, opts:
     checkConsent(input.consent);
     const icu = isIcuClass(input.requestedClass as IpdBedClass);
     const admissionId = newId();
-    const icuApprovalId = icu ? await requireIcuApproval(db, input.intensivistApprovalId, [admissionId, patientId]) : null;
+    // A paper ICU admission's approval is asked before entry; the request names the back-fill's patient (the
+    // admission id does not exist until this act mints it). DECIDED (review #10 applies to the live emergency lane).
+    const icuApprovalId = icu ? await requireIcuApproval(db, input.intensivistApprovalId, [patientId]) : null;
     const need: IpdBedNeed = { requestedClass: input.requestedClass, isolation: input.isolation, icu, ...(input.placeAs ? { placeAs: input.placeAs } : {}) };
     const ctx = await placementContext(db, actor, patientId, admittedAt);
     try {
@@ -360,6 +378,9 @@ export async function backfillDowntime(db: Db, actor: Actor, raw: unknown, opts:
           placeAs: input.placeAs ?? null, provisionalDiagnosis: input.provisionalDiagnosis, mlc: input.mlc, requestedAt,
           expiresAt: new Date(requestedAt.getTime() + DAY_MS), requestedBy: actor.id, payerKind: input.payerKind,
           downtimeSerial: serial, paperReceiptNo: input.paperReceiptNo ?? null, icuApprovalId, updatedAt: now,
+          // Review #7 (DECIDED): the deposit was settled on paper; the bill desk checks it (a scheme patient owes none).
+          depositBasis: "downtime_backfill", depositRequiredPaise: 0,
+          depositCheckPending: !SCHEME.has(input.payerKind),
         });
         const provenance = provenanceOf(actor);
         await appendEvent(tx, admissionRequested.make({

@@ -21,9 +21,11 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_ADMISSION_BOARD_EVENT_NAMES`
 - `admission-read.ts`
   - `askApproval(db: Db, actor: Actor, admissionId: string, body: { kind: IpdApprovalKind; note: string; amountPaise?: number }): Promise<{ appr…`
+  - `askEmergencyIcuApproval(db: Db, actor: Actor, body: { patientId: string; note: string }): Promise<{ approvalId: string; admissionId: string…`
   - `bedProposalsFor(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdBedProposal[]>`
   - `consultantChoices(db: Db, actor: Actor): Promise<{ userId: string; name: string; department: string | null }[]>`
   - `listDeskAdmissions(db: Db, actor: Actor, at: Date = new Date()): Promise<IpdAdmissionView[]>`
+  - `pendingDepositChecks(db: Db, actor: Actor, at: Date = new Date()): Promise<IpdAdmissionView[]>`
   - `quotesFor(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdClassQuote[]>`
   - `recentAdvice(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdAdvice[]>`
   - `viewAdmission(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdAdmissionView>`
@@ -107,9 +109,11 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_DEPOSIT_COMPONENTS`
   - `IPD_DEPOSIT_POLICY`
   - `ipdNonPayableDepositCode(cls: IpdBedClass): string`
+  - `ipdSchemeReceiptGuard(tx: Tx, ctx: { patientId: string; totalPaise: number; purpose: string | null }): Promise<void>`
   - `planAdmission(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"plan_admission">>`
   - `quoteDeposit(prices: PriceBook, args: DepositQuoteArgs): DepositQuote`
-  - `takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"take_deposit">>`
+  - `registerIpdReceiptGuard(): () => void`
+  - `takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<DepositOut>`
   - types: `DepositQuote`, `DepositQuoteArgs`
 - `errors.ts`
   - `class IpdError`
@@ -157,9 +161,9 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (27)
+## HTTP routes (29)
 
-- `admissions.controller.ts` — 19: `/ipd/admissions`
+- `admissions.controller.ts` — 21: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

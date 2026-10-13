@@ -169,6 +169,8 @@ export const ipdAdmissions = pgTable(
     downtimeSerial: text("downtime_serial"),
     /** Downtime: the paper deposit receipt's number, when the paper form carried one. */
     paperReceiptNo: text("paper_receipt_no"),
+    /** Downtime back-fill: the deposit was taken (or not) on paper; the bill desk lists these until checked. */
+    depositCheckPending: boolean("deposit_check_pending").notNull().default(false),
     cancelReason: text("cancel_reason"),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     endedBy: text("ended_by"),
@@ -231,11 +233,14 @@ export const ipdAdmissionDeposits = pgTable(
     payerRelation: text("payer_relation").notNull(),
     payerPhone: text("payer_phone"),
     nonCoveredApprovalId: text("non_covered_approval_id"),
+    /** The intent's idempotency key, committed WITH the receipt: a retry finds this row and never takes money twice. */
+    idempotencyKey: text("idempotency_key").notNull(),
     takenBy: text("taken_by").notNull(),
     takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
   },
   (t) => [
     uniqueIndex("ipd_admission_deposits_receipt_ux").on(t.receiptId),
+    uniqueIndex("ipd_admission_deposits_key_ux").on(t.takenBy, t.idempotencyKey),
     index("ipd_admission_deposits_admission_idx").on(t.admissionId),
     check("ipd_admission_deposits_amount_ck", sql`${t.amountPaise} > 0`),
   ],

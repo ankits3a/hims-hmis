@@ -12,8 +12,15 @@ import type { Db, Tx } from "../../kernel/db/client";
 /**
  * E1.2 (#719) — THE ADMISSION ROW'S SHARED HELPERS: lock, move (workflow instance and mirror together), the IP number,
  * and the links the bed intents call so a hold or a placement on a real admission keeps the admission honest.
- * Lock order everywhere: the bed's room, the bed, THEN the admission row (the bed intents' order, extended).
+ * LOCK ORDER (review #8): every act on an admission first takes that admission's transaction-scoped ADVISORY lock
+ * (`admissionAdvisoryLock` — the bed intents take the same one), which serialises all acts on one admission. After it:
+ * the placing acts take room → bed → admission row (`admit`, the emergency lane, the back-fill); `cancelAdmission`
+ * takes the admission row and then the beds of its holds; the money acts take the admission row and then billing's
+ * rows. With the advisory lock first, two acts on one admission never interleave, so these orders cannot cycle.
  */
+export async function admissionAdvisoryLock(tx: Tx, admissionId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd_admission:${admissionId}`}))`);
+}
 
 export type AdmissionRow = typeof ipdAdmissions.$inferSelect;
 
@@ -54,6 +61,7 @@ export function needOf(a: Pick<AdmissionRow, "requestedClass" | "isolation" | "i
 }
 
 export async function lockAdmission(tx: Tx, admissionId: string): Promise<AdmissionRow> {
+  await admissionAdvisoryLock(tx, admissionId);
   const row = (await tx.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)).for("update"))[0];
   if (row === undefined) throw new IpdRefusal("admission_not_found");
   return row;

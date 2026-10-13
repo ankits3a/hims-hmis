@@ -52,6 +52,7 @@ export const IPD_REFUSALS = {
 
   /* ═══ Money (§2.3, §4.2, §4.3) ═══ */
   rate_missing: { rule: "A rate this estimate needs is not set on the active tariff.", fix: "Ask billing to set the rate" },
+  deposit_not_refunded: { rule: "A cancelled admission's deposit must be refunded first.", fix: "Refund the deposit first" },
   scheme_patient_no_deposit: { rule: "Scheme patients pay nothing unless an approver marks a line non-covered.", fix: "Ask approver" },
   cash_limit_reached: { rule: "Cash from one payer is capped by law at under two lakh rupees a day.", fix: "Use another tender" },
   deposit_before_stabilisation: { rule: "No deposit is asked before an emergency patient is stabilised.", fix: "Defer deposit" },
