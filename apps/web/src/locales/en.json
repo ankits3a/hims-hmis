@@ -15966,6 +15966,7 @@
       "block_on_release": "Bed blocks when the patient leaves",
       "joined_block": "Added to the bed's repair block",
       "already_blocked": "Bed already blocked for another reason",
+      "not_blocked_status": "Bed not blocked (unexpected bed status) — repair recorded",
       "not_blocked_reserved": "Bed is reserved — not blocked",
       "not_a_bed": "Repair sent"
     },

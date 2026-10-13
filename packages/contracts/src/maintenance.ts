@@ -67,7 +67,7 @@ export type CancelTicketInput = z.infer<typeof cancelTicketInput>;
 
 /** What happened to the bed when the ticket was raised. */
 export type MaintenanceBedEffect =
-  | "blocked" | "block_on_release" | "joined_block" | "already_blocked" | "not_blocked_reserved" | "not_a_bed";
+  | "blocked" | "block_on_release" | "joined_block" | "already_blocked" | "not_blocked_reserved" | "not_blocked_status" | "not_a_bed";
 
 /** One ticket as the board and the Beds board see it. No patient, no money. */
 export type MaintenanceTicketView = {

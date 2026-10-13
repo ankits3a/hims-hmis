@@ -112,7 +112,9 @@ async function blockForTicket(
       if (block?.reason === "maintenance") return { effect: "joined_block", blockId };
       return { effect: "already_blocked", blockId: null };
     }
-    throw e;
+    // Any other refusal (a bed in a status the beds module does not block from): the fault is still recorded — a
+    // report is never lost — and the answer says the bed was not blocked. ipd refuses assigning it while open.
+    return { effect: "not_blocked_status", blockId: null };
   }
 }
 
@@ -141,7 +143,10 @@ export async function raiseTicket(db: Db, actor: Actor, raw: unknown, opts: Opts
       return { ticketId: row.id, number: row.number, merged: true, bed: row.bedBlockId === null ? "not_a_bed" : "joined_block", replacementFlag: row.replacementFlag };
     }
 
-    const replacementFlag = (await earlierFaults(tx, place.id, input.itemKind, tag, now)) >= MAINTENANCE_REPEAT_THRESHOLD - 1;
+    // Flagged from the third fault on; the supervisors are told once, by the ticket that CROSSES the threshold.
+    const earlier = await earlierFaults(tx, place.id, input.itemKind, tag, now);
+    const replacementFlag = earlier >= MAINTENANCE_REPEAT_THRESHOLD - 1;
+    const crossesThreshold = earlier === MAINTENANCE_REPEAT_THRESHOLD - 1;
     const number = Number((await tx.execute<{ n: string }>(sql`select nextval(pg_get_serial_sequence('maintenance_tickets', 'number')) as n`)).rows[0]!.n);
     const dueAt = new Date(now.getTime() + MAINTENANCE_RETURN_HOURS[input.urgency] * 3_600_000);
 
@@ -163,7 +168,7 @@ export async function raiseTicket(db: Db, actor: Actor, raw: unknown, opts: Opts
       bedBlockId: bed.blockId, taskId: task.id, state: "open", dueAt, replacementFlag, createdAt: now, updatedAt: now, version: 1,
     }).returning())[0]!;
     await logTicketEvent(tx, row, "raised", actor, now, { bed: bed.effect, taskId: task.id, replacementFlag });
-    if (replacementFlag) await tellReplacement(tx, row, place.name, now);
+    if (crossesThreshold) await tellReplacement(tx, row, place.name, now);
     return { ticketId: row.id, number: row.number, merged: false, bed: bed.effect, replacementFlag };
   });
 }

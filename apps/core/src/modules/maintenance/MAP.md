@@ -51,7 +51,8 @@ only through their `index.ts`; nothing imports it except the kernel wiring.
   the serial; a bed is blocked through ipd's `blockBedIn` (reason maintenance, expected back now + 4/24/72 h by
   urgency) — available/cleaning → `blocked`; occupied → `pending_release` (ipd's `releaseBedOccupant` applies it);
   already blocked for maintenance → JOINED (`source: block`); blocked for another reason → not linked; reserved →
-  not blocked (said in the answer). The repair task is raised with `sourceRef = maintenance-ticket:<id>` (one task per
+  not blocked (said in the answer; ipd then refuses to assign or re-reserve it while the ticket is open); any other
+  refusal (an unexpected bed status) → `not_blocked_status`, the ticket is still recorded — a report is never lost. The repair task is raised with `sourceRef = maintenance-ticket:<id>` (one task per
   ticket, not the engine's 10-minute merge), priority critical→stat, due at the same instant as the expected return.
 - **Fix**: the technician's Done (`completeTask`) runs `onDone` → ticket `fixed`. The bed stays blocked.
 - **Confirm**: `confirmTicket` → `verifyTask` (kind's verifier list; the doer is refused `verifier_is_doer`) →
@@ -69,8 +70,11 @@ only through their `index.ts`; nothing imports it except the kernel wiring.
 - Stored states are `open | fixed | closed | cancelled`; `assigned` / `in_progress` are READ from the task, never
   copied (one truth). A task cancelled elsewhere shows as `taskId: null`.
 - Repeat rule: earlier NON-CANCELLED tickets in `[now − 30 d, now)` on the same tag (when given, any place) else the
-  same place + item kind; ≥ 2 → this one is flagged. Computed in the raise transaction from `now` (tests hand explicit
+  same place + item kind; ≥ 2 → this one is flagged. The bell rings only on the ticket that CROSSES (exactly 2
+  earlier); later ones carry the flag and ring nothing. Computed in the raise transaction from `now` (tests hand explicit
   instants; no job). A cancelled ticket (raised in error) never counts.
+- `releaseRepairBlock` takes the bed's locks (ipd `lockBedIn`) BEFORE counting the block's other open tickets, so two
+  tickets on one block confirmed at once serialise and the second sees the first committed (else: blocked for ever).
 - Lock order: raise = place advisory → (ipd) room → bed → task; verify = task row → tickets → (ipd) room → bed. No cycle.
 - Importing the module defines the kinds: the API imports it via `app.module.ts`; the worker imports it bare in
   `kernel/worker/worker.module.ts` (no subscription, no job, no install).

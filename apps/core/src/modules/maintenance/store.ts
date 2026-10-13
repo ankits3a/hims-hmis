@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { ipdBedBlocks, maintenanceTicketEvents, maintenanceTickets } from "../../kernel/db/schema";
-import { unblockBedIn } from "../ipd";
+import { lockBedIn, unblockBedIn } from "../ipd";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -39,6 +39,9 @@ export async function updateTicket(
  */
 export async function releaseRepairBlock(tx: Tx, actor: Actor, ticket: TicketRow, at: Date): Promise<boolean> {
   if (ticket.bedBlockId === null) return false;
+  // The bed's locks FIRST: two tickets on one block closing at once serialise here, and the second one counts
+  // after the first has committed — otherwise each sees the other still open and the bed stays blocked for ever.
+  await lockBedIn(tx, ticket.placeResourceId);
   const others = await tx.select({ id: maintenanceTickets.id }).from(maintenanceTickets).where(and(
     eq(maintenanceTickets.bedBlockId, ticket.bedBlockId), ne(maintenanceTickets.id, ticket.id),
     inArray(maintenanceTickets.state, ["open", "fixed"]),

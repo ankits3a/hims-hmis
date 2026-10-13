@@ -124,7 +124,8 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E1.5) `blockBedIn` / `unblockBedIn` are the intents' acts inside a caller's transaction (no permission, no
   idempotency wrapper — the caller owns both); `blockBed` / `unblockBed` wrap them. `unblockBedIn` refuses a block an
   open repair ticket holds (`repair_ticket_open`, "Close the repair ticket") by reading `maintenance_tickets`; the
-  maintenance module closes its ticket first and then calls it.
+  maintenance module closes its ticket first and then calls it. `reserveBed` / `assignBed` refuse a bed with ANY open
+  repair ticket (`refuseOpenRepair`) — a ticket on a reserved bed blocks nothing. `lockBedIn` exports the ROOM→BED locks.
 - (E1.1) The bed-layout loader still applies with `auth.users.manage` (`BED_LAYOUT_PERMISSION`); moving it to
   `ipd.beds.manage` is owed.
 

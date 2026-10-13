@@ -60,6 +60,7 @@ Source: `apps/core/src/modules/ipd/`
   - `blockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"block_bed">>`
   - `blockBedIn(tx: Tx, actor: Actor, input: Pick<Input<"block_bed">, "bedId" | "reason" | "note" | "expectedReturnAt">, at: Date): Promise<Outp…`
   - `lapseBedReservations(db: Db, now: Date): Promise<{ lapsed: number }>`
+  - `lockBedIn(tx: Tx, bedId: string): Promise<void>`
   - `markBedClean(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mark_bed_clean">>`
   - `markBedCleanIn(tx: Tx, actor: Actor, bedId: string, cleanedAt: Date): Promise<Output<"mark_bed_clean">>`
   - `markIncumbentBeds(db: Db, actor: Actor, lines: readonly IncumbentBedLine[], opts: { apply?: boolean; now?: Date } = {}): Promise<IncumbentB…`

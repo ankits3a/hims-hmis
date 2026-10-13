@@ -115,6 +115,22 @@ async function liveBlock(tx: Tx, bedId: string) {
     .where(and(eq(ipdBedBlocks.bedId, bedId), inArray(ipdBedBlocks.status, ["pending_release", "active"]))))[0];
 }
 
+/**
+ * E1.5 — a bed with an open repair ticket (open, or fixed and waiting for the nurse) takes no hold and no patient,
+ * even when it is not blocked (a ticket raised on a reserved bed blocks nothing). The ticket is maintenance's row,
+ * read here from the kernel schema (no module import).
+ */
+async function refuseOpenRepair(tx: Tx, bedId: string): Promise<void> {
+  const open = (await tx.select({ id: maintenanceTickets.id, number: maintenanceTickets.number }).from(maintenanceTickets)
+    .where(and(eq(maintenanceTickets.placeResourceId, bedId), inArray(maintenanceTickets.state, ["open", "fixed"]))).limit(1))[0];
+  if (open !== undefined) throw new IpdRefusal("repair_ticket_open", "Open repair ticket", { ticketId: open.id, ticketNumber: open.number });
+}
+
+/** E1.5 — the bed's locks (ROOM, then BED) inside a caller's transaction, for a module that must decide under them. */
+export async function lockBedIn(tx: Tx, bedId: string): Promise<void> {
+  await lockBed(tx, bedId);
+}
+
 /** The patient's facts the rules read. Merged records resolve to the survivor. */
 async function patientFacts(db: Db, actor: Actor, patientId: string, at: Date): Promise<BedRulePatient & { id: string }> {
   const [p] = await getPatientSummaries(db, actor, [patientId]);
@@ -268,6 +284,7 @@ export async function reserveBed(db: Db, actor: Actor, raw: unknown, opts: Opts 
         throw new IpdRefusal("bed_not_available", notAvailableRule(row));
       }
       if (await liveBlock(tx, row.id) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is blocked");
+      await refuseOpenRepair(tx, row.id);
       const breach = checkBedRules({ code: row.code, attributes: attrs }, patient, input.need, input.classChange, {
         roomGender: await roomGender(tx, roomId, row.id), mayUseOverflow,
       });
@@ -371,6 +388,7 @@ export async function assignBed(db: Db, actor: Actor, raw: unknown, opts: Opts =
       }
       if (row.occupantRef !== null || row.status !== "available") throw new IpdRefusal("bed_not_available", notAvailableRule(row));
       if (await liveBlock(tx, row.id) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is blocked");
+      await refuseOpenRepair(tx, row.id);
       const breach = checkBedRules({ code: row.code, attributes: attrs }, patient, input.need, input.classChange, {
         roomGender: await roomGender(tx, roomId, row.id), mayUseOverflow,
       });

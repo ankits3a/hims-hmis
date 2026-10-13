@@ -34,7 +34,7 @@ export const IPD_REFUSALS = {
   bed_reserved: { rule: "A reserved bed cannot be blocked or retired until its reservation ends.", fix: "Release reservation" },
   overflow_needs_duty_manager: { rule: "An overflow bed needs the duty manager's approval.", fix: "Ask duty manager" },
   bed_not_blocked: { rule: "The bed is not blocked.", fix: "Open bed board" },
-  repair_ticket_open: { rule: "A bed blocked for repair opens only when its ticket is closed and a nurse confirms the fix.", fix: "Close the repair ticket" },
+  repair_ticket_open: { rule: "A bed with an open repair ticket opens only when the ticket is closed and a nurse confirms the fix.", fix: "Close the repair ticket" },
   bed_not_cleaning: { rule: "Only a bed waiting for cleaning can be marked clean.", fix: "Open bed board" },
   reservation_not_found: { rule: "No reservation has this id.", fix: "Open bed board" },
   reservation_ended: { rule: "The reservation has already lapsed or been released.", fix: "Reserve again" },

@@ -123,7 +123,7 @@ export const reserveBed = ipdIntent({
     /** Two hours after the reservation; it lapses back to available on its own. */
     expiresAt: IpdInstantSchema,
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "advice_expired"],
+  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "advice_expired", "repair_ticket_open"],
   actors: ["desk", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
   agentTier: "T2",
@@ -198,7 +198,7 @@ export const assignBed = ipdIntent({
     billedClass: IpdBedClassSchema,
     protectedUntil: IpdInstantSchema.nullable(),
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "icu_needs_intensivist"],
+  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "icu_needs_intensivist", "repair_ticket_open"],
   actors: ["desk", "nurse", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
   agentTier: "T2",
