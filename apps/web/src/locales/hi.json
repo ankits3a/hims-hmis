@@ -18904,6 +18904,19 @@
         "verified": "सत्यापित",
         "rejected": "अस्वीकृत",
         "query": "प्रश्न भेजा"
+      },
+      "overrideReason": "एलर्जी ओवरराइड",
+      "overrideText": "क्यों (लिखें)",
+      "overrides": {
+        "tolerated_before": "पहले सहन हुई",
+        "desensitised": "डिसेंसिटाइज़ किया",
+        "no_safe_alternative": "कोई सुरक्षित विकल्प नहीं",
+        "benefit_outweighs_risk": "लाभ जोखिम से अधिक"
+      },
+      "awaitDoctor": "डॉक्टर के निर्णय की प्रतीक्षा",
+      "decided": {
+        "stop": "डॉक्टर ने आदेश रोका: {{reason}}",
+        "continue": "डॉक्टर जारी रखेंगे: {{reason}}"
       }
     },
     "labels": {
@@ -18925,6 +18938,12 @@
       "noOrders": "कोई दवा आदेश नहीं",
       "withPharmacy": "फ़ार्मेसी के पास"
     },
-    "needs": "ज़रूरी: {{what}}"
+    "needs": "ज़रूरी: {{what}}",
+    "weight": "अभी वज़न (kg)",
+    "npo": {
+      "sips": "डॉक्टर ने घूँट से दवा की अनुमति दी",
+      "doctor": "सर्जरी से पहले: डॉक्टर की हाँ",
+      "doctorId": "हाँ कहने वाले डॉक्टर (यूज़र आईडी)"
+    }
   }
 }

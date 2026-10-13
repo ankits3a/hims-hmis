@@ -153,6 +153,19 @@ export const IPD_REFUSALS = {
   return_exceeds_issue: { rule: "More units cannot come back than were issued.", fix: "Check the count" },
   allergy_flag_not_found: { rule: "No allergy flag has this id.", fix: "Open verify queue" },
   allergy_flag_resolved: { rule: "The allergy flag is already closed.", fix: "Open verify queue" },
+  // E4.3 review.
+  label_exhausted: { rule: "This label's units are all used: scan the next label.", fix: "Scan next label" },
+  label_void: { rule: "This label's issue was returned or replaced, so it no longer counts.", fix: "Scan current label" },
+  patient_npo: { rule: "The patient is nil by mouth: an oral dose needs the doctor's allowance for sips.", fix: "Confirm or hold" },
+  npo_doctor_ok_required: { rule: "Before surgery an oral dose needs the doctor's read-back permission.", fix: "Call the doctor" },
+  weight_changed_reverify: { rule: "The weight changed by more than a tenth, so the dose goes back to the doctor.", fix: "Ask the doctor" },
+  verify_own_order: { rule: "A pharmacist does not verify an order they wrote.", fix: "Ask another pharmacist" },
+  allergy_override_required: { rule: "Verifying through an allergy needs a recorded reason.", fix: "Add the reason" },
+  already_issued: { rule: "This order is already issued: a second issue needs its reason.", fix: "Give the reason" },
+  reissue_limit: { rule: "This order has had its three extra issues in a day.", fix: "Ask the pharmacist in charge" },
+  batch_mismatch: { rule: "The batch is not this medicine's or is not in this store.", fix: "Pick another batch" },
+  allergy_flag_undecided: { rule: "The doctor must decide on the allergy flag before it closes.", fix: "Ask the doctor" },
+  verbal_doctor_invalid: { rule: "The person named is not a doctor.", fix: "Name the doctor" },
 
   /* ═══ Discharge (§4.7) ═══ */
   department_not_yours: { rule: "A department confirms only its own charges.", fix: "Ask the department" },

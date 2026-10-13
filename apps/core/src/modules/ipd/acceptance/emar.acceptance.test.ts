@@ -78,8 +78,8 @@ describe("E4.3 eMAR — done means", () => {
       idempotencyKey: key(), orderId: r.orderId, doseDueAt: due.toISOString(), givenAt: at.toISOString(),
       patientCheck: { kind: "scan", wristbandCode: r.band }, labelCode: r.labelCode, ...extra,
     }, { now: at });
-  const proof = async (by: Actor, who: { username: string; pin: string }, at: Date, purpose: "high_alert_dose" | "infusion" | "narcotic_wastage" = "high_alert_dose") =>
-    secondCheck(db, by, { idempotencyKey: key(), purpose, username: who.username, pin: who.pin }, { now: at });
+  const proof = async (by: Actor, who: { username: string; pin: string }, at: Date, orderId: string, purpose: "high_alert_dose" | "infusion" | "narcotic_wastage" = "high_alert_dose", doseDueAt?: Date) =>
+    secondCheck(db, by, { idempotencyKey: key(), purpose, orderId, username: who.username, pin: who.pin, ...(doseDueAt ? { doseDueAt: doseDueAt.toISOString() } : {}) }, { now: at });
 
   it("(i) a patient label for every issued unit or strip — QR code, drug, dose, UHID; a sealed patient by alias, no UHID", async () => {
     const r = await ready({ name: "Labelmycin 500", units: 25, stripSize: 10 });
@@ -91,7 +91,7 @@ describe("E4.3 eMAR — done means", () => {
       expect([l.drug, l.doseWords, l.uhid]).toEqual(["Labelmycin 500 500 mg", "500 mg · oral · TDS", uhid]);
     }
     // One label per unit when no strip is named.
-    const unitIssue = await issueMed(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, units: 3, ownMedicine: false }, { now: ist("2026-03-11T08:30:00") });
+    const unitIssue = await issueMed(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, units: 3, ownMedicine: false, reissue: { reason: "extra_supply", note: "Top-up" } }, { now: ist("2026-03-11T08:30:00") });
     expect(unitIssue.labelIds).toHaveLength(3);
     // Sealed: the alias (or "Sealed patient"), no UHID, no bed, no admission number.
     await db.update(patients).set({ sensitiveContext: true, alias: "Patient K" }).where(eq(patients.id, r.patientId));
@@ -116,7 +116,7 @@ describe("E4.3 eMAR — done means", () => {
       idempotencyKey: key(), admissionId: r.admissionId, kind: "drug",
       drug: { itemId: med2.medicineId, dose: { value: 500, unit: "mg" }, route: "oral", frequency: "BD", startAt: T0.toISOString(), antibiotic: false, durationDays: 3 },
     }, { now: T0 });
-    await verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: o2.orderId, decision: "verified", checks: { allergy: true, interaction: true, dose: true, duplicate: true } }, { now: ist("2026-03-11T07:31:00") });
+    await verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: o2.orderId, decision: "verified", checks: { allergy: true, interaction: true, dose: true, duplicate: true }, note: "checked" }, { now: ist("2026-03-11T07:31:00") });
     const i2 = await issueMed(db, w.pharmacist, { idempotencyKey: key(), orderId: o2.orderId, units: 2, ownMedicine: false }, { now: ist("2026-03-11T07:41:00") });
     const wrongLabel = (await db.select().from(ipdEmarLabels).where(eq(ipdEmarLabels.issueId, i2.issueId)))[0]!.code;
     expect(await refusal(give(w.nurse, { ...r, labelCode: wrongLabel }, ist("2026-03-11T08:05:00"), due))).toBe("wrong_drug_scanned");
@@ -144,10 +144,10 @@ describe("E4.3 eMAR — done means", () => {
     const due = ist("2026-03-11T08:00:00");
     const at = ist("2026-03-11T07:55:00");
     expect(await refusal(give(w.nurse, r, at, due))).toBe("second_nurse_required");
-    expect(await refusal(proof(w.nurse, w.pins.nurse, at))).toBe("second_nurse_same_person");
-    expect(await refusal(proof(w.nurse, w.pins.consultant, at))).toBe("second_nurse_not_nurse");
-    expect(await refusal(proof(w.nurse, { ...w.pins.nurse2, pin: "0000" }, at))).toBe("second_nurse_not_confirmed");
-    const p = await proof(w.nurse, w.pins.nurse2, at);
+    expect(await refusal(proof(w.nurse, w.pins.nurse, at, r.orderId))).toBe("second_nurse_same_person");
+    expect(await refusal(proof(w.nurse, w.pins.consultant, at, r.orderId))).toBe("second_nurse_not_nurse");
+    expect(await refusal(proof(w.nurse, { ...w.pins.nurse2, pin: "0000" }, at, r.orderId))).toBe("second_nurse_not_confirmed");
+    const p = await proof(w.nurse, w.pins.nurse2, at, r.orderId, "high_alert_dose", due);
     expect(p.userId).toBe(w.nurse2.id);
     // A proof names its checker: claiming it for yourself is refused.
     expect(await refusal(give(w.nurse, r, at, due, { secondNurse: { userId: w.nurse.id, pinProof: p.pinProof } }))).toBe("second_nurse_same_person");
@@ -163,7 +163,7 @@ describe("E4.3 eMAR — done means", () => {
   });
 
   it("(iv) PRN — the minimum interval and the 24-hour maximum are enforced", async () => {
-    const r = await ready({ drug: { frequency: "SOS", prn: { minIntervalMinutes: 240, max24h: 3 } } });
+    const r = await ready({ stripSize: 6, drug: { frequency: "SOS", prn: { minIntervalMinutes: 240, max24h: 3 } } });
     const at = (s: string) => ist(`2026-03-11T${s}`);
     await give(w.nurse, r, at("08:00:00"), at("08:00:00"));
     expect(await refusal(give(w.nurse, r, at("11:59:00"), at("11:59:00")))).toBe("prn_interval_not_met");
@@ -212,7 +212,7 @@ describe("E4.3 eMAR — done means", () => {
     const verbal = (itemId: string, dose: Record<string, unknown>, route: string) => placeIpOrder(db, w.nurse, {
       idempotencyKey: key(), admissionId, kind: "drug",
       drug: { itemId, dose, route, frequency: "STAT", startAt: T0.toISOString(), antibiotic: false, durationDays: 1 },
-      verbal: { fromDoctorId: w.consultant.id, readBack: true, emergency: "Fever 104F, doctor in OT" },
+      verbal: { fromDoctorId: w.consultant.id, readBack: true, emergency: "acute_deterioration", emergencyNote: "Fever 104F, doctor in OT" },
     }, { now: T0 });
     expect(await refusal(verbal(insulin.medicineId, { value: 10, unit: "unit" }, "sc"))).toBe("verbal_order_not_allowed");
     // A nurse cannot write an ordinary order.
@@ -272,11 +272,11 @@ describe("E4.3 eMAR — done means", () => {
   it("(x) narcotic wastage needs a witnessing second nurse", async () => {
     const r = await ready({ name: "Morphine 10 mg inj", stock: { narcotic: true, form: "injection", strength: "10 mg/ml" }, drug: { dose: { value: 5, unit: "mg" }, route: "iv" } });
     const at = ist("2026-03-11T08:00:00");
-    const waste = (witness: unknown) => recordNarcoticWastage(db, w.nurse, { idempotencyKey: key(), orderId: r.orderId, qty: 0.5, unit: "ml", reason: "Half ampoule unused", witness }, { now: at });
+    const waste = (witness: unknown) => recordNarcoticWastage(db, w.nurse, { idempotencyKey: key(), orderId: r.orderId, qty: 0.5, reason: "Half ampoule unused", witness }, { now: at });
     expect(await refusal(waste(undefined))).toBe("invalid_input");
     expect(await refusal(waste({ userId: w.nurse.id, pinProof: "x" }))).toBe("second_nurse_same_person");
     expect(await refusal(waste({ userId: w.nurse2.id, pinProof: "01AAAAAAAAAAAAAAAAAAAAAAAA" }))).toBe("second_nurse_required");
-    const p = await proof(w.nurse, w.pins.nurse2, at, "narcotic_wastage");
+    const p = await proof(w.nurse, w.pins.nurse2, at, r.orderId, "narcotic_wastage");
     await waste({ userId: w.nurse2.id, pinProof: p.pinProof });
     const reg = await db.select().from(ipdEmarNarcoticRegister).where(eq(ipdEmarNarcoticRegister.orderId, r.orderId));
     expect(reg.map((x) => x.kind).sort()).toEqual(["received", "wasted"]);
@@ -326,7 +326,8 @@ describe("E4.3 eMAR — done means", () => {
     expect(await refusal(verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, decision: "verified", checks: ticks }, { now: at }))).toBe("checks_incomplete");
     expect(await refusal(verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, decision: "rejected", checks: ticks }, { now: at }))).toBe("verify_note_required");
     expect(await refusal(issueMed(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, units: 2, ownMedicine: false }, { now: at }))).toBe("order_not_verified");
-    const v = await verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, decision: "verified", checks: { ...ticks, duplicate: true } }, { now: at });
+    expect(await refusal(verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, decision: "verified", checks: { ...ticks, duplicate: true } }, { now: at }))).toBe("verify_note_required");
+    const v = await verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: r.orderId, decision: "verified", checks: { ...ticks, duplicate: true }, note: "No interaction data: checked by hand" }, { now: at });
     // TDS 08 / 14 / 20 IST from 07:30 to the 36-hour horizon: 11-Mar 08, 14, 20; 12-Mar 08, 14 (19:30 is the edge).
     const slots = await db.select().from(ipdEmarDoses).where(eq(ipdEmarDoses.orderId, r.orderId));
     expect(v.dosesScheduled).toBe(slots.length);

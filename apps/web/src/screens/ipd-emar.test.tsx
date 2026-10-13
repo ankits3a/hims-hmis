@@ -81,6 +81,8 @@ describe("board D2 — the bedside (E4.3)", () => {
     await userEvent.type(within(form).getByLabelText("PIN"), "8642");
     await userEvent.click(within(form).getByRole("button", { name: "Check" }));
     await screen.findByText(/Checked by Nurse Fake Two/);
+    // The proof is asked for THIS order and slot (E4.3 review 2).
+    expect(api.secondCheck.mock.calls[0]!.slice(0, 2)).toEqual(["high_alert_dose", { orderId: scanOf(NOW, { highAlert: true }).label!.orderId, doseDueAt: scanOf(NOW, { highAlert: true }).label!.dose!.dueAt }]);
     expect(screen.getByTestId("ipde-give")).toBeEnabled();
   });
 
@@ -92,6 +94,26 @@ describe("board D2 — the bedside (E4.3)", () => {
     expect(screen.getByTestId("ipde-give")).toBeDisabled();
     await userEvent.click(screen.getByTestId("ipde-lasa"));
     expect(screen.getByTestId("ipde-give")).toBeEnabled();
+  });
+
+  it("a weight-based dose keeps Give off until the weight is typed (E4.3 review 29)", async () => {
+    api.scan.mockResolvedValue(scanOf(NOW, { weight: true }));
+    bedside(true);
+    await userEvent.type(await screen.findByTestId("ipde-label-input"), "EML-FAKE-LABEL{enter}");
+    expect(await screen.findByTestId("ipde-give")).toBeDisabled();
+    await userEvent.type(screen.getByTestId("ipde-weight"), "58");
+    expect(screen.getByTestId("ipde-give")).toBeEnabled();
+  });
+
+  it("an oral dose under NPO needs the sips confirmation with its reason, and sends it", async () => {
+    api.scan.mockResolvedValue(scanOf(NOW, { npo: "sips" }));
+    bedside(true);
+    await userEvent.type(await screen.findByTestId("ipde-label-input"), "EML-FAKE-LABEL{enter}");
+    expect(await screen.findByTestId("ipde-give")).toBeDisabled();
+    await userEvent.type(screen.getByTestId("ipde-npo-reason"), "Dr allows with sips");
+    await userEvent.click(screen.getByTestId("ipde-give"));
+    await waitFor(() => expect(api.give).toHaveBeenCalledTimes(1));
+    expect(api.give.mock.calls[0]![0]).toMatchObject({ npoMeds: { kind: "sips_allowed", reason: "Dr allows with sips" } });
   });
 
   it("no band scanned: the override needs a reason and a note", async () => {
@@ -114,6 +136,10 @@ describe("the inpatient pharmacy desk (E4.3)", () => {
     for (const k of ["Allergy", "Interaction", "Dose", "Duplicate therapy"]) await userEvent.click(within(card).getByLabelText(k));
     expect(btn).toBeDisabled();
     await userEvent.type(within(card).getByLabelText("Note (needed)"), "Spoke to the doctor");
+    // An allergy finding also needs the structured override reason and its text (E4.3 review 11).
+    expect(btn).toBeDisabled();
+    await userEvent.selectOptions(within(card).getByLabelText("Allergy override"), "tolerated_before");
+    await userEvent.type(within(card).getByLabelText("Why (text)"), "Took it in 2025");
     expect(btn).toBeEnabled();
   });
 

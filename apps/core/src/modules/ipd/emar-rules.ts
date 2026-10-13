@@ -42,7 +42,39 @@ export function dueTimesFor(o: { frequency: string; startAt: Date; stopAt: Date 
 
 const TIME_CRITICAL_WORDS = /insulin|levetiracetam|phenytoin|fosphenytoin|valpro|carbamazepine|oxcarbazepine|lacosamide|lamotrigine|clobazam|phenobarb|topiramate|brivaracetam|levodopa|carbidopa|pramipexole|ropinirole|rasagiline|selegiline|amantadine|entacapone/i;
 const TIME_CRITICAL_CLASSES = /antiepilep|anticonvuls|antiparkinson|insulin|antibiotic|antibacterial|cephalospor|penicillin|carbapenem|aminoglycoside|macrolide|fluoroquinolone|glycopeptide/i;
-const HIGH_ALERT_WORDS = /insulin|heparin|enoxaparin|dalteparin|fondaparinux|potassium chloride|\bkcl\b|morphine|fentanyl|pethidine|tramadol|buprenorphine|tapentadol|methadone|oxycodone|hydromorphone|vincristine|methotrexate|cyclophosphamide|cisplatin|carboplatin|doxorubicin|paclitaxel/i;
+/**
+ * E4.3 review — the ISMP high-alert medicines (acute-care list) by name, so an unflagged one can never skip the second
+ * nurse. Each word is pinned by `emar-rules.test.ts`.
+ */
+export const ISMP_HIGH_ALERT_NAMES = [
+  // anticoagulants and thrombolytics
+  "heparin", "enoxaparin", "dalteparin", "fondaparinux", "warfarin", "acenocoumarol", "dabigatran", "rivaroxaban", "apixaban",
+  "alteplase", "tenecteplase", "streptokinase", "urokinase", "reteplase",
+  // insulins and oral hypoglycaemics
+  "insulin", "glibenclamide", "glimepiride", "gliclazide", "glipizide",
+  // concentrated electrolytes
+  "potassium chloride", "kcl", "potassium phosphate", "sodium chloride 3%", "hypertonic saline", "magnesium sulphate", "magnesium sulfate",
+  "sodium bicarbonate", "calcium gluconate", "dextrose 25%", "dextrose 50%",
+  // opioids
+  "morphine", "fentanyl", "pethidine", "meperidine", "tramadol", "buprenorphine", "tapentadol", "methadone", "oxycodone", "hydromorphone",
+  "remifentanil", "sufentanil",
+  // sedation and anaesthesia
+  "midazolam", "propofol", "ketamine", "dexmedetomidine", "thiopentone", "lorazepam injection",
+  // neuromuscular blockers
+  "vecuronium", "rocuronium", "atracurium", "cisatracurium", "succinylcholine", "suxamethonium", "pancuronium",
+  // vasopressors, inotropes and IV antiarrhythmics
+  "adrenaline", "epinephrine", "noradrenaline", "norepinephrine", "dopamine", "dobutamine", "vasopressin", "phenylephrine",
+  "amiodarone", "lignocaine", "lidocaine", "digoxin", "esmolol", "nitroprusside", "nitroglycerin injection",
+  // oxytocics
+  "oxytocin", "carboprost", "methylergometrine",
+  // cytotoxics
+  "methotrexate", "vincristine", "vinblastine", "cyclophosphamide", "cisplatin", "carboplatin", "oxaliplatin", "doxorubicin",
+  "paclitaxel", "docetaxel", "5-fluorouracil", "fluorouracil", "gemcitabine", "cytarabine", "etoposide", "bleomycin",
+  // others on the list
+  "colchicine", "nitroprusside sodium", "chloral hydrate", "promethazine injection",
+] as const;
+const escape = (w: string): string => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const HIGH_ALERT_WORDS = new RegExp(`(^|[^a-z])(${ISMP_HIGH_ALERT_NAMES.map(escape).join("|")})([^a-z]|$)`, "i");
 
 export type DrugWords = { name: string; moieties: readonly string[]; classes: readonly (string | null)[] };
 
@@ -68,7 +100,8 @@ export function giveTiming(slot: { dueAt: Date; windowMinutes: number; reoffered
   const start = slot.reofferedAt !== null ? Math.min(anchor.getTime(), slot.dueAt.getTime() - w) : slot.dueAt.getTime() - w;
   if (at.getTime() < start) return "early";
   if (at.getTime() <= anchor.getTime() + w) return "open";
-  if (at.getTime() <= anchor.getTime() + w * (1 + IPD_EMAR_CATCH_UP_WINDOWS * 2)) return "late";
+  // E4.3 review: the catch-up is ONE more window (w) after the window closes.
+  if (at.getTime() <= anchor.getTime() + w * (1 + IPD_EMAR_CATCH_UP_WINDOWS)) return "late";
   return "closed";
 }
 
@@ -91,4 +124,31 @@ export function prnState(given: readonly Date[], prn: { minIntervalMinutes: numb
     if (nextAt === null || freeAt > nextAt) nextAt = freeAt;
   }
   return { nextAt, in24h: recent.length, capped };
+}
+
+const COUNT_DOSE_UNITS = new Set(["tab", "cap", "amp", "vial", "sachet", "respule"]);
+const MASS_IN_MG: Record<string, number> = { mg: 1, g: 1000, mcg: 0.001, "µg": 0.001 };
+const UNIT_WORDS = new Set(["iu", "unit", "units"]);
+const SINGLE_DOSE_CONTAINERS = /amp|ampoule|ampule|vial|syringe|pfs/i;
+
+/**
+ * E4.3 review — one dose in the LABEL's units (the issue's base unit: a tablet, a capsule, an ampoule). A count dose is its
+ * own number (2 tab = 2); a mass or IU dose divides by the strength per unit ("500 mg" tablet: 250 mg = 0.5); a
+ * concentration ("10 mg/ml", "100 mcg/2 ml") counts one container of that volume when the base unit is single-dose
+ * (ampoule, vial), and a volume dose divides by it. NULL = a multi-dose container (a syrup bottle, an insulin vial or pen,
+ * an inhaler): not counted per dose — its label stands until returned or superseded (DECIDED).
+ */
+export function unitsPerDose(o: { doseValue: number; doseUnit: string }, strengthLabel: string | null, baseUom: string | null): number | null {
+  if (COUNT_DOSE_UNITS.has(o.doseUnit)) return o.doseValue;
+  const m = (strengthLabel ?? "").toLowerCase().match(/(\d+(?:\.\d+)?)\s*(mg|g|mcg|µg|iu|units?)\b(\s*\/\s*(\d+(?:\.\d+)?)?\s*ml)?/);
+  if (m === null) return null;
+  const amount = Number(m[1]);
+  const sUnit = m[2]!;
+  const concentration = m[3] !== undefined;
+  if (concentration && !SINGLE_DOSE_CONTAINERS.test(baseUom ?? "")) return null;
+  const volume = m[4] === undefined ? 1 : Number(m[4]);
+  if (o.doseUnit === "ml") return concentration ? o.doseValue / volume : null;
+  if (MASS_IN_MG[o.doseUnit] !== undefined && MASS_IN_MG[sUnit] !== undefined) return (o.doseValue * MASS_IN_MG[o.doseUnit]!) / (amount * MASS_IN_MG[sUnit]!);
+  if (UNIT_WORDS.has(o.doseUnit) && UNIT_WORDS.has(sUnit)) return o.doseValue / amount;
+  return null;
 }

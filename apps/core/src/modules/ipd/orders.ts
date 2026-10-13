@@ -21,6 +21,7 @@ import { ndpsClassByMedicine } from "../formulary";
 import { shelfItemForMedicine } from "../pharmacy";
 import { IPD_EMAR_VERBAL_SIGN_HOURS } from "@hmis/contracts";
 import { holdsPermission } from "./admission-core";
+import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { assertInBed } from "./rounds";
 import { orderCancelled, orderPlaced, orderStopped } from "./rounds-events";
 import { isConsultant, onTeam, treatingTeamOf } from "./rounds-team";
@@ -93,12 +94,16 @@ export async function placeIpOrder(db: Db, actor: Actor, raw: unknown, opts: Ipd
     const drugInput = input.drug;
     return onceIpd(db, actor, "place_ip_order", input.idempotencyKey, input, async () => {
       await refuseVerbalHighAlert(db, drugInput.itemId);
+      // E4.3 review: the person named must hold a doctor's role (never a nurse naming a colleague).
+      if (!(await withTx(db, (tx) => actorHoldsAnyRole(tx, verbal.fromDoctorId, IPD_DOCTOR_ROLE_KEYS)))) {
+        throw new IpdRefusal("verbal_doctor_invalid", undefined, { fromDoctorId: verbal.fromDoctorId });
+      }
       const prescriber: Actor = { type: "user", id: verbal.fromDoctorId };
       const signBy = new Date(at.getTime() + IPD_EMAR_VERBAL_SIGN_HOURS * 3_600_000);
       const done = await placeDrug(db, actor, input, at, prescriber, async (tx, row) => {
         await tx.insert(ipdEmarVerbalOrders).values({
           id: newId(), orderId: row.id, admissionId: row.admissionId, recordedBy: actor.id, fromDoctorId: verbal.fromDoctorId,
-          readBack: verbal.readBack, emergency: verbal.emergency, recordedAt: at, signBy,
+          readBack: verbal.readBack, emergency: verbal.emergencyNote === undefined ? verbal.emergency : `${verbal.emergency}: ${verbal.emergencyNote}`, recordedAt: at, signBy,
         });
         await appendEvent(tx, verbalOrderRecorded.make({
           payload: { orderId: row.id, admissionId: row.admissionId, signBy: signBy.toISOString(), provenance: provenanceOf(actor) },
@@ -120,6 +125,9 @@ export async function placeIpOrder(db: Db, actor: Actor, raw: unknown, opts: Ipd
     return placeTests(db, actor, input, at, opts.orderKinds ?? [], opts.door ?? { routeTests, orderTests });
   }, at);
 }
+
+/** E4.3 review: the roles a verbal order's doctor (and an NPO read-back OK) must hold. */
+export const IPD_DOCTOR_ROLE_KEYS = ["doctor", "resident"];
 
 /** §4.6: never a verbal order for chemotherapy or a high-alert drug (the eMAR's own high-alert test). */
 async function refuseVerbalHighAlert(db: Db, medicineId: string): Promise<void> {
@@ -306,7 +314,7 @@ async function emitPlaced(tx: Tx, actor: Actor, patientId: string, o: IpdOrderRo
   }));
 }
 
-async function lockOrder(tx: Tx, orderId: string): Promise<{ o: IpdOrderRow; a: Awaited<ReturnType<typeof lockAdmission>> }> {
+export async function lockOrder(tx: Tx, orderId: string): Promise<{ o: IpdOrderRow; a: Awaited<ReturnType<typeof lockAdmission>> }> {
   const first = (await tx.select().from(ipdOrders).where(eq(ipdOrders.id, orderId)))[0];
   if (first === undefined) throw new IpdRefusal("order_not_found");
   const a = await lockAdmission(tx, first.admissionId);
@@ -326,17 +334,27 @@ export async function stopIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick
     if (o.status !== "active") throw new IpdRefusal("order_not_active", undefined, { status: o.status });
     const team = await treatingTeamOf(tx, a, at);
     if (!onTeam(team, actor.id)) throw new IpdRefusal("not_treating_team");
-    const returnOwed = o.issuedAt !== null;
-    await tx.update(ipdOrders).set({ status: "stopped", stoppedAt: at, stoppedBy: actor.id, stopReason: input.reason, returnOwed })
-      .where(eq(ipdOrders.id, o.id));
-    // E4.3 (#735) — future doses are cancelled in the same transaction; the return (and its credit) is the pharmacist's.
-    await cancelFutureDosesIn(tx, actor, o, at);
-    await appendEvent(tx, orderStopped.make({
-      payload: { orderId: o.id, admissionId: a.id, kind: o.kind as "drug", stoppedAt: at.toISOString(), afterIssue: returnOwed, provenance: provenanceOf(actor) },
-      actor, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: at,
-    }));
+    const returnOwed = await stopOrderIn(tx, actor, o, a, input.reason, at);
     return { orderId: o.id, status: "stopped" as const, stoppedAt: at.toISOString(), returnOwed };
   }), at);
+}
+
+/**
+ * The stop itself, on the caller's transaction (the order and the admission already locked, the team checked): the row,
+ * the future doses cancelled (E4.3), the event. Answers whether a return is owed. The eMAR's allergy-flag decision "stop"
+ * calls it too.
+ */
+export async function stopOrderIn(tx: Tx, actor: Actor, o: IpdOrderRow, a: AdmissionRow, reason: string, at: Date): Promise<boolean> {
+  const returnOwed = o.issuedAt !== null;
+  await tx.update(ipdOrders).set({ status: "stopped", stoppedAt: at, stoppedBy: actor.id, stopReason: reason, returnOwed })
+    .where(eq(ipdOrders.id, o.id));
+  // E4.3 (#735) — future doses are cancelled in the same transaction; the return (and its credit) is the pharmacist's.
+  await cancelFutureDosesIn(tx, actor, o, at);
+  await appendEvent(tx, orderStopped.make({
+    payload: { orderId: o.id, admissionId: a.id, kind: o.kind as "drug", stoppedAt: at.toISOString(), afterIssue: returnOwed, provenance: provenanceOf(actor) },
+    actor, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: at,
+  }));
+  return returnOwed;
 }
 
 /** Cancel with a reason, before issue only (a wrong order); after issue it is stopped instead. */

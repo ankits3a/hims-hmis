@@ -1,10 +1,11 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { IpdError, IpdRefusal, ipdRefusalStatus } from "./errors";
 import {
-  administerDose, holdDose, issueMed, markDoseInError, missDose, recordInfusionEvent, recordNarcoticWastage, refuseDose, reofferHeldDoses,
+  administerDose, decideAllergyFlag, holdDose, issueMed, markDoseInError, missDose, recordInfusionEvent, recordNarcoticWastage, refuseDose, reofferHeldDoses,
   resolveAllergyFlag, returnMed, secondCheck, signVerbalOrder, verifyOrder,
 } from "./emar";
 import { readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
@@ -95,7 +96,8 @@ export class IpdEmarController {
   async ward(@CurrentActor() actor: Actor, @Query() query: unknown): Promise<IpdEmarWardChart> {
     try {
       const q = wardQuery.parse(query);
-      return await readWardChart(this.db, actor, { ...(q.wardId ? { wardId: q.wardId } : {}), ...(q.day ? { day: new Date(`${q.day}T12:00:00+05:30`) } : {}) });
+      // The IST day is the kernel's (`istDayWindow` inside the read): any instant of that date does; UTC noon is inside it.
+      return await readWardChart(this.db, actor, { ...(q.wardId ? { wardId: q.wardId } : {}), ...(q.day ? { day: istDayWindow(new Date(`${q.day}T12:00:00Z`)).start } : {}) });
     } catch (e) { toHttp(e); }
   }
 
@@ -181,6 +183,12 @@ export class IpdEmarController {
   @RequirePermission(IPD_ORDER_PLACE, "hospital")
   async signVerbal(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await signVerbalOrder(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  @Post("allergy-flags/decide")
+  @RequirePermission(IPD_ORDER_PLACE, "hospital")
+  async decideFlag(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await decideAllergyFlag(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
   @Get("overrides")

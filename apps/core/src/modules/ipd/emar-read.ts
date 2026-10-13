@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { IPD_EMAR_LABEL_PREFIX } from "@hmis/contracts";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import {
-  dietNpo, ipdAdmissions, ipdBedStays, ipdEmarActs, ipdEmarAllergyFlags, ipdEmarDoses, ipdEmarInfusionEvents, ipdEmarIssues, ipdEmarLabels,
+  ipdAdmissions, ipdBedStays, ipdEmarActs, ipdEmarAllergyFlags, ipdEmarDoses, ipdEmarInfusionEvents, ipdEmarIssues, ipdEmarLabels,
   ipdEmarNarcoticRegister, ipdEmarReturns, ipdEmarVerbalOrders, ipdOrders, resources,
 } from "../../kernel/db/schema";
 import { listAllergies } from "../patients";
@@ -10,7 +10,7 @@ import { readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
 import { allergyWords } from "./bands";
 import { emarDrugsOf } from "./emar-drug";
-import { bandOf, givenTimesOf, infusionStateOf, labelOf, verifyFindingsOf } from "./emar";
+import { NPO_ROUTES, bandOf, doseUnitsOf, givenTimesOf, infusionStateOf, labelOf, labelUsed, labelVoid, npoAt, verifyFindingsOf } from "./emar";
 import { doseWordsOf, giveTiming, prnState } from "./emar-rules";
 import { IpdRefusal } from "./errors";
 import { IPD_NURSING_STATES } from "./nursing";
@@ -106,17 +106,6 @@ async function dosesOf(db: Db, orderIds: readonly string[], from: Date, to: Date
   });
 }
 
-/**
- * NPO at `at`: diet's rule (`diet` `npoCovering`) read on its own table. diet imports `ipd` at load (its manifest), so
- * importing diet's index here would make a load-time cycle; the predicate is copied, one row, read-only.
- */
-async function npoOf(db: Db, patientId: string, at: Date): Promise<boolean> {
-  const row = (await db.select({ id: dietNpo.id }).from(dietNpo).where(and(
-    eq(dietNpo.patientId, patientId), isNull(dietNpo.liftedAt), lte(dietNpo.startsAt, at), or(isNull(dietNpo.endsAt), gt(dietNpo.endsAt, at)),
-  )).limit(1))[0];
-  return row !== undefined;
-}
-
 async function patientBlock(db: Db, actor: Actor, a: AdmissionRow, at: Date, from: Date, to: Date, ids: Map<string, IpdRoundIdentity>, places: Awaited<ReturnType<typeof placesOf>>) {
   const orders = (await db.select().from(ipdOrders).where(and(eq(ipdOrders.admissionId, a.id), eq(ipdOrders.kind, "drug"))).orderBy(asc(ipdOrders.orderedAt)))
     .filter((o) => o.status === "active" || (o.stoppedAt ?? o.cancelledAt ?? at).getTime() >= from.getTime());
@@ -126,7 +115,7 @@ async function patientBlock(db: Db, actor: Actor, a: AdmissionRow, at: Date, fro
   return {
     admissionId: a.id, admissionNo: identity.sealed ? null : a.admissionNo, identity,
     bedCode: identity.sealed ? null : place?.bedCode ?? null, wardName: identity.sealed ? null : place?.wardName ?? null,
-    alerts: allergyWords(await listAllergies(db, a.patientId)), npo: await npoOf(db, a.patientId, at),
+    alerts: allergyWords(await listAllergies(db, a.patientId)), npo: (await npoAt(db, a.patientId, at)) !== null,
     weightKg: orders.map((o) => o.weightKg).filter((w): w is number => w !== null).at(-1) ?? null,
     orders: orders.map((o) => lineOf(o, c, at)), doses: await dosesOf(db, orders.map((o) => o.id), from, to),
   };
@@ -243,18 +232,28 @@ export async function scanAtBedside(db: Db, actor: Actor, input: { wristbandCode
   const samePatient = label.admissionId === a.id;
   const timing = dose === null ? null : giveTiming({ dueAt: new Date(dose.dueAt), windowMinutes: (new Date(dose.windowEnd).getTime() - new Date(dose.dueAt).getTime()) / 60_000, reofferedAt: null }, at);
   const timeOk = o.prn !== null ? line.prnNextAt === null : timing === "open" || timing === "late";
+  const isVoid = await labelVoid(db, label.issueId);
+  const perDose = doseUnitsOf(o, c.drugs.get(o.id));
+  const exhausted = perDose !== null && (await labelUsed(db, label.id)) + perDose > label.units + 1e-9;
+  const npo = NPO_ROUTES.includes(o.route ?? "") ? await npoAt(db, o.patientId, at) : null;
   return {
     asOf: at.toISOString(), admissionId: a.id, bandSerial,
     label: {
       labelId: label.id, orderId: o.id, order: line, dose,
       checks: [
         { key: "patient", ok: samePatient, words: samePatient ? "Right patient" : "Label is for another patient" },
-        { key: "drug", ok: o.status === "active" && o.verification === "verified" && !line.allergyFlag, words: line.allergyFlag ? "Allergy flag open" : o.status !== "active" ? "Order not active" : line.tallMan ?? line.title },
+        {
+          key: "drug", ok: o.status === "active" && o.verification === "verified" && !line.allergyFlag && !isVoid && !exhausted,
+          words: line.allergyFlag ? "Allergy flag open" : o.status !== "active" ? "Order not active" : isVoid ? "Label returned or replaced" : exhausted ? "Label used up — next label" : line.tallMan ?? line.title,
+        },
         { key: "dose", ok: true, words: line.doseWords },
         { key: "time", ok: timeOk, words: o.prn !== null ? (line.prnNextAt === null ? "PRN · may give now" : `PRN · not before ${line.prnNextAt}`) : dose === null ? "No dose due" : timing === "late" ? "Late · reason needed" : timing === "open" ? "Due now" : "Not due yet" },
         { key: "route", ok: true, words: line.route.toUpperCase() },
       ],
-      needs: { secondNurse: line.highAlert, lasaConfirm: line.lasa, weight: o.weightBasedPerKg && o.weightKg === null, lateReason: timing === "late" || dose?.status === "missed" },
+      needs: {
+        secondNurse: line.highAlert, lasaConfirm: line.lasa, weight: o.weightBasedPerKg && o.weightKg === null, lateReason: timing === "late" || dose?.status === "missed",
+        npo: npo === null ? "none" : npo.source === "ot_booking" ? "doctor" : "sips",
+      },
     },
   };
 }
@@ -299,6 +298,7 @@ export async function readPharmacyQueue(db: Db, actor: Actor, opts: { now?: Date
     return {
       flagId: f.id, orderId: f.orderId, admissionId: f.admissionId, identity: id, bedCode: id.sealed ? null : flagPlaces.get(f.admissionId)?.bedCode ?? null,
       title: o?.medicineName ?? "—", substances: f.substances, raisedAt: f.raisedAt.toISOString(), orderActive: o?.status === "active",
+      doctorDecision: (f.doctorDecision as "stop" | "continue" | null) ?? null, doctorReason: f.doctorReason,
     };
   });
   // Returns owed: issues on orders that stopped after issue and still owe, with what came back so far.
@@ -347,16 +347,16 @@ export async function readOverrideCounts(db: Db, actor: Actor, opts: { now?: Dat
   await requireIpdPermission(db, actor, IPD_EMAR_VIEW);
   const to = opts.now ?? new Date();
   const from = new Date(to.getTime() - (opts.days ?? 30) * 86_400_000);
-  const rows = await db.select({ actorId: ipdEmarActs.actorId, wardId: ipdEmarActs.wardId, check: ipdEmarActs.patientCheck }).from(ipdEmarActs)
+  const rows = await db.select({ actorId: ipdEmarActs.actorId, wardId: ipdEmarActs.wardId, check: ipdEmarActs.patientCheck, npo: ipdEmarActs.npoOverride }).from(ipdEmarActs)
     .where(and(eq(ipdEmarActs.kind, "given"), gte(ipdEmarActs.at, from), lt(ipdEmarActs.at, to)));
-  const byNurse = new Map<string, { overrides: number; gives: number }>();
-  const byWard = new Map<string, { overrides: number; gives: number }>();
+  const byNurse = new Map<string, { overrides: number; npoOverrides: number; gives: number }>();
+  const byWard = new Map<string, { overrides: number; npoOverrides: number; gives: number }>();
   for (const r of rows) {
-    const n = byNurse.get(r.actorId) ?? { overrides: 0, gives: 0 };
-    n.gives += 1; if (r.check === "override") n.overrides += 1; byNurse.set(r.actorId, n);
+    const n = byNurse.get(r.actorId) ?? { overrides: 0, npoOverrides: 0, gives: 0 };
+    n.gives += 1; if (r.check === "override") n.overrides += 1; if (r.npo !== null) n.npoOverrides += 1; byNurse.set(r.actorId, n);
     const wk = r.wardId ?? "unknown";
-    const w = byWard.get(wk) ?? { overrides: 0, gives: 0 };
-    w.gives += 1; if (r.check === "override") w.overrides += 1; byWard.set(wk, w);
+    const w = byWard.get(wk) ?? { overrides: 0, npoOverrides: 0, gives: 0 };
+    w.gives += 1; if (r.check === "override") w.overrides += 1; if (r.npo !== null) w.npoOverrides += 1; byWard.set(wk, w);
   }
   const names = await userNames(db, [...byNurse.keys()]);
   const wardIds = [...byWard.keys()].filter((k) => k !== "unknown");

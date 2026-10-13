@@ -250,20 +250,26 @@ Source: `apps/core/src/modules/ipd/`
   - `readWardChart(db: Db, actor: Actor, opts: { wardId?: string; now?: Date; day?: Date } = {}): Promise<IpdEmarWardChart>`
   - `scanAtBedside(db: Db, actor: Actor, input: { wristbandCode?: string; admissionId?: string; labelCode?: string }, opts: { now?: Date } = {})…`
 - `emar-rules.ts`
+  - `ISMP_HIGH_ALERT_NAMES`
   - `dueTimesFor(o: { frequency: string; startAt: Date; stopAt: Date | null; durationDays: number | null }, from: Date, to: Date): Date[]`
   - `giveTiming(slot: { dueAt: Date; windowMinutes: number; reofferedAt: Date | null }, at: Date): "early" | "open" | "late" | "closed"`
   - `isHighAlert(itemFlag: boolean, narcotic: boolean, w: DrugWords): boolean`
   - `isTimeCritical(antibiotic: boolean, w: DrugWords): boolean`
   - `prnState(given: readonly Date[], prn: { minIntervalMinutes: number; max24h: number }, at: Date): { nextAt: Date | null; in24h: number; capp…`
+  - `unitsPerDose(o: { doseValue: number; doseUnit: string }, strengthLabel: string | null, baseUom: string | null): number | null`
 - `emar.ts`
   - `EMAR_SYSTEM_ACTOR: Actor`
   - `IPD_EMAR_NURSE_ROLES`
+  - `NPO_ROUTES: readonly string[]`
   - `administerDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"administer_dose">>`
+  - `backfillEmarAllergyFlags(db: Db, now: Date = new Date()): Promise<number>`
+  - `decideAllergyFlag(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"decide_allergy_flag">>`
   - `emarAllergyConsumer(db: Db): Handler`
   - `holdDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"hold_dose">>`
   - `issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"issue_med">>`
   - `markDoseInError(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"mark_dose_in_error">>`
   - `missDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"miss_dose">>`
+  - `npoAt(exec: Db | Tx, patientId: string, at: Date): Promise<{ source: string } | null>`
   - `recheckOrdersForAllergy(tx: Tx, payload: { patientId: string; allergyId: string; substance: string }, at: Date): Promise<number>`
   - `recordInfusionEvent(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"record_infusion_event">>`
   - `recordNarcoticWastage(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"record_narcotic_wastage">>`
@@ -497,14 +503,14 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (129)
+## HTTP routes (130)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
-- `emar.controller.ts` — 22: `/ipd/emar`
+- `emar.controller.ts` — 23: `/ipd/emar`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `nursing.controller.ts` — 12: `/ipd/nursing`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`

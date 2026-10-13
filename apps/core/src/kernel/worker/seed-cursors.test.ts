@@ -224,8 +224,8 @@ describe("seedCursors", () => {
    * determinism (its "does not redeliver ... re-reads" case sets `lookback: 5_000`).
    */
   /** The state a seeded cursor skips, rebuilt at deploy: housekeeping's owed cleans, diet's OT NPOs (review item 7). */
-  it("workerBackfills names exactly housekeeping's bed turnover and diet's OT NPO sync", () => {
-    expect(Object.keys(workerBackfills(db)).sort()).toEqual([DIET_CONSUMER, HOUSEKEEPING_BED_CONSUMER].sort());
+  it("workerBackfills names exactly housekeeping's bed turnover, diet's OT NPO sync and the eMAR's allergy re-check", () => {
+    expect(Object.keys(workerBackfills(db)).sort()).toEqual([DIET_CONSUMER, HOUSEKEEPING_BED_CONSUMER, IPD_EMAR_ALLERGY_CONSUMER].sort());
   });
 
   it("V10 — leaves a newly-seeded consumer at max(seq); the next cycle delivers nothing", async () => {

@@ -31,7 +31,7 @@ export * from "./nursing";
 export * from "./rounds";
 // E4.3 (#735) — the eMAR: verify queue, the MAR, the bedside, labels, override counts.
 export * from "./emar";
-export { IPD_DRUG_ROUTES, IpdDrugOrderSchema } from "./intents-meds";
+export { IPD_ALLERGY_OVERRIDE_REASONS, IPD_DRUG_ROUTES, IPD_REISSUE_REASONS, IPD_VERBAL_EMERGENCIES, IpdDrugOrderSchema } from "./intents-meds";
 export type { IpdDrugOrder } from "./intents-meds";
 export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";
 export type { IpdRoundSoap } from "./intents-ward";
@@ -96,6 +96,7 @@ export const IPD_INTENTS = {
   record_narcotic_wastage: medIntents.recordNarcoticWastage,
   return_med: medIntents.returnMed,
   resolve_allergy_flag: medIntents.resolveAllergyFlag,
+  decide_allergy_flag: medIntents.decideAllergyFlag,
   declare_fit: dischargeIntents.declareFit,
   cancel_fit: dischargeIntents.cancelFit,
   confirm_charges: dischargeIntents.confirmCharges,

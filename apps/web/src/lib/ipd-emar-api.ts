@@ -50,8 +50,9 @@ export const getOverrides = (days?: number): Promise<IpdEmarOverrideCounts> => a
 export const scan = (b: { wristbandCode?: string; admissionId?: string; labelCode?: string }): Promise<IpdEmarScan> => api("POST", EMAR.scan, b);
 
 export type Checks = { allergy: boolean; interaction: boolean; dose: boolean; duplicate: boolean };
-export const verify = (orderId: string, decision: "verified" | "rejected" | "query", checks: Checks, note?: string): Promise<{ status: string; dosesScheduled: number }> =>
-  post(EMAR.verify, { orderId, decision, checks, ...(note ? { note } : {}) });
+export type AllergyOverride = { reason: "tolerated_before" | "desensitised" | "no_safe_alternative" | "benefit_outweighs_risk"; text: string };
+export const verify = (orderId: string, decision: "verified" | "rejected" | "query", checks: Checks, note?: string, allergyOverride?: AllergyOverride): Promise<{ status: string; dosesScheduled: number }> =>
+  post(EMAR.verify, { orderId, decision, checks, ...(note ? { note } : {}), ...(allergyOverride ? { allergyOverride } : {}) });
 export const issue = (b: { orderId: string; units: number; stripSize?: number; ownMedicine: boolean; ownBatch?: { batchNo: string; expiry: string } }):
   Promise<{ issueId: string; units: number; labelIds: string[] }> => post(EMAR.issue, b);
 export const returnMed = (issueId: string, units: number, reason: string): Promise<{ creditedUnits: number }> => post(EMAR.returnMed, { issueId, units, reason });
@@ -63,6 +64,7 @@ export type PatientCheck =
 export const give = (b: {
   orderId: string; doseDueAt: string; patientCheck: PatientCheck; labelCode: string;
   secondNurse?: { userId: string; pinProof: string }; lasaConfirmed?: true; lateReason?: string; weightKg?: number;
+  npoMeds?: { kind: "sips_allowed"; reason: string } | { kind: "doctor_ok"; doctorId: string; readBack: true; reason: string };
 }): Promise<{ administrationId: string; late: boolean; overrideCounted: boolean }> =>
   post(EMAR.give, { ...b, givenAt: serverNow().toISOString() });
 export const hold = (orderId: string, doseDueAt: string, reason: string, note?: string): Promise<{ reofferOnReturn: boolean }> =>
@@ -72,5 +74,6 @@ export const refuse = (orderId: string, doseDueAt: string, reason: string, note?
 export const miss = (orderId: string, doseDueAt: string, reason: string, note?: string): Promise<unknown> =>
   post(EMAR.miss, { orderId, doseDueAt, reason, ...(note ? { note } : {}) });
 export const reoffer = (admissionId: string, reason: "back_on_ward" | "npo_lifted"): Promise<{ reoffered: number }> => post(EMAR.reoffer, { admissionId, reason });
-export const secondCheck = (purpose: "high_alert_dose" | "infusion" | "narcotic_wastage", username: string, pin: string):
-  Promise<{ pinProof: string; userId: string; name: string; expiresAt: string }> => post(EMAR.secondCheck, { purpose, username, pin });
+/** The proof is bound to its purpose, the order and (a scheduled dose) the slot — made for this give only. */
+export const secondCheck = (purpose: "high_alert_dose" | "infusion" | "narcotic_wastage", target: { orderId: string; doseDueAt?: string }, username: string, pin: string):
+  Promise<{ pinProof: string; userId: string; name: string; expiresAt: string }> => post(EMAR.secondCheck, { purpose, ...target, username, pin });

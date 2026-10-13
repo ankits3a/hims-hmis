@@ -7,7 +7,7 @@ import { ApiError } from "../lib/api";
 import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { getLabelSheet, getPharmacyQueue, issue, resolveFlag, returnMed, verify } from "../lib/ipd-emar-api";
-import type { Checks } from "../lib/ipd-emar-api";
+import type { AllergyOverride, Checks } from "../lib/ipd-emar-api";
 import "./ipd-emar.css";
 
 /**
@@ -96,11 +96,15 @@ function VerifyCard({ it, onDone }: { it: IpdEmarVerifyItem; onDone: (w: string)
   const [note, setNote] = useState("");
   const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
   const [busy, setBusy] = useState(false);
-  const needsNote = it.findings.some((f) => f.severity !== "info") || it.allergyOverrideReason !== null;
+  const [ovReason, setOvReason] = useState<AllergyOverride["reason"] | "">("");
+  const [ovText, setOvText] = useState("");
+  const allergyStop = it.findings.some((f) => f.check === "allergy");
+  const needsNote = it.findings.some((f) => f.severity !== "info") || it.allergyOverrideReason !== null || !it.interactionDataPresent;
+  const overrideOk = !allergyStop || (ovReason !== "" && ovText.trim() !== "");
   const all = ticks.allergy && ticks.interaction && ticks.dose && ticks.duplicate;
   const act = (decision: "verified" | "rejected" | "query"): void => {
     setBusy(true); setRefusal(null);
-    verify(it.order.orderId, decision, ticks, note.trim() || undefined).then(() => { setBusy(false); onDone(t(`ipdEmar.pharmacy.did.${decision}`)); }, (e: unknown) => { setBusy(false); setRefusal(refusalOf(e)); });
+    verify(it.order.orderId, decision, ticks, note.trim() || undefined, allergyStop && ovReason !== "" ? { reason: ovReason, text: ovText.trim() } : undefined).then(() => { setBusy(false); onDone(t(`ipdEmar.pharmacy.did.${decision}`)); }, (e: unknown) => { setBusy(false); setRefusal(refusalOf(e)); });
   };
   return (
     <article className="ipde-card" data-testid={`ipde-verify-${it.order.orderId}`}>
@@ -118,11 +122,22 @@ function VerifyCard({ it, onDone }: { it: IpdEmarVerifyItem; onDone: (w: string)
         ))}
       </fieldset>
       <label className="ipde-field">{needsNote ? t("ipdEmar.pharmacy.noteNeeded") : t("ipdEmar.note")}<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+      {allergyStop ? (
+        <div className="ipde-row" data-testid="ipde-allergy-override">
+          <label className="ipde-field">{t("ipdEmar.pharmacy.overrideReason")}
+            <select value={ovReason} onChange={(e) => setOvReason(e.target.value as AllergyOverride["reason"] | "")}>
+              <option value="">—</option>
+              {(["tolerated_before", "desensitised", "no_safe_alternative", "benefit_outweighs_risk"] as const).map((r) => <option key={r} value={r}>{t(`ipdEmar.pharmacy.overrides.${r}`)}</option>)}
+            </select>
+          </label>
+          <label className="ipde-field">{t("ipdEmar.pharmacy.overrideText")}<input value={ovText} onChange={(e) => setOvText(e.target.value)} /></label>
+        </div>
+      ) : null}
       {refusal !== null ? <div className="ipde-refusal" role="alert">{refusal.rule}</div> : null}
       <div className="ipde-acts">
         <button type="button" className="ipde-btn" disabled={busy || note.trim() === ""} onClick={() => act("query")}>{t("ipdEmar.pharmacy.query")}</button>
         <button type="button" className="ipde-btn" disabled={busy || note.trim() === ""} onClick={() => act("rejected")}>{t("ipdEmar.pharmacy.reject")}</button>
-        <button type="button" className="ipde-btn pri" disabled={busy || !all || (needsNote && note.trim() === "")} onClick={() => act("verified")} data-testid="ipde-verify-btn">{t("ipdEmar.pharmacy.verify")}</button>
+        <button type="button" className="ipde-btn pri" disabled={busy || !all || (needsNote && note.trim() === "") || !overrideOk} onClick={() => act("verified")} data-testid="ipde-verify-btn">{t("ipdEmar.pharmacy.verify")}</button>
       </div>
     </article>
   );
@@ -175,8 +190,9 @@ function FlagCard({ f, onDone }: { f: IpdEmarPharmacyQueue["allergyFlags"][numbe
       <div><b>{f.identity.name}</b> <span className="dim">{f.bedCode ?? ""}</span></div>
       <div>⚠ {f.title} · {f.substances.join(", ")}</div>
       <div className="dim">{fmtIst(f.raisedAt)}{f.orderActive ? "" : ` · ${t("ipdEmar.pharmacy.orderStopped")}`}</div>
+      <div className={f.doctorDecision === null ? "ipde-finding stop" : "ipde-finding"}>{f.doctorDecision === null ? t("ipdEmar.pharmacy.awaitDoctor") : t(`ipdEmar.pharmacy.decided.${f.doctorDecision}`, { reason: f.doctorReason ?? "" })}</div>
       <label className="ipde-field">{t("ipdEmar.pharmacy.decision")}<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
-      <div className="ipde-acts"><button type="button" className="ipde-btn" disabled={note.trim() === ""} onClick={() => { resolveFlag(f.flagId, note.trim()).then(onDone, () => undefined); }}>{t("ipdEmar.pharmacy.close")}</button></div>
+      <div className="ipde-acts"><button type="button" className="ipde-btn" disabled={note.trim() === "" || f.doctorDecision === null} onClick={() => { resolveFlag(f.flagId, note.trim()).then(onDone, () => undefined); }}>{t("ipdEmar.pharmacy.close")}</button></div>
     </article>
   );
 }

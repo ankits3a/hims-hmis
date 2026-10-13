@@ -197,13 +197,13 @@ export { IPD_ADMISSION_NO_RE, IPD_ADMISSION_PREFIX, intendedPayerOfAdmission, re
 // re-check consumer, the minute sweep (missed doses, verbal-order nudges), the two nurse Now cards and the reads.
 export { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VERIFY, IPD_EMAR_VIEW } from "./permissions";
 export {
-  EMAR_SYSTEM_ACTOR, IPD_EMAR_NURSE_ROLES, administerDose, emarAllergyConsumer, holdDose, issueMed, markDoseInError, missDose,
+  EMAR_SYSTEM_ACTOR, IPD_EMAR_NURSE_ROLES, NPO_ROUTES, administerDose, backfillEmarAllergyFlags, decideAllergyFlag, npoAt, emarAllergyConsumer, holdDose, issueMed, markDoseInError, missDose,
   recheckOrdersForAllergy, recordInfusionEvent, recordNarcoticWastage, refuseDose, reofferHeldDoses, resolveAllergyFlag, returnMed,
   secondCheck, signVerbalOrder, sweepIpdEmar, verifyFindingsOf, verifyOrder,
 } from "./emar";
 export type { EmarSweepResult } from "./emar";
 export { cancelFutureDosesIn, scheduleDosesIn } from "./emar-doses";
-export { dueTimesFor, giveTiming, isHighAlert, isTimeCritical, prnState } from "./emar-rules";
+export { ISMP_HIGH_ALERT_NAMES, dueTimesFor, giveTiming, isHighAlert, isTimeCritical, prnState, unitsPerDose } from "./emar-rules";
 export { readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
 export { IPD_NEW_ORDER_HOURS, dueDoseCard, newOrderCard } from "./emar-cards";
 export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";

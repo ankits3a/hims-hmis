@@ -41,7 +41,7 @@ export function emarPatientOf(base: number, over: Partial<IpdEmarPatient> = {}):
   };
 }
 
-export function scanOf(base: number, over: { highAlert?: boolean; lasa?: boolean; ok?: boolean } = {}): IpdEmarScan {
+export function scanOf(base: number, over: { highAlert?: boolean; lasa?: boolean; ok?: boolean; weight?: boolean; npo?: "none" | "sips" | "doctor" } = {}): IpdEmarScan {
   const p = emarPatientOf(base);
   const order = over.highAlert === true ? p.orders[1]! : over.lasa === true ? p.orders[2]! : p.orders[0]!;
   const d = p.doses.find((x) => x.orderId === order.orderId) ?? null;
@@ -56,7 +56,7 @@ export function scanOf(base: number, over: { highAlert?: boolean; lasa?: boolean
         { key: "time", ok: true, words: "Due now" },
         { key: "route", ok: true, words: order.route.toUpperCase() },
       ],
-      needs: { secondNurse: order.highAlert, lasaConfirm: order.lasa, weight: false, lateReason: false },
+      needs: { secondNurse: order.highAlert, lasaConfirm: order.lasa, weight: over.weight === true, lateReason: false, npo: over.npo ?? "none" },
     },
   };
 }
@@ -82,7 +82,7 @@ export function pharmacyQueueOf(base: number): IpdEmarPharmacyQueue {
         order: orderLine({ orderId: eid(11), title: "Pantoprazole 40 mg", verification: "pending", issued: false, doseWords: "40 mg · IV · OD", frequency: "OD", timeCritical: false }), orderedByName: "Dr Fake Resident", orderedAt: at(base, -5), allergyOverrideReason: null, findings: [], interactionDataPresent: true },
     ],
     toIssue: [{ ...who, order: orderLine({ orderId: eid(12), title: "Actrapid 100 IU/ml", highAlert: true, issued: false, doseWords: "8 unit · SC · TDS" }), orderedByName: "Dr Fake Consultant", orderedAt: at(base, -40), allergyOverrideReason: null }],
-    allergyFlags: [{ flagId: eid(20), orderId: eid(13), admissionId: eid(102), identity: { name: "Test Patient Chand", uhid: "UH-FAKE-0103", ageYears: 40, sex: "male", sealed: false }, bedCode: "F05-MED-M-B03", title: "Ceftriaxone 1 g", substances: ["Ceftriaxone"], raisedAt: at(base, -30), orderActive: true }],
+    allergyFlags: [{ flagId: eid(20), orderId: eid(13), admissionId: eid(102), identity: { name: "Test Patient Chand", uhid: "UH-FAKE-0103", ageYears: 40, sex: "male", sealed: false }, bedCode: "F05-MED-M-B03", title: "Ceftriaxone 1 g", substances: ["Ceftriaxone"], raisedAt: at(base, -30), orderActive: true, doctorDecision: "continue", doctorReason: "Mild rash; benefit outweighs" }],
     returnsOwed: [{ issueId: eid(30), orderId: eid(14), admissionId: eid(100), identity: who.identity, bedCode: "F05-MED-F-B01", title: "Ondansetron 4 mg", units: 10, returnedUnits: 0, ownMedicine: false, issuedAt: at(base, -300) }],
   };
 }

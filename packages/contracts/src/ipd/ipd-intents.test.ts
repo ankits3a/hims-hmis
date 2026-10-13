@@ -133,13 +133,14 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   mark_dose_in_error: {
     idempotencyKey: key(63), actId: id(27), kind: "medication_incident", reason: "synthetic", incident: { type: "wrong_dose", category: "C" },
   },
-  second_check: { idempotencyKey: key(64), purpose: "high_alert_dose", username: "fake.nurse", pin: "0000" },
+  second_check: { idempotencyKey: key(64), purpose: "high_alert_dose", orderId: id(18), username: "fake.nurse", pin: "0000" },
   sign_verbal_order: { idempotencyKey: key(65), orderId: id(18) },
   record_narcotic_wastage: {
-    idempotencyKey: key(66), orderId: id(18), qty: 0.5, unit: "ml", reason: "synthetic", witness: { userId: USER2, pinProof: "fake-proof" },
+    idempotencyKey: key(66), orderId: id(18), qty: 0.5, reason: "synthetic", witness: { userId: USER2, pinProof: "fake-proof" },
   },
   return_med: { idempotencyKey: key(67), issueId: id(28), units: 4, reason: "order stopped" },
   resolve_allergy_flag: { idempotencyKey: key(68), flagId: id(29), note: "doctor stopped" },
+  decide_allergy_flag: { idempotencyKey: key(69), flagId: id(29), decision: "continue", reason: "benefit outweighs" },
   declare_fit: { idempotencyKey: key(30), admissionId: id(3), when: "today", disposition: "home" },
   cancel_fit: { idempotencyKey: key(31), admissionId: id(3), reason: "synthetic worsening" },
   confirm_charges: { idempotencyKey: key(32), admissionId: id(3), department: "pharmacy" },

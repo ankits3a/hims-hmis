@@ -1,4 +1,4 @@
-import { ndpsClassByMedicine, resolveMedicines } from "../formulary";
+import { medicinesByIds, ndpsClassByMedicine, resolveMedicines } from "../formulary";
 import { shelfByMedicine } from "../pharmacy";
 import { isHighAlert, isTimeCritical } from "./emar-rules";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -24,6 +24,9 @@ export type EmarDrug = {
   lasa: boolean;
   /** The tall-man sentence the item master carries ("hydrOXYzine vs hydrALAZINE"), or null. */
   tallMan: string | null;
+  /** The formulary strength ("500 mg", "10 mg/ml") and the stocked item's base unit — the label ledger's conversion. */
+  strengthLabel: string | null;
+  baseUom: string | null;
 };
 
 export async function emarDrugsOf(db: Db | Tx, orders: readonly IpdOrderRow[]): Promise<Map<string, EmarDrug>> {
@@ -31,8 +34,8 @@ export async function emarDrugsOf(db: Db | Tx, orders: readonly IpdOrderRow[]): 
   const drugs = orders.filter((o) => o.kind === "drug" && o.medicineId !== null);
   if (drugs.length === 0) return out;
   const ids = [...new Set(drugs.map((o) => o.medicineId!))];
-  const [shelf, resolved, ndps] = await Promise.all([
-    shelfByMedicine(db), resolveMedicines(db as Db, ids), ndpsClassByMedicine(db, ids),
+  const [shelf, resolved, ndps, meds] = await Promise.all([
+    shelfByMedicine(db), resolveMedicines(db as Db, ids), ndpsClassByMedicine(db, ids), medicinesByIds(db, ids),
   ]);
   for (const o of drugs) {
     const s = shelf.get(o.medicineId!) ?? null;
@@ -44,6 +47,7 @@ export async function emarDrugsOf(db: Db | Tx, orders: readonly IpdOrderRow[]): 
       saltIds: (r?.salts ?? []).map((x) => x.saltId), moieties: words.moieties, classes: words.classes,
       narcotic, highAlert: isHighAlert(s?.item.highAlert === true, narcotic, words), timeCritical: isTimeCritical(o.antibiotic, words),
       lasa: s?.item.lasa === true, tallMan: s?.item.lasa === true ? (s.item.lasaNote ?? null) : null,
+      strengthLabel: meds.get(o.medicineId!)?.strengthLabel ?? null, baseUom: s?.item.baseUom ?? null,
     });
   }
   return out;

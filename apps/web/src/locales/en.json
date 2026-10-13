@@ -18904,6 +18904,19 @@
         "verified": "Verified",
         "rejected": "Rejected",
         "query": "Query sent"
+      },
+      "overrideReason": "Allergy override",
+      "overrideText": "Why (text)",
+      "overrides": {
+        "tolerated_before": "Tolerated before",
+        "desensitised": "Desensitised",
+        "no_safe_alternative": "No safe alternative",
+        "benefit_outweighs_risk": "Benefit outweighs risk"
+      },
+      "awaitDoctor": "Waiting for the doctor's decision",
+      "decided": {
+        "stop": "Doctor stopped the order: {{reason}}",
+        "continue": "Doctor continues: {{reason}}"
       }
     },
     "labels": {
@@ -18925,6 +18938,12 @@
       "noOrders": "No drug orders",
       "withPharmacy": "with pharmacy"
     },
-    "needs": "Needs: {{what}}"
+    "needs": "Needs: {{what}}",
+    "weight": "Weight now (kg)",
+    "npo": {
+      "sips": "doctor allows meds with sips",
+      "doctor": "before surgery: doctor's OK",
+      "doctorId": "Doctor (user id) who said yes"
+    }
   }
 }

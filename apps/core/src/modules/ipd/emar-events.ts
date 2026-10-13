@@ -86,8 +86,13 @@ export const allergyFlagResolved = defineEvent("ipd.allergy_flag.resolved", MODU
 export const IPD_EMAR_EVENT_NAMES: readonly string[] = [
   orderVerified.name, medIssued.name, medReturned.name, doseGiven.name, doseHeld.name, doseRefused.name, doseMissed.name,
   dosesReoffered.name, dosesCancelled.name, doseCorrected.name, infusionRecorded.name, verbalOrderRecorded.name, allergyFlagRaised.name,
-  allergyFlagResolved.name,
+  allergyFlagResolved.name, "ipd.allergy_flag.decided",
 ];
 
 /** The consumer that re-checks active orders when an allergy is recorded (§4.6 edge "allergy added later"). */
 export const IPD_EMAR_ALLERGY_CONSUMER = "ipd.emar_allergy_recheck";
+
+/** E4.3 review — the doctor's decision on an allergy flag (stop / continue). Ids and the decision only. */
+export const allergyFlagDecided = defineEvent("ipd.allergy_flag.decided", MODULE, z.object({
+  flagId: id, orderId: id, admissionId: id, decision: z.enum(["stop", "continue"]), provenance: IpdProvenanceSchema,
+}));

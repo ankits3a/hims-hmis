@@ -769,7 +769,32 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   before the 24-h deadline and once after it.
 - ALLERGY LATER: consumer `ipd.emar_allergy_recheck` on `allergy.recorded` → one flag per (order, allergy), notices to the duty
   doctors and every active `pharmacy` role holder once; closed by the pharmacist (`resolve_allergy_flag`) or by the order's stop.
-- NPO: the bedside shows it from `diet_npo` (diet's predicate copied — diet imports ipd at load, so ipd may not import diet).
+- NPO (`emar.ts` `npoAt`): read on `diet_npo` with diet's own predicate (diet imports ipd at load; importing diet's index is a
+  load-time cycle) — a lifted or ended NPO is not NPO (pinned by `emar-review.acceptance`). DECIDED ("NPO except medications"):
+  an oral / sublingual / NG give under NPO needs `npoMeds` — the nurse's "doctor allows meds with sips" with a reason (recorded
+  on the act, counted in `readOverrideCounts`); an OT case's NPO (`source = ot_booking`) takes only a doctor's read-back OK
+  (`doctor_ok`, a doctor-role holder).
+- REVIEW OF d500eb13 (#735), all DECIDED: LABEL LEDGER `ipd_emar_label_uses` — each give consumes the dose in the label's
+  base units (`emar-rules.ts` `unitsPerDose`: count doses, mass ÷ strength, a concentration counts a single-dose container;
+  a multi-dose container — syrup, insulin pen — is not counted), refused `label_exhausted`; a returned issue's or a superseded
+  (lost / damaged re-issue) issue's label is `label_void`; entered-in-error releases the units. SECOND-CHECK PROOFS are bound to
+  purpose, order, drug and (scheduled dose) slot. PRN interval and 24-h cap span every PRN order of the admission sharing the
+  moiety; a second PRN of one moiety is a `stop` finding at verify. A named batch must be the shelf item's, in PHARM-OPD
+  (`batch_mismatch`). NARCOTIC REGISTER: one base unit on every row; entered-in-error appends `reversal`. INFUSION start / rate
+  change need the wristband (or override) and the bag's label; a running or paused infusion stops even after the order stops;
+  infusion events take the 2-minute stale rule. PIN THROTTLE: an advisory lock on the username around read → verify → count, all
+  on the lock's connection. VERIFY: never one's own order (`verify_own_order`); no interaction data needs the note; an allergy
+  finding needs `allergyOverride` (reason enum + text). RE-ISSUE: a second issue needs `reissue` (lost / damaged / extra_supply,
+  ≤ 3 in 24 h). A bedside weight > 10 % off the order's sends the order back (`query`, the prescriber told) and refuses
+  `weight_changed_reverify`. Hold / refuse / miss never before the window. Entered-in-error on a stopped order's slot cancels
+  it; a PRN slot reopens. ALLERGY FLAG: the doctor decides (`decide_allergy_flag` stop / continue + reason; a stop of the order
+  records "stop"), then the pharmacist closes (`allergy_flag_undecided` before); the prescriber is told too; `workerBackfills`
+  re-checks active orders once (`backfillEmarAllergyFlags`). The incident is filed inside the correction's transaction. Late
+  window = one more window (`w × (1 + CATCH_UP)`). ISMP names `ISMP_HIGH_ALERT_NAMES`. Verbal emergencies are an enum and the
+  named doctor must hold a doctor role. TRIGGERS (all ENABLE ALWAYS, no bypass switch): append-only tables refuse UPDATE,
+  DELETE and TRUNCATE; the verbal signature and the second-check spend are write-once (`ipd_emar_verbal_guard`,
+  `ipd_emar_second_check_guard`). `test/helpers/db.ts` `truncateAll` turns the TRUNCATE triggers off for its one statement.
+  More than five wristband overrides by one nurse in 24 h tell the ward in-charge once a day.
 
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it

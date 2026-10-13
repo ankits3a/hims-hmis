@@ -99,6 +99,9 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
   const [lasaOk, setLasaOk] = useState(false);
   const [lateReason, setLateReason] = useState("");
   const [second, setSecond] = useState<{ userId: string; pinProof: string; name: string } | null>(null);
+  const [weight, setWeight] = useState("");
+  const [npoReason, setNpoReason] = useState("");
+  const [npoDoctor, setNpoDoctor] = useState("");
   const [outcome, setOutcome] = useState<{ kind: "hold" | "refuse" | "miss"; dose: IpdEmarDose } | null>(null);
   const load = useCallback(() => getEmarPatient(admissionId).then(setMar, () => setMar(null)), [admissionId]);
   useEffect(() => { void load(); setStarted(null); setSecond(null); setOverride(null); setLasaOk(false); }, [load]);
@@ -122,13 +125,19 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
   };
   const label = started?.scan.label ?? null;
   const patientCheck: PatientCheck | null = bandCode !== null && bandCode !== "" ? { kind: "scan", wristbandCode: bandCode } : override;
+  const weightKg = Number(weight);
+  const weightOk = !label?.needs.weight || (weight.trim() !== "" && Number.isFinite(weightKg) && weightKg > 0 && weightKg <= 400);
+  const npoOk = label === null || label.needs.npo === "none" || (npoReason.trim() !== "" && (label.needs.npo === "sips" || npoDoctor.trim() !== ""));
   const ready = label !== null && label.checks.every((c) => c.ok || (c.key === "time" && label.needs.lateReason)) && patientCheck !== null
-    && (!label.needs.lasaConfirm || lasaOk) && (!label.needs.secondNurse || second !== null) && (!label.needs.lateReason || lateReason.trim() !== "");
+    && (!label.needs.lasaConfirm || lasaOk) && (!label.needs.secondNurse || second !== null) && (!label.needs.lateReason || lateReason.trim() !== "")
+    && weightOk && npoOk;
   const missing = label === null ? [] : [
     patientCheck === null ? t("ipdEmar.bedside.scanBand") : null,
     label.needs.secondNurse && second === null ? t("ipdEmar.second.title") : null,
     label.needs.lasaConfirm && !lasaOk ? "LASA" : null,
     label.needs.lateReason && lateReason.trim() === "" ? t("ipdEmar.lateReason") : null,
+    !weightOk ? t("ipdEmar.weight") : null,
+    !npoOk ? "NPO" : null,
   ].filter((x): x is string => x !== null);
   const doGive = (): void => {
     if (label === null || patientCheck === null || started === null) return;
@@ -140,6 +149,9 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
       ...(second !== null ? { secondNurse: { userId: second.userId, pinProof: second.pinProof } } : {}),
       ...(label.needs.lasaConfirm ? { lasaConfirmed: true as const } : {}),
       ...(label.needs.lateReason ? { lateReason: lateReason.trim() } : {}),
+      ...(label.needs.weight ? { weightKg } : {}),
+      ...(label.needs.npo === "sips" ? { npoMeds: { kind: "sips_allowed" as const, reason: npoReason.trim() } } : {}),
+      ...(label.needs.npo === "doctor" ? { npoMeds: { kind: "doctor_ok" as const, doctorId: npoDoctor.trim(), readBack: true as const, reason: npoReason.trim() } } : {}),
     }).then((r) => {
       setBusy(false); setStarted(null); setSecond(null); setLateReason("");
       onDone(r.late ? t("ipdEmar.given.late") : t("ipdEmar.given.ok")); void load();
@@ -219,7 +231,17 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
           {label.needs.lateReason ? (
             <label className="ipde-field">{t("ipdEmar.lateReason")}<input value={lateReason} onChange={(e) => setLateReason(e.target.value)} data-testid="ipde-late" /></label>
           ) : null}
-          {label.needs.secondNurse ? (second === null ? <SecondNurse online={online} onProof={setSecond} /> : <p className="ipdn-ok">✓ {t("ipdEmar.second.done", { name: second.name })}</p>) : null}
+          {label.needs.weight ? (
+            <label className="ipde-field">{t("ipdEmar.weight")}<input value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" data-testid="ipde-weight" /></label>
+          ) : null}
+          {label.needs.npo !== "none" ? (
+            <div className="ipdn-card ipde-npo" data-testid="ipde-npo">
+              <b>✕ NPO · {label.needs.npo === "sips" ? t("ipdEmar.npo.sips") : t("ipdEmar.npo.doctor")}</b>
+              {label.needs.npo === "doctor" ? <label className="ipde-field">{t("ipdEmar.npo.doctorId")}<input value={npoDoctor} onChange={(e) => setNpoDoctor(e.target.value)} /></label> : null}
+              <label className="ipde-field">{t("ipdEmar.reason")}<input value={npoReason} onChange={(e) => setNpoReason(e.target.value)} data-testid="ipde-npo-reason" /></label>
+            </div>
+          ) : null}
+          {label.needs.secondNurse ? (second === null ? <SecondNurse online={online} target={{ orderId: label.orderId, ...(label.dose !== null && !label.dose.prn ? { doseDueAt: label.dose.dueAt } : {}) }} onProof={setSecond} /> : <p className="ipdn-ok">✓ {t("ipdEmar.second.done", { name: second.name })}</p>) : null}
           {!ready && missing.length > 0 ? <p className="ipdn-warn" data-testid="ipde-needs">{t("ipdEmar.needs", { what: missing.join(" · ") })}</p> : null}
           <div className="ipdn-thumb ipde-thumb">
             {label.order.highAlert
@@ -311,7 +333,7 @@ function OverrideForm({ onSet }: { onSet: (c: PatientCheck) => void }): React.Re
   );
 }
 
-function SecondNurse({ online, onProof }: { online: boolean; onProof: (p: { userId: string; pinProof: string; name: string }) => void }): React.ReactElement {
+function SecondNurse({ online, target, onProof }: { online: boolean; target: { orderId: string; doseDueAt?: string }; onProof: (p: { userId: string; pinProof: string; name: string }) => void }): React.ReactElement {
   const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
@@ -319,7 +341,7 @@ function SecondNurse({ online, onProof }: { online: boolean; onProof: (p: { user
   return (
     <form className="ipdn-form ipdn-card ipde-second" onSubmit={(e) => {
       e.preventDefault(); setRefusal(null);
-      secondCheck("high_alert_dose", username.trim(), pin).then((p) => { setPin(""); onProof(p); }, (er: unknown) => { setPin(""); setRefusal(refusalOf(er)); });
+      secondCheck("high_alert_dose", target, username.trim(), pin).then((p) => { setPin(""); onProof(p); }, (er: unknown) => { setPin(""); setRefusal(refusalOf(er)); });
     }} data-testid="ipde-second">
       <b>{t("ipdEmar.second.title")}</b>
       <label>{t("ipdEmar.second.username")}<input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" /></label>

@@ -497,8 +497,10 @@ export type EmarWorld = RoundsWorld & {
   /** A formulary medicine stocked at PHARM-OPD: an item (with the NABH flags), a sale item and a batch of `qty`. */
   stocked(name: string, opts?: {
     highAlert?: boolean; lasa?: boolean; lasaNote?: string; aware?: "Access" | "Watch" | "Reserve"; narcotic?: boolean;
-    form?: string; strength?: string; qty?: number; moiety?: string; drugClass?: string;
+    form?: string; strength?: string; qty?: number; moiety?: string; drugClass?: string; baseUom?: string;
   }): Promise<{ medicineId: string; itemId: string; batchId: string }>;
+  /** A batch of an item stocked at another store (the batch-override check). */
+  batchElsewhere(itemId: string): Promise<string>;
   /** Prints the admission's wristband and answers its serial (what a scan reads). */
   band(admissionId: string): Promise<string>;
 };
@@ -546,7 +548,7 @@ export async function mkEmarWorld(db: Db): Promise<EmarWorld> {
       });
       if (opts.aware !== undefined) await db.update(formularyMedicines).set({ awareCategory: opts.aware } as never).where(eq(formularyMedicines.id, medicineId));
       const itemId = await withTx(db, async (tx) => (await registerItem(tx, HEAD, {
-        code: `EM-${String(n)}`, name, class: "drug", baseUom: "tablet", batchTracked: true, formularyMedicineId: medicineId, gstRateBps: 1200,
+        code: `EM-${String(n)}`, name, class: "drug", baseUom: opts.baseUom ?? "tablet", batchTracked: true, formularyMedicineId: medicineId, gstRateBps: 1200,
         highAlert: opts.highAlert ?? false, lasa: opts.lasa ?? false, lasaNote: opts.lasaNote ?? null,
         uoms: [{ uom: "strip", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
       } as never)).itemId);
@@ -561,6 +563,16 @@ export async function mkEmarWorld(db: Db): Promise<EmarWorld> {
         resourceId: storeId, batchId, qtyDelta: opts.qty ?? 100, reason: "grn", refType: "test", refId: batchId, occurredAt: new Date("2026-01-01T00:00:00Z"),
       }));
       return { medicineId, itemId, batchId };
+    },
+    batchElsewhere: async (itemId) => {
+      n += 1;
+      const { resourceId: other } = await withTx(db, (tx) => createStore(tx, HEAD, { code: `OTHER-${String(n)}`, name: "Another store" }));
+      const batchId = newId();
+      await db.insert(schema.stockBatches).values({
+        id: batchId, itemId, batchNo: `X-${String(n)}`, expiryDate: "2030-12-31", mrpPaise: 1000, mrpUom: "strip", landedCostPaise: 500, ownership: "owned", createdBy: HEAD.id,
+      } as never);
+      await withTx(db, (tx) => postMovement(tx, HEAD, { resourceId: other, batchId, qtyDelta: 50, reason: "grn", refType: "test", refId: batchId, occurredAt: new Date("2026-01-01T00:00:00Z") }));
+      return batchId;
     },
     band: async (admissionId) => (await printBand(db, w.admitDesk, { idempotencyKey: randomUUID(), admissionId, size: "adult", site: "wrist" })).bandSerial,
   };

@@ -40,7 +40,7 @@ export const horizonOf = (at: Date): Date => new Date(at.getTime() + IPD_EMAR_HO
 
 /**
  * The order stopped or was cancelled: every OPEN slot (scheduled or held) is cancelled, each with its own `cancelled` act,
- * and the order's open allergy flags close ("order stopped"). Called inside the stop / cancel transaction.
+ * and the order's open allergy flags record the doctor's decision "stop". Called inside the stop / cancel transaction.
  */
 export async function cancelFutureDosesIn(tx: Tx, actor: Actor, o: Pick<IpdOrderRow, "id" | "admissionId" | "patientId">, at: Date): Promise<number> {
   const open = await tx.select().from(ipdEmarDoses)
@@ -53,8 +53,9 @@ export async function cancelFutureDosesIn(tx: Tx, actor: Actor, o: Pick<IpdOrder
     });
     await tx.update(ipdEmarDoses).set({ status: "cancelled", slotSeq: d.slotSeq + 1, lastActId: actId }).where(eq(ipdEmarDoses.id, d.id));
   }
-  await tx.update(ipdEmarAllergyFlags).set({ resolvedAt: at, resolvedBy: actor.id, resolutionNote: "order stopped" })
-    .where(and(eq(ipdEmarAllergyFlags.orderId, o.id), isNull(ipdEmarAllergyFlags.resolvedAt)));
+  // E4.3 review: a stop IS the doctor's decision on an open allergy flag (recorded); the pharmacist still closes it.
+  await tx.update(ipdEmarAllergyFlags).set({ doctorDecision: "stop", doctorReason: "order stopped", decidedBy: actor.id, decidedAt: at })
+    .where(and(eq(ipdEmarAllergyFlags.orderId, o.id), isNull(ipdEmarAllergyFlags.resolvedAt), isNull(ipdEmarAllergyFlags.doctorDecision)));
   if (open.length > 0) {
     await appendEvent(tx, dosesCancelled.make({
       payload: { orderId: o.id, admissionId: o.admissionId, count: open.length, provenance: provenanceOf(actor) },

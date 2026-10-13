@@ -1,6 +1,7 @@
-import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import {
-  IPD_CLOCK_SKEW_MS, IPD_EMAR_GIVE_STALE_MS, IPD_EMAR_LABEL_PREFIX, IPD_EMAR_SECOND_CHECK_MINUTES, IPD_INTENTS, ipdIsInFuture, newId,
+  IPD_CLOCK_SKEW_MS, IPD_EMAR_GIVE_STALE_MS, IPD_EMAR_LABEL_PREFIX, IPD_EMAR_OVERRIDE_ALERT_COUNT, IPD_EMAR_REISSUE_LIMIT,
+  IPD_EMAR_SECOND_CHECK_MINUTES, IPD_EMAR_WEIGHT_CHANGE_FRACTION, IPD_INTENTS, ipdIsInFuture, newId,
 } from "@hmis/contracts";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { verifyPinByUsername } from "../../kernel/auth/identity";
@@ -8,12 +9,12 @@ import { clearThrottle, recordThrottleFailure, throttleRetryAt } from "../../ker
 import { raiseNoticeIn } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import {
-  ipdBands, ipdEmarActs, ipdEmarAllergyFlags, ipdEmarDoses, ipdEmarInfusionEvents, ipdEmarIssues, ipdEmarLabels, ipdEmarNarcoticRegister,
-  ipdEmarReturns, ipdEmarSecondChecks, ipdEmarVerbalOrders, ipdEmarVerifications, ipdOrders, users,
+  dietNpo, ipdBands, ipdEmarActs, ipdEmarLabelUses, ipdEmarAllergyFlags, ipdEmarDoses, ipdEmarInfusionEvents, ipdEmarIssues, ipdEmarLabels, ipdEmarNarcoticRegister,
+  ipdAdmissions, ipdEmarReturns, ipdEmarSecondChecks, ipdEmarVerbalOrders, ipdEmarVerifications, ipdOrders, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { THERAPEUTIC_DUPLICATE_CLASSES, interactionRulesPresent, listInteractionsAmong, resolveDrugTexts, resolveMedicines } from "../formulary";
-import { MaterialsError, fefoPick, findStoreByCode, postMovements } from "../materials";
+import { MaterialsError, batchLocations, fefoPick, findStoreByCode, getBatch, postMovements } from "../materials";
 import { allergyRecorded, getPatientSummaries, listAllergies } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, recordIncident } from "../pharmacy";
 import { matchAllergiesSaltAware } from "../opd";
@@ -25,13 +26,14 @@ import { IPD_SYSTEM_ACTOR } from "./beds";
 import { horizonOf, scheduleDosesIn } from "./emar-doses";
 import { emarDrugsOf } from "./emar-drug";
 import {
-  allergyFlagRaised, allergyFlagResolved, doseCorrected, doseGiven, doseHeld, doseMissed, doseRefused, dosesReoffered, infusionRecorded,
+  allergyFlagDecided, allergyFlagRaised, allergyFlagResolved, doseCorrected, doseGiven, doseHeld, doseMissed, doseRefused, dosesReoffered, infusionRecorded,
   medIssued, medReturned, narcoticWasted, orderVerified, secondCheckPassed, verbalOrderSigned,
 } from "./emar-events";
-import { doseWordsOf, giveTiming, prnState, windowMinutesFor } from "./emar-rules";
+import { doseWordsOf, giveTiming, prnState, unitsPerDose, windowMinutesFor } from "./emar-rules";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { IpdRefusal } from "./errors";
 import { IPD_NURSING_STATES, activeHolders, dutyDoctorsFor, nursingFallback, whereWords } from "./nursing";
-import { CHILD_WEIGHT_AGE_YEARS, markIpdOrderIssuedIn } from "./orders";
+import { CHILD_WEIGHT_AGE_YEARS, IPD_DOCTOR_ROLE_KEYS, markIpdOrderIssuedIn, stopOrderIn } from "./orders";
 import { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VERIFY, IPD_ORDER_PLACE } from "./permissions";
 import { onTeam, treatingTeamOf } from "./rounds-team";
 import type { Actor, IpdEmarFinding, IpdIntentName } from "@hmis/contracts";
@@ -143,6 +145,11 @@ export async function verifyFindingsOf(db: Db | Tx, o: IpdOrderRow, drug: EmarDr
       const od = otherDrugs.get(other.id);
       if (od === undefined) continue;
       const same = drug.moieties.filter((m) => od.moieties.map((x) => x.toLowerCase()).includes(m.toLowerCase()));
+      // E4.3 review: two PRN orders of one moiety are a hard stop (the PRN limits would be split across them).
+      if (same.length > 0 && o.prn !== null && other.prn !== null) {
+        findings.push({ check: "duplicate", severity: "stop", words: `Second PRN order of the same drug (${same.join(", ")}) as ${other.medicineName ?? "another order"}` });
+        continue;
+      }
       if (same.length > 0) { findings.push({ check: "duplicate", severity: "warn", words: `Same drug (${same.join(", ")}) as ${other.medicineName ?? "another order"}` }); continue; }
       const cls = drug.classes.find((c) => c !== null && (THERAPEUTIC_DUPLICATE_CLASSES as readonly string[]).includes(c) && od.classes.includes(c));
       if (cls != null) findings.push({ check: "duplicate", severity: "warn", words: `Same class (${cls}) as ${other.medicineName ?? "another order"}` });
@@ -168,17 +175,22 @@ export async function verifyOrder(db: Db, actor: Actor, raw: unknown, opts: Emar
     const { o, a } = await lockOrderIn(tx, input.orderId);
     if (o.status !== "active" || !inNursing(a)) throw new IpdRefusal("order_not_active", undefined, { status: o.status });
     if (o.verification !== "pending" && o.verification !== "query") throw new IpdRefusal("order_not_pending", undefined, { verification: o.verification });
+    // E4.3 review: the second pair of eyes is never the first — a prescriber who is also a pharmacist verifies nothing they wrote.
+    if (o.orderedBy === actor.id) throw new IpdRefusal("verify_own_order");
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
-    const { findings } = await verifyFindingsOf(tx, o, drug, at);
+    const { findings, interactionDataPresent } = await verifyFindingsOf(tx, o, drug, at);
     if (input.decision === "verified") {
       if (!(input.checks.allergy && input.checks.interaction && input.checks.dose && input.checks.duplicate)) throw new IpdRefusal("checks_incomplete");
-      const needsNote = findings.some((f) => f.severity !== "info") || o.allergyOverrideReason !== null;
-      if (needsNote && input.note === undefined) throw new IpdRefusal("verify_note_required", undefined, { findings });
+      // E4.3 review: no interaction data means the interaction tick was a judgement — it needs the pharmacist's note.
+      const needsNote = findings.some((f) => f.severity !== "info") || o.allergyOverrideReason !== null || !interactionDataPresent;
+      if (needsNote && input.note === undefined) throw new IpdRefusal("verify_note_required", undefined, { findings, interactionDataPresent });
+      if (findings.some((f) => f.check === "allergy") && input.allergyOverride === undefined) throw new IpdRefusal("allergy_override_required", undefined, { findings });
     } else if (input.note === undefined) {
       throw new IpdRefusal("verify_note_required");
     }
     await tx.insert(ipdEmarVerifications).values({
       id: newId(), orderId: o.id, decision: input.decision, checks: input.checks, findings, note: input.note ?? null, verifiedBy: actor.id, verifiedAt: at,
+      allergyOverrideReason: input.allergyOverride?.reason ?? null, allergyOverrideText: input.allergyOverride?.text ?? null,
     });
     await tx.update(ipdOrders).set({ verification: input.decision }).where(eq(ipdOrders.id, o.id));
     let dosesScheduled = 0;
@@ -212,6 +224,19 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
     if (o.verification !== "verified") throw new IpdRefusal("order_not_verified");
     const issueId = newId();
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
+    // E4.3 review: a second issue is an explicit act with its reason, capped and kept on the row (the audit).
+    const earlier = await tx.select().from(ipdEmarIssues).where(eq(ipdEmarIssues.orderId, o.id));
+    let supersedesIssueId: string | null = null;
+    if (earlier.length > 0) {
+      if (input.reissue === undefined) throw new IpdRefusal("already_issued", undefined, { issues: earlier.length });
+      const recent = earlier.filter((x) => x.reissueReason !== null && x.issuedAt.getTime() > at.getTime() - 86_400_000).length;
+      if (recent >= IPD_EMAR_REISSUE_LIMIT) throw new IpdRefusal("reissue_limit", undefined, { limit: IPD_EMAR_REISSUE_LIMIT });
+      if (input.reissue.reason !== "extra_supply") {
+        const superseded = new Set(earlier.map((x) => x.supersedesIssueId).filter((x): x is string => x !== null));
+        const live = earlier.filter((x) => !superseded.has(x.id)).sort((x, y) => y.issuedAt.getTime() - x.issuedAt.getTime())[0];
+        supersedesIssueId = live?.id ?? null;
+      }
+    }
     let batches: { batchId: string; qty: number; ledgerEntryId: string }[] = [];
     let itemId: string | null = null;
     let storeId: string | null = null;
@@ -223,6 +248,14 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
       if (shelf === null || store === undefined) throw new IpdRefusal("medicine_not_stocked", undefined, { medicineId: o.medicineId });
       itemId = shelf.item.id;
       storeId = store.id;
+      if (input.batchId !== undefined) {
+        // E4.3 review: a named batch must be THIS medicine's stocked item and lie in THIS store.
+        const batch = await getBatch(tx, input.batchId);
+        const here = batch === undefined ? [] : (await batchLocations(tx, batch.id)).filter((l) => l.resourceId === store.id && l.qtyOnHand > 0);
+        if (batch === undefined || batch.itemId !== shelf.item.id || here.length === 0) {
+          throw new IpdRefusal("batch_mismatch", undefined, { batchId: input.batchId, itemId: batch?.itemId ?? null });
+        }
+      }
       const picks = input.batchId !== undefined ? [{ batchId: input.batchId, qty: input.units }] : await fefoPick(tx, store.id, shelf.item.id, input.units, at);
       if (picks.reduce((s, p) => s + p.qty, 0) < input.units) throw new IpdRefusal("stock_short", undefined, { asked: input.units, available: picks.reduce((s, p) => s + p.qty, 0) });
       try {
@@ -241,6 +274,7 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
       id: issueId, orderId: o.id, admissionId: a.id, patientId: o.patientId, itemId, storeId, batches, units: input.units, stripSize,
       ownMedicine: input.ownMedicine, ownBatchNo: input.ownBatch?.batchNo ?? null, ownExpiry: input.ownBatch?.expiry ?? null,
       printerId: input.labelPrinterId ?? null, issuedBy: actor.id, issuedAt: at,
+      reissueReason: input.reissue?.reason ?? null, reissueNote: input.reissue?.note ?? null, supersedesIssueId,
     });
     const count = Math.ceil(input.units / stripSize);
     const labels = Array.from({ length: count }, (_, i) => {
@@ -253,6 +287,7 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
     await tx.insert(ipdEmarLabels).values(labels);
     const stamp = await markIpdOrderIssuedIn(tx, o.id, at);
     if (stamp === "not_active" || stamp === "not_found") throw new IpdRefusal("order_not_active", undefined, { stamp });
+    if (stamp === "already_issued" && earlier.length === 0) throw new IpdRefusal("already_issued");
     if (drug?.narcotic === true) {
       await tx.insert(ipdEmarNarcoticRegister).values({
         id: newId(), orderId: o.id, admissionId: a.id, kind: "received", qty: input.units, unit: drug.shelf?.item.baseUom ?? "unit", issueId, actorId: actor.id, at,
@@ -328,6 +363,8 @@ export async function resolveAllergyFlag(db: Db, actor: Actor, raw: unknown, opt
     const f = (await tx.select().from(ipdEmarAllergyFlags).where(eq(ipdEmarAllergyFlags.id, input.flagId)).for("update"))[0];
     if (f === undefined) throw new IpdRefusal("allergy_flag_not_found");
     if (f.resolvedAt !== null) throw new IpdRefusal("allergy_flag_resolved");
+    // E4.3 review: the doctor decides (stop, or continue with a reason) before the pharmacist closes the flag.
+    if (f.doctorDecision === null) throw new IpdRefusal("allergy_flag_undecided");
     await tx.update(ipdEmarAllergyFlags).set({ resolvedAt: at, resolvedBy: actor.id, resolutionNote: input.note }).where(eq(ipdEmarAllergyFlags.id, f.id));
     await appendEvent(tx, allergyFlagResolved.make({
       payload: { flagId: f.id, orderId: f.orderId, admissionId: f.admissionId, provenance: provenanceOf(actor) },
@@ -337,44 +374,97 @@ export async function resolveAllergyFlag(db: Db, actor: Actor, raw: unknown, opt
   }), at);
 }
 
+/** E4.3 review — the doctor's decision on an allergy flag: STOP the order (in this transaction) or CONTINUE with a reason. */
+export async function decideAllergyFlag(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"decide_allergy_flag">> {
+  const input: Input<"decide_allergy_flag"> = IPD_INTENTS.decide_allergy_flag.input.parse(raw);
+  await requireIpdPermission(db, actor, IPD_ORDER_PLACE);
+  const at = opts.now ?? new Date();
+  return onceIpd(db, actor, "decide_allergy_flag", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+    const f0 = (await tx.select().from(ipdEmarAllergyFlags).where(eq(ipdEmarAllergyFlags.id, input.flagId)))[0];
+    if (f0 === undefined) throw new IpdRefusal("allergy_flag_not_found");
+    const { o, a } = await lockOrderIn(tx, f0.orderId);
+    const f = (await tx.select().from(ipdEmarAllergyFlags).where(eq(ipdEmarAllergyFlags.id, f0.id)).for("update"))[0]!;
+    if (f.resolvedAt !== null) throw new IpdRefusal("allergy_flag_resolved");
+    if (!onTeam(await treatingTeamOf(tx, a, at), actor.id)) throw new IpdRefusal("not_treating_team");
+    if (input.decision === "stop" && o.status === "active") await stopOrderIn(tx, actor, o, a, `Allergy: ${input.reason}`, at);
+    await tx.update(ipdEmarAllergyFlags).set({ doctorDecision: input.decision, doctorReason: input.reason, decidedBy: actor.id, decidedAt: at })
+      .where(eq(ipdEmarAllergyFlags.id, f.id));
+    await appendEvent(tx, allergyFlagDecided.make({
+      payload: { flagId: f.id, orderId: o.id, admissionId: a.id, decision: input.decision, provenance: provenanceOf(actor) },
+      actor, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: at,
+    }));
+    return { flagId: f.id, decision: input.decision };
+  }), at);
+}
+
 // ═══════════════════════════════════════ the second nurse ═══════════════════════════════════════
 
 /**
- * The second nurse types THEIR username and PIN at the first nurse's phone (the pharmacy's witness pattern): throttled on
- * the shared-terminal PIN counter; never the same person; the checker must hold a nursing role. The proof is a row id,
- * spent by one act within 5 minutes, bound to the nurse who asked.
+ * The second nurse types THEIR username and PIN at the first nurse's phone (the pharmacy's witness pattern). E4.3 review:
+ * the throttle is ATOMIC — a transaction-scoped advisory lock on the username is taken BEFORE the throttle is read and held
+ * until the failure is counted, so parallel guesses queue behind each other and the fifth wrong PIN locks the sixth. Never
+ * the same person; the checker must hold a nursing role. The proof is a row id BOUND to its purpose, the order, the slot
+ * (a scheduled dose) and the drug, spent once by the act it was made for, within 5 minutes.
  */
 export async function secondCheck(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"second_check">> {
   const input: Input<"second_check"> = IPD_INTENTS.second_check.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_EMAR_GIVE);
   const at = opts.now ?? new Date();
   const username = input.username.trim();
-  if (await throttleRetryAt(db, "pin", username, at) !== null) throw new IpdRefusal("second_nurse_not_confirmed", undefined, { throttled: true });
-  const verified = await verifyPinByUsername(db, username, input.pin);
-  if (verified === null) {
-    await recordThrottleFailure(db, "pin", username, at);
-    throw new IpdRefusal("second_nurse_not_confirmed");
-  }
-  await clearThrottle(db, "pin", username);
+  // Everything on the lock's own connection (a waiter holds one connection, never two), and the failure is COMMITTED
+  // before the refusal is thrown (a throw inside would roll the count back).
+  const outcome = await withTx(db, async (lockTx) => {
+    const ldb = lockTx as unknown as Db;
+    await lockTx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd.emar.pin:${username.toLowerCase()}`}))`);
+    if (await throttleRetryAt(ldb, "pin", username, at) !== null) return { kind: "throttled" as const };
+    const v = await verifyPinByUsername(ldb, username, input.pin);
+    if (v === null) {
+      await recordThrottleFailure(ldb, "pin", username, at);
+      return { kind: "wrong" as const };
+    }
+    await clearThrottle(ldb, "pin", username);
+    return { kind: "ok" as const, userId: v.userId };
+  });
+  if (outcome.kind === "throttled") throw new IpdRefusal("second_nurse_not_confirmed", undefined, { throttled: true });
+  if (outcome.kind === "wrong") throw new IpdRefusal("second_nurse_not_confirmed");
+  const verified = { userId: outcome.userId };
   if (verified.userId === actor.id) throw new IpdRefusal("second_nurse_same_person");
   return withTx(db, async (tx) => {
     if (!(await actorHoldsAnyRole(tx, verified.userId, IPD_EMAR_NURSE_ROLES))) throw new IpdRefusal("second_nurse_not_nurse");
+    const o = (await tx.select().from(ipdOrders).where(and(eq(ipdOrders.id, input.orderId), eq(ipdOrders.kind, "drug"))))[0];
+    if (o === undefined) throw new IpdRefusal("order_not_found");
+    let doseId: string | null = null;
+    if (input.doseDueAt !== undefined) {
+      const d = (await tx.select({ id: ipdEmarDoses.id }).from(ipdEmarDoses).where(and(eq(ipdEmarDoses.orderId, o.id), eq(ipdEmarDoses.dueAt, new Date(input.doseDueAt)))))[0];
+      if (d === undefined) throw new IpdRefusal("dose_not_found");
+      doseId = d.id;
+    }
     const user = (await tx.select({ name: users.fullName }).from(users).where(eq(users.id, verified.userId)))[0];
     const id = newId();
     const expiresAt = new Date(at.getTime() + IPD_EMAR_SECOND_CHECK_MINUTES * 60_000);
-    await tx.insert(ipdEmarSecondChecks).values({ id, checkerId: verified.userId, forUserId: actor.id, purpose: input.purpose, createdAt: at, expiresAt });
+    await tx.insert(ipdEmarSecondChecks).values({
+      id, checkerId: verified.userId, forUserId: actor.id, purpose: input.purpose, orderId: o.id, doseId, medicineId: o.medicineId, createdAt: at, expiresAt,
+    });
     await appendEvent(tx, secondCheckPassed.make({ payload: { checkId: id, purpose: input.purpose, provenance: provenanceOf(actor) }, actor, occurredAt: at }));
     return { pinProof: id, userId: verified.userId, name: user?.name ?? "", expiresAt: expiresAt.toISOString() };
   });
 }
 
-/** Spends a second-check proof inside the act's transaction: right person, not self, unexpired, unused. */
-async function spendSecondCheck(tx: Tx, actor: Actor, proof: { userId: string; pinProof: string } | undefined, at: Date): Promise<string> {
+export type SecondCheckTarget = { purpose: "high_alert_dose" | "infusion" | "narcotic_wastage"; orderId: string; doseId: string | null; medicineId: string | null };
+
+/**
+ * Spends a second-check proof inside the act's transaction: right person, not self, unexpired, unused — and made for THIS
+ * act: the same purpose, order, drug and (when the proof named one) slot.
+ */
+async function spendSecondCheck(tx: Tx, actor: Actor, proof: { userId: string; pinProof: string } | undefined, at: Date, target: SecondCheckTarget): Promise<string> {
   if (proof === undefined) throw new IpdRefusal("second_nurse_required");
   if (proof.userId === actor.id) throw new IpdRefusal("second_nurse_same_person");
   const c = (await tx.select().from(ipdEmarSecondChecks).where(eq(ipdEmarSecondChecks.id, proof.pinProof)).for("update"))[0];
   if (c === undefined || c.checkerId !== proof.userId || c.forUserId !== actor.id || c.usedAt !== null || c.expiresAt.getTime() < at.getTime()) {
     throw new IpdRefusal("second_nurse_required", undefined, { proof: "invalid_or_spent" });
+  }
+  if (c.purpose !== target.purpose || c.orderId !== target.orderId || c.medicineId !== target.medicineId || (c.doseId !== null && c.doseId !== target.doseId)) {
+    throw new IpdRefusal("second_nurse_required", undefined, { proof: "another_target" });
   }
   await tx.update(ipdEmarSecondChecks).set({ usedAt: at }).where(eq(ipdEmarSecondChecks.id, c.id));
   return c.checkerId;
@@ -410,6 +500,71 @@ export async function givenTimesOf(db: Db | Tx, orderIds: readonly string[]): Pr
   return out;
 }
 
+/** The routes an NPO order covers (DECIDED: by mouth, under the tongue, by tube). */
+export const NPO_ROUTES: readonly string[] = ["oral", "sublingual", "ng"];
+
+/**
+ * NPO at `at`: diet's own predicate (`diet` `npoCovering`, read on its table — diet imports `ipd` at load, so importing
+ * diet's index here is a load-time cycle). A LIFTED NPO, or one whose end has passed, is not NPO
+ * (`emar-review.acceptance` pins it). Answers the source too: an OT case's NPO needs the doctor's read-back OK.
+ */
+export async function npoAt(exec: Db | Tx, patientId: string, at: Date): Promise<{ source: string } | null> {
+  const row = (await (exec as Db).select({ source: dietNpo.source }).from(dietNpo).where(and(
+    eq(dietNpo.patientId, patientId), isNull(dietNpo.liftedAt), lte(dietNpo.startsAt, at), or(isNull(dietNpo.endsAt), gt(dietNpo.endsAt, at)),
+  )).orderBy(dietNpo.startsAt).limit(1))[0];
+  return row ?? null;
+}
+
+/** A label of a returned issue, or of an issue a later lost / damaged re-issue superseded, no longer counts. */
+export async function labelVoid(exec: Db | Tx, issueId: string): Promise<boolean> {
+  const returned = (await (exec as Db).select({ id: ipdEmarReturns.id }).from(ipdEmarReturns).where(eq(ipdEmarReturns.issueId, issueId)).limit(1))[0];
+  if (returned !== undefined) return true;
+  const superseded = (await (exec as Db).select({ id: ipdEmarIssues.id }).from(ipdEmarIssues).where(eq(ipdEmarIssues.supersedesIssueId, issueId)).limit(1))[0];
+  return superseded !== undefined;
+}
+
+/** Units of a label already used (uses minus releases). */
+export async function labelUsed(exec: Db | Tx, labelId: string): Promise<number> {
+  const r = (await (exec as Db).select({ n: sql<number>`coalesce(sum(${ipdEmarLabelUses.units}), 0)` }).from(ipdEmarLabelUses).where(eq(ipdEmarLabelUses.labelId, labelId)))[0];
+  return Number(r?.n ?? 0);
+}
+
+/** One dose in the label's units; a narcotic that cannot be converted counts one unit a dose (conservative). */
+export function doseUnitsOf(o: IpdOrderRow, drug: EmarDrug | undefined): number | null {
+  const u = unitsPerDose({ doseValue: o.doseValue ?? 0, doseUnit: o.doseUnit ?? "" }, drug?.strengthLabel ?? null, drug?.baseUom ?? null);
+  return u ?? (drug?.narcotic === true ? 1 : null);
+}
+
+/**
+ * PRN state is the MOIETY's, not the order's (E4.3 review): every PRN order of the admission that shares a moiety (or the
+ * medicine) with this one feeds the interval and the 24-hour count.
+ */
+async function prnSiblingsOf(tx: Tx, o: IpdOrderRow, drug: EmarDrug | undefined): Promise<string[]> {
+  const prns = (await tx.select().from(ipdOrders).where(and(eq(ipdOrders.admissionId, o.admissionId), eq(ipdOrders.kind, "drug"))))
+    .filter((x) => x.prn !== null);
+  const drugs = await emarDrugsOf(tx, prns);
+  const mine = new Set((drug?.moieties ?? []).map((m) => m.toLowerCase()));
+  return prns.filter((x) => x.id === o.id || x.medicineId === o.medicineId
+    || (drugs.get(x.id)?.moieties ?? []).some((m) => mine.has(m.toLowerCase()))).map((x) => x.id);
+}
+
+class WeightChanged extends Error {
+  constructor(readonly orderId: string, readonly from: number, readonly to: number) { super("weight_changed"); }
+}
+
+/** The bedside weight moved over a tenth: the order goes back to the doctor (verification `query`, the prescriber told). */
+async function sendBackForWeight(db: Db, actor: Actor, w: WeightChanged, at: Date): Promise<void> {
+  await withTx(db, async (tx) => {
+    const { o, a } = await lockOrderIn(tx, w.orderId);
+    if (o.verification === "verified") await tx.update(ipdOrders).set({ verification: "query" }).where(eq(ipdOrders.id, o.id));
+    const where = await whereWords(tx, a);
+    await raiseNoticeIn(tx, {
+      userId: o.orderedBy, kind: "ipd.emar.weight_changed", title: "Weight changed — review dose", body: [...where.words, "Open rounds"].join(" · "),
+      refType: "ipd_order", refId: o.id, sourceKey: `ipd.emar.weight:${o.id}:${at.toISOString()}`, at,
+    });
+  });
+}
+
 export async function administerDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"administer_dose">> {
   const input: Input<"administer_dose"> = IPD_INTENTS.administer_dose.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_EMAR_GIVE);
@@ -418,85 +573,145 @@ export async function administerDose(db: Db, actor: Actor, raw: unknown, opts: E
   if (ipdIsInFuture(input.givenAt, at)) throw new IpdRefusal("time_in_future");
   // §0B: doses never queue. A give stamped long before the server's clock sat somewhere (a queue, an interrupted screen).
   if (givenAt.getTime() < at.getTime() - IPD_EMAR_GIVE_STALE_MS) throw new IpdRefusal("give_expired", undefined, { givenAt: input.givenAt });
-  return onceIpd(db, actor, "administer_dose", input.idempotencyKey, input, () => withTx(db, async (tx) => {
-    const { o, a } = await lockOrderIn(tx, input.orderId);
-    requireGivable(o, a);
-    const flag = (await tx.select({ id: ipdEmarAllergyFlags.id }).from(ipdEmarAllergyFlags)
-      .where(and(eq(ipdEmarAllergyFlags.orderId, o.id), isNull(ipdEmarAllergyFlags.resolvedAt))))[0];
-    if (flag !== undefined) throw new IpdRefusal("allergy_conflict", undefined, { flagId: flag.id });
-    // 1. The patient: the band's serial, or a reasoned override (counted per nurse and ward).
-    let overrideCounted = false;
-    if (input.patientCheck.kind === "scan") {
-      const band = await bandOf(tx, input.patientCheck.wristbandCode);
-      if (band === null || band.admissionId !== a.id) throw new IpdRefusal("wrong_patient_scanned", undefined, { scannedAdmissionId: band?.admissionId ?? null });
-    } else {
-      overrideCounted = true;
+  return onceIpd(db, actor, "administer_dose", input.idempotencyKey, input, async () => {
+    try {
+      return await withTx(db, (tx) => giveIn(tx, db, actor, input, givenAt, at));
+    } catch (e) {
+      if (!(e instanceof WeightChanged)) throw e;
+      await sendBackForWeight(db, actor, e, at);
+      throw new IpdRefusal("weight_changed_reverify", undefined, { orderWeightKg: e.from, bedsideWeightKg: e.to });
     }
-    // 2. The drug: this order's own label (always scanned).
-    const label = await labelOf(tx, input.labelCode);
-    if (label === null) throw new IpdRefusal("wrong_drug_scanned");
-    if (label.admissionId !== a.id) throw new IpdRefusal("wrong_patient_scanned", undefined, { labelAdmissionId: label.admissionId });
-    if (label.orderId !== o.id) throw new IpdRefusal("wrong_drug_scanned", undefined, { labelOrderId: label.orderId });
-    // 3. High-alert, LASA, weight.
-    const drug = (await emarDrugsOf(tx, [o])).get(o.id);
-    const highAlert = drug?.highAlert === true;
-    const secondNurseId = highAlert ? await spendSecondCheck(tx, actor, input.secondNurse, at) : null;
-    if (drug?.lasa === true && input.lasaConfirmed !== true) throw new IpdRefusal("lasa_confirm_required", undefined, { tallMan: drug.tallMan });
-    const patient = (await getPatientSummaries(db, IPD_SYSTEM_ACTOR, [o.patientId]))[0];
-    const age = patient?.dob == null ? null : ageInYears(patient.dob, givenAt);
-    const child = age !== null && age < CHILD_WEIGHT_AGE_YEARS;
-    if ((o.weightBasedPerKg || child) && o.weightKg === null && input.weightKg === undefined) throw new IpdRefusal("weight_required", undefined, { child });
-    // 4. The slot: PRN makes its own inside the interval and the 24-hour cap; a scheduled dose must be open.
-    let slot: DoseRow;
-    let late = false;
-    if (o.prn !== null) {
-      if (o.startAt !== null && givenAt < new Date(o.startAt.getTime() - IPD_CLOCK_SKEW_MS)) throw new IpdRefusal("outside_due_window");
-      if (o.stopAt !== null && givenAt > o.stopAt) throw new IpdRefusal("outside_due_window");
-      const state = prnState((await givenTimesOf(tx, [o.id])).get(o.id) ?? [], o.prn, givenAt);
-      if (state.capped) throw new IpdRefusal("prn_daily_max_reached", undefined, { nextAt: state.nextAt?.toISOString() ?? null, in24h: state.in24h });
-      if (state.nextAt !== null) throw new IpdRefusal("prn_interval_not_met", undefined, { nextAt: state.nextAt.toISOString() });
-      const dueAt = new Date(Math.floor(givenAt.getTime() / 60_000) * 60_000);
-      await tx.insert(ipdEmarDoses).values({
-        id: newId(), orderId: o.id, admissionId: a.id, patientId: o.patientId, dueAt, windowMinutes: windowMinutesFor(drug?.timeCritical ?? false),
-        prn: true, status: "scheduled", createdAt: at,
-      }).onConflictDoNothing();
-      slot = await slotIn(tx, o.id, dueAt);
-      requireOpen(slot);
-    } else {
-      slot = await slotIn(tx, o.id, new Date(input.doseDueAt));
-      if (slot.status !== "scheduled" && slot.status !== "missed") requireOpen(slot);
-      const timing = giveTiming(slot, givenAt);
-      if (timing === "early" || timing === "closed") throw new IpdRefusal("outside_due_window", undefined, { timing, dueAt: slot.dueAt.toISOString() });
-      late = timing === "late" || slot.status === "missed";
-      if (late && input.lateReason === undefined) throw new IpdRefusal("late_reason_required", undefined, { dueAt: slot.dueAt.toISOString() });
+  }, at);
+}
+
+async function giveIn(tx: Tx, db: Db, actor: Actor, input: Input<"administer_dose">, givenAt: Date, at: Date): Promise<Output<"administer_dose">> {
+  const { o, a } = await lockOrderIn(tx, input.orderId);
+  requireGivable(o, a);
+  const flag = (await tx.select({ id: ipdEmarAllergyFlags.id }).from(ipdEmarAllergyFlags)
+    .where(and(eq(ipdEmarAllergyFlags.orderId, o.id), isNull(ipdEmarAllergyFlags.resolvedAt))))[0];
+  if (flag !== undefined) throw new IpdRefusal("allergy_conflict", undefined, { flagId: flag.id });
+  // 1. The patient: the band's serial, or a reasoned override (counted per nurse and ward).
+  let overrideCounted = false;
+  if (input.patientCheck.kind === "scan") {
+    const band = await bandOf(tx, input.patientCheck.wristbandCode);
+    if (band === null || band.admissionId !== a.id) throw new IpdRefusal("wrong_patient_scanned", undefined, { scannedAdmissionId: band?.admissionId ?? null });
+  } else {
+    overrideCounted = true;
+  }
+  // 2. The drug: this order's own label (always scanned), of a live issue, with units left.
+  const label = await labelOf(tx, input.labelCode);
+  if (label === null) throw new IpdRefusal("wrong_drug_scanned");
+  if (label.admissionId !== a.id) throw new IpdRefusal("wrong_patient_scanned", undefined, { labelAdmissionId: label.admissionId });
+  if (label.orderId !== o.id) throw new IpdRefusal("wrong_drug_scanned", undefined, { labelOrderId: label.orderId });
+  if (await labelVoid(tx, label.issueId)) throw new IpdRefusal("label_void", undefined, { issueId: label.issueId });
+  const drug = (await emarDrugsOf(tx, [o])).get(o.id);
+  const units = doseUnitsOf(o, drug);
+  // 3. LASA, weight, NPO.
+  if (drug?.lasa === true && input.lasaConfirmed !== true) throw new IpdRefusal("lasa_confirm_required", undefined, { tallMan: drug.tallMan });
+  const patient = (await getPatientSummaries(db, IPD_SYSTEM_ACTOR, [o.patientId]))[0];
+  const age = patient?.dob == null ? null : ageInYears(patient.dob, givenAt);
+  const child = age !== null && age < CHILD_WEIGHT_AGE_YEARS;
+  if ((o.weightBasedPerKg || child) && o.weightKg === null && input.weightKg === undefined) throw new IpdRefusal("weight_required", undefined, { child });
+  if (input.weightKg !== undefined && o.weightKg !== null && Math.abs(input.weightKg - o.weightKg) / o.weightKg > IPD_EMAR_WEIGHT_CHANGE_FRACTION) {
+    throw new WeightChanged(o.id, o.weightKg, input.weightKg);
+  }
+  const npo = NPO_ROUTES.includes(o.route ?? "") ? await npoAt(tx, o.patientId, givenAt) : null;
+  if (npo !== null) {
+    // DECIDED (standard practice, "NPO except medications"): the nurse confirms the doctor allows medicines with sips; an
+    // OT case's NPO before the case ends needs the doctor's read-back OK instead.
+    if (input.npoMeds === undefined) throw new IpdRefusal(npo.source === "ot_booking" ? "npo_doctor_ok_required" : "patient_npo", undefined, { source: npo.source });
+    if (npo.source === "ot_booking" && input.npoMeds.kind !== "doctor_ok") throw new IpdRefusal("npo_doctor_ok_required", undefined, { source: npo.source });
+    if (input.npoMeds.kind === "doctor_ok" && !(await actorHoldsAnyRole(tx, input.npoMeds.doctorId, IPD_DOCTOR_ROLE_KEYS))) {
+      throw new IpdRefusal("verbal_doctor_invalid", undefined, { doctorId: input.npoMeds.doctorId });
     }
-    const administrationId = newId();
-    const wardId = await wardOf(tx, a.id);
-    const pc = input.patientCheck;
-    await tx.insert(ipdEmarActs).values({
-      id: administrationId, doseId: slot.id, orderId: o.id, admissionId: a.id, patientId: o.patientId, kind: "given", slotSeq: slot.slotSeq + 1,
-      at: givenAt, recordedAt: at, actorId: actor.id, provenance: provenanceOf(actor), reason: late ? input.lateReason ?? null : null,
-      note: pc.kind === "override" ? pc.note : null, patientCheck: pc.kind, overrideReason: pc.kind === "override" ? pc.overrideReason : null,
-      wristbandCode: pc.kind === "scan" ? pc.wristbandCode : null, labelId: label.id, secondNurseId, weightKg: input.weightKg ?? null, late,
-      lasaConfirmed: input.lasaConfirmed === true, wardId,
+  }
+  // 4. The slot: PRN makes its own inside the moiety's interval and 24-hour cap; a scheduled dose must be open.
+  let slot: DoseRow;
+  let late = false;
+  if (o.prn !== null) {
+    if (o.startAt !== null && givenAt < new Date(o.startAt.getTime() - IPD_CLOCK_SKEW_MS)) throw new IpdRefusal("outside_due_window");
+    if (o.stopAt !== null && givenAt > o.stopAt) throw new IpdRefusal("outside_due_window");
+    const siblings = await prnSiblingsOf(tx, o, drug);
+    const times = [...(await givenTimesOf(tx, siblings)).values()].flat();
+    const state = prnState(times, o.prn, givenAt);
+    if (state.capped) throw new IpdRefusal("prn_daily_max_reached", undefined, { nextAt: state.nextAt?.toISOString() ?? null, in24h: state.in24h });
+    if (state.nextAt !== null) throw new IpdRefusal("prn_interval_not_met", undefined, { nextAt: state.nextAt.toISOString() });
+    const dueAt = new Date(Math.floor(givenAt.getTime() / 60_000) * 60_000);
+    await tx.insert(ipdEmarDoses).values({
+      id: newId(), orderId: o.id, admissionId: a.id, patientId: o.patientId, dueAt, windowMinutes: windowMinutesFor(drug?.timeCritical ?? false),
+      prn: true, status: "scheduled", createdAt: at,
+    }).onConflictDoNothing();
+    slot = await slotIn(tx, o.id, dueAt);
+    requireOpen(slot);
+  } else {
+    slot = await slotIn(tx, o.id, new Date(input.doseDueAt));
+    if (slot.status !== "scheduled" && slot.status !== "missed") requireOpen(slot);
+    const timing = giveTiming(slot, givenAt);
+    if (timing === "early" || timing === "closed") throw new IpdRefusal("outside_due_window", undefined, { timing, dueAt: slot.dueAt.toISOString() });
+    late = timing === "late" || slot.status === "missed";
+    if (late && input.lateReason === undefined) throw new IpdRefusal("late_reason_required", undefined, { dueAt: slot.dueAt.toISOString() });
+  }
+  // The label's units, under the admission lock (after the slot, so a racing second give answers "already recorded").
+  if (units !== null) {
+    const used = await labelUsed(tx, label.id);
+    if (used + units > label.units + 1e-9) throw new IpdRefusal("label_exhausted", undefined, { labelUnits: label.units, used, dose: units });
+  }
+  // 5. High-alert: a second nurse's proof made for THIS dose.
+  const highAlert = drug?.highAlert === true;
+  const secondNurseId = highAlert
+    ? await spendSecondCheck(tx, actor, input.secondNurse, at, { purpose: "high_alert_dose", orderId: o.id, doseId: o.prn !== null ? null : slot.id, medicineId: o.medicineId })
+    : null;
+  const administrationId = newId();
+  const wardId = await wardOf(tx, a.id);
+  const pc = input.patientCheck;
+  await tx.insert(ipdEmarActs).values({
+    id: administrationId, doseId: slot.id, orderId: o.id, admissionId: a.id, patientId: o.patientId, kind: "given", slotSeq: slot.slotSeq + 1,
+    at: givenAt, recordedAt: at, actorId: actor.id, provenance: provenanceOf(actor), reason: late ? input.lateReason ?? null : null,
+    note: pc.kind === "override" ? pc.note : null, patientCheck: pc.kind, overrideReason: pc.kind === "override" ? pc.overrideReason : null,
+    wristbandCode: pc.kind === "scan" ? pc.wristbandCode : null, labelId: label.id, secondNurseId, weightKg: input.weightKg ?? null, late,
+    lasaConfirmed: input.lasaConfirmed === true, wardId,
+    npoOverride: npo === null ? null : input.npoMeds!.kind, npoReason: npo === null ? null : input.npoMeds!.reason,
+    npoDoctorId: npo !== null && input.npoMeds!.kind === "doctor_ok" ? input.npoMeds!.doctorId : null,
+  });
+  await tx.update(ipdEmarDoses).set({ status: "given", slotSeq: slot.slotSeq + 1, lastActId: administrationId }).where(eq(ipdEmarDoses.id, slot.id));
+  if (units !== null) await tx.insert(ipdEmarLabelUses).values({ id: newId(), labelId: label.id, actId: administrationId, units, at: givenAt });
+  if (drug?.narcotic === true) {
+    // E4.3 review: the register keeps ONE unit — the issue's base unit — on every row; the dose is converted here.
+    await tx.insert(ipdEmarNarcoticRegister).values({
+      id: newId(), orderId: o.id, admissionId: a.id, kind: "given", qty: units ?? 1, unit: drug.baseUom ?? "unit", actId: administrationId, actorId: actor.id, at: givenAt,
     });
-    await tx.update(ipdEmarDoses).set({ status: "given", slotSeq: slot.slotSeq + 1, lastActId: administrationId }).where(eq(ipdEmarDoses.id, slot.id));
-    if (drug?.narcotic === true) {
-      await tx.insert(ipdEmarNarcoticRegister).values({
-        id: newId(), orderId: o.id, admissionId: a.id, kind: "given", qty: o.doseValue ?? 0, unit: o.doseUnit ?? "unit", actId: administrationId, actorId: actor.id, at: givenAt,
-      });
-    }
-    await appendEvent(tx, doseGiven.make({
-      payload: {
-        administrationId, doseId: slot.id, orderId: o.id, admissionId: a.id, wardId,
-        patientCheck: pc.kind === "scan" ? { kind: "scan" } : { kind: "override", overrideReason: pc.overrideReason },
-        labelCode: label.code, givenAt: givenAt.toISOString(), late, highAlert, secondNurse: secondNurseId !== null, prn: o.prn !== null,
-        provenance: provenanceOf(actor),
-      },
-      actor, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: givenAt,
-    }));
-    return { administrationId, givenAt: givenAt.toISOString(), late, overrideCounted };
-  }), at);
+  }
+  if (overrideCounted) await alertOverrideExcess(tx, actor, at);
+  await appendEvent(tx, doseGiven.make({
+    payload: {
+      administrationId, doseId: slot.id, orderId: o.id, admissionId: a.id, wardId,
+      patientCheck: pc.kind === "scan" ? { kind: "scan" } : { kind: "override", overrideReason: pc.overrideReason },
+      labelCode: label.code, givenAt: givenAt.toISOString(), late, highAlert, secondNurse: secondNurseId !== null, prn: o.prn !== null,
+      provenance: provenanceOf(actor),
+    },
+    actor, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: givenAt,
+  }));
+  return { administrationId, givenAt: givenAt.toISOString(), late, overrideCounted };
+}
+
+/**
+ * E4.3 review: a nurse's wristband overrides above `IPD_EMAR_OVERRIDE_ALERT_COUNT` in 24 hours tell the ward in-charge
+ * (the nursing fallback chain: supervisors first), once per nurse per IST day.
+ */
+async function alertOverrideExcess(tx: Tx, actor: Actor, at: Date): Promise<void> {
+  const r = (await tx.select({ n: sql<number>`count(*)` }).from(ipdEmarActs).where(and(
+    eq(ipdEmarActs.actorId, actor.id), eq(ipdEmarActs.kind, "given"), eq(ipdEmarActs.patientCheck, "override"), gte(ipdEmarActs.recordedAt, new Date(at.getTime() - 86_400_000)),
+  )))[0];
+  const n = Number(r?.n ?? 0);
+  if (n <= IPD_EMAR_OVERRIDE_ALERT_COUNT) return;
+  const name = (await tx.select({ name: users.fullName }).from(users).where(eq(users.id, actor.id)))[0]?.name ?? "A nurse";
+  for (const userId of await nursingFallback(tx)) {
+    if (userId === actor.id) continue;
+    await raiseNoticeIn(tx, {
+      userId, kind: "ipd.emar.override_excess", title: "Wristband overrides high", body: `${name} · ${String(n)} in 24 h`,
+      refType: "user", refId: actor.id, sourceKey: `ipd.emar.override_excess:${actor.id}:${istDayString(at)}`, at,
+    });
+  }
 }
 
 /** Hold, refuse and miss share the slot rules: a scheduled (or re-offered) dose takes the outcome; anything else is refused. */
@@ -506,6 +721,8 @@ async function recordOutcome(
 ): Promise<{ actId: string; slot: DoseRow }> {
   const slot = await slotIn(tx, o.id, dueAt);
   requireOpen(slot);
+  // E4.3 review: a dose is held, refused or missed only inside its window or after it — never before it opens.
+  if (giveTiming(slot, at) === "early") throw new IpdRefusal("outside_due_window", undefined, { timing: "early", dueAt: slot.dueAt.toISOString() });
   const actId = newId();
   await tx.insert(ipdEmarActs).values({
     id: actId, doseId: slot.id, orderId: o.id, admissionId: a.id, patientId: o.patientId, kind, slotSeq: slot.slotSeq + 1, at, recordedAt: at,
@@ -629,42 +846,59 @@ export async function markDoseInError(db: Db, actor: Actor, raw: unknown, opts: 
   await requireIpdPermission(db, actor, IPD_EMAR_GIVE);
   const at = opts.now ?? new Date();
   if (input.kind === "medication_incident" && input.incident === undefined) throw new IpdRefusal("incident_details_required");
-  return onceIpd(db, actor, "mark_dose_in_error", input.idempotencyKey, input, async () => {
-    const act = (await db.select().from(ipdEmarActs).where(eq(ipdEmarActs.id, input.actId)))[0];
-    if (act === undefined || !["given", "held", "refused", "missed"].includes(act.kind)) throw new IpdRefusal("dose_act_not_found");
-    const done = (await db.select({ id: ipdEmarActs.id }).from(ipdEmarActs).where(eq(ipdEmarActs.correctsActId, act.id)))[0];
+  return onceIpd(db, actor, "mark_dose_in_error", input.idempotencyKey, input, () => withTx(db, async (tx) => {
+    const first = (await tx.select().from(ipdEmarActs).where(eq(ipdEmarActs.id, input.actId)))[0];
+    if (first === undefined || !["given", "held", "refused", "missed"].includes(first.kind)) throw new IpdRefusal("dose_act_not_found");
+    const a = await lockAdmission(tx, first.admissionId);
+    const act = first;
+    const done = (await tx.select({ id: ipdEmarActs.id }).from(ipdEmarActs).where(eq(ipdEmarActs.correctsActId, act.id)))[0];
     if (done !== undefined) throw new IpdRefusal("dose_act_already_corrected");
+    const slot = (await tx.select().from(ipdEmarDoses).where(eq(ipdEmarDoses.id, act.doseId)).for("update"))[0]!;
+    const o = (await tx.select().from(ipdOrders).where(eq(ipdOrders.id, act.orderId)))[0]!;
+    // E4.3 review: the incident is filed INSIDE the correction's transaction (a savepoint) — both or neither.
     let incident: { incidentId: string; no: string } | null = null;
     if (input.kind === "medication_incident" && input.incident !== undefined) {
-      incident = await recordIncident(db, actor, {
+      incident = await recordIncident(tx as unknown as Db, actor, {
         kind: "error", stage: "administration", type: input.incident.type, category: input.incident.category, patientId: act.patientId,
         whatHappened: `Inpatient dose (eMAR record ${act.id}): ${input.reason}`,
       }, at);
     }
-    return withTx(db, async (tx) => {
-      const a = await lockAdmission(tx, act.admissionId);
-      const slot = (await tx.select().from(ipdEmarDoses).where(eq(ipdEmarDoses.id, act.doseId)).for("update"))[0]!;
-      const correctionId = newId();
-      try {
-        await tx.insert(ipdEmarActs).values({
-          id: correctionId, doseId: slot.id, orderId: act.orderId, admissionId: a.id, patientId: act.patientId, kind: input.kind, slotSeq: null,
-          at, recordedAt: at, actorId: actor.id, provenance: provenanceOf(actor), reason: input.reason, correctsActId: act.id,
-          incidentId: incident?.incidentId ?? null,
-        });
-      } catch (e) {
-        if ((e as { code?: string }).code === "23505") throw new IpdRefusal("dose_act_already_corrected");
-        throw e;
+    const correctionId = newId();
+    try {
+      await tx.insert(ipdEmarActs).values({
+        id: correctionId, doseId: slot.id, orderId: act.orderId, admissionId: a.id, patientId: act.patientId, kind: input.kind, slotSeq: null,
+        at, recordedAt: at, actorId: actor.id, provenance: provenanceOf(actor), reason: input.reason, correctsActId: act.id,
+        incidentId: incident?.incidentId ?? null,
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw new IpdRefusal("dose_act_already_corrected");
+      throw e;
+    }
+    if (input.kind === "entered_in_error") {
+      if (slot.lastActId === act.id) {
+        // A record that never happened: the slot opens again — a PRN slot too (its minute may be given again); on an order
+        // no longer active it is cancelled instead (E4.3 review 17, 24).
+        await tx.update(ipdEmarDoses).set({ status: o.status === "active" ? "scheduled" : "cancelled", lastActId: correctionId, reofferedAt: null }).where(eq(ipdEmarDoses.id, slot.id));
       }
-      if (input.kind === "entered_in_error" && slot.lastActId === act.id) {
-        await tx.update(ipdEmarDoses).set({ status: slot.prn ? "cancelled" : "scheduled", lastActId: correctionId, reofferedAt: null }).where(eq(ipdEmarDoses.id, slot.id));
+      if (act.kind === "given") {
+        // The label's units come back, and a narcotic's register gets its reversal row — same transaction.
+        const used = (await tx.select().from(ipdEmarLabelUses).where(eq(ipdEmarLabelUses.actId, act.id)))[0];
+        if (used !== undefined) await tx.insert(ipdEmarLabelUses).values({ id: newId(), labelId: used.labelId, actId: correctionId, units: -used.units, at });
+        const reg = (await tx.select().from(ipdEmarNarcoticRegister).where(and(eq(ipdEmarNarcoticRegister.actId, act.id), eq(ipdEmarNarcoticRegister.kind, "given"))))[0];
+        if (reg !== undefined) {
+          await tx.insert(ipdEmarNarcoticRegister).values({
+            id: newId(), orderId: reg.orderId, admissionId: reg.admissionId, kind: "reversal", qty: reg.qty, unit: reg.unit, actId: correctionId,
+            reason: input.reason, actorId: actor.id, at,
+          });
+        }
       }
-      await appendEvent(tx, doseCorrected.make({
-        payload: { correctionId, actId: act.id, orderId: act.orderId, admissionId: a.id, kind: input.kind, incidentId: incident?.incidentId ?? null, provenance: provenanceOf(actor) },
-        actor, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: at,
-      }));
-      return { correctionId, incidentNo: incident?.no ?? null };
-    });
-  }, at);
+    }
+    await appendEvent(tx, doseCorrected.make({
+      payload: { correctionId, actId: act.id, orderId: act.orderId, admissionId: a.id, kind: input.kind, incidentId: incident?.incidentId ?? null, provenance: provenanceOf(actor) },
+      actor, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: at,
+    }));
+    return { correctionId, incidentNo: incident?.no ?? null };
+  }), at);
 }
 
 /** Infusions: start → rate change / pause → resume → stop, each recorded; a high-alert start or rate change needs the second nurse. */
@@ -673,22 +907,43 @@ export async function recordInfusionEvent(db: Db, actor: Actor, raw: unknown, op
   await requireIpdPermission(db, actor, IPD_EMAR_GIVE);
   const now = opts.now ?? new Date();
   if (ipdIsInFuture(input.at, now)) throw new IpdRefusal("time_in_future");
+  // E4.3 review: an infusion event is stamped like a give — never queued, never late by more than the skew.
+  if (new Date(input.at).getTime() < now.getTime() - IPD_EMAR_GIVE_STALE_MS) throw new IpdRefusal("give_expired", undefined, { at: input.at });
   return onceIpd(db, actor, "record_infusion_event", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const { o, a } = await lockOrderIn(tx, input.orderId);
-    requireGivable(o, a);
     const last = (await tx.select().from(ipdEmarInfusionEvents).where(eq(ipdEmarInfusionEvents.orderId, o.id)).orderBy(desc(ipdEmarInfusionEvents.at), desc(ipdEmarInfusionEvents.id)).limit(1))[0];
     const state = infusionStateOf(last?.event ?? null);
+    // E4.3 review: a running or paused infusion is always stoppable — the order may have been stopped meanwhile.
+    if (!(input.event === "stop" && (state === "running" || state === "paused"))) requireGivable(o, a);
     const allowed: Record<string, readonly string[]> = { none: ["start"], running: ["rate_change", "pause", "stop"], paused: ["resume", "stop", "rate_change"], stopped: [] };
     if (!allowed[state]!.includes(input.event)) throw new IpdRefusal("infusion_out_of_order", undefined, { state, event: input.event });
     if ((input.event === "start" || input.event === "rate_change") && input.rateMlPerHour === undefined) throw new IpdRefusal("infusion_out_of_order", undefined, { rateRequired: true });
     if (last !== undefined && new Date(input.at) < last.at) throw new IpdRefusal("infusion_out_of_order", undefined, { before: last.at.toISOString() });
+    // E4.3 review: a start or a rate change is a give — the wristband (or a reasoned override) and this order's label.
+    let labelId: string | null = null;
+    const pc = input.patientCheck;
+    if (input.event === "start" || input.event === "rate_change") {
+      if (pc === undefined) throw new IpdRefusal("wristband_scan_required");
+      if (pc.kind === "scan") {
+        const band = await bandOf(tx, pc.wristbandCode);
+        if (band === null || band.admissionId !== a.id) throw new IpdRefusal("wrong_patient_scanned");
+      }
+      const label = input.labelCode === undefined ? null : await labelOf(tx, input.labelCode);
+      if (label === null) throw new IpdRefusal("wrong_drug_scanned");
+      if (label.admissionId !== a.id) throw new IpdRefusal("wrong_patient_scanned");
+      if (label.orderId !== o.id) throw new IpdRefusal("wrong_drug_scanned");
+      if (await labelVoid(tx, label.issueId)) throw new IpdRefusal("label_void");
+      labelId = label.id;
+    }
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
     const secondNurseId = drug?.highAlert === true && (input.event === "start" || input.event === "rate_change" || input.event === "resume")
-      ? await spendSecondCheck(tx, actor, input.secondNurse, now) : null;
+      ? await spendSecondCheck(tx, actor, input.secondNurse, now, { purpose: "infusion", orderId: o.id, doseId: null, medicineId: o.medicineId }) : null;
     const id = newId();
     await tx.insert(ipdEmarInfusionEvents).values({
       id, orderId: o.id, admissionId: a.id, event: input.event, rateMlPerHour: input.rateMlPerHour ?? null, at: new Date(input.at), recordedAt: now,
-      actorId: actor.id, secondNurseId,
+      actorId: actor.id, secondNurseId, labelId,
+      patientCheck: labelId === null ? null : pc!.kind, wristbandCode: pc?.kind === "scan" ? pc.wristbandCode : null,
+      overrideReason: pc?.kind === "override" ? pc.overrideReason : null, overrideNote: pc?.kind === "override" ? pc.note : null,
     });
     const next = infusionStateOf(input.event);
     await appendEvent(tx, infusionRecorded.make({
@@ -714,10 +969,11 @@ export async function recordNarcoticWastage(db: Db, actor: Actor, raw: unknown, 
     const { o, a } = await lockOrderIn(tx, input.orderId);
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
     if (drug?.narcotic !== true) throw new IpdRefusal("not_a_narcotic");
-    const witnessId = await spendSecondCheck(tx, actor, input.witness, at);
+    const witnessId = await spendSecondCheck(tx, actor, input.witness, at, { purpose: "narcotic_wastage", orderId: o.id, doseId: null, medicineId: o.medicineId });
     const entryId = newId();
+    // The register's one unit: the issue's base unit (`qty` is typed in it).
     await tx.insert(ipdEmarNarcoticRegister).values({
-      id: entryId, orderId: o.id, admissionId: a.id, kind: "wasted", qty: input.qty, unit: input.unit, reason: input.reason, actorId: actor.id, witnessId, at,
+      id: entryId, orderId: o.id, admissionId: a.id, kind: "wasted", qty: input.qty, unit: drug.baseUom ?? "unit", reason: input.reason, actorId: actor.id, witnessId, at,
     });
     await appendEvent(tx, narcoticWasted.make({
       payload: { entryId, orderId: o.id, admissionId: a.id, provenance: provenanceOf(actor) },
@@ -754,10 +1010,12 @@ export async function signVerbalOrder(db: Db, actor: Actor, raw: unknown, opts: 
  * tells the duty doctors and every active pharmacist once. Idempotent on redelivery (the flag's unique index).
  */
 export async function recheckOrdersForAllergy(tx: Tx, payload: { patientId: string; allergyId: string; substance: string }, at: Date): Promise<number> {
-  const orders = await tx.select().from(ipdOrders).where(and(eq(ipdOrders.patientId, payload.patientId), eq(ipdOrders.kind, "drug"), eq(ipdOrders.status, "active")));
-  if (orders.length === 0) return 0;
   const allergy = (await listAllergies(tx as unknown as Db, payload.patientId)).find((x) => x.id === payload.allergyId && x.status === "active");
   if (allergy === undefined) return 0;
+  // Only orders written BEFORE the allergy was known: a later order met the prescriber's own CPOE check.
+  const orders = (await tx.select().from(ipdOrders).where(and(eq(ipdOrders.patientId, payload.patientId), eq(ipdOrders.kind, "drug"), eq(ipdOrders.status, "active"))))
+    .filter((o) => o.orderedAt.getTime() <= allergy.recordedAt.getTime());
+  if (orders.length === 0) return 0;
   const texts = await resolveDrugTexts(tx as unknown as Db, [allergy.substance]);
   const resolved = await resolveMedicines(tx as unknown as Db, orders.map((o) => o.medicineId!));
   let raised = 0;
@@ -773,7 +1031,8 @@ export async function recheckOrdersForAllergy(tx: Tx, payload: { patientId: stri
     }).onConflictDoNothing().returning({ id: ipdEmarAllergyFlags.id });
     if (won.length === 0) continue;
     const where = await whereWords(tx, a);
-    const people = new Set([...(await dutyDoctorsFor(tx, a, at)), ...(await activeHolders(tx, "pharmacy"))]);
+    // E4.3 review: the prescriber too, beside the duty doctors and every active pharmacist.
+    const people = new Set([o.orderedBy, ...(await dutyDoctorsFor(tx, a, at)), ...(await activeHolders(tx, "pharmacy"))]);
     let notified = 0;
     for (const userId of [...people].sort()) {
       if (await raiseNoticeIn(tx, {
@@ -786,6 +1045,24 @@ export async function recheckOrdersForAllergy(tx: Tx, payload: { patientId: stri
       actor: EMAR_SYSTEM_ACTOR, correlationId: a.id, patientId: a.patientId, encounterId: a.id, occurredAt: at,
     }));
     raised += 1;
+  }
+  return raised;
+}
+
+/**
+ * E4.3 review — the one-time backfill (`workerBackfills`, run by `seedCursors` when the consumer's cursor is seeded): every
+ * active drug order of a patient on a bed is re-checked against every active allergy recorded after it. Idempotent (the
+ * flag's unique index); answers the flags raised.
+ */
+export async function backfillEmarAllergyFlags(db: Db, now: Date = new Date()): Promise<number> {
+  const rows = await db.select({ patientId: ipdOrders.patientId }).from(ipdOrders)
+    .innerJoin(ipdAdmissions, eq(ipdAdmissions.id, ipdOrders.admissionId))
+    .where(and(eq(ipdOrders.kind, "drug"), eq(ipdOrders.status, "active"), inArray(ipdAdmissions.state, [...IPD_NURSING_STATES])));
+  let raised = 0;
+  for (const patientId of [...new Set(rows.map((r) => r.patientId))]) {
+    for (const al of (await listAllergies(db, patientId)).filter((x) => x.status === "active")) {
+      raised += await withTx(db, (tx) => recheckOrdersForAllergy(tx, { patientId, allergyId: al.id, substance: al.substance }, now));
+    }
   }
   return raised;
 }

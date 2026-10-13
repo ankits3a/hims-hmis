@@ -23,6 +23,12 @@ export const IPD_EMAR_CATCH_UP_WINDOWS = 1;
 export const IPD_EMAR_GIVE_STALE_MS = 2 * 60_000;
 /** The second nurse's PIN proof lives this long and is spent by one act. */
 export const IPD_EMAR_SECOND_CHECK_MINUTES = 5;
+/** E4.3 review: a wristband override count per nurse above this in 24 hours tells the ward in-charge. */
+export const IPD_EMAR_OVERRIDE_ALERT_COUNT = 5;
+/** E4.3 review: a bedside weight more than this fraction off the order's weight sends the order back to the doctor. */
+export const IPD_EMAR_WEIGHT_CHANGE_FRACTION = 0.1;
+/** E4.3 review: at most this many re-issues of one order in 24 hours. */
+export const IPD_EMAR_REISSUE_LIMIT = 3;
 /** A verbal order is signed by the doctor within this many hours (§4.6); the nudge goes at the deadline minus 4 h. */
 export const IPD_EMAR_VERBAL_SIGN_HOURS = 24;
 /** Doses are scheduled this far ahead; the minute sweep keeps the horizon filled. */
@@ -180,6 +186,9 @@ export const IpdEmarAllergyFlagSchema = z.object({
   substances: z.array(z.string()),
   raisedAt: IpdInstantSchema,
   orderActive: z.boolean(),
+  /** The doctor's decision (stop, or continue with a reason); the pharmacist closes the flag only after it. */
+  doctorDecision: z.enum(["stop", "continue"]).nullable(),
+  doctorReason: z.string().nullable(),
 });
 export type IpdEmarAllergyFlag = z.infer<typeof IpdEmarAllergyFlagSchema>;
 
@@ -241,7 +250,8 @@ export const IpdEmarScanSchema = z.object({
     order: IpdEmarOrderLineSchema,
     dose: IpdEmarDoseSchema.nullable(),
     checks: z.array(z.object({ key: z.enum(["patient", "drug", "dose", "time", "route"]), ok: z.boolean(), words: z.string() })),
-    needs: z.object({ secondNurse: z.boolean(), lasaConfirm: z.boolean(), weight: z.boolean(), lateReason: z.boolean() }),
+    /** `npo`: none; `sips` — the nurse confirms the doctor allows medicines with sips; `doctor` — an OT NPO: the doctor's read-back OK. */
+    needs: z.object({ secondNurse: z.boolean(), lasaConfirm: z.boolean(), weight: z.boolean(), lateReason: z.boolean(), npo: z.enum(["none", "sips", "doctor"]) }),
   }).nullable(),
 });
 export type IpdEmarScan = z.infer<typeof IpdEmarScanSchema>;
@@ -249,8 +259,9 @@ export type IpdEmarScan = z.infer<typeof IpdEmarScanSchema>;
 export const IpdEmarOverrideCountsSchema = z.object({
   from: IpdInstantSchema,
   to: IpdInstantSchema,
-  byNurse: z.array(z.object({ userId: IpdUserRefSchema, name: z.string(), overrides: z.number().int(), gives: z.number().int() })),
-  byWard: z.array(z.object({ wardId: z.string(), wardCode: z.string(), overrides: z.number().int(), gives: z.number().int() })),
+  /** Wristband overrides, and oral doses given through an NPO (sips allowed / doctor's OK), per nurse and per ward. */
+  byNurse: z.array(z.object({ userId: IpdUserRefSchema, name: z.string(), overrides: z.number().int(), npoOverrides: z.number().int(), gives: z.number().int() })),
+  byWard: z.array(z.object({ wardId: z.string(), wardCode: z.string(), overrides: z.number().int(), npoOverrides: z.number().int(), gives: z.number().int() })),
 });
 export type IpdEmarOverrideCounts = z.infer<typeof IpdEmarOverrideCountsSchema>;
 
