@@ -9,6 +9,7 @@ import { registerIpdReceiptGuard } from "./deposit";
 import { registerIpdAdvanceRefundListener } from "./deposit-ladder";
 import { IpdPayerController } from "./payer.controller";
 import { IpdTransfersController } from "./transfers.controller";
+import { IpdDischargeController } from "./discharge.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 
 /**
@@ -31,7 +32,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

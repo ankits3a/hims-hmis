@@ -156,7 +156,8 @@
     "transport": "Transport",
     "transportRequest": "Request porter",
     "ipdHandovers": "Handovers",
-    "ipdBillDesk": "Bill desk"
+    "ipdBillDesk": "Bill desk",
+    "ipdDischarge": "Discharge"
   },
   "palette": {
     "title": "Search",
@@ -17560,5 +17561,192 @@
     "retried_other": "Retried — {{count}} lines posted",
     "retryFailed": "Retry failed — try again",
     "careNote": "Care never stops for money: the deposit ladder only tells the desk and management."
+  },
+  "ipdDischarge": {
+    "title": "Discharge desk",
+    "inCascade": "{{count}} in discharge",
+    "listLabel": "Discharges",
+    "loading": "Loading…",
+    "loadFailed": "Could not load — try again",
+    "forbidden": "You do not have access to the discharge desk.",
+    "empty": "No discharge in progress.",
+    "pick": "Pick a patient on the left.",
+    "actFailed": "Could not record — try again",
+    "cancel": "Cancel",
+    "dur": {
+      "justNow": "just now",
+      "min": "{{n}} min",
+      "hourMin": "{{h}} h {{m}} min"
+    },
+    "leftIn": "{{span}} left",
+    "overBy": "Over target by {{span}}",
+    "next": "Next: {{step}}",
+    "consultant": "Dr {{name}}",
+    "referOut": "Refer out",
+    "fitAt": "Fit {{time}}",
+    "targetAt": "Target {{time}}",
+    "stepsTitle": "Discharge steps",
+    "doneAt": "Done {{time}}",
+    "skipped": "Not needed",
+    "waitingFor": "Waiting: {{who}}",
+    "stepState": {
+      "done": "Done",
+      "now": "Now",
+      "waiting": "Later",
+      "skipped": "Not needed"
+    },
+    "step": {
+      "fit": "Fit for discharge",
+      "departments": "Departments confirm charges",
+      "summary": "Summary signed",
+      "bill": "Final bill settled",
+      "gate_pass": "Gate pass",
+      "exit": "Left the hospital"
+    },
+    "state": {
+      "requested": "Requested",
+      "reserved": "Reserved",
+      "admitted": "Admitted",
+      "transferring": "Transferring",
+      "fit_declared": "Fit declared",
+      "discharging": "Gate pass out",
+      "discharged": "Discharged",
+      "lama": "LAMA",
+      "absconded": "Absconded",
+      "deceased": "Deceased",
+      "transferred_out": "Referred out",
+      "cancelled": "Cancelled"
+    },
+    "fit": {
+      "title": "Fit for discharge",
+      "disposition": "Going",
+      "home": "Home",
+      "transferOut": "To another hospital",
+      "declare": "Declare fit",
+      "cancelReason": "Why (patient worsened…)",
+      "cancel": "Cancel fit"
+    },
+    "depts": {
+      "title": "Departments",
+      "confirm": "Confirm no pending charge",
+      "confirmedBy": "{{name}} · {{time}}",
+      "basis": {
+        "lines": "Has charges on the bill",
+        "open_orders": "Has open orders",
+        "always": "Always confirms"
+      }
+    },
+    "dept": {
+      "pharmacy": "Pharmacy",
+      "lab": "Lab",
+      "radiology": "Radiology",
+      "ot": "OT",
+      "ward": "Ward nursing",
+      "dietary": "Dietary",
+      "cssd": "CSSD",
+      "blood_bank": "Blood bank",
+      "billing": "Billing"
+    },
+    "summary": {
+      "title": "Discharge summary",
+      "status": {
+        "none": "Not started",
+        "draft": "Draft",
+        "awaiting_cosign": "Awaiting co-sign",
+        "signed": "Signed"
+      },
+      "f": {
+        "diagnosis": "Diagnosis",
+        "icd10": "ICD-10 code",
+        "course": "Course in hospital",
+        "procedures": "Procedures",
+        "conditionAtDischarge": "Condition at discharge",
+        "medicines": "Medicines on discharge",
+        "followUp": "Follow-up",
+        "advice": "Advice",
+        "warningSigns": "Come back at once if",
+        "pendingResults": "Results awaited"
+      },
+      "medsHint": "one per line: name — dose — when — how long",
+      "write": "Write summary",
+      "edit": "Edit",
+      "save": "Save draft",
+      "sign": "Sign",
+      "signedBy": "Signed by Dr {{name}} · {{time}}",
+      "residentSigned": "Signed by {{name}} — needs the consultant's co-sign",
+      "draftBy": "Draft by {{name}}"
+    },
+    "bill": {
+      "title": "Final bill",
+      "total": "Bill total",
+      "payer": "Insurer / payer",
+      "patient": "Patient pays",
+      "deposit": "Deposit held",
+      "toPay": "Balance to pay",
+      "refund": "Refund due",
+      "dues": "Dues recorded",
+      "prepare": "Open final bill",
+      "tender": "Paid by",
+      "cash": "Cash",
+      "card": "Card",
+      "amount": "Amount (₹)",
+      "ref": "UPI / card reference",
+      "settle": "Settle bill",
+      "duesLine": "{{amount}} unpaid — the patient still goes home; record the dues",
+      "askDues": "Ask approval for dues",
+      "duesAsked": "Approval asked — the billing manager decides (the patient may already have left)",
+      "undertaking": "Signed undertaking (filed document)",
+      "pickUndertaking": "Pick the filed undertaking",
+      "refundPending": "Refund pending",
+      "duesNote": "Unpaid balance at discharge; undertaking taken",
+      "billNo": "Bill {{no}} · {{time}}",
+      "print": "Print final bill",
+      "settlement": {
+        "paid": "Paid",
+        "refund_due": "Refund due",
+        "dues_recorded": "Dues recorded",
+        "insurer_pending_undertaking": "Insurer final pending"
+      }
+    },
+    "pass": {
+      "title": "Gate pass",
+      "issue": "Issue gate pass",
+      "print": "Print gate pass",
+      "hospital": "Receiving hospital",
+      "confirmedBy": "Confirmed by (name, how)",
+      "notYet": "Issued when departments, summary and bill are done.",
+      "dues": "Dues recorded",
+      "status": {
+        "issued": "Not scanned yet",
+        "used": "Scanned at the gate",
+        "void": "Void"
+      }
+    },
+    "scan": {
+      "label": "Scan gate pass",
+      "placeholder": "GP-…",
+      "go": "Scan",
+      "ok": "{{code}} — patient left"
+    },
+    "print": {
+      "patient": "Patient",
+      "ipNo": "IP no.",
+      "bed": "Bed",
+      "consultant": "Consultant",
+      "billTitle": "Final bill",
+      "billNo": "Bill no. {{no}}",
+      "date": "Date",
+      "item": "Item",
+      "qty": "Qty",
+      "amount": "Amount",
+      "paid": "Paid now",
+      "billFoot": "Amounts in rupees. Rounded once on the bill total. This is a computer-printed bill.",
+      "passTitle": "Gate pass — discharge",
+      "passReferTitle": "Gate pass — refer out",
+      "issuedAt": "Issued at {{time}}",
+      "to": "To: {{hospital}}",
+      "duesRecorded": "Dues recorded — let the patient leave.",
+      "passFoot": "Security: scan this code at the exit. One use only."
+    }
   }
 }

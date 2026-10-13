@@ -128,7 +128,8 @@ export const IpdAdviceSchema = z.object({
 export type IpdAdvice = z.infer<typeof IpdAdviceSchema>;
 
 /** The approval kinds the desk may ask for on an admission (kernel approvals). */
-export const IPD_APPROVAL_KINDS = ["icu", "non_covered", "deposit_waiver"] as const;
+/** E3.2 (#730): `discharge_dues` — leaving with an unpaid balance (billing manager or MS; never a detention). */
+export const IPD_APPROVAL_KINDS = ["icu", "non_covered", "deposit_waiver", "discharge_dues"] as const;
 export type IpdApprovalKind = (typeof IPD_APPROVAL_KINDS)[number];
 
 export const IPD_ADMIT_ROUTES = {
