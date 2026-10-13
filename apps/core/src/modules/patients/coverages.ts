@@ -131,3 +131,13 @@ export async function listPatientCoverages(
     verificationStatus: r.verificationStatus,
   }));
 }
+
+/**
+ * E2.2 (#726) — one coverage's sum insured, for IPD's room-rent cap stated as a % of it. A number, no demographics:
+ * the caller (the interim bill, `ipd.bill.view`) has already been allowed to see the admission. Null when the row is
+ * missing or the sum insured was not entered — the caller then applies no cap and says so; never a guess.
+ */
+export async function coverageSumInsuredPaise(db: Db, coverageId: string): Promise<number | null> {
+  const [row] = await db.select({ si: patientCoverages.sumInsuredPaise }).from(patientCoverages).where(eq(patientCoverages.id, coverageId));
+  return row?.si ?? null;
+}

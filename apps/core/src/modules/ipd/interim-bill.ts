@@ -9,6 +9,7 @@ import { readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
 import { IPD_ENDED_STATES } from "./charges";
 import { IPD_BILL_VIEW } from "./manifest";
+import { computePayerSplit } from "./payer-bill";
 import type { Actor, IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdRateComponent } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
@@ -68,6 +69,9 @@ export async function readInterimBill(db: Db, actor: Actor, admissionId: string)
   }
   const { roundedPaise } = roundTotalToRupee(Math.max(totals.netPaise, 0));
   const deposit = await depositHeldPaise(db, a);
+  // E2.2 (#726): the payer split, computed on read; the patient's balance is against the patient-payable part only.
+  const payerSplit = await computePayerSplit(db, a, lines);
+  const patientRounded = roundTotalToRupee(Math.max(payerSplit.totals.patientPaise, 0)).roundedPaise;
   const ended = (IPD_ENDED_STATES as readonly string[]).includes(a.state) ? a.endedAt : null;
   const nightly = lines.filter((l) => l.source === "ipd.nightly").map((l) => l.serviceDate);
   const name = p === undefined ? null : p.restricted ? p.alias : p.name;
@@ -91,6 +95,8 @@ export async function readInterimBill(db: Db, actor: Actor, admissionId: string)
       serviceCode: x.serviceCode, reason: x.reason as "rate_missing" | "tariff_missing" | "posting_failed", errorCode: x.errorCode,
       failCount: x.failCount, firstSeenAt: x.firstSeenAt.toISOString(),
     })),
+    payerSplit,
+    patientBalancePaise: deposit - patientRounded,
   };
 }
 

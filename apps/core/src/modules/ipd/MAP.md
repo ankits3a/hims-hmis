@@ -1,7 +1,7 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2)."
 resource: apps/core/src/modules/ipd
 tags: [ipd, beds, resources, admission, billing]
 generated: { by: agent:claude, at: 2026-10-12 }
@@ -69,6 +69,18 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `.reversed`. `kernel/db/schema/ipd.ts` — `ipd_charge_lines`, `ipd_charge_exceptions`, `ipd_admissions.tariff_version_id`
   (migration `ipd_charges`). `packages/contracts/src/ipd/charges.ts` — `IpdInterimBill`, `IPD_CHARGE_ROUTES`.
   `apps/web/src/screens/ipd-bill.tsx` — the interim bill (`/ipd/admissions/$admissionId/bill`, no nav entry).
+
+- (E2.2) `payer-split.ts` — THE PURE ENGINE: `splitBill(lines, terms, nonPayables)` (per line payer paise, patient paise,
+  reason codes; totals; words), `splitTermsOf(payerKind, authRows, sumInsured, schemeNonCovered)` (the record → terms),
+  `capWarningOf`, `CAP_EXEMPT_CLASSES`, `PROPORTIONAL_COMPONENTS`. `payer-bill.ts` — its inputs from the database
+  (`computePayerSplit`, `loadSplitTerms`), `roomRentCapWarning(db, actor, admissionId, targetClass)`, `capWarningsFor` (the
+  admit sheet's class cards), `printInterimBillSnapshot`, the non-payables list (`listPayerNonPayables`,
+  `addPayerNonPayable`, `retirePayerNonPayable`). `payer.controller.ts` — `IPD_PAYER_ROUTES`. `kernel/db/schema/ipd.ts` —
+  `ipd_payer_auths.room_rent_cap_paise` / `room_rent_cap_si_bp` / `co_pay_bp`, `ipd_payer_non_payables`,
+  `ipd_payer_split_snapshots` (migration `ipd_payer`). `packages/contracts/src/ipd/payer.ts` — `IpdPayerSplit`,
+  `IpdRoomRentCapWarning`, routes; the interim bill carries `payerSplit` and `patientBalancePaise`; `IpdClassQuote.capWarning`.
+  `patients` `coverageSumInsuredPaise` (new; the only patients read). Web: `apps/web/src/screens/ipd-bill.tsx` Payer/Patient columns and
+  the Payer split card; `apps/web/src/screens/ipd-admit.tsx` shows `capWarning.words` on a class card.
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -206,6 +218,37 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   gates the interim bill; charge events carry ids and dates only; acceptance (viii) pins the doctor-reachable IPD routes and
   scans their answers for money keys.
 
+### Payer split (E2.2, #726)
+- COMPUTED ON READ, never stored per line: the interim bill computes it every time from the record. Only a PRINT keeps it
+  (`ipd_payer_split_snapshots`, one row per print, the whole split as jsonb); the final bill (E3.2) will keep its own.
+- THE RECORD IS THE ONLY SOURCE OF MONEY TERMS: the room-rent cap (paise per day, or bp of the coverage's sum insured), the
+  co-pay (bp) and the approved total are what the TPA desk typed on `record_payer_auth`; each term is the LATEST STATED
+  value in the current authorisation (rows from the last `payer_change` on). Nothing is defaulted: no cap typed, no cap
+  applied; a % cap with no sum insured on the coverage applies no cap and raises `room_rent_cap_unresolved`.
+- MODES: cash / no payer → all patient (`cash`); `insurance_reimbursement` → all patient (`cash`: the patient claims
+  later); `insurance_cashless` and `corporate` → insured; `pmjay` / `state_scheme` → scheme (every line payer, patient ₹0;
+  the patient's only money is Σ granted `ipd_non_covered_line` approvals, `schemeNonCoveredPaise`; the receipt guard still
+  enforces it on every route).
+- INSURED, the order per line: reversed pair 0/0 → denied (`denied`, whole stay, from admission) → not yet approved
+  (`auth_pending`, patient until approval) → non-payable (`non_payable`) → room-rent cap → co-pay → approved amount
+  (`over_approved_amount`, consumed in posting order). An approval covers the stay FROM ADMISSION: the split reads the
+  latest state, never the approval's date, so day-1 lines turn payer-payable the moment a day-2 approval is recorded.
+- ROOM-RENT CAP (IRDAI proportional deduction): a day whose live nightly room line exceeds the cap and whose class is not
+  critical care (`icu`, `nicu`, `picu`, `hdu` — DECIDED) → room line: payer pays the cap (`room_rent_over_cap`); nursing,
+  RMO, visit and cross-visit of that day: payer pays net × cap / rent (`room_rent_cap_proportional`). Pharmacy,
+  consumables, implants and diagnostics are never proportionally deducted (when they post, they take no deduction).
+- ROUNDING (DECIDED): every payer share rounds DOWN to the paisa; payer + patient = the line exactly.
+- DENIAL: whole stay patient-payable and `cash_consent_missing` on the bill until a `payer_change` entry carrying a
+  `counsellingDocumentId` (the signed consent) follows the denial; after it the stay stays `denied` (cash from admission).
+- RECORD ORDER (DECIDED, E2.2): a REQUESTED initial may be answered by a second `initial` with the insurer's status; a
+  requested entry approves nothing (`approved_total_paise` = the last approved total), and an approved enhancement adds to
+  the last APPROVED total in the current authorisation — a requested enhancement never inflates it.
+- NON-PAYABLES: `ipd_payer_non_payables` (service code or tariff category, case-insensitive; retired, never deleted). It
+  starts EMPTY (DECIDED): no IRDAI non-medical category exists as a tariff category. The TPA desk keeps it
+  (`ipd.payer.manage`, `/ipd/payer/non-payables`).
+- MONEY OFF DOCTORS (0058): the split rides on the interim bill (`ipd.bill.view`); the cap warning needs `ipd.bill.view` or
+  `ipd.admit`; the non-payables list `ipd.payer.manage`. No doctor role holds any of them.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -249,6 +292,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E2.1) The transfer and discharge lanes do not exist yet: the acceptance tests write class moves and the discharge
   directly into `ipd_bed_stays` / `ipd_admissions` (`test/helpers/ipd.ts` `mkChargesWorld`).
 
+- (E2.2) The split's words are English, built server-side (like refusal words); the web's labels are translated.
+- (E2.2) The cap warning prices the target class on the admission's LOCKED tariff version once admitted (the active
+  price book before): a transfer lane quoting a class change must call `roomRentCapWarning`, not re-price itself.
+- (E2.2) Scheme non-covered money is per approval, not per line: no charge line is marked non-covered (approvals carry
+  an amount). A line-level mark is owed if the scheme desk needs it.
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -259,3 +308,5 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   and `ipd_admission_deposits`; eMAR resolves band serials against `ipd_bands`.
 - (E2.1) `kernel/worker/jobs.ts` (`postNightlyIpdCharges`, daily 00:05 IST); the rounds lane calls `postConsultantVisit`;
   the final bill (E3.2) calls `postAdmissionCharges`; `admissions.controller.ts` serves `readInterimBill`.
+- (E2.2) `readInterimBill` calls `computePayerSplit`; `quotesFor` calls `capWarningsFor`; the transfer/class-change lane
+  calls `roomRentCapWarning` before an upgrade consent; the final bill (E3.2) will call `computePayerSplit` and keep it.

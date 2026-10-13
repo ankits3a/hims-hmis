@@ -29,7 +29,10 @@ export type IpdErrorCode =
   /** E2.1 — a reversal line cannot itself be reversed. */
   | "charge_line_is_reversal"
   /** E2.1 — the line already has its reversal (`detail.reversalLineId`). */
-  | "charge_line_already_reversed";
+  | "charge_line_already_reversed"
+  /** E2.2 (#726) — the non-payables list: a live row already matches; no live row with that id. */
+  | "non_payable_exists"
+  | "non_payable_not_found";
 
 export class IpdError extends Error {
   constructor(

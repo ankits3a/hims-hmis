@@ -72,3 +72,11 @@ export {
 } from "./charges";
 export type { AdmissionPostResult, ConsultantVisitInput, ConsultantVisitResult, NightlyResult } from "./charges";
 export { readInterimBill } from "./interim-bill";
+// E2.2 (#726) — the payer split: the pure engine, its inputs, the cap warning, printed snapshots, the non-payables list.
+export {
+  CAP_EXEMPT_CLASSES, PROPORTIONAL_COMPONENTS, capWarningOf, splitBill, splitModeOf, splitTermsOf,
+} from "./payer-split";
+export type { AuthRowInput, NonPayables, SplitLineInput, SplitTerms } from "./payer-split";
+export {
+  addPayerNonPayable, computePayerSplit, listPayerNonPayables, printInterimBillSnapshot, retirePayerNonPayable, roomRentCapWarning,
+} from "./payer-bill";

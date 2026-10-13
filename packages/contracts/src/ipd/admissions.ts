@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IpdBedClassSchema } from "../ipd-bed-classes";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdInstantSchema, IpdPaiseSchema, IpdUserRefSchema } from "./common";
+import { IpdRoomRentCapWarningSchema } from "./payer";
 
 /**
  * E1.2 (#719) — THE ADMISSION DESK'S READ MODELS AND ROUTES (spec §4.2, §4.9 B "Admit — one flowing sheet").
@@ -81,6 +82,8 @@ export const IpdClassQuoteSchema = z.object({
   depositBasis: z.string().nullable(),
   /** Free rule-valid beds of the class right now. */
   freeBeds: z.number().int().nonnegative(),
+  /** E2.2 (#726): the room-rent cap warning for this class (null: no cap recorded, or the rent is within it). */
+  capWarning: IpdRoomRentCapWarningSchema.nullable().optional(),
 });
 export type IpdClassQuote = z.infer<typeof IpdClassQuoteSchema>;
 

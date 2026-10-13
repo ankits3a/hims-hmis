@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IpdBedClassSchema, IpdRateComponentSchema } from "../ipd-bed-classes";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdInstantSchema, IpdPaiseSchema } from "./common";
+import { IpdPayerSplitSchema } from "./payer";
 
 /**
  * E2.1 (#725) — THE RUNNING BILL'S READ MODEL (spec SPEC-ipd-core §4.3, §4.9 H). The interim bill is a desk shape:
@@ -100,6 +101,10 @@ export const IpdInterimBillSchema = z.object({
   /** Deposit paid minus the rounded total: positive = deposit left, negative = due. */
   balancePaise: SignedPaise,
   exceptions: z.array(IpdChargeExceptionViewSchema),
+  /** E2.2 (#726): each line payer- or patient-payable, the cap deduction in words, and the patient's balance. */
+  payerSplit: IpdPayerSplitSchema,
+  /** Deposit paid minus the patient-payable total rounded to the rupee (E2.2): positive = deposit left. */
+  patientBalancePaise: SignedPaise,
 });
 export type IpdInterimBill = z.infer<typeof IpdInterimBillSchema>;
 

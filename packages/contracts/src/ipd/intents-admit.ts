@@ -302,6 +302,14 @@ export const recordPayerAuth = ipdIntent({
     /** The patient signed at admission that cashless is provisional (§4.2). */
     provisionalCashlessSigned: z.boolean(),
     counsellingDocumentId: IpdIdSchema.optional(),
+    /**
+     * E2.2 (#726) — the letter's money terms, as the insurer or corporate states them. Absent = not stated on this
+     * entry (an earlier entry's value stands). Room-rent cap per day in paise, OR in basis points of the coverage's
+     * sum insured (100 = 1 %); co-pay in basis points (1000 = 10 %). Never defaulted by the hospital.
+     */
+    roomRentCapPaise: IpdPositivePaiseSchema.optional(),
+    roomRentCapSiBp: z.number().int().min(1).max(10_000).optional(),
+    coPayBp: z.number().int().min(0).max(10_000).optional(),
   }),
   output: z.strictObject({
     authId: IpdIdSchema,

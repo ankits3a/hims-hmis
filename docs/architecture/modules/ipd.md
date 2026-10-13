@@ -168,6 +168,21 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_CHARGES_REVERSE`
   - `IPD_PAYER_MANAGE`
   - `ipdManifest: ModuleManifest`
+- `payer-bill.ts`
+  - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
+  - `computePayerSplit(db: Db, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
+  - `listPayerNonPayables(db: Db, actor: Actor): Promise<IpdNonPayable[]>`
+  - `printInterimBillSnapshot(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdSplitSnapshot>`
+  - `retirePayerNonPayable(db: Db, actor: Actor, id: string, at: Date = new Date()): Promise<void>`
+  - `roomRentCapWarning(db: Db, actor: Actor, admissionId: string, targetClass: IpdBedClass, at: Date = new Date()): Promise<IpdRoomRentCapWarni…`
+- `payer-split.ts`
+  - `CAP_EXEMPT_CLASSES: ReadonlySet<IpdBedClass>`
+  - `PROPORTIONAL_COMPONENTS: ReadonlySet<IpdRateComponent>`
+  - `capWarningOf(cls: IpdBedClass, capPerDayPaise: number | null, rentPerDayPaise: number | null): { targetClass: IpdBedClass; capPerDayPaise: …`
+  - `splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, nonPayables: NonPayables = NO_NON_PAYABLES): IpdPayerSplit`
+  - `splitModeOf(payerKind: string | null): SplitMode`
+  - `splitTermsOf(payerKind: string | null, rows: readonly AuthRowInput[], sumInsuredPaise: number | null, schemeNonCoveredPaise: number): Split…`
+  - types: `AuthRowInput`, `NonPayables`, `SplitLineInput`, `SplitTerms`
 - `payer.ts`
   - `recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_payer_auth">>`
 - `realtime.ts`
@@ -178,14 +193,15 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_payer_auths`
+`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_payer_auths`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (31)
+## HTTP routes (36)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
+- `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`
