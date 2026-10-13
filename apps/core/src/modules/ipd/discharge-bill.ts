@@ -3,12 +3,13 @@ import { IPD_INTENTS, newId } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
-  approvals, ipdAdmissionDeposits, ipdAdmissions, ipdChargeLines, ipdFinalBills, ipdGatePasses, ipdPayerClaims, ipdStayExits, patientDocuments, refundVouchers,
+  approvals, ipdAdmissionDeposits, ipdAdmissions, ipdChargeLines, ipdFinalBills, ipdPayerClaims, ipdStayExits, patientDocuments, refundVouchers,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { issueInvoice, previewInvoice, receiptUnallocatedPaise, requestRefund, withIdempotency } from "../billing";
 import { holdsPermission, lockAdmission, onceIpd, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { IPD_APPROVAL_TYPE_KEYS, grantedApproval, requestIpdApproval } from "./approval-types";
+import type { GrantedApproval } from "./approval-types";
 import { coveredLineIds, hasUnbilledLines, liveBills } from "./bill-cover";
 import { postAdmissionCharges } from "./charges";
 import { activeDischarge, confirmationsOf, pendingDepartments } from "./discharge";
@@ -69,10 +70,10 @@ type ChargeLineRow = typeof ipdChargeLines.$inferSelect;
 
 /**
  * The admission states in which a final bill may be composed and settled (the cascade, and every other ending). #763: a
- * void re-opens the bill in `discharging` (its gate pass is voided with it) or after the exit (`discharged`,
- * `transferred_out`) — a gate pass needs a settled bill, so in those states a fresh settle only follows a void.
+ * void re-opens the bill after the exit (`discharged`, `transferred_out`) — a gate pass needs a settled bill, so in those
+ * states a fresh settle only follows a void (a void is refused while a pass is live, so never in `discharging`).
  */
-const BILLABLE: ReadonlySet<string> = new Set(["fit_declared", "lama", "absconded", "deceased", "discharging", "discharged", "transferred_out"]);
+const BILLABLE: ReadonlySet<string> = new Set(["fit_declared", "lama", "absconded", "deceased", "discharged", "transferred_out"]);
 const TENDERS: Record<string, "cash" | "upi" | "card"> = { cash: "cash", upi: "upi", card: "card" };
 
 export type ComposedFinalBill = {
@@ -174,7 +175,7 @@ export async function unbilledTake(db: Db | Tx, admissionId: string): Promise<(l
 /** #763 — the lines one settled bill took (a bill written before #763: those posted by its settlement). */
 function billTake(row: FinalBillRow): (line: ChargeLineRow) => boolean {
   const own = new Set(row.lineIds);
-  return own.size > 0 ? (l) => own.has(l.id) : (l) => l.postedAt.getTime() <= row.settledAt.getTime();
+  return row.coverByTime ? (l) => own.has(l.id) || l.postedAt.getTime() <= row.settledAt.getTime() : (l) => own.has(l.id);
 }
 
 /** Review #762 item 10: `refund_pending` until billing issues the voucher against the refund approval. */
@@ -295,10 +296,10 @@ export async function recordDuesApproval(
       .orderBy(asc(ipdFinalBills.seq)).for("update")).filter((b) => b.duesPaise > 0 && b.duesApprovalId === null);
     const any = waiting[0] ?? (await liveBills(tx, a.id)).find((b) => b.duesPaise > 0);
     if (any === undefined) throw new IpdRefusal("bill_unsettled", "No dues on this admission");
-    const ok = await grantedApproval(tx, body.approvalId, "discharge_dues", [a.id]);
-    const req = (await tx.select({ requesterId: approvals.requesterId }).from(approvals).where(eq(approvals.id, body.approvalId)))[0];
+    // Review YELLOW 5: one approval attaches to one bill, and never the requester's own.
+    const ok = await usableDuesApproval(tx, a.id, body.approvalId);
     const row = waiting.find((b) => ok !== null && (ok.amountPaise === null || ok.amountPaise >= b.duesPaise)) ?? any;
-    if (ok === null || (ok.amountPaise !== null && ok.amountPaise < row.duesPaise) || req === undefined || ok.decidedBy === req.requesterId) {
+    if (ok === null || (ok.amountPaise !== null && ok.amountPaise < row.duesPaise)) {
       throw new IpdRefusal("dues_need_approval", "The approval must be granted, cover the dues, and not be the requester's own", { duesPaise: row.duesPaise });
     }
     await tx.update(ipdFinalBills).set({ duesApprovalId: ok.id, duesApprovedBy: ok.decidedBy, duesApprovedAt: at }).where(eq(ipdFinalBills.id, row.id));
@@ -427,14 +428,44 @@ async function depositAvailablePaise(db: Db | Tx, a: AdmissionRow, held: number)
 async function settleBill(db: Db, actor: Actor, raw: unknown, kind: "final" | "supplementary", opts: Opts): Promise<Output<"settle_final_bill">> {
   const input: Input<"settle_final_bill"> = IPD_INTENTS.settle_final_bill.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_DISCHARGE_BILL);
+  const at = opts.now ?? new Date();
+  const work = () => withTx(db, async (tx) => settleLocked(tx, actor, await lockAdmission(tx, input.admissionId), input, kind, at, true));
+  if (kind === "final") return onceIpd(db, actor, "settle_final_bill", input.idempotencyKey, input, work, at);
+  return withIdempotency(db, { actorId: actor.id, route: "ipd:settle_supplementary_bill", key: input.idempotencyKey.toLowerCase() }, input, work, at);
+}
+
+/** The states a supplementary bill may be settled in: a live final bill exists, the stay is in its discharge or ended. */
+const SUPPLEMENTARY_STATES: ReadonlySet<string> = new Set([
+  "fit_declared", "discharging", "lama", "absconded", "deceased", "discharged", "transferred_out",
+]);
+
+/**
+ * #763 (review RED 2) — ⚖ THE SUPPLEMENTARY BILL'S NO-DETENTION PATH AT THE GATE, exactly the final bill's: the charges that
+ * wait are settled as a supplementary bill with the dues recorded against the signed undertaking (deposit still available
+ * applied first; no payment, no approval — the approval follows the exit). Called by `issue_gate_pass` inside its own
+ * transaction, under the admission lock it already holds.
+ */
+export async function recordSupplementaryDuesIn(
+  tx: Tx, actor: Actor, a: AdmissionRow, undertakingDocumentId: string, at: Date,
+): Promise<Output<"settle_final_bill">> {
+  return settleLocked(tx, actor, a, {
+    idempotencyKey: a.id, admissionId: a.id, billVersion: 0, patientPayablePaise: 0, settlement: "dues_recorded", payments: [], undertakingDocumentId,
+  }, "supplementary", at, false);
+}
+
+/**
+ * One settle under the admission lock. `checkRead`: the cashier's settle names the bill version and the patient amount it
+ * read (`bill_changed` otherwise); the gate's dues path (`recordSupplementaryDuesIn`) composes and records in one act.
+ */
+async function settleLocked(
+  tx: Tx, actor: Actor, a: AdmissionRow, input: Input<"settle_final_bill">, kind: "final" | "supplementary", at: Date, checkRead: boolean,
+): Promise<Output<"settle_final_bill">> {
   const tenders = input.payments.map((p) => {
     const mode = TENDERS[p.tender];
     if (mode === undefined) throw new IpdError("tender_not_supported", `the billing ledger takes cash, UPI and card, not ${p.tender}`, { tender: p.tender });
     return { mode, amountPaise: p.amountPaise, ...(p.ref === undefined ? {} : { refText: p.ref }) };
   });
-  const at = opts.now ?? new Date();
-  const work = () => withTx(db, async (tx) => {
-    const a = await lockAdmission(tx, input.admissionId);
+  {
     const live = await liveBills(tx, a.id);
     let seq = 0;
     if (kind === "final") {
@@ -445,24 +476,21 @@ async function settleBill(db: Db, actor: Actor, raw: unknown, kind: "final" | "s
         const pending = d === undefined ? [] : pendingDepartments(await confirmationsOf(tx, d.id));
         if (pending.length > 0) throw new IpdRefusal("charges_unconfirmed", undefined, { pending });
       }
-      if (a.state === "discharging" && (await tx.select({ id: ipdGatePasses.id }).from(ipdGatePasses)
-        .where(and(eq(ipdGatePasses.admissionId, a.id), eq(ipdGatePasses.status, "issued")))).length > 0) {
-        throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
-      }
     } else {
+      // Review YELLOW 6: the same state guard as the final bill (plus the discharge under way and the ended stays).
+      if (!SUPPLEMENTARY_STATES.has(a.state)) throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
       if (!live.some((b) => b.kind === "final")) throw new IpdRefusal("bill_unsettled", "No settled final bill on this admission");
       seq = live.reduce((m, b) => Math.max(m, b.seq), 0) + 1;
     }
-    // RED 1: the settle posts the running bill itself, up to the presumed exit (= now; RED 4), before composing. #763: the
-    // settlement day of a live bill stays closed (`postAdmissionCharges`).
+    // RED 1: the settle posts the running bill itself, up to the presumed exit (= now; RED 4), before composing.
     await postAdmissionCharges(tx as unknown as Db, a.id, { upToIstDate: istDayString(at), now: at, presumedDischargeAt: a.endedAt ?? at });
     const c = await composeFinalBill(tx, a, await unbilledTake(tx, a.id));
-    if (c.billVersion !== input.billVersion) throw new IpdRefusal("bill_changed", undefined, { billVersion: c.billVersion });
+    if (checkRead && c.billVersion !== input.billVersion) throw new IpdRefusal("bill_changed", undefined, { billVersion: c.billVersion });
     if (kind === "supplementary" && c.live.length === 0) throw new IpdError("nothing_to_bill", "no charge waits for a supplementary bill");
     const p = await priceFinalBill(tx, a, c, at);
     // Item 11: the split's inputs (payer record, non-payables, deposits) are not in the line count — the amount the
     // cashier read is the check.
-    if (p.patientPaise !== input.patientPayablePaise) throw new IpdRefusal("bill_changed", undefined, { patientPayablePaise: p.patientPaise });
+    if (checkRead && p.patientPaise !== input.patientPayablePaise) throw new IpdRefusal("bill_changed", undefined, { patientPayablePaise: p.patientPaise });
     assertPayerAccounted(p.payerPaise, a.payerKind);
 
     const netPaise = p.patientRoundedPaise;
@@ -495,7 +523,8 @@ async function settleBill(db: Db, actor: Actor, raw: unknown, kind: "final" | "s
     }
     let duesApproval: { id: string; by: string | null } | null = null;
     if (duesPaise > 0 && input.duesApprovalId !== undefined) {
-      const ok = await grantedApproval(tx, input.duesApprovalId, "discharge_dues", [a.id]);
+      // Review YELLOW 5: attached only when granted, covering, not the requester's own, and on no other bill.
+      const ok = await usableDuesApproval(tx, a.id, input.duesApprovalId);
       if (ok !== null && (ok.amountPaise === null || ok.amountPaise >= duesPaise)) duesApproval = { id: ok.id, by: ok.decidedBy };
     }
 
@@ -542,14 +571,25 @@ async function settleBill(db: Db, actor: Actor, raw: unknown, kind: "final" | "s
       });
     }
     await appendEvent(tx, billSettled.make({
-      payload: { admissionId: a.id, finalBillId, invoiceId: invoice?.invoiceId ?? null, provenance: provenanceOf(actor) },
+      payload: { admissionId: a.id, finalBillId, invoiceId: invoice?.invoiceId ?? null, kind, seq, provenance: provenanceOf(actor) },
       actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
     }));
     return {
       billId: finalBillId, billNo: invoice?.invoiceNo ?? `NIL-${a.admissionNo ?? a.id}${seq === 0 ? "" : `-S${String(seq)}`}`, totalPaise: p.totalPaise,
       payerPayablePaise: p.payerPaise, patientPayablePaise: p.patientPaise, paidPaise: tenderedPaise, refundPaise, duesPaise,
     };
-  });
-  if (kind === "final") return onceIpd(db, actor, "settle_final_bill", input.idempotencyKey, input, work, at);
-  return withIdempotency(db, { actorId: actor.id, route: "ipd:settle_supplementary_bill", key: input.idempotencyKey.toLowerCase() }, input, work, at);
+  }
+}
+
+/**
+ * Review YELLOW 5 — a dues approval is usable once: granted, on this admission, decided by someone other than its
+ * requester (the engine refuses that; re-checked so a row written around it cannot pass), and attached to no bill yet.
+ */
+async function usableDuesApproval(tx: Db | Tx, admissionId: string, approvalId: string): Promise<GrantedApproval | null> {
+  const ok = await grantedApproval(tx, approvalId, "discharge_dues", [admissionId]);
+  if (ok === null) return null;
+  const req = (await tx.select({ requesterId: approvals.requesterId }).from(approvals).where(eq(approvals.id, approvalId)))[0];
+  if (req === undefined || ok.decidedBy === null || ok.decidedBy === req.requesterId) return null;
+  const used = await tx.select({ id: ipdFinalBills.id }).from(ipdFinalBills).where(eq(ipdFinalBills.duesApprovalId, approvalId));
+  return used.length > 0 ? null : ok;
 }

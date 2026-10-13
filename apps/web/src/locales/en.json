@@ -16102,7 +16102,10 @@
         "refund_issued": "Refund already paid out — cannot void",
         "void_needs_approval": "Needs another person's approval",
         "void_newer_bill_first": "Void the newer bill first",
-        "bill_already_voided": "Already voided"
+      "bill_already_voided": "Already voided",
+      "gate_pass_live": "Gate pass issued — void after the exit",
+      "payer_claim_settled": "Payer settled the claim — cannot void",
+      "nothing_to_bill": "No charge waits for a supplementary bill"
       }
     }
   },

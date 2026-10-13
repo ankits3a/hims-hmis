@@ -58,6 +58,9 @@ export type IpdErrorCode =
   | "void_needs_approval"
   | "refund_issued"
   | "nothing_to_bill"
+  /** #763 review — a void while an issued gate pass is not yet scanned (⚖); the payer has settled the bill's claim. */
+  | "gate_pass_live"
+  | "payer_claim_settled"
   /** E3.2 — ⚖ an MLC body is released only after the police clearance is recorded. */
   | "police_clearance_required"
   /** E3.3 (#731) — the family link: refused for this admission (`detail.reason`: sealed, mlc, family_off, no_attendant_phone,

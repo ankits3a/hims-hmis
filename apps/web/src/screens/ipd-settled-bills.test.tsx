@@ -92,6 +92,18 @@ describe("IpdSettledBills (#763)", () => {
     expect(api.voidBill).toHaveBeenCalledWith(id(1), id(11), id(41), "wrong class");
   });
 
+  it("offers the supplementary bill on a settled-not-out stay and says so when nothing waits", async () => {
+    const d = desk();
+    d.rows[0]!.exceptions = ["settled_not_exited"];
+    api.getSettledBills.mockResolvedValue(d);
+    api.prepareSupplementaryBill.mockResolvedValue({ ...supp, lines: [] });
+    renderWithRouter(<IpdSettledBills />);
+    const panel = await screen.findByRole("region", { name: "Settled bills" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Supplementary bill" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("No charge waits for a supplementary bill");
+    expect(screen.queryByRole("group", { name: "Supplementary bill" })).toBeNull();
+  });
+
   it("shows nothing to a reader without the bill permission", async () => {
     api.getSettledBills.mockRejectedValue(new ApiError(403, { code: "ipd_forbidden" }));
     const { container } = renderWithRouter(<IpdSettledBills />);

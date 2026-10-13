@@ -157,6 +157,11 @@ export const issueGatePass = ipdIntent({
     followUpAppointmentId: IpdIdSchema.optional(),
     /** A refer-out: the confirmed receiving hospital. */
     receivingHospital: z.strictObject({ name: z.string().trim().min(1).max(160), confirmedBy: IpdNoteSchema }).optional(),
+    /**
+     * #763 ⚖: charges after the settled bill (another night, services) and nothing paid — the patient's signed undertaking
+     * (an existing patient document) records them as a supplementary bill's dues here, at the gate; never a detention.
+     */
+    undertakingDocumentId: IpdIdSchema.optional(),
   }),
   output: z.strictObject({
     gatePassId: IpdIdSchema,

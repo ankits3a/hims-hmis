@@ -1,21 +1,23 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { IpdAskBillVoidSchema, IpdVoidBillSchema, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  allocations, approvals, ipdAdmissionDeposits, ipdFinalBills, ipdGatePasses, ipdPayerClaims, receiptTenders, receipts, refundVouchers,
+  approvals, ipdAdmissionDeposits, ipdFinalBills, ipdGatePasses, ipdPayerClaims, receiptTenders, receipts,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { rejectRequest } from "../../kernel/approvals/decisions";
-import { BillingError, issueCreditNote, registerRefundVoucherGuard, releaseInvoiceSurplusOnTx, withIdempotency } from "../billing";
+import { SodViolationError } from "../../kernel/auth/sod";
+import { WorkflowError } from "../../kernel/workflow/instances";
+import { BillingError, cancelRefundRequestOnTx, invoiceAllocatedPaise, issueCreditNote, releaseInvoiceSurplusOnTx, withIdempotency } from "../billing";
 import { lockAdmission, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { grantedApproval, requestIpdApproval } from "./approval-types";
 import { liveBills } from "./bill-cover";
+import { depositTaken } from "./admission-events";
 import { billVoided } from "./discharge-events";
 import { IpdError } from "./errors";
 import { IPD_DISCHARGE_BILL } from "./manifest";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
-import type { RefundVoucherGuard } from "../billing";
 
 /**
  * #763 — VOIDING A SETTLED IPD BILL (final or supplementary). DECIDED $ (standard Indian corporate hospital practice):
@@ -29,10 +31,12 @@ import type { RefundVoucherGuard } from "../billing";
  *   on the voided bill is ADOPTED as the stay's deposit (an `ipd_admission_deposits` row naming that receipt), so the
  *   re-settled bill applies it instead of asking the patient again.
  * - The payer's claim row is withdrawn (`withdrawn`). The excess-deposit refund the bill raised is cancelled when its
- *   voucher is not issued (a pending request is rejected when the voider may decide it; in every case billing's voucher
- *   guard refuses it from now on); when the voucher IS issued the money is out and the void is refused `refund_issued`.
+ *   voucher is not issued — billing's own marker (`cancelRefundRequestOnTx`, read by `issueRefundVoucher` in every process)
+ *   refuses its voucher from now on, and a pending request is also rejected when the voider may decide it; when the
+ *   voucher IS issued the money is out and the void is refused `refund_issued`.
  * - Newest first: a supplementary bill must be voided before the bill it followed (`void_newer_bill_first`).
- * - A live gate pass (issued on the voided bill's facts) is voided with it.
+ * - ⚖ Refused while a gate pass is issued and not yet scanned (`gate_pass_live` — never stop a patient at the gate); allowed
+ *   after the scan. Refused when the payer has settled the bill's claim (`payer_claim_settled`). Both before any write.
  * - Voiding reopens the running bill: the days the bill closed are posted again by the nightly job, `cancel_fit` proceeds,
  *   and the next settle composes ONE new bill from every line no live bill has taken.
  */
@@ -58,7 +62,7 @@ export type VoidBillResult = {
   creditNoteNo: string | null;
   claimWithdrawn: boolean;
   refundCancelled: boolean;
-  gatePassVoided: boolean;
+  adoptedReceiptIds: string[];
 };
 
 export async function voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<VoidBillResult> {
@@ -74,50 +78,63 @@ export async function voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = 
     const newer = (await liveBills(tx, a.id)).filter((b) => b.seq > bill.seq);
     if (newer.length > 0) throw new IpdError("void_newer_bill_first", "void the newer supplementary bill first", { billIds: newer.map((b) => b.id) });
 
-    // The approval: granted, for THIS bill, and not decided by its own requester (the engine refuses that; re-checked).
+    // The approval: granted, for THIS bill, and not decided by its own requester (the engine refuses that; re-checked here,
+    // so a grant written around the engine stops at this check — `detail.reason`).
     const ok = await grantedApproval(tx, input.approvalId, "bill_void", [bill.id]);
+    if (ok === null) {
+      throw new IpdError("void_needs_approval", "a void needs a granted approval for this bill", { approvalId: input.approvalId, reason: "not_granted" });
+    }
     const req = (await tx.select({ requesterId: approvals.requesterId }).from(approvals).where(eq(approvals.id, input.approvalId)))[0];
-    if (ok === null || req === undefined || ok.decidedBy === null || ok.decidedBy === req.requesterId) {
-      throw new IpdError("void_needs_approval", "a void needs a granted approval for this bill, decided by someone other than its requester", {
-        approvalId: input.approvalId,
-      });
+    if (req === undefined || ok.decidedBy === null || ok.decidedBy === req.requesterId) {
+      throw new IpdError("void_needs_approval", "the approval was decided by its own requester", { approvalId: input.approvalId, reason: "self_approved" });
     }
 
-    // The refund this bill raised: refused when the money is out; else cancelled (the voucher guard below refuses it).
+    // ⚖ Review RED 3: an issued pass not yet scanned is the patient's way out — never pulled from under them.
+    const pass = (await tx.select({ code: ipdGatePasses.code }).from(ipdGatePasses)
+      .where(and(eq(ipdGatePasses.admissionId, a.id), eq(ipdGatePasses.status, "issued"))))[0];
+    if (pass !== undefined) throw new IpdError("gate_pass_live", "a gate pass is issued and not yet scanned: void after the exit", { gatePassCode: pass.code });
+    // Review RED 4: a claim the payer has settled is money received against this bill — refused before any write.
+    const settledClaim = (await tx.select({ id: ipdPayerClaims.id }).from(ipdPayerClaims)
+      .where(and(eq(ipdPayerClaims.finalBillId, bill.id), eq(ipdPayerClaims.status, "settled"))))[0];
+    if (settledClaim !== undefined) throw new IpdError("payer_claim_settled", "the payer has settled this bill's claim", { claimId: settledClaim.id });
+
+    // The refund this bill raised: refused when the money is out; else cancelled by billing's own marker (fails closed).
     let refundCancelled = false;
     if (bill.refundApprovalId !== null && bill.refundPaise > 0) {
-      // The same row lock billing's voucher issue takes first: a void and a voucher can never both win.
-      await tx.execute(sql`select id from approvals where id = ${bill.refundApprovalId} for update`);
-      const v = (await tx.select({ voucherNo: refundVouchers.voucherNo }).from(refundVouchers).where(eq(refundVouchers.approvalId, bill.refundApprovalId)))[0];
-      if (v !== undefined) {
-        throw new IpdError("refund_issued", "the bill's refund voucher is already issued: the money is out, the bill cannot be voided", {
-          voucherNo: v.voucherNo,
-        });
+      try {
+        await cancelRefundRequestOnTx(tx, actor, { approvalId: bill.refundApprovalId, reason: `IPD bill voided: ${input.reason}` }, at);
+      } catch (e) {
+        if (e instanceof BillingError && e.code === "voucher_state_conflict") {
+          throw new IpdError("refund_issued", "the bill's refund voucher is already issued: the money is out, the bill cannot be voided", {
+            refundApprovalId: bill.refundApprovalId,
+          });
+        }
+        throw e;
       }
+      refundCancelled = true;
       const pending = (await tx.select({ status: approvals.status }).from(approvals).where(eq(approvals.id, bill.refundApprovalId)))[0]?.status === "pending";
       if (pending) {
         try {
           await rejectRequest(tx as unknown as Db, actor, { approvalId: bill.refundApprovalId, note: `IPD bill voided: ${input.reason}` });
-        } catch {
-          // Not this person's to decide (role, or they asked for it): it stays pending, and the guard refuses its voucher.
+        } catch (e) {
+          // Review BLUE 15: only "not this person's to decide" (the requester, or a role the refund ladder does not name) is
+          // tolerated — the request stays pending and billing's cancellation marker refuses its voucher. Anything else fails.
+          if (!(e instanceof SodViolationError) && !(e instanceof WorkflowError && e.code === "role_denied")) throw e;
         }
       }
-      refundCancelled = true;
     }
 
     // The money documents: a correction credit note against the invoice, then its allocations reversed.
     let creditNote: { id: string; no: string } | null = null;
+    let adopted: string[] = [];
     if (bill.invoiceId !== null) {
       const reason = `IPD bill void (${a.admissionNo ?? a.id}): ${input.reason}`;
       const cn = await issueCreditNote(tx as unknown as Db, actor, { kind: "correction", invoiceId: bill.invoiceId, reason }, at);
       creditNote = { id: cn.creditNoteId, no: cn.creditNoteNo };
-      const [alloc] = await tx.select({
-        total: sql<string>`coalesce(sum(case when ${allocations.kind} = 'apply' then ${allocations.amountPaise} else -${allocations.amountPaise} end), 0)`,
-      }).from(allocations).where(eq(allocations.invoiceId, bill.invoiceId));
-      const allocated = Number(alloc?.total ?? 0);
+      const allocated = await invoiceAllocatedPaise(tx, bill.invoiceId);
       if (allocated > 0) {
         const released = await releaseInvoiceSurplusOnTx(tx, actor, { invoiceId: bill.invoiceId, amountPaise: allocated, reason }, at);
-        await adoptPaidReceipts(tx, actor, a.id, bill.id, released.moves, at);
+        adopted = await adoptPaidReceipts(tx, actor, a, bill.id, released.moves, at);
       }
     }
 
@@ -128,15 +145,16 @@ export async function voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = 
       voidedAt: at, voidedBy: actor.id, voidReason: input.reason, voidApprovalId: ok.id, creditNoteId: creditNote?.id ?? null,
       creditNoteNo: creditNote?.no ?? null, refundCancelledAt: refundCancelled ? at : null,
     }).where(eq(ipdFinalBills.id, bill.id));
-    const passes = await tx.update(ipdGatePasses).set({ status: "void", voidedBy: actor.id, voidedAt: at, voidReason: "bill_voided" })
-      .where(and(eq(ipdGatePasses.admissionId, a.id), eq(ipdGatePasses.status, "issued"))).returning({ id: ipdGatePasses.id });
     await appendEvent(tx, billVoided.make({
-      payload: { admissionId: a.id, billId: bill.id, creditNoteId: creditNote?.id ?? null, approvalId: ok.id, provenance: provenanceOf(actor) },
+      payload: {
+        admissionId: a.id, billId: bill.id, creditNoteId: creditNote?.id ?? null, approvalId: ok.id, adoptedReceiptIds: adopted,
+        provenance: provenanceOf(actor),
+      },
       actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
     }));
     return {
       admissionId: a.id, billId: bill.id, creditNoteNo: creditNote?.no ?? null, claimWithdrawn: claims.length > 0, refundCancelled,
-      gatePassVoided: passes.length > 0,
+      adoptedReceiptIds: adopted,
     };
   }), at);
 }
@@ -146,10 +164,12 @@ export async function voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = 
  * applies it. One row per receipt (the deposit table's unique receipt id); a deposit receipt is already the stay's.
  */
 async function adoptPaidReceipts(
-  tx: Tx, actor: Actor, admissionId: string, billId: string, moves: readonly { receiptId: string; amountPaise: number }[], at: Date,
-): Promise<void> {
+  tx: Tx, actor: Actor, a: { id: string; patientId: string }, billId: string, moves: readonly { receiptId: string; amountPaise: number }[], at: Date,
+): Promise<string[]> {
+  const admissionId = a.id;
+  const out: string[] = [];
   const ids = [...new Set(moves.map((m) => m.receiptId))];
-  if (ids.length === 0) return;
+  if (ids.length === 0) return out;
   const known = new Set((await tx.select({ receiptId: ipdAdmissionDeposits.receiptId }).from(ipdAdmissionDeposits)
     .where(inArray(ipdAdmissionDeposits.receiptId, ids))).map((r) => r.receiptId));
   for (const receiptId of ids) {
@@ -162,22 +182,12 @@ async function adoptPaidReceipts(
       id: newId(), admissionId, receiptId, receiptNo: r.receiptNo, amountPaise, tender: tender?.mode ?? "cash",
       payerName: "Paid on a voided bill", payerRelation: "self", idempotencyKey: `bill_void:${billId}:${receiptId}`, takenBy: actor.id, takenAt: at,
     });
+    // The deposit row's event, as `takeDeposit` writes it (review 10).
+    await appendEvent(tx, depositTaken.make({
+      payload: { admissionId, receiptId, provenance: provenanceOf(actor) },
+      actor, correlationId: admissionId, patientId: a.patientId, occurredAt: at,
+    }));
+    out.push(receiptId);
   }
-}
-
-/**
- * Billing's voucher guard (registered by `IpdModule`): a refund approval a void cancelled never issues a voucher. Runs
- * inside billing's voucher transaction, after it locked the approval row.
- */
-export const ipdRefundVoucherGuard: RefundVoucherGuard = async (tx, ctx) => {
-  const row = (await tx.select({ id: ipdFinalBills.id }).from(ipdFinalBills)
-    .where(and(eq(ipdFinalBills.refundApprovalId, ctx.approvalId), sql`${ipdFinalBills.refundCancelledAt} is not null`)))[0];
-  if (row !== undefined) {
-    throw new BillingError("approval_not_granted", `refund approval ${ctx.approvalId} was cancelled: its IPD bill was voided`);
-  }
-};
-
-/** Registers `ipdRefundVoucherGuard` with billing (`IpdModule` at boot); returns the unregister function. */
-export function registerIpdRefundVoucherGuard(): () => void {
-  return registerRefundVoucherGuard("ipd.bill-void", ipdRefundVoucherGuard);
+  return out;
 }

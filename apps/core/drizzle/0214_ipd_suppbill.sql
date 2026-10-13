@@ -1,9 +1,19 @@
+CREATE TABLE "refund_cancellations" (
+	"approval_id" text PRIMARY KEY NOT NULL,
+	"reason" text NOT NULL,
+	"cancelled_by" text NOT NULL,
+	"cancelled_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "refund_cancellations_reason_ck" CHECK (btrim("refund_cancellations"."reason") <> '')
+);
+--> statement-breakpoint
 ALTER TABLE "ipd_payer_claims" DROP CONSTRAINT "ipd_payer_claims_status_ck";--> statement-breakpoint
 DROP INDEX "ipd_final_bills_admission_ux";--> statement-breakpoint
 DROP INDEX "ipd_payer_claims_admission_ux";--> statement-breakpoint
 ALTER TABLE "ipd_final_bills" ADD COLUMN "kind" text DEFAULT 'final' NOT NULL;--> statement-breakpoint
 ALTER TABLE "ipd_final_bills" ADD COLUMN "seq" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "ipd_final_bills" ADD COLUMN "line_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "ipd_final_bills" ADD COLUMN "cover_by_time" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "ipd_final_bills" ALTER COLUMN "cover_by_time" SET DEFAULT false;--> statement-breakpoint
 ALTER TABLE "ipd_final_bills" ADD COLUMN "voided_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "ipd_final_bills" ADD COLUMN "voided_by" text;--> statement-breakpoint
 ALTER TABLE "ipd_final_bills" ADD COLUMN "void_reason" text;--> statement-breakpoint

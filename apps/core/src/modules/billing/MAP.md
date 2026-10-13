@@ -89,9 +89,10 @@ Every rupee is an integer paise; documents are append-only and corrected by new 
 - `lockInvoice` exists as THREE private copies: receipts.ts, credit-notes.ts, refunds.ts. Change locking in all three.
 - Documents are immutable: receipts cannot be UPDATEd/DELETEd (trigger from migration 0012, per comment receipts.ts). Corrections = credit note, reversal allocation (`kind` + `reversalOfId`), or `markEnteredInError` (receipts.ts).
 - Advance is a derived balance, never floored (`advanceOf`); allocation must not drive it negative (receipts.ts).
-- Refund voucher guards (IPD #763): `registerRefundVoucherGuard` (refunds.ts) — a module that raised a refund request may
-  cancel it later (the IPD bill void); `issueRefundVoucher` asks every guard inside its transaction AFTER locking the approval
-  row (the void locks the same row). Additive seam: the approvals kernel has no "cancelled" state for a granted approval.
+- Refund cancellation (IPD #763): `cancelRefundRequestOnTx` (refunds.ts) — the raiser of a refund request (the IPD bill
+  void) cancels it: locks the approval row, refuses `voucher_state_conflict` once a voucher exists, writes billing's own
+  marker `refund_cancellations`; `issueRefundVoucher` reads the marker under the same lock (fails closed in every process —
+  the approvals kernel has no "cancelled" state for a granted approval). `invoiceAllocatedPaise` exposes `allocatedByInvoice`.
 - Approvals: credit on unsettled remainder ALWAYS needs an owner-granted approval, cap no longer exempts (invoices.ts, comment owner ruling 2026-09-28); discount approvals bound to draft+line; clearance above threshold (credit-notes.ts); refunds ladder in refunds.ts (approval row locked `for update` refunds.ts).
 - Cash: needs an open session of the ACTING cashier (`requireOpenSession`); `assertCashAccepted` can throw `cash_threshold_blocked`, whose audit event must be written in a second tx (invoices.ts, receipts.ts catch).
 - Change given only against cash tender and only up to min(surplus, cash tendered): invoices.ts.

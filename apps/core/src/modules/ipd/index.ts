@@ -102,8 +102,8 @@ export {
   IPD_SETTLED_BILL_RECENT_DAYS, askDuesApproval, assertPayerAccounted, composeFinalBill, listBillDesk, prepareFinalBill, prepareSupplementaryBill,
   priceFinalBill, readFinalBill, recordDuesApproval, settleFinalBill, settleSupplementaryBill,
 } from "./discharge-bill";
-// #763 — voiding a settled bill, and billing's voucher guard for the refund a void cancels.
-export { askBillVoid, ipdRefundVoucherGuard, registerIpdRefundVoucherGuard, voidBill } from "./bill-void";
+// #763 — voiding a settled bill.
+export { askBillVoid, voidBill } from "./bill-void";
 export type { VoidBillResult } from "./bill-void";
 export {
   issueGatePass, listMortuary, receiveBody, recordAbscond, recordDeath, recordLama, recordPoliceClearance, releaseBody, scanGatePass,

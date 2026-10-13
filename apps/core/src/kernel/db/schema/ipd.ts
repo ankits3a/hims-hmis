@@ -691,6 +691,11 @@ export const ipdFinalBills = pgTable(
     /** #763 — the running-bill lines this bill composed (a reversed pair included): the next bill composes the rest. */
     lineIds: jsonb("line_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     /**
+     * #763 — a bill settled BEFORE migration `ipd_suppbill` has no `line_ids`: it covers the lines posted by its settlement
+     * (time fallback). The migration marks every such row true; every bill settled since is false and covers exactly its list.
+     */
+    coverByTime: boolean("cover_by_time").notNull().default(false),
+    /**
      * #763 — THE VOID: billing voids a settled bill with a granted `ipd_bill_void` approval (requester ≠ approver) and a
      * reason. The money moves are documents — a correction credit note against the invoice, the deposit allocations
      * reversed — never an edit of the invoice; this row only records that it happened.

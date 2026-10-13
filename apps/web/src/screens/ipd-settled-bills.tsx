@@ -15,6 +15,8 @@ import type { IpdDischargeBillDesk, IpdFinalBill, IpdSettledBill } from "@hmis/c
  */
 
 type Row = IpdDischargeBillDesk["rows"][number];
+/** The exceptions that may hide charges after the bill: the act posts them (the settlement day once the stay ran past 14:00). */
+const SUPP_PROMPTS: readonly Row["exceptions"][number][] = ["supplementary_owed", "settled_not_exited", "ended_after_bill"];
 type Supp = { admissionId: string; bill: IpdFinalBill; cash: string; undertaking: string; key: string };
 
 const rupeesToPaise = (s: string): number => {
@@ -84,7 +86,7 @@ export function IpdSettledBills(): React.ReactElement | null {
   const openSupp = (admissionId: string): void => {
     setError(null);
     prepareSupplementaryBill(admissionId).then(
-      (bill) => setSupp({ admissionId, bill, cash: bill.balancePaise > 0 ? (bill.balancePaise / 100).toFixed(2) : "", undertaking: "", key: newIdempotencyKey() }),
+      (bill) => bill.lines.length === 0 ? setNotice(t("ipdBillDesk.settled.refusal.nothing_to_bill")) : setSupp({ admissionId, bill, cash: bill.balancePaise > 0 ? (bill.balancePaise / 100).toFixed(2) : "", undertaking: "", key: newIdempotencyKey() }),
       () => setError(t("ipdBillDesk.settled.failed")),
     );
   };
@@ -134,7 +136,7 @@ export function IpdSettledBills(): React.ReactElement | null {
                     </li>
                   ))}
                 </ul>
-                {r.exceptions.includes("supplementary_owed") && supp?.admissionId !== r.admissionId ? (
+                {SUPP_PROMPTS.some((x) => r.exceptions.includes(x)) && supp?.admissionId !== r.admissionId ? (
                   <button type="button" className="ipdb-btn" onClick={() => openSupp(r.admissionId)}>{t("ipdBillDesk.settled.supplementary")}</button>
                 ) : null}
                 {supp?.admissionId === r.admissionId ? (

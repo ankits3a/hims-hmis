@@ -1,5 +1,5 @@
 {
-  "id": "baf20f6e-50eb-4822-b586-53b99459d04c",
+  "id": "4d27eb6b-ef3f-457c-927e-e743ead12f5d",
   "prevId": "d302da5e-0006-4dc3-8c41-c69e1943ad54",
   "version": "7",
   "dialect": "postgresql",
@@ -11435,6 +11435,48 @@
         "recon_resolutions_outcome_ck": {
           "name": "recon_resolutions_outcome_ck",
           "value": "\"recon_resolutions\".\"outcome\" in ('disputed', 'bank_charge', 'reupload')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.refund_cancellations": {
+      "name": "refund_cancellations",
+      "schema": "",
+      "columns": {
+        "approval_id": {
+          "name": "approval_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cancelled_by": {
+          "name": "cancelled_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "refund_cancellations_reason_ck": {
+          "name": "refund_cancellations_reason_ck",
+          "value": "btrim(\"refund_cancellations\".\"reason\") <> ''"
         }
       },
       "isRLSEnabled": false
@@ -57613,6 +57655,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
+        },
+        "cover_by_time": {
+          "name": "cover_by_time",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "voided_at": {
           "name": "voided_at",

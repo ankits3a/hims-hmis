@@ -12,7 +12,7 @@ import { holdsPermission, lockAdmission, moveAdmission, onceIpd, provenanceOf, r
 import { endHoldIn, releaseBedOccupant } from "./beds";
 import { hasUnbilledLines, liveBills } from "./bill-cover";
 import { postAdmissionCharges } from "./charges";
-import { finalBillRow } from "./discharge-bill";
+import { finalBillRow, recordSupplementaryDuesIn } from "./discharge-bill";
 import { activeDischarge, confirmationsOf, ensureSummaryDraft, pendingDepartments } from "./discharge";
 import {
   admissionAbsconded, admissionDeceased, admissionDischarged, admissionLama, gatePassIssued, gatePassScanned, mortuaryReceived,
@@ -126,10 +126,7 @@ export async function issueGatePass(db: Db, actor: Actor, raw: unknown, opts: Op
   const at = opts.now ?? new Date();
   return onceIpd(db, actor, "issue_gate_pass", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const a = await lockAdmission(tx, input.admissionId);
-    // #763: a void in `discharging` voids its gate pass; the re-settled bill's pass issues from there (no state move).
-    const reissue = a.state === "discharging" && (await tx.select({ id: ipdGatePasses.id }).from(ipdGatePasses)
-      .where(and(eq(ipdGatePasses.admissionId, a.id), eq(ipdGatePasses.status, "issued")))).length === 0;
-    if (a.state !== "fit_declared" && !reissue) throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
+    if (a.state !== "fit_declared") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
     const d = await activeDischarge(tx, a.id);
     if (d === undefined) throw new IpdRefusal("admission_wrong_state", "No fit declaration");
     const pending = pendingDepartments(await confirmationsOf(tx, d.id));
@@ -142,11 +139,16 @@ export async function issueGatePass(db: Db, actor: Actor, raw: unknown, opts: Op
     // patient leaves now — the settlement day stays closed — and ask for the supplementary bill when anything waits. ⚖ The
     // dues path stays open: a supplementary bill settled with dues recorded lets the pass issue.
     await postAdmissionCharges(tx as unknown as Db, a.id, { upToIstDate: istDayString(at), now: at, presumedDischargeAt: at });
-    if (await hasUnbilledLines(tx, a.id)) throw new IpdRefusal("supplementary_unsettled");
+    if (await hasUnbilledLines(tx, a.id)) {
+      // ⚖ Review RED 2: the final bill's no-detention path, never stricter — the signed undertaking records the waiting
+      // charges as a supplementary bill's dues right here (deposit still available applied first); no payment, no approval.
+      if (input.undertakingDocumentId === undefined) throw new IpdRefusal("supplementary_unsettled");
+      await recordSupplementaryDuesIn(tx, actor, a, input.undertakingDocumentId, at);
+    }
     const referOut = d.disposition === "transfer_out";
     if (referOut && input.receivingHospital === undefined) throw new IpdRefusal("receiving_hospital_missing");
 
-    if (!reissue) await moveAdmission(tx, actor, a, "discharging", at, {}, "issue_gate_pass");
+    await moveAdmission(tx, actor, a, "discharging", at, {}, "issue_gate_pass");
     const gatePassId = newId();
     const code = gatePassCode();
     const duesRecorded = (await liveBills(tx, a.id)).some((b) => b.duesPaise > 0);

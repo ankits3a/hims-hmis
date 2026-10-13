@@ -172,6 +172,8 @@ export async function postAdmissionCharges(
      * by the nightly job (the day is not in the done set) and billed as a supplementary line.
      */
     presumedDischargeAt?: Date;
+    /** #763 — the nightly job: a live bill's settlement day and before are left to the exit acts (see the body). */
+    nightly?: boolean;
   },
 ): Promise<AdmissionPostResult> {
   const result: AdmissionPostResult = { posted: 0, rentDays: [], exceptions: 0 };
@@ -194,8 +196,12 @@ export async function postAdmissionCharges(
     }
     const ctx = versionId === null ? null : await pricingFor(tx as unknown as Db, cache, versionId, opts.now);
     const stays = await staysOf(tx, a.id);
-    // #763: a day a live bill closed (its settlement day and before) is never posted behind it; a void reopens it.
-    const closed = closedThroughOf(await liveBills(tx, a.id));
+    // #763 (review of a0d85914, RED 1): every chargeable day under the day rule (`charge-days.ts`) is posted; the `done`
+    // set below is the dedupe, so a component a settled bill already took is never posted twice and an unposted one (the
+    // settlement day, once the stay ran past 14:00 on it) lands in the next bill. Only the NIGHTLY run leaves a live bill's
+    // settlement day alone: at that midnight the stay's exit time is not known yet (review #762 RED 2, locked) — the exit
+    // acts (gate pass, supplementary bill) post it with the real presumed exit.
+    const closed = opts.nightly === true ? closedThroughOf(await liveBills(tx, a.id)) : null;
     const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a) ?? opts.presumedDischargeAt ?? null, opts.upToIstDate)
       .filter((d) => closed === null || d.date > closed);
     const done = new Set((await tx.select({ d: ipdChargeLines.serviceDate, c: ipdChargeLines.component }).from(ipdChargeLines)
@@ -312,7 +318,7 @@ export async function postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyR
     for (const row of rows.slice(i, i + IPD_NIGHTLY_BATCH)) {
       if (row.skip) { out.quarantined += 1; continue; }
       try {
-        const r = await postAdmissionCharges(db, row.id, { upToIstDate: yesterday, now, cache });
+        const r = await postAdmissionCharges(db, row.id, { upToIstDate: yesterday, now, cache, nightly: true });
         out.posted += r.posted;
         out.exceptions += r.exceptions;
       } catch (e) {

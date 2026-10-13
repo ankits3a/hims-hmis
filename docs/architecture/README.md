@@ -115,7 +115,7 @@ flowchart LR
 | [abdm](modules/abdm.md) | lab, opd, patients, radiology | — | 24 | 11 |
 | [aerb](modules/aerb.md) | patients | radiology | 30 | 9 |
 | [attendance](modules/attendance.md) | — | — | 19 | 11 |
-| [billing](modules/billing.md) | membership, opd, patients, tariff | ipd, lab, opd, ordering, ot, partners, pharmacy, radiology | 51 | 16 |
+| [billing](modules/billing.md) | membership, opd, patients, tariff | ipd, lab, opd, ordering, ot, partners, pharmacy, radiology | 51 | 17 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
 | [ipd](modules/ipd.md) | billing, opd, patients, tariff | — | 84 | 29 |

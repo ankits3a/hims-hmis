@@ -30,13 +30,15 @@ export const summarySigned = defineEvent("ipd.summary.signed", MODULE, z.object(
   provenance: IpdProvenanceSchema,
 }));
 
+/** #763: `kind` / `seq` — the final bill (0) or supplementary bill n; `finalBillId` is the bill row's id either way. */
 export const billSettled = defineEvent("ipd.bill.settled", MODULE, z.object({
-  admissionId: id, finalBillId: id, invoiceId: id.nullable(), provenance: IpdProvenanceSchema,
+  admissionId: id, finalBillId: id, invoiceId: id.nullable(), kind: z.enum(["final", "supplementary"]), seq: z.number().int().nonnegative(),
+  provenance: IpdProvenanceSchema,
 }));
 
 /** #763 — a settled bill voided (its credit note, the approval). Ids only: no money, no reason text (0058). */
 export const billVoided = defineEvent("ipd.bill.voided", MODULE, z.object({
-  admissionId: id, billId: id, creditNoteId: id.nullable(), approvalId: id, provenance: IpdProvenanceSchema,
+  admissionId: id, billId: id, creditNoteId: id.nullable(), approvalId: id, adoptedReceiptIds: z.array(id), provenance: IpdProvenanceSchema,
 }));
 
 export const gatePassIssued = defineEvent("ipd.gate_pass.issued", MODULE, z.object({

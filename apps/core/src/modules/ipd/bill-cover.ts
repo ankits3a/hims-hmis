@@ -7,12 +7,14 @@ import type { Db, Tx } from "../../kernel/db/client";
  * #763 — WHICH RUNNING-BILL LINES A SETTLED BILL HAS ALREADY TAKEN. An admission may carry a final bill (seq 0) and
  * supplementary bills (seq 1, 2…); a voided bill keeps its row but covers nothing. Each live bill records the lines it
  * composed (`line_ids`, a reversed pair included), so the next bill composes exactly the rest — no line is billed twice
- * and none is lost. A bill written before #763 has no list: it covers every line posted at or before its settlement.
+ * and none is lost. A bill written before #763 (flagged `cover_by_time` by the migration) has no list: it covers every line
+ * posted at or before its settlement. No bill settled since uses that fallback.
  *
- * DECIDED $ (#763, review #762 RED 4 kept): the IST day a bill was settled is CLOSED by that bill (the bill is final at
- * settlement; the presumed exit is the settle instant). Posting resumes from the next IST day under the ordinary day rule
- * — a patient still in a bed through that day, or leaving after 14:00 on it, is charged for it, and those lines are the
- * supplementary bill's. A void reopens everything the bill closed.
+ * DECIDED $ (#763; review of a0d85914 RED 1): every chargeable day is posted under the ordinary day rule
+ * (`charge-days.ts`), deduplicated per (day, component) — so the settlement day itself is charged once the stay runs past
+ * 14:00 on it, and those lines are the supplementary bill's. The NIGHTLY job alone skips a live bill's settlement day and
+ * before (review #762 RED 2, locked: the first midnight after settlement posts nothing); the exit acts — gate pass and the
+ * supplementary bill — post it with the real presumed exit. A void reopens everything.
  *
  * A leaf file (schema reads only): `charges.ts` and `discharge-bill.ts` both need it, and `discharge-bill.ts` imports
  * `charges.ts`.
@@ -29,8 +31,9 @@ export async function liveBills(db: Db | Tx, admissionId: string): Promise<BillR
 export function coveredLineIds(bills: readonly BillRow[], lines: readonly { id: string; postedAt: Date }[]): Set<string> {
   const out = new Set<string>();
   for (const b of bills) {
-    if (b.lineIds.length > 0) { for (const id of b.lineIds) out.add(id); continue; }
-    for (const l of lines) if (l.postedAt.getTime() <= b.settledAt.getTime()) out.add(l.id);
+    for (const id of b.lineIds) out.add(id);
+    // Only a bill settled before migration `ipd_suppbill` (flagged `cover_by_time`) falls back to the posting time.
+    if (b.coverByTime) for (const l of lines) if (l.postedAt.getTime() <= b.settledAt.getTime()) out.add(l.id);
   }
   return out;
 }

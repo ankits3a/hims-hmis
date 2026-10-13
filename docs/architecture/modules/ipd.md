@@ -121,8 +121,6 @@ Source: `apps/core/src/modules/ipd/`
   - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; ladderFailed: string[]; dailyTotals: DailyTotalsResult | null …`
 - `bill-void.ts`
   - `askBillVoid(db: Db, actor: Actor, raw: unknown): Promise<{ approvalId: string }>`
-  - `ipdRefundVoucherGuard: RefundVoucherGuard`
-  - `registerIpdRefundVoucherGuard(): () => void`
   - `voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<VoidBillResult>`
   - types: `VoidBillResult`
 - `charge-days.ts`

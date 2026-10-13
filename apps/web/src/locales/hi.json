@@ -16102,7 +16102,10 @@
         "refund_issued": "रिफंड दिया जा चुका — रद्द नहीं हो सकता",
         "void_needs_approval": "दूसरे व्यक्ति की अनुमति चाहिए",
         "void_newer_bill_first": "पहले नया बिल रद्द करें",
-        "bill_already_voided": "पहले ही रद्द"
+      "bill_already_voided": "पहले ही रद्द",
+      "gate_pass_live": "गेट पास जारी — निकास के बाद रद्द करें",
+      "payer_claim_settled": "भुगतानकर्ता ने दावा निपटा दिया — रद्द नहीं",
+      "nothing_to_bill": "पूरक बिल के लिए कोई शुल्क नहीं"
       }
     }
   },

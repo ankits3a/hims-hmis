@@ -114,9 +114,8 @@ async function trackerOf(db: Db, actor: Actor, a: AdmissionRow, at: Date): Promi
       if (await actorHoldsAnyRole(db as unknown as Tx, actor.id, [...IPD_DEPARTMENT_ROLES[dep]])) confirmable.push(dep);
     }
   }
-  // #763: after a void the bill settles again in `discharging` (its pass was voided) or after the exit.
-  const billable = ["fit_declared", "lama", "absconded", "deceased", "discharged", "transferred_out"].includes(a.state)
-    || (a.state === "discharging" && pass?.status !== "issued");
+  // #763: after a void the bill settles again after the exit too (a void is refused while a pass is live).
+  const billable = ["fit_declared", "lama", "absconded", "deceased", "discharged", "transferred_out"].includes(a.state);
   return {
     admissionId: a.id, admissionNo: a.admissionNo, state: a.state as IpdDischargeTracker["state"],
     patient: {

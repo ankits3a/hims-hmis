@@ -3,7 +3,6 @@ import { RealtimeGateway } from "../../kernel/realtime/gateway";
 import { RealtimeModule } from "../../kernel/realtime/realtime.module";
 import { IpdAdmissionsController } from "./admissions.controller";
 import { IpdBedsController } from "./beds.controller";
-import { registerIpdRefundVoucherGuard } from "./bill-void";
 import { IpdBillDeskController } from "./billdesk.controller";
 import { IpdChargesController } from "./charges.controller";
 import { registerIpdReceiptGuard } from "./deposit";
@@ -29,8 +28,6 @@ class IpdRealtimeRegistrar implements OnModuleInit {
     registerIpdReceiptGuard();
     // E2.3 (#727, review 7) — an advance refund re-checks the deposit ladder of the patient's open admission.
     registerIpdAdvanceRefundListener();
-    // #763 — a refund a bill void cancelled never issues its voucher (billing's voucher guard seam).
-    registerIpdRefundVoucherGuard();
   }
 }
 
