@@ -1,6 +1,7 @@
 import { IPD_BEDS_TOPIC } from "@hmis/contracts";
 import { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 import { IPD_BED_EVENT_NAMES } from "./bed-events";
+import { IPD_TRANSFER_EVENT_NAMES } from "./transfer-events";
 import { IPD_BEDS_VIEW } from "./manifest";
 import type { TailedEvent } from "../../kernel/realtime/tail";
 import type { TopicRouter, TopicSpace } from "../../kernel/realtime/gateway";
@@ -18,7 +19,11 @@ const RESOURCE_NAMES = [
 const PLACE_KINDS = new Set(["floor", "ward", "hall", "room", "bed"]);
 
 /** E1.2: an admission request raised, held, admitted or cancelled changes the board's waiting column. */
-const BOARD_NAMES: readonly string[] = [...IPD_BED_EVENT_NAMES, ...IPD_ADMISSION_BOARD_EVENT_NAMES];
+const BOARD_NAMES: readonly string[] = [
+  ...IPD_BED_EVENT_NAMES, ...IPD_ADMISSION_BOARD_EVENT_NAMES,
+  // E3.1 (#729): a transfer started, accepted or cancelled, a swap or a class change.
+  ...IPD_TRANSFER_EVENT_NAMES,
+];
 
 export const IPD_REALTIME_NAMES: string[] = [...BOARD_NAMES, ...RESOURCE_NAMES];
 

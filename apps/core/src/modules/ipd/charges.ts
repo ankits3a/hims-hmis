@@ -8,6 +8,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { TariffError, loadPricingContext, priceInvoiceLines, resolveActiveTariffVersion } from "../tariff";
 import { admissionAdvisoryLock, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { ipdChargeableDays, rentClassOf } from "./charge-days";
+import { applyClassChanges, classChangesOf } from "./class-change";
 import { chargeException, chargeReversed, rentPosted, visitRecorded } from "./charge-events";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_CHARGES_REVERSE } from "./manifest";
@@ -75,10 +76,12 @@ function dischargedAtOf(a: AdmissionRow): Date | null {
 
 async function staysOf(db: Db | Tx, admissionId: string): Promise<(ChargeStay & { id: string; bedId: string })[]> {
   const rows = await db.select().from(ipdBedStays).where(eq(ipdBedStays.admissionId, admissionId)).orderBy(asc(ipdBedStays.startedAt));
-  return rows.map((r) => ({
+  const stays = rows.map((r) => ({
     id: r.id, bedId: r.bedId, bedClass: r.bedClass as IpdBedClass, billedClass: r.billedClass as IpdBedClass,
     startedAt: r.startedAt, endedAt: r.endedAt,
   }));
+  // E3.1 (#729): a consented class change in place splits its stay at the next noon (class-change.ts).
+  return applyClassChanges(stays, await classChangesOf(db, admissionId));
 }
 
 type LineFacts = {

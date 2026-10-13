@@ -454,3 +454,92 @@ export const ipdPayerSplitSnapshots = pgTable(
     check("ipd_payer_split_snapshots_kind_ck", sql`${t.kind} in ('interim')`),
   ],
 );
+
+// ═══════════════════════════════════════ E3.1 (#729) — transfer and class change ═══════════════════════════════════════
+
+/**
+ * One row per transfer between beds (spec SPEC-ipd-core §4.4). Started by the sending side with an SBAR handover;
+ * the target bed is HELD for the admission (an `ipd_bed_reservations` row, `reservation_id`) and the patient stays on
+ * the origin bed — still occupied, the sending ward still responsible — until the receiving nurse accepts. Accept
+ * closes the origin stay, opens the target stay and sends the origin bed to cleaning in one transaction; cancel
+ * releases the hold. `open` → `accepted` | `cancelled`. One open transfer per admission (partial unique).
+ */
+export const ipdTransfers = pgTable(
+  "ipd_transfers",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    fromBedId: text("from_bed_id").notNull().references(() => resources.id),
+    toBedId: text("to_bed_id").notNull().references(() => resources.id),
+    /** The target bed's hold (`ipd_bed_reservations`), consumed at acceptance or released at cancel. */
+    reservationId: text("reservation_id").notNull(),
+    reason: text("reason").notNull(),
+    situation: text("situation").notNull(),
+    background: text("background").notNull(),
+    assessment: text("assessment").notNull(),
+    recommendation: text("recommendation").notNull(),
+    /** A copilot draft the nurse signed (AI drafting is later work); null when typed. */
+    draftId: text("draft_id"),
+    intensivistApprovalId: text("intensivist_approval_id"),
+    status: text("status").notNull(),
+    startedBy: text("started_by").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    /** The workflow's 100 % rung on `transferring`, copied for the handover list's clock. */
+    escalatesAt: timestamp("escalates_at", { withTimezone: true }),
+    endedBy: text("ended_by"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    cancelNote: text("cancel_note"),
+  },
+  (t) => [
+    uniqueIndex("ipd_transfers_open_admission_ux").on(t.admissionId).where(sql`${t.status} = 'open'`),
+    index("ipd_transfers_open_idx").on(t.toBedId).where(sql`${t.status} = 'open'`),
+    check("ipd_transfers_status_ck", sql`${t.status} in ('open', 'accepted', 'cancelled')`),
+    check(
+      "ipd_transfers_reason_ck",
+      sql`${t.reason} in ('clinical_step_up', 'clinical_step_down', 'post_op', 'isolation', 'gender_fix', 'patient_request', 'bed_management', 'maintenance')`,
+    ),
+    check("ipd_transfers_beds_ck", sql`${t.fromBedId} <> ${t.toBedId}`),
+    check("ipd_transfers_ended_ck", sql`(${t.status} = 'open') = (${t.endedAt} is null)`),
+    check(
+      "ipd_transfers_cancel_ck",
+      sql`(${t.status} = 'cancelled') = (${t.cancelReason} is not null) and (${t.cancelReason} is null or ${t.cancelReason} in ('patient_deteriorated', 'receiving_ward_declined', 'bed_unsuitable', 'plan_changed', 'other', 'hold_lapsed'))`,
+    ),
+  ],
+);
+
+/**
+ * A billing-class change WITHOUT a bed move (§4.4 "class upgrade or downgrade on request: consent, effective next
+ * noon"): the stay `stay_id` bills at `to_class` from `effective_from` (the next 12:00 IST after the consent). The
+ * running bill folds it into the stay before the day rule (`class-change.ts` `applyClassChanges`), so the day rule's
+ * "highest class held over an hour" decides the noon day. A newer change on the same stay that is not yet in effect
+ * supersedes the older one. The consent is the admission consent's shape (who, relation, method, witness).
+ */
+export const ipdClassChanges = pgTable(
+  "ipd_class_changes",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    stayId: text("stay_id").notNull().references(() => ipdBedStays.id),
+    fromClass: text("from_class").notNull(),
+    toClass: text("to_class").notNull(),
+    direction: text("direction").notNull(),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
+    consent: jsonb("consent").$type<Record<string, unknown>>().notNull(),
+    roomRentCapAcknowledged: boolean("room_rent_cap_acknowledged").notNull(),
+    /** active → superseded (a newer change on the stay before this one took effect). */
+    status: text("status").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("ipd_class_changes_admission_idx").on(t.admissionId),
+    check("ipd_class_changes_from_ck", sql`${t.fromClass} in (${CLASS_LIST})`),
+    check("ipd_class_changes_to_ck", sql`${t.toClass} in (${CLASS_LIST})`),
+    check("ipd_class_changes_direction_ck", sql`${t.direction} in ('upgrade', 'downgrade')`),
+    check("ipd_class_changes_status_ck", sql`${t.status} in ('active', 'superseded')`),
+    check("ipd_class_changes_differs_ck", sql`${t.fromClass} <> ${t.toClass}`),
+  ],
+);
