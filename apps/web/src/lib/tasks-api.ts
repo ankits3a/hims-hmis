@@ -1,5 +1,5 @@
 import { ApiError, api } from "./api";
-import type { MyTasksView, TaskBoardView } from "@hmis/contracts";
+import type { MyTasksView, TaskBoardView, TaskProof } from "@hmis/contracts";
 
 /* ═══ E0.1 TASK ENGINE (issue #713) — `apps/core/src/modules/tasks/tasks.controller.ts`'s `/tasks…`. Every
  * act answers the task's id, state and version; the screens re-read their list. ═══ */
@@ -13,7 +13,9 @@ const act = (verb: "accept" | "start" | "done" | "return", id: string, version: 
   api<TaskAck>("POST", `/tasks/${encodeURIComponent(id)}/${verb}`, { version });
 export const acceptTask = (id: string, version: number) => act("accept", id, version);
 export const startTask = (id: string, version: number) => act("start", id, version);
-export const doneTask = (id: string, version: number) => act("done", id, version);
+/** Done, with the proof the task asks for (a tap, or a scanned code such as a patient's wristband). */
+export const doneTask = (id: string, version: number, proof?: TaskProof) =>
+  api<TaskAck>("POST", `/tasks/${encodeURIComponent(id)}/done`, proof === undefined ? { version } : { version, proof });
 export const cancelTaskApi = (id: string, version: number, reason: string) =>
   api<TaskAck>("POST", `/tasks/${encodeURIComponent(id)}/cancel`, { version, reason });
 

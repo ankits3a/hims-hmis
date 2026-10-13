@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
 import { acceptTask, doneTask, fetchMyTasks, lateMinutes, startTask, taskRefusal } from "../lib/tasks-api";
-import type { TaskCard } from "@hmis/contracts";
+import { TRANSPORT_KIND_SET, fetchTransportDetails } from "../lib/transport-api";
+import { TransportPanel, refusalText } from "./transport-card";
+import type { TaskCard, TaskProof, TransportDetail } from "@hmis/contracts";
 import "./tasks.css";
 
 /**
@@ -12,6 +14,8 @@ import "./tasks.css";
  * One list, big buttons, one action per card: Accept · Start · Done. Below it, the tasks waiting in
  * the pool that this worker may take. Words and a coloured edge say how late a task is — never colour
  * alone. Notices are a few words on one line (owner rule). No photo button: no kind needs one yet.
+ * E1.6 TRANSPORT (#723): a transport task's card carries its details (from → to, mode, oxygen, escort) and, for a
+ * patient move, the escort and cylinder steps before Start and the wristband scan at Done (`transport-card.tsx`).
  */
 type T = (k: string, o?: Record<string, unknown>) => string;
 
@@ -51,18 +55,29 @@ export function MyTasks(): React.ReactElement {
   const now = useServerNow(q.data?.serverNow);
   const [notice, setNotice] = useState<string | null>(null);
   const run = useMutation({
-    mutationFn: ({ c, verb }: { c: TaskCard; verb: "accept" | "start" | "done" }) =>
-      (verb === "accept" ? acceptTask : verb === "start" ? startTask : doneTask)(c.id, c.version),
-    onSuccess: () => { setNotice(null); void qc.invalidateQueries({ queryKey: ["tasks"] }); },
+    mutationFn: ({ c, verb, proof }: { c: TaskCard; verb: "accept" | "start" | "done"; proof?: TaskProof }) =>
+      verb === "accept" ? acceptTask(c.id, c.version)
+        : verb === "start" ? startTask(c.id, c.version)
+          // A tap-proof task is proven by the Done tap itself.
+          : doneTask(c.id, c.version, proof ?? (c.proofNeeded === "tap" ? { kind: "tap" } : undefined)),
+    onSuccess: () => { setNotice(null); void qc.invalidateQueries({ queryKey: ["tasks"] }); void qc.invalidateQueries({ queryKey: ["transport"] }); },
     onError: (e) => {
-      const code = taskRefusal(e);
-      setNotice(t(`tasks.refusal.${code ?? "failed"}`, { defaultValue: t("tasks.refusal.failed") }));
+      setNotice(refusalText(taskRefusal(e), t));
       void qc.invalidateQueries({ queryKey: ["tasks"] });
+      void qc.invalidateQueries({ queryKey: ["transport"] });
     },
   });
 
   const mine = q.data?.mine ?? [];
   const pool = q.data?.pool ?? [];
+  const transportIds = [...mine, ...pool].filter((c) => TRANSPORT_KIND_SET.has(c.kind)).map((c) => c.id).sort();
+  const details = useQuery({
+    queryKey: ["transport", "details", transportIds.join(",")],
+    queryFn: () => fetchTransportDetails(transportIds),
+    enabled: transportIds.length > 0,
+    refetchInterval: 15_000,
+  });
+  const detailOf = new Map<string, TransportDetail>((details.data?.details ?? []).map((d) => [d.taskId, d]));
   return (
     <PaperScreen testId="my-tasks">
       <div className="tk-mine">
@@ -74,19 +89,26 @@ export function MyTasks(): React.ReactElement {
           <div className="tk-empty" data-testid="my-tasks-none">{t("tasks.mine.none")}</div>
         )}
         {mine.map((c) => (
-          <Card key={c.id} c={c} now={now} lang={lang} busy={run.isPending} onAct={(verb) => run.mutate({ c, verb })} />
+          <Card
+            key={c.id} c={c} now={now} lang={lang} busy={run.isPending} detail={detailOf.get(c.id)} onNotice={setNotice}
+            onAct={(verb, proof) => run.mutate({ c, verb, proof })}
+          />
         ))}
         {pool.length > 0 && <h2 className="tk-h2">{t("tasks.mine.pool")}</h2>}
         {pool.map((c) => (
-          <Card key={c.id} c={c} now={now} lang={lang} busy={run.isPending} pool onAct={(verb) => run.mutate({ c, verb })} />
+          <Card
+            key={c.id} c={c} now={now} lang={lang} busy={run.isPending} pool detail={detailOf.get(c.id)} onNotice={setNotice}
+            onAct={(verb, proof) => run.mutate({ c, verb, proof })}
+          />
         ))}
       </div>
     </PaperScreen>
   );
 }
 
-function Card({ c, now, lang, busy, pool = false, onAct }: {
-  c: TaskCard; now: number; lang: string; busy: boolean; pool?: boolean; onAct: (verb: "accept" | "start" | "done") => void;
+function Card({ c, now, lang, busy, pool = false, detail, onAct, onNotice }: {
+  c: TaskCard; now: number; lang: string; busy: boolean; pool?: boolean; detail?: TransportDetail;
+  onAct: (verb: "accept" | "start" | "done", proof?: TaskProof) => void; onNotice: (text: string | null) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
   const clock = clockOf(c.dueAt, now, t, lang);
@@ -102,12 +124,16 @@ function Card({ c, now, lang, busy, pool = false, onAct }: {
         {c.mergedCount > 0 && <span className="pill">{t("tasks.askedAgain", { count: c.mergedCount })}</span>}
       </div>
       {c.note !== null && c.note !== "" && <div className="note">{c.note}</div>}
-      <button
-        type="button" className={pool ? "tk-act take" : "tk-act"} disabled={busy}
-        onClick={() => onAct(verb)} data-testid={`task-${verb}`}
-      >
-        {t(`tasks.act.${verb}`)}
-      </button>
+      {detail !== undefined ? (
+        <TransportPanel c={c} d={detail} verb={verb} pool={pool} busy={busy} onAct={onAct} onNotice={onNotice} />
+      ) : (
+        <button
+          type="button" className={pool ? "tk-act take" : "tk-act"} disabled={busy}
+          onClick={() => onAct(verb)} data-testid={`task-${verb}`}
+        >
+          {t(`tasks.act.${verb}`)}
+        </button>
+      )}
     </article>
   );
 }

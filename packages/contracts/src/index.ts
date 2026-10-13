@@ -26,3 +26,4 @@ export * from "./ipd-bed-classes";
 export * from "./ipd";
 export * from "./tasks";
 export * from "./housekeeping";
+export * from "./transport";

@@ -114,3 +114,5 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/staff` | `apps/web/src/screens/staff-reports` |
 | `/tasks` | `apps/web/src/screens/my-tasks` |
 | `/tasks/board` | `apps/web/src/screens/tasks-board` |
+| `/transport` | `apps/web/src/screens/transport-board` |
+| `/transport/request` | `apps/web/src/screens/transport-request` |

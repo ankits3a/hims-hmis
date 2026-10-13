@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/tasks/`
 · Notes: [MAP.md](../../../apps/core/src/modules/tasks/MAP.md)
 
 - **Depends on modules:** `roster`
-- **Used by modules:** `housekeeping`
+- **Used by modules:** `housekeeping`, `transport`
 - **Kernel used:** `alerts`, `auth`, `db`, `modules`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -38,6 +38,7 @@ Source: `apps/core/src/modules/tasks/`
   - types: `ActOptions`, `CancelOptions`, `RaiseResult`, `TaskRow`
 - `errors.ts`
   - `class TaskError`
+  - `class TaskKindRefusal`
   - `taskHttpStatus(code: TaskRefusalCode): number`
 - `kinds.ts`
   - `DEFAULT_LADDER_MIN: readonly number[]`

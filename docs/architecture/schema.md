@@ -76,6 +76,9 @@ flowchart LR
   roster[roster] --> resources[resources]
   tasks[tasks] --> patients[patients]
   tasks[tasks] --> resources[resources]
+  transport[transport] --> ipd[ipd]
+  transport[transport] --> resources[resources]
+  transport[transport] --> tasks[tasks]
 ```
 
 | file | owner | tables |
@@ -122,5 +125,6 @@ flowchart LR
 | `search.ts` | kernel | `search_audit` |
 | `tariff.ts` | module tariff | `adjustment_rules`, `gst_config`, `gst_settings`, `regulated_prices`, `services`, `tariff_items`, `tariff_versions` |
 | `tasks.ts` | module tasks | `task_events`, `tasks` |
+| `transport.ts` | module transport | `transport_requests` |
 | `worker.ts` | kernel | `event_dead_letters`, `event_deliveries`, `scheduler_heartbeats` |
 | `workflow.ts` | kernel | `workflow_definition_approvals`, `workflow_definitions`, `workflow_instances`, `workflow_timers`, `workflow_transitions` |

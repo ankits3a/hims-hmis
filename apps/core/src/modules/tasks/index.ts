@@ -10,7 +10,7 @@ export {
   allSkills, defineSkill, defineTaskKind, requireTaskKind, skillRoles, taskKind, taskKinds, verifierPermissionsOf,
 } from "./kinds";
 export type { TaskKindDecl } from "./kinds";
-export { TaskError, taskHttpStatus } from "./errors";
+export { TaskError, TaskKindRefusal, taskHttpStatus } from "./errors";
 export {
   DISPATCH_ACTOR, MERGE_WINDOW_MS, acceptTask, assignTask, cancelTask, cancelTasksForPlace, completeTask, raiseTask,
   returnToPool, startTask, verifyTask,

@@ -62,3 +62,6 @@ export { IPD_APPROVAL_TYPES, IPD_APPROVAL_TYPE_KEYS, ipdApprovalDefinition, regi
 export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 export { assignBedIn, endAdmissionHolds, placementContext, proposeBeds, readBedFacts } from "./beds";
 export type { BedPlacementInput, PlacementContext } from "./beds";
+// E1.6 TRANSPORT (#723) — an admission's movable facts (current bed, critical-care class) and the wristband scan.
+export { CRITICAL_CARE_BED_CLASSES, admissionForTransport, movableAdmissions, resolveBandScan } from "./transport-seam";
+export type { BandScan, TransportAdmissionFacts } from "./transport-seam";

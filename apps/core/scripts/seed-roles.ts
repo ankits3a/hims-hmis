@@ -124,6 +124,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // E1.6 TRANSPORT (#723) — the admission desk asks for the porter that takes the patient to the ward.
+      "transport.request",
     ],
   },
   {
@@ -1126,6 +1128,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "housekeeping.view",
       // IPD ADMISSION E1.2 (#719) — the duty manager runs the admission desk at night (and the emergency lane).
       "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
+      // E1.6 TRANSPORT (#723) — asks for moves at night and runs the transport board when no supervisor is on.
+      "transport.request", "transport.manage",
     ],
   },
   /**
@@ -1428,12 +1432,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // documentation-gate failure mode this module is built to remove.
     // PHARMACY STAGE D4 — the OT's emergency tray is the theatre nurse's to check (daily seal, monthly, after use) and
     // to receive its restock into. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check"],
+    // E1.6 TRANSPORT (#723) — the theatre nurse asks for the porter (patient to OT, back to the ward).
+    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check", "transport.request"],
   },
   {
     roleKey: "recovery_nurse",
     // PHARMACY STAGE D4 — the recovery bay's emergency tray. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check"],
+    // E1.6 TRANSPORT (#723) — recovery sends the patient back to the ward.
+    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check", "transport.request"],
   },
   {
     roleKey: "daycare_coordinator",
@@ -1762,6 +1768,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.worklist.read",
       "radiology.gates.satisfy",
       "radiology.contrast.record",
+      // E1.6 TRANSPORT (#723) — imaging sends the patient back to the ward.
+      "transport.request",
     ],
   },
   {
@@ -1999,7 +2007,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
    * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
    */
-  { roleKey: "support_staff", permissions: ["tasks.work"] },
+  // E1.6 TRANSPORT (#723) — porters are support staff (one cadre with ward attendants): their transport card details.
+  { roleKey: "support_staff", permissions: ["tasks.work", "transport.work"] },
   /**
    * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
    * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
@@ -2007,7 +2016,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   {
     roleKey: "services_supervisor",
-    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "housekeeping.view", "housekeeping.verify_terminal"],
+    // E1.6 TRANSPORT (#723) — the services supervisor runs the transport board too.
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "housekeeping.view", "housekeeping.verify_terminal", "transport.manage"],
   },
 ];
 

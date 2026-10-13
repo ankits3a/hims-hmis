@@ -88,6 +88,8 @@
     "myTasks": "My tasks",
     "taskBoard": "Task board",
     "housekeeping": "Housekeeping",
+    "transport": "Transport",
+    "transportRequest": "Request porter",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -15800,7 +15802,10 @@
       "bed_clean_routine": "Bed clean",
       "bed_clean_terminal": "Terminal clean",
       "spill": "Spill clean",
-      "room_inspection": "Room inspection"
+      "room_inspection": "Room inspection",
+      "patient_move": "Patient move",
+      "sample_run": "Sample run",
+      "document_run": "Document run"
     },
     "priority": {
       "urgent": "Urgent",
@@ -16094,6 +16099,111 @@
       "requestedAt": "Requested at (paper)",
       "admittedAt": "Admitted at (paper)",
       "save": "Enter admission"
+    }
+  },
+  "transport": {
+    "board": {
+      "title": "Transport",
+      "waitingEscort": "waiting for escort",
+      "waitingPorter": "waiting for porter",
+      "request": "Request",
+      "none": "No open moves",
+      "colClock": "CLOCK",
+      "colWhat": "WHAT",
+      "colRoute": "FROM → TO",
+      "colHow": "HOW",
+      "colEscort": "ESCORT",
+      "colPorter": "PORTER",
+      "noPorter": "No porter yet",
+      "porters": "Porters"
+    },
+    "mode": {
+      "wheelchair": "Wheelchair",
+      "stretcher": "Stretcher",
+      "bed": "Bed",
+      "walking": "Walking"
+    },
+    "isolation": {
+      "none": "None",
+      "contact": "Contact isolation",
+      "droplet": "Droplet isolation",
+      "airborne": "Airborne isolation"
+    },
+    "reason": {
+      "admit": "Admit",
+      "transfer": "Transfer",
+      "imaging": "Imaging",
+      "ot": "OT",
+      "discharge": "Discharge",
+      "other": "Other"
+    },
+    "priority": {
+      "routine": "Routine",
+      "urgent": "Urgent",
+      "stat": "STAT"
+    },
+    "monitor": "Monitor",
+    "o2": {
+      "needed": "Oxygen · check cylinder",
+      "checked": "Oxygen · cylinder checked",
+      "check": "Cylinder checked",
+      "short": "Oxygen"
+    },
+    "escort": {
+      "waiting": "Waiting for escort",
+      "with": "Escort: {{name}}",
+      "withShort": "With escort",
+      "add": "Add escort",
+      "none": "No nurse or doctor found"
+    },
+    "scan": {
+      "label": "Scan wristband",
+      "placeholder": "Scan or type band code",
+      "handover": "Hand over"
+    },
+    "req": {
+      "title": "Request porter",
+      "patient": "PATIENT",
+      "findPatient": "Name, UHID, IP no or bed",
+      "noPatient": "No admitted patient found",
+      "change": "Change",
+      "critical": "ICU",
+      "escortForced": "Critical-care bed: escort required",
+      "from": "FROM",
+      "to": "TO",
+      "pick": "Pick a place",
+      "toNote": "Or type where (e.g. CT, gate)",
+      "reason": "WHY",
+      "how": "HOW",
+      "oxygen": "Oxygen",
+      "isolation": "ISOLATION",
+      "escort": "ESCORT",
+      "escortNeeded": "Nurse or doctor escort",
+      "highRisk": "High risk",
+      "priority": "PRIORITY",
+      "note": "Note for the porter (optional)",
+      "send": "Request porter",
+      "sent": "Porter requested",
+      "sentEscort": "Porter requested · escort needed",
+      "merged": "Joined earlier request"
+    },
+    "refusal": {
+      "bad_input": "Request incomplete",
+      "admission_required": "Pick the patient",
+      "admission_not_open": "Patient not admitted",
+      "no_destination": "Where to?",
+      "no_origin": "Where from?",
+      "unknown_place": "Place not found",
+      "not_transport": "Not a transport task",
+      "escort_required": "Escort needed · Add escort",
+      "escort_not_clinical": "Escort must be nurse or doctor",
+      "escort_is_porter": "Porter cannot escort",
+      "oxygen_not_checked": "Check cylinder first",
+      "already_started": "Move already started",
+      "scan_required": "Scan wristband",
+      "band_unknown": "Band not known",
+      "band_void": "Old band · scan new band",
+      "wrong_patient": "WRONG PATIENT · stop"
     }
   }
 }

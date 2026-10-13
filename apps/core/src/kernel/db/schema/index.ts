@@ -123,3 +123,6 @@ export * from "./ipd";
 // E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
 // References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
 export * from "./tasks";
+// E1.6 TRANSPORT (issue #723, decision 0072) — a transport task's extra facts (mode, oxygen, escort, handover).
+// References `tasks`, `ipd_admissions` and `resources`; nothing reads it but `modules/transport`.
+export * from "./transport";

@@ -40,6 +40,9 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManife
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
 import { HOUSEKEEPING_BED_CONSUMER, backfillBedCleans, bedTurnoverConsumer, housekeepingManifest } from "../../modules/housekeeping";
+// E1.6 TRANSPORT (issue #723) — imported for its side effect only: it DEFINES the transport task kinds (patient move,
+// sample run, document run) so the task clock knows their windows and escalation role. Nothing is installed.
+import "../../modules/transport";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";

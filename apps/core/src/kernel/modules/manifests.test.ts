@@ -206,13 +206,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "tasks",
       // E1.4 HOUSEKEEPING (issue #721) — appended. A leaf: it reaches into tasks and ipd through their indexes.
       "housekeeping",
+      // E1.6 TRANSPORT (issue #723) — appended. A leaf: it reaches into tasks, ipd and patients through their indexes.
+      "transport",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(28); // E1.4 HOUSEKEEPING: 28, housekeeping; E0.1 TASK ENGINE: 27, tasks; IPD BEDS E1.1: 26, ipd; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(29); // E1.6 TRANSPORT: 29, transport; E1.4 HOUSEKEEPING: 28, housekeeping; E0.1 TASK ENGINE: 27, tasks; IPD BEDS E1.1: 26, ipd; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(28); // IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING
+    expect(registry.all()).toHaveLength(29); // IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.6 TRANSPORT
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -225,7 +227,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly eleven enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly twelve enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -351,7 +353,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      the worker runs its job (`lapseBedReservations`) without the manifest.
     // (1m) E0.1 TASK ENGINE — the TWENTY-SEVENTH, `tasks`, APP-ONLY on the same terms: three permissions, no
     //      subscription; the worker runs `sweepTasks` and needs no permission to.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "ipd", "tasks"]);
+    // (1n) E1.6 TRANSPORT — the TWENTY-NINTH, `transport`, APP-ONLY on the same terms: three permissions, no
+    //      subscription; the worker imports the module only so its task kinds are defined for the task clock.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "ipd", "tasks", "transport"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

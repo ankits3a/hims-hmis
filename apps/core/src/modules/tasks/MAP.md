@@ -88,6 +88,10 @@ row has its own try/catch, so one failure stops nothing else.
   kind may name a narrower permission; an owning module may also open its own verify door (housekeeping does).
 - A kind's `onVerified(tx, task, actor, now)` runs inside `verifyTask`'s transaction after the row is verified; a throw
   rolls the verification back (housekeeping frees the bed there).
+- A kind's `beforeStart(tx, task, actor, now)` and `beforeDone(tx, task, proof, actor, now)` (E1.6) run inside
+  `startTask` / `completeTask` after the engine's own checks and before the row moves; a throw (a `TaskKindRefusal`,
+  code + sentence + fix of the owning module) refuses the act, and the tasks controller answers it like a `TaskError`.
+  Transport puts its escort, oxygen and wristband rules there, so the generic `/tasks` doors enforce them too.
 - `nudgeTask` (sweep.ts): a person escalates an open task now — an `escalated` event with `detail.nudge`, a
   `task.nudge` bell to the kind's escalation role and the holder; the ladder's rung is not moved; a second nudge
   within `TASK_NUDGE_WINDOW_MIN` (5) is refused `nudged_recently`.
@@ -106,4 +110,5 @@ row has its own try/catch, so one failure stops nothing else.
 ## 5. Who calls tasks
 - kernel: worker (`sweepTasks` every minute, `kernel/worker/jobs.ts`); manifests (`tasksManifest`, API only).
 - housekeeping (E1.4): four kinds, `raiseTask`, `cancelTask`, `verifyTask`, `nudgeTask`, `findTasks`, `taskBoard`.
-- Planned (later lanes): bmw, transport, linen, maintenance — each through `index.ts`: `defineTaskKind`, `defineSkill`, `raiseTask`, `cancelTasksForPlace`.
+- transport (E1.6): three kinds with `beforeStart` / `beforeDone`, `raiseTask`, `getTask`, `taskBoard`, `TaskKindRefusal`.
+- Planned (later lanes): bmw, linen, maintenance — each through `index.ts`: `defineTaskKind`, `defineSkill`, `raiseTask`, `cancelTasksForPlace`.

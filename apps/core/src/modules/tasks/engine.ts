@@ -240,6 +240,9 @@ export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Dat
     if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
     requireMine(row, actor);
     if (row.state !== "accepted") throw new TaskError("wrong_state", { taskId: row.id, state: row.state });
+    // The owning module's precondition (transport: escort, oxygen check), in the same transaction.
+    const decl = taskKind(row.kind);
+    if (decl?.beforeStart !== undefined) await decl.beforeStart(t, row, actor, now);
     const next = await update(t, row.id, { state: "in_progress" }, now);
     await logEvent(t, next, "started", actor, eventSource(actor), now, {});
     return next;
@@ -257,6 +260,9 @@ export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: 
     if (row.proofNeeded !== "none" && (input.proof === undefined || input.proof.kind !== row.proofNeeded)) {
       throw new TaskError("proof_missing", { taskId: row.id, proofNeeded: row.proofNeeded });
     }
+    // The owning module's precondition (transport: the wristband is the same patient's), in the same transaction.
+    const decl = taskKind(row.kind);
+    if (decl?.beforeDone !== undefined) await decl.beforeDone(t, row, input.proof, actor, now);
     const next = await update(t, row.id, {
       state: "done", proof: (input.proof ?? null) as Record<string, unknown> | null, doneBy: actor.id, doneAt: now,
     }, now);

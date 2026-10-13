@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** `housekeeping`
+- **Used by modules:** `housekeeping`, `transport`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -154,6 +154,12 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_TOPIC_SPACES: TopicSpace[]`
   - `ipdTopicRouter: TopicRouter`
   - `ipdTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[]`
+- `transport-seam.ts`
+  - `CRITICAL_CARE_BED_CLASSES: readonly string[]`
+  - `admissionForTransport(exec: Db | Tx, admissionId: string): Promise<TransportAdmissionFacts | null>`
+  - `movableAdmissions(exec: Db | Tx, limit = 2000): Promise<TransportAdmissionFacts[]>`
+  - `resolveBandScan(exec: Db | Tx, code: string): Promise<BandScan | null>`
+  - types: `BandScan`, `TransportAdmissionFacts`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 

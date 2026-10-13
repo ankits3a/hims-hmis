@@ -24,3 +24,17 @@ export function taskHttpStatus(code: TaskRefusalCode): number {
     default: return 400;
   }
 }
+
+/**
+ * E1.6 — a refusal raised by an owning module's kind hook (`beforeStart`, `beforeDone`): the module's own code,
+ * sentence and fix, carried through the engine's doors with the same `{ code, message, fix }` wire shape.
+ */
+export class TaskKindRefusal extends Error {
+  constructor(
+    readonly code: string, message: string, readonly fix: string, readonly httpStatus: number = 409,
+    readonly details: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = "TaskKindRefusal";
+  }
+}
