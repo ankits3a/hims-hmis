@@ -11,7 +11,7 @@ import type { ScanAction, ScanPatient, ScanVisit } from "../scan/model";
 import { seatsFor } from "../seats";
 import { useSession } from "../session";
 import { vitalsApi } from "../vitals/api";
-import { GuardianSheet } from "../vitals/guardian";
+import { GuardianSheet, GuardianUndoSheet } from "../vitals/guardian";
 import { Text, TextInput } from "../text";
 import { color, radius, space, TOUCH } from "../theme";
 import { Band, MONO } from "../ui";
@@ -71,6 +71,8 @@ export function ScanScreen() {
 
   /** "Who came?" for the scanned visit (owner 2026-10-09): opened from the card, on this screen. */
   const [guardian, setGuardian] = useState<string | null>(null);
+  /** #771 — "Undo — patient is here" is up for this visit. */
+  const [undoing, setUndoing] = useState<string | null>(null);
   const again = (): void => { seq.current += 1; setLooked(null); setBusy(false); setTyped(""); setRound((n) => n + 1); };
 
   return (
@@ -121,9 +123,13 @@ export function ScanScreen() {
       {guardian !== null && (
         <GuardianSheet api={vitalsApi(call)} encounterId={guardian} confirmHere onDone={() => undefined} onClose={() => { setGuardian(null); again(); }} />
       )}
-      {looked !== null && guardian === null && (
+      {undoing !== null && (
+        <GuardianUndoSheet api={vitalsApi(call)} encounterId={undoing} onDone={() => undefined} onClose={() => { setUndoing(null); again(); }} />
+      )}
+      {looked !== null && guardian === null && undoing === null && (
         <ActionCard
           onGuardian={(visit) => setGuardian(visit.encounterId)}
+          onGuardianUndo={(visit) => setUndoing(visit.encounterId)}
           looked={looked} seats={seats} onClose={again} onAgain={again}
           onPick={(c) => { void find({ encounterId: c.encounterId }); }}
           onAct={(action, visit) => go(action, visit, visit.patient)}

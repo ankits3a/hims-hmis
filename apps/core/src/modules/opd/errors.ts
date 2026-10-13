@@ -103,6 +103,8 @@ export type OpdErrorCode =
   // is the wrong kind); an account holding neither the bay's nor the desk's grant is refused 403; a
   // relation outside the fixed list or an over-long name is a malformed request (400).
   | "patient_absent_returning_only" | "patient_absent_not_permitted" | "invalid_patient_absent"
+  // #771 — undoing the mark once the doctor has the visit (called, in consult, closed) is a state (409 by suffix).
+  | "patient_absent_undo_state_conflict"
   // PHONE CONSULT (decision 0048) — a doctor's sets and the hospital's starter sets (`rx-sets.ts`).
   // Not-found and not-yours answer identically (404). A controlled medicine in a set is a malformed
   // request (400); signing or editing a department's starter set without being its unit head is 403.

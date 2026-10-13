@@ -30,6 +30,8 @@ export type ScanVisit = {
    * still waiting for vitals, to the bay's or the desk's grant. Optional: an older server sends none.
    */
   guardianOffer?: boolean;
+  /** #771 — "Undo — patient is here" may be offered: the visit carries the guardian mark and the doctor does not have it yet. Optional: an older server sends none. */
+  guardianUndo?: boolean;
   patient: ScanPatient;
 };
 export type ScanCandidate = Pick<ScanVisit, "encounterId" | "visitNo" | "tokenNo" | "departmentCode" | "departmentName" | "patient">;

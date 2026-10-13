@@ -825,6 +825,11 @@ export function markPatientAbsent(
   return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/patient-absent`, body);
 }
 
+/** #771 — undo the guardian mark: the patient is here after all; the token goes back to the bay. Same grants as the mark. */
+export function undoPatientAbsent(encounterId: string): Promise<{ alreadyCleared: boolean }> {
+  return api("POST", `/opd/visits/${encodeURIComponent(encounterId)}/patient-absent/undo`);
+}
+
 // ——— VD-2 T3 — the danger protocol and the bench state, on the wire ———
 export type WireEscalationView = {
   entryId: string; state: WireEscalationState; escalatedAt: string | null;

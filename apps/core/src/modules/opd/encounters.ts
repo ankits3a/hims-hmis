@@ -15,6 +15,7 @@ import type { Icd11Ref } from "../cds";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { loadOpdConfig } from "./config";
 import { OpdError } from "./errors";
+import { carryCorrectedVitals } from "./vitals-carry";
 import { patientCheckedIn, visitAbandoned, visitOpened, visitTransferred, visitReclassified,
 } from "./events";
 import { allocateToken, getOrCreateSession, roomForDoctorDay } from "./sessions";
@@ -249,6 +250,15 @@ async function openVisitCore(
     encounterId, patientId: input.patientId, doctorId: doctor.id, serviceDate,
     sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
   } }));
+  // #773 — a replacement for a desk-corrected visit whose vitals were taken carries them (`vitals-carry.ts`).
+  const carried = tele ? null : await carryCorrectedVitals(tx, actor, encounterId, now);
+  if (carried !== null) {
+    const queueEntry = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, joined.queueEntry.id)))[0]!;
+    return {
+      encounter: carried, queueEntry, tokenNo: joined.tokenNo, sessionId: joined.sessionId,
+      roomId: joined.roomId, visitType, doctorScheduledToday: roomId !== null,
+    };
+  }
   return {
     encounter: encounter!, queueEntry: joined.queueEntry, tokenNo: joined.tokenNo, sessionId: joined.sessionId,
     roomId: joined.roomId, visitType, doctorScheduledToday: roomId !== null,
@@ -417,6 +427,12 @@ export async function joinQueueInTx(tx: Tx, actor: Actor, encounterId: string, n
       sessionId: joined.sessionId, roomId: joined.roomId, tokenNo: joined.tokenNo, kind: "arrival",
     },
   }));
+  // #773 — a bill-first replacement for a desk-corrected visit gets its carried vitals when its token is born.
+  const carried = await carryCorrectedVitals(tx, actor, encounter.id, now);
+  if (carried !== null) {
+    const queueEntry = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.id, joined.queueEntry.id)))[0]!;
+    return { encounter: carried, ...joined, queueEntry, alreadyJoined: false };
+  }
   return { encounter, ...joined, alreadyJoined: false };
 }
 
