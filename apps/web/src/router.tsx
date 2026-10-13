@@ -25,6 +25,10 @@ import { PatientStrip } from "./components/patient-strip";
 import { Desk } from "./screens/desk";
 import { MyDay } from "./screens/my-day";
 import { MyLeave } from "./screens/my-leave";
+import { MyTasks } from "./screens/my-tasks";
+import { TasksBoard } from "./screens/tasks-board";
+import { LinenBoard } from "./screens/linen-board";
+import { LinenHandle } from "./screens/linen-handle";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { CopilotNoticeHost } from "./components/copilot-notice";
@@ -127,9 +131,9 @@ import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
  * of them. Each is its own group now, in the order a patient meets them. `stores` is gone with it:
  * its one remaining place, the pharmacy office, belongs beside the pharmacy desk.
  */
-type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "billing" | "admin";
+type NavGroup = "desk" | "patients" | "opd" | "imaging" | "lab" | "theatre" | "pharmacy" | "services" | "billing" | "admin";
 /** Reading order is the order a desk WORKS in — the counter first, administration last. */
-const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "billing", "admin"];
+const NAV_GROUPS: readonly NavGroup[] = ["desk", "patients", "opd", "imaging", "lab", "theatre", "pharmacy", "services", "billing", "admin"];
 /**
  * GAP-CLOSURE B3 — `anyOf`: a row that ALSO shows for a holder of any of these. `permission` stays the
  * manifest's own pairing (`nav-parity.test.ts` compares it); `anyOf` is only for a screen that gathers
@@ -290,6 +294,13 @@ const NAV: readonly NavEntry[] = [
   { to: "/staff", label: "nav.staffReports", permission: "staff.reports.read", group: "admin" },
   // E0.1 (decision 0064) — the copilot's health; path and permission match `deskManifest.menu`.
   { to: "/copilot-health", label: "nav.copilotHealth", permission: "copilot.health.read", group: "admin" },
+  // E0.1 TASK ENGINE (issue #713) — a worker's own tasks and the supervisor's board; paths and permissions match
+  // `tasksManifest.menu`. Their own group: service work (cleaning, waste, porters) is neither a desk nor a ward.
+  { to: "/tasks", label: "nav.myTasks", permission: "tasks.work", group: "services" },
+  { to: "/tasks/board", label: "nav.taskBoard", permission: "tasks.view", group: "services", anyOf: ["tasks.supervise"] },
+  // E2.4 LINEN (issue #728) — the handler's phone and the supervisor's board; paths and permissions match `linenManifest.menu`.
+  { to: "/linen/handle", label: "nav.linenHandle", permission: "linen.handle", group: "services" },
+  { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1081,6 +1092,34 @@ const myLeaveRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/roster/leave",
   component: MyLeave,
+});
+
+/** E0.1 TASK ENGINE (issue #713) — My tasks: a worker's one list, built for a phone (390 px). */
+const myTasksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks",
+  component: MyTasks,
+});
+
+/** E2.4 LINEN (issue #728) — the linen supervisor's board: 16:9, wards below par first, laundry out and in, weekly loss. */
+const linenBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen",
+  component: LinenBoard,
+});
+
+/** E2.4 — the linen handler's phone (390 px, Hindi first): pick a ward, count with big steppers, save. */
+const linenHandleRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/linen/handle",
+  component: LinenHandle,
+});
+
+/** E0.1 TASK ENGINE — the supervisor's task board: 16:9, open work by floor, late first, worker load. */
+const tasksBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/tasks/board",
+  component: TasksBoard,
 });
 
 const myReachRoute = createRoute({
@@ -1902,6 +1941,10 @@ export const router = createRouter({
       rosterMyDutiesRoute,
       // E2.2 — +1, `/roster/leave` (my leave). `caddyfile-parity.test.ts` pins the count.
       myLeaveRoute,
+      // E0.1 TASK ENGINE — +2, `/tasks` and `/tasks/board`. `caddyfile-parity.test.ts` pins the count.
+      myTasksRoute, tasksBoardRoute,
+      // E2.4 LINEN — +2, `/linen` and `/linen/handle`. `caddyfile-parity.test.ts` pins the count.
+      linenBoardRoute, linenHandleRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
     ]),

@@ -119,6 +119,8 @@ const NOT_DEPARTMENTS: Record<string, string> = {
   alerts: "kernel — alert routing",
   ops: "kernel — operating mode, interfaces, downtime kits",
   attendance: "a copy of the attendance machine's records and its read routes — configured by three secret files and a switch, not commissioned like a department",
+  tasks: "E0.1 TASK ENGINE (issue #713) — not a department: the shared engine housekeeping, bmw, transport and linen raise their work through. Those owning modules are what a hospital commissions; the engine has nothing of its own to stand up",
+  linen: "E2.4 LINEN (issue #728) — DECIDED not a department: a ledger over every ward's linen, run by the services supervisor's existing staff. It owns no seats and no master data a go-live must commission (the item catalogue ships seeded and par is computed from the beds)",
   ordering: "DECISION 0067 — not a department: the door every doctor screen orders tests through and the outside-test list. The lab and imaging it routes to are the departments; it has nothing of its own to commission",
   resources: "kernel — the registry the departments' theatres and benches live in",
   orders: "kernel — the order envelope; claimed by lab and radiology, owned by neither",

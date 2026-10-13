@@ -118,3 +118,10 @@ export * from "./ordering";
 export * from "./copilot";
 // E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
 export * from "./reminders";
+// E0.1 TASK ENGINE (issue #713, decision 0072) — service work at a place and its append-only history.
+// References `resources` (the place) and `patients` (optional); nothing reads it but `modules/tasks`.
+export * from "./tasks";
+// E2.4 LINEN (issue #728, decision 0072) — the linen catalogue, par levels, the append-only movement ledger, laundry
+// batches and their short deliveries, condemn requests and ward counts. References `resources` (wards); nothing reads
+// it but `modules/linen`.
+export * from "./linen";
