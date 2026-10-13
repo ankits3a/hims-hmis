@@ -11,4 +11,10 @@ describe("the worker process knows the owning modules' task kinds", () => {
     expect(WORKER_TASK_KINDS).toContain("linen_change");
     expect(taskKind("linen_change")).toMatchObject({ skill: "general", doneWithinMin: 60, escalateTo: "services_supervisor" });
   });
+
+  it("E4.4 DIET — the delivery and ward-notice kinds are defined in the worker (its consumer imports the module)", () => {
+    expect(WORKER_TASK_KINDS).toEqual(expect.arrayContaining(["diet_delivery", "diet_ward_notice"]));
+    expect(taskKind("diet_delivery")).toMatchObject({ skill: "diet_ward", escalateTo: "services_supervisor" });
+    expect(taskKind("diet_ward_notice")).toMatchObject({ skill: "diet_ward", doneWithinMin: 15 });
+  });
 });

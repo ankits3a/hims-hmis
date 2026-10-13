@@ -36,6 +36,7 @@ import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
 import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly } from "../../modules/ipd";
+import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
@@ -756,9 +757,13 @@ const clockLog = new Logger("worker.sweepTasks");
  * and logs its own failure, so a failure in either never stops the other (the 48-hour alarm still rings when the
  * task sweep throws) and never masks it: the first failure is rethrown after both have run, so the scheduler still
  * records the tick as failed. `sweeps` is injectable for `task-clock.test.ts`.
+ *
+ * E4.4 DIET (#736) — the MEAL CLOCK rides the same tick (no pool client of its own, the bmw precedent): every meal
+ * past its cut-off and not yet served gets its lists built (`buildDueLists`, idempotent). Same try/catch rule.
  */
 export async function runTaskAndWasteClocks(
-  db: Db, now: Date, sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage } = { sweepTasks, sweepBmwStorage },
+  db: Db, now: Date,
+  sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage; buildDueLists?: typeof buildDueLists } = { sweepTasks, sweepBmwStorage, buildDueLists },
 ): Promise<void> {
   let first: unknown = undefined;
   try {
@@ -772,6 +777,14 @@ export async function runTaskAndWasteClocks(
   } catch (e) {
     clockLog.error(`sweepBmwStorage failed: ${e instanceof Error ? e.message : String(e)}`);
     first ??= e;
+  }
+  if (sweeps.buildDueLists !== undefined) {
+    try {
+      await sweeps.buildDueLists(db, now);
+    } catch (e) {
+      clockLog.error(`buildDueLists failed: ${e instanceof Error ? e.message : String(e)}`);
+      first ??= e;
+    }
   }
   if (first !== undefined) throw first;
 }

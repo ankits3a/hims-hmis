@@ -138,3 +138,6 @@ export * from "./passes";
 // E1.6 TRANSPORT (issue #723, decision 0072) — a transport task's extra facts (mode, oxygen, escort, handover).
 // References `tasks`, `ipd_admissions` and `resources`; nothing reads it but `modules/transport`.
 export * from "./transport";
+// E4.4 DIET (#736, decision 0072) — meal rounds, diet orders, NPO, the meal lists and their trays, dietician consults.
+// References `ipd_admissions` and `resources` (the ward); nothing reads it but `modules/diet`.
+export * from "./diet";

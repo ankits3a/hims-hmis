@@ -48,6 +48,9 @@ import { PASSES_ADMISSION_CONSUMER, passesAdmissionConsumer, passesManifest } fr
 // E1.6 TRANSPORT (issue #723) — imported for its side effect only: it DEFINES the transport task kinds (patient move,
 // sample run, document run) so the task clock knows their windows and escalation role. Nothing is installed.
 import "../../modules/transport";
+// E4.4 DIET (issue #736) — the consumer for IPD's admission events and OT's booking events; importing the module also
+// DEFINES the two diet task kinds (meal delivery, ward notice) for the task clock.
+import { DIET_CONSUMER, DIET_DELIVERY_TASK, DIET_WARD_NOTICE_TASK, dietConsumer, dietManifest } from "../../modules/diet";
 import { IPD_FAMILY_STOP_CONSUMER, familyStopConsumer, ipdManifest } from "../../modules/ipd";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
@@ -64,7 +67,7 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
  * (`task-kinds.test.ts`). E2.4 LINEN (issue #728) — `linen_change`, raised by IPD admission and discharge. The linen
  * MANIFEST stays API-only (no subscription, no job), so only the kind is loaded, not installed.
  */
-export const WORKER_TASK_KINDS: readonly string[] = [LINEN_CHANGE_TASK.kind];
+export const WORKER_TASK_KINDS: readonly string[] = [LINEN_CHANGE_TASK.kind, DIET_DELIVERY_TASK.kind, DIET_WARD_NOTICE_TASK.kind];
 
 /**
  * D1 (FORK-A, RESOLVED by spike question A — see the plan's Spike verdicts block):
@@ -228,6 +231,9 @@ export const WORKER_TASK_KINDS: readonly string[] = [LINEN_CHANGE_TASK.kind];
         // E1.3 (#720) — passes: the stay-ending and transfer events -> `passes.admission`. Installed in BOTH processes (the
         // API mounts the desk and the scan); the install and the `workerConsumers` entry below are ONE edit.
         registry.install(passesManifest);
+        // E4.4 DIET (#736) — admitted / transfer accepted / bed swapped / the four stay endings / OT booked and cancelled
+        // -> `diet.reconcile`. Installed in BOTH processes; the install and the `workerConsumers` entry are ONE edit.
+        registry.install(dietManifest);
         // E3.3 (#731) — `ipdManifest`'s one subscription: `ipd.admission.deceased` / `.absconded` -> `ipd.family_stop`
         // (death and absconding revoke the family link). The install and the `workerConsumers` entry are ONE edit.
         registry.install(ipdManifest);
@@ -384,6 +390,9 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // E1.3 (#720) — the other half of `passesManifest`: discharge, LAMA, absconding and death expire every live pass of
     // the admission at once; a ward transfer moves them. One without the other is a boot error.
     [PASSES_ADMISSION_CONSUMER]: passesAdmissionConsumer(db),
+    // E4.4 DIET (#736) — the other half of `dietManifest`: the meal lists still ahead follow every admission, transfer,
+    // swap, stay ending and OT booking (NPO). One without the other is a boot error.
+    [DIET_CONSUMER]: dietConsumer(db),
   };
 }
 

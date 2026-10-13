@@ -30,4 +30,19 @@ describe("the shared task + waste clock tick", () => {
     })).rejects.toThrow("tasks down");
     expect(ran).toEqual(["tasks", "bmw"]);
   });
+
+  it("E4.4 DIET — the meal clock rides the tick: a failing task sweep still builds the due meal lists", async () => {
+    const ran: string[] = [];
+    await expect(runTaskAndWasteClocks(db, now, {
+      sweepTasks: async () => { ran.push("tasks"); throw new Error("tasks down"); },
+      sweepBmwStorage: async () => { ran.push("bmw"); return { warning: 0, alert: 0, noticesRaised: 0, unnotified: 0 }; },
+      buildDueLists: async () => { ran.push("diet"); return 0; },
+    })).rejects.toThrow("tasks down");
+    expect(ran).toEqual(["tasks", "bmw", "diet"]);
+    await expect(runTaskAndWasteClocks(db, now, {
+      sweepTasks: async () => ({ returned: 0, redispatched: 0, dispatched: 0, escalated: 0, failed: 0 }),
+      sweepBmwStorage: async () => ({ warning: 0, alert: 0, noticesRaised: 0, unnotified: 0 }),
+      buildDueLists: async () => { throw new Error("kitchen down"); },
+    })).rejects.toThrow("kitchen down");
+  });
 });

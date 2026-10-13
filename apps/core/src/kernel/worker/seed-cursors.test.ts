@@ -18,6 +18,7 @@ import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
 import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
 import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
+import { DIET_CONSUMER } from "../../modules/diet";
 import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
 
@@ -188,6 +189,11 @@ describe("seedCursors", () => {
          * since the IPD lanes began; each would find no live link and do nothing — harmless by construction, seeded anyway.
          */
         IPD_FAMILY_STOP_CONSUMER,
+        /**
+         * E4.4 DIET (#736) — unseeded, it would walk every admission, transfer and stay ending since IPD began and
+         * every OT booking since the mini-OT (writing an NPO for each past case). Seeded at `max(seq)`.
+         */
+        DIET_CONSUMER,
       ].sort());
   });
 
