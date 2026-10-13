@@ -198,10 +198,13 @@ describe("alerts.yml mirrors the scheduler's job registry (Plan 11a residual 4)"
         // Staff attendance (owner 2026-10-09) — the twenty-ninth: HMIS's copy of the attendance
         // machine. `every(120_000)`, inside leg 1a's 300 s, and an `absent()` term.
         "syncAttendance",
+        // IPD beds E1.1 (#718) — the thirty-first: a 2-hour bed hold lapses back. `every(60_000)`, leg 1a,
+        // and an `absent()` term.
+        "lapseBedReservations",
       ].sort(),
     );
-    expect(registered).toHaveLength(30); // COPILOT LEDGER E0.1: +1, pruneCopilotAsks; ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
-    expect(new Set(registered).size).toBe(30); // no job registered twice (COPILOT LEDGER E0.1: 29 -> 30)
+    expect(registered).toHaveLength(31); // IPD BEDS E1.1: +1, lapseBedReservations (every 60 000); COPILOT LEDGER E0.1: +1, pruneCopilotAsks; ATTENDANCE: +1, syncAttendance (every 120 000), read off the red run // TELE-CALL: +1, openDueTeleVisits (every 60 000) // NICKNAMES: +1, proposeMedicineNicknames (every 3 600 000) // MOBILE §3i: +1, sweepStaffNotices (every 60 000), read off the red run // 20-U infra: +1, printRosterBoard (every 60 000), read off the red run // 18-S RS10: +1, sweepImagingEscalations // 18-S RS11: +1, sweepOverdueQa // PHARMACY P6: +1, runRefillReminders // PHASE O T4: +1, runReachLadder // PHASE R (R7): +1, sweepRosterWindows // PHASE R (R9): +1, runMonthlyProposals
+    expect(new Set(registered).size).toBe(31); // IPD BEDS E1.1: 30 -> 31; no job registered twice (COPILOT LEDGER E0.1: 29 -> 30)
   });
 
   it("the two staleness legs together cover every registered job, exactly once each", () => {

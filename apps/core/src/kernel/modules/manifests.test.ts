@@ -198,13 +198,14 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // TEST ORDERING (decision 0067, 2026-10-10) — appended. It reaches into lab, radiology, opd and
       // billing through their indexes; nothing imports it.
       "ordering",
+      "ipd", // IPD BEDS E1.1 (#718): the bed board
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(25); // TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(26); // IPD BEDS E1.1: 26, ipd; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(25);
+    expect(registry.all()).toHaveLength(26); // IPD BEDS E1.1
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -217,7 +218,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly nine enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly ten enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -339,7 +340,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // (1k) STAFF ATTENDANCE — the TWENTY-FOURTH, `attendance`, APP-ONLY on the roster's terms: it
     //      declares one permission and no subscription; the worker runs its job (`syncAttendance`)
     //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance"]);
+    // (1l) IPD BEDS E1.1 — the TWENTY-SIXTH, `ipd`, APP-ONLY on the same terms: four permissions, no subscription;
+    //      the worker runs its job (`lapseBedReservations`) without the manifest.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "ipd"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══

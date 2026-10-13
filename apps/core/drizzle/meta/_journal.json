@@ -1436,6 +1436,20 @@
       "when": 1791793118515,
       "tag": "0204_lab_quick_ast",
       "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1791845024991,
+      "tag": "0205_ipd_beds",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1791848951480,
+      "tag": "0206_ipd_admit",
+      "breakpoints": true
     }
   ]
 }
