@@ -21,19 +21,19 @@ Source: `apps/core/src/modules/linen/`
   - `class LinenError`
   - `linenHttpStatus(code: LinenRefusalCode): number`
 - `intents.ts`
-  - `approveCondemn(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<CondemnRow>`
-  - `borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult>`
+  - `approveCondemn(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<CondemnRow>`
+  - `borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
   - `formatBatchNo(now: Date, serial: number): string`
-  - `receiveFromLaundry(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult>`
-  - `recordInfected(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult>`
-  - `recordSoiled(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult>`
-  - `recordWardCount(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult>`
-  - `rejectCondemn(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<CondemnRow>`
-  - `requestCondemn(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<CondemnRow>`
+  - `receiveFromLaundry(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
+  - `recordInfected(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenActResult>`
+  - `recordSoiled(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenActResult>`
+  - `recordWardCount(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
+  - `rejectCondemn(exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<CondemnRow>`
+  - `requestCondemn(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<CondemnRow>`
   - `requireWard(exec: Exec, wardId: string): Promise<{ id: string; name: string }>`
-  - `sendToLaundry(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult>`
-  - `setParLevel(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<{ wardId: string; itemCode: string; par: number | null…`
-  - `topUpWard(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult>`
+  - `sendToLaundry(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
+  - `setParLevel(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ wardId: string; itemCode: string; par: number | null }>`
+  - `topUpWard(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult>`
   - types: `BatchRow`, `CondemnRow`, `MovementRow`
 - `kinds.ts`
   - `LINEN_CHANGE_TASK`

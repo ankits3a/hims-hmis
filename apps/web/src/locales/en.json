@@ -15807,6 +15807,8 @@
       "duplicate_item": "Item listed twice",
       "above_par": "Above par",
       "at_par": "Already at par",
+      "exceeds_on_hand": "More than the ward holds",
+      "key_reused": "Count reused · count again",
       "exceeds_soiled": "More than waiting",
       "same_ward": "Pick the other ward",
       "unknown_batch": "Unknown batch",

@@ -19,7 +19,8 @@ export function linenHttpStatus(code: LinenRefusalCode): number {
     case "unknown_request": return 404;
     case "already_received":
     case "request_closed":
-    case "at_par": return 409;
+    case "at_par":
+    case "key_reused": return 409;
     case "approver_is_requester": return 403;
     default: return 400;
   }

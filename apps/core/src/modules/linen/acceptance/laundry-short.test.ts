@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { H1, actorOf, seedLinenHospital } from "../../../../test/helpers/linen";
 import { linenLaundryBatches, linenVariances } from "../../../kernel/db/schema";
-import { receiveFromLaundry, recordSoiled, sendToLaundry } from "../index";
+import { receiveFromLaundry, recordSoiled, sendToLaundry, topUpWard } from "../index";
 import type { Db } from "../../../kernel/db/client";
 import type { LinenHospital } from "../../../../test/helpers/linen";
 
@@ -22,6 +22,8 @@ describe("acceptance — a short laundry delivery creates a variance", () => {
   beforeEach(async () => {
     await truncateAll(db);
     h = await seedLinenHospital(db);
+    // A ward returns only what its book holds (PR #752 review): issue first.
+    await topUpWard(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 10 }, { itemCode: "towel", qty: 4 }] }, now);
     await recordSoiled(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 10 }, { itemCode: "towel", qty: 4 }] }, now);
     batchId = (await sendToLaundry(db, actorOf(H1), {
       infected: false, lines: [{ itemCode: "bedsheet", qty: 10 }, { itemCode: "towel", qty: 4 }],

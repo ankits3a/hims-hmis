@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { H1, actorOf, seedLinenHospital } from "../../../../test/helpers/linen";
 import { linenLaundryBatches } from "../../../kernel/db/schema";
-import { linenBoard, recordInfected, recordSoiled, sendToLaundry, soiledPool } from "../index";
+import { linenBoard, recordInfected, recordSoiled, sendToLaundry, soiledPool, topUpWard } from "../index";
 import type { Db } from "../../../kernel/db/client";
 import type { LinenHospital } from "../../../../test/helpers/linen";
 
@@ -21,6 +21,8 @@ describe("acceptance — infected linen is its own count and its own batch", () 
   beforeEach(async () => {
     await truncateAll(db);
     h = await seedLinenHospital(db);
+    // A ward returns only what its book holds (PR #752 review): issue first.
+    await topUpWard(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 7 }] }, now);
     await recordSoiled(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 5 }] }, now);
     await recordInfected(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 2 }] }, now);
   });

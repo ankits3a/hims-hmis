@@ -125,6 +125,8 @@ export const LINEN_REFUSALS = {
   duplicate_item: { sentence: "The same item is listed twice.", fix: "Enter each item once." },
   above_par: { sentence: "This would put the ward above its par.", fix: "Issue up to par, or ask the supervisor to raise the par." },
   at_par: { sentence: "The ward is already at par.", fix: "Count the ward if the shelves look short." },
+  exceeds_on_hand: { sentence: "More pieces than the ward holds by its book.", fix: "Count the ward first, then record the rest." },
+  key_reused: { sentence: "This count was already saved with other numbers.", fix: "Open the count again and save it as a new count." },
   exceeds_soiled: { sentence: "More pieces than are waiting in the soiled room.", fix: "Record the soiled linen first, then send it." },
   same_ward: { sentence: "A ward cannot borrow from itself.", fix: "Pick the other ward." },
   unknown_batch: { sentence: "This laundry batch does not exist.", fix: "Pick a batch from the list." },

@@ -73,8 +73,13 @@ two counts (issued includes borrowed in; returned = soiled + infected + borrowed
 
 ## 4. Invariants and traps
 - **The ledger is append-only** (trigger `linen_movements_append_only`). A wrong entry is corrected by a further one.
-- Counts and movements at the SAME instant: a movement at exactly the count's time is counted BEFORE the count
-  (`m.at > counted_at` excludes it). Tests pass distinct instants.
+- Counts and movements at the SAME instant: the movement is AFTER the count — in `bookBalances` (`m.at >= counted_at`)
+  and in `weeklyVariance` (inside the window from the opening count, outside it at the closing count). One rule, both reads.
+- An act's instant is the caller's `now` when given (tests), else the database's `clock_timestamp()` read AFTER the
+  act's lock (`stamp`): the controller passes no clock.
+- Returns, a lending ward's borrow and an approved write-off are refused above the ward's book balance
+  (`exceeds_on_hand`): a ward live for the first time counts its shelves before it returns anything. DECIDED.
+- A count's idempotency key reused with other numbers is refused (`key_reused`); the same numbers again are one count.
 - Every act in one ward takes `pg_advisory_xact_lock('linen:ward:<id>')`; the soiled room takes `linen:soiled-room`;
   a borrow locks both wards in sorted order (no deadlock).
 - `wardStates` runs its queries one after another, not in `Promise.all`: intents call it inside their transaction and

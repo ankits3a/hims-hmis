@@ -59,66 +59,66 @@ export class LinenController {
   @Post("wards/:id/top-up")
   @RequirePermission(LINEN_HANDLE, "hospital")
   async topUp(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenActResult> {
-    return refusing(() => topUpWard(this.db, actor, { ...body(b), wardId: id }, new Date()));
+    return refusing(() => topUpWard(this.db, actor, { ...body(b), wardId: id }));
   }
 
   @Post("wards/:id/soiled")
   @RequirePermission(LINEN_HANDLE, "hospital")
   async soiled(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenActResult> {
-    return refusing(() => recordSoiled(this.db, actor, { ...body(b), wardId: id }, new Date()));
+    return refusing(() => recordSoiled(this.db, actor, { ...body(b), wardId: id }));
   }
 
   @Post("wards/:id/infected")
   @RequirePermission(LINEN_HANDLE, "hospital")
   async infected(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenActResult> {
-    return refusing(() => recordInfected(this.db, actor, { ...body(b), wardId: id }, new Date()));
+    return refusing(() => recordInfected(this.db, actor, { ...body(b), wardId: id }));
   }
 
   @Post("wards/:id/count")
   @RequirePermission(LINEN_HANDLE, "hospital")
   async count(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenActResult> {
-    return refusing(() => recordWardCount(this.db, actor, { ...body(b), wardId: id }, new Date()));
+    return refusing(() => recordWardCount(this.db, actor, { ...body(b), wardId: id }));
   }
 
   @Post("wards/:id/par")
   @RequirePermission(LINEN_MANAGE, "hospital")
   async par(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<{ wardId: string; itemCode: string; par: number | null }> {
-    return refusing(() => setParLevel(this.db, actor, { ...body(b), wardId: id }, new Date()));
+    return refusing(() => setParLevel(this.db, actor, { ...body(b), wardId: id }));
   }
 
   @Post("borrow")
   @RequirePermission(LINEN_HANDLE, "hospital")
   async borrow(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<LinenActResult> {
-    return refusing(() => borrowBetweenWards(this.db, actor, b, new Date()));
+    return refusing(() => borrowBetweenWards(this.db, actor, b));
   }
 
   @Post("laundry/batches")
   @RequirePermission(LINEN_HANDLE, "hospital")
   async send(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<LinenActResult> {
-    return refusing(() => sendToLaundry(this.db, actor, b, new Date()));
+    return refusing(() => sendToLaundry(this.db, actor, b));
   }
 
   @Post("laundry/batches/:id/receive")
   @RequirePermission(LINEN_HANDLE, "hospital")
   async receive(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<LinenActResult> {
-    return refusing(() => receiveFromLaundry(this.db, actor, { ...body(b), batchId: id }, new Date()));
+    return refusing(() => receiveFromLaundry(this.db, actor, { ...body(b), batchId: id }));
   }
 
   @Post("condemn")
   @RequirePermission(LINEN_HANDLE, "hospital", { alsoAdmits: [LINEN_MANAGE] })
   async condemn(@CurrentActor() actor: Actor, @Body() b: unknown): Promise<Decided> {
-    return refusing(async () => { const r = await requestCondemn(this.db, actor, b, new Date()); return { id: r.id, state: r.state }; });
+    return refusing(async () => { const r = await requestCondemn(this.db, actor, b); return { id: r.id, state: r.state }; });
   }
 
   @Post("condemn/:id/approve")
   @RequirePermission(LINEN_MANAGE, "hospital")
   async approve(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<Decided> {
-    return refusing(async () => { const r = await approveCondemn(this.db, actor, { ...body(b), requestId: id }, new Date()); return { id: r.id, state: r.state }; });
+    return refusing(async () => { const r = await approveCondemn(this.db, actor, { ...body(b), requestId: id }); return { id: r.id, state: r.state }; });
   }
 
   @Post("condemn/:id/reject")
   @RequirePermission(LINEN_MANAGE, "hospital")
   async reject(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() b: unknown): Promise<Decided> {
-    return refusing(async () => { const r = await rejectCondemn(this.db, actor, { ...body(b), requestId: id }, new Date()); return { id: r.id, state: r.state }; });
+    return refusing(async () => { const r = await rejectCondemn(this.db, actor, { ...body(b), requestId: id }); return { id: r.id, state: r.state }; });
   }
 }

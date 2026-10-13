@@ -53,6 +53,8 @@ describe("acceptance — weekly loss variance from the records", () => {
   });
 
   it("borrowed in counts as issued to the borrower", async () => {
+    // The lender must hold what it lends (PR #752 review); it is not counted this week, so it has no row.
+    await topUpWard(db, actorOf(H1), { wardId: h.generalWard, ...line("blanket", 4) }, hoursFrom(from, 4));
     await borrowBetweenWards(db, actorOf(H1), { fromWardId: h.generalWard, toWardId: h.icuWard, ...line("blanket", 4) }, hoursFrom(from, 5));
     await recordWardCount(db, actorOf(H1), { wardId: h.icuWard, ...line("blanket", 4) }, hoursFrom(from, 6));
     expect(await weeklyVariance(db, from, to)).toEqual([expect.objectContaining({ wardId: h.icuWard, issued: 4, returned: 0, counted: 4, missing: 0 })]);

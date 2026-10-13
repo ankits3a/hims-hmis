@@ -29,10 +29,11 @@ describe("linen — intents and seams", () => {
   });
 
   it("a double tap on Save (same key) is one act", async () => {
+    await topUpWard(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 4 }] }, now);
     const body = { wardId: h.generalWard, lines: [{ itemCode: "bedsheet", qty: 4 }], idempotencyKey: "tap-0000-0001" };
     await recordSoiled(db, actorOf(H1), body, now);
     await recordSoiled(db, actorOf(H1), body, now);
-    expect(await db.select().from(linenMovements)).toHaveLength(1);
+    expect((await db.select().from(linenMovements)).filter((m) => m.kind === "return_soiled")).toHaveLength(1);
   });
 
   it("refusals carry a code: above par, the same ward, a room is not a ward, an item twice", async () => {
@@ -58,6 +59,7 @@ describe("linen — intents and seams", () => {
   });
 
   it("the ledger is append-only", async () => {
+    await topUpWard(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "towel", qty: 1 }] }, now);
     await recordSoiled(db, actorOf(H1), { wardId: h.generalWard, lines: [{ itemCode: "towel", qty: 1 }] }, now);
     await expect(db.execute(sql`update linen_movements set qty = 2`)).rejects.toThrow(/append-only/);
     await expect(db.execute(sql`delete from linen_movements`)).rejects.toThrow(/append-only/);

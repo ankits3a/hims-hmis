@@ -9,7 +9,7 @@ import {
   resources,
 } from "../../kernel/db/schema";
 import { LinenError } from "./errors";
-import { soiledPool, wardStates } from "./reads";
+import { bookBalances, soiledPool, wardStates } from "./reads";
 import type { Actor, LinenActResult, LinenMovementKind, LinenSource } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -46,6 +46,26 @@ const tx = <T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> => (exec as Db
 /** One act at a time per ward (and one for the soiled room): the balance an act reads is the balance it writes on. */
 async function lock(t: Tx, key: string): Promise<void> {
   await t.execute(sql`select pg_advisory_xact_lock(hashtext(${`linen:${key}`}))`);
+}
+
+/**
+ * THE INSTANT OF AN ACT (PR #752 review): the caller's `now` when given (tests), otherwise the database's
+ * `clock_timestamp()` read AFTER the act's lock — never the controller's clock read before it, so two acts queued on one
+ * ward are stamped in the order they wrote. (`now()` would be the transaction's start, which is before the lock too.)
+ */
+async function stamp(t: Tx, given: Date | undefined): Promise<Date> {
+  if (given !== undefined) return given;
+  const r = await t.execute<{ n: Date | string }>(sql`select clock_timestamp() as n`);
+  return new Date(r.rows[0]!.n);
+}
+
+/** Refuse any line above the ward's book balance of that item (`exceeds_on_hand`). Call under the ward lock. */
+async function requireOnHand(t: Tx, wardId: string, lines: readonly Line[], now: Date): Promise<void> {
+  const book = (await bookBalances(t, now, wardId)).get(wardId);
+  for (const l of lines) {
+    const onHand = book?.get(l.itemCode)?.onHand ?? 0;
+    if (l.qty > onHand) throw new LinenError("exceeds_on_hand", { itemCode: l.itemCode, onHand, wardId });
+  }
 }
 
 export async function requireWard(exec: Exec, wardId: string): Promise<{ id: string; name: string }> {
@@ -91,12 +111,13 @@ async function seenKey(t: Tx, kind: LinenMovementKind, wardId: string, key: stri
  * Top a ward up from the linen store to par. No lines: every item short of par gets exactly its shortfall. Lines: those
  * pieces, each refused when it would put the ward above par (`above_par`, details `{ itemCode, max }`).
  */
-export async function topUpWard(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult> {
+export async function topUpWard(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult> {
   const input = parse(topUpWardInput, raw);
   return tx(exec, async (t) => {
     const ward = await requireWard(t, input.wardId);
     if (input.lines !== undefined) await requireItems(t, input.lines);
     await lock(t, `ward:${ward.id}`);
+    const now = await stamp(t, nowIn);
     const seen = await seenKey(t, "issue_to_ward", ward.id, input.idempotencyKey);
     if (seen !== null) return { movements: seen, wardId: ward.id };
     const state = (await wardStates(t, now, ward.id))[0];
@@ -122,15 +143,17 @@ export async function topUpWard(exec: Exec, actor: Actor, raw: unknown, now: Dat
 /* ═══════════════════════════════ ward → soiled room ═══════════════════════════════ */
 
 async function returnFromWard(
-  exec: Exec, actor: Actor, raw: unknown, now: Date, kind: "return_soiled" | "return_infected",
+  exec: Exec, actor: Actor, raw: unknown, nowIn: Date | undefined, kind: "return_soiled" | "return_infected",
 ): Promise<LinenActResult> {
   const input = parse(recordSoiledInput, raw);
   return tx(exec, async (t) => {
     const ward = await requireWard(t, input.wardId);
     await requireItems(t, input.lines);
     await lock(t, `ward:${ward.id}`);
+    const now = await stamp(t, nowIn);
     const seen = await seenKey(t, kind, ward.id, input.idempotencyKey);
     if (seen !== null) return { movements: seen, wardId: ward.id };
+    await requireOnHand(t, ward.id, input.lines, now);
     await t.insert(linenMovements).values(input.lines.map((l) => movement(kind, l, actor, now, {
       wardResourceId: ward.id, idempotencyKey: input.idempotencyKey ?? null,
     })));
@@ -139,11 +162,11 @@ async function returnFromWard(
 }
 
 /** Soiled linen, in the ordinary bag, from a ward to the soiled room. */
-export const recordSoiled = (exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult> =>
+export const recordSoiled = (exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenActResult> =>
   returnFromWard(exec, actor, raw, now, "return_soiled");
 
 /** Infected linen (blood, body fluids, isolation beds) in its own marked bag: counted apart from the ordinary soiled. */
-export const recordInfected = (exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult> =>
+export const recordInfected = (exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<LinenActResult> =>
   returnFromWard(exec, actor, raw, now, "return_infected");
 
 /* ═══════════════════════════════ the laundry ═══════════════════════════════ */
@@ -158,11 +181,12 @@ export function formatBatchNo(now: Date, serial: number): string {
  * in that pool of the soiled room (`exceeds_soiled`) — so an infected batch cannot be made up from ordinary linen, and
  * ordinary linen cannot hide in an infected batch.
  */
-export async function sendToLaundry(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult> {
+export async function sendToLaundry(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult> {
   const input = parse(sendToLaundryInput, raw);
   return tx(exec, async (t) => {
     await requireItems(t, input.lines);
     await lock(t, "soiled-room");
+    const now = await stamp(t, nowIn);
     if (input.idempotencyKey !== undefined) {
       const seen = (await t.select().from(linenLaundryBatches).where(eq(linenLaundryBatches.idempotencyKey, input.idempotencyKey)))[0];
       if (seen !== undefined) return { movements: input.lines.length, batchId: seen.id, batchNo: seen.batchNo };
@@ -187,12 +211,13 @@ export async function sendToLaundry(exec: Exec, actor: Actor, raw: unknown, now:
  * What came back for a batch. Each item of the batch that came back short writes a `linen_variances` row (sent,
  * received, short); an item left out of the lines came back as 0. Received once: a second receipt is refused.
  */
-export async function receiveFromLaundry(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult> {
+export async function receiveFromLaundry(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult> {
   const input = parse(receiveFromLaundryInput, raw);
   return tx(exec, async (t) => {
     const batch = (await t.select().from(linenLaundryBatches).where(eq(linenLaundryBatches.id, input.batchId)).for("update"))[0];
     if (batch === undefined) throw new LinenError("unknown_batch", { batchId: input.batchId });
     if (batch.state !== "sent") throw new LinenError("already_received", { batchId: batch.id });
+    const now = await stamp(t, nowIn);
     const sentRows = await t.select({ itemCode: linenMovements.itemCode, qty: linenMovements.qty }).from(linenMovements)
       .where(and(eq(linenMovements.batchId, batch.id), eq(linenMovements.kind, "laundry_out")));
     const sent = new Map<string, number>();
@@ -228,7 +253,7 @@ export async function receiveFromLaundry(exec: Exec, actor: Actor, raw: unknown,
 /* ═══════════════════════════════ shortage: borrow ═══════════════════════════════ */
 
 /** A ward short of linen borrows from another ward: one transfer row per item (from → to), counted on both books. */
-export async function borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult> {
+export async function borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult> {
   const input = parse(borrowBetweenWardsInput, raw);
   if (input.fromWardId === input.toWardId) throw new LinenError("same_ward", { wardId: input.fromWardId });
   return tx(exec, async (t) => {
@@ -237,8 +262,10 @@ export async function borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown,
     await requireItems(t, input.lines);
     // Both wards, in a fixed order, so two opposite borrows never deadlock.
     for (const w of [from.id, to.id].sort()) await lock(t, `ward:${w}`);
+    const now = await stamp(t, nowIn);
     const seen = await seenKey(t, "transfer_between_wards", from.id, input.idempotencyKey);
     if (seen !== null) return { movements: seen, wardId: to.id };
+    await requireOnHand(t, from.id, input.lines, now);
     await t.insert(linenMovements).values(input.lines.map((l) => movement("transfer_between_wards", l, actor, now, {
       wardResourceId: from.id, toWardResourceId: to.id, idempotencyKey: input.idempotencyKey ?? null,
     })));
@@ -248,12 +275,13 @@ export async function borrowBetweenWards(exec: Exec, actor: Actor, raw: unknown,
 
 /* ═══════════════════════════════ condemn (four eyes) ═══════════════════════════════ */
 
-export async function requestCondemn(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<CondemnRow> {
+export async function requestCondemn(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<CondemnRow> {
   const input = parse(requestCondemnInput, raw);
   return tx(exec, async (t) => {
     const wardId = input.wardId ?? null;
     if (wardId !== null) await requireWard(t, wardId);
     await requireItems(t, [{ itemCode: input.itemCode, qty: input.qty }]);
+    const now = await stamp(t, nowIn);
     return (await t.insert(linenCondemnRequests).values({
       id: newId(), wardResourceId: wardId, itemCode: input.itemCode, qty: input.qty, reason: input.reason,
       state: "requested", requestedBy: actor.id, requestedAt: now,
@@ -261,13 +289,19 @@ export async function requestCondemn(exec: Exec, actor: Actor, raw: unknown, now
   });
 }
 
-async function decide(exec: Exec, actor: Actor, raw: unknown, now: Date, approve: boolean): Promise<CondemnRow> {
+async function decide(exec: Exec, actor: Actor, raw: unknown, nowIn: Date | undefined, approve: boolean): Promise<CondemnRow> {
   const input = parse(decideCondemnInput, raw);
   return tx(exec, async (t) => {
     const req = (await t.select().from(linenCondemnRequests).where(eq(linenCondemnRequests.id, input.requestId)).for("update"))[0];
     if (req === undefined) throw new LinenError("unknown_request", { requestId: input.requestId });
     if (req.state !== "requested") throw new LinenError("request_closed", { requestId: req.id, state: req.state });
     if (req.requestedBy === actor.id) throw new LinenError("approver_is_requester", { requestId: req.id });
+    // A write-off comes off the ward's book: under the ward lock, never more than the ward still holds.
+    if (approve && req.wardResourceId !== null) await lock(t, `ward:${req.wardResourceId}`);
+    const now = await stamp(t, nowIn);
+    if (approve && req.wardResourceId !== null) {
+      await requireOnHand(t, req.wardResourceId, [{ itemCode: req.itemCode, qty: req.qty }], now);
+    }
     const row = (await t.update(linenCondemnRequests).set({
       state: approve ? "approved" : "rejected", decidedBy: actor.id, decidedAt: now, decisionNote: input.note ?? null,
     }).where(eq(linenCondemnRequests.id, req.id)).returning())[0]!;
@@ -281,27 +315,34 @@ async function decide(exec: Exec, actor: Actor, raw: unknown, now: Date, approve
 }
 
 /** Approve a condemn request: writes the `condemn` movement (off the ward's book). Never by the requester. */
-export const approveCondemn = (exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<CondemnRow> =>
+export const approveCondemn = (exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<CondemnRow> =>
   decide(exec, actor, raw, now, true);
 
 /** Reject a condemn request: nothing leaves the book. Never by the requester either (DECIDED: one rule for both). */
-export const rejectCondemn = (exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<CondemnRow> =>
+export const rejectCondemn = (exec: Exec, actor: Actor, raw: unknown, now?: Date): Promise<CondemnRow> =>
   decide(exec, actor, raw, now, false);
 
 /* ═══════════════════════════════ counts and par ═══════════════════════════════ */
 
 /** The ward's count of its shelves: the new anchor of its book balance, item by item. */
-export async function recordWardCount(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<LinenActResult> {
+export async function recordWardCount(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<LinenActResult> {
   const input = parse(recordWardCountInput, raw);
   return tx(exec, async (t) => {
     const ward = await requireWard(t, input.wardId);
     await requireItems(t, input.lines);
     await lock(t, `ward:${ward.id}`);
+    const now = await stamp(t, nowIn);
     if (input.idempotencyKey !== undefined) {
-      const seen = await t.select({ id: linenWardCounts.id }).from(linenWardCounts).where(and(
+      const seen = await t.select({ itemCode: linenWardCounts.itemCode, onHand: linenWardCounts.onHand }).from(linenWardCounts).where(and(
         eq(linenWardCounts.wardResourceId, ward.id), eq(linenWardCounts.idempotencyKey, input.idempotencyKey),
       ));
-      if (seen.length > 0) return { movements: 0, wardId: ward.id };
+      if (seen.length > 0) {
+        // The same tap again is the same count; the same key with other numbers is refused (PR #752 review).
+        const same = seen.length === input.lines.length
+          && input.lines.every((l) => seen.some((r) => r.itemCode === l.itemCode && r.onHand === l.qty));
+        if (!same) throw new LinenError("key_reused", { wardId: ward.id });
+        return { movements: 0, wardId: ward.id };
+      }
     }
     await t.insert(linenWardCounts).values(input.lines.map((l) => ({
       id: newId(), wardResourceId: ward.id, itemCode: l.itemCode, onHand: l.qty, countedAt: now, countedBy: actor.id,
@@ -312,11 +353,12 @@ export async function recordWardCount(exec: Exec, actor: Actor, raw: unknown, no
 }
 
 /** Set a ward's par for one item over the computed one; `par: null` returns it to the computed par. */
-export async function setParLevel(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<{ wardId: string; itemCode: string; par: number | null }> {
+export async function setParLevel(exec: Exec, actor: Actor, raw: unknown, nowIn?: Date): Promise<{ wardId: string; itemCode: string; par: number | null }> {
   const input = parse(setParLevelInput, raw);
   return tx(exec, async (t) => {
     const ward = await requireWard(t, input.wardId);
     await requireItems(t, [{ itemCode: input.itemCode, qty: 1 }]);
+    const now = await stamp(t, nowIn);
     if (input.par === null) {
       await t.delete(linenParLevels).where(and(eq(linenParLevels.wardResourceId, ward.id), eq(linenParLevels.itemCode, input.itemCode)));
     } else {

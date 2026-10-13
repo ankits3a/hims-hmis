@@ -107,7 +107,7 @@ export async function bookBalances(exec: Exec, at: Date, wardId?: string): Promi
     ), pairs as (select w, i from last union select w, i from mv)
     select p.w, p.i, l.counted_at,
            coalesce(l.on_hand, 0) + coalesce((select sum(m.d) from mv m where m.w = p.w and m.i = p.i
-                                                and (l.counted_at is null or m.at > l.counted_at)), 0) as on_hand
+                                                and (l.counted_at is null or m.at >= l.counted_at)), 0) as on_hand
       from pairs p left join last l on l.w = p.w and l.i = p.i`);
   const out = new Map<string, Map<string, { onHand: number; countedAt: Date | null }>>();
   for (const row of r.rows) {
@@ -201,6 +201,8 @@ export async function inTransit(exec: Exec, limit = 30): Promise<LinenBatchCard[
  * returns + borrowed out + condemned — all between the opening count and the closing count. With no earlier count this
  * is exactly the spec's "issued − (returned soiled + infected + on hand by last count)". A ward-item with no count in
  * the window has no variance (it is listed by the board as "not counted", not guessed). Positive = pieces lost.
+ *
+ * ONE BOUNDARY RULE, shared with `bookBalances`: a movement at exactly a count's instant happened AFTER the count.
  */
 export async function weeklyVariance(exec: Exec, from: Date, to: Date): Promise<LinenVarianceRow[]> {
   const f = from.toISOString();
@@ -231,7 +233,7 @@ export async function weeklyVariance(exec: Exec, from: Date, to: Date): Promise<
       from closing c
       join resources r on r.id = c.w
       left join opening o on o.w = c.w and o.i = c.i
-      left join mv m on m.w = c.w and m.i = c.i and m.at <= c.counted_at and (o.counted_at is null or m.at > o.counted_at)
+      left join mv m on m.w = c.w and m.i = c.i and m.at < c.counted_at and (o.counted_at is null or m.at >= o.counted_at)
      group by c.w, r.name, c.i, o.on_hand, c.on_hand, c.counted_at`);
   return r.rows.map((row) => {
     const opening = Number(row.opening);
