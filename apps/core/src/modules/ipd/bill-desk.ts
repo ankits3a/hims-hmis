@@ -68,7 +68,7 @@ export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date())
   // Open charge exceptions (an ended stay keeps its exception until it is posted or retried).
   for (const x of await db.select({ admissionId: ipdChargeExceptions.admissionId, reason: ipdChargeExceptions.reason, at: ipdChargeExceptions.firstSeenAt })
     .from(ipdChargeExceptions).where(isNull(ipdChargeExceptions.resolvedAt))) {
-    note(cand, x.admissionId, x.reason as "rate_missing" | "tariff_missing" | "posting_failed" | "visit_backdated", x.at);
+    note(cand, x.admissionId, x.reason as "rate_missing" | "tariff_missing" | "posting_failed" | "visit_backdated" | "order_cancelled_after_bill" | "order_cancelled_after_work", x.at);
   }
   // E4.2 (#734): the backdated round visits, by admission, for the Charge / Waive buttons.
   const backdated = new Map<string, { exceptionId: string; serviceDate: string; consultantId: string }[]>();

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { ipdRateServiceCode, newId } from "@hmis/contracts";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
@@ -134,12 +134,14 @@ export function exceptionKey(admissionId: string, date: string, component: IpdCh
 export async function raiseException(
   tx: Tx, actor: Actor, a: AdmissionRow, x: {
     date: string; component: IpdChargeComponent; billedClass: IpdBedClass | null; code: string | null;
-    reason: "rate_missing" | "tariff_missing" | "visit_backdated"; versionId: string | null; consultantUserId?: string;
+    reason: "rate_missing" | "tariff_missing" | "visit_backdated" | "order_cancelled_after_bill" | "order_cancelled_after_work";
+    versionId: string | null; consultantUserId?: string;
     /** #785 — an order line's exception is keyed by its order item. */
     orderItemId?: string;
   }, at: Date,
 ): Promise<void> {
-  const key = exceptionKey(a.id, x.date, x.component, x.consultantUserId ?? x.orderItemId) + (x.reason === "visit_backdated" ? ":backdated" : "");
+  const key = exceptionKey(a.id, x.date, x.component, x.consultantUserId ?? x.orderItemId) + (x.reason === "visit_backdated" ? ":backdated"
+    : x.reason === "order_cancelled_after_bill" ? ":cancel_billed" : x.reason === "order_cancelled_after_work" ? ":cancel_after_work" : "");
   const fresh = await tx.insert(ipdChargeExceptions).values({
     id: newId(), key, admissionId: a.id, serviceDate: x.date, component: x.component, billedClass: x.billedClass,
     serviceCode: x.code, reason: x.reason, tariffVersionId: x.versionId, firstSeenAt: at, lastSeenAt: at,
@@ -502,12 +504,18 @@ export async function resolveBackdatedVisit(
 
 // ═══════════════════════════════════════ the order seam (#785) ═══════════════════════════════════════
 
-/** Prices one service (a lab test, a scan) on the locked version, or says the rate is missing. Never ₹0, never a guess. */
-export function priceService(ctx: PricingContext, serviceId: string): Priced {
+/**
+ * Prices one service (a lab test, a scan) on the locked version, or says the rate is missing. Review of 47cd79f5 (item 10,
+ * DECIDED): an EXPLICIT ₹0 item on the version is a price — it posts a ₹0 line; an ABSENT item or a switched-off service is a
+ * missing rate. `free` (the imaging fee switch was off at order time, decision 0067) posts a ₹0 line for any known service.
+ */
+export function priceService(ctx: PricingContext, serviceId: string, opts: { free?: boolean } = {}): Priced {
   const svc = ctx.services[serviceId];
-  if (svc === undefined || !svc.active) return { ok: false, code: svc?.code ?? serviceId };
+  if (svc === undefined) return { ok: false, code: serviceId };
+  if (opts.free === true) return { ok: true, line: zeroLine(svc.id, svc.name), code: svc.code };
+  if (!svc.active) return { ok: false, code: svc.code };
   const price = ctx.tariff.items[svc.id];
-  if (price === undefined || price <= 0) return { ok: false, code: svc.code };
+  if (price === undefined || price < 0) return { ok: false, code: svc.code };
   try {
     const [line] = priceInvoiceLines(ctx, [{ lineId: newId(), serviceId: svc.id, qty: 1 }]);
     return { ok: true, line: line!, code: svc.code };
@@ -516,6 +524,14 @@ export function priceService(ctx: PricingContext, serviceId: string): Priced {
     if (e instanceof TariffError) return { ok: false, code: svc.code };
     throw e;
   }
+}
+
+/** A ₹0 line for a free study (no tax, no discount): the scan is on the bill, at nothing. */
+function zeroLine(serviceId: string, serviceName: string): PricedLine {
+  return {
+    lineId: newId(), serviceId, serviceName, qty: 1, unitPaise: 0, grossPaise: 0, discountPaise: 0, taxableBasePaise: 0, netPaise: 0,
+    gst: { cgstPaise: 0, sgstPaise: 0, rateBps: 0, exempt: true },
+  } as unknown as PricedLine;
 }
 
 export type OrderChargeItem = { orderId: string; orderItemId: string; serviceId: string };
@@ -528,7 +544,7 @@ export type OrderChargeItem = { orderId: string; orderItemId: string; serviceId:
  * `tariff_missing`. Runs on the caller's transaction under the admission's advisory lock. Returns the new line id or null.
  */
 export async function postOrderLineIn(
-  tx: Tx, actor: Actor, a: AdmissionRow, item: OrderChargeItem & { component: "lab" | "imaging"; serviceDate: string },
+  tx: Tx, actor: Actor, a: AdmissionRow, item: OrderChargeItem & { component: "lab" | "imaging"; serviceDate: string; free?: boolean },
   at: Date, cache: PricingCache = new Map(),
 ): Promise<string | null> {
   const db = tx as unknown as Db;
@@ -542,7 +558,7 @@ export async function postOrderLineIn(
     }, at);
     return null;
   }
-  const priced = priceService(await pricingFor(db, cache, versionId, at), item.serviceId);
+  const priced = priceService(await pricingFor(db, cache, versionId, at), item.serviceId, { free: item.free });
   if (!priced.ok) {
     await raiseException(tx, actor, a, {
       date: item.serviceDate, component: item.component, billedClass: null, code: priced.code, reason: "rate_missing", versionId, orderItemId: item.orderItemId,
@@ -584,6 +600,37 @@ async function retryOrderExceptionsIn(tx: Tx, actor: Actor, a: AdmissionRow, at:
   return posted;
 }
 
+/** #785 review — the order-cancel decisions (cancelled after the bill / after the work) close with billing's answer. */
+export const ORDER_CANCEL_REASONS = ["order_cancelled_after_bill", "order_cancelled_after_work"] as const;
+export async function resolveOrderCancelExceptionsIn(tx: Tx, admissionId: string, orderItemId: string, at: Date, note: string): Promise<number> {
+  const done = await tx.update(ipdChargeExceptions).set({ resolvedAt: at, resolutionNote: note }).where(and(
+    eq(ipdChargeExceptions.admissionId, admissionId), isNull(ipdChargeExceptions.resolvedAt),
+    inArray(ipdChargeExceptions.reason, [...ORDER_CANCEL_REASONS]), like(ipdChargeExceptions.key, `%:${orderItemId}:%`),
+  )).returning({ id: ipdChargeExceptions.id });
+  return done.length;
+}
+
+/**
+ * #785 review — billing KEEPS a cancelled order's line (the work was done, or the settled bill stands): the decision closes
+ * with a reason and the line is untouched. `ipd.charges.reverse` (the billing manager), like the reversal itself.
+ */
+export async function keepOrderCharge(
+  db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {},
+): Promise<{ resolved: number }> {
+  await requireIpdPermission(db, actor, IPD_CHARGES_REVERSE);
+  const reason = input.reason.trim();
+  if (reason.length === 0) throw new IpdError("reversal_reason_required", "keeping a cancelled order's charge names its reason");
+  const at = opts.now ?? new Date();
+  return withTx(db, async (tx) => {
+    const line = (await tx.select().from(ipdChargeLines).where(eq(ipdChargeLines.id, input.chargeLineId)))[0];
+    if (line === undefined || line.orderItemId === null) throw new IpdError("charge_line_not_found", "no order line with this id", { chargeLineId: input.chargeLineId });
+    await admissionAdvisoryLock(tx, line.admissionId);
+    const resolved = await resolveOrderCancelExceptionsIn(tx, line.admissionId, line.orderItemId, at, `kept: ${reason}`);
+    if (resolved === 0) throw new IpdError("charge_line_not_found", "no open cancelled-order decision for this line", { chargeLineId: line.id });
+    return { resolved };
+  });
+}
+
 // ═══════════════════════════════════════════ reversal ═══════════════════════════════════════════
 
 /**
@@ -621,6 +668,8 @@ export async function reverseChargeLine(
       payload: { admissionId: line.admissionId, chargeLineId: line.id, reversalLineId: id, provenance: provenanceOf(actor) },
       actor, correlationId: line.admissionId, patientId: line.patientId, encounterId: line.admissionId, occurredAt: at,
     }));
+    // #785 review: billing's reversal of a cancelled order's line answers its bill-desk decision.
+    if (line.orderItemId !== null) await resolveOrderCancelExceptionsIn(tx, line.admissionId, line.orderItemId, at, `reversed: ${reason}`);
     return { reversalLineId: id };
     });
   } catch (e) {

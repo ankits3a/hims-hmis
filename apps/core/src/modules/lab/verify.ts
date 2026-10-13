@@ -695,7 +695,7 @@ async function placeReflexOrders(
        * #785 — an inpatient's reflex goes on the running bill (live OR ended admission: the sample was taken during the
        * stay, so the supplementary bill takes a line posted after it), never on an invoice of its own.
        */
-      const episode = await episodeChargeStanding(sp, ctx.encounterNo);
+      const episode = await episodeChargeStanding(sp, ctx.encounterNo, { lock: true });
       const invoice = episode !== null ? null : await issueInvoice(
         sp as unknown as Db,
         actor,

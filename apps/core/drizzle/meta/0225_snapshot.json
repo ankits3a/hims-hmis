@@ -1,5 +1,5 @@
 {
-  "id": "d8e59673-e30c-4c1f-b284-b7b1ccfb789e",
+  "id": "264aaa50-4142-4221-bec2-fe73ebdb804c",
   "prevId": "05d1ae40-ddf9-402b-a22a-4a19cf1702c2",
   "version": "7",
   "dialect": "postgresql",
@@ -56332,7 +56332,7 @@
         },
         "ipd_charge_exceptions_reason_ck": {
           "name": "ipd_charge_exceptions_reason_ck",
-          "value": "\"ipd_charge_exceptions\".\"reason\" in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated')"
+          "value": "\"ipd_charge_exceptions\".\"reason\" in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated', 'order_cancelled_after_bill', 'order_cancelled_after_work')"
         },
         "ipd_charge_exceptions_shape_ck": {
           "name": "ipd_charge_exceptions_shape_ck",

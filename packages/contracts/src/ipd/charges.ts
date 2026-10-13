@@ -77,7 +77,7 @@ export const IpdChargeExceptionViewSchema = z.object({
   component: IpdChargeComponentSchema.nullable(),
   billedClass: IpdBedClassSchema.nullable(),
   serviceCode: z.string().nullable(),
-  reason: z.enum(["rate_missing", "tariff_missing", "posting_failed", "visit_backdated"]),
+  reason: z.enum(["rate_missing", "tariff_missing", "posting_failed", "visit_backdated", "order_cancelled_after_bill", "order_cancelled_after_work"]),
   errorCode: z.string().nullable(),
   failCount: z.number().int().nonnegative(),
   firstSeenAt: IpdInstantSchema,

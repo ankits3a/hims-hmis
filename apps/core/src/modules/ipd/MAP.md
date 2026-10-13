@@ -331,7 +331,27 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   CANCEL: before the work (lab: no tube COLLECTED; imaging: not on the machine — the department decides `workStarted`) → a
   reversal line; after → nothing (billing reverses with `ipd.charges.reverse`); a line a settled bill took is left (void
   first). Radiology raises no `acquired_unbilled` for an `ipd_admission` study. Diagnostics take no proportional deduction.
-  The deposit ladder counts the lines at its next run (nightly / any act that re-checks); posting does not run it.
+  REVIEW OF 47cd79f5 (DECIDED unless marked):
+  - LOCK ORDER: every door takes the admission's advisory lock FIRST (`episodeChargeStanding(…, { lock: true })` → sink
+    `lock`), then reads the standing under it, before its own rows; posting and reversal re-read under the lock.
+  - PRICE: an EXPLICIT ₹0 item posts a ₹0 line; an absent item or a switched-off service is `rate_missing`.
+  - $ OWNER TO CONFIRM — IMAGING FEE SWITCH: decision 0067 rules "a study ordered while imaging is free is authorised free"
+    with no OPD limit, so an inpatient scan ordered while the imaging fee is off posts a ₹0 line (the OPD path's answer).
+    The lab switch prices lab lines at the counter only (`withFeeSwitches`); inpatient lab lines are not changed by it.
+  - CANCEL: a line a settled bill took is never reversed behind it — `order_cancelled_after_bill` goes to the bill desk
+    (key ends `:<order item>:cancel_billed`); a LAB test cancelled after its sample was COLLECTED raises
+    `order_cancelled_after_work` (radiology raises its own `performed_then_cancelled`). Billing answers with
+    `ipd.charges.reverse` (after a void, #763) or `keepOrderCharge` (`POST /ipd/charge-lines/:id/keep`); either closes it.
+    The department hears the outcome (`refundOnCancel` `runningBill`, `cancelStudy` `runningBill`).
+  - AFTER THE BILL / AFTER DISCHARGE: an order the department accepted is always posted; with a live bill it is the
+    supplementary bill's (`postIpdOrderCharges` → `supplementary: true`). A scan whose order item is on the running bill
+    (`covers`) is authorised `ipd_admission` and raises no `acquired_unbilled` whether or not the stay is still live; its
+    report-ready message is never held for payment. A scan with NO line raises `acquired_unbilled` as before.
+  - FAIL CLOSED: billing's `issueInvoice` refuses any `IP26-000123` episode (`ipd_running_bill`), and a door in a process
+    with no sink registered refuses the order `running_bill_unavailable` (billing writes the grammar out; it imports no
+    module). The lab desk refuses a tender on a live admission (`ipd_running_bill`); its preview answers `runningBill: true`
+    and the web hides the tender.
+  - The deposit ladder re-checks right after a posting (`evaluateDepositLadderSafely`, a savepoint; a failure is logged).
 
 ### Payer split (E2.2, #726)
 - COMPUTED ON READ, never stored per line: the interim bill computes it every time from the record. Only a PRINT keeps it
@@ -862,8 +882,11 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (#785) With `opts.tx` the ordering door runs the IMAGING order in the caller's transaction too (a savepoint): the sink takes
   the admission's advisory lock and the line's FK takes a key-share lock on the admission row, both held by `placeTests` — a
   second connection would wait for ever. Any new caller that holds the admission lock and orders imaging must pass `tx`.
-- (#785) Orders placed on an `IP` number BEFORE this change carry a held invoice and no line; a scan of that era is now
-  exempt from `acquired_unbilled` (staging data only — IPD is not live).
+- (#785) STAGING DATA: orders placed on an `IP` number BEFORE this change carry a held lab invoice and no line, and their
+  scans have no line — left as they are (staging only; IPD is not live). Such a scan still raises `acquired_unbilled`.
+- (#785) MIGRATION 0225 LOCK WINDOW: the ALTERs on `ipd_charge_lines` / `ipd_charge_exceptions` take an ACCESS EXCLUSIVE
+  lock and re-validate the widened CHECKs over every row — a few ms on staging; at go-live run it outside OPD hours.
+  Regenerated in place before merge: a lane test DB that applied the first 0225 must be dropped.
 - (E4.2) `charges.ts` `postConsultantVisit` treats `covering_for` as the treating consultant: the 08:00 clock writes it, so a
   covering head's visit is `visit`, not `cross_visit`.
 

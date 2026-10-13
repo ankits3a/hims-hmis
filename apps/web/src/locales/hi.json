@@ -4314,6 +4314,7 @@
       "flag_N": "सामान्य"
     },
     "desk": {
+      "runningBill": "आईपीडी चालू बिल में जुड़ा",
       "title": "लैब रिसेप्शन",
       "place": "काउंटर L-01",
       "arrivedToday": "आज पोर्टल से आए",
@@ -17297,6 +17298,8 @@
     "billsAs": "बिल दर",
     "now": "अभी",
     "reason": {
+      "order_cancelled_after_bill": "बिल के बाद ऑर्डर रद्द",
+      "order_cancelled_after_work": "सैंपल के बाद ऑर्डर रद्द",
       "rate_missing": "दर नहीं",
       "tariff_missing": "टैरिफ़ नहीं",
       "posting_failed": "पोस्टिंग विफल",
@@ -17605,6 +17608,8 @@
     "all": "सभी",
     "empty": "कुछ भी लंबित नहीं। सामान्य चालू बिल यहाँ नहीं दिखते।",
     "reason": {
+      "order_cancelled_after_bill": "बिल के बाद रद्द",
+      "order_cancelled_after_work": "सैंपल के बाद रद्द",
       "deposit_90": "जमा 90 % उपयोग",
       "deposit_75": "जमा 75 % उपयोग",
       "icu_low_days": "ICU: एक दिन की जमा शेष",

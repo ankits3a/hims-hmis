@@ -8,7 +8,7 @@ import {
 import { appendEvent } from "../../kernel/events/append";
 import { placeOrder } from "../../kernel/orders/place";
 import { startInstance } from "../../kernel/workflow/instances";
-import { episodeChargeStanding, issueInvoice } from "../billing";
+import { episodeChargeStanding, issueInvoice, previewInvoice, refuseRunningBillTender } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { getEncounter, LAB_DEPARTMENT_CODE, openLabWalkinInTx } from "../opd";
 import { getPatientSummaries, listMergedLoserIds, resolvePatientId, searchPatients } from "../patients";
@@ -231,6 +231,30 @@ async function ensureUnattributedReferrer(tx: Tx, actor: Actor): Promise<string>
  * `decls` is a REQUIRED parameter and not a registry, which is `placeOrder`'s own ruling repeated
  * one layer out: carrying both would be two hand-maintained copies of one fact in a single call.
  */
+/**
+ * The desk's "what will this cost" (`POST /lab/desk/preview`). #785 review: an inpatient on a live admission is billed on
+ * the IPD running bill — the answer says so (`runningBill: true`) with no lines to collect, and the seat shows no tender.
+ * Otherwise billing's own `previewInvoice`, the same pricing the issue path runs.
+ */
+export type DeskPreview = (Awaited<ReturnType<typeof previewInvoice>> & { runningBill?: false }) | {
+  runningBill: true; tariffVersionId: null; intendedPayer: "ipd_running_bill"; lines: [];
+  totals: { grossPaise: 0; discountPaise: 0; taxableBasePaise: 0; cgstPaise: 0; sgstPaise: 0; roundingPaise: 0; netPayablePaise: 0 };
+};
+export async function previewDeskOrder(
+  db: Db, input: { patientId: string; encounterNo?: string; serviceIds: readonly string[] },
+): Promise<DeskPreview> {
+  if (input.encounterNo !== undefined && (await episodeChargeStanding(db, input.encounterNo))?.standing === "live") {
+    return {
+      runningBill: true, tariffVersionId: null, intendedPayer: "ipd_running_bill", lines: [],
+      totals: { grossPaise: 0, discountPaise: 0, taxableBasePaise: 0, cgstPaise: 0, sgstPaise: 0, roundingPaise: 0, netPayablePaise: 0 },
+    };
+  }
+  return previewInvoice(db, {
+    patientId: input.patientId, encounterId: input.encounterNo,
+    lines: input.serviceIds.map((serviceId, i) => ({ lineId: `preview-${String(i)}`, serviceId, qty: 1 })),
+  });
+}
+
 export async function deskOrder(
   tx: Tx,
   actor: Actor,
@@ -299,13 +323,16 @@ export async function placeLabOrder(
    * takes the lines itself: a LIVE admission gets no invoice from this desk (step 5 is skipped and the sink posts each
    * item), and an ENDED one takes no new order at all.
    */
-  const episode = await episodeChargeStanding(tx, input.encounterNo);
+  // Review of 47cd79f5 (lock order): the admission's lock FIRST, before this order writes anything; standing read under it.
+  const episode = await episodeChargeStanding(tx, input.encounterNo, { lock: true });
   if (episode?.standing === "ended") {
     throw new LabError("encounter_closed", `admission ${input.encounterNo} has ended — a new test needs a new episode`, {
       encounterNo: input.encounterNo,
     });
   }
   const onRunningBill = episode?.standing === "live";
+  // Review: the money is taken on the running bill — a receipt or tender at this counter is refused, by code.
+  if (onRunningBill && input.receipt !== undefined) refuseRunningBillTender(input.encounterNo);
 
   /**
    * (1) EVERY SERVICE ID IS AN ORDERABLE THIS HOSPITAL HAS, AND AN ORPHAN IS NAMED (A5).

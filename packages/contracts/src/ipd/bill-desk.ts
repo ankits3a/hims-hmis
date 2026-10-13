@@ -19,6 +19,8 @@ export const IPD_BILLDESK_REASONS = [
   "cash_consent_missing", "auth_pending_24h", "discharge_balance",
   // E4.2 review (#734): a round backdated past yesterday 10:00 IST — recorded, not charged; billing reviews it.
   "visit_backdated",
+  // #785 review: a lab / imaging order cancelled after its line went on a settled bill, or (lab) after the sample was taken.
+  "order_cancelled_after_bill", "order_cancelled_after_work",
 ] as const;
 export const IpdBillDeskReasonSchema = z.enum(IPD_BILLDESK_REASONS);
 export type IpdBillDeskReason = z.infer<typeof IpdBillDeskReasonSchema>;

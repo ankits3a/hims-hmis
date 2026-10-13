@@ -155,7 +155,8 @@ async function assertEncounterOpen(tx: Tx, encounterNo: string, now: Date): Prom
    * #785 — an episode that bills on its own running bill (an inpatient admission, `IP…`) answers through billing's
    * episode charge sink: an ENDED admission takes no new scan. A live one is placed and charged to its bill below.
    */
-  const episode = await episodeChargeStanding(tx, encounterNo);
+  // #785 review (lock order): the admission's lock FIRST, the standing read under it, before this order writes anything.
+  const episode = await episodeChargeStanding(tx, encounterNo, { lock: true });
   if (episode?.standing === "ended") {
     throw new RadiologyError(
       "encounter_closed",

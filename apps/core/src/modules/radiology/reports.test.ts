@@ -347,6 +347,17 @@ describe("the report: versioned, signed, amended, published (18a T8)", () => {
     expect(await db.select().from(notifications).where(eq(notifications.templateKey, "imaging_report_ready"))).toEqual([]);
   });
 
+  /** #785 review (item 9) — an inpatient's study (`ipd_admission`) is billed on the running bill: its message is not held. */
+  it("#785: an ipd_admission study publishes AND queues report-ready with no invoice line, like a free one", async () => {
+    const study = await acquired();
+    await db.update(imagingStudies).set({ authorisedBy: "ipd_admission" }).where(eq(imagingStudies.id, study.studyId));
+    const { reportId } = await draft(study.studyId);
+    await sign(study.studyId, reportId);
+    const out = await withTx(db, (tx) => publishReport(tx, fx.radiologist, fx.decls, { studyId: study.studyId, now: NOW }));
+    expect(out.notified).toBe(true);
+    expect(await db.select().from(notifications).where(eq(notifications.templateKey, "imaging_report_ready"))).toHaveLength(1);
+  });
+
   /** …and the exception that proves the rule: a RED critical is told regardless of settlement. */
   it("A6: a RED critical publishes AND enqueues even though nothing is settled", async () => {
     const study = await acquired();

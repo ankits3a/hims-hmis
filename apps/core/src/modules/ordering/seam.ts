@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { withTx } from "../../kernel/db/client";
 import { labOrderables } from "../../kernel/db/schema";
 import { OrderError } from "../../kernel/orders/errors";
+import { BillingError } from "../billing";
 import { LabError, placeLabOrder } from "../lab";
 import { placeImagingOrder, RadiologyError } from "../radiology";
 import { routeTests } from "./route";
@@ -58,7 +59,8 @@ export type OrderTestsResult = {
 
 /** A department's refusal that the desk can finish by hand. Anything else (a bug, the database) is thrown. */
 function refusal(e: unknown): { code: string; message: string } | null {
-  if (e instanceof LabError || e instanceof RadiologyError || e instanceof OrderError) {
+  // #785 review: billing's running-bill refusals (`running_bill_unavailable`, `ipd_running_bill`) are a department's too.
+  if (e instanceof LabError || e instanceof RadiologyError || e instanceof OrderError || e instanceof BillingError) {
     return { code: (e as { code: string }).code, message: e.message };
   }
   return null;

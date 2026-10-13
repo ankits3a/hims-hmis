@@ -24,6 +24,7 @@ import "./ipd-bill-desk.css";
 const REASONS: readonly IpdBillDeskReason[] = [
   "deposit_90", "deposit_75", "icu_low_days", "posting_failed", "rate_missing", "tariff_missing", "deposit_check_pending",
   "cash_consent_missing", "auth_pending_24h", "discharge_balance", "visit_backdated",
+  "order_cancelled_after_bill", "order_cancelled_after_work",
 ];
 const HOT: ReadonlySet<IpdBillDeskReason> = new Set(["deposit_90", "icu_low_days", "posting_failed", "discharge_balance"]);
 

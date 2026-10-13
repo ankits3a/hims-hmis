@@ -20,6 +20,11 @@ import type { IpdRefusalCode } from "./refusals";
 
 /** A ULID entity id (patient, admission, bed, order, task …), the grammar `newId()` mints. */
 export const IpdIdSchema = z.ulid();
+/**
+ * The admission states in which the patient is IN A BED (the stay is live). In contracts (#785 review) so a module that
+ * cannot import ipd without a cycle (radiology) reads the same list instead of a copy.
+ */
+export const IPD_PLACED_STATES = ["admitted", "transferring", "fit_declared", "discharging"] as const;
 /** A staff user id. Not pinned to ULID: seeded and system identities predate the grammar. */
 export const IpdUserRefSchema = z.string().min(1).max(64);
 export const IpdInstantSchema = z.iso.datetime({ offset: true });

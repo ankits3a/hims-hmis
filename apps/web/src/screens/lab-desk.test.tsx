@@ -303,6 +303,33 @@ it("shows the server's refusal verbatim rather than inventing a message", async 
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/not in this hospital's catalogue/));
 });
 
+const TENDER_CARD = "Card";
+it("#785 — an inpatient on a live admission: no tender, 'Billed to IPD running bill', and the order carries no money block", async () => {
+  const IP = { ...FARIDA, visit: { ...FARIDA.visit, encounterNo: "IP26-000123" } };
+  const seen = mockRoutes({
+    "GET /api/lab/collection/queue": { status: 200, body: [] },
+    "GET /api/lab/desk/find": { status: 200, body: { hits: [IP], labDoctors: [] } },
+    "POST /api/lab/catalogue/duplicates": { status: 200, body: [] },
+    "POST /api/lab/desk/preview": { status: 200, body: {
+      runningBill: true, tariffVersionId: null, intendedPayer: "ipd_running_bill", lines: [],
+      totals: { grossPaise: 0, discountPaise: 0, taxableBasePaise: 0, cgstPaise: 0, sgstPaise: 0, roundingPaise: 0, netPayablePaise: 0 },
+      tubes: [{ container: "edta", specimenType: "whole_blood", codes: ["CBC", "HBA1C"] }],
+    } },
+    "POST /api/lab/desk/orders": { status: 201, body: { ...PLACED, encounterNo: "IP26-000123", invoice: null } },
+  });
+  await findByToken(seen);
+  /** No tender is offered for an inpatient — before and after the price. */
+  expect(screen.queryByRole("option", { name: TENDER_CARD })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Check & price" }));
+  await waitFor(() => expect(screen.getByTestId("money")).toHaveTextContent("Billed to IPD running bill"));
+  expect(screen.queryByRole("option", { name: TENDER_CARD })).toBeNull();
+  expect(screen.getByTestId("money")).not.toHaveTextContent("Collect now");
+  await userEvent.click(screen.getByRole("button", { name: /Save/ }));
+  await waitFor(() => expect(screen.getByTestId("placed")).toHaveTextContent("Billed to IPD running bill"));
+  const sent = seen.find((s) => s.path === "/api/lab/desk/orders")!.body as { receipt?: unknown; credit?: unknown; encounterNo?: string };
+  expect([sent.encounterNo, sent.receipt, sent.credit]).toEqual(["IP26-000123", undefined, undefined]);
+});
+
 it("moneyBlockFor — the four cases, written once", () => {
   const priced = PRICED;
   const paid = (onCredit: boolean, id: string) => ({

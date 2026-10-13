@@ -6,6 +6,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition, WorkflowError } from "../../kernel/workflow/instances";
 import { BillingError, cashThresholdBlocked, episodeChargeSinkFor, issueCreditNote } from "../billing";
+import type { EpisodeReverseOutcome } from "../billing";
 import { getEncounter } from "../opd";
 import { deskOrder, deskWalkinOrder } from "./desk";
 import { LabError } from "./errors";
@@ -61,6 +62,15 @@ export function chargeReasonFor(origin: OrderItemOrigin, walkIn = false): LabCha
   return walkIn ? "lab_walkin" : "lab_desk";
 }
 
+/** #785 review — what the cancel did on the inpatient running bill, in words the desk shows. */
+const RUNNING_BILL_WORDS: Record<EpisodeReverseOutcome, string> = {
+  reversed: "cancelled before the sample was taken — the running bill's line is reversed",
+  work_done: "cancelled after the sample was taken — the line stands; billing decides (bill desk)",
+  billed: "the line is on a settled bill — nothing reversed; billing decides (bill desk)",
+  not_posted: "the test was never charged (its rate was missing) — nothing to reverse",
+  none: "nothing on the running bill to reverse",
+};
+
 export type RefundOutcome = {
   orderItemId: string;
   cancelledFrom: string;
@@ -69,6 +79,8 @@ export type RefundOutcome = {
   creditNoteId: string | null;
   creditedPaise: number;
   reason: string;
+  /** #785 — set when the test was on an inpatient's running bill: what the cancel did there. */
+  runningBill?: EpisodeReverseOutcome;
 };
 
 /**
@@ -162,15 +174,13 @@ export async function refundOnCancel(
       const drawn = item.cancelledFrom !== "placed" || (await tx.select({ id: labSpecimens.id }).from(labSpecimenItems)
         .innerJoin(labSpecimens, eq(labSpecimens.id, labSpecimenItems.specimenId))
         .where(and(eq(labSpecimenItems.orderItemId, orderItemId), isNotNull(labSpecimens.collectedAt))).limit(1)).length > 0;
-      await sink.reverse(tx, actor, {
+      const runningBill = await sink.reverse(tx, actor, {
         orderItemId, workStarted: drawn, reason: item.cancelReason ?? "no reason recorded", at: now,
       });
       return {
-        orderItemId, cancelledFrom: item.cancelledFrom, workDone: false,
-        creditNoteId: null, creditedPaise: 0,
-        reason: drawn
-          ? "cancelled after the sample was taken — the running bill's line stands for billing to review"
-          : "cancelled before the sample was taken — the running bill's line is reversed",
+        orderItemId, cancelledFrom: item.cancelledFrom, workDone: drawn,
+        creditNoteId: null, creditedPaise: 0, runningBill,
+        reason: RUNNING_BILL_WORDS[runningBill],
       };
     }
     return {

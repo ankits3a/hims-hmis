@@ -4314,6 +4314,7 @@
       "flag_N": "Normal"
     },
     "desk": {
+      "runningBill": "Billed to IPD running bill",
       "title": "Lab reception",
       "place": "Counter L-01",
       "arrivedToday": "arrived on the portal today",
@@ -17297,6 +17298,8 @@
     "billsAs": "bills as",
     "now": "now",
     "reason": {
+      "order_cancelled_after_bill": "Order cancelled after the bill",
+      "order_cancelled_after_work": "Order cancelled after the sample",
       "rate_missing": "Rate missing",
       "tariff_missing": "No tariff",
       "posting_failed": "Posting failed",
@@ -17605,6 +17608,8 @@
     "all": "All",
     "empty": "Nothing needs the desk. Normal running bills are not listed.",
     "reason": {
+      "order_cancelled_after_bill": "Cancelled after bill",
+      "order_cancelled_after_work": "Cancelled after sample",
       "deposit_90": "Deposit 90 % used",
       "deposit_75": "Deposit 75 % used",
       "icu_low_days": "ICU: a day of deposit left",

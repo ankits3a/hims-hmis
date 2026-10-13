@@ -1,4 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
+import { IPD_PLACED_STATES } from "@hmis/contracts";
 import { ipdAdmissions, ipdBedStays, resources } from "../../kernel/db/schema";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -25,7 +26,8 @@ export type AdmissionPlace = {
   wardName: string | null;
 };
 
-export const IPD_PLACED_STATES = ["admitted", "transferring", "fit_declared", "discharging"] as const;
+/** #785 review: the list lives in contracts (radiology reads it too); re-exported here for every existing import. */
+export { IPD_PLACED_STATES } from "@hmis/contracts";
 export const IPD_ENDED_STATES = ["discharged", "lama", "absconded", "deceased", "transferred_out"] as const;
 
 /**

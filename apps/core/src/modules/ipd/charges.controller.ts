@@ -2,7 +2,7 @@ import { Body, Controller, HttpException, Inject, Param, Post } from "@nestjs/co
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
-import { reverseChargeLine } from "./charges";
+import { keepOrderCharge, reverseChargeLine } from "./charges";
 import { IpdError, IpdRefusal, ipdRefusalStatus } from "./errors";
 import { IPD_CHARGES_REVERSE } from "./manifest";
 import type { Actor } from "@hmis/contracts";
@@ -40,6 +40,16 @@ export class IpdChargesController {
     try {
       const { reason } = reverseBody.parse(body);
       return await reverseChargeLine(this.db, actor, { chargeLineId: id, reason });
+    } catch (e) { toHttp(e); }
+  }
+
+  /** #785 review — a cancelled lab / imaging order's line STANDS (work done, or the settled bill stays): the decision closes. */
+  @Post(":id/keep")
+  @RequirePermission(IPD_CHARGES_REVERSE, "hospital")
+  async keep(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ resolved: number }> {
+    try {
+      const { reason } = reverseBody.parse(body);
+      return await keepOrderCharge(this.db, actor, { chargeLineId: id, reason });
     } catch (e) { toHttp(e); }
   }
 }
