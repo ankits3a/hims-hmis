@@ -1,0 +1,54 @@
+/*
+ * E2.3 — THE BILL DESK (spec §4.9 H) on the interim bill's tokens (`.ipdb`, `ipd-bill.css`), scoped `.ipdbd`.
+ * The page never scrolls at 1920×1080 or 1366×768: the list scrolls inside its panel. Words carry every meaning; colour
+ * only repeats them (a "Deposit 90 % used" chip is red AND says so).
+ */
+/* The shell's chrome (header, nav, a mode banner) sits above: the page itself is not stretched to the viewport, and the
+   list takes what is left after ~350 px of chrome, title, counts and the footnote. */
+.ipdb.ipdbd { min-height: 0; height: auto; overflow: visible; } /* `.ipdb` is also the Beds board's root class (100vh, hidden). */
+.ipdbd .ipdb-tag.hot { color: var(--red); background: var(--red-soft); border-color: transparent; }
+
+.ipdbd-counts { display: flex; flex-wrap: wrap; gap: 8px; }
+.ipdbd-count {
+  min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.ipdbd-count .n { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ipdbd-count.hot .n { color: var(--red); }
+.ipdbd-count.on { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); background: var(--green-soft); }
+.ipdbd-count:disabled { cursor: default; color: var(--dim); background: var(--wash); }
+
+.ipdbd-list { max-height: calc(100vh - 350px); min-height: 240px; overflow: auto; padding: 0; }
+.ipdbd-list table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ipdbd-list thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--card); text-align: left; font-size: 12px; font-weight: 500;
+  color: var(--dim); padding: 10px 10px 8px; border-bottom: 1px solid var(--line);
+}
+.ipdbd-list td { padding: 8px 10px; border-bottom: 1px solid var(--wash); vertical-align: top; }
+.ipdbd-why { max-width: 340px; }
+.ipdbd-why .ipdb-tag { margin-bottom: 3px; font-size: 12px; }
+.ipdbd-used { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ipdbd-used.warn { color: var(--gold); font-weight: 600; }
+.ipdbd-used.hot { color: var(--red); font-weight: 600; }
+.ipdbd-bar { width: 56px; height: 6px; border-radius: 3px; background: var(--wash); overflow: hidden; display: inline-block; }
+.ipdbd-bar > span { display: block; height: 100%; background: currentColor; }
+.ipdbd-due { color: var(--red); }
+.ipdbd-act { white-space: nowrap; text-align: right; }
+.ipdbd-act .ipdb-btn { min-height: 36px; padding: 0 12px; margin-left: 6px; font-size: 13px; }
+.ipdbd-list td .mono.small, .ipdbd-since { white-space: nowrap; }
+.ipdbd-empty { padding: 24px; margin: 0; color: var(--dim); }
+.ipdbd-notice { margin: 0; font-size: 14px; color: var(--green); font-weight: 600; }
+
+@media (max-width: 1500px) {
+  .ipdbd-list { font-size: 13px; }
+  .ipdbd-list td { padding: 6px 8px; }
+  .ipdbd-why { max-width: 240px; }
+  .ipdb.ipdbd { padding-top: 14px; gap: 10px; }
+  .ipdbd-list { max-height: calc(100vh - 380px); }
+  .ipdbd-counts { gap: 6px; }
+  .ipdbd-count { min-height: 36px; padding: 0 10px; font-size: 12px; }
+  .ipdbd-count .n { font-size: 16px; }
+}
+@media (max-width: 900px) {
+  .ipdbd-list { max-height: none; overflow-x: auto; }
+}

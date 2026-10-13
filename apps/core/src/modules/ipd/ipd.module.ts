@@ -3,6 +3,7 @@ import { RealtimeGateway } from "../../kernel/realtime/gateway";
 import { RealtimeModule } from "../../kernel/realtime/realtime.module";
 import { IpdAdmissionsController } from "./admissions.controller";
 import { IpdBedsController } from "./beds.controller";
+import { IpdBillDeskController } from "./billdesk.controller";
 import { IpdChargesController } from "./charges.controller";
 import { registerIpdReceiptGuard } from "./deposit";
 import { IpdPayerController } from "./payer.controller";
@@ -26,7 +27,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdBillDeskController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

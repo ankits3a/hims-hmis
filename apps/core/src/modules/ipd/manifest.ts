@@ -1,3 +1,4 @@
+import { depositLowCard } from "./bill-desk";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -29,6 +30,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *                       the non-payables list — the billing manager (the TPA desk sits in billing). Status and
  *                       pre-auth number stay with `ipd.payer.manage` (front office).
  *
+ * E2.3 (#727) adds one. NO DOCTOR ROLE HOLDS IT (decision 0058):
+ *
+ *   ipd.billdesk.view   the bill desk (exceptions only: deposit ladder, posting exceptions, unchecked downtime deposits,
+ *                       cash consent, waiting authorisations, discharges with a balance) and its `deposit_low` Now card —
+ *                       cashier, billing manager, front-office supervisor, duty manager, owner
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). No subscriptions: the 2-hour reservation
  * lapse is a scheduler job (`kernel/worker/jobs.ts` `lapseBedReservations`), so the worker does not install this
  * manifest.
@@ -44,6 +51,7 @@ export const IPD_BAND_PRINT = "ipd.band.print";
 export const IPD_BILL_VIEW = "ipd.bill.view";
 export const IPD_CHARGES_REVERSE = "ipd.charges.reverse";
 export const IPD_PAYER_TERMS = "ipd.payer.terms";
+export const IPD_BILLDESK_VIEW = "ipd.billdesk.view";
 
 export const ipdManifest: ModuleManifest = {
   key: "ipd",
@@ -51,10 +59,14 @@ export const ipdManifest: ModuleManifest = {
   menu: [
     { label: "Beds", path: "/ipd/beds", permission: IPD_BEDS_VIEW },
     { label: "Admit", path: "/ipd/admit", permission: IPD_ADMIT },
+    { label: "Bill desk", path: "/ipd/bill-desk", permission: IPD_BILLDESK_VIEW },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
-    IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS,
+    IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_BILLDESK_VIEW,
   ],
   subscriptions: [],
+  // E2.3 (#727) — the bill desk's `deposit_low` Now card.
+  // Declared here (not in bill-desk.ts) because that file imports this one: the card is called lazily.
+  desk: [{ key: "ipd.billdesk", permission: IPD_BILLDESK_VIEW, load: async (ctx) => depositLowCard(ctx.db) }],
 };

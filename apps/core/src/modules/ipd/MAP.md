@@ -1,7 +1,7 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3)."
 resource: apps/core/src/modules/ipd
 tags: [ipd, beds, resources, admission, billing]
 generated: { by: agent:claude, at: 2026-10-12 }
@@ -81,6 +81,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `IpdRoomRentCapWarning`, routes; the interim bill carries `payerSplit` and `patientBalancePaise`; `IpdClassQuote.capWarning`.
   `patients` `coverageSumInsuredPaise` (new; the only patients read). Web: `apps/web/src/screens/ipd-bill.tsx` Payer/Patient columns and
   the Payer split card; `apps/web/src/screens/ipd-admit.tsx` shows `capWarning.words` on a class card.
+
+- (E2.3) `deposit-ladder.ts` — `IPD_DEPOSIT_LADDER` (7,500 / 9,000 bp), `IPD_DEPOSIT_RECIPIENT_ROLES`, `IPD_CLINICAL_ROLES`,
+  `depositPosition` (split + deposit held + used bp + balances), `evaluateDepositLadder(db, admissionId, now)`,
+  `evaluateAllDepositLadders`, `icuBurnOf`. `daily-totals.ts` — `queueDailyTotals`, `queueAllDailyTotals`, `messageNameOf`,
+  `dayOfStay`. `bill-desk.ts` — `readBillDesk`, `retryFromBillDesk`, `runIpdBillDeskNightly` (rides the nightly charges job),
+  `depositLowCard` (the desk's `ipd.deposit_low` Now card, declared in `manifest.ts`). `billdesk.controller.ts` —
+  `IPD_BILLDESK_ROUTES` (`GET /ipd/bill-desk`, `POST /ipd/admissions/:id/charges/retry`). `billdesk-events.ts`.
+  `kernel/db/schema/ipd.ts` — `ipd_deposit_alerts` (migration `ipd_billdesk`). `packages/contracts/src/ipd/bill-desk.ts`.
+  `kernel/notify/templates.ts` — template `ipd.daily_totals` (held: `heldReason`), `kernel/notify/pump.ts` suppresses a held
+  template `template_pending`. Web: `apps/web/src/screens/ipd-bill-desk.tsx` (`/ipd/bill-desk`, nav "Bill desk").
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -270,6 +280,35 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - MONEY OFF DOCTORS (0058): the split rides on the interim bill (`ipd.bill.view`); the cap warning needs `ipd.bill.view` or
   `ipd.admit`; the non-payables list `ipd.payer.terms`. No doctor role holds any of them.
 
+### Deposit ladder, daily totals, bill desk (E2.3, #727)
+- USED = the payer split's patient-payable total ÷ the deposit held (`depositHeldPaise`: receipts − advance refunds). A
+  payable bill with NOTHING held counts as over 100 % (stored 1,000,000 bp) and fires both levels (DECIDED $); nothing
+  payable and nothing held is no usage (a scheme patient never alerts).
+- ONCE WHILE ARMED: one live `ipd_deposit_alerts` row per (admission, level) — a partial unique index. Usage back under
+  a level (a top-up, a reversal, a payer approval) re-arms it (`rearmed_at`), and the next crossing fires a NEW row and new
+  notices (DECIDED, #727). Notices are keyed `ipd.deposit_alert:<row id>` per person, so a retry raises nothing twice.
+- WHEN: after the nightly posting (`runIpdBillDeskNightly`, inside the `postNightlyIpdCharges` job — no job of its own),
+  after a deposit (`takeDeposit`, after its commit) and after a bill-desk Retry. Only admissions in a bed (admitted,
+  transferring, fit declared, discharging).
+- WHO (DECIDED $): 75 % → cashier, front-office supervisor, billing manager; 90 % → also duty manager and medical
+  superintendent. A holder of any clinical role (`IPD_CLINICAL_ROLES`) is dropped even if they also hold a desk role.
+- CARE NEVER STOPS FOR MONEY: only `deposit-ladder.ts` and `bill-desk.ts` read `ipd_deposit_alerts`; acceptance (v) pins the
+  file list and that a round and the next night still post over 90 %.
+- ICU BURN: open stay billed ICU/HDU/NICU/PICU → average patient-payable of the last three POSTED service days; days left =
+  (held − payable) ÷ per day, floored. Recomputed by construction when the nightly run posts. ≤ 1 day left is a desk exception.
+- DAILY TOTALS: once per admission per IST day (dedupe `ipd.daily_totals:<admission>:<date>`), the bill through yesterday:
+  first name (alias when confidential), day of stay, bill total (rounded), deposit held, balance ("amount due" when
+  negative). NO line, diagnosis, ward, bed or doctor. Attendant (DECIDED): active guardian with a phone and bill authority,
+  else the latest deposit payer recorded as a relative with a phone; travels as a reference (`attendant`, `attendantRef`),
+  never a number. None → `ipd.daily_totals.skipped` `no_attendant_phone`; sealed (`sensitive_context`) → `sealed`, no row.
+  HELD: no approved WhatsApp template, no DLT id, and the pump addresses a patient row to the patient's phone — the pump
+  records every row `suppressed` / `template_pending`. G10 therefore measures nothing until the template is released.
+- BILL DESK: candidates from the facts (live ladder rows, open charge exceptions, unchecked downtime deposits, denial
+  entries, the latest authorisation `requested` > 24 h, ICU-class stays, `fit_declared`/`discharging`); only those are
+  computed. "Expected discharge today" = `fit_declared` or `discharging` with the patient owing (DECIDED, no date field yet).
+  `ipd.billdesk.view` (cashier, billing manager, front-office supervisor, duty manager, owner); Retry needs
+  `ipd.charges.reverse`.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -319,6 +358,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E2.2) Scheme non-covered money is per approval, not per line: no charge line is marked non-covered (approvals carry
   an amount). A line-level mark is owed if the scheme desk needs it.
 
+- (E2.3) `.ipdb` is ALSO the Beds board's root class (`ipd-beds.css`: `height: 100vh; overflow: hidden`), and vite loads
+  every screen's CSS globally: the bill desk overrides it with `.ipdb.ipdbd`. The interim bill (`apps/web/src/screens/ipd-bill.tsx`) still
+  inherits the collision (owed).
+- (E2.3) Releasing the daily totals: approve the WhatsApp template / DLT id, give the pump a recipient seam that resolves
+  `attendantRef` at send time, then remove `heldReason` from `ipd.daily_totals`. Until then nothing is sent.
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -331,3 +376,5 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   the final bill (E3.2) calls `postAdmissionCharges`; `admissions.controller.ts` serves `readInterimBill`.
 - (E2.2) `readInterimBill` calls `computePayerSplit`; `quotesFor` calls `capWarningsFor`; the transfer/class-change lane
   calls `roomRentCapWarning` before an upgrade consent; the final bill (E3.2) will call `computePayerSplit` and keep it.
+- (E2.3) `kernel/worker/jobs.ts` (`postNightlyIpdCharges` job → `runIpdBillDeskNightly`); `takeDeposit` → `evaluateDepositLadder`;
+  `kernel/desk` collects the `ipd.billdesk` provider from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.

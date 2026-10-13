@@ -33,7 +33,7 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
-import { lapseBedReservations, postNightlyIpdCharges } from "../../modules/ipd";
+import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly } from "../../modules/ipd";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -723,6 +723,7 @@ export function registerAllJobs(
   scheduler.register({
     name: "postNightlyIpdCharges",
     dailyIst: IPD_NIGHTLY_CHARGES_IST,
-    run: async (now) => { await postNightlyIpdCharges(db, now); },
+    // E2.3 (#727): the deposit ladder and the daily totals ride this job, after the posting — no job of their own.
+    run: async (now) => { await postNightlyIpdCharges(db, now); await runIpdBillDeskNightly(db, now); },
   });
 }

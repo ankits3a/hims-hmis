@@ -81,3 +81,13 @@ export {
   addPayerNonPayable, computePayerSplit, listPayerNonPayables, retirePayerNonPayable, roomRentCapWarning,
 } from "./payer-bill";
 export { printInterimBillSnapshot } from "./interim-bill";
+// E2.3 (#727) — the deposit ladder, the daily totals to the attendant, the bill desk and its Now card.
+export { IPD_BILLDESK_VIEW } from "./manifest";
+export {
+  IPD_CLINICAL_ROLES, IPD_DEPOSIT_LADDER, IPD_DEPOSIT_RECIPIENT_ROLES, depositNoticeRecipients, depositPosition, evaluateAllDepositLadders,
+  evaluateDepositLadder, icuBurnOf, usedBpOf,
+} from "./deposit-ladder";
+export type { DepositLevel, DepositPosition, LadderOutcome } from "./deposit-ladder";
+export { dayOfStay, messageNameOf, queueAllDailyTotals, queueDailyTotals } from "./daily-totals";
+export type { DailyTotalsResult } from "./daily-totals";
+export { depositLowCard, readBillDesk, retryFromBillDesk, runIpdBillDeskNightly } from "./bill-desk";

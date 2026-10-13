@@ -38,6 +38,14 @@ export type NotificationTemplate = {
    * that is ready is. Absent = the desk task, as every template before this one.
    */
   deskFlagOnFailure?: false;
+  /**
+   * IPD E2.3 (#727) — the pump SUPPRESSES every row of this template with this reason instead of sending it. For a
+   * template that no provider may carry yet: business-initiated WhatsApp needs a Meta-approved template, a live DLT SMS
+   * needs a registered id, and the daily-totals message goes to the ATTENDANT, whom the pump cannot address (it sends a
+   * patient row to the patient's own phone). The row is still the record that the message was due (goal G10 reads
+   * it); removing this field is the act that starts sending, after approval and a recipient seam.
+   */
+  heldReason?: "template_pending";
 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -182,6 +190,55 @@ const pharmacyTemplates: Record<string, NotificationTemplate> = {
     },
   },
 };
+/** Paise param → "1,234" (whole rupees, Indian grouping) — the family's message carries rounded totals only. */
+function rupeesOf(params: Record<string, unknown>, key: string): string {
+  return Math.round(Number(params[key]) / 100).toLocaleString("en-IN");
+}
+
+/** The same, unsigned: a negative balance is worded "amount due" by the body, not printed with a minus. */
+function absRupeesOf(params: Record<string, unknown>, key: string): string {
+  return Math.abs(Math.round(Number(params[key]) / 100)).toLocaleString("en-IN");
+}
+
+/**
+ * ═══ IPD E2.3 (#727) — THE DAILY TOTALS TO THE FAMILY, AND WHAT IT MAY NOT SAY ═══
+ *
+ * Totals only: the day of stay, the bill so far, the deposit held and the balance. NO line item, no diagnosis, no ward,
+ * no bed, no doctor — a line item can reveal a diagnosis (spec SPEC-ipd-core §4.3); line items are at the desk or behind
+ * an OTP link (E3.3). The name is the patient's first name, or the alias for a confidential patient, passed in already
+ * chosen. Producer: `modules/ipd/daily-totals.ts` once per admission per IST day, after the nightly charges.
+ *
+ * HELD (`heldReason`): no approved WhatsApp template, no DLT registration, and the attendant is not the patient — the
+ * pump records every row as suppressed `template_pending` until all three exist (decision recorded in ipd MAP.md).
+ */
+const ipdTemplates: Record<string, NotificationTemplate> = {
+  "ipd.daily_totals": {
+    key: "ipd.daily_totals",
+    version: 1,
+    class: "transactional",
+    audience: "patient",
+    urgency: "routine",
+    channels: ["whatsapp", "sms"],
+    waApprovalStatus: "not_submitted",
+    deskFlagOnFailure: false,
+    heldReason: "template_pending",
+    // Dies at the end of the IST day after the one it reports: tomorrow's message supersedes it.
+    expiresAt: (params) => new Date(new Date(`${paramStr(params, "billDate")}T00:00:00+05:30`).getTime() + 48 * HOUR_MS),
+    variables: (params) => [
+      paramStr(params, "name"), paramStr(params, "dayOfStay"), rupeesOf(params, "totalPaise"), rupeesOf(params, "depositPaise"),
+      absRupeesOf(params, "balancePaise"),
+    ],
+    render: {
+      en: (params) =>
+        `Hospital bill for ${paramStr(params, "name")}, day ${paramStr(params, "dayOfStay")}: total so far Rs ${rupeesOf(params, "totalPaise")}, ` +
+        `deposit held Rs ${rupeesOf(params, "depositPaise")}, ${Number(params.balancePaise) < 0 ? "amount due" : "balance"} Rs ${absRupeesOf(params, "balancePaise")}. Details at the billing desk.`,
+      hi: (params) =>
+        `${paramStr(params, "name")} का अस्पताल बिल, दिन ${paramStr(params, "dayOfStay")}: अब तक कुल ₹${rupeesOf(params, "totalPaise")}, ` +
+        `जमा राशि ₹${rupeesOf(params, "depositPaise")}, ${Number(params.balancePaise) < 0 ? "देय राशि" : "शेष"} ₹${absRupeesOf(params, "balancePaise")}। विवरण बिलिंग डेस्क पर।`,
+    },
+  },
+};
+
 export const notificationTemplates: Record<string, NotificationTemplate> = {
   // Producer: patient.registered (modules/patients/events.ts). D8: patient/routine, dies 24h
   // after registration — a welcome nobody read in a day is stale, not late.
@@ -489,6 +546,9 @@ export const notificationTemplates: Record<string, NotificationTemplate> = {
 
   // PHARMACY P6 — the pharmacy's bill and refill reminder (defined above, with what they may not say).
   ...pharmacyTemplates,
+
+  // IPD E2.3 (#727) — the daily totals to the registered attendant (defined below, with what it may not say).
+  ...ipdTemplates,
 };
 
 export function templateByKey(key: string): NotificationTemplate {

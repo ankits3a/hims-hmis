@@ -1710,6 +1710,10 @@ payer- or patient-payable from the manual authorisation record. `ipd.payer.terms
 the letter's money terms (room-rent cap, co-pay) and the non-payables list are the TPA desk's in billing; the status and
 pre-auth number stay with `ipd.payer.manage`.
 
+**IPD bill desk (E2.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.billdesk.view` is held by `cashier`,
+`billing_manager`, `front_office_supervisor`, `duty_manager` and `owner` — the exceptions-only bill desk and its deposit
+card; no doctor role holds it. The deposit ladder tells the desk at 75 % and management at 90 % and never refuses care.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A
