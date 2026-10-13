@@ -65,11 +65,18 @@
     "otList": "Theatre list",
     "otBook": "Book day-care case",
     "otRecovery": "Recovery",
+    "ipdBeds": "Beds",
+    "ipdAdmit": "Admit",
+    "ipdHandovers": "Handovers",
+    "ipdDischarge": "Discharge",
+    "ipdBillDesk": "Bill desk",
+    "ipdFamilyCalls": "Family calls",
     "counterDesk": "Desk One",
     "group": {
       "desk": "Desk",
       "patients": "Patients",
       "opd": "OPD",
+      "wards": "Wards",
       "imaging": "Imaging",
       "lab": "Lab",
       "theatre": "Theatre",
@@ -3185,6 +3192,22 @@
       "law": "The Pharmacy Act (section 42) asks that a registered pharmacist dispenses prescription medicines, and Schedule H1 sales need the prescriber on the register. With this on, the system no longer enforces the first — the hospital answers for it."
     }
   },
+  "ipdRateCard": {
+    "title": "IPD rate card",
+    "lead": "Daily inpatient rates by bed class. Go-live needs a room rent, a nursing charge and a visit fee for every class.",
+    "noAccess": "You do not have access to the price list.",
+    "versionLabel": "Version",
+    "versionInForce": "In force",
+    "versionPending": "Version {{no}} ({{status}})",
+    "status": { "draft": "draft", "submitted": "waiting for approval" },
+    "count": "{{ready}} classes ready to go live, {{missing}} missing",
+    "noVersion": "No tariff version is in force yet.",
+    "colClass": "Bed class",
+    "component": { "room": "Room rent", "nursing": "Nursing", "visit": "Doctor visit", "rmo": "RMO", "cross_visit": "Cross-consult" },
+    "optional": "optional",
+    "missing": "Missing",
+    "notSet": "Not set"
+  },
   "consultPrices": {
     "lead": "The OPD consultation prices in force.",
     "colNow": "In force",
@@ -3693,6 +3716,13 @@
       "seeCount": "See the count",
       "seeApproval": "Find the approval"
     },
+    "ipdDepositLow": {
+      "title": "Deposit running low",
+      "over75": "75 % used",
+      "over90": "90 % used",
+      "exceptions": "Posting exceptions"
+    },
+    "ipdFamilyCallbacks": { "title": "Family asked for a call", "open": "Waiting for a call" },
     "schemes": {
       "title": "Schemes in play",
       "note": "what a patient can walk in holding — attach it before the bill, never after",
@@ -15612,5 +15642,1026 @@
       "rejected": "Not approved",
       "cancelled": "Taken back"
     }
+  },
+  "ipdBeds": {
+    "title": "Beds",
+    "allFloors": "All floors",
+    "find": "Find patient, UHID or bed",
+    "notFound": "No match",
+    "wallMode": "Wall mode · hide names",
+    "showNames": "Show names",
+    "home": "Home",
+    "totals": "Hospital totals",
+    "stat": {
+      "occupied": "Occupied",
+      "occupiedSub": "{{pct}} % · {{reserved}} reserved",
+      "overflow": "Overflow {{occupied}} / {{total}} · not capacity",
+      "free": "Free now",
+      "noneFree": "No free bed",
+      "cleaning": "Cleaning",
+      "cleaningSub": "{{n}} over 60 min",
+      "blocked": "Blocked",
+      "blockedSub": "{{n}} past return date",
+      "discharges": "Discharges today",
+      "dischargesSub": "Expected comes later",
+      "waiting": "Waiting for a bed",
+      "waitingSub": "Comes with admissions",
+      "longest": "Longest {{minutes}} min"
+    },
+    "classShort": {
+      "general": "General",
+      "semi_private": "Semi-pvt",
+      "private": "Private",
+      "deluxe": "Deluxe",
+      "suite": "Suite",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "Day care",
+      "emergency": "ER",
+      "overflow": "Overflow"
+    },
+    "class": {
+      "general": "General ward",
+      "semi_private": "Semi-private",
+      "private": "Private room",
+      "deluxe": "Deluxe room",
+      "suite": "Suite",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "Day care",
+      "emergency": "Emergency",
+      "overflow": "Overflow bed"
+    },
+    "waiting": {
+      "title": "Waiting for a bed",
+      "empty": "No one waiting",
+      "emptySub": "Admission requests appear here",
+      "open": "Open in Admit",
+      "held": "Held · {{bed}}",
+      "wait": "{{minutes}} min",
+      "icu": "ICU"
+    },
+    "floors": "Floors",
+    "floorsHint": "Showing {{shown}} of {{total}} · pick a floor",
+    "pickFloor": "Pick a floor",
+    "floorCount": "{{occupied}} / {{total}} beds",
+    "loading": "Loading beds…",
+    "loadFailed": "Beds could not be loaded",
+    "noBeds": "No beds on file",
+    "status": {
+      "occupied": "Occupied",
+      "incumbent": "Incumbent",
+      "available": "Free",
+      "reserved": "Reserved",
+      "cleaning": "Cleaning",
+      "blocked": "Blocked"
+    },
+    "full": "Full",
+    "notInCensus": "Not in census",
+    "next": {
+      "title": "Next 24 hours",
+      "discharges": "discharges today",
+      "forecast": "Forecast comes later"
+    },
+    "blockers": {
+      "title": "Blockers",
+      "none": "None now",
+      "cleaning": "Cleaning over 60 min",
+      "cleaningItem": "{{bed}} · {{minutes}} min",
+      "blocked": "Blocked past return date"
+    },
+    "live": "Live · updated",
+    "offline": "Offline · last update {{time}}",
+    "offlineNever": "Offline · not updated yet",
+    "outsideCensus": "Day care and ER {{occupied}} / {{total}} · not in census",
+    "print": "Print bed board",
+    "close": "Close",
+    "pickBed": "Pick a bed",
+    "cancel": "Cancel",
+    "actFailed": "Not saved — try again",
+    "until": "Until {{time}}",
+    "since": "Since {{time}}",
+    "back": "back {{time}}",
+    "blockReason": {
+      "maintenance": "Maintenance",
+      "infection_control": "Infection control",
+      "deep_clean": "Deep clean",
+      "staff_shortage": "Staff shortage",
+      "other": "Other"
+    },
+    "releaseReason": {
+      "plan_changed": "Plan changed",
+      "bed_unsuitable": "Bed unsuitable",
+      "other": "Other"
+    },
+    "gender": {
+      "male": "Male only",
+      "female": "Female only",
+      "any": "Any gender",
+      "paediatric": "Children"
+    },
+    "isolation": {
+      "none": "No isolation",
+      "contact": "Contact isolation",
+      "droplet": "Droplet isolation",
+      "airborne": "Airborne isolation"
+    },
+    "icu": "ICU bed",
+    "overflowBed": "Overflow · duty manager approves",
+    "blockedLine": "Blocked",
+    "blockOnReleaseLine": "Block on release",
+    "reservedLine": "Reserved until {{time}}",
+    "act": {
+      "reserve": "Reserve 2 h",
+      "assign": "Assign",
+      "releaseReservation": "Release reservation",
+      "clean": "Mark clean",
+      "releaseIncumbent": "Release",
+      "unblock": "Unblock",
+      "block": "Block",
+      "blockOnRelease": "Block on release"
+    },
+    "done": {
+      "clean": "Marked clean",
+      "released": "Released to cleaning",
+      "unblocked": "Unblocked",
+      "reserved": "Reserved for 2 hours",
+      "assigned": "Assigned",
+      "blocked": "Blocked",
+      "reservationReleased": "Reservation released"
+    },
+    "form": {
+      "patientId": "Patient ID",
+      "admissionId": "Admission ref",
+      "class": "Class asked",
+      "isolation": "Isolation",
+      "classChange": "Class change",
+      "noChange": "Same class",
+      "upgrade": "Upgrade",
+      "downgrade": "Downgrade",
+      "icu": "Needs ICU",
+      "reason": "Reason",
+      "expectedBack": "Expected back",
+      "note": "Note"
+    }
+  },
+  "ipdAdmit": {
+    "findPatient": "Scan the UHID card, or type name, UHID or mobile",
+    "title": "Admit",
+    "subtitle": "Admission desk · one flowing sheet",
+    "openRequests": "Open requests",
+    "pickRequest": "Open requests ({{n}})",
+    "newRequest": "New request",
+    "toBeds": "Beds board",
+    "incomplete": "incomplete",
+    "patient": "Patient",
+    "uhid": "UHID",
+    "ipNo": "IP",
+    "noAllergy": "No allergy recorded",
+    "isolation": "Isolation",
+    "emptyTitle": "Pick an open request or raise a new one",
+    "emptySub": "Requests from OPD advice, the emergency lane and downtime paper all land in the list above.",
+    "adviceFrom": "From {{name}} · {{time}}",
+    "diagnosis": "Diagnosis",
+    "consultant": "Consultant",
+    "department": "Department",
+    "validUntil": "Advice valid until",
+    "payer": "Payer",
+    "payerAside": "Rates from the active tariff",
+    "plan": "Plan",
+    "planMedical": "Medical",
+    "planSurgical": "Planned surgery",
+    "procedureEstimate": "Procedure estimate ₹",
+    "schemeZero": "Scheme patient: ₹0 to pay, now and at discharge",
+    "roomClass": "Room class",
+    "freeBeds": "{{n}} free",
+    "rateMissing": "Rate not set ({{what}}) · Ask billing to set the rate",
+    "roomPerDay": "Room",
+    "stayEst": "3-day est.",
+    "depositLabel": "Deposit",
+    "heldUntil": "Held for you until {{time}}",
+    "flowHead": "Bed Flow · {{n}} beds that pass every rule for {{cls}}",
+    "noBeds": "No free bed passes every rule right now",
+    "chosen": "Chosen · held",
+    "readyNow": "Ready now",
+    "consentLang": "Consent language",
+    "signedBy": "Signed by",
+    "signerName": "Name",
+    "relation": "Relation",
+    "repReason": "Why the patient cannot sign",
+    "paperSigned": "Paper consent signed",
+    "witness": "Witness",
+    "consentLater": "Tablet signature and OTP to the attendant come later; the paper form is the record today.",
+    "admitAndPrint": "Admit and print band",
+    "fix": "Fix",
+    "checklist": "Before admitting",
+    "done": "done",
+    "todoWord": "to do",
+    "fromAdvice": "From OPD advice",
+    "noAdvice": "No OPD advice to admit in the last 48 hours — pick the patient and the advising doctor.",
+    "change": "Change",
+    "raise": "Raise admission request",
+    "bed": "Bed",
+    "step": {
+      "advice": "Admission advice",
+      "payer": "Payer and room class",
+      "bed": "Bed",
+      "consent": "Consent",
+      "deposit": "Deposit"
+    },
+    "check": {
+      "advice": "Advice",
+      "payer": "Payer and class",
+      "bed": "Bed held",
+      "consent": "Consent",
+      "deposit": "Deposit or exemption",
+      "icu": "Intensivist approval"
+    },
+    "payerKind": {
+      "cash": "Cash",
+      "insurance_cashless": "Cashless",
+      "insurance_reimbursement": "Reimbursement",
+      "pmjay": "PM-JAY",
+      "state_scheme": "State scheme",
+      "corporate": "Corporate"
+    },
+    "payerRel": {
+      "self": "Self",
+      "relative": "Relative",
+      "employer": "Employer",
+      "other": "Other"
+    },
+    "signer": {
+      "patient": "Patient",
+      "guardian": "Guardian",
+      "representative": "Representative"
+    },
+    "tender": {
+      "cash": "Cash",
+      "upi": "UPI",
+      "card": "Card"
+    },
+    "iso": {
+      "none": "None",
+      "contact": "Contact",
+      "droplet": "Droplet",
+      "airborne": "Airborne"
+    },
+    "source": {
+      "opd_advice": "OPD advice",
+      "ot_daycare_conversion": "Day-care conversion",
+      "er": "Emergency",
+      "direct": "Direct",
+      "transfer_in": "Transfer in",
+      "downtime": "Downtime paper"
+    },
+    "state": {
+      "requested": "requested",
+      "reserved": "bed held",
+      "admitted": "admitted",
+      "transferring": "transferring",
+      "fit_declared": "fit declared",
+      "discharging": "discharging",
+      "discharged": "discharged",
+      "lama": "LAMA",
+      "absconded": "absconded",
+      "deceased": "deceased",
+      "transferred_out": "transferred out",
+      "cancelled": "cancelled"
+    },
+    "basis": {
+      "medical_class_days": "3 days of class charges",
+      "icu_class_days": "3 ICU days",
+      "surgery_estimate_share": "50 % of the procedure estimate",
+      "scheme_zero": "Scheme: nothing to pay",
+      "cashless_non_payables": "For items the insurer does not pay",
+      "downtime_backfill": "Downtime: paper deposit to check",
+      "emergency_exempt": "No deposit before stabilisation"
+    },
+    "exempt": {
+      "scheme": "Exempt: scheme patient",
+      "emergency_not_stabilised": "Exempt: emergency, not yet stabilised",
+      "cashless_no_non_payables": "Exempt: no non-payables deposit for this class"
+    },
+    "deposit": {
+      "required": "Deposit",
+      "paid": "paid",
+      "receipt": "receipt",
+      "tender": "Tender",
+      "ref": "Reference",
+      "payer": "Paid by",
+      "take": "Take {{amount}}",
+      "planFirst": "Pick payer and class first",
+      "takeFirst": "Take the deposit first"
+    },
+    "icu": {
+      "needed": "ICU needs an intensivist's approval",
+      "waiting": "Approval asked · waiting for the intensivist",
+      "granted": "Intensivist approved",
+      "request": "Request approval",
+      "note": "ICU admission requested at the admission desk"
+    },
+    "after": {
+      "title": "After admission",
+      "admitted": "Admitted at {{time}} · {{bed}}",
+      "ipNo": "IP number {{no}}",
+      "bed": "Bed {{bed}} occupied",
+      "band": "Band printed · allergy written on the band",
+      "deposit": "Deposit {{amount}} on account",
+      "later": "Ward nurse, porter and family message come with their lanes"
+    },
+    "todo": {
+      "consent": "Consent to take",
+      "payer": "Payer to record",
+      "band": "Band to print",
+      "stabilised": "Stabilisation to mark (then the deposit)",
+      "diagnosis": "Diagnosis to add"
+    },
+    "band": {
+      "title": "Wristband",
+      "print": "Print band"
+    },
+    "estimate": {
+      "title": "Estimate",
+      "head": "Estimate · {{cls}} · {{days}} days",
+      "room": "Room rent · 3 days",
+      "nursing": "Nursing · 3 days",
+      "visit": "Consultant visit · 3 days",
+      "total": "Total",
+      "none": "Pick a class to see the estimate",
+      "foot": "From the active tariff. Medicines, tests and procedures are billed as they happen."
+    },
+    "emergency": {
+      "open": "Emergency admit",
+      "title": "Emergency admit — one tap",
+      "sub": "Patient and bed only. No deposit before stabilisation; consent, payer, band and diagnosis catch up.",
+      "admit": "Admit now"
+    },
+    "downtime": {
+      "open": "Downtime paper",
+      "title": "Enter a downtime admission",
+      "sub": "The paper form's serial and its own times. A serial is entered once.",
+      "serial": "Paper serial",
+      "requestedAt": "Requested at (paper)",
+      "admittedAt": "Admitted at (paper)",
+      "save": "Enter admission"
+    },
+    "capWarning": "Room-rent cap"
+  },
+  "ipdBillDesk": {
+    "title": "Bill desk",
+    "subtitle": "Exceptions only",
+    "asOf": "as of {{at}}",
+    "loading": "Loading the bill desk…",
+    "loadFailed": "Could not load the bill desk — try again",
+    "forbidden": "The bill desk is for billing staff",
+    "refresh": "Refresh",
+    "countsLabel": "Exceptions by kind",
+    "listLabel": "Admissions that need the desk",
+    "all": "All",
+    "empty": "Nothing needs the desk. Normal running bills are not listed.",
+    "reason": {
+      "deposit_90": "Deposit 90 % used",
+      "deposit_75": "Deposit 75 % used",
+      "icu_low_days": "ICU: a day of deposit left",
+      "posting_failed": "Posting failed",
+      "rate_missing": "Rate missing",
+      "tariff_missing": "Tariff missing",
+      "deposit_check_pending": "Downtime deposit to check",
+      "cash_consent_missing": "Cash consent missing",
+      "auth_pending_24h": "Authorisation waiting > 24 h",
+      "discharge_balance": "Discharge with balance"
+    },
+    "col": {
+      "patient": "Patient",
+      "bed": "Bed · payer",
+      "why": "Why",
+      "used": "Deposit used",
+      "payable": "Patient payable",
+      "deposit": "Deposit held",
+      "balance": "Balance",
+      "icu": "ICU burn",
+      "since": "Since",
+      "actions": "Actions"
+    },
+    "usedPct": "{{pct}} %",
+    "noDeposit": "No deposit",
+    "due": "Due {{amount}}",
+    "perDay": "{{amount}}/day",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "openBill": "Open bill",
+    "retry": "Retry",
+    "retried_one": "Retried — {{count}} line posted",
+    "retried_other": "Retried — {{count}} lines posted",
+    "retryFailed": "Retry failed — try again",
+    "careNote": "Care never stops for money: the deposit ladder only tells the desk and management."
+  },
+  "ipdBill": {
+    "postingFailed": "Nightly posting failed ({{count}} tries) — the bill desk retries it",
+    "title": "Interim bill",
+    "loading": "Loading the bill…",
+    "loadFailed": "The bill could not be loaded. Try again.",
+    "forbidden": "You do not have access to inpatient bills.",
+    "notFound": "No such admission.",
+    "backToBeds": "Beds",
+    "print": "Print",
+    "factsLabel": "Admission",
+    "admitted": "Admitted",
+    "discharged": "Discharged",
+    "inBed": "In bed",
+    "payer": "Payer",
+    "tariff": "Tariff",
+    "tariffVersion": "Version {{no}} (locked at admission)",
+    "postedThrough": "Posted through",
+    "linesLabel": "Charges by day",
+    "noLines": "No charges posted yet.",
+    "todayNote": "Room, nursing and RMO post after midnight for the day just ended; today is not on the bill yet.",
+    "col": {
+      "item": "Item",
+      "code": "Code",
+      "qty": "Qty",
+      "rate": "Rate",
+      "gst": "GST",
+      "amount": "Amount"
+    },
+    "reversal": "Reversal",
+    "reversed": "Reversed",
+    "exempt": "Exempt",
+    "totalsLabel": "Totals",
+    "gross": "Charges",
+    "discount": "Discount",
+    "gst": "GST",
+    "total": "Total (rounded)",
+    "deposit": "Deposit paid",
+    "due": "Due",
+    "depositLeft": "Deposit left",
+    "exceptionsLabel": "Not posted",
+    "exceptionsTitle": "Not posted ({{count}})",
+    "exceptionsFix": "A missing rate is never guessed. Billing adds the rate on the tariff; the bill desk resolves the day.",
+    "movesLabel": "Beds and moves",
+    "movesTitle": "Beds and moves",
+    "billsAs": "bills as",
+    "now": "now",
+    "reason": {
+      "rate_missing": "Rate missing",
+      "tariff_missing": "No tariff",
+      "posting_failed": "Posting failed"
+    },
+    "component": {
+      "room": "Room rent",
+      "nursing": "Nursing",
+      "rmo": "RMO",
+      "visit": "Consultant visit",
+      "cross_visit": "Cross-consultation"
+    },
+    "class": {
+      "general": "General ward",
+      "semi_private": "Semi-private",
+      "private": "Private room",
+      "deluxe": "Deluxe room",
+      "suite": "Suite",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "Day care",
+      "emergency": "Emergency",
+      "overflow": "Overflow"
+    },
+    "payerKind": {
+      "cash": "Cash",
+      "insurance_cashless": "Insurance (cashless)",
+      "insurance_reimbursement": "Insurance (reimbursement)",
+      "pmjay": "PM-JAY",
+      "state_scheme": "State scheme",
+      "corporate": "Corporate"
+    },
+    "split": {
+      "printFailed": "Could not record — try again",
+      "title": "Payer split",
+      "label": "Payer split",
+      "payer": "Payer pays",
+      "patient": "Patient pays",
+      "patientDue": "Patient due",
+      "patientLeft": "Deposit left (patient share)",
+      "preAuth": "Pre-auth {{no}}",
+      "approved": "Approved {{amount}}",
+      "nonCovered": "Approved non-covered",
+      "colPayer": "Payer",
+      "colPatient": "Patient",
+      "state": {
+        "none": "No authorisation",
+        "pending": "Awaiting authorisation",
+        "approved": "Authorised",
+        "denied": "Denied"
+      },
+      "mode": {
+        "cash": "Cash",
+        "reimbursement": "Reimbursement",
+        "insured": "Cashless",
+        "scheme": "Scheme"
+      },
+      "why": {
+        "non_payable": "Non-payable",
+        "room_rent_over_cap": "Over room cap",
+        "room_rent_cap_proportional": "Cap proportional",
+        "co_pay": "Co-pay",
+        "over_approved_amount": "Over approved",
+        "denied": "Denied",
+        "cash": "Cash",
+        "auth_pending": "Awaiting auth",
+        "scheme": "Scheme",
+        "reversed": "Reversed",
+        "non_covered": "Non-covered"
+      },
+      "exception": {
+        "cash_consent_missing": "Cash consent missing",
+        "room_rent_cap_unresolved": "Cap % needs sum insured"
+      }
+    }
+  },
+  "ipdTransfer": {
+    "panel": {
+      "loading": "Loading transfer options…",
+      "loadFailed": "Transfer options could not be loaded.",
+      "billsAs": "Bills as {{cls}}",
+      "pendingClass": "{{cls}} from {{time}}",
+      "waitingAt": "Waiting for acceptance at {{bed}} · sent {{time}}",
+      "cancelTransfer": "Cancel transfer",
+      "transfer": "Transfer",
+      "swap": "Swap beds",
+      "changeClass": "Change class",
+      "targetsLabel": "Move to (beds that fit)",
+      "reasonLabel": "Reason",
+      "start": "Send handover",
+      "noTargets": "No free bed fits this patient now.",
+      "noSwap": "No other admitted patient to swap with.",
+      "swapWith": "Swap with",
+      "pick": "Choose…",
+      "swapNote": "Both patients move at once; each bills at the new bed's class.",
+      "doSwap": "Swap now",
+      "toClass": "New class",
+      "upgradeNote": "Upgrade · takes effect at the next 12 noon",
+      "downgradeNote": "Downgrade · takes effect at the next 12 noon",
+      "signedBy": "Consent signed by",
+      "signerName": "Signer's name",
+      "relation": "Relation",
+      "representativeReason": "Why the patient cannot sign",
+      "method": "Consent taken on",
+      "methodPaper": "Paper, with witness",
+      "methodDocument": "Filed document",
+      "witnessName": "Witness name",
+      "documentId": "Document id",
+      "capAck": "Room-rent cap explained: an insurer may pay only up to its room limit, and charges linked to the room can be cut in proportion.",
+      "applyClass": "Record class change",
+      "effectiveToday": "Class change recorded · takes effect 12:00 today",
+      "effectiveTomorrow": "Class change recorded · takes effect 12:00 tomorrow",
+      "effectiveOn": "Class change recorded · takes effect {{time}}",
+      "nextBeds": "Free beds that fit:",
+      "actFailed": "That did not go through. Try again."
+    },
+    "done": {
+      "started": "Handover sent · waiting for the receiving nurse",
+      "swapped": "Beds swapped",
+      "cancelled": "Transfer cancelled · patient stays on this bed"
+    },
+    "mark": {
+      "origin": "Transfer out",
+      "target": "Transfer in"
+    },
+    "reason": {
+      "clinical_step_up": "Clinical step-up",
+      "clinical_step_down": "Clinical step-down",
+      "post_op": "Post-op",
+      "isolation": "Isolation",
+      "gender_fix": "Gender bay fix",
+      "patient_request": "Patient request",
+      "bed_management": "Bed management"
+    },
+    "swapReason": {
+      "gender_fix": "Gender bay fix",
+      "isolation_fix": "Isolation fix",
+      "clinical": "Clinical",
+      "patient_request": "Patient request"
+    },
+    "cancelReason": {
+      "patient_deteriorated": "Patient worsened",
+      "receiving_ward_declined": "Receiving ward declined",
+      "bed_unsuitable": "Bed unsuitable",
+      "plan_changed": "Plan changed",
+      "other": "Other"
+    },
+    "signer": {
+      "patient": "Patient",
+      "guardian": "Guardian",
+      "representative": "Representative"
+    },
+    "sbar": {
+      "situation": "Situation",
+      "background": "Background",
+      "assessment": "Assessment",
+      "recommendation": "Recommendation"
+    },
+    "dur": {
+      "justNow": "just now",
+      "min": "{{n}} min",
+      "hourMin": "{{h}} h {{m}} min"
+    },
+    "handovers": {
+      "title": "Waiting for you",
+      "count": "{{count}} waiting",
+      "wards": "Receiving wards",
+      "allWards": "All wards · {{count}}",
+      "loading": "Loading handovers…",
+      "loadFailed": "Handovers could not be loaded. Retrying.",
+      "forbidden": "You do not accept handovers.",
+      "empty": "No handover is waiting.",
+      "uhid": "UHID {{uhid}}",
+      "to": "to",
+      "sent": "Sent {{span}} ago by {{name}}",
+      "escalatesIn": "Escalates in {{span}}",
+      "escalated": "Escalated {{span}} ago",
+      "youSent": "You sent this",
+      "accept": "Accept patient",
+      "decline": "Decline",
+      "accepted": "Accepted · patient now on {{bed}}",
+      "declined": "Transfer called off"
+    }
+  },
+  "ipdDischarge": {
+    "title": "Discharge desk",
+    "inCascade": "{{count}} in discharge",
+    "listLabel": "Discharges",
+    "loading": "Loading…",
+    "loadFailed": "Could not load — try again",
+    "forbidden": "You do not have access to the discharge desk.",
+    "empty": "No discharge in progress.",
+    "pick": "Pick a patient on the left.",
+    "actFailed": "Could not record — try again",
+    "cancel": "Cancel",
+    "dur": {
+      "justNow": "just now",
+      "min": "{{n}} min",
+      "hourMin": "{{h}} h {{m}} min"
+    },
+    "leftIn": "{{span}} left",
+    "overBy": "Over target by {{span}}",
+    "next": "Next: {{step}}",
+    "consultant": "Dr {{name}}",
+    "referOut": "Refer out",
+    "fitAt": "Fit {{time}}",
+    "targetAt": "Target {{time}}",
+    "stepsTitle": "Discharge steps",
+    "doneAt": "Done {{time}}",
+    "skipped": "Not needed",
+    "waitingFor": "Waiting: {{who}}",
+    "stepState": {
+      "done": "Done",
+      "now": "Now",
+      "waiting": "Later",
+      "skipped": "Not needed"
+    },
+    "step": {
+      "fit": "Fit for discharge",
+      "departments": "Departments confirm charges",
+      "summary": "Summary signed",
+      "bill": "Final bill settled",
+      "gate_pass": "Gate pass",
+      "exit": "Left the hospital"
+    },
+    "state": {
+      "requested": "Requested",
+      "reserved": "Reserved",
+      "admitted": "Admitted",
+      "transferring": "Transferring",
+      "fit_declared": "Fit declared",
+      "discharging": "Gate pass out",
+      "discharged": "Discharged",
+      "lama": "LAMA",
+      "absconded": "Absconded",
+      "deceased": "Deceased",
+      "transferred_out": "Referred out",
+      "cancelled": "Cancelled"
+    },
+    "fit": {
+      "title": "Fit for discharge",
+      "disposition": "Going",
+      "home": "Home",
+      "transferOut": "To another hospital",
+      "declare": "Declare fit",
+      "cancelReason": "Why (patient worsened…)",
+      "cancel": "Cancel fit"
+    },
+    "depts": {
+      "title": "Departments",
+      "confirm": "Confirm no pending charge",
+      "confirmedBy": "{{name}} · {{time}}",
+      "basis": {
+        "lines": "Has charges on the bill",
+        "open_orders": "Has open orders",
+        "always": "Always confirms"
+      }
+    },
+    "dept": {
+      "pharmacy": "Pharmacy",
+      "lab": "Lab",
+      "radiology": "Radiology",
+      "ot": "OT",
+      "ward": "Ward nursing",
+      "dietary": "Dietary",
+      "cssd": "CSSD",
+      "blood_bank": "Blood bank",
+      "billing": "Billing"
+    },
+    "summary": {
+      "title": "Discharge summary",
+      "status": {
+        "none": "Not started",
+        "draft": "Draft",
+        "awaiting_cosign": "Awaiting co-sign",
+        "signed": "Signed"
+      },
+      "f": {
+        "diagnosis": "Diagnosis",
+        "icd10": "ICD-10 code",
+        "course": "Course in hospital",
+        "procedures": "Procedures",
+        "conditionAtDischarge": "Condition at discharge",
+        "medicines": "Medicines on discharge",
+        "followUp": "Follow-up",
+        "advice": "Advice",
+        "warningSigns": "Come back at once if",
+        "pendingResults": "Results awaited"
+      },
+      "medsHint": "one per line: name — dose — when — how long",
+      "write": "Write summary",
+      "edit": "Edit",
+      "save": "Save draft",
+      "sign": "Sign",
+      "signedBy": "Signed by Dr {{name}} · {{time}}",
+      "residentSigned": "Signed by {{name}} — needs the consultant's co-sign",
+      "draftBy": "Draft by {{name}}"
+    },
+    "bill": {
+      "title": "Final bill",
+      "total": "Bill total",
+      "payer": "Insurer / payer",
+      "patient": "Patient pays",
+      "deposit": "Deposit held",
+      "toPay": "Balance to pay",
+      "refund": "Refund due",
+      "dues": "Dues recorded",
+      "prepare": "Open final bill",
+      "tender": "Paid by",
+      "cash": "Cash",
+      "card": "Card",
+      "amount": "Amount (₹)",
+      "ref": "UPI / card reference",
+      "settle": "Settle bill",
+      "duesLine": "{{amount}} unpaid — the patient still goes home; record the dues",
+      "askDues": "Ask approval for dues",
+      "duesAsked": "Approval asked — the billing manager decides (the patient may already have left)",
+      "undertaking": "Signed undertaking (filed document)",
+      "pickUndertaking": "Pick the filed undertaking",
+      "refundPending": "Refund pending",
+      "duesNote": "Unpaid balance at discharge; undertaking taken",
+      "billNo": "Bill {{no}} · {{time}}",
+      "print": "Print final bill",
+      "settlement": {
+        "paid": "Paid",
+        "refund_due": "Refund due",
+        "dues_recorded": "Dues recorded",
+        "insurer_pending_undertaking": "Insurer final pending"
+      }
+    },
+    "pass": {
+      "title": "Gate pass",
+      "issue": "Issue gate pass",
+      "print": "Print gate pass",
+      "hospital": "Receiving hospital",
+      "confirmedBy": "Confirmed by (name, how)",
+      "notYet": "Issued when departments, summary and bill are done.",
+      "dues": "Dues recorded",
+      "status": {
+        "issued": "Not scanned yet",
+        "used": "Scanned at the gate",
+        "void": "Void"
+      }
+    },
+    "scan": {
+      "label": "Scan gate pass",
+      "placeholder": "GP-…",
+      "go": "Scan",
+      "ok": "{{code}} — patient left"
+    },
+    "print": {
+      "patient": "Patient",
+      "ipNo": "IP no.",
+      "bed": "Bed",
+      "consultant": "Consultant",
+      "billTitle": "Final bill",
+      "billNo": "Bill no. {{no}}",
+      "date": "Date",
+      "item": "Item",
+      "qty": "Qty",
+      "amount": "Amount",
+      "paid": "Paid now",
+      "billFoot": "Amounts in rupees. Rounded once on the bill total. This is a computer-printed bill.",
+      "passTitle": "Gate pass — discharge",
+      "passReferTitle": "Gate pass — refer out",
+      "issuedAt": "Issued at {{time}}",
+      "to": "To: {{hospital}}",
+      "duesRecorded": "Dues recorded — let the patient leave.",
+      "passFoot": "Security: scan this code at the exit. One use only."
+    }
+  },
+  "ipdFamily": {
+    "brand": "Patient updates",
+    "subtitle": "From the hospital",
+    "day": "Day {{n}}",
+    "loading": "Loading…",
+    "loadFailed": "Could not load. Check the internet and open the link again.",
+    "footer": "This link works only on your registered phone.",
+    "closed": {
+      "title": "This link is closed",
+      "body": "For news about your patient, please call or visit the ward desk."
+    },
+    "purpose": {
+      "title": "Why this page",
+      "body": "The hospital shares your patient's condition, bill totals and discharge progress with you, the registered attendant. Nothing else is shown."
+    },
+    "otp": {
+      "title": "Confirm it is you",
+      "to": "We will send a 6-digit code to {{phone}}.",
+      "send": "Send code",
+      "label": "Code from the SMS",
+      "verify": "Open updates",
+      "resend": "Send a new code"
+    },
+    "err": {
+      "failed": "Something went wrong. Please try again.",
+      "family_otp_limit": "Too many tries. Please try again after an hour.",
+      "family_otp_invalid": "That code is not right. Check the SMS or ask for a new code.",
+      "family_otp_unavailable": "The code cannot be sent now. Please ask the ward desk.",
+      "family_phone_changed": "The registered phone has changed. Ask the ward desk for a new link.",
+      "family_link_closed": "This link is closed. Please contact the ward desk.",
+      "family_otp_format": "Enter the 6 digits from the SMS.",
+      "family_callback_limit": "The ward already has your requests. They will call you.",
+      "family_session_required": "Please confirm with the code again."
+    },
+    "discharged": {
+      "label": "Your patient",
+      "big": "Discharged",
+      "sub": "This page closes 24 hours after discharge."
+    },
+    "eta": {
+      "label": "Expected to go home by"
+    },
+    "condition": {
+      "label": "Condition",
+      "ask": "Ask the ward",
+      "notSet": "The treating team has not set it yet.",
+      "setAt": "Set by the treating team at {{time}}",
+      "line": "Condition: {{word}} · set by the treating team at {{time}}",
+      "lineAsk": "Condition: ask the ward",
+      "stable": "Stable",
+      "improving": "Improving",
+      "serious": "Serious",
+      "critical": "Critical"
+    },
+    "steps": {
+      "title": "Discharge progress"
+    },
+    "step": {
+      "fit": "Doctor approved discharge",
+      "departments": "Departments checking the bill",
+      "summary": "Doctor signs the discharge summary",
+      "bill": "Final bill ready",
+      "gate_pass": "Gate pass",
+      "exit": "Leaving the hospital"
+    },
+    "stepState": {
+      "done": "Done",
+      "now": "In progress",
+      "waiting": "Next",
+      "skipped": "Not needed"
+    },
+    "todo": {
+      "title": "What you need to do",
+      "nothing": "Nothing right now. We will tell you when the bill is ready.",
+      "pay_bill": "Please pay the balance at the billing counter.",
+      "collect_gate_pass": "Collect the gate pass from the ward desk.",
+      "wait_summary": "Please wait. The doctor is signing the discharge summary.",
+      "go_home": "Nothing more. Take the discharge summary and medicines home."
+    },
+    "totals": {
+      "title": "Bill totals",
+      "bill": "Bill so far",
+      "deposit": "Deposit",
+      "due": "Amount due",
+      "left": "Deposit left",
+      "asOf": "As of {{time}} today"
+    },
+    "details": {
+      "show": "Show bill details",
+      "confirm": "Bill details can show which tests and medicines were given. Opening them is recorded.",
+      "yes": "Open bill details",
+      "no": "Not now",
+      "title": "Bill details",
+      "none": "No charges yet."
+    },
+    "callback": {
+      "ask": "Request a callback",
+      "title": "Your question for the ward",
+      "placeholder": "Write your question. The ward will call you.",
+      "send": "Send to the ward",
+      "done": "Sent. The ward will call you on {{phone}}.",
+      "note": "Health questions go to the nurse in charge, who will call you. Nobody answers here automatically."
+    }
+  },
+  "ipdFamilyDesk": {
+    "title": "Family link",
+    "condition": "Condition for the family",
+    "notSet": "Not set (family sees “Ask the ward”)",
+    "setBy": "{{name}} · {{time}}",
+    "setCondition": "Set the condition word",
+    "word": {
+      "stable": "Stable",
+      "improving": "Improving",
+      "serious": "Serious",
+      "critical": "Critical"
+    },
+    "familyOff": "Family link on or off",
+    "linkOn": "Family link on",
+    "offFor": "Off — {{reason}}",
+    "off": {
+      "psychiatric": "psychiatric",
+      "hiv": "HIV",
+      "mtp": "MTP",
+      "pocso": "POCSO",
+      "patient_request": "patient asked",
+      "other": "other"
+    },
+    "link": "Link",
+    "active": "Active · OTP goes to {{phone}} · issued {{time}}",
+    "blocked": {
+      "sealed": "Off: sealed patient",
+      "mlc": "Off: medico-legal case",
+      "family_off": "Off: turned off by the treating team",
+      "no_attendant_phone": "No registered attendant phone — add a guardian with bill authority or the deposit payer's phone",
+      "stay_ended": "Stay ended"
+    },
+    "none": "No link yet · would go to {{phone}}",
+    "revoke": "Revoke",
+    "handOver": "Hand over: the attendant scans this on the phone ending {{phone}}.",
+    "copy": "Copy link",
+    "consent": "Consent for the family link",
+    "consentedBy": "Who agreed (name)",
+    "relation": "Relation",
+    "rel": {
+      "self": "Patient",
+      "spouse": "Spouse",
+      "parent": "Parent",
+      "child": "Child",
+      "sibling": "Sibling",
+      "relative": "Relative",
+      "guardian": "Guardian",
+      "other": "Other"
+    },
+    "method": "How",
+    "verbal": "Verbal",
+    "paper": "Paper form",
+    "issue": "Issue link",
+    "reissue": "Issue a new link",
+    "purpose": "Purpose told to the family: inpatient updates (condition, totals, discharge). Line items only after a second, recorded step.",
+    "calls": "Callback requests",
+    "callNote": "What you told them",
+    "calledBack": "Called back",
+    "closedBy": "{{name}}: {{note}}"
+  },
+  "ipdFamilyCalls": {
+    "sealed": "Sealed patient",
+    "title": "Family callback requests",
+    "show": "Show",
+    "open": "Waiting",
+    "done": "Done",
+    "note": "Families ask here from the family page. Call them back, or pass health questions to the nurse in charge or the doctor. Nothing is answered automatically.",
+    "forbidden": "You do not have access to family callbacks.",
+    "failed": "Could not load — try again",
+    "loading": "Loading…",
+    "emptyOpen": "No family is waiting for a call.",
+    "emptyDone": "No callbacks closed yet.",
+    "openAdmission": "Open admission",
+    "notePlaceholder": "What you told them",
+    "calledBack": "Called back",
+    "closedBy": "{{name}} at {{time}}"
   }
 }

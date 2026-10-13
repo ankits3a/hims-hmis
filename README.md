@@ -1684,6 +1684,51 @@ draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and
 When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
 phrasebook only until midnight IST and the health page says so.
 
+**IPD beds (E1.1, decision 0072, built 2026-10-12, awaiting owner review).** The capacity board at
+`/ipd/beds` and the bed acts behind it. `ipd.beds.view` (front_office, front_office_supervisor,
+duty_manager, medical_superintendent, owner, admin) reads the board; `ipd.beds.manage` (front_office,
+front_office_supervisor, duty_manager) reserves, assigns, blocks, unblocks and releases incumbent beds;
+`ipd.beds.clean` (front_office_supervisor, duty_manager) marks a cleaned bed ready until housekeeping
+lands; and `ipd.beds.overflow` is held by `duty_manager` alone — an overflow bed needs the duty manager.
+
+**IPD admission (E1.2, decision 0072, built 2026-10-12, awaiting owner review).** The Admit sheet at
+`/ipd/admit` and the admission acts behind it. `ipd.admit.request` (front_office, front_office_supervisor,
+duty_manager, doctor) raises an admission request and marks an emergency patient stabilised — a doctor's answer
+carries no money; `ipd.admit` (front_office, front_office_supervisor, duty_manager) plans payer and deposit, takes
+the deposit, admits, cancels, runs the emergency lane and the downtime back-fill; `ipd.payer.manage`
+(front_office, front_office_supervisor, duty_manager, billing_manager) keeps the manual authorisation record; and
+`ipd.band.print` (front_office, front_office_supervisor, duty_manager) prints and reprints the wristband.
+
+**IPD running bill (E2.1, decision 0072, built 2026-10-13, awaiting owner review).** The interim bill at
+`/ipd/admissions/:id/bill` and the nightly rent, nursing and RMO posting behind it. `ipd.bill.view` (front_office,
+front_office_supervisor, duty_manager, cashier, billing_manager, owner) reads an admission's interim bill — no doctor
+role holds it, a doctor's screen shows no money; and `ipd.charges.reverse` is held by `billing_manager` alone — a wrong
+charge is answered by a reversal line, never an edit.
+
+**IPD payer split (E2.2, decision 0072, built 2026-10-13, awaiting owner review).** Each line of the interim bill is
+payer- or patient-payable from the manual authorisation record. `ipd.payer.terms` is held by `billing_manager` alone —
+the letter's money terms (room-rent cap, co-pay) and the non-payables list are the TPA desk's in billing; the status and
+pre-auth number stay with `ipd.payer.manage`.
+**IPD transfer (E3.1, decision 0072, built 2026-10-13, awaiting owner review).** The Transfer panel in the Beds board
+drawer and the receiving ward's handover list at `/ipd/handovers`. `ipd.transfer.start` and `ipd.transfer.accept` are
+held by `duty_manager` until the nursing roles are seeded — the sender starts a transfer with its SBAR handover, the
+receiving nurse accepts it, and the sender may never accept their own. A class change in place rides `ipd.admit`.
+
+**IPD discharge (E3.2, decision 0072, built 2026-10-13, awaiting owner review).** The Discharge desk at `/ipd/discharge`:
+fit declared → every department confirms → summary signed → final bill settled → gate pass → scan at the exit.
+`ipd.discharge.declare` is the doctor's (fit, summary, death) and never touches money; `ipd.discharge.bill` is held by
+the cashier and the billing manager alone; `ipd.gate.scan` by the front office and the duty manager until a security
+role is seeded. Nobody is detained for dues: an unpaid balance goes to the billing manager's approval and the dues list.
+
+**IPD bill desk (E2.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.billdesk.view` is held by `cashier`,
+`billing_manager`, `front_office_supervisor`, `duty_manager` and `owner` — the exceptions-only bill desk and its deposit
+card; no doctor role holds it. The deposit ladder tells the desk at 75 % and management at 90 % and never refuses care.
+
+**IPD family link (E3.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.family.issue` is held by
+`front_office`, `front_office_supervisor` and `duty_manager` — the ward desk issues the attendant's link (an OTP to the
+registered phone only) and works the family's callback requests; `ipd.condition.set` is held by `doctor` — the condition
+word the family sees is set by the treating team, never by a model. Off for sealed and medico-legal admissions.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

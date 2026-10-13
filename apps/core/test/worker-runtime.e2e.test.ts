@@ -206,6 +206,10 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** IPD BEDS E1.1 (#718) — `every(60_000)`: a two-hour bed hold lapses back to available. */
+  "lapseBedReservations",
+  /** IPD CHARGES E2.1 (#725) — `dailyIst("00:05")`: the running bill's nightly rent, nursing and RMO posting. */
+  "postNightlyIpdCharges",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -418,6 +422,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // three events, one cursor. Worker-only (`abdmManifest`), and it does nothing unless the
         // worker's own config has ABDM on. `.sort()` puts `abdm.` first.
         ["abdm.care_contexts", ["consultation.completed", "imaging.report_published", "lab.report_published"]],
+        // E3.3 (#731) — the family link's stop: death and absconding revoke the attendant's link. `ipdManifest`, both
+        // processes. Read off the red run; sorted, `ipd.` lands after `abdm.` and before `kernel.`.
+        ["ipd.family_stop", ["ipd.admission.absconded", "ipd.admission.deceased", "patient.updated"]],
         // Plan 11c T1: `ops.mode_changed` is the alerts consumer's THIRD subscription (D4). The
         // array is `.sort()`ed above, so it lands after `notification.failed`.
         // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH

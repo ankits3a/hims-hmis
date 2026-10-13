@@ -16,6 +16,7 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../m
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
+import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -168,6 +169,11 @@ describe("seedCursors", () => {
          * `max(seq)`, it orders only for consults completed after it ships.
          */
         ORDERING_FREE_TESTS_CONSUMER,
+        /**
+         * E3.3 (#731) — the family link's stop. Unseeded, it would walk every `ipd.admission.deceased` / `.absconded`
+         * since the IPD lanes began; each would find no live link and do nothing — harmless by construction, seeded anyway.
+         */
+        IPD_FAMILY_STOP_CONSUMER,
       ].sort());
   });
 

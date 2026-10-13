@@ -3,7 +3,7 @@ import { patientCoverages } from "../../kernel/db/schema";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { getPatient } from "./registration";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -130,4 +130,14 @@ export async function listPatientCoverages(
     validTo: isoDate(r.validTo),
     verificationStatus: r.verificationStatus,
   }));
+}
+
+/**
+ * E2.2 (#726) — one coverage's sum insured, for IPD's room-rent cap stated as a % of it. A number, no demographics:
+ * the caller (the interim bill, `ipd.bill.view`) has already been allowed to see the admission. Null when the row is
+ * missing or the sum insured was not entered — the caller then applies no cap and says so; never a guess.
+ */
+export async function coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null> {
+  const [row] = await db.select({ si: patientCoverages.sumInsuredPaise }).from(patientCoverages).where(eq(patientCoverages.id, coverageId));
+  return row?.si ?? null;
 }
