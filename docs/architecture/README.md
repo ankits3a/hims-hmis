@@ -135,12 +135,12 @@ flowchart LR
 | [abdm](modules/abdm.md) | lab, opd, patients, radiology | — | 24 | 11 |
 | [aerb](modules/aerb.md) | patients | radiology | 30 | 9 |
 | [attendance](modules/attendance.md) | — | — | 19 | 11 |
-| [billing](modules/billing.md) | membership, opd, patients, tariff | ipd, lab, opd, ordering, ot, partners, passes, pharmacy, radiology | 51 | 16 |
+| [billing](modules/billing.md) | membership, opd, patients, tariff | ipd, lab, opd, ordering, ot, partners, passes, pharmacy, radiology | 51 | 17 |
 | [bmw](modules/bmw.md) | tasks | — | 14 | 4 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
-| [ipd](modules/ipd.md) | billing, opd, patients, tariff | housekeeping, maintenance, passes, transport | 80 | 29 |
+| [ipd](modules/ipd.md) | billing, opd, patients, tariff | housekeeping, maintenance, passes, transport | 84 | 29 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 78 | 25 |
 | [linen](modules/linen.md) | tasks | — | 14 | 7 |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — | 7 | 2 |
