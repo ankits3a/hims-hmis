@@ -1723,6 +1723,14 @@ front_office_supervisor, duty_manager) reserves, assigns, blocks, unblocks and r
 `ipd.beds.clean` (front_office_supervisor, duty_manager) marks a cleaned bed ready until housekeeping
 lands; and `ipd.beds.overflow` is held by `duty_manager` alone — an overflow bed needs the duty manager.
 
+**IPD admission (E1.2, decision 0072, built 2026-10-12, awaiting owner review).** The Admit sheet at
+`/ipd/admit` and the admission acts behind it. `ipd.admit.request` (front_office, front_office_supervisor,
+duty_manager, doctor) raises an admission request and marks an emergency patient stabilised — a doctor's answer
+carries no money; `ipd.admit` (front_office, front_office_supervisor, duty_manager) plans payer and deposit, takes
+the deposit, admits, cancels, runs the emergency lane and the downtime back-fill; `ipd.payer.manage`
+(front_office, front_office_supervisor, duty_manager, billing_manager) keeps the manual authorisation record; and
+`ipd.band.print` (front_office, front_office_supervisor, duty_manager) prints and reprints the wristband.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

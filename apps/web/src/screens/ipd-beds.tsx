@@ -29,7 +29,7 @@ import "./ipd-beds.css";
  *   floors as the board does; when they outgrow the centre column it scrolls inside itself, and a floor chip
  *   narrows it to one. The wall display shows one floor at a time and cycles them.
  * - No Bed Flow card and no "N proposals" pill — proposals are a later lane, and this board shows no number it
- *   cannot source. The waiting column is the shell with "No one waiting": requests arrive with ipd-admit.
+ *   cannot source. The waiting column lists open admission requests (E1.2), each linking to the Admit sheet.
  * - "Next 24 hours" shows today's discharges (beds released since midnight) and says "Forecast comes later";
  *   blockers are only what the server measures (cleaning over 60 min, blocked past return date).
  * - A ward card opens a drawer of bed tiles; acts live there (the board's drag-and-drop arrives with the
@@ -247,10 +247,30 @@ export function IpdBeds(): React.ReactElement {
             <h2>{t("ipdBeds.waiting.title")}</h2>
             <span className="ipdb-badge">{tot ? tot.waiting.count : 0}</span>
           </div>
-          <div className="ipdb-empty" data-testid="ipd-beds-waiting-empty">
-            <b>{t("ipdBeds.waiting.empty")}</b>
-            <span>{t("ipdBeds.waiting.emptySub")}</span>
-          </div>
+          {board === null || board.waiting.length === 0 ? (
+            <div className="ipdb-empty" data-testid="ipd-beds-waiting-empty">
+              <b>{t("ipdBeds.waiting.empty")}</b>
+              <span>{t("ipdBeds.waiting.emptySub")}</span>
+            </div>
+          ) : board.waiting.map((w) => (
+            // E1.2 — one card per open admission request, oldest first; wall mode shows initials only.
+            <div key={w.admissionId} className="ipdb-card ipdb-wait" data-testid="ipd-beds-waiting-card">
+              <div className="ipdb-wait-top">
+                <span className="ipdb-wait-av" aria-hidden="true">{w.initials}</span>
+                <span className="ipdb-wait-who"><b>{w.name ?? w.initials}</b><span className="dim">{t(`ipdAdmit.source.${w.source}`)}</span></span>
+                <span className="mono ipdb-wait-clock">{t("ipdBeds.waiting.wait", { minutes: w.waitMinutes })}</span>
+              </div>
+              <span className="dim ipdb-wait-need">
+                {t(`ipdBeds.class.${w.requestedClass}`)}
+                {w.isolation !== "none" ? ` · ${t(`ipdBeds.isolation.${w.isolation}`)}` : ""}
+                {w.icu && !["icu", "nicu", "picu"].includes(w.requestedClass) ? ` · ${t("ipdBeds.waiting.icu")}` : ""}
+                {w.reservedBedCode !== null ? ` · ${t("ipdBeds.waiting.held", { bed: w.reservedBedCode })}` : ""}
+              </span>
+              {!wall && can("ipd.admit") ? (
+                <Link to="/ipd/admit" search={{ admission: w.admissionId }} className="ipdb-btn sm">{t("ipdBeds.waiting.open")}</Link>
+              ) : null}
+            </div>
+          ))}
         </section>
 
         <section aria-label={t("ipdBeds.floors")} className="ipdb-col ipdb-centre">
