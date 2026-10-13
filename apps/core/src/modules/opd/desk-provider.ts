@@ -1,4 +1,4 @@
-import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, count, eq, gte, inArray, lt, notInArray } from "drizzle-orm";
 import {
   opdAppointments, opdDoctors, opdEncounters, opdPrescriptions, opdVitals, patients,
 } from "../../kernel/db/schema";
@@ -6,6 +6,7 @@ import {
 import { summaryByDoctor } from "./queue";
 import { doctorForUser } from "./masters";
 import { opdRange } from "./range";
+import { correctionIdsIn } from "./report";
 import { istDateTimeToUtc, istHourMinute } from "./time";
 import { getPatientSummaries } from "../patients";
 import type { DeskCard, DeskProvider, DeskProviderCtx, ReportSection } from "../../kernel/desk/types";
@@ -287,11 +288,21 @@ async function opdFacts(ctx: DeskProviderCtx): Promise<Record<string, number>> {
    * `rollup.ts` distinguishes a missing KEY (the day was never rolled) from a zero (worked, did
    * none), so dropping a key on a quiet day would make a working Sunday look like a broken job.
    */
+  /*
+   * #772 — the visits this person opened are counted as the report and `opdRange` count them: OPD
+   * encounters only (a pharmacy visit is no consultation), a desk correction left out (`isCorrection`).
+   * `range-parity.test.ts` holds the two instruments together.
+   */
+  const corrections = [...await correctionIdsIn(ctx.db, ctx.date, ctx.date)];
+  const mineOpened = and(
+    eq(opdEncounters.openedBy, ctx.actor.id), eq(opdEncounters.serviceDate, ctx.date), eq(opdEncounters.type, "opd"),
+    ...(corrections.length > 0 ? [notInArray(opdEncounters.id, corrections)] : []),
+  );
   const byType = async (): Promise<Record<string, number>> => {
     const rows = await ctx.db
       .select({ visitType: opdEncounters.visitType, n: count() })
       .from(opdEncounters)
-      .where(and(eq(opdEncounters.openedBy, ctx.actor.id), eq(opdEncounters.serviceDate, ctx.date)))
+      .where(mineOpened)
       .groupBy(opdEncounters.visitType);
     const seen = new Map(rows.map((r) => [r.visitType, r.n]));
     return {
@@ -302,8 +313,7 @@ async function opdFacts(ctx: DeskProviderCtx): Promise<Record<string, number>> {
   };
 
   const [opened, registered, vitals, consults, bookings, prescriptions, visitTypes] = await Promise.all([
-    one(ctx.db.select({ n: count() }).from(opdEncounters)
-      .where(and(eq(opdEncounters.openedBy, ctx.actor.id), eq(opdEncounters.serviceDate, ctx.date)))),
+    one(ctx.db.select({ n: count() }).from(opdEncounters).where(mineOpened)),
     one(ctx.db.select({ n: count() }).from(patients)
       .where(and(eq(patients.createdBy, ctx.actor.id), gte(patients.createdAt, from), lt(patients.createdAt, to)))),
     one(ctx.db.select({ n: count() }).from(opdVitals)

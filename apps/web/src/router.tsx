@@ -101,6 +101,7 @@ import { LabVerify } from "./screens/lab-verify";
 import { LabReports } from "./screens/lab-reports";
 import { LabQuick } from "./screens/lab-quick";
 import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
+import { LabMetrics } from "./screens/lab-metrics";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -366,6 +367,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/lab/qcollect", label: "nav.labQCollect", permission: "lab.worklist.read", group: "lab", labMode: "quick" },
   { to: "/lab/qbench", label: "nav.labQBench", permission: "lab.results.enter", group: "lab", labMode: "quick" },
   { to: "/lab/qreports", label: "nav.labQReports", permission: "lab.reports.print", group: "lab", labMode: "quick" },
+  /** Owner 2026-10-13 (#768) — lab counts and turnaround times, read-only; in both lab modes. Matches `labManifest.menu`. */
+  { to: "/lab/metrics", label: "nav.labMetrics", permission: "lab.metrics.read", group: "lab" },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
@@ -1573,6 +1576,13 @@ const labQReportsRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
+/** Owner 2026-10-13 (#768) — lab numbers: counts and turnaround times. Path matches `labManifest.menu`. */
+const labMetricsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/lab/metrics",
+  component: LabMetrics,
+});
+
 const labQuickRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/quick",
@@ -1878,6 +1888,7 @@ export const router = createRouter({
       labQuickRoute,
       // OWNER 2026-10-11 — the quick chain (+4).
       labCounterRoute, labQCollectRoute, labQBenchRoute, labQReportsRoute,
+      labMetricsRoute,
       // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the

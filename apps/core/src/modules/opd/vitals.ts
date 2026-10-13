@@ -371,10 +371,15 @@ export async function recordVitals(
     let encounter: EncounterRow = enc;
     if (enc.status === "registered") {
       encounter = await moveEncounter(tx, actor, enc, "waiting", {}, now); // role_denied fails HERE, before any write
-      await tx.update(opdQueueEntries)
-        .set({ status: "waiting", eligibleAt: now })
-        .where(and(eq(opdQueueEntries.encounterId, encounterId), eq(opdQueueEntries.status, "waiting_vitals")));
     }
+    /*
+      The token joins the doctor's line when its chart lands. Outside the `registered` branch since
+      #771: a guardian mark undone (`undoPatientAbsent`) leaves the visit `waiting` with its token back
+      at the bay, and this save is what sends it on. Any other `waiting` visit has no such token — a no-op.
+    */
+    await tx.update(opdQueueEntries)
+      .set({ status: "waiting", eligibleAt: now })
+      .where(and(eq(opdQueueEntries.encounterId, encounterId), eq(opdQueueEntries.status, "waiting_vitals")));
     /*
       THE WAIVER IS WRITTEN WHERE THE CHART LANDS — inside this transaction and after the move, so
       the two facts cannot separate: a save that dies on `role_denied` above leaves nobody's name on

@@ -94,6 +94,7 @@
     "labQCollect": "त्वरित संग्रह",
     "labQBench": "त्वरित बेंच",
     "labQReports": "त्वरित रिपोर्ट",
+    "labMetrics": "लैब आंकड़े",
     "pharmacyCounter": "दवा वितरण काउंटर",
     "pharmacyDesk": "फ़ार्मेसी डेस्क",
     "pharmacyItems": "फ़ार्मेसी बिक्री वस्तुएँ",
@@ -7785,7 +7786,9 @@
           "other_day": "विज़िट {{visitNo}} {{date}} की है, आज की नहीं — आज की विज़िट के लिए फ्रंट डेस्क भेजें",
           "abandoned": "विज़िट {{visitNo}} फ्रंट डेस्क पर वापस ले ली गई थी — वहीं भेजें",
           "completed": "विज़िट {{visitNo}} पूरी हो चुकी है — परामर्श हो गया है",
-          "not_queued": "विज़िट {{visitNo}} किसी डॉक्टर की कतार में नहीं है — फ्रंट डेस्क भेजें"
+          "not_queued": "विज़िट {{visitNo}} किसी डॉक्टर की कतार में नहीं है — फ्रंट डेस्क भेजें",
+          "guardian_visit": "अभिभावक विज़िट — वाइटल्स नहीं",
+          "tele_visit": "फ़ोन परामर्श — वाइटल्स नहीं"
         }
       },
       "notOnBench": "{{who}} इस बेंच पर नहीं है — पर्ची जाँचें, या फ्रंट डेस्क भेजें",
@@ -15183,6 +15186,8 @@
     "ready": "तैयार"
   },
   "patientAbsent": {
+    "undo": "वापस लें — मरीज़ आए हैं",
+    "undone": "बेंच पर वापस",
     "action": "मरीज़ नहीं आए — अभिभावक रिपोर्ट लेकर आए",
     "title": "कौन आए?",
     "hint": "वाइटल्स नहीं। फ़ीस वही।",
@@ -15219,7 +15224,8 @@
       "patient_absent_returning_only": "केवल दोबारा आए मरीज़ (रीविज़िट या रिन्यूअल) के लिए ही अभिभावक पर वाइटल्स छोड़े जा सकते हैं।",
       "encounter_state_conflict": "यह विज़िट अब वाइटल्स की प्रतीक्षा में नहीं है।",
       "consult_gate_refused": "इस विज़िट का बिल अभी नहीं बना है — पहले काउंटर पर फ़ीस लें।",
-      "patient_absent_not_permitted": "आपका खाता अभिभावक की विज़िट डॉक्टर के पास नहीं भेज सकता।"
+      "patient_absent_not_permitted": "आपका खाता अभिभावक की विज़िट डॉक्टर के पास नहीं भेज सकता।",
+      "patient_absent_undo_state_conflict": "विज़िट डॉक्टर के पास है — वापस नहीं हो सकती।"
     }
   },
   "printComputers": {
@@ -15611,6 +15617,60 @@
       "approved": "मंज़ूर",
       "rejected": "मंज़ूर नहीं",
       "cancelled": "वापस ली"
+    }
+  },
+  "labMetrics": {
+    "title": "लैब आंकड़े",
+    "period": "अवधि",
+    "periods": {
+      "today": "आज",
+      "week": "इस सप्ताह",
+      "month": "इस महीने",
+      "custom": "चुनें"
+    },
+    "from": "से",
+    "to": "तक",
+    "legend": "मिनट: माध्यिका / 90% · n = संख्या",
+    "badRange": "शुरुआत की तारीख अंत से पहले हो",
+    "failed": "लोड नहीं हुआ",
+    "loading": "लोड हो रहा है…",
+    "empty": "कोई आंकड़ा नहीं",
+    "bySource": "स्रोत अनुसार गिनती",
+    "byTest": "जांच अनुसार गिनती",
+    "reportTimes": "रिपोर्ट समय",
+    "testTimes": "जांच समय, चरण अनुसार",
+    "paramTimes": "पैरामीटर समय",
+    "total": "कुल",
+    "sources": {
+      "opd": "OPD",
+      "ipd": "IPD",
+      "walk_in": "वॉक-इन"
+    },
+    "modes": {
+      "machine": "मशीन",
+      "manual": "हाथ से"
+    },
+    "cols": {
+      "source": "स्रोत",
+      "orders": "ऑर्डर",
+      "tests": "जांचें",
+      "published": "जारी",
+      "delivered": "दी गई",
+      "test": "जांच",
+      "parameter": "पैरामीटर",
+      "entry": "प्रविष्टि",
+      "step": "चरण",
+      "time": "समय"
+    },
+    "steps": {
+      "placedToPublished": "ऑर्डर → जारी",
+      "receivedToPublished": "सैंपल → जारी",
+      "publishedToDelivered": "जारी → दी गई",
+      "placedToCollected": "ऑर्डर → सैंपल",
+      "collectedToReceived": "सैंपल → प्राप्त",
+      "receivedToEntered": "प्राप्त → दर्ज",
+      "enteredToVerified": "दर्ज → सत्यापित",
+      "placedToVerified": "ऑर्डर → सत्यापित"
     }
   }
 }

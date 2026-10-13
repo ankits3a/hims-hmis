@@ -12,6 +12,7 @@ import { collectDeskProviders } from "../src/kernel/desk/registry";
 import { addDays, liveFactsFor, sumWindow } from "../src/kernel/desk/rollup";
 import { mergeBuckets, totalsOf } from "../src/kernel/desk/range";
 import { opdRange } from "../src/modules/opd/range";
+import { loadOpdReport, rangeFor } from "../src/modules/opd/report";
 import type { DeskProvider } from "../src/kernel/desk/types";
 import type { RangeDimension } from "../src/kernel/desk/range";
 import type { Db } from "../src/kernel/db/client";
@@ -214,6 +215,29 @@ describe("staff-reports T3 — the pulse and the breakdown agree", () => {
     const both = Object.fromEntries(RECONCILED.map((m) => [m, (a[m] ?? 0) + (b[m] ?? 0)]));
 
     compare(both, await breakdown(DAY, DAY, ["userId"]));
+  });
+
+  /**
+   * #772 — A DESK CORRECTION IS ONE VISIT, ON EVERY SURFACE. "Wrong department? Move patient" abandons
+   * the first visit and opens the second for the same person; the report counted 3 of these 4 rows while
+   * the phone's "OPD today" (this range) and the brief (the pulse) counted 4.
+   */
+  it("a wrong-department correction is left out of visits opened: pulse, range and report all say 3", async () => {
+    await open(clerk, T0, { visitType: "new" });
+    await open(other, T0, { visitType: "revisit" });
+    const p = await mkPatient(db, clerk.actor, { phone: "9876549999" });
+    const wrong = await openOpdVisit(db, { clerk: clerk.actor, patientId: p.id, departmentId: deptId, doctorId }, T0);
+    await db.update(opdEncounters)
+      .set({ status: "abandoned", abandonedAt: T0, abandonReason: "wrong department — booked in the wrong room" })
+      .where(eq(opdEncounters.id, wrong.encounterId));
+    await openOpdVisit(db, { clerk: clerk.actor, patientId: p.id, departmentId: dept2Id, doctorId: doctor2Id }, new Date(T0.getTime() + 60_000));
+
+    const range = await breakdown(DAY, DAY, ["departmentId"]);
+    const report = await loadOpdReport(db, rangeFor("day", DAY), T0);
+    const a = await pulse(clerk, DAY, DAY);
+    const b = await pulse(other, DAY, DAY);
+    expect([range["opd.visitsOpened"], report.totals.opened, (a["opd.visitsOpened"] ?? 0) + (b["opd.visitsOpened"] ?? 0)]).toEqual([3, 3, 3]);
+    compare(a, await breakdown(DAY, DAY, ["userId"], [clerk.id]));
   });
 
   /** A window with nothing in it agrees at zero — silence from both, not silence from one. */

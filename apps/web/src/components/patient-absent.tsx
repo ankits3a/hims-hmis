@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { guardianBrief } from "../lib/brief-history";
-import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, markPatientAbsent, opdErrorMessage } from "../lib/opd-api";
+import { GUARDIAN_NAME_MAX, GUARDIAN_RELATIONS, markPatientAbsent, opdErrorMessage, undoPatientAbsent } from "../lib/opd-api";
 import type { TFunction } from "i18next";
 import type { GuardianRelation, WirePatientAbsent } from "../lib/opd-api";
 
@@ -205,5 +205,40 @@ export function GuardianAbsentAction({ encounterId, onDone, testId = "patient-ab
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * #771 — "Undo — patient is here": the guardian mark was a mistake. One button, no form; the server
+ * clears the mark and puts the token back at the bay, or refuses once the doctor has the visit.
+ */
+export function GuardianUndoAction({ encounterId, onDone, testId = "patient-absent-undo" }: {
+  encounterId: string; onDone: () => void; testId?: string;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const undo = async (): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await undoPatientAbsent(encounterId);
+      onDone();
+    } catch (e) {
+      setError(refusalText(e, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+      <button type="button" className="sec" data-testid={testId} disabled={busy} onClick={() => { void undo(); }} style={{ whiteSpace: "nowrap" }}>
+        {t("patientAbsent.undo")}
+      </button>
+      {error !== null && (
+        <span role="alert" data-testid={`${testId}-error`} style={{ fontSize: 11.5, color: "var(--bad)" }}>{error}</span>
+      )}
+    </span>
   );
 }

@@ -33,6 +33,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |
 | `/lab/desk` | `apps/web/src/screens/lab-desk` |
+| `/lab/metrics` | `apps/web/src/screens/lab-metrics` |
 | `/lab/qbench` | `apps/web/src/screens/lab-qchain` |
 | `/lab/qcollect` | `apps/web/src/screens/lab-qchain` |
 | `/lab/qreports` | `apps/web/src/screens/lab-qchain` |

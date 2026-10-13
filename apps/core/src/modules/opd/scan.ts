@@ -83,6 +83,12 @@ export type ScanVisit = {
    * decides, and still asks the fee door.
    */
   guardianOffer: boolean;
+  /**
+   * #771 — "Undo — patient is here" may be offered: the visit carries the guardian mark, the doctor
+   * does not have it yet (`waiting`, token not called), to a caller holding the bay's or the desk's
+   * grant — the conditions `undoPatientAbsent` checks. An offer only: that route decides.
+   */
+  guardianUndo: boolean;
   patient: PatientSummary;
 };
 
@@ -164,6 +170,11 @@ async function visitOf(db: Db, actor: Actor, encounter: EncounterRow, patient: P
   const guardianOffer = guardianOpen && actor.type === "user"
     && (await hasPermission(db, actor.id, PATIENT_ABSENT_BAY_PERMISSION, "hospital")
       || await hasPermission(db, actor.id, PATIENT_ABSENT_DESK_PERMISSION, "hospital"));
+  const undoOpen = encounter.patientAbsentAt !== null && encounter.status === "waiting" && encounter.consultStartedAt === null
+    && entry?.status === "waiting";
+  const guardianUndo = undoOpen && actor.type === "user"
+    && (await hasPermission(db, actor.id, PATIENT_ABSENT_BAY_PERMISSION, "hospital")
+      || await hasPermission(db, actor.id, PATIENT_ABSENT_DESK_PERMISSION, "hospital"));
   return {
     encounterId: encounter.id, patientId: encounter.patientId, visitNo: encounter.visitNo, serviceDate: encounter.serviceDate,
     tokenNo: entry?.tokenNo ?? null, departmentCode: department?.code ?? null, departmentName: department?.name ?? null,
@@ -175,6 +186,7 @@ async function visitOf(db: Db, actor: Actor, encounter: EncounterRow, patient: P
     feeUnpaid: fee.feeUnpaid && fee.feeBypass === null && (doctor === null || await seesFees(db, actor)),
     mine: doctor !== null && encounter.doctorId === doctor.id,
     guardianOffer,
+    guardianUndo,
     patient,
   };
 }

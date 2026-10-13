@@ -8,7 +8,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { vitalsGateVerdict } from "./consultation";
 import { getEncounter, moveEncounter } from "./encounters";
 import { OpdError } from "./errors";
-import { visitPatientAbsent } from "./events";
+import { visitPatientAbsent, visitPatientAbsentUndone } from "./events";
 import type { Db } from "../../kernel/db/client";
 import type { EncounterRow } from "./encounters";
 
@@ -161,5 +161,71 @@ export async function markPatientAbsent(
       },
     }));
     return { encounter, patientAbsent: patientAbsentOf(encounter)!, alreadyMarked: false };
+  });
+}
+
+/**
+ * #771 — UNDO THE GUARDIAN MARK: the patient is here after all.
+ *
+ * The same seats may undo what they may mark (the bay's or the desk's grant, asserted here as the
+ * mark asserts it). Only while the doctor does not have the visit yet: the visit is `waiting`, no
+ * consult has started, and its token is still `waiting` (not called). Anything later is refused
+ * `patient_absent_undo_state_conflict` and nothing moves.
+ *
+ * WHAT IT DOES. Clears the four mark columns and puts the token back at the bay (`waiting_vitals`,
+ * no `eligible_at`, so the doctor cannot call a patient nobody has weighed). The visit stays
+ * `waiting`: `opd_visit` has no `waiting → registered` transition, and widening Class A workflow data
+ * for this is not this act's to do. `recordVitals` sends the token on when the chart lands, and
+ * `listBench` shows the row again because the mark is gone. One event, `visit.patient_absent_undone`,
+ * names who undid it, who marked it, and the relation the mark gave.
+ *
+ * IDEMPOTENT like the mark: a visit with no mark answers `alreadyCleared` and nothing is written.
+ */
+export async function undoPatientAbsent(
+  db: Db, actor: Actor, encounterId: string, now: Date = new Date(),
+): Promise<{ encounter: EncounterRow; alreadyCleared: boolean }> {
+  if (actor.type !== "user") throw new OpdError("user_actor_required", "undoing a guardian mark is a user action");
+  const allowed = await hasPermission(db, actor.id, PATIENT_ABSENT_BAY_PERMISSION, "hospital")
+    || await hasPermission(db, actor.id, PATIENT_ABSENT_DESK_PERMISSION, "hospital");
+  if (!allowed) {
+    throw new OpdError("patient_absent_not_permitted", "only the vitals bay or the front desk may undo a guardian's visit");
+  }
+  const enc = await getEncounter(db, encounterId);
+  if (!enc) throw new OpdError("unknown_encounter", `unknown encounter ${encounterId}`);
+
+  return withTx(db, async (tx) => {
+    const current = (await tx.select().from(opdEncounters).where(eq(opdEncounters.id, encounterId)).for("update"))[0]!;
+    const mark = patientAbsentOf(current);
+    if (mark === null) return { encounter: current, alreadyCleared: true };
+    const entry = (await tx.select().from(opdQueueEntries).where(eq(opdQueueEntries.encounterId, encounterId))
+      .orderBy(desc(opdQueueEntries.seq)).limit(1))[0];
+    if (current.status !== "waiting" || current.consultStartedAt !== null || entry === undefined || entry.status !== "waiting") {
+      throw new OpdError(
+        "patient_absent_undo_state_conflict",
+        `visit ${current.visitNo} is already with the doctor or closed — the guardian mark stays`,
+        { status: current.status, queueStatus: entry?.status ?? null },
+      );
+    }
+    await tx.update(opdQueueEntries)
+      .set({ status: "waiting_vitals", eligibleAt: null, benchState: null, recallAt: null })
+      .where(and(eq(opdQueueEntries.id, entry.id), eq(opdQueueEntries.status, "waiting")));
+    const encounter = (await tx.update(opdEncounters)
+      .set({
+        patientAbsentBy: null, patientAbsentAt: null, patientAbsentRelation: null, patientAbsentName: null,
+        updatedBy: actor.id, updatedAt: now,
+      })
+      .where(eq(opdEncounters.id, encounterId))
+      .returning())[0]!;
+    const session = (await tx.select().from(opdQueueSessions).where(eq(opdQueueSessions.id, entry.sessionId)))[0]!;
+    await appendEvent(tx, visitPatientAbsentUndone.make({
+      actor, patientId: encounter.patientId, encounterId, correlationId: encounter.workflowInstanceId,
+      payload: {
+        encounterId, patientId: encounter.patientId,
+        doctorId: encounter.doctorId!, serviceDate: encounter.serviceDate, sessionId: entry.sessionId,
+        roomId: session.roomId, tokenNo: entry.tokenNo,
+        relation: mark.relation, named: mark.name !== null, markedBy: mark.by,
+      },
+    }));
+    return { encounter, alreadyCleared: false };
   });
 }

@@ -12,7 +12,7 @@ import { AmendPanel, AmendTrail } from "./vitals-bay-amend";
 import type { Amended } from "./vitals-bay-amend";
 import { activeAllergies, addAllergy, listAllergies, verifyQrScan } from "../lib/patients-api";
 import { UnpaidMark } from "../components/unpaid-mark";
-import { GuardianAbsentAction } from "../components/patient-absent";
+import { GuardianAbsentAction, GuardianUndoAction } from "../components/patient-absent";
 import { api } from "../lib/api";
 import { usePatientInHand } from "../lib/patient-in-hand";
 import { useRealtime } from "../lib/realtime";
@@ -593,9 +593,12 @@ export function VitalsBay(): React.ReactElement {
    * B's encounter. The offer, the re-run prompt and the row go together; the tiles go with the
    * remount the generation forces.
    */
+  /** #771 — the visit a locate answered `guardian_visit` for: "Undo — patient is here" is offered under the refusal. */
+  const [undoFor, setUndoFor] = useState<string | null>(null);
   const clearDesk = useCallback(() => {
     setTaken(null);
     setError(null);
+    setUndoFor(null);
     setRestOffer(null);
     setRerun(null);
     release();
@@ -720,6 +723,7 @@ export function VitalsBay(): React.ReactElement {
     const r = resolveDoor(allRows, raw);
     if (r.outcome === "empty") return;
     setError(null);
+    setUndoFor(null);
     if (r.outcome === "row") { take(r.row); return; }
     if (r.outcome === "ambiguous") {
       const m = ambiguousMessage(r.door, r.rows);
@@ -761,6 +765,8 @@ export function VitalsBay(): React.ReactElement {
     }
     const m = missMessage(r.door, why);
     setError(t(`vitalsBay.identify.miss.${m.key}`, m.vars));
+    // #771 — a guardian's visit, and the patient is standing here after all: the bay may undo the mark.
+    if (why !== null && !why.onBench && why.reason === "guardian_visit" && why.encounterId !== undefined) setUndoFor(why.encounterId);
   }, [allRows, t, take, today, qc]);
 
   useEffect(() => {
@@ -841,6 +847,26 @@ export function VitalsBay(): React.ReactElement {
         key={deskGen} onSubmit={(raw) => { void identify(raw); }} error={error} busy={busy} compact={rowInHand !== null}
         placeholder={phone ? t("vitalsBay.phone.identify") : undefined}
       />
+      {undoFor !== null && (
+        <div style={{ marginTop: 8 }}>
+          <GuardianUndoAction
+            key={undoFor} encounterId={undoFor} testId="identify-undo-guardian"
+            onDone={() => {
+              const encounterId = undoFor;
+              setUndoFor(null);
+              setError(null);
+              note(t("patientAbsent.undone"), "ok");
+              void (async () => {
+                const fresh = await fetchBench({ serviceDate: today });
+                void qc.invalidateQueries({ queryKey: ["vitals-bay", "bench"] });
+                void qc.invalidateQueries({ queryKey: ["vitals-bay", "summary"] });
+                const row = matchOnBench(fresh.items, { kind: "encounter", encounterId });
+                if (row !== null) take(row);
+              })().catch(() => undefined);
+            }}
+          />
+        </div>
+      )}
     </div>
   );
   /*
