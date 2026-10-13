@@ -83,8 +83,19 @@ row has its own try/catch, so one failure stops nothing else.
   module's `index.ts`), or the worker's sweep sees an unknown kind (it falls back to a 5 min accept window and the
   default ladder, and tells no one, because `escalateTo` is unknown).
 - Skills are RBAC roles, not roster positions: the roster has no skill concept. `general` → `support_staff`.
-- Verification: the doer never verifies (`verifier_is_doer`); the verifier holds the kind's `verifierPermission`
-  (default `tasks.supervise`). The `/verify` door admits `tasks.work` too, so a kind may name a narrower permission.
+- Verification: the doer never verifies (`verifier_is_doer`); the verifier holds ONE OF the kind's
+  `verifierPermission` (a string or a list; default `tasks.supervise`). The `/verify` door admits `tasks.work` too, so a
+  kind may name a narrower permission; an owning module may also open its own verify door (housekeeping does).
+- A kind's `onVerified(tx, task, actor, now)` runs inside `verifyTask`'s transaction after the row is verified; a throw
+  rolls the verification back (housekeeping frees the bed there).
+- `nudgeTask` (sweep.ts): a person escalates an open task now — an `escalated` event with `detail.nudge`, a
+  `task.nudge` bell to the kind's escalation role and the holder; the ladder's rung is not moved; a second nudge
+  within `TASK_NUDGE_WINDOW_MIN` (5) is refused `nudged_recently`.
+- `raiseTask` input `sourceRef` (unique, `tasks_source_ref_ux`): one task per owning-module source — a second raise
+  returns the first task with `duplicate: true` and skips the merge window. `raisedAt` stores when the need arose.
+  `cancelTask(..., { closeDone: true })` lets an owning module also cancel a done-but-unchecked task.
+- `taskBoard(db, now, { kinds })` is the same board over an owning module's kinds; `findTasks` / `getTask` let an owning
+  module read its own tasks without touching the table.
 - The board's counts are SQL over every open task; it sends at most `BOARD_ROW_LIMIT` rows and reports the rest
   as `counts.notShown`. The requester's free-text note is on the worker's own card only, never the board.
 - No patient identity and no money on either surface (wall-board rule; decision 0058's spirit). `patient_id` is stored
@@ -94,5 +105,5 @@ row has its own try/catch, so one failure stops nothing else.
 
 ## 5. Who calls tasks
 - kernel: worker (`sweepTasks` every minute, `kernel/worker/jobs.ts`); manifests (`tasksManifest`, API only).
-- Planned (later lanes): housekeeping (`bed_clean`, terminal clean with supervisor verify), bmw, transport, linen,
-  maintenance — each through `index.ts`: `defineTaskKind`, `defineSkill`, `raiseTask`, `cancelTasksForPlace`.
+- housekeeping (E1.4): four kinds, `raiseTask`, `cancelTask`, `verifyTask`, `nudgeTask`, `findTasks`, `taskBoard`.
+- Planned (later lanes): bmw, transport, linen, maintenance — each through `index.ts`: `defineTaskKind`, `defineSkill`, `raiseTask`, `cancelTasksForPlace`.

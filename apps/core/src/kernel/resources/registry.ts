@@ -530,7 +530,7 @@ export async function releaseResource(
     payload: {
       ...subjectOf(existing),
       occupantType: existing.occupantType ?? "unknown", occupantRef: existing.occupantRef,
-      status: decl.onRelease,
+      status: decl.onRelease, reason: opts.reason ?? null,
     },
     actor, correlationId: id, occurredAt: at,
   }));

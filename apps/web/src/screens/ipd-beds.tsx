@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type {
-  IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody,
+  BedCleanView, IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody,
 } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
@@ -13,6 +13,7 @@ import {
   releaseIncumbentBed, releaseReservation, reserveBed, unblockBed,
 } from "../lib/ipd-beds-api";
 import type { BedActInput, BlockReason, ReleaseReason } from "../lib/ipd-beds-api";
+import { cleanRefusal, fetchBedCleans, nudgeCleanApi, verifyCleanApi } from "../lib/housekeeping-api";
 import "../styles/paper-pine.css";
 import "./ipd-beds.css";
 
@@ -50,6 +51,20 @@ const OFFLINE_AFTER_MS = 5_000;
 const WALL_CYCLE_MS = 20_000;
 
 type Act = null | "reserve" | "assign" | "block" | "releaseReservation";
+type T = (k: string, o?: Record<string, unknown>) => string;
+/** E1.4 — over this many minutes a clean is a blocker on the right (the board's own 60-minute line). */
+const CLEAN_BLOCKER_MIN = 60;
+
+/** "Cleaning · 34 min · assigned to A. K." — the clean's clock in words, from housekeeping's task. */
+function cleanLine(c: BedCleanView, t: T, short = false): string {
+  if (c.state === "done") return t("housekeeping.clean.done");
+  const who = c.assigneeInitials === null ? t("housekeeping.clean.pool")
+    : short ? c.assigneeInitials : t("housekeeping.clean.by", { who: c.assigneeInitials });
+  const clock = short ? t("housekeeping.clean.minutes", { minutes: c.minutes }) : t("housekeeping.clean.line", { minutes: c.minutes });
+  return [clock, who, c.late ? t("housekeeping.clean.late") : null].filter(Boolean).join(" · ");
+}
+/** The blockers list shows this many slow cleans, then "+N more" (the right column never grows a page scroll). */
+const SLOW_SHOWN = 4;
 
 const istDate = (d: Date): string =>
   new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short" }).format(d);
@@ -69,6 +84,8 @@ export function IpdBeds(): React.ReactElement {
   const wall = search.wall === "1" || search.wall === 1 || search.wall === true;
 
   const [board, setBoard] = useState<IpdBedBoard | null>(null);
+  // E1.4 — housekeeping's cleaning clocks by bed; null until (or unless) the clocks load: the board still works.
+  const [cleans, setCleans] = useState<Map<string, BedCleanView> | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [floorId, setFloorId] = useState<string | null>(null);
@@ -83,6 +100,10 @@ export function IpdBeds(): React.ReactElement {
     getBedBoard(wall).then(
       (b) => { setBoard(b); setFetchFailed(false); setLastUpdate(new Date()); },
       () => { setFetchFailed(true); },
+    );
+    fetchBedCleans().then(
+      (v) => setCleans(new Map((v.cleans ?? []).map((c) => [c.bedId, c]))),
+      () => setCleans(null),
     );
   }, [wall]);
   useEffect(() => { load(); }, [load]);
@@ -166,6 +187,17 @@ export function IpdBeds(): React.ReactElement {
   };
 
   const tot = board?.totals;
+  const mayNudge = !wall && (can("ipd.beds.manage") || can("ipd.beds.clean") || can("housekeeping.view"));
+  // Blockers: housekeeping's cleans past the line, longest first, with the bed's code from the board.
+  const codeOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of board?.floors ?? []) for (const w of f.wards) for (const b of w.beds) m.set(b.id, b.code);
+    return m;
+  }, [board]);
+  const slowCleans = [...(cleans?.values() ?? [])]
+    .filter((c) => c.minutes > CLEAN_BLOCKER_MIN && codeOf.has(c.bedId))
+    .sort((a, b) => b.minutes - a.minutes)
+    .map((c) => ({ c, code: codeOf.get(c.bedId)! }));
   const pct = tot && tot.census.total > 0 ? ((tot.census.occupied / tot.census.total) * 100).toFixed(1) : null;
   const freeLine = tot
     ? CLASSES.filter((c) => (tot.freeByClass[c] ?? 0) > 0).map((c) => `${t(`ipdBeds.classShort.${c}`)} ${tot.freeByClass[c]}`).join(" · ")
@@ -258,7 +290,7 @@ export function IpdBeds(): React.ReactElement {
                     <span>{t("ipdBeds.floorCount", { occupied: f.census.occupied, total: f.census.total })}</span>
                   </div>
                   <div className="ipdb-wards">
-                    {f.wards.map((w) => <WardCard key={w.id} ward={w} onOpen={() => { setWardId(w.id); setBedId(null); }} />)}
+                    {f.wards.map((w) => <WardCard key={w.id} ward={w} cleans={cleans} onOpen={() => { setWardId(w.id); setBedId(null); }} />)}
                   </div>
                 </div>
               ))}
@@ -276,9 +308,22 @@ export function IpdBeds(): React.ReactElement {
           </div>
           <div className="ipdb-card">
             <h2>{t("ipdBeds.blockers.title")}</h2>
-            {board && board.next24h.cleaningOver60.length === 0 && board.next24h.blockedPastReturn.length === 0
+            {board && slowCleans.length === 0 && board.next24h.cleaningOver60.length === 0 && board.next24h.blockedPastReturn.length === 0
               ? <span className="dim" style={{ fontSize: 13 }}>{t("ipdBeds.blockers.none")}</span> : null}
-            {board && board.next24h.cleaningOver60.length > 0 ? (
+            {slowCleans.length > 0 ? (
+              <div className="ipdb-block" data-testid="ipd-beds-slow-cleans">
+                <span className="t">{t("ipdBeds.blockers.cleaning")} <span className="mono">{slowCleans.length}</span></span>
+                {slowCleans.slice(0, SLOW_SHOWN).map(({ c, code }) => (
+                  <span key={c.taskId} className="ipdb-slow">
+                    <span className="d" title={cleanLine(c, t)}>
+                      <b className="mono">{code}</b> · {cleanLine(c, t, true)}{c.terminal ? ` · ${t("housekeeping.clean.terminal")}` : ""}
+                    </span>
+                    {mayNudge && c.state !== "done" ? <NudgeButton taskId={c.taskId} onDone={load} /> : null}
+                  </span>
+                ))}
+                {slowCleans.length > SLOW_SHOWN ? <span className="d">{t("tasks.board.more", { count: slowCleans.length - SLOW_SHOWN })}</span> : null}
+              </div>
+            ) : board && board.next24h.cleaningOver60.length > 0 ? (
               <div className="ipdb-block">
                 <span className="t">{t("ipdBeds.blockers.cleaning")} <span className="mono">{board.next24h.cleaningOver60.length}</span></span>
                 <span className="d">{board.next24h.cleaningOver60.map((c) => t("ipdBeds.blockers.cleaningItem", { bed: c.bedCode, minutes: c.minutes })).join(" · ")}</span>
@@ -312,6 +357,7 @@ export function IpdBeds(): React.ReactElement {
         <WardDrawer
           ward={ward} wall={wall} selected={bedId} onSelect={setBedId} onClose={() => { setWardId(null); setBedId(null); }}
           mayManage={!wall && can("ipd.beds.manage")} mayClean={!wall && can("ipd.beds.clean")} onDone={load}
+          cleans={cleans} mayVerify={!wall && (can("ipd.beds.clean") || can("housekeeping.verify_terminal"))} mayNudge={mayNudge}
         />
       ) : null}
     </div>
@@ -329,7 +375,25 @@ function Stat(p: { label: string; value: string; of?: string; sub: string; sub2?
   );
 }
 
-function WardCard({ ward, onOpen }: { ward: IpdBoardWard; onOpen: () => void }): React.ReactElement {
+/** "Nudge housekeeping": escalates the clean now; a second nudge within five minutes is refused (said in words). */
+function NudgeButton({ taskId, onDone }: { taskId: string; onDone: () => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [state, setState] = useState<"idle" | "busy" | "done" | string>("idle");
+  if (state === "done") return <span className="ipdb-ok" role="status">✓ {t("housekeeping.clean.nudged")}</span>;
+  if (state !== "idle" && state !== "busy") return <span className="dim" role="status" style={{ fontSize: 12 }}>{state}</span>;
+  return (
+    <button type="button" className="ipdb-btn sm" disabled={state === "busy"} onClick={() => {
+      setState("busy");
+      // A nudge bumps the task's version: refetch, so the board never acts on what it read before.
+      nudgeCleanApi(taskId).then(() => { setState("done"); onDone(); }, (e: unknown) => {
+        const r = cleanRefusal(e);
+        setState(r === null ? t("ipdBeds.actFailed") : t(`tasks.refusal.${r.code}`, { defaultValue: r.message }));
+      });
+    }}>{t("ipdBeds.blockers.nudge")}</button>
+  );
+}
+
+function WardCard({ ward, onOpen, cleans }: { ward: IpdBoardWard; onOpen: () => void; cleans: Map<string, BedCleanView> | null }): React.ReactElement {
   const { t } = useTranslation();
   const c = ward.counts;
   const parts: string[] = [];
@@ -347,7 +411,8 @@ function WardCard({ ward, onOpen }: { ward: IpdBoardWard; onOpen: () => void }):
       <span className={`sub${full ? " full" : ""}`}>{sub}</span>
       <span className="ipdb-dots">
         {orderedBeds(ward).map((b) => {
-          const word = t(`ipdBeds.status.${b.status}`);
+          const clean = b.status === "cleaning" ? cleans?.get(b.id) : undefined;
+          const word = clean !== undefined ? cleanLine(clean, t) : t(`ipdBeds.status.${b.status}`);
           return <span key={b.id} className={`ipdb-dot s-${b.status}`} title={`${b.code} · ${word}`} aria-label={`${b.code} · ${word}`} role="img" />;
         })}
       </span>
@@ -358,6 +423,7 @@ function WardCard({ ward, onOpen }: { ward: IpdBoardWard; onOpen: () => void }):
 function WardDrawer(p: {
   ward: IpdBoardWard; wall: boolean; selected: string | null; onSelect: (id: string | null) => void; onClose: () => void;
   mayManage: boolean; mayClean: boolean; onDone: () => void;
+  cleans: Map<string, BedCleanView> | null; mayVerify: boolean; mayNudge: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
   const bed = p.ward.beds.find((b) => b.id === p.selected) ?? null;
@@ -380,7 +446,10 @@ function WardDrawer(p: {
           <button type="button" className="ipdb-btn sm" onClick={p.onClose}>{t("ipdBeds.close")}</button>
         </header>
         <div className="body">
-          {bed !== null ? <BedActs key={bed.id} bed={bed} mayManage={p.mayManage} mayClean={p.mayClean} onDone={p.onDone} /> : (
+          {bed !== null ? (
+            <BedActs key={bed.id} bed={bed} mayManage={p.mayManage} mayClean={p.mayClean} onDone={p.onDone}
+              clean={bed.status === "cleaning" ? p.cleans?.get(bed.id) ?? null : null} mayVerify={p.mayVerify} mayNudge={p.mayNudge} />
+          ) : (
             <span className="dim" style={{ fontSize: 13 }}>{t("ipdBeds.pickBed")}</span>
           )}
           <div className="ipdb-tiles">
@@ -388,7 +457,7 @@ function WardDrawer(p: {
               <button key={b.id} type="button" className="ipdb-tile" aria-pressed={b.id === p.selected} onClick={() => p.onSelect(b.id)} data-testid={`ipd-bed-${b.code}`}>
                 <span className="code"><i className={`ipdb-dot s-${b.status}`} aria-hidden="true" />{b.code}</span>
                 <span className="word">{t(`ipdBeds.status.${b.status}`)}</span>
-                <span className="who">{tileLine(b, p.wall, t)}</span>
+                <span className="who">{tileLine(b, p.wall, t, b.status === "cleaning" ? p.cleans?.get(b.id) : undefined)}</span>
               </button>
             ))}
           </div>
@@ -398,7 +467,8 @@ function WardDrawer(p: {
   );
 }
 
-function tileLine(b: IpdBoardBed, wall: boolean, t: (k: string, o?: Record<string, unknown>) => string): string {
+function tileLine(b: IpdBoardBed, wall: boolean, t: T, clean?: BedCleanView): string {
+  if (clean !== undefined) return cleanLine(clean, t, true);
   if (b.occupant !== null) return wall ? b.occupant.initials : (b.occupant.name ?? b.occupant.initials);
   if (b.reservation !== null) return t("ipdBeds.until", { time: fmtIst(b.reservation.expiresAt) });
   if (b.block !== null) return t(`ipdBeds.blockReason.${b.block.reason}`);
@@ -406,7 +476,10 @@ function tileLine(b: IpdBoardBed, wall: boolean, t: (k: string, o?: Record<strin
   return t(`ipdBeds.class.${b.class}`);
 }
 
-function BedActs({ bed, mayManage, mayClean, onDone }: { bed: IpdBoardBed; mayManage: boolean; mayClean: boolean; onDone: () => void }): React.ReactElement {
+function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge }: {
+  bed: IpdBoardBed; mayManage: boolean; mayClean: boolean; onDone: () => void;
+  clean: BedCleanView | null; mayVerify: boolean; mayNudge: boolean;
+}): React.ReactElement {
   const { t } = useTranslation();
   const [act, setAct] = useState<Act>(null);
   const [busy, setBusy] = useState(false);
@@ -432,7 +505,26 @@ function BedActs({ bed, mayManage, mayClean, onDone }: { bed: IpdBoardBed; mayMa
     buttons.push({ key: "assign", label: t("ipdBeds.act.assign"), onClick: () => setAct("assign") });
     buttons.push({ key: "release", label: t("ipdBeds.act.releaseReservation"), onClick: () => setAct("releaseReservation") });
   }
-  if (mayClean && s === "cleaning") {
+  // E1.4 — a bed with a housekeeping clean is freed by CHECKING the clean (the bed turns available in the same
+  // transaction); the hand tap "Mark clean" stays for a bed housekeeping has no task for.
+  if (clean !== null && clean.state === "done" && mayVerify) {
+    buttons.push({
+      key: "verify", label: t("housekeeping.clean.verify"),
+      onClick: () => {
+        setBusy(true); setRefusal(null); setFailed(false); setOk(null);
+        verifyCleanApi(clean.taskId, clean.version).then(
+          () => { setBusy(false); setOk(t("housekeeping.clean.verified")); onDone(); },
+          (e: unknown) => {
+            setBusy(false);
+            const r = cleanRefusal(e);
+            if (r === null) setFailed(true);
+            else setRefusal({ statusCode: 403, code: r.code, message: r.message, rule: r.message, fix: r.fix });
+          },
+        );
+      },
+    });
+  }
+  if (mayClean && s === "cleaning" && clean === null) {
     buttons.push({ key: "clean", label: t("ipdBeds.act.clean"), onClick: () => run(markBedClean(bed.id), t("ipdBeds.done.clean")) });
   }
   if (mayManage && s === "incumbent") {
@@ -461,6 +553,12 @@ function BedActs({ bed, mayManage, mayClean, onDone }: { bed: IpdBoardBed; mayMa
         </span>
       ) : null}
       {bed.reservation !== null ? <span style={{ fontSize: 13 }}>{t("ipdBeds.reservedLine", { time: fmtIst(bed.reservation.expiresAt) })}</span> : null}
+      {clean !== null ? (
+        <span style={{ fontSize: 13, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} data-testid="ipd-bed-clean">
+          <span>{cleanLine(clean, t)}{clean.terminal ? ` · ${t("housekeeping.clean.terminal")}` : ""}</span>
+          {mayNudge && clean.state !== "done" ? <NudgeButton taskId={clean.taskId} onDone={onDone} /> : null}
+        </span>
+      ) : null}
       {buttons.length > 0 && act === null ? (
         <div className="row">
           {buttons.map((b) => <button key={b.key} type="button" className="ipdb-btn sm" disabled={busy} onClick={b.onClick}>{b.label}</button>)}

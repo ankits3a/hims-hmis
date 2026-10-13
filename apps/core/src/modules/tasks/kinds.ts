@@ -1,5 +1,7 @@
-import type { TaskProofKind } from "@hmis/contracts";
+import type { Actor, TaskProofKind } from "@hmis/contracts";
 import { TaskError } from "./errors";
+import type { Tx } from "../../kernel/db/client";
+import type { TaskRow } from "./engine";
 
 /**
  * THE KIND REGISTRY. A kind is declared by the module that owns the work (housekeeping declares
@@ -20,8 +22,13 @@ export type TaskKindDecl = {
   escalateTo: string;
   proofNeeded: TaskProofKind;
   verifyRequired: boolean;
-  /** The permission a verifier must hold. Absent: `tasks.supervise`. */
-  verifierPermission?: string;
+  /** The permission a verifier must hold — or a list, any one of which admits. Absent: `tasks.supervise`. */
+  verifierPermission?: string | readonly string[];
+  /**
+   * Runs INSIDE `verifyTask`'s transaction, after the task is marked verified: the owning module's consequence
+   * of a passed check (housekeeping makes the bed available). A throw rolls the verification back with it.
+   */
+  onVerified?: (tx: Tx, task: TaskRow, actor: Actor, now: Date) => Promise<void>;
   /** Minutes past due at which each rung fires. Absent: `DEFAULT_LADDER_MIN`. */
   ladderMin?: readonly number[];
 };
@@ -39,6 +46,9 @@ export function defineTaskKind(decl: TaskKindDecl): TaskKindDecl {
   if (ladder.length === 0 || ladder.some((m, i) => m < 0 || (i > 0 && m <= ladder[i - 1]!))) {
     throw new Error(`task kind "${decl.kind}" has a ladder that is not strictly rising`);
   }
+  if (Array.isArray(decl.verifierPermission) && decl.verifierPermission.length === 0) {
+    throw new Error(`task kind "${decl.kind}" names an empty verifier list`);
+  }
   const frozen = Object.freeze({ ...decl, ladderMin: Object.freeze([...ladder]) });
   KINDS.set(decl.kind, frozen);
   return frozen;
@@ -52,6 +62,13 @@ export function requireTaskKind(kind: string): TaskKindDecl {
   const decl = KINDS.get(kind);
   if (decl === undefined) throw new TaskError("unknown_kind", { kind });
   return decl;
+}
+
+/** The permissions any one of which lets a person verify a task of this kind. */
+export function verifierPermissionsOf(decl: TaskKindDecl | undefined): readonly string[] {
+  const p = decl?.verifierPermission;
+  if (p === undefined) return ["tasks.supervise"];
+  return typeof p === "string" ? [p] : p;
 }
 
 export function taskKinds(): TaskKindDecl[] {

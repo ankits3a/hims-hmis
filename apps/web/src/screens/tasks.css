@@ -74,3 +74,15 @@
 .pp .tk-load { flex: 1; height: 6px; border-radius: 3px; background: var(--line2); overflow: hidden; }
 .pp .tk-load > i { display: block; height: 100%; background: var(--green); }
 .pp .tk-verify { overflow: hidden; }
+/* E1.4 housekeeping — a Check button on a card waiting for its check. */
+.pp .tk-check { font: inherit; font-size: 14px; font-weight: 700; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--ink); background: var(--paper, #fff); color: var(--ink); cursor: pointer; }
+.pp .tk-check:disabled { opacity: .5; cursor: default; }
+/* A supervisor glancing at the board on a phone (E1.4 walk at 390 px): the header wraps and the worker column
+   drops under the floors, so the page never scrolls sideways. The board is designed for 16:9; this only stops breakage. */
+@media (max-width: 700px) {
+  .pp .tk-head { flex-wrap: wrap; }
+  .pp .tk-head .tk-sum { flex-wrap: wrap; }
+  .pp .tk-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .pp .tk-floors { grid-auto-flow: row; grid-auto-columns: auto; grid-template-rows: none; grid-auto-rows: max-content; overflow-x: hidden; overflow-y: auto; }
+  .pp .tk-side { max-height: 40vh; overflow-y: auto; }
+}

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -45,11 +45,17 @@ export const tasks = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: integer("version").notNull().default(1),
+    // E1.4 — the owning module's key for the request that raised it (housekeeping: `resource-event:<seq>`): one task
+    // per source, enforced by the unique index below. Null for a task a person raised.
+    sourceRef: text("source_ref"),
+    // E1.4 — when the need arose (a bed's release), which may be before the row was written. Null on older rows.
+    raisedAt: timestamp("raised_at", { withTimezone: true }),
   },
   (t) => [
     index("tasks_open_idx").on(t.state, t.dueAt).where(sql`${t.state} in ('created', 'assigned', 'accepted', 'in_progress')`),
     index("tasks_assignee_idx").on(t.assigneeId).where(sql`${t.state} in ('assigned', 'accepted', 'in_progress')`),
     index("tasks_place_idx").on(t.kind, t.placeResourceId, t.createdAt),
+    uniqueIndex("tasks_source_ref_ux").on(t.sourceRef).where(sql`${t.sourceRef} is not null`),
     // The clock's two scans: held tasks by shift end, and assignments waiting to be accepted.
     index("tasks_shift_end_idx").on(t.shiftEndsAt).where(sql`${t.state} in ('assigned', 'accepted', 'in_progress')`),
     index("tasks_assigned_wait_idx").on(t.assignedAt).where(sql`${t.state} = 'assigned'`),
