@@ -72,3 +72,11 @@ export {
 } from "./charges";
 export type { AdmissionPostResult, ConsultantVisitInput, ConsultantVisitResult, NightlyResult } from "./charges";
 export { readInterimBill } from "./interim-bill";
+// E3.1 (#729) — transfers: start, accept, cancel, swap, class change in place, the handover list and the panel.
+export { IPD_TRANSFER_ACCEPT, IPD_TRANSFER_START } from "./manifest";
+export {
+  acceptHandover, cancelTransfer, changeClass, listHandovers, startTransfer, swapBeds, transferOptions,
+} from "./transfers";
+export { applyClassChanges, classChangesOf, nextNoonIst } from "./class-change";
+export type { StayClassChange } from "./class-change";
+export { IPD_TRANSFER_EVENT_NAMES } from "./transfer-events";

@@ -1705,6 +1705,11 @@ front_office_supervisor, duty_manager, cashier, billing_manager, owner) reads an
 role holds it, a doctor's screen shows no money; and `ipd.charges.reverse` is held by `billing_manager` alone — a wrong
 charge is answered by a reversal line, never an edit.
 
+**IPD transfer (E3.1, decision 0072, built 2026-10-13, awaiting owner review).** The Transfer panel in the Beds board
+drawer and the receiving ward's handover list at `/ipd/handovers`. `ipd.transfer.start` and `ipd.transfer.accept` are
+held by `duty_manager` until the nursing roles are seeded — the sender starts a transfer with its SBAR handover, the
+receiving nurse accepts it, and the sender may never accept their own. A class change in place rides `ipd.admit`.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

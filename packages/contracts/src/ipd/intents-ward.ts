@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { IpdBedClassSchema } from "../ipd-bed-classes";
 import {
-  IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdProvenanceSchema, IpdSignerSchema, IpdUserRefSchema, ipdInput,
+  IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdProvenanceSchema, IpdUserRefSchema, ipdInput,
   ipdIntent,
 } from "./common";
+import { IpdConsentSchema } from "./intents-admit";
 
 /**
  * E0.2 (#714) — transfer, nursing, task and round intents (spec §4.4 ipd-transfer, §4.5 ipd-nursing, §4.5A
@@ -40,6 +41,9 @@ export const startTransfer = ipdIntent({
   refusals: [
     "admission_not_found", "admission_wrong_state", "transfer_already_open", "bed_not_available", "bed_gender_mismatch",
     "bed_isolation_mismatch", "bed_age_mismatch", "icu_needs_intensivist",
+    // E3.1 (#729): every bed rule the target bed is checked against, as the bed intents refuse them.
+    "bed_not_found", "bed_class_mismatch", "room_gender_unknown", "bed_retired", "overflow_needs_duty_manager",
+    "patient_not_found", "state_changed",
   ],
   actors: ["nurse", "doctor", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
@@ -59,12 +63,40 @@ export const acceptHandover = ipdIntent({
     state: z.literal("admitted"),
     acceptedAt: IpdInstantSchema,
   }),
-  refusals: ["transfer_not_found", "transfer_not_open", "not_receiving_ward", "sender_cannot_accept"],
-  actors: ["nurse", "supervisor"],
+  refusals: [
+    "transfer_not_found", "transfer_not_open", "not_receiving_ward", "sender_cannot_accept",
+    // E3.1 (#729): the reserved target bed is re-checked under its lock at acceptance.
+    "bed_not_available", "state_changed",
+  ],
+  // E3.1 (DECIDED): the duty manager accepts at night (no ward_nurse / nursing_supervisor role is seeded yet).
+  actors: ["nurse", "supervisor", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",
   undo: "entered_in_error",
   events: ["ipd.transfer.accepted", "ipd.bed.occupied", "ipd.bed.to_cleaning"],
+  idempotent: true,
+});
+
+/**
+ * E3.1 (#729, DECIDED) — the transfer is called off before acceptance: the patient worsened, the receiving ward
+ * cannot take them, or the plan changed. The target bed's hold is released and the admission is back to `admitted`
+ * on its origin bed (which it never left). Not in §0B's list: §4.4's edge "cancel back or continue" needs it. It
+ * rides the workflow's one `transferring → admitted` edge (the engine allows one edge per pair), so its actors are
+ * `accept_handover`'s.
+ */
+export const cancelTransfer = ipdIntent({
+  input: ipdInput({
+    transferId: IpdIdSchema,
+    reason: z.enum(["patient_deteriorated", "receiving_ward_declined", "bed_unsuitable", "plan_changed", "other"]),
+    note: IpdNoteSchema.optional(),
+  }),
+  output: z.strictObject({ admissionId: IpdIdSchema, bedId: IpdIdSchema, state: z.literal("admitted"), cancelledAt: IpdInstantSchema }),
+  refusals: ["transfer_not_found", "transfer_not_open", "state_changed"],
+  actors: ["nurse", "supervisor", "duty_manager"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.transfer.cancelled"],
   idempotent: true,
 });
 
@@ -82,6 +114,8 @@ export const swapBeds = ipdIntent({
   refusals: [
     "admission_not_found", "admission_wrong_state", "swap_same_admission", "transfer_already_open",
     "bed_gender_mismatch", "bed_isolation_mismatch", "state_changed",
+    // E3.1 (#729): both patients are checked against every rule of the other's bed.
+    "bed_age_mismatch", "bed_class_mismatch", "room_gender_unknown", "overflow_needs_duty_manager", "patient_not_found",
   ],
   actors: ["nurse", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
@@ -96,7 +130,11 @@ export const changeClass = ipdIntent({
   input: ipdInput({
     admissionId: IpdIdSchema,
     toClass: IpdBedClassSchema,
-    consent: z.strictObject({ signedBy: IpdSignerSchema, documentId: IpdIdSchema, representativeReason: IpdNoteSchema.optional() }),
+    /**
+     * E3.1 (#729): the admission consent's shape — who signed, their relation, the method (paper names its witness).
+     * The E0.2 shape `{ signedBy, documentId, representativeReason }` still parses.
+     */
+    consent: IpdConsentSchema,
     /** The room-rent cap warning was shown before the consent (§4.3). Required true for an upgrade. */
     roomRentCapAcknowledged: z.boolean(),
   }),
@@ -104,6 +142,8 @@ export const changeClass = ipdIntent({
   refusals: [
     "admission_not_found", "admission_wrong_state", "class_unchanged", "consent_missing",
     "representative_reason_missing", "room_rent_cap_not_acknowledged",
+    // E3.1 (#729): a class change in place is for ward room classes; critical care is a transfer.
+    "class_not_ward",
   ],
   actors: ["desk", "billing", "supervisor"],
   copilotProposable: true,

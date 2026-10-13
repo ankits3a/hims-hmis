@@ -741,3 +741,96 @@ async function incumbentProblem(exec: Db | Tx, row: BedRow): Promise<string | nu
   return held === undefined ? null : "bed is reserved";
 }
 
+
+// ═══════════════════════════════════════════ E3.1 (#729) — the transfer seams ═══════════════════════════════════════════
+
+/**
+ * LOCKS SEVERAL BEDS WITHOUT A CYCLE (transfer: origin and target; swap: both beds). Every parent (room, ward or hall —
+ * `lockBed` locks whichever the bed hangs from) is locked first, in id order, then every bed in id order. A one-bed
+ * act takes parent → bed, so it can never hold a bed while waiting for a parent another act holds: no circle. Later
+ * `lockBed` calls inside the same transaction re-take rows already held.
+ */
+export async function lockBedsInOrder(tx: Tx, bedIds: readonly string[]): Promise<void> {
+  const ids = [...new Set(bedIds)].sort();
+  const rows = await tx.select({ id: resources.id, parentId: resources.parentId, kind: resources.kind }).from(resources)
+    .where(inArray(resources.id, ids));
+  for (const id of ids) if (!rows.some((r) => r.id === id && r.kind === "bed")) throw new IpdRefusal("bed_not_found");
+  const parents = [...new Set(rows.map((r) => r.parentId).filter((p): p is string => p !== null))].sort();
+  for (const p of parents) await tx.select({ id: resources.id }).from(resources).where(eq(resources.id, p)).for("update");
+  for (const id of ids) await lockBed(tx, id);
+}
+
+/**
+ * THE TRANSFER'S HOLD on its target bed, inside the caller's transaction: the target must be free and clean (DECIDED:
+ * a transfer does not wait on a bed being cleaned), unheld, unblocked and pass every rule for this patient; the hold is
+ * an ordinary `ipd_bed_reservations` row (the board shows it reserved, every other act sees it held) that lasts
+ * `holdMinutes`. The admission's other holds end. The caller has taken the admission's advisory lock.
+ */
+export async function holdBedForTransferIn(
+  tx: Tx, actor: Actor, input: { admissionId: string; bedId: string; need: IpdBedNeed }, at: Date, ctx: PlacementContext, holdMinutes: number,
+): Promise<{ reservationId: string; bedCode: string; expiresAt: Date }> {
+  const { patient, mayUseOverflow } = ctx;
+  const { row, attrs, roomId } = await lockBed(tx, input.bedId);
+  if (row.status === "retired") throw new IpdRefusal("bed_retired", "Retired bed");
+  const held = await currentHold(tx, row, at);
+  if (held !== undefined) {
+    throw new IpdRefusal("bed_not_available", "Bed is reserved", { reservationId: held.id, expiresAt: held.expiresAt.toISOString() });
+  }
+  if (row.occupantRef !== null || row.status !== "available") throw new IpdRefusal("bed_not_available", notAvailableRule(row));
+  if (await liveBlock(tx, row.id) !== undefined) throw new IpdRefusal("bed_not_available", "Bed is blocked");
+  const breach = checkBedRules({ code: row.code, attributes: attrs }, patient, input.need, undefined, {
+    roomGender: await roomGender(tx, roomId, row.id), mayUseOverflow,
+  });
+  if (breach !== null) throw new IpdRefusal(breach.code, breach.bedRule);
+  await endOtherReservations(tx, actor, input.admissionId, row.id, at);
+  const reservationId = newId();
+  const expiresAt = new Date(at.getTime() + holdMinutes * 60_000);
+  await tx.insert(ipdBedReservations).values({
+    id: reservationId, bedId: row.id, admissionId: input.admissionId, patientId: patient.id, status: "active",
+    reservedBy: actor.id, reservedAt: at, expiresAt, placedAs: placementGender(patient, input.need),
+  });
+  await appendEvent(tx, bedReserved.make({
+    payload: {
+      reservationId, bedId: row.id, bedCode: row.code, admissionId: input.admissionId, patientId: patient.id,
+      expiresAt: expiresAt.toISOString(), provenance: provenanceOf(actor),
+    },
+    actor, correlationId: input.admissionId, patientId: patient.id, occurredAt: at,
+  }));
+  return { reservationId, bedCode: row.code, expiresAt };
+}
+
+/** Ends one hold by id inside the caller's transaction (a cancelled transfer); a hold already ended is left alone. */
+export async function endHoldIn(tx: Tx, actor: Actor, reservationId: string, at: Date): Promise<void> {
+  const peek = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, reservationId)))[0];
+  if (peek === undefined) return;
+  const { row } = await lockBed(tx, peek.bedId);
+  const r = (await tx.select().from(ipdBedReservations).where(eq(ipdBedReservations.id, reservationId)).for("update"))[0]!;
+  if (r.status !== "active") return;
+  await endReservation(tx, actor, r, row.code, "plan_changed", at);
+}
+
+/**
+ * Empties an occupied bed FOR A SWAP inside the caller's transaction: the occupant leaves (kernel release, reason
+ * `swap` — not a `clean:*` reason, so G3 never counts it as a clean) and the bed returns straight to `available`,
+ * because the other patient lies down in it within the same transaction. The open stay ends; a block waiting for the
+ * release stays waiting (the bed is not being emptied). The caller has locked the bed (`lockBedsInOrder`).
+ */
+export async function vacateBedForSwapIn(tx: Tx, actor: Actor, bedId: string, at: Date): Promise<void> {
+  await lockBed(tx, bedId);
+  await releaseResource(tx, actor, KERNEL_RESOURCE_KINDS, bedId, { at, reason: "swap" });
+  await changeResourceStatus(tx, actor, KERNEL_RESOURCE_KINDS, bedId, "available", { at, reason: "swap" });
+  await tx.update(ipdBedStays).set({ endedBy: actor.id, endedAt: at })
+    .where(and(eq(ipdBedStays.bedId, bedId), isNull(ipdBedStays.endedAt)));
+}
+
+/** A bed's code, class and ICU flag plus its ward (the room's parent when it hangs from a room). */
+export async function bedWithWard(db: Db | Tx, bedId: string): Promise<{ id: string; code: string; class: IpdBedClass; icu: boolean; wardId: string | null; wardName: string | null }> {
+  const facts = await readBedFacts(db, bedId);
+  const row = (await db.select({ parentId: resources.parentId }).from(resources).where(eq(resources.id, bedId)))[0];
+  let parent = row?.parentId == null ? undefined
+    : (await db.select({ id: resources.id, name: resources.name, kind: resources.kind, parentId: resources.parentId }).from(resources).where(eq(resources.id, row.parentId)))[0];
+  if (parent?.kind === "room" && parent.parentId !== null) {
+    parent = (await db.select({ id: resources.id, name: resources.name, kind: resources.kind, parentId: resources.parentId }).from(resources).where(eq(resources.id, parent.parentId)))[0];
+  }
+  return { ...facts, wardId: parent?.id ?? null, wardName: parent?.name ?? null };
+}

@@ -69,6 +69,7 @@ export const IPD_REFUSALS = {
   swap_same_admission: { rule: "A swap needs two different patients.", fix: "Pick second patient" },
   class_unchanged: { rule: "The patient is already in this class.", fix: "Pick another class" },
   room_rent_cap_not_acknowledged: { rule: "The room-rent cap warning must be shown before an upgrade consent.", fix: "Show cap warning" },
+  class_not_ward: { rule: "A class change in place is for ward room classes only.", fix: "Start a transfer" },
 
   /* ═══ Nursing and tasks (§4.5) ═══ */
   assessment_already_recorded: { rule: "The nursing admission assessment is already recorded.", fix: "Add reassessment" },

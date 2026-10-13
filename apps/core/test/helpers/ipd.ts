@@ -260,3 +260,44 @@ export async function mkChargesWorld(db: Db): Promise<ChargesWorld> {
     },
   };
 }
+
+// ═══ E3.1 — transfers: a second ward, a sending and a receiving nurse (duty-manager role until nursing roles land) ═══
+
+export type TransferWorld = ChargesWorld & {
+  /** Starts transfers and swaps (ipd.transfer.start + the bed strings); workflow role duty_manager. */
+  sender: Actor;
+  /** Accepts handovers (ipd.transfer.accept + the bed strings); workflow role duty_manager. */
+  receiver: Actor;
+  /** A second ward on the same floor (the receiving ward). */
+  ward2Id: string;
+  /** A bed in the second ward. */
+  bed2(code: string, attrs?: Partial<Record<keyof typeof IPD_BED_DEFAULTS, unknown>>): Promise<string>;
+  /** The admission's open stay (bed and billed class). */
+  openStay(admissionId: string): Promise<typeof ipdBedStays.$inferSelect | undefined>;
+};
+
+export async function mkTransferWorld(db: Db): Promise<TransferWorld> {
+  const w = await mkChargesWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  await syncPermissions(db, registry);
+  await ensureRole(db, "duty_manager");
+  for (const p of ["ipd.beds.view", "ipd.beds.manage", "ipd.admit", "ipd.transfer.start", "ipd.transfer.accept"]) {
+    await grantPermissionToRole(db, registry, "duty_manager", p);
+  }
+  const sender = (await mkUser(db, "trf.sender", ["duty_manager"])).actor;
+  const receiver = (await mkUser(db, "trf.receiver", ["duty_manager"])).actor;
+  const SETUP: Actor = { type: "system", id: "test-transfer-world" };
+  const place = (kind: string, code: string, parentId: string, attributes?: Record<string, unknown>) =>
+    withTx(db, (tx) => createResource(tx, SETUP, KERNEL_RESOURCE_KINDS, { kind, code, name: code, parentId, ...(attributes ? { attributes } : {}) }))
+      .then((r) => r.resourceId);
+  const ward2Id = await place("ward", "F-T-W2", w.floorId, { department: "SUR", unitType: "WARD", wardType: "ward" });
+  return {
+    ...w, sender, receiver, ward2Id,
+    bed2: (code, attrs = {}) => place("bed", code, ward2Id, { ...IPD_BED_DEFAULTS, ...attrs }),
+    openStay: async (admissionId) =>
+      (await db.select().from(ipdBedStays).where(and(eq(ipdBedStays.admissionId, admissionId), isNull(ipdBedStays.endedAt))))[0],
+  };
+}

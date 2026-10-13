@@ -1133,6 +1133,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       // IPD CHARGES E2.1 (#725) — the interim bill at night (a discharge or a deposit question at the desk).
       "ipd.bill.view",
+      // IPD TRANSFER E3.1 (#729) — starts and accepts transfers (and swaps beds) until the ipd-nursing lane seeds
+      // ward_nurse / nursing_supervisor; README "IPD transfer" prose. The sender may never accept their own handover.
+      "ipd.transfer.start", "ipd.transfer.accept",
     ],
   },
   /**

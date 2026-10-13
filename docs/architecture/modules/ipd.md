@@ -122,6 +122,11 @@ Source: `apps/core/src/modules/ipd/`
   - `priceComponent(ctx: PricingContext, cls: IpdBedClass, component: IpdRateComponent): Priced`
   - `reverseChargeLine(db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {}): Promise<{ reversalLine…`
   - types: `AdmissionPostResult`, `ConsultantVisitInput`, `ConsultantVisitResult`, `NightlyResult`
+- `class-change.ts`
+  - `applyClassChanges(stays: readonly S[], changes: readonly StayClassChange[]): S[]`
+  - `classChangesOf(db: Db | Tx, admissionId: string): Promise<StayClassChange[]>`
+  - `nextNoonIst(at: Date): Date`
+  - types: `StayClassChange`
 - `deposit.ts`
   - `IPD_DEPOSIT_COMPONENTS`
   - `IPD_DEPOSIT_POLICY`
@@ -167,6 +172,8 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_BILL_VIEW`
   - `IPD_CHARGES_REVERSE`
   - `IPD_PAYER_MANAGE`
+  - `IPD_TRANSFER_ACCEPT`
+  - `IPD_TRANSFER_START`
   - `ipdManifest: ModuleManifest`
 - `payer.ts`
   - `recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_payer_auth">>`
@@ -175,17 +182,28 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_TOPIC_SPACES: TopicSpace[]`
   - `ipdTopicRouter: TopicRouter`
   - `ipdTopicsFor(e: Pick<TailedEvent, "name" | "payload">): string[]`
+- `transfer-events.ts`
+  - `IPD_TRANSFER_EVENT_NAMES`
+- `transfers.ts`
+  - `acceptHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"accept_handover">>`
+  - `cancelTransfer(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_transfer">>`
+  - `changeClass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"change_class">>`
+  - `listHandovers(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdHandoverList>`
+  - `startTransfer(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"start_transfer">>`
+  - `swapBeds(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"swap_beds">>`
+  - `transferOptions(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdTransferOptions>`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_payer_auths`
+`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_payer_auths`, `ipd_transfers`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (31)
+## HTTP routes (38)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
+- `transfers.controller.ts` — 7: `/ipd/transfers`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

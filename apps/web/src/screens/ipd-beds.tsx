@@ -13,6 +13,7 @@ import {
   releaseIncumbentBed, releaseReservation, reserveBed, unblockBed,
 } from "../lib/ipd-beds-api";
 import type { BedActInput, BlockReason, ReleaseReason } from "../lib/ipd-beds-api";
+import { TransferPanel } from "./ipd-transfer-panel";
 import "../styles/paper-pine.css";
 import "./ipd-beds.css";
 
@@ -332,6 +333,7 @@ export function IpdBeds(): React.ReactElement {
         <WardDrawer
           ward={ward} wall={wall} selected={bedId} onSelect={setBedId} onClose={() => { setWardId(null); setBedId(null); }}
           mayManage={!wall && can("ipd.beds.manage")} mayClean={!wall && can("ipd.beds.clean")} onDone={load}
+          mayTransfer={!wall && can("ipd.transfer.start")} mayClass={!wall && can("ipd.admit")}
         />
       ) : null}
     </div>
@@ -377,7 +379,7 @@ function WardCard({ ward, onOpen }: { ward: IpdBoardWard; onOpen: () => void }):
 
 function WardDrawer(p: {
   ward: IpdBoardWard; wall: boolean; selected: string | null; onSelect: (id: string | null) => void; onClose: () => void;
-  mayManage: boolean; mayClean: boolean; onDone: () => void;
+  mayManage: boolean; mayClean: boolean; onDone: () => void; mayTransfer: boolean; mayClass: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
   const bed = p.ward.beds.find((b) => b.id === p.selected) ?? null;
@@ -400,14 +402,16 @@ function WardDrawer(p: {
           <button type="button" className="ipdb-btn sm" onClick={p.onClose}>{t("ipdBeds.close")}</button>
         </header>
         <div className="body">
-          {bed !== null ? <BedActs key={bed.id} bed={bed} mayManage={p.mayManage} mayClean={p.mayClean} onDone={p.onDone} /> : (
+          {bed !== null ? <BedActs key={bed.id} bed={bed} mayManage={p.mayManage} mayClean={p.mayClean} onDone={p.onDone} mayTransfer={p.mayTransfer} mayClass={p.mayClass} /> : (
             <span className="dim" style={{ fontSize: 13 }}>{t("ipdBeds.pickBed")}</span>
           )}
           <div className="ipdb-tiles">
             {orderedBeds(p.ward).map((b) => (
               <button key={b.id} type="button" className="ipdb-tile" aria-pressed={b.id === p.selected} onClick={() => p.onSelect(b.id)} data-testid={`ipd-bed-${b.code}`}>
                 <span className="code"><i className={`ipdb-dot s-${b.status}`} aria-hidden="true" />{b.code}</span>
-                <span className="word">{t(`ipdBeds.status.${b.status}`)}</span>
+                <span className="word">{t(`ipdBeds.status.${b.status}`)}{b.transfer ? (
+                  <em className={`ipdt-mark ${b.transfer.role}`}>{b.transfer.role === "origin" ? `⇢ ${t("ipdTransfer.mark.origin")}` : `⇠ ${t("ipdTransfer.mark.target")}`}</em>
+                ) : null}</span>
                 <span className="who">{tileLine(b, p.wall, t)}</span>
               </button>
             ))}
@@ -426,7 +430,9 @@ function tileLine(b: IpdBoardBed, wall: boolean, t: (k: string, o?: Record<strin
   return t(`ipdBeds.class.${b.class}`);
 }
 
-function BedActs({ bed, mayManage, mayClean, onDone }: { bed: IpdBoardBed; mayManage: boolean; mayClean: boolean; onDone: () => void }): React.ReactElement {
+function BedActs({ bed, mayManage, mayClean, onDone, mayTransfer = false, mayClass = false }: {
+  bed: IpdBoardBed; mayManage: boolean; mayClean: boolean; onDone: () => void; mayTransfer?: boolean; mayClass?: boolean;
+}): React.ReactElement {
   const { t } = useTranslation();
   const [act, setAct] = useState<Act>(null);
   const [busy, setBusy] = useState(false);
@@ -505,6 +511,10 @@ function BedActs({ bed, mayManage, mayClean, onDone }: { bed: IpdBoardBed; mayMa
       ) : null}
       {failed ? <span role="alert" style={{ color: "var(--red)", fontSize: 13 }}>{t("ipdBeds.actFailed")}</span> : null}
       {ok !== null ? <span className="ipdb-ok" role="status">✓ {ok}</span> : null}
+      {/* E3.1 (#729): transfer, swap and class change for the patient on this bed. */}
+      {bed.occupant?.admissionId && (mayTransfer || mayClass) && act === null ? (
+        <TransferPanel admissionId={bed.occupant.admissionId} mayTransfer={mayTransfer} mayClass={mayClass} onDone={onDone} />
+      ) : null}
     </div>
   );
 }

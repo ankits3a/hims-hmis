@@ -14,6 +14,8 @@ export {
 export type { IpdAdmissionIncomplete, IpdBandPayload, IpdBedNeed, IpdConsent, IpdPayerKind } from "./intents-admit";
 export * from "./admissions";
 export * from "./charges";
+// E3.1 (#729) — the transfer panel and the handover list.
+export * from "./transfers";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see
@@ -41,6 +43,8 @@ export const IPD_INTENTS = {
   accept_handover: wardIntents.acceptHandover,
   swap_beds: wardIntents.swapBeds,
   change_class: wardIntents.changeClass,
+  // E3.1 (#729, DECIDED) — calls a transfer off before acceptance (§4.4 "cancel back").
+  cancel_transfer: wardIntents.cancelTransfer,
   block_bed: admitIntents.blockBed,
   unblock_bed: admitIntents.unblockBed,
   mark_bed_clean: admitIntents.markBedClean,

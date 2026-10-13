@@ -23,6 +23,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *   ipd.bill.view       read an admission's interim bill (lines, totals, deposit, balance) — billing and front office
  *   ipd.charges.reverse post a reversal line against a wrong charge (never an edit) — the billing manager
  *
+ * E3.1 (#729) adds the transfer's two (spec §4.4). A class change in place rides `ipd.admit` (the desk's consented
+ * act with money consequences; never a doctor's):
+ *
+ *   ipd.transfer.start  start a transfer with its SBAR handover, cancel it, swap two patients' beds
+ *   ipd.transfer.accept accept a handover as the receiving nurse (the only act that moves the patient), or decline it
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). No subscriptions: the 2-hour reservation
  * lapse is a scheduler job (`kernel/worker/jobs.ts` `lapseBedReservations`), so the worker does not install this
  * manifest.
@@ -37,6 +43,8 @@ export const IPD_PAYER_MANAGE = "ipd.payer.manage";
 export const IPD_BAND_PRINT = "ipd.band.print";
 export const IPD_BILL_VIEW = "ipd.bill.view";
 export const IPD_CHARGES_REVERSE = "ipd.charges.reverse";
+export const IPD_TRANSFER_START = "ipd.transfer.start";
+export const IPD_TRANSFER_ACCEPT = "ipd.transfer.accept";
 
 export const ipdManifest: ModuleManifest = {
   key: "ipd",
@@ -44,10 +52,14 @@ export const ipdManifest: ModuleManifest = {
   menu: [
     { label: "Beds", path: "/ipd/beds", permission: IPD_BEDS_VIEW },
     { label: "Admit", path: "/ipd/admit", permission: IPD_ADMIT },
+    // E3.1 (#729) — the receiving ward's "Waiting for you" handover list.
+    { label: "Handovers", path: "/ipd/handovers", permission: IPD_TRANSFER_ACCEPT },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
     IPD_BILL_VIEW, IPD_CHARGES_REVERSE,
+    // E3.1 (#729)
+    IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT,
   ],
   subscriptions: [],
 };

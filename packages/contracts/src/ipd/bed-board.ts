@@ -41,7 +41,13 @@ export const IpdBoardBedSchema = z.object({
   /** When the bed entered its current status (occupancy start for an occupied bed). */
   since: IpdInstantSchema.nullable(),
   /** Initials always; the name only off the wall display and only when the viewer may read it (sealed → alias). */
-  occupant: z.object({ initials: z.string(), name: z.string().nullable() }).nullable(),
+  occupant: z.object({
+    initials: z.string(), name: z.string().nullable(),
+    /** E3.1 (#729): the admission on the bed (the drawer's Transfer panel opens it); null on the wall display. */
+    admissionId: IpdIdSchema.nullable().optional(),
+  }).nullable(),
+  /** E3.1 (#729): a transfer waiting for acceptance — this bed is its origin (patient still here) or its target. */
+  transfer: z.object({ transferId: IpdIdSchema, role: z.enum(["origin", "target"]) }).nullable().optional(),
   reservation: z.object({ id: IpdIdSchema, admissionId: IpdIdSchema, expiresAt: IpdInstantSchema }).nullable(),
   block: z.object({
     id: IpdIdSchema,

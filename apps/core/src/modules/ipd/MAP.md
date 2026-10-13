@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing]
+tags: [ipd, beds, resources, admission, billing, transfer]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -69,6 +69,17 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `.reversed`. `kernel/db/schema/ipd.ts` — `ipd_charge_lines`, `ipd_charge_exceptions`, `ipd_admissions.tariff_version_id`
   (migration `ipd_charges`). `packages/contracts/src/ipd/charges.ts` — `IpdInterimBill`, `IPD_CHARGE_ROUTES`.
   `apps/web/src/screens/ipd-bill.tsx` — the interim bill (`/ipd/admissions/$admissionId/bill`, no nav entry).
+
+- (E3.1) `transfers.ts` — `startTransfer`, `acceptHandover`, `cancelTransfer`, `swapBeds`, `changeClass` (the intents) and
+  `listHandovers`, `transferOptions` (the reads). `class-change.ts` — `nextNoonIst`, `applyClassChanges` (pure: splits a
+  stay at its class change), `classChangesOf`. `transfer-events.ts` — `ipd.transfer.started|accepted|cancelled`,
+  `ipd.bed.swapped`, `ipd.admission.class_changed`. `transfers.controller.ts` — `/ipd/transfers/*` (`IPD_TRANSFER_ROUTES`).
+  `beds.ts` seams: `lockBedsInOrder`, `holdBedForTransferIn`, `endHoldIn`, `vacateBedForSwapIn`, `bedWithWard`.
+  `kernel/db/schema/ipd.ts` — `ipd_transfers`, `ipd_class_changes` (migration `ipd_transfer`).
+  `packages/contracts/src/ipd/transfers.ts` — `IpdHandoverList`, `IpdTransferOptions`, `IPD_IN_PLACE_CLASSES`,
+  `IPD_TRANSFER_HOLD_MINUTES`; `cancel_transfer` joins the intent catalogue (`packages/contracts/src/ipd/intents-ward.ts`).
+  `apps/web/src/screens/ipd-transfer-panel.tsx` (the Beds drawer's Transfer panel) and
+  `apps/web/src/screens/ipd-handovers.tsx` (`/ipd/handovers`).
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -206,6 +217,37 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   gates the interim bill; charge events carry ids and dates only; acceptance (viii) pins the doctor-reachable IPD routes and
   scans their answers for money keys.
 
+### Transfer (E3.1)
+- A transfer is complete ONLY at `acceptHandover` by a person other than the sender (`sender_cannot_accept`). Until
+  then the patient's stay and the origin bed (kernel `occupied`, occupant = the admission) are untouched and the target
+  is an ordinary `ipd_bed_reservations` hold (12 h, `IPD_TRANSFER_HOLD_MINUTES`) — every other act sees it held.
+- Accept is ONE transaction: `releaseBedOccupant` on the origin (cleaning; `clean:terminal` when the admission is
+  isolated), `assignBedIn(viaAdmit)` on the target (consumes the hold, re-checks every rule under lock, opens the stay
+  at the bed's class), `transferring → admitted`, one `ipd.transfer.accepted { transferId, admissionId, … }` (the passes
+  lane consumes it by that name). A retry with the same key answers the first result; another accept is
+  `transfer_not_open`.
+- The 30-minute escalation is NOT a job: the admission workflow's `transferring` SLA (30 min, ladder 100 % →
+  `nursing_supervisor`); with nobody in that role the kernel's rung falls back to `duty_manager` (`resolveRung`).
+  `ipd_transfers.escalates_at` copies the rung's due instant for the handover clock.
+- `cancel_transfer` (DECIDED, §4.4 "cancel back") rides the workflow's single `transferring → admitted` edge (the engine
+  allows one edge per pair), so its workflow roles are `accept_handover`'s; either transfer permission may cancel.
+- LOCK ORDER for two beds/two admissions: advisory locks in admission-id order → `lockBedsInOrder` (all parents in id
+  order, then all beds in id order) → admission rows in id order → IPD rows. A one-bed act (parent → bed) cannot cycle
+  with it.
+- A swap vacates both beds with kernel reason `swap` (not `clean:*`: G3 never counts it) straight back to `available`,
+  then places each patient with `assignBedIn(viaAdmit)`; any refusal or failed write rolls both back (acceptance iii
+  injects a trigger failure). A bed with a block waiting for release cannot take a swap.
+- A transfer's need = the admission's isolation and gender + the TARGET bed's class and ICU flag, so a clinical move
+  never needs a class consent; onto an ICU bed from a non-ICU bed needs a granted `ipd_icu_admission` approval.
+- CLASS CHANGE IN PLACE (`changeClass`, permission `ipd.admit`): ward room classes only (`class_not_ward`), consent in
+  the admission consent's shape, upgrade needs `roomRentCapAcknowledged`. It is a row in `ipd_class_changes`, never a
+  future-dated stay; `charges.ts` `staysOf` folds it in (`applyClassChanges`) so the day rule decides the noon day
+  (highest class held over an hour). It binds its stay: a move before noon leaves it behind. A newer change supersedes
+  one not yet in effect.
+- Permissions (DECIDED): `ipd.transfer.start` and `ipd.transfer.accept` are held by `duty_manager` alone until the
+  ipd-nursing lane seeds `ward_nurse` / `nursing_supervisor` (the workflow already names those roles); the duty manager
+  is also an `accept_handover` actor in the contract.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -249,6 +291,13 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E2.1) The transfer and discharge lanes do not exist yet: the acceptance tests write class moves and the discharge
   directly into `ipd_bed_stays` / `ipd_admissions` (`test/helpers/ipd.ts` `mkChargesWorld`).
 
+- (E3.1) SEAMS LEFT OPEN: `not_receiving_ward` is not enforced (no nurse-to-ward assignment yet — ipd-nursing); the porter
+  task is the transport lane's `requestPatientMove` (comment in `startTransfer`); the room-rent cap warning TEXT on an
+  upgrade is the payer lane's (E2.2) — the intent only checks the acknowledgement; death mid-transfer
+  (`transferring → deceased`, ipd-discharge) must cancel the open `ipd_transfers` row and its hold.
+- (E3.1) The kernel workflow stamps state entry with the real clock, so the escalation rung is at real-now + 30 min
+  even when an act is called with an explicit `now` (tests read the rung's `due_at` and drive `runDueTimers` around it).
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -259,3 +308,5 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   and `ipd_admission_deposits`; eMAR resolves band serials against `ipd_bands`.
 - (E2.1) `kernel/worker/jobs.ts` (`postNightlyIpdCharges`, daily 00:05 IST); the rounds lane calls `postConsultantVisit`;
   the final bill (E3.2) calls `postAdmissionCharges`; `admissions.controller.ts` serves `readInterimBill`.
+- (E3.1) `transfers.controller.ts` (the Beds drawer's Transfer panel, the `/ipd/handovers` list); the passes lane consumes
+  `ipd.transfer.accepted`; `charges.ts` reads `ipd_class_changes` through `classChangesOf`.
