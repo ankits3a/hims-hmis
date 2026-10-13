@@ -41,6 +41,9 @@ import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from ".
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
 import { LINEN_CHANGE_TASK } from "../../modules/linen";
 import { HOUSEKEEPING_BED_CONSUMER, backfillBedCleans, bedTurnoverConsumer, housekeepingManifest } from "../../modules/housekeeping";
+// E1.5 MAINTENANCE (issue #722) — no subscription and no job, so nothing to install; importing the module DEFINES its
+// two repair kinds in this process, so the task clock knows their windows and their escalation role (tasks MAP §4).
+import "../../modules/maintenance";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";

@@ -29,6 +29,11 @@ export type TaskKindDecl = {
    * of a passed check (housekeeping makes the bed available). A throw rolls the verification back with it.
    */
   onVerified?: (tx: Tx, task: TaskRow, actor: Actor, now: Date) => Promise<void>;
+  /**
+   * Runs INSIDE `completeTask`'s transaction, after the task is marked done: the owning module's record of the
+   * worker's finished part (maintenance marks its ticket fixed). A throw rolls the completion back with it.
+   */
+  onDone?: (tx: Tx, task: TaskRow, actor: Actor, now: Date) => Promise<void>;
   /** Minutes past due at which each rung fires. Absent: `DEFAULT_LADDER_MIN`. */
   ladderMin?: readonly number[];
 };

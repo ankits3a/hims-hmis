@@ -173,7 +173,7 @@ export const reserveBed = ipdIntent({
     /** Two hours after the reservation; it lapses back to available on its own. */
     expiresAt: IpdInstantSchema,
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "advice_expired"],
+  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "advice_expired", "repair_ticket_open"],
   actors: ["desk", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
   agentTier: "T2",
@@ -248,7 +248,7 @@ export const assignBed = ipdIntent({
     billedClass: IpdBedClassSchema,
     protectedUntil: IpdInstantSchema.nullable(),
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "icu_needs_intensivist"],
+  refusals: ["admission_not_found", "admission_wrong_state", ...BED_RULE_REFUSALS, "icu_needs_intensivist", "repair_ticket_open"],
   actors: ["desk", "nurse", "supervisor", "duty_manager", "agent"],
   copilotProposable: true,
   agentTier: "T2",
@@ -377,7 +377,7 @@ export const blockBed = ipdIntent({
 export const unblockBed = ipdIntent({
   input: ipdInput({ bedId: IpdIdSchema, note: IpdNoteSchema.optional() }),
   output: z.strictObject({ bedId: IpdIdSchema, bedStatus: IpdBedStatusSchema }),
-  refusals: ["bed_not_found", "bed_not_blocked"],
+  refusals: ["bed_not_found", "bed_not_blocked", "repair_ticket_open"],
   actors: ["supervisor", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",

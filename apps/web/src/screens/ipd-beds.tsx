@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type {
-  BedCleanView, IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody,
+  BedCleanView, BedTicketView, IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody,
 } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
@@ -14,6 +14,8 @@ import {
 } from "../lib/ipd-beds-api";
 import type { BedActInput, BlockReason, ReleaseReason } from "../lib/ipd-beds-api";
 import { cleanRefusal, fetchBedCleans, nudgeCleanApi, verifyCleanApi } from "../lib/housekeeping-api";
+import { confirmTicketApi, fetchBedTickets, maintenanceRefusal } from "../lib/maintenance-api";
+import { RaiseTicketSheet } from "./maintenance-raise";
 import "../styles/paper-pine.css";
 import "./ipd-beds.css";
 
@@ -63,6 +65,14 @@ function cleanLine(c: BedCleanView, t: T, short = false): string {
   const clock = short ? t("housekeeping.clean.minutes", { minutes: c.minutes }) : t("housekeeping.clean.line", { minutes: c.minutes });
   return [clock, who, c.late ? t("housekeeping.clean.late") : null].filter(Boolean).join(" · ");
 }
+
+/** E1.5 — "Blocked · repair #123 · fixed, waiting nurse": the bed's repair ticket in words, from maintenance. */
+function repairLine(r: BedTicketView, t: T, short = false): string {
+  const state = t(`maintenance.bedState.${r.state}`);
+  if (short) return t("maintenance.bedShort", { n: r.number, state });
+  const head = r.blockOnRelease ? t("maintenance.onRelease") : t("ipdBeds.status.blocked");
+  return t("maintenance.bedLine", { head, n: r.number, state });
+}
 /** The blockers list shows this many slow cleans, then "+N more" (the right column never grows a page scroll). */
 const SLOW_SHOWN = 4;
 
@@ -86,6 +96,8 @@ export function IpdBeds(): React.ReactElement {
   const [board, setBoard] = useState<IpdBedBoard | null>(null);
   // E1.4 — housekeeping's cleaning clocks by bed; null until (or unless) the clocks load: the board still works.
   const [cleans, setCleans] = useState<Map<string, BedCleanView> | null>(null);
+  // E1.5 — maintenance's open repair ticket by bed; null until (or unless) it loads: the board still works.
+  const [tickets, setTickets] = useState<Map<string, BedTicketView> | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [floorId, setFloorId] = useState<string | null>(null);
@@ -104,6 +116,10 @@ export function IpdBeds(): React.ReactElement {
     fetchBedCleans().then(
       (v) => setCleans(new Map((v.cleans ?? []).map((c) => [c.bedId, c]))),
       () => setCleans(null),
+    );
+    fetchBedTickets().then(
+      (v) => setTickets(new Map((v.tickets ?? []).map((r) => [r.bedId, r]))),
+      () => setTickets(null),
     );
   }, [wall]);
   useEffect(() => { load(); }, [load]);
@@ -310,7 +326,7 @@ export function IpdBeds(): React.ReactElement {
                     <span>{t("ipdBeds.floorCount", { occupied: f.census.occupied, total: f.census.total })}</span>
                   </div>
                   <div className="ipdb-wards">
-                    {f.wards.map((w) => <WardCard key={w.id} ward={w} cleans={cleans} onOpen={() => { setWardId(w.id); setBedId(null); }} />)}
+                    {f.wards.map((w) => <WardCard key={w.id} ward={w} cleans={cleans} tickets={tickets} onOpen={() => { setWardId(w.id); setBedId(null); }} />)}
                   </div>
                 </div>
               ))}
@@ -378,6 +394,7 @@ export function IpdBeds(): React.ReactElement {
           ward={ward} wall={wall} selected={bedId} onSelect={setBedId} onClose={() => { setWardId(null); setBedId(null); }}
           mayManage={!wall && can("ipd.beds.manage")} mayClean={!wall && can("ipd.beds.clean")} onDone={load}
           cleans={cleans} mayVerify={!wall && (can("ipd.beds.clean") || can("housekeeping.verify_terminal"))} mayNudge={mayNudge}
+          tickets={tickets} mayRaise={!wall && can("maintenance.raise")} mayConfirmRepair={!wall && (can("ipd.beds.clean") || can("maintenance.confirm"))}
         />
       ) : null}
     </div>
@@ -413,7 +430,9 @@ function NudgeButton({ taskId, onDone }: { taskId: string; onDone: () => void })
   );
 }
 
-function WardCard({ ward, onOpen, cleans }: { ward: IpdBoardWard; onOpen: () => void; cleans: Map<string, BedCleanView> | null }): React.ReactElement {
+function WardCard({ ward, onOpen, cleans, tickets }: {
+  ward: IpdBoardWard; onOpen: () => void; cleans: Map<string, BedCleanView> | null; tickets: Map<string, BedTicketView> | null;
+}): React.ReactElement {
   const { t } = useTranslation();
   const c = ward.counts;
   const parts: string[] = [];
@@ -432,7 +451,8 @@ function WardCard({ ward, onOpen, cleans }: { ward: IpdBoardWard; onOpen: () => 
       <span className="ipdb-dots">
         {orderedBeds(ward).map((b) => {
           const clean = b.status === "cleaning" ? cleans?.get(b.id) : undefined;
-          const word = clean !== undefined ? cleanLine(clean, t) : t(`ipdBeds.status.${b.status}`);
+          const repair = tickets?.get(b.id);
+          const word = clean !== undefined ? cleanLine(clean, t) : repair !== undefined ? repairLine(repair, t) : t(`ipdBeds.status.${b.status}`);
           return <span key={b.id} className={`ipdb-dot s-${b.status}`} title={`${b.code} · ${word}`} aria-label={`${b.code} · ${word}`} role="img" />;
         })}
       </span>
@@ -444,6 +464,7 @@ function WardDrawer(p: {
   ward: IpdBoardWard; wall: boolean; selected: string | null; onSelect: (id: string | null) => void; onClose: () => void;
   mayManage: boolean; mayClean: boolean; onDone: () => void;
   cleans: Map<string, BedCleanView> | null; mayVerify: boolean; mayNudge: boolean;
+  tickets: Map<string, BedTicketView> | null; mayRaise: boolean; mayConfirmRepair: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
   const bed = p.ward.beds.find((b) => b.id === p.selected) ?? null;
@@ -468,7 +489,8 @@ function WardDrawer(p: {
         <div className="body">
           {bed !== null ? (
             <BedActs key={bed.id} bed={bed} mayManage={p.mayManage} mayClean={p.mayClean} onDone={p.onDone}
-              clean={bed.status === "cleaning" ? p.cleans?.get(bed.id) ?? null : null} mayVerify={p.mayVerify} mayNudge={p.mayNudge} />
+              clean={bed.status === "cleaning" ? p.cleans?.get(bed.id) ?? null : null} mayVerify={p.mayVerify} mayNudge={p.mayNudge}
+              repair={p.tickets?.get(bed.id) ?? null} mayRaise={p.mayRaise} mayConfirmRepair={p.mayConfirmRepair} />
           ) : (
             <span className="dim" style={{ fontSize: 13 }}>{t("ipdBeds.pickBed")}</span>
           )}
@@ -477,7 +499,7 @@ function WardDrawer(p: {
               <button key={b.id} type="button" className="ipdb-tile" aria-pressed={b.id === p.selected} onClick={() => p.onSelect(b.id)} data-testid={`ipd-bed-${b.code}`}>
                 <span className="code"><i className={`ipdb-dot s-${b.status}`} aria-hidden="true" />{b.code}</span>
                 <span className="word">{t(`ipdBeds.status.${b.status}`)}</span>
-                <span className="who">{tileLine(b, p.wall, t, b.status === "cleaning" ? p.cleans?.get(b.id) : undefined)}</span>
+                <span className="who">{tileLine(b, p.wall, t, b.status === "cleaning" ? p.cleans?.get(b.id) : undefined, p.tickets?.get(b.id))}</span>
               </button>
             ))}
           </div>
@@ -487,8 +509,9 @@ function WardDrawer(p: {
   );
 }
 
-function tileLine(b: IpdBoardBed, wall: boolean, t: T, clean?: BedCleanView): string {
+function tileLine(b: IpdBoardBed, wall: boolean, t: T, clean?: BedCleanView, repair?: BedTicketView): string {
   if (clean !== undefined) return cleanLine(clean, t, true);
+  if (repair !== undefined && b.status === "blocked") return repairLine(repair, t, true);
   if (b.occupant !== null) return wall ? b.occupant.initials : (b.occupant.name ?? b.occupant.initials);
   if (b.reservation !== null) return t("ipdBeds.until", { time: fmtIst(b.reservation.expiresAt) });
   if (b.block !== null) return t(`ipdBeds.blockReason.${b.block.reason}`);
@@ -496,12 +519,14 @@ function tileLine(b: IpdBoardBed, wall: boolean, t: T, clean?: BedCleanView): st
   return t(`ipdBeds.class.${b.class}`);
 }
 
-function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge }: {
+function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge, repair, mayRaise, mayConfirmRepair }: {
   bed: IpdBoardBed; mayManage: boolean; mayClean: boolean; onDone: () => void;
   clean: BedCleanView | null; mayVerify: boolean; mayNudge: boolean;
+  repair: BedTicketView | null; mayRaise: boolean; mayConfirmRepair: boolean;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [act, setAct] = useState<Act>(null);
+  const [raising, setRaising] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
   const [failed, setFailed] = useState(false);
@@ -550,11 +575,33 @@ function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge 
   if (mayManage && s === "incumbent") {
     buttons.push({ key: "incumbent", label: t("ipdBeds.act.releaseIncumbent"), onClick: () => run(releaseIncumbentBed(bed.id), t("ipdBeds.done.released")) });
   }
-  if (mayManage && s === "blocked") {
+  // E1.5 — a fixed repair is closed by the nurse's confirmation, which also ends the block (the bed goes to cleaning).
+  if (repair !== null && repair.state === "fixed" && mayConfirmRepair) {
+    buttons.push({
+      key: "confirmRepair", label: t("maintenance.confirmRepair"),
+      onClick: () => {
+        setBusy(true); setRefusal(null); setFailed(false); setOk(null);
+        confirmTicketApi(repair.ticketId).then(
+          () => { setBusy(false); setOk(t("maintenance.confirmed")); onDone(); },
+          (e: unknown) => {
+            setBusy(false);
+            const r = maintenanceRefusal(e);
+            if (r === null) setFailed(true);
+            else setRefusal({ statusCode: 409, code: r.code, message: r.message, rule: r.message, fix: r.fix });
+          },
+        );
+      },
+    });
+  }
+  // A bed a repair ticket holds is unblocked only by closing the ticket (the server refuses a hand unblock).
+  if (mayManage && s === "blocked" && repair === null) {
     buttons.push({ key: "unblock", label: t("ipdBeds.act.unblock"), onClick: () => run(unblockBed(bed.id), t("ipdBeds.done.unblocked")) });
   }
   if (mayManage && (s === "available" || s === "cleaning" || s === "occupied" || s === "incumbent") && !(bed.block?.onRelease ?? false)) {
     buttons.push({ key: "block", label: s === "occupied" || s === "incumbent" ? t("ipdBeds.act.blockOnRelease") : t("ipdBeds.act.block"), onClick: () => setAct("block") });
+  }
+  if (mayRaise) {
+    buttons.push({ key: "fault", label: t("maintenance.report"), onClick: () => setRaising(true) });
   }
 
   return (
@@ -572,6 +619,12 @@ function BedActs({ bed, mayManage, mayClean, onDone, clean, mayVerify, mayNudge 
           {bed.block.onRelease ? t("ipdBeds.blockOnReleaseLine") : t("ipdBeds.blockedLine")} — {t(`ipdBeds.blockReason.${bed.block.reason}`)}: {bed.block.note} · {t("ipdBeds.back", { time: fmtIst(bed.block.expectedReturnAt) })}
         </span>
       ) : null}
+      {repair !== null ? (
+        <span style={{ fontSize: 13, fontWeight: 600 }} data-testid="ipd-bed-repair">
+          {repairLine(repair, t)} · {t(`maintenance.item.${repair.itemKind}`)}{repair.urgency !== "routine" ? ` · ${t(`maintenance.urgency.${repair.urgency}`)}` : ""}
+        </span>
+      ) : null}
+      {raising ? <RaiseTicketSheet place={{ id: bed.id, code: bed.code, name: bed.code }} onClose={() => { setRaising(false); onDone(); }} /> : null}
       {bed.reservation !== null ? <span style={{ fontSize: 13 }}>{t("ipdBeds.reservedLine", { time: fmtIst(bed.reservation.expiresAt) })}</span> : null}
       {clean !== null ? (
         <span style={{ fontSize: 13, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} data-testid="ipd-bed-clean">

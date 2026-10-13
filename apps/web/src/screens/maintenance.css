@@ -1,0 +1,61 @@
+/*
+ * E1.5 MAINTENANCE (issue #722) — the raise sheet (390 px first: a bottom sheet on a phone, a centred dialog on a
+ * desktop) and the maintenance board's own pieces (the board itself wears the task board's `tk-*` layout: 16:9,
+ * no vertical scroll). Paper & pine tokens; every colour comes with a word (Critical, Late, Replace?).
+ */
+.mt-scrim { position: fixed; inset: 0; background: rgba(19, 36, 32, .35); z-index: 60; }
+.mt-sheet {
+  position: fixed; z-index: 61; left: 0; right: 0; bottom: 0; max-height: 92dvh; overflow-y: auto;
+  background: var(--paper, #f4f7f4); color: var(--ink, #132420); border-radius: 14px 14px 0 0;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, .18); padding: 0 16px 16px; box-sizing: border-box;
+  font-family: inherit;
+}
+@media (min-width: 720px) {
+  .mt-sheet { left: 50%; right: auto; bottom: auto; top: 50%; transform: translate(-50%, -50%); width: 560px; border-radius: 12px; }
+}
+.mt-sheet > header { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 0 10px; background: var(--paper, #f4f7f4); }
+.mt-sheet h2 { margin: 0; font-size: 20px; }
+.mt-sheet .mt-x, .mt-sheet .mt-link { font: inherit; font-size: 15px; background: none; border: 1px solid var(--line, #dfe7e1); border-radius: 8px; padding: 6px 12px; color: var(--ink, #132420); cursor: pointer; }
+.mt-sheet .mt-link { border: 0; padding: 0 4px; color: var(--green, #0e6b4e); text-decoration: underline; }
+.mt-form { display: flex; flex-direction: column; gap: 14px; }
+.mt-field { display: flex; flex-direction: column; gap: 6px; }
+.mt-lbl { font-size: 14px; font-weight: 700; color: var(--dim, #5c6f66); }
+.mt-input { font: inherit; font-size: 17px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line, #dfe7e1); background: var(--card, #fff); color: var(--ink, #132420); width: 100%; box-sizing: border-box; }
+.mt-place { display: flex; align-items: baseline; gap: 8px; font-size: 17px; padding: 10px 12px; border-radius: 8px; background: var(--card, #fff); border: 1px solid var(--line, #dfe7e1); }
+.mt-found { display: flex; flex-direction: column; border: 1px solid var(--line, #dfe7e1); border-radius: 8px; overflow: hidden; }
+.mt-sheet .mt-found button { font: inherit; font-size: 16px; text-align: left; padding: 10px 12px; background: var(--card, #fff); border: 0; border-bottom: 1px solid var(--line2, #ecf1ed); color: var(--ink, #132420); cursor: pointer; min-height: 44px; }
+.mt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mt-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mt-sheet .mt-opt {
+  font: inherit; font-size: 15px; min-height: 48px; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line, #dfe7e1); background: var(--card, #fff); color: var(--ink, #132420);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center;
+}
+.mt-sheet .mt-opt small { font-size: 12px; color: var(--dim, #5c6f66); }
+.mt-sheet .mt-opt[aria-pressed="true"] { border: 2px solid var(--green, #0e6b4e); background: var(--green-soft, rgba(14,107,78,.08)); font-weight: 700; }
+.mt-sheet .mt-opt.u-critical[aria-pressed="true"] { border-color: var(--red, #b23a30); background: var(--red-soft, rgba(178,58,48,.08)); }
+.mt-sheet .mt-opt.u-urgent[aria-pressed="true"] { border-color: var(--gold, #dd8f1c); background: var(--gold-soft, rgba(221,143,28,.1)); }
+.mt-sheet .mt-go {
+  font: inherit; font-size: 18px; font-weight: 700; min-height: 52px; width: 100%; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--green, #0e6b4e); background: var(--green, #0e6b4e); color: #f2faf6;
+}
+.mt-sheet .mt-go { text-align: center; }
+.mt-sheet .mt-go:disabled { opacity: .45; cursor: default; }
+.mt-refusal { margin: 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--red-line, rgba(178,58,48,.4)); background: var(--red-soft, rgba(178,58,48,.08)); color: var(--red, #b23a30); font-size: 15px; }
+.mt-done { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 4px; font-size: 16px; }
+.mt-done b { font-size: 20px; }
+.mt-flag { font-weight: 700; color: var(--red, #b23a30); }
+
+/* ── the board's own pieces ── */
+.pp .mt-crit { color: var(--red); font-weight: 700; }
+.pp .mt-urg { color: var(--gold); font-weight: 700; }
+.pp .mt-side-list { display: flex; flex-direction: column; min-height: 0; overflow: hidden; flex: 0 0 auto; }
+.pp .mt-side-list.grow { flex: 1 1 auto; }
+.pp .mt-side-list > header { padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: 700; color: var(--ink); }
+.pp .mt-btn { font: inherit; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--ink); background: var(--card); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.pp .mt-btn.pri { border-color: var(--green); background: var(--green); color: #f2faf6; font-size: 15px; padding: 6px 14px; }
+.pp .mt-btn:disabled { opacity: .5; cursor: default; }
+/* A phone (the board is designed for 16:9; this only stops breakage): the side lists stack at their own height. */
+@media (max-width: 700px) {
+  .pp .mt-side-list.grow { flex: 0 0 auto; }
+}

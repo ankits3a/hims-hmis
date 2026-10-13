@@ -130,3 +130,6 @@ export * from "./bmw";
 // batches and their short deliveries, condemn requests and ward counts. References `resources` (wards); nothing reads
 // it but `modules/linen`.
 export * from "./linen";
+// E1.5 MAINTENANCE (issue #722, decision 0072) — repair tickets and their append-only history. References
+// `resources` (the place), `ipd_bed_blocks` (the bed's block) and `tasks` (the repair task).
+export * from "./maintenance";

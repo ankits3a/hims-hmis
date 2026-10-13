@@ -27,6 +27,7 @@ import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
+import { maintenanceManifest } from "../../modules/maintenance";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -94,6 +95,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
   orderingManifest, // DECISION 0067 — both processes
   housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
+  maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -210,13 +212,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "linen",
       // E1.4 HOUSEKEEPING (issue #721) — appended. A leaf: it reaches into tasks and ipd through their indexes.
       "housekeeping",
+      // E1.5 MAINTENANCE (issue #722) — appended. A leaf: it reaches into tasks and ipd through their indexes.
+      "maintenance",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(30); // E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(31); // E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(30); // IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
+    expect(registry.all()).toHaveLength(31); // IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -229,7 +233,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly eleven enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly twelve enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -359,7 +363,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      clock rides `sweepTasks`, and the worker imports the bmw index for that (which also defines its task kind).
     // (1m) E2.4 LINEN — `linen`, APP-ONLY on the same terms: three permissions, no subscription and no worker job (the
     //      weekly variance is computed on read).
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "bmw", "linen"]);
+    // (1n) E1.5 MAINTENANCE — the TWENTY-NINTH, `maintenance`, APP-ONLY: five permissions, no subscription, no job.
+    //      The worker IMPORTS the module (so its two repair kinds exist for the task clock) and installs nothing.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "bmw", "linen", "maintenance"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
