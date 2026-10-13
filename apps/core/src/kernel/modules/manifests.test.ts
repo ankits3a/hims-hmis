@@ -26,6 +26,8 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
+import { housekeepingManifest } from "../../modules/housekeeping";
+import { maintenanceManifest } from "../../modules/maintenance";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -92,6 +94,8 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   pharmacyManifest, // PLAN 16c T3
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
   orderingManifest, // DECISION 0067 — both processes
+  housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
+  maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -198,13 +202,21 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       // TEST ORDERING (decision 0067, 2026-10-10) — appended. It reaches into lab, radiology, opd and
       // billing through their indexes; nothing imports it.
       "ordering",
+      "ipd", // IPD BEDS E1.1 (#718): the bed board
+      // E0.1 TASK ENGINE (issue #713) — appended. It reaches into the roster through its index; owning
+      // modules (housekeeping, bmw …) will import it, never the other way.
+      "tasks",
+      // E1.4 HOUSEKEEPING (issue #721) — appended. A leaf: it reaches into tasks and ipd through their indexes.
+      "housekeeping",
+      // E1.5 MAINTENANCE (issue #722) — appended. A leaf: it reaches into tasks and ipd through their indexes.
+      "maintenance",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(25); // TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(29); // E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E0.1 TASK ENGINE: 27, tasks; IPD BEDS E1.1: 26, ipd; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(25);
+    expect(registry.all()).toHaveLength(29); // IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -217,7 +229,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly nine enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly twelve enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -339,7 +351,13 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // (1k) STAFF ATTENDANCE — the TWENTY-FOURTH, `attendance`, APP-ONLY on the roster's terms: it
     //      declares one permission and no subscription; the worker runs its job (`syncAttendance`)
     //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance"]);
+    // (1l) IPD BEDS E1.1 — the TWENTY-SIXTH, `ipd`, APP-ONLY on the same terms: four permissions, no subscription;
+    //      the worker runs its job (`lapseBedReservations`) without the manifest.
+    // (1m) E0.1 TASK ENGINE — the TWENTY-SEVENTH, `tasks`, APP-ONLY on the same terms: three permissions, no
+    //      subscription; the worker runs `sweepTasks` and needs no permission to.
+    // (1n) E1.5 MAINTENANCE — the TWENTY-NINTH, `maintenance`, APP-ONLY: five permissions, no subscription, no job.
+    //      The worker IMPORTS the module (so its two repair kinds exist for the task clock) and installs nothing.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "ipd", "tasks", "maintenance"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
@@ -421,7 +439,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "pharmacy",
       // DECISION 0067 — the free-test consumer (`ordering.free_tests`); installed in both processes.
       "ordering",
+      // E1.4 HOUSEKEEPING (issue #721) — the bed-turnover consumer (`housekeeping.bed_turnover`); installed in both.
+      "housekeeping",
     ]);
-    expect(workerKeys).toHaveLength(20); // DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(21); // E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

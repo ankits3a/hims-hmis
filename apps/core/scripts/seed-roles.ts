@@ -85,6 +85,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      // E1.5 MAINTENANCE (issue #722) — the desk reports a fault it sees (Beds board "Report a fault").
+      "maintenance.raise",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -124,6 +129,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      "ipd.beds.clean",
+      // E1.5 MAINTENANCE (issue #722) — reports a fault; confirms a repair through `ipd.beds.clean` (the kind's verifier list).
+      "maintenance.raise",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -812,6 +823,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -956,6 +969,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1096,7 +1111,18 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+    // E0.1 TASK ENGINE (issue #713) — the duty manager sees the task board and may assign, cancel and take back a
+    // task out of hours, when no services supervisor is on.
+    permissions: [
+      "auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
+      // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
+      "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
+      "tasks.view", "tasks.supervise",
+      // E1.4 HOUSEKEEPING (issue #721) — the housekeeping board out of hours (not the terminal-clean check).
+      "housekeeping.view",
+      // E1.5 MAINTENANCE (issue #722) — the maintenance board, raise, confirm a repair and cancel or re-dispatch a ticket out of hours.
+      "maintenance.view", "maintenance.raise", "maintenance.confirm", "maintenance.manage",
+    ],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1215,6 +1241,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // the engineer, which is the §10 bundling matrix working as designed. This is a second
       // holder, not a transfer.
       "ops.interface.manage",
+      // E1.5 MAINTENANCE (issue #722) — biomedical engineering takes the EQUIPMENT repair tasks (skill `biomedical`):
+      // the task engine's list and acts, the maintenance board, and reporting a fault it finds.
+      "tasks.view", "tasks.work", "maintenance.view", "maintenance.work", "maintenance.raise",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1398,12 +1427,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // documentation-gate failure mode this module is built to remove.
     // PHARMACY STAGE D4 — the OT's emergency tray is the theatre nurse's to check (daily seal, monthly, after use) and
     // to receive its restock into. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check"],
+    permissions: [
+      "ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check",
+      // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair (the ward nurse role arrives with ipd-nursing).
+      "maintenance.raise", "maintenance.confirm",
+    ],
   },
   {
     roleKey: "recovery_nurse",
     // PHARMACY STAGE D4 — the recovery bay's emergency tray. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check"],
+    permissions: [
+      "ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check",
+      // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair.
+      "maintenance.raise", "maintenance.confirm",
+    ],
   },
   {
     roleKey: "daycare_coordinator",
@@ -1732,6 +1769,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.worklist.read",
       "radiology.gates.satisfy",
       "radiology.contrast.record",
+      // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair.
+      "maintenance.raise", "maintenance.confirm",
     ],
   },
   {
@@ -1962,7 +2001,39 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "ipd.beds.view"] },
+  /**
+   * E0.1 TASK ENGINE (issue #713, decision 0072) — no housekeeping or nursing-supervisor role existed, so two are
+   * minted, by the standard Indian corporate-hospital split: the people who DO service work (ward attendants,
+   * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
+   * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
+   */
+  { roleKey: "support_staff", permissions: ["tasks.work"] },
+  /**
+   * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
+   * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
+   * control keeps with the supervisor alone. A routine clean is also checked by `ipd.beds.clean` holders.
+   */
+  {
+    roleKey: "services_supervisor",
+    permissions: [
+      "tasks.view", "tasks.work", "tasks.supervise", "housekeeping.view", "housekeeping.verify_terminal",
+      // E1.5 MAINTENANCE (issue #722) — the maintenance board; raise; cancel a ticket raised in error or re-dispatch
+      // one whose task was cancelled. Told when an item is flagged for replacement. NOT the confirmation: that is
+      // the nurse's (`ipd.beds.clean` or `maintenance.confirm`).
+      "maintenance.view", "maintenance.raise", "maintenance.manage",
+    ],
+  },
+  /**
+   * E1.5 MAINTENANCE (issue #722, decision 0072) — no engineering role existed, so one is minted, by the standard
+   * Indian corporate-hospital split: the ENGINEERING department's technicians (electrician, plumber, AC, carpenter)
+   * take the general repair tasks (skill `maintenance`); biomedical engineering keeps the equipment. They hold the
+   * task engine's list and acts, the maintenance board and raise. NOBODY is assigned to it by any seed.
+   */
+  {
+    roleKey: "maintenance_staff",
+    permissions: ["tasks.view", "tasks.work", "maintenance.view", "maintenance.work", "maintenance.raise"],
+  },
 ];
 
 /**
@@ -2162,7 +2233,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // whoever the owner designates, and the card list is a workforce document rather than an RBAC one.
   tariff_editor: "Tariff Editor (drafts the price list; the owner activates)",
   membership_admin: "Membership Administrator (holder-book import and the reconcile queue)",
-  biomedical_engineer: "Biomedical Engineer (device and analyzer interfaces)",
+  biomedical_engineer: "Biomedical Engineer (device and analyzer interfaces, equipment repairs)",
   mrd_officer: "MRD Officer (records; requests merges, never approves one)",
   // PLAN 14 / DD11, 2026-08-27. Neither is an OPD station, so neither is in `OPD_ROLE_KEYS`.
   // § 4A item 5: these KEYS are the brainstorm's S10 names and they are what the code matches on.
@@ -2223,6 +2294,9 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
   admin: "Administrator",
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
+  support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
+  services_supervisor: "Services Supervisor (task board: assigns, cancels and verifies service tasks)",
+  maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

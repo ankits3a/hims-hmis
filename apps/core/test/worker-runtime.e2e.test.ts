@@ -206,6 +206,10 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** IPD BEDS E1.1 (#718) — `every(60_000)`: a two-hour bed hold lapses back to available. */
+  "lapseBedReservations",
+  /** E0.1 TASK ENGINE (issue #713) — `every(60_000)`: the task clock (shift end, re-dispatch, the pool, the ladder). */
+  "sweepTasks",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -428,6 +432,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // silence beside the lateness. Sorted, it lands last.
         // 20-U infra (owner 2026-10-04): `roster.flag_raised` is the EIGHTH — a "this is wrong"
         // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
+        // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events drive its cleaning task. Sorted, after `abdm.`.
+        ["housekeeping.bed_turnover", ["resource.assigned", "resource.released", "resource.status_changed"]],
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",

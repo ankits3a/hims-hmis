@@ -39,6 +39,10 @@ import {
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
+import { HOUSEKEEPING_BED_CONSUMER, backfillBedCleans, bedTurnoverConsumer, housekeepingManifest } from "../../modules/housekeeping";
+// E1.5 MAINTENANCE (issue #722) — no subscription and no job, so nothing to install; importing the module DEFINES its
+// two repair kinds in this process, so the task clock knows their windows and their escalation role (tasks MAP §4).
+import "../../modules/maintenance";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -200,6 +204,11 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // install and the `workerConsumers` entry are ONE edit (`buildSubscriptionBus`).
         registry.install(abdmManifest);
         registry.install(orderingManifest);
+        // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events -> `housekeeping.bed_turnover`: a bed released
+        // into cleaning raises its one cleaning task; a bed leaving cleaning cancels it. Installed in BOTH processes
+        // (the pharmacy shape); this install and the `workerConsumers` entry are ONE edit. Importing the module also
+        // defines its task kinds in the worker, so the task clock knows their windows and ladders.
+        registry.install(housekeepingManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -313,6 +322,9 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
     // Decision 0067 — the other half of `orderingManifest`'s `consultation.completed` /
     // `prescription.paper_transcribed` declaration: free tests order themselves. One without the other is a boot error.
     [ORDERING_FREE_TESTS_CONSUMER]: freeTestsConsumer(db),
+    // E1.4 HOUSEKEEPING — the other half of `housekeepingManifest`'s three bed subscriptions. One without the other
+    // is a boot error.
+    [HOUSEKEEPING_BED_CONSUMER]: bedTurnoverConsumer(db),
     [PHARMACY_RX_ISSUED_CONSUMER]: rxIssuedConsumer(db),
     // PHARMACY P6 (patient messages) — the bill's message, once per invoice. `pharmacyManifest` declares
     // `dispense.handed_over` and `retail.sold` -> `pharmacy.patient_messages` in the commit that adds this
@@ -382,4 +394,17 @@ export function shutdownWorker(
   })().catch((err: unknown) => {
     logger.error("worker: shutdown failed", err);
   });
+}
+
+/**
+ * E1.4 (PR #750 review) — WHAT A CONSUMER OWES FOR THE EVENTS ITS SEEDED CURSOR SKIPS. `seedCursors` (deploy step
+ * "cursor seeding", before the worker starts) puts a new consumer at `max(seq)`; a consumer whose job is a projection
+ * of current state names a backfill here, and `seedCursors` runs every one after seeding. Each must be idempotent: the
+ * step runs on every deploy.
+ */
+export function workerBackfills(db: Db): Record<string, () => Promise<number>> {
+  return {
+    // Every IPD bed already in cleaning with no clean owed gets its one clean (keyed on the event that put it there).
+    [HOUSEKEEPING_BED_CONSUMER]: () => backfillBedCleans(db),
+  };
 }

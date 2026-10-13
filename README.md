@@ -1677,12 +1677,41 @@ totals: `copilot.health.read` is held by `owner`, `admin`, `duty_manager` and th
 timings, model calls and estimated AI spend for a day and never a per-person list; nobody is assigned to
 `quality_manager` by any seed.
 
+**Task engine (issue #713, decision 0072, 2026-10-12).** One engine runs every service request — a bed to
+clean, a bag to collect, a patient to move: raised, offered to the least-loaded worker on duty, accepted
+by exactly one, started, done, and checked where its kind says. Three permissions guard it.
+`tasks.work` is held by the new role `support_staff` and nothing else; `services_supervisor` holds
+`tasks.view`, `tasks.work` and `tasks.supervise`; `duty_manager` holds `tasks.view` and `tasks.supervise`
+for the hours no supervisor is on. Nobody is assigned to either new role by any seed.
+
+**Housekeeping (E1.4, issue #721, decision 0072, built 2026-10-12, awaiting owner review).** Every bed released
+into cleaning raises exactly one cleaning task on the task engine; the bed is free only when the clean is checked.
+`housekeeping.view` (services_supervisor, duty_manager) opens the housekeeping board at `/housekeeping`;
+`housekeeping.verify_terminal` is held by `services_supervisor` alone — a terminal clean (isolation bed, infection,
+death) is checked by the housekeeping supervisor. A routine clean may also be checked by a holder of `ipd.beds.clean`.
+
+**Maintenance (E1.5, issue #722, decision 0072, built 2026-10-13, awaiting owner review).** Repair tickets for beds,
+rooms, oxygen points and fixtures, worked on the task engine. A bed with a repair ticket stays blocked until the ticket
+is closed, and only a nurse's confirmation closes it; a third fault on one item in 30 days flags it for replacement.
+`maintenance.confirm` is held by `duty_manager` and the nurses (`ot_nurse`, `recovery_nurse`, `radiology_nurse`), and a
+holder of `ipd.beds.clean` may confirm too; the new role `maintenance_staff` (engineering technicians) and
+`biomedical_engineer` take the repairs. `maintenance.raise` is held by the front office, its supervisor, the duty manager,
+the services supervisor, the nurses and the technicians; `maintenance.view` and `maintenance.manage` by the duty manager
+and the services supervisor (the board at `/maintenance`); `maintenance.work` by the two technician roles.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and
 `copilot.halt.clear_global` is held by `owner` alone. Each halt and clear is an audit event naming who.
 When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
 phrasebook only until midnight IST and the health page says so.
+
+**IPD beds (E1.1, decision 0072, built 2026-10-12, awaiting owner review).** The capacity board at
+`/ipd/beds` and the bed acts behind it. `ipd.beds.view` (front_office, front_office_supervisor,
+duty_manager, medical_superintendent, owner, admin) reads the board; `ipd.beds.manage` (front_office,
+front_office_supervisor, duty_manager) reserves, assigns, blocks, unblocks and releases incumbent beds;
+`ipd.beds.clean` (front_office_supervisor, duty_manager) marks a cleaned bed ready until housekeeping
+lands; and `ipd.beds.overflow` is held by `duty_manager` alone — an overflow bed needs the duty manager.
 
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
