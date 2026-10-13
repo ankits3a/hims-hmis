@@ -26,6 +26,7 @@ import { attendanceManifest } from "../../modules/attendance";
 import { orderingManifest } from "../../modules/ordering";
 import { tasksManifest } from "../../modules/tasks";
 import { ipdManifest } from "../../modules/ipd";
+import { bmwManifest } from "../../modules/bmw";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -195,4 +196,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // `roster` shape: the worker runs `sweepTasks` and needs no permission to.
   tasksManifest,
   ipdManifest,
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — appended. Three permissions, two menu entries, no subscription. API only, the
+  // `tasks` shape: the storage clock rides the task clock's job and needs no permission to.
+  bmwManifest,
 ];

@@ -1985,15 +1985,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
   // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read", "ipd.beds.view"] },
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — the administration files the BMW annual report and answers the pollution
+  // control board: it reads the board and holds the manifests, disputes and reports. It does not handle bags.
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read", "ipd.beds.view", "bmw.view", "bmw.manage"] },
   /**
    * E0.1 TASK ENGINE (issue #713, decision 0072) — no housekeeping or nursing-supervisor role existed, so two are
    * minted, by the standard Indian corporate-hospital split: the people who DO service work (ward attendants,
    * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
    * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
    */
-  { roleKey: "support_staff", permissions: ["tasks.work"] },
-  { roleKey: "services_supervisor", permissions: ["tasks.view", "tasks.work", "tasks.supervise"] },
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — the people who carry waste generate, weigh, collect and store bags
+  // (`bmw.handle`); the services supervisor is the BMW supervisor: the board, the handover to the treatment
+  // facility, disputes and the legal reports. DECIDED by the standard Indian corporate-hospital split.
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle"] },
+  {
+    roleKey: "services_supervisor",
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage"],
+  },
 ];
 
 /**

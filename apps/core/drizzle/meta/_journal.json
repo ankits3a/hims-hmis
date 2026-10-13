@@ -1443,6 +1443,13 @@
       "when": 1791842349714,
       "tag": "0205_tasks_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1791845315087,
+      "tag": "0206_bmw",
+      "breakpoints": true
     }
   ]
 }
