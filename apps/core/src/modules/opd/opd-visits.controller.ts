@@ -35,7 +35,7 @@ import { parsed, toHttp } from "./opd-masters.controller";
 import { availableSlots } from "./schedules";
 import { istDate } from "./time";
 import { amendVitals, getVitalsForAmend, listVitals, recordVitals } from "./vitals";
-import { markPatientAbsent, patientAbsentOf } from "./patient-absent";
+import { markPatientAbsent, patientAbsentOf, undoPatientAbsent } from "./patient-absent";
 import type { PatientAbsent } from "./patient-absent";
 import { BENCH_STATES, listBench, locateVisit, setBenchState } from "./bench";
 import { cancelEscalation, demandRecheck, escalate, escalationFor } from "./escalation";
@@ -805,6 +805,22 @@ export class OpdVisitsController {
     const b = parsed(patientAbsentBody, body);
     try {
       return await markPatientAbsent(this.db, actor, id, { relation: b.relation, name: b.name ?? null });
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /**
+   * #771 — undo the guardian mark: the patient is here after all. The same two grants as the mark;
+   * refused once the doctor has the visit (`patient-absent.ts` `undoPatientAbsent`).
+   */
+  @RequirePermission("opd.vitals.record", "hospital", { alsoAdmits: ["opd.visits.open"] })
+  @Post("visits/:id/patient-absent/undo")
+  async postPatientAbsentUndo(
+    @CurrentActor() actor: Actor, @Param("id") id: string,
+  ): Promise<{ encounter: EncounterRow; alreadyCleared: boolean }> {
+    try {
+      return await undoPatientAbsent(this.db, actor, id);
     } catch (e) {
       toHttp(e);
     }

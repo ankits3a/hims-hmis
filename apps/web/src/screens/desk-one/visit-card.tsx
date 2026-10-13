@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { api } from "../../lib/api";
 import { guardianMayStandIn, listDepartments, listQueueSummary, moveVisitDepartment, opdErrorMessage, todayIst } from "../../lib/opd-api";
-import { GuardianAbsentAction, PatientAbsentNotice } from "../../components/patient-absent";
+import { GuardianAbsentAction, GuardianUndoAction, PatientAbsentNotice } from "../../components/patient-absent";
 import { useAuth } from "../../lib/auth";
 import { useDoctorLabel } from "../../lib/use-doctor-label";
 import { dayMonthIst } from "../../lib/format";
@@ -126,7 +126,20 @@ export function VisitCard({
 
         {/* ═══ THE GUARDIAN CAME WITH THE REPORTS (owner 2026-10-07) ═══ */}
         {absent !== null ? (
-          <div style={{ marginTop: 10 }}><PatientAbsentNotice absent={absent} testId="visit-card-absent-notice" /></div>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+            <PatientAbsentNotice absent={absent} testId="visit-card-absent-notice" />
+            {/* #771 — the mark was a mistake: while the doctor does not have the visit yet. The server decides the rest. */}
+            {detail.data?.encounter.status === "waiting" && detail.data.encounter.serviceDate === today && (
+              <GuardianUndoAction
+                encounterId={current.encounterId} testId="visit-card-absent-undo"
+                onDone={() => {
+                  setDone(t("patientAbsent.undone"));
+                  void qc.invalidateQueries({ queryKey: ["d1"] });
+                  void qc.invalidateQueries({ queryKey: ["opd-timeline"] });
+                }}
+              />
+            )}
+          </div>
         ) : mayMarkAbsent ? (
           <div style={{ marginTop: 10, display: "flex" }}>
             <GuardianAbsentAction

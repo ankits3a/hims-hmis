@@ -259,6 +259,18 @@ export const visitPatientAbsent = defineEvent("visit.patient_absent", MODULE, z.
   named: z.boolean(),
 }));
 
+/**
+ * #771 — the guardian mark was a mistake: the patient IS here. The mark is cleared and the token goes
+ * back to the bay (`undoPatientAbsent`). Carries the relation the mark named and whether a name was
+ * given, as `visit.patient_absent` does — never the name.
+ */
+export const visitPatientAbsentUndone = defineEvent("visit.patient_absent_undone", MODULE, z.object({
+  encounterId: id, patientId: id, ...where,
+  relation: z.enum(["father", "mother", "spouse", "son", "daughter", "brother", "sister", "other_relative", "attendant"]),
+  named: z.boolean(),
+  markedBy: id,
+}));
+
 export const vitalsDangerFlagged = defineEvent("vitals.danger_flagged", MODULE, z.object({
   encounterId: id, patientId: id, vitalsId: id, ...where,
   flags: z.array(dangerFlagSchema).min(1),

@@ -5,9 +5,9 @@ import { grantPermissionToRole, syncPermissions } from "../../kernel/auth/permis
 import { activateOpdVisitDefinition, ensureRole, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { events, opdEncounters, opdQueueEntries, opdVitals } from "../../kernel/db/schema";
 import { registerVitalsStartGuard, startConsultation } from "./consultation";
-import { getEncounter, grantFeeBypass, openVisit } from "./encounters";
-import { listBench } from "./bench";
-import { markPatientAbsent } from "./patient-absent";
+import { abandonVisit, getEncounter, grantFeeBypass, openVisit } from "./encounters";
+import { listBench, locateVisit } from "./bench";
+import { markPatientAbsent, undoPatientAbsent } from "./patient-absent";
 import { markConsultedOnPaper, reopenPaperConsult } from "./paper-consult";
 import { listQueue } from "./queue";
 import { recordVitals } from "./vitals";
@@ -242,5 +242,63 @@ describe("patient absent — a guardian brings a revisit's reports and the visit
     const started = await startConsultation(db, dra.actor, enc.id, MON2);
     expect(started.encounter.status).toBe("in_consultation");
     expect(started.queueEntry.status).toBe("in_consult");
+  });
+
+  /* #770 — the bay typed the slip's visit number and was told the visit is on the bench; the bench hides it. */
+  it("locate says a guardian's visit, and a phone consult, are not on the bench — and why", async () => {
+    const enc = await opened();
+    await markPatientAbsent(db, bayOnly.actor, enc.id, { relation: "son" }, MON2);
+    expect(await locateVisit(db, { visitNo: enc.visitNo, serviceDate: enc.serviceDate }))
+      .toEqual({ onBench: false, visitNo: enc.visitNo, reason: "guardian_visit", encounterId: enc.id });
+
+    const tele = await opened();
+    await db.update(opdEncounters).set({ consultMode: "tele" }).where(eq(opdEncounters.id, tele.id));
+    expect(await locateVisit(db, { visitNo: tele.visitNo, serviceDate: tele.serviceDate }))
+      .toEqual({ onBench: false, visitNo: tele.visitNo, reason: "tele_visit" });
+  });
+
+  /* #771 — the mark was a mistake: the patient is here. */
+  it("undo clears the mark, writes visit.patient_absent_undone, and puts the token back on the bench (not callable until vitals)", async () => {
+    const enc = await opened();
+    await markPatientAbsent(db, deskOnly.actor, enc.id, { relation: "father", name: "Ramesh" }, MON);
+    const out = await undoPatientAbsent(db, bayOnly.actor, enc.id, MON2);
+
+    expect(out.alreadyCleared).toBe(false);
+    expect(out.encounter).toMatchObject({ patientAbsentAt: null, patientAbsentBy: null, patientAbsentRelation: null, patientAbsentName: null });
+    const audit = await db.select().from(events).where(and(eq(events.name, "visit.patient_absent_undone"), eq(events.encounterId, enc.id)));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.actorId).toBe(bayOnly.id);
+    expect(audit[0]!.payload).toMatchObject({ relation: "father", named: true, markedBy: deskOnly.id, doctorId: dra.doctorId });
+    expect(JSON.stringify(audit[0]!.payload)).not.toContain("Ramesh");
+
+    const bench = await listBench(db, vd.actor, { serviceDate: enc.serviceDate }, MON2);
+    expect(bench.find((b) => b.encounterId === enc.id)).toMatchObject({ vitalsDone: false });
+    expect(await locateVisit(db, { visitNo: enc.visitNo, serviceDate: enc.serviceDate })).toMatchObject({ onBench: true });
+    let q = (await listQueue(db, dra.actor, dra.doctorId, enc.serviceDate, MON2))!;
+    expect(q.ordered.find((e) => e.encounterId === enc.id)).toBeUndefined();
+    expect(q.waitingVitals).toBe(1);
+
+    /* The bay charts him, and the save sends the token to the doctor's line as it does for anyone. */
+    await recordVitals(db, vd.actor, enc.id, adultOk, MON2);
+    q = (await listQueue(db, dra.actor, dra.doctorId, enc.serviceDate, MON2))!;
+    expect(q.ordered.find((e) => e.encounterId === enc.id)).toBeDefined();
+    expect((await undoPatientAbsent(db, bayOnly.actor, enc.id, MON2)).alreadyCleared).toBe(true);
+  });
+
+  it("undo is refused without the bay's or the desk's grant, after the consult started, and on a closed visit", async () => {
+    const enc = await opened();
+    await markPatientAbsent(db, bayOnly.actor, enc.id, { relation: "mother" }, MON);
+    await expect(undoPatientAbsent(db, nobody.actor, enc.id, MON2)).rejects.toMatchObject({ code: "patient_absent_not_permitted" });
+    await expect(undoPatientAbsent(db, { type: "system", id: "x" }, enc.id, MON2)).rejects.toMatchObject({ code: "user_actor_required" });
+
+    await startConsultation(db, dra.actor, enc.id, MON2);
+    await expect(undoPatientAbsent(db, bayOnly.actor, enc.id, MON2)).rejects.toMatchObject({ code: "patient_absent_undo_state_conflict" });
+    expect((await getEncounter(db, enc.id))!.patientAbsentAt).not.toBeNull();
+
+    const closed = await opened();
+    await markPatientAbsent(db, bayOnly.actor, closed.id, { relation: "son" }, MON);
+    await abandonVisit(db, clerk.actor, closed.id, "left before the doctor", MON2);
+    await expect(undoPatientAbsent(db, deskOnly.actor, closed.id, MON2)).rejects.toMatchObject({ code: "patient_absent_undo_state_conflict" });
+    expect(await db.select().from(events).where(eq(events.name, "visit.patient_absent_undone"))).toHaveLength(0);
   });
 });

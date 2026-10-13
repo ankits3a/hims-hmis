@@ -272,7 +272,7 @@ export function tokenText(door: Extract<Door, { kind: "token" }>): string {
 /** Why a visit number is not on today's bench — `GET /opd/bench/locate` (opd/bench.ts `locateVisit`). */
 export type WireVisitOnBench =
   | { onBench: true; visitNo: string; encounterId: string }
-  | { onBench: false; visitNo: string; reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued"; serviceDate?: string };
+  | { onBench: false; visitNo: string; reason: "unknown_visit" | "other_day" | "abandoned" | "completed" | "not_queued" | "guardian_visit" | "tele_visit"; serviceDate?: string; encounterId?: string };
 
 /**
  * WHAT TO SAY when nobody on the bench answers — the i18n key under `vitalsBay.identify.miss` and

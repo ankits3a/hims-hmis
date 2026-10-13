@@ -367,6 +367,21 @@ describe("a patient row, held or swiped", () => {
     expect(screen.queryByTestId("card-guardian")).toBeNull();
   });
 
+  /* #771 — the guardian mark was a mistake: the scan card offers the undo while the doctor does not have the visit. */
+  it("the scan card offers 'Undo — patient is here' when the server says so; the sheet posts and says the patient is back on the bench", async () => {
+    const s = server({
+      "GET /auth/me": () => me(DESK), "GET /opd/scan": found(["slip", "visit", "book", "newVisit"], { guardianUndo: true, stage: "waiting", vitalsDone: true }),
+      "POST /opd/visits/e9/patient-absent/undo": () => ({ status: 201, body: { alreadyCleared: false } }),
+    });
+    await mount(s.fetcher, <ScanScreen />);
+    await typeCode("med-9");
+    expect(await screen.findByTestId("card-guardian-undo")).toHaveTextContent(/^Undo — patient is here ?›$/);
+    await fireEvent.press(screen.getByTestId("card-guardian-undo"));
+    await fireEvent.press(await screen.findByTestId("patient-absent-undo"));
+    expect(await screen.findByTestId("patient-absent-undone")).toHaveTextContent(/Back on the bench/);
+    expect(s.of("POST /opd/visits/e9/patient-absent/undo")).toHaveLength(1);
+  });
+
   it("the vitals bay opened by a scan takes that patient off the bench and says what was scanned", async () => {
     const bench = { encounterId: "e9", entryId: "q9", tokenNo: 9, seq: 9, visitNo: "V2610080009", departmentCode: "MED", doctorId: "d1", doctorName: "Dr Chandan Kumar", serviceDate: "2026-10-08",
       patient: { requestedId: "p9", ...RAM }, benchState: null, recallAt: null, vitalsDone: false, vitalsId: null, escalation: "none", cancelMsRemaining: 0, recallDue: false };
