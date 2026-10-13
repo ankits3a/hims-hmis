@@ -28,6 +28,8 @@ import * as pharmacyMessagesMod from "../../modules/pharmacy/messages";
 import * as aerbQaMod from "../../modules/aerb/qa";
 import * as opdAliasRunnerMod from "../../modules/opd/alias-runner";
 import * as attendanceSyncMod from "../../modules/attendance/sync";
+import * as ipdBedsMod from "../../modules/ipd/beds";
+import * as ipdChargesMod from "../../modules/ipd/charges";
 import * as opdTeleMod from "../../modules/opd/tele";
 import * as dispatcherMod from "../events/dispatcher";
 import * as timersMod from "../workflow/timers";
@@ -425,6 +427,18 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
       invoked.push("syncAttendance");
       return { ran: false, why: "not_configured" };
     }),
+    // IPD BEDS E1.1 (#718) — the thirty-first, stubbed on `modules/ipd/beds` (the file the index re-exports FROM).
+    // Its behaviour (lapse at 2 h, idempotent) is asserted in `modules/ipd/acceptance/beds.acceptance.test.ts` (iii).
+    jest.spyOn(ipdBedsMod, "lapseBedReservations").mockImplementation(async () => {
+      invoked.push("lapseBedReservations");
+      return { lapsed: 0 };
+    }),
+    // IPD CHARGES E2.1 (#725) — the thirty-second, stubbed on `modules/ipd/charges` (the file the index re-exports FROM).
+    // Its behaviour (idempotent, catches up a missed night) is asserted in `modules/ipd/acceptance/charges.acceptance.test.ts` (iv).
+    jest.spyOn(ipdChargesMod, "postNightlyIpdCharges").mockImplementation(async () => {
+      invoked.push("postNightlyIpdCharges");
+      return { admissions: 0, posted: 0, exceptions: 0, failed: 0, quarantined: 0 };
+    }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {
       invoked.push("openDueTeleVisits");
@@ -534,6 +548,10 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   // STAFF ATTENDANCE (owner 2026-10-09) — the TWENTY-NINTH, `every(120_000)`: HMIS's copy of the attendance machine. Off until configured.
   "syncAttendance",
+  // IPD BEDS E1.1 (#718) — the THIRTY-FIRST, `every(60_000)`: a two-hour bed hold lapses back to available.
+  "lapseBedReservations",
+  // IPD CHARGES E2.1 (#725) — the THIRTY-SECOND, `dailyIst("00:05")`: the running bill's nightly posting.
+  "postNightlyIpdCharges",
 ];
 
 /**
@@ -727,7 +745,7 @@ describe("Scheduler", () => {
     const DAILY_INSTANTS_MS = [
       6 * HOUR_MS + 25 * MINUTE_MS, // 18:25Z = 23:55 IST 08-21 · sweepAppointmentNoShows (5-min window)
       6 * HOUR_MS + 29 * MINUTE_MS, // 18:29Z = 23:59 IST 08-21 · runDailyClose (ONE-minute window — the flake)
-      6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority
+      6 * HOUR_MS + 35 * MINUTE_MS, // 18:35Z = 00:05 IST 08-22 · sweepGuardianMajority and postNightlyIpdCharges (E2.1)
       6 * HOUR_MS + 45 * MINUTE_MS, // 18:45Z = 00:15 IST 08-22 · createEventPartitions
       7 * HOUR_MS + 45 * MINUTE_MS, // 19:45Z = 01:15 IST 08-22 · retentionSweep
       7 * HOUR_MS + 50 * MINUTE_MS, // 19:50Z = 01:20 IST 08-22 · pruneCopilotAsks (E0.1)

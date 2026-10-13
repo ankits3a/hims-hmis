@@ -118,3 +118,5 @@ export * from "./ordering";
 export * from "./copilot";
 // E1.2 — personal reminders (decision 0064): a person's own reminders, raised on their own bell and phone.
 export * from "./reminders";
+// E1.1 (#718) — IPD bed reservations and blocks. References `resources` (the bed) and nothing of any module's.
+export * from "./ipd";
