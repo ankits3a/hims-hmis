@@ -97,6 +97,7 @@ CREATE TABLE "ipd_rounds" (
 	CONSTRAINT "ipd_rounds_cosign_ck" CHECK (("ipd_rounds"."cosigned_by" is null) = ("ipd_rounds"."cosigned_at" is null))
 );
 --> statement-breakpoint
+ALTER TABLE "imaging_studies" DROP CONSTRAINT "imaging_studies_authorised_by_ck";--> statement-breakpoint
 ALTER TABLE "ipd_charge_exceptions" DROP CONSTRAINT "ipd_charge_exceptions_reason_ck";--> statement-breakpoint
 ALTER TABLE "ipd_charge_exceptions" ADD COLUMN "resolution_note" text;--> statement-breakpoint
 ALTER TABLE "ipd_consults" ADD CONSTRAINT "ipd_consults_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -113,4 +114,5 @@ CREATE UNIQUE INDEX "ipd_orders_idempotency_ux" ON "ipd_orders" USING btree ("id
 CREATE INDEX "ipd_orders_verification_idx" ON "ipd_orders" USING btree ("verification") WHERE "ipd_orders"."status" = 'active';--> statement-breakpoint
 CREATE INDEX "ipd_rounds_admission_seen_idx" ON "ipd_rounds" USING btree ("admission_id","seen_at");--> statement-breakpoint
 CREATE INDEX "ipd_rounds_awaiting_idx" ON "ipd_rounds" USING btree ("admission_id") WHERE "ipd_rounds"."status" = 'awaiting_cosign';--> statement-breakpoint
+ALTER TABLE "imaging_studies" ADD CONSTRAINT "imaging_studies_authorised_by_ck" CHECK ("imaging_studies"."authorised_by" is null or "imaging_studies"."authorised_by" in ('invoice', 'payer_branch', 'daycare', 'stat', 'free', 'ipd_admission'));--> statement-breakpoint
 ALTER TABLE "ipd_charge_exceptions" ADD CONSTRAINT "ipd_charge_exceptions_reason_ck" CHECK ("ipd_charge_exceptions"."reason" in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated'));

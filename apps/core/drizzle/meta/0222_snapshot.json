@@ -1,5 +1,5 @@
 {
-  "id": "8fb7b7be-c9d6-4b9f-ac73-8f9a5bc71395",
+  "id": "58424d17-259e-40dd-85f5-fa7ccd2a1cff",
   "prevId": "c20c7fea-caef-49cf-ac61-0b66ad4019c4",
   "version": "7",
   "dialect": "postgresql",
@@ -36069,7 +36069,7 @@
         },
         "imaging_studies_authorised_by_ck": {
           "name": "imaging_studies_authorised_by_ck",
-          "value": "\"imaging_studies\".\"authorised_by\" is null or \"imaging_studies\".\"authorised_by\" in ('invoice', 'payer_branch', 'daycare', 'stat', 'free')"
+          "value": "\"imaging_studies\".\"authorised_by\" is null or \"imaging_studies\".\"authorised_by\" in ('invoice', 'payer_branch', 'daycare', 'stat', 'free', 'ipd_admission')"
         },
         "imaging_studies_dose_ck": {
           "name": "imaging_studies_dose_ck",

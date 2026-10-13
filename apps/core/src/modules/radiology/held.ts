@@ -7,7 +7,7 @@ import { requestApproval } from "../../kernel/approvals/requests";
 import { invoiceSettlement } from "../billing";
 import { IMAGING_RELEASE_UNPAID_APPROVAL_TYPE } from "./approval-types";
 import { RadiologyError } from "./errors";
-import { encounterPayer } from "./money";
+import { INPATIENT_ADMISSION_NO_RE, encounterPayer } from "./money";
 import { requireReleased } from "./closed-loop";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -88,12 +88,12 @@ export const RELEASE_SUBJECT = "imaging_study";
  * query), then the payer, then the ledger — the register calls this per row.
  */
 /**
- * E4.2 (#734) — an INPATIENT study (the admission number, `IP26-000123` — `modules/ipd` `IPD_ADMISSION_NO_RE`, written out
+ * E4.2 (#734) — an INPATIENT study (the admission number, `IP26-000123` — `money.ts` `INPATIENT_ADMISSION_NO_RE`, which mirrors
  * here because radiology cannot import ipd without a cycle) is never held for dues: the IPD bill settles at discharge and
  * nobody is detained for money (decision 0072). Billing these studies onto the IPD running bill is issue #785. Matched on
  * the whole grammar, so no other encounter loses the hold.
  */
-export const INPATIENT_ENCOUNTER_RE = /^IP\d{2}-\d{6}$/;
+export const INPATIENT_ENCOUNTER_RE = INPATIENT_ADMISSION_NO_RE;
 
 export async function patientCopyHold(exec: Db | Tx, study: StudyFacts): Promise<PatientCopyHold> {
   if (study.encounterNo.startsWith(EPISODE_SERIES.daycare) || study.bedsideLocation !== null || INPATIENT_ENCOUNTER_RE.test(study.encounterNo)) {
