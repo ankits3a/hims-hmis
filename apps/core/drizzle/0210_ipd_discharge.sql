@@ -71,13 +71,14 @@ CREATE TABLE "ipd_final_bills" (
 	"settlement" text NOT NULL,
 	"dues_approval_id" text,
 	"dues_approved_by" text,
+	"dues_approved_at" timestamp with time zone,
 	"undertaking_document_id" text,
 	"split" jsonb NOT NULL,
 	"settled_by" text NOT NULL,
 	"settled_at" timestamp with time zone NOT NULL,
-	CONSTRAINT "ipd_final_bills_settlement_ck" CHECK ("ipd_final_bills"."settlement" in ('paid', 'refund_due', 'dues_approved', 'insurer_pending_undertaking')),
+	CONSTRAINT "ipd_final_bills_settlement_ck" CHECK ("ipd_final_bills"."settlement" in ('paid', 'refund_due', 'dues_recorded', 'insurer_pending_undertaking')),
 	CONSTRAINT "ipd_final_bills_money_ck" CHECK ("ipd_final_bills"."total_paise" >= 0 and "ipd_final_bills"."payer_paise" >= 0 and "ipd_final_bills"."patient_paise" >= 0 and "ipd_final_bills"."deposit_applied_paise" >= 0 and "ipd_final_bills"."paid_paise" >= 0 and "ipd_final_bills"."refund_paise" >= 0 and "ipd_final_bills"."dues_paise" >= 0),
-	CONSTRAINT "ipd_final_bills_dues_ck" CHECK ("ipd_final_bills"."dues_paise" = 0 or "ipd_final_bills"."dues_approval_id" is not null or "ipd_final_bills"."undertaking_document_id" is not null)
+	CONSTRAINT "ipd_final_bills_dues_ck" CHECK ("ipd_final_bills"."dues_paise" = 0 or "ipd_final_bills"."undertaking_document_id" is not null)
 );
 --> statement-breakpoint
 CREATE TABLE "ipd_gate_passes" (

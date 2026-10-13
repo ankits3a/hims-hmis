@@ -1,5 +1,5 @@
 {
-  "id": "4899e4f6-7822-4d2e-94fc-cbb0d9169d87",
+  "id": "086260e3-0548-4447-8506-d86b9412f8e1",
   "prevId": "0389bc2f-1f81-4c49-be3c-1965cea82050",
   "version": "7",
   "dialect": "postgresql",
@@ -56535,6 +56535,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "dues_approved_at": {
+          "name": "dues_approved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "undertaking_document_id": {
           "name": "undertaking_document_id",
           "type": "text",
@@ -56598,7 +56604,7 @@
       "checkConstraints": {
         "ipd_final_bills_settlement_ck": {
           "name": "ipd_final_bills_settlement_ck",
-          "value": "\"ipd_final_bills\".\"settlement\" in ('paid', 'refund_due', 'dues_approved', 'insurer_pending_undertaking')"
+          "value": "\"ipd_final_bills\".\"settlement\" in ('paid', 'refund_due', 'dues_recorded', 'insurer_pending_undertaking')"
         },
         "ipd_final_bills_money_ck": {
           "name": "ipd_final_bills_money_ck",
@@ -56606,7 +56612,7 @@
         },
         "ipd_final_bills_dues_ck": {
           "name": "ipd_final_bills_dues_ck",
-          "value": "\"ipd_final_bills\".\"dues_paise\" = 0 or \"ipd_final_bills\".\"dues_approval_id\" is not null or \"ipd_final_bills\".\"undertaking_document_id\" is not null"
+          "value": "\"ipd_final_bills\".\"dues_paise\" = 0 or \"ipd_final_bills\".\"undertaking_document_id\" is not null"
         }
       },
       "isRLSEnabled": false

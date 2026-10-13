@@ -125,7 +125,7 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   confirm_charges: { idempotencyKey: key(32), admissionId: id(3), department: "pharmacy" },
   sign_summary: { idempotencyKey: key(33), admissionId: id(3), draftId: id(21), draftVersion: 1 },
   settle_final_bill: {
-    idempotencyKey: key(34), admissionId: id(3), billVersion: 3, settlement: "paid",
+    idempotencyKey: key(34), admissionId: id(3), billVersion: 3, patientPayablePaise: 250_000, settlement: "paid",
     payments: [{ tender: "card", amountPaise: 250_000 }],
   },
   issue_gate_pass: { idempotencyKey: key(35), admissionId: id(3), followUpAppointmentId: id(22) },
@@ -291,8 +291,10 @@ describe("review fixes on PR #745 (cross-field rules live in the contract, not a
 
   it("settle_final_bill: each settlement kind carries what it rests on", () => {
     expect(parse("settle_final_bill", { payments: [] })).toBe(false);
-    expect(parse("settle_final_bill", { settlement: "dues_approved" })).toBe(false);
-    expect(parse("settle_final_bill", { settlement: "dues_approved", duesApprovalId: id(31) })).toBe(true);
+    // E3.2 review ⚖: dues rest on the signed undertaking, not on an approval (the approval follows the exit).
+    expect(parse("settle_final_bill", { settlement: "dues_recorded" })).toBe(false);
+    expect(parse("settle_final_bill", { settlement: "dues_recorded", duesApprovalId: id(31) })).toBe(false);
+    expect(parse("settle_final_bill", { settlement: "dues_recorded", undertakingDocumentId: id(31) })).toBe(true);
     expect(parse("settle_final_bill", { settlement: "insurer_pending_undertaking" })).toBe(false);
     expect(parse("settle_final_bill", { settlement: "insurer_pending_undertaking", undertakingDocumentId: id(32) })).toBe(true);
   });

@@ -16371,14 +16371,16 @@
       "duesLine": "{{amount}} बाकी — मरीज़ फिर भी घर जाएगा; बकाया दर्ज करें",
       "askDues": "बकाया की मंज़ूरी माँगें",
       "duesAsked": "मंज़ूरी माँगी — बिलिंग मैनेजर तय करेंगे",
-      "undertaking": "काग़ज़ पर वचन-पत्र भरा",
+      "undertaking": "हस्ताक्षरित वचन-पत्र (फ़ाइल किया दस्तावेज़)",
+      "pickUndertaking": "फ़ाइल किया वचन-पत्र चुनें",
+      "refundPending": "वापसी बाकी",
       "duesNote": "छुट्टी पर बकाया; वचन-पत्र लिया",
       "billNo": "बिल {{no}} · {{time}}",
       "print": "अंतिम बिल छापें",
       "settlement": {
         "paid": "चुकता",
         "refund_due": "वापसी बाकी",
-        "dues_approved": "बकाया दर्ज",
+        "dues_recorded": "बकाया दर्ज",
         "insurer_pending_undertaking": "बीमा मंज़ूरी बाकी"
       }
     },

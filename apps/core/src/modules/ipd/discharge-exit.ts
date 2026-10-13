@@ -2,12 +2,12 @@ import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { IPD_INTENTS, IpdPoliceClearanceSchema, IpdReceiveBodySchema, IpdReleaseBodySchema, ipdIsInFuture, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  ipdAdmissions, ipdBedStays, ipdDischargeSummaries, ipdDischarges, ipdGatePasses, ipdMortuaryRegister, ipdStayExits, ipdTransfers, users,
+  ipdAdmissions, ipdBedStays, ipdChargeLines, ipdDischargeSummaries, ipdDischarges, ipdGatePasses, ipdMortuaryRegister, ipdStayExits, ipdTransfers, users,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withIdempotency } from "../billing";
 import { getPatientSummaries } from "../patients";
-import { lockAdmission, moveAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
+import { holdsPermission, lockAdmission, moveAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
 import { endHoldIn, releaseBedOccupant } from "./beds";
 import { finalBillRow } from "./discharge-bill";
 import { activeDischarge, confirmationsOf, ensureSummaryDraft, pendingDepartments } from "./discharge";
@@ -16,7 +16,9 @@ import {
   mortuaryReleased,
 } from "./discharge-events";
 import { IpdError, IpdRefusal } from "./errors";
-import { IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_EXIT, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_MORTUARY_MANAGE } from "./manifest";
+import {
+  IPD_BILL_VIEW, IPD_DISCHARGE_BILL, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_EXIT, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_MORTUARY_MANAGE,
+} from "./manifest";
 import { transferCancelled } from "./transfer-events";
 import type { Actor, IpdAdmissionState, IpdIntentName, IpdMortuaryEntry } from "@hmis/contracts";
 import type { z } from "zod";
@@ -80,6 +82,34 @@ async function endStay(
   return stay?.bedId ?? null;
 }
 
+/**
+ * Review #762 RED 3 — the end of the time the stay's posted charges cover: per live (non-reversed) line, the earlier of
+ * the IST midnight closing its service date and the instant it was posted (a line posted at 15:00 for today covers until
+ * 15:00). An ending stamped before it contradicts a posted charge — billing reverses the charge first.
+ */
+async function chargesCoverUntil(tx: Tx, admissionId: string): Promise<Date | null> {
+  const lines = await tx.select({ id: ipdChargeLines.id, serviceDate: ipdChargeLines.serviceDate, postedAt: ipdChargeLines.postedAt, reversalOf: ipdChargeLines.reversalOf })
+    .from(ipdChargeLines).where(eq(ipdChargeLines.admissionId, admissionId));
+  const reversed = new Set(lines.flatMap((l) => (l.reversalOf === null ? [] : [l.reversalOf])));
+  let until: number | null = null;
+  for (const l of lines) {
+    if (l.reversalOf !== null || reversed.has(l.id)) continue;
+    const dayEnd = new Date(`${l.serviceDate}T00:00:00+05:30`).getTime() + 24 * 3_600_000;
+    const end = Math.min(dayEnd, l.postedAt.getTime());
+    if (until === null || end > until) until = end;
+  }
+  return until === null ? null : new Date(until);
+}
+
+/** ⚖ With a final bill the stay still ends (the bill desk reconciles, `ended_after_bill`); without one, refuse the contradiction. */
+async function refuseBeforeCharges(tx: Tx, admissionId: string, when: Date): Promise<void> {
+  if ((await finalBillRow(tx, admissionId)) !== undefined) return;
+  const until = await chargesCoverUntil(tx, admissionId);
+  if (until !== null && when.getTime() < until.getTime()) {
+    throw new IpdRefusal("time_before_charges", undefined, { chargedUntil: until.toISOString() });
+  }
+}
+
 // ═══════════════════════════════════════════ the gate pass ═══════════════════════════════════════════
 
 /** A gate pass code: short enough to type at the gate, unguessable enough not to be invented (ULID randomness). */
@@ -115,10 +145,12 @@ export async function issueGatePass(db: Db, actor: Actor, raw: unknown, opts: Op
       issuedBy: actor.id, issuedAt: at,
     });
     await appendEvent(tx, gatePassIssued.make({
-      payload: { admissionId: a.id, gatePassId, kind: referOut ? "transfer_out" : "discharge", duesRecorded, provenance: provenanceOf(actor) },
+      payload: { admissionId: a.id, gatePassId, kind: referOut ? "transfer_out" : "discharge", provenance: provenanceOf(actor) },
       actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
     }));
-    return { gatePassId, code, state: "discharging" as const, issuedAt: at.toISOString(), duesRecorded };
+    // Review #762 item 9: the dues flag is a money fact — only for an issuer who may see money.
+    const money = (await holdsPermission(db, actor, IPD_BILL_VIEW)) || (await holdsPermission(db, actor, IPD_DISCHARGE_BILL));
+    return { gatePassId, code, state: "discharging" as const, issuedAt: at.toISOString(), duesRecorded: money ? duesRecorded : null };
   }), at);
 }
 
@@ -168,6 +200,7 @@ export async function recordLama(db: Db, actor: Actor, raw: unknown, opts: Opts 
     const a = await lockAdmission(tx, input.admissionId);
     if (a.state !== "admitted" && a.state !== "fit_declared") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
     const when = new Date(input.at);
+    await refuseBeforeCharges(tx, a.id, when);
     const bedId = await endStay(tx, actor, a, "lama", when, { terminal: false, reason: input.kind });
     await tx.insert(ipdStayExits).values({
       id: newId(), admissionId: a.id, kind: input.kind, at: when, recordedBy: actor.id, recordedAt: at,
@@ -196,6 +229,7 @@ export async function recordAbscond(db: Db, actor: Actor, raw: unknown, opts: Op
     if (!["admitted", "fit_declared", "discharging"].includes(a.state)) throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
     // ⚖ A medico-legal patient who absconds is reported to the police.
     if (a.mlc && input.policeIntimationRef === undefined) throw new IpdRefusal("police_intimation_required");
+    await refuseBeforeCharges(tx, a.id, at);
     const bedId = await endStay(tx, actor, a, "absconded", at, { terminal: true, reason: "absconded" });
     await tx.insert(ipdStayExits).values({
       id: newId(), admissionId: a.id, kind: "absconded", at: new Date(input.lastSeenAt), recordedBy: actor.id, recordedAt: at,
@@ -221,6 +255,7 @@ export async function recordDeath(db: Db, actor: Actor, raw: unknown, opts: Opts
     }
     if (a.mlc && input.policeIntimationRef === undefined) throw new IpdRefusal("police_intimation_required");
     const diedAt = new Date(input.diedAt);
+    await refuseBeforeCharges(tx, a.id, diedAt);
     const bedId = await endStay(tx, actor, a, "deceased", diedAt, { terminal: true, reason: "deceased" });
     await tx.insert(ipdStayExits).values({
       id: newId(), admissionId: a.id, kind: "deceased", at: diedAt, recordedBy: actor.id, recordedAt: at,

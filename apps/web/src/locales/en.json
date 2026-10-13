@@ -16370,15 +16370,17 @@
       "settle": "Settle bill",
       "duesLine": "{{amount}} unpaid — the patient still goes home; record the dues",
       "askDues": "Ask approval for dues",
-      "duesAsked": "Approval asked — the billing manager decides",
-      "undertaking": "Undertaking signed on paper",
+      "duesAsked": "Approval asked — the billing manager decides (the patient may already have left)",
+      "undertaking": "Signed undertaking (filed document)",
+      "pickUndertaking": "Pick the filed undertaking",
+      "refundPending": "Refund pending",
       "duesNote": "Unpaid balance at discharge; undertaking taken",
       "billNo": "Bill {{no}} · {{time}}",
       "print": "Print final bill",
       "settlement": {
         "paid": "Paid",
         "refund_due": "Refund due",
-        "dues_approved": "Dues recorded",
+        "dues_recorded": "Dues recorded",
         "insurer_pending_undertaking": "Insurer final pending"
       }
     },

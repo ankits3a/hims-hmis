@@ -5,7 +5,7 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { BillingError, billingHttpStatus } from "../billing";
 import { TariffError } from "../tariff";
 import { cancelFit, confirmCharges, declareFit, readSummary, saveSummaryDraft, signSummary } from "./discharge";
-import { askDuesApproval, prepareFinalBill, readFinalBill, settleFinalBill } from "./discharge-bill";
+import { askDuesApproval, listBillDesk, prepareFinalBill, readFinalBill, recordDuesApproval, settleFinalBill } from "./discharge-bill";
 import {
   issueGatePass, listMortuary, receiveBody, recordAbscond, recordDeath, recordLama, recordPoliceClearance, releaseBody, scanGatePass,
 } from "./discharge-exit";
@@ -16,7 +16,7 @@ import {
   IPD_GATE_SCAN, IPD_MORTUARY_MANAGE,
 } from "./manifest";
 import type {
-  Actor, IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill, IpdMortuaryEntry, IpdRefusalBody, IpdSummaryView,
+  Actor, IpdBillDesk, IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill, IpdMortuaryEntry, IpdRefusalBody, IpdSummaryView,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
@@ -50,6 +50,7 @@ function toHttp(e: unknown): never {
 
 const admissionParam = z.ulid();
 const prepareBody = z.strictObject({ admissionId: z.ulid() });
+const duesApprovalBody = z.strictObject({ admissionId: z.ulid(), approvalId: z.ulid() });
 const duesBody = z.strictObject({ admissionId: z.ulid(), amountPaise: z.number().int().positive(), note: z.string().trim().min(1).max(1000) });
 
 @Controller("ipd")
@@ -108,6 +109,20 @@ export class IpdDischargeController {
   @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
   async askDues(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ approvalId: string }> {
     try { return await askDuesApproval(this.db, actor, duesBody.parse(body)); } catch (e) { toHttp(e); }
+  }
+
+  /** Review #762: the bill desk — settled bills with dues awaiting approval, a stay not out, an ending after the bill. */
+  @Get("discharge/bill-desk")
+  @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
+  async billDesk(@CurrentActor() actor: Actor): Promise<IpdBillDesk> {
+    try { return await listBillDesk(this.db, actor); } catch (e) { toHttp(e); }
+  }
+
+  /** Review #762 RED 7 ⚖: the dues approval attached after the exit (a ledger step). */
+  @Post("discharge/bill/dues-approval")
+  @RequirePermission(IPD_DISCHARGE_BILL, "hospital")
+  async duesApproval(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await recordDuesApproval(this.db, actor, duesApprovalBody.parse(body)); } catch (e) { toHttp(e); }
   }
 
   @Post("discharge/gate-pass")

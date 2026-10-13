@@ -56,7 +56,12 @@ export const IPD_REFUSALS = {
   scheme_patient_no_deposit: { rule: "Scheme patients pay nothing unless an approver marks a line non-covered.", fix: "Ask approver" },
   cash_limit_reached: { rule: "Cash from one payer is capped by law at under two lakh rupees a day.", fix: "Use another tender" },
   deposit_before_stabilisation: { rule: "No deposit is asked before an emergency patient is stabilised.", fix: "Defer deposit" },
-  dues_need_approval: { rule: "Leaving with unpaid dues needs an approver and a signed undertaking.", fix: "Ask approver" },
+  dues_need_approval: { rule: "Leaving with unpaid dues needs the signed undertaking on file.", fix: "Record undertaking" },
+  // E3.2 review (#762).
+  final_bill_exists: { rule: "The final bill is already settled.", fix: "Ask billing to void the bill" },
+  undertaking_invalid: { rule: "The undertaking must be a document filed for this patient.", fix: "File the undertaking" },
+  payer_kind_missing: { rule: "The bill has a payer portion but the admission names no payer.", fix: "Record the payer" },
+  time_before_charges: { rule: "That time is before charges already posted for the stay.", fix: "Reverse the charge first" },
   bill_changed: { rule: "The bill changed after you opened it.", fix: "Reload bill" },
   insurer_final_pending: { rule: "The insurer's final approval has not arrived.", fix: "Take undertaking" },
 

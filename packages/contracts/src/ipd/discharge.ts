@@ -107,13 +107,35 @@ export const IpdFinalBillSchema = z.object({
   payerKind: z.string().nullable(),
   settled: z.object({
     billNo: z.string().nullable(),
-    settlement: z.enum(["paid", "refund_due", "dues_approved", "insurer_pending_undertaking"]),
+    settlement: z.enum(["paid", "refund_due", "dues_recorded", "insurer_pending_undertaking"]),
     paidPaise: IpdPaiseSchema,
     refundPaise: IpdPaiseSchema,
+    /** E3.2 review: `refund_pending` until billing issues the refund voucher. */
+    refundState: z.enum(["none", "refund_pending", "refund_issued"]),
     duesPaise: IpdPaiseSchema,
+    /** E3.2 review ⚖: dues are recorded at once; the approval is a ledger step after the exit. */
+    duesApproved: z.boolean(),
     settledAt: IpdInstantSchema,
   }).nullable(),
+  /** The bill desk's open questions on this bill (see `IPD_BILL_DESK_EXCEPTIONS`). */
+  exceptions: z.array(z.enum(["settled_not_exited", "ended_after_bill", "dues_awaiting_approval", "refund_pending"])),
 });
+
+/** E3.2 review — what the bill desk must still do about a settled bill. */
+export const IPD_BILL_DESK_EXCEPTIONS = ["settled_not_exited", "ended_after_bill", "dues_awaiting_approval", "refund_pending"] as const;
+export const IpdBillDeskSchema = z.object({
+  rows: z.array(z.object({
+    admissionId: IpdIdSchema,
+    admissionNo: z.string().nullable(),
+    state: IpdAdmissionStateSchema,
+    billNo: z.string().nullable(),
+    duesPaise: IpdPaiseSchema,
+    refundPaise: IpdPaiseSchema,
+    settledAt: IpdInstantSchema,
+    exceptions: z.array(z.enum(IPD_BILL_DESK_EXCEPTIONS)),
+  })),
+});
+export type IpdBillDesk = z.infer<typeof IpdBillDeskSchema>;
 export type IpdFinalBill = z.infer<typeof IpdFinalBillSchema>;
 
 // ═══════════════════════════════════════ the desk tracker ═══════════════════════════════════════
@@ -150,7 +172,8 @@ export const IpdDischargeTrackerSchema = z.object({
   summary: z.object({ status: z.enum(["none", "draft", "awaiting_cosign", "signed"]), signedBy: z.string().nullable(), version: z.number().int() }),
   gatePass: z.object({
     code: z.string(), status: z.enum(["issued", "used", "void"]), kind: z.enum(["discharge", "transfer_out"]),
-    duesRecorded: z.boolean(), issuedAt: IpdInstantSchema, scannedAt: IpdInstantSchema.nullable(),
+    /** Null for a viewer without money (0058). */
+    duesRecorded: z.boolean().nullable(), issuedAt: IpdInstantSchema, scannedAt: IpdInstantSchema.nullable(),
     receivingHospital: z.string().nullable(),
   }).nullable(),
   /** The ending, when the stay ended another way (LAMA / DAMA, absconded, death). */
@@ -240,6 +263,8 @@ export const IPD_DISCHARGE_ROUTES = {
   finalBill: "/ipd/discharge/:admissionId/bill",
   settle: "/ipd/discharge/bill/settle",
   askDues: "/ipd/discharge/bill/ask-dues",
+  duesApproval: "/ipd/discharge/bill/dues-approval",
+  billDesk: "/ipd/discharge/bill-desk",
   issueGatePass: "/ipd/discharge/gate-pass",
   scanGatePass: "/ipd/discharge/gate-pass/scan",
   lama: "/ipd/discharge/lama",

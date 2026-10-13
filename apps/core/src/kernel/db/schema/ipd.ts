@@ -649,8 +649,9 @@ export const ipdDischargeSummaries = pgTable(
 /**
  * The final bill (spec §4.7): ONE billing invoice for the admission's PATIENT-payable portion, composed from the
  * non-reversed running-bill lines; deposits applied, excess refunded (a refund request), any unpaid balance recorded as
- * dues with its approval and undertaking — never a detention. One per admission. Integer paise; `total_paise` is Σ the
- * non-reversed lines' net (before the invoice's rounding); the invoice's own totals are billing's.
+ * dues against the signed undertaking — never a detention; the dues approval follows the exit. One per admission.
+ * Integer paise: `total_paise` = Σ the non-reversed lines' net; `patient_paise` = the invoice before rounding (as billing
+ * prices it); `payer_paise` = total − patient (the claim). payer + patient = total, always.
  */
 export const ipdFinalBills = pgTable(
   "ipd_final_bills",
@@ -673,6 +674,8 @@ export const ipdFinalBills = pgTable(
     settlement: text("settlement").notNull(),
     duesApprovalId: text("dues_approval_id"),
     duesApprovedBy: text("dues_approved_by"),
+    /** E3.2 review ⚖: the dues approval is recorded AFTER the exit (a ledger step), never before it. */
+    duesApprovedAt: timestamp("dues_approved_at", { withTimezone: true }),
     undertakingDocumentId: text("undertaking_document_id"),
     /** The payer split as it stood at settlement (the printed final bill's evidence). */
     split: jsonb("split").$type<Record<string, unknown>>().notNull(),
@@ -681,12 +684,12 @@ export const ipdFinalBills = pgTable(
   },
   (t) => [
     uniqueIndex("ipd_final_bills_admission_ux").on(t.admissionId),
-    check("ipd_final_bills_settlement_ck", sql`${t.settlement} in ('paid', 'refund_due', 'dues_approved', 'insurer_pending_undertaking')`),
+    check("ipd_final_bills_settlement_ck", sql`${t.settlement} in ('paid', 'refund_due', 'dues_recorded', 'insurer_pending_undertaking')`),
     check(
       "ipd_final_bills_money_ck",
       sql`${t.totalPaise} >= 0 and ${t.payerPaise} >= 0 and ${t.patientPaise} >= 0 and ${t.depositAppliedPaise} >= 0 and ${t.paidPaise} >= 0 and ${t.refundPaise} >= 0 and ${t.duesPaise} >= 0`,
     ),
-    check("ipd_final_bills_dues_ck", sql`${t.duesPaise} = 0 or ${t.duesApprovalId} is not null or ${t.undertakingDocumentId} is not null`),
+    check("ipd_final_bills_dues_ck", sql`${t.duesPaise} = 0 or ${t.undertakingDocumentId} is not null`),
   ],
 );
 

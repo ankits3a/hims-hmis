@@ -327,6 +327,7 @@ export async function mkDischargeWorld(db: Db): Promise<DischargeWorld> {
       "ipd.discharge.view", "ipd.discharge.confirm", "ipd.gate.pass", "ipd.gate.scan", "ipd.discharge.exit", "ipd.mortuary.manage",
     ],
     front_office: ["ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan"],
+    billing_manager: ["ipd.discharge.view", "ipd.discharge.confirm", "ipd.discharge.bill", "ipd.gate.pass", "ipd.bill.view"],
   };
   for (const [role, perms] of Object.entries(grants)) {
     await ensureRole(db, role);

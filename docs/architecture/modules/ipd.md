@@ -139,9 +139,13 @@ Source: `apps/core/src/modules/ipd/`
   - types: `DepositQuote`, `DepositQuoteArgs`
 - `discharge-bill.ts`
   - `askDuesApproval(db: Db, actor: Actor, body: { admissionId: string; amountPaise: number; note: string }): Promise<{ approvalId: string }>`
+  - `assertPayerAccounted(payerPaise: number, payerKind: string | null): void`
   - `composeFinalBill(db: Db | Tx, a: AdmissionRow): Promise<ComposedFinalBill>`
+  - `listBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<IpdBillDesk>`
   - `prepareFinalBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
-  - `readFinalBill(db: Db, actor: Actor, admissionId: string): Promise<IpdFinalBill>`
+  - `priceFinalBill(db: Db | Tx, a: AdmissionRow, c: ComposedFinalBill, at: Date): Promise<PricedFinalBill>`
+  - `readFinalBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
+  - `recordDuesApproval(db: Db, actor: Actor, body: { admissionId: string; approvalId: string }, opts: Opts = {}): Promise<{ admissionId: string…`
   - `settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_final_bill">>`
 - `discharge-events.ts`
   - `IPD_DISCHARGE_EVENT_NAMES`
@@ -253,12 +257,12 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (64)
+## HTTP routes (66)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
-- `discharge.controller.ts` — 21: `/ipd/discharge`, `/ipd/mortuary`
+- `discharge.controller.ts` — 23: `/ipd/discharge`, `/ipd/mortuary`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
 - `transfers.controller.ts` — 7: `/ipd/transfers`
 

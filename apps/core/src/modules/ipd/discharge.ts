@@ -2,7 +2,7 @@ import { and, asc, eq, gte } from "drizzle-orm";
 import { IPD_INTENTS, IpdSaveSummaryDraftSchema, IpdSummaryContentSchema, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  icd10Codes, ipdChargeLines, ipdDischargeConfirmations, ipdDischargeSummaries, ipdDischarges, ipdGatePasses, orders,
+  icd10Codes, ipdChargeLines, ipdDischargeConfirmations, ipdDischargeSummaries, ipdDischarges, ipdFinalBills, ipdGatePasses, orders,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withIdempotency } from "../billing";
@@ -146,6 +146,9 @@ export async function cancelFit(db: Db, actor: Actor, raw: unknown, opts: Opts =
     const a = await lockAdmission(tx, input.admissionId);
     if (a.state !== "fit_declared" && a.state !== "discharging") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
     if (!isTreatingConsultant(a, actor)) throw new IpdRefusal("not_treating_consultant");
+    // Review #762 RED 3 ($): a settled final bill must be voided by billing first (the void flow is owed — see MAP.md).
+    const settledBill = (await tx.select({ id: ipdFinalBills.id }).from(ipdFinalBills).where(eq(ipdFinalBills.admissionId, a.id)))[0];
+    if (settledBill !== undefined) throw new IpdRefusal("final_bill_exists", undefined, { finalBillId: settledBill.id });
     const d = await activeDischarge(tx, a.id);
     const confirmed = d === undefined ? 0 : (await confirmationsOf(tx, d.id)).filter((c) => c.confirmedAt !== null).length;
     const voided = await tx.update(ipdGatePasses).set({ status: "void", voidedBy: actor.id, voidedAt: at, voidReason: "fit_cancelled" })
@@ -172,7 +175,8 @@ export async function confirmCharges(db: Db, actor: Actor, raw: unknown, opts: O
   return onceIpd(db, actor, "confirm_charges", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const a = await lockAdmission(tx, input.admissionId);
     if (a.state !== "fit_declared") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
-    if (actor.type !== "system" && !(await actorHoldsAnyRole(tx, actor.id, [...IPD_DEPARTMENT_ROLES[input.department]]))) {
+    // Review #762 item 13: no system bypass — a department is a ROLE; no system caller confirms charges today.
+    if (!(await actorHoldsAnyRole(tx, actor.id, [...IPD_DEPARTMENT_ROLES[input.department]]))) {
       throw new IpdRefusal("department_not_yours", undefined, { department: input.department });
     }
     const d = await activeDischarge(tx, a.id);

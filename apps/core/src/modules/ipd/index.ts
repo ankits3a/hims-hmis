@@ -98,7 +98,10 @@ export {
 export {
   IPD_DEPARTMENT_ROLES, IPD_DISCHARGE_TARGET_MINUTES, cancelFit, confirmCharges, declareFit, readSummary, saveSummaryDraft, signSummary,
 } from "./discharge";
-export { askDuesApproval, composeFinalBill, prepareFinalBill, readFinalBill, settleFinalBill } from "./discharge-bill";
+export {
+  askDuesApproval, assertPayerAccounted, composeFinalBill, listBillDesk, prepareFinalBill, priceFinalBill, readFinalBill, recordDuesApproval,
+  settleFinalBill,
+} from "./discharge-bill";
 export {
   issueGatePass, listMortuary, receiveBody, recordAbscond, recordDeath, recordLama, recordPoliceClearance, releaseBody, scanGatePass,
 } from "./discharge-exit";

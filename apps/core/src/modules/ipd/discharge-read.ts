@@ -111,7 +111,7 @@ async function trackerOf(db: Db, actor: Actor, a: AdmissionRow, at: Date): Promi
   if (mConfirm && a.state === "fit_declared") {
     for (const dep of pending) {
       if (dep === "billing" && pending.length > 1) continue;
-      if (actor.type === "system" || await actorHoldsAnyRole(db as unknown as Tx, actor.id, [...IPD_DEPARTMENT_ROLES[dep]])) confirmable.push(dep);
+      if (await actorHoldsAnyRole(db as unknown as Tx, actor.id, [...IPD_DEPARTMENT_ROLES[dep]])) confirmable.push(dep);
     }
   }
   const billable = ["fit_declared", "lama", "absconded", "deceased"].includes(a.state);
@@ -135,12 +135,12 @@ async function trackerOf(db: Db, actor: Actor, a: AdmissionRow, at: Date): Promi
       signedBy: summary?.signedBy == null ? null : names.get(summary.signedBy) ?? summary.signedBy, version: summary?.version ?? 0,
     },
     gatePass: pass === undefined ? null : {
-      code: pass.code, status: pass.status as "issued" | "used", kind: pass.kind as "discharge" | "transfer_out", duesRecorded: pass.duesRecorded,
+      code: pass.code, status: pass.status as "issued" | "used", kind: pass.kind as "discharge" | "transfer_out", duesRecorded: mMoney || mBill ? pass.duesRecorded : null,
       issuedAt: pass.issuedAt.toISOString(), scannedAt: pass.scannedAt?.toISOString() ?? null, receivingHospital: pass.receivingHospital?.name ?? null,
     },
     exit: exitKind === null ? null : { kind: exitKind, at: exitRow!.at.toISOString() },
     blocker: blockers.length === 0 ? null : blockers.join(" · "),
-    bill: mMoney || mBill ? await finalBillView(db, a) : null,
+    bill: mMoney || mBill ? await finalBillView(db, a, at).catch(() => null) : null,
     can: {
       declareFit: mDeclare && treating && a.state === "admitted",
       cancelFit: mDeclare && treating && CASCADE.has(a.state),

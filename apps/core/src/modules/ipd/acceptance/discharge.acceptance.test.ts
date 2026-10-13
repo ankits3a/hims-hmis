@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import { IPD_INTENTS, ipdSchemaKeys, newId } from "@hmis/contracts";
 import {
-  approvals, events, invoices, ipdAdmissions, ipdChargeLines, ipdFinalBills, ipdMortuaryRegister, ipdTransfers, resourceStatusHistory, resources,
+  approvals, events, invoices, ipdAdmissions, patientDocuments, ipdChargeLines, ipdFinalBills, ipdMortuaryRegister, ipdTransfers, resourceStatusHistory, resources,
 } from "../../../kernel/db/schema";
 import { approveRequest } from "../../../kernel/approvals/decisions";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkDischargeWorld } from "../../../../test/helpers/ipd";
 import {
-  IpdRefusal, askDuesApproval, confirmCharges, declareFit, issueGatePass, prepareFinalBill, receiveBody, recordAbscond, recordDeath,
+  IpdRefusal, askDuesApproval, recordDuesApproval, confirmCharges, declareFit, issueGatePass, prepareFinalBill, receiveBody, recordAbscond, recordDeath,
   recordLama, releaseBody, reverseChargeLine, saveSummaryDraft, scanGatePass, settleFinalBill, signSummary, startTransfer,
   takeDeposit,
 } from "../index";
@@ -67,7 +67,7 @@ describe("E3.2 discharge — acceptance", () => {
   };
   const settle = async (admissionId: string, at: Date, extra: Record<string, unknown> = {}) => {
     const bill = await prepareFinalBill(db, w.cashier, admissionId, { now: at });
-    return settleFinalBill(db, w.cashier, { idempotencyKey: key(), admissionId, billVersion: bill.billVersion, settlement: "paid", payments: [], ...extra }, { now: at });
+    return settleFinalBill(db, w.cashier, { idempotencyKey: key(), admissionId, billVersion: bill.billVersion, patientPayablePaise: bill.patientPaise, settlement: "paid", payments: [], ...extra }, { now: at });
   };
 
   it("(i) discharge cannot complete while any department has not confirmed charges", async () => {
@@ -78,7 +78,7 @@ describe("E3.2 discharge — acceptance", () => {
     // Nobody has confirmed: the bill cannot settle and the gate pass refuses, naming who is silent.
     const prepared = await prepareFinalBill(db, w.cashier, admissionId, { now: ist("2026-03-12T09:20:00") });
     const settleEarly = await refusal(settleFinalBill(db, w.cashier, {
-      idempotencyKey: key(), admissionId, billVersion: prepared.billVersion, settlement: "paid", payments: [{ tender: "cash", amountPaise: prepared.patientRoundedPaise }],
+      idempotencyKey: key(), admissionId, billVersion: prepared.billVersion, patientPayablePaise: prepared.patientPaise, settlement: "paid", payments: [{ tender: "cash", amountPaise: prepared.patientRoundedPaise }],
     }, { now: ist("2026-03-12T09:21:00") }));
     expect(settleEarly.code).toBe("charges_unconfirmed");
     expect(settleEarly.detail).toEqual({ pending: ["ward", "billing"] });
@@ -102,7 +102,7 @@ describe("E3.2 discharge — acceptance", () => {
 
     const bill = await prepareFinalBill(db, w.cashier, admissionId, { now: ist("2026-03-12T09:45:00") });
     await settleFinalBill(db, w.cashier, {
-      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, settlement: "paid", payments: [{ tender: "upi", amountPaise: bill.patientRoundedPaise, ref: "UPI-REF-9" }],
+      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, patientPayablePaise: bill.patientPaise, settlement: "paid", payments: [{ tender: "upi", amountPaise: bill.patientRoundedPaise, ref: "UPI-REF-9" }],
     }, { now: ist("2026-03-12T09:50:00") });
     const pass = await issueGatePass(db, w.cashier, { idempotencyKey: key(), admissionId }, { now: ist("2026-03-12T10:00:00") });
     const scanned = await scanGatePass(db, w.admitDesk, { idempotencyKey: key(), gatePassCode: pass.code, gateId: newId(), scannedAt: ist("2026-03-12T10:20:00").toISOString() }, { now: ist("2026-03-12T10:20:00") });
@@ -122,19 +122,21 @@ describe("E3.2 discharge — acceptance", () => {
     const part = 100_000;
     const dues = bill.patientRoundedPaise - part;
 
-    // Unpaid without an approval: refused with the fix, not a dead end.
-    const noApproval = await refusal(settleFinalBill(db, w.cashier, {
-      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, settlement: "paid", payments: [{ tender: "cash", amountPaise: part }],
+    // Unpaid without the signed undertaking: refused with the fix, not a dead end.
+    const noUndertaking = await refusal(settleFinalBill(db, w.cashier, {
+      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, patientPayablePaise: bill.patientPaise, settlement: "paid", payments: [{ tender: "cash", amountPaise: part }],
     }, { now: ist("2026-03-12T09:25:00") }));
-    expect(noApproval.code).toBe("dues_need_approval");
+    expect(noUndertaking.code).toBe("dues_need_approval");
 
-    // The billing manager approves the dues against the signed undertaking.
-    const { approvalId } = await askDuesApproval(db, w.cashier, { admissionId, amountPaise: dues, note: "family will pay on Monday" });
-    await approveRequest(db, w.billingManager, { approvalId, note: "undertaking signed" });
+    // Review #762 ⚖: the dues are recorded at once against the undertaking filed for this patient; the approval follows the exit.
     const undertakingDocumentId = newId();
+    await db.insert(patientDocuments).values({
+      id: undertakingDocumentId, patientId: (await admission(admissionId)).patientId, kind: "outside_report", mimeType: "image/jpeg", byteSize: 10,
+      storageKey: `2026/03/${undertakingDocumentId}.jpg`, sha256: "0".repeat(64), capturedBy: w.cashier.id,
+    });
     const settled = await settleFinalBill(db, w.cashier, {
-      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, settlement: "dues_approved",
-      payments: [{ tender: "cash", amountPaise: part }], duesApprovalId: approvalId, undertakingDocumentId,
+      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, patientPayablePaise: bill.patientPaise, settlement: "dues_recorded",
+      payments: [{ tender: "cash", amountPaise: part }], undertakingDocumentId,
     }, { now: ist("2026-03-12T09:40:00") });
     expect(settled).toMatchObject({ paidPaise: part, duesPaise: dues });
 
@@ -147,7 +149,13 @@ describe("E3.2 discharge — acceptance", () => {
     await scanGatePass(db, w.duty, { idempotencyKey: key(), gatePassCode: pass.code, gateId: newId(), scannedAt: ist("2026-03-12T10:00:00").toISOString() }, { now: ist("2026-03-12T10:00:00") });
     expect((await admission(admissionId)).state).toBe("discharged");
     const row = (await db.select().from(ipdFinalBills).where(eq(ipdFinalBills.admissionId, admissionId)))[0]!;
-    expect(row).toMatchObject({ duesPaise: dues, duesApprovalId: approvalId, duesApprovedBy: w.billingManager.id, undertakingDocumentId });
+    expect(row).toMatchObject({ duesPaise: dues, duesApprovalId: null, undertakingDocumentId });
+    // After the exit: the billing manager approves the dues and the bill desk attaches it (a ledger step).
+    const { approvalId } = await askDuesApproval(db, w.cashier, { admissionId, amountPaise: dues, note: "family will pay on Monday" });
+    await approveRequest(db, w.billingManager, { approvalId, note: "undertaking signed" });
+    await recordDuesApproval(db, w.cashier, { admissionId, approvalId }, { now: ist("2026-03-12T11:00:00") });
+    const after = (await db.select().from(ipdFinalBills).where(eq(ipdFinalBills.admissionId, admissionId)))[0]!;
+    expect(after).toMatchObject({ duesApprovalId: approvalId, duesApprovedBy: w.billingManager.id });
   });
 
   it("(iii) LAMA, absconded, death and transfer-out each end the stay, release the bed and emit their event once", async () => {
@@ -194,7 +202,7 @@ describe("E3.2 discharge — acceptance", () => {
     await signedSummary(out.admissionId, ist("2026-03-12T09:15:00"));
     const b = await prepareFinalBill(db, w.cashier, out.admissionId, { now: ist("2026-03-12T09:20:00") });
     await settleFinalBill(db, w.cashier, {
-      idempotencyKey: key(), admissionId: out.admissionId, billVersion: b.billVersion, settlement: "paid", payments: [{ tender: "card", amountPaise: b.patientRoundedPaise, ref: "CARD-REF-9" }],
+      idempotencyKey: key(), admissionId: out.admissionId, billVersion: b.billVersion, patientPayablePaise: b.patientPaise, settlement: "paid", payments: [{ tender: "card", amountPaise: b.patientRoundedPaise, ref: "CARD-REF-9" }],
     }, { now: ist("2026-03-12T09:25:00") });
     expect((await refusal(issueGatePass(db, w.cashier, { idempotencyKey: key(), admissionId: out.admissionId }, { now: ist("2026-03-12T09:30:00") }))).code)
       .toBe("receiving_hospital_missing");
@@ -250,7 +258,7 @@ describe("E3.2 discharge — acceptance", () => {
     expect(released).toMatchObject({ status: "released", releasedTo: { relation: "son" } });
     // The dues are still there to be settled with the family — after, not as a condition.
     const later = await settleFinalBill(db, w.cashier, {
-      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, settlement: "paid", payments: [{ tender: "upi", amountPaise: bill.patientRoundedPaise, ref: "UPI-REF-9" }],
+      idempotencyKey: key(), admissionId, billVersion: bill.billVersion, patientPayablePaise: bill.patientPaise, settlement: "paid", payments: [{ tender: "upi", amountPaise: bill.patientRoundedPaise, ref: "UPI-REF-9" }],
     }, { now: ist("2026-03-12T09:00:00") });
     expect(later.duesPaise).toBe(0);
   });
@@ -301,11 +309,11 @@ describe("E3.2 discharge — acceptance", () => {
     expect(expected).toBe(bill0.totalPaise - rmo.netPaise);
 
     // The old read is stale.
-    expect((await refusal(settleFinalBill(db, w.cashier, { idempotencyKey: key(), admissionId, billVersion: bill0.billVersion, settlement: "refund_due", payments: [] }, { now: ist("2026-03-12T09:30:00") }))).code)
+    expect((await refusal(settleFinalBill(db, w.cashier, { idempotencyKey: key(), admissionId, billVersion: bill0.billVersion, patientPayablePaise: bill0.patientPaise, settlement: "refund_due", payments: [] }, { now: ist("2026-03-12T09:30:00") }))).code)
       .toBe("bill_changed");
     const bill = await prepareFinalBill(db, w.cashier, admissionId, { now: ist("2026-03-12T09:31:00") });
     expect(bill.totalPaise).toBe(expected);
-    const settled = await settleFinalBill(db, w.cashier, { idempotencyKey: key(), admissionId, billVersion: bill.billVersion, settlement: "refund_due", payments: [] }, { now: ist("2026-03-12T09:35:00") });
+    const settled = await settleFinalBill(db, w.cashier, { idempotencyKey: key(), admissionId, billVersion: bill.billVersion, patientPayablePaise: bill.patientPaise, settlement: "refund_due", payments: [] }, { now: ist("2026-03-12T09:35:00") });
 
     const inv = (await db.select().from(invoices).where(eq(invoices.invoiceNo, settled.billNo)))[0]!;
     expect(inv.rawTotalPaise).toBe(expected);

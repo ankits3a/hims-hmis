@@ -45,7 +45,8 @@ export const cancelFit = ipdIntent({
     stepsStopped: z.number().int().nonnegative(),
     gatePassVoided: z.boolean(),
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", "not_treating_consultant"],
+  // E3.2 review: refused once the final bill is settled (`final_bill_exists` — billing voids it first; void flow owed).
+  refusals: ["admission_not_found", "admission_wrong_state", "not_treating_consultant", "final_bill_exists"],
   actors: ["doctor"],
   copilotProposable: true,
   agentTier: "none",
@@ -108,8 +109,14 @@ export const settleFinalBill = ipdIntent({
   input: ipdInput({
     admissionId: IpdIdSchema,
     /** The bill version the cashier read; a newer bill refuses `bill_changed`. */
-    billVersion: z.number().int().positive(),
-    settlement: z.enum(["paid", "refund_due", "dues_approved", "insurer_pending_undertaking"]),
+    billVersion: z.number().int().nonnegative(),
+    /** E3.2 review: the patient amount the cashier read (the invoice's, as billing prices it); a different one refuses `bill_changed`. */
+    patientPayablePaise: IpdPaiseSchema,
+    /**
+     * E3.2 review ⚖: `dues_recorded` — the unpaid balance is recorded at once against the patient's signed undertaking
+     * (an existing patient document); the dues approval is a ledger step AFTER the exit, never a gate on it.
+     */
+    settlement: z.enum(["paid", "refund_due", "dues_recorded", "insurer_pending_undertaking"]),
     payments: z.array(z.strictObject({
       tender: IpdTenderSchema, amountPaise: IpdPositivePaiseSchema,
       /** E3.2: the UPI / card settlement reference the ledger needs for any tender but cash. */
@@ -119,7 +126,7 @@ export const settleFinalBill = ipdIntent({
     undertakingDocumentId: IpdIdSchema.optional(),
   }).superRefine((v, ctx) => {
     if (v.settlement === "paid" && v.payments.length === 0) ctx.addIssue({ code: "custom", path: ["payments"], message: "paid needs at least one payment" });
-    if (v.settlement === "dues_approved" && v.duesApprovalId === undefined) ctx.addIssue({ code: "custom", path: ["duesApprovalId"], message: "dues need their approval" });
+    if (v.settlement === "dues_recorded" && v.undertakingDocumentId === undefined) ctx.addIssue({ code: "custom", path: ["undertakingDocumentId"], message: "dues need the signed undertaking" });
     if (v.settlement === "insurer_pending_undertaking" && v.undertakingDocumentId === undefined) ctx.addIssue({ code: "custom", path: ["undertakingDocumentId"], message: "an undertaking needs its document" });
   }),
   output: z.strictObject({
@@ -134,7 +141,7 @@ export const settleFinalBill = ipdIntent({
   }),
   refusals: [
     "admission_not_found", "admission_wrong_state", "charges_unconfirmed", "bill_changed", "dues_need_approval",
-    "cash_limit_reached", "insurer_final_pending",
+    "cash_limit_reached", "insurer_final_pending", "final_bill_exists", "undertaking_invalid", "payer_kind_missing",
   ],
   actors: ["billing", "desk"],
   copilotProposable: false,
@@ -156,8 +163,8 @@ export const issueGatePass = ipdIntent({
     code: z.string().min(1),
     state: z.literal("discharging"),
     issuedAt: IpdInstantSchema,
-    /** E3.2: the bill left dues on the register (approved); the pass says "dues recorded" — never a detention. */
-    duesRecorded: z.boolean(),
+    /** E3.2: the bill left dues on the register; the pass says "dues recorded" — never a detention. Null for a viewer without money. */
+    duesRecorded: z.boolean().nullable(),
   }),
   refusals: [
     "admission_not_found", "admission_wrong_state", "charges_unconfirmed", "summary_unsigned", "bill_unsettled",
@@ -206,7 +213,7 @@ export const recordLama = ipdIntent({
     at: IpdInstantSchema,
   }),
   output: z.strictObject({ admissionId: IpdIdSchema, state: z.literal("lama"), summaryTaskId: IpdIdSchema }),
-  refusals: ["admission_not_found", "admission_wrong_state", "representative_reason_missing", "time_in_future"],
+  refusals: ["admission_not_found", "admission_wrong_state", "representative_reason_missing", "time_in_future", "time_before_charges"],
   actors: ["doctor", "nurse", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",
@@ -225,7 +232,7 @@ export const recordAbscond = ipdIntent({
     note: IpdNoteSchema.optional(),
   }),
   output: z.strictObject({ admissionId: IpdIdSchema, state: z.literal("absconded"), billFrozen: z.literal(true) }),
-  refusals: ["admission_not_found", "admission_wrong_state", "police_intimation_required", "time_in_future"],
+  refusals: ["admission_not_found", "admission_wrong_state", "police_intimation_required", "time_in_future", "time_before_charges"],
   actors: ["nurse", "supervisor", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",
@@ -255,7 +262,7 @@ export const recordDeath = ipdIntent({
     /** E3.2: the body's row in the mortuary register. */
     mortuaryEntryId: IpdIdSchema,
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", "time_in_future", "police_intimation_required"],
+  refusals: ["admission_not_found", "admission_wrong_state", "time_in_future", "police_intimation_required", "time_before_charges"],
   actors: ["doctor", "resident"],
   copilotProposable: false,
   agentTier: "none",

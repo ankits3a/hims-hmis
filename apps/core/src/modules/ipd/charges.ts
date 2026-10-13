@@ -287,7 +287,12 @@ export async function postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyR
   const rows = await db.select({ id: ipdAdmissions.id, skip: sql<boolean>`${quarantined}` }).from(ipdAdmissions).where(and(
     isNotNull(ipdAdmissions.admittedAt),
     or(
-      inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
+      // E3.2 review (#762, RED 2): a settled final bill closes the running bill — the job never posts behind it (a stay
+      // still open the next IST day is the bill desk's `settled_not_exited` exception; a supplementary bill is owed).
+      and(
+        inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
+        sql`not exists (select 1 from ipd_final_bills fb where fb.admission_id = "ipd_admissions"."id")`,
+      ),
       and(
         inArray(ipdAdmissions.state, [...IPD_ENDED_STATES]),
         or(

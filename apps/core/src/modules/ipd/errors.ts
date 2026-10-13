@@ -41,8 +41,6 @@ export type IpdErrorCode =
   | "icd10_unknown"
   /** E3.2 — the tenders exceed the patient's bill: record what is applied and give the change. */
   | "tender_exceeds_bill"
-  /** E3.2 — the admission's final bill is already settled (a missed charge is a supplementary bill). */
-  | "final_bill_exists"
   /** E3.2 — the mortuary register: no such row; the act does not fit its status; the two-person check needs two people. */
   | "mortuary_entry_not_found"
   | "mortuary_wrong_state"

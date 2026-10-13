@@ -12,6 +12,7 @@ import type { IpdDischargeBoard, IpdDischargeTracker, IpdFinalBill } from "@hmis
 
 const api = vi.hoisted(() => ({
   getDischargeBoard: vi.fn(), getDischargeTracker: vi.fn(), getSummary: vi.fn(), confirmDepartment: vi.fn(), scanGatePass: vi.fn(),
+  prepareFinalBill: vi.fn(), settleFinalBill: vi.fn(),
 }));
 vi.mock("../lib/ipd-discharge-api", async (orig) => {
   const real = await orig<typeof import("../lib/ipd-discharge-api")>();
@@ -31,7 +32,7 @@ const BOARD: IpdDischargeBoard = {
 
 const BILL: IpdFinalBill = {
   admissionId: id(1), admissionNo: "IP26-000101", billVersion: 6, lines: [], totalPaise: 440_000, payerPaise: 0, patientPaise: 440_000,
-  patientRoundedPaise: 440_000, depositHeldPaise: 500_000, balancePaise: -60_000, payerKind: "cash", settled: null,
+  patientRoundedPaise: 440_000, depositHeldPaise: 500_000, balancePaise: -60_000, payerKind: "cash", settled: null, exceptions: [],
 };
 
 function tracker(over: Partial<IpdDischargeTracker> = {}): IpdDischargeTracker {
@@ -68,6 +69,8 @@ beforeEach(() => {
   api.getSummary.mockReset().mockRejectedValue(new Error("none"));
   api.confirmDepartment.mockReset().mockResolvedValue({});
   api.scanGatePass.mockReset().mockResolvedValue({ admissionId: id(1), state: "discharged" });
+  api.prepareFinalBill.mockReset().mockResolvedValue({ ...BILL, balancePaise: 40_000, depositHeldPaise: 400_000 });
+  api.settleFinalBill.mockReset();
 });
 afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
 
@@ -116,5 +119,27 @@ describe("Discharge desk (E3.2)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Scan" }));
     await waitFor(() => expect(api.scanGatePass).toHaveBeenCalledWith("GP-FAKE00001", "01K0000000000000000000GATE"));
     expect(await screen.findByRole("status")).toHaveTextContent("GP-FAKE00001 — patient left");
+  });
+
+  it("review #762 item 12: a retried settle re-sends the SAME idempotency key; a changed form gets a new one", async () => {
+    api.getDischargeTracker.mockResolvedValue(tracker({ bill: BILL, can: { ...tracker().can, settle: true, confirm: [] } }));
+    api.settleFinalBill.mockRejectedValueOnce(new Error("timeout")).mockRejectedValueOnce(new Error("timeout")).mockResolvedValue({ billNo: "B1" });
+    renderWithRouter(<IpdDischarge />, `/ipd/discharge?admission=${id(1)}`);
+    await userEvent.click(await screen.findByRole("button", { name: "Open final bill" }));
+    const settleBtn = await screen.findByRole("button", { name: "Settle bill" });
+    await userEvent.click(settleBtn);
+    await waitFor(() => expect(api.settleFinalBill).toHaveBeenCalledTimes(1));
+    await userEvent.click(settleBtn);
+    await waitFor(() => expect(api.settleFinalBill).toHaveBeenCalledTimes(2));
+    const [k1] = api.settleFinalBill.mock.calls[0]! as [string];
+    const [k2, body2] = api.settleFinalBill.mock.calls[1]! as [string, { patientPayablePaise: number }];
+    expect(k2).toBe(k1);
+    expect(body2.patientPayablePaise).toBe(440_000);
+    const amount = screen.getByRole("textbox", { name: "Amount (₹)" });
+    await userEvent.clear(amount);
+    await userEvent.type(amount, "450");
+    await userEvent.click(settleBtn);
+    await waitFor(() => expect(api.settleFinalBill).toHaveBeenCalledTimes(3));
+    expect((api.settleFinalBill.mock.calls[2]! as [string])[0]).not.toBe(k1);
   });
 });

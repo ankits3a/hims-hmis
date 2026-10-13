@@ -28,7 +28,7 @@ function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
 }
 
 export type Tender = "cash" | "upi" | "card";
-export type Settlement = "paid" | "refund_due" | "dues_approved" | "insurer_pending_undertaking";
+export type Settlement = "paid" | "refund_due" | "dues_recorded" | "insurer_pending_undertaking";
 
 export const getDischargeBoard = (): Promise<IpdDischargeBoard> => api("GET", R.board);
 export const getDischargeTracker = (admissionId: string): Promise<IpdDischargeTracker> =>
@@ -47,11 +47,15 @@ export const signSummary = (admissionId: string, draftId: string, draftVersion: 
   post(R.signSummary, { admissionId, draftId, draftVersion });
 
 export const prepareFinalBill = (admissionId: string): Promise<IpdFinalBill> => api("POST", R.prepareBill, { admissionId });
-export const settleFinalBill = (b: {
-  admissionId: string; billVersion: number; settlement: Settlement;
+/**
+ * Review #762 item 12: the caller passes ONE idempotency key per settle attempt and re-sends it on a retry (a timeout
+ * after the server settled must not take the money twice); a changed form is a new attempt with a new key.
+ */
+export const settleFinalBill = (idempotencyKey: string, b: {
+  admissionId: string; billVersion: number; patientPayablePaise: number; settlement: Settlement;
   payments: { tender: Tender; amountPaise: number; ref?: string }[];
   duesApprovalId?: string; undertakingDocumentId?: string;
-}): Promise<{ billNo: string }> => post(R.settle, b);
+}): Promise<{ billNo: string }> => api("POST", R.settle, { idempotencyKey, ...b }, idempotencyKey);
 export const askDuesApproval = (admissionId: string, amountPaise: number, note: string): Promise<{ approvalId: string }> =>
   api("POST", R.askDues, { admissionId, amountPaise, note });
 
@@ -63,18 +67,3 @@ export const scanGatePass = (gatePassCode: string, gateId: string): Promise<{ ad
 /** The id a hand scan at the desk records as its gate (no gate registry yet — DECIDED, E3.2). A valid ULID. */
 export const HAND_GATE_ID = "01K0000000000000000000GATE";
 
-const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-/**
- * A ULID for a PAPER form filed at the desk (the signed undertaking): the desk records that the form exists and the
- * server keeps this id with the dues; the scan is attached in the documents lane later.
- */
-export function paperRefId(now: number = Date.now()): string {
-  let time = "";
-  let t = now;
-  for (let i = 0; i < 10; i++) { time = CROCKFORD[t % 32]! + time; t = Math.floor(t / 32); }
-  const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
-  let rand = "";
-  for (let i = 0; i < 16; i++) rand += CROCKFORD[bytes[i]! % 32]!;
-  return time + rand;
-}

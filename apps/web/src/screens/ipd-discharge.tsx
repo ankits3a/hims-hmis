@@ -11,8 +11,11 @@ import { fmtIst, fmtPaise } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import {
   HAND_GATE_ID, askDuesApproval, cancelFit, confirmDepartment, declareFit, getDischargeBoard, getDischargeTracker, getSummary,
-  issueGatePass, paperRefId, prepareFinalBill, saveSummary, scanGatePass, settleFinalBill, signSummary,
+  issueGatePass, prepareFinalBill, saveSummary, scanGatePass, settleFinalBill, signSummary,
 } from "../lib/ipd-discharge-api";
+import { newIdempotencyKey } from "../lib/api";
+import { listPatientDocuments } from "../lib/patients-api";
+import type { WirePatientDocument } from "../lib/patients-api";
 import type { Tender } from "../lib/ipd-discharge-api";
 import "./ipd-discharge.css";
 
@@ -379,7 +382,9 @@ function BillCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone: ()
   const [amount, setAmount] = useState("");
   const [ref, setRef] = useState("");
   const [approvalId, setApprovalId] = useState<string | null>(null);
-  const [undertaking, setUndertaking] = useState(false);
+  const [docs, setDocs] = useState<WirePatientDocument[] | null>(null);
+  const [undertaking, setUndertaking] = useState("");
+  const [attempt, setAttempt] = useState<{ sig: string; key: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [r, fail, clear] = useRefusal();
   const shown = bill ?? tr.bill;
@@ -391,21 +396,27 @@ function BillCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone: ()
   const prepare = () => {
     setBusy(true); clear();
     prepareFinalBill(tr.admissionId).then((b) => { setBusy(false); setBill(b); setAmount((Math.max(0, b.balancePaise) / 100).toFixed(2)); }, (e: unknown) => { setBusy(false); fail(e); });
+    listPatientDocuments(tr.patient.id).then(setDocs, () => setDocs([]));
   };
   const askDues = () => {
+    if (settled === null) return;
     setBusy(true); clear();
-    askDuesApproval(tr.admissionId, short, t("ipdDischarge.bill.duesNote")).then((x) => { setBusy(false); setApprovalId(x.approvalId); }, (e: unknown) => { setBusy(false); fail(e); });
+    askDuesApproval(tr.admissionId, settled.duesPaise, t("ipdDischarge.bill.duesNote")).then((x) => { setBusy(false); setApprovalId(x.approvalId); }, (e: unknown) => { setBusy(false); fail(e); });
   };
   const settle = () => {
     setBusy(true); clear();
     const payments = paidPaise > 0 ? [{ tender, amountPaise: paidPaise, ...(tender !== "cash" && ref.trim() !== "" ? { ref: ref.trim() } : {}) }] : [];
     const withDues = short > 0;
-    settleFinalBill({
-      admissionId: tr.admissionId, billVersion: shown.billVersion,
-      settlement: withDues ? "dues_approved" : shown.balancePaise < 0 ? "refund_due" : "paid", payments,
-      ...(withDues && approvalId !== null ? { duesApprovalId: approvalId } : {}),
-      ...(withDues && undertaking ? { undertakingDocumentId: paperRefId() } : {}),
-    }).then(() => { setBusy(false); setBill(null); onDone(); }, (e: unknown) => { setBusy(false); fail(e); });
+    const body = {
+      admissionId: tr.admissionId, billVersion: shown.billVersion, patientPayablePaise: shown.patientPaise,
+      settlement: withDues ? "dues_recorded" as const : shown.balancePaise < 0 ? "refund_due" as const : "paid" as const, payments,
+      ...(withDues && undertaking !== "" ? { undertakingDocumentId: undertaking } : {}),
+    };
+    // One key per attempt: a retry of the same form re-sends it; a changed form is a new attempt.
+    const sig = JSON.stringify(body);
+    const key = attempt?.sig === sig ? attempt.key : newIdempotencyKey();
+    setAttempt({ sig, key });
+    settleFinalBill(key, body).then(() => { setBusy(false); setBill(null); setAttempt(null); onDone(); }, (e: unknown) => { setBusy(false); fail(e); });
   };
   return (
     <article className="ipdd-card">
@@ -430,7 +441,12 @@ function BillCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone: ()
       {settled !== null ? (
         <div className="row">
           <span className="dim">{t("ipdDischarge.bill.billNo", { no: settled.billNo ?? "—", time: fmtIst(settled.settledAt) })}</span>
+          {settled.refundState === "refund_pending" ? <span className="chip warn">{t("ipdDischarge.bill.refundPending")}</span> : null}
           <button type="button" className="ipdd-btn" onClick={onPrint}>🖶 {t("ipdDischarge.bill.print")}</button>
+          {settled.duesPaise > 0 && !settled.duesApproved && approvalId === null ? (
+            <button type="button" className="ipdd-btn" disabled={busy} onClick={askDues}>{t("ipdDischarge.bill.askDues")}</button>
+          ) : null}
+          {approvalId !== null ? <span className="dim">{t("ipdDischarge.bill.duesAsked")}</span> : null}
         </div>
       ) : tr.can.settle ? (
         bill === null ? (
@@ -449,12 +465,15 @@ function BillCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone: ()
             {short > 0 ? (
               <div className="ipdd-dues">
                 <span>⚖ {t("ipdDischarge.bill.duesLine", { amount: fmtPaise(short) })}</span>
-                {approvalId === null ? <button type="button" className="ipdd-btn" disabled={busy} onClick={askDues}>{t("ipdDischarge.bill.askDues")}</button>
-                  : <span className="dim">{t("ipdDischarge.bill.duesAsked")}</span>}
-                <label className="check"><input type="checkbox" checked={undertaking} onChange={(e) => setUndertaking(e.target.checked)} /> {t("ipdDischarge.bill.undertaking")}</label>
+                <label>{t("ipdDischarge.bill.undertaking")}
+                  <select value={undertaking} onChange={(e) => setUndertaking(e.target.value)}>
+                    <option value="">{t("ipdDischarge.bill.pickUndertaking")}</option>
+                    {(docs ?? []).map((d) => <option key={d.id} value={d.id}>{d.kind} · {fmtIst(d.capturedAt)}</option>)}
+                  </select>
+                </label>
               </div>
             ) : null}
-            <div className="row"><button type="button" className="ipdd-btn pri" disabled={busy} onClick={settle}>{t("ipdDischarge.bill.settle")}</button></div>
+            <div className="row"><button type="button" className="ipdd-btn pri" disabled={busy || (short > 0 && undertaking === "")} onClick={settle}>{t("ipdDischarge.bill.settle")}</button></div>
           </div>
         )
       ) : null}

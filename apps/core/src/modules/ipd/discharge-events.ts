@@ -6,7 +6,8 @@ import { IpdProvenanceSchema, defineEvent } from "@hmis/contracts";
  * `ipd.discharge.fit_declared` and `ipd.gate_pass.scanned` for G4, and the passes lane's consumer reads
  * `ipd.admission.discharged|lama|absconded|deceased` — `admissionId` only — and re-reads IPD live). Every payload carries
  * `admissionId` and `provenance` (G11b). Ids and codes only: no names, no money (the realtime gateway fans them out and a
- * doctor may be listening — decision 0058). The fit declaration's id is `declarationId` (a key never reads as money).
+ * doctor may be listening — decision 0058). The fit declaration's id is `declarationId` (a key never reads as money);
+ * review #762 item 9: no settlement kind and no "dues" flag in any payload — those are money facts.
  */
 const MODULE = "ipd";
 const id = z.string().min(1);
@@ -30,12 +31,11 @@ export const summarySigned = defineEvent("ipd.summary.signed", MODULE, z.object(
 }));
 
 export const billSettled = defineEvent("ipd.bill.settled", MODULE, z.object({
-  admissionId: id, finalBillId: id, invoiceId: id.nullable(), settlement: z.string(), duesRecorded: z.boolean(),
-  provenance: IpdProvenanceSchema,
+  admissionId: id, finalBillId: id, invoiceId: id.nullable(), provenance: IpdProvenanceSchema,
 }));
 
 export const gatePassIssued = defineEvent("ipd.gate_pass.issued", MODULE, z.object({
-  admissionId: id, gatePassId: id, kind: z.enum(["discharge", "transfer_out"]), duesRecorded: z.boolean(), provenance: IpdProvenanceSchema,
+  admissionId: id, gatePassId: id, kind: z.enum(["discharge", "transfer_out"]), provenance: IpdProvenanceSchema,
 }));
 
 export const gatePassScanned = defineEvent("ipd.gate_pass.scanned", MODULE, z.object({

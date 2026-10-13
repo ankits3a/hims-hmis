@@ -352,15 +352,43 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `settleFromReceipts`; tenders as the invoice's receipt (cash / UPI / card; UPI and card need `ref`); excess deposit →
   `requestRefund(advance_refund)` (held instead under `insurer_pending_undertaking`); the payer portion → `ipd_payer_claims`
   (billing has no payer-credit model). All in ONE transaction under the admission lock. Rounding once, by billing.
-- DUES (⚖ DECIDED — Consumer Protection Act, state clinical-establishment rules, NHRC charter): never a detention. An unpaid
-  balance needs settlement `dues_approved` + a GRANTED `ipd_discharge_dues` approval (billing manager or MS) covering it +
-  the undertaking document id; the invoice is raised `holdUntilPaid` (open on billing's dues list, `credit_extended` false —
-  billing's owner-only credit ruling is not touched). The gate pass then says `duesRecorded`.
+- DUES (⚖ DECIDED — Consumer Protection Act, state clinical-establishment rules, NHRC charter): never a detention, never
+  a wait. An unpaid balance is recorded at once (`dues_recorded`) against the signed undertaking document; the invoice is
+  raised `holdUntilPaid` (open on billing's dues list, `credit_extended` false — billing's owner-only credit ruling is not
+  touched). The gate pass says `duesRecorded`. The approval follows the exit (review #762 below).
 - OTHER ENDINGS: LAMA / DAMA (`ipd.discharge.exit`; admitted or fit_declared), abscond (`ipd.discharge.exit`; also from
   discharging; MLC needs `policeIntimationRef`), death (`ipd.discharge.declare`; also mid-transfer). Each (`endStay`):
   cancels an open transfer and its hold, releases the bed (death and abscond terminal clean), voids a live gate pass,
   closes the declaration, moves to the terminal state with `ended_at`, emits the passes lane's event once. The bill
   settles after (allowed in lama / absconded / deceased; no department cascade) — nothing reads the bill to refuse.
+- REVIEW #762 (all DECIDED; $ money, ⚖ law):
+  - $ RED 1/4: the SETTLE posts the running bill itself (`postAdmissionCharges` with `presumedDischargeAt` = the settle
+    instant) under the admission lock, then composes; the bill is final at settlement. A gate scan after 14:00 the same
+    day adds nothing (the hospital's delay).
+  - $ RED 2: the nightly job skips an admission with a final bill. A settled patient still in by the next IST day is the
+    bill desk's `settled_not_exited` (computed on read). Supplementary bill and void flow are owed: issue #763.
+  - $ RED 3: `cancel_fit` refuses `final_bill_exists` ("Ask billing to void the bill", #763). ⚖ LAMA / abscond / death
+    still end the stay after a final bill (bill desk `ended_after_bill`); without one, an ending stamped before the
+    posted charges' cover (per live line: min(the IST midnight ending its date, its posting instant)) refuses
+    `time_before_charges`.
+  - $ RED 5: ONE source of truth, `priceFinalBill`: patient = the invoice as billing prices it (`rawTotalPaise`, before its
+    one rounding); claim = total − patient; payer + patient = total to the paisa (a negative claim refuses `bill_changed`);
+    the view and the settle both call it. A settled bill's view reads the row, never a re-pricing.
+  - $ RED 6: deposits applied are capped by `depositHeldPaise` (receipts less issued advance refunds); the refund is the rest.
+  - ⚖ RED 7: the exit never waits on an approval — `dues_recorded` records the dues at once against the signed undertaking;
+    `recordDuesApproval` attaches the granted `ipd_discharge_dues` approval later; the bill desk (`listBillDesk`,
+    `GET /ipd/discharge/bill-desk`) lists `dues_awaiting_approval` until then.
+  - ⚖ RED 8: the undertaking is an existing ACTIVE `patient_documents` row of THIS patient (`undertaking_invalid`). No
+    `undertaking` document kind exists yet, so any kind is accepted (seam: add the kind in patients' `DOCUMENT_KINDS`).
+  - 9: the dues flag and the settlement kind ride no event; `duesRecorded` is null for a viewer without money.
+  - 10: `refundState` is `refund_pending` until billing issues the voucher against the refund approval.
+  - 11: the settle names `patientPayablePaise` it read (the payer split's inputs are not in the line count); a different
+    recomputed amount refuses `bill_changed`.
+  - 12: the web keeps one idempotency key per settle attempt (same form = same key on a retry).
+  - 13: `confirm_charges` has no system bypass (no system caller exists; a department is a role).
+  - 14: a payer portion with no payer refuses `payer_kind_missing` (`assertPayerAccounted`; unreachable today — the split
+    reads the payer from the admission — kept so a claim is never silently dropped).
+  - 15: requester ≠ approver: the approvals kernel refuses it (`assertNotSodPair`); `recordDuesApproval` re-checks.
 - MORTUARY: a death opens the register row (`expected`); `receiveBody` needs a second person (two-person identity check);
   `releaseBody` needs police clearance for an MLC and NEVER reads the bill (⚖ a body is never held for money).
 - MONEY OFF DOCTORS (0058): declare_fit / cancel_fit / sign_summary / record_death answers carry no money keys (acceptance
@@ -426,9 +454,8 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   workflow's 3-hour SLA tells the duty manager); `medicines_not_returned` (pharmacy returns) and
   `medicine_not_on_active_order` wait for the eMAR / ipd-orders lanes; the mortuary handover and MCCD are register rows, not
   tasks (`taskIds` is empty); claim filing, the family tracker link (E3.3) and the AI drafter (M5) are later lanes.
-- (E3.2) A settled final bill stays settled through a cancel_fit: a later re-discharge's new lines are a supplementary bill
-  (owed — billing's own lane). The nightly job keeps posting while `fit_declared`; a late real exit after 14:00 posts the
-  discharge day after the invoice (supplementary).
+- (E3.2) Superseded by review #762: cancel_fit refuses after the final bill and the nightly job skips a settled admission;
+  the supplementary bill and the void flow are issue #763.
 - (E3.2) Re-pricing on the invoice uses TODAY's active tariff version with the frozen unit as `prepaidUnitPaise`: a service
   removed from the active version since posting refuses `tariff_item_missing`; a GST rate change re-taxes the line. Member
   benefits (flag-gated) could discount a self-pay line on the invoice — the invoice is billing's truth.
