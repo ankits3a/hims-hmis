@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** `billing`, `patients`
 - **Used by modules:** `housekeeping`
-- **Kernel used:** `auth`, `db`, `events`, `modules`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
