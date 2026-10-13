@@ -19,6 +19,8 @@ export const IPD_BILLDESK_REASONS = [
   "cash_consent_missing", "auth_pending_24h", "discharge_balance",
   // E4.2 review (#734): a round backdated past yesterday 10:00 IST — recorded, not charged; billing reviews it.
   "visit_backdated",
+  // #785 review: a lab / imaging order cancelled after its line went on a settled bill, or (lab) after the sample was taken.
+  "order_cancelled_after_bill", "order_cancelled_after_work",
 ] as const;
 export const IpdBillDeskReasonSchema = z.enum(IPD_BILLDESK_REASONS);
 export type IpdBillDeskReason = z.infer<typeof IpdBillDeskReasonSchema>;
@@ -55,6 +57,11 @@ export const IpdBillDeskRowSchema = z.object({
   /** E4.2 (#734): rounds entered too late to charge — billing charges or waives each, with a reason. */
   backdatedVisits: z.array(z.object({
     exceptionId: z.string(), serviceDate: z.string(), consultantName: z.string(),
+  })).optional(),
+  /** #785: lab / imaging lines whose order was cancelled late — billing keeps the charge or reverses it (after a void). */
+  orderCancels: z.array(z.object({
+    chargeLineId: z.string(), reason: z.enum(["order_cancelled_after_bill", "order_cancelled_after_work"]),
+    serviceName: z.string(), serviceDate: z.string(),
   })).optional(),
 });
 export type IpdBillDeskRow = z.infer<typeof IpdBillDeskRowSchema>;

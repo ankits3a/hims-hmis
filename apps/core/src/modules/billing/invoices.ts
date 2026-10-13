@@ -44,6 +44,7 @@ import type { BillingConfig, FeeBps } from "./config";
 import type { Settlement } from "./settlement";
 import type { InvoiceTotals } from "./totals";
 import type { EntitlementCounterState, EntitlementConsume, ResolvedInstruments } from "../membership";
+import { isRunningBillEpisode, refuseRunningBillTender } from "./episode-charges";
 import type { CouponRedemptionRequest } from "../membership";
 import type { InvoiceLineInput, PricedLine } from "../tariff";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -1133,6 +1134,8 @@ export async function issueInvoice(
   input: IssueInvoiceInput,
   now: Date = new Date(),
 ): Promise<IssueInvoiceResult> {
+  // #785 — an inpatient admission bills on its running bill: no department invoice against its number, ever.
+  if (isRunningBillEpisode(input.encounterId)) refuseRunningBillTender(input.encounterId!);
   const cfg = await loadBillingConfig(db);
   /*
     Resolved BEFORE anything is written and used for every mention of the visit below — the row, the

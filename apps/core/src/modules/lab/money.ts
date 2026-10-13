@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { labItems, labResults, orderItems, workflowInstances } from "../../kernel/db/schema";
+import { labItems, labResults, labSpecimenItems, labSpecimens, orderItems, orders, workflowInstances } from "../../kernel/db/schema";
 import { withTx } from "../../kernel/db/client";
 import { appendEvent } from "../../kernel/events/append";
 import { advanceOrderItem } from "../../kernel/orders/advance";
 import { transition, WorkflowError } from "../../kernel/workflow/instances";
-import { BillingError, cashThresholdBlocked, issueCreditNote } from "../billing";
+import { BillingError, cashThresholdBlocked, episodeChargeSinkFor, issueCreditNote } from "../billing";
+import type { EpisodeReverseOutcome } from "../billing";
 import { getEncounter } from "../opd";
 import { deskOrder, deskWalkinOrder } from "./desk";
 import { LabError } from "./errors";
@@ -61,6 +62,15 @@ export function chargeReasonFor(origin: OrderItemOrigin, walkIn = false): LabCha
   return walkIn ? "lab_walkin" : "lab_desk";
 }
 
+/** #785 review — what the cancel did on the inpatient running bill, in words the desk shows. */
+const RUNNING_BILL_WORDS: Record<EpisodeReverseOutcome, string> = {
+  reversed: "cancelled before the sample was taken — the running bill's line is reversed",
+  work_done: "cancelled after the sample was taken — the line stands; billing decides (bill desk)",
+  billed: "the line is on a settled bill — nothing reversed; billing decides (bill desk)",
+  not_posted: "the test was never charged (its rate was missing) — nothing to reverse",
+  none: "nothing on the running bill to reverse",
+};
+
 export type RefundOutcome = {
   orderItemId: string;
   cancelledFrom: string;
@@ -69,6 +79,8 @@ export type RefundOutcome = {
   creditNoteId: string | null;
   creditedPaise: number;
   reason: string;
+  /** #785 — set when the test was on an inpatient's running bill: what the cancel did there. */
+  runningBill?: EpisodeReverseOutcome;
 };
 
 /**
@@ -94,9 +106,11 @@ export async function refundOnCancel(
       invoiceId: labItems.invoiceId,
       invoiceLineId: labItems.invoiceLineId,
       chargeReason: labItems.chargeReason,
+      encounterNo: orders.encounterNo,
     })
     .from(orderItems)
     .innerJoin(labItems, eq(labItems.orderItemId, orderItems.id))
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .where(eq(orderItems.id, orderItemId));
   if (!item) throw new LabError("unknown_item", `no lab order item ${orderItemId}`);
 
@@ -150,6 +164,25 @@ export async function refundOnCancel(
     };
   }
   if (!item.invoiceId || !item.invoiceLineId) {
+    /**
+     * #785 — an inpatient's test is a line of the running bill, not of an invoice: the episode's sink decides what the
+     * cancel costs (before the tube was drawn, a reversal line; after, nothing — billing reverses with a reason).
+     */
+    const sink = episodeChargeSinkFor(item.encounterNo);
+    if (sink !== null) {
+      // "The sample was taken" is the COLLECTION (any tube for this item with a collection time), not the bench's receipt.
+      const drawn = item.cancelledFrom !== "placed" || (await tx.select({ id: labSpecimens.id }).from(labSpecimenItems)
+        .innerJoin(labSpecimens, eq(labSpecimens.id, labSpecimenItems.specimenId))
+        .where(and(eq(labSpecimenItems.orderItemId, orderItemId), isNotNull(labSpecimens.collectedAt))).limit(1)).length > 0;
+      const runningBill = await sink.reverse(tx, actor, {
+        orderItemId, workStarted: drawn, reason: item.cancelReason ?? "no reason recorded", at: now,
+      });
+      return {
+        orderItemId, cancelledFrom: item.cancelledFrom, workDone: drawn,
+        creditNoteId: null, creditedPaise: 0, runningBill,
+        reason: RUNNING_BILL_WORDS[runningBill],
+      };
+    }
     return {
       orderItemId, cancelledFrom: item.cancelledFrom, workDone: false,
       creditNoteId: null, creditedPaise: 0,

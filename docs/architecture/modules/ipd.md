@@ -144,6 +144,7 @@ Source: `apps/core/src/modules/ipd/`
 - `charges.ts`
   - `IPD_DAILY_COMPONENTS`
   - `IPD_NIGHTLY_ACTOR: Actor`
+  - `keepOrderCharge(db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {}): Promise<{ resolved: numb…`
   - `postAdmissionCharges(db: Db, admissionId: string, opts: { upToIstDate: string; now: Date; cache?: PricingCache; presumedDischargeAt?: Date;…`
   - `postConsultantVisit(tx: Tx, input: ConsultantVisitInput): Promise<ConsultantVisitResult>`
   - `postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyResult>`
@@ -332,6 +333,13 @@ Source: `apps/core/src/modules/ipd/`
   - `shiftOf(at: Date): { key: IpdShiftKey; startsAt: Date; endsAt: Date }`
   - `sweepIpdNursing(db: Db, now: Date, hooks: { beforeRow?: (admissionId: string) => void } = {}): Promise<NursingSweepResult>`
   - types: `NursingSweepResult`
+- `order-charges.ts`
+  - `ipdCoversOrderItem(exec: Db | Tx, orderItemId: string): Promise<boolean>`
+  - `ipdOrderStanding(exec: Db | Tx, encounterNo: string): Promise<EpisodeStanding>`
+  - `lockIpdOrderStanding(tx: Tx, encounterNo: string): Promise<EpisodeStanding>`
+  - `postIpdOrderCharges(tx: Tx, actor: Actor, input: { encounterNo: string; department: "lab" | "imaging"; items: readonly { orderId: string; o…`
+  - `registerIpdOrderChargeSink(): () => void`
+  - `reverseIpdOrderCharge(tx: Tx, actor: Actor, input: { orderItemId: string; workStarted: boolean; reason: string; at: Date }): Promise<{ outc…`
 - `orders.ts`
   - `activeIpdOrdersOf(exec: Db | Tx, admissionId: string, kinds: readonly string[] = ["drug", "lab", "imaging"]): Promise<IpdOrderRow[]>`
   - `cancelIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick<IpdOrderOpts, "now"> = {}): Promise<Output<"cancel_ip_order">>`
@@ -349,7 +357,7 @@ Source: `apps/core/src/modules/ipd/`
   - `roomRentCapWarning(db: Db, actor: Actor, admissionId: string, targetClass: IpdBedClass, at: Date = new Date()): Promise<IpdRoomRentCapWarni…`
 - `payer-split.ts`
   - `CAP_EXEMPT_CLASSES: ReadonlySet<IpdBedClass>`
-  - `PROPORTIONAL_COMPONENTS: ReadonlySet<IpdRateComponent>`
+  - `PROPORTIONAL_COMPONENTS: ReadonlySet<IpdChargeComponent>`
   - `capWarningOf(cls: IpdBedClass, capPerDayPaise: number | null, rentPerDayPaise: number | null): { targetClass: IpdBedClass; capPerDayPaise: …`
   - `splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, nonPayables: NonPayables = NO_NON_PAYABLES): IpdPayerSplit`
   - `splitModeOf(payerKind: string | null): SplitMode`
@@ -447,12 +455,12 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (107)
+## HTTP routes (108)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
-- `charges.controller.ts` — 1: `/ipd/charge-lines`
+- `charges.controller.ts` — 2: `/ipd/charge-lines`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `nursing.controller.ts` — 12: `/ipd/nursing`

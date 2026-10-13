@@ -14,6 +14,7 @@ import { IpdFamilyController } from "./family.controller";
 import { IpdNursingController } from "./nursing.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 import { registerIpdEncounterResolver } from "./encounter";
+import { registerIpdOrderChargeSink } from "./order-charges";
 import { IpdRoundsController } from "./rounds.controller";
 
 /**
@@ -33,6 +34,8 @@ class IpdRealtimeRegistrar implements OnModuleInit {
     registerIpdAdvanceRefundListener();
     // E4.2 (#734) — the `IP` episode prefix, so the ordering door can place an inpatient's lab and imaging orders.
     registerIpdEncounterResolver();
+    // #785 — an inpatient's lab and imaging orders post to the running bill, never to a held invoice (billing's seam).
+    registerIpdOrderChargeSink();
   }
 }
 

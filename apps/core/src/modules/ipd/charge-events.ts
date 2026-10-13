@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IpdProvenanceSchema, IpdRateComponentSchema, defineEvent } from "@hmis/contracts";
+import { IpdChargeComponentSchema, IpdProvenanceSchema, defineEvent } from "@hmis/contracts";
 import { IPD_GOAL_EVENTS } from "./goals/goal-events";
 
 /**
@@ -24,7 +24,7 @@ export const visitRecorded = defineEvent("ipd.charge.visit_recorded", MODULE, z.
 
 /** A charge that could not be posted (the rate is missing on the admission's locked tariff). Raised once per key. */
 export const chargeException = defineEvent("ipd.charge.exception_raised", MODULE, z.object({
-  admissionId: id, serviceDate: istDate, component: IpdRateComponentSchema, reason: z.enum(["rate_missing", "tariff_missing", "visit_backdated"]),
+  admissionId: id, serviceDate: istDate, component: IpdChargeComponentSchema, reason: z.enum(["rate_missing", "tariff_missing", "visit_backdated", "order_cancelled_after_bill", "order_cancelled_after_work"]),
   serviceCode: z.string().nullable(), provenance: IpdProvenanceSchema,
 }));
 

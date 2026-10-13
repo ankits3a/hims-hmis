@@ -8,7 +8,8 @@ import { ipdAdmissions } from "../../kernel/db/schema/ipd";
 import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { getEncounter } from "../opd";
-import { BillingError, feeOffAt, loadBillingConfig } from "../billing";
+import { BillingError, episodeChargeSinkFor, feeOffAt, loadBillingConfig } from "../billing";
+import { IPD_PLACED_STATES } from "@hmis/contracts";
 import { RadiologyError } from "./errors";
 import { imagingBillDecisionRaised } from "./events";
 import type { ImagingAuthorisation, ImagingBillDecisionKind } from "../../kernel/db/schema/radiology";
@@ -47,6 +48,12 @@ export type AuthorisationStudyFacts = {
   invoiceLineId: string | null;
   priority: string;
   encounterNo: string;
+  /**
+   * #785 review — the study's order item is charged on an inpatient RUNNING BILL (billing's episode charge sink answers
+   * `covers`). Read by `studyOnRunningBill`; it outlives the stay, so a scan ordered in it and done after discharge is
+   * still never sent to the cashier.
+   */
+  onRunningBill?: boolean;
 };
 
 /**
@@ -60,7 +67,13 @@ export type AuthorisationEncounterFacts = { intendedPayer: string; liveAdmission
  * radiology cannot import ipd without a cycle), and the stay states in which it is live (ipd `IPD_PLACED_STATES`).
  */
 export const INPATIENT_ADMISSION_NO_RE = /^IP\d{2}-\d{6}$/;
-const LIVE_ADMISSION_STATES: readonly string[] = ["admitted", "transferring", "fit_declared", "discharging"];
+const LIVE_ADMISSION_STATES: readonly string[] = IPD_PLACED_STATES;
+
+/** #785 review — is this study's order item on an inpatient running bill? (No sink registered: no.) */
+export async function studyOnRunningBill(exec: Db | Tx, study: { encounterNo: string; orderItemId: string }): Promise<boolean> {
+  const sink = episodeChargeSinkFor(study.encounterNo);
+  return sink === null ? false : sink.covers(exec, study.orderItemId);
+}
 
 /**
  * DD12a's rule. Returns `null` when NOTHING authorises the scan — the caller turns that into
@@ -80,6 +93,8 @@ export function authorisationOf(
 ): ImagingAuthorisation | null {
   if (study.invoiceLineId !== null) return "invoice";
   if (study.encounterNo.startsWith(EPISODE_SERIES.daycare)) return "daycare";
+  // #785 review: the scan is a line of the admission's running bill — live or not, it never waits on the cashier.
+  if (study.onRunningBill === true) return "ipd_admission";
   // E4.2 (#734): a LIVE inpatient's scan never waits on the cashier — the IPD bill settles at discharge (#785 bills it).
   if (INPATIENT_ADMISSION_NO_RE.test(study.encounterNo) && encounter.liveAdmission === true) return "ipd_admission";
   if (encounter.intendedPayer !== "self") return "payer_branch";

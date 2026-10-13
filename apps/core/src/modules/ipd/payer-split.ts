@@ -1,4 +1,4 @@
-import type { IpdBedClass, IpdPayerSplit, IpdRateComponent, IpdSplitException, IpdSplitLine, IpdSplitReason } from "@hmis/contracts";
+import type { IpdBedClass, IpdChargeComponent, IpdPayerSplit, IpdSplitException, IpdSplitLine, IpdSplitReason } from "@hmis/contracts";
 
 /**
  * E2.2 (#726) — THE PAYER SPLIT ENGINE (spec SPEC-ipd-core §2 answer 5, §4.3; decision 0072 answer 5). PURE: lines,
@@ -30,12 +30,13 @@ import type { IpdBedClass, IpdPayerSplit, IpdRateComponent, IpdSplitException, I
 /** Room classes exempt from the cap and the proportional deduction (DECIDED $: critical care, HDU included). */
 export const CAP_EXEMPT_CLASSES: ReadonlySet<IpdBedClass> = new Set(["icu", "nicu", "picu", "hdu"]);
 /** The components that scale with the room category and so take the proportional deduction (DECIDED, E2.2). */
-export const PROPORTIONAL_COMPONENTS: ReadonlySet<IpdRateComponent> = new Set(["nursing", "rmo", "visit", "cross_visit"]);
+export const PROPORTIONAL_COMPONENTS: ReadonlySet<IpdChargeComponent> = new Set(["nursing", "rmo", "visit", "cross_visit"]);
 
 export type SplitLineInput = {
   id: string;
   serviceDate: string;
-  component: IpdRateComponent;
+  /** #785: `lab` / `imaging` lines take no proportional deduction (diagnostics, never room-scaled). */
+  component: IpdChargeComponent;
   billedClass: IpdBedClass | null;
   serviceCode: string;
   /** The tariff service's category (for the non-payables list); null when unknown. */

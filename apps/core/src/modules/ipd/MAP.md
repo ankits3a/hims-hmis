@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders]
+tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -172,6 +172,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `cancel_ip_order`), `packages/contracts/src/ipd/intents-ward.ts` (`sign_round` with `soap`, `source`, `fit`). Web: `apps/web/src/screens/ipd-rounds.tsx`
   (`/ipd/rounds`, `/ipd/rounds/$admissionId`, nav "Rounds"), `apps/web/src/lib/ipd-rounds-api.ts`.
 
+- (#785) `order-charges.ts` — THE ORDER CHARGE SINK: `ipdOrderStanding` (live / ended / not an admission), `postIpdOrderCharges`,
+  `reverseIpdOrderCharge`, `registerIpdOrderChargeSink` (billing `registerEpisodeChargeSink`, prefix `IP`; `IpdModule` registers it).
+  `charges.ts` — `priceService`, `postOrderLineIn` (one `ipd.order` line per order item) and the Retry leg
+  `retryOrderExceptionsIn` inside `postAdmissionCharges`. `modules/billing/episode-charges.ts` — the seam (`episodeChargeSinkFor`,
+  `episodeChargeStanding`). Callers: `modules/lab/desk.ts` `placeLabOrder`, the reflex in `modules/lab/verify.ts`,
+  `modules/lab/money.ts` `refundOnCancel`; `modules/radiology/place.ts` `placeImagingOrder` / `assertEncounterOpen`,
+  `modules/radiology/schedule.ts` `cancelStudy`. `kernel/db/schema/ipd.ts` —
+  `ipd_charge_lines.order_id` / `order_item_id`, components `lab` / `imaging`, source `ipd.order` (migration `ipd_orderbill`).
+  Contracts `IPD_CHARGE_COMPONENTS` / `IpdChargeComponent` (the rate card's `IpdRateComponent` is unchanged).
+
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
   validated here, and only the keys the schemas name are written. Other keys on a row are kept.
@@ -309,6 +319,39 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - MONEY OFF DOCTORS (0058): `ipd.bill.view` (front office, its supervisor, duty manager, cashier, billing manager, owner)
   gates the interim bill; charge events carry ids and dates only; acceptance (viii) pins the doctor-reachable IPD routes and
   scans their answers for money keys.
+
+- ORDERS (#785, DECIDED): a lab or imaging order on a LIVE admission — from rounds or any door naming the admission number
+  (ordering door, lab desk, lab reflex, radiology) — posts one `ipd.order` line per order item (component `lab` / `imaging`,
+  no bed class, `order_id` + `order_item_id` + `service_id`), priced on the admission's LOCKED version (the tariff in force for
+  the stay), in the department's own transaction; the department raises NO invoice (lab `lab_items.invoice_id` null, desk
+  answer `invoice: null`). Unique per order item (`ipd_charge_lines_order_ux`). A missing rate (no item, ₹0, switched off, a
+  tariff refusal) is a `rate_missing` exception keyed `<admission>:<date>:<component>:<order item>`; Retry / the nightly run
+  re-price it (`retryOrderExceptionsIn`), a cancelled item closes it. ENDED admission: rounds refuses (`assertInBed`), the
+  other doors `encounter_closed`; a reflex of an earlier sample still posts (supplementary bill).
+  CANCEL: before the work (lab: no tube COLLECTED; imaging: not on the machine — the department decides `workStarted`) → a
+  reversal line; after → nothing (billing reverses with `ipd.charges.reverse`); a line a settled bill took is left (void
+  first). Radiology raises no `acquired_unbilled` for an `ipd_admission` study. Diagnostics take no proportional deduction.
+  REVIEW OF 47cd79f5 (DECIDED unless marked):
+  - LOCK ORDER: every door takes the admission's advisory lock FIRST (`episodeChargeStanding(…, { lock: true })` → sink
+    `lock`), then reads the standing under it, before its own rows; posting and reversal re-read under the lock.
+  - PRICE: an EXPLICIT ₹0 item posts a ₹0 line; an absent item or a switched-off service is `rate_missing`.
+  - $ OWNER TO CONFIRM — IMAGING FEE SWITCH: decision 0067 rules "a study ordered while imaging is free is authorised free"
+    with no OPD limit, so an inpatient scan ordered while the imaging fee is off posts a ₹0 line (the OPD path's answer).
+    The lab switch prices lab lines at the counter only (`withFeeSwitches`); inpatient lab lines are not changed by it.
+  - CANCEL: a line a settled bill took is never reversed behind it — `order_cancelled_after_bill` goes to the bill desk
+    (key ends `:<order item>:cancel_billed`); a LAB test cancelled after its sample was COLLECTED raises
+    `order_cancelled_after_work` (radiology raises its own `performed_then_cancelled`). Billing answers with
+    `ipd.charges.reverse` (after a void, #763) or `keepOrderCharge` (`POST /ipd/charge-lines/:id/keep`); either closes it.
+    The department hears the outcome (`refundOnCancel` `runningBill`, `cancelStudy` `runningBill`).
+  - AFTER THE BILL / AFTER DISCHARGE: an order the department accepted is always posted; with a live bill it is the
+    supplementary bill's (`postIpdOrderCharges` → `supplementary: true`). A scan whose order item is on the running bill
+    (`covers`) is authorised `ipd_admission` and raises no `acquired_unbilled` whether or not the stay is still live; its
+    report-ready message is never held for payment. A scan with NO line raises `acquired_unbilled` as before.
+  - FAIL CLOSED: billing's `issueInvoice` refuses any `IP26-000123` episode (`ipd_running_bill`), and a door in a process
+    with no sink registered refuses the order `running_bill_unavailable` (billing writes the grammar out; it imports no
+    module). The lab desk refuses a tender on a live admission (`ipd_running_bill`); its preview answers `runningBill: true`
+    and the web hides the tender.
+  - The deposit ladder re-checks right after a posting (`evaluateDepositLadderSafely`, a savepoint; a failure is logged).
 
 ### Payer split (E2.2, #726)
 - COMPUTED ON READ, never stored per line: the interim bill computes it every time from the record. Only a PRINT keeps it
@@ -832,11 +875,18 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E4.1) `packages/contracts/src/ipd/ews.ts` lives in CONTRACTS (the phone scores at once with the same tables); the server re-scores every set and
   is the authority. Changing a table changes both sides in one commit.
 
-- (E4.2) SEAMS LEFT OPEN: a lab / imaging order placed from rounds is billed by the lab / radiology door as for any episode
-  (a held invoice against the `IP` encounter) — folding it into the IPD running bill is an IPD-billing seam (owed). Verbal
+- (E4.2, closed by #785) lab / imaging orders now post to the running bill (see Running bill, ORDERS). Verbal
   orders, verify, issue and doses are the eMAR's (E4.3); `new_order` (a nurse's Now card) is E4.3's too. The covering
   consultant is the unit head — the roster has no per-doctor inpatient cover. Latest vitals on the round page wait for the
   nursing lane's export (`vitals: null`). Decision 0054 suggestions are not on the inpatient drug form yet.
+- (#785) With `opts.tx` the ordering door runs the IMAGING order in the caller's transaction too (a savepoint): the sink takes
+  the admission's advisory lock and the line's FK takes a key-share lock on the admission row, both held by `placeTests` — a
+  second connection would wait for ever. Any new caller that holds the admission lock and orders imaging must pass `tx`.
+- (#785) STAGING DATA: orders placed on an `IP` number BEFORE this change carry a held lab invoice and no line, and their
+  scans have no line — left as they are (staging only; IPD is not live). Such a scan still raises `acquired_unbilled`.
+- (#785) MIGRATION 0225 LOCK WINDOW: the ALTERs on `ipd_charge_lines` / `ipd_charge_exceptions` take an ACCESS EXCLUSIVE
+  lock and re-validate the widened CHECKs over every row — a few ms on staging; at go-live run it outside OPD hours.
+  Regenerated in place before merge: a lane test DB that applied the first 0225 must be dropped.
 - (E4.2) `charges.ts` `postConsultantVisit` treats `covering_for` as the treating consultant: the 08:00 clock writes it, so a
   covering head's visit is `visit`, not `cross_visit`.
 
@@ -870,3 +920,5 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   (E4.3) consumes `ipd.order.placed|stopped|cancelled` and calls `readIpdOrder`, `activeIpdOrdersOf`, `markIpdOrderIssuedIn`;
   `signRound` calls `postConsultantVisit` and `declareFitIn`; `placeIpOrder` calls `ordering` `orderTests` / `routeTests` and
   `formulary` `medicinesByIds`.
+- (#785) billing's episode charge sink (`IpdModule` → `registerIpdOrderChargeSink`): lab `placeLabOrder`, the lab reflex,
+  `refundOnCancel`; radiology `placeImagingOrder`, `cancelStudy`.

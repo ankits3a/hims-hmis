@@ -1,9 +1,9 @@
-import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, like, or, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { ipdRateServiceCode, newId } from "@hmis/contracts";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
-import { ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines } from "../../kernel/db/schema";
+import { ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines, orderItems } from "../../kernel/db/schema";
 import { isConsultant, treatingTeamOf } from "./rounds-team";
 import { istMinutesOfInstant } from "../roster";
 import { appendEvent } from "../../kernel/events/append";
@@ -16,7 +16,7 @@ import { evaluateDepositLadderSafely } from "./deposit-ladder";
 import { chargeException, chargeReversed, rentPosted, visitRecorded } from "./charge-events";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_CHARGES_REVERSE } from "./manifest";
-import type { Actor, IpdBedClass, IpdRateComponent } from "@hmis/contracts";
+import type { Actor, IpdBedClass, IpdChargeComponent, IpdRateComponent } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { PricedLine, PricingContext } from "../tariff";
 import type { AdmissionRow } from "./admission-core";
@@ -44,11 +44,11 @@ const ENDED: ReadonlySet<string> = new Set(IPD_ENDED_STATES);
 /** Admissions per transaction in the nightly job. */
 export const IPD_NIGHTLY_BATCH = 100;
 
-type PricingCache = Map<string, PricingContext>;
+export type PricingCache = Map<string, PricingContext>;
 type Priced = { ok: true; line: PricedLine; code: string } | { ok: false; code: string };
 
 /** Pricing contexts by version, loaded once per run (the engine is pure; the loader reads). */
-async function pricingFor(db: Db, cache: PricingCache, versionId: string, at: Date): Promise<PricingContext> {
+export async function pricingFor(db: Db, cache: PricingCache, versionId: string, at: Date): Promise<PricingContext> {
   const hit = cache.get(versionId);
   if (hit !== undefined) return hit;
   const ctx = await loadPricingContext(db, { at, tariffVersionId: versionId });
@@ -68,7 +68,7 @@ export function priceComponent(ctx: PricingContext, cls: IpdBedClass, component:
 }
 
 /** The version this admission prices from: its lock, else (admitted before E2.1) the version in force when admitted. */
-async function lockedVersion(db: Db, a: AdmissionRow): Promise<string | null> {
+export async function lockedVersion(db: Db, a: AdmissionRow): Promise<string | null> {
   if (a.tariffVersionId !== null) return a.tariffVersionId;
   if (a.admittedAt === null) return null;
   return (await resolveActiveTariffVersion(db, a.admittedAt))?.versionId ?? null;
@@ -88,23 +88,26 @@ async function staysOf(db: Db | Tx, admissionId: string): Promise<(ChargeStay & 
   return applyClassChanges(stays, await classChangesOf(db, admissionId));
 }
 
-type LineFacts = {
+export type LineFacts = {
   admission: AdmissionRow;
   serviceDate: string;
-  component: IpdRateComponent;
+  component: IpdChargeComponent;
   billedClass: IpdBedClass | null;
   priced: PricedLine;
   code: string;
   versionId: string;
-  source: "ipd.nightly" | "ipd.visit";
+  source: "ipd.nightly" | "ipd.visit" | "ipd.order";
   consultantUserId?: string;
   visitSeq?: number;
+  /** #785 — order lines: the department order and the order item; the item is also the exception key's last part. */
+  orderId?: string;
+  orderItemId?: string;
   actor: Actor;
   at: Date;
 };
 
 /** Inserts a priced line unless its idempotency index already holds one. Returns the new id, or null on a repeat. */
-async function insertLine(tx: Tx, f: LineFacts): Promise<string | null> {
+export async function insertLine(tx: Tx, f: LineFacts): Promise<string | null> {
   const id = newId();
   const p = f.priced;
   const inserted = await tx.insert(ipdChargeLines).values({
@@ -113,26 +116,32 @@ async function insertLine(tx: Tx, f: LineFacts): Promise<string | null> {
     tariffVersionId: f.versionId, qty: p.qty, unitPaise: p.unitPaise, grossPaise: p.grossPaise, discountPaise: p.discountPaise,
     taxablePaise: p.taxableBasePaise, cgstPaise: p.gst.cgstPaise, sgstPaise: p.gst.sgstPaise, netPaise: p.netPaise,
     gstRateBps: p.gst.rateBps, gstExempt: p.gst.exempt, source: f.source, consultantUserId: f.consultantUserId ?? null, visitSeq: f.visitSeq ?? null,
+    orderId: f.orderId ?? null, orderItemId: f.orderItemId ?? null,
     postedBy: f.actor.id, postedAt: f.at,
   }).onConflictDoNothing().returning({ id: ipdChargeLines.id });
   if (inserted.length === 0) return null;
   await tx.update(ipdChargeExceptions).set({ resolvedAt: f.at, resolvedLineId: id })
-    .where(and(eq(ipdChargeExceptions.key, exceptionKey(f.admission.id, f.serviceDate, f.component, f.consultantUserId)), isNull(ipdChargeExceptions.resolvedAt)));
+    .where(and(eq(ipdChargeExceptions.key, exceptionKey(f.admission.id, f.serviceDate, f.component, f.consultantUserId ?? f.orderItemId)), isNull(ipdChargeExceptions.resolvedAt)));
   return id;
 }
 
-function exceptionKey(admissionId: string, date: string, component: IpdRateComponent, consultantUserId?: string): string {
-  return [admissionId, date, component, ...(consultantUserId === undefined ? [] : [consultantUserId])].join(":");
+/** `<admission>:<date>:<component>[:<consultant | order item>]` — the last part names the visit's consultant or (#785) the order item. */
+export function exceptionKey(admissionId: string, date: string, component: IpdChargeComponent, who?: string): string {
+  return [admissionId, date, component, ...(who === undefined ? [] : [who])].join(":");
 }
 
 /** Records (or re-sees) a charge that could not be posted. The event is raised once, when the row is new. */
-async function raiseException(
+export async function raiseException(
   tx: Tx, actor: Actor, a: AdmissionRow, x: {
-    date: string; component: IpdRateComponent; billedClass: IpdBedClass | null; code: string | null;
-    reason: "rate_missing" | "tariff_missing" | "visit_backdated"; versionId: string | null; consultantUserId?: string;
+    date: string; component: IpdChargeComponent; billedClass: IpdBedClass | null; code: string | null;
+    reason: "rate_missing" | "tariff_missing" | "visit_backdated" | "order_cancelled_after_bill" | "order_cancelled_after_work";
+    versionId: string | null; consultantUserId?: string;
+    /** #785 — an order line's exception is keyed by its order item. */
+    orderItemId?: string;
   }, at: Date,
 ): Promise<void> {
-  const key = exceptionKey(a.id, x.date, x.component, x.consultantUserId) + (x.reason === "visit_backdated" ? ":backdated" : "");
+  const key = exceptionKey(a.id, x.date, x.component, x.consultantUserId ?? x.orderItemId) + (x.reason === "visit_backdated" ? ":backdated"
+    : x.reason === "order_cancelled_after_bill" ? ":cancel_billed" : x.reason === "order_cancelled_after_work" ? ":cancel_after_work" : "");
   const fresh = await tx.insert(ipdChargeExceptions).values({
     id: newId(), key, admissionId: a.id, serviceDate: x.date, component: x.component, billedClass: x.billedClass,
     serviceCode: x.code, reason: x.reason, tariffVersionId: x.versionId, firstSeenAt: at, lastSeenAt: at,
@@ -237,6 +246,7 @@ export async function postAdmissionCharges(
         }));
       }
     }
+    result.posted += await retryOrderExceptionsIn(tx, actor, a, opts.now, cache);
     const through = lastDayOf(a, opts.upToIstDate);
     if (a.chargesPostedThrough === null || a.chargesPostedThrough < through) {
       await tx.update(ipdAdmissions).set({ chargesPostedThrough: through }).where(eq(ipdAdmissions.id, a.id));
@@ -492,6 +502,135 @@ export async function resolveBackdatedVisit(
   });
 }
 
+// ═══════════════════════════════════════ the order seam (#785) ═══════════════════════════════════════
+
+/**
+ * Prices one service (a lab test, a scan) on the locked version, or says the rate is missing. Review of 47cd79f5 (item 10,
+ * DECIDED): an EXPLICIT ₹0 item on the version is a price — it posts a ₹0 line; an ABSENT item or a switched-off service is a
+ * missing rate. `free` (the imaging fee switch was off at order time, decision 0067) posts a ₹0 line for any known service.
+ */
+export function priceService(ctx: PricingContext, serviceId: string, opts: { free?: boolean } = {}): Priced {
+  const svc = ctx.services[serviceId];
+  if (svc === undefined) return { ok: false, code: serviceId };
+  if (opts.free === true) return { ok: true, line: zeroLine(svc.id, svc.name), code: svc.code };
+  if (!svc.active) return { ok: false, code: svc.code };
+  const price = ctx.tariff.items[svc.id];
+  if (price === undefined || price < 0) return { ok: false, code: svc.code };
+  try {
+    const [line] = priceInvoiceLines(ctx, [{ lineId: newId(), serviceId: svc.id, qty: 1 }]);
+    return { ok: true, line: line!, code: svc.code };
+  } catch (e) {
+    // A tariff refusal (no GST row for the category, …) is a rate the bill desk must fix — never a block on the order.
+    if (e instanceof TariffError) return { ok: false, code: svc.code };
+    throw e;
+  }
+}
+
+/** A ₹0 line for a free study (no tax, no discount): the scan is on the bill, at nothing. */
+function zeroLine(serviceId: string, serviceName: string): PricedLine {
+  return {
+    lineId: newId(), serviceId, serviceName, qty: 1, unitPaise: 0, grossPaise: 0, discountPaise: 0, taxableBasePaise: 0, netPaise: 0,
+    gst: { cgstPaise: 0, sgstPaise: 0, rateBps: 0, exempt: true },
+  } as unknown as PricedLine;
+}
+
+export type OrderChargeItem = { orderId: string; orderItemId: string; serviceId: string };
+
+/**
+ * #785 — ONE ORDER ITEM ON THE RUNNING BILL. Priced from the admission's LOCKED tariff version (the tariff in force for
+ * this stay — `lockedVersion`, pinned here if still null, as the visit seam does); one `ipd.order` line per order item
+ * (`ipd_charge_lines_order_ux`; a repeat posts nothing). A missing rate (no item, ₹0, the service switched off, a tariff
+ * refusal) raises the `rate_missing` exception keyed by the order item and posts nothing; no tariff at all raises
+ * `tariff_missing`. Runs on the caller's transaction under the admission's advisory lock. Returns the new line id or null.
+ */
+export async function postOrderLineIn(
+  tx: Tx, actor: Actor, a: AdmissionRow, item: OrderChargeItem & { component: "lab" | "imaging"; serviceDate: string; free?: boolean },
+  at: Date, cache: PricingCache = new Map(),
+): Promise<string | null> {
+  const db = tx as unknown as Db;
+  const versionId = await lockedVersion(db, a);
+  if (a.tariffVersionId === null && versionId !== null) {
+    await tx.update(ipdAdmissions).set({ tariffVersionId: versionId }).where(eq(ipdAdmissions.id, a.id));
+  }
+  if (versionId === null) {
+    await raiseException(tx, actor, a, {
+      date: item.serviceDate, component: item.component, billedClass: null, code: null, reason: "tariff_missing", versionId: null, orderItemId: item.orderItemId,
+    }, at);
+    return null;
+  }
+  const priced = priceService(await pricingFor(db, cache, versionId, at), item.serviceId, { free: item.free });
+  if (!priced.ok) {
+    await raiseException(tx, actor, a, {
+      date: item.serviceDate, component: item.component, billedClass: null, code: priced.code, reason: "rate_missing", versionId, orderItemId: item.orderItemId,
+    }, at);
+    return null;
+  }
+  return insertLine(tx, {
+    admission: a, serviceDate: item.serviceDate, component: item.component, billedClass: null, priced: priced.line, code: priced.code,
+    versionId, source: "ipd.order", orderId: item.orderId, orderItemId: item.orderItemId, actor, at,
+  });
+}
+
+/**
+ * #785 — the bill desk's Retry (and every nightly run) re-prices an order line whose rate was missing: the open
+ * `rate_missing` / `tariff_missing` exceptions of component `lab` / `imaging` name their order item in the key; an item
+ * the department has since cancelled is closed instead (nothing to charge). Called inside `postAdmissionCharges`.
+ */
+async function retryOrderExceptionsIn(tx: Tx, actor: Actor, a: AdmissionRow, at: Date, cache: PricingCache): Promise<number> {
+  const open = await tx.select().from(ipdChargeExceptions).where(and(
+    eq(ipdChargeExceptions.admissionId, a.id), isNull(ipdChargeExceptions.resolvedAt),
+    inArray(ipdChargeExceptions.component, ["lab", "imaging"]), inArray(ipdChargeExceptions.reason, ["rate_missing", "tariff_missing"]),
+  ));
+  let posted = 0;
+  for (const x of open) {
+    const orderItemId = x.key.split(":")[3];
+    if (orderItemId === undefined || x.serviceDate === null) continue;
+    const item = (await tx.select({ orderId: orderItems.orderId, serviceId: orderItems.serviceId, status: orderItems.status })
+      .from(orderItems).where(eq(orderItems.id, orderItemId)))[0];
+    if (item === undefined) continue;
+    if (item.status === "cancelled") {
+      await tx.update(ipdChargeExceptions).set({ resolvedAt: at, resolutionNote: "order cancelled" }).where(eq(ipdChargeExceptions.id, x.id));
+      continue;
+    }
+    const id = await postOrderLineIn(tx, actor, a, {
+      orderId: item.orderId, orderItemId, serviceId: item.serviceId, component: x.component as "lab" | "imaging", serviceDate: x.serviceDate,
+    }, at, cache);
+    if (id !== null) posted += 1;
+  }
+  return posted;
+}
+
+/** #785 review — the order-cancel decisions (cancelled after the bill / after the work) close with billing's answer. */
+export const ORDER_CANCEL_REASONS = ["order_cancelled_after_bill", "order_cancelled_after_work"] as const;
+export async function resolveOrderCancelExceptionsIn(tx: Tx, admissionId: string, orderItemId: string, at: Date, note: string): Promise<number> {
+  const done = await tx.update(ipdChargeExceptions).set({ resolvedAt: at, resolutionNote: note }).where(and(
+    eq(ipdChargeExceptions.admissionId, admissionId), isNull(ipdChargeExceptions.resolvedAt),
+    inArray(ipdChargeExceptions.reason, [...ORDER_CANCEL_REASONS]), like(ipdChargeExceptions.key, `%:${orderItemId}:%`),
+  )).returning({ id: ipdChargeExceptions.id });
+  return done.length;
+}
+
+/**
+ * #785 review — billing KEEPS a cancelled order's line (the work was done, or the settled bill stands): the decision closes
+ * with a reason and the line is untouched. `ipd.charges.reverse` (the billing manager), like the reversal itself.
+ */
+export async function keepOrderCharge(
+  db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {},
+): Promise<{ resolved: number }> {
+  await requireIpdPermission(db, actor, IPD_CHARGES_REVERSE);
+  const reason = input.reason.trim();
+  if (reason.length === 0) throw new IpdError("reversal_reason_required", "keeping a cancelled order's charge names its reason");
+  const at = opts.now ?? new Date();
+  return withTx(db, async (tx) => {
+    const line = (await tx.select().from(ipdChargeLines).where(eq(ipdChargeLines.id, input.chargeLineId)))[0];
+    if (line === undefined || line.orderItemId === null) throw new IpdError("charge_line_not_found", "no order line with this id", { chargeLineId: input.chargeLineId });
+    await admissionAdvisoryLock(tx, line.admissionId);
+    const resolved = await resolveOrderCancelExceptionsIn(tx, line.admissionId, line.orderItemId, at, `kept: ${reason}`);
+    if (resolved === 0) throw new IpdError("charge_line_not_found", "no open cancelled-order decision for this line", { chargeLineId: line.id });
+    return { resolved };
+  });
+}
+
 // ═══════════════════════════════════════════ reversal ═══════════════════════════════════════════
 
 /**
@@ -529,6 +668,8 @@ export async function reverseChargeLine(
       payload: { admissionId: line.admissionId, chargeLineId: line.id, reversalLineId: id, provenance: provenanceOf(actor) },
       actor, correlationId: line.admissionId, patientId: line.patientId, encounterId: line.admissionId, occurredAt: at,
     }));
+    // #785 review: billing's reversal of a cancelled order's line answers its bill-desk decision.
+    if (line.orderItemId !== null) await resolveOrderCancelExceptionsIn(tx, line.admissionId, line.orderItemId, at, `reversed: ${reason}`);
     return { reversalLineId: id };
     });
   } catch (e) {
