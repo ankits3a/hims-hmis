@@ -150,7 +150,8 @@ describe("Beds capacity board (E1.1)", () => {
     };
     const proposal = {
       proposalId: id(81), admissionId: id(80), patientId: id(82), need: NEED, bedId: id(83), bedCode: "F05-MED-F-B03", wardName: "5B Female",
-      class: "general", reasons: ["General ward bed — as requested", "Female bay", "MED ward", "Free 2 h 5 min"], proposedAt: "2030-01-01T04:35:00.000Z",
+      class: "general", reasons: ["class_requested", "gender_female_bay", "own_department"], department: "MED", freeMinutes: 125,
+      proposedAt: "2030-01-01T04:35:00.000Z",
     };
 
     it("shows the bed, its reasons and the UHID; Confirm calls reserve_bed with the proposal's bed, patient and need", async () => {
@@ -161,22 +162,35 @@ describe("Beds capacity board (E1.1)", () => {
       const card = await screen.findByTestId("ipd-beds-flow");
       expect(card).toHaveTextContent("Bed Flow");
       expect(card).toHaveTextContent("F05-MED-F-B03");
-      expect(within(card).getByRole("list", { name: "Why this bed" })).toHaveTextContent("Female bay");
+      const why = within(card).getByRole("list", { name: "Why this bed" });
+      // Codes, worded by the client; "free" is the server's read-time minutes.
+      expect(within(why).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Class as requested", "Female bay", "MED ward", "Free 125 min"]);
       expect(screen.getByTestId("ipd-beds-waiting-card")).toHaveTextContent("UH-SYN-0080");
       await user.click(screen.getByRole("button", { name: "Confirm F05-MED-F-B03" }));
       expect(api.reserveBed).toHaveBeenCalledWith({ admissionId: id(80), bedId: id(83), patientId: id(82), need: NEED });
     });
 
-    it("a refused Confirm shows the bed's rule and refetches", async () => {
+    it("a refused Confirm words the refusal CODE from the locale (never the server's English) and refetches", async () => {
       const user = userEvent.setup();
       api.getBedBoard.mockResolvedValue(flowBoard(proposal));
       api.reserveBed.mockRejectedValue(new ApiError(409, {
-        statusCode: 409, code: "bed_not_available", message: "Bed is reserved", bedRule: "Bed is reserved", rule: "Taken.", fix: "Pick another bed",
+        statusCode: 409, code: "bed_not_available", message: "SERVER ENGLISH", bedRule: "SERVER ENGLISH", rule: "SERVER ENGLISH.", fix: "Pick another bed",
       }));
       renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
       await user.click(await screen.findByRole("button", { name: "Confirm F05-MED-F-B03" }));
-      expect(await screen.findByRole("alert")).toHaveTextContent("Bed is reserved");
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Bed just taken — pick another");
+      expect(alert).not.toHaveTextContent("SERVER ENGLISH");
       await waitFor(() => expect(api.getBedBoard.mock.calls.length).toBeGreaterThan(1));
+    });
+
+    it("an unknown refusal code falls back to the generic line", async () => {
+      const user = userEvent.setup();
+      api.getBedBoard.mockResolvedValue(flowBoard(proposal));
+      api.reserveBed.mockRejectedValue(new ApiError(409, { statusCode: 409, code: "something_new", message: "SERVER ENGLISH", bedRule: "SERVER ENGLISH", rule: "x", fix: "y" }));
+      renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+      await user.click(await screen.findByRole("button", { name: "Confirm F05-MED-F-B03" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not hold the bed — try again");
     });
 
     it("no Confirm without ipd.beds.manage; no proposal says so; the wall shows neither", async () => {

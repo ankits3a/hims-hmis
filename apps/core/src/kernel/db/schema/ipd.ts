@@ -1002,7 +1002,7 @@ export const ipdBedProposals = pgTable(
     patientId: text("patient_id").notNull().references(() => patients.id),
     bedId: text("bed_id").notNull().references(() => resources.id),
     bedCode: text("bed_code").notNull(),
-    /** The short rules it passed and why it was chosen, in words. */
+    /** The short rules it passed and why it was chosen, as static codes (`IPD_BED_FLOW_REASONS`); "free N min" is read-time. */
     reasons: jsonb("reasons").$type<string[]>().notNull(),
     proposedAt: timestamp("proposed_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
@@ -1013,6 +1013,8 @@ export const ipdBedProposals = pgTable(
   },
   (t) => [
     uniqueIndex("ipd_bed_proposals_open_admission_ux").on(t.admissionId).where(sql`${t.endedAt} is null`),
+    // Review #767: one open proposal per BED too — two concurrent reads cannot promise one bed to two requests.
+    uniqueIndex("ipd_bed_proposals_open_bed_ux").on(t.bedId).where(sql`${t.endedAt} is null`),
     index("ipd_bed_proposals_ended_idx").on(t.endedAt),
     check("ipd_bed_proposals_outcome_ck", sql`${t.outcome} is null or ${t.outcome} in ('accepted', 'overridden', 'withdrawn')`),
     check("ipd_bed_proposals_ended_ck", sql`(${t.outcome} is null) = (${t.endedAt} is null)`),

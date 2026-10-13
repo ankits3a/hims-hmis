@@ -12,7 +12,7 @@ import {
   IPD_LADDER_STATES, depositPosition, evaluateAllDepositLadders, evaluateDepositLadderSafely, icuBurnOf,
 } from "./deposit-ladder";
 import { IPD_BILLDESK_VIEW, IPD_CHARGES_REVERSE } from "./manifest";
-import { SEALED_LABEL, nowIdentities, nowSubtitle, rankNowRows } from "./now-cards";
+import { SEALED_LABEL, rankNowRows } from "./now-cards";
 import type {
   Actor, IpdBedClass, IpdBillDesk, IpdBillDeskReason, IpdBillDeskRow, IpdAdmissionState, IpdPayerKind,
 } from "@hmis/contracts";
@@ -180,11 +180,11 @@ export async function runIpdBillDeskNightly(
 // ═══════════════════════════════════════ the desk's Now card ═══════════════════════════════════════
 
 /** `deposit_low` for the bill desk's people (`ipd.billdesk.view`, declared in `manifest.ts`); none when no level is live. */
-export async function depositLowCard(ctx: Pick<DeskProviderCtx, "db" | "reader" | "now">): Promise<DeskCard[]> {
+export async function depositLowCard(ctx: Pick<DeskProviderCtx, "db" | "now">): Promise<DeskCard[]> {
   const { db } = ctx;
   const live = await db.select({
     admissionId: ipdDepositAlerts.admissionId, level: ipdDepositAlerts.level, usedBp: ipdDepositAlerts.usedBp,
-    patientId: ipdAdmissions.patientId, firedAt: ipdDepositAlerts.firedAt,
+    admissionNo: ipdAdmissions.admissionNo, firedAt: ipdDepositAlerts.firedAt,
   }).from(ipdDepositAlerts).innerJoin(ipdAdmissions, eq(ipdAdmissions.id, ipdDepositAlerts.admissionId))
     .where(and(isNull(ipdDepositAlerts.rearmedAt), inArray(ipdAdmissions.state, [...IPD_LADDER_STATES]), isNotNull(ipdAdmissions.admittedAt)))
     .orderBy(desc(ipdDepositAlerts.usedBp), asc(ipdDepositAlerts.firedAt));
@@ -195,11 +195,11 @@ export async function depositLowCard(ctx: Pick<DeskProviderCtx, "db" | "reader" 
   const all = [...top.values()];
   const n90 = all.filter((r) => r.level === "escalate").length;
   const [exc] = await db.select({ n: count() }).from(ipdChargeExceptions).where(isNull(ipdChargeExceptions.resolvedAt));
-  // E5.1 (#738): name (alias when restricted), UHID and bed like every Now card; a sealed patient by alias or label only.
-  const who = await nowIdentities(db, ctx.reader, all.map((r) => ({ id: r.admissionId, patientId: r.patientId })));
+  // The admission number, never a name: the desk is read over a shoulder (kept by review #767, DECIDED). E5.1 (#738)
+  // only ranks the rows like every Now card: severity, then the longest-standing rung.
   const rows: NowRow[] = all.map((r) => ({
-    id: r.admissionId, badge: "!", title: who.get(r.admissionId)!.name,
-    subtitle: nowSubtitle(who.get(r.admissionId)!, r.usedBp >= 1_000_000 ? "no deposit held" : `${String(Math.floor(r.usedBp / 100))} % of deposit used`),
+    id: r.admissionId, badge: "!", title: r.admissionNo ?? "—",
+    subtitle: r.usedBp >= 1_000_000 ? "no deposit held" : `${String(Math.floor(r.usedBp / 100))} % of deposit used`,
     action: "Open bill", href: `/ipd/admissions/${r.admissionId}/bill`, severity: r.level === "escalate" ? "hot" : "warn",
     waitMinutes: Math.max(0, Math.floor((ctx.now.getTime() - r.firedAt.getTime()) / 60_000)),
   }));

@@ -9,7 +9,7 @@ import type { GoalMeasured, GoalQuery, GoalRunArgs } from "./types";
  * acceptance rate measured 4 weeks"), written the E0.5 way: read-only, the window [from, to) from the caller, never the
  * clock; an empty population is `value: null`, never 0.
  *
- * Population: Bed Flow proposals that ENDED in the window by a bed act — `accepted` (the bed proposed) or `overridden`
+ * Population: admissions whose FINAL Bed Flow proposal ENDED in the window by a bed act — `accepted` (the bed proposed) or `overridden`
  * (another bed). Withdrawn proposals (bed taken, blocked, request cancelled) are not decisions and are not counted. The
  * goal's own split is the IST week (Monday); `groupBy: "day"` splits by IST day. Kept apart from `IPD_GOAL_QUERIES`
  * (the G1–G11 ledger, whose key list the E0.5 acceptance pins).
@@ -17,10 +17,19 @@ import type { GoalMeasured, GoalQuery, GoalRunArgs } from "./types";
 
 const ts = (d: Date): SQL => sql`${d.toISOString()}::timestamptz`;
 
+/**
+ * One row per ADMISSION: its final decided proposal (review #767, DECIDED). A request whose hold lapsed and was proposed
+ * again counts once, by how its last proposal ended; a placement onto the proposed bed (reserve, admit) is `accepted`,
+ * onto any other bed `overridden`.
+ */
 const decided = (a: GoalRunArgs, hit: SQL): SQL => sql`
   select id as item, to_char(date_trunc('week', ended_at at time zone 'Asia/Kolkata'), 'YYYY-MM-DD') as grp, ended_at as at, ${hit} as hit
-  from ipd_bed_proposals
-  where outcome in ('accepted', 'overridden') and ended_at >= ${ts(a.from)} and ended_at < ${ts(a.to)}`;
+  from (
+    select distinct on (admission_id) id, outcome, ended_at from ipd_bed_proposals
+    where outcome in ('accepted', 'overridden')
+    order by admission_id, ended_at desc, id desc
+  ) last_decision
+  where ended_at >= ${ts(a.from)} and ended_at < ${ts(a.to)}`;
 
 export const IPD_BED_FLOW_QUERIES: Record<string, GoalQuery> = {
   BF1: {

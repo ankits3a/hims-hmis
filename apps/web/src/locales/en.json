@@ -15702,7 +15702,7 @@
       "emergency": "Emergency",
       "overflow": "Overflow bed"
     },
-    "flow": { "tag": "Bed Flow", "why": "Why this bed", "none": "No free bed passes every rule", "confirm": "Confirm {{bed}}", "failed": "Could not hold the bed — try again" },
+    "flow": { "tag": "Bed Flow", "why": "Why this bed", "none": "No free bed passes every rule", "confirm": "Confirm {{bed}}", "failed": "Could not hold the bed — try again", "free": "Free {{minutes}} min", "reason": {"class_requested": "Class as requested", "gender_male_bay": "Male bay", "gender_female_bay": "Female bay", "gender_any": "Any gender", "gender_paediatric": "Paediatric bed", "room_shared_male": "Shared room is male", "room_shared_female": "Shared room is female", "isolation_contact": "Contact isolation", "isolation_droplet": "Droplet isolation", "isolation_airborne": "Airborne isolation, negative pressure", "icu_bed": "ICU bed", "own_department": "{{dept}} ward"}, "refused": {"bed_not_available": "Bed just taken — pick another", "bed_gender_mismatch": "Bed's gender rule does not fit", "bed_isolation_mismatch": "Bed's isolation does not fit", "bed_age_mismatch": "Bed's age rule does not fit", "bed_class_mismatch": "Bed's class does not fit", "room_gender_unknown": "Room gender not recorded", "bed_retired": "Bed retired", "bed_not_found": "Bed not found", "overflow_needs_duty_manager": "Overflow bed needs the duty manager", "admission_wrong_state": "Request already moved on", "admission_not_found": "Request not found", "state_changed": "Request changed — refresh", "advice_expired": "Advice expired"} },
     "waiting": {
       "title": "Waiting for a bed",
       "empty": "No one waiting",

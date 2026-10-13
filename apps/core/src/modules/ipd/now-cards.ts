@@ -2,11 +2,11 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { IPD_CLEANING_OVERDUE_MINUTES } from "@hmis/contracts";
 import {
   ipdAdmissions, ipdBedStays, ipdDischargeConfirmations, ipdDischargeSummaries, ipdDischarges, ipdFinalBills, ipdGatePasses,
-  patients, resourceStatusHistory, resources,
+  patients, resources,
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { IpdBedAttributesSchema } from "./bed-attributes";
-import { BED_FLOW_HOT_WAIT_MINUTES, readBedFlow } from "./bed-flow";
+import { BED_FLOW_HOT_WAIT_MINUTES, latestStatusAt, readBedFlow } from "./bed-flow";
 import { pendingDepartments } from "./discharge";
 import type { Actor, IpdDischargeDepartment } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
@@ -26,7 +26,8 @@ import type { DeskCard, DeskProviderCtx, DeskRow } from "../../kernel/desk/types
  * A card exists only while something is wrong: a stable patient (in a bed, not waiting, not stuck, no live rung) makes
  * no row and an empty card is not sent. RANKING is deterministic rules today (`rankNowRows`): severity, then the
  * longest wait, then the row id. Patient rows carry the name (alias for a restricted patient), UHID and bed; a sealed
- * patient shows by alias or "Sealed patient", without UHID or bed (bill desk review 2).
+ * patient shows by alias or "Sealed patient", without UHID or any bed text (bill desk review 2; review #767). The money
+ * card `deposit_low` keeps the admission number and never a name (DECIDED, review #767: read over a shoulder).
  *
  * Owed to M4 (no source data in this stack; no stub returns fake rows): `due_dose`, `overdue_vitals`, `new_order`,
  * `ews_rising`, `handover_pending`, `assessment_due` — see MAP.md.
@@ -38,7 +39,8 @@ export const SEALED_LABEL = "Sealed patient";
 export const IPD_DISCHARGE_STEP_STUCK_MINUTES = 60;
 
 export type NowRow = DeskRow & { waitMinutes: number };
-type Identity = { name: string; uhid: string; bedCode: string | null };
+/** `sealed`: a sensitive-context patient — alias or label only; no UHID, no bed, and no bed text anywhere on the row. */
+export type Identity = { name: string; uhid: string; bedCode: string | null; sealed: boolean };
 
 const SEVERITY_RANK: Record<string, number> = { hot: 0, warn: 1 };
 
@@ -74,11 +76,11 @@ export async function nowIdentities(db: Db, reader: Actor, admissions: readonly 
   const bedOf = new Map(stays.map((s) => [s.admissionId, s.code] as const));
   for (const a of admissions) {
     if (sealed.has(a.patientId)) {
-      out.set(a.id, { name: sealed.get(a.patientId)?.trim() || SEALED_LABEL, uhid: "", bedCode: null });
+      out.set(a.id, { name: sealed.get(a.patientId)?.trim() || SEALED_LABEL, uhid: "", bedCode: null, sealed: true });
       continue;
     }
     const p = people.get(a.patientId);
-    out.set(a.id, { name: (p?.restricted === true ? p.alias : p?.name) ?? "—", uhid: p?.uhid ?? "", bedCode: bedOf.get(a.id) ?? null });
+    out.set(a.id, { name: (p?.restricted === true ? p.alias : p?.name) ?? "—", uhid: p?.uhid ?? "", bedCode: bedOf.get(a.id) ?? null, sealed: false });
   }
   return out;
 }
@@ -93,7 +95,9 @@ export async function bedProposalCard(ctx: DeskProviderCtx): Promise<DeskCard[]>
     const wait = minutesSince(a.requestedAt, ctx.now);
     const id = who.get(a.id)!;
     return {
-      id: a.id, badge: "!", title: id.name, subtitle: nowSubtitle({ ...id, bedCode: null }, `Bed ${proposal!.bedCode} · waiting ${String(wait)} min`),
+      // Review #767: a sealed patient's row names no bed (not even the proposed one).
+      id: a.id, badge: "!", title: id.name,
+      subtitle: nowSubtitle({ ...id, bedCode: null }, id.sealed ? `waiting ${String(wait)} min` : `Bed ${proposal!.bedCode} · waiting ${String(wait)} min`),
       action: "Confirm", href: "/ipd/beds", severity: wait >= BED_FLOW_HOT_WAIT_MINUTES ? "hot" : "warn", waitMinutes: wait,
     };
   });
@@ -180,12 +184,11 @@ export async function cleaningOverdueCard(ctx: DeskProviderCtx): Promise<DeskCar
   const cleaning = (await db.select().from(resources).where(and(eq(resources.kind, "bed"), eq(resources.status, "cleaning"))))
     .filter((b) => IpdBedAttributesSchema.safeParse(b.attributes).success);
   if (cleaning.length === 0) return [];
-  const entered = new Map((await db.selectDistinctOn([resourceStatusHistory.resourceId], { id: resourceStatusHistory.resourceId, at: resourceStatusHistory.at })
-    .from(resourceStatusHistory).where(inArray(resourceStatusHistory.resourceId, cleaning.map((b) => b.id)))
-    .orderBy(resourceStatusHistory.resourceId, desc(resourceStatusHistory.seq))).map((h) => [h.id, h.at] as const));
+  const entered = await latestStatusAt(db, cleaning.map((b) => b.id));
   const parentIds = [...new Set(cleaning.flatMap((b) => (b.parentId === null ? [] : [b.parentId])))];
-  const places = new Map((parentIds.length === 0 ? [] : await db.select().from(resources).where(inArray(resources.kind, ["ward", "hall", "room"])))
-    .map((p) => [p.id, p] as const));
+  const places = new Map((parentIds.length === 0 ? [] : await db.select().from(resources).where(inArray(resources.id, parentIds))).map((p) => [p.id, p] as const));
+  const upper = [...new Set([...places.values()].flatMap((p) => (p.kind === "room" && p.parentId !== null ? [p.parentId] : [])))];
+  if (upper.length > 0) for (const p of await db.select().from(resources).where(inArray(resources.id, upper))) places.set(p.id, p);
   const rows: NowRow[] = [];
   for (const b of cleaning) {
     const since = entered.get(b.id);

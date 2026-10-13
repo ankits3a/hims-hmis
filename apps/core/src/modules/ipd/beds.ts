@@ -113,9 +113,28 @@ async function liveReservation(tx: Tx, bedId: string) {
     .where(and(eq(ipdBedReservations.bedId, bedId), eq(ipdBedReservations.status, "active"))))[0];
 }
 
+/**
+ * THE HOLD AND BLOCK PREDICATE — one definition for the acts (`currentHold`, `liveBlock`) and Bed Flow's read
+ * (`bedHoldsAndBlocks`), so a proposal never disagrees with the act about whether a bed is held (E5.2 review #767). A hold
+ * counts while `active` AND before its `expiresAt` (an act meeting a lapsed one lapses it inline); a block while
+ * `pending_release` or `active`.
+ */
+export const LIVE_BLOCK_STATUSES = ["pending_release", "active"] as const;
+export function holdIsLive(h: { status: string; expiresAt: Date }, at: Date): boolean {
+  return h.status === "active" && h.expiresAt.getTime() > at.getTime();
+}
+
+/** The beds held (live holds only) and blocked at `at` — the read-side twin of `currentHold` and `liveBlock`. */
+export async function bedHoldsAndBlocks(db: Db | Tx, at: Date): Promise<{ held: Set<string>; blocked: Set<string> }> {
+  const holds_ = await db.select({ bedId: ipdBedReservations.bedId, status: ipdBedReservations.status, expiresAt: ipdBedReservations.expiresAt })
+    .from(ipdBedReservations).where(eq(ipdBedReservations.status, "active"));
+  const blocks = await db.select({ bedId: ipdBedBlocks.bedId }).from(ipdBedBlocks).where(inArray(ipdBedBlocks.status, [...LIVE_BLOCK_STATUSES]));
+  return { held: new Set(holds_.filter((h) => holdIsLive(h, at)).map((h) => h.bedId)), blocked: new Set(blocks.map((b) => b.bedId)) };
+}
+
 async function liveBlock(tx: Tx, bedId: string) {
   return (await tx.select().from(ipdBedBlocks)
-    .where(and(eq(ipdBedBlocks.bedId, bedId), inArray(ipdBedBlocks.status, ["pending_release", "active"]))))[0];
+    .where(and(eq(ipdBedBlocks.bedId, bedId), inArray(ipdBedBlocks.status, [...LIVE_BLOCK_STATUSES]))))[0];
 }
 
 /** The patient's facts the rules read. Merged records resolve to the survivor. */
@@ -192,7 +211,7 @@ function isUniqueViolation(e: unknown): boolean {
 /** A live hold whose time has passed is lapsed here and now, even if the minute job has not run yet. */
 async function currentHold(tx: Tx, bed: BedRow, at: Date) {
   const held = await liveReservation(tx, bed.id);
-  if (held === undefined || held.expiresAt.getTime() > at.getTime()) return held;
+  if (held === undefined || holdIsLive(held, at)) return held;
   await endReservation(tx, IPD_SYSTEM_ACTOR, held, bed.code, "lapsed", at);
   return undefined;
 }

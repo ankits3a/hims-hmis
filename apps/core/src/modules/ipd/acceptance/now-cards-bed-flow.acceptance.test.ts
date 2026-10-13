@@ -4,7 +4,7 @@ import { ROLE_MODEL } from "../../../../scripts/seed-roles";
 import { grantPermissionToRole, syncPermissions } from "../../../kernel/auth/permissions";
 import { authManifest } from "../../../kernel/auth/manifest";
 import { withTx } from "../../../kernel/db/client";
-import { ipdBedProposals, ipdDepositAlerts } from "../../../kernel/db/schema";
+import { ipdAdmissions, ipdBedProposals, ipdDepositAlerts, patients } from "../../../kernel/db/schema";
 import { loadDesk } from "../../../kernel/desk/registry";
 import { ModuleRegistry } from "../../../kernel/modules/loader";
 import { KERNEL_RESOURCE_KINDS, changeResourceStatus } from "../../../kernel/resources";
@@ -13,8 +13,8 @@ import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkDischargeWorld } from "../../../../test/helpers/ipd";
 import { ensureRole, mkUser } from "../../../../test/helpers/opd";
 import {
-  IPD_BED_FLOW_QUERIES, IPD_CLINICAL_ROLES, assignBed, blockBed, cancelAdmission, declareFit, ipdManifest, readBedFlow, requestAdmission,
-  reserveBed,
+  IPD_BED_FLOW_QUERIES, IPD_CLINICAL_ROLES, SEALED_LABEL, admit, assignBed, blockBed, cancelAdmission, declareFit, ipdManifest, planAdmission,
+  readBedBoard, readBedFlow, releaseReservation, requestAdmission, reserveBed, takeDeposit,
 } from "../index";
 import { newId } from "@hmis/contracts";
 import type { Actor } from "@hmis/contracts";
@@ -84,7 +84,7 @@ describe("E5.1 Now cards + E5.2 Bed Flow — acceptance", () => {
     const his = await request(male, ago(40));
     const p = await flowFor(his);
     expect(p).toMatchObject({ bedCode: "T-M1", bedId: valid, admissionId: his, patientId: male });
-    expect(p!.reasons).toEqual(expect.arrayContaining(["General ward bed — as requested", "Male bay", "MED ward"]));
+    expect(p!.reasons).toEqual(["class_requested", "gender_male_bay", "own_department"]);
     // The held request is not waiting for a bed.
     expect(await flowFor(her)).toBeNull();
 
@@ -202,7 +202,8 @@ describe("E5.1 Now cards + E5.2 Bed Flow — acceptance", () => {
     for (const k of CARD_KEYS) expect([k, cards[k]!.map((c) => c.key)]).toEqual([k, [k]]);
     expect(cards["ipd.bed_proposal"]![0]!.rows![0]).toMatchObject({ id: expect.any(String), title: "Synthetic Waiting", subtitle: expect.stringMatching(/^.+ · Bed T-N1 · waiting 45 min$/), severity: "hot" });
     expect(cards["ipd.discharge_blocked"]![0]!.rows![0]).toMatchObject({ id: fit, subtitle: expect.stringMatching(/C-GENERAL-\d+ · Waiting: .+ · 200 min$/), severity: "hot" });
-    expect(cards["ipd.deposit_low"]![0]!.rows![0]).toMatchObject({ id: owing, subtitle: expect.stringMatching(/C-GENERAL-\d+ · 94 % of deposit used$/), severity: "hot" });
+    // The money card keeps the admission number, never a name (review #767, DECIDED).
+    expect(cards["ipd.deposit_low"]![0]!.rows![0]).toMatchObject({ id: owing, title: expect.stringMatching(/^IP\d{2}-\d+$/), subtitle: "94 % of deposit used", severity: "hot" });
     expect(cards["ipd.cleaning_overdue"]![0]!.rows![0]).toMatchObject({ id: dirty, title: "T-CL1", severity: "warn" });
   });
 
@@ -242,5 +243,163 @@ describe("E5.1 Now cards + E5.2 Bed Flow — acceptance", () => {
     await grantPermissionToRole(db, registry, "t_cashier_desk", money);
     const cashier = (await mkUser(db, "now.cashier", ["t_cashier_desk"])).actor;
     expect(await deskOf(cashier)).toContain("ipd.deposit_low");
+  });
+
+  // ═══ Review #767 ═══
+
+  const MALE_GENERAL = { requestedClass: "general" as const, isolation: "none" as const, icu: false };
+  const reserveCode = async (admissionId: string, bedId: string, patientId: string, need: Record<string, unknown>, actor = w.admitDesk): Promise<string> => {
+    try {
+      return (await reserveBed(db, actor, { idempotencyKey: key(), admissionId, bedId, patientId, need })).state;
+    } catch (e) {
+      return (e as { code?: string }).code ?? String(e);
+    }
+  };
+  const holdFor = async (bedId: string, at: Date, sex: "male" | "female" = "male") => {
+    const p = await w.patient(sex, 40);
+    const a = await request(p, new Date(at.getTime() - 60_000));
+    await reserveBed(db, w.admitDesk, { idempotencyKey: key(), admissionId: a, bedId, patientId: p, need: MALE_GENERAL }, { now: at });
+  };
+  type RuleRow = { need?: Record<string, unknown>; setup: () => Promise<string>; proposed: boolean; reserve: string };
+  const RULES: Record<string, RuleRow> = {
+    "valid control": { setup: () => w.bed("R-OK"), proposed: true, reserve: "reserved" },
+    "gender: female-only bed": { setup: () => w.bed("R-F", { genderRule: "female" }), proposed: false, reserve: "bed_gender_mismatch" },
+    "twin-share: room held for a woman": {
+      setup: async () => { await holdFor(await w.bed("R-T1", {}, "room"), ago(5), "female"); return w.bed("R-T2", {}, "room"); },
+      proposed: false, reserve: "bed_gender_mismatch",
+    },
+    "isolation: contact need, no isolation": { need: { isolation: "contact" }, setup: () => w.bed("R-ISO"), proposed: false, reserve: "bed_isolation_mismatch" },
+    "ICU gate: ICU-flagged bed for a non-ICU need": {
+      need: { requestedClass: "hdu" }, setup: () => w.bed("R-ICU", { class: "hdu", icu: true }), proposed: false, reserve: "bed_class_mismatch",
+    },
+    "class: private bed for a general request": { setup: () => w.bed("R-PVT", { class: "private" }), proposed: false, reserve: "bed_class_mismatch" },
+    "age: paediatric bed for an adult": { setup: () => w.bed("R-PED", { genderRule: "paediatric" }), proposed: false, reserve: "bed_age_mismatch" },
+    "overflow bed": { setup: () => w.bed("R-OV", { class: "overflow", overflow: true }), proposed: false, reserve: "overflow_needs_duty_manager" },
+    "blocked bed": { setup: async () => { const b = await w.bed("R-BL"); await block(b, ago(20)); return b; }, proposed: false, reserve: "bed_not_available" },
+    // DECIDED: reserve may hold a bed being cleaned; Bed Flow proposes only beds assignable now.
+    "cleaning bed": {
+      setup: async () => {
+        const b = await w.bed("R-CL");
+        await withTx(db, (tx) => changeResourceStatus(tx, SETUP, KERNEL_RESOURCE_KINDS, b, "cleaning", { at: ago(15), reason: "clean:routine" }));
+        return b;
+      },
+      proposed: false, reserve: "reserved",
+    },
+    "held bed (live hold)": { setup: async () => { const b = await w.bed("R-H"); await holdFor(b, ago(5)); return b; }, proposed: false, reserve: "bed_not_available" },
+    "lapsed hold (the act lapses it, so Bed Flow proposes it)": {
+      setup: async () => { const b = await w.bed("R-LH"); await holdFor(b, ago(200)); return b; }, proposed: true, reserve: "reserved",
+    },
+  };
+
+  it.each(Object.keys(RULES))("(i c) rule table — propose, then reserve_bed: %s", async (name) => {
+    const row = RULES[name]!;
+    const bedId = await row.setup();
+    const p = await w.patient("male", 40);
+    const need = { ...MALE_GENERAL, ...(row.need ?? {}) };
+    const { icu: _icu, ...asked } = need; // the request derives ICU from the class
+    const a = await request(p, ago(10), asked);
+    const proposal = await flowFor(a);
+    expect([name, proposal?.bedId ?? null]).toEqual([name, row.proposed ? bedId : null]);
+    expect([name, await reserveCode(a, bedId, p, need)]).toEqual([name, row.reserve]);
+  });
+
+  it("(ii b) one open proposal per bed: the index refuses a second; parallel reads never promise one bed twice", async () => {
+    for (const c of ["P-1", "P-2", "P-3"]) await w.bed(c);
+    const ids = [];
+    for (const m of [50, 40, 30, 20]) ids.push(await request(await w.patient("male"), ago(m)));
+    const reads = await Promise.all([0, 1, 2, 3, 4].map(() => readBedFlow(db, w.admitDesk, NOW)));
+    const open = await db.select().from(ipdBedProposals).where(isNull(ipdBedProposals.endedAt));
+    expect(open.length).toBeLessThanOrEqual(3);
+    expect(new Set(open.map((r) => r.bedId)).size).toBe(open.length);
+    expect(new Set(open.map((r) => r.admissionId)).size).toBe(open.length);
+    const openIds = new Set(open.map((r) => r.id));
+    for (const r of reads) {
+      const shown = r.flatMap((e) => (e.proposal === null ? [] : [e.proposal]));
+      expect(new Set(shown.map((x) => x.bedId)).size).toBe(shown.length);
+      for (const x of shown) expect(openIds.has(x.proposalId)).toBe(true);
+    }
+    // The database itself refuses a second open proposal on one bed.
+    const bed = open[0]!.bedId;
+    const other = ids.find((x) => !open.some((r) => r.admissionId === x))!;
+    const otherRow = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, other)))[0]!;
+    await expect(db.insert(ipdBedProposals).values({
+      id: newId(), admissionId: other, patientId: otherRow.patientId, bedId: bed, bedCode: "P-X", reasons: [], proposedAt: NOW,
+    })).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("(ii c) a proposal insert that loses on the bed (held by a request outside this read) shows no proposal — it never throws", async () => {
+    const bed = await w.bed("C-1");
+    // 100 requests fill the read's window (oldest first); the 101st, youngest, already holds an open proposal on the bed.
+    const waiting: string[] = [];
+    for (let i = 0; i < 101; i += 1) waiting.push(await request(await w.patient("male"), ago(500 - i)));
+    const youngest = waiting[100]!;
+    const yRow = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, youngest)))[0]!;
+    const held = newId();
+    await db.insert(ipdBedProposals).values({ id: held, admissionId: youngest, patientId: yRow.patientId, bedId: bed, bedCode: "C-1", reasons: [], proposedAt: ago(5) });
+    const flow = await readBedFlow(db, w.admitDesk, NOW);
+    expect(flow).toHaveLength(100);
+    expect(flow.filter((e) => e.proposal !== null)).toEqual([]);
+    const open = await db.select().from(ipdBedProposals).where(isNull(ipdBedProposals.endedAt));
+    expect(open.map((r) => r.id)).toEqual([held]);
+  });
+
+  it("(iii b) BF counts each admission's FINAL outcome; admit onto the proposed bed is accepted", async () => {
+    const x = await w.bed("Q-X");
+    const z = await w.bed("Q-Z");
+    const pa = await w.patient("male");
+    const a = await request(pa, ago(120));
+    const first = (await flowFor(a, ago(110)))!;
+    const held = await reserveBed(db, w.admitDesk, { idempotencyKey: key(), admissionId: a, bedId: first.bedId, patientId: pa, need: first.need }, { now: ago(100) });
+    expect((await proposalRows(a))[0]).toMatchObject({ outcome: "accepted" });
+    await releaseReservation(db, w.admitDesk, { idempotencyKey: key(), reservationId: held.reservationId, reason: "plan_changed" }, { now: ago(90) });
+    const second = (await flowFor(a, ago(80)))!;
+    const elsewhere = second.bedId === x ? z : x;
+    await reserveBed(db, w.admitDesk, { idempotencyKey: key(), admissionId: a, bedId: elsewhere, patientId: pa, need: second.need }, { now: ago(70) });
+
+    // B is admitted straight onto its proposed bed (no hold): accepted.
+    const pb = await w.patient("male");
+    const b = await request(pb, ago(60));
+    const propB = (await flowFor(b, ago(55)))!;
+    expect(propB).not.toBeNull();
+    await planAdmission(db, w.admitDesk, { idempotencyKey: key(), admissionId: b, payerKind: "cash", requestedClass: "general", plan: { kind: "medical" } }, { now: ago(54) });
+    const required = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, b)))[0]!.depositRequiredPaise!;
+    const { receiptId } = await takeDeposit(db, w.admitDesk, {
+      idempotencyKey: key(), admissionId: b, amountPaise: required, tender: "cash", payer: { name: "Synthetic Payer", relation: "self" },
+    }, { now: ago(53) });
+    await admit(db, w.admitDesk, {
+      idempotencyKey: key(), admissionId: b, bedId: propB.bedId, consent: { signedBy: "patient", method: "paper", witnessName: "Desk Witness" }, deposit: { receiptId },
+    }, { now: ago(50) });
+    expect((await proposalRows(b))[0]).toMatchObject({ outcome: "accepted", outcomeBedId: propB.bedId });
+
+    const window = { from: ago(7 * 24 * 60), to: new Date(NOW.getTime() + 60_000) };
+    // Two admissions decided: A's final proposal overridden, B's accepted — A's first acceptance is not counted.
+    expect(await IPD_BED_FLOW_QUERIES.BF1!.run(db, window)).toMatchObject({ value: 50, numerator: 1, denominator: 2 });
+    expect(await IPD_BED_FLOW_QUERIES.BF2!.run(db, window)).toMatchObject({ value: 50, numerator: 1, denominator: 2 });
+  });
+
+  const seal = (patientId: string, alias: string | null) => db.update(patients).set({ sensitiveContext: true, alias }).where(eq(patients.id, patientId));
+
+  it("(vii) a sealed patient's bed_proposal row shows alias or label only — no UHID, no bed text", async () => {
+    await w.bed("S-1");
+    const p = await w.patient("male", 40, "Synthetic Sealed");
+    await seal(p, null);
+    await request(p, ago(20));
+    const [card] = await provider("ipd.bed_proposal").load(ctxFor(w.dutyManager));
+    const row = card!.rows![0]!;
+    expect(row.title).toBe(SEALED_LABEL);
+    expect(row.subtitle).toBe("waiting 20 min");
+    expect(`${row.title} ${row.subtitle}`).not.toMatch(/S-1|Bed|Synthetic/);
+  });
+
+  it("(viii) the Beds board's waiting card for a sealed patient: alias or label, no UHID", async () => {
+    const p1 = await w.patient("female", 30, "Synthetic Hidden");
+    const p2 = await w.patient("female", 31, "Synthetic Aliased");
+    await seal(p1, null);
+    await seal(p2, "Patient K");
+    await request(p1, ago(30));
+    await request(p2, ago(25));
+    const board = await readBedBoard(db, w.admitDesk, { now: NOW });
+    expect(board.waiting.map((c) => [c.name, c.uhid])).toEqual([[SEALED_LABEL, ""], ["Patient K", ""]]);
+    expect(JSON.stringify(board.waiting)).not.toMatch(/Synthetic/);
   });
 });

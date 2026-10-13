@@ -115,7 +115,7 @@ Source: `apps/core/src/modules/ipd/`
   - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
   - types: `BedPlacementInput`, `IncumbentBedLine`, `IncumbentBedReport`, `PlacementContext`
 - `bill-desk.ts`
-  - `depositLowCard(ctx: Pick<DeskProviderCtx, "db" | "reader" | "now">): Promise<DeskCard[]>`
+  - `depositLowCard(ctx: Pick<DeskProviderCtx, "db" | "now">): Promise<DeskCard[]>`
   - `readBillDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdBillDesk>`
   - `retryFromBillDesk(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<AdmissionPostResult>`
   - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; ladderFailed: string[]; dailyTotals: DailyTotalsResult | null …`

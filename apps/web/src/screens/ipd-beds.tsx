@@ -48,6 +48,11 @@ const DOT_ORDER: readonly IpdBoardBedStatus[] = ["occupied", "incumbent", "reser
 const CLASSES: readonly IpdBedClass[] = [
   "general", "semi_private", "private", "deluxe", "suite", "hdu", "icu", "nicu", "picu", "ldr", "daycare", "emergency", "overflow",
 ];
+/** E5.2 (review #767): the reserve_bed refusals the Confirm button words itself (`ipdBeds.flow.refused.<code>`). */
+const FLOW_REFUSALS = [
+  "bed_not_available", "bed_gender_mismatch", "bed_isolation_mismatch", "bed_age_mismatch", "bed_class_mismatch", "room_gender_unknown",
+  "bed_retired", "bed_not_found", "overflow_needs_duty_manager", "admission_wrong_state", "admission_not_found", "state_changed", "advice_expired",
+] as const;
 const HEARTBEAT_MS = 2_000;
 const OFFLINE_AFTER_MS = 5_000;
 const WALL_CYCLE_MS = 20_000;
@@ -178,8 +183,10 @@ export function IpdBeds(): React.ReactElement {
       () => { setConfirming(null); load(); },
       (e: unknown) => {
         setConfirming(null);
+        // Review #767: the refusal CODE picks a translated line; raw server English is never shown here.
         const r = refusalOf(e);
-        setFlowError({ admissionId: p.admissionId, text: r === null ? t("ipdBeds.flow.failed") : r.bedRule ?? r.rule });
+        const code = r !== null && (FLOW_REFUSALS as readonly string[]).includes(r.code) ? r.code : null;
+        setFlowError({ admissionId: p.admissionId, text: code === null ? t("ipdBeds.flow.failed") : t(`ipdBeds.flow.refused.${code}`) });
         load();
       },
     );
@@ -264,7 +271,8 @@ export function IpdBeds(): React.ReactElement {
                     {w.flow.wardName !== null ? <span className="dim">{w.flow.wardName}</span> : null}
                   </div>
                   <ul className="ipdb-flow-why" aria-label={t("ipdBeds.flow.why")}>
-                    {w.flow.reasons.map((r) => <li key={r}>{r}</li>)}
+                    {w.flow.reasons.map((r) => <li key={r}>{t(`ipdBeds.flow.reason.${r}`, { dept: w.flow?.department ?? "" })}</li>)}
+                    {w.flow.freeMinutes !== null ? <li>{t("ipdBeds.flow.free", { minutes: w.flow.freeMinutes })}</li> : null}
                   </ul>
                   {flowError !== null && flowError.admissionId === w.admissionId ? (
                     <span role="alert" className="ipdb-flow-err">{flowError.text}</span>

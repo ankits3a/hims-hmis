@@ -504,22 +504,34 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   doctor or nurse role holds it, decision 0058), `ipd.cleaning_overdue` → `ipd.beds.clean`. DECIDED: existing permissions,
   no new strings (no seed-roles count change). The family callbacks card (E3.3) is a fifth provider.
 - A card exists only while something is wrong; an empty card is never sent. Rows rank by severity, then the longest wait,
-  then id (`rankNowRows`). Patient rows carry name (alias when restricted), UHID and bed; sealed → alias or "Sealed
-  patient", no UHID, no bed. Words are English, server-side (like refusal words); card titles are i18n keys.
+  then id (`rankNowRows`). Patient rows carry name (alias when restricted), UHID and bed through ONE rule, `nowIdentities`
+  (also the Beds board's waiting cards); sealed → alias or "Sealed patient", no UHID and NO bed text anywhere on the row
+  (review #767). EXCEPTION, DECIDED (review #767): the money card `deposit_low` shows the admission number, never a name —
+  the desk is read over a shoulder. Row words are English, server-side; card titles are i18n keys.
 - DECIDED thresholds: bed proposal hot at ≥ 30 min waiting (the spec budget); a discharge step is stuck after 60 min "now"
   (hot past the 3-hour target); cleaning overdue after 60 min (`IPD_CLEANING_OVERDUE_MINUTES`), hot after 120.
-- `cleaning_overdue` reads WHEN a bed entered `cleaning` from the kernel's `resource_status_history` (the board's own source).
+- `cleaning_overdue` and Bed Flow's "free since" read each bed's LATEST `resource_status_history` row by one indexed probe
+  per bed (`latestStatusAt`, lateral on `resource_status_history_resource_seq_idx (resource_id, seq)`), never a history scan.
 - BED FLOW asks `checkBedRules` — the same function as every bed act — with the twin room's gender (`roomGendersFor`) and
-  `mayUseOverflow: false`. Never proposed: overflow, cleaning, held, blocked beds. Tie-break: requested class, a ward of the
+  `mayUseOverflow: false`. Never proposed: overflow, cleaning, held, blocked beds. HELD and BLOCKED come from the acts' own
+  predicate (`beds.ts` `holdIsLive`, `LIVE_BLOCK_STATUSES`, `bedHoldsAndBlocks`): a hold past `expiresAt` is NOT held (the act
+  lapses it inline), so its bed is proposed (review #767). Tie-break: requested class, a ward of the
   admitting department (`ipd_admissions.department` vs ward `department`), the bed free longest (last status move), code.
   Oldest request first; a bed goes to one request; an open still-valid proposal is kept (it does not jump).
 - CONFIRM = `reserve_bed` (DECIDED, departing from "assign_bed" in the brief): a waiting request is `requested`, and
   `assign_bed` refuses a real admission that is not `admitted` (`linkPlacement`); placement happens at `admit`. Bed Flow never
   acts by itself.
-- The proposal log `ipd_bed_proposals`: one open row per admission (partial unique); outcome `accepted` / `overridden`
+- ONE READ, BATCHED (review #767): one query per fact, places loaded only for the candidates' parents, withdrawals one update
+  per reason, new proposals one insert. Callers compute it ONCE per request (the board off the wall; the card).
+- REASONS are static codes (`IPD_BED_FLOW_REASONS`, worded by the web, en + hi); `freeMinutes` is computed at read time.
+- The proposal log `ipd_bed_proposals`: one open row per admission AND one per bed (two partial uniques; a lost insert
+  shows no proposal this read, never an error); outcome `accepted` / `overridden`
   (the act's bed vs the proposal's) / `withdrawn` with `bed_taken`, `bed_blocked`, `bed_not_valid`,
   `bed_given_to_earlier_request`, `admission_cancelled`, `admission_left_waiting`. The READ writes (records and withdraws) —
-  deliberate: there is no job, and the outcome is written by the acts in their own transaction.
+  deliberate: there is no job, and the outcome is written by the acts in their own transaction. BF1/BF2 count each
+  admission's FINAL decided proposal once (a re-proposal after a released hold replaces the earlier outcome); placement onto
+  the proposed bed by `reserve_bed` or `admit` is `accepted`, onto any other bed `overridden`.
+- The web words a refused Confirm by its refusal CODE (`ipdBeds.flow.refused.<code>`), never the server's English.
 - Tomorrow's predicted discharges = live `ipd_discharges` with `fit_when = 'tomorrow'` declared since IST midnight (marks only).
 - OWED TO M4 (no source data in this stack; no stub, no fake rows): `due_dose` (eMAR), `overdue_vitals` (nursing
   observations), `new_order` (ipd-orders), `ews_rising` (EWS scores), `handover_pending` (nurse shift handover; transfer
@@ -632,6 +644,6 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `postAdmissionCharges` (with `presumedDischargeAt`); `endStay` calls `endHoldIn` / `releaseBedOccupant`; billing's
   `issueInvoice`, `previewInvoice`, `requestRefund`, `receiptUnallocatedPaise` are called inside the settle transaction.
 - (E2.3) `kernel/worker/jobs.ts` (`postNightlyIpdCharges` job → `runIpdBillDeskNightly`); `takeDeposit` → `evaluateDepositLadder`;
-  `kernel/desk` collects the `ipd.billdesk` provider from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.
+  `kernel/desk` collects the `ipd.deposit_low` provider (key renamed from `ipd.billdesk` in E5.1) from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.
 - (E5.1/E5.2) `kernel/desk` collects the five IPD providers from `ipdManifest.desk`; `readBedBoard` calls `readBedFlow`;
   `reserveBed` / `assignBedIn` call `settleBedProposalIn`; `cancelAdmission` calls `withdrawBedProposalIn`.

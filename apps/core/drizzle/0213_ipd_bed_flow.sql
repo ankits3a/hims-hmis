@@ -19,4 +19,5 @@ ALTER TABLE "ipd_bed_proposals" ADD CONSTRAINT "ipd_bed_proposals_admission_id_i
 ALTER TABLE "ipd_bed_proposals" ADD CONSTRAINT "ipd_bed_proposals_patient_id_patients_id_fk" FOREIGN KEY ("patient_id") REFERENCES "public"."patients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ipd_bed_proposals" ADD CONSTRAINT "ipd_bed_proposals_bed_id_resources_id_fk" FOREIGN KEY ("bed_id") REFERENCES "public"."resources"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "ipd_bed_proposals_open_admission_ux" ON "ipd_bed_proposals" USING btree ("admission_id") WHERE "ipd_bed_proposals"."ended_at" is null;--> statement-breakpoint
+CREATE UNIQUE INDEX "ipd_bed_proposals_open_bed_ux" ON "ipd_bed_proposals" USING btree ("bed_id") WHERE "ipd_bed_proposals"."ended_at" is null;--> statement-breakpoint
 CREATE INDEX "ipd_bed_proposals_ended_idx" ON "ipd_bed_proposals" USING btree ("ended_at");

@@ -1,5 +1,5 @@
 {
-  "id": "08eab78a-eb5d-4269-9b2a-363728fa1e4e",
+  "id": "d302da5e-0006-4dc3-8c41-c69e1943ad54",
   "prevId": "f7357dcc-b474-412d-891f-4dba928cef71",
   "version": "7",
   "dialect": "postgresql",
@@ -55177,6 +55177,22 @@
           "columns": [
             {
               "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ipd_bed_proposals\".\"ended_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ipd_bed_proposals_open_bed_ux": {
+          "name": "ipd_bed_proposals_open_bed_ux",
+          "columns": [
+            {
+              "expression": "bed_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -15702,7 +15702,7 @@
       "emergency": "इमरजेंसी",
       "overflow": "अतिरिक्त बेड"
     },
-    "flow": { "tag": "बेड फ़्लो", "why": "यह बेड क्यों", "none": "कोई ख़ाली बेड सभी नियमों पर खरा नहीं", "confirm": "{{bed}} पक्का करें", "failed": "बेड नहीं रुका — फिर कोशिश करें" },
+    "flow": { "tag": "बेड फ़्लो", "why": "यह बेड क्यों", "none": "कोई ख़ाली बेड सभी नियमों पर खरा नहीं", "confirm": "{{bed}} पक्का करें", "failed": "बेड नहीं रुका — फिर कोशिश करें", "free": "{{minutes}} मिनट से ख़ाली", "reason": {"class_requested": "माँगी गई श्रेणी", "gender_male_bay": "पुरुष बे", "gender_female_bay": "महिला बे", "gender_any": "कोई भी लिंग", "gender_paediatric": "बाल बेड", "room_shared_male": "साझा कमरा पुरुष", "room_shared_female": "साझा कमरा महिला", "isolation_contact": "संपर्क आइसोलेशन", "isolation_droplet": "ड्रॉपलेट आइसोलेशन", "isolation_airborne": "हवाई आइसोलेशन, नेगेटिव प्रेशर", "icu_bed": "आईसीयू बेड", "own_department": "{{dept}} वार्ड"}, "refused": {"bed_not_available": "बेड अभी लिया गया — दूसरा चुनें", "bed_gender_mismatch": "बेड का लिंग नियम मेल नहीं खाता", "bed_isolation_mismatch": "बेड का आइसोलेशन मेल नहीं खाता", "bed_age_mismatch": "बेड का आयु नियम मेल नहीं खाता", "bed_class_mismatch": "बेड की श्रेणी मेल नहीं खाती", "room_gender_unknown": "कमरे का लिंग दर्ज नहीं", "bed_retired": "बेड हटाया गया", "bed_not_found": "बेड नहीं मिला", "overflow_needs_duty_manager": "ओवरफ़्लो बेड पर ड्यूटी मैनेजर चाहिए", "admission_wrong_state": "अनुरोध आगे बढ़ चुका", "admission_not_found": "अनुरोध नहीं मिला", "state_changed": "अनुरोध बदला — रीफ़्रेश करें", "advice_expired": "सलाह की अवधि ख़त्म"} },
     "waiting": {
       "title": "बेड की प्रतीक्षा",
       "empty": "कोई प्रतीक्षा में नहीं",
