@@ -1,4 +1,5 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { IPD_OPEN_ADMISSION_STATES, ipdAdmissions, ipdBedReservations } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
@@ -129,7 +130,7 @@ export function workflowRefusal(e: unknown): unknown {
 
 /** IST calendar year of an instant (the IP number restarts every year). */
 function istYear(at: Date): number {
-  return new Date(at.getTime() + 330 * 60_000).getUTCFullYear();
+  return Number(istDayString(at).slice(0, 4));
 }
 
 /**
