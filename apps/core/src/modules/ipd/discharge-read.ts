@@ -182,3 +182,19 @@ export async function readDischargeBoard(db: Db, actor: Actor, opts: { now?: Dat
   return { rows: out };
 }
 
+
+/**
+ * E3.3 (#731) — the FAMILY view of the same tracker (spec §4.9 F "Family view: same steps … no staff names, 'What you
+ * need to do', expected time out"). Computed by the system (it sees the steps whoever opens the page); only step keys,
+ * states and instants leave — no "waiting for Dr …", no blocker words, no department names, no money.
+ */
+export async function familyTrackerOf(db: Db, a: AdmissionRow, at: Date): Promise<{
+  steps: { key: IpdDischargeStep; state: "done" | "now" | "waiting" | "skipped"; at: string | null }[];
+  expectedAt: string | null;
+  billOwed: boolean;
+} | null> {
+  if (!CASCADE.has(a.state) && a.state !== "discharged" && a.state !== "transferred_out") return null;
+  const t = await trackerOf(db, { type: "system", id: "ipd-family" }, a, at);
+  const owed = t.bill !== null && t.bill.settled === null && t.bill.balancePaise > 0;
+  return { steps: t.steps.map((s) => ({ key: s.key, state: s.state, at: s.at })), expectedAt: t.targetAt, billOwed: owed };
+}

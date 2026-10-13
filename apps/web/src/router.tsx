@@ -46,6 +46,8 @@ import { IpdBill } from "./screens/ipd-bill";
 import { IpdHandovers } from "./screens/ipd-handovers";
 import { IpdBillDesk } from "./screens/ipd-bill-desk";
 import { IpdDischarge } from "./screens/ipd-discharge";
+import { FamilyPage } from "./screens/ipd-family";
+import { IpdFamilyCallbacks } from "./screens/ipd-family-callbacks";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -390,6 +392,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/ipd/bill-desk", label: "nav.ipdBillDesk", permission: "ipd.billdesk.view", group: "wards" },
   // E3.2 (#730) — the discharge desk; path and permission match `ipdManifest.menu`.
   { to: "/ipd/discharge", label: "nav.ipdDischarge", permission: "ipd.discharge.view", group: "wards" },
+  // E3.3 (#731) — the ward desk's family callback requests; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/family-callbacks", label: "nav.ipdFamilyCalls", permission: "ipd.family.issue", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -726,6 +730,14 @@ const rootRoute = createRootRoute({ component: () => <><Outlet /><PrintingPanelH
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login", component: LoginScreen });
 
 /**
+ * E3.3 (#731) — THE FAMILY PAGE, A SIBLING OF `/login` AND NOT A CHILD OF THE SHELL: the registered attendant opens it on
+ * their own phone with no staff session (`authedRoute` would bounce them to /login). The token in the FRAGMENT (`#…`, never
+ * sent to a server, review #764) and the OTP
+ * session cookie are its only credentials; the API checks both on every call.
+ */
+const familyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/family", component: () => <FamilyPage /> });
+
+/**
  * PLAN 11e T6 / D6 — `/change-password` IS A SIBLING OF `/login`, NOT A CHILD OF THE SHELL.
  *
  * A person in the forced-change state (11e D1) is refused 403 on every route except this one and
@@ -873,6 +885,13 @@ const ipdDischargeRoute = createRoute({
     admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
   }),
   component: IpdDischarge,
+});
+
+/** E3.3 (#731) — the ward desk's family callbacks (`ipd.family.issue`). Phone-usable at 390 px. */
+const ipdFamilyCallbacksRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/family-callbacks",
+  component: IpdFamilyCallbacks,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -2055,9 +2074,10 @@ const legacyVitalsBayRoute = createRoute({
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
     loginRoute,
+    familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, ipdBillDeskRoute, ipdDischargeRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, ipdBillDeskRoute, ipdDischargeRoute, ipdFamilyCallbacksRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

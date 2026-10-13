@@ -46,7 +46,20 @@ export type IpdErrorCode =
   | "mortuary_wrong_state"
   | "identity_check_same_person"
   /** E3.2 — ⚖ an MLC body is released only after the police clearance is recorded. */
-  | "police_clearance_required";
+  | "police_clearance_required"
+  /** E3.3 (#731) — the family link: refused for this admission (`detail.reason`: sealed, mlc, family_off, no_attendant_phone,
+   * stay_ended); no such link or callback; the public side's refusals (closed link, OTP limits, wrong or stale code, no
+   * session, the attendant's phone changed since issue, the SMS could not be sent). */
+  | "family_link_refused"
+  | "family_link_not_found"
+  | "family_callback_not_found"
+  | "family_link_closed"
+  | "family_otp_limit"
+  | "family_otp_invalid"
+  | "family_otp_unavailable"
+  | "family_phone_changed"
+  | "family_session_required"
+  | "family_callback_limit";
 
 export class IpdError extends Error {
   constructor(

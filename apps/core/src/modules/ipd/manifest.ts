@@ -1,5 +1,15 @@
 import { depositLowCard } from "./bill-desk";
+import { familyCallbacksCard } from "./family";
+import {
+  IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+} from "./permissions";
+import { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
+import { admissionAbsconded, admissionDeceased } from "./discharge-events";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
+
+export {
+  IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+} from "./permissions";
 
 /**
  * E1.1 (#718) — the inpatient module's declared surface. The bed board is its first screen and these four are its
@@ -54,32 +64,16 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *   ipd.discharge.exit     record LAMA / DAMA and absconding — the doctor and the duty manager
  *   ipd.mortuary.manage    receive and release a body in the mortuary register — the duty manager
  *
- * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). No subscriptions: the 2-hour reservation
- * lapse is a scheduler job (`kernel/worker/jobs.ts` `lapseBedReservations`), so the worker does not install this
- * manifest.
+ * E3.3 (#731) adds the family link's two:
+ *
+ *   ipd.family.issue    issue and revoke the attendant's family link (OTP to the registered phone), read and close the
+ *                       family's callback requests — front office, its supervisor, the duty manager (the ward desk)
+ *   ipd.condition.set   set the condition word the family sees and turn the family link off for a sensitive admission —
+ *                       the doctor (nursing roles join when ipd-nursing seeds them). Clinical; no money.
+ *
+ * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). The 2-hour reservation lapse is a scheduler job (`kernel/worker/jobs.ts`
+ * `lapseBedReservations`); the one subscription is E3.3's family-link stop, so the worker installs this manifest.
  */
-export const IPD_BEDS_VIEW = "ipd.beds.view";
-export const IPD_BEDS_MANAGE = "ipd.beds.manage";
-export const IPD_BEDS_CLEAN = "ipd.beds.clean";
-export const IPD_BEDS_OVERFLOW = "ipd.beds.overflow";
-export const IPD_ADMIT_REQUEST = "ipd.admit.request";
-export const IPD_ADMIT = "ipd.admit";
-export const IPD_PAYER_MANAGE = "ipd.payer.manage";
-export const IPD_BAND_PRINT = "ipd.band.print";
-export const IPD_BILL_VIEW = "ipd.bill.view";
-export const IPD_CHARGES_REVERSE = "ipd.charges.reverse";
-export const IPD_PAYER_TERMS = "ipd.payer.terms";
-export const IPD_TRANSFER_START = "ipd.transfer.start";
-export const IPD_TRANSFER_ACCEPT = "ipd.transfer.accept";
-export const IPD_BILLDESK_VIEW = "ipd.billdesk.view";
-export const IPD_DISCHARGE_VIEW = "ipd.discharge.view";
-export const IPD_DISCHARGE_DECLARE = "ipd.discharge.declare";
-export const IPD_DISCHARGE_CONFIRM = "ipd.discharge.confirm";
-export const IPD_DISCHARGE_BILL = "ipd.discharge.bill";
-export const IPD_GATE_PASS = "ipd.gate.pass";
-export const IPD_GATE_SCAN = "ipd.gate.scan";
-export const IPD_DISCHARGE_EXIT = "ipd.discharge.exit";
-export const IPD_MORTUARY_MANAGE = "ipd.mortuary.manage";
 
 export const ipdManifest: ModuleManifest = {
   key: "ipd",
@@ -92,6 +86,8 @@ export const ipdManifest: ModuleManifest = {
     { label: "Bill desk", path: "/ipd/bill-desk", permission: IPD_BILLDESK_VIEW },
     // E3.2 (#730) — the discharge desk: every admission in the cascade, its steps, clocks and blockers.
     { label: "Discharge", path: "/ipd/discharge", permission: IPD_DISCHARGE_VIEW },
+    // E3.3 (#731) — the ward desk's family callback requests.
+    { label: "Family calls", path: "/ipd/family-callbacks", permission: IPD_FAMILY_ISSUE },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
@@ -101,9 +97,22 @@ export const ipdManifest: ModuleManifest = {
     // E3.2 (#730)
     IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN,
     IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE,
+    // E3.3 (#731)
+    IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
   ],
-  subscriptions: [],
+  // E3.3 (#731) — death and absconding revoke the family link (`familyStopConsumer`, registered in the worker's
+  // `workerConsumers` in the same commit; its cursor is seeded at deploy by `seedCursors`).
+  subscriptions: [
+    { event: admissionDeceased.name, consumer: IPD_FAMILY_STOP_CONSUMER },
+    { event: admissionAbsconded.name, consumer: IPD_FAMILY_STOP_CONSUMER },
+    // Review #764 — a patient sealed after the link was issued: revoke on that path.
+    { event: "patient.updated", consumer: IPD_FAMILY_STOP_CONSUMER },
+  ],
   // E2.3 (#727) — the bill desk's `deposit_low` Now card.
   // Declared here (not in bill-desk.ts) because that file imports this one: the card is called lazily.
-  desk: [{ key: "ipd.billdesk", permission: IPD_BILLDESK_VIEW, load: async (ctx) => depositLowCard(ctx.db) }],
+  desk: [
+    { key: "ipd.billdesk", permission: IPD_BILLDESK_VIEW, load: async (ctx) => depositLowCard(ctx.db) },
+    // E3.3 (#731) — open family callback requests for the ward desk.
+    { key: "ipd.family_callbacks", permission: IPD_FAMILY_ISSUE, load: async (ctx) => familyCallbacksCard(ctx.db) },
+  ],
 };

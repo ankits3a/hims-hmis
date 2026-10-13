@@ -29,6 +29,7 @@ import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
 import { passesManifest } from "../../modules/passes";
+import { ipdManifest } from "../../modules/ipd";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -98,6 +99,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   housekeepingManifest, // E1.4 HOUSEKEEPING (issue #721) — both processes
   maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
   passesManifest, // E1.3 (#720) — both processes
+  ipdManifest, // E3.3 (#731) — both processes (the family-link stop consumer)
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -238,7 +240,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly twelve enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly eleven enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -372,7 +374,8 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      The worker IMPORTS the module (so its two repair kinds exist for the task clock) and installs nothing.
     // (1n) E1.6 TRANSPORT — the TWENTY-NINTH, `transport`, APP-ONLY on the same terms: three permissions, no
     //      subscription; the worker imports the module only so its task kinds are defined for the task clock.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "ipd", "bmw", "linen", "maintenance", "transport"]);
+    // E3.3 FAMILY — `ipd` now declares a subscription (the family stop consumer), so the worker installs it: it leaves this list.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
@@ -458,7 +461,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "housekeeping",
       // E1.3 (#720) — the passes consumer (`passes.admission`); installed in both processes.
       "passes",
+      // E3.3 (#731) — the family link's stop consumer (`ipd.family_stop`): death and absconding revoke the link. `ipd` moves
+      // from the app-only list to the shared one in the commit that declares its first subscription and registers its handler.
+      "ipd",
     ]);
-    expect(workerKeys).toHaveLength(22); // E1.3: 20 -> 21, `passes`; //; E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(23); // E3.3 (#731): 20 -> 21, `ipd`; //; E1.3: 20 -> 21, `passes`; //; E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

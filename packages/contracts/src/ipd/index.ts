@@ -22,6 +22,8 @@ export * from "./transfers";
 export * from "./bill-desk";
 // E3.2 (#730) — discharge: the tracker, the summary, the final bill, the mortuary register.
 export * from "./discharge";
+// E3.3 (#731) — the family link: OTP to the registered attendant, condition word, totals, tracker, callbacks.
+export * from "./family";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see

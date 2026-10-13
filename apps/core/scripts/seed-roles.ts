@@ -134,6 +134,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "transport.request",
       // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   {
@@ -217,6 +219,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "roster.read",
       // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   {
@@ -366,6 +370,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "roster.read",
       // IPD DISCHARGE E3.2 (#730) — declares and cancels fit, writes and signs the summary, records a death or a LAMA; never the bill (0058); README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.discharge.declare", "ipd.discharge.exit",
+      // IPD FAMILY E3.3 (#731, decision 0072) — sets the condition word the family sees and turns the family link off for a sensitive admission; README "IPD family link" prose.
+      "ipd.condition.set",
     ],
   },
   /**
@@ -1191,6 +1197,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.billdesk.view",
       // IPD DISCHARGE E3.2 (#730) — confirms the ward at night, issues and scans gate passes, records LAMA / absconding, keeps the mortuary register; README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.discharge.confirm", "ipd.gate.pass", "ipd.gate.scan", "ipd.discharge.exit", "ipd.mortuary.manage",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   /**

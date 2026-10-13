@@ -18,6 +18,7 @@ import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
 import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
 import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
+import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -182,6 +183,11 @@ describe("seedCursors", () => {
          * them. Seeded at `max(seq)`, it begins with the next discharge.
          */
         PASSES_ADMISSION_CONSUMER,
+        /**
+         * E3.3 (#731) — the family link's stop. Unseeded, it would walk every `ipd.admission.deceased` / `.absconded`
+         * since the IPD lanes began; each would find no live link and do nothing — harmless by construction, seeded anyway.
+         */
+        IPD_FAMILY_STOP_CONSUMER,
       ].sort());
   });
 

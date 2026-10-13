@@ -157,7 +157,8 @@
     "transportRequest": "Request porter",
     "ipdHandovers": "Handovers",
     "ipdBillDesk": "Bill desk",
-    "ipdDischarge": "Discharge"
+    "ipdDischarge": "Discharge",
+    "ipdFamilyCalls": "Family calls"
   },
   "palette": {
     "title": "Search",
@@ -3779,6 +3780,10 @@
       "over75": "75 % used",
       "over90": "90 % used",
       "exceptions": "Posting exceptions"
+    },
+    "ipdFamilyCallbacks": {
+      "title": "Family asked for a call",
+      "open": "Waiting for a call"
     },
     "schemes": {
       "title": "Schemes in play",
@@ -17748,5 +17753,186 @@
       "duesRecorded": "Dues recorded — let the patient leave.",
       "passFoot": "Security: scan this code at the exit. One use only."
     }
+  },
+  "ipdFamily": {
+    "brand": "Patient updates",
+    "subtitle": "From the hospital",
+    "day": "Day {{n}}",
+    "loading": "Loading…",
+    "loadFailed": "Could not load. Check the internet and open the link again.",
+    "footer": "This link works only on your registered phone.",
+    "closed": {
+      "title": "This link is closed",
+      "body": "For news about your patient, please call or visit the ward desk."
+    },
+    "purpose": {
+      "title": "Why this page",
+      "body": "The hospital shares your patient's condition, bill totals and discharge progress with you, the registered attendant. Nothing else is shown."
+    },
+    "otp": {
+      "title": "Confirm it is you",
+      "to": "We will send a 6-digit code to {{phone}}.",
+      "send": "Send code",
+      "label": "Code from the SMS",
+      "verify": "Open updates",
+      "resend": "Send a new code"
+    },
+    "err": {
+      "failed": "Something went wrong. Please try again.",
+      "family_otp_limit": "Too many tries. Please try again after an hour.",
+      "family_otp_invalid": "That code is not right. Check the SMS or ask for a new code.",
+      "family_otp_unavailable": "The code cannot be sent now. Please ask the ward desk.",
+      "family_phone_changed": "The registered phone has changed. Ask the ward desk for a new link.",
+      "family_link_closed": "This link is closed. Please contact the ward desk.",
+      "family_otp_format": "Enter the 6 digits from the SMS.",
+      "family_callback_limit": "The ward already has your requests. They will call you.",
+      "family_session_required": "Please confirm with the code again."
+    },
+    "discharged": {
+      "label": "Your patient",
+      "big": "Discharged",
+      "sub": "This page closes 24 hours after discharge."
+    },
+    "eta": {
+      "label": "Expected to go home by"
+    },
+    "condition": {
+      "label": "Condition",
+      "ask": "Ask the ward",
+      "notSet": "The treating team has not set it yet.",
+      "setAt": "Set by the treating team at {{time}}",
+      "line": "Condition: {{word}} · set by the treating team at {{time}}",
+      "lineAsk": "Condition: ask the ward",
+      "stable": "Stable",
+      "improving": "Improving",
+      "serious": "Serious",
+      "critical": "Critical"
+    },
+    "steps": {
+      "title": "Discharge progress"
+    },
+    "step": {
+      "fit": "Doctor approved discharge",
+      "departments": "Departments checking the bill",
+      "summary": "Doctor signs the discharge summary",
+      "bill": "Final bill ready",
+      "gate_pass": "Gate pass",
+      "exit": "Leaving the hospital"
+    },
+    "stepState": {
+      "done": "Done",
+      "now": "In progress",
+      "waiting": "Next",
+      "skipped": "Not needed"
+    },
+    "todo": {
+      "title": "What you need to do",
+      "nothing": "Nothing right now. We will tell you when the bill is ready.",
+      "pay_bill": "Please pay the balance at the billing counter.",
+      "collect_gate_pass": "Collect the gate pass from the ward desk.",
+      "wait_summary": "Please wait. The doctor is signing the discharge summary.",
+      "go_home": "Nothing more. Take the discharge summary and medicines home."
+    },
+    "totals": {
+      "title": "Bill totals",
+      "bill": "Bill so far",
+      "deposit": "Deposit",
+      "due": "Amount due",
+      "left": "Deposit left",
+      "asOf": "As of {{time}} today"
+    },
+    "details": {
+      "show": "Show bill details",
+      "confirm": "Bill details can show which tests and medicines were given. Opening them is recorded.",
+      "yes": "Open bill details",
+      "no": "Not now",
+      "title": "Bill details",
+      "none": "No charges yet."
+    },
+    "callback": {
+      "ask": "Request a callback",
+      "title": "Your question for the ward",
+      "placeholder": "Write your question. The ward will call you.",
+      "send": "Send to the ward",
+      "done": "Sent. The ward will call you on {{phone}}.",
+      "note": "Health questions go to the nurse in charge, who will call you. Nobody answers here automatically."
+    }
+  },
+  "ipdFamilyDesk": {
+    "title": "Family link",
+    "condition": "Condition for the family",
+    "notSet": "Not set (family sees “Ask the ward”)",
+    "setBy": "{{name}} · {{time}}",
+    "setCondition": "Set the condition word",
+    "word": {
+      "stable": "Stable",
+      "improving": "Improving",
+      "serious": "Serious",
+      "critical": "Critical"
+    },
+    "familyOff": "Family link on or off",
+    "linkOn": "Family link on",
+    "offFor": "Off — {{reason}}",
+    "off": {
+      "psychiatric": "psychiatric",
+      "hiv": "HIV",
+      "mtp": "MTP",
+      "pocso": "POCSO",
+      "patient_request": "patient asked",
+      "other": "other"
+    },
+    "link": "Link",
+    "active": "Active · OTP goes to {{phone}} · issued {{time}}",
+    "blocked": {
+      "sealed": "Off: sealed patient",
+      "mlc": "Off: medico-legal case",
+      "family_off": "Off: turned off by the treating team",
+      "no_attendant_phone": "No registered attendant phone — add a guardian with bill authority or the deposit payer's phone",
+      "stay_ended": "Stay ended"
+    },
+    "none": "No link yet · would go to {{phone}}",
+    "revoke": "Revoke",
+    "handOver": "Hand over: the attendant scans this on the phone ending {{phone}}.",
+    "copy": "Copy link",
+    "consent": "Consent for the family link",
+    "consentedBy": "Who agreed (name)",
+    "relation": "Relation",
+    "rel": {
+      "self": "Patient",
+      "spouse": "Spouse",
+      "parent": "Parent",
+      "child": "Child",
+      "sibling": "Sibling",
+      "relative": "Relative",
+      "guardian": "Guardian",
+      "other": "Other"
+    },
+    "method": "How",
+    "verbal": "Verbal",
+    "paper": "Paper form",
+    "issue": "Issue link",
+    "reissue": "Issue a new link",
+    "purpose": "Purpose told to the family: inpatient updates (condition, totals, discharge). Line items only after a second, recorded step.",
+    "calls": "Callback requests",
+    "callNote": "What you told them",
+    "calledBack": "Called back",
+    "closedBy": "{{name}}: {{note}}"
+  },
+  "ipdFamilyCalls": {
+    "sealed": "Sealed patient",
+    "title": "Family callback requests",
+    "show": "Show",
+    "open": "Waiting",
+    "done": "Done",
+    "note": "Families ask here from the family page. Call them back, or pass health questions to the nurse in charge or the doctor. Nothing is answered automatically.",
+    "forbidden": "You do not have access to family callbacks.",
+    "failed": "Could not load — try again",
+    "loading": "Loading…",
+    "emptyOpen": "No family is waiting for a call.",
+    "emptyDone": "No callbacks closed yet.",
+    "openAdmission": "Open admission",
+    "notePlaceholder": "What you told them",
+    "calledBack": "Called back",
+    "closedBy": "{{name}} at {{time}}"
   }
 }

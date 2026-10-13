@@ -123,7 +123,7 @@ export const IpdFinalBillSchema = z.object({
 
 /** E3.2 review — what the bill desk must still do about a settled bill. */
 export const IPD_BILL_DESK_EXCEPTIONS = ["settled_not_exited", "ended_after_bill", "dues_awaiting_approval", "refund_pending"] as const;
-export const IpdBillDeskSchema = z.object({
+export const IpdDischargeBillDeskSchema = z.object({
   rows: z.array(z.object({
     admissionId: IpdIdSchema,
     admissionNo: z.string().nullable(),
@@ -135,7 +135,7 @@ export const IpdBillDeskSchema = z.object({
     exceptions: z.array(z.enum(IPD_BILL_DESK_EXCEPTIONS)),
   })),
 });
-export type IpdBillDesk = z.infer<typeof IpdBillDeskSchema>;
+export type IpdDischargeBillDesk = z.infer<typeof IpdDischargeBillDeskSchema>;
 export type IpdFinalBill = z.infer<typeof IpdFinalBillSchema>;
 
 // ═══════════════════════════════════════ the desk tracker ═══════════════════════════════════════
