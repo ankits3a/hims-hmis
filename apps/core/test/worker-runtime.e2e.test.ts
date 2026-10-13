@@ -206,6 +206,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** IPD BEDS E1.1 (#718) — `every(60_000)`: a two-hour bed hold lapses back to available. */
+  "lapseBedReservations",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
