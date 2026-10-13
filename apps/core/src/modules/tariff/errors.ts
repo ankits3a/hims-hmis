@@ -6,7 +6,7 @@ export type TariffErrorCode =
   | "approval_not_granted" | "approval_rejected" | "approval_subject_mismatch" | "sod_drafter_activator" | "effective_from_not_monotone"
   | "unknown_rule" | "invalid_rule_params"
   // GO-LIVE SCREENS — the bulk switch-on refuses a service with no price in the version in force.
-  | "service_unpriced";
+  | "service_unpriced" | "not_ipd_service";
 
 export class TariffError extends Error {
   constructor(readonly code: TariffErrorCode, message?: string) {

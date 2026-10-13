@@ -88,7 +88,7 @@ Source: `apps/core/src/modules/tariff/`
   - types: `ImpactByService`, `ImpactLineDelta`, `ImpactReport`, `ImpactTotals`
 - `switch-on.ts`
   - `SWITCH_ON_MAX`
-  - `listVersionsForOffice(db: Db): Promise<OfficeVersion[]>`
+  - `listVersionsForOffice(db: Db, opts: { withNames: boolean }): Promise<OfficeVersion[]>`
   - `switchOnServices(db: Db, actor: Actor, serviceIds: readonly string[], at: Date = new Date()): Promise<SwitchOnResult>`
   - types: `OfficeVersion`, `SwitchOnResult`
 - `tariff.module.ts`
@@ -103,7 +103,6 @@ Source: `apps/core/src/modules/tariff/`
   - `activePricePaise(db: Db | Tx, serviceId: string, at: Date): Promise<number | null>`
   - `createDraftVersion(tx: Tx, actor: Actor, input?: { notes?: string; copyFromVersionId?: string }): Promise<{ versionId: string; versionNo: n…`
   - `getVersion(db: Db, versionId: string): Promise<{ version: TariffVersionRow; items: TariffItemRow[] } | null>`
-  - `listVersions(db: Db): Promise<TariffVersionRow[]>`
   - `resolveActiveTariffVersion(db: Db, at: Date): Promise<{ versionId: string; versionNo: number } | null>`
   - `setTariffItem(tx: Tx, actor: Actor, versionId: string, serviceId: string, pricePaise: number): Promise<void>`
   - `submitVersion(tx: Tx, actor: Actor, versionId: string, requestNote?: string): Promise<{ approvalId: string; instanceId: string }>`

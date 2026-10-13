@@ -18018,7 +18018,8 @@
       "medical_superintendent": "Medical superintendent",
       "department_head": "Department head",
       "duty_manager": "Duty manager"
-    }
+    },
+    "drafterCannotApprove": "You drafted it: two other people approve."
   },
   "tariffVersions": {
     "title": "Price list versions",
