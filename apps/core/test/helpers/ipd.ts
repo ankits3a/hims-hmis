@@ -1,9 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { grantPermissionToRole, syncPermissions } from "../../src/kernel/auth/permissions";
 import { authManifest } from "../../src/kernel/auth/manifest";
 import { ModuleRegistry } from "../../src/kernel/modules/loader";
 import { ensureRole, mkPatient, mkUser, seedOpdBase } from "./opd";
 import { admissionWorkflowDefinition, ipdManifest, ipdNonPayableDepositCode, registerIpdApprovalTypes } from "../../src/modules/ipd";
-import { ipdRateServiceCode } from "@hmis/contracts";
+import { ipdRateServiceCode, newId } from "@hmis/contracts";
+import { and, eq, isNull } from "drizzle-orm";
+import { ipdAdmissions, ipdBedStays, opdDepartments, opdDoctors } from "../../src/kernel/db/schema";
+import { emergencyAdmit } from "../../src/modules/ipd";
+import { listServices, resolveActiveTariffVersion } from "../../src/modules/tariff";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
 import { activateDefinition, approveDefinition, createDraft } from "../../src/kernel/workflow/definitions";
 import { createDraftVersion, createService, setTariffItem, submitVersion, activateVersion } from "../../src/modules/tariff";
@@ -98,6 +103,8 @@ export const ADMIT_NONPAY_GENERAL = 500_000;
 
 export type AdmitWorld = BedWorld & {
   admitDesk: Actor; doctor: Actor; ms: Actor; billingManager: Actor; owner: Actor;
+  /** The billing base's tariff drafter and activator (E2.1's fixture drafts a second rate card with them). */
+  tariffDrafter: Actor; tariffActivator: Actor;
 };
 
 /**
@@ -151,5 +158,105 @@ export async function mkAdmitWorld(db: Db): Promise<AdmitWorld> {
   await activateVersion(db, base.activator, version.versionId, new Date("2026-01-02T00:00:00Z"));
 
   await openSession(db, admitDesk, 0);
-  return { ...w, admitDesk, doctor, ms, billingManager, owner: base.owner };
+  return { ...w, admitDesk, doctor, ms, billingManager, owner: base.owner, tariffDrafter: base.drafter, tariffActivator: base.activator };
+}
+
+// ═══ E2.1 — the running bill: a second rate card (private, RMO, a class with no nursing rate) and the people ═══
+
+/**
+ * Per-day rates (paise) the charges fixture adds on top of `ADMIT_RATES`, in a tariff version activated 2026-01-03 (so
+ * every admission the charges suites make, at explicit instants after it, locks THIS version). `semi_private` has a
+ * room rate and NO nursing rate (the missing-rate leg); `general` has an RMO rate, `private` none (RMO is optional).
+ */
+export const CHARGE_RATES = {
+  general: { room: 150_000, nursing: 50_000, visit: 80_000, rmo: 20_000, cross_visit: 100_000 },
+  private: { room: 400_000, nursing: 90_000, visit: 120_000 },
+  semi_private: { room: 250_000 },
+  icu: { room: 600_000, nursing: 200_000, visit: 150_000 },
+} as const;
+
+export type ChargesWorld = AdmitWorld & {
+  billDesk: Actor; resident: Actor; consultantUserId: string; crossUserId: string; versionId: string;
+  /** Admits a patient onto a fresh bed of `cls` at the instant `at` (the emergency lane: no deposit, explicit time). */
+  admitAt(cls: string, at: Date, code?: string): Promise<{ admissionId: string; patientId: string }>;
+  /** Moves the admission to a fresh bed of `cls` at `at` (the transfer lane's act, written directly until it lands). */
+  move(admissionId: string, cls: string, at: Date, billedClass?: string): Promise<void>;
+  /** Ends the stay as discharged at `at` (the discharge lane's act, written directly until it lands). */
+  discharge(admissionId: string, at: Date): Promise<void>;
+};
+
+export async function mkChargesWorld(db: Db): Promise<ChargesWorld> {
+  const w = await mkAdmitWorld(db);
+  const billing = { drafter: w.tariffDrafter, activator: w.tariffActivator, owner: w.owner };
+  const current = await resolveActiveTariffVersion(db, new Date("2026-01-02T12:00:00Z"));
+  const known = new Map((await listServices(db)).map((s) => [s.code, s.id] as const));
+  const codes: [string, number][] = [];
+  for (const [cls, r] of Object.entries(CHARGE_RATES)) {
+    for (const [component, price] of Object.entries(r)) codes.push([ipdRateServiceCode(cls as "general", component as "room"), price]);
+  }
+  for (const [code] of codes) {
+    if (!known.has(code)) {
+      known.set(code, (await withTx(db, (tx) => createService(tx, billing.drafter, { code, name: code, category: "consultation" }))).serviceId);
+    }
+  }
+  const version = await withTx(db, async (tx) => {
+    const d = await createDraftVersion(tx, billing.drafter, { copyFromVersionId: current!.versionId });
+    for (const [code, price] of codes) await setTariffItem(tx, billing.drafter, d.versionId, known.get(code)!, price);
+    return d;
+  });
+  const submitted = await withTx(db, (tx) => submitVersion(tx, billing.drafter, version.versionId));
+  await approveRequest(db, billing.owner, { approvalId: submitted.approvalId, note: "ipd charges fixture tariff" });
+  await activateVersion(db, billing.activator, version.versionId, new Date("2026-01-03T00:00:00Z"));
+
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  await syncPermissions(db, registry);
+  await ensureRole(db, "t_bill_desk");
+  for (const p of ["ipd.bill.view", "ipd.charges.reverse"]) await grantPermissionToRole(db, registry, "t_bill_desk", p);
+  const billDesk = (await mkUser(db, "chg.billdesk", ["t_bill_desk"])).actor;
+  const resident = (await mkUser(db, "chg.resident", ["doctor"])).actor;
+  const cross = (await mkUser(db, "chg.cross", ["doctor"])).actor;
+
+  // The doctor master: the admitting consultant (`w.doctor`) and a cross-consultant are on it; the resident is not.
+  const deptId = newId();
+  await db.insert(opdDepartments).values({ id: deptId, code: "IPDT", name: "IPD test", createdBy: "t", updatedBy: "t" });
+  for (const [userId, code] of [[w.doctor.id, "DR-9001"], [cross.id, "DR-9002"]] as const) {
+    await db.insert(opdDoctors).values({
+      id: newId(), userId, displayName: `Dr ${code}`, code, registrationNo: "BMC/1", departmentId: deptId, createdBy: "t", updatedBy: "t",
+    });
+  }
+
+  let n = 0;
+  const freshBed = async (cls: string): Promise<string> => {
+    n += 1;
+    return w.bed(`C-${cls.toUpperCase()}-${String(n)}`, { class: cls, ...(cls === "icu" ? { icu: true } : {}) });
+  };
+  return {
+    ...w, billDesk, resident, consultantUserId: w.doctor.id, crossUserId: cross.id, versionId: version.versionId,
+    admitAt: async (cls, at) => {
+      const patientId = await w.patient("male", 45);
+      const bedId = await freshBed(cls);
+      const done = await emergencyAdmit(db, w.admitDesk, {
+        idempotencyKey: randomUUID(), patientId, bedId, consultantId: w.doctor.id, isolation: "none", mlc: false,
+      }, { now: at });
+      return { admissionId: done.admissionId, patientId };
+    },
+    move: async (admissionId, cls, at, billedClass) => {
+      const bedId = await freshBed(cls);
+      const open = (await db.select().from(ipdBedStays).where(and(eq(ipdBedStays.admissionId, admissionId), isNull(ipdBedStays.endedAt))))[0]!;
+      await db.update(ipdBedStays).set({ endedAt: at, endedBy: w.admitDesk.id }).where(eq(ipdBedStays.id, open.id));
+      await db.insert(ipdBedStays).values({
+        id: newId(), bedId, admissionId, patientId: open.patientId, placedAs: open.placedAs, bedClass: cls, billedClass: billedClass ?? cls,
+        startedBy: w.admitDesk.id, startedAt: at,
+      });
+    },
+    discharge: async (admissionId, at) => {
+      await db.update(ipdBedStays).set({ endedAt: at, endedBy: w.admitDesk.id })
+        .where(and(eq(ipdBedStays.admissionId, admissionId), isNull(ipdBedStays.endedAt)));
+      await db.update(ipdAdmissions).set({ state: "discharged", endedAt: at, endedBy: w.admitDesk.id, updatedAt: at })
+        .where(eq(ipdAdmissions.id, admissionId));
+    },
+  };
 }

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -171,6 +171,18 @@ export const ipdAdmissions = pgTable(
     paperReceiptNo: text("paper_receipt_no"),
     /** Downtime back-fill: the deposit was taken (or not) on paper; the bill desk lists these until checked. */
     depositCheckPending: boolean("deposit_check_pending").notNull().default(false),
+    /**
+     * E2.1 (#725) — THE TARIFF LOCK: the tariff version in force at the admitted instant, recorded by every admit
+     * path. Every IPD charge of this stay prices from this version (a later revision never reaches it); null =
+     * admitted before E2.1 or with no tariff active, and the charge poster then resolves the version in force at
+     * `admitted_at`.
+     */
+    tariffVersionId: text("tariff_version_id"),
+    /**
+     * E2.1 review — the last IST day the nightly poster has worked this admission through (capped at the discharge day).
+     * The job re-selects an ENDED admission only while this is short of its discharge day or it has open exceptions.
+     */
+    chargesPostedThrough: date("charges_posted_through", { mode: "string" }),
     cancelReason: text("cancel_reason"),
     endedAt: timestamp("ended_at", { withTimezone: true }),
     endedBy: text("ended_by"),
@@ -268,5 +280,117 @@ export const ipdBands = pgTable(
     uniqueIndex("ipd_bands_serial_ux").on(t.serial),
     uniqueIndex("ipd_bands_live_admission_ux").on(t.admissionId).where(sql`${t.status} = 'printed'`),
     check("ipd_bands_status_ck", sql`${t.status} in ('printed', 'void')`),
+  ],
+);
+
+// ═══════════════════════════════════════ E2.1 (#725) — the running bill ═══════════════════════════════════════
+
+/** The daily and per-visit components the running bill posts (`IPD_RATE_COMPONENTS`, retyped for drizzle-kit). */
+const CHARGE_COMPONENTS_SQL = sql.raw(["room", "nursing", "rmo", "visit", "cross_visit"].map((c) => `'${c}'`).join(", "));
+
+/**
+ * One posted line of an admission's running bill (spec SPEC-ipd-core §4.3). APPEND-ONLY: a wrong line is answered by
+ * a REVERSAL — a new row whose `reversal_of` names it, with every amount negated and a reason — never an edit. The
+ * final bill (E3.2) composes ONE billing invoice from these rows (the OT discharge-bill pattern): billing's invoices
+ * are issued, numbered documents, so a running bill cannot live on one.
+ *
+ * Prices are FROZEN at posting from the admission's locked tariff version through the tariff engine (unit, GST,
+ * net), integer paise. `service_date` is the IST calendar day the charge is for — not the day it was posted, so a
+ * night caught up later still carries its own date. The partial unique indexes ARE the idempotency: one nightly
+ * line per admission, day and component; one visit per admission, day and consultant; one reversal per line.
+ */
+export const ipdChargeLines = pgTable(
+  "ipd_charge_lines",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull(),
+    serviceDate: date("service_date", { mode: "string" }).notNull(),
+    component: text("component").notNull(),
+    /** The class the day (or the visit) bills at; null on nothing today, kept nullable for later sources. */
+    billedClass: text("billed_class"),
+    serviceId: text("service_id").notNull(),
+    serviceCode: text("service_code").notNull(),
+    serviceName: text("service_name").notNull(),
+    tariffVersionId: text("tariff_version_id").notNull(),
+    qty: integer("qty").notNull(),
+    unitPaise: bigint("unit_paise", { mode: "number" }).notNull(),
+    grossPaise: bigint("gross_paise", { mode: "number" }).notNull(),
+    discountPaise: bigint("discount_paise", { mode: "number" }).notNull(),
+    taxablePaise: bigint("taxable_paise", { mode: "number" }).notNull(),
+    cgstPaise: bigint("cgst_paise", { mode: "number" }).notNull(),
+    sgstPaise: bigint("sgst_paise", { mode: "number" }).notNull(),
+    netPaise: bigint("net_paise", { mode: "number" }).notNull(),
+    gstRateBps: integer("gst_rate_bps").notNull(),
+    gstExempt: boolean("gst_exempt").notNull(),
+    /** `ipd.nightly` (rent, nursing, RMO), `ipd.visit` (the rounds tap), `ipd.reversal`. */
+    source: text("source").notNull(),
+    /** The visiting consultant (visit lines; copied onto their reversal). */
+    consultantUserId: text("consultant_user_id"),
+    /**
+     * Visit lines: 0 for the first charge of the (admission, day, consultant), n for the charge after n reversed ones —
+     * so a reversed visit can be charged again while a live one stays unique (review #756 item 7).
+     */
+    visitSeq: integer("visit_seq"),
+    reversalOf: text("reversal_of"),
+    reason: text("reason"),
+    postedBy: text("posted_by").notNull(),
+    postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_charge_lines_nightly_ux").on(t.admissionId, t.serviceDate, t.component).where(sql`${t.source} = 'ipd.nightly'`),
+    uniqueIndex("ipd_charge_lines_visit_ux").on(t.admissionId, t.serviceDate, t.consultantUserId, t.visitSeq).where(sql`${t.source} = 'ipd.visit'`),
+    uniqueIndex("ipd_charge_lines_reversal_ux").on(t.reversalOf).where(sql`${t.reversalOf} is not null`),
+    index("ipd_charge_lines_admission_idx").on(t.admissionId, t.serviceDate),
+    check("ipd_charge_lines_component_ck", sql`${t.component} in (${CHARGE_COMPONENTS_SQL})`),
+    check("ipd_charge_lines_source_ck", sql`${t.source} in ('ipd.nightly', 'ipd.visit', 'ipd.reversal')`),
+    check("ipd_charge_lines_qty_ck", sql`${t.qty} > 0`),
+    check("ipd_charge_lines_reversal_ck", sql`(${t.source} = 'ipd.reversal') = (${t.reversalOf} is not null)`),
+    // A posted line is never negative; a reversal is never positive. Zero is allowed both ways (a fully discounted line).
+    check(
+      "ipd_charge_lines_sign_ck",
+      sql`case when ${t.reversalOf} is null then ${t.unitPaise} >= 0 and ${t.grossPaise} >= 0 and ${t.discountPaise} >= 0 and ${t.netPaise} >= 0
+          else ${t.unitPaise} <= 0 and ${t.grossPaise} <= 0 and ${t.discountPaise} <= 0 and ${t.netPaise} <= 0 end`,
+    ),
+    check("ipd_charge_lines_visit_seq_ck", sql`(${t.source} = 'ipd.visit') = (${t.visitSeq} is not null) or ${t.source} = 'ipd.reversal'`),
+    check("ipd_charge_lines_reason_ck", sql`${t.reversalOf} is null or coalesce(btrim(${t.reason}), '') <> ''`),
+  ],
+);
+
+/**
+ * A charge that could not be posted (spec §4.3: a missing rate is a visible exception, never a guessed number). One
+ * row per admission, day, component and (for visits) consultant (`key`); seen again on every retry, resolved when a
+ * later run posts the line. The bill desk (E2.3) works the open rows; the interim bill lists them.
+ *
+ * Review #756 item 2 — `posting_failed` (key `<admission>:posting_failed`, no day or component): the poster threw a
+ * domain error for the admission; `fail_count` counts consecutive failures and at 3 the job skips the admission until
+ * a person resolves the row (`retryAdmissionCharges`). `error_code` names the error.
+ */
+export const ipdChargeExceptions = pgTable(
+  "ipd_charge_exceptions",
+  {
+    id: text("id").primaryKey(),
+    key: text("key").notNull(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    serviceDate: date("service_date", { mode: "string" }),
+    component: text("component"),
+    billedClass: text("billed_class"),
+    serviceCode: text("service_code"),
+    /** `rate_missing` (no price on the locked version, or the service is switched off) or `tariff_missing`. */
+    reason: text("reason").notNull(),
+    tariffVersionId: text("tariff_version_id"),
+    failCount: integer("fail_count").notNull().default(0),
+    errorCode: text("error_code"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedLineId: text("resolved_line_id"),
+  },
+  (t) => [
+    uniqueIndex("ipd_charge_exceptions_key_ux").on(t.key),
+    index("ipd_charge_exceptions_open_idx").on(t.admissionId).where(sql`${t.resolvedAt} is null`),
+    check("ipd_charge_exceptions_component_ck", sql`${t.component} is null or ${t.component} in (${CHARGE_COMPONENTS_SQL})`),
+    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed')`),
+    check("ipd_charge_exceptions_shape_ck", sql`(${t.reason} = 'posting_failed') = (${t.component} is null) and (${t.component} is null) = (${t.serviceDate} is null)`),
   ],
 );

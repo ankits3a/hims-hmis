@@ -69,3 +69,13 @@ export {
 } from "./admission-place";
 export type { AdmissionPlace } from "./admission-place";
 export { ageInYears } from "./bed-rules";
+// E2.1 (#725) — the running bill: the day rule, the nightly posting job, the rounds visit seam, reversals, the interim bill.
+export { IPD_BILL_VIEW, IPD_CHARGES_REVERSE } from "./manifest";
+export { DISCHARGE_FREE_UNTIL_MS, TRANSIT_UNDER_MS, classRank, ipdChargeableDays, rentClassOf } from "./charge-days";
+export type { ChargeStay, ChargeableDay } from "./charge-days";
+export {
+  IPD_DAILY_COMPONENTS, IPD_ENDED_STATES, IPD_NIGHTLY_ACTOR, postAdmissionCharges, postConsultantVisit, postNightlyIpdCharges,
+  priceComponent, reverseChargeLine,
+} from "./charges";
+export type { AdmissionPostResult, ConsultantVisitInput, ConsultantVisitResult, NightlyResult } from "./charges";
+export { readInterimBill } from "./interim-bill";

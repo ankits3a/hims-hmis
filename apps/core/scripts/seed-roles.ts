@@ -94,6 +94,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "maintenance.raise",
       // PASSES E1.3 (#720, decision 0072) — the admission desk issues attendant and visitor passes; README passes prose.
       "passes.issue",
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -143,6 +145,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "maintenance.raise",
       // PASSES E1.3 (#720) — issues passes, and records police custody or pauses every pass; README passes prose.
       "passes.issue", "passes.manage",
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -635,6 +639,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "cashier",
     permissions: [
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
       "billing.invoice.issue",
       "billing.invoice.read",
       "billing.credit.extend",
@@ -721,6 +727,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
       "ipd.payer.manage",
+      // IPD CHARGES E2.1 (#725) — the interim bill, and the reversal line against a wrong charge (never an edit).
+      "ipd.bill.view", "ipd.charges.reverse",
       /**
        * PLAN 17 T2 / DD6 — **THE INTERLOCK'S OVERRIDE, AND IT LIVES HERE RATHER THAN IN THE LAB.**
        *
@@ -839,6 +847,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     permissions: [
       // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
       "ipd.beds.view",
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -1144,6 +1154,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "maintenance.view", "maintenance.raise", "maintenance.confirm", "maintenance.manage",
       // PASSES E1.3 (#720) — the duty manager holds all four at night: issue, scan at a door, a ban, custody.
       "passes.issue", "passes.scan", "passes.pause", "passes.manage",
+      // IPD CHARGES E2.1 (#725) — the interim bill at night (a discharge or a deposit question at the desk).
+      "ipd.bill.view",
     ],
   },
   /**

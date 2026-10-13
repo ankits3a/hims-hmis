@@ -1747,6 +1747,12 @@ duty_manager) issues the passes a bed class allows, visitor passes in visiting h
 duty_manager) stops visitors for a patient and lifts the ban; and `passes.manage` (front_office_supervisor,
 medical_superintendent, duty_manager) pauses every pass and records police custody.
 
+**IPD running bill (E2.1, decision 0072, built 2026-10-13, awaiting owner review).** The interim bill at
+`/ipd/admissions/:id/bill` and the nightly rent, nursing and RMO posting behind it. `ipd.bill.view` (front_office,
+front_office_supervisor, duty_manager, cashier, billing_manager, owner) reads an admission's interim bill — no doctor
+role holds it, a doctor's screen shows no money; and `ipd.charges.reverse` is held by `billing_manager` alone — a wrong
+charge is answered by a reversal line, never an edit.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A
