@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { IpdBedClassSchema, IpdRateComponentSchema } from "../ipd-bed-classes";
+import { IPD_RATE_COMPONENTS, IpdBedClassSchema } from "../ipd-bed-classes";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdInstantSchema, IpdPaiseSchema } from "./common";
 import { IpdPayerSplitSchema } from "./payer";
 
@@ -9,9 +9,19 @@ import { IpdPayerSplitSchema } from "./payer";
  * money). Amounts are integer paise; a reversal line carries negative amounts and names the line it reverses.
  */
 
-export const IPD_CHARGE_SOURCES = ["ipd.nightly", "ipd.visit", "ipd.reversal"] as const;
+/** #785: `ipd.order` — a lab or imaging order on a live admission, posted by the ordering door (one line per order item). */
+export const IPD_CHARGE_SOURCES = ["ipd.nightly", "ipd.visit", "ipd.reversal", "ipd.order"] as const;
 export const IpdChargeSourceSchema = z.enum(IPD_CHARGE_SOURCES);
 export type IpdChargeSource = z.infer<typeof IpdChargeSourceSchema>;
+
+/**
+ * #785 — what a line of the running bill is FOR: the rate card's components (`IPD_RATE_COMPONENTS`, priced per bed class)
+ * plus the two order departments, `lab` and `imaging` (priced per service from the tariff; no bed class).
+ */
+export const IPD_ORDER_COMPONENTS = ["lab", "imaging"] as const;
+export const IPD_CHARGE_COMPONENTS = [...IPD_RATE_COMPONENTS, ...IPD_ORDER_COMPONENTS] as const;
+export const IpdChargeComponentSchema = z.enum(IPD_CHARGE_COMPONENTS);
+export type IpdChargeComponent = z.infer<typeof IpdChargeComponentSchema>;
 
 /** The IST calendar day a charge is for, `YYYY-MM-DD`. */
 export const IpdIstDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -21,7 +31,7 @@ const SignedPaise = z.number().int();
 export const IpdChargeLineViewSchema = z.object({
   id: IpdIdSchema,
   serviceDate: IpdIstDateSchema,
-  component: IpdRateComponentSchema,
+  component: IpdChargeComponentSchema,
   billedClass: IpdBedClassSchema.nullable(),
   serviceCode: z.string(),
   serviceName: z.string(),
@@ -64,7 +74,7 @@ export type IpdBillStay = z.infer<typeof IpdBillStaySchema>;
 /** A charge not posted. `posting_failed` names no day or component: the whole admission's posting failed (`errorCode`). */
 export const IpdChargeExceptionViewSchema = z.object({
   serviceDate: IpdIstDateSchema.nullable(),
-  component: IpdRateComponentSchema.nullable(),
+  component: IpdChargeComponentSchema.nullable(),
   billedClass: IpdBedClassSchema.nullable(),
   serviceCode: z.string().nullable(),
   reason: z.enum(["rate_missing", "tariff_missing", "posting_failed", "visit_backdated"]),
@@ -87,7 +97,7 @@ export const IpdInterimBillSchema = z.object({
   postedThrough: IpdIstDateSchema.nullable(),
   stays: z.array(IpdBillStaySchema),
   days: z.array(IpdBillDaySchema),
-  byComponent: z.array(z.object({ component: IpdRateComponentSchema, netPaise: SignedPaise })),
+  byComponent: z.array(z.object({ component: IpdChargeComponentSchema, netPaise: SignedPaise })),
   totals: z.object({
     grossPaise: SignedPaise,
     discountPaise: SignedPaise,

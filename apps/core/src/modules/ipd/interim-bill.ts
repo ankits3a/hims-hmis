@@ -1,5 +1,5 @@
 import { and, asc, eq, gte, inArray, sum } from "drizzle-orm";
-import { IPD_RATE_COMPONENTS, newId } from "@hmis/contracts";
+import { IPD_CHARGE_COMPONENTS, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
   enteredInErrorMarks, ipdAdmissionDeposits, ipdPayerSplitSnapshots, ipdBedStays, ipdChargeExceptions, ipdChargeLines, refundVouchers, resources, tariffVersions,
@@ -11,7 +11,7 @@ import { userNames } from "./admissions";
 import { IPD_ENDED_STATES } from "./charges";
 import { IPD_BILL_VIEW } from "./manifest";
 import { computePayerSplit } from "./payer-bill";
-import type { Actor, IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdRateComponent, IpdSplitSnapshot } from "@hmis/contracts";
+import type { Actor, IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdChargeComponent, IpdSplitSnapshot } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
 
@@ -46,11 +46,11 @@ export async function readInterimBill(db: Db, actor: Actor, admissionId: string)
     : (await db.select({ no: tariffVersions.versionNo }).from(tariffVersions).where(eq(tariffVersions.id, versionId)))[0];
 
   const byDay = new Map<string, IpdBillDay>();
-  const byComponent = new Map<IpdRateComponent, number>();
+  const byComponent = new Map<IpdChargeComponent, number>();
   const totals = { grossPaise: 0, discountPaise: 0, gstPaise: 0, netPaise: 0 };
   for (const l of lines) {
     const view: IpdChargeLineView = {
-      id: l.id, serviceDate: l.serviceDate, component: l.component as IpdRateComponent,
+      id: l.id, serviceDate: l.serviceDate, component: l.component as IpdChargeComponent,
       billedClass: l.billedClass as IpdBedClass | null, serviceCode: l.serviceCode, serviceName: l.serviceName, qty: l.qty,
       unitPaise: l.unitPaise, grossPaise: l.grossPaise, discountPaise: l.discountPaise, gstPaise: l.cgstPaise + l.sgstPaise,
       netPaise: l.netPaise, source: l.source as IpdChargeLineView["source"],
@@ -87,12 +87,12 @@ export async function readInterimBill(db: Db, actor: Actor, admissionId: string)
       startedAt: s.startedAt.toISOString(), endedAt: s.endedAt?.toISOString() ?? null,
     })),
     days: [...byDay.values()],
-    byComponent: IPD_RATE_COMPONENTS.filter((c) => byComponent.has(c)).map((c) => ({ component: c, netPaise: byComponent.get(c)! })),
+    byComponent: IPD_CHARGE_COMPONENTS.filter((c) => byComponent.has(c)).map((c) => ({ component: c, netPaise: byComponent.get(c)! })),
     totals: { ...totals, roundedPaise },
     depositPaidPaise: deposit,
     balancePaise: deposit - roundedPaise,
     exceptions: exceptions.map((x) => ({
-      serviceDate: x.serviceDate, component: x.component as IpdRateComponent | null, billedClass: x.billedClass as IpdBedClass | null,
+      serviceDate: x.serviceDate, component: x.component as IpdChargeComponent | null, billedClass: x.billedClass as IpdBedClass | null,
       serviceCode: x.serviceCode, reason: x.reason as "rate_missing" | "tariff_missing" | "posting_failed" | "visit_backdated", errorCode: x.errorCode,
       failCount: x.failCount, firstSeenAt: x.firstSeenAt.toISOString(),
     })),

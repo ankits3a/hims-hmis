@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { withIdempotency } from "../billing";
+import { episodeChargeStanding, withIdempotency } from "../billing";
 import { getEncounter } from "../opd";
 import { daycareCaseDefinition } from "../ot";
 import { daycareEncounters } from "../../kernel/db/schema/ot";
@@ -151,6 +151,18 @@ export type { StudyType } from "./definitions";
  * the day-care row for `D`.
  */
 async function assertEncounterOpen(tx: Tx, encounterNo: string, now: Date): Promise<void> {
+  /**
+   * #785 — an episode that bills on its own running bill (an inpatient admission, `IP…`) answers through billing's
+   * episode charge sink: an ENDED admission takes no new scan. A live one is placed and charged to its bill below.
+   */
+  const episode = await episodeChargeStanding(tx, encounterNo);
+  if (episode?.standing === "ended") {
+    throw new RadiologyError(
+      "encounter_closed",
+      `admission ${encounterNo} has ended — a new scan needs a new episode`,
+      { encounterNo },
+    );
+  }
   if (encounterNo.startsWith(EPISODE_SERIES.daycare)) {
     const rows = await (tx as unknown as Db)
       .select({ status: daycareEncounters.status })
@@ -440,6 +452,18 @@ export async function placeImagingOrder(
                   ?? (input.referrer ? await resolveExternalReferrer(tx, actor, input.referrer) : missingReferrer()),
               })
             : await placeOrder(tx, actor, decls, common);
+
+        /**
+         * #785 — an inpatient's scan is a line of the admission's running bill, posted in this transaction (one per item);
+         * the department raises no invoice for it, and its money never blocks the study.
+         */
+        const episode = await episodeChargeStanding(tx, input.encounterNo);
+        if (episode?.standing === "live") {
+          await episode.sink.post(tx, actor, {
+            encounterNo: input.encounterNo, department: "imaging", at: now,
+            items: placed.itemIds.map((orderItemId, i) => ({ orderId: placed.orderId, orderItemId, serviceId: input.items[i]!.serviceId })),
+          });
+        }
 
         /** 18-S RS2b — the bedside request, in the order's own transaction (see the event's header). */
         const requested = placed.itemIds.flatMap((orderItemId, i) => {

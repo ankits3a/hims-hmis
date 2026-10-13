@@ -13,7 +13,7 @@ import { IpdError } from "./errors";
 import { IPD_ADMIT, IPD_BILL_VIEW, IPD_PAYER_TERMS } from "./manifest";
 import { capWarningOf, splitBill, splitTermsOf } from "./payer-split";
 import type {
-  Actor, IpdBedClass, IpdNonPayable, IpdPayerSplit, IpdRateComponent, IpdRoomRentCapWarning,
+  Actor, IpdBedClass, IpdNonPayable, IpdPayerSplit, IpdChargeComponent, IpdRoomRentCapWarning,
 } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { ipdChargeLines } from "../../kernel/db/schema";
@@ -63,7 +63,7 @@ export async function computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: rea
     : new Map((await db.select({ id: services.id, category: services.category }).from(services).where(inArray(services.id, ids)))
       .map((s) => [s.id, s.category] as const));
   const inputs: SplitLineInput[] = lines.map((l) => ({
-    id: l.id, serviceDate: l.serviceDate, component: l.component as IpdRateComponent, billedClass: l.billedClass as IpdBedClass | null,
+    id: l.id, serviceDate: l.serviceDate, component: l.component as IpdChargeComponent, billedClass: l.billedClass as IpdBedClass | null,
     serviceCode: l.serviceCode, category: cats.get(l.serviceId) ?? null, taxablePaise: l.taxablePaise, netPaise: l.netPaise, source: l.source,
     reversalOf: l.reversalOf, postedAt: l.postedAt.toISOString(),
   }));

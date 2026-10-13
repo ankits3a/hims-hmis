@@ -994,9 +994,9 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
             style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)", padding: "16px 18px", borderColor: "var(--green)", boxShadow: "0 0 0 3px var(--green-soft)", display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: "var(--green)" }}>✓ {t("lab.desk.placed")}: <span className="mo">{placed.orderNo}</span></div>
             <div style={{ fontSize: 13 }}>{t("lab.desk.visit")}: <span className="mo" style={{ fontWeight: 600 }}>{placed.encounterNo}</span>
-              {placed.invoice.netPayablePaise > 0 && <> · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}</>}
-              {placed.invoice.netPayablePaise === 0 && <> · {t("lab.desk.flow.noCharge")}</>}
-              {(placed.invoice.creditExtended || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</div>
+              {placed.invoice !== null && placed.invoice.netPayablePaise > 0 && <> · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}</>}
+              {(placed.invoice === null || placed.invoice.netPayablePaise === 0) && <> · {t("lab.desk.flow.noCharge")}</>}
+              {(placed.invoice?.creditExtended === true || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</div>
             <div style={{ fontSize: 13, color: "var(--dim)" }}>{t("lab.desk.sentToCollection")}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
               {counter && <a className="sec" href="/lab/qcollect" data-testid="go-qcollect">{t("lab.counter.openQCollect")} →</a>}

@@ -69,6 +69,10 @@ function refusal(e: unknown): { code: string; message: string } | null {
  * transaction (a savepoint: a lab refusal rolls back only the lab's writes), so the caller's own row and the order commit
  * together; `imagingKey` is handed to radiology's own idempotency (`placeImagingOrder`), so a retried imaging order
  * replays the first one. Both optional: every existing caller is unchanged.
+ *
+ * #785 — with `tx`, the IMAGING order runs in the caller's transaction too (radiology's own `withTx` becomes a savepoint):
+ * an inpatient's scan posts a line to the running bill under the admission's lock, which the caller already holds — a
+ * second connection would wait on that lock for ever. A radiology refusal still rolls back only its savepoint.
  */
 export type OrderTestsOpts = { tx?: Tx; imagingKey?: string };
 
@@ -127,7 +131,7 @@ export async function orderTests(
 
   if (want.imaging && routed.imaging.length > 0) {
     try {
-      result.imaging = await placeImagingOrder(db, actor, decls, {
+      result.imaging = await placeImagingOrder(opts.tx === undefined ? db : (opts.tx as unknown as Db), actor, decls, {
         patientId: input.patientId, encounterNo: input.encounterNo, serviceDate: input.serviceDate,
         orderingClinicianId: input.orderingClinicianId, priority: input.priority, indication: input.indication,
         items: routed.imaging.map((serviceId) => ({ serviceId })),

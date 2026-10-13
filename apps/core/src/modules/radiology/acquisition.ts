@@ -677,8 +677,12 @@ export async function recordAcquired(
   }
   /** I1 — images exist and nothing was billed. The `stat` lane is exactly how this happens. */
   /** A `free` study (the imaging fee switch was off) has nothing to bill, so nothing leaked. */
+  /**
+   * #785 — nor an inpatient's (`ipd_admission`): the scan is already a line of the admission's running bill, and the
+   * counter billing it again would charge the patient twice.
+   */
   if (study.invoiceLineId === null && study.authorisedBy !== "daycare" && study.authorisedBy !== "payer_branch"
-    && study.authorisedBy !== "free") {
+    && study.authorisedBy !== "free" && study.authorisedBy !== "ipd_admission") {
     await raise("acquired_unbilled", { authorisedBy: study.authorisedBy, priority: study.priority });
   }
 

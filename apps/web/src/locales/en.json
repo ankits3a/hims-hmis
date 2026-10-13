@@ -17307,7 +17307,9 @@
       "nursing": "Nursing",
       "rmo": "RMO",
       "visit": "Consultant visit",
-      "cross_visit": "Cross-consultation"
+      "cross_visit": "Cross-consultation",
+      "lab": "Laboratory",
+      "imaging": "Imaging"
     },
     "class": {
       "general": "General ward",

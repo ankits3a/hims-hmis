@@ -8,7 +8,7 @@ import {
 import { appendEvent } from "../../kernel/events/append";
 import { placeOrder } from "../../kernel/orders/place";
 import { startInstance } from "../../kernel/workflow/instances";
-import { issueInvoice } from "../billing";
+import { episodeChargeStanding, issueInvoice } from "../billing";
 import { recordPhiAccess } from "../../kernel/phi/audit";
 import { getEncounter, LAB_DEPARTMENT_CODE, openLabWalkinInTx } from "../opd";
 import { getPatientSummaries, listMergedLoserIds, resolvePatientId, searchPatients } from "../patients";
@@ -144,6 +144,7 @@ export type DeskOrderResult = {
   orderNo: string;
   orderGroupId: string;
   itemIds: string[];
+  /** #785 — null when the order went to an inpatient's running bill (no invoice at the desk). */
   invoice: {
     draftId: string;
     invoiceId: string;
@@ -152,7 +153,7 @@ export type DeskOrderResult = {
     receiptId: string | null;
     receiptNo: string | null;
     creditExtended: boolean;
-  };
+  } | null;
   reflexConsent: boolean;
   duplicates: { acknowledged: string[]; warnings: DuplicateWarning[] };
 };
@@ -292,6 +293,19 @@ export async function placeLabOrder(
    */
   const encounter = await getEncounter(tx, input.encounterNo);
   const encounterId = encounter?.id ?? input.encounterNo;
+
+  /**
+   * #785 — AN INPATIENT'S ORDER GOES ON THE RUNNING BILL. An episode whose owner registered a charge sink (IPD, `IP…`)
+   * takes the lines itself: a LIVE admission gets no invoice from this desk (step 5 is skipped and the sink posts each
+   * item), and an ENDED one takes no new order at all.
+   */
+  const episode = await episodeChargeStanding(tx, input.encounterNo);
+  if (episode?.standing === "ended") {
+    throw new LabError("encounter_closed", `admission ${input.encounterNo} has ended — a new test needs a new episode`, {
+      encounterNo: input.encounterNo,
+    });
+  }
+  const onRunningBill = episode?.standing === "live";
 
   /**
    * (1) EVERY SERVICE ID IS AN ORDERABLE THIS HOSPITAL HAS, AND AN ORPHAN IS NAMED (A5).
@@ -460,7 +474,7 @@ export async function placeLabOrder(
    */
   const draftId = input.draftId ?? newId();
   const chargeReason = input.chargeReason ?? "lab_desk";
-  const invoiceResult = await issueInvoice(
+  const invoiceResult = onRunningBill ? null : await issueInvoice(
     tx as unknown as Db,
     actor,
     {
@@ -489,12 +503,12 @@ export async function placeLabOrder(
    * `lineNo`, which the map above pins to the item order; the length check is what makes that pin
    * an assertion instead of an assumption.
    */
-  const billedLines = await tx
+  const billedLines = invoiceResult === null ? [] : await tx
     .select({ id: invoiceLines.id, lineNo: invoiceLines.lineNo })
     .from(invoiceLines)
     .where(eq(invoiceLines.invoiceId, invoiceResult.invoiceId))
     .orderBy(asc(invoiceLines.lineNo));
-  if (billedLines.length !== input.items.length) {
+  if (invoiceResult !== null && billedLines.length !== input.items.length) {
     throw new LabError(
       "unknown_service",
       `the invoice carries ${billedLines.length} lines for ${input.items.length} tests — the desk ` +
@@ -518,8 +532,8 @@ export async function placeLabOrder(
       orderItemId: itemId,
       instanceId,
       serviceId: item.serviceId,
-      invoiceId: invoiceResult.invoiceId,
-      invoiceLineId: billedLines[index]!.id,
+      invoiceId: invoiceResult?.invoiceId ?? null,
+      invoiceLineId: billedLines[index]?.id ?? null,
       chargeReason,
       consentRecordedAt: item.consent ? now : null,
       consentRecordedBy: item.consent?.recordedBy ?? null,
@@ -537,9 +551,17 @@ export async function placeLabOrder(
     payload: {
       orderId: placed.orderId, orderNo: placed.orderNo, orderGroupId,
       patientId: input.patientId, encounterNo: input.encounterNo, itemIds: placed.itemIds,
-      invoiceId: invoiceResult.invoiceId, invoiceNo: invoiceResult.invoiceNo, chargeReason,
+      invoiceId: invoiceResult?.invoiceId ?? null, invoiceNo: invoiceResult?.invoiceNo ?? null, chargeReason,
     },
   }));
+
+  /** #785 — the running bill's lines, one per item, in this transaction (a missing rate is the sink's exception). */
+  if (onRunningBill) {
+    await episode.sink.post(tx, actor, {
+      encounterNo: input.encounterNo, department: "lab", at: now,
+      items: placed.itemIds.map((orderItemId, index) => ({ orderId: placed.orderId, orderItemId, serviceId: input.items[index]!.serviceId })),
+    });
+  }
 
   /**
    * (7) DD15 / 02 I3 — A WALK-IN NOBODY COULD ATTRIBUTE. The order still stands and the referrer
@@ -571,7 +593,7 @@ export async function placeLabOrder(
     orderNo: placed.orderNo,
     orderGroupId,
     itemIds: placed.itemIds,
-    invoice: {
+    invoice: invoiceResult === null ? null : {
       draftId,
       invoiceId: invoiceResult.invoiceId,
       invoiceNo: invoiceResult.invoiceNo,

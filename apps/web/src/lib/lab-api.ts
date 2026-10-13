@@ -63,10 +63,11 @@ export type WireDuplicateWarning = {
 export type WireDeskOrder = {
   encounterNo: string;
   orderId: string; orderNo: string; orderGroupId: string; itemIds: string[];
+  /** Null when the order went to an inpatient's running bill (#785): no invoice is raised at the counter. */
   invoice: {
     invoiceId: string; invoiceNo: string; netPayablePaise: number;
     receiptId: string | null; receiptNo: string | null; creditExtended: boolean;
-  };
+  } | null;
   reflexConsent: boolean;
   duplicates: { acknowledged: string[]; warnings: WireDuplicateWarning[] };
 };
