@@ -424,9 +424,6 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // three events, one cursor. Worker-only (`abdmManifest`), and it does nothing unless the
         // worker's own config has ABDM on. `.sort()` puts `abdm.` first.
         ["abdm.care_contexts", ["consultation.completed", "imaging.report_published", "lab.report_published"]],
-        // E3.3 (#731) — the family link's stop: death and absconding revoke the attendant's link. `ipdManifest`, both
-        // processes. Read off the red run; sorted, `ipd.` lands after `abdm.` and before `kernel.`.
-        ["ipd.family_stop", ["ipd.admission.absconded", "ipd.admission.deceased", "patient.updated"]],
         // Plan 11c T1: `ops.mode_changed` is the alerts consumer's THIRD subscription (D4). The
         // array is `.sort()`ed above, so it lands after `notification.failed`.
         // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH
@@ -439,6 +436,9 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
         // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events drive its cleaning task. Sorted, after `abdm.`.
         ["housekeeping.bed_turnover", ["resource.assigned", "resource.released", "resource.status_changed"]],
+        // E3.3 (#731) — the family link's stop: death and absconding revoke the attendant's link. `ipdManifest`, both
+        // processes. Read off the red run; sorted, `ipd.` lands after `abdm.` and before `kernel.`.
+        ["ipd.family_stop", ["ipd.admission.absconded", "ipd.admission.deceased", "patient.updated"]],
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
