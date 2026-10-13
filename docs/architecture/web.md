@@ -42,6 +42,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/lab/reports` | `apps/web/src/screens/lab-reports` |
 | `/lab/verify` | `apps/web/src/screens/lab-verify` |
 | `/login` | `apps/web/src/screens/login` |
+| `/maintenance` | `apps/web/src/screens/maintenance-board` |
 | `/materials/counts` | `(redirect)` |
 | `/materials/grn` | `(redirect)` |
 | `/materials/items` | `(redirect)` |

@@ -322,7 +322,7 @@ export const blockBed = ipdIntent({
 export const unblockBed = ipdIntent({
   input: ipdInput({ bedId: IpdIdSchema, note: IpdNoteSchema.optional() }),
   output: z.strictObject({ bedId: IpdIdSchema, bedStatus: IpdBedStatusSchema }),
-  refusals: ["bed_not_found", "bed_not_blocked"],
+  refusals: ["bed_not_found", "bed_not_blocked", "repair_ticket_open"],
   actors: ["supervisor", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",

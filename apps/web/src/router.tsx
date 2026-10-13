@@ -28,6 +28,7 @@ import { MyLeave } from "./screens/my-leave";
 import { MyTasks } from "./screens/my-tasks";
 import { TasksBoard } from "./screens/tasks-board";
 import { HousekeepingBoard } from "./screens/housekeeping-board";
+import { MaintenanceBoard } from "./screens/maintenance-board";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { IpdBeds } from "./screens/ipd-beds";
@@ -299,6 +300,7 @@ const NAV: readonly NavEntry[] = [
   { to: "/tasks", label: "nav.myTasks", permission: "tasks.work", group: "services" },
   { to: "/tasks/board", label: "nav.taskBoard", permission: "tasks.view", group: "services", anyOf: ["tasks.supervise"] },
   { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
+  { to: "/maintenance", label: "nav.maintenance", permission: "maintenance.view", group: "services" },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1129,6 +1131,13 @@ const housekeepingBoardRoute = createRoute({
   component: HousekeepingBoard,
 });
 
+/** E1.5 MAINTENANCE (issue #722) — the maintenance supervisor's board: 16:9, open repairs by floor, critical first. */
+const maintenanceBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/maintenance",
+  component: MaintenanceBoard,
+});
+
 const myReachRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/me/reach",
@@ -1952,6 +1961,8 @@ export const router = createRouter({
       myTasksRoute, tasksBoardRoute,
       // E1.4 HOUSEKEEPING — +1, `/housekeeping`. `caddyfile-parity.test.ts` pins the count.
       housekeepingBoardRoute,
+      // E1.5 MAINTENANCE — +1, `/maintenance`. `caddyfile-parity.test.ts` pins the count.
+      maintenanceBoardRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
     ]),

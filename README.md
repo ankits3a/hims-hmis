@@ -1690,6 +1690,15 @@ into cleaning raises exactly one cleaning task on the task engine; the bed is fr
 `housekeeping.verify_terminal` is held by `services_supervisor` alone — a terminal clean (isolation bed, infection,
 death) is checked by the housekeeping supervisor. A routine clean may also be checked by a holder of `ipd.beds.clean`.
 
+**Maintenance (E1.5, issue #722, decision 0072, built 2026-10-13, awaiting owner review).** Repair tickets for beds,
+rooms, oxygen points and fixtures, worked on the task engine. A bed with a repair ticket stays blocked until the ticket
+is closed, and only a nurse's confirmation closes it; a third fault on one item in 30 days flags it for replacement.
+`maintenance.confirm` is held by `duty_manager` and the nurses (`ot_nurse`, `recovery_nurse`, `radiology_nurse`), and a
+holder of `ipd.beds.clean` may confirm too; the new role `maintenance_staff` (engineering technicians) and
+`biomedical_engineer` take the repairs. `maintenance.raise` is held by the front office, its supervisor, the duty manager,
+the services supervisor, the nurses and the technicians; `maintenance.view` and `maintenance.manage` by the duty manager
+and the services supervisor (the board at `/maintenance`); `maintenance.work` by the two technician roles.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

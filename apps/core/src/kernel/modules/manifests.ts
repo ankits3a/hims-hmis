@@ -27,6 +27,7 @@ import { orderingManifest } from "../../modules/ordering";
 import { ipdManifest } from "../../modules/ipd";
 import { tasksManifest } from "../../modules/tasks";
 import { housekeepingManifest } from "../../modules/housekeeping";
+import { maintenanceManifest } from "../../modules/maintenance";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -199,4 +200,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // E1.4 HOUSEKEEPING (issue #721) — appended. Two permissions, one menu entry, and the bed's kernel events
   // (released, status changed, assigned) -> `housekeeping.bed_turnover`. Installed in BOTH processes.
   housekeepingManifest,
+  // E1.5 MAINTENANCE (issue #722) — appended. Five permissions and one menu entry; no subscription, no job. The API
+  // mounts its routes; the worker imports the module only to define the two repair kinds for the task clock.
+  maintenanceManifest,
 ];

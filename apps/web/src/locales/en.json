@@ -87,6 +87,7 @@
     "myTasks": "My tasks",
     "taskBoard": "Task board",
     "housekeeping": "Housekeeping",
+    "maintenance": "Maintenance",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -15793,6 +15794,8 @@
     "kind": {
       "general": "General task",
       "bed_clean_routine": "Bed clean",
+      "repair_general": "Repair",
+      "repair_biomedical": "Equipment repair",
       "bed_clean_terminal": "Terminal clean",
       "spill": "Spill clean",
       "room_inspection": "Room inspection"
@@ -15863,6 +15866,138 @@
       "not_permitted": "Not allowed",
       "reason_required": "Say why",
       "nudged_recently": "Nudged a few min ago"
+    }
+  },
+  "maintenance": {
+    "title": "Maintenance",
+    "report": "Report a fault",
+    "close": "Close",
+    "done": "Done",
+    "failed": "Could not save. Try again.",
+    "offline": "Offline",
+    "none": "No open repairs",
+    "noFloor": "No floor",
+    "someone": "someone",
+    "floorOpen": "{{count}} open",
+    "floorCritical": "{{count}} critical · {{open}} open",
+    "late": "Late",
+    "blocked": "Bed blocked",
+    "onRelease": "Blocks on release",
+    "dispatch": "Dispatch",
+    "dispatched": "Dispatched",
+    "confirm": "Confirm",
+    "confirmRepair": "Confirm repair",
+    "confirmed": "Repair confirmed",
+    "count": {
+      "open": "open",
+      "critical": "critical",
+      "late": "late",
+      "toConfirm": "waiting nurse",
+      "blockedBeds": "beds blocked",
+      "notShown": "not shown"
+    },
+    "side": {
+      "toConfirm": "Fixed · waiting nurse ({{count}})",
+      "noneToConfirm": "Nothing waiting",
+      "blockedBeds": "Beds blocked by repairs ({{count}})",
+      "noBeds": "No bed blocked",
+      "replace": "Replace? ({{count}})",
+      "noReplace": "No item flagged"
+    },
+    "replace": {
+      "short": "Replace?",
+      "why": "3 faults in 30 days",
+      "flagged": "3rd fault in 30 days — flagged for replacement"
+    },
+    "state": {
+      "open": "Waiting for technician",
+      "undispatched": "Not dispatched",
+      "assigned": "With {{who}}",
+      "in_progress": "{{who}} working",
+      "fixed": "Fixed, waiting nurse",
+      "closed": "Closed",
+      "cancelled": "Cancelled"
+    },
+    "bedState": {
+      "open": "waiting technician",
+      "assigned": "technician assigned",
+      "in_progress": "being repaired",
+      "fixed": "fixed, waiting nurse",
+      "closed": "closed",
+      "cancelled": "cancelled"
+    },
+    "bedLine": "{{head}} · repair #{{n}} · {{state}}",
+    "bedShort": "Repair #{{n}} · {{state}}",
+    "age": {
+      "min": "{{m}} min",
+      "hmin": "{{h}} h {{m}} min",
+      "dh": "{{d}} d {{h}} h"
+    },
+    "item": {
+      "bed": "Bed",
+      "oxygen_point": "Oxygen point",
+      "suction": "Suction",
+      "monitor": "Monitor",
+      "fixture": "Fixture",
+      "electrical": "Electrical",
+      "plumbing": "Plumbing",
+      "ac": "AC",
+      "other": "Other"
+    },
+    "urgency": {
+      "routine": "Routine",
+      "urgent": "Urgent",
+      "critical": "Critical"
+    },
+    "urgencyBack": {
+      "routine": "in 3 days",
+      "urgent": "in 24 h",
+      "critical": "in 4 h"
+    },
+    "placeKind": {
+      "bed": "Bed",
+      "room": "Room",
+      "ward": "Ward",
+      "hall": "Hall",
+      "floor": "Floor"
+    },
+    "bedEffect": {
+      "blocked": "Bed blocked until the repair is confirmed",
+      "block_on_release": "Bed blocks when the patient leaves",
+      "joined_block": "Added to the bed's repair block",
+      "already_blocked": "Bed already blocked for another reason",
+      "not_blocked_reserved": "Bed is reserved — not blocked",
+      "not_a_bed": "Repair sent"
+    },
+    "raise": {
+      "title": "Report a fault",
+      "place": "Where",
+      "placeHint": "Bed, room or ward code",
+      "change": "Change",
+      "item": "What is broken",
+      "urgency": "How urgent",
+      "note": "What is wrong",
+      "noteHint": "A few words",
+      "tag": "Asset tag (if any)",
+      "tagHint": "e.g. OX-12",
+      "send": "Report",
+      "sending": "Sending…",
+      "raised": "Repair #{{n}} raised",
+      "merged": "Already reported · repair #{{n}}",
+      "failed": "Could not report. Try again."
+    },
+    "refusal": {
+      "forbidden": "You may not do this.",
+      "unknown_place": "Place not found.",
+      "place_retired": "This place is retired.",
+      "ticket_not_found": "Repair not found.",
+      "ticket_closed": "Repair already closed.",
+      "already_fixed": "Already fixed.",
+      "not_fixed_yet": "Not fixed yet.",
+      "task_still_open": "Still being worked.",
+      "verifier_is_doer": "The technician cannot confirm their own repair.",
+      "not_permitted": "You may not confirm this repair.",
+      "repair_ticket_open": "Close the repair ticket first."
     }
   },
   "housekeeping": {

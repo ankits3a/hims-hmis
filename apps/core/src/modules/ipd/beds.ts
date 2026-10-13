@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { IPD_BED_CLASS_INFO, IPD_INTENTS, IPD_RESERVATION_HOLD_MINUTES, ipdIsInFuture, newId } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { withTx } from "../../kernel/db/client";
-import { ipdBedBlocks, ipdBedReservations, ipdBedStays, resources } from "../../kernel/db/schema";
+import { ipdBedBlocks, ipdBedReservations, ipdBedStays, maintenanceTickets, resources } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import {
   KERNEL_RESOURCE_KINDS, assignResource, changeResourceStatus, releaseResource, retireResource, updateResource,
@@ -465,34 +465,43 @@ export async function blockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = 
   const input: Input<"block_bed"> = IPD_INTENTS.block_bed.input.parse(raw);
   await requirePermission(db, actor, IPD_BEDS_MANAGE);
   const at = opts.now ?? new Date();
-  return once(db, actor, "block_bed", input.idempotencyKey, input, () => withTx(db, async (tx) => {
-    const { row } = await lockBed(tx, input.bedId);
-    if (row.status === "retired") throw new IpdRefusal("bed_retired", "Retired bed");
-    const held = await currentHold(tx, row, at);
-    if (held !== undefined) throw new IpdRefusal("bed_reserved", "Bed is reserved", { reservationId: held.id });
-    const existing = await liveBlock(tx, row.id);
-    if (existing !== undefined) throw new IpdRefusal("state_changed", "Bed is already blocked", { blockId: existing.id });
-    const occupied = row.occupantRef !== null;
-    if (!occupied && row.status !== "available" && row.status !== "cleaning") throw new IpdRefusal("state_changed", notAvailableRule(row));
+  return once(db, actor, "block_bed", input.idempotencyKey, input, () => withTx(db, (tx) => blockBedIn(tx, actor, input, at)), at);
+}
 
-    const blockId = newId();
-    const status = occupied ? "block_on_release" as const : "blocked" as const;
-    if (!occupied) {
-      await changeResourceStatus(tx, actor, KERNEL_RESOURCE_KINDS, row.id, "blocked", { at, reason: `block:${input.reason}` });
-    }
-    await tx.insert(ipdBedBlocks).values({
-      id: blockId, bedId: row.id, status: occupied ? "pending_release" : "active", reason: input.reason, note: input.note,
-      expectedReturnAt: new Date(input.expectedReturnAt), requestedBy: actor.id, requestedAt: at, appliedAt: occupied ? null : at,
-    });
-    await appendEvent(tx, bedBlocked.make({
-      payload: {
-        blockId, bedId: row.id, bedCode: row.code, status, reason: input.reason,
-        expectedReturnAt: new Date(input.expectedReturnAt).toISOString(), provenance: provenanceOf(actor),
-      },
-      actor, correlationId: row.id, occurredAt: at,
-    }));
-    return { blockId, bedId: row.id, status };
-  }), at);
+/**
+ * E1.5 THE MAINTENANCE SEAM — `blockBed`'s act inside the caller's transaction, without the permission and
+ * idempotency wrapper (the caller owns both: maintenance checks `maintenance.raise` and blocks the bed in the
+ * same transaction that writes its repair ticket). Same locks, same refusals, same event.
+ */
+export async function blockBedIn(
+  tx: Tx, actor: Actor, input: Pick<Input<"block_bed">, "bedId" | "reason" | "note" | "expectedReturnAt">, at: Date,
+): Promise<Output<"block_bed">> {
+  const { row } = await lockBed(tx, input.bedId);
+  if (row.status === "retired") throw new IpdRefusal("bed_retired", "Retired bed");
+  const held = await currentHold(tx, row, at);
+  if (held !== undefined) throw new IpdRefusal("bed_reserved", "Bed is reserved", { reservationId: held.id });
+  const existing = await liveBlock(tx, row.id);
+  if (existing !== undefined) throw new IpdRefusal("state_changed", "Bed is already blocked", { blockId: existing.id });
+  const occupied = row.occupantRef !== null;
+  if (!occupied && row.status !== "available" && row.status !== "cleaning") throw new IpdRefusal("state_changed", notAvailableRule(row));
+
+  const blockId = newId();
+  const status = occupied ? "block_on_release" as const : "blocked" as const;
+  if (!occupied) {
+    await changeResourceStatus(tx, actor, KERNEL_RESOURCE_KINDS, row.id, "blocked", { at, reason: `block:${input.reason}` });
+  }
+  await tx.insert(ipdBedBlocks).values({
+    id: blockId, bedId: row.id, status: occupied ? "pending_release" : "active", reason: input.reason, note: input.note,
+    expectedReturnAt: new Date(input.expectedReturnAt), requestedBy: actor.id, requestedAt: at, appliedAt: occupied ? null : at,
+  });
+  await appendEvent(tx, bedBlocked.make({
+    payload: {
+      blockId, bedId: row.id, bedCode: row.code, status, reason: input.reason,
+      expectedReturnAt: new Date(input.expectedReturnAt).toISOString(), provenance: provenanceOf(actor),
+    },
+    actor, correlationId: row.id, occurredAt: at,
+  }));
+  return { blockId, bedId: row.id, status };
 }
 
 /**
@@ -504,28 +513,43 @@ export async function unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts 
   const input: Input<"unblock_bed"> = IPD_INTENTS.unblock_bed.input.parse(raw);
   await requirePermission(db, actor, IPD_BEDS_MANAGE);
   const at = opts.now ?? new Date();
-  return once(db, actor, "unblock_bed", input.idempotencyKey, input, () => withTx(db, async (tx) => {
-    const { row } = await lockBed(tx, input.bedId);
-    const block = await liveBlock(tx, row.id);
-    if (block === undefined) throw new IpdRefusal("bed_not_blocked");
-    let bedStatus = row.status;
-    if (block.status === "pending_release") {
-      await tx.update(ipdBedBlocks).set({ status: "cancelled", endedBy: actor.id, endedAt: at, endNote: input.note ?? null })
-        .where(eq(ipdBedBlocks.id, block.id));
-    } else {
-      const toCleaning = block.reason === "maintenance" || block.reason === "infection_control" || block.reason === "deep_clean";
-      bedStatus = toCleaning ? "cleaning" : "available";
-      const reason = !toCleaning ? "unblock" : block.reason === "maintenance" ? CLEAN_ROUTINE : CLEAN_TERMINAL;
-      if (row.status === "blocked") await changeResourceStatus(tx, actor, KERNEL_RESOURCE_KINDS, row.id, bedStatus, { at, reason });
-      await tx.update(ipdBedBlocks).set({ status: "ended", endedBy: actor.id, endedAt: at, endNote: input.note ?? null })
-        .where(eq(ipdBedBlocks.id, block.id));
-    }
-    await appendEvent(tx, bedUnblocked.make({
-      payload: { blockId: block.id, bedId: row.id, bedCode: row.code, bedStatus, provenance: provenanceOf(actor) },
-      actor, correlationId: row.id, occurredAt: at,
-    }));
-    return { bedId: row.id, bedStatus: bedStatus as Output<"unblock_bed">["bedStatus"] };
-  }), at);
+  return once(db, actor, "unblock_bed", input.idempotencyKey, input, () => withTx(db, (tx) => unblockBedIn(tx, actor, input, at)), at);
+}
+
+/**
+ * `unblockBed`'s act inside the caller's transaction (E1.5: maintenance ends a repair block from the nurse's
+ * confirmation, in the repair task's verification transaction). A block that an OPEN repair ticket holds is
+ * refused here — by hand or by any other door: `repair_ticket_open` ("Close the repair ticket"). Maintenance
+ * closes its ticket first in the same transaction, so its own unblock passes.
+ */
+export async function unblockBedIn(
+  tx: Tx, actor: Actor, input: Pick<Input<"unblock_bed">, "bedId" | "note">, at: Date,
+): Promise<Output<"unblock_bed">> {
+  const { row } = await lockBed(tx, input.bedId);
+  const block = await liveBlock(tx, row.id);
+  if (block === undefined) throw new IpdRefusal("bed_not_blocked");
+  const repair = (await tx.select({ id: maintenanceTickets.id, number: maintenanceTickets.number }).from(maintenanceTickets)
+    .where(and(eq(maintenanceTickets.bedBlockId, block.id), inArray(maintenanceTickets.state, ["open", "fixed"]))).limit(1))[0];
+  if (repair !== undefined) {
+    throw new IpdRefusal("repair_ticket_open", undefined, { blockId: block.id, ticketId: repair.id, ticketNumber: repair.number });
+  }
+  let bedStatus = row.status;
+  if (block.status === "pending_release") {
+    await tx.update(ipdBedBlocks).set({ status: "cancelled", endedBy: actor.id, endedAt: at, endNote: input.note ?? null })
+      .where(eq(ipdBedBlocks.id, block.id));
+  } else {
+    const toCleaning = block.reason === "maintenance" || block.reason === "infection_control" || block.reason === "deep_clean";
+    bedStatus = toCleaning ? "cleaning" : "available";
+    const reason = !toCleaning ? "unblock" : block.reason === "maintenance" ? CLEAN_ROUTINE : CLEAN_TERMINAL;
+    if (row.status === "blocked") await changeResourceStatus(tx, actor, KERNEL_RESOURCE_KINDS, row.id, bedStatus, { at, reason });
+    await tx.update(ipdBedBlocks).set({ status: "ended", endedBy: actor.id, endedAt: at, endNote: input.note ?? null })
+      .where(eq(ipdBedBlocks.id, block.id));
+  }
+  await appendEvent(tx, bedUnblocked.make({
+    payload: { blockId: block.id, bedId: row.id, bedCode: row.code, bedStatus, provenance: provenanceOf(actor) },
+    actor, correlationId: row.id, occurredAt: at,
+  }));
+  return { bedId: row.id, bedStatus: bedStatus as Output<"unblock_bed">["bedStatus"] };
 }
 
 // ═══════════════════════════════════════════ mark_bed_clean ═══════════════════════════════════════════

@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/tasks/`
 · Notes: [MAP.md](../../../apps/core/src/modules/tasks/MAP.md)
 
 - **Depends on modules:** `roster`
-- **Used by modules:** `housekeeping`
+- **Used by modules:** `housekeeping`, `maintenance`
 - **Kernel used:** `alerts`, `auth`, `db`, `modules`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file

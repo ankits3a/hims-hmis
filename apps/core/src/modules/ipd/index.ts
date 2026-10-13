@@ -34,6 +34,7 @@ export { IpdRefusal, ipdRefusalStatus } from "./errors";
 export {
   IPD_SYSTEM_ACTOR, assignBed, blockBed, lapseBedReservations, markBedClean, markBedCleanIn, markIncumbentBeds,
   nextRuleValidBeds, releaseBedOccupant, releaseIncumbentBed, releaseReservation, reserveBed, retireBed, unblockBed,
+  blockBedIn, unblockBedIn,
 } from "./beds";
 export type { IncumbentBedLine, IncumbentBedReport } from "./beds";
 export { PAEDIATRIC_AGE_LIMIT_YEARS, checkBedRules, placementGender } from "./bed-rules";

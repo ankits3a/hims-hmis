@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
 - **Depends on modules:** `billing`, `patients`
-- **Used by modules:** `housekeeping`
+- **Used by modules:** `housekeeping`, `maintenance`
 - **Kernel used:** `auth`, `db`, `events`, `modules`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -58,6 +58,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_SYSTEM_ACTOR: Actor`
   - `assignBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"assign_bed">>`
   - `blockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"block_bed">>`
+  - `blockBedIn(tx: Tx, actor: Actor, input: Pick<Input<"block_bed">, "bedId" | "reason" | "note" | "expectedReturnAt">, at: Date): Promise<Outp…`
   - `lapseBedReservations(db: Db, now: Date): Promise<{ lapsed: number }>`
   - `markBedClean(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"mark_bed_clean">>`
   - `markBedCleanIn(tx: Tx, actor: Actor, bedId: string, cleanedAt: Date): Promise<Output<"mark_bed_clean">>`
@@ -69,6 +70,7 @@ Source: `apps/core/src/modules/ipd/`
   - `reserveBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"reserve_bed">>`
   - `retireBed(db: Db, actor: Actor, input: { bedId: string; reason: string }, opts: Opts = {}): Promise<{ bedId: string }>`
   - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
+  - `unblockBedIn(tx: Tx, actor: Actor, input: Pick<Input<"unblock_bed">, "bedId" | "note">, at: Date): Promise<Output<"unblock_bed">>`
   - types: `IncumbentBedLine`, `IncumbentBedReport`
 - `errors.ts`
   - `class IpdError`
