@@ -207,7 +207,10 @@ function ChartDrawer({ bed, onClose, onChanged }: { bed: IpdStationBed; onClose:
           <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => { setTab(k); setNotice(null); }}>{t(`ipdNursing.chart.tab.${k}`)}</button>
         ))}
       </nav>
-      {notice !== null ? <div className="ipdn-ok" role="status">✓ {notice}</div> : null}
+      {notice === null ? null : notice === t("ipdNursing.noDoctorReached")
+        // Review walk: "No doctor reached — call" is a warning to act on, never a success tick.
+        ? <div className="ipdn-warn" role="alert">☎ {notice}</div>
+        : <div className="ipdn-ok" role="status">✓ {notice}</div>}
       {failed ? <div className="ipdn-refusal" role="alert">{t("ipdNursing.loadFailed")}</div> : null}
       {chart === null ? (failed ? null : <div className="ipdn-empty">{t("ipdNursing.loading")}</div>) : (
         <div className="ipdn-drawerbody">

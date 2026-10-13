@@ -225,17 +225,28 @@ export async function saveVitals(b: VitalsBody, label?: string): Promise<{ queue
   }
 }
 
-/** The queue's live length, the sets dropped by the last replays (named), and a replay on `online`. */
+/**
+ * Sets dropped by any replay, NAMED until the nurse taps Done. Module-level, not per hook: the replay runs in the live
+ * loader's hook and the list is shown by the live line's (a per-hook list was never seen — found on the browser walk).
+ */
+let droppedStore: DroppedVitals[] = [];
+function addDropped(d: readonly DroppedVitals[]): void {
+  if (d.length === 0) return;
+  droppedStore = [...droppedStore, ...d];
+  for (const l of listeners) l();
+}
+
+/** The queue's live length, the sets dropped by replays (named), and a replay on `online`. */
 export function useVitalsQueue(): { queued: number; dropped: DroppedVitals[]; replay: () => void; clearDropped: () => void } {
   const [queued, setQueued] = useState(() => readQueue().length);
-  const [dropped, setDropped] = useState<DroppedVitals[]>([]);
+  const [dropped, setDropped] = useState<DroppedVitals[]>(() => droppedStore);
   const replay = useCallback(() => {
     if (readQueue().length === 0) return;
-    void replayVitals().then((r) => { if (r.dropped.length > 0) setDropped((x) => [...x, ...r.dropped]); }, () => undefined);
+    void replayVitals().then((r) => addDropped(r.dropped), () => undefined);
   }, []);
-  const clearDropped = useCallback(() => setDropped([]), []);
+  const clearDropped = useCallback(() => { droppedStore = []; for (const l of listeners) l(); }, []);
   useEffect(() => {
-    const on = (): void => setQueued(readQueue().length);
+    const on = (): void => { setQueued(readQueue().length); setDropped(droppedStore); };
     listeners.add(on);
     window.addEventListener("online", replay);
     return () => { listeners.delete(on); window.removeEventListener("online", replay); };
@@ -248,4 +259,5 @@ export function resetVitalsQueueForTests(): void {
   try { globalThis.localStorage?.removeItem(QUEUE_KEY); } catch { /* ignore */ }
   replaying = null;
   serverOffsetMs = 0;
+  droppedStore = [];
 }

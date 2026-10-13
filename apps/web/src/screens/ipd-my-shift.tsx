@@ -71,7 +71,10 @@ export function IpdMyShift(): React.ReactElement {
           </nav>
         ) : null}
       </header>
-      {notice !== null ? <div className="ipdn-ok" role="status" data-testid="ipdn-notice">✓ {notice}</div> : null}
+      {notice === null ? null : notice === t("ipdNursing.noDoctorReached")
+        // Review walk: "No doctor reached — call" is a warning to act on, never a success tick.
+        ? <div className="ipdn-warn" role="alert" data-testid="ipdn-notice">☎ {notice}</div>
+        : <div className="ipdn-ok" role="status" data-testid="ipdn-notice">✓ {notice}</div>}
       {error === "forbidden" ? <div className="ipdn-empty" role="alert">{t("ipdNursing.forbidden")}</div> : null}
       {shift === null && error === null ? <div className="ipdn-empty">{t("ipdNursing.loading")}</div> : null}
 

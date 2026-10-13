@@ -86,6 +86,16 @@ describe("nurse station (E4.1, board C)", () => {
     expect(within(screen.getByTestId("ipdn-bed-F05-MED-F-B02")).queryByTestId("ipdn-ack")).toBeNull();
   });
 
+  it("review walk: a queued set past 30 minutes is named on the live line after the station loads", async () => {
+    const old = { idempotencyKey: "00000000-0000-4000-8000-000000000099", admissionId: fid(1), observedAt: new Date(Date.now() - 45 * 60_000).toISOString(),
+      source: "person", values: { pulse: 88 }, queueLabel: "Test Patient A" };
+    localStorage.setItem("hmis.ipd.vitalsQueue.v1", JSON.stringify([old]));
+    renderWithRouter(<IpdWard />, "/ipd/ward");
+    const box = await screen.findByTestId("ipdn-dropped");
+    expect(box.textContent).toContain("Test Patient A");
+    expect(box.textContent).toContain("Record these on paper.");
+  });
+
   it("review 10: an alert no doctor was reached for says so in words; a sealed bed shows no code", async () => {
     const st = stationOf(Date.now());
     st.beds[1] = { ...st.beds[1]!, code: null, consultant: null, dayOfStay: null, patient: { ...st.beds[1]!.patient!, name: "Sealed patient", uhid: "", admissionNo: null, sealed: true } };
