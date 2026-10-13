@@ -6,6 +6,7 @@ import { IpdBedsController } from "./beds.controller";
 import { IpdBillDeskController } from "./billdesk.controller";
 import { IpdChargesController } from "./charges.controller";
 import { registerIpdReceiptGuard } from "./deposit";
+import { registerIpdAdvanceRefundListener } from "./deposit-ladder";
 import { IpdPayerController } from "./payer.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 
@@ -22,6 +23,8 @@ class IpdRealtimeRegistrar implements OnModuleInit {
     this.gateway.registerRouter(ipdTopicRouter);
     // E1.2 review RED 3 — a ₹0 scheme inpatient is refused money on EVERY receipt route (billing's seam).
     registerIpdReceiptGuard();
+    // E2.3 (#727, review 7) — an advance refund re-checks the deposit ladder of the patient's open admission.
+    registerIpdAdvanceRefundListener();
   }
 }
 

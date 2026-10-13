@@ -8,6 +8,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { TariffError, loadPricingContext, priceInvoiceLines, resolveActiveTariffVersion } from "../tariff";
 import { admissionAdvisoryLock, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { ipdChargeableDays, rentClassOf } from "./charge-days";
+import { evaluateDepositLadderSafely } from "./deposit-ladder";
 import { chargeException, chargeReversed, rentPosted, visitRecorded } from "./charge-events";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_CHARGES_REVERSE } from "./manifest";
@@ -430,8 +431,9 @@ export async function reverseChargeLine(
   const line = (await db.select().from(ipdChargeLines).where(eq(ipdChargeLines.id, input.chargeLineId)))[0];
   if (line === undefined) throw new IpdError("charge_line_not_found", "no such charge line", { chargeLineId: input.chargeLineId });
   if (line.reversalOf !== null) throw new IpdError("charge_line_is_reversal", "a reversal line cannot itself be reversed");
+  let out: { reversalLineId: string };
   try {
-    return await withTx(db, async (tx) => {
+    out = await withTx(db, async (tx) => {
     await admissionAdvisoryLock(tx, line.admissionId);
     const done = (await tx.select({ id: ipdChargeLines.id }).from(ipdChargeLines).where(eq(ipdChargeLines.reversalOf, line.id)))[0];
     if (done !== undefined) throw new IpdError("charge_line_already_reversed", "this line is already reversed", { reversalLineId: done.id });
@@ -455,5 +457,8 @@ export async function reverseChargeLine(
     }
     throw e;
   }
+  // E2.3 (#727, review 7): a reversal lowers the patient-payable total — the deposit ladder re-checks (caught and logged).
+  await evaluateDepositLadderSafely(db, line.admissionId, at, "reversal");
+  return out;
 }
 

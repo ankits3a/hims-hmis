@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { grantPermissionToRole, syncPermissions } from "../../../kernel/auth/permissions";
 import { authManifest } from "../../../kernel/auth/manifest";
 import { ModuleRegistry } from "../../../kernel/modules/loader";
-import { alerts, ipdDepositAlerts, notifications, patients } from "../../../kernel/db/schema";
+import { approveRequest } from "../../../kernel/approvals/decisions";
+import { alerts, events, ipdDailyTotals, ipdDepositAlerts, notifications, patients } from "../../../kernel/db/schema";
+import { issueRefundVoucher, requestRefund } from "../../billing";
+import { openSession } from "../../billing/sessions";
 import { runNotifyPump } from "../../../kernel/notify/pump";
 import { templateByKey } from "../../../kernel/notify/templates";
 import { patientsManifest } from "../../patients";
@@ -13,8 +16,8 @@ import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { ensureRole, mkUser } from "../../../../test/helpers/opd";
 import { CHARGE_RATES, mkChargesWorld } from "../../../../test/helpers/ipd";
 import {
-  backfillDowntime, evaluateDepositLadder, ipdManifest, postConsultantVisit, postNightlyIpdCharges, queueDailyTotals,
-  readBillDesk, runIpdBillDeskNightly, takeDeposit,
+  SEALED_LABEL, backfillDowntime, evaluateDepositLadder, ipdManifest, postConsultantVisit, postNightlyIpdCharges, queueDailyTotals,
+  readBillDesk, registerIpdAdvanceRefundListener, reverseChargeLine, runIpdBillDeskNightly, takeDeposit,
 } from "../index";
 import { withTx } from "../../../kernel/db/client";
 import type { Actor } from "@hmis/contracts";
@@ -94,7 +97,7 @@ describe("E2.3 deposit ladder and bill desk — acceptance", () => {
     const afterNight1 = await notices(admissionId);
     const told = new Set(afterNight1.map((n) => n.userId));
     expect(told.has(people.cashier.id) && told.has(people.foSupervisor.id) && told.has(w.billingManager.id)).toBe(true);
-    expect(told.has(people.dutyManager.id) || told.has(w.ms.id)).toBe(false);
+    expect(told.has(people.dutyManager.id) || told.has(w.ms.id) || told.has(w.owner.id)).toBe(false);
     // Rerun the same night: nothing new.
     await runIpdBillDeskNightly(db, ist("2026-03-11T00:30:00"));
     await evaluateDepositLadder(db, admissionId, ist("2026-03-11T09:00:00"));
@@ -108,34 +111,40 @@ describe("E2.3 deposit ladder and bill desk — acceptance", () => {
     expect(rows.map((r) => r.level).sort()).toEqual(["escalate", "top_up"]);
     const all = await notices(admissionId);
     const escalated = new Set(all.filter((n) => n.title.includes("90")).map((n) => n.userId));
-    for (const u of [people.cashier, people.foSupervisor, w.billingManager, people.dutyManager, w.ms]) expect(escalated.has(u.id)).toBe(true);
+    // Review 3 (decision 0058): the escalation is the billing manager, the duty manager and the owner — never the MS.
+    expect([...escalated].sort()).toEqual([w.billingManager.id, people.dutyManager.id, w.owner.id].sort());
+    expect(all.filter((n) => n.userId === w.ms.id)).toEqual([]);
     // Once each: one notice per person per level.
-    expect(all.filter((n) => n.userId === people.cashier.id)).toHaveLength(2);
+    expect(all.filter((n) => n.userId === people.cashier.id)).toHaveLength(1);
+    expect(all.filter((n) => n.userId === w.billingManager.id)).toHaveLength(2);
     // Never a doctor: neither the doctor nor the doctor in a cashier seat.
     const doctors = [w.doctor.id, w.resident.id, w.crossUserId, people.doctorCashier.id];
     expect(all.filter((n) => doctors.includes(n.userId))).toEqual([]);
     expect(await db.select().from(alerts).where(eq(alerts.userId, people.doctorCashier.id))).toEqual([]);
   });
 
-  it("(ii) a top-up that brings usage back under a threshold re-arms it", async () => {
+  it("(ii) a top-up re-arms a level only below 70 % (top-up) / 85 % (escalation) — hysteresis", async () => {
     const { admissionId } = await admitCash("2026-03-10T10:00:00");
     await deposit(admissionId, 290_000, "2026-03-10T10:30:00");
     await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
     await postNightlyIpdCharges(db, ist("2026-03-12T00:05:00"));
     await runIpdBillDeskNightly(db, ist("2026-03-12T00:06:00"));
     expect((await alertRows(admissionId)).filter((r) => r.rearmedAt === null)).toHaveLength(2);
-    // Top-up ₹4,000: ₹4,400 of ₹6,900 = 63.8 % — both levels re-arm at the receipt.
-    await deposit(admissionId, 400_000, "2026-03-12T11:00:00");
-    const after = await alertRows(admissionId);
-    expect(after.every((r) => r.rearmedAt !== null)).toBe(true);
-    // Night 3: ₹6,600 of ₹6,900 = 95.6 % — both fire again, a new row each.
+    const live = async () => (await alertRows(admissionId)).filter((r) => r.rearmedAt === null).map((r) => r.level).sort();
+    // Top-up to ₹4,400 of ₹6,111.12 = 71.99 %: under 85 % re-arms the escalation; not under 70 %, the top-up stays live.
+    await deposit(admissionId, 321_112, "2026-03-12T11:00:00");
+    expect(await live()).toEqual(["top_up"]);
+    // Another ₹800: 63.7 % — the top-up re-arms too.
+    await deposit(admissionId, 80_000, "2026-03-12T11:30:00");
+    expect(await live()).toEqual([]);
+    // Night 3: ₹6,600 of ₹6,911.12 = 95.5 % — both fire again, a new row each.
     await postNightlyIpdCharges(db, ist("2026-03-13T00:05:00"));
     const n3 = await runIpdBillDeskNightly(db, ist("2026-03-13T00:06:00"));
     expect(n3.ladder.find((o) => o.admissionId === admissionId)?.fired).toEqual(["top_up", "escalate"]);
     const rows = await alertRows(admissionId);
     expect(rows.filter((r) => r.level === "top_up")).toHaveLength(2);
-    expect(rows.filter((r) => r.rearmedAt === null).map((r) => r.level).sort()).toEqual(["escalate", "top_up"]);
-    expect((await notices(admissionId)).filter((n) => n.userId === people.cashier.id)).toHaveLength(4);
+    expect(rows.filter((r) => r.level === "escalate")).toHaveLength(2);
+    expect((await notices(admissionId)).filter((n) => n.userId === people.cashier.id)).toHaveLength(2);
   });
 
   it("(iii) the daily totals message carries totals only — no line, no diagnosis; a sealed admission sends none", async () => {
@@ -175,8 +184,14 @@ describe("E2.3 deposit ladder and bill desk — acceptance", () => {
     // No attendant phone (the patient paid himself, no guardian): skipped with the reason.
     const alone = await admitCash("2026-03-10T12:00:00");
     await deposit(alone.admissionId, 500_000, "2026-03-10T12:30:00", { name: "Self", relation: "self" });
-    expect(await queueDailyTotals(db, alone.admissionId, "2026-03-11", ist("2026-03-12T00:06:00"))).toBe("no_attendant_phone");
+    // Review 9: two runs at once record ONE day and ONE skip (advisory lock + unique (admission, IST date)).
+    const twice = await Promise.all([1, 2].map(() => queueDailyTotals(db, alone.admissionId, "2026-03-11", ist("2026-03-12T00:06:00"))));
+    expect(twice.sort()).toEqual(["already", "no_attendant_phone"]);
     expect(await db.select().from(notifications).where(eq(notifications.refId, alone.admissionId))).toEqual([]);
+    expect((await db.select().from(ipdDailyTotals).where(eq(ipdDailyTotals.admissionId, alone.admissionId))).map((r) => r.outcome)).toEqual(["no_attendant_phone"]);
+    const skips = await db.select({ seq: events.seq }).from(events)
+      .where(and(eq(events.name, "ipd.daily_totals.skipped"), sql`${events.payload}->>'admissionId' = ${alone.admissionId}`));
+    expect(skips).toHaveLength(1);
   });
 
   it("(iv) the bill desk lists only exceptions: an admission under 75 % does not appear", async () => {
@@ -218,5 +233,110 @@ describe("E2.3 deposit ladder and bill desk — acceptance", () => {
     const readers = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
       .filter((f) => readFileSync(join(dir, f), "utf8").includes("ipdDepositAlerts"));
     expect(readers.sort()).toEqual(["bill-desk.ts", "deposit-ladder.ts"]);
+  });
+  it("RED 1: one admission's failure never skips the others — ladder and daily totals each in their own try", async () => {
+    const bad = await admitCash("2026-03-10T10:00:00");
+    await deposit(bad.admissionId, 290_000, "2026-03-10T10:30:00");
+    const good = await admitCash("2026-03-10T10:10:00");
+    await deposit(good.admissionId, 290_000, "2026-03-10T10:40:00");
+    // The bad admission's ladder write fails in the database (a trigger stands for any domain or data fault).
+    await db.execute(sql.raw(`create or replace function t_ladder_fail() returns trigger language plpgsql as $$ begin
+      if new.admission_id = '${bad.admissionId}' then raise exception 'synthetic ladder fault'; end if; return new; end $$`));
+    await db.execute(sql.raw(`create trigger t_ladder_fail before insert or update on ipd_deposit_alerts for each row execute function t_ladder_fail()`));
+    try {
+      await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
+      const run = await runIpdBillDeskNightly(db, ist("2026-03-11T00:06:00"));
+      expect(run.ladderFailed).toEqual([bad.admissionId]);
+      expect(run.ladder.find((o) => o.admissionId === good.admissionId)?.fired).toEqual(["top_up"]);
+      expect(run.dailyTotals).toMatchObject({ queued: 2, failed: [] });
+    } finally {
+      await db.execute(sql.raw("drop trigger if exists t_ladder_fail on ipd_deposit_alerts; drop function if exists t_ladder_fail()"));
+    }
+  });
+
+  it("2: a sealed patient is on the bill desk by alias or a neutral label — no name, UHID or bed", async () => {
+    const s1 = await admitCash("2026-03-10T10:00:00");
+    await deposit(s1.admissionId, 290_000, "2026-03-10T10:30:00");
+    await db.update(patients).set({ sensitiveContext: true, alias: null }).where(eq(patients.id, s1.patientId));
+    await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
+    await runIpdBillDeskNightly(db, ist("2026-03-11T00:06:00"));
+    const row = (await readBillDesk(db, desk, ist("2026-03-11T09:00:00"))).rows.find((r) => r.admissionId === s1.admissionId)!;
+    expect(row).toMatchObject({ patient: { uhid: "", name: SEALED_LABEL }, bedCode: null });
+    expect(JSON.stringify(row)).not.toContain("Ramesh");
+  });
+
+  it("4: no deposit owed (an emergency before stabilisation) → the ladder does not run", async () => {
+    const { admissionId } = await w.admitAt("general", ist("2026-03-10T10:00:00"));
+    await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
+    await runIpdBillDeskNightly(db, ist("2026-03-11T00:06:00"));
+    expect(await alertRows(admissionId)).toEqual([]);
+    expect((await readBillDesk(db, desk, ist("2026-03-11T09:00:00"))).rows.map((r) => r.admissionId)).not.toContain(admissionId);
+  });
+
+  it("5: the notices are raised in the alert row's transaction — a failed notice leaves no fired level behind", async () => {
+    const { admissionId } = await admitCash("2026-03-10T10:00:00");
+    await deposit(admissionId, 290_000, "2026-03-10T10:30:00");
+    await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
+    await db.execute(sql.raw(`create or replace function t_notice_fail() returns trigger language plpgsql as $$ begin
+      if new.kind = 'ipd.deposit_low' then raise exception 'synthetic notice fault'; end if; return new; end $$`));
+    await db.execute(sql.raw("create trigger t_notice_fail before insert on alerts for each row execute function t_notice_fail()"));
+    try {
+      await expect(evaluateDepositLadder(db, admissionId, ist("2026-03-11T00:06:00"))).rejects.toThrow();
+    } finally {
+      await db.execute(sql.raw("drop trigger if exists t_notice_fail on alerts; drop function if exists t_notice_fail()"));
+    }
+    expect(await alertRows(admissionId)).toEqual([]);
+    // Next time round it fires, with its notices.
+    expect((await evaluateDepositLadder(db, admissionId, ist("2026-03-11T00:30:00"))).fired).toEqual(["top_up"]);
+    expect((await notices(admissionId)).length).toBeGreaterThan(0);
+  });
+
+  it("7: a reversal re-arms and clears the desk; an advance refund fires the ladder", async () => {
+    const { admissionId } = await admitCash("2026-03-10T10:00:00");
+    await deposit(admissionId, 290_000, "2026-03-10T10:30:00");
+    await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
+    await runIpdBillDeskNightly(db, ist("2026-03-11T00:06:00"));
+    expect((await readBillDesk(db, desk, ist("2026-03-11T09:00:00"))).rows.find((r) => r.admissionId === admissionId)?.reasons).toEqual(["deposit_75"]);
+    // Reverse the day's nursing: ₹1,700 of ₹2,900 = 58.6 % — re-armed at once, gone from the desk.
+    const nursing = (await db.execute(sql`select id from ipd_charge_lines where admission_id = ${admissionId} and component = 'nursing'`)).rows[0] as { id: string };
+    await reverseChargeLine(db, w.billDesk, { chargeLineId: nursing.id, reason: "Synthetic wrong charge" }, { now: ist("2026-03-11T10:00:00") });
+    expect((await alertRows(admissionId)).every((r) => r.rearmedAt !== null)).toBe(true);
+    expect((await readBillDesk(db, desk, ist("2026-03-11T10:05:00"))).rows.map((r) => r.admissionId)).not.toContain(admissionId);
+
+    // A second stay: ₹4,000 held, ₹2,200 posted (55 %); ₹1,500 of the advance refunded → ₹2,200 of ₹2,500 = 88 %.
+    const other = await admitCash("2026-03-10T11:00:00");
+    await deposit(other.admissionId, 400_000, "2026-03-10T11:30:00");
+    await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
+    await runIpdBillDeskNightly(db, ist("2026-03-11T00:07:00"));
+    expect(await alertRows(other.admissionId)).toEqual([]);
+    const unregister = registerIpdAdvanceRefundListener();
+    try {
+      await openSession(db, people.cashier, 0);
+      const ask = { kind: "advance_refund" as const, patientId: other.patientId, amountPaise: 150_000, reasonClass: "genuine" as const, reason: "Synthetic part refund" };
+      const asked = await requestRefund(db, people.cashier, ask);
+      await approveRequest(db, w.billingManager, { approvalId: asked.approvalId, note: "fixture" });
+      await issueRefundVoucher(db, people.cashier, { ...ask, approvalId: asked.approvalId, method: "cash" }, ist("2026-03-11T12:00:00"));
+    } finally { unregister(); }
+    expect((await alertRows(other.admissionId)).map((r) => r.level)).toEqual(["top_up"]);
+  });
+
+  it("8: a ladder failure after a committed receipt is logged; the desk gets its receipt", async () => {
+    const { admissionId } = await admitCash("2026-03-10T10:00:00");
+    await deposit(admissionId, 290_000, "2026-03-10T10:30:00");
+    await postNightlyIpdCharges(db, ist("2026-03-11T00:05:00"));
+    await postNightlyIpdCharges(db, ist("2026-03-12T00:05:00"));
+    await runIpdBillDeskNightly(db, ist("2026-03-12T00:06:00"));
+    await db.execute(sql.raw(`create or replace function t_rearm_fail() returns trigger language plpgsql as $$ begin
+      raise exception 'synthetic re-arm fault'; end $$`));
+    await db.execute(sql.raw("create trigger t_rearm_fail before update on ipd_deposit_alerts for each row execute function t_rearm_fail()"));
+    try {
+      const out = await deposit(admissionId, 500_000, "2026-03-12T11:00:00");
+      expect(out.amountPaise).toBe(500_000);
+    } finally {
+      await db.execute(sql.raw("drop trigger if exists t_rearm_fail on ipd_deposit_alerts; drop function if exists t_rearm_fail()"));
+    }
+    // The receipt stands; the nightly run re-evaluates and re-arms.
+    await runIpdBillDeskNightly(db, ist("2026-03-12T12:00:00"));
+    expect((await alertRows(admissionId)).every((r) => r.rearmedAt !== null)).toBe(true);
   });
 });

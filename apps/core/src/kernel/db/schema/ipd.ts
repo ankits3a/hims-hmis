@@ -484,3 +484,24 @@ export const ipdDepositAlerts = pgTable(
     check("ipd_deposit_alerts_money_ck", sql`${t.patientPayablePaise} >= 0 and ${t.depositHeldPaise} >= 0 and ${t.usedBp} >= 0`),
   ],
 );
+
+/**
+ * E2.3 (#727, review 9) — the daily totals to the attendant, ONE row per admission and IST day: what was done (queued, or
+ * skipped and why) and the outbox row it queued. The unique key is the dedupe, taken under the admission's advisory lock,
+ * so a rerun or two workers queue and record nothing twice.
+ */
+export const ipdDailyTotals = pgTable(
+  "ipd_daily_totals",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    billDate: date("bill_date", { mode: "string" }).notNull(),
+    outcome: text("outcome").notNull(),
+    notificationId: text("notification_id"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_daily_totals_day_ux").on(t.admissionId, t.billDate),
+    check("ipd_daily_totals_outcome_ck", sql`${t.outcome} in ('queued', 'no_attendant_phone', 'sealed')`),
+  ],
+);

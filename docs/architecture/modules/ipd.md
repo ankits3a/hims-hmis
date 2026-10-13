@@ -106,10 +106,11 @@ Source: `apps/core/src/modules/ipd/`
   - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
   - types: `BedPlacementInput`, `IncumbentBedLine`, `IncumbentBedReport`, `PlacementContext`
 - `bill-desk.ts`
+  - `SEALED_LABEL`
   - `depositLowCard(db: Db): Promise<DeskCard[]>`
   - `readBillDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdBillDesk>`
   - `retryFromBillDesk(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<AdmissionPostResult>`
-  - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; dailyTotals: DailyTotalsResult }>`
+  - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; ladderFailed: string[]; dailyTotals: DailyTotalsResult | null …`
 - `charge-days.ts`
   - `DISCHARGE_FREE_UNTIL_MS`
   - `TRANSIT_UNDER_MS`
@@ -137,11 +138,14 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_CLINICAL_ROLES: readonly string[]`
   - `IPD_DEPOSIT_LADDER`
   - `IPD_DEPOSIT_RECIPIENT_ROLES: Record<DepositLevel, readonly string[]>`
-  - `depositNoticeRecipients(db: Db, level: DepositLevel): Promise<string[]>`
+  - `depositNoticeRecipients(tx: Tx, level: DepositLevel): Promise<string[]>`
+  - `depositOwed(a: Pick<AdmissionRow, "payerKind" | "depositExemption" | "depositRequiredPaise" | "depositBasis">): boolean`
   - `depositPosition(db: Db | Tx, a: AdmissionRow): Promise<DepositPosition>`
-  - `evaluateAllDepositLadders(db: Db, now: Date): Promise<LadderOutcome[]>`
+  - `evaluateAllDepositLadders(db: Db, now: Date): Promise<{ outcomes: LadderOutcome[]; failed: string[] }>`
   - `evaluateDepositLadder(db: Db, admissionId: string, now: Date): Promise<LadderOutcome>`
+  - `evaluateDepositLadderSafely(db: Db, admissionId: string, now: Date, after: string): Promise<LadderOutcome | null>`
   - `icuBurnOf(db: Db | Tx, a: AdmissionRow, pos: DepositPosition): Promise<IpdIcuBurn | null>`
+  - `registerIpdAdvanceRefundListener(): () => void`
   - `usedBpOf(patientPayablePaise: number, depositHeld: number): number | null`
   - types: `DepositLevel`, `DepositPosition`, `LadderOutcome`
 - `deposit.ts`
@@ -217,7 +221,7 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_deposit_alerts`, `ipd_payer_auths`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`
+`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_payer_auths`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`
 
 Foreign keys into: `patients`, `resources`
 

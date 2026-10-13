@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { newId } from "@hmis/contracts";
@@ -534,7 +535,7 @@ export async function issueRefundVoucher(
   });
   const guardFlags = await guardFlagsFor(db, { invoiceId: target.invoiceId, creditNoteId: target.creditNoteId });
 
-  return withTx(db, async (tx) => {
+  const issued = await withTx(db, async (tx): Promise<IssueRefundVoucherResult> => {
     /*
      * ONE APPROVAL, ONE VOUCHER (found 2026-10-03, building the office's issue-from-worklist door): the same
      * granted approval issued twice made two vouchers — the same approved refund payable twice, held back
@@ -625,6 +626,32 @@ export async function issueRefundVoucher(
       status: "issued",
     };
   });
+  if (issued.kind === "advance_refund") await notifyAdvanceRefunded(db, issued.patientId, now);
+  return issued;
+}
+
+/**
+ * IPD E2.3 (#727, review 7) — WHO MUST HEAR THAT AN ADVANCE WENT BACK, after the voucher has committed: the IPD deposit
+ * ladder (an advance refund lowers the deposit held). Registered by the listening module at boot, like
+ * `registerReceiptGuard`. A listener's failure is logged and swallowed — the refund is issued whatever it does.
+ */
+export type AdvanceRefundListener = (db: Db, args: { patientId: string; at: Date }) => Promise<void>;
+const advanceRefundListeners = new Map<string, AdvanceRefundListener>();
+const refundLog = new Logger("billing.refunds");
+
+export function registerAdvanceRefundListener(key: string, listener: AdvanceRefundListener): () => void {
+  advanceRefundListeners.set(key, listener);
+  return () => { if (advanceRefundListeners.get(key) === listener) advanceRefundListeners.delete(key); };
+}
+
+async function notifyAdvanceRefunded(db: Db, patientId: string, at: Date): Promise<void> {
+  for (const [key, listener] of advanceRefundListeners) {
+    try {
+      await listener(db, { patientId, at });
+    } catch (e) {
+      refundLog.error(`advance-refund listener ${key} failed for patient ${patientId}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 }
 
 /**

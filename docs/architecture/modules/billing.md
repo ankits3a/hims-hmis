@@ -129,8 +129,9 @@ Source: `apps/core/src/modules/billing/`
 - `refunds.ts`
   - `issueRefundVoucher(db: Db, actor: Actor, rawInput: IssueRefundVoucherInput, now: Date = new Date()): Promise<IssueRefundVoucherResult>`
   - `payRefundVoucher(db: Db, actor: Actor, rawInput: PayRefundVoucherInput, now: Date = new Date()): Promise<PayRefundVoucherResult>`
+  - `registerAdvanceRefundListener(key: string, listener: AdvanceRefundListener): () => void`
   - `requestRefund(db: Db, actor: Actor, rawInput: RequestRefundInput): Promise<RequestRefundResult>`
-  - types: `RefundKind`, `RefundMethod`, `RefundVoucherRow`
+  - types: `AdvanceRefundListener`, `RefundKind`, `RefundMethod`, `RefundVoucherRow`
 - `report-reads.ts`
   - `billingDocumentByNo(exec: Db | Tx, typed: string): Promise<BillingDocRef | null>`
   - `creditNotesBetween(exec: Db | Tx, from: string, to: string): Promise<CreditNoteRead[]>`

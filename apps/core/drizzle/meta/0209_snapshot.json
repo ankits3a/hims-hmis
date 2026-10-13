@@ -1,5 +1,5 @@
 {
-  "id": "1bdaf45a-8f6b-4a39-9e62-c7a7ab0f6d6a",
+  "id": "e9dd5d81-7521-43e3-ac3b-e97e6a6937cb",
   "prevId": "e96e0e8f-7b5d-48fb-a2af-11fdc60be8b1",
   "version": "7",
   "dialect": "postgresql",
@@ -55845,6 +55845,96 @@
         "ipd_charge_lines_reason_ck": {
           "name": "ipd_charge_lines_reason_ck",
           "value": "\"ipd_charge_lines\".\"reversal_of\" is null or coalesce(btrim(\"ipd_charge_lines\".\"reason\"), '') <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ipd_daily_totals": {
+      "name": "ipd_daily_totals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "admission_id": {
+          "name": "admission_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bill_date": {
+          "name": "bill_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notification_id": {
+          "name": "notification_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ipd_daily_totals_day_ux": {
+          "name": "ipd_daily_totals_day_ux",
+          "columns": [
+            {
+              "expression": "admission_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bill_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ipd_daily_totals_admission_id_ipd_admissions_id_fk": {
+          "name": "ipd_daily_totals_admission_id_ipd_admissions_id_fk",
+          "tableFrom": "ipd_daily_totals",
+          "tableTo": "ipd_admissions",
+          "columnsFrom": [
+            "admission_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ipd_daily_totals_outcome_ck": {
+          "name": "ipd_daily_totals_outcome_ck",
+          "value": "\"ipd_daily_totals\".\"outcome\" in ('queued', 'no_attendant_phone', 'sealed')"
         }
       },
       "isRLSEnabled": false

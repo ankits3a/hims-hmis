@@ -210,6 +210,8 @@ function absRupeesOf(params: Record<string, unknown>, key: string): string {
  *
  * HELD (`heldReason`): no approved WhatsApp template, no DLT registration, and the attendant is not the patient — the
  * pump records every row as suppressed `template_pending` until all three exist (decision recorded in ipd MAP.md).
+ * RELEASE NEEDS AN ATTENDANT-RECIPIENT SEAM in this module (resolve `attendantRef` to the guardian's or deposit payer's
+ * phone at send time) — GitHub issue #761. Do not remove `heldReason` before it exists.
  */
 const ipdTemplates: Record<string, NotificationTemplate> = {
   "ipd.daily_totals": {
