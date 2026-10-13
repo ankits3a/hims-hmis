@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import type { Db } from "../db/client";
 import type { ModuleRegistry } from "../modules/loader";
 import type { Handler } from "../events/subscriptions";
@@ -33,6 +34,9 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
+import { sweepTasks } from "../../modules/tasks";
+import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing } from "../../modules/ipd";
+import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -83,6 +87,12 @@ const COPILOT_ASK_PRUNE_IST = "01:20";
  * which is A5, and it is the reason this is a sweep rather than an incremental append.
  */
 const USER_DAY_ROLLUP_IST = "02:00";
+/**
+ * E2.1 (#725) — the IPD nightly charges: five past IST midnight, once the day being billed is over. It posts every
+ * unposted chargeable day up to YESTERDAY, so a night the worker missed is posted on the next run with its own dates;
+ * a failed run retries on the next tick (the scheduler keys daily memory on `last_ok_at`).
+ */
+const IPD_NIGHTLY_CHARGES_IST = "00:05";
 
 /**
  * Amendment 6 (the plan's own resolution to the T2/T4 wave-order contradiction; spike
@@ -697,4 +707,82 @@ export function registerAllJobs(
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
   });
+  /**
+   * E0.1 TASK ENGINE (issue #713) — THE TASK CLOCK, every minute: a worker whose shift ended hands
+   * their tasks back to the pool, an assignment not accepted in its window goes to the next worker,
+   * the pool is offered again, and a late task climbs its ladder ONCE per rung. Small batches; each
+   * act re-checks its precondition under the row lock, so a second tick changes nothing.
+   */
+  scheduler.register({
+    name: "sweepTasks",
+    every: 60_000,
+    /*
+     * E1.7 BIO-MEDICAL WASTE (issue #724) — the waste STORAGE CLOCK rides this tick rather than holding a pool client
+     * of its own (the `runDueTimers` + `runDueReminders` shape): bags still on the premises warn at 36 h and alert at
+     * 48 h from generation. `runTaskAndWasteClocks` runs each in its own try/catch, so a failure in either never stops
+     * or masks the other. Importing the bmw
+     * index here is ALSO what defines the `bmw_collection` task kind in the worker (tasks MAP §4).
+     */
+    run: async (now) => { await runTaskAndWasteClocks(db, now); },
+  });
+  /*
+   * IPD BEDS E1.1 (#718) — a bed held for a patient lapses back after two hours (spec §4.1). Every minute,
+   * the `sweepExpiredPharmacyPicks` cadence: a hold is a promise to a desk, and a coarser sweep would keep a
+   * bed off the board past its time. Idempotent (each lapse re-checks under the bed's lock); a tick with
+   * nothing due runs one indexed read (`ipd_bed_reservations_due_idx`) and writes nothing.
+   */
+  scheduler.register({
+    name: "lapseBedReservations",
+    every: 60_000,
+    run: async (now) => { await lapseBedReservations(db, now); },
+  });
+  /*
+   * IPD NURSING E4.1 (#733) — the nursing clock, every minute: an admission with no nursing assessment one hour after
+   * admission raises ONE alert to the nursing supervisors; an early-warning alert unacknowledged for 10 minutes goes to
+   * them once per band (spec §4.5, §4.10 edge 12). Idempotent (a partial unique and a stamp under the admission's lock);
+   * a tick with nothing due runs two indexed reads and writes nothing.
+   */
+  scheduler.register({
+    name: "sweepIpdNursing",
+    every: 60_000,
+    run: async (now) => { await sweepIpdNursing(db, now); },
+  });
+  /**
+   * E2.1 (#725) — THE THIRTY-SECOND JOB, `dailyIst` 00:05: rent, nursing and RMO lines for every admission, one per
+   * admission, day and component (a unique index — a rerun posts nothing). Batches of admissions, each in its own
+   * transaction; idempotent and multi-process-safe on its own.
+   */
+  scheduler.register({
+    name: "postNightlyIpdCharges",
+    dailyIst: IPD_NIGHTLY_CHARGES_IST,
+    // E2.3 (#727): the deposit ladder and the daily totals ride this job, after the posting — no job of their own.
+    run: async (now) => { await postNightlyIpdCharges(db, now); await runIpdBillDeskNightly(db, now); },
+  });
+}
+
+const clockLog = new Logger("worker.sweepTasks");
+
+/**
+ * E1.7 (PR #749 review) — the task clock and the waste storage clock share one tick. Each runs in its own try/catch
+ * and logs its own failure, so a failure in either never stops the other (the 48-hour alarm still rings when the
+ * task sweep throws) and never masks it: the first failure is rethrown after both have run, so the scheduler still
+ * records the tick as failed. `sweeps` is injectable for `task-clock.test.ts`.
+ */
+export async function runTaskAndWasteClocks(
+  db: Db, now: Date, sweeps: { sweepTasks: typeof sweepTasks; sweepBmwStorage: typeof sweepBmwStorage } = { sweepTasks, sweepBmwStorage },
+): Promise<void> {
+  let first: unknown = undefined;
+  try {
+    await sweeps.sweepTasks(db, now);
+  } catch (e) {
+    clockLog.error(`sweepTasks failed: ${e instanceof Error ? e.message : String(e)}`);
+    first = e;
+  }
+  try {
+    await sweeps.sweepBmwStorage(db, now);
+  } catch (e) {
+    clockLog.error(`sweepBmwStorage failed: ${e instanceof Error ? e.message : String(e)}`);
+    first ??= e;
+  }
+  if (first !== undefined) throw first;
 }

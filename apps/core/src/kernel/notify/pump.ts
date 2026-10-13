@@ -194,7 +194,7 @@ async function markExpired(tx: Tx, row: NotificationRow, now: Date): Promise<voi
 async function markSuppressed(
   tx: Tx,
   row: NotificationRow,
-  reason: "deceased" | "promotional_blocked" | "merge_unresolvable" | "opted_out" | "no_consent",
+  reason: "deceased" | "promotional_blocked" | "merge_unresolvable" | "opted_out" | "no_consent" | "template_pending",
   now: Date,
 ): Promise<void> {
   if (!(await settle(tx, row, { status: "suppressed", lastError: reason }, now))) return;
@@ -424,6 +424,13 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
   // refusal survive a future writer that reaches the table another way.
   if (template.class === "promotional") {
     await markSuppressed(tx, row, "promotional_blocked", now);
+    return { kind: "done" };
+  }
+
+  // ── 3b. HELD TEMPLATE (IPD E2.3, #727). A template no provider may carry yet is recorded, never sent: after the
+  // patient's own stops (so a deceased or opted-out row says so), before quiet hours (a held row never waits).
+  if (template.heldReason !== undefined) {
+    await markSuppressed(tx, row, template.heldReason, now);
     return { kind: "done" };
   }
 

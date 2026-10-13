@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { workerConsumers } from "./worker.module";
+import { workerBackfills, workerConsumers } from "./worker.module";
 
 /**
  * D10 — first-boot cursor seeding, the step 08.5 booked and 10 re-booked.
@@ -23,12 +23,11 @@ import { workerConsumers } from "./worker.module";
  * production registers, with no second list to drift out of step with `worker.module.ts`.
  * Today that is `kernel.alerts` and `kernel.notify`.
  *
- * EVERY WRITE USES `greatest(event_cursors.last_seq, excluded.last_seq)` — the SAME idiom
- * `dispatcher.ts`'s own cursor advance uses for the same reason (V11): a cursor a live
- * dispatch cycle has already moved past `max(seq)` (because it is still consuming a batch when
- * this script runs) must never be dragged backwards into replaying what it has already resolved.
- * A brand-new consumer has no existing row to compare against, so its FIRST value simply IS
- * `max(seq)` (V10) — `on conflict` never fires for it.
+ * ONLY A BRAND-NEW CONSUMER IS WRITTEN (`on conflict do nothing`). Its first value IS `max(seq)`
+ * (V10). An existing cursor is never moved in either direction: lowering it would replay what it
+ * already resolved (V11), and RAISING it — what `greatest(...)` did until 2026-10-13 — skipped
+ * every event a lagging consumer had not yet delivered. deploy.sh runs this on every deploy,
+ * while the worker is restarting, so a consumer behind at that moment lost its backlog (V12).
  */
 export type SeededCursor = { consumer: string; lastSeq: number };
 
@@ -36,16 +35,21 @@ export async function seedCursors(db: Db, now: Date = new Date()): Promise<Seede
   const consumers = Object.keys(workerConsumers(db));
   const seeded: SeededCursor[] = [];
   for (const consumer of consumers) {
-    const rows = (await db.execute(sql`
+    await db.execute(sql`
       with m as (select coalesce(max(seq), 0)::bigint as "maxSeq" from events)
       insert into event_cursors (consumer, last_seq, updated_at)
       select ${consumer}, m."maxSeq", ${now.toISOString()}::timestamptz from m
-      on conflict (consumer) do update
-        set last_seq = greatest(event_cursors.last_seq, excluded.last_seq),
-            updated_at = ${now.toISOString()}::timestamptz
-      returning last_seq as "lastSeq"
+      on conflict (consumer) do nothing
+    `);
+    const rows = (await db.execute(sql`
+      select last_seq as "lastSeq" from event_cursors where consumer = ${consumer}
     `)).rows as [{ lastSeq: number | string }];
     seeded.push({ consumer, lastSeq: Number(rows[0]!.lastSeq) });
+  }
+  // E1.4 — the state a seeded cursor skipped, rebuilt (idempotent; see `workerBackfills`).
+  for (const [consumer, backfill] of Object.entries(workerBackfills(db))) {
+    const n = await backfill();
+    if (n > 0) console.log(`seed-cursors: ${consumer} backfilled ${n}`);
   }
   return seeded;
 }

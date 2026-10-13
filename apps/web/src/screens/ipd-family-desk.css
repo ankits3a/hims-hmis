@@ -1,0 +1,40 @@
+/* E3.3 (#731) — the staff side of the family link: the ward desk's callbacks list (`.ipdfc`) and the family card on the
+   discharge desk (`.ipdf`, inside `.ipdd-card`). Scoped: vite loads every screen's CSS globally. */
+.ipdfc { --ink: #132420; --dim: #5c6f66; --line: #dfe7e1; --green: #0e6b4e; --warn: #9a3412;
+  max-width: 1100px; margin: 0 auto; padding: 16px; color: var(--ink); box-sizing: border-box; }
+.ipdfc *, .ipdfc *::before, .ipdfc *::after { box-sizing: border-box; }
+.ipdfc-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.ipdfc-head h1 { font-size: 20px; margin: 0; }
+.ipdfc .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.ipdfc .seg button { min-height: 40px; padding: 0 14px; border: 0; background: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+.ipdfc .seg button.on { background: var(--ink); color: #fff; }
+.ipdfc-note { color: var(--dim); font-size: 13px; margin: 8px 0 12px; }
+.ipdfc-empty { padding: 24px; text-align: center; color: var(--dim); border: 1px dashed var(--line); border-radius: 10px; }
+.ipdfc-empty.warn { color: var(--warn); }
+.ipdfc-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.ipdfc-row { background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ipdfc-row.done { border-left-color: var(--green); }
+.ipdfc-row .top { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.ipdfc-row .top .when { margin-left: auto; color: var(--dim); font-size: 13px; }
+.ipdfc-row .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; }
+.ipdfc-row .text { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.ipdfc-row .bottom { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; }
+.ipdfc-row .open { color: var(--green); font-weight: 600; }
+.ipdfc-row .act { display: flex; gap: 8px; }
+.ipdfc-row .act input { flex: 1; min-width: 0; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; font: inherit; }
+.ipdfc-row .act button { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--green); background: var(--green); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.ipdfc-row .act button:disabled { opacity: .5; cursor: default; }
+.ipdfc-row .done { color: var(--green); font-size: 13px; }
+@media (max-width: 480px) { .ipdfc-list { grid-template-columns: 1fr; } }
+
+.ipdd-card.ipdf .dim { color: var(--dim, #5c6f66); font-size: 13px; }
+.ipdd-card.ipdf .dim.small { font-size: 12px; }
+.ipdd-card.ipdf .warn { color: #9a3412; }
+.ipdf-issue { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line, #dfe7e1); padding-top: 8px; }
+.ipdf-issued { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; background: #f4f7f4; border-radius: 8px; padding: 10px; }
+.ipdf-issued .col { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+.ipdf-issued .url { font-size: 12px; overflow-wrap: anywhere; }
+.ipdf-calls { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line, #dfe7e1); padding-top: 8px; }
+.ipdf-call { display: flex; flex-direction: column; gap: 4px; }
+.ipdf-call q { overflow-wrap: anywhere; }
+.ipdf-call .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; }

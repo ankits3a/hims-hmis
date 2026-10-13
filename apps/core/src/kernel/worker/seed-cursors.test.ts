@@ -16,6 +16,9 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../m
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
+import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
+import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
+import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -168,6 +171,23 @@ describe("seedCursors", () => {
          * `max(seq)`, it orders only for consults completed after it ships.
          */
         ORDERING_FREE_TESTS_CONSUMER,
+        /**
+         * E1.4 HOUSEKEEPING (issue #721) — from zero it would walk every bed release since the registry opened
+         * and raise (and at once cancel) a clean for each. Seeded at `max(seq)`, it begins with the next
+         * release, and `workerBackfills` gives every bed already in cleaning its one clean.
+         */
+        HOUSEKEEPING_BED_CONSUMER,
+        /**
+         * E1.3 (#720) — passes. Its unseeded cursor would walk every stay-ending IPD event since the first
+         * admission; each would find no live pass and write nothing (passes did not exist), but it would still walk
+         * them. Seeded at `max(seq)`, it begins with the next discharge.
+         */
+        PASSES_ADMISSION_CONSUMER,
+        /**
+         * E3.3 (#731) — the family link's stop. Unseeded, it would walk every `ipd.admission.deceased` / `.absconded`
+         * since the IPD lanes began; each would find no live link and do nothing — harmless by construction, seeded anyway.
+         */
+        IPD_FAMILY_STOP_CONSUMER,
       ].sort());
   });
 
@@ -232,6 +252,29 @@ describe("seedCursors", () => {
     expect(alertsSeed).toBeDefined();
     expect(alertsSeed!.lastSeq).toBe(aheadOfHistory); // untouched
     expect(await cursorOf(db, ALERTS_CONSUMER)).toBe(aheadOfHistory);
+  });
+
+  /**
+   * V12 — SEEDING NEVER RAISES AN EXISTING CURSOR. deploy.sh seeds on every deploy; a consumer
+   * that is behind at that moment (the worker was restarting while the api kept appending) must
+   * keep its backlog, or those events are never delivered.
+   */
+  it("V12 — never raises an existing cursor that sits behind max(seq); the backlog is still delivered", async () => {
+    const e1 = await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));
+    await db.execute(sql`
+      insert into event_cursors (consumer, last_seq) values (${ALERTS_CONSUMER}, ${e1.seq})
+    `);
+    const e2 = await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));
+
+    const seeded = await seedCursors(db);
+    expect(seeded.find((s) => s.consumer === ALERTS_CONSUMER)!.lastSeq).toBe(e1.seq); // untouched
+    expect(await cursorOf(db, ALERTS_CONSUMER)).toBe(e1.seq);
+
+    const delivered: number[] = [];
+    const bus = new SubscriptionBus();
+    bus.on(ALERTS_CONSUMER, "alert.raised", async (e) => { delivered.push(e.seq); });
+    await runDispatchCycle(db, bus, { lookback: 0 });
+    expect(delivered).toEqual([e2.seq]);
   });
 
   it("is idempotent: seeding twice with no new history leaves the cursor exactly where it was", async () => {
