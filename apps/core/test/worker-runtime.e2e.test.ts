@@ -206,6 +206,12 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** E0.1 TASK ENGINE (issue #713) — `every(60_000)`: the task clock (shift end, re-dispatch, the pool, the ladder). */
+  "sweepTasks",
+  /** IPD BEDS E1.1 (#718) — `every(60_000)`: a two-hour bed hold lapses back to available. */
+  "lapseBedReservations",
+  /** IPD CHARGES E2.1 (#725) — `dailyIst("00:05")`: the running bill's nightly rent, nursing and RMO posting. */
+  "postNightlyIpdCharges",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -418,6 +424,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // three events, one cursor. Worker-only (`abdmManifest`), and it does nothing unless the
         // worker's own config has ABDM on. `.sort()` puts `abdm.` first.
         ["abdm.care_contexts", ["consultation.completed", "imaging.report_published", "lab.report_published"]],
+        // E4.4 DIET (#736) — admission, transfer, swap, stay endings and OT booking/cancel keep the meal lists true. `abdm.` < `diet.` < `housekeeping.`.
+        ["diet.reconcile", ["case.cancelled", "daycare.booked", "ipd.admission.absconded", "ipd.admission.admitted", "ipd.admission.deceased", "ipd.admission.discharged", "ipd.admission.lama", "ipd.bed.swapped", "ipd.transfer.accepted", "list.published"]],
         // Plan 11c T1: `ops.mode_changed` is the alerts consumer's THIRD subscription (D4). The
         // array is `.sort()`ed above, so it lands after `notification.failed`.
         // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH
@@ -428,6 +436,11 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // silence beside the lateness. Sorted, it lands last.
         // 20-U infra (owner 2026-10-04): `roster.flag_raised` is the EIGHTH — a "this is wrong"
         // flag pages the duty manager on duty. Read off the red run; sorted, it lands last.
+        // E1.4 HOUSEKEEPING (issue #721) — the bed's kernel events drive its cleaning task. Sorted, after `abdm.`.
+        ["housekeeping.bed_turnover", ["resource.assigned", "resource.released", "resource.status_changed"]],
+        // E3.3 (#731) — the family link's stop: death and absconding revoke the attendant's link. `ipdManifest`, both
+        // processes. Read off the red run; sorted, `ipd.` lands after `abdm.` and before `kernel.`.
+        ["ipd.family_stop", ["ipd.admission.absconded", "ipd.admission.deceased", "patient.updated"]],
         ["kernel.alerts", [
           "approval.requested",
           "escalation.triggered", "imaging.critical_overdue", "imaging.report_unread",
@@ -539,6 +552,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "partners.accrual",
           ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
         ],
+        // E1.3 (#720) — the stay-ending events expire every pass of the admission; a transfer moves them. `partners.` < `passes.` < `pharmacy.`.
+        ["passes.admission", ["ipd.admission.absconded", "ipd.admission.deceased", "ipd.admission.discharged", "ipd.admission.lama", "ipd.transfer.accepted"]],
         // PLAN 16c T3 / D10 — the counter's queue: `prescription.issued` → a queued dispense. Sorts before `radiology.*`.
         // PHARMACY P6 (patient messages) — the bill's message, once per invoice. Sorts after `pharmacy.`
         // `patient_messages` < `rx_issued`.

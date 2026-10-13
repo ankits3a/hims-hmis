@@ -1,4 +1,4 @@
-import { assertPaise, divHalfUp, percentAmount, roundTotalToRupee, taxHead } from "./money";
+import { assertPaise, divHalfUp, percentAmount, roundTotalToRupee, rupeesTextToPaise, taxHead } from "./money";
 import { TariffError } from "./errors";
 
 test("divHalfUp rounds halves up and everything else to nearest", () => {
@@ -30,4 +30,14 @@ test("assertPaise rejects floats, negatives, unsafe integers", () => {
     expect(() => assertPaise(bad, "x")).toThrow(TariffError);
   }
   expect(() => assertPaise(0, "x")).not.toThrow();
+});
+
+test("rupeesTextToPaise: plain, Western and Indian grouping; anything else is not a sum (review #744)", () => {
+  expect(rupeesTextToPaise("1250")).toBe(125000);
+  expect(rupeesTextToPaise("1250.5")).toBe(125050);
+  expect(rupeesTextToPaise("₹1,250.00")).toBe(125000);
+  expect(rupeesTextToPaise("100,000")).toBe(10000000);
+  expect(rupeesTextToPaise("1,00,000")).toBe(10000000);
+  expect(rupeesTextToPaise("12,34,567.89")).toBe(123456789);
+  for (const bad of ["1,2,3", "12,34", "1,0000", ",100", "100,", "1.234", "abc", "-5", ""]) expect(rupeesTextToPaise(bad)).toBeNull();
 });

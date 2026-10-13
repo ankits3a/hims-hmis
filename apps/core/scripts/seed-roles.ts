@@ -85,6 +85,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
+      // E1.5 MAINTENANCE (issue #722) — the desk reports a fault it sees (Beds board "Report a fault").
+      "maintenance.raise",
+      // PASSES E1.3 (#720, decision 0072) — the admission desk issues attendant and visitor passes; README passes prose.
+      "passes.issue",
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -119,11 +130,31 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // E1.6 TRANSPORT (#723) — the admission desk asks for the porter that takes the patient to the ward.
+      "transport.request",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      "ipd.beds.clean",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
+      // E1.5 MAINTENANCE (issue #722) — reports a fault; confirms a repair through `ipd.beds.clean` (the kind's verifier list).
+      "maintenance.raise",
+      // PASSES E1.3 (#720) — issues passes, and records police custody or pauses every pass; README passes prose.
+      "passes.issue", "passes.manage",
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -186,6 +217,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   {
@@ -215,6 +250,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // DIET E4.4 (#736) — the doctor orders the diet, sets or lifts NPO, and reads the ward diet sheet and kitchen board.
+      "diet.view", "diet.order", "diet.npo", "diet.clinical.view",
+      // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
+      "ipd.admit.request",
+      // PASSES E1.3 (#720) — a doctor's visitor ban: pause visitor passes with a reason, and lift it.
+      "passes.pause",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.visits.read",
@@ -329,6 +370,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // IPD DISCHARGE E3.2 (#730) — declares and cancels fit, writes and signs the summary, records a death or a LAMA; never the bill (0058); README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.declare", "ipd.discharge.exit",
+      // IPD FAMILY E3.3 (#731, decision 0072) — sets the condition word the family sees and turns the family link off for a sensitive admission; README "IPD family link" prose.
+      "ipd.condition.set",
     ],
   },
   /**
@@ -607,11 +652,17 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D4 — the pharmacist checks the counter's own emergency tray and restocks a deficient one from
       // PHARM-OPD (the shelf the pharmacy keeps). DEFAULT — owner may change.
       "pharmacy.trays.check",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   {
     roleKey: "cashier",
     permissions: [
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
       "billing.invoice.issue",
       "billing.invoice.read",
       "billing.credit.extend",
@@ -691,11 +742,21 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * intact and the patient gets their paper back.
        */
       "opd.paper.reprint",
+      // IPD DISCHARGE E3.2 (#730) — confirms billing last, composes and settles the final bill, issues the gate pass; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm", "ipd.discharge.bill", "ipd.gate.pass",
     ],
   },
   {
     roleKey: "billing_manager",
     permissions: [
+      // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
+      "ipd.payer.manage",
+      // IPD CHARGES E2.1 (#725) — the interim bill, and the reversal line against a wrong charge (never an edit).
+      "ipd.bill.view", "ipd.charges.reverse",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
+      // IPD PAYER E2.2 (#726, review 11) — the letter's money terms (room-rent cap, co-pay) and the non-payables list.
+      "ipd.payer.terms",
       /**
        * PLAN 17 T2 / DD6 — **THE INTERLOCK'S OVERRIDE, AND IT LIVES HERE RATHER THAN IN THE LAB.**
        *
@@ -795,6 +856,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.reports.read",
       // PHARMACY PARITY P5 — the accountant's act: the TallyPrime export and the ledger names it uses.
       "pharmacy.tally.export",
+      // IPD DISCHARGE E3.2 (#730) — confirms billing last, composes and settles the final bill, issues the gate pass; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm", "ipd.discharge.bill", "ipd.gate.pass",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -812,6 +875,12 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      // IPD CHARGES E2.1 (#725, decision 0072) — the interim bill; README "IPD running bill" prose. Never a doctor (0058).
+      "ipd.bill.view",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -958,6 +1027,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      // PASSES E1.3 (#720) — a visitor ban, and the manager's pause and police custody.
+      "passes.pause", "passes.manage",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1064,6 +1137,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D2 — the MS reviews medication errors and near misses (root cause, action taken) and
       // closes them; the only other reader told the reporter's name. DEFAULT — owner may change.
       "pharmacy.incidents.review",
+      // IPD DISCHARGE E3.2 (#730) — reads the discharge desk; README "IPD discharge" prose.
+      "ipd.discharge.view",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1098,7 +1173,44 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+    // E0.1 TASK ENGINE (issue #713) — the duty manager sees the task board and may assign, cancel and take back a
+    // task out of hours, when no services supervisor is on.
+    permissions: [
+      "auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
+      "tasks.view", "tasks.supervise",
+      // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
+      "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
+      // E1.4 HOUSEKEEPING (issue #721) — the housekeeping board out of hours (not the terminal-clean check).
+      "housekeeping.view",
+      // IPD ADMISSION E1.2 (#719) — the duty manager runs the admission desk at night (and the emergency lane).
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
+      // E1.5 MAINTENANCE (issue #722) — the maintenance board, raise, confirm a repair and cancel or re-dispatch a ticket out of hours.
+      "maintenance.view", "maintenance.raise", "maintenance.confirm", "maintenance.manage",
+      // PASSES E1.3 (#720) — the duty manager holds all four at night: issue, scan at a door, a ban, custody.
+      "passes.issue", "passes.scan", "passes.pause", "passes.manage",
+      // IPD CHARGES E2.1 (#725) — the interim bill at night (a discharge or a deposit question at the desk).
+      "ipd.bill.view",
+      // E1.6 TRANSPORT (#723) — asks for moves at night and runs the transport board when no supervisor is on.
+      "transport.request", "transport.manage",
+      // IPD TRANSFER E3.1 (#729) — starts and accepts transfers (and swaps beds) until the ipd-nursing lane seeds
+      // ward_nurse / nursing_supervisor; README "IPD transfer" prose. The sender may never accept their own handover.
+      "ipd.transfer.start", "ipd.transfer.accept",
+      // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
+      "ipd.billdesk.view",
+      // IPD DISCHARGE E3.2 (#730) — confirms the ward at night, issues and scans gate passes, records LAMA / absconding, keeps the mortuary register; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm", "ipd.gate.pass", "ipd.gate.scan", "ipd.discharge.exit", "ipd.mortuary.manage",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
+    ],
+  },
+  /**
+   * PASSES E1.3 (#720, decision 0072) — THE GUARD AT THE WARD DOOR. No role for security existed; the scan needs one.
+   * It scans and does nothing else: no patient record, no bed board. Its scan answer names the pass holder and the
+   * ward, never the patient.
+   */
+  {
+    roleKey: "security_guard",
+    permissions: ["passes.scan"],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1217,6 +1329,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // the engineer, which is the §10 bundling matrix working as designed. This is a second
       // holder, not a transfer.
       "ops.interface.manage",
+      // E1.5 MAINTENANCE (issue #722) — biomedical engineering takes the EQUIPMENT repair tasks (skill `biomedical`):
+      // the task engine's list and acts, the maintenance board, and reporting a fault it finds.
+      "tasks.view", "tasks.work", "maintenance.view", "maintenance.work", "maintenance.raise",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1377,6 +1492,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "lab.catalogue.read",
       "orders.place",
       "orders.read",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   {
@@ -1400,12 +1517,24 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // documentation-gate failure mode this module is built to remove.
     // PHARMACY STAGE D4 — the OT's emergency tray is the theatre nurse's to check (daily seal, monthly, after use) and
     // to receive its restock into. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check"],
+    permissions: [
+      "ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check",
+      // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair (the ward nurse role arrives with ipd-nursing).
+      "maintenance.raise", "maintenance.confirm",
+      // E1.6 TRANSPORT (#723) — the theatre nurse asks for the porter (patient to OT, back to the ward).
+      "transport.request",
+    ],
   },
   {
     roleKey: "recovery_nurse",
     // PHARMACY STAGE D4 — the recovery bay's emergency tray. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check"],
+    permissions: [
+      "ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check",
+      // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair.
+      "maintenance.raise", "maintenance.confirm",
+      // E1.6 TRANSPORT (#723) — recovery sends the patient back to the ward.
+      "transport.request",
+    ],
   },
   {
     roleKey: "daycare_coordinator",
@@ -1555,6 +1684,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * clicks; the counter asks, the owner decides, the counter hands over.
        */
       "lab.reports.release_unpaid",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   /**
@@ -1711,6 +1842,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.invoice.read",
       "billing.receipt.record",
       "billing.session.own",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   /**
@@ -1736,6 +1869,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.worklist.read",
       "radiology.gates.satisfy",
       "radiology.contrast.record",
+      // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair.
+      "maintenance.raise", "maintenance.confirm",
+      // E1.6 TRANSPORT (#723) — imaging sends the patient back to the ward.
+      "transport.request",
     ],
   },
   {
@@ -1900,6 +2037,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // `materials_head` once had. Never their own ask: the kernel refuses the requester as approver.
       "approvals.requests.read",
       "approvals.requests.decide",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   /**
@@ -1967,7 +2106,63 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
   // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read"] },
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — the administration files the BMW annual report and answers the pollution
+  // control board: it reads the board and holds the manifests, disputes and reports. It does not handle bags.
+  // E2.4 LINEN (issue #728) — the administration reads the linen board and holds the par levels and the condemn
+  // approvals (a write-off needs a second person); it does not count or carry linen.
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read", "ipd.beds.view", "bmw.view", "bmw.manage", "linen.view", "linen.manage"] },
+  /**
+   * E0.1 TASK ENGINE (issue #713, decision 0072) — no housekeeping or nursing-supervisor role existed, so two are
+   * minted, by the standard Indian corporate-hospital split: the people who DO service work (ward attendants,
+   * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
+   * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
+   */
+  // E1.7 BIO-MEDICAL WASTE (issue #724) — the people who carry waste generate, weigh, collect and store bags
+  // (`bmw.handle`); the services supervisor is the BMW supervisor: the board, the handover to the treatment
+  // facility, disputes and the legal reports. DECIDED by the standard Indian corporate-hospital split.
+  // E2.4 LINEN (issue #728) — the ward attendants and linen handlers top up, return soiled and infected linen, count,
+  // send and receive laundry and raise a condemn (`linen.handle`); the services supervisor is the linen supervisor: the
+  // board, par levels and condemn approvals. DECIDED by the standard Indian corporate-hospital split.
+  // E1.6 TRANSPORT (#723) — porters are support staff (one cadre with ward attendants): their transport card details.
+  // E4.4 DIET (#736) — the ward's food-service attendant takes the meal-delivery task and taps a tray delivered or refused.
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "transport.work", "diet.serve"] },
+  /**
+   * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
+   * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
+   * control keeps with the supervisor alone. A routine clean is also checked by `ipd.beds.clean` holders.
+   */
+  {
+    roleKey: "services_supervisor",
+    permissions: [
+      "tasks.view", "tasks.work", "tasks.supervise", "bmw.view", "bmw.handle", "bmw.manage",
+      "linen.view", "linen.handle", "linen.manage", "housekeeping.view", "housekeeping.verify_terminal",
+      // E1.5 MAINTENANCE (issue #722) — the maintenance board; raise; cancel a ticket raised in error or re-dispatch
+      // one whose task was cancelled. Told when an item is flagged for replacement. NOT the confirmation: that is
+      // the nurse's (`ipd.beds.clean` or `maintenance.confirm`).
+      "maintenance.view", "maintenance.raise", "maintenance.manage",
+      // E1.6 TRANSPORT (#723) — the services supervisor runs the transport board too.
+      "transport.manage",
+    ],
+  },
+  /**
+   * E1.5 MAINTENANCE (issue #722, decision 0072) — no engineering role existed, so one is minted, by the standard
+   * Indian corporate-hospital split: the ENGINEERING department's technicians (electrician, plumber, AC, carpenter)
+   * take the general repair tasks (skill `maintenance`); biomedical engineering keeps the equipment. They hold the
+   * task engine's list and acts, the maintenance board and raise. NOBODY is assigned to it by any seed.
+   */
+  {
+    roleKey: "maintenance_staff",
+    permissions: ["tasks.view", "tasks.work", "maintenance.view", "maintenance.work", "maintenance.raise"],
+  },
+  /**
+   * E4.4 DIET (issue #736, decision 0072) — no dietary role existed, so two are minted by the standard Indian
+   * corporate-hospital split: the DIETICIAN (clinical nutrition: orders and changes diets, NPO, the consult queue, the
+   * meal rounds' cut-offs, and the kitchen's lists when the kitchen is short) and the KITCHEN STAFF (food service:
+   * build, print and dispatch the meal lists). The ward nurse gets `diet.view`, `diet.npo`, `diet.serve` and `diet.clinical.view` when the ipd-nursing
+   * lane seeds the nursing roles (the `transport.request` precedent). NOBODY is assigned by any seed.
+   */
+  { roleKey: "dietician", permissions: ["diet.view", "diet.order", "diet.npo", "diet.serve", "diet.kitchen", "diet.manage", "diet.clinical.view", "tasks.view"] },
+  { roleKey: "kitchen_staff", permissions: ["diet.view", "diet.kitchen"] },
 ];
 
 /**
@@ -2167,7 +2362,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // whoever the owner designates, and the card list is a workforce document rather than an RBAC one.
   tariff_editor: "Tariff Editor (drafts the price list; the owner activates)",
   membership_admin: "Membership Administrator (holder-book import and the reconcile queue)",
-  biomedical_engineer: "Biomedical Engineer (device and analyzer interfaces)",
+  biomedical_engineer: "Biomedical Engineer (device and analyzer interfaces, equipment repairs)",
   mrd_officer: "MRD Officer (records; requests merges, never approves one)",
   // PLAN 14 / DD11, 2026-08-27. Neither is an OPD station, so neither is in `OPD_ROLE_KEYS`.
   // § 4A item 5: these KEYS are the brainstorm's S10 names and they are what the code matches on.
@@ -2189,6 +2384,7 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14). Not an OPD station — a governance seat, held by
   // ONE person on purpose. The key is what the code matches on; if the org chart calls the person
   // something else, the TITLE changes here and the key does not.
+  security_guard: "Security Guard (scans attendant and visitor passes at the ward door)",
   staff_auditor: "Staff Auditor (reads a named colleague's figures, and may open the patient rows behind them)",
   daycare_coordinator: "Day-care Coordinator (books cases, chases gates, publishes the list)",
   // PLAN 17 T2 / DD16, 2026-08-29. None of the four is an OPD station — a bench is not a consulting
@@ -2228,6 +2424,12 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
   admin: "Administrator",
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
+  support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
+  services_supervisor: "Services Supervisor (task board: assigns, cancels and verifies service tasks)",
+  // E4.4 DIET (#736).
+  dietician: "Dietician (diet orders, NPO, consults, meal rounds and the kitchen lists)",
+  kitchen_staff: "Kitchen Staff (builds, prints and dispatches the meal lists)",
+  maintenance_staff: "Maintenance Staff (engineering technicians: electrical, plumbing, AC, carpentry repairs)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

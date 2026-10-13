@@ -1,0 +1,64 @@
+/*
+ * E1.6 TRANSPORT (issue #723) — the transport details on a porter's card, the request sheet (390 px and 1366) and the
+ * supervisor's board (16:9, no vertical scroll). Paper & pine tokens only; every colour comes with a word.
+ */
+
+/* ── the porter's card ── */
+.pp .trc { display: flex; flex-direction: column; gap: 8px; }
+.pp .trc-route { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 17px; font-weight: 700; color: var(--ink); }
+.pp .trc-route b { color: var(--green); }
+.pp .trc-who { font-size: 15px; color: var(--ink); }
+.pp .trc-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp .trc-pick { display: flex; flex-direction: column; gap: 6px; }
+.pp .trc-opt { min-height: 48px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); font: inherit; font-size: 16px; text-align: left; color: var(--ink); }
+.pp .trc-scan { display: flex; flex-direction: column; gap: 6px; }
+.pp .trc-scan label { font-size: 14px; font-weight: 700; color: var(--ink); }
+.pp .trc-scan input { min-height: 52px; padding: 0 12px; border-radius: 8px; border: 2px solid var(--green); font: inherit; font-size: 18px; font-family: "IBM Plex Mono", ui-monospace, monospace; box-sizing: border-box; width: 100%; background: var(--card); color: var(--ink); }
+
+/* ── the request sheet ── */
+.pp .trq { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 1180px; margin: 0 auto; padding: 12px 16px 24px; box-sizing: border-box; }
+.pp .trq-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.pp .trq-head h1 { margin: 0; font-size: 20px; color: var(--ink); }
+.pp .trq-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+.pp .trq-sec { display: flex; flex-direction: column; gap: 8px; padding: 14px; }
+.pp .trq-sec h2 { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: .04em; }
+.pp .trq-in { min-height: 48px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); font: inherit; font-size: 16px; color: var(--ink); width: 100%; box-sizing: border-box; }
+.pp .trq-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp .trq-chip { min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line); background: var(--card); font: inherit; font-size: 15px; color: var(--ink); }
+.pp .trq-chip.on { border-color: var(--green); background: var(--green); color: #f2faf6; font-weight: 700; }
+.pp .trq-list { display: flex; flex-direction: column; gap: 6px; }
+.pp .trq-pt { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 52px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); font: inherit; text-align: left; color: var(--ink); }
+.pp .trq-pt b { font-size: 16px; }
+.pp .trq-pt span { font-size: 14px; color: var(--dim); }
+.pp .trq-pt.on { border-color: var(--green); }
+.pp .trq-link { margin-left: auto; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 700; color: var(--green); text-decoration: underline; }
+.pp .trq-warn { margin: 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--red-line); background: var(--red-soft); color: var(--red); font-size: 14px; font-weight: 700; }
+.pp .trq-ok { margin: 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--green); color: var(--green); font-size: 14px; font-weight: 700; }
+.pp .trq-toggles { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.pp .trq-tog { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; color: var(--ink); }
+.pp .trq-tog input { width: 22px; height: 22px; }
+@media (max-width: 760px) {
+  .pp .trq-cols { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── the supervisor's board ── */
+.pp .trb-list { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.pp .trb-row {
+  display: grid; grid-template-columns: 120px 230px minmax(0, 2fr) minmax(0, 1.3fr) 170px 170px; gap: 0 12px; align-items: center;
+  min-height: 48px; padding: 0 14px; border-bottom: 1px solid var(--line2); border-left: 4px solid transparent; box-sizing: border-box; font-size: 14px; color: var(--ink);
+}
+.pp .trb-row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pp .trb-row.late { border-left-color: var(--red); }
+.pp .trb-row.soon { border-left-color: var(--gold); }
+.pp .trb-hd { min-height: 40px; font-size: 12px; font-weight: 700; color: var(--dim); letter-spacing: .04em; border-bottom: 1px solid var(--line); }
+.pp .trb-route { font-weight: 600; }
+.pp .trb-how, .pp .trb-porter { color: var(--dim); }
+.pp .trb-esc.wait { color: var(--red); font-weight: 700; }
+@media (max-width: 1500px) {
+  .pp .trb-row { grid-template-columns: 100px 120px minmax(0, 2fr) minmax(0, 1.2fr) 150px 120px; gap: 0 8px; font-size: 13px; }
+}
+@media (max-width: 700px) {
+  .pp .trb-hd { display: none; }
+  .pp .trb-row { grid-template-columns: minmax(0, 1fr) auto; padding: 6px 12px; }
+  .pp .trb-row > .trb-how, .pp .trb-row > .trb-porter { display: none; }
+}
