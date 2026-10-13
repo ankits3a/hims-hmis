@@ -20,6 +20,7 @@ CREATE TABLE "transport_requests" (
 	"oxygen_checked_at" timestamp with time zone,
 	"handover_band_serial" text,
 	"handover_at" timestamp with time zone,
+	"handover_refusals" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"requested_by" text NOT NULL,
 	"created_at" timestamp with time zone NOT NULL,
 	"updated_at" timestamp with time zone NOT NULL,

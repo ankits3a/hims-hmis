@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { TRANSPORT_KINDS } from "@hmis/contracts";
-import { tasks, transportRequests } from "../../../kernel/db/schema";
+import { alerts, tasks, transportRequests } from "../../../kernel/db/schema";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkTransportWorld } from "../../../../test/helpers/transport";
 import { acceptTask, completeTask, startTask } from "../../tasks";
@@ -83,6 +83,23 @@ describe("E1.6 transport — acceptance", () => {
     const req = (await db.select().from(transportRequests).where(eq(transportRequests.taskId, r.task.id)))[0]!;
     expect(req.handoverBandSerial).toBe(p.band);
     expect(req.handoverAt).not.toBeNull();
+  });
+
+  it("(ii-b) a refused wrong-patient handover leaves a record and tells the services supervisor", async () => {
+    const p = await w.admitted("T-GEN-R1");
+    const other = await w.admitted("T-GEN-R2");
+    const r = await requestTransport(db, w.requester, { kind: TRANSPORT_KINDS.patientMove, admissionId: p.admissionId, toResourceId: w.roomId });
+    const porter = await accepted(r.task.id);
+    await startTask(db, porter, { taskId: r.task.id });
+    await expect(completeTask(db, porter, { taskId: r.task.id, proof: { kind: "scan", code: other.band } })).rejects.toMatchObject({
+      code: "wrong_patient",
+    });
+    const req = (await db.select().from(transportRequests).where(eq(transportRequests.taskId, r.task.id)))[0]!;
+    expect(req.handoverRefusals).toEqual([expect.objectContaining({ actorId: porter.id, scannedAdmissionId: other.admissionId, serial: other.band })]);
+    expect(req.handoverAt).toBeNull();
+    const bells = await db.select().from(alerts).where(and(eq(alerts.userId, w.supervisor.id), eq(alerts.kind, "transport.handover_refused")));
+    expect(bells).toHaveLength(1);
+    expect(bells[0]!.refId).toBe(r.task.id);
   });
 
   it("(iii) an oxygen move cannot start before the cylinder check", async () => {

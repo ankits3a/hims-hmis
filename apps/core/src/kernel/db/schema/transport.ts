@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { ipdAdmissions } from "./ipd";
 import { resources } from "./resources";
 import { tasks } from "./tasks";
@@ -38,6 +38,12 @@ export const transportRequests = pgTable(
     oxygenCheckedAt: timestamp("oxygen_checked_at", { withTimezone: true }),
     handoverBandSerial: text("handover_band_serial"),
     handoverAt: timestamp("handover_at", { withTimezone: true }),
+    /**
+     * Every REFUSED wristband scan at handover (wrong patient), appended in its own transaction after the refusal —
+     * a safety event that must leave a record: `{ at, actorId, scannedAdmissionId, serial }`. Append-only by use.
+     */
+    handoverRefusals: jsonb("handover_refusals").$type<{ at: string; actorId: string; scannedAdmissionId: string; serial: string }[]>()
+      .notNull().default(sql`'[]'::jsonb`),
     requestedBy: text("requested_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),

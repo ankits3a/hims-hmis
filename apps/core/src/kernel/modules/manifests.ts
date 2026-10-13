@@ -200,7 +200,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // E1.4 HOUSEKEEPING (issue #721) — appended. Two permissions, one menu entry, and the bed's kernel events
   // (released, status changed, assigned) -> `housekeeping.bed_turnover`. Installed in BOTH processes.
   housekeepingManifest,
-  // E1.6 TRANSPORT (issue #723) — appended. Three permissions, one menu entry, no subscription: API only (the worker
+  // E1.6 TRANSPORT (issue #723) — appended. Three permissions, two menu entries, no subscription: API only (the worker
   // imports the module for its task kinds and installs nothing).
   transportManifest,
 ];

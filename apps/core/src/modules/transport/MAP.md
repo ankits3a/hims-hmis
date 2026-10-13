@@ -69,7 +69,10 @@ or its QR `IPDBAND1|<serial>|<uhid>`; a handheld scanner types it into the field
   needs one. The escort is an active user holding a role in `ESCORT_ROLE_KEYS` and is not the porter.
 - A `patient_move` raised through the generic `/tasks` door has no transport row: Start refuses `not_transport`.
 - Handover order: unknown band → `band_unknown`; another admission's band (live or void) → `wrong_patient`; the
-  patient's own replaced band → `band_void`. A refused handover writes nothing.
+  patient's own replaced band → `band_void`. A refused WRONG-PATIENT handover is a safety event: after the rollback the
+  engine runs the refusal's `afterRefusal` in its own transaction (`recordRefusedHandover`) — the scan is appended to
+  `transport_requests.handover_refusals` and every services supervisor and duty manager gets a
+  `transport.handover_refused` bell.
 - **No patient on the wall.** The board shows bed/place names, the porter's initials and the escort state in words;
   the porter's OWN card shows the patient's name (sealed if confidential) and IP number — they fetch the patient by them.
 - The worker imports the module (side effect only) so the clock knows the kinds; nothing is installed there.

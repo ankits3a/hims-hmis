@@ -92,6 +92,7 @@ row has its own try/catch, so one failure stops nothing else.
   `startTask` / `completeTask` after the engine's own checks and before the row moves; a throw (a `TaskKindRefusal`,
   code + sentence + fix of the owning module) refuses the act, and the tasks controller answers it like a `TaskError`.
   Transport puts its escort, oxygen and wristband rules there, so the generic `/tasks` doors enforce them too.
+  A refusal may carry `afterRefusal(db)`: run in its own transaction after the act rolls back (a record that must survive).
 - `nudgeTask` (sweep.ts): a person escalates an open task now — an `escalated` event with `detail.nudge`, a
   `task.nudge` bell to the kind's escalation role and the holder; the ladder's rung is not moved; a second nudge
   within `TASK_NUDGE_WINDOW_MIN` (5) is refused `nudged_recently`.

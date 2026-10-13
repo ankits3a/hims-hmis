@@ -5,7 +5,7 @@ import {
 } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { resources, taskEvents, tasks, users } from "../../kernel/db/schema";
-import { TaskError } from "./errors";
+import { TaskError, TaskKindRefusal } from "./errors";
 import { requireTaskKind, skillRoles, taskKind, verifierPermissionsOf } from "./kinds";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { dutyCovering, pickWorker } from "./dispatch";
@@ -81,6 +81,21 @@ async function update(tx: Exec, id: string, set: PgUpdateSetSource<typeof tasks>
 }
 
 const tx = <T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> => (exec as Db).transaction(fn);
+
+/**
+ * An act whose kind hook may refuse: the act's transaction rolls back, THEN the refusal's own record (if it carries one)
+ * is written in a separate transaction, and the refusal is rethrown. A failing record never hides the refusal.
+ */
+async function hooked<T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> {
+  try {
+    return await tx(exec, fn);
+  } catch (e) {
+    if (e instanceof TaskKindRefusal && e.afterRefusal !== undefined) {
+      try { await e.afterRefusal(exec as Db); } catch (recordFailed) { console.error("task refusal record failed", recordFailed); }
+    }
+    throw e;
+  }
+}
 
 /* ═══════════════════════════════ raise ═══════════════════════════════ */
 
@@ -234,7 +249,7 @@ function requireMine(row: TaskRow, actor: Actor): void {
 
 export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
   const input = parse(taskRefInput, raw);
-  return tx(exec, async (t) => {
+  return hooked(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
     checkVersion(row, input.version);
     if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
@@ -251,7 +266,7 @@ export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Dat
 
 export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
   const input = parse(completeTaskInput, raw);
-  return tx(exec, async (t) => {
+  return hooked(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
     checkVersion(row, input.version);
     if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });

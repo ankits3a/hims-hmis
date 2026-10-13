@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/transport/`
 
 - **Depends on modules:** `ipd`, `patients`, `tasks`
 - **Used by modules:** —
-- **Kernel used:** `auth`, `db`, `modules`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `auth`, `db`, `modules`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 

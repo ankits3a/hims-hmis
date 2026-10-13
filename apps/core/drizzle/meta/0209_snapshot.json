@@ -1,5 +1,5 @@
 {
-  "id": "30b2cca3-c4b9-4d69-b02f-5c266a2377e8",
+  "id": "a4ebad69-1d2a-4f46-bf90-18559be739d9",
   "prevId": "e49edef7-d782-449e-939c-e2d033e6e76e",
   "version": "7",
   "dialect": "postgresql",
@@ -56129,6 +56129,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "handover_refusals": {
+          "name": "handover_refusals",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "requested_by": {
           "name": "requested_by",
