@@ -80,8 +80,11 @@ export const reprintBand = (
 
 export const emergencyAdmit = (b: {
   patientId: string; bedId: string; consultantId: string; isolation: "none" | "contact" | "droplet" | "airborne"; mlc: boolean;
-  provisionalDiagnosis?: string;
+  provisionalDiagnosis?: string; admissionId?: string; intensivistApprovalId?: string;
 }): Promise<{ admissionId: string; admissionNo: string; incomplete: string[] }> => post(R.emergency, b);
+/** Review #10 — the emergency ICU approval names the admission the server mints for it. */
+export const askEmergencyIcuApproval = (patientId: string, note: string): Promise<{ approvalId: string; admissionId: string }> =>
+  api("POST", "/ipd/admissions/emergency/icu-approval", { patientId, note });
 
 export const backfillDowntime = (b: Record<string, unknown>): Promise<{ admissionId: string; admissionNo: string }> => post(R.backfill, b);
 export const recordConsent = (admissionId: string, consent: ConsentInput): Promise<unknown> => post(R.consent, { admissionId, consent });

@@ -9,6 +9,7 @@ CREATE TABLE "ipd_admission_deposits" (
 	"payer_relation" text NOT NULL,
 	"payer_phone" text,
 	"non_covered_approval_id" text,
+	"idempotency_key" text NOT NULL,
 	"taken_by" text NOT NULL,
 	"taken_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "ipd_admission_deposits_amount_ck" CHECK ("ipd_admission_deposits"."amount_paise" > 0)
@@ -54,6 +55,7 @@ CREATE TABLE "ipd_admissions" (
 	"stabilised_at" timestamp with time zone,
 	"downtime_serial" text,
 	"paper_receipt_no" text,
+	"deposit_check_pending" boolean DEFAULT false NOT NULL,
 	"cancel_reason" text,
 	"ended_at" timestamp with time zone,
 	"ended_by" text,
@@ -103,6 +105,7 @@ ALTER TABLE "ipd_admission_deposits" ADD CONSTRAINT "ipd_admission_deposits_admi
 ALTER TABLE "ipd_bands" ADD CONSTRAINT "ipd_bands_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ipd_payer_auths" ADD CONSTRAINT "ipd_payer_auths_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "ipd_admission_deposits_receipt_ux" ON "ipd_admission_deposits" USING btree ("receipt_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "ipd_admission_deposits_key_ux" ON "ipd_admission_deposits" USING btree ("taken_by","idempotency_key");--> statement-breakpoint
 CREATE INDEX "ipd_admission_deposits_admission_idx" ON "ipd_admission_deposits" USING btree ("admission_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ipd_admissions_open_patient_ux" ON "ipd_admissions" USING btree ("patient_id") WHERE "ipd_admissions"."state" in ('requested', 'reserved', 'admitted', 'transferring', 'fit_declared', 'discharging');--> statement-breakpoint
 CREATE UNIQUE INDEX "ipd_admissions_no_ux" ON "ipd_admissions" USING btree ("admission_no") WHERE "ipd_admissions"."admission_no" is not null;--> statement-breakpoint

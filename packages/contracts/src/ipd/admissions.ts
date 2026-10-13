@@ -53,6 +53,8 @@ export const IpdAdmissionViewSchema = z.object({
   depositRequiredPaise: IpdPaiseSchema.nullable(),
   depositBasis: z.string().nullable(),
   depositPaidPaise: IpdPaiseSchema,
+  /** Review #7: a downtime admission whose paper deposit the bill desk has not yet checked. */
+  depositCheckPending: z.boolean(),
   deposits: z.array(z.object({ receiptId: z.string(), receiptNo: z.string(), amountPaise: IpdPaiseSchema, takenAt: IpdInstantSchema })),
   consent: ConsentView.nullable(),
   reservation: z.object({ id: IpdIdSchema, bedId: IpdIdSchema, bedCode: z.string(), expiresAt: IpdInstantSchema }).nullable(),
@@ -129,6 +131,8 @@ export type IpdApprovalKind = (typeof IPD_APPROVAL_KINDS)[number];
 export const IPD_ADMIT_ROUTES = {
   list: "/ipd/admissions",
   advice: "/ipd/admissions/advice",
+  depositChecks: "/ipd/admissions/deposit-checks",
+  emergencyApproval: "/ipd/admissions/emergency/icu-approval",
   consultants: "/ipd/admissions/consultants",
   one: "/ipd/admissions/:id",
   quotes: "/ipd/admissions/:id/quotes",

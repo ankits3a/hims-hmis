@@ -17,7 +17,9 @@ export type IpdErrorCode =
   /** E1.2 — a tender the billing ledger does not take (it takes cash, UPI and card). */
   | "tender_not_supported"
   /** E1.2 — the approval type an act needs is not registered yet (a go-live step registers it). */
-  | "approval_type_missing";
+  | "approval_type_missing"
+  /** E1.2 review — a non-covered line asked without its amount. */
+  | "non_covered_amount_required";
 
 export class IpdError extends Error {
   constructor(
