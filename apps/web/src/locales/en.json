@@ -165,7 +165,9 @@
     "dietWard": "Diet sheet",
     "dietKitchen": "Kitchen",
     "dietConsults": "Diet consults",
-    "ipdRounds": "Rounds"
+    "ipdRounds": "Rounds",
+    "ipdMar": "MAR",
+    "ipdPharmacy": "IP pharmacy"
   },
   "palette": {
     "title": "Search",
@@ -3844,6 +3846,12 @@
     },
     "dietConsults": {
       "title": "Diet consults waiting"
+    },
+    "ipdDueDose": {
+      "title": "Doses due"
+    },
+    "ipdNewOrder": {
+      "title": "New orders"
     }
   },
   "report": {
@@ -18744,5 +18752,179 @@
     "longCourse": "Reason for a course over 14 days",
     "allergyHit": "Allergy: {{substances}}",
     "overrideReason": "Reason to order despite the allergy"
+  },
+  "ipdEmar": {
+    "scan": "Scan",
+    "highAlert": "High alert",
+    "narcotic": "Narcotic",
+    "verbal": "Verbal order",
+    "note": "Note",
+    "reason": "Reason",
+    "save": "Save",
+    "asOf": "As of {{time}}",
+    "from": "from {{time}}",
+    "dueAt": "Due {{time}}",
+    "orderedBy": "Ordered by {{name}} · {{time}}",
+    "offline": "No network — use paper MAR",
+    "offlineShort": "Offline — paper MAR",
+    "expired": "Not given — scan again",
+    "lasaConfirm": "Confirm: {{name}}",
+    "lateReason": "Why late?",
+    "heldCount_one": "{{count}} dose held for return",
+    "heldCount_other": "{{count}} doses held for return",
+    "reoffered_one": "{{count}} dose offered again",
+    "reoffered_other": "{{count}} doses offered again",
+    "due": {
+      "title": "Doses due",
+      "none": "No dose due",
+      "late": "late"
+    },
+    "bedside": {
+      "title": "Bedside",
+      "due": "Due now",
+      "scanBand": "Scan wristband",
+      "scanLabel": "Scan drug label",
+      "bandScanned": "Band scanned",
+      "bandNotScanned": "Band not scanned"
+    },
+    "give": {
+      "btn": "Give",
+      "hold": "Hold to give"
+    },
+    "given": {
+      "ok": "Dose given",
+      "late": "Given late"
+    },
+    "check": {
+      "patient": "Patient",
+      "drug": "Drug",
+      "dose": "Dose",
+      "time": "Time",
+      "route": "Route"
+    },
+    "status": {
+      "scheduled": "Due",
+      "given": "Given",
+      "held": "Held",
+      "missed": "Missed",
+      "refused": "Refused",
+      "cancelled": "Cancelled",
+      "corrected": "Corrected"
+    },
+    "orderStatus": {
+      "active": "Active",
+      "stopped": "Stopped",
+      "cancelled": "Cancelled"
+    },
+    "act": {
+      "hold": "Hold",
+      "refuse": "Refused",
+      "miss": "Missed"
+    },
+    "done": {
+      "hold": "Dose held",
+      "refuse": "Refusal recorded",
+      "miss": "Missed dose recorded"
+    },
+    "reasons": {
+      "npo": "NPO",
+      "off_ward": "Off the ward",
+      "parameter_out_of_range": "Reading out of range",
+      "clinical_hold": "Clinical hold",
+      "doctor_instruction": "Doctor's instruction",
+      "patient_refused": "Patient refused",
+      "vomited": "Vomited",
+      "other": "Other",
+      "no_stock": "No stock on ward",
+      "patient_away": "Patient away",
+      "omitted": "Omitted"
+    },
+    "override": {
+      "open": "Band won't scan",
+      "counted": "Override is counted",
+      "use": "Use override",
+      "band_unreadable": "Band unreadable",
+      "band_refused": "Patient refused band",
+      "no_band_burns": "No band (burns)",
+      "scanner_down": "Scanner down"
+    },
+    "second": {
+      "title": "Second nurse",
+      "username": "Username",
+      "pin": "PIN",
+      "check": "Check",
+      "done": "Checked by {{name}}"
+    },
+    "reoffer": {
+      "back": "Back on ward",
+      "npo": "NPO lifted"
+    },
+    "prn": {
+      "now": "PRN · may give now",
+      "next": "PRN · not before {{time}}",
+      "in24h": "{{n}} of {{max}} in 24 h"
+    },
+    "pharmacy": {
+      "title": "Inpatient pharmacy",
+      "toVerify": "To verify",
+      "toIssue": "To issue",
+      "flags": "Allergy flags",
+      "returns": "Returns owed",
+      "none": "Nothing here",
+      "noInteractionData": "No interaction data in the formulary",
+      "override": "Prescriber overrode allergy: {{reason}}",
+      "noteNeeded": "Note (needed)",
+      "query": "Query",
+      "reject": "Reject",
+      "verify": "Verify",
+      "units": "Units",
+      "perLabel": "Units per label",
+      "own": "Patient's own medicine",
+      "batch": "Batch",
+      "expiry": "Expiry",
+      "issue": "Issue and print labels",
+      "labelsCount_one": "{{count}} label",
+      "labelsCount_other": "{{count}} labels",
+      "decision": "Doctor's decision",
+      "close": "Close flag",
+      "flagClosed": "Flag closed",
+      "orderStopped": "order stopped",
+      "issued": "{{units}} issued · {{back}} back",
+      "unitsBack": "Units back",
+      "takeBack": "Take back",
+      "credited_one": "{{count}} unit credited",
+      "credited_other": "{{count}} units credited",
+      "tick": {
+        "allergy": "Allergy",
+        "interaction": "Interaction",
+        "dose": "Dose",
+        "duplicate": "Duplicate therapy"
+      },
+      "did": {
+        "verified": "Verified",
+        "rejected": "Rejected",
+        "query": "Query sent"
+      }
+    },
+    "labels": {
+      "title_one": "{{count}} label",
+      "title_other": "{{count}} labels",
+      "a4": "A4 sheet",
+      "slip": "Slips",
+      "print": "Print",
+      "highAlert": "HIGH ALERT",
+      "own": "OWN"
+    },
+    "mar": {
+      "title": "Ward MAR",
+      "day": "Day {{day}}",
+      "patient": "Patient",
+      "drug": "Drug",
+      "print": "Print MAR",
+      "empty": "No patients on this ward",
+      "noOrders": "No drug orders",
+      "withPharmacy": "with pharmacy"
+    },
+    "needs": "Needs: {{what}}"
   }
 }
