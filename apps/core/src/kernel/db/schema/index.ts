@@ -126,3 +126,7 @@ export * from "./ipd";
 // E1.7 BIO-MEDICAL WASTE (issue #724, decision 0072) — bags, manifests, disputes and the bags' append-only history.
 // References `resources` (the place a bag is generated at); nothing reads it but `modules/bmw`.
 export * from "./bmw";
+// E2.4 LINEN (issue #728, decision 0072) — the linen catalogue, par levels, the append-only movement ledger, laundry
+// batches and their short deliveries, condemn requests and ward counts. References `resources` (wards); nothing reads
+// it but `modules/linen`.
+export * from "./linen";

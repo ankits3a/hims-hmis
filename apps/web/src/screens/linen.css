@@ -1,0 +1,83 @@
+/*
+ * E2.4 LINEN (issue #728) — the supervisor's board (16:9, no vertical scroll) and the handler's phone (390 px, Hindi
+ * first, 52 px targets). Paper & pine tokens; every colour comes with a word.
+ */
+.pp .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.pp .ln-empty { padding: 16px 12px; text-align: center; font-size: 15px; color: var(--dim); }
+.pp .ln-more { padding: 8px 12px; font-size: 13px; color: var(--dim); }
+.pp .ln-dim { color: var(--dim); }
+.pp .ln-err { color: var(--red); font-weight: 600; }
+.pp .ln-state { font-weight: 700; }
+.pp .ln-state.ok { color: var(--green); }
+.pp .ln-state.below { color: var(--red); }
+
+/* ── the board ── */
+.pp .ln-board { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; flex: 1 1 auto; min-height: 0; padding: 12px 16px; box-sizing: border-box; }
+.pp .ln-head { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; min-width: 0; }
+.pp .ln-head h1 { margin: 0; font-size: 20px; color: var(--ink); white-space: nowrap; }
+.pp .ln-sum { display: flex; gap: 8px; min-width: 0; overflow: hidden; }
+.pp .ln-count { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); font-size: 13px; color: var(--dim); white-space: nowrap; }
+.pp .ln-count b { font-size: 18px; color: var(--ink); }
+.pp .ln-count.alert { border-color: var(--red-line); background: var(--red-soft); color: var(--red); }
+.pp .ln-count.alert b { color: var(--red); }
+.pp .ln-count.inf { border-color: var(--gold); color: var(--gold); }
+.pp .ln-count.inf b { color: var(--gold); }
+.pp .ln-now { margin-left: auto; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 18px; font-weight: 600; color: var(--ink); }
+.pp .ln-main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(300px, 1fr); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; overflow: hidden; }
+.pp .ln-col { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.pp .ln-col > header, .pp .ln-side .box > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.pp .ln-col > header b, .pp .ln-side .box > header b { font-size: 15px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .ln-rows { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.pp .ln-row { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 0 10px; align-items: center; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line2); min-height: 52px; box-sizing: border-box; }
+.pp .ln-row .bar { align-self: stretch; border-radius: 0 3px 3px 0; background: var(--green); }
+.pp .ln-row.below .bar { background: var(--red); }
+.pp .ln-row .t1 { font-size: 14.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .ln-row .t2 { font-size: 12.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .ln-row .r { text-align: right; font-size: 14px; white-space: nowrap; }
+.pp .ln-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 7px 12px; border-bottom: 1px solid var(--line2); min-height: 48px; box-sizing: border-box; }
+.pp .ln-line.inf { background: var(--red-soft); }
+.pp .ln-line .n { font-size: 14px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pp .ln-line .c { font-size: 13.5px; font-weight: 700; color: var(--ink); text-align: right; white-space: nowrap; }
+.pp .ln-line.short .c { color: var(--red); }
+.pp .ln-line .s { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); overflow: hidden; white-space: nowrap; }
+.pp .ln-tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; }
+.pp .ln-tag.inf { background: var(--red); color: #fff; }
+.pp .ln-sub-h { padding: 8px 12px 4px; font-size: 12.5px; font-weight: 700; color: var(--dim); border-bottom: 1px solid var(--line2); }
+.pp .ln-side { display: grid; grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; min-height: 0; overflow: hidden; }
+.pp .ln-loss, .pp .ln-condemn { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.pp .ln-mini { margin-left: 6px; min-height: 28px; padding: 0 10px; border-radius: 6px; font-size: 12.5px; font-weight: 700; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.pp .ln-mini.ok { border-color: var(--green); background: var(--green); color: #f2faf6; }
+
+/* ── the handler's phone ── */
+.pp .ln-phone { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 560px; margin: 0 auto; padding: 12px 16px 24px; box-sizing: border-box; }
+.pp .ln-phone h1 { margin: 0; font-size: 20px; color: var(--ink); }
+.pp .ln-phone h2 { margin: 0 0 10px; font-size: 17px; color: var(--ink); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pp .ln-where { font-size: 14px; font-weight: 600; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .ln-two { display: inline-flex; flex-direction: column; align-items: inherit; line-height: 1.15; }
+.pp .ln-two .en { font-size: .72em; font-weight: 500; opacity: .8; }
+.pp .ln-notice { margin: 0; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--red-line); background: var(--red-soft); color: var(--red); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .ln-notice.ok { border-color: var(--green); background: var(--card); color: var(--green); }
+.pp .ln-phone select, .pp .ln-qty { min-height: 52px; font-size: 18px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); box-sizing: border-box; width: 100%; min-width: 0; }
+.pp .ln-card select { margin-bottom: 10px; }
+.pp .ln-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pp .ln-mode { min-height: 56px; border-radius: 10px; font-size: 17px; font-weight: 700; border: 1px solid var(--line); background: var(--card); color: var(--ink); display: flex; align-items: center; justify-content: center; text-align: center; padding: 4px 8px; }
+.pp .ln-mode.on { border: 2px solid var(--green); background: var(--green); color: #f2faf6; }
+.pp .ln-mode.infected:not(.on) { border-color: var(--red-line); color: var(--red); }
+.pp .ln-card { padding: 14px; }
+.pp .ln-step { display: grid; grid-template-columns: minmax(0, 1fr) 52px 64px 52px; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line2); }
+.pp .ln-step .nm { display: flex; flex-direction: column; min-width: 0; }
+.pp .ln-step .nm .hi { font-size: 17px; font-weight: 700; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .ln-step .nm .en { font-size: 12.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp .ln-pm { min-height: 52px; border-radius: 10px; font-size: 26px; font-weight: 700; border: 1px solid var(--green); background: var(--card); color: var(--green); line-height: 1; }
+.pp .ln-qty { text-align: center; padding: 0 4px; font-size: 20px; font-weight: 700; }
+.pp .ln-check { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 16px; color: var(--red); min-height: 48px; }
+.pp .ln-check input { width: 26px; height: 26px; }
+.pp .ln-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 16px; border-radius: 8px; font-size: 17px; font-weight: 700; border: 1px solid var(--green); background: var(--green); color: #f2faf6; }
+.pp .ln-btn.big { width: 100%; font-size: 20px; min-height: 60px; margin-top: 12px; }
+.pp .ln-btn:disabled { opacity: .45; }
+.pp .pill.gd { border-color: var(--gold); color: var(--gold); }
+.pp .ln-step .nm .hint { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Save stays in the thumb zone however long the list is. */
+.pp .ln-save { position: sticky; bottom: 8px; z-index: 2; box-shadow: 0 6px 18px rgba(0,0,0,.18); }
+.pp .ln-phone h2 .ln-two .hi { font-size: 1.15em; font-weight: 700; }
+.pp .ln-pm { display: flex; align-items: center; justify-content: center; padding: 0; }
