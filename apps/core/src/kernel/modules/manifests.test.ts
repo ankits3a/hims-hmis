@@ -26,6 +26,7 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { labManifest } from "../../modules/lab";
 import { abdmManifest } from "../../modules/abdm";
 import { orderingManifest } from "../../modules/ordering";
+import { ipdManifest } from "../../modules/ipd";
 
 /**
  * Plan 11d / D2, Book row V4 — `ALL_MANIFESTS` is the ONE list, and a manifest installed outside
@@ -92,6 +93,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   pharmacyManifest, // PLAN 16c T3
   abdmManifest, // ABDM S2 — worker-only, the `notify` shape
   orderingManifest, // DECISION 0067 — both processes
+  ipdManifest, // E3.3 (#731) — both processes (the family-link stop consumer)
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -218,7 +220,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly ten enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly nine enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -342,7 +344,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     //      and needs no permission to, so installing it there would catalog nothing and subscribe to nothing.
     // (1l) IPD BEDS E1.1 — the TWENTY-SIXTH, `ipd`, APP-ONLY on the same terms: four permissions, no subscription;
     //      the worker runs its job (`lapseBedReservations`) without the manifest.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "ipd"]);
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
@@ -424,7 +426,10 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "pharmacy",
       // DECISION 0067 — the free-test consumer (`ordering.free_tests`); installed in both processes.
       "ordering",
+      // E3.3 (#731) — the family link's stop consumer (`ipd.family_stop`): death and absconding revoke the link. `ipd` moves
+      // from the app-only list to the shared one in the commit that declares its first subscription and registers its handler.
+      "ipd",
     ]);
-    expect(workerKeys).toHaveLength(20); // DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(21); // E3.3 (#731): 20 -> 21, `ipd`; // DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

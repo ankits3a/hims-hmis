@@ -13,7 +13,8 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -134,6 +135,8 @@ Source: `apps/core/src/modules/ipd/`
   - `nextNoonIst(at: Date): Date`
   - types: `StayClassChange`
 - `daily-totals.ts`
+  - `attendantOf(db: Db | Tx, patientId: string, admissionId: string): Promise<Attendant | null>`
+  - `attendantPhoneOf(db: Db | Tx, kind: "guardian" | "deposit_payer", ref: string): Promise<string | null>`
   - `dayOfStay(admittedAt: Date, billDate: string): number`
   - `messageNameOf(p: { name: string; alias: string | null; isConfidential: boolean }): string`
   - `queueAllDailyTotals(db: Db, now: Date): Promise<DailyTotalsResult>`
@@ -202,6 +205,32 @@ Source: `apps/core/src/modules/ipd/`
   - `class IpdRefusal`
   - `ipdRefusalStatus(code: IpdRefusalCode): number`
   - types: `IpdErrorCode`
+- `family-events.ts`
+  - `IPD_FAMILY_STOP_CONSUMER`
+- `family-otp.ts`
+  - `class FamilyOtpUnavailable`
+  - `class LoggingFamilyOtpSender`
+  - `class SmsFamilyOtpSender`
+  - `familyOtpSender(cfg: AppConfig, env: NodeJS.ProcessEnv = process.env): FamilyOtpSender`
+  - types: `FamilyOtpSender`
+- `family-public.ts`
+  - `familyGate(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyGate>`
+  - `readFamilyBillDetails(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyBillD…`
+  - `readFamilyView(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyView>`
+  - `requestFamilyCallback(db: Db, token: string, cookies: { device?: string; session?: string }, text: string, at: Date = new Date()): Promise<…`
+  - `sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, at: Date = new Date()): Promise<{ phoneMasked: string; expi…`
+  - `verifyFamilyOtp(db: Db, token: string, deviceId: string, code: string, at: Date = new Date()): Promise<{ sessionToken: string; expiresAt: D…`
+- `family.ts`
+  - `closeFamilyCallback(db: Db, actor: Actor, callbackId: string, note: string, opts: { now?: Date } = {}): Promise<{ closed: boolean }>`
+  - `familyBlockOf(db: Db | Tx, a: AdmissionRow): Promise<Exclude<Blocked, "no_attendant_phone" | "stay_ended"> | null>`
+  - `familyCallbacksCard(db: Db): Promise<DeskCard[]>`
+  - `familyStopConsumer(db: Db): Handler`
+  - `handleFamilyStop(tx: Tx, eventId: string, name: string, payload: unknown): Promise<{ handled: boolean; revoked: boolean }>`
+  - `issueFamilyLink(db: Db, actor: Actor, admissionId: string, input: IpdIssueFamilyLink, opts: { now?: Date } = {}): Promise<IpdFamilyLinkIssu…`
+  - `listFamilyCallbacks(db: Db, actor: Actor, opts: { status?: "open" | "done" } = {}): Promise<IpdFamilyCallbackList>`
+  - `readFamilyPanel(db: Db, actor: Actor, admissionId: string): Promise<IpdFamilyPanel>`
+  - `revokeFamilyLink(db: Db, actor: Actor, linkId: string, opts: { now?: Date } = {}): Promise<{ revoked: boolean }>`
+  - `setCondition(db: Db, actor: Actor, admissionId: string, input: IpdSetCondition, opts: { now?: Date } = {}): Promise<{ word: IpdConditionWor…`
 - `goals/goal-events.ts`
   - `BED_AVAILABLE: BedStatus`
   - `BED_CLEANING: BedStatus`
@@ -233,11 +262,13 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_BILLDESK_VIEW`
   - `IPD_BILL_VIEW`
   - `IPD_CHARGES_REVERSE`
+  - `IPD_CONDITION_SET`
   - `IPD_DISCHARGE_BILL`
   - `IPD_DISCHARGE_CONFIRM`
   - `IPD_DISCHARGE_DECLARE`
   - `IPD_DISCHARGE_EXIT`
   - `IPD_DISCHARGE_VIEW`
+  - `IPD_FAMILY_ISSUE`
   - `IPD_GATE_PASS`
   - `IPD_GATE_SCAN`
   - `IPD_MORTUARY_MANAGE`
@@ -280,17 +311,18 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
+`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (68)
+## HTTP routes (80)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
 - `discharge.controller.ts` — 23: `/ipd/discharge`, `/ipd/mortuary`
+- `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
 - `transfers.controller.ts` — 7: `/ipd/transfers`
 

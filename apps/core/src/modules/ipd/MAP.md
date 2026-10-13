@@ -113,6 +113,18 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `kernel/notify/templates.ts` — template `ipd.daily_totals` (held: `heldReason`), `kernel/notify/pump.ts` suppresses a held
   template `template_pending`. Web: `apps/web/src/screens/ipd-bill-desk.tsx` (`/ipd/bill-desk`, nav "Bill desk").
 
+- (E3.3) `family.ts` — staff side: `issueFamilyLink`, `revokeFamilyLink`, `setCondition` (word + family-off switch),
+  `listFamilyCallbacks`, `closeFamilyCallback`, `readFamilyPanel`, `familyBlockOf`, the stop consumer `familyStopConsumer` /
+  `handleFamilyStop`, the desk card `familyCallbacksCard`. `family-public.ts` — the attendant's side (no staff session):
+  `familyGate`, `sendFamilyOtp`, `verifyFamilyOtp`, `readFamilyView`, `readFamilyBillDetails`, `requestFamilyCallback`.
+  `family-otp.ts` — `FamilyOtpSender` (SMS adapter with DLT id `IPD_FAMILY_OTP_DLT_TEMPLATE_ID`, else refused; non-prod log opt-in
+  `IPD_FAMILY_OTP_TO_LOG`). `family-events.ts`, `family.controller.ts` (`IPD_FAMILY_ROUTES`; public routes `@Public()`, cookies
+  `hmis_fdev` / `hmis_fses` on `/api/ipd/family`). `daily-totals.ts` `attendantOf` / `attendantPhoneOf` (shared recipient rule).
+  `discharge-read.ts` `familyTrackerOf`. `kernel/db/schema/ipd.ts` — `ipd_admission_conditions`, `ipd_family_links`,
+  `ipd_family_otps`, `ipd_family_sessions`, `ipd_family_callbacks` (migration `ipd_family`). `packages/contracts/src/ipd/family.ts`.
+  Web: `apps/web/src/screens/ipd-family.tsx` (`/family/$token`, public, sibling of `/login`), `apps/web/src/screens/ipd-family-panel.tsx` (the
+  Family card on the discharge desk), `apps/web/src/screens/ipd-family-callbacks.tsx` (`/ipd/family-callbacks`, nav "Family calls").
+
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
   validated here, and only the keys the schemas name are written. Other keys on a row are kept.
@@ -442,6 +454,23 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ipd.charges.reverse`. Deposit reasons are the LIVE ladder rows only (a re-armed level leaves the desk, review 7). A sealed
   patient (`sensitive_context`) shows by alias or "Sealed patient" — no name, UHID or bed (review 2).
 
+### Family link (E3.3, #731)
+- ⚖ ONLY THE REGISTERED ATTENDANT: the recipient is `attendantOf` (the daily totals' rule); the desk cannot type a number. The
+  link stores the attendant REFERENCE + SHA-256 of the phone at issue; `sendFamilyOtp` re-resolves the reference at send time
+  and refuses `family_phone_changed` if it no longer hashes the same. No input chooses the number.
+- TOKENS: link token (32 bytes), OTP (6 digits, 10 min, hash bound to challenge id), device cookie and session cookie (12 h,
+  never past discharge + 24 h) — all stored as SHA-256 only. The OTP challenge is bound to the device that asked; the session to
+  the device that verified. Limits: 3 sends / h / link, 5 wrong codes / h / link, 5 callbacks / 24 h / link.
+- ⚖ OFF FOR: `patients.sensitive_context` (sealed), `ipd_admissions.mlc` (every MLC — no "restricted" field), and the treating
+  team's switch (`ipd_admission_conditions.family_off_reason`: psychiatric, HIV, MTP, POCSO, patient request). Confidential
+  patients keep the link with the ALIAS and no ward. Turning off revokes a live link.
+- OPEN CHECK ON EVERY PUBLIC READ (`openLink`): link active, no block, admission in a bed — or discharged / referred out / LAMA
+  within 24 h (then marked `expired` on first open after). Death and absconding close the page at once (state check) and the
+  worker consumer `ipd.family_stop` records the revocation (cursor seeded by `seedCursors`).
+- ⚖ DPDP: purpose `inpatient_updates` stated on the page and stored; consent (who, relation, verbal/paper) stored at issue. The
+  view carries no line items; `readFamilyBillDetails` is a second explicit step and appends `ipd.family.bill_details_viewed`.
+- CALLBACKS are rows for the ward desk (`ipd.family.issue`); nothing answers them; events carry no question text.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -517,6 +546,14 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   resolves `attendantRef` at send time, then remove `heldReason` from `ipd.daily_totals`. Until then nothing is sent.
 - (E2.3) Migration 0209 was regenerated in place (unmerged) to add `ipd_daily_totals`: a lane test DB that applied the old
   0209 dies `relation already exists` — drop `hmis_lane_<lane>_test_1/_2`.
+
+- (E3.3) HELD: the OTP SMS needs a DLT template id (`IPD_FAMILY_OTP_DLT_TEMPLATE_ID`); without it every send answers
+  `family_otp_unavailable` (503). The link itself is handed over at the desk (QR / copy) — no SMS/WhatsApp of the link yet.
+- (E3.3) `ipdManifest` now has a subscription, so the WORKER installs it (`kernel/modules/manifests.test.ts`, `kernel/worker/seed-cursors.test.ts`,
+  `apps/core/test/worker-runtime.e2e.test.ts` censuses moved). The stop consumer constant lives in `family-events.ts` to avoid a
+  manifest ↔ family import cycle.
+- (E3.3) No ward-nurse role is seeded: callbacks go to front office / supervisor / duty manager; `ipd.condition.set` is the
+  doctor's until ipd-nursing seeds nursing roles.
 
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).

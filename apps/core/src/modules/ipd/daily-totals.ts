@@ -45,18 +45,34 @@ export type DailyTotalsResult = {
   billDate: string; queued: number; already: number; skipped: { admissionId: string; reason: "no_attendant_phone" | "sealed" }[]; failed: string[];
 };
 
-type Attendant = { kind: "guardian" | "deposit_payer"; ref: string };
+type Attendant = { kind: "guardian" | "deposit_payer"; ref: string; phone: string };
 
-async function attendantOf(db: Db | Tx, patientId: string, admissionId: string): Promise<Attendant | null> {
-  const g = (await db.select({ id: patientGuardians.id }).from(patientGuardians).where(and(
+/**
+ * The registered attendant (the rule above) WITH the phone as it stands now. E3.3 (#731) reuses it for the family link:
+ * the same person the daily totals go to is the only person a family-link OTP can reach.
+ */
+export async function attendantOf(db: Db | Tx, patientId: string, admissionId: string): Promise<Attendant | null> {
+  const g = (await db.select({ id: patientGuardians.id, phone: patientGuardians.phone }).from(patientGuardians).where(and(
     eq(patientGuardians.patientId, patientId), eq(patientGuardians.status, "active"), eq(patientGuardians.authorityBills, true),
     isNotNull(patientGuardians.phone), sql`${patientGuardians.phone} <> ''`,
   )).orderBy(asc(patientGuardians.createdAt)).limit(1))[0];
-  if (g !== undefined) return { kind: "guardian", ref: g.id };
-  const d = (await db.select({ id: ipdAdmissionDeposits.id }).from(ipdAdmissionDeposits).where(and(
+  if (g?.phone != null) return { kind: "guardian", ref: g.id, phone: g.phone };
+  const d = (await db.select({ id: ipdAdmissionDeposits.id, phone: ipdAdmissionDeposits.payerPhone }).from(ipdAdmissionDeposits).where(and(
     eq(ipdAdmissionDeposits.admissionId, admissionId), eq(ipdAdmissionDeposits.payerRelation, "relative"), isNotNull(ipdAdmissionDeposits.payerPhone),
+    sql`${ipdAdmissionDeposits.payerPhone} <> ''`,
   )).orderBy(desc(ipdAdmissionDeposits.takenAt)).limit(1))[0];
-  return d === undefined ? null : { kind: "deposit_payer", ref: d.id };
+  return d?.phone == null ? null : { kind: "deposit_payer", ref: d.id, phone: d.phone };
+}
+
+/** The phone a recorded attendant reference reaches NOW (contact truth at send time); null when it no longer qualifies. */
+export async function attendantPhoneOf(db: Db | Tx, kind: "guardian" | "deposit_payer", ref: string): Promise<string | null> {
+  if (kind === "guardian") {
+    const g = (await db.select({ phone: patientGuardians.phone, status: patientGuardians.status, bills: patientGuardians.authorityBills })
+      .from(patientGuardians).where(eq(patientGuardians.id, ref)))[0];
+    return g === undefined || g.status !== "active" || !g.bills || g.phone == null || g.phone === "" ? null : g.phone;
+  }
+  const d = (await db.select({ phone: ipdAdmissionDeposits.payerPhone }).from(ipdAdmissionDeposits).where(eq(ipdAdmissionDeposits.id, ref)))[0];
+  return d?.phone == null || d.phone === "" ? null : d.phone;
 }
 
 /** The name the message may carry: the alias for a confidential patient, else the first word of the name. */

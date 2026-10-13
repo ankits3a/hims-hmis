@@ -860,3 +860,124 @@ export const ipdDailyTotals = pgTable(
     check("ipd_daily_totals_outcome_ck", sql`${t.outcome} in ('queued', 'no_attendant_phone', 'sealed')`),
   ],
 );
+
+// ═══════════════════════════════════ E3.3 (#731) — the family link ═══════════════════════════════════
+
+/**
+ * The condition word the treating team sets for the family page (spec §4.9 G: never written by a model), and the team's
+ * switch that turns the family link off for this admission (psychiatric, HIV, MTP, POCSO, the patient's request). One
+ * row per admission, overwritten; every change is an `ipd.condition.set` event.
+ */
+export const ipdAdmissionConditions = pgTable(
+  "ipd_admission_conditions",
+  {
+    admissionId: text("admission_id").primaryKey().references(() => ipdAdmissions.id),
+    word: text("word"),
+    setBy: text("set_by"),
+    setAt: timestamp("set_at", { withTimezone: true }),
+    familyOffReason: text("family_off_reason"),
+    familyOffBy: text("family_off_by"),
+    familyOffAt: timestamp("family_off_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    check("ipd_admission_conditions_word_ck", sql`${t.word} is null or ${t.word} in ('stable', 'improving', 'serious', 'critical')`),
+    check(
+      "ipd_admission_conditions_off_ck",
+      sql`${t.familyOffReason} is null or ${t.familyOffReason} in ('psychiatric', 'hiv', 'mtp', 'pocso', 'patient_request', 'other')`,
+    ),
+  ],
+);
+
+/**
+ * One family link per issue (spec §4.9 G, §4.10 edge 15). The token is stored only as its SHA-256; the attendant is a
+ * REFERENCE (guardian or deposit row) plus the phone's hash at issue, so an OTP goes only to the phone the desk saw — a
+ * later change of that phone refuses the send. `consent` records who agreed and their relation (DPDP Act 2023 §6).
+ * `active` → `revoked` (death, absconding, a new link, the team turned it off, the desk) | `expired` (24 h after the exit).
+ */
+export const ipdFamilyLinks = pgTable(
+  "ipd_family_links",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    tokenHash: text("token_hash").notNull(),
+    attendantKind: text("attendant_kind").notNull(),
+    attendantRef: text("attendant_ref").notNull(),
+    phoneHash: text("phone_hash").notNull(),
+    phoneMasked: text("phone_masked").notNull(),
+    purpose: text("purpose").notNull(),
+    consent: jsonb("consent").$type<{ consentedBy: string; relation: string; method: string }>().notNull(),
+    status: text("status").notNull(),
+    issuedBy: text("issued_by").notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedReason: text("revoked_reason"),
+    revokedBy: text("revoked_by"),
+  },
+  (t) => [
+    uniqueIndex("ipd_family_links_token_ux").on(t.tokenHash),
+    uniqueIndex("ipd_family_links_live_ux").on(t.admissionId).where(sql`${t.status} = 'active'`),
+    check("ipd_family_links_status_ck", sql`${t.status} in ('active', 'revoked', 'expired')`),
+    check("ipd_family_links_kind_ck", sql`${t.attendantKind} in ('guardian', 'deposit_payer')`),
+    check("ipd_family_links_revoked_ck", sql`(${t.status} = 'active') = (${t.revokedAt} is null)`),
+  ],
+);
+
+/**
+ * One OTP challenge per send (3 an hour per link). The code is stored only as a hash bound to the challenge id and to the
+ * browser that asked (`device_hash`); 10 minutes; a wrong code counts in `attempts` (5 wrong codes an hour per link).
+ */
+export const ipdFamilyOtps = pgTable(
+  "ipd_family_otps",
+  {
+    id: text("id").primaryKey(),
+    linkId: text("link_id").notNull().references(() => ipdFamilyLinks.id),
+    codeHash: text("code_hash").notNull(),
+    deviceHash: text("device_hash").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  },
+  (t) => [index("ipd_family_otps_link_idx").on(t.linkId, t.sentAt)],
+);
+
+/** A verified browser: the cookie's SHA-256, bound to the device that verified, 12 hours. */
+export const ipdFamilySessions = pgTable(
+  "ipd_family_sessions",
+  {
+    id: text("id").primaryKey(),
+    linkId: text("link_id").notNull().references(() => ipdFamilyLinks.id),
+    tokenHash: text("token_hash").notNull(),
+    deviceHash: text("device_hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [uniqueIndex("ipd_family_sessions_token_ux").on(t.tokenHash), index("ipd_family_sessions_link_idx").on(t.linkId)],
+);
+
+/**
+ * "Request a callback" from the family page (spec §4.10 edge 14): free text to the ward desk, NEVER answered by a model.
+ * `open` → `done` with who called back and a note.
+ */
+export const ipdFamilyCallbacks = pgTable(
+  "ipd_family_callbacks",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    linkId: text("link_id").notNull().references(() => ipdFamilyLinks.id),
+    text: text("text").notNull(),
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedBy: text("closed_by"),
+    note: text("note"),
+  },
+  (t) => [
+    index("ipd_family_callbacks_open_idx").on(t.status, t.createdAt),
+    index("ipd_family_callbacks_admission_idx").on(t.admissionId),
+    check("ipd_family_callbacks_status_ck", sql`${t.status} in ('open', 'done')`),
+    check("ipd_family_callbacks_closed_ck", sql`(${t.status} = 'done') = (${t.closedAt} is not null)`),
+  ],
+);

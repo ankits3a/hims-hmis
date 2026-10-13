@@ -128,6 +128,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "roster.read",
       // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   {
@@ -207,6 +209,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "roster.read",
       // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   {
@@ -354,6 +358,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "roster.read",
       // IPD DISCHARGE E3.2 (#730) — declares and cancels fit, writes and signs the summary, records a death or a LAMA; never the bill (0058); README "IPD discharge" prose.
       "ipd.discharge.view", "ipd.discharge.declare", "ipd.discharge.exit",
+      // IPD FAMILY E3.3 (#731, decision 0072) — sets the condition word the family sees and turns the family link off for a sensitive admission; README "IPD family link" prose.
+      "ipd.condition.set",
     ],
   },
   /**
@@ -1164,6 +1170,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.discharge.view", "ipd.discharge.confirm", "ipd.gate.pass", "ipd.gate.scan", "ipd.discharge.exit", "ipd.mortuary.manage",
       // IPD BILL DESK E2.3 (#727, decision 0072) — the exceptions-only bill desk and its deposit_low card; README "IPD bill desk" prose. Never a doctor (0058).
       "ipd.billdesk.view",
+      // IPD FAMILY E3.3 (#731, decision 0072) — issues the attendant's family link and works the family's callback requests; README "IPD family link" prose.
+      "ipd.family.issue",
     ],
   },
   /**
