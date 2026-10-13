@@ -18060,7 +18060,8 @@
       "medical_superintendent": "चिकित्सा अधीक्षक",
       "department_head": "विभागाध्यक्ष",
       "duty_manager": "ड्यूटी मैनेजर"
-    }
+    },
+    "drafterCannotApprove": "ड्राफ़्ट आपका है: दो अन्य व्यक्ति स्वीकृत करेंगे।"
   },
   "tariffVersions": {
     "title": "मूल्य सूची संस्करण",

@@ -65,4 +65,12 @@ describe("/admin/workflows", () => {
     expect(await screen.findByTestId("wf-ipd_admission-v1-waitfor")).toHaveTextContent("Owner, Medical superintendent");
     expect(screen.queryByRole("button", { name: /Approve as/ })).toBeNull();
   });
+
+  it("the person who drafted it sees Approve disabled, with the reason", async () => {
+    mock({ definitions: [draft({ draftedBy: { id: "u-owner", name: "Owner" } })], viewer: { policyRoles: ["owner"] } },
+      ["workflow.definitions.read", "workflow.definitions.approve"]);
+    renderWithProviders(<AdminWorkflows />);
+    expect(await screen.findByTestId("wf-ipd_admission-v1-approve-owner")).toBeDisabled();
+    expect(screen.getByTestId("wf-ipd_admission-v1-drafter")).toHaveTextContent("You drafted it");
+  });
 });

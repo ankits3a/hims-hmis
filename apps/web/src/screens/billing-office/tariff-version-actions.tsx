@@ -15,7 +15,7 @@ import { billingErrorMessage } from "../../lib/billing-api";
  */
 export type WireOfficeVersion = {
   id: string; versionNo: number; status: string; notes: string | null;
-  createdBy: string; createdByName: string | null; submittedBy: string | null; submittedByName: string | null;
+  createdBy: string | null; createdByName: string | null; submittedBy: string | null; submittedByName: string | null;
   approvalStatus: string | null;
 };
 
@@ -58,7 +58,7 @@ function VersionRow({ v }: { v: WireOfficeVersion }): React.ReactElement {
       </div>
       {v.notes !== null && <p className="text-sm text-muted-foreground">{v.notes}</p>}
       <p className="text-xs text-muted-foreground">
-        {t("tariffVersions.draftedBy", { who: v.createdByName ?? v.createdBy })}
+        {v.createdBy !== null && t("tariffVersions.draftedBy", { who: v.createdByName ?? v.createdBy })}
         {v.submittedBy !== null && <> · {t("tariffVersions.submittedBy", { who: v.submittedByName ?? v.submittedBy })}</>}
       </p>
       {v.status === "draft" && can("tariff.versions.draft") && (

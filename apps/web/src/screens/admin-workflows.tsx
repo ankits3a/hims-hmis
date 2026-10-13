@@ -17,6 +17,7 @@ import { PaperScreen, ScreenTitle } from "../components/paper-screen";
  *   roles the viewer HOLDS are offered.
  * - **Activate** → `POST /workflow/definitions/:id/activate` (`workflow.definitions.activate`).
  *
+ * Approve is disabled, with the reason, for the person who drafted the definition (`drafter_cannot_approve`).
  * Two different people, the roles and drafter ≠ activator are enforced by the server (`approveDefinition`,
  * `activateDefinition`). The screen only hides buttons that cannot work; a refusal is shown as the server words it.
  */
@@ -127,7 +128,7 @@ function DefinitionCard({ d, myRoles }: { d: WireBoardDefinition; myRoles: strin
               style={{ flex: "1 1 14rem", minWidth: 0, padding: "6px 8px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 13 }} />
           )}
           {offer.map((r) => (
-            <button key={r} type="button" className="sec" disabled={iApproved || approve.isPending || note.trim().length < 3}
+            <button key={r} type="button" className="sec" disabled={iDrafted || iApproved || approve.isPending || note.trim().length < 3}
               onClick={() => approve.mutate(r)} data-testid={`wf-${d.defKey}-v${d.version}-approve-${r}`}>
               {t("workflows.approveAs", { role: t(`workflows.role.${r}`, { defaultValue: r }) })}
             </button>
@@ -139,6 +140,9 @@ function DefinitionCard({ d, myRoles }: { d: WireBoardDefinition; myRoles: strin
             </button>
           )}
           {iApproved && offer.length > 0 && <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("workflows.youApproved")}</span>}
+          {iDrafted && offer.length > 0 && (
+            <span style={{ fontSize: 12.5, color: "var(--dim)" }} data-testid={`wf-${d.defKey}-v${d.version}-drafter`}>{t("workflows.drafterCannotApprove")}</span>
+          )}
           {iDrafted && d.missingRoles.length === 0 && <span style={{ fontSize: 12.5, color: "var(--dim)" }}>{t("workflows.youDrafted")}</span>}
         </div>
       )}
