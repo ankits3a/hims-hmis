@@ -490,12 +490,22 @@ function GatePassCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone
   const [hospital, setHospital] = useState("");
   const [confirmedBy, setConfirmedBy] = useState("");
   const [busy, setBusy] = useState(false);
+  const [docs, setDocs] = useState<WirePatientDocument[] | null>(null);
+  const [undertaking, setUndertaking] = useState("");
   const [r, fail, clear] = useRefusal();
+  // #763 ⚖: charges after the settled bill wait (the desk says so, or the gate refused) — the final bill's dues capture,
+  // the same document pick, records them as a supplementary bill's dues at the gate. Never a detention.
+  const suppWaiting = (typeof r === "object" && r !== null && r.code === "supplementary_unsettled")
+    || (tr.bill?.exceptions.includes("supplementary_owed") ?? false);
+  useEffect(() => {
+    if (suppWaiting && docs === null) listPatientDocuments(tr.patient.id).then(setDocs, () => setDocs([]));
+  }, [suppWaiting, docs, tr.patient.id]);
   if (tr.gatePass === null && !tr.can.issueGatePass && tr.state !== "fit_declared") return null;
   const refer = tr.disposition === "transfer_out";
   const issue = () => {
     setBusy(true); clear();
-    issueGatePass(tr.admissionId, refer ? { name: hospital.trim(), confirmedBy: confirmedBy.trim() } : undefined)
+    issueGatePass(tr.admissionId, refer ? { name: hospital.trim(), confirmedBy: confirmedBy.trim() } : undefined,
+      suppWaiting && undertaking !== "" ? undertaking : undefined)
       .then(() => { setBusy(false); onDone(); }, (e: unknown) => { setBusy(false); fail(e); });
   };
   const p = tr.gatePass;
@@ -518,7 +528,18 @@ function GatePassCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone
               <label>{t("ipdDischarge.pass.confirmedBy")}<input value={confirmedBy} onChange={(e) => setConfirmedBy(e.target.value)} /></label>
             </div>
           ) : null}
-          <div className="row"><button type="button" className="ipdd-btn pri" disabled={busy || (refer && (hospital.trim() === "" || confirmedBy.trim() === ""))} onClick={issue}>{t("ipdDischarge.pass.issue")}</button></div>
+          {suppWaiting ? (
+            <div className="ipdd-dues">
+              <span>⚖ {t("ipdDischarge.pass.suppDues")}</span>
+              <label>{t("ipdDischarge.bill.undertaking")}
+                <select value={undertaking} onChange={(e) => setUndertaking(e.target.value)}>
+                  <option value="">{t("ipdDischarge.bill.pickUndertaking")}</option>
+                  {(docs ?? []).map((d) => <option key={d.id} value={d.id}>{d.kind} · {fmtIst(d.capturedAt)}</option>)}
+                </select>
+              </label>
+            </div>
+          ) : null}
+          <div className="row"><button type="button" className="ipdd-btn pri" disabled={busy || (refer && (hospital.trim() === "" || confirmedBy.trim() === "")) || (suppWaiting && undertaking === "")} onClick={issue}>{t("ipdDischarge.pass.issue")}</button></div>
         </div>
       ) : <p className="dim">{t("ipdDischarge.pass.notYet")}</p>}
       <Refusal r={r} />

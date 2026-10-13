@@ -16489,6 +16489,7 @@
       }
     },
     "pass": {
+      "suppDues": "Charges after the final bill — record them as dues against the signed undertaking",
       "title": "Gate pass",
       "issue": "Issue gate pass",
       "print": "Print gate pass",

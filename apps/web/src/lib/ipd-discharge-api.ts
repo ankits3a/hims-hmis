@@ -77,8 +77,14 @@ export const askBillVoid = (admissionId: string, billId: string, reason: string)
 export const voidBill = (admissionId: string, billId: string, approvalId: string, reason: string): Promise<{ creditNoteNo: string | null }> =>
   post(R.voidBill, { admissionId, billId, approvalId, reason });
 
-export const issueGatePass = (admissionId: string, receivingHospital?: { name: string; confirmedBy: string }): Promise<{ code: string }> =>
-  post(R.gatePass, { admissionId, ...(receivingHospital === undefined ? {} : { receivingHospital }) });
+/** #763 ⚖: `undertakingDocumentId` records charges waiting after the settled bill as a supplementary bill's dues at the gate. */
+export const issueGatePass = (
+  admissionId: string, receivingHospital?: { name: string; confirmedBy: string }, undertakingDocumentId?: string,
+): Promise<{ code: string }> =>
+  post(R.gatePass, {
+    admissionId, ...(receivingHospital === undefined ? {} : { receivingHospital }),
+    ...(undertakingDocumentId === undefined ? {} : { undertakingDocumentId }),
+  });
 export const scanGatePass = (gatePassCode: string, gateId: string): Promise<{ admissionId: string; state: string }> =>
   post(R.scan, { gatePassCode, gateId, scannedAt: new Date().toISOString() });
 
