@@ -76,11 +76,14 @@
       "pharmacy": "Pharmacy",
       "billing": "Billing",
       "stores": "Stores",
+      "services": "Services",
       "admin": "Admin"
     },
     "staffReports": "Staff reports",
     "outsideTests": "Outside tests",
     "copilotHealth": "Copilot health",
+    "myTasks": "My tasks",
+    "taskBoard": "Task board",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -15687,6 +15690,81 @@
       "receivedToEntered": "Received → entered",
       "enteredToVerified": "Entered → verified",
       "placedToVerified": "Order → verified"
+    }
+  },
+  "tasks": {
+    "loading": "Loading…",
+    "offline": "No network",
+    "noPlace": "No place given",
+    "askedAgain": "Asked {{count}}×",
+    "kind": {
+      "general": "General task"
+    },
+    "priority": {
+      "urgent": "Urgent",
+      "stat": "STAT"
+    },
+    "state": {
+      "created": "Waiting",
+      "assigned": "Assigned",
+      "accepted": "Accepted",
+      "in_progress": "In progress",
+      "done": "Done",
+      "verified": "Checked",
+      "cancelled": "Cancelled"
+    },
+    "act": {
+      "accept": "Accept",
+      "start": "Start",
+      "done": "Done"
+    },
+    "clock": {
+      "late": "{{count}} min late",
+      "dueIn": "Due in {{count}} min",
+      "dueAt": "Due {{at}}"
+    },
+    "mine": {
+      "title": "My tasks",
+      "none": "No tasks now",
+      "pool": "Open to take"
+    },
+    "board": {
+      "title": "Task board",
+      "open": "open",
+      "late": "late",
+      "pool": "waiting",
+      "none": "No open tasks",
+      "noFloor": "No floor",
+      "floorOpen": "{{count}} open",
+      "floorLate": "{{count}} late · {{open}} open",
+      "notShown": "not on screen", "more": "+{{count}} more",
+     
+      "unassigned": "Nobody yet",
+      "workers": "Workers",
+      "noWorkers": "Nobody on duty",
+      "load": "{{count}} open",
+      "onDuty": "On duty",
+      "offDuty": "Off duty",
+      "busy": "{{count}} in progress",
+      "toVerify": "To check ({{count}})"
+    },
+    "refusal": {
+      "failed": "Did not go through",
+      "bad_input": "Request incomplete",
+      "unknown_kind": "Unknown task kind",
+      "unknown_place": "Place not found",
+      "unknown_worker": "Cannot take tasks",
+      "not_found": "Task gone",
+      "already_taken": "Someone took it",
+      "not_on_duty": "Not on duty now", "wrong_skill": "Not your kind of task", "not_yours": "Not your task",
+      "wrong_state": "Refresh — task moved on",
+      "not_open": "Task already closed",
+      "stale": "Changed — refresh",
+      "proof_missing": "Proof needed",
+      "no_verify_step": "No check step",
+      "verifier_is_doer": "Doer cannot check",
+      "not_permitted": "Not allowed",
+      "reason_required": "Say why"
     }
   }
 }
