@@ -13,9 +13,11 @@ import { TariffError } from "./errors";
 import { DISCOUNT_CATEGORIES } from "./types";
 import { appendRegulatedPrice, createService, listRegulatedPrices, listServices, updateService, listPriceList } from "./services";
 import {
-  activateVersion, createDraftVersion, getVersion, listVersions, setTariffItem, submitVersion,
+  activateVersion, createDraftVersion, getVersion, setTariffItem, submitVersion,
 } from "./versions";
 import { simulateRevision } from "./simulation";
+import { SWITCH_ON_MAX, listVersionsForOffice, switchOnServices } from "./switch-on";
+import type { SwitchOnResult } from "./switch-on";
 import { ipdRateCardGaps } from "./ipd-rate-card";
 import type { IpdRateCard } from "./ipd-rate-card";
 import { loadPricingContext } from "./context";
@@ -160,6 +162,22 @@ export class TariffController {
     }
   }
 
+  /**
+   * GO-LIVE SCREENS — switch on many services at once (the IPD rate card's "Switch on N services"). Same permission as
+   * the single PATCH; refuses every unpriced service (see `switchOnServices`), one event per service turned on.
+   */
+  @RequirePermission("tariff.services.manage", "hospital")
+  @Post("services/switch-on")
+  @HttpCode(200) // an action, not a creation
+  async switchOnRoute(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<SwitchOnResult> {
+    const b = parsed(z.object({ serviceIds: z.array(z.string().min(1)).min(1).max(SWITCH_ON_MAX) }), body);
+    try {
+      return await switchOnServices(this.db, actor, b.serviceIds);
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
   @RequirePermission("tariff.services.manage", "hospital")
   @Patch("services/:id")
   async updateServiceRoute(
@@ -229,7 +247,8 @@ export class TariffController {
   @RequirePermission("tariff.read", "hospital")
   @Get("versions")
   async listVersionsRoute(): Promise<{ items: unknown[] }> {
-    return { items: await listVersions(this.db) };
+    // GO-LIVE SCREENS — the same rows plus drafter / submitter names and the approval's state (additive fields).
+    return { items: await listVersionsForOffice(this.db) };
   }
 
   @RequirePermission("tariff.versions.draft", "hospital")

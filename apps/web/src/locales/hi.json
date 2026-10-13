@@ -158,7 +158,8 @@
     "ipdHandovers": "हैंडओवर",
     "ipdBillDesk": "बिल डेस्क",
     "ipdDischarge": "डिस्चार्ज",
-    "ipdFamilyCalls": "परिवार के कॉल"
+    "ipdFamilyCalls": "परिवार के कॉल",
+    "adminWorkflows": "वर्कफ़्लो"
   },
   "palette": {
     "title": "खोज",
@@ -17981,5 +17982,76 @@
     "notePlaceholder": "आपने क्या बताया",
     "calledBack": "कॉल कर दिया",
     "closedBy": "{{name}}, {{time}}"
+  },
+  "workflows": {
+    "title": "वर्कफ़्लो",
+    "lead": "अस्पताल के वर्कफ़्लो स्वीकृत करें और चालू करें। क्लास A के लिए चिकित्सा अधीक्षक और मालिक, दो अलग व्यक्ति; फिर मालिक चालू करते हैं।",
+    "loading": "लोड हो रहा है…",
+    "awaiting_one": "स्वीकृति बाकी ({{count}})",
+    "awaiting_other": "स्वीकृति बाकी ({{count}})",
+    "noDrafts": "कुछ बाकी नहीं।",
+    "inForce": "लागू और पुराने संस्करण",
+    "class": "क्लास {{c}}",
+    "state": {
+      "draft": "ड्राफ़्ट",
+      "active": "चालू",
+      "retired": "बंद"
+    },
+    "drafted": "ड्राफ़्ट: {{who}}, {{at}}",
+    "activated": "चालू किया: {{who}}, {{at}}",
+    "noApprovalsNeeded": "स्वीकृति की ज़रूरत नहीं।",
+    "waiting": "बाकी",
+    "approvedBy": "स्वीकृत: {{who}}, {{at}}",
+    "diffTitle": "चालू संस्करण से बदलाव:",
+    "diffNone": "चरणों में बदलाव नहीं।",
+    "state1": "स्थिति {{s}}",
+    "steps": "चरण: {{states}} स्थितियाँ, {{transitions}} बदलाव",
+    "note": "टिप्पणी",
+    "defaultNote": "देखा और स्वीकृत",
+    "approveAs": "{{role}} के रूप में स्वीकृत करें",
+    "activate": "चालू करें",
+    "youApproved": "आप स्वीकृत कर चुके हैं।",
+    "youDrafted": "ड्राफ़्ट आपका है: कोई दूसरा चालू करेगा।",
+    "waitingFor": "इनकी प्रतीक्षा: {{roles}}",
+    "role": {
+      "owner": "मालिक",
+      "medical_superintendent": "चिकित्सा अधीक्षक",
+      "department_head": "विभागाध्यक्ष",
+      "duty_manager": "ड्यूटी मैनेजर"
+    }
+  },
+  "tariffVersions": {
+    "title": "मूल्य सूची संस्करण",
+    "lead": "ड्राफ़्ट मालिक की स्वीकृति के लिए भेजें, फिर तारीख से चालू करें।",
+    "none": "कोई ड्राफ़्ट या भेजा गया संस्करण नहीं।",
+    "version": "संस्करण {{no}}",
+    "state": {
+      "draft": "ड्राफ़्ट",
+      "approval_pending": "भेजा गया · मालिक की प्रतीक्षा",
+      "approval_granted": "स्वीकृत · चालू करने को तैयार",
+      "approval_rejected": "अस्वीकृत"
+    },
+    "draftedBy": "ड्राफ़्ट: {{who}}",
+    "submittedBy": "भेजा: {{who}}",
+    "notePlaceholder": "मालिक के लिए टिप्पणी (वैकल्पिक)",
+    "submit": "स्वीकृति के लिए भेजें",
+    "waitingOwner": "अनुमोदन में मालिक के निर्णय की प्रतीक्षा।",
+    "rejected": "मालिक ने यह संस्करण अस्वीकार किया।",
+    "effectiveFrom": "लागू होने का समय",
+    "activate": "चालू करें",
+    "blockedDrafter": "ड्राफ़्ट आपका है: कोई दूसरा चालू करेगा।",
+    "blockedSubmitter": "आपने भेजा है: कोई दूसरा चालू करेगा।"
+  },
+  "ipdSwitchOn": {
+    "title": "IPD सेवाएँ चालू करें",
+    "lead": "नई IPD सेवाएँ बंद रहती हैं। लागू संस्करण ({{no}}) में मूल्य वाली सेवाएँ चुनें और चालू करें।",
+    "none": "कोई बंद IPD सेवा नहीं।",
+    "pickPriced_one": "सभी मूल्य वाली चुनें ({{count}})",
+    "pickPriced_other": "सभी मूल्य वाली चुनें ({{count}})",
+    "go_one": "{{count}} सेवा चालू करें",
+    "go_other": "{{count}} सेवाएँ चालू करें",
+    "noPrice": "लागू मूल्य नहीं",
+    "done_one": "{{count}} सेवा चालू हुई।",
+    "done_other": "{{count}} सेवाएँ चालू हुईं।"
   }
 }

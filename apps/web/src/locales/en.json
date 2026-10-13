@@ -158,7 +158,8 @@
     "ipdHandovers": "Handovers",
     "ipdBillDesk": "Bill desk",
     "ipdDischarge": "Discharge",
-    "ipdFamilyCalls": "Family calls"
+    "ipdFamilyCalls": "Family calls",
+    "adminWorkflows": "Workflows"
   },
   "palette": {
     "title": "Search",
@@ -17981,5 +17982,76 @@
     "notePlaceholder": "What you told them",
     "calledBack": "Called back",
     "closedBy": "{{name}} at {{time}}"
+  },
+  "workflows": {
+    "title": "Workflows",
+    "lead": "Approve and switch on the hospital's workflows. Class A needs the medical superintendent and the owner, two different people; then the owner activates.",
+    "loading": "Loading…",
+    "awaiting_one": "Waiting for approval ({{count}})",
+    "awaiting_other": "Waiting for approval ({{count}})",
+    "noDrafts": "Nothing waiting.",
+    "inForce": "In force and past versions",
+    "class": "class {{c}}",
+    "state": {
+      "draft": "Draft",
+      "active": "Active",
+      "retired": "Retired"
+    },
+    "drafted": "Drafted by {{who}}, {{at}}",
+    "activated": "Activated by {{who}}, {{at}}",
+    "noApprovalsNeeded": "No approvals needed.",
+    "waiting": "Waiting",
+    "approvedBy": "Approved by {{who}}, {{at}}",
+    "diffTitle": "Change from the active version:",
+    "diffNone": "No change in steps.",
+    "state1": "state {{s}}",
+    "steps": "Steps: {{states}} states, {{transitions}} moves",
+    "note": "Note",
+    "defaultNote": "Reviewed and approved",
+    "approveAs": "Approve as {{role}}",
+    "activate": "Activate",
+    "youApproved": "You have approved this.",
+    "youDrafted": "You drafted it: another person activates.",
+    "waitingFor": "Waiting for: {{roles}}",
+    "role": {
+      "owner": "Owner",
+      "medical_superintendent": "Medical superintendent",
+      "department_head": "Department head",
+      "duty_manager": "Duty manager"
+    }
+  },
+  "tariffVersions": {
+    "title": "Price list versions",
+    "lead": "Submit a draft for the owner's approval, then activate it from a date.",
+    "none": "No draft or submitted version.",
+    "version": "Version {{no}}",
+    "state": {
+      "draft": "Draft",
+      "approval_pending": "Submitted · waiting for the owner",
+      "approval_granted": "Approved · ready to activate",
+      "approval_rejected": "Rejected"
+    },
+    "draftedBy": "Drafted by {{who}}",
+    "submittedBy": "submitted by {{who}}",
+    "notePlaceholder": "Note for the owner (optional)",
+    "submit": "Submit for approval",
+    "waitingOwner": "Waiting for the owner's decision in Approvals.",
+    "rejected": "The owner rejected this version.",
+    "effectiveFrom": "In force from",
+    "activate": "Activate",
+    "blockedDrafter": "You drafted this version: another person activates it.",
+    "blockedSubmitter": "You submitted this version: another person activates it."
+  },
+  "ipdSwitchOn": {
+    "title": "Switch on IPD services",
+    "lead": "New IPD services start switched off. Tick the ones priced in the version in force (version {{no}}) and switch them on.",
+    "none": "No switched-off IPD service.",
+    "pickPriced_one": "Tick all priced ({{count}})",
+    "pickPriced_other": "Tick all priced ({{count}})",
+    "go_one": "Switch on {{count}} service",
+    "go_other": "Switch on {{count}} services",
+    "noPrice": "No price in force",
+    "done_one": "{{count}} service switched on.",
+    "done_other": "{{count}} services switched on."
   }
 }

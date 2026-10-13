@@ -76,6 +76,7 @@ import { BillingCounter } from "./screens/billing-counter";
 import { BillingDues } from "./screens/billing-dues";
 import { BillingSession } from "./screens/billing-session";
 import { BillingOffice } from "./screens/billing-office";
+import { AdminWorkflows } from "./screens/admin-workflows";
 import { OpsMode } from "./screens/ops-mode";
 import { AdminUsers } from "./screens/admin-users";
 import { ChangePassword } from "./screens/change-password";
@@ -275,6 +276,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/ops/mode", label: "nav.opsMode", permission: "ops.mode.set", group: "admin" },
   { to: "/ops/downtime-kit", label: "nav.opsDowntimeKit", permission: "ops.downtime.generate", group: "admin" },
   { to: "/admin/users", label: "nav.adminUsers", permission: "auth.users.manage", group: "admin" },
+  // GO-LIVE SCREENS — the workflow definitions board: approve (owner, MS) and activate (owner). Matches `workflowManifest.menu`.
+  { to: "/admin/workflows", label: "nav.adminWorkflows", permission: "workflow.definitions.read", group: "admin" },
   // Decision 0067 — the outside-test list (ECG, echo …), `orderingManifest.menu`'s entry.
   { to: "/ordering/outside-tests", label: "nav.outsideTests", permission: "tariff.services.manage", group: "admin" },
   // PLAN 18a T9 — the entries `radiologyManifest.menu` declares (three since 18-S RS2b), path and permission matching
@@ -1974,6 +1977,13 @@ const adminUsersRoute = createRoute({
   component: AdminUsers,
 });
 
+/** GO-LIVE SCREENS — every workflow definition, its approvals and the approve / activate buttons. */
+const adminWorkflowsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/admin/workflows",
+  component: AdminWorkflows,
+});
+
 /**
  * PLAN 09 T3 / DD8 — card recognition. It is under `/counter/…` rather than `/billing/…` because
  * recognition DEPLOYS BEFORE the billing integration is armed: the counter has to be able to look a
@@ -2080,6 +2090,8 @@ export const router = createRouter({
       indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, ipdBillDeskRoute, ipdDischargeRoute, ipdFamilyCallbacksRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
+      // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.
+      adminWorkflowsRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,
       // FD-2 — 47 -> 46. `/counter/seat` is GONE, the seat serves `counterDeskRoute` above, and
       // `/counter/seat/figures` follows it to `/counter/figures`. `caddyfile-parity.test.ts` pins
