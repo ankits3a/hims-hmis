@@ -7,7 +7,7 @@ import { admissionWorkflowDefinition, ipdManifest, ipdNonPayableDepositCode, reg
 import { ipdRateServiceCode, newId } from "@hmis/contracts";
 import { and, eq, isNull } from "drizzle-orm";
 import { ipdAdmissions, ipdBedStays, opdDepartments, opdDoctors } from "../../src/kernel/db/schema";
-import { emergencyAdmit } from "../../src/modules/ipd";
+import { backfillDowntime, emergencyAdmit } from "../../src/modules/ipd";
 import { listServices, resolveActiveTariffVersion } from "../../src/modules/tariff";
 import { approveRequest } from "../../src/kernel/approvals/decisions";
 import { activateDefinition, approveDefinition, createDraft } from "../../src/kernel/workflow/definitions";
@@ -337,4 +337,52 @@ export async function mkDischargeWorld(db: Db): Promise<DischargeWorld> {
   const witness = (await mkUser(db, "dis.witness", ["duty_manager"])).actor;
   await openSession(db, cashier, 0);
   return { ...w, cashier, duty: w.sender, witness };
+}
+
+// ═══ E4.1 — nursing: the ward nursing roles (as `seed:roles` grants them) and a patient admitted on a bed ═══
+
+export type NursingWorld = AdmitWorld & {
+  /** ward_nurse: the station, vitals, assessment, shift handover. */
+  nurse: Actor; nurse2: Actor;
+  /** nursing_supervisor: the nurse's strings plus `ipd.ews.respond`; told of overdue assessments and unacknowledged alerts. */
+  supervisor: Actor;
+  /** Admits one patient onto a new bed by the downtime back-fill at an explicit instant; the consultant is `doctor`. */
+  admitPatient(at: Date, opts?: { sex?: "male" | "female"; ageYears?: number; name?: string }): Promise<{ admissionId: string; patientId: string; bedId: string }>;
+};
+
+export async function mkNursingWorld(db: Db): Promise<NursingWorld> {
+  const w = await mkAdmitWorld(db);
+  const registry = new ModuleRegistry();
+  registry.install(authManifest);
+  registry.install(patientsManifest);
+  registry.install(ipdManifest);
+  await syncPermissions(db, registry);
+  const nurseStrings = ["ipd.nursing.view", "ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.beds.view"];
+  const grants: Record<string, string[]> = {
+    ward_nurse: nurseStrings,
+    nursing_supervisor: [...nurseStrings, "ipd.ews.respond"],
+    doctor: ["ipd.nursing.view", "ipd.vitals.record", "ipd.ews.respond"],
+  };
+  for (const [role, perms] of Object.entries(grants)) {
+    await ensureRole(db, role);
+    for (const p of perms) await grantPermissionToRole(db, registry, role, p);
+  }
+  const nurse = (await mkUser(db, "nrs.nurse", ["ward_nurse"])).actor;
+  const nurse2 = (await mkUser(db, "nrs.nurse2", ["ward_nurse"])).actor;
+  const supervisor = (await mkUser(db, "nrs.supervisor", ["nursing_supervisor"])).actor;
+  let n = 0;
+  return {
+    ...w, nurse, nurse2, supervisor,
+    admitPatient: async (at, opts = {}) => {
+      n += 1;
+      const patientId = await w.patient(opts.sex ?? "male", opts.ageYears ?? 50, opts.name);
+      const bedId = await w.bed(`NRS-B${String(n).padStart(2, "0")}`, { class: "general", genderRule: "any" });
+      const done = await backfillDowntime(db, w.admitDesk, {
+        idempotencyKey: randomUUID(), paperSerial: `NRS-${String(n)}`, patientId, bedId, consultantId: w.doctor.id, requestedClass: "general",
+        isolation: "none", provisionalDiagnosis: "Community-acquired pneumonia", mlc: false, payerKind: "cash",
+        requestedAt: at.toISOString(), admittedAt: at.toISOString(), consent: { signedBy: "patient", method: "paper", witnessName: "Desk Witness" },
+      }, { now: at });
+      return { admissionId: done.admissionId, patientId, bedId };
+    },
+  };
 }

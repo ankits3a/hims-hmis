@@ -191,6 +191,8 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       "modality_bridge", // PLAN 18b T1 — the machine account that pulls the modality worklist
       "mrd_officer",
       "nurse",
+      "nursing_superintendent", // IPD NURSING E4.1 (#733) — the head of nursing, by derivation from ROLE_MODEL
+      "nursing_supervisor", // IPD NURSING E4.1 (#733) — the shift in-charge, by derivation from ROLE_MODEL
       "opd_admin",
       "opd_scribe", // FD-30 — the OPD-door transcription seat (owner ruling 2026-09-12)
       "opd_slip_desk", // CONSULTED ON PAPER — the slip desk (owner ruling 2026-10-06, B)
@@ -252,13 +254,14 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // so it grew on its own; what is pinned here is that somebody noticed.
       "tariff_editor",
       "vitals_desk",
+      "ward_nurse", // IPD NURSING E4.1 (#733) — the staff nurse on a ward, by derivation from ROLE_MODEL
     ]);
     // Derived from the three shipped constants rather than re-listed: a fourth copy of "the role
     // keys" is exactly the drift D2 exists to close (§2.54).
     for (const r of ROLE_MODEL) expect(KNOWN_ROLE_KEYS).toContain(r.roleKey);
     for (const g of GRANTED_BY_OTHER_SEEDS) expect(KNOWN_ROLE_KEYS).toContain(g.roleKey);
     for (const o of OPD_ROLE_KEYS) expect(KNOWN_ROLE_KEYS).toContain(o.key);
-    expect(KNOWN_ROLE_KEYS).toHaveLength(51); // PASSES E1.3: 47 -> 48 with `security_guard`; E1.5 MAINTENANCE (issue #722): 49 -> 50 with `maintenance_staff`; E0.1 TASK ENGINE (issue #713): 47 -> 49 with `support_staff` and `services_supervisor`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
+    expect(KNOWN_ROLE_KEYS).toHaveLength(54); // IPD NURSING E4.1 (#733): 51 -> 54 with `ward_nurse`, `nursing_supervisor` and `nursing_superintendent`; PASSES E1.3: 47 -> 48 with `security_guard`; E1.5 MAINTENANCE (issue #722): 49 -> 50 with `maintenance_staff`; E0.1 TASK ENGINE (issue #713): 47 -> 49 with `support_staff` and `services_supervisor`; COPILOT LEDGER E0.1: 46 -> 47 with `quality_manager`; STAFF ATTENDANCE (owner 2026-10-09): 45 -> 46 with `attendance_committee`; CONSULTED ON PAPER (owner 2026-10-06): 44 -> 45 with `opd_slip_desk`; MERGE RS8b+RS5 2026-09-29: 43 -> 44 — 18-S RS8b `radiology_resident` joins 18-S RS5 `radiology_nurse`; 18-S RS5 — 42 -> 43 with `radiology_nurse`; D5 — 41 -> 42 with `antimicrobial_steward`; P17 — 40 -> 41 with `pharmacy_incharge`; FD-30 — 39 -> 40 with `opd_scribe` (owner ruling 2026-09-12); 17-E T2 — 38 -> 39 with `lab_bridge`; 18c T1 — 37 -> 38 with `radiation_safety_officer`; 16c T1 — 36 -> 37 with `pharmacy_assistant`; 18b T1 — 35 -> 36 with `modality_bridge`; PLAN 18a T2 — 31 -> 35 with radiology's four
   });
 
   it("the vocabulary is WIDER than what seed:roles creates, which is what makes two refusals distinct", () => {

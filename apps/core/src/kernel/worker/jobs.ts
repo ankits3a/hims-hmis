@@ -35,7 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly } from "../../modules/ipd";
+import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing } from "../../modules/ipd";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
@@ -735,6 +735,17 @@ export function registerAllJobs(
     name: "lapseBedReservations",
     every: 60_000,
     run: async (now) => { await lapseBedReservations(db, now); },
+  });
+  /*
+   * IPD NURSING E4.1 (#733) — the nursing clock, every minute: an admission with no nursing assessment one hour after
+   * admission raises ONE alert to the nursing supervisors; an early-warning alert unacknowledged for 10 minutes goes to
+   * them once per band (spec §4.5, §4.10 edge 12). Idempotent (a partial unique and a stamp under the admission's lock);
+   * a tick with nothing due runs two indexed reads and writes nothing.
+   */
+  scheduler.register({
+    name: "sweepIpdNursing",
+    every: 60_000,
+    run: async (now) => { await sweepIpdNursing(db, now); },
   });
   /**
    * E2.1 (#725) — THE THIRTY-SECOND JOB, `dailyIst` 00:05: rent, nursing and RMO lines for every admission, one per

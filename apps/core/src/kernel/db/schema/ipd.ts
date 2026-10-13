@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { patients } from "./patients";
 import { resources } from "./resources";
 
@@ -1019,5 +1019,196 @@ export const ipdBedProposals = pgTable(
     check("ipd_bed_proposals_outcome_ck", sql`${t.outcome} is null or ${t.outcome} in ('accepted', 'overridden', 'withdrawn')`),
     check("ipd_bed_proposals_ended_ck", sql`(${t.outcome} is null) = (${t.endedAt} is null)`),
     check("ipd_bed_proposals_withdrawn_ck", sql`(${t.outcome} = 'withdrawn') = (${t.withdrawReason} is not null)`),
+  ],
+);
+
+/**
+ * ═══ E4.1 (#733) — NURSING (spec SPEC-ipd-core §4.5, §4.9 C/D1) ═══
+ *
+ * WHY NOT `opd_vitals`: that table hangs off an OPD encounter (`encounter_id` NOT NULL → `opd_encounters`) and has no
+ * place for what a ward chart needs and the OPD bay does not: the time a set was TAKEN beside the time it was typed
+ * (offline queue, late entries — dual-stamped), the client's idempotency key (a replayed offline set records once),
+ * ACVPU and supplemental oxygen (NEWS2 parameters), a refused set, and the score with its kind and band. The UNITS are
+ * the OPD bay's (°C, beats/min, breaths/min, mmHg, %), so a reader can put both on one line. Additive: no OPD change.
+ *
+ * Every row carries its provenance (`source`: person / device / copilot_draft / agent / import / system) and its actor.
+ * Nothing here is ever updated in place except the alert's lifecycle columns; a wrong entry is a later row.
+ */
+export const ipdNursingAssessments = pgTable(
+  "ipd_nursing_assessments",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    happenedAt: timestamp("happened_at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    source: text("source").notNull(),
+    lateEntry: boolean("late_entry").notNull(),
+    morse: integer("morse").notNull(),
+    braden: integer("braden").notNull(),
+    nutrition: text("nutrition").notNull(),
+    allergies: jsonb("allergies").$type<string[]>().notNull(),
+    homeMedicines: jsonb("home_medicines").$type<{ name: string; dose: string; frequency: string }[]>().notNull(),
+    painScore: integer("pain_score").notNull(),
+    pressureInjuries: jsonb("pressure_injuries").$type<{ site: string; stage: number; photoDocumentId: string }[]>().notNull(),
+    linesDevices: jsonb("lines_devices").$type<{ kind: string; site?: string; insertedAt?: string }[]>().notNull(),
+    /** Pregnant / postpartum (≤ 42 days) / none; null = not asked. Decides MEOWS. */
+    obstetric: text("obstetric"),
+  },
+  (t) => [
+    // One admission assessment per admission (`assessment_already_recorded`); reassessments are later work.
+    uniqueIndex("ipd_nursing_assessments_admission_ux").on(t.admissionId),
+    check("ipd_nursing_assessments_obstetric_ck", sql`${t.obstetric} is null or ${t.obstetric} in ('none', 'pregnant', 'postpartum')`),
+  ],
+);
+
+export const ipdVitals = pgTable(
+  "ipd_vitals",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    /** When the set was TAKEN (the phone's stamp, checked against the server's clock). */
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    /** When the server recorded it. */
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    source: text("source").notNull(),
+    deviceId: text("device_id"),
+    /** The client's idempotency key: an offline set replayed twice is one row. */
+    clientKey: text("client_key").notNull(),
+    lateEntry: boolean("late_entry").notNull(),
+    refused: boolean("refused").notNull().default(false),
+    confirmedOutOfRange: boolean("confirmed_out_of_range").notNull().default(false),
+    temperatureC: doublePrecision("temperature_c"),
+    pulse: integer("pulse"),
+    respRate: integer("resp_rate"),
+    systolic: integer("systolic"),
+    diastolic: integer("diastolic"),
+    spo2: integer("spo2"),
+    onOxygen: boolean("on_oxygen"),
+    consciousness: text("consciousness"),
+    painScore: integer("pain_score"),
+    capRefillSec: integer("cap_refill_sec"),
+    scoreKind: text("score_kind"),
+    scoreValue: integer("score_value"),
+    scoreBand: text("score_band"),
+    scoreComplete: boolean("score_complete"),
+  },
+  (t) => [
+    uniqueIndex("ipd_vitals_client_key_ux").on(t.clientKey),
+    index("ipd_vitals_admission_observed_idx").on(t.admissionId, t.observedAt),
+    check("ipd_vitals_kind_ck", sql`${t.scoreKind} is null or ${t.scoreKind} in ('news2', 'meows', 'pews')`),
+    check("ipd_vitals_band_ck", sql`${t.scoreBand} is null or ${t.scoreBand} in ('low', 'low_medium', 'medium', 'high')`),
+    check("ipd_vitals_consciousness_ck", sql`${t.consciousness} is null or ${t.consciousness} in ('alert', 'confused', 'voice', 'pain', 'unresponsive')`),
+    check("ipd_vitals_score_ck", sql`(${t.scoreKind} is null) = (${t.scoreValue} is null) and (${t.scoreKind} is null) = (${t.scoreBand} is null)`),
+  ],
+);
+
+/**
+ * One row per BREACH (§4.5 "once per breach"; §4.10 edge 12). `kind = 'ews'`: opened by the first set at or above the
+ * notify band; a worse band later RE-RAISES the same row (band moves up, `escalated_at`; G7 counts it as the same breach);
+ * a set below the notify band CLEARS it, and the next breach is a new row. `kind = 'assessment_overdue'`: one per
+ * admission, ever (raised by the minute sweep, cleared by the assessment). The partial uniques make "one open alert"
+ * a database fact.
+ */
+export const ipdNursingAlerts = pgTable(
+  "ipd_nursing_alerts",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    kind: text("kind").notNull(),
+    scoreKind: text("score_kind"),
+    band: text("band"),
+    scoreValue: integer("score_value"),
+    vitalsId: text("vitals_id"),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
+    escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgedBy: text("acknowledged_by"),
+    supervisorToldAt: timestamp("supervisor_told_at", { withTimezone: true }),
+    clearedAt: timestamp("cleared_at", { withTimezone: true }),
+    clearedBy: text("cleared_by"),
+  },
+  (t) => [
+    uniqueIndex("ipd_nursing_alerts_open_ews_ux").on(t.admissionId).where(sql`${t.kind} = 'ews' and ${t.clearedAt} is null`),
+    uniqueIndex("ipd_nursing_alerts_assessment_ux").on(t.admissionId).where(sql`${t.kind} = 'assessment_overdue'`),
+    index("ipd_nursing_alerts_open_idx").on(t.clearedAt),
+    check("ipd_nursing_alerts_kind_ck", sql`${t.kind} in ('ews', 'assessment_overdue')`),
+    check("ipd_nursing_alerts_band_ck", sql`${t.band} is null or ${t.band} in ('low', 'low_medium', 'medium', 'high')`),
+    check("ipd_nursing_alerts_ews_ck", sql`(${t.kind} = 'ews') = (${t.band} is not null)`),
+  ],
+);
+
+export const ipdIntakeOutput = pgTable(
+  "ipd_intake_output",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    source: text("source").notNull(),
+    direction: text("direction").notNull(),
+    kind: text("kind").notNull(),
+    volumeMl: integer("volume_ml").notNull(),
+    note: text("note"),
+  },
+  (t) => [
+    index("ipd_intake_output_admission_observed_idx").on(t.admissionId, t.observedAt),
+    check("ipd_intake_output_direction_ck", sql`${t.direction} in ('in', 'out')`),
+    check("ipd_intake_output_volume_ck", sql`${t.volumeMl} > 0`),
+  ],
+);
+
+export const ipdNursingNotes = pgTable(
+  "ipd_nursing_notes",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    recordedBy: text("recorded_by").notNull(),
+    source: text("source").notNull(),
+    lateEntry: boolean("late_entry").notNull(),
+    category: text("category").notNull(),
+    text: text("text").notNull(),
+  },
+  (t) => [index("ipd_nursing_notes_admission_observed_idx").on(t.admissionId, t.observedAt)],
+);
+
+/**
+ * The nurse SHIFT handover, per patient (§4.9 D1 "Handover: N patients ready → each SBAR → the next nurse accepts").
+ * Not a transfer: the patient does not move (transfers keep their SBAR on `ipd_transfers`). Given by one nurse, accepted
+ * by another (never the giver). A newer handover for the same admission supersedes one not yet accepted.
+ */
+export const ipdShiftHandovers = pgTable(
+  "ipd_shift_handovers",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    patientId: text("patient_id").notNull().references(() => patients.id),
+    wardId: text("ward_id"),
+    shift: text("shift").notNull(),
+    situation: text("situation").notNull(),
+    background: text("background").notNull(),
+    assessment: text("assessment").notNull(),
+    recommendation: text("recommendation").notNull(),
+    status: text("status").notNull(),
+    givenBy: text("given_by").notNull(),
+    givenAt: timestamp("given_at", { withTimezone: true }).notNull(),
+    acceptedBy: text("accepted_by"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("ipd_shift_handovers_open_ux").on(t.admissionId).where(sql`${t.status} = 'given'`),
+    index("ipd_shift_handovers_status_idx").on(t.status),
+    check("ipd_shift_handovers_status_ck", sql`${t.status} in ('given', 'accepted', 'superseded')`),
+    check("ipd_shift_handovers_shift_ck", sql`${t.shift} in ('morning', 'evening', 'night')`),
+    check("ipd_shift_handovers_accepted_ck", sql`(${t.status} = 'accepted') = (${t.acceptedAt} is not null)`),
   ],
 );

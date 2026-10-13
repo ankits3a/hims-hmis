@@ -6,6 +6,11 @@ import {
 } from "./common";
 import { IpdConsentSchema } from "./intents-admit";
 
+/** E4.1 (#733) — the lines and devices a nursing admission assessment records. */
+export const IPD_LINE_DEVICE_KINDS = [
+  "peripheral_iv", "central_line", "urinary_catheter", "ng_tube", "drain", "tracheostomy", "oxygen", "other",
+] as const;
+
 /**
  * E0.2 (#714) — transfer, nursing, task and round intents (spec §4.4 ipd-transfer, §4.5 ipd-nursing, §4.5A
  * ipd-rounds). Contracts only.
@@ -185,6 +190,17 @@ export const recordNursingAssessment = ipdIntent({
       stage: z.number().int().min(1).max(4),
       photoDocumentId: IpdIdSchema,
     })).max(20),
+    /** E4.1 (#733, DECIDED) — lines and devices in place at admission (cannula, catheter, tubes, drains, oxygen). */
+    linesDevices: z.array(z.strictObject({
+      kind: z.enum(IPD_LINE_DEVICE_KINDS),
+      site: z.string().trim().min(1).max(60).optional(),
+      insertedAt: IpdInstantSchema.optional(),
+    })).max(20).optional(),
+    /**
+     * E4.1 (#733) — pregnant, or within 42 days after delivery: the early-warning score is MEOWS (`ews.ts` `ewsKindFor`).
+     * Unanswered, an obstetric department or labour bed decides.
+     */
+    obstetric: z.enum(["none", "pregnant", "postpartum"]).optional(),
   }),
   output: z.strictObject({ assessmentId: IpdIdSchema, lateEntry: z.boolean(), tasksRaised: z.number().int().nonnegative() }),
   refusals: ["admission_not_found", "admission_wrong_state", "assessment_already_recorded", "time_in_future"],
@@ -215,6 +231,8 @@ export const recordVitals = ipdIntent({
       onOxygen: z.boolean().optional(),
       consciousness: z.enum(["alert", "confused", "voice", "pain", "unresponsive"]).optional(),
       painScore: z.number().int().min(0).max(10).optional(),
+      /** E4.1 (#733) — capillary refill in seconds (PEWS's cardiovascular row). */
+      capRefillSec: z.number().int().min(0).max(10).optional(),
     }),
     /** The person confirmed a value outside physiological limits (the typo guard). */
     confirmedOutOfRange: z.literal(true).optional(),

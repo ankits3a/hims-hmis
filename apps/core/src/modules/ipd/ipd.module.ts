@@ -11,6 +11,7 @@ import { IpdPayerController } from "./payer.controller";
 import { IpdTransfersController } from "./transfers.controller";
 import { IpdDischargeController } from "./discharge.controller";
 import { IpdFamilyController } from "./family.controller";
+import { IpdNursingController } from "./nursing.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 
 /**
@@ -33,7 +34,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

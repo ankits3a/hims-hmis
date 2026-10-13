@@ -1,8 +1,10 @@
 import { depositLowCard } from "./bill-desk";
 import { familyCallbacksCard } from "./family";
 import { bedProposalCard, cleaningOverdueCard, dischargeBlockedCard } from "./now-cards";
+import { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
 import {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+  IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
 } from "./permissions";
 import { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
 import { admissionAbsconded, admissionDeceased } from "./discharge-events";
@@ -10,6 +12,7 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 export {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+  IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
 } from "./permissions";
 
 /**
@@ -72,6 +75,15 @@ export {
  *   ipd.condition.set   set the condition word the family sees and turn the family link off for a sensitive admission —
  *                       the doctor (nursing roles join when ipd-nursing seeds them). Clinical; no money.
  *
+ * E4.1 (#733) adds nursing's five (spec §4.5, §4.9 C/D1). Clinical; no money:
+ *
+ *   ipd.nursing.view       read the nurse station (board C), my shift (board D1) and a patient's nursing chart
+ *   ipd.vitals.record      record vitals (scored at once), intake/output and nursing notes; the `overdue_vitals` card
+ *   ipd.assessment.record  record the nursing admission assessment (due within an hour); the `assessment_due` card
+ *   ipd.handover.shift     give a shift handover (SBAR drafted from the record) and accept another nurse's; the
+ *                          `handover_pending` card
+ *   ipd.ews.respond        acknowledge an early-warning alert (G7: a doctor's acknowledgement counts); the `ews_rising` card
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). The 2-hour reservation lapse is a scheduler job (`kernel/worker/jobs.ts`
  * `lapseBedReservations`); the one subscription is E3.3's family-link stop, so the worker installs this manifest.
  */
@@ -89,6 +101,9 @@ export const ipdManifest: ModuleManifest = {
     { label: "Discharge", path: "/ipd/discharge", permission: IPD_DISCHARGE_VIEW },
     // E3.3 (#731) — the ward desk's family callback requests.
     { label: "Family calls", path: "/ipd/family-callbacks", permission: IPD_FAMILY_ISSUE },
+    // E4.1 (#733) — board C, the ward nurse station (16:9), and board D1, my shift on the phone (390 px).
+    { label: "Ward", path: "/ipd/ward", permission: IPD_NURSING_VIEW },
+    { label: "My shift", path: "/ipd/my-shift", permission: IPD_VITALS_RECORD },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
@@ -100,6 +115,8 @@ export const ipdManifest: ModuleManifest = {
     IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE,
     // E3.3 (#731)
     IPD_FAMILY_ISSUE, IPD_CONDITION_SET,
+    // E4.1 (#733)
+    IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
   ],
   // E3.3 (#731) — death and absconding revoke the family link (`familyStopConsumer`, registered in the worker's
   // `workerConsumers` in the same commit; its cursor is seeded at deploy by `seedCursors`).
@@ -122,5 +139,10 @@ export const ipdManifest: ModuleManifest = {
     { key: "ipd.cleaning_overdue", permission: IPD_BEDS_CLEAN, load: async (ctx) => cleaningOverdueCard(ctx) },
     // E3.3 (#731) — open family callback requests for the ward desk.
     { key: "ipd.family_callbacks", permission: IPD_FAMILY_ISSUE, load: async (ctx) => familyCallbacksCard(ctx.db) },
+    // E4.1 (#733) — the four nursing cards, each gated by the permission of the act that answers it.
+    { key: "ipd.overdue_vitals", permission: IPD_VITALS_RECORD, load: async (ctx) => overdueVitalsCard(ctx) },
+    { key: "ipd.assessment_due", permission: IPD_ASSESSMENT_RECORD, load: async (ctx) => assessmentDueCard(ctx) },
+    { key: "ipd.ews_rising", permission: IPD_EWS_RESPOND, load: async (ctx) => ewsRisingCard(ctx) },
+    { key: "ipd.handover_pending", permission: IPD_SHIFT_HANDOVER, load: async (ctx) => handoverPendingCard(ctx) },
   ],
 };

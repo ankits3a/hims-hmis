@@ -73,6 +73,7 @@ flowchart LR
   ipd --> billing
   ipd --> opd
   ipd --> patients
+  ipd --> roster
   ipd --> tariff
   lab --> billing
   lab --> opd
@@ -140,7 +141,7 @@ flowchart LR
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
-| [ipd](modules/ipd.md) | billing, opd, patients, tariff | housekeeping, maintenance, passes, transport | 80 | 29 |
+| [ipd](modules/ipd.md) | billing, opd, patients, roster, tariff | housekeeping, maintenance, passes, transport | 92 | 35 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 78 | 25 |
 | [linen](modules/linen.md) | tasks | — | 14 | 7 |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — | 7 | 2 |
@@ -155,7 +156,7 @@ flowchart LR
 | [pcpndt](modules/pcpndt.md) | — | radiology | 10 | 5 |
 | [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 183 | 32 |
 | [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 113 | 22 |
-| [roster](modules/roster.md) | — | opd, ot, radiology, tasks | 37 | 26 |
+| [roster](modules/roster.md) | — | ipd, opd, ot, radiology, tasks | 37 | 26 |
 | [tariff](modules/tariff.md) | — | billing, ipd, lab, membership, ot, partners, pharmacy, radiology | 19 | 7 |
 | [tasks](modules/tasks.md) | roster | bmw, housekeeping, linen, maintenance, transport | 11 | 2 |
 | [transport](modules/transport.md) | ipd, patients, tasks | — | 8 | 1 |

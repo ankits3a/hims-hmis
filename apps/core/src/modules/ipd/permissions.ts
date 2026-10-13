@@ -27,3 +27,9 @@ export const IPD_MORTUARY_MANAGE = "ipd.mortuary.manage";
 export const IPD_BILLDESK_VIEW = "ipd.billdesk.view";
 export const IPD_FAMILY_ISSUE = "ipd.family.issue";
 export const IPD_CONDITION_SET = "ipd.condition.set";
+// E4.1 (#733) — nursing.
+export const IPD_NURSING_VIEW = "ipd.nursing.view";
+export const IPD_VITALS_RECORD = "ipd.vitals.record";
+export const IPD_ASSESSMENT_RECORD = "ipd.assessment.record";
+export const IPD_SHIFT_HANDOVER = "ipd.handover.shift";
+export const IPD_EWS_RESPOND = "ipd.ews.respond";

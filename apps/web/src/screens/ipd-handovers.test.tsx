@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { ApiError, setToken } from "../lib/api";
 import { renderWithRouter } from "../test-utils";
 import { IpdHandovers } from "./ipd-handovers";
+import { fid, handoversOf, shiftHandover } from "./ipd-nursing.fixture";
 import type { IpdHandoverCard, IpdHandoverList } from "@hmis/contracts";
 
 /*
@@ -14,6 +15,12 @@ const api = vi.hoisted(() => ({ getHandovers: vi.fn(), acceptHandover: vi.fn(), 
 vi.mock("../lib/ipd-transfer-api", async (orig) => {
   const real = await orig<typeof import("../lib/ipd-transfer-api")>();
   return { ...real, getHandovers: api.getHandovers, acceptHandover: api.acceptHandover, cancelTransfer: api.cancelTransfer };
+});
+
+const nursing = vi.hoisted(() => ({ getShiftHandovers: vi.fn(), acceptShiftHandover: vi.fn() }));
+vi.mock("../lib/ipd-nursing-api", async (orig) => {
+  const real = await orig<typeof import("../lib/ipd-nursing-api")>();
+  return { ...real, getShiftHandovers: nursing.getShiftHandovers, acceptShiftHandover: nursing.acceptShiftHandover };
 });
 
 const id = (n: number): string => `01FAKE${String(n).padStart(20, "0")}`;
@@ -95,5 +102,35 @@ describe("Waiting for you (E3.1)", () => {
     expect(await screen.findByTestId("ipd-handovers-empty")).toHaveTextContent("No handover is waiting.");
     await user.click(screen.getByRole("button", { name: /All wards/ }));
     await waitFor(() => expect(screen.getByTestId(`ipd-handover-${id(1)}`)).toBeInTheDocument());
+  });
+});
+
+describe("shift handover on the same page (E4.1, #733)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.transfer.accept", "ipd.handover.shift"], scoped: { department: {}, floor: {} } } }), { status: 200 })));
+    const now = Date.now();
+    nursing.getShiftHandovers.mockReset().mockResolvedValue(handoversOf(now, [shiftHandover(now), shiftHandover(now, { handoverId: fid(702), givenByViewer: true })]));
+    nursing.acceptShiftHandover.mockReset().mockResolvedValue({});
+  });
+
+  it("lists shift handovers below the transfers; accept only on one I did not give", async () => {
+    renderWithRouter(<IpdHandovers />, "/ipd/handovers");
+    const mine = await screen.findByTestId(`ipd-shift-handover-${fid(702)}`);
+    expect(mine).toHaveTextContent("You gave this handover");
+    expect(within(mine).queryByRole("button", { name: "Accept" })).toBeNull();
+    const other = screen.getByTestId(`ipd-shift-handover-${fid(701)}`);
+    expect(other).toHaveTextContent("Test Patient D");
+    expect(other).toHaveTextContent("Day 7, fit for discharge tomorrow.");
+    await userEvent.click(within(other).getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(nursing.acceptShiftHandover).toHaveBeenCalledWith(fid(701)));
+    expect(await within(other).findByRole("status")).toHaveTextContent("Handover accepted");
+  });
+
+  it("is hidden from a viewer without the shift-handover permission", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: ["ipd.transfer.accept"], scoped: { department: {}, floor: {} } } }), { status: 200 })));
+    renderWithRouter(<IpdHandovers />, "/ipd/handovers");
+    await screen.findByTestId(`ipd-handover-${id(1)}`);
+    expect(screen.queryByTestId("ipd-shift-handovers")).toBeNull();
+    expect(nursing.getShiftHandovers).not.toHaveBeenCalled();
   });
 });
