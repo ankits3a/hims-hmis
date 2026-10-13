@@ -1806,6 +1806,12 @@ porter; the supervisor and the superintendent work the family's callback request
 holds `ipd.condition.set` — the condition word is the doctor's. NEWS2 5+ or any single 3 (MEOWS and PEWS by their own
 charts) tells the duty doctor once per breach, and again only when the score gets a band worse.
 
+**IPD rounds (E4.2, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.round.sign` and `ipd.order.place` are
+held by `doctor` — the Rounds list at `/ipd/rounds` (own, unit and consulted patients, boarded ones marked with their
+ward), the round page (sign a S/O/A/P round; a resident's round waits for the consultant's co-sign), cross-consults, and
+inpatient orders: drugs from the formulary (an antibiotic needs a stop date), lab and imaging through the ordering door.
+A consultant's bedside round is the day's visit; a remote review is not. No money on any of it.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

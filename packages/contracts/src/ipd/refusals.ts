@@ -114,6 +114,25 @@ export const IPD_REFUSALS = {
   dose_already_recorded: { rule: "This dose already has a recorded outcome.", fix: "Open MAR" },
   give_expired: { rule: "An unfinished give expires after five minutes.", fix: "Scan again" },
   infusion_out_of_order: { rule: "An infusion event must follow the one before it.", fix: "Open infusion" },
+  // E4.2 (#734) — the doctor's inpatient orders and rounds.
+  duration_required: { rule: "A drug order needs a duration or a stop time.", fix: "Add duration" },
+  medicine_not_found: { rule: "The medicine is not in the hospital formulary.", fix: "Search formulary" },
+  order_kind_not_here: { rule: "This kind of order is placed on its own screen.", fix: "Open the right screen" },
+  test_not_orderable: { rule: "The department could not take this test order.", fix: "Ask the department" },
+  order_already_issued: { rule: "An order already issued is stopped, not cancelled.", fix: "Stop the order" },
+  round_not_found: { rule: "No round has this id.", fix: "Open rounds" },
+  round_not_awaiting_cosign: { rule: "Only a draft round waiting for co-sign can be co-signed.", fix: "Open rounds" },
+  consultant_not_found: { rule: "The person asked is not an active consultant.", fix: "Pick a consultant" },
+  consult_already_open: { rule: "This consultant is already asked to see the patient.", fix: "Open the consult" },
+  consult_not_found: { rule: "No consult request has this id.", fix: "Open rounds" },
+  consult_closed: { rule: "The consult request is already closed.", fix: "Open rounds" },
+  // E4.2 review (#734) — the inpatient drug order's own checks.
+  stop_date_past: { rule: "The stop time must be later than now.", fix: "Pick a later stop" },
+  course_too_long: { rule: "An antibiotic course over 14 days needs a reason.", fix: "Add the reason" },
+  prn_mismatch: { rule: "An SOS order needs its as-needed limits, and only an SOS order has them.", fix: "Fix SOS limits" },
+  dose_out_of_range: { rule: "The dose is outside the range a single dose can be.", fix: "Check the dose" },
+  dose_unit_mismatch: { rule: "The dose unit does not fit the medicine's strength.", fix: "Pick another unit" },
+  route_mismatch: { rule: "The route does not fit the medicine's form.", fix: "Pick another route" },
 
   /* ═══ Discharge (§4.7) ═══ */
   department_not_yours: { rule: "A department confirms only its own charges.", fix: "Ask the department" },

@@ -115,27 +115,39 @@ export async function declareFit(db: Db, actor: Actor, raw: unknown, opts: Opts 
   const at = opts.now ?? new Date();
   return onceIpd(db, actor, "declare_fit", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const a = await lockAdmission(tx, input.admissionId);
-    if (a.state !== "admitted") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
-    if (!isTreatingConsultant(a, actor)) throw new IpdRefusal("not_treating_consultant");
-    await moveAdmission(tx, actor, a, "fit_declared", at, {}, "declare_fit");
-    const dischargeId = newId();
-    const targetAt = new Date(at.getTime() + IPD_DISCHARGE_TARGET_MINUTES * 60_000);
-    await tx.insert(ipdDischarges).values({
-      id: dischargeId, admissionId: a.id, status: "active", fitWhen: input.when, disposition: input.disposition,
-      note: input.note ?? null, declaredBy: actor.id, declaredAt: at, targetAt,
-    });
-    for (const d of await departmentsFor(tx, a)) {
-      await tx.insert(ipdDischargeConfirmations).values({ id: newId(), dischargeId, admissionId: a.id, department: d.department, basis: d.basis });
-    }
-    await appendEvent(tx, fitDeclared.make({
-      payload: {
-        admissionId: a.id, declarationId: dischargeId, disposition: input.disposition, fitWhen: input.when, targetAt: targetAt.toISOString(),
-        provenance: provenanceOf(actor),
-      },
-      actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
-    }));
-    return { admissionId: a.id, state: "fit_declared" as const, clockStartedAt: at.toISOString(), targetAt: targetAt.toISOString() };
+    const out = await declareFitIn(tx, actor, a, input, at);
+    return { admissionId: out.admissionId, state: out.state, clockStartedAt: out.clockStartedAt, targetAt: out.targetAt };
   }), at);
+}
+
+/**
+ * The fit declaration on the CALLER's transaction, the admission already locked (E4.2 #734: "Fit for discharge" from the
+ * round runs here inside the round's own act, so the round and the cascade commit together or not at all). The caller
+ * owns permission and idempotency.
+ */
+export async function declareFitIn(
+  tx: Tx, actor: Actor, a: AdmissionRow, input: Pick<Input<"declare_fit">, "when" | "disposition" | "note">, at: Date,
+): Promise<Output<"declare_fit"> & { declarationId: string }> {
+  if (a.state !== "admitted") throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
+  if (!isTreatingConsultant(a, actor)) throw new IpdRefusal("not_treating_consultant");
+  await moveAdmission(tx, actor, a, "fit_declared", at, {}, "declare_fit");
+  const dischargeId = newId();
+  const targetAt = new Date(at.getTime() + IPD_DISCHARGE_TARGET_MINUTES * 60_000);
+  await tx.insert(ipdDischarges).values({
+    id: dischargeId, admissionId: a.id, status: "active", fitWhen: input.when, disposition: input.disposition,
+    note: input.note ?? null, declaredBy: actor.id, declaredAt: at, targetAt,
+  });
+  for (const d of await departmentsFor(tx, a)) {
+    await tx.insert(ipdDischargeConfirmations).values({ id: newId(), dischargeId, admissionId: a.id, department: d.department, basis: d.basis });
+  }
+  await appendEvent(tx, fitDeclared.make({
+    payload: {
+      admissionId: a.id, declarationId: dischargeId, disposition: input.disposition, fitWhen: input.when, targetAt: targetAt.toISOString(),
+      provenance: provenanceOf(actor),
+    },
+    actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
+  }));
+  return { admissionId: a.id, state: "fit_declared" as const, clockStartedAt: at.toISOString(), targetAt: targetAt.toISOString(), declarationId: dischargeId };
 }
 
 export async function cancelFit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_fit">> {

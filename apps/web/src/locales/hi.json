@@ -164,7 +164,8 @@
     "ipdMyShift": "मेरी शिफ्ट",
     "dietWard": "आहार पत्रक",
     "dietKitchen": "रसोई",
-    "dietConsults": "आहार परामर्श"
+    "dietConsults": "आहार परामर्श",
+    "ipdRounds": "राउंड"
   },
   "palette": {
     "title": "खोज",
@@ -17298,7 +17299,8 @@
     "reason": {
       "rate_missing": "दर नहीं",
       "tariff_missing": "टैरिफ़ नहीं",
-      "posting_failed": "पोस्टिंग विफल"
+      "posting_failed": "पोस्टिंग विफल",
+      "visit_backdated": "पुरानी तारीख़ का राउंड"
     },
     "component": {
       "room": "कमरा किराया",
@@ -17610,7 +17612,8 @@
       "deposit_check_pending": "डाउनटाइम जमा जाँचें",
       "cash_consent_missing": "नकद सहमति नहीं",
       "auth_pending_24h": "स्वीकृति 24 घंटे से लंबित",
-      "discharge_balance": "डिस्चार्ज, बकाया शेष"
+      "discharge_balance": "डिस्चार्ज, बकाया शेष",
+      "visit_backdated": "पुरानी तारीख़ की विज़िट"
     },
     "col": {
       "patient": "मरीज़",
@@ -17676,6 +17679,14 @@
         "payer_claim_settled": "भुगतानकर्ता ने दावा निपटा दिया — रद्द नहीं",
         "nothing_to_bill": "पूरक बिल के लिए कोई शुल्क नहीं"
       }
+    },
+    "backdated": {
+      "what": "{{date}} का राउंड, {{name}} — देर से दर्ज",
+      "reason": "कारण (ज़रूरी)",
+      "charge": "विज़िट चार्ज करें",
+      "waive": "माफ़ करें",
+      "done": "पुरानी तारीख़ की विज़िट निपटाई गई",
+      "failed": "सेव नहीं हुआ — फिर से कोशिश करें"
     }
   },
   "ipdDischarge": {
@@ -18562,5 +18573,176 @@
       "rounds_overlap": "भोजन के समय क्रम में हों, आपस में न टकराएँ।",
       "list_changed_since_print": "छपने के बाद सूची बदली — पहले बदलाव छापें।"
     }
+  },
+  "ipdRounds": {
+    "title": "राउंड",
+    "counts": "{{total}} मरीज़ · आज {{pending}} देखने हैं",
+    "loading": "लोड हो रहा है…",
+    "failed": "लोड नहीं हुआ — फिर से कोशिश करें",
+    "forbidden": "राउंड इलाज करने वाली टीम के डॉक्टरों के लिए है",
+    "empty": "आज आपकी सूची में कोई भर्ती मरीज़ नहीं",
+    "sealed": "गोपनीय मरीज़",
+    "boardedOn": "{{ward}} पर",
+    "boardedHint": "दूसरे विभाग के वार्ड पर भर्ती",
+    "day": "दिन {{n}}",
+    "activeOrders_one": "{{count}} चालू ऑर्डर",
+    "activeOrders_other": "{{count}} चालू ऑर्डर",
+    "today": {
+      "none": "आज नहीं देखा",
+      "draft": "ड्राफ़्ट राउंड",
+      "remote": "दूर से समीक्षा",
+      "signed": "आज देखा"
+    },
+    "why": {
+      "own": "मेरा मरीज़",
+      "covering": "कवर · {{name}}",
+      "unit": "यूनिट · {{name}}",
+      "consult": "परामर्श · {{name}}"
+    },
+    "fit": {
+      "today": "आज छुट्टी योग्य",
+      "tomorrow": "कल छुट्टी योग्य"
+    },
+    "cosignQueue": "आपके सह-हस्ताक्षर की प्रतीक्षा",
+    "draftBy": "{{name}} का ड्राफ़्ट · {{time}}",
+    "cosign": "सह-हस्ताक्षर करें",
+    "cosignedBy": "{{name}} ने सह-हस्ताक्षर किए",
+    "draft": "ड्राफ़्ट",
+    "under": "{{name}} के अधीन",
+    "coveredBy": "{{name}} कवर कर रहे हैं",
+    "dx": "निदान",
+    "notOnTeam": "आप इस मरीज़ की इलाज टीम में नहीं हैं",
+    "history": "राउंड",
+    "noRounds": "अभी कोई हस्ताक्षरित राउंड नहीं",
+    "vitals": "ताज़ा वाइटल्स",
+    "vitalsPending": "वार्ड नर्सिंग रिकॉर्ड चालू होने पर वाइटल्स यहाँ दिखेंगे",
+    "signTitle": "आज का राउंड",
+    "modeLabel": "कहाँ से",
+    "mode": {
+      "bedside": "बेड के पास",
+      "remote_review": "दूर से समीक्षा"
+    },
+    "remoteHint": "फ़ोन या वीडियो से समीक्षा — दूर से समीक्षा के रूप में दर्ज",
+    "soap": {
+      "subjective": "लक्षण (S)",
+      "objective": "जाँच (O)",
+      "assessment": "आकलन (A)",
+      "plan": "योजना (P)"
+    },
+    "fitLabel": "छुट्टी योग्य",
+    "fitButton": {
+      "today": "आज",
+      "tomorrow": "कल"
+    },
+    "sign": "राउंड पर हस्ताक्षर",
+    "signAndFit": "हस्ताक्षर · छुट्टी शुरू करें",
+    "kind": {
+      "consultant": "कंसल्टेंट",
+      "resident": "रेज़िडेंट"
+    },
+    "source": {
+      "typed": "टाइप किया",
+      "voice": "आवाज़",
+      "copilot_draft": "कोपायलट ड्राफ़्ट"
+    },
+    "sourceHint": "शब्द कहाँ से आए",
+    "orders": "ऑर्डर",
+    "addDrug": "+ दवा",
+    "addTests": "+ जाँच",
+    "noOrders": "कोई चालू ऑर्डर नहीं",
+    "endedOrders_one": "{{count}} बंद ऑर्डर",
+    "endedOrders_other": "{{count}} बंद ऑर्डर",
+    "orderKind": {
+      "drug": "दवा",
+      "lab": "लैब",
+      "imaging": "इमेजिंग"
+    },
+    "orderStatus": {
+      "active": "चालू",
+      "stopped": "रोका गया",
+      "cancelled": "रद्द"
+    },
+    "verification": {
+      "pending": "फ़ार्मासिस्ट की प्रतीक्षा",
+      "verified": "सत्यापित",
+      "rejected": "फ़ार्मासिस्ट ने अस्वीकार किया",
+      "query": "फ़ार्मासिस्ट का प्रश्न"
+    },
+    "antibiotic": "एंटीबायोटिक",
+    "until": "{{time}} तक",
+    "forDays_one": "{{count}} दिन",
+    "forDays_other": "{{count}} दिन",
+    "returnOwed": "फ़ार्मेसी को वापसी बाकी",
+    "stop": "रोकें",
+    "cancelOrder": "ऑर्डर रद्द करें",
+    "reason": "कारण",
+    "back": "वापस",
+    "drugSearch": "दवा खोजें — 2 अक्षर",
+    "change": "बदलें",
+    "dose": "खुराक",
+    "unit": "इकाई",
+    "route": "मार्ग",
+    "frequency": "कितनी बार",
+    "days": "दिन",
+    "stopDate": "बंद करने की तारीख़",
+    "placeOrder": "ऑर्डर दें",
+    "routes": {
+      "oral": "मुँह से",
+      "iv": "IV",
+      "im": "IM",
+      "sc": "SC",
+      "inhaled": "साँस से",
+      "topical": "त्वचा पर",
+      "rectal": "गुदा से",
+      "sublingual": "जीभ के नीचे",
+      "ng": "NG ट्यूब",
+      "other": "अन्य"
+    },
+    "indication": "क्यों — क्लिनिकल कारण",
+    "outside": "बाहर होती है — यहाँ ऑर्डर नहीं",
+    "remove": "हटाएँ",
+    "consults": "परामर्श",
+    "askColleague": "सहकर्मी से पूछें",
+    "consultant": "कंसल्टेंट",
+    "question": "कंसल्टेंट के लिए प्रश्न",
+    "urgent": "तुरंत",
+    "sendConsult": "अनुरोध भेजें",
+    "closeConsult": "परामर्श बंद करें",
+    "askedBy": "{{name}} ने पूछा · {{time}}",
+    "refused": {
+      "failed": "सेव नहीं हुआ — फिर से कोशिश करें",
+      "admission_wrong_state": "मरीज़ अभी बेड पर नहीं है",
+      "not_treating_team": "केवल इलाज या परामर्श टीम यह कर सकती है",
+      "not_treating_consultant": "केवल इलाज करने वाले कंसल्टेंट यह कर सकते हैं",
+      "consultant_cosign_required": "रेज़िडेंट के राउंड पर कंसल्टेंट का सह-हस्ताक्षर चाहिए",
+      "time_in_future": "समय अभी से आगे है",
+      "antibiotic_stop_date_required": "एंटीबायोटिक के लिए बंद करने की तारीख़ चाहिए",
+      "duration_required": "अवधि या बंद करने की तारीख़ डालें",
+      "medicine_not_found": "दवा फ़ॉर्मुलरी में नहीं है",
+      "duplicate_order": "यह दवा इसी मार्ग से पहले से ऑर्डर है",
+      "order_kind_not_here": "यह ऑर्डर उसकी अपनी स्क्रीन पर दें",
+      "test_not_orderable": "विभाग यह जाँच नहीं ले सका",
+      "order_not_active": "ऑर्डर पहले से रोका या रद्द है",
+      "order_already_issued": "दवा जारी हो चुकी — रद्द नहीं, रोकें",
+      "round_not_awaiting_cosign": "पहले से सह-हस्ताक्षरित",
+      "consultant_not_found": "कोई सक्रिय कंसल्टेंट चुनें",
+      "consult_already_open": "इन कंसल्टेंट से पहले से पूछा गया है",
+      "consult_closed": "परामर्श पहले से बंद है",
+      "weight_required": "पहले मरीज़ का वज़न दर्ज करें",
+      "allergy_conflict": "दर्ज एलर्जी से टकराव — ओवरराइड का कारण दें",
+      "stop_date_past": "बंद करने का समय अभी के बाद हो",
+      "course_too_long": "14 दिन से लंबे एंटीबायोटिक कोर्स का कारण चाहिए",
+      "prn_mismatch": "SOS के लिए सीमा चाहिए; सीमा केवल SOS में",
+      "dose_out_of_range": "खुराक जाँचें",
+      "dose_unit_mismatch": "यह इकाई इस दवा पर नहीं बैठती",
+      "route_mismatch": "यह मार्ग इस दवा पर नहीं बैठता",
+      "round_not_found": "राउंड नहीं मिला"
+    },
+    "weight": "वज़न (किग्रा)",
+    "prnGap": "कम से कम घंटे का अंतर",
+    "prnMax": "24 घंटे में अधिकतम खुराक",
+    "longCourse": "14 दिन से लंबे कोर्स का कारण",
+    "allergyHit": "एलर्जी: {{substances}}",
+    "overrideReason": "एलर्जी के बावजूद देने का कारण"
   }
 }

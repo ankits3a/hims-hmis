@@ -82,7 +82,7 @@ export type {
   EscalationContext, EscalationRecipients, RosterEscalationTargetRow, SetEscalationTargetInput,
 } from "./escalation";
 export {
-  HORIZON_DAYS, SHORT_OPD_MINUTES, addIstDays, backupUnit, declareHoliday,
+  HORIZON_DAYS, SHORT_OPD_MINUTES, addIstDays, backupUnit, declareHoliday, holidaysBetween,
   departmentsWithTakeGaps, expandCycle, extendWindows, istMidnightUtc, istWeekday,
   departmentsWithoutPublishedCycle, materialiseWindows, publishCycle, publishedCycleCount,
   sweepRosterWindows, takeGaps,

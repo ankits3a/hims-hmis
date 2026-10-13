@@ -397,12 +397,14 @@ export const ipdChargeExceptions = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedLineId: text("resolved_line_id"),
+    /** E4.2 (#734): billing's reason when it charges or waives a `visit_backdated` exception. */
+    resolutionNote: text("resolution_note"),
   },
   (t) => [
     uniqueIndex("ipd_charge_exceptions_key_ux").on(t.key),
     index("ipd_charge_exceptions_open_idx").on(t.admissionId).where(sql`${t.resolvedAt} is null`),
     check("ipd_charge_exceptions_component_ck", sql`${t.component} is null or ${t.component} in (${CHARGE_COMPONENTS_SQL})`),
-    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed')`),
+    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated')`),
     check("ipd_charge_exceptions_shape_ck", sql`(${t.reason} = 'posting_failed') = (${t.component} is null) and (${t.component} is null) = (${t.serviceDate} is null)`),
   ],
 );

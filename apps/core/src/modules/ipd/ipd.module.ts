@@ -13,6 +13,8 @@ import { IpdDischargeController } from "./discharge.controller";
 import { IpdFamilyController } from "./family.controller";
 import { IpdNursingController } from "./nursing.controller";
 import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
+import { registerIpdEncounterResolver } from "./encounter";
+import { IpdRoundsController } from "./rounds.controller";
 
 /**
  * E1.1 (#718) — the inpatient module. Mounts the bed routes and registers the bed board's live topic. Guards are
@@ -29,12 +31,14 @@ class IpdRealtimeRegistrar implements OnModuleInit {
     registerIpdReceiptGuard();
     // E2.3 (#727, review 7) — an advance refund re-checks the deposit ladder of the patient's open admission.
     registerIpdAdvanceRefundListener();
+    // E4.2 (#734) — the `IP` episode prefix, so the ordering door can place an inpatient's lab and imaging orders.
+    registerIpdEncounterResolver();
   }
 }
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController, IpdRoundsController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

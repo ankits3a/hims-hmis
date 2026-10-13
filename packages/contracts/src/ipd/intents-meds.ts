@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdUserRefSchema, ipdInput, ipdIntent } from "./common";
+import { DOSE_UNITS, RX_FREQUENCIES } from "../rx-line";
 
 /**
  * E0.2 (#714) — inpatient orders and the eMAR (spec §4.5A ipd-rounds orders, §4.6 ipd-emar). Contracts only.
@@ -8,9 +9,43 @@ import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdUserRefSchema, ipdInpu
  * The acceptance suite pins that for every intent in this file.
  */
 
-const DoseSchema = z.strictObject({ value: z.number().positive(), unit: z.string().trim().min(1).max(16) });
+/** E4.2 review: an inpatient drug dose names a unit of the shared prescription vocabulary (`DOSE_UNITS`). */
+const IpdDoseSchema = z.strictObject({ value: z.number().positive().max(1_000_000), unit: z.enum(DOSE_UNITS) });
 /** The dose is due at `doseDueAt` — the slot on the MAR this outcome belongs to. */
 const DoseSlot = { orderId: IpdIdSchema, doseDueAt: IpdInstantSchema };
+
+/**
+ * E4.2 (#734) — the doctor's inpatient order. A DRUG order names a formulary medicine with dose, route, frequency, start
+ * and duration (days, or a stop time); an antibiotic (by the formulary's AWaRe class, or flagged) needs a stop time. It is
+ * placed `pending_verify` for the pharmacist (eMAR, E4.3). LAB and IMAGING orders go through the ordering door (decision
+ * 0067: `orderTests`, the inpatient's IP number as the episode) and are `active` at once — the department owns them from
+ * there. Diet, nursing and procedure orders are placed on their own lanes' screens (`order_kind_not_here`).
+ */
+export const IPD_DRUG_ROUTES = ["oral", "iv", "im", "sc", "inhaled", "topical", "rectal", "sublingual", "ng", "other"] as const;
+export const IpdDrugOrderSchema = z.strictObject({
+  /** The formulary medicine (`formulary_medicines.id`). */
+  itemId: IpdIdSchema,
+  dose: IpdDoseSchema,
+  route: z.enum(IPD_DRUG_ROUTES),
+  /** The shared prescription vocabulary (`RX_FREQUENCIES`, rx-line.ts): `SOS` ⇔ a `prn` block (the intent cross-checks). */
+  frequency: z.enum(RX_FREQUENCIES),
+  startAt: IpdInstantSchema,
+  /** Required by the intent for an antibiotic (§4.5A). */
+  stopAt: IpdInstantSchema.optional(),
+  /** The course length; a drug order carries this or a stop time. */
+  durationDays: z.number().int().min(1).max(365).optional(),
+  /** The prescriber's flag; the server ALSO treats every AWaRe-classified medicine as an antibiotic. */
+  antibiotic: z.boolean(),
+  prn: z.strictObject({ minIntervalMinutes: z.number().int().positive(), max24h: z.number().int().positive() }).optional(),
+  weightBasedPerKg: z.boolean().optional(),
+  /** Today's weight; else the latest recorded weight (30 days). Needed for a weight-based dose and for every child (< 16). */
+  weightKg: z.number().positive().max(400).optional(),
+  /** Ordering through a recorded allergy (CPOE override): the reason is kept and the pharmacist re-checks it (eMAR). */
+  allergyOverrideReason: IpdNoteSchema.optional(),
+  /** An antibiotic course longer than 14 days needs its reason. */
+  longCourseReason: IpdNoteSchema.optional(),
+});
+export type IpdDrugOrder = z.infer<typeof IpdDrugOrderSchema>;
 
 export const placeIpOrder = ipdIntent({
   input: ipdInput({
@@ -19,21 +54,18 @@ export const placeIpOrder = ipdIntent({
     kind: z.enum(["drug", "lab", "imaging", "procedure", "diet", "nursing"]),
     /** The ordering door's catalogue item for a non-drug order. */
     itemId: IpdIdSchema.optional(),
-    drug: z.strictObject({
-      itemId: IpdIdSchema,
-      dose: DoseSchema,
-      route: z.enum(["oral", "iv", "im", "sc", "inhaled", "topical", "rectal", "sublingual", "ng", "other"]),
-      frequency: z.string().trim().min(1).max(30),
-      startAt: IpdInstantSchema,
-      /** Required by the intent for an antibiotic (§4.5A). */
-      stopAt: IpdInstantSchema.optional(),
-      antibiotic: z.boolean(),
-      prn: z.strictObject({ minIntervalMinutes: z.number().int().positive(), max24h: z.number().int().positive() }).optional(),
-      weightBasedPerKg: z.boolean().optional(),
+    drug: IpdDrugOrderSchema.optional(),
+    /** Lab or imaging tests: tariff service ids, all of the kind's department (the test picker groups them). */
+    tests: z.strictObject({
+      serviceIds: z.array(z.string().min(1).max(64)).min(1).max(30),
+      indication: IpdNoteSchema,
+      priority: z.enum(["routine", "urgent", "stat"]).optional(),
     }).optional(),
     /** An emergency verbal order recorded by a nurse after read-back; the doctor signs within 24 hours. */
     verbal: z.strictObject({ fromDoctorId: IpdUserRefSchema, readBack: z.literal(true) }).optional(),
     note: IpdNoteSchema.optional(),
+    /** The round this order was written on (E4.2 review: round orders are linked). */
+    roundId: IpdIdSchema.optional(),
   }),
   output: z.strictObject({
     orderId: IpdIdSchema,
@@ -44,12 +76,46 @@ export const placeIpOrder = ipdIntent({
   refusals: [
     "admission_not_found", "admission_wrong_state", "not_treating_team", "antibiotic_stop_date_required",
     "weight_required", "verbal_order_not_allowed", "verbal_order_only", "allergy_conflict", "duplicate_order",
+    "duration_required", "medicine_not_found", "order_kind_not_here", "test_not_orderable", "time_in_future",
+    "stop_date_past", "course_too_long", "prn_mismatch", "dose_out_of_range", "dose_unit_mismatch", "route_mismatch",
+    "round_not_found",
   ],
   actors: ["doctor", "resident", "nurse"],
   copilotProposable: false,
   agentTier: "none",
   undo: "entered_in_error",
   events: ["ipd.order.placed"],
+  idempotent: true,
+});
+
+/**
+ * E4.2 (#734) — stop an active DRUG order (a lab or imaging order is the department's to cancel: `order_kind_not_here`). Before issue nothing is owed back; after issue (`issuedAt` set by eMAR) the stop
+ * records the intent and the return and credit are the pharmacy's (eMAR, E4.3): the answer says `returnOwed`.
+ */
+export const stopIpOrder = ipdIntent({
+  input: ipdInput({ orderId: IpdIdSchema, reason: IpdNoteSchema }),
+  output: z.strictObject({
+    orderId: IpdIdSchema, status: z.literal("stopped"), stoppedAt: IpdInstantSchema, returnOwed: z.boolean(),
+  }),
+  refusals: ["order_not_found", "order_not_active", "not_treating_team", "order_kind_not_here"],
+  actors: ["doctor", "resident"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.order.stopped"],
+  idempotent: true,
+});
+
+/** E4.2 (#734) — a wrong order (wrong patient, wrong drug) cancelled with its reason BEFORE issue; after issue, stop it. */
+export const cancelIpOrder = ipdIntent({
+  input: ipdInput({ orderId: IpdIdSchema, reason: IpdNoteSchema }),
+  output: z.strictObject({ orderId: IpdIdSchema, status: z.literal("cancelled"), cancelledAt: IpdInstantSchema }),
+  refusals: ["order_not_found", "order_not_active", "order_already_issued", "not_treating_team", "order_kind_not_here"],
+  actors: ["doctor", "resident"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.order.cancelled"],
   idempotent: true,
 });
 

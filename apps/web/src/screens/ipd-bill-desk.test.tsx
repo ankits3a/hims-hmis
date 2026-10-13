@@ -9,7 +9,7 @@ import type { IpdBillDesk, IpdBillDeskRow } from "@hmis/contracts";
   shape is the contract's (`packages/contracts/src/ipd/bill-desk.ts`).
 */
 
-const api = vi.hoisted(() => ({ getBillDesk: vi.fn(), retryPosting: vi.fn(), getInterimBill: vi.fn(), printInterimBill: vi.fn() }));
+const api = vi.hoisted(() => ({ getBillDesk: vi.fn(), retryPosting: vi.fn(), getInterimBill: vi.fn(), printInterimBill: vi.fn(), resolveBackdatedVisit: vi.fn() }));
 vi.mock("../lib/ipd-bill-api", () => api);
 // #763: the settled-bills panel under the list has its own wire (tested in ipd-settled-bills.test.tsx); silent here.
 vi.mock("../lib/ipd-discharge-api", () => ({ getSettledBills: vi.fn(() => Promise.reject(new Error("not in this test"))) }));
@@ -32,7 +32,7 @@ function desk(over: Partial<IpdBillDesk> = {}): IpdBillDesk {
   ];
   const counts = {
     deposit_90: 1, deposit_75: 1, icu_low_days: 0, posting_failed: 1, rate_missing: 0, tariff_missing: 0, deposit_check_pending: 1,
-    cash_consent_missing: 0, auth_pending_24h: 0, discharge_balance: 0,
+    cash_consent_missing: 0, auth_pending_24h: 0, discharge_balance: 0, visit_backdated: 0,
   };
   return { asOf: "2030-01-02T04:00:00.000Z", counts, rows, canRetry: false, ...over };
 }
@@ -79,5 +79,30 @@ describe("IpdBillDeskScreen", () => {
     api.getBillDesk.mockRejectedValueOnce(new ApiError(403, { code: "ipd_forbidden" }));
     renderWithRouter(<IpdBillDeskScreen />);
     expect(await screen.findByRole("alert")).toHaveTextContent("The bill desk is for billing staff");
+  });
+
+  it("E4.2: a backdated round visit offers Charge visit and Waive, each needing a reason, to the billing manager only", async () => {
+    const backdated = row(5, {
+      reasons: ["visit_backdated"], backdatedVisits: [{ exceptionId: "x-1", serviceDate: "2030-01-01", consultantName: "Dr Synthetic" }],
+    });
+    api.getBillDesk.mockResolvedValue(desk({ canRetry: false, rows: [backdated] }));
+    const { unmount } = renderWithRouter(<IpdBillDeskScreen />);
+    expect((await screen.findAllByText("Visit backdated")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Charge visit" })).toBeNull();
+    unmount();
+
+    api.getBillDesk.mockResolvedValue(desk({ canRetry: true, rows: [backdated] }));
+    api.resolveBackdatedVisit.mockResolvedValue({ outcome: "charged" });
+    renderWithRouter(<IpdBillDeskScreen />);
+    const box = await screen.findByTestId("backdated-x-1");
+    expect(box).toHaveTextContent("Round on 2030-01-01 by Dr Synthetic — entered late");
+    const charge = within(box).getByRole("button", { name: "Charge visit" });
+    const waive = within(box).getByRole("button", { name: "Waive" });
+    expect(charge).toBeDisabled();
+    expect(waive).toBeDisabled();
+    fireEvent.change(within(box).getByLabelText("Reason (required)"), { target: { value: "Night round, written late" } });
+    fireEvent.click(waive);
+    await waitFor(() => expect(api.resolveBackdatedVisit).toHaveBeenCalledWith("x-1", "waive", "Night round, written late"));
+    expect(await screen.findByText("Backdated visit settled")).toBeInTheDocument();
   });
 });

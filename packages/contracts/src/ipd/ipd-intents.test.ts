@@ -99,11 +99,19 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
     dueAt: AT, note: "synthetic",
   },
   complete_task: { idempotencyKey: key(21), taskId: id(16), outcome: "done", completedAt: AT },
-  sign_round: { idempotencyKey: key(22), admissionId: id(3), seenAt: AT, mode: "bedside", note: "synthetic" },
+  sign_round: {
+    idempotencyKey: key(22), admissionId: id(3), seenAt: AT, mode: "bedside", soap: { subjective: "synthetic", plan: "continue" },
+    fit: { when: "tomorrow", disposition: "home" },
+  },
+  cosign_round: { idempotencyKey: key(40), roundId: id(25) },
+  request_consult: { idempotencyKey: key(41), admissionId: id(3), consultantId: USER2, question: "synthetic", urgency: "routine" },
+  close_consult: { idempotencyKey: key(42), consultId: id(26), note: "signed off" },
+  stop_ip_order: { idempotencyKey: key(43), orderId: id(18), reason: "course complete" },
+  cancel_ip_order: { idempotencyKey: key(44), orderId: id(18), reason: "wrong patient" },
   place_ip_order: {
     idempotencyKey: key(23), admissionId: id(3), kind: "drug",
     drug: {
-      itemId: id(17), dose: { value: 1, unit: "g" }, route: "iv", frequency: "BD", startAt: AT, stopAt: AT,
+      itemId: id(17), dose: { value: 1, unit: "g" }, route: "iv", frequency: "BD", startAt: AT, stopAt: AT, durationDays: 5,
       antibiotic: true,
     },
   },
@@ -307,5 +315,31 @@ describe("review fixes on PR #745 (cross-field rules live in the contract, not a
   it("ipdSchemaKeys walks tuple and lazy schemas", () => {
     const nested = z.lazy(() => z.object({ rows: z.tuple([z.object({ visitFeeRupees: z.number() })]) }));
     expect(ipdSchemaKeys(nested)).toEqual(expect.arrayContaining(["rows", "visitFeeRupees"]));
+  });
+});
+
+describe("E4.2 ipd-rounds contract rules (#734)", () => {
+  const parse = (name: IpdIntentName, patch: Record<string, unknown>) =>
+    IPD_INTENTS[name].input.safeParse({ ...IPD_SAMPLE_INPUTS[name], ...patch }).success;
+
+  it("sign_round: a structured S/O/A/P note with at least one part; no free `note`", () => {
+    expect(parse("sign_round", { soap: {} })).toBe(false);
+    expect(parse("sign_round", { soap: { subjective: "   " } })).toBe(false);
+    expect(parse("sign_round", { soap: { assessment: "stable" } })).toBe(true);
+    expect(parse("sign_round", { note: "free text" })).toBe(false);
+    expect(parse("sign_round", { mode: "remote_review", source: "voice" })).toBe(true);
+  });
+
+  it("no round, order or consult answer names money (decision 0058)", () => {
+    const money = /paise|rupee|amount|fee|charge|dues|payable|price|deposit|bill/i;
+    for (const name of ["sign_round", "cosign_round", "request_consult", "close_consult", "place_ip_order", "stop_ip_order", "cancel_ip_order"] as const) {
+      expect([name, ipdSchemaKeys(IPD_INTENTS[name].output).filter((k) => money.test(k))]).toEqual([name, []]);
+    }
+  });
+
+  it("orders are never on a copilot card and never an agent's (§4.11)", () => {
+    for (const name of ["stop_ip_order", "cancel_ip_order"] as const) {
+      expect([IPD_INTENTS[name].copilotProposable, IPD_INTENTS[name].agentTier]).toEqual([false, "none"]);
+    }
   });
 });

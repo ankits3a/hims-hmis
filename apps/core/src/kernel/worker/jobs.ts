@@ -35,7 +35,7 @@ import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
 import { sweepTasks } from "../../modules/tasks";
-import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing } from "../../modules/ipd";
+import { lapseBedReservations, postNightlyIpdCharges, runIpdBillDeskNightly, sweepIpdNursing, sweepIpdRoundsClock } from "../../modules/ipd";
 import { buildDueLists } from "../../modules/diet";
 import { sweepBmwStorage } from "../../modules/bmw";
 import { collectResourceKinds } from "../resources/kinds";
@@ -667,7 +667,18 @@ export function registerAllJobs(
     name: "sweepStaffNotices",
     every: 60_000,
     // An approval past its deadline tells its deciders once (decision 0043) — same clock, same job.
-    run: async (now) => { await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now); },
+    // E4.2 (#734): the inpatient rounds clock (08:00 cover hand-over, 14:00 / 16:00 round nudges) rides this tick too —
+    // no job (and no pool client) of its own; it runs last, so a failure there never keeps the others from running.
+    run: async (now) => {
+      await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now);
+      // Review of 72f10b68: the rounds clock never fails the tick silently nor masks the others — logged, then rethrown.
+      try {
+        await sweepIpdRoundsClock(db, now);
+      } catch (e) {
+        roundsClockLog.error(`sweepIpdRoundsClock failed: ${e instanceof Error ? e.message : String(e)}`);
+        throw e;
+      }
+    },
   });
   /**
    * MEDICINE NICKNAMES (owner 2026-10-08: "switch ON medicine nicknames") — the words doctors typed
@@ -762,6 +773,7 @@ export function registerAllJobs(
 }
 
 const clockLog = new Logger("worker.sweepTasks");
+const roundsClockLog = new Logger("worker.ipdRoundsClock");
 
 /**
  * E1.7 (PR #749 review) — the task clock and the waste storage clock share one tick. Each runs in its own try/catch
