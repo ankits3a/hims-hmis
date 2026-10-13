@@ -16,6 +16,7 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../m
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
+import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -168,6 +169,12 @@ describe("seedCursors", () => {
          * `max(seq)`, it orders only for consults completed after it ships.
          */
         ORDERING_FREE_TESTS_CONSUMER,
+        /**
+         * E1.3 (#720) — passes. Its unseeded cursor would walk every stay-ending IPD event since the first
+         * admission; each would find no live pass and write nothing (passes did not exist), but it would still walk
+         * them. Seeded at `max(seq)`, it begins with the next discharge.
+         */
+        PASSES_ADMISSION_CONSUMER,
       ].sort());
   });
 

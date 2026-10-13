@@ -206,6 +206,8 @@ const THE_EIGHTEEN = [
   "openDueTeleVisits",
   /** STAFF ATTENDANCE (owner 2026-10-09) — `every(120_000)`: the copy of the attendance machine's records. Makes no call until configured and switched on. */
   "syncAttendance",
+  /** IPD BEDS E1.1 (#718) — `every(60_000)`: a two-hour bed hold lapses back to available. */
+  "lapseBedReservations",
 ];
 
 type Frame = { type: string } & Record<string, unknown>;
@@ -539,6 +541,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
           "partners.accrual",
           ["allocation.reversed", "credit_note.issued", "payment.received", "payment.refunded"],
         ],
+        // E1.3 (#720) — the stay-ending events expire every pass of the admission; a transfer moves them. `partners.` < `passes.` < `pharmacy.`.
+        ["passes.admission", ["ipd.admission.absconded", "ipd.admission.deceased", "ipd.admission.discharged", "ipd.admission.lama", "ipd.transfer.accepted"]],
         // PLAN 16c T3 / D10 — the counter's queue: `prescription.issued` → a queued dispense. Sorts before `radiology.*`.
         // PHARMACY P6 (patient messages) — the bill's message, once per invoice. Sorts after `pharmacy.`
         // `patient_messages` < `rx_issued`.

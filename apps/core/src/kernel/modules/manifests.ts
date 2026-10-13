@@ -24,6 +24,8 @@ import { pharmacyManifest } from "../../modules/pharmacy";
 import { rosterManifest } from "../../modules/roster";
 import { attendanceManifest } from "../../modules/attendance";
 import { orderingManifest } from "../../modules/ordering";
+import { ipdManifest } from "../../modules/ipd";
+import { passesManifest } from "../../modules/passes";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -189,4 +191,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   // TEST ORDERING (owner 2026-10-10, decision 0067) — appended. No permission of its own; the outside-test
   // menu entry and the free-test consumer.
   orderingManifest,
+  ipdManifest,
+  // E1.3 (#720) — attendant and visitor passes; its one consumer runs in the worker too.
+  passesManifest,
 ];

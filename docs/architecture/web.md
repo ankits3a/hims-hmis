@@ -29,6 +29,9 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
 | `/formulary/admin` | `(redirect)` |
+| `/ipd/admit` | `apps/web/src/screens/ipd-admit` |
+| `/ipd/beds` | `apps/web/src/screens/ipd-beds` |
+| `/ipd/passes` | `apps/web/src/screens/ipd-passes` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |
@@ -69,6 +72,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ot/recovery` | `apps/web/src/screens/ot-recovery` |
 | `/partners/pnl` | `apps/web/src/screens/partner-pnl` |
 | `/partners/receivables` | `apps/web/src/screens/partner-receivables` |
+| `/passes/scan` | `apps/web/src/screens/passes-scan` |
 | `/patients/$patientId` | `apps/web/src/screens/patient-detail` |
 | `/pcpndt/form-f/$studyId` | `apps/web/src/screens/pcpndt-form-f` |
 | `/pharmacy/authorisations/$authorisationId` | `apps/web/src/screens/pharmacy-authorise` |
