@@ -8,6 +8,7 @@ import { labAnalytes, labCatalogueImports, labOrderables, services, users } from
 import { putReferenceRange, upsertAnalyte, upsertOrderable } from "../src/modules/lab";
 import { serviceIdForLabCode } from "./seed-lab-catalogue";
 import { LAB_CATALOGUE_STANDARD_DATA } from "./data/lab-catalogue-standard";
+import { LAB_TESTS_ADDED } from "./data/lab-tests-added";
 import { REVIEWED_SOURCE } from "./load-lab-catalogue-standard";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../src/kernel/db/client";
@@ -20,7 +21,7 @@ import type { LabCatalogueFixture } from "./seed-lab-catalogue";
  *
  * `load-lab-catalogue-standard` loads the whole standard catalogue once and refuses a database that
  * already holds one. Tests added to the standard catalogue afterwards reach production through this
- * loader instead: it ADDS the orderables named in `LAB_TESTS_TO_ADD` that the database lacks, the
+ * loader instead: it ADDS the orderables named in `data/lab-tests-added.ts` that the database lacks, the
  * parameters they need that the database lacks, and the ranges of those new parameters only.
  *
  *   · it never edits an existing test, parameter or range — a hospital's own edits stand;
@@ -31,10 +32,7 @@ import type { LabCatalogueFixture } from "./seed-lab-catalogue";
  *
  * Prices are separate: `set-lab-prices.ts` prices the new services afterwards. Dry run by default.
  */
-export const LAB_TESTS_TO_ADD: readonly string[] = [
-  // Owner 2026-10-13: Active B12, HIV rapid card, the full thyroid menu, TIBC and CK-MB on their own.
-  "ACTIVE_B12", "HIV_RAPID", "T3T4TSH", "T3", "T4", "FT3", "FT4", "TIBC", "CKMB",
-];
+export const LAB_TESTS_TO_ADD: readonly string[] = LAB_TESTS_ADDED;
 
 export async function addLabTests(
   db: Db, reviewer: string, apply: boolean, now: Date = new Date(),
