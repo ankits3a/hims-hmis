@@ -300,6 +300,21 @@ export const refundVouchers = pgTable("refund_vouchers", {
   index("refund_vouchers_session_idx").on(t.cashierSessionId),
 ]);
 
+/**
+ * IPD #763 — a refund REQUEST its raiser has cancelled (the IPD bill void). The approvals engine has no "cancelled" state,
+ * so a granted refund approval stays granted; this row is billing's own marker, read by `issueRefundVoucher` under the
+ * approval-row lock, so a cancelled refund never issues a voucher in any process (fails closed). Append-only, one per
+ * approval; written only through `cancelRefundRequestOnTx`, which refuses once a voucher exists.
+ */
+export const refundCancellations = pgTable("refund_cancellations", {
+  approvalId: text("approval_id").primaryKey(),
+  reason: text("reason").notNull(),
+  cancelledBy: text("cancelled_by").notNull(),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }).notNull(),
+}, (t) => [
+  check("refund_cancellations_reason_ck", sql`btrim(${t.reason}) <> ''`),
+]);
+
 export const cashierSessions = pgTable(
   "cashier_sessions",
   {

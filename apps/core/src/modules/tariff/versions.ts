@@ -364,6 +364,3 @@ export async function getVersion(
   return { version, items };
 }
 
-export async function listVersions(db: Db): Promise<TariffVersionRow[]> {
-  return db.select().from(tariffVersions).orderBy(desc(tariffVersions.versionNo));
-}

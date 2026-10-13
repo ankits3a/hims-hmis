@@ -3,7 +3,8 @@ import type { ModuleManifest } from "../modules/manifest";
 export const workflowManifest: ModuleManifest = {
   key: "workflow",
   title: "Workflow Engine",
-  menu: [], // first UI arrives in Plan 05
+  // GO-LIVE SCREENS — the definitions board: approve (owner, MS) and activate (owner) a drafted workflow.
+  menu: [{ label: "Workflows", path: "/admin/workflows", permission: "workflow.definitions.read" }],
   permissions: [
     "workflow.definitions.draft",
     "workflow.definitions.approve",

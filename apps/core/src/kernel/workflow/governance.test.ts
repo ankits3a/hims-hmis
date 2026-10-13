@@ -121,6 +121,20 @@ describe("workflow governance", () => {
     ).rejects.toMatchObject({ code: "actor_not_user" });
   });
 
+  it("refuses the drafter approving their own draft on the normal road (drafter_cannot_approve), and records nothing", async () => {
+    const { definitionId } = await createDraft(db, owner, DEF_A); // the owner drafted it
+    await expect(
+      approveDefinition(db, owner, { definitionId, roleKey: "owner", note: "my own draft" }),
+    ).rejects.toMatchObject({ code: "drafter_cannot_approve" });
+    const emitted = await db.select().from(events).where(eq(events.name, "workflow.definition.updated"));
+    expect(emitted.map((e) => (e.payload as { action: string }).action)).toEqual(["drafted"]);
+    // a SYSTEM drafter (stage-ipd-setup, the approval-type registrations) leaves both people free to approve
+    const sys = await createDraft(db, { type: "system", id: "ipd-stage-setup" }, { ...DEF_A, key: "class_a_sys" });
+    await approveDefinition(db, owner, { definitionId: sys.definitionId, roleKey: "owner", note: "ok" });
+    await approveDefinition(db, ms, { definitionId: sys.definitionId, roleKey: "medical_superintendent", note: "ok" });
+    await expect(activateDefinition(db, owner, sys.definitionId)).resolves.toMatchObject({ retiredVersion: null });
+  });
+
   it("rejects a second approval by the same user", async () => {
     const { definitionId } = await createDraft(db, drafter, DEF_A);
     await approveDefinition(db, owner, { definitionId, roleKey: "owner", note: "one" });
