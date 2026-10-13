@@ -167,3 +167,9 @@
 /* the shift-handover section on /ipd/handovers */
 .ipdh-shift { margin-top: 18px; }
 .ipdh-shift h2 { font-size: 1.125rem; margin: 0 0 8px; }
+
+/* E4.1 review — dropped offline sets are named; "No doctor reached — call" is a word, never colour alone. */
+.ipdn-dropped { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: center; margin: 0.5rem 0; padding: 0.5rem 0.75rem;
+  border: 2px solid var(--ipdn-alert, #b42318); border-radius: 0.5rem; font-size: 0.95rem; }
+.ipdn-dropped ul { margin: 0; padding-left: 1.1rem; flex-basis: 100%; }
+.ipdn-nodoc { color: var(--ipdn-alert, #b42318); }

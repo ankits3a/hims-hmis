@@ -299,7 +299,7 @@ Source: `apps/core/src/modules/ipd/`
 - `nursing.ts`
   - `IPD_NURSING_STATES`
   - `acceptShiftHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ handoverId: string; acceptedAt: string }>`
-  - `acknowledgeEwsAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ alertId: string; acknowledgedAt: string }>`
+  - `acknowledgeEwsAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ alertId: string; acknowledgedAt: string | null; seenAt:…`
   - `addNursingNote(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ noteId: string; lateEntry: boolean }>`
   - `dutyDoctorsFor(tx: Tx, a: Pick<AdmissionRow, "consultantId" | "department">, at: Date): Promise<string[]>`
   - `giveShiftHandover(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ handoverId: string; supersedes: string | null }>`
@@ -310,7 +310,7 @@ Source: `apps/core/src/modules/ipd/`
   - `recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_vitals">>`
   - `scoreContextOf(db: Db | Tx, a: Pick<AdmissionRow, "id" | "patientId" | "department">, at: Date): Promise<ScoreContext>`
   - `shiftOf(at: Date): { key: IpdShiftKey; startsAt: Date; endsAt: Date }`
-  - `sweepIpdNursing(db: Db, now: Date): Promise<NursingSweepResult>`
+  - `sweepIpdNursing(db: Db, now: Date, hooks: { beforeRow?: (admissionId: string) => void } = {}): Promise<NursingSweepResult>`
   - types: `NursingSweepResult`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`

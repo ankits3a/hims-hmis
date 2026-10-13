@@ -1079,6 +1079,8 @@ export const ipdVitals = pgTable(
     /** The client's idempotency key: an offline set replayed twice is one row. */
     clientKey: text("client_key").notNull(),
     lateEntry: boolean("late_entry").notNull(),
+    /** Why it is late: `typed_late` (typed 15+ min after taken) or `offline` (queued past the 30-minute window). */
+    lateReason: text("late_reason"),
     refused: boolean("refused").notNull().default(false),
     confirmedOutOfRange: boolean("confirmed_out_of_range").notNull().default(false),
     temperatureC: doublePrecision("temperature_c"),
@@ -1102,16 +1104,19 @@ export const ipdVitals = pgTable(
     check("ipd_vitals_kind_ck", sql`${t.scoreKind} is null or ${t.scoreKind} in ('news2', 'meows', 'pews')`),
     check("ipd_vitals_band_ck", sql`${t.scoreBand} is null or ${t.scoreBand} in ('low', 'low_medium', 'medium', 'high')`),
     check("ipd_vitals_consciousness_ck", sql`${t.consciousness} is null or ${t.consciousness} in ('alert', 'confused', 'voice', 'pain', 'unresponsive')`),
+    check("ipd_vitals_late_reason_ck", sql`${t.lateReason} is null or ${t.lateReason} in ('typed_late', 'offline')`),
     check("ipd_vitals_score_ck", sql`(${t.scoreKind} is null) = (${t.scoreValue} is null) and (${t.scoreKind} is null) = (${t.scoreBand} is null)`),
   ],
 );
 
 /**
  * One row per BREACH (§4.5 "once per breach"; §4.10 edge 12). `kind = 'ews'`: opened by the first set at or above the
- * notify band; a worse band later RE-RAISES the same row (band moves up, `escalated_at`; G7 counts it as the same breach);
- * a set below the notify band CLEARS it, and the next breach is a new row. `kind = 'assessment_overdue'`: one per
- * admission, ever (raised by the minute sweep, cleared by the assessment). The partial uniques make "one open alert"
- * a database fact.
+ * notify band. While it stands, every in-breach set writes its band into `band` (it may go DOWN), and a set whose band
+ * is ABOVE the band last seen re-raises the same row (G7 reads it as the same breach) and notifies again — so a relapse
+ * high → medium → high is told twice. A set below the notify band CLEARS it; the next breach is a new row.
+ * `notified_at` is stamped only when a notice actually went out (the minute sweep retries an unstamped alert); the
+ * 10-minute escalation stops only on a DOCTOR's acknowledgement (`acknowledged_*`) — a nurse's or supervisor's is
+ * `seen_*`. `kind = 'assessment_overdue'`: one per admission, ever (raised by the sweep, cleared by the assessment).
  */
 export const ipdNursingAlerts = pgTable(
   "ipd_nursing_alerts",
@@ -1121,13 +1126,29 @@ export const ipdNursingAlerts = pgTable(
     patientId: text("patient_id").notNull().references(() => patients.id),
     kind: text("kind").notNull(),
     scoreKind: text("score_kind"),
+    /** The band of the latest in-breach set (may go down while the breach stands). */
     band: text("band"),
+    /** The band the last notice was sent for. */
+    notifiedBand: text("notified_band"),
     scoreValue: integer("score_value"),
+    /** The set that last raised or re-raised the alert. */
     vitalsId: text("vitals_id"),
+    /** The latest in-breach set. */
+    lastVitalsId: text("last_vitals_id"),
     raisedAt: timestamp("raised_at", { withTimezone: true }).notNull(),
     escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+    /** When a notice actually went out for the current raise; null = nobody reached yet (the sweep retries). */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    /** A doctor was among those told for the current raise (false → the station says "No doctor reached — call"). */
+    doctorReached: boolean("doctor_reached").notNull().default(false),
+    /** A doctor's acknowledgement: stops the 10-minute escalation (G7). */
     acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
     acknowledgedBy: text("acknowledged_by"),
+    /** A nurse's or supervisor's acknowledgement: recorded as seen; the escalation runs on. */
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    seenBy: text("seen_by"),
+    ackNote: text("ack_note"),
+    /** The 10-minute step reached somebody (stamped only when a notice went out). */
     supervisorToldAt: timestamp("supervisor_told_at", { withTimezone: true }),
     clearedAt: timestamp("cleared_at", { withTimezone: true }),
     clearedBy: text("cleared_by"),
@@ -1138,6 +1159,7 @@ export const ipdNursingAlerts = pgTable(
     index("ipd_nursing_alerts_open_idx").on(t.clearedAt),
     check("ipd_nursing_alerts_kind_ck", sql`${t.kind} in ('ews', 'assessment_overdue')`),
     check("ipd_nursing_alerts_band_ck", sql`${t.band} is null or ${t.band} in ('low', 'low_medium', 'medium', 'high')`),
+    check("ipd_nursing_alerts_notified_band_ck", sql`${t.notifiedBand} is null or ${t.notifiedBand} in ('low', 'low_medium', 'medium', 'high')`),
     check("ipd_nursing_alerts_ews_ck", sql`(${t.kind} = 'ews') = (${t.band} is not null)`),
   ],
 );

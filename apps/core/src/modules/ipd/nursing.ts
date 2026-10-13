@@ -1,6 +1,7 @@
+import { Logger } from "@nestjs/common";
 import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
-  IPD_ASSESSMENT_DUE_MINUTES, IPD_EWS_UNACKED_MINUTES, IPD_INTENTS, IPD_LATE_ENTRY_MINUTES, IPD_VITALS_LIMITS,
+  IPD_ASSESSMENT_DUE_MINUTES, IPD_EWS_UNACKED_MINUTES, IPD_INTENTS, IPD_LATE_ENTRY_MINUTES, IPD_OFFLINE_QUEUE_MINUTES, IPD_VITALS_LIMITS,
   IpdAcceptShiftHandoverInputSchema, IpdAcknowledgeEwsInputSchema, IpdGiveShiftHandoverInputSchema, IpdIntakeOutputInputSchema,
   IpdNursingNoteInputSchema, ewsBandRank, ewsKindFor, ewsNotifies, ipdIsInFuture, newId, scoreEws,
 } from "@hmis/contracts";
@@ -20,6 +21,7 @@ import { IPD_ACTOR_ROLE_KEYS } from "./admission-workflow";
 import { ageInYears } from "./bed-rules";
 import { bedWithWard } from "./beds";
 import { IpdError, IpdRefusal } from "./errors";
+import { EWS_ACK_KINDS } from "./goals/goal-events";
 import {
   assessmentOverdue, ewsAcknowledged, ewsBreached, ewsCleared, intakeOutputRecorded, nursingAssessed, nursingNoteAdded,
   shiftHandoverAccepted, shiftHandoverGiven, vitalsRecorded,
@@ -44,20 +46,26 @@ import type { AdmissionRow } from "./admission-core";
  *   IDEMPOTENT BY THE CLIENT'S KEY twice over: the idempotency ledger answers a retry by the same person, and the
  *   `ipd_vitals.client_key` unique index answers an offline replay that reaches us by any path — one row per set.
  * - EARLY WARNING (§4.5, §4.10 edge 12): ONE ALERT PER BREACH. The first set at or above the notify band (NEWS2 5+ or a
- *   single 3; MEOWS one red or two yellows; PEWS a 3 or 3+) opens `ipd_nursing_alerts` and tells the duty doctor; while
- *   that breach stands, nothing repeats; a WORSE band re-raises the same alert (the doctor is told again); a set below
- *   the band clears it, and the next breach is a new alert. Only the LATEST set by time taken moves the alert (§4.10
- *   edge 25: a late, older set is charted, not acted on). Unacknowledged for 10 minutes → the nursing supervisor.
+ *   single 3; MEOWS one red or two yellows; PEWS a total of 3+) opens `ipd_nursing_alerts` and tells the duty doctor.
+ *   While the breach stands every in-breach set writes its band (it may go DOWN); a set whose band is ABOVE the band
+ *   last seen re-raises the same alert and tells the doctor again (so a relapse high → medium → high is told twice); a
+ *   set below the band clears it. Only the LATEST set by time taken moves the alert (§4.10 edge 25). `notified_at` is
+ *   stamped only when a notice went out; with no doctor to tell, the nursing fallback chain (supervisor → superintendent
+ *   → duty manager) is told at once. Only a DOCTOR's acknowledgement stops the 10-minute step to that chain.
  * - `sweepIpdNursing(db, now)` (the minute job): an admission without its assessment one hour after admission raises
- *   ONE alert to the nursing supervisor (`assessment_overdue`), and the 10-minute unacknowledged step above.
+ *   ONE alert to the fallback chain (`assessment_overdue`); an alert nobody was reached for is retried; the 10-minute
+ *   step above. Each row in its own transaction; a failing row is logged and the loop goes on.
+ * - Sets are bounded in time: a future stamp beyond the 2-minute skew is refused; older than 24 h refused
+ *   `observation_too_old`; past the 30-minute offline window accepted, marked late with reason `offline`.
+ * - The four nursing record tables are APPEND-ONLY in the database (migration triggers).
  * - Intake/output, nursing notes, the shift handover (give → another nurse accepts) and the acknowledgement are module
  *   acts with contracts in `packages/contracts/src/ipd/nursing.ts`.
  *
  * DECIDED (standard Indian corporate-hospital practice; owner rulings are for money, procurement and law):
  * - THE DUTY DOCTOR = the admitting consultant, plus the ward junior resident(s) a PUBLISHED roster has on for the
  *   admission's department now (`roster` `whoIsOn`, position `ward_jr`). A roster answer that is not published (the
- *   static fallback) is NOT used: it is every doctor in the building. The emergency band (`high`) also tells every
- *   nursing supervisor.
+ *   static fallback) is NOT used: it is every doctor in the building. Inactive users are never told. The emergency band
+ *   (`high`) also tells the nursing fallback chain.
  * - Device readings are refused `device_not_registered`: there is no bedside-monitor registry yet (ICU device feeds
  *   are spec §5 Phase 2).
  * - The I/O day starts 08:00 IST; shifts are 08–14, 14–20, 20–08 IST; night mode is 22:00–06:00 IST.
@@ -122,15 +130,39 @@ export type ScoreContext = { kind: IpdEwsKind; ageYears: number | null };
 
 /** The chart a patient is scored on now: age (PEWS under 16), the obstetric answer, the department or a labour bed. */
 export async function scoreContextOf(db: Db | Tx, a: Pick<AdmissionRow, "id" | "patientId" | "department">, at: Date): Promise<ScoreContext> {
-  const p = (await db.select({ dob: patients.dob, gender: patients.administrativeGender }).from(patients).where(eq(patients.id, a.patientId)))[0];
-  const obstetric = (await db.select({ o: ipdNursingAssessments.obstetric }).from(ipdNursingAssessments).where(eq(ipdNursingAssessments.admissionId, a.id)))[0]?.o ?? null;
-  const stay = (await db.select({ c: ipdBedStays.bedClass }).from(ipdBedStays).where(and(eq(ipdBedStays.admissionId, a.id), isNull(ipdBedStays.endedAt))))[0];
-  const ageYears = ageInYears(p?.dob ?? null, at);
-  const kind = ewsKindFor({
-    ageYears, sex: p?.gender ?? null, obstetric: obstetric as "none" | "pregnant" | "postpartum" | null,
-    department: a.department, bedClass: stay?.c ?? null,
-  });
-  return { kind, ageYears };
+  return (await scoreContextsOf(db, [a], at)).get(a.id)!;
+}
+
+/** The same for many admissions in three queries (the station's poll; review: no per-patient lookups). */
+export async function scoreContextsOf(
+  db: Db | Tx, admissions: readonly Pick<AdmissionRow, "id" | "patientId" | "department">[], at: Date,
+): Promise<Map<string, ScoreContext>> {
+  const out = new Map<string, ScoreContext>();
+  if (admissions.length === 0) return out;
+  const ids = admissions.map((a) => a.id);
+  const [people, obstetric, stays] = await Promise.all([
+    db.select({ id: patients.id, dob: patients.dob, gender: patients.administrativeGender }).from(patients)
+      .where(inArray(patients.id, [...new Set(admissions.map((a) => a.patientId))])),
+    db.select({ id: ipdNursingAssessments.admissionId, o: ipdNursingAssessments.obstetric }).from(ipdNursingAssessments)
+      .where(inArray(ipdNursingAssessments.admissionId, ids)),
+    db.select({ id: ipdBedStays.admissionId, c: ipdBedStays.bedClass }).from(ipdBedStays)
+      .where(and(inArray(ipdBedStays.admissionId, ids), isNull(ipdBedStays.endedAt))),
+  ]);
+  const p = new Map(people.map((r) => [r.id, r] as const));
+  const ob = new Map(obstetric.map((r) => [r.id, r.o] as const));
+  const st = new Map(stays.map((r) => [r.id, r.c] as const));
+  for (const a of admissions) {
+    const who = p.get(a.patientId);
+    const ageYears = ageInYears(who?.dob ?? null, at);
+    out.set(a.id, {
+      ageYears,
+      kind: ewsKindFor({
+        ageYears, sex: who?.gender ?? null, obstetric: (ob.get(a.id) ?? null) as "none" | "pregnant" | "postpartum" | null,
+        department: a.department, bedClass: st.get(a.id) ?? null,
+      }),
+    });
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════ record_nursing_assessment ═══════════════════════════════════════════
@@ -195,17 +227,42 @@ function ewsValuesOf(v: VitalsValues): IpdEwsValues {
 }
 
 type VitalsRow = typeof ipdVitals.$inferSelect;
-const outputOfRow = (r: VitalsRow, alertRaised: boolean): Output<"record_vitals"> => ({
+type Raised = { alertRaised: boolean; doctorReached: boolean | null };
+const NOTHING_RAISED: Raised = { alertRaised: false, doctorReached: null };
+const outputOfRow = (r: VitalsRow, raised: Raised): Output<"record_vitals"> => ({
   vitalsId: r.id,
   score: r.scoreKind === null ? null : { kind: r.scoreKind as IpdEwsKind, value: r.scoreValue!, band: r.scoreBand as IpdEwsBand },
-  alertRaised, lateEntry: r.lateEntry,
+  alertRaised: raised.alertRaised, doctorReached: raised.doctorReached, lateEntry: r.lateEntry,
 });
+
+/** What a set raised, read back from the breach event it wrote (a replay answers the first act's truth). */
+async function raisedBy(db: Db | Tx, vitalsId: string): Promise<Raised> {
+  const rows = (await db.execute(sql`
+    select payload from events where name = ${ewsBreached.name} and payload->>'vitalsId' = ${vitalsId}
+    order by seq desc limit 1`)).rows as { payload: { notified?: number; doctorReached?: boolean } }[];
+  const p = rows[0]?.payload;
+  if (p === undefined) return NOTHING_RAISED;
+  return { alertRaised: (p.notified ?? 0) > 0, doctorReached: p.doctorReached ?? false };
+}
+
+/** Sets older than this are not charted by `record_vitals` (E4.1 review, DECIDED). */
+export const IPD_VITALS_MAX_AGE_MS = 24 * 3_600_000;
+/** Why a set is late: past the phone's 30-minute queue → `offline`; typed 15+ minutes after → `typed_late`. */
+export function lateReasonOf(observedAt: Date, recordedAt: Date): "offline" | "typed_late" | null {
+  const ms = recordedAt.getTime() - observedAt.getTime();
+  if (ms > IPD_OFFLINE_QUEUE_MINUTES * 60_000) return "offline";
+  if (ms >= IPD_LATE_ENTRY_MINUTES * 60_000) return "typed_late";
+  return null;
+}
 
 export async function recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_vitals">> {
   const input: Input<"record_vitals"> = IPD_INTENTS.record_vitals.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_VITALS_RECORD);
   const at = opts.now ?? new Date();
   if (ipdIsInFuture(input.observedAt, at)) throw new IpdRefusal("time_in_future");
+  if (at.getTime() - new Date(input.observedAt).getTime() > IPD_VITALS_MAX_AGE_MS) {
+    throw new IpdRefusal("observation_too_old", undefined, { observedAt: input.observedAt });
+  }
   if (input.source === "device") throw new IpdRefusal("device_not_registered", undefined, { deviceId: input.deviceId ?? null });
   if (input.refused !== true && input.confirmedOutOfRange !== true) {
     const fields = outOfRange(input.values);
@@ -219,17 +276,18 @@ export async function recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opt
         const replay = (await tx.select().from(ipdVitals).where(eq(ipdVitals.clientKey, clientKey)))[0];
         if (replay !== undefined) {
           if (replay.admissionId !== a.id) throw new IpdRefusal("state_changed", "This key was used for another admission");
-          return outputOfRow(replay, false);
+          return outputOfRow(replay, await raisedBy(tx, replay.id));
         }
         requireNursingState(a);
         const observedAt = new Date(input.observedAt);
+        const lateReason = lateReasonOf(observedAt, at);
         const ctx = await scoreContextOf(tx, a, observedAt);
         const score = input.refused === true ? null : scoreEws(ctx.kind, ewsValuesOf(input.values), ctx.ageYears);
         const vitalsId = newId();
         const v = input.values;
         const row = (await tx.insert(ipdVitals).values({
           id: vitalsId, admissionId: a.id, patientId: a.patientId, observedAt, recordedAt: at, recordedBy: actor.id,
-          source: input.source, deviceId: input.deviceId ?? null, clientKey, lateEntry: isLate(observedAt, at),
+          source: input.source, deviceId: input.deviceId ?? null, clientKey, lateEntry: lateReason !== null, lateReason,
           refused: input.refused === true, confirmedOutOfRange: input.confirmedOutOfRange === true,
           temperatureC: v.temperatureC ?? null, pulse: v.pulse ?? null, respRate: v.respRate ?? null, systolic: v.systolic ?? null,
           diastolic: v.diastolic ?? null, spo2: v.spo2 ?? null, onOxygen: v.onOxygen ?? null, consciousness: v.consciousness ?? null,
@@ -238,22 +296,22 @@ export async function recordVitals(db: Db, actor: Actor, raw: unknown, opts: Opt
         }).returning())[0]!;
         await appendEvent(tx, vitalsRecorded.make({
           payload: {
-            vitalsId, admissionId: a.id, observedAt: observedAt.toISOString(), lateEntry: row.lateEntry, refused: row.refused,
+            vitalsId, admissionId: a.id, observedAt: observedAt.toISOString(), lateEntry: row.lateEntry, lateReason, refused: row.refused,
             score: score === null ? null : { kind: score.kind, value: score.value, band: score.band }, provenance: input.source,
           },
           actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
         }));
-        let alertRaised = false;
+        let raised = NOTHING_RAISED;
         if (score !== null && await isLatestSet(tx, a.id, vitalsId, observedAt)) {
-          alertRaised = await evaluateEws(tx, actor, a, vitalsId, score, at);
+          raised = await evaluateEws(tx, actor, a, vitalsId, score, at);
         }
-        return outputOfRow(row, alertRaised);
+        return outputOfRow(row, raised);
       });
     } catch (e) {
       // Two replays of one offline set racing past the read: the loser answers the winner's row.
       if (isUniqueViolation(e)) {
         const won = (await db.select().from(ipdVitals).where(eq(ipdVitals.clientKey, clientKey)))[0];
-        if (won !== undefined) return outputOfRow(won, false);
+        if (won !== undefined) return outputOfRow(won, await raisedBy(db, won.id));
       }
       throw e;
     }
@@ -293,9 +351,9 @@ async function activeUserIds(tx: Tx, ids: readonly string[]): Promise<string[]> 
   return (await tx.select({ id: users.id }).from(users).where(and(inArray(users.id, [...ids]), eq(users.active, true)))).map((u) => u.id);
 }
 
-/** DECIDED: the consultant, plus the ward junior resident a PUBLISHED roster has on for the department now. */
+/** DECIDED: the consultant, plus the ward junior resident a PUBLISHED roster has on for the department now. Active users only. */
 export async function dutyDoctorsFor(tx: Tx, a: Pick<AdmissionRow, "consultantId" | "department">, at: Date): Promise<string[]> {
-  const out = new Set(await activeUserIds(tx, [a.consultantId]));
+  const out = new Set([a.consultantId]);
   if (a.department !== null) {
     const dept = await orgDepartmentByCode(tx, a.department);
     if (dept !== undefined) {
@@ -303,18 +361,84 @@ export async function dutyDoctorsFor(tx: Tx, a: Pick<AdmissionRow, "consultantId
       if (on.source === "published") for (const u of on.userIds) out.add(u);
     }
   }
-  return [...out].sort();
+  return (await activeUserIds(tx, [...out])).sort();
 }
 
-async function supervisors(tx: Tx): Promise<string[]> {
-  return [...new Set(await usersHoldingRole(tx, "nursing_supervisor"))].sort();
+/** Active holders of a role. */
+async function activeHolders(tx: Tx, role: string): Promise<string[]> {
+  return (await activeUserIds(tx, [...new Set(await usersHoldingRole(tx, role))])).sort();
 }
 
 /**
- * ONE ALERT PER BREACH. Returns true when this set raised or re-raised the alert (the doctor was told).
- * Runs under the admission's lock (the caller's), so two sets for one patient cannot both open an alert.
+ * THE NURSING FALLBACK CHAIN (E4.1 review, DECIDED): the first of nursing supervisor → nursing superintendent → duty
+ * manager that has an ACTIVE holder. Used when nobody else can be told (no doctor; the 10-minute step; an overdue
+ * assessment). Empty only when the hospital has none of the three — then the sweep retries next minute.
  */
-async function evaluateEws(tx: Tx, actor: Actor, a: AdmissionRow, vitalsId: string, score: IpdEwsScore, at: Date): Promise<boolean> {
+export async function nursingFallback(tx: Tx): Promise<string[]> {
+  for (const role of ["nursing_supervisor", "nursing_superintendent", "duty_manager"]) {
+    const ids = await activeHolders(tx, role);
+    if (ids.length > 0) return ids;
+  }
+  return [];
+}
+
+/**
+ * The words a notice may carry about where the patient is: bed and IP number — or, for a SEALED patient
+ * (`patients.sensitive_context`), "Sealed patient" and nothing else (no bed, no admission number; review #767).
+ */
+async function whereWords(tx: Tx, a: Pick<AdmissionRow, "id" | "patientId" | "admissionNo">): Promise<{ words: string[]; wardId: string | null }> {
+  const bed = await bedCodeOf(tx, a.id);
+  const sealed = (await tx.select({ s: patients.sensitiveContext }).from(patients).where(eq(patients.id, a.patientId)))[0]?.s === true;
+  if (sealed) return { words: [SEALED_WORDS], wardId: bed.wardId };
+  return { words: [bed.code === null ? null : `Bed ${bed.code}`, a.admissionNo].filter((x): x is string => x !== null), wardId: bed.wardId };
+}
+const SEALED_WORDS = "Sealed patient";
+
+type EwsAlertRow = typeof ipdNursingAlerts.$inferSelect;
+
+/**
+ * Tells the duty doctor about a raise or re-raise of `alert` (band `band`, value `value`, by set `vitalsId`); with no
+ * doctor to tell, the nursing fallback chain is told NOW; the emergency band also tells the fallback chain. Stamps
+ * `notified_at` / `notified_band` ONLY when a notice went out (otherwise the sweep retries). Appends the breach event.
+ */
+async function notifyEws(
+  tx: Tx, actor: Actor, a: AdmissionRow, alert: Pick<EwsAlertRow, "id" | "scoreKind">,
+  b: { band: IpdEwsBand; value: number; vitalsId: string | null; escalation: boolean }, at: Date,
+): Promise<Raised> {
+  const where = await whereWords(tx, a);
+  const doctors = await dutyDoctorsFor(tx, a, at);
+  const recipients = new Set(doctors);
+  if (doctors.length === 0 || b.band === "high") for (const u of await nursingFallback(tx)) recipients.add(u);
+  const kind = (alert.scoreKind ?? "news2") as IpdEwsKind;
+  const title = `${KIND_WORD[kind]} ${String(b.value)} — ${BAND_WORD[b.band]}`;
+  const body = [...where.words, doctors.length === 0 ? "No doctor reached — call" : b.escalation ? "Score worse" : "Review now"].join(" · ");
+  let notified = 0;
+  let doctorReached = false;
+  for (const userId of [...recipients].sort()) {
+    const won = await raiseNoticeIn(tx, {
+      userId, kind: "ipd.ews_breach", title, body, refType: "ipd_admission", refId: a.id,
+      sourceKey: `ipd.ews:${alert.id}:${b.vitalsId ?? "retry"}:${b.band}`, at,
+    });
+    if (won) { notified += 1; if (doctors.includes(userId)) doctorReached = true; }
+  }
+  if (notified > 0) await tx.update(ipdNursingAlerts).set({ notifiedAt: at, notifiedBand: b.band, doctorReached }).where(eq(ipdNursingAlerts.id, alert.id));
+  await appendEvent(tx, ewsBreached.make({
+    payload: {
+      alertId: alert.id, admissionId: a.id, wardId: where.wardId, vitalsId: b.vitalsId, scoreKind: kind, band: b.band, value: b.value,
+      escalation: b.escalation, notified, doctorReached, provenance: provenanceOf(actor),
+    },
+    actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
+  }));
+  return { alertRaised: notified > 0, doctorReached };
+}
+
+/**
+ * ONE ALERT PER BREACH (review fix: the in-breach band is the LATEST band, and it may go down). A set at the notify band
+ * with no open alert opens one; with one open, it writes its band into the row and re-raises (notifies again) only when
+ * its band is ABOVE the band last seen — so high → medium → high and medium → low–medium → medium each re-notify on the
+ * way back up, and the same band twice says nothing. A set below the band clears the alert. Under the admission lock.
+ */
+async function evaluateEws(tx: Tx, actor: Actor, a: AdmissionRow, vitalsId: string, score: IpdEwsScore, at: Date): Promise<Raised> {
   const open = (await tx.select().from(ipdNursingAlerts).where(and(
     eq(ipdNursingAlerts.admissionId, a.id), eq(ipdNursingAlerts.kind, "ews"), isNull(ipdNursingAlerts.clearedAt),
   )).for("update"))[0];
@@ -326,48 +450,29 @@ async function evaluateEws(tx: Tx, actor: Actor, a: AdmissionRow, vitalsId: stri
         actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
       }));
     }
-    return false;
+    return NOTHING_RAISED;
   }
-  let alertId: string;
-  let escalation = false;
   if (open === undefined) {
-    alertId = newId();
+    const alertId = newId();
     await tx.insert(ipdNursingAlerts).values({
       id: alertId, admissionId: a.id, patientId: a.patientId, kind: "ews", scoreKind: score.kind, band: score.band,
-      scoreValue: score.value, vitalsId, raisedAt: at,
+      scoreValue: score.value, vitalsId, lastVitalsId: vitalsId, raisedAt: at,
     });
-  } else if (ewsBandRank(score.band) > ewsBandRank(open.band as IpdEwsBand)) {
-    alertId = open.id;
-    escalation = true;
-    // A worse band is a new call: it needs its own acknowledgement and its own supervisor step.
-    await tx.update(ipdNursingAlerts).set({
-      band: score.band, scoreValue: score.value, scoreKind: score.kind, vitalsId, escalatedAt: at, acknowledgedAt: null,
-      acknowledgedBy: null, supervisorToldAt: null,
-    }).where(eq(ipdNursingAlerts.id, open.id));
-  } else {
-    return false; // the same breach still stands: no repeat
+    return notifyEws(tx, actor, a, { id: alertId, scoreKind: score.kind }, { band: score.band, value: score.value, vitalsId, escalation: false }, at);
   }
-  const bed = await bedCodeOf(tx, a.id);
-  const recipients = new Set(await dutyDoctorsFor(tx, a, at));
-  if (score.band === "high") for (const u of await supervisors(tx)) recipients.add(u);
-  const title = `${KIND_WORD[score.kind]} ${String(score.value)} — ${BAND_WORD[score.band]}`;
-  const body = [bed.code === null ? null : `Bed ${bed.code}`, a.admissionNo, escalation ? "Score worse" : "Review now"].filter((s) => s !== null).join(" · ");
-  let notified = 0;
-  for (const userId of [...recipients].sort()) {
-    const won = await raiseNoticeIn(tx, {
-      userId, kind: "ipd.ews_breach", title, body, refType: "ipd_admission", refId: a.id,
-      sourceKey: `ipd.ews:${alertId}:${score.band}`, at,
-    });
-    if (won) notified += 1;
+  const rises = ewsBandRank(score.band) > ewsBandRank(open.band as IpdEwsBand);
+  if (!rises) {
+    // The same breach stands (or eases): record the band, say nothing.
+    await tx.update(ipdNursingAlerts).set({ band: score.band, scoreValue: score.value, scoreKind: score.kind, lastVitalsId: vitalsId })
+      .where(eq(ipdNursingAlerts.id, open.id));
+    return NOTHING_RAISED;
   }
-  await appendEvent(tx, ewsBreached.make({
-    payload: {
-      alertId, admissionId: a.id, wardId: bed.wardId, scoreKind: score.kind, band: score.band, value: score.value, escalation, notified,
-      provenance: provenanceOf(actor),
-    },
-    actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
-  }));
-  return true;
+  // A rise above the band last seen is a new call: its own notice, its own acknowledgement, its own supervisor step.
+  await tx.update(ipdNursingAlerts).set({
+    band: score.band, scoreValue: score.value, scoreKind: score.kind, vitalsId, lastVitalsId: vitalsId, escalatedAt: at,
+    notifiedAt: null, doctorReached: false, acknowledgedAt: null, acknowledgedBy: null, seenAt: null, seenBy: null, supervisorToldAt: null,
+  }).where(eq(ipdNursingAlerts.id, open.id));
+  return notifyEws(tx, actor, a, { id: open.id, scoreKind: score.kind }, { band: score.band, value: score.value, vitalsId, escalation: true }, at);
 }
 
 // ═══════════════════════════════════════════ acknowledge ═══════════════════════════════════════════
@@ -382,7 +487,15 @@ async function actorKindOf(tx: Tx, actor: Actor): Promise<IpdActorKind> {
   return "nurse";
 }
 
-export async function acknowledgeEwsAlert(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<{ alertId: string; acknowledgedAt: string }> {
+/**
+ * Acknowledge an early-warning alert. DECIDED (E4.1 review, standard rapid-response practice): only a DOCTOR's
+ * acknowledgement (an actor holding a doctor or resident role — `EWS_ACK_KINDS`) answers the call and stops the
+ * 10-minute escalation; a nurse's or supervisor's is recorded as SEEN and the escalation runs on. The note is kept on
+ * the row and in the event.
+ */
+export async function acknowledgeEwsAlert(
+  db: Db, actor: Actor, raw: unknown, opts: Opts = {},
+): Promise<{ alertId: string; acknowledgedAt: string | null; seenAt: string | null; byDoctor: boolean }> {
   const input = IpdAcknowledgeEwsInputSchema.parse(raw);
   await requireIpdPermission(db, actor, IPD_EWS_RESPOND);
   const at = opts.now ?? new Date();
@@ -392,13 +505,22 @@ export async function acknowledgeEwsAlert(db: Db, actor: Actor, raw: unknown, op
     const a = await lockAdmission(tx, row0.admissionId);
     const row = (await tx.select().from(ipdNursingAlerts).where(eq(ipdNursingAlerts.id, row0.id)))[0]!;
     if (row.clearedAt !== null) throw new IpdError("ews_alert_closed", "This alert has already cleared: a later set scored below the alert band.");
-    if (row.acknowledgedAt !== null) return { alertId: row.id, acknowledgedAt: row.acknowledgedAt.toISOString() };
-    await tx.update(ipdNursingAlerts).set({ acknowledgedAt: at, acknowledgedBy: actor.id }).where(eq(ipdNursingAlerts.id, row.id));
+    const byKind = await actorKindOf(tx, actor);
+    const byDoctor = EWS_ACK_KINDS.includes(byKind);
+    const iso = (d: Date | null) => d?.toISOString() ?? null;
+    if (byDoctor && row.acknowledgedAt !== null) return { alertId: row.id, acknowledgedAt: iso(row.acknowledgedAt), seenAt: iso(row.seenAt), byDoctor };
+    if (!byDoctor && row.seenAt !== null) return { alertId: row.id, acknowledgedAt: iso(row.acknowledgedAt), seenAt: iso(row.seenAt), byDoctor };
+    const note = input.note ?? null;
+    await tx.update(ipdNursingAlerts).set(byDoctor
+      ? { acknowledgedAt: at, acknowledgedBy: actor.id, ...(note === null ? {} : { ackNote: note }) }
+      : { seenAt: at, seenBy: actor.id, ...(note === null ? {} : { ackNote: note }) }).where(eq(ipdNursingAlerts.id, row.id));
     await appendEvent(tx, ewsAcknowledged.make({
-      payload: { alertId: row.id, admissionId: a.id, byKind: await actorKindOf(tx, actor), provenance: provenanceOf(actor) },
+      payload: { alertId: row.id, admissionId: a.id, byKind, stopsEscalation: byDoctor, note, provenance: provenanceOf(actor) },
       actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,
     }));
-    return { alertId: row.id, acknowledgedAt: at.toISOString() };
+    return {
+      alertId: row.id, acknowledgedAt: byDoctor ? at.toISOString() : iso(row.acknowledgedAt), seenAt: byDoctor ? iso(row.seenAt) : at.toISOString(), byDoctor,
+    };
   }), at);
 }
 
@@ -501,79 +623,110 @@ export async function acceptShiftHandover(db: Db, actor: Actor, raw: unknown, op
 // ═══════════════════════════════════════════ the minute sweep ═══════════════════════════════════════════
 
 const SWEEP_ACTOR: Actor = { type: "system", id: "ipd-nursing-sweep" };
+const sweepLog = new Logger("ipd.sweepIpdNursing");
 /** Admissions older than this without an assessment are left to the Now card (a cutover backlog never floods the bell). */
 const ASSESSMENT_SWEEP_LOOKBACK_MS = 3 * 86_400_000;
 
-export type NursingSweepResult = { assessmentOverdue: number; ewsUnacked: number };
+export type NursingSweepResult = { assessmentOverdue: number; ewsUnacked: number; ewsRetried: number; failed: number };
+
+/** One row's work in its own transaction; a failure is logged and counted and the loop goes on (E4.1 review). */
+async function eachRow<T extends { id: string }>(rows: readonly T[], out: NursingSweepResult, what: string, work: (r: T) => Promise<void>): Promise<void> {
+  for (const r of rows) {
+    try { await work(r); } catch (e) {
+      out.failed += 1;
+      sweepLog.error(`${what} ${r.id} failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+}
 
 /**
- * The minute job. (1) Every admission on a bed one hour past admission with no assessment and no alert yet: ONE alert,
- * the nursing supervisors told, `ipd.nursing.assessment_overdue` once. (2) Every early-warning alert unacknowledged for
- * 10 minutes (from its raise or its last re-raise): the nursing supervisors told, once per band. Idempotent: the partial
- * unique and `supervisor_told_at` make a second tick a no-op. Nothing due → two indexed reads, no writes.
+ * The minute job. Every step stamps only when a notice actually went out, so a tick that reaches nobody is retried next
+ * minute. (1) An admission on a bed one hour past admission with no assessment: ONE alert (raised once, ever) and the
+ * nursing fallback chain told; `ipd.nursing.assessment_overdue` once, when first told. (2) An early-warning alert nobody
+ * was reached for: told again (doctors, else the chain). (3) An alert without a DOCTOR's acknowledgement 10 minutes after
+ * its raise or re-raise: the nursing fallback chain, once per raise. Each row in its own transaction, failures isolated.
  */
-export async function sweepIpdNursing(db: Db, now: Date): Promise<NursingSweepResult> {
-  const out: NursingSweepResult = { assessmentOverdue: 0, ewsUnacked: 0 };
+export async function sweepIpdNursing(db: Db, now: Date, hooks: { beforeRow?: (admissionId: string) => void } = {}): Promise<NursingSweepResult> {
+  const out: NursingSweepResult = { assessmentOverdue: 0, ewsUnacked: 0, ewsRetried: 0, failed: 0 };
   const dueBefore = new Date(now.getTime() - IPD_ASSESSMENT_DUE_MINUTES * 60_000);
   const candidates = await db.select({ id: ipdAdmissions.id }).from(ipdAdmissions).where(and(
     inArray(ipdAdmissions.state, [...IPD_NURSING_STATES]),
     lte(ipdAdmissions.admittedAt, dueBefore),
     gte(ipdAdmissions.admittedAt, new Date(now.getTime() - ASSESSMENT_SWEEP_LOOKBACK_MS)),
     sql`not exists (select 1 from ${ipdNursingAssessments} s where s.admission_id = ${ipdAdmissions.id})`,
-    sql`not exists (select 1 from ${ipdNursingAlerts} x where x.admission_id = ${ipdAdmissions.id} and x.kind = 'assessment_overdue')`,
+    sql`not exists (select 1 from ${ipdNursingAlerts} x where x.admission_id = ${ipdAdmissions.id} and x.kind = 'assessment_overdue' and x.notified_at is not null)`,
   ));
-  for (const c of candidates) {
+  await eachRow(candidates, out, "assessment_overdue", async (c) => {
+    hooks.beforeRow?.(c.id);
     await withTx(db, async (tx) => {
       const a = await lockAdmission(tx, c.id);
       if (!inNursingState(a.state) || a.admittedAt === null) return;
       const done = await tx.select({ id: ipdNursingAssessments.id }).from(ipdNursingAssessments).where(eq(ipdNursingAssessments.admissionId, a.id));
       if (done.length > 0) return;
-      const alertId = newId();
-      const won = await tx.insert(ipdNursingAlerts).values({
-        id: alertId, admissionId: a.id, patientId: a.patientId, kind: "assessment_overdue", raisedAt: now,
-      }).onConflictDoNothing().returning({ id: ipdNursingAlerts.id });
-      if (won.length === 0) return;
-      const bed = await bedCodeOf(tx, a.id);
+      await tx.insert(ipdNursingAlerts).values({ id: newId(), admissionId: a.id, patientId: a.patientId, kind: "assessment_overdue", raisedAt: now })
+        .onConflictDoNothing();
+      const alert = (await tx.select().from(ipdNursingAlerts).where(and(eq(ipdNursingAlerts.admissionId, a.id), eq(ipdNursingAlerts.kind, "assessment_overdue"))).for("update"))[0]!;
+      if (alert.notifiedAt !== null || alert.clearedAt !== null) return;
+      const where = await whereWords(tx, a);
       let notified = 0;
-      for (const userId of await supervisors(tx)) {
+      for (const userId of await nursingFallback(tx)) {
         if (await raiseNoticeIn(tx, {
           userId, kind: "ipd.assessment_overdue", title: "Nursing assessment overdue",
-          body: [bed.code === null ? null : `Bed ${bed.code}`, a.admissionNo, "1 hour since admission"].filter((s) => s !== null).join(" · "),
-          refType: "ipd_admission", refId: a.id, sourceKey: `ipd.assessment_overdue:${alertId}`, at: now,
+          body: [...where.words, "1 hour since admission"].join(" · "),
+          refType: "ipd_admission", refId: a.id, sourceKey: `ipd.assessment_overdue:${alert.id}`, at: now,
         })) notified += 1;
       }
+      if (notified === 0) return; // nobody to tell: no stamp, no event — the next tick tries again
+      await tx.update(ipdNursingAlerts).set({ notifiedAt: now }).where(eq(ipdNursingAlerts.id, alert.id));
       await appendEvent(tx, assessmentOverdue.make({
-        payload: { alertId, admissionId: a.id, admittedAt: a.admittedAt.toISOString(), notified, provenance: "system" },
+        payload: { alertId: alert.id, admissionId: a.id, admittedAt: a.admittedAt.toISOString(), notified, provenance: "system" },
         actor: SWEEP_ACTOR, correlationId: a.id, patientId: a.patientId, occurredAt: now,
       }));
       out.assessmentOverdue += 1;
     });
-  }
+  });
 
+  // (2) Early-warning alerts nobody was reached for.
+  const unreached = await db.select({ id: ipdNursingAlerts.id, admissionId: ipdNursingAlerts.admissionId }).from(ipdNursingAlerts).where(and(
+    eq(ipdNursingAlerts.kind, "ews"), isNull(ipdNursingAlerts.clearedAt), isNull(ipdNursingAlerts.notifiedAt),
+  ));
+  await eachRow(unreached, out, "ews_retry", async (s) => {
+    hooks.beforeRow?.(s.admissionId);
+    await withTx(db, async (tx) => {
+      const a = await lockAdmission(tx, s.admissionId);
+      const r = (await tx.select().from(ipdNursingAlerts).where(eq(ipdNursingAlerts.id, s.id)).for("update"))[0]!;
+      if (r.clearedAt !== null || r.notifiedAt !== null) return;
+      const raised = await notifyEws(tx, SWEEP_ACTOR, a, r, { band: r.band as IpdEwsBand, value: r.scoreValue ?? 0, vitalsId: null, escalation: false }, now);
+      if (raised.alertRaised) out.ewsRetried += 1;
+    });
+  });
+
+  // (3) No DOCTOR's acknowledgement 10 minutes after the raise → the nursing fallback chain.
   const unackedBefore = new Date(now.getTime() - IPD_EWS_UNACKED_MINUTES * 60_000);
-  const stale = await db.select({ id: ipdNursingAlerts.id }).from(ipdNursingAlerts).where(and(
+  const stale = await db.select({ id: ipdNursingAlerts.id, admissionId: ipdNursingAlerts.admissionId }).from(ipdNursingAlerts).where(and(
     eq(ipdNursingAlerts.kind, "ews"), isNull(ipdNursingAlerts.clearedAt), isNull(ipdNursingAlerts.acknowledgedAt),
     isNull(ipdNursingAlerts.supervisorToldAt), sql`coalesce(${ipdNursingAlerts.escalatedAt}, ${ipdNursingAlerts.raisedAt}) <= ${unackedBefore.toISOString()}::timestamptz`,
   ));
-  for (const s of stale) {
+  await eachRow(stale, out, "ews_unacked", async (s) => {
+    hooks.beforeRow?.(s.admissionId);
     await withTx(db, async (tx) => {
-      const r0 = (await tx.select().from(ipdNursingAlerts).where(eq(ipdNursingAlerts.id, s.id)))[0];
-      if (r0 === undefined) return;
-      const a = await lockAdmission(tx, r0.admissionId);
+      const a = await lockAdmission(tx, s.admissionId);
       const r = (await tx.select().from(ipdNursingAlerts).where(eq(ipdNursingAlerts.id, s.id)).for("update"))[0]!;
       if (r.clearedAt !== null || r.acknowledgedAt !== null || r.supervisorToldAt !== null) return;
-      await tx.update(ipdNursingAlerts).set({ supervisorToldAt: now }).where(eq(ipdNursingAlerts.id, r.id));
-      const bed = await bedCodeOf(tx, a.id);
-      for (const userId of await supervisors(tx)) {
-        await raiseNoticeIn(tx, {
-          userId, kind: "ipd.ews_unacknowledged", title: `${KIND_WORD[r.scoreKind as IpdEwsKind]} ${String(r.scoreValue)} — not acknowledged`,
-          body: [bed.code === null ? null : `Bed ${bed.code}`, a.admissionNo, "10 min, no doctor"].filter((x) => x !== null).join(" · "),
-          refType: "ipd_admission", refId: a.id, sourceKey: `ipd.ews_unacked:${r.id}:${r.band ?? ""}`, at: now,
-        });
+      const where = await whereWords(tx, a);
+      let notified = 0;
+      for (const userId of await nursingFallback(tx)) {
+        if (await raiseNoticeIn(tx, {
+          userId, kind: "ipd.ews_unacknowledged", title: `${KIND_WORD[r.scoreKind as IpdEwsKind]} ${String(r.scoreValue)} — no doctor yet`,
+          body: [...where.words, "10 min, no doctor"].join(" · "),
+          refType: "ipd_admission", refId: a.id, sourceKey: `ipd.ews_unacked:${r.id}:${(r.escalatedAt ?? r.raisedAt).toISOString()}`, at: now,
+        })) notified += 1;
       }
+      if (notified === 0) return; // nobody reached: retried next tick
+      await tx.update(ipdNursingAlerts).set({ supervisorToldAt: now }).where(eq(ipdNursingAlerts.id, r.id));
       out.ewsUnacked += 1;
     });
-  }
+  });
   return out;
 }
 

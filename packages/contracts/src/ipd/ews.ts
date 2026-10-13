@@ -104,11 +104,13 @@ export function news2(v: IpdEwsValues): IpdEwsScore {
 /*
  * Modified Early Obstetric Warning System — the CEMACH 2007 chart as validated by Singh S, McGlennan A, England A,
  * Simons R. "A validation study of the CEMACH recommended modified early obstetric warning system (MEOWS)."
- * Anaesthesia 2012;67:12–18, Table 1. Each parameter is normal, a YELLOW alert or a RED alert; the trigger for an urgent
+ * Anaesthesia 2012;67:12–18, Table 1 (the CEMACH chart's trigger rows; printed on p. 13 — VERIFY THE PAGE AND EVERY ROW
+ * AGAINST THE PRINTED TABLE BEFORE GO-LIVE, owed in MAP.md). Each parameter is normal, a YELLOW alert or a RED alert; the trigger for an urgent
  * medical review is ONE red or TWO yellows.
  *
- * Encoded (DECIDED): value = 3 × reds + 1 × yellows, for the chart's number; band: no trigger → low; trigger (one red
- * or two yellows) → medium; two or more reds → high (emergency). MEOWS has no low–medium band.
+ * Encoded (DECIDED), exactly as `meows()` computes it: value = 3 × reds + 1 × yellows (a number for the chart only);
+ * band = low when there is no trigger (no red, at most one yellow); medium when the trigger is met (one red, or two or
+ * more yellows); high when two or more parameters are red (emergency). MEOWS never yields `low_medium`.
  */
 export const MEOWS_RED = 3;
 export const MEOWS_YELLOW = 1;
@@ -141,18 +143,22 @@ export function meows(v: IpdEwsValues): IpdEwsScore {
 // ═══════════════════════════════════════════ PEWS ═══════════════════════════════════════════
 /*
  * Brighton Paediatric Early Warning Score: Monaghan A. "Detecting and managing deterioration in children."
- * Paediatric Nursing 2005;17(1):32–35. Three rows, each 0–3: behaviour, cardiovascular, respiratory; +2 for quarter-
+ * Paediatric Nursing 2005;17(1):32–35, the scoring chart (printed on p. 33 — VERIFY THE PAGE AND EVERY ROW AGAINST
+ * THE PRINTED CHART BEFORE GO-LIVE, owed in MAP.md). Three rows, each 0–3: behaviour, cardiovascular, respiratory; +2 for quarter-
  * hourly nebulisers or persistent post-operative vomiting (not captured here — owed with eMAR).
  *
  * The chart reads heart and breathing rates as "above / below normal for age"; the normal ranges are the Advanced
- * Paediatric Life Support ones (APLS, 6th ed., Advanced Life Support Group 2016, Table 1.1).
+ * Paediatric Life Support ones (APLS, 6th ed., Advanced Life Support Group 2016, Table 1.1 "normal physiological values" — VERIFY the
+ * table number, page and the five age bands before go-live, owed in MAP.md).
  *   behaviour      alert 0 · responds to voice (sleeping) 1 · confused / lethargic, or to pain only, or unresponsive 3
  *   cardiovascular capillary refill ≤2 s 0 · 3 s 1 · 4 s, or pulse ≥20 above normal 2 ·
  *                  ≥5 s, or pulse ≥30 above normal, or bradycardia (below normal) 3
  *   respiratory    within normal 0 · >10 above normal, or any supplemental oxygen 1 · >20 above normal 2 ·
  *                  ≥5 below normal 3
  * SpO2 is not a Brighton parameter: it is charted, not scored.
- * Bands (DECIDED, Brighton's escalation steps): 0–2 low; a 3 in any single row low–medium; 3–4 medium; 5+ high.
+ * Bands (DECIDED, the safer reading of Brighton's escalation steps), exactly as `pews()` computes them: total 0–2
+ * low; 3–4 medium — which INCLUDES any single row scoring 3 (a lone 3 is already a total of 3); 5+ high. The
+ * `low_medium` branch in the code is unreachable for PEWS and kept only so the three charts share one band shape.
  */
 export type ApplsBand = { maxAgeYears: number; pulse: readonly [number, number]; respRate: readonly [number, number] };
 export const APLS_NORMALS: readonly ApplsBand[] = [

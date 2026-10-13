@@ -246,10 +246,20 @@ export const recordVitals = ipdIntent({
   output: z.strictObject({
     vitalsId: IpdIdSchema,
     score: z.strictObject({ kind: z.enum(["news2", "meows", "pews"]), value: z.number().int(), band: z.enum(["low", "low_medium", "medium", "high"]) }).nullable(),
+    /** E4.1 review: a notice actually went out for this set (raise or re-raise). */
     alertRaised: z.boolean(),
+    /**
+     * E4.1 review: when this set raised the alert, whether a DOCTOR was among those told; false → the phone says
+     * "No doctor reached — call" (the fallback chain was told instead). Null when this set raised nothing.
+     */
+    doctorReached: z.boolean().nullable().optional(),
     lateEntry: z.boolean(),
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", "value_needs_confirm", "time_in_future", "device_not_registered"],
+  refusals: [
+    "admission_not_found", "admission_wrong_state", "value_needs_confirm", "time_in_future", "device_not_registered",
+    // E4.1 review: a set taken more than 24 hours ago is not charted by this act (record it on paper / as a note).
+    "observation_too_old",
+  ],
   actors: ["nurse", "doctor", "resident", "device"],
   copilotProposable: true,
   agentTier: "none",

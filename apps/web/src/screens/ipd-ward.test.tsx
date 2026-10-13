@@ -86,6 +86,18 @@ describe("nurse station (E4.1, board C)", () => {
     expect(within(screen.getByTestId("ipdn-bed-F05-MED-F-B02")).queryByTestId("ipdn-ack")).toBeNull();
   });
 
+  it("review 10: an alert no doctor was reached for says so in words; a sealed bed shows no code", async () => {
+    const st = stationOf(Date.now());
+    st.beds[1] = { ...st.beds[1]!, code: null, consultant: null, dayOfStay: null, patient: { ...st.beds[1]!.patient!, name: "Sealed patient", uhid: "", admissionNo: null, sealed: true } };
+    api.getStation.mockResolvedValue(st);
+    renderWithRouter(<IpdWard />, "/ipd/ward");
+    const b1 = await screen.findByTestId("ipdn-bed-F05-MED-F-B01");
+    expect(within(b1).getByTestId("ipdn-nodoc").textContent).toContain("No doctor reached — call");
+    const sealed = screen.getByTestId(`ipdn-bed-${st.beds[1]!.bedId}`);
+    expect(sealed.textContent).not.toContain("F05-MED-F-B02");
+    expect(within(sealed).queryByTestId("ipdn-nodoc")).toBeNull();
+  });
+
   it("opens the chart: vitals with a late entry flagged, the source of each set, and the assessment", async () => {
     renderWithRouter(<IpdWard />, "/ipd/ward");
     await userEvent.click(await screen.findByRole("button", { name: /Open the nursing chart for bed F05-MED-F-B01/ }));

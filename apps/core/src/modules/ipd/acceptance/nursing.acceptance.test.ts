@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ROLE_MODEL } from "../../../../scripts/seed-roles";
-import { alerts, events, ipdAdmissions, ipdNursingAlerts, ipdVitals } from "../../../kernel/db/schema";
+import { sql } from "drizzle-orm";
+import { alerts, events, ipdAdmissions, ipdNursingAlerts, ipdNursingNotes, ipdVitals, patients, users } from "../../../kernel/db/schema";
 import { loadDesk } from "../../../kernel/desk/registry";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkNursingWorld } from "../../../../test/helpers/ipd";
 import {
-  acceptShiftHandover, acknowledgeEwsAlert, giveShiftHandover, ipdManifest, isNightIst, readNurseStation, recordNursingAssessment,
-  recordVitals, sweepIpdNursing,
+  acceptShiftHandover, acknowledgeEwsAlert, addNursingNote, giveShiftHandover, recordIntakeOutput, ipdManifest, isNightIst, readNurseStation,
+  recordNursingAssessment, recordVitals, sweepIpdNursing,
 } from "../index";
 import { IpdError, IpdRefusal } from "../errors";
 import type { Actor } from "@hmis/contracts";
@@ -73,9 +74,9 @@ describe("E4.1 ipd-nursing — acceptance", () => {
     const done = await w.admitPatient(t0);
     await assess(done.admissionId, plus(t0, 40));
 
-    expect(await sweepIpdNursing(db, plus(t0, 59))).toEqual({ assessmentOverdue: 0, ewsUnacked: 0 });
-    expect(await sweepIpdNursing(db, plus(t0, 61))).toEqual({ assessmentOverdue: 1, ewsUnacked: 0 });
-    expect(await sweepIpdNursing(db, plus(t0, 62))).toEqual({ assessmentOverdue: 0, ewsUnacked: 0 });
+    expect(await sweepIpdNursing(db, plus(t0, 59))).toMatchObject({ assessmentOverdue: 0, ewsUnacked: 0 });
+    expect(await sweepIpdNursing(db, plus(t0, 61))).toMatchObject({ assessmentOverdue: 1, ewsUnacked: 0 });
+    expect(await sweepIpdNursing(db, plus(t0, 62))).toMatchObject({ assessmentOverdue: 0, ewsUnacked: 0 });
 
     const raised = await db.select().from(ipdNursingAlerts).where(eq(ipdNursingAlerts.kind, "assessment_overdue"));
     expect(raised.map((r) => r.admissionId)).toEqual([late.admissionId]);
@@ -86,7 +87,7 @@ describe("E4.1 ipd-nursing — acceptance", () => {
     await assess(late.admissionId, plus(t0, 70));
     const after = await db.select().from(ipdNursingAlerts).where(eq(ipdNursingAlerts.admissionId, late.admissionId));
     expect(after[0]!.clearedAt).not.toBeNull();
-    expect(await sweepIpdNursing(db, plus(t0, 90))).toEqual({ assessmentOverdue: 0, ewsUnacked: 0 });
+    expect(await sweepIpdNursing(db, plus(t0, 90))).toMatchObject({ assessmentOverdue: 0, ewsUnacked: 0 });
   });
 
   it("(ii) NEWS2 for an adult, MEOWS for a pregnant woman or an obstetric admission, PEWS for a child", async () => {
@@ -102,7 +103,7 @@ describe("E4.1 ipd-nursing — acceptance", () => {
     expect((await vitals(w.nurse, adult.admissionId, at, NORMAL)).score?.kind).toBe("news2");
     expect((await vitals(w.nurse, pregnant.admissionId, at, NORMAL)).score?.kind).toBe("meows");
     expect((await vitals(w.nurse, obg.admissionId, at, NORMAL)).score?.kind).toBe("meows");
-    // A child's pulse of 120 and breathing of 25 are normal for 8 years; NEWS2 would score them 4.
+    // A child's pulse of 120 and breathing of 25 are normal for 8 years; NEWS2 would score them 5 (pulse 120 → 2, RR 25 → 3).
     const kid = await vitals(w.nurse, child.admissionId, at, { pulse: 120, respRate: 25, consciousness: "alert", spo2: 98 });
     expect(kid.score).toEqual({ kind: "pews", value: 0, band: "low" });
     const asAdult = await vitals(w.nurse, adult.admissionId, plus(at, 1), { pulse: 120, respRate: 25, consciousness: "alert", spo2: 98 });
@@ -266,5 +267,173 @@ describe("E4.1 ipd-nursing — acceptance", () => {
     for (const k of ["ward_nurse", "nursing_supervisor", "nursing_superintendent"]) expect([k, role(k).length > 0]).toEqual([k, true]);
     expect(role("nursing_supervisor")).toEqual(expect.arrayContaining(["ipd.family.issue", "ipd.discharge.view", "ipd.ews.respond"]));
     expect(role("ward_nurse")).toEqual(expect.arrayContaining(["ipd.vitals.record", "ipd.assessment.record", "ipd.handover.shift", "ipd.transfer.accept"]));
+  });
+
+  // ═══════════════════════════════ E4.1 review (b0334887) — each leg failed first on b0334887 ═══════════════════════════════
+
+  const setActive = (id: string, active: boolean) => db.update(users).set({ active }).where(eq(users.id, id));
+  const ewsAlertOf = async (admissionId: string) =>
+    (await db.select().from(ipdNursingAlerts).where(and(eq(ipdNursingAlerts.admissionId, admissionId), eq(ipdNursingAlerts.kind, "ews"))))
+      .find((r) => r.clearedAt === null);
+
+  it("review 1: a relapse re-notifies — high → medium → high, and medium → low–medium → medium", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    const q = await w.admitPatient(t0);
+    await assess(p.admissionId, plus(t0, 5));
+    await assess(q.admissionId, plus(t0, 5));
+    const told = async (admissionId: string) => (await db.select().from(alerts)
+      .where(and(eq(alerts.userId, w.doctor.id), eq(alerts.kind, "ipd.ews_breach"), eq(alerts.refId, admissionId)))).length;
+
+    expect((await vitals(w.nurse, p.admissionId, plus(t0, 10), SEVEN)).alertRaised).toBe(true);
+    expect((await vitals(w.nurse, p.admissionId, plus(t0, 20), FIVE)).alertRaised).toBe(false);
+    expect((await ewsAlertOf(p.admissionId))!.band).toBe("medium");
+    expect((await vitals(w.nurse, p.admissionId, plus(t0, 30), SEVEN)).alertRaised).toBe(true);
+    expect(await told(p.admissionId)).toBe(2);
+
+    expect((await vitals(w.nurse, q.admissionId, plus(t0, 10), FIVE)).alertRaised).toBe(true);
+    expect((await vitals(w.nurse, q.admissionId, plus(t0, 20), SINGLE_RED)).alertRaised).toBe(false);
+    expect((await vitals(w.nurse, q.admissionId, plus(t0, 30), FIVE)).alertRaised).toBe(true);
+    expect(await told(q.admissionId)).toBe(2);
+  });
+
+  it("review 2 + 10: no doctor → the nursing chain now (\"No doctor reached\"); nobody at all → not stamped, retried next tick", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    await assess(p.admissionId, plus(t0, 5));
+    await setActive(w.doctor.id, false);
+    const first = await vitals(w.nurse, p.admissionId, plus(t0, 10), FIVE);
+    expect(first).toMatchObject({ alertRaised: true, doctorReached: false });
+    const toSup = await noticesTo(w.supervisor.id, "ipd.ews_breach");
+    expect(toSup).toHaveLength(1);
+    expect(toSup[0]!.body).toContain("No doctor reached — call");
+    expect((await readNurseStation(db, w.nurse, { now: plus(t0, 11) })).beds.find((b) => b.alert !== null)!.alert!.doctorReached).toBe(false);
+
+    // Nobody at all: the alert stands un-notified and the sweep retries it once somebody exists.
+    const q = await w.admitPatient(t0);
+    await assess(q.admissionId, plus(t0, 5));
+    await setActive(w.supervisor.id, false);
+    const nobody = await vitals(w.nurse, q.admissionId, plus(t0, 12), FIVE);
+    expect(nobody.alertRaised).toBe(false);
+    expect((await ewsAlertOf(q.admissionId))!.notifiedAt).toBeNull();
+    expect((await sweepIpdNursing(db, plus(t0, 13))).ewsRetried).toBe(0);
+    await setActive(w.supervisor.id, true);
+    expect((await sweepIpdNursing(db, plus(t0, 14))).ewsRetried).toBe(1);
+    expect((await ewsAlertOf(q.admissionId))!.notifiedAt).not.toBeNull();
+  });
+
+  it("review 2: an overdue assessment with nobody to tell is retried next tick, not stamped", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    await setActive(w.supervisor.id, false);
+    expect((await sweepIpdNursing(db, plus(t0, 61))).assessmentOverdue).toBe(0);
+    expect(await eventsNamed("ipd.nursing.assessment_overdue")).toHaveLength(0);
+    await setActive(w.supervisor.id, true);
+    expect((await sweepIpdNursing(db, plus(t0, 62))).assessmentOverdue).toBe(1);
+    expect((await noticesTo(w.supervisor.id, "ipd.assessment_overdue")).map((n) => n.refId)).toEqual([p.admissionId]);
+  });
+
+  it("review 2 + 11 + 15: the 10-minute step needs a DOCTOR's acknowledgement; a supervisor's is 'seen'; nobody to tell → retried", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    await assess(p.admissionId, plus(t0, 5));
+    await vitals(w.nurse, p.admissionId, plus(t0, 10), FIVE);
+    const alert = (await ewsAlertOf(p.admissionId))!;
+    const seen = await acknowledgeEwsAlert(db, w.supervisor, { idempotencyKey: key(), alertId: alert.id, note: "Seen, calling the RMO" }, { now: plus(t0, 12) });
+    expect(seen).toMatchObject({ byDoctor: false, acknowledgedAt: null });
+    const row = (await ewsAlertOf(p.admissionId))!;
+    expect([row.seenBy, row.acknowledgedAt, row.ackNote]).toEqual([w.supervisor.id, null, "Seen, calling the RMO"]);
+    // An inactive supervisor is never told; with nobody active the step waits and is retried.
+    await setActive(w.supervisor.id, false);
+    expect((await sweepIpdNursing(db, plus(t0, 21))).ewsUnacked).toBe(0);
+    await setActive(w.supervisor.id, true);
+    expect((await sweepIpdNursing(db, plus(t0, 22))).ewsUnacked).toBe(1);
+
+    // A doctor's acknowledgement stops it for the next breach; the note rides the event.
+    const q = await w.admitPatient(t0);
+    await assess(q.admissionId, plus(t0, 5));
+    await vitals(w.nurse, q.admissionId, plus(t0, 30), FIVE);
+    const qa = (await ewsAlertOf(q.admissionId))!;
+    await acknowledgeEwsAlert(db, w.doctor, { idempotencyKey: key(), alertId: qa.id, note: "Reviewed, fluids" }, { now: plus(t0, 32) });
+    expect((await sweepIpdNursing(db, plus(t0, 45))).ewsUnacked).toBe(0);
+    const ack = (await eventsNamed("ipd.ews.acknowledged")).map((e) => e.payload as { byKind: string; note: string | null; stopsEscalation: boolean });
+    expect(ack).toEqual(expect.arrayContaining([
+      expect.objectContaining({ byKind: "doctor", note: "Reviewed, fluids", stopsEscalation: true }),
+      expect.objectContaining({ byKind: "supervisor", stopsEscalation: false }),
+    ]));
+  });
+
+  it("review 3 + 4: a SEALED patient: notices say 'Sealed patient' with no bed or IP number; the station card carries none either", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    await db.update(patients).set({ sensitiveContext: true }).where(eq(patients.id, p.patientId));
+    await assess(p.admissionId, plus(t0, 5));
+    await vitals(w.nurse, p.admissionId, plus(t0, 10), FIVE);
+    const notice = (await noticesTo(w.doctor.id, "ipd.ews_breach"))[0]!;
+    expect(notice.body).toBe("Sealed patient · Review now");
+    const admissionNo = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, p.admissionId)))[0]!.admissionNo!;
+    const station = await readNurseStation(db, w.nurse, { now: plus(t0, 11) });
+    const card = station.beds.find((b) => b.patient?.admissionId === p.admissionId)!;
+    expect([card.code, card.consultant, card.patient!.admissionNo, card.dayOfStay, card.patient!.uhid]).toEqual([null, null, null, null, ""]);
+    expect(JSON.stringify(card)).not.toContain(admissionNo);
+    expect(JSON.stringify(card)).not.toContain("NRS-B");
+  });
+
+  it("review 8: a set older than 24 h is refused; past the 30-minute queue it is accepted and marked late 'offline'", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    const at = plus(t0, 26 * 60);
+    const old = await refusalOf(recordVitals(db, w.nurse, {
+      idempotencyKey: key(), admissionId: p.admissionId, observedAt: plus(at, -(24 * 60 + 1)).toISOString(), source: "person", values: NORMAL,
+    }, { now: at }));
+    expect(old.code).toBe("observation_too_old");
+    const offline = await recordVitals(db, w.nurse, {
+      idempotencyKey: key(), admissionId: p.admissionId, observedAt: plus(at, -40).toISOString(), source: "person", values: NORMAL,
+    }, { now: at });
+    expect(offline.lateEntry).toBe(true);
+    expect((await db.select().from(ipdVitals).where(eq(ipdVitals.id, offline.vitalsId)))[0]!.lateReason).toBe("offline");
+    const typed = await recordVitals(db, w.nurse, {
+      idempotencyKey: key(), admissionId: p.admissionId, observedAt: plus(at, -20).toISOString(), source: "person", values: NORMAL,
+    }, { now: at });
+    expect((await db.select().from(ipdVitals).where(eq(ipdVitals.id, typed.vitalsId)))[0]!.lateReason).toBe("typed_late");
+  });
+
+  it("review 9: one failing row in the sweep does not block the others", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const bad = await w.admitPatient(t0);
+    const good = await w.admitPatient(t0);
+    const r = await sweepIpdNursing(db, plus(t0, 61), { beforeRow: (id) => { if (id === bad.admissionId) throw new Error("synthetic row failure"); } });
+    expect(r).toMatchObject({ assessmentOverdue: 1, failed: 1 });
+    expect((await noticesTo(w.supervisor.id, "ipd.assessment_overdue")).map((n) => n.refId)).toEqual([good.admissionId]);
+  });
+
+  it("review 12: the nursing record tables are append-only in the database", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    const v = await vitals(w.nurse, p.admissionId, plus(t0, 10), NORMAL);
+    const n = await addNursingNote(db, w.nurse, {
+      idempotencyKey: key(), admissionId: p.admissionId, observedAt: plus(t0, 11).toISOString(), source: "person", category: "general", text: "Settled",
+    }, { now: plus(t0, 11) });
+    await expect(db.update(ipdVitals).set({ pulse: 60 }).where(eq(ipdVitals.id, v.vitalsId))).rejects.toThrow(/append-only|ipd_nursing_append_only/);
+    await expect(db.delete(ipdNursingNotes).where(eq(ipdNursingNotes.id, n.noteId))).rejects.toThrow(/append-only|ipd_nursing_append_only/);
+    await expect(db.execute(sql`update ipd_nursing_assessments set morse = 0`)).resolves.toBeDefined(); // no rows yet: nothing to refuse
+    await assess(p.admissionId, plus(t0, 12));
+    await expect(db.execute(sql`update ipd_nursing_assessments set morse = 0`)).rejects.toThrow(/append-only|ipd_nursing_append_only/);
+    await recordIntakeOutput(db, w.nurse, {
+      idempotencyKey: key(), admissionId: p.admissionId, observedAt: plus(t0, 13).toISOString(), source: "person", direction: "in", kind: "oral", volumeMl: 200,
+    }, { now: plus(t0, 13) });
+    await expect(db.execute(sql`update ipd_intake_output set volume_ml = 1`)).rejects.toThrow(/append-only|ipd_nursing_append_only/);
+  });
+
+  it("review 16: a replay answers what the first act raised", async () => {
+    const t0 = ist("2026-03-10T10:00:00");
+    const p = await w.admitPatient(t0);
+    await assess(p.admissionId, plus(t0, 5));
+    const k = key();
+    const body = { idempotencyKey: k, admissionId: p.admissionId, observedAt: plus(t0, 10).toISOString(), source: "person", values: FIVE };
+    const first = await recordVitals(db, w.nurse, body, { now: plus(t0, 10) });
+    const replay = await recordVitals(db, w.nurse2, body, { now: plus(t0, 11) });
+    expect(first.alertRaised).toBe(true);
+    expect(replay).toMatchObject({ vitalsId: first.vitalsId, alertRaised: true, doctorReached: true });
   });
 });

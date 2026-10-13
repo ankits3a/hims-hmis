@@ -64,13 +64,30 @@ export function useLiveLoad(load: () => Promise<unknown>, pollMs = 15_000): { on
 /** The live dot and "Offline · last update 14:02" (§0B), with the queue's count. */
 export function LiveLine({ online, lastUpdate }: { online: boolean; lastUpdate: Date | null }): React.ReactElement {
   const { t } = useTranslation();
-  const { queued } = useVitalsQueue();
+  const { queued, dropped, clearDropped } = useVitalsQueue();
   return (
-    <span className={`ipdn-live${online ? "" : " off"}`} role="status" data-testid="ipdn-live">
-      <i aria-hidden="true" />
-      {online ? t("ipdNursing.live") : lastUpdate === null ? t("ipdNursing.offlineNever") : t("ipdNursing.offline", { time: fmtIst(lastUpdate.toISOString()) })}
-      {queued > 0 ? <b> · {t("ipdNursing.queued", { count: queued })}</b> : null}
-    </span>
+    <>
+      <span className={`ipdn-live${online ? "" : " off"}`} role="status" data-testid="ipdn-live">
+        <i aria-hidden="true" />
+        {online ? t("ipdNursing.live") : lastUpdate === null ? t("ipdNursing.offlineNever") : t("ipdNursing.offline", { time: fmtIst(lastUpdate.toISOString()) })}
+        {queued > 0 ? <b> · {t("ipdNursing.queued", { count: queued })}</b> : null}
+      </span>
+      {dropped.length > 0 ? (
+        // Review 5: every set that will not be sent is NAMED (time taken, patient) with the one thing to do.
+        <div className="ipdn-dropped" role="alert" data-testid="ipdn-dropped">
+          <b>{t("ipdNursing.dropped.title")}</b>
+          <ul>
+            {dropped.map((d) => (
+              <li key={d.body.idempotencyKey}>
+                {fmtIst(d.body.observedAt)} · {d.body.queueLabel ?? t("ipdNursing.dropped.patient")} — {t(`ipdNursing.dropped.${d.reason}`)}
+              </li>
+            ))}
+          </ul>
+          <span>{t("ipdNursing.dropped.paper")}</span>
+          <button type="button" className="ipdn-btn sm" onClick={clearDropped}>{t("ipdNursing.dropped.done")}</button>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -135,8 +152,10 @@ const AVPU = ["alert", "confused", "voice", "pain", "unresponsive"] as const;
 export type VitalsDone = { queued: boolean; result: VitalsResult | null; refused: boolean };
 
 /** The one vitals entry. `online` false disables nothing here: vitals are the one act that queues. */
-export function VitalsForm({ admissionId, kind, ageYears, onDone, onCancel }: {
+export function VitalsForm({ admissionId, kind, ageYears, onDone, onCancel, label }: {
   admissionId: string; kind: IpdEwsKind; ageYears: number | null; onDone: (d: VitalsDone) => void; onCancel?: () => void;
+  /** Names the patient (alias for a restricted one) if a queued set is later dropped: "record on paper". */
+  label?: string;
 }): React.ReactElement {
   const { t } = useTranslation();
   const [raw, setRaw] = useState<Record<string, string>>({});
@@ -162,7 +181,7 @@ export function VitalsForm({ admissionId, kind, ageYears, onDone, onCancel }: {
   const save = (refused: boolean): void => {
     setBusy(true); setRefusal(null); setFailed(false);
     const body = vitalsBody(admissionId, values, { refused, confirmed: !refused && odd.length > 0 });
-    saveVitals(body).then(
+    saveVitals(body, label).then(
       (r) => { setBusy(false); onDone({ queued: r.queued, result: r.queued ? null : r.result, refused }); },
       (e: unknown) => { setBusy(false); const rf = refusalOf(e); if (rf) setRefusal(rf); else setFailed(true); },
     );
@@ -231,6 +250,7 @@ export function VitalsForm({ admissionId, kind, ageYears, onDone, onCancel }: {
 export function savedWords(d: VitalsDone, t: T): string {
   if (d.queued) return t("ipdNursing.v.queued");
   if (d.refused) return t("ipdNursing.v.refusedSaved");
+  if (d.result?.doctorReached === false) return t("ipdNursing.noDoctorReached");
   const s = d.result?.score;
   return s ? t("ipdNursing.v.savedScore", { kind: t(`ipdNursing.kind.${s.kind}`), value: s.value }) : t("ipdNursing.v.saved");
 }

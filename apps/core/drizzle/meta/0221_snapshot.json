@@ -1,5 +1,5 @@
 {
-  "id": "63456237-079a-4351-8cd9-0a2107ea6e4a",
+  "id": "95d1009d-5af2-4461-ba0f-baff0a420e85",
   "prevId": "96461415-8113-4f63-893e-a4ff01d3a41c",
   "version": "7",
   "dialect": "postgresql",
@@ -58668,6 +58668,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "notified_band": {
+          "name": "notified_band",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "score_value": {
           "name": "score_value",
           "type": "integer",
@@ -58676,6 +58682,12 @@
         },
         "vitals_id": {
           "name": "vitals_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_vitals_id": {
+          "name": "last_vitals_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -58692,6 +58704,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "notified_at": {
+          "name": "notified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "doctor_reached": {
+          "name": "doctor_reached",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "acknowledged_at": {
           "name": "acknowledged_at",
           "type": "timestamp with time zone",
@@ -58700,6 +58725,24 @@
         },
         "acknowledged_by": {
           "name": "acknowledged_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seen_at": {
+          "name": "seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "seen_by": {
+          "name": "seen_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ack_note": {
+          "name": "ack_note",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -58811,6 +58854,10 @@
         "ipd_nursing_alerts_band_ck": {
           "name": "ipd_nursing_alerts_band_ck",
           "value": "\"ipd_nursing_alerts\".\"band\" is null or \"ipd_nursing_alerts\".\"band\" in ('low', 'low_medium', 'medium', 'high')"
+        },
+        "ipd_nursing_alerts_notified_band_ck": {
+          "name": "ipd_nursing_alerts_notified_band_ck",
+          "value": "\"ipd_nursing_alerts\".\"notified_band\" is null or \"ipd_nursing_alerts\".\"notified_band\" in ('low', 'low_medium', 'medium', 'high')"
         },
         "ipd_nursing_alerts_ews_ck": {
           "name": "ipd_nursing_alerts_ews_ck",
@@ -60157,6 +60204,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "late_reason": {
+          "name": "late_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "refused": {
           "name": "refused",
           "type": "boolean",
@@ -60337,6 +60390,10 @@
         "ipd_vitals_consciousness_ck": {
           "name": "ipd_vitals_consciousness_ck",
           "value": "\"ipd_vitals\".\"consciousness\" is null or \"ipd_vitals\".\"consciousness\" in ('alert', 'confused', 'voice', 'pain', 'unresponsive')"
+        },
+        "ipd_vitals_late_reason_ck": {
+          "name": "ipd_vitals_late_reason_ck",
+          "value": "\"ipd_vitals\".\"late_reason\" is null or \"ipd_vitals\".\"late_reason\" in ('typed_late', 'offline')"
         },
         "ipd_vitals_score_ck": {
           "name": "ipd_vitals_score_ck",

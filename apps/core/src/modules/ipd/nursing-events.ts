@@ -19,20 +19,24 @@ export const nursingAssessed = defineEvent(IPD_INTENTS.record_nursing_assessment
 }));
 
 export const vitalsRecorded = defineEvent(IPD_INTENTS.record_vitals.events[0]!, MODULE, z.object({
-  vitalsId: id, admissionId: id, observedAt: z.string(), lateEntry: z.boolean(), refused: z.boolean(),
+  vitalsId: id, admissionId: id, observedAt: z.string(), lateEntry: z.boolean(), lateReason: z.enum(["offline", "typed_late"]).nullable(),
+  refused: z.boolean(),
   score: z.object({ kind, value: z.number().int(), band }).nullable(), provenance: IpdProvenanceSchema,
 }));
 
 /** G7's breach: `{ alertId, admissionId, wardId? }` (+ the band and score for the station). Re-raised on a worse band. */
 export const ewsBreached = defineEvent(IPD_GOAL_EVENTS.ewsBreached, MODULE, z.object({
-  alertId: id, admissionId: id, wardId: id.nullable(), scoreKind: kind, band, value: z.number().int(), escalation: z.boolean(),
-  notified: z.number().int().nonnegative(), provenance: IpdProvenanceSchema,
+  alertId: id, admissionId: id, wardId: id.nullable(), vitalsId: id.nullable(), scoreKind: kind, band, value: z.number().int(),
+  escalation: z.boolean(), notified: z.number().int().nonnegative(), doctorReached: z.boolean(), provenance: IpdProvenanceSchema,
 }));
 
-/** G7's acknowledgement: `{ alertId, byKind }`, `byKind` an `IpdActorKind` (a doctor's counts for G7). */
+/**
+ * G7's acknowledgement: `{ alertId, byKind }`, `byKind` an `IpdActorKind` (a doctor's counts for G7 and alone stops the
+ * escalation, `stopsEscalation`). It carries the acknowledger's NOTE, so it is NOT on the realtime fan-out list below.
+ */
 export const ewsAcknowledged = defineEvent(IPD_GOAL_EVENTS.ewsAcknowledged, MODULE, z.object({
   alertId: id, admissionId: id, byKind: z.enum(["desk", "nurse", "doctor", "resident", "pharmacist", "billing", "supervisor", "duty_manager", "device", "agent"]),
-  provenance: IpdProvenanceSchema,
+  stopsEscalation: z.boolean(), note: z.string().nullable(), provenance: IpdProvenanceSchema,
 }));
 
 /** A set below the notify band closed the breach; the next breach is a new alert. */
@@ -63,6 +67,7 @@ export const shiftHandoverAccepted = defineEvent("ipd.shift_handover.accepted", 
 
 /** Every nursing event: the nurse station and my-shift refetch on any of them. */
 export const IPD_NURSING_EVENT_NAMES: readonly string[] = [
-  nursingAssessed.name, vitalsRecorded.name, ewsBreached.name, ewsAcknowledged.name, ewsCleared.name, assessmentOverdue.name,
+  // Not `ewsAcknowledged` (it carries note text); the station's 15-second poll picks an acknowledgement up.
+  nursingAssessed.name, vitalsRecorded.name, ewsBreached.name, ewsCleared.name, assessmentOverdue.name,
   intakeOutputRecorded.name, nursingNoteAdded.name, shiftHandoverGiven.name, shiftHandoverAccepted.name,
 ];

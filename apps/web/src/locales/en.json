@@ -18277,6 +18277,16 @@
       "io": "I/O",
       "note": "note",
       "admission": "admission"
+    },
+    "noDoctorReached": "No doctor reached — call",
+    "seenNoDoctor": "Seen · doctor not yet",
+    "dropped": {
+      "title": "Not sent",
+      "patient": "Patient",
+      "expired": "over 30 min old",
+      "refused": "refused by server",
+      "paper": "Record these on paper.",
+      "done": "Done"
     }
   }
 }

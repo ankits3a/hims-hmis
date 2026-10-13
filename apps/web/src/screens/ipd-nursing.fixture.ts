@@ -18,11 +18,11 @@ export function stationBeds(now: number, count = 12): IpdStationBed[] {
   const base: IpdStationBed[] = [
     { bedId: fid(1), code: "F05-MED-F-B01", status: "occupied", since: at(now, -3000), patient: person(1, "Test Patient A", "F 67"), consultant: "Dr Fake One", dayOfStay: 3,
       chips: ["allergy", "fall_risk"], score: { kind: "news2", value: 7, band: "high", complete: true, trend: "up", at: at(now, -20) }, scoreKind: "news2",
-      next: { kind: "vitals", dueAt: at(now, -5), overdue: true }, alert: { alertId: fid(501), band: "high", raisedAt: at(now, -20), acknowledgedAt: null },
+      next: { kind: "vitals", dueAt: at(now, -5), overdue: true }, alert: { alertId: fid(501), band: "high", raisedAt: at(now, -20), acknowledgedAt: null, seenAt: null, doctorReached: false },
       discharge: null, transferring: false, needs: 90 },
     { bedId: fid(2), code: "F05-MED-F-B02", status: "occupied", since: at(now, -1500), patient: person(2, "Test Patient B", "F 29"), consultant: "Dr Fake Two", dayOfStay: 2,
       chips: ["obstetric"], score: { kind: "meows", value: 4, band: "medium", complete: true, trend: "flat", at: at(now, -50) }, scoreKind: "meows",
-      next: { kind: "vitals", dueAt: at(now, 10), overdue: false }, alert: { alertId: fid(502), band: "medium", raisedAt: at(now, -50), acknowledgedAt: at(now, -40) },
+      next: { kind: "vitals", dueAt: at(now, 10), overdue: false }, alert: { alertId: fid(502), band: "medium", raisedAt: at(now, -50), acknowledgedAt: at(now, -40), seenAt: null, doctorReached: true },
       discharge: null, transferring: false, needs: 60 },
     { bedId: fid(3), code: "F05-MED-F-B03", status: "occupied", since: at(now, -40), patient: person(3, "Test Patient C", "F 7"), consultant: "Dr Fake Three", dayOfStay: 1,
       chips: ["isolation"], score: null, scoreKind: "pews", next: { kind: "assessment", dueAt: at(now, 20), overdue: false }, alert: null,
@@ -102,7 +102,7 @@ export function chartOf(now: number): IpdNursingChart {
       { id: fid(602), observedAt: at(now, -90), direction: "out", kind: "urine", volumeMl: 400, recordedBy: "Sister Fake", source: "person" },
     ] },
     notes: [{ id: fid(801), observedAt: at(now, -25), recordedAt: at(now, -24), category: "escalation", text: "Score 7. Duty doctor informed.", source: "person", recordedBy: "Sister Fake", lateEntry: false }],
-    alert: { alertId: fid(501), band: "high", raisedAt: at(now, -20), acknowledgedAt: null },
+    alert: { alertId: fid(501), band: "high", raisedAt: at(now, -20), acknowledgedAt: null, seenAt: null, doctorReached: false },
     next: { kind: "vitals", dueAt: at(now, -5), overdue: true },
   };
 }

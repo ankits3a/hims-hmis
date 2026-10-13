@@ -2,16 +2,16 @@ import { and, asc, desc, eq, gte, inArray, isNull, ne } from "drizzle-orm";
 import {
   IPD_ASSESSMENT_DUE_MINUTES, ewsBandRank, ewsNextDueMinutes,
 } from "@hmis/contracts";
-import { listAllergies, getPatientSummaries } from "../patients";
+import { getPatientSummaries } from "../patients";
 import {
   ipdAdmissions, ipdBedReservations, ipdBedStays, ipdIntakeOutput, ipdNursingAlerts, ipdNursingAssessments, ipdNursingNotes,
-  ipdShiftHandovers, ipdVitals, patients, resources, users,
+  ipdShiftHandovers, ipdVitals, patientAllergies, patients, resources, users,
 } from "../../kernel/db/schema";
 import { readAdmission, requireIpdPermission } from "./admission-core";
 import { IpdBedAttributesSchema } from "./bed-attributes";
 import { ageInYears } from "./bed-rules";
 import { holdIsLive } from "./beds";
-import { IPD_NURSING_STATES, ioDayStart, istClock, istDayIndex, isNightIst, lastSetAt, latestScores, scoreContextOf, shiftOf } from "./nursing";
+import { IPD_NURSING_STATES, ioDayStart, istClock, istDayIndex, isNightIst, lastSetAt, latestScores, scoreContextOf, scoreContextsOf, shiftOf } from "./nursing";
 import { SEALED_LABEL } from "./now-cards";
 import { IPD_NURSING_VIEW, IPD_SHIFT_HANDOVER } from "./permissions";
 import type {
@@ -69,7 +69,7 @@ async function identitiesOf(db: Db, reader: Actor, admissions: readonly Admissio
   for (const a of admissions) {
     const p = people.get(a.patientId);
     if (sealed.has(a.patientId)) {
-      out.set(a.id, { admissionId: a.id, admissionNo: a.admissionNo, name: sealed.get(a.patientId)?.trim() || SEALED_LABEL, uhid: "", ageSex: "", sealed: true });
+      out.set(a.id, { admissionId: a.id, admissionNo: null, name: sealed.get(a.patientId)?.trim() || SEALED_LABEL, uhid: "", ageSex: "", sealed: true });
       continue;
     }
     out.set(a.id, {
@@ -145,7 +145,8 @@ async function factsForBeds(db: Db, bedIds: readonly string[]): Promise<WardFact
 
 const alertView = (r: typeof ipdNursingAlerts.$inferSelect | undefined) => r === undefined ? null : {
   alertId: r.id, band: r.band as "low" | "low_medium" | "medium" | "high", raisedAt: (r.escalatedAt ?? r.raisedAt).toISOString(),
-  acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null,
+  acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null, seenAt: r.seenAt?.toISOString() ?? null,
+  doctorReached: r.notifiedAt !== null && r.doctorReached,
 };
 
 function pickWard(wards: WardRow[], wardId: string | undefined): WardRow | null {
@@ -171,12 +172,11 @@ export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: st
   const reservations = beds.length === 0 ? [] : (await db.select().from(ipdBedReservations).where(and(inArray(ipdBedReservations.bedId, beds.map((b) => b.id)), eq(ipdBedReservations.status, "active"))))
     .filter((r) => holdIsLive(r, now));
   const reserved = new Set(reservations.map((r) => r.bedId));
-  const allergyAdmissions = new Set<string>();
-  for (const a of f.admissions) {
-    const assessed = f.assessments.get(a.id);
-    if ((assessed?.allergies.length ?? 0) > 0) { allergyAdmissions.add(a.id); continue; }
-    if ((await listAllergies(db, a.patientId)).some((r) => r.status === "active")) allergyAdmissions.add(a.id);
-  }
+  // One allergy query and one score-context batch for the whole ward (review: no per-patient lookups on the poll).
+  const allergic = new Set((f.admissions.length === 0 ? [] : await db.select({ patientId: patientAllergies.patientId }).from(patientAllergies)
+    .where(and(inArray(patientAllergies.patientId, f.admissions.map((a) => a.patientId)), eq(patientAllergies.status, "active")))).map((r) => r.patientId));
+  const allergyAdmissions = new Set(f.admissions.filter((a) => allergic.has(a.patientId) || (f.assessments.get(a.id)?.allergies.length ?? 0) > 0).map((a) => a.id));
+  const contexts = await scoreContextsOf(db, f.admissions, now);
   const out: IpdStationBed[] = [];
   let overdue = 0;
   for (const b of beds) {
@@ -207,13 +207,15 @@ export async function readNurseStation(db: Db, actor: Actor, opts: { wardId?: st
     if (assessment?.obstetric === "pregnant" || assessment?.obstetric === "postpartum") chips.push("obstetric");
     const alert = f.alerts.get(a.id);
     const trend = trendOf(sets);
-    const kind = last?.scoreKind ?? (await scoreContextOf(db, a, now)).kind;
+    const kind = last?.scoreKind ?? contexts.get(a.id)!.kind;
     const needs = (alert !== undefined ? 100 + ewsBandRank(alert.band as "low") * 10 : 0) + (trend === "up" ? 20 : 0) + (next?.overdue === true ? 10 : 0)
       + (last !== undefined ? ewsBandRank(last.scoreBand) : 0);
     out.push({
-      bedId: b.id, code: b.code, status, since: b.since?.toISOString() ?? null, patient: id,
-      consultant: consultants.get(a.consultantId) ?? null,
-      dayOfStay: a.admittedAt === null ? null : istDayIndex(now) - istDayIndex(a.admittedAt) + 1,
+      // A SEALED patient's card carries no bed code, consultant, IP number or day of stay (as my shift; review #767).
+      bedId: b.id, code: id.sealed ? null : b.code, status, since: b.since?.toISOString() ?? null,
+      patient: id.sealed ? { ...id, admissionNo: null } : id,
+      consultant: id.sealed ? null : consultants.get(a.consultantId) ?? null,
+      dayOfStay: id.sealed || a.admittedAt === null ? null : istDayIndex(now) - istDayIndex(a.admittedAt) + 1,
       chips, scoreKind: kind,
       score: last === undefined ? null : { kind: last.scoreKind, value: last.scoreValue, band: last.scoreBand, complete: last.scoreComplete, trend, at: last.observedAt.toISOString() },
       next: next === null ? null : { kind: next.kind, dueAt: next.dueAt.toISOString(), overdue: next.overdue },

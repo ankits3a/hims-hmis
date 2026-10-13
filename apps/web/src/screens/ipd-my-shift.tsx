@@ -108,7 +108,7 @@ export function IpdMyShift(): React.ReactElement {
             <b>{patient.identity.name}</b> <span className="dim">{patient.identity.ageSex}</span>
             <div className="dim">{[patient.bedCode, patient.identity.uhid ? `UHID ${patient.identity.uhid}` : null].filter(Boolean).join(" · ")}</div>
           </div>
-          <VitalsForm admissionId={patient.identity.admissionId} kind={patient.scoreKind} ageYears={ageFromAgeSex(patient.identity.ageSex)}
+          <VitalsForm admissionId={patient.identity.admissionId} kind={patient.scoreKind} ageYears={ageFromAgeSex(patient.identity.ageSex)} label={patient.identity.name}
             onCancel={() => setMode({ kind: "list" })}
             onDone={(d) => { setNotice(savedWords(d, t as T)); setMode({ kind: "list" }); if (!d.queued) void load().catch(() => undefined); }} />
         </section>

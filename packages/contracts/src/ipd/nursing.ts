@@ -51,13 +51,19 @@ export const IpdEwsAlertViewSchema = z.object({
   alertId: IpdIdSchema,
   band: z.enum(IPD_EWS_BANDS),
   raisedAt: IpdInstantSchema,
+  /** A DOCTOR's acknowledgement (stops the 10-minute escalation). */
   acknowledgedAt: IpdInstantSchema.nullable(),
+  /** A nurse's or supervisor's acknowledgement: seen, the escalation runs on. */
+  seenAt: IpdInstantSchema.nullable(),
+  /** False while no notice reached anybody (the sweep retries); the station says "No doctor reached — call". */
+  doctorReached: z.boolean(),
 });
 
 /** One bed card on the nurse station (board C). Empty beds carry no patient. */
 export const IpdStationBedSchema = z.object({
   bedId: IpdIdSchema,
-  code: z.string(),
+  /** Null for a SEALED patient's bed (no bed text anywhere on a sealed row, review #767). */
+  code: z.string().nullable(),
   status: z.enum(["occupied", "available", "reserved", "cleaning", "blocked", "incumbent"]),
   /** When the bed entered its status (an empty bed's "Free · cleaned 10:12"). */
   since: IpdInstantSchema.nullable(),

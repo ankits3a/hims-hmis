@@ -445,7 +445,7 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
     // Its behaviour (one assessment-overdue alert, the 10-minute supervisor step) is asserted in `modules/ipd/acceptance/`.
     jest.spyOn(ipdNursingMod, "sweepIpdNursing").mockImplementation(async () => {
       invoked.push("sweepIpdNursing");
-      return { assessmentOverdue: 0, ewsUnacked: 0 };
+      return { assessmentOverdue: 0, ewsUnacked: 0, ewsRetried: 0, failed: 0 };
     }),
     // IPD CHARGES E2.1 (#725) — the thirty-second, stubbed on `modules/ipd/charges` (the file the index re-exports FROM).
     // Its behaviour (idempotent, catches up a missed night) is asserted in `modules/ipd/acceptance/charges.acceptance.test.ts` (iv).

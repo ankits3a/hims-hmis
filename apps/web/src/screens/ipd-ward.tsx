@@ -53,8 +53,8 @@ export function IpdWard(): React.ReactElement {
   const beds = useMemo(() => station?.beds ?? [], [station]);
   const sortNeeds = needsMe ?? beds.length > NEEDS_ME_DEFAULT_ABOVE;
   const shown = useMemo(() => (sortNeeds
-    ? [...beds].sort((a, b) => b.needs - a.needs || a.code.localeCompare(b.code, undefined, { numeric: true }))
-    : [...beds].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))), [beds, sortNeeds]);
+    ? [...beds].sort((a, b) => b.needs - a.needs || (a.code ?? "").localeCompare(b.code ?? "", undefined, { numeric: true }))
+    : [...beds].sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "", undefined, { numeric: true }))), [beds, sortNeeds]);
   const open = search.admission ? beds.find((b) => b.patient?.admissionId === search.admission) ?? null : null;
 
   return (
@@ -130,8 +130,8 @@ function BedCard({ b, now, onOpen, onDone }: { b: IpdStationBed; now: number; on
   const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
   if (b.patient === null) {
     return (
-      <article className={`ipdn-bed empty s-${b.status}`} data-testid={`ipdn-bed-${b.code}`}>
-        <div className="ipdn-bedcode mono">{b.code}</div>
+      <article className={`ipdn-bed empty s-${b.status}`} data-testid={`ipdn-bed-${b.code ?? b.bedId}`}>
+        <div className="ipdn-bedcode mono">{b.code ?? "—"}</div>
         <div className="ipdn-emptyline">{emptyWords(b, now, t as T)}</div>
       </article>
     );
@@ -144,10 +144,10 @@ function BedCard({ b, now, onOpen, onDone }: { b: IpdStationBed; now: number; on
     acknowledgeEws(b.alert.alertId).then(() => { setBusy(false); onDone(); }, (e: unknown) => { setBusy(false); setRefusal(refusalOf(e)); });
   };
   return (
-    <article className={`ipdn-bed${b.alert !== null ? " alert" : ""}${overdue ? " overdue" : ""}`} data-testid={`ipdn-bed-${b.code}`}>
-      <button type="button" className="ipdn-bedopen" onClick={() => onOpen(p.admissionId)} aria-label={t("ipdNursing.ward.openChart", { bed: b.code })}>
+    <article className={`ipdn-bed${b.alert !== null ? " alert" : ""}${overdue ? " overdue" : ""}`} data-testid={`ipdn-bed-${b.code ?? b.bedId}`}>
+      <button type="button" className="ipdn-bedopen" onClick={() => onOpen(p.admissionId)} aria-label={t("ipdNursing.ward.openChart", { bed: b.code ?? p.name })}>
         <div className="ipdn-bedrow">
-          <span className="ipdn-bedcode mono">{b.code}</span>
+          <span className="ipdn-bedcode mono">{b.code ?? "—"}</span>
           {b.dayOfStay !== null ? <span className="dim">{t("ipdNursing.bed.day", { n: b.dayOfStay })}</span> : null}
         </div>
         <div className="ipdn-who"><b>{p.name}</b> <span className="dim">{p.ageSex}</span></div>
@@ -168,6 +168,8 @@ function BedCard({ b, now, onOpen, onDone }: { b: IpdStationBed; now: number; on
       {b.alert !== null ? (
         <div className="ipdn-alertrow" role="status">
           <span>⚠ {t("ipdNursing.alert", { band: t(`ipdNursing.band.${b.alert.band}`) })} · {fmtIst(b.alert.raisedAt)}</span>
+          {!b.alert.doctorReached ? <b className="ipdn-nodoc" data-testid="ipdn-nodoc">☎ {t("ipdNursing.noDoctorReached")}</b> : null}
+          {b.alert.acknowledgedAt === null && b.alert.seenAt !== null ? <span className="dim">{t("ipdNursing.seenNoDoctor")}</span> : null}
           {b.alert.acknowledgedAt !== null ? <span className="dim">✓ {t("ipdNursing.acked")}</span>
             : can("ipd.ews.respond") ? <button type="button" className="ipdn-btn sm pri" disabled={busy} onClick={ack} data-testid="ipdn-ack">{t("ipdNursing.ack")}</button> : null}
         </div>
@@ -212,7 +214,7 @@ function ChartDrawer({ bed, onClose, onChanged }: { bed: IpdStationBed; onClose:
           {tab === "vitals" ? (
             <>
               {entering ? (
-                <VitalsForm admissionId={p.admissionId} kind={chart.scoreKind} ageYears={ageFromAgeSex(p.ageSex)}
+                <VitalsForm admissionId={p.admissionId} kind={chart.scoreKind} ageYears={ageFromAgeSex(p.ageSex)} label={p.name}
                   onCancel={() => setEntering(false)} onDone={(d) => { setEntering(false); changed(savedWords(d, t as T)); }} />
               ) : can("ipd.vitals.record") ? (
                 <button type="button" className="ipdn-btn pri" onClick={() => setEntering(true)} data-testid="ipdn-add-vitals">{t("ipdNursing.chart.addVitals")}</button>
