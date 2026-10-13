@@ -20,6 +20,8 @@ export * from "./payer";
 export * from "./transfers";
 // E3.2 (#730) — discharge: the tracker, the summary, the final bill, the mortuary register.
 export * from "./discharge";
+// E2.3 (#727) — the deposit ladder and the bill desk.
+export * from "./bill-desk";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see

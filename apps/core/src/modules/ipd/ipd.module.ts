@@ -3,8 +3,10 @@ import { RealtimeGateway } from "../../kernel/realtime/gateway";
 import { RealtimeModule } from "../../kernel/realtime/realtime.module";
 import { IpdAdmissionsController } from "./admissions.controller";
 import { IpdBedsController } from "./beds.controller";
+import { IpdBillDeskController } from "./billdesk.controller";
 import { IpdChargesController } from "./charges.controller";
 import { registerIpdReceiptGuard } from "./deposit";
+import { registerIpdAdvanceRefundListener } from "./deposit-ladder";
 import { IpdPayerController } from "./payer.controller";
 import { IpdTransfersController } from "./transfers.controller";
 import { IpdDischargeController } from "./discharge.controller";
@@ -23,12 +25,14 @@ class IpdRealtimeRegistrar implements OnModuleInit {
     this.gateway.registerRouter(ipdTopicRouter);
     // E1.2 review RED 3 — a ₹0 scheme inpatient is refused money on EVERY receipt route (billing's seam).
     registerIpdReceiptGuard();
+    // E2.3 (#727, review 7) — an advance refund re-checks the deposit ladder of the patient's open admission.
+    registerIpdAdvanceRefundListener();
   }
 }
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdDischargeController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdDischargeController, IpdBillDeskController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}

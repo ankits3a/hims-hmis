@@ -103,6 +103,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   routes; `packages/contracts/src/ipd/intents-discharge.ts` — `billing` department, tender `ref`, `witnessName`, death `cause`, `mortuaryEntryId`.
   `apps/web/src/screens/ipd-discharge.tsx` (`/ipd/discharge`, `?admission=`), `apps/web/src/lib/ipd-discharge-api.ts`.
 
+- (E2.3) `deposit-ladder.ts` — `IPD_DEPOSIT_LADDER` (7,500 / 9,000 bp), `IPD_DEPOSIT_RECIPIENT_ROLES`, `IPD_CLINICAL_ROLES`,
+  `depositPosition` (split + deposit held + used bp + balances), `evaluateDepositLadder(db, admissionId, now)`,
+  `evaluateAllDepositLadders`, `icuBurnOf`. `daily-totals.ts` — `queueDailyTotals`, `queueAllDailyTotals`, `messageNameOf`,
+  `dayOfStay`. `bill-desk.ts` — `readBillDesk`, `retryFromBillDesk`, `runIpdBillDeskNightly` (rides the nightly charges job),
+  `depositLowCard` (the desk's `ipd.deposit_low` Now card, declared in `manifest.ts`). `billdesk.controller.ts` —
+  `IPD_BILLDESK_ROUTES` (`GET /ipd/bill-desk`, `POST /ipd/admissions/:id/charges/retry`). `billdesk-events.ts`.
+  `kernel/db/schema/ipd.ts` — `ipd_deposit_alerts` (migration `ipd_billdesk`). `packages/contracts/src/ipd/bill-desk.ts`.
+  `kernel/notify/templates.ts` — template `ipd.daily_totals` (held: `heldReason`), `kernel/notify/pump.ts` suppresses a held
+  template `template_pending`. Web: `apps/web/src/screens/ipd-bill-desk.tsx` (`/ipd/bill-desk`, nav "Bill desk").
+
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
   validated here, and only the keys the schemas name are written. Other keys on a row are kept.
@@ -395,6 +405,43 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   vii; the fit event's id is `declarationId`, never `dischargeId` — "charge" is a money word to the scanner). The tracker's
   `bill` is filled only for `ipd.bill.view` / `ipd.discharge.bill` holders.
 
+### Deposit ladder, daily totals, bill desk (E2.3, #727)
+- USED = the payer split's patient-payable total ÷ the deposit held (`depositHeldPaise`: receipts − advance refunds). A
+  payable bill with NOTHING held counts as over 100 % (stored 1,000,000 bp) and fires both levels (DECIDED $) — but only
+  where a deposit is OWED (`depositOwed`, review 4): scheme ₹0, a waiver or any exemption, or no deposit required (an
+  emergency before stabilisation) → the ladder does not run. A cash downtime back-fill owes one (the paper deposit).
+- ONCE WHILE ARMED: one live `ipd_deposit_alerts` row per (admission, level) — a partial unique index. HYSTERESIS (review
+  6): a level re-arms (`rearmed_at`) only when usage falls below 70 % (top-up) / 85 % (escalation); the next crossing fires
+  a NEW row and new notices. The notices are raised IN THE ALERT ROW'S TRANSACTION (`raiseNoticeIn`, review 5), keyed
+  `ipd.deposit_alert:<row id>` per person — both commit or neither.
+- WHEN: after the nightly posting (`runIpdBillDeskNightly`, inside the `postNightlyIpdCharges` job — no job of its own;
+  the ladder and the daily totals each in their own try, each admission in its own, failures logged — review 1), and after
+  every committed act that moves the numbers: a deposit, a bill-desk Retry, a charge reversal, an advance refund (billing's
+  `registerAdvanceRefundListener`, registered by `IpdModule`). Those run `evaluateDepositLadderSafely`: a ladder failure is
+  logged and the act still succeeds (review 8). Only admissions in a bed.
+- WHO (DECIDED $, decision 0058 review 3): 75 % → cashier, front-office supervisor, billing manager; 90 % → the same
+  plus duty manager and owner (never the MS). A holder of any clinical role (`IPD_CLINICAL_ROLES`, MS included) is dropped
+  even if they also hold a desk role; `test/ipd-clinical-roles.test.ts` derives the clinical roles from `seed:roles`' titles.
+- CARE NEVER STOPS FOR MONEY: only `deposit-ladder.ts` and `bill-desk.ts` read `ipd_deposit_alerts`; acceptance (v) pins the
+  file list and that a round and the next night still post over 90 %.
+- ICU BURN: open stay billed ICU/HDU/NICU/PICU → average patient-payable of the last three POSTED service days; days left =
+  (held − payable) ÷ per day, floored. Recomputed by construction when the nightly run posts. ≤ 1 day left is a desk exception.
+- DAILY TOTALS: once per admission per IST day (dedupe `ipd.daily_totals:<admission>:<date>`), the bill through yesterday:
+  DEDUPE (review 9): one `ipd_daily_totals` row per (admission, IST date), unique, decided under the admission's advisory
+  lock. First name (alias when confidential), day of stay, bill total (rounded), deposit held, balance ("amount due" when
+  negative). NO line, diagnosis, ward, bed or doctor. Attendant (DECIDED): active guardian with a phone and bill authority,
+  else the latest deposit payer recorded as a relative with a phone; travels as a reference (`attendant`, `attendantRef`),
+  never a number. None → `ipd.daily_totals.skipped` `no_attendant_phone`; sealed (`sensitive_context`) → `sealed`, no row.
+  HELD: no approved WhatsApp template, no DLT id, and the pump addresses a patient row to the patient's phone — the pump
+  records every row `suppressed` / `template_pending`. G10 therefore measures nothing until the template is released.
+  DECIDED (review 10): keep held — RELEASE NEEDS AN ATTENDANT-RECIPIENT SEAM in kernel/notify (issue #761).
+- BILL DESK: candidates from the facts (live ladder rows, open charge exceptions, unchecked downtime deposits, denial
+  entries, the latest authorisation `requested` > 24 h, ICU-class stays, `fit_declared`/`discharging`); only those are
+  computed. "Expected discharge today" = `fit_declared` or `discharging` with the patient owing (DECIDED, no date field yet).
+  `ipd.billdesk.view` (cashier, billing manager, front-office supervisor, duty manager, owner); Retry needs
+  `ipd.charges.reverse`. Deposit reasons are the LIVE ladder rows only (a re-armed level leaves the desk, review 7). A sealed
+  patient (`sensitive_context`) shows by alias or "Sealed patient" — no name, UHID or bed (review 2).
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -463,6 +510,14 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.2) Print isolation: other screens hide `body *` with `!important` in print (all CSS is global), so the discharge
   prints answer with `!important` and a named page (`@page ipdd-a4`).
 
+- (E2.3) `.ipdb` is ALSO the Beds board's root class (`ipd-beds.css`: `height: 100vh; overflow: hidden`), and vite loads
+  every screen's CSS globally: the bill desk overrides it with `.ipdb.ipdbd`. The interim bill (`apps/web/src/screens/ipd-bill.tsx`) still
+  inherits the collision (owed).
+- (E2.3) Releasing the daily totals (issue #761): approve the WhatsApp template / DLT id, give the pump a recipient seam that
+  resolves `attendantRef` at send time, then remove `heldReason` from `ipd.daily_totals`. Until then nothing is sent.
+- (E2.3) Migration 0209 was regenerated in place (unmerged) to add `ipd_daily_totals`: a lane test DB that applied the old
+  0209 dies `relation already exists` — drop `hmis_lane_<lane>_test_1/_2`.
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -481,3 +536,5 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   deceased`; the goal queries read `ipd.discharge.fit_declared` and `ipd.gate_pass.scanned` (G4); `prepareFinalBill` calls
   `postAdmissionCharges` (with `presumedDischargeAt`); `endStay` calls `endHoldIn` / `releaseBedOccupant`; billing's
   `issueInvoice`, `previewInvoice`, `requestRefund`, `receiptUnallocatedPaise` are called inside the settle transaction.
+- (E2.3) `kernel/worker/jobs.ts` (`postNightlyIpdCharges` job → `runIpdBillDeskNightly`); `takeDeposit` → `evaluateDepositLadder`;
+  `kernel/desk` collects the `ipd.billdesk` provider from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.

@@ -32,6 +32,7 @@ import { IpdAdmit } from "./screens/ipd-admit";
 import { IpdBill } from "./screens/ipd-bill";
 import { IpdHandovers } from "./screens/ipd-handovers";
 import { IpdDischarge } from "./screens/ipd-discharge";
+import { IpdBillDesk } from "./screens/ipd-bill-desk";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -353,6 +354,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/ipd/handovers", label: "nav.ipdHandovers", permission: "ipd.transfer.accept", group: "wards" },
   // E3.2 (#730) — the discharge desk; path and permission match `ipdManifest.menu`.
   { to: "/ipd/discharge", label: "nav.ipdDischarge", permission: "ipd.discharge.view", group: "wards" },
+  // E2.3 (#727) — the bill desk (exceptions only); path and permission match `ipdManifest.menu`.
+  { to: "/ipd/bill-desk", label: "nav.ipdBillDesk", permission: "ipd.billdesk.view", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -807,6 +810,16 @@ const ipdDischargeRoute = createRoute({
     admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
   }),
   component: IpdDischarge,
+});
+
+/**
+ * E2.3 (#727) — the bill desk (spec §4.3 deposit ladder, §4.9 H): exceptions only, each row opens the interim bill.
+ * Served under `ipd.billdesk.view` (billing, front-office supervisor, duty manager, owner; never a doctor, decision 0058).
+ */
+const ipdBillDeskRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/bill-desk",
+  component: IpdBillDesk,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1907,7 +1920,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdHandoversRoute, ipdDischargeRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdHandoversRoute, ipdDischargeRoute, ipdBillDeskRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
-- **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
 
@@ -105,6 +105,12 @@ Source: `apps/core/src/modules/ipd/`
   - `retireBed(db: Db, actor: Actor, input: { bedId: string; reason: string }, opts: Opts = {}): Promise<{ bedId: string }>`
   - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
   - types: `BedPlacementInput`, `IncumbentBedLine`, `IncumbentBedReport`, `PlacementContext`
+- `bill-desk.ts`
+  - `SEALED_LABEL`
+  - `depositLowCard(db: Db): Promise<DeskCard[]>`
+  - `readBillDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdBillDesk>`
+  - `retryFromBillDesk(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<AdmissionPostResult>`
+  - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; ladderFailed: string[]; dailyTotals: DailyTotalsResult | null …`
 - `charge-days.ts`
   - `DISCHARGE_FREE_UNTIL_MS`
   - `TRANSIT_UNDER_MS`
@@ -127,6 +133,26 @@ Source: `apps/core/src/modules/ipd/`
   - `classChangesOf(db: Db | Tx, admissionId: string): Promise<StayClassChange[]>`
   - `nextNoonIst(at: Date): Date`
   - types: `StayClassChange`
+- `daily-totals.ts`
+  - `dayOfStay(admittedAt: Date, billDate: string): number`
+  - `messageNameOf(p: { name: string; alias: string | null; isConfidential: boolean }): string`
+  - `queueAllDailyTotals(db: Db, now: Date): Promise<DailyTotalsResult>`
+  - `queueDailyTotals(db: Db, admissionId: string, billDate: string, now: Date): Promise<"queued" | "already" | "no_attendant_phone" | "sealed" …`
+  - types: `DailyTotalsResult`
+- `deposit-ladder.ts`
+  - `IPD_CLINICAL_ROLES: readonly string[]`
+  - `IPD_DEPOSIT_LADDER`
+  - `IPD_DEPOSIT_RECIPIENT_ROLES: Record<DepositLevel, readonly string[]>`
+  - `depositNoticeRecipients(tx: Tx, level: DepositLevel): Promise<string[]>`
+  - `depositOwed(a: Pick<AdmissionRow, "payerKind" | "depositExemption" | "depositRequiredPaise" | "depositBasis">): boolean`
+  - `depositPosition(db: Db | Tx, a: AdmissionRow): Promise<DepositPosition>`
+  - `evaluateAllDepositLadders(db: Db, now: Date): Promise<{ outcomes: LadderOutcome[]; failed: string[] }>`
+  - `evaluateDepositLadder(db: Db, admissionId: string, now: Date): Promise<LadderOutcome>`
+  - `evaluateDepositLadderSafely(db: Db, admissionId: string, now: Date, after: string): Promise<LadderOutcome | null>`
+  - `icuBurnOf(db: Db | Tx, a: AdmissionRow, pos: DepositPosition): Promise<IpdIcuBurn | null>`
+  - `registerIpdAdvanceRefundListener(): () => void`
+  - `usedBpOf(patientPayablePaise: number, depositHeld: number): number | null`
+  - types: `DepositLevel`, `DepositPosition`, `LadderOutcome`
 - `deposit.ts`
   - `IPD_DEPOSIT_COMPONENTS`
   - `IPD_DEPOSIT_POLICY`
@@ -141,7 +167,7 @@ Source: `apps/core/src/modules/ipd/`
   - `askDuesApproval(db: Db, actor: Actor, body: { admissionId: string; amountPaise: number; note: string }): Promise<{ approvalId: string }>`
   - `assertPayerAccounted(payerPaise: number, payerKind: string | null): void`
   - `composeFinalBill(db: Db | Tx, a: AdmissionRow): Promise<ComposedFinalBill>`
-  - `listBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<IpdBillDesk>`
+  - `listBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<IpdDischargeBillDesk>`
   - `prepareFinalBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
   - `priceFinalBill(db: Db | Tx, a: AdmissionRow, c: ComposedFinalBill, at: Date): Promise<PricedFinalBill>`
   - `readFinalBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
@@ -204,6 +230,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_BEDS_MANAGE`
   - `IPD_BEDS_OVERFLOW`
   - `IPD_BEDS_VIEW`
+  - `IPD_BILLDESK_VIEW`
   - `IPD_BILL_VIEW`
   - `IPD_CHARGES_REVERSE`
   - `IPD_DISCHARGE_BILL`
@@ -253,14 +280,15 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
+`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (66)
+## HTTP routes (68)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
+- `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
 - `discharge.controller.ts` — 23: `/ipd/discharge`, `/ipd/mortuary`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`

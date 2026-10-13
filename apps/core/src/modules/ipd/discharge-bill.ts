@@ -16,7 +16,7 @@ import { IpdError, IpdRefusal } from "./errors";
 import { depositHeldPaise } from "./interim-bill";
 import { IPD_BILL_VIEW, IPD_DISCHARGE_BILL } from "./manifest";
 import { computePayerSplit } from "./payer-bill";
-import type { Actor, IpdBillDesk, IpdFinalBill, IpdIntentName, IpdPayerSplit } from "@hmis/contracts";
+import type { Actor, IpdDischargeBillDesk, IpdFinalBill, IpdIntentName, IpdPayerSplit } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { InvoiceLineInput } from "../tariff";
@@ -267,18 +267,18 @@ export async function recordDuesApproval(
 }
 
 /** The bill desk: settled bills with an open question (see `deskExceptions`), newest first. */
-export async function listBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<IpdBillDesk> {
+export async function listBillDesk(db: Db, actor: Actor, opts: Opts = {}): Promise<IpdDischargeBillDesk> {
   await requireIpdPermission(db, actor, IPD_DISCHARGE_BILL);
   const at = opts.now ?? new Date();
   const rows = await db.select({ bill: ipdFinalBills, adm: ipdAdmissions }).from(ipdFinalBills)
     .innerJoin(ipdAdmissions, eq(ipdAdmissions.id, ipdFinalBills.admissionId))
     .orderBy(desc(ipdFinalBills.settledAt)).limit(300);
-  const out: IpdBillDesk["rows"] = [];
+  const out: IpdDischargeBillDesk["rows"] = [];
   for (const { bill, adm } of rows) {
     const exceptions = await deskExceptions(db, adm, bill, at);
     if (exceptions.length === 0) continue;
     out.push({
-      admissionId: adm.id, admissionNo: adm.admissionNo, state: adm.state as IpdBillDesk["rows"][number]["state"], billNo: bill.invoiceNo,
+      admissionId: adm.id, admissionNo: adm.admissionNo, state: adm.state as IpdDischargeBillDesk["rows"][number]["state"], billNo: bill.invoiceNo,
       duesPaise: bill.duesPaise, refundPaise: bill.refundPaise, settledAt: bill.settledAt.toISOString(), exceptions,
     });
   }

@@ -69,6 +69,7 @@
     "ipdAdmit": "Admit",
     "ipdHandovers": "Handovers",
     "ipdDischarge": "Discharge",
+    "ipdBillDesk": "Bill desk",
     "counterDesk": "Desk One",
     "group": {
       "desk": "Desk",
@@ -3713,6 +3714,12 @@
       "awaitingBody": "The cash you counted did not match what the till expected, so the close was filed for approval instead of finishing. You cannot approve your own variance and you cannot open a new drawer while this one is live — a supervisor grants it, then you confirm the close.",
       "seeCount": "See the count",
       "seeApproval": "Find the approval"
+    },
+    "ipdDepositLow": {
+      "title": "Deposit running low",
+      "over75": "75 % used",
+      "over90": "90 % used",
+      "exceptions": "Posting exceptions"
     },
     "schemes": {
       "title": "Schemes in play",
@@ -16004,6 +16011,55 @@
       "save": "Enter admission"
     },
     "capWarning": "Room-rent cap"
+  },
+  "ipdBillDesk": {
+    "title": "Bill desk",
+    "subtitle": "Exceptions only",
+    "asOf": "as of {{at}}",
+    "loading": "Loading the bill desk…",
+    "loadFailed": "Could not load the bill desk — try again",
+    "forbidden": "The bill desk is for billing staff",
+    "refresh": "Refresh",
+    "countsLabel": "Exceptions by kind",
+    "listLabel": "Admissions that need the desk",
+    "all": "All",
+    "empty": "Nothing needs the desk. Normal running bills are not listed.",
+    "reason": {
+      "deposit_90": "Deposit 90 % used",
+      "deposit_75": "Deposit 75 % used",
+      "icu_low_days": "ICU: a day of deposit left",
+      "posting_failed": "Posting failed",
+      "rate_missing": "Rate missing",
+      "tariff_missing": "Tariff missing",
+      "deposit_check_pending": "Downtime deposit to check",
+      "cash_consent_missing": "Cash consent missing",
+      "auth_pending_24h": "Authorisation waiting > 24 h",
+      "discharge_balance": "Discharge with balance"
+    },
+    "col": {
+      "patient": "Patient",
+      "bed": "Bed · payer",
+      "why": "Why",
+      "used": "Deposit used",
+      "payable": "Patient payable",
+      "deposit": "Deposit held",
+      "balance": "Balance",
+      "icu": "ICU burn",
+      "since": "Since",
+      "actions": "Actions"
+    },
+    "usedPct": "{{pct}} %",
+    "noDeposit": "No deposit",
+    "due": "Due {{amount}}",
+    "perDay": "{{amount}}/day",
+    "daysLeft_one": "{{count}} day left",
+    "daysLeft_other": "{{count}} days left",
+    "openBill": "Open bill",
+    "retry": "Retry",
+    "retried_one": "Retried — {{count}} line posted",
+    "retried_other": "Retried — {{count}} lines posted",
+    "retryFailed": "Retry failed — try again",
+    "careNote": "Care never stops for money: the deposit ladder only tells the desk and management."
   },
   "ipdBill": {
     "postingFailed": "Nightly posting failed ({{count}} tries) — the bill desk retries it",

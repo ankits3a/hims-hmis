@@ -1,3 +1,4 @@
+import { depositLowCard } from "./bill-desk";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
 /**
@@ -46,6 +47,12 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
  *   ipd.discharge.exit     record LAMA / DAMA and absconding — the doctor and the duty manager
  *   ipd.mortuary.manage    receive and release a body in the mortuary register — the duty manager
  *
+ * E2.3 (#727) adds one. NO DOCTOR ROLE HOLDS IT (decision 0058):
+ *
+ *   ipd.billdesk.view   the bill desk (exceptions only: deposit ladder, posting exceptions, unchecked downtime deposits,
+ *                       cash consent, waiting authorisations, discharges with a balance) and its `deposit_low` Now card —
+ *                       cashier, billing manager, front-office supervisor, duty manager, owner
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). No subscriptions: the 2-hour reservation
  * lapse is a scheduler job (`kernel/worker/jobs.ts` `lapseBedReservations`), so the worker does not install this
  * manifest.
@@ -71,6 +78,7 @@ export const IPD_GATE_PASS = "ipd.gate.pass";
 export const IPD_GATE_SCAN = "ipd.gate.scan";
 export const IPD_DISCHARGE_EXIT = "ipd.discharge.exit";
 export const IPD_MORTUARY_MANAGE = "ipd.mortuary.manage";
+export const IPD_BILLDESK_VIEW = "ipd.billdesk.view";
 
 export const ipdManifest: ModuleManifest = {
   key: "ipd",
@@ -82,6 +90,8 @@ export const ipdManifest: ModuleManifest = {
     { label: "Handovers", path: "/ipd/handovers", permission: IPD_TRANSFER_ACCEPT },
     // E3.2 (#730) — the discharge desk: every admission in the cascade, its steps, clocks and blockers.
     { label: "Discharge", path: "/ipd/discharge", permission: IPD_DISCHARGE_VIEW },
+    // E2.3 (#727) — the bill desk.
+    { label: "Bill desk", path: "/ipd/bill-desk", permission: IPD_BILLDESK_VIEW },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
@@ -91,6 +101,11 @@ export const ipdManifest: ModuleManifest = {
     // E3.2 (#730)
     IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN,
     IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE,
+    // E2.3 (#727)
+    IPD_BILLDESK_VIEW,
   ],
   subscriptions: [],
+  // E2.3 (#727) — the bill desk's `deposit_low` Now card.
+  // Declared here (not in bill-desk.ts) because that file imports this one: the card is called lazily.
+  desk: [{ key: "ipd.billdesk", permission: IPD_BILLDESK_VIEW, load: async (ctx) => depositLowCard(ctx.db) }],
 };

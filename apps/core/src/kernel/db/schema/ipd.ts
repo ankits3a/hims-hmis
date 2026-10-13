@@ -809,3 +809,54 @@ export const ipdMortuaryRegister = pgTable(
     check("ipd_mortuary_register_mlc_ck", sql`${t.status} <> 'released' or not ${t.mlc} or ${t.policeClearance}`),
   ],
 );
+
+// ═══════════════════════════════════ E2.3 (#727) — the deposit ladder ═══════════════════════════════════
+
+/**
+ * One firing of a deposit-ladder threshold on an admission (spec SPEC-ipd-core §2 answer 3, §4.3; decision 0072): the
+ * patient-payable running total reached `threshold_bp` of the deposit held (`top_up` 75 %, `escalate` 90 %). A level
+ * fires ONCE while armed — the partial unique index admits one live row per (admission, level). A later evaluation that
+ * finds usage back under the threshold (a top-up, a reversal) sets `rearmed_at`, and the next crossing fires a new row.
+ * The figures are those at the firing; the row is the bill desk's and the desk card's source, never a block on care.
+ */
+export const ipdDepositAlerts = pgTable(
+  "ipd_deposit_alerts",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    level: text("level").notNull(),
+    thresholdBp: integer("threshold_bp").notNull(),
+    usedBp: integer("used_bp").notNull(),
+    patientPayablePaise: bigint("patient_payable_paise", { mode: "number" }).notNull(),
+    depositHeldPaise: bigint("deposit_held_paise", { mode: "number" }).notNull(),
+    firedAt: timestamp("fired_at", { withTimezone: true }).notNull(),
+    rearmedAt: timestamp("rearmed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("ipd_deposit_alerts_live_ux").on(t.admissionId, t.level).where(sql`${t.rearmedAt} is null`),
+    index("ipd_deposit_alerts_admission_idx").on(t.admissionId, t.firedAt),
+    check("ipd_deposit_alerts_level_ck", sql`${t.level} in ('top_up', 'escalate')`),
+    check("ipd_deposit_alerts_money_ck", sql`${t.patientPayablePaise} >= 0 and ${t.depositHeldPaise} >= 0 and ${t.usedBp} >= 0`),
+  ],
+);
+
+/**
+ * E2.3 (#727, review 9) — the daily totals to the attendant, ONE row per admission and IST day: what was done (queued, or
+ * skipped and why) and the outbox row it queued. The unique key is the dedupe, taken under the admission's advisory lock,
+ * so a rerun or two workers queue and record nothing twice.
+ */
+export const ipdDailyTotals = pgTable(
+  "ipd_daily_totals",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    billDate: date("bill_date", { mode: "string" }).notNull(),
+    outcome: text("outcome").notNull(),
+    notificationId: text("notification_id"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_daily_totals_day_ux").on(t.admissionId, t.billDate),
+    check("ipd_daily_totals_outcome_ck", sql`${t.outcome} in ('queued', 'no_attendant_phone', 'sealed')`),
+  ],
+);
