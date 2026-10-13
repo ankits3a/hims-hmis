@@ -34,3 +34,6 @@ export { TariffError, tariffHttpStatus } from "./errors";
 export type { TariffErrorCode } from "./errors";
 export * from "./types";
 export * from "./events";
+// GO-LIVE SCREENS — bulk switch-on (refuses unpriced) and the office view of versions.
+export { SWITCH_ON_MAX, listVersionsForOffice, switchOnServices } from "./switch-on";
+export type { OfficeVersion, SwitchOnResult } from "./switch-on";

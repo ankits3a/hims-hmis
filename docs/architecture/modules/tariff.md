@@ -36,6 +36,7 @@ Source: `apps/core/src/modules/tariff/`
   - `configValidated`
   - `tariffRevisionApplied`
   - `tariffRevisionAppliedDirectly`
+  - `tariffServiceSwitchedOn`
 - `gst-config.ts`
   - `getGstSettings(db: Db): Promise<GstSettings>`
   - `listGstCategories(db: Db): Promise<GstCategoryConfig[]>`
@@ -85,6 +86,11 @@ Source: `apps/core/src/modules/tariff/`
 - `simulation.ts`
   - `simulateRevision(currentCtx: PricingContext, draftCtx: PricingContext, lines: InvoiceLineInput[]): ImpactReport`
   - types: `ImpactByService`, `ImpactLineDelta`, `ImpactReport`, `ImpactTotals`
+- `switch-on.ts`
+  - `SWITCH_ON_MAX`
+  - `listVersionsForOffice(db: Db): Promise<OfficeVersion[]>`
+  - `switchOnServices(db: Db, actor: Actor, serviceIds: readonly string[], at: Date = new Date()): Promise<SwitchOnResult>`
+  - types: `OfficeVersion`, `SwitchOnResult`
 - `tariff.module.ts`
   - `class TariffModule`
 - `types.ts`
@@ -108,8 +114,8 @@ Source: `apps/core/src/modules/tariff/`
 
 Foreign keys into: —
 
-## HTTP routes (19)
+## HTTP routes (20)
 
-- `tariff.controller.ts` — 19: `/tariff/gst`, `/tariff/ipd-rate-card`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
+- `tariff.controller.ts` — 20: `/tariff/gst`, `/tariff/ipd-rate-card`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/tariff`
