@@ -3,7 +3,7 @@ type: module-notes
 title: "ipd — module notes"
 description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing, transfer, discharge]
+tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -127,6 +127,17 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ipd_family_otps`, `ipd_family_sessions`, `ipd_family_callbacks` (migration `ipd_family`). `packages/contracts/src/ipd/family.ts`.
   Web: `apps/web/src/screens/ipd-family.tsx` (`/family#<token>`, public, sibling of `/login`), `apps/web/src/screens/ipd-family-panel.tsx` (the
   Family card on the discharge desk), `apps/web/src/screens/ipd-family-callbacks.tsx` (`/ipd/family-callbacks`, nav "Family calls").
+
+- (E5.1 #738, E5.2 #739) `bed-flow.ts` — `readBedFlow(db, reader, at)`: BED FLOW T0, every `requested` admission (oldest
+  first) with its proposal or null; remembers what it shows and withdraws what went stale. `bed-flow-log.ts` —
+  `settleBedProposalIn` (called by `reserveBed` and `assignBedIn`, so admit / emergency / back-fill / assign_bed all log the
+  outcome) and `withdrawBedProposalIn` (called by `cancelAdmission` and the read). `now-cards.ts` — the Now cards
+  `bedProposalCard`, `dischargeBlockedCard` (`stuckStepOf`, pure), `cleaningOverdueCard`, the shared `nowIdentities`,
+  `nowSubtitle`, `rankNowRows`, `SEALED_LABEL`. `bill-desk.ts` `depositLowCard(ctx)` (money). `goals/bed-flow-queries.ts` —
+  `IPD_BED_FLOW_QUERIES` BF1 (accepted %) and BF2 (overridden %), per IST week. `beds.ts` `roomGendersFor` (the twin-room
+  rule for many beds, one holder rule with `roomGender`). `kernel/db/schema/ipd.ts` — `ipd_bed_proposals` (migration
+  `ipd_bed_flow`). Contracts: `IpdBedFlowProposal`, `IpdWaitingCard.flow` / `.uhid`, board `totals.predictedDischargesTomorrow`.
+  Web: the Beds board's waiting cards (`apps/web/src/screens/ipd-beds.tsx`): proposal, reasons, Confirm.
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -489,6 +500,45 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   follows the patient row as it is now (#764): sealed → no name, bed or ward ("Sealed patient"); confidential → alias rule, no bed
   or ward. Closing is the conditional UPDATE `… returning` under the admission lock: one close, one event.
 
+### Now cards and Bed Flow T0 (E5.1 #738, E5.2 #739)
+- ONE PROVIDER, ONE PERMISSION PER CARD TYPE (`manifest.ts` `desk`, provider key = card key): `ipd.bed_proposal` →
+  `ipd.beds.manage`, `ipd.discharge_blocked` → `ipd.discharge.view`, `ipd.deposit_low` → `ipd.billdesk.view` (MONEY; no
+  doctor or nurse role holds it, decision 0058), `ipd.cleaning_overdue` → `ipd.beds.clean`. DECIDED: existing permissions,
+  no new strings (no seed-roles count change). The family callbacks card (E3.3) is a fifth provider.
+- A card exists only while something is wrong; an empty card is never sent. Rows rank by severity, then the longest wait,
+  then id (`rankNowRows`). Patient rows carry name (alias when restricted), UHID and bed through ONE rule, `nowIdentities`
+  (also the Beds board's waiting cards); sealed → alias or "Sealed patient", no UHID and NO bed text anywhere on the row
+  (review #767). EXCEPTION, DECIDED (review #767): the money card `deposit_low` shows the admission number, never a name —
+  the desk is read over a shoulder. Row words are English, server-side; card titles are i18n keys.
+- DECIDED thresholds: bed proposal hot at ≥ 30 min waiting (the spec budget); a discharge step is stuck after 60 min "now"
+  (hot past the 3-hour target); cleaning overdue after 60 min (`IPD_CLEANING_OVERDUE_MINUTES`), hot after 120.
+- `cleaning_overdue` and Bed Flow's "free since" read each bed's LATEST `resource_status_history` row by one indexed probe
+  per bed (`latestStatusAt`, lateral on `resource_status_history_resource_seq_idx (resource_id, seq)`), never a history scan.
+- BED FLOW asks `checkBedRules` — the same function as every bed act — with the twin room's gender (`roomGendersFor`) and
+  `mayUseOverflow: false`. Never proposed: overflow, cleaning, held, blocked beds. HELD and BLOCKED come from the acts' own
+  predicate (`beds.ts` `holdIsLive`, `LIVE_BLOCK_STATUSES`, `bedHoldsAndBlocks`): a hold past `expiresAt` is NOT held (the act
+  lapses it inline), so its bed is proposed (review #767). Tie-break: requested class, a ward of the
+  admitting department (`ipd_admissions.department` vs ward `department`), the bed free longest (last status move), code.
+  Oldest request first; a bed goes to one request; an open still-valid proposal is kept (it does not jump).
+- CONFIRM = `reserve_bed` (DECIDED, departing from "assign_bed" in the brief): a waiting request is `requested`, and
+  `assign_bed` refuses a real admission that is not `admitted` (`linkPlacement`); placement happens at `admit`. Bed Flow never
+  acts by itself.
+- ONE READ, BATCHED (review #767): one query per fact, places loaded only for the candidates' parents, withdrawals one update
+  per reason, new proposals one insert. Callers compute it ONCE per request (the board off the wall; the card).
+- REASONS are static codes (`IPD_BED_FLOW_REASONS`, worded by the web, en + hi); `freeMinutes` is computed at read time.
+- The proposal log `ipd_bed_proposals`: one open row per admission AND one per bed (two partial uniques; a lost insert
+  shows no proposal this read, never an error); outcome `accepted` / `overridden`
+  (the act's bed vs the proposal's) / `withdrawn` with `bed_taken`, `bed_blocked`, `bed_not_valid`,
+  `bed_given_to_earlier_request`, `admission_cancelled`, `admission_left_waiting`. The READ writes (records and withdraws) —
+  deliberate: there is no job, and the outcome is written by the acts in their own transaction. BF1/BF2 count each
+  admission's FINAL decided proposal once (a re-proposal after a released hold replaces the earlier outcome); placement onto
+  the proposed bed by `reserve_bed` or `admit` is `accepted`, onto any other bed `overridden`.
+- The web words a refused Confirm by its refusal CODE (`ipdBeds.flow.refused.<code>`), never the server's English.
+- Tomorrow's predicted discharges = live `ipd_discharges` with `fit_when = 'tomorrow'` declared since IST midnight (marks only).
+- OWED TO M4 (no source data in this stack; no stub, no fake rows): `due_dose` (eMAR), `overdue_vitals` (nursing
+  observations), `new_order` (ipd-orders), `ews_rising` (EWS scores), `handover_pending` (nurse shift handover; transfer
+  handovers already have `/ipd/handovers`), `assessment_due` (nursing assessments). Each is a new provider + permission.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -579,6 +629,10 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.3) No ward-nurse role is seeded: callbacks go to front office / supervisor / duty manager; `ipd.condition.set` is the
   doctor's until ipd-nursing seeds nursing roles.
 
+- (E5.2) `.ipdb` at ≤ 760 px is now one PAGE-scrolling column (`ipd-beds.css`); the bill desk shares `.ipdb` and inherits it.
+- (E5.2) `readBedFlow` writes on read; the Beds board (not the wall) and the `ipd.bed_proposal` card both call it. Lane test
+  DBs that applied an older 0213 must be dropped if the migration is regenerated.
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -595,8 +649,10 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.1) `transfers.controller.ts` (the Beds drawer's Transfer panel, the `/ipd/handovers` list); the passes lane consumes
   `ipd.transfer.accepted`; `charges.ts` reads `ipd_class_changes` through `classChangesOf`.
 - (E2.3) `kernel/worker/jobs.ts` (`postNightlyIpdCharges` job → `runIpdBillDeskNightly`); `takeDeposit` → `evaluateDepositLadder`;
-  `kernel/desk` collects the `ipd.billdesk` provider from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.
+  `kernel/desk` collects the `ipd.deposit_low` provider (key renamed from `ipd.billdesk` in E5.1) from `ipdManifest.desk`; the notify pump renders `ipd.daily_totals`.
 - (E3.2) `discharge.controller.ts` (the Discharge desk); the passes lane consumes `ipd.admission.discharged|lama|absconded|
   deceased`; the goal queries read `ipd.discharge.fit_declared` and `ipd.gate_pass.scanned` (G4); `prepareFinalBill` calls
   `postAdmissionCharges` (with `presumedDischargeAt`); `endStay` calls `endHoldIn` / `releaseBedOccupant`; billing's
   `issueInvoice`, `previewInvoice`, `requestRefund`, `receiptUnallocatedPaise` are called inside the settle transaction.
+- (E5.1/E5.2) `kernel/desk` collects the five IPD providers from `ipdManifest.desk`; `readBedBoard` calls `readBedFlow`;
+  `reserveBed` / `assignBedIn` call `settleBedProposalIn`; `cancelAdmission` calls `withdrawBedProposalIn`.

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { IpdBedClassSchema } from "../ipd-bed-classes";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdInstantSchema, IpdPaiseSchema, IpdUserRefSchema } from "./common";
 import { IpdRoomRentCapWarningSchema } from "./payer";
+import { IpdBedNeedSchema } from "./intents-admit";
 
 /**
  * E1.2 (#719) — THE ADMISSION DESK'S READ MODELS AND ROUTES (spec §4.2, §4.9 B "Admit — one flowing sheet").
@@ -97,6 +98,36 @@ export const IpdBedProposalSchema = z.object({
 });
 export type IpdBedProposal = z.infer<typeof IpdBedProposalSchema>;
 
+/**
+ * E5.2 (#739) — BED FLOW T0's proposal for one waiting admission (spec §4.8, §4.9 A): the best rule-valid free bed by the
+ * same rule check every bed act asks, chosen by a fixed tie-break (requested class, the admitting department's own ward,
+ * the bed free longest). `reasons` are the short rules it passed and why it won, as CODES (the client words them;
+ * stored as codes in the proposal log); `freeMinutes` is computed at read time. `patientId` and `need` are what the
+ * Confirm button sends to `reserve_bed`, unchanged.
+ */
+export const IPD_BED_FLOW_REASONS = [
+  "class_requested", "gender_male_bay", "gender_female_bay", "gender_any", "gender_paediatric", "room_shared_male",
+  "room_shared_female", "isolation_contact", "isolation_droplet", "isolation_airborne", "icu_bed", "own_department",
+] as const;
+export type IpdBedFlowReason = (typeof IPD_BED_FLOW_REASONS)[number];
+export const IpdBedFlowProposalSchema = z.object({
+  proposalId: IpdIdSchema,
+  admissionId: IpdIdSchema,
+  patientId: IpdIdSchema,
+  need: IpdBedNeedSchema,
+  bedId: IpdIdSchema,
+  bedCode: z.string(),
+  wardName: z.string().nullable(),
+  class: IpdBedClassSchema,
+  reasons: z.array(z.enum(IPD_BED_FLOW_REASONS)),
+  /** The admitting department's code when `own_department` is a reason (the client's "MED ward"). */
+  department: z.string().nullable(),
+  /** Minutes the bed has been free, as of this read; null when unknown. */
+  freeMinutes: z.number().int().nonnegative().nullable(),
+  proposedAt: IpdInstantSchema,
+});
+export type IpdBedFlowProposal = z.infer<typeof IpdBedFlowProposalSchema>;
+
 /** A request waiting for a bed, as the Beds board's left column shows it. Wall mode: initials only. */
 export const IpdWaitingCardSchema = z.object({
   admissionId: IpdIdSchema,
@@ -110,6 +141,10 @@ export const IpdWaitingCardSchema = z.object({
   requestedAt: IpdInstantSchema,
   waitMinutes: z.number().int().nonnegative(),
   reservedBedCode: z.string().nullable(),
+  /** E5.2 (#739): the UHID (empty on the wall display). */
+  uhid: z.string().optional(),
+  /** E5.2 (#739): Bed Flow's proposal for a request with no bed held; null when no free bed passes every rule. Never on the wall. */
+  flow: IpdBedFlowProposalSchema.nullable().optional(),
 });
 export type IpdWaitingCard = z.infer<typeof IpdWaitingCardSchema>;
 

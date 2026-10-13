@@ -14,10 +14,11 @@ const api = vi.hoisted(() => ({
   getBedBoard: vi.fn(),
   markBedClean: vi.fn(),
   assignBed: vi.fn(),
+  reserveBed: vi.fn(),
 }));
 vi.mock("../lib/ipd-beds-api", async (orig) => {
   const real = await orig<typeof import("../lib/ipd-beds-api")>();
-  return { ...real, getBedBoard: api.getBedBoard, markBedClean: api.markBedClean, assignBed: api.assignBed };
+  return { ...real, getBedBoard: api.getBedBoard, markBedClean: api.markBedClean, assignBed: api.assignBed, reserveBed: api.reserveBed };
 });
 
 /** The socket under test: `connected` is what the realtime client says; pongs are what the heartbeat hears. */
@@ -87,6 +88,7 @@ beforeEach(() => {
   api.getBedBoard.mockReset().mockImplementation(async (wall: boolean) => boardOf(wall));
   api.markBedClean.mockReset();
   api.assignBed.mockReset();
+  api.reserveBed.mockReset();
   stubAuth(["ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean"]);
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); setToken(null); });
@@ -131,6 +133,83 @@ describe("Beds capacity board (E1.1)", () => {
     expect(card).toHaveTextContent("42 min");
     expect(card).toHaveTextContent("Held · F05-MED-F-B03");
     expect(screen.queryByTestId("ipd-beds-waiting-empty")).toBeNull();
+  });
+
+  describe("E5.2 — Bed Flow's proposal on a waiting card", () => {
+    const NEED = { requestedClass: "general" as const, isolation: "none" as const, icu: false };
+    const flowBoard = (flow: unknown, wall = false): IpdBedBoard => {
+      const b = boardOf(wall);
+      return {
+        ...b, totals: { ...b.totals, waiting: { count: 1, longestMinutes: 35 } },
+        waiting: [{
+          admissionId: id(80), state: "requested", source: "direct", initials: "M.S.", name: wall ? null : "Meera Singh", requestedClass: "general",
+          isolation: "none", icu: false, requestedAt: "2030-01-01T04:30:00.000Z", waitMinutes: 35, reservedBedCode: null,
+          uhid: wall ? "" : "UH-SYN-0080", ...(wall ? {} : { flow }),
+        }],
+      } as IpdBedBoard;
+    };
+    const proposal = {
+      proposalId: id(81), admissionId: id(80), patientId: id(82), need: NEED, bedId: id(83), bedCode: "F05-MED-F-B03", wardName: "5B Female",
+      class: "general", reasons: ["class_requested", "gender_female_bay", "own_department"], department: "MED", freeMinutes: 125,
+      proposedAt: "2030-01-01T04:35:00.000Z",
+    };
+
+    it("shows the bed, its reasons and the UHID; Confirm calls reserve_bed with the proposal's bed, patient and need", async () => {
+      const user = userEvent.setup();
+      api.getBedBoard.mockResolvedValue(flowBoard(proposal));
+      api.reserveBed.mockResolvedValue({ state: "reserved" });
+      renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+      const card = await screen.findByTestId("ipd-beds-flow");
+      expect(card).toHaveTextContent("Bed Flow");
+      expect(card).toHaveTextContent("F05-MED-F-B03");
+      const why = within(card).getByRole("list", { name: "Why this bed" });
+      // Codes, worded by the client; "free" is the server's read-time minutes.
+      expect(within(why).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Class as requested", "Female bay", "MED ward", "Free 125 min"]);
+      expect(screen.getByTestId("ipd-beds-waiting-card")).toHaveTextContent("UH-SYN-0080");
+      await user.click(screen.getByRole("button", { name: "Confirm F05-MED-F-B03" }));
+      expect(api.reserveBed).toHaveBeenCalledWith({ admissionId: id(80), bedId: id(83), patientId: id(82), need: NEED });
+    });
+
+    it("a refused Confirm words the refusal CODE from the locale (never the server's English) and refetches", async () => {
+      const user = userEvent.setup();
+      api.getBedBoard.mockResolvedValue(flowBoard(proposal));
+      api.reserveBed.mockRejectedValue(new ApiError(409, {
+        statusCode: 409, code: "bed_not_available", message: "SERVER ENGLISH", bedRule: "SERVER ENGLISH", rule: "SERVER ENGLISH.", fix: "Pick another bed",
+      }));
+      renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+      await user.click(await screen.findByRole("button", { name: "Confirm F05-MED-F-B03" }));
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Bed just taken — pick another");
+      expect(alert).not.toHaveTextContent("SERVER ENGLISH");
+      await waitFor(() => expect(api.getBedBoard.mock.calls.length).toBeGreaterThan(1));
+    });
+
+    it("an unknown refusal code falls back to the generic line", async () => {
+      const user = userEvent.setup();
+      api.getBedBoard.mockResolvedValue(flowBoard(proposal));
+      api.reserveBed.mockRejectedValue(new ApiError(409, { statusCode: 409, code: "something_new", message: "SERVER ENGLISH", bedRule: "SERVER ENGLISH", rule: "x", fix: "y" }));
+      renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+      await user.click(await screen.findByRole("button", { name: "Confirm F05-MED-F-B03" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not hold the bed — try again");
+    });
+
+    it("no Confirm without ipd.beds.manage; no proposal says so; the wall shows neither", async () => {
+      stubAuth(["ipd.beds.view"]);
+      api.getBedBoard.mockResolvedValue(flowBoard(proposal));
+      const { unmount } = renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+      await screen.findByTestId("ipd-beds-flow");
+      expect(screen.queryByTestId("ipd-beds-flow-confirm")).toBeNull();
+      unmount();
+      api.getBedBoard.mockResolvedValue(flowBoard(null));
+      const second = renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+      expect(await screen.findByTestId("ipd-beds-flow-none")).toHaveTextContent("No free bed passes every rule");
+      second.unmount();
+      api.getBedBoard.mockImplementation(async (wall: boolean) => flowBoard(proposal, wall));
+      renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds?wall=1");
+      await screen.findByTestId("ipd-beds-waiting-card");
+      expect(screen.queryByTestId("ipd-beds-flow")).toBeNull();
+      expect(screen.queryByTestId("ipd-beds-flow-confirm")).toBeNull();
+    });
   });
 
   it("wall mode asks the server for initials only and shows no name and no act", async () => {
