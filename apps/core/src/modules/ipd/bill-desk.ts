@@ -12,11 +12,13 @@ import {
   IPD_LADDER_STATES, depositPosition, evaluateAllDepositLadders, evaluateDepositLadderSafely, icuBurnOf,
 } from "./deposit-ladder";
 import { IPD_BILLDESK_VIEW, IPD_CHARGES_REVERSE } from "./manifest";
+import { SEALED_LABEL, nowIdentities, nowSubtitle, rankNowRows } from "./now-cards";
 import type {
   Actor, IpdBedClass, IpdBillDesk, IpdBillDeskReason, IpdBillDeskRow, IpdAdmissionState, IpdPayerKind,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
-import type { DeskCard } from "../../kernel/desk/types";
+import type { DeskCard, DeskProviderCtx } from "../../kernel/desk/types";
+import type { NowRow } from "./now-cards";
 import type { AdmissionPostResult } from "./charges";
 import type { DailyTotalsResult } from "./daily-totals";
 import type { LadderOutcome } from "./deposit-ladder";
@@ -34,8 +36,8 @@ import type { LadderOutcome } from "./deposit-ladder";
  */
 const AUTH_WAIT_MS = 24 * 3_600_000;
 const log = new Logger("ipd.bill-desk");
-/** Review 2 — what a sealed (sensitive-context) patient is called on the desk when no alias is recorded. */
-export const SEALED_LABEL = "Sealed patient";
+/** Review 2 — what a sealed (sensitive-context) patient is called on the desk (one definition, `now-cards.ts`). */
+export { SEALED_LABEL };
 const ICU_LOW_DAYS = 1;
 const DISCHARGE_STATES: readonly string[] = ["fit_declared", "discharging"];
 const ICU_STAY_CLASSES = ["icu", "hdu", "nicu", "picu"];
@@ -178,10 +180,11 @@ export async function runIpdBillDeskNightly(
 // ═══════════════════════════════════════ the desk's Now card ═══════════════════════════════════════
 
 /** `deposit_low` for the bill desk's people (`ipd.billdesk.view`, declared in `manifest.ts`); none when no level is live. */
-export async function depositLowCard(db: Db): Promise<DeskCard[]> {
+export async function depositLowCard(ctx: Pick<DeskProviderCtx, "db" | "reader" | "now">): Promise<DeskCard[]> {
+  const { db } = ctx;
   const live = await db.select({
     admissionId: ipdDepositAlerts.admissionId, level: ipdDepositAlerts.level, usedBp: ipdDepositAlerts.usedBp,
-    admissionNo: ipdAdmissions.admissionNo, firedAt: ipdDepositAlerts.firedAt,
+    patientId: ipdAdmissions.patientId, firedAt: ipdDepositAlerts.firedAt,
   }).from(ipdDepositAlerts).innerJoin(ipdAdmissions, eq(ipdAdmissions.id, ipdDepositAlerts.admissionId))
     .where(and(isNull(ipdDepositAlerts.rearmedAt), inArray(ipdAdmissions.state, [...IPD_LADDER_STATES]), isNotNull(ipdAdmissions.admittedAt)))
     .orderBy(desc(ipdDepositAlerts.usedBp), asc(ipdDepositAlerts.firedAt));
@@ -192,6 +195,14 @@ export async function depositLowCard(db: Db): Promise<DeskCard[]> {
   const all = [...top.values()];
   const n90 = all.filter((r) => r.level === "escalate").length;
   const [exc] = await db.select({ n: count() }).from(ipdChargeExceptions).where(isNull(ipdChargeExceptions.resolvedAt));
+  // E5.1 (#738): name (alias when restricted), UHID and bed like every Now card; a sealed patient by alias or label only.
+  const who = await nowIdentities(db, ctx.reader, all.map((r) => ({ id: r.admissionId, patientId: r.patientId })));
+  const rows: NowRow[] = all.map((r) => ({
+    id: r.admissionId, badge: "!", title: who.get(r.admissionId)!.name,
+    subtitle: nowSubtitle(who.get(r.admissionId)!, r.usedBp >= 1_000_000 ? "no deposit held" : `${String(Math.floor(r.usedBp / 100))} % of deposit used`),
+    action: "Open bill", href: `/ipd/admissions/${r.admissionId}/bill`, severity: r.level === "escalate" ? "hot" : "warn",
+    waitMinutes: Math.max(0, Math.floor((ctx.now.getTime() - r.firedAt.getTime()) / 60_000)),
+  }));
   return [{
     key: "ipd.deposit_low", band: "now", titleKey: "desk.ipdDepositLow.title",
     stats: [
@@ -199,11 +210,6 @@ export async function depositLowCard(db: Db): Promise<DeskCard[]> {
       { key: "desk.ipdDepositLow.over90", value: String(n90), href: "/ipd/bill-desk" },
       { key: "desk.ipdDepositLow.exceptions", value: String(exc?.n ?? 0), href: "/ipd/bill-desk" },
     ],
-    // The admission number, never a name: the desk is read over a shoulder.
-    rows: all.slice(0, 5).map((r) => ({
-      id: r.admissionId, badge: "!", title: r.admissionNo ?? "—",
-      subtitle: r.usedBp >= 1_000_000 ? "no deposit held" : `${String(Math.floor(r.usedBp / 100))} % of deposit used`,
-      action: "Open bill", href: `/ipd/admissions/${r.admissionId}/bill`, severity: r.level === "escalate" ? "hot" : "warn",
-    })),
+    rows: rankNowRows(rows).slice(0, 5),
   }];
 }

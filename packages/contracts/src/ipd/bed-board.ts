@@ -105,6 +105,11 @@ export const IpdBedBoardSchema = z.object({
     outsideCensus: z.object({ occupied: n, total: n }),
     /** Beds released since IST midnight. Expected discharges come with ipd-discharge. */
     dischargesToday: n,
+    /**
+     * E5.2 (#739): live fit-for-discharge marks declared today for tomorrow — a count from the marks alone (no model),
+     * for the morning huddle.
+     */
+    predictedDischargesTomorrow: n.optional(),
     /** Open admission requests (requested or reserved) — E1.2 fills it. */
     waiting: z.object({ count: n, longestMinutes: n.nullable() }),
   }),

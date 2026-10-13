@@ -10,6 +10,7 @@ import { advanceOf } from "../billing";
 import { getEncounter } from "../opd";
 import { getPatient } from "../patients";
 import { resolveActiveTariffVersion } from "../tariff";
+import { withdrawBedProposalIn } from "./bed-flow-log";
 import { ADMISSION_WORKFLOW_DEF_KEY, requestedBudgetMinutes } from "./admission-workflow";
 import {
   alreadyOpen, holdsPermission, isIcuClass, isOpenAdmissionRace, lockAdmission, mintAdmissionNo, moveAdmission, needOf,
@@ -183,6 +184,7 @@ export async function cancelAdmission(db: Db, actor: Actor, raw: unknown, opts: 
       const onAccount = paid > 0 ? Math.min(paid, await advanceOf(tx, a.patientId)) : 0;
       if (onAccount > 0) throw new IpdRefusal("deposit_not_refunded", undefined, { depositPaise: paid, onAccountPaise: onAccount });
       const releasedBedId = await endAdmissionHolds(tx, actor, a.id, at);
+      await withdrawBedProposalIn(tx, a.id, "admission_cancelled", at); // E5.2 (#739)
       await moveAdmission(tx, actor, a, "cancelled", at, { cancelReason: input.reason, endedAt: at, endedBy: actor.id }, input.note);
       await appendEvent(tx, admissionCancelled.make({
         payload: { admissionId: a.id, reason: input.reason, releasedBedId, provenance: provenanceOf(actor) },

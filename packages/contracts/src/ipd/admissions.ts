@@ -2,6 +2,7 @@ import { z } from "zod";
 import { IpdBedClassSchema } from "../ipd-bed-classes";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdInstantSchema, IpdPaiseSchema, IpdUserRefSchema } from "./common";
 import { IpdRoomRentCapWarningSchema } from "./payer";
+import { IpdBedNeedSchema } from "./intents-admit";
 
 /**
  * E1.2 (#719) — THE ADMISSION DESK'S READ MODELS AND ROUTES (spec §4.2, §4.9 B "Admit — one flowing sheet").
@@ -97,6 +98,26 @@ export const IpdBedProposalSchema = z.object({
 });
 export type IpdBedProposal = z.infer<typeof IpdBedProposalSchema>;
 
+/**
+ * E5.2 (#739) — BED FLOW T0's proposal for one waiting admission (spec §4.8, §4.9 A): the best rule-valid free bed by the
+ * same rule check every bed act asks, chosen by a fixed tie-break (requested class, the admitting department's own ward,
+ * the bed free longest). `reasons` are the short rules it passed and why it won, in words (English, server-side, like
+ * refusal words). `patientId` and `need` are what the Confirm button sends to `reserve_bed`, unchanged.
+ */
+export const IpdBedFlowProposalSchema = z.object({
+  proposalId: IpdIdSchema,
+  admissionId: IpdIdSchema,
+  patientId: IpdIdSchema,
+  need: IpdBedNeedSchema,
+  bedId: IpdIdSchema,
+  bedCode: z.string(),
+  wardName: z.string().nullable(),
+  class: IpdBedClassSchema,
+  reasons: z.array(z.string()),
+  proposedAt: IpdInstantSchema,
+});
+export type IpdBedFlowProposal = z.infer<typeof IpdBedFlowProposalSchema>;
+
 /** A request waiting for a bed, as the Beds board's left column shows it. Wall mode: initials only. */
 export const IpdWaitingCardSchema = z.object({
   admissionId: IpdIdSchema,
@@ -110,6 +131,10 @@ export const IpdWaitingCardSchema = z.object({
   requestedAt: IpdInstantSchema,
   waitMinutes: z.number().int().nonnegative(),
   reservedBedCode: z.string().nullable(),
+  /** E5.2 (#739): the UHID (empty on the wall display). */
+  uhid: z.string().optional(),
+  /** E5.2 (#739): Bed Flow's proposal for a request with no bed held; null when no free bed passes every rule. Never on the wall. */
+  flow: IpdBedFlowProposalSchema.nullable().optional(),
 });
 export type IpdWaitingCard = z.infer<typeof IpdWaitingCardSchema>;
 

@@ -69,6 +69,14 @@ Source: `apps/core/src/modules/ipd/`
   - types: `IpdBedAttributes`, `IpdBedEquipment`, `IpdGenderRule`, `IpdIsolationType`, `IpdUnitType`, `IpdWardAttributes`, `IpdWardType`
 - `bed-events.ts`
   - `IPD_BED_EVENT_NAMES`
+- `bed-flow-log.ts`
+  - `settleBedProposalIn(tx: Tx | Db, admissionId: string, bedId: string, at: Date): Promise<"accepted" | "overridden" | null>`
+  - `withdrawBedProposalIn(tx: Tx | Db, admissionId: string, reason: BedFlowWithdrawReason, at: Date): Promise<boolean>`
+  - types: `BedFlowWithdrawReason`
+- `bed-flow.ts`
+  - `BED_FLOW_HOT_WAIT_MINUTES`
+  - `readBedFlow(db: Db, reader: Actor, at: Date = new Date()): Promise<BedFlowEntry[]>`
+  - types: `BedFlowEntry`
 - `bed-layout.ts`
   - `BED_LAYOUT_COLUMNS`
   - `BED_LAYOUT_PERMISSION`
@@ -107,8 +115,7 @@ Source: `apps/core/src/modules/ipd/`
   - `unblockBed(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"unblock_bed">>`
   - types: `BedPlacementInput`, `IncumbentBedLine`, `IncumbentBedReport`, `PlacementContext`
 - `bill-desk.ts`
-  - `SEALED_LABEL`
-  - `depositLowCard(db: Db): Promise<DeskCard[]>`
+  - `depositLowCard(ctx: Pick<DeskProviderCtx, "db" | "reader" | "now">): Promise<DeskCard[]>`
   - `readBillDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdBillDesk>`
   - `retryFromBillDesk(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<AdmissionPostResult>`
   - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; ladderFailed: string[]; dailyTotals: DailyTotalsResult | null …`
@@ -231,6 +238,8 @@ Source: `apps/core/src/modules/ipd/`
   - `readFamilyPanel(db: Db, actor: Actor, admissionId: string): Promise<IpdFamilyPanel>`
   - `revokeFamilyLink(db: Db, actor: Actor, linkId: string, opts: { now?: Date } = {}): Promise<{ revoked: boolean }>`
   - `setCondition(db: Db, actor: Actor, admissionId: string, input: IpdSetCondition, opts: { now?: Date } = {}): Promise<{ word: IpdConditionWor…`
+- `goals/bed-flow-queries.ts`
+  - `IPD_BED_FLOW_QUERIES: Record<string, GoalQuery>`
 - `goals/goal-events.ts`
   - `BED_AVAILABLE: BedStatus`
   - `BED_CLEANING: BedStatus`
@@ -246,6 +255,7 @@ Source: `apps/core/src/modules/ipd/`
   - `intentEvent(intent: IpdIntentName, contains?: string): string`
 - `goals/goal-queries.ts`
   - `IPD_GOAL_QUERIES: Record<string, GoalQuery>`
+  - `shareGoal(db: Db, a: GoalRunArgs, measures: SQL): Promise<GoalMeasured>`
 - `interim-bill.ts`
   - `printInterimBillSnapshot(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdSplitSnapshot>`
   - `readInterimBill(db: Db, actor: Actor, admissionId: string): Promise<IpdInterimBill>`
@@ -277,6 +287,15 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_TRANSFER_ACCEPT`
   - `IPD_TRANSFER_START`
   - `ipdManifest: ModuleManifest`
+- `now-cards.ts`
+  - `IPD_DISCHARGE_STEP_STUCK_MINUTES`
+  - `SEALED_LABEL`
+  - `bedProposalCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `cleaningOverdueCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `dischargeBlockedCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`
+  - `rankNowRows(rows: readonly NowRow[]): DeskRow[]`
+  - `stuckStepOf(args: { state: string; declaredAt: Date; confirmations: Parameters<typeof pendingDepartments>[0]; summarySignedAt: Date | null;…`
+  - types: `NowRow`, `StuckStep`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
   - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
@@ -311,7 +330,7 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
+`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
 
 Foreign keys into: `patients`, `resources`
 
