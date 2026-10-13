@@ -1,10 +1,11 @@
+import { IST_UTC_OFFSET_MINUTES } from "../../kernel/approvals/cumulative";
 import { PASS_KINDS, PASS_SCAN_RESULTS, PASS_STATES } from "@hmis/contracts";
 import { PASS_KIND_VALUES, PASS_SCAN_RESULT_VALUES, PASS_STATE_VALUES } from "../../kernel/db/schema";
 import { ENTITLEMENT_KINDS, TIMED_PASS_KINDS, entitlementFor, inVisitingHours, istMinuteOfDay, scanResult } from "./policy";
 import type { ScanFacts } from "./policy";
 
 /** E1.3 (#720) — the pure pass rules. Instants are built from IST clock times on an arbitrary day; nothing reads a clock. */
-const at = (h: number, m = 0): Date => new Date(Date.UTC(2030, 0, 15, h, m) - 330 * 60_000);
+const at = (h: number, m = 0): Date => new Date(Date.UTC(2030, 0, 15, h, m) - IST_UTC_OFFSET_MINUTES * 60_000);
 
 describe("passes policy", () => {
   it("the schema's literal lists equal the contract's", () => {

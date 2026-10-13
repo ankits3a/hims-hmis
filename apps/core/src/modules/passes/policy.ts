@@ -1,4 +1,5 @@
 import { PASS_VISITING_HOURS } from "@hmis/contracts";
+import { istDayWindow } from "../../kernel/approvals/cumulative";
 import type { PassIssueKind, PassKind, PassScanResult, PassState } from "@hmis/contracts";
 
 /**
@@ -47,10 +48,9 @@ export const TIMED_PASS_KINDS: readonly PassKind[] = ["visitor"];
  */
 export const ENTITLEMENT_KINDS: readonly PassKind[] = ["attendant", "parent_stay", "lounge", "police_guard"];
 
-const IST_OFFSET_MS = 330 * 60_000;
+/** Minutes since IST midnight, from the kernel's one IST day window (no hand-written offset). */
 export function istMinuteOfDay(at: Date): number {
-  const ist = new Date(at.getTime() + IST_OFFSET_MS);
-  return ist.getUTCHours() * 60 + ist.getUTCMinutes();
+  return Math.floor((at.getTime() - istDayWindow(at).start.getTime()) / 60_000);
 }
 
 export function inVisitingHours(at: Date): boolean {
