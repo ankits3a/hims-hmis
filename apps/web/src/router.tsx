@@ -31,6 +31,7 @@ import { IpdBeds } from "./screens/ipd-beds";
 import { IpdAdmit } from "./screens/ipd-admit";
 import { IpdBill } from "./screens/ipd-bill";
 import { IpdHandovers } from "./screens/ipd-handovers";
+import { IpdDischarge } from "./screens/ipd-discharge";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
 import { DeskOne } from "./screens/desk-one/desk-one";
@@ -350,6 +351,8 @@ const NAV: readonly NavEntry[] = [
   { to: "/ipd/admit", label: "nav.ipdAdmit", permission: "ipd.admit", group: "wards" },
   // E3.1 (#729) — the receiving ward's handover list; path and permission match `ipdManifest.menu`.
   { to: "/ipd/handovers", label: "nav.ipdHandovers", permission: "ipd.transfer.accept", group: "wards" },
+  // E3.2 (#730) — the discharge desk; path and permission match `ipdManifest.menu`.
+  { to: "/ipd/discharge", label: "nav.ipdDischarge", permission: "ipd.discharge.view", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -791,6 +794,19 @@ const ipdHandoversRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/ipd/handovers",
   component: IpdHandovers,
+});
+
+/**
+ * E3.2 (#730) — the discharge desk (spec §4.7, §4.9 F): the cascade's admissions, one admission's steps with clocks and
+ * blockers, the final bill and the gate pass prints. `?admission=<id>` opens one admission.
+ */
+const ipdDischargeRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/discharge",
+  validateSearch: (search: Record<string, unknown>): { admission?: string } => ({
+    admission: typeof search.admission === "string" && /^[0-9A-HJKMNP-TV-Z]{26}$/.test(search.admission) ? search.admission : undefined,
+  }),
+  component: IpdDischarge,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -1891,7 +1907,7 @@ export const router = createRouter({
     loginRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdHandoversRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdBillRoute, ipdHandoversRoute, ipdDischargeRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       counterInstrumentsRoute, instrumentReconcileRoute, partnerReceivablesRoute, partnerPnlRoute,

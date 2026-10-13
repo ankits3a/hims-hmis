@@ -54,7 +54,10 @@ export const cancelFit = ipdIntent({
   idempotent: true,
 });
 
-const DEPARTMENTS = ["pharmacy", "lab", "radiology", "ot", "ward", "dietary", "cssd", "blood_bank"] as const;
+/** E3.2 (#730): `billing` joins the list — it confirms last, after every other department (DECIDED). */
+export const IPD_DISCHARGE_DEPARTMENTS = ["pharmacy", "lab", "radiology", "ot", "ward", "dietary", "cssd", "blood_bank", "billing"] as const;
+export type IpdDischargeDepartment = (typeof IPD_DISCHARGE_DEPARTMENTS)[number];
+const DEPARTMENTS = IPD_DISCHARGE_DEPARTMENTS;
 
 /** Each department confirms it has no pending charge; silence over 30 minutes escalates (§4.7). */
 export const confirmCharges = ipdIntent({
@@ -107,7 +110,11 @@ export const settleFinalBill = ipdIntent({
     /** The bill version the cashier read; a newer bill refuses `bill_changed`. */
     billVersion: z.number().int().positive(),
     settlement: z.enum(["paid", "refund_due", "dues_approved", "insurer_pending_undertaking"]),
-    payments: z.array(z.strictObject({ tender: IpdTenderSchema, amountPaise: IpdPositivePaiseSchema })).max(10),
+    payments: z.array(z.strictObject({
+      tender: IpdTenderSchema, amountPaise: IpdPositivePaiseSchema,
+      /** E3.2: the UPI / card settlement reference the ledger needs for any tender but cash. */
+      ref: z.string().trim().min(1).max(64).optional(),
+    })).max(10),
     duesApprovalId: IpdIdSchema.optional(),
     undertakingDocumentId: IpdIdSchema.optional(),
   }).superRefine((v, ctx) => {
@@ -149,12 +156,15 @@ export const issueGatePass = ipdIntent({
     code: z.string().min(1),
     state: z.literal("discharging"),
     issuedAt: IpdInstantSchema,
+    /** E3.2: the bill left dues on the register (approved); the pass says "dues recorded" — never a detention. */
+    duesRecorded: z.boolean(),
   }),
   refusals: [
     "admission_not_found", "admission_wrong_state", "charges_unconfirmed", "summary_unsigned", "bill_unsettled",
     "receiving_hospital_missing",
   ],
-  actors: ["billing", "desk", "nurse"],
+  // E3.2 (DECIDED): the duty manager issues at night, when the desk and billing are not on.
+  actors: ["billing", "desk", "nurse", "duty_manager"],
   copilotProposable: true,
   agentTier: "none",
   undo: "undo_window",
@@ -169,10 +179,12 @@ export const scanGatePass = ipdIntent({
     admissionId: IpdIdSchema,
     state: z.enum(["discharged", "transferred_out"]),
     bedId: IpdIdSchema,
-    bedStatus: z.literal("cleaning"),
+    /** E3.2: `blocked` when a block was waiting for the bed to empty (the bed lane applies it on release). */
+    bedStatus: z.enum(["cleaning", "blocked"]),
   }),
   refusals: ["gate_pass_not_found", "gate_pass_void", "gate_pass_used", "device_not_registered"],
-  actors: ["device", "duty_manager"],
+  // E3.2 (DECIDED): no security role is seeded yet — the front office at the exit desk scans by hand (`ipd.gate.scan`).
+  actors: ["device", "duty_manager", "desk"],
   copilotProposable: false,
   agentTier: "none",
   undo: "irreversible",
@@ -189,6 +201,8 @@ export const recordLama = ipdIntent({
     representativeReason: IpdNoteSchema.optional(),
     risksExplainedBy: IpdUserRefSchema,
     formDocumentId: IpdIdSchema,
+    /** E3.2: the witness to the signature (staff or relative), by name. */
+    witnessName: z.string().trim().min(1).max(120).optional(),
     at: IpdInstantSchema,
   }),
   output: z.strictObject({ admissionId: IpdIdSchema, state: z.literal("lama"), summaryTaskId: IpdIdSchema }),
@@ -227,9 +241,20 @@ export const recordDeath = ipdIntent({
     diedAt: IpdInstantSchema,
     certifiedBy: IpdUserRefSchema,
     policeIntimationRef: z.string().trim().min(1).max(64).optional(),
+    /** E3.2: the cause fields an MCCD (Form 4) will need later; no form is generated here. */
+    cause: z.strictObject({
+      immediate: z.string().trim().min(1).max(300).optional(),
+      antecedent: z.string().trim().min(1).max(300).optional(),
+      underlying: z.string().trim().min(1).max(300).optional(),
+      contributing: z.string().trim().min(1).max(300).optional(),
+    }).optional(),
     note: IpdNoteSchema.optional(),
   }),
-  output: z.strictObject({ admissionId: IpdIdSchema, state: z.literal("deceased"), taskIds: z.array(IpdIdSchema) }),
+  output: z.strictObject({
+    admissionId: IpdIdSchema, state: z.literal("deceased"), taskIds: z.array(IpdIdSchema),
+    /** E3.2: the body's row in the mortuary register. */
+    mortuaryEntryId: IpdIdSchema,
+  }),
   refusals: ["admission_not_found", "admission_wrong_state", "time_in_future", "police_intimation_required"],
   actors: ["doctor", "resident"],
   copilotProposable: false,

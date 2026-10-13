@@ -1714,6 +1714,12 @@ drawer and the receiving ward's handover list at `/ipd/handovers`. `ipd.transfer
 held by `duty_manager` until the nursing roles are seeded — the sender starts a transfer with its SBAR handover, the
 receiving nurse accepts it, and the sender may never accept their own. A class change in place rides `ipd.admit`.
 
+**IPD discharge (E3.2, decision 0072, built 2026-10-13, awaiting owner review).** The Discharge desk at `/ipd/discharge`:
+fit declared → every department confirms → summary signed → final bill settled → gate pass → scan at the exit.
+`ipd.discharge.declare` is the doctor's (fit, summary, death) and never touches money; `ipd.discharge.bill` is held by
+the cashier and the billing manager alone; `ipd.gate.scan` by the front office and the duty manager until a security
+role is seeded. Nobody is detained for dues: an unpaid balance goes to the billing manager's approval and the dues list.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A

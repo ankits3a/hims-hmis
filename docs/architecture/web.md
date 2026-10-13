@@ -32,6 +32,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/admissions/$admissionId/bill` | `apps/web/src/screens/ipd-bill` |
 | `/ipd/admit` | `apps/web/src/screens/ipd-admit` |
 | `/ipd/beds` | `apps/web/src/screens/ipd-beds` |
+| `/ipd/discharge` | `apps/web/src/screens/ipd-discharge` |
 | `/ipd/handovers` | `apps/web/src/screens/ipd-handovers` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |

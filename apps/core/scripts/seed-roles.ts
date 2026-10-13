@@ -126,6 +126,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
     ],
   },
   {
@@ -201,6 +203,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and issues / scans the gate pass at the exit; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.gate.pass", "ipd.gate.scan",
     ],
   },
   {
@@ -346,6 +350,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // IPD DISCHARGE E3.2 (#730) — declares and cancels fit, writes and signs the summary, records a death or a LAMA; never the bill (0058); README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.declare", "ipd.discharge.exit",
     ],
   },
   /**
@@ -624,6 +630,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D4 — the pharmacist checks the counter's own emergency tray and restocks a deficient one from
       // PHARM-OPD (the shelf the pharmacy keeps). DEFAULT — owner may change.
       "pharmacy.trays.check",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   {
@@ -710,6 +718,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * intact and the patient gets their paper back.
        */
       "opd.paper.reprint",
+      // IPD DISCHARGE E3.2 (#730) — confirms billing last, composes and settles the final bill, issues the gate pass; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm", "ipd.discharge.bill", "ipd.gate.pass",
     ],
   },
   {
@@ -820,6 +830,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "pharmacy.reports.read",
       // PHARMACY PARITY P5 — the accountant's act: the TallyPrime export and the ledger names it uses.
       "pharmacy.tally.export",
+      // IPD DISCHARGE E3.2 (#730) — confirms billing last, composes and settles the final bill, issues the gate pass; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm", "ipd.discharge.bill", "ipd.gate.pass",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1093,6 +1105,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // PHARMACY STAGE D2 — the MS reviews medication errors and near misses (root cause, action taken) and
       // closes them; the only other reader told the reporter's name. DEFAULT — owner may change.
       "pharmacy.incidents.review",
+      // IPD DISCHARGE E3.2 (#730) — reads the discharge desk; README "IPD discharge" prose.
+      "ipd.discharge.view",
     ],
   },
   // ------------------------------------------------------------------------------------------
@@ -1138,6 +1152,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // IPD TRANSFER E3.1 (#729) — starts and accepts transfers (and swaps beds) until the ipd-nursing lane seeds
       // ward_nurse / nursing_supervisor; README "IPD transfer" prose. The sender may never accept their own handover.
       "ipd.transfer.start", "ipd.transfer.accept",
+      // IPD DISCHARGE E3.2 (#730) — confirms the ward at night, issues and scans gate passes, records LAMA / absconding, keeps the mortuary register; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm", "ipd.gate.pass", "ipd.gate.scan", "ipd.discharge.exit", "ipd.mortuary.manage",
     ],
   },
   /**
@@ -1417,6 +1433,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "lab.catalogue.read",
       "orders.place",
       "orders.read",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   {
@@ -1593,6 +1611,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
        * clicks; the counter asks, the owner decides, the counter hands over.
        */
       "lab.reports.release_unpaid",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   /**
@@ -1749,6 +1769,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "billing.invoice.read",
       "billing.receipt.record",
       "billing.session.own",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   /**
@@ -1938,6 +1960,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // `materials_head` once had. Never their own ask: the kernel refuses the requester as approver.
       "approvals.requests.read",
       "approvals.requests.decide",
+      // IPD DISCHARGE E3.2 (#730) — sees the discharge desk and confirms its own department's charges; README "IPD discharge" prose.
+      "ipd.discharge.view", "ipd.discharge.confirm",
     ],
   },
   /**

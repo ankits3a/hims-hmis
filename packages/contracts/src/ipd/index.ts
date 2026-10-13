@@ -18,6 +18,8 @@ export * from "./charges";
 export * from "./payer";
 // E3.1 (#729) — the transfer panel and the handover list.
 export * from "./transfers";
+// E3.2 (#730) — discharge: the tracker, the summary, the final bill, the mortuary register.
+export * from "./discharge";
 
 /**
  * E0.2 (#714) — THE IPD INTENT CATALOGUE: spec §0B's 38 intents plus `cancel_admission` (DECIDED, see

@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing, transfer]
+tags: [ipd, beds, resources, admission, billing, transfer, discharge]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -91,6 +91,17 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `IPD_TRANSFER_HOLD_MINUTES`; `cancel_transfer` joins the intent catalogue (`packages/contracts/src/ipd/intents-ward.ts`).
   `apps/web/src/screens/ipd-transfer-panel.tsx` (the Beds drawer's Transfer panel) and
   `apps/web/src/screens/ipd-handovers.tsx` (`/ipd/handovers`).
+- (E3.2) `discharge.ts` — `declareFit`, `cancelFit`, `confirmCharges` (the department list `departmentsFor`, the role map
+  `IPD_DEPARTMENT_ROLES`), the summary (`saveSummaryDraft`, `signSummary`, `readSummary`, `ensureSummaryDraft`).
+  `discharge-bill.ts` — `composeFinalBill`, `prepareFinalBill`, `settleFinalBill`, `askDuesApproval`, `readFinalBill`.
+  `discharge-exit.ts` — `issueGatePass`, `scanGatePass`, `recordLama`, `recordAbscond`, `recordDeath`, the mortuary register
+  (`receiveBody`, `recordPoliceClearance`, `releaseBody`, `listMortuary`). `discharge-read.ts` — `readDischargeTracker`,
+  `readDischargeBoard`. `discharge-events.ts`, `discharge.controller.ts` (`IPD_DISCHARGE_ROUTES`). `kernel/db/schema/ipd.ts` —
+  `ipd_discharges`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_final_bills`, `ipd_payer_claims`,
+  `ipd_gate_passes`, `ipd_stay_exits`, `ipd_mortuary_register` (migration `ipd_discharge`). `approval-types.ts` gains
+  `ipd_discharge_dues`. `packages/contracts/src/ipd/discharge.ts` — tracker, board, summary content, final bill, mortuary,
+  routes; `packages/contracts/src/ipd/intents-discharge.ts` — `billing` department, tender `ref`, `witnessName`, death `cause`, `mortuaryEntryId`.
+  `apps/web/src/screens/ipd-discharge.tsx` (`/ipd/discharge`, `?admission=`), `apps/web/src/lib/ipd-discharge-api.ts`.
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -319,6 +330,43 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   ipd-nursing lane seeds `ward_nurse` / `nursing_supervisor` (the workflow already names those roles); the duty manager
   is also an `accept_handover` actor in the contract.
 
+### Discharge (E3.2, #730)
+- THE GATE PASS IS THE SINGLE GATE (E0.2): `issue_gate_pass` refuses `charges_unconfirmed` (detail.pending names the
+  departments, billing last), `summary_unsigned`, `bill_unsettled`, `receiving_hospital_missing`; it moves `fit_declared →
+  discharging`. The scan (`ipd.gate.scan`: front office, duty manager — no security role yet) ends the stay: `discharged`, or
+  `transferred_out` for a refer-out, both announced as `ipd.admission.discharged` (the state in the payload). The bed goes
+  to cleaning through `releaseBedOccupant` (`clean:terminal` when isolated).
+- DEPARTMENTS (DECIDED): ward always (`lines` / `always`), lab / radiology / pharmacy when a kernel order placed since
+  admission is still open (`orders.kind` lab / imaging), billing always and LAST (`charges_unconfirmed` while any other is
+  pending). A department is the actor's by ROLE (`IPD_DEPARTMENT_ROLES`, `actorHoldsAnyRole`) — `department_not_yours`.
+  The rows belong to ONE declaration; cancel_fit voids them with it, a new fit lists afresh.
+- SUMMARY: one per admission, `version` bumps on every save, sign names the version (`draft_changed`). The treating
+  consultant (admission consultant or covering) signs; anyone else's sign is a resident's → `awaiting_cosign`. Signed is
+  immutable (`summary_already_signed`). `draft_model_id` / `draft_prompt_version` null until M5; label "Draft" until
+  signed. LAMA and death open a draft (`ensureSummaryDraft`) — the summary is still given.
+- FINAL BILL ($ DECIDED): non-reversed lines only (a reversed line AND its reversal drop out); `billVersion` = the count
+  of the admission's lines (append-only ⇒ any posting or reversal changes it → `bill_changed`). `prepareFinalBill` posts
+  through the settle day with `presumedDischargeAt` (the day rule's 14:00 grace applies); it posts nothing once a final
+  bill exists. ONE billing invoice for the PATIENT portion, each line at its frozen price (`prepaidUnitPaise`; a split line
+  goes on at the patient's share of taxable, qty 1); deposits (the admission's deposit receipts, oldest first) via
+  `settleFromReceipts`; tenders as the invoice's receipt (cash / UPI / card; UPI and card need `ref`); excess deposit →
+  `requestRefund(advance_refund)` (held instead under `insurer_pending_undertaking`); the payer portion → `ipd_payer_claims`
+  (billing has no payer-credit model). All in ONE transaction under the admission lock. Rounding once, by billing.
+- DUES (⚖ DECIDED — Consumer Protection Act, state clinical-establishment rules, NHRC charter): never a detention. An unpaid
+  balance needs settlement `dues_approved` + a GRANTED `ipd_discharge_dues` approval (billing manager or MS) covering it +
+  the undertaking document id; the invoice is raised `holdUntilPaid` (open on billing's dues list, `credit_extended` false —
+  billing's owner-only credit ruling is not touched). The gate pass then says `duesRecorded`.
+- OTHER ENDINGS: LAMA / DAMA (`ipd.discharge.exit`; admitted or fit_declared), abscond (`ipd.discharge.exit`; also from
+  discharging; MLC needs `policeIntimationRef`), death (`ipd.discharge.declare`; also mid-transfer). Each (`endStay`):
+  cancels an open transfer and its hold, releases the bed (death and abscond terminal clean), voids a live gate pass,
+  closes the declaration, moves to the terminal state with `ended_at`, emits the passes lane's event once. The bill
+  settles after (allowed in lama / absconded / deceased; no department cascade) — nothing reads the bill to refuse.
+- MORTUARY: a death opens the register row (`expected`); `receiveBody` needs a second person (two-person identity check);
+  `releaseBody` needs police clearance for an MLC and NEVER reads the bill (⚖ a body is never held for money).
+- MONEY OFF DOCTORS (0058): declare_fit / cancel_fit / sign_summary / record_death answers carry no money keys (acceptance
+  vii; the fit event's id is `declarationId`, never `dischargeId` — "charge" is a money word to the scanner). The tracker's
+  `bill` is filled only for `ipd.bill.view` / `ipd.discharge.bill` holders.
+
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
   into a seed.
@@ -374,6 +422,20 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E3.1) The kernel workflow stamps state entry with the real clock, so the escalation rung is at real-now + 30 min
   even when an act is called with an explicit `now` (tests read the rung's `due_at` and drive `runDueTimers` around it).
 
+- (E3.2) SEAMS LEFT OPEN: the department "silence over 30 minutes escalates" is not a job (the tracker shows the clock; the
+  workflow's 3-hour SLA tells the duty manager); `medicines_not_returned` (pharmacy returns) and
+  `medicine_not_on_active_order` wait for the eMAR / ipd-orders lanes; the mortuary handover and MCCD are register rows, not
+  tasks (`taskIds` is empty); claim filing, the family tracker link (E3.3) and the AI drafter (M5) are later lanes.
+- (E3.2) A settled final bill stays settled through a cancel_fit: a later re-discharge's new lines are a supplementary bill
+  (owed — billing's own lane). The nightly job keeps posting while `fit_declared`; a late real exit after 14:00 posts the
+  discharge day after the invoice (supplementary).
+- (E3.2) Re-pricing on the invoice uses TODAY's active tariff version with the frozen unit as `prepaidUnitPaise`: a service
+  removed from the active version since posting refuses `tariff_item_missing`; a GST rate change re-taxes the line. Member
+  benefits (flag-gated) could discount a self-pay line on the invoice — the invoice is billing's truth.
+- (E3.2) Blocker and "waiting for" words are English, server-side (like refusal words); the web translates its own labels.
+- (E3.2) Print isolation: other screens hide `body *` with `!important` in print (all CSS is global), so the discharge
+  prints answer with `!important` and a named page (`@page ipdd-a4`).
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -388,3 +450,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   calls `roomRentCapWarning` before an upgrade consent; the final bill (E3.2) will call `computePayerSplit` and keep it.
 - (E3.1) `transfers.controller.ts` (the Beds drawer's Transfer panel, the `/ipd/handovers` list); the passes lane consumes
   `ipd.transfer.accepted`; `charges.ts` reads `ipd_class_changes` through `classChangesOf`.
+- (E3.2) `discharge.controller.ts` (the Discharge desk); the passes lane consumes `ipd.admission.discharged|lama|absconded|
+  deceased`; the goal queries read `ipd.discharge.fit_declared` and `ipd.gate_pass.scanned` (G4); `prepareFinalBill` calls
+  `postAdmissionCharges` (with `presumedDischargeAt`); `endStay` calls `endHoldIn` / `releaseBedOccupant`; billing's
+  `issueInvoice`, `previewInvoice`, `requestRefund`, `receiptUnallocatedPaise` are called inside the settle transaction.

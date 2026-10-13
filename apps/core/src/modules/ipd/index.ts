@@ -89,3 +89,18 @@ export {
 export { applyClassChanges, classChangesOf, nextNoonIst } from "./class-change";
 export type { StayClassChange } from "./class-change";
 export { IPD_TRANSFER_EVENT_NAMES } from "./transfer-events";
+// E3.2 (#730) — discharge: fit, the departments' confirmations, the summary, the final bill, the gate pass, LAMA /
+// abscond / death and the mortuary register.
+export {
+  IPD_DISCHARGE_BILL, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_EXIT, IPD_DISCHARGE_VIEW, IPD_GATE_PASS, IPD_GATE_SCAN,
+  IPD_MORTUARY_MANAGE,
+} from "./manifest";
+export {
+  IPD_DEPARTMENT_ROLES, IPD_DISCHARGE_TARGET_MINUTES, cancelFit, confirmCharges, declareFit, readSummary, saveSummaryDraft, signSummary,
+} from "./discharge";
+export { askDuesApproval, composeFinalBill, prepareFinalBill, readFinalBill, settleFinalBill } from "./discharge-bill";
+export {
+  issueGatePass, listMortuary, receiveBody, recordAbscond, recordDeath, recordLama, recordPoliceClearance, releaseBody, scanGatePass,
+} from "./discharge-exit";
+export { readDischargeBoard, readDischargeTracker } from "./discharge-read";
+export { IPD_DISCHARGE_EVENT_NAMES } from "./discharge-events";

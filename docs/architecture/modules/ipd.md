@@ -116,7 +116,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_DAILY_COMPONENTS`
   - `IPD_ENDED_STATES`
   - `IPD_NIGHTLY_ACTOR: Actor`
-  - `postAdmissionCharges(db: Db, admissionId: string, opts: { upToIstDate: string; now: Date; cache?: PricingCache }): Promise<AdmissionPostRes…`
+  - `postAdmissionCharges(db: Db, admissionId: string, opts: { upToIstDate: string; now: Date; cache?: PricingCache; presumedDischargeAt?: Date;…`
   - `postConsultantVisit(tx: Tx, input: ConsultantVisitInput): Promise<ConsultantVisitResult>`
   - `postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyResult>`
   - `priceComponent(ctx: PricingContext, cls: IpdBedClass, component: IpdRateComponent): Priced`
@@ -137,6 +137,36 @@ Source: `apps/core/src/modules/ipd/`
   - `registerIpdReceiptGuard(): () => void`
   - `takeDeposit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<DepositOut>`
   - types: `DepositQuote`, `DepositQuoteArgs`
+- `discharge-bill.ts`
+  - `askDuesApproval(db: Db, actor: Actor, body: { admissionId: string; amountPaise: number; note: string }): Promise<{ approvalId: string }>`
+  - `composeFinalBill(db: Db | Tx, a: AdmissionRow): Promise<ComposedFinalBill>`
+  - `prepareFinalBill(db: Db, actor: Actor, admissionId: string, opts: Opts = {}): Promise<IpdFinalBill>`
+  - `readFinalBill(db: Db, actor: Actor, admissionId: string): Promise<IpdFinalBill>`
+  - `settleFinalBill(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"settle_final_bill">>`
+- `discharge-events.ts`
+  - `IPD_DISCHARGE_EVENT_NAMES`
+- `discharge-exit.ts`
+  - `issueGatePass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"issue_gate_pass">>`
+  - `listMortuary(db: Db, actor: Actor): Promise<IpdMortuaryEntry[]>`
+  - `receiveBody(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
+  - `recordAbscond(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_abscond">>`
+  - `recordDeath(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_death">>`
+  - `recordLama(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_lama">>`
+  - `recordPoliceClearance(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
+  - `releaseBody(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
+  - `scanGatePass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"scan_gate_pass">>`
+- `discharge-read.ts`
+  - `readDischargeBoard(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdDischargeBoard>`
+  - `readDischargeTracker(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdDischargeTracker>`
+- `discharge.ts`
+  - `IPD_DEPARTMENT_ROLES: Record<IpdDischargeDepartment, readonly string[]>`
+  - `IPD_DISCHARGE_TARGET_MINUTES`
+  - `cancelFit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"cancel_fit">>`
+  - `confirmCharges(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"confirm_charges">>`
+  - `declareFit(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"declare_fit">>`
+  - `readSummary(db: Db, actor: Actor, admissionId: string): Promise<IpdSummaryView>`
+  - `saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdSummaryView>`
+  - `signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_summary">>`
 - `errors.ts`
   - `class IpdError`
   - `class IpdRefusal`
@@ -172,6 +202,14 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_BEDS_VIEW`
   - `IPD_BILL_VIEW`
   - `IPD_CHARGES_REVERSE`
+  - `IPD_DISCHARGE_BILL`
+  - `IPD_DISCHARGE_CONFIRM`
+  - `IPD_DISCHARGE_DECLARE`
+  - `IPD_DISCHARGE_EXIT`
+  - `IPD_DISCHARGE_VIEW`
+  - `IPD_GATE_PASS`
+  - `IPD_GATE_SCAN`
+  - `IPD_MORTUARY_MANAGE`
   - `IPD_PAYER_MANAGE`
   - `IPD_PAYER_TERMS`
   - `IPD_TRANSFER_ACCEPT`
@@ -211,15 +249,16 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_payer_auths`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_transfers`
+`ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (43)
+## HTTP routes (64)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
+- `discharge.controller.ts` — 21: `/ipd/discharge`, `/ipd/mortuary`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
 - `transfers.controller.ts` — 7: `/ipd/transfers`
 
