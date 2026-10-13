@@ -234,6 +234,29 @@ describe("seedCursors", () => {
     expect(await cursorOf(db, ALERTS_CONSUMER)).toBe(aheadOfHistory);
   });
 
+  /**
+   * V12 — SEEDING NEVER RAISES AN EXISTING CURSOR. deploy.sh seeds on every deploy; a consumer
+   * that is behind at that moment (the worker was restarting while the api kept appending) must
+   * keep its backlog, or those events are never delivered.
+   */
+  it("V12 — never raises an existing cursor that sits behind max(seq); the backlog is still delivered", async () => {
+    const e1 = await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));
+    await db.execute(sql`
+      insert into event_cursors (consumer, last_seq) values (${ALERTS_CONSUMER}, ${e1.seq})
+    `);
+    const e2 = await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));
+
+    const seeded = await seedCursors(db);
+    expect(seeded.find((s) => s.consumer === ALERTS_CONSUMER)!.lastSeq).toBe(e1.seq); // untouched
+    expect(await cursorOf(db, ALERTS_CONSUMER)).toBe(e1.seq);
+
+    const delivered: number[] = [];
+    const bus = new SubscriptionBus();
+    bus.on(ALERTS_CONSUMER, "alert.raised", async (e) => { delivered.push(e.seq); });
+    await runDispatchCycle(db, bus, { lookback: 0 });
+    expect(delivered).toEqual([e2.seq]);
+  });
+
   it("is idempotent: seeding twice with no new history leaves the cursor exactly where it was", async () => {
     await withTx(db, (tx) => appendEvent(tx, mkInput("alert.raised")));
     const first = await seedCursors(db);
