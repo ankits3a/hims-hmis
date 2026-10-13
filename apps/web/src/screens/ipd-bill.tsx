@@ -153,9 +153,11 @@ export function IpdBillScreen({ admissionId }: { admissionId: string }): React.R
               <h2>{t("ipdBill.exceptionsTitle", { count: bill.exceptions.length })}</h2>
               <ul>
                 {bill.exceptions.map((x) => (
-                  <li key={`${x.serviceDate}:${x.component}:${x.serviceCode ?? ""}`}>
+                  <li key={`${x.reason}:${x.serviceDate ?? ""}:${x.component ?? ""}:${x.serviceCode ?? ""}`}>
                     <span className="ipdb-tag warn">{t(`ipdBill.reason.${x.reason}`)}</span>
-                    {dayLabel(x.serviceDate)} · {t(`ipdBill.component.${x.component}`)} · <ClassName cls={x.billedClass} />
+                    {x.serviceDate === null || x.component === null
+                      ? <span>{t("ipdBill.postingFailed", { count: x.failCount })}{x.errorCode === null ? null : <span className="mono dim small"> {x.errorCode}</span>}</span>
+                      : <>{dayLabel(x.serviceDate)} · {t(`ipdBill.component.${x.component}`)} · <ClassName cls={x.billedClass} /></>}
                     {x.serviceCode === null ? null : <span className="mono dim small"> {x.serviceCode}</span>}
                   </li>
                 ))}

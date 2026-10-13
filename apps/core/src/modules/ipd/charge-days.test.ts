@@ -47,3 +47,21 @@ describe("ipdChargeableDays", () => {
     expect(days(s, "2026-03-10T23:00:00", null, "2026-03-11")).toEqual(["2026-03-10:general", "2026-03-11:general"]);
   });
 });
+
+describe("ipdChargeableDays — review #756", () => {
+  it("RED 1: a stay entirely under an hour still bills the admission day at its class (minimum one day)", () => {
+    expect(days([stay("private", "2026-03-10T10:00:00", "2026-03-10T10:30:00")], "2026-03-10T10:00:00", "2026-03-10T10:30:00", "2026-03-31"))
+      .toEqual(["2026-03-10:private"]);
+    expect(days([stay("general", "2026-03-10T23:59:00", "2026-03-11T00:30:00")], "2026-03-10T23:59:00", "2026-03-11T00:30:00", "2026-03-31"))
+      .toEqual(["2026-03-10:general"]);
+  });
+
+  it("8: an overlapping stay is clipped to the previous stay's end before the hours are summed", () => {
+    // A back-dated ICU stay inside a general stay that never ended: clipped away, the day bills general.
+    const s = [stay("general", "2026-03-10T08:00:00", null), stay("icu", "2026-03-10T09:00:00", "2026-03-10T11:00:00")];
+    expect(days(s, "2026-03-10T08:00:00", null, "2026-03-10")).toEqual(["2026-03-10:general"]);
+    // Partly overlapping: private 10:00–13:00 then ICU from 12:30 counts only from 13:00 (still > 1 h → ICU).
+    const p = [stay("private", "2026-03-10T10:00:00", "2026-03-10T13:00:00"), stay("icu", "2026-03-10T12:30:00", "2026-03-10T13:50:00")];
+    expect(days(p, "2026-03-10T10:00:00", null, "2026-03-10")).toEqual(["2026-03-10:private"]);
+  });
+});

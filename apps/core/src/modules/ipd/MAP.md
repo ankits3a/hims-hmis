@@ -173,22 +173,35 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   day free up to 14:00 IST inclusive; highest class held MORE than an hour that day, else the longest; an ended stay under
   an hour is transit and dropped; the stay's `billed_class` (protected/booked) wins over the bed's; overflow bills general;
   daycare, emergency and LDR carry no rent; general < … < suite < hdu < icu = nicu = picu; home leave keeps billing.
+  Review #756: overlapping stays are clipped to the previous stay's end first; when EVERY stay is under an hour none is
+  dropped (minimum one day — admit 10:00, leave 10:30 bills that day at the stay's class).
+- DECIDED (review #756): a day spent on an LDR, day-care or emergency bed posts no rent, nursing or RMO — those beds
+  carry packages and services, not daily rates.
 - IDEMPOTENCY IS THE DATABASE: partial unique indexes — one `ipd.nightly` line per (admission, service date, component),
   one `ipd.visit` line per (admission, date, consultant), one reversal per line. Inserts are `on conflict do nothing`;
   `ipd.charge.rent_posted` goes out only with a room line that was actually inserted, so G5b sees one per night.
 - MISSING RATE: no item on the locked version, ₹0, or the service absent or SWITCHED OFF → required components (room,
   nursing, visit) raise one `ipd_charge_exceptions` row per key (event once) and post nothing; `rmo` is skipped silently;
   `cross_visit` falls back to `visit`. A later run that can price it posts the line and resolves the row.
-- NIGHTLY JOB: `postNightlyIpdCharges(db, now)`, `dailyIst` 00:05; admitted admissions plus those ended in the last 31 days;
-  posts every unposted day up to YESTERDAY (so a missed night is caught up with its own dates); one transaction per
-  admission under its advisory lock; one admission's failure does not stop the rest, then the run throws
-  (`charges_post_failed`) so the scheduler retries. Today is never posted (its class is not final).
+- NIGHTLY JOB: `postNightlyIpdCharges(db, now)`, `dailyIst` 00:05; admissions in a bed plus ENDED ones whose
+  `charges_posted_through` is short of the discharge day or that have an open exception (no age window); posts every
+  unposted day up to YESTERDAY (a missed night is caught up with its own dates). One transaction per admission; the
+  admission and stays are RE-READ under its advisory lock before the days are computed; a null tariff pin is resolved
+  and persisted in that transaction. A DOMAIN failure (IPD/tariff/zod error, SQLSTATE 22/23) becomes a `posting_failed`
+  exception (`error_code`, `fail_count`); at 3 consecutive the job skips the admission until `retryAdmissionCharges`
+  (billing manager) resolves it. Only infrastructure errors fail the run. Today is never posted.
 - VISITS: `postConsultantVisit(tx, { admissionId, consultantUserId, seenAt, source: "rounds_tap" })` — a consultant is a
   user with an ACTIVE `opd_doctors` row (residents are not on it → not charged); first tap per IST day posts, repeats post
   nothing; every tap emits `ipd.charge.visit_recorded`. Not the admitting/covering consultant → `cross_visit` (else `visit`).
   Class = billed class of the bed held at `seenAt` (no-rent bed → general, DECIDED). The answer carries no money.
-- REVERSAL: `reverseChargeLine` (`ipd.charges.reverse`, billing_manager) inserts the negated twin with a reason; a
+  A REVERSED visit does not count: the day can be charged again, the new line taking the next `visit_seq` (the visit
+  unique index is (admission, day, consultant, visit_seq) — a partial index cannot see another row's reversal).
+- REVERSAL: `reverseChargeLine` (`ipd.charges.reverse`, billing_manager; HTTP `POST /ipd/charge-lines/:id/reverse`,
+  `charges.controller.ts`, reason required) inserts the negated twin with a reason (zero-net lines too; a lost race on
+  the unique index answers `charge_line_already_reversed`); a
   reversed nightly line is NOT re-posted by the job (its key is spent) — the corrected charge is the bill desk's (E2.3).
+- DEPOSIT on the interim bill (`depositHeldPaise`): Σ deposit receipts (entered-in-error excepted) − the patient's
+  advance refunds issued since the request, floored at 0 (billing refunds advances per patient, not per receipt).
 - MONEY OFF DOCTORS (0058): `ipd.bill.view` (front office, its supervisor, duty manager, cashier, billing manager, owner)
   gates the interim bill; charge events carry ids and dates only; acceptance (viii) pins the doctor-reachable IPD routes and
   scans their answers for money keys.

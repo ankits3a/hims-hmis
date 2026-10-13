@@ -437,7 +437,7 @@ function spyOnTheThirteen(invoked: string[]): jest.SpyInstance[] {
     // Its behaviour (idempotent, catches up a missed night) is asserted in `modules/ipd/acceptance/charges.acceptance.test.ts` (iv).
     jest.spyOn(ipdChargesMod, "postNightlyIpdCharges").mockImplementation(async () => {
       invoked.push("postNightlyIpdCharges");
-      return { admissions: 0, posted: 0, exceptions: 0, failed: 0 };
+      return { admissions: 0, posted: 0, exceptions: 0, failed: 0, quarantined: 0 };
     }),
     // TELE-CALL (owner 2026-10-09) — the twenty-eighth, stubbed on `modules/opd/tele` (the file jobs.ts imports FROM).
     jest.spyOn(opdTeleMod, "openDueTeleVisits").mockImplementation(async () => {

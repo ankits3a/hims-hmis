@@ -43,7 +43,7 @@ function bill(over: Partial<IpdInterimBill> = {}): IpdInterimBill {
     byComponent: [{ component: "room", netPaise: 150_000 }, { component: "nursing", netPaise: 50_000 }, { component: "visit", netPaise: 120_000 }],
     totals: { grossPaise: 320_000, discountPaise: 0, gstPaise: 0, netPaise: 320_000, roundedPaise: 320_000 },
     depositPaidPaise: 500_000, balancePaise: 180_000,
-    exceptions: [{ serviceDate: "2030-01-01", component: "nursing", billedClass: "private", serviceCode: "IPD_NURSING_PRIVATE", reason: "rate_missing", firstSeenAt: "2030-01-01T18:35:00.000Z" }],
+    exceptions: [{ serviceDate: "2030-01-01", component: "nursing", billedClass: "private", serviceCode: "IPD_NURSING_PRIVATE", reason: "rate_missing", errorCode: null, failCount: 0, firstSeenAt: "2030-01-01T18:35:00.000Z" }],
     ...over,
   };
 }

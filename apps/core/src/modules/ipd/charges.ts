@@ -1,10 +1,11 @@
-import { and, asc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { ZodError } from "zod";
 import { ipdRateServiceCode, newId } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import { ipdAdmissions, ipdBedStays, ipdChargeExceptions, ipdChargeLines, opdDoctors } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { loadPricingContext, priceInvoiceLines, resolveActiveTariffVersion } from "../tariff";
+import { TariffError, loadPricingContext, priceInvoiceLines, resolveActiveTariffVersion } from "../tariff";
 import { admissionAdvisoryLock, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { ipdChargeableDays, rentClassOf } from "./charge-days";
 import { chargeException, chargeReversed, rentPosted, visitRecorded } from "./charge-events";
@@ -35,8 +36,6 @@ const OPTIONAL: ReadonlySet<IpdRateComponent> = new Set(["rmo", "cross_visit"]);
 /** Admission states after the stay ended: `ended_at` is the discharge instant. */
 export const IPD_ENDED_STATES = ["discharged", "lama", "absconded", "deceased", "transferred_out"] as const;
 const ENDED: ReadonlySet<string> = new Set(IPD_ENDED_STATES);
-/** How far back the job looks for stays that ended since its last run (a catch-up window wider than any outage). */
-export const IPD_ENDED_LOOKBACK_DAYS = 31;
 /** Admissions per transaction in the nightly job. */
 export const IPD_NIGHTLY_BATCH = 100;
 
@@ -92,6 +91,7 @@ type LineFacts = {
   versionId: string;
   source: "ipd.nightly" | "ipd.visit";
   consultantUserId?: string;
+  visitSeq?: number;
   actor: Actor;
   at: Date;
 };
@@ -105,7 +105,7 @@ async function insertLine(tx: Tx, f: LineFacts): Promise<string | null> {
     billedClass: f.billedClass, serviceId: p.serviceId, serviceCode: f.code, serviceName: p.serviceName,
     tariffVersionId: f.versionId, qty: p.qty, unitPaise: p.unitPaise, grossPaise: p.grossPaise, discountPaise: p.discountPaise,
     taxablePaise: p.taxableBasePaise, cgstPaise: p.gst.cgstPaise, sgstPaise: p.gst.sgstPaise, netPaise: p.netPaise,
-    gstRateBps: p.gst.rateBps, gstExempt: p.gst.exempt, source: f.source, consultantUserId: f.consultantUserId ?? null,
+    gstRateBps: p.gst.rateBps, gstExempt: p.gst.exempt, source: f.source, consultantUserId: f.consultantUserId ?? null, visitSeq: f.visitSeq ?? null,
     postedBy: f.actor.id, postedAt: f.at,
   }).onConflictDoNothing().returning({ id: ipdChargeLines.id });
   if (inserted.length === 0) return null;
@@ -140,31 +140,50 @@ async function raiseException(
 
 export type AdmissionPostResult = { posted: number; rentDays: string[]; exceptions: number };
 
+/** The IST day an ended admission's posting is complete through: its discharge day (posted or free). */
+function lastDayOf(a: AdmissionRow, upToIstDate: string): string {
+  const ended = dischargedAtOf(a);
+  if (ended === null) return upToIstDate;
+  const d = istDayString(ended);
+  return d < upToIstDate ? d : upToIstDate;
+}
+
 /**
  * Posts every chargeable day of one admission up to `upToIstDate` (inclusive) that is not yet posted: room, nursing
  * and (when priced) RMO, each with its own service date. Idempotent — the nightly unique index makes a rerun post
- * nothing, and `ipd.charge.rent_posted` goes out once per night with the room line. Under the admission's advisory
- * lock, so it serialises with the bed and admission acts. The final bill (E3.2) calls it with the discharge day.
+ * nothing, and `ipd.charge.rent_posted` goes out once per night with the room line. The admission and its stays are
+ * RE-READ under the admission's advisory lock before the days are computed (review #756 item 4), so a bed act that
+ * commits meanwhile is either wholly before or wholly after this post. A null tariff pin is resolved once and
+ * PERSISTED in the same transaction (item 6) — never re-resolved per night. The final bill (E3.2) calls it with the
+ * discharge day.
  */
 export async function postAdmissionCharges(
   db: Db, admissionId: string, opts: { upToIstDate: string; now: Date; cache?: PricingCache },
 ): Promise<AdmissionPostResult> {
-  const a = await readAdmission(db, admissionId);
   const result: AdmissionPostResult = { posted: 0, rentDays: [], exceptions: 0 };
-  if (a.admittedAt === null) return result;
-  const stays = await staysOf(db, a.id);
-  const days = ipdChargeableDays(stays, a.admittedAt, dischargedAtOf(a), opts.upToIstDate);
-  if (days.length === 0) return result;
-  const done = new Set((await db.select({ d: ipdChargeLines.serviceDate, c: ipdChargeLines.component }).from(ipdChargeLines)
-    .where(and(eq(ipdChargeLines.admissionId, a.id), eq(ipdChargeLines.source, "ipd.nightly")))).map((r) => `${r.d}:${r.c}`));
-  const todo = days.flatMap((d) => IPD_DAILY_COMPONENTS.filter((c) => !done.has(`${d.date}:${c}`)).map((c) => ({ ...d, component: c })));
-  if (todo.length === 0) return result;
-
-  const versionId = await lockedVersion(db, a);
-  const ctx = versionId === null ? null : await pricingFor(db, opts.cache ?? new Map(), versionId, opts.now);
+  const cache = opts.cache ?? new Map<string, PricingContext>();
+  // A read outside the lock only to load the pricing context (the loader takes Db, not Tx); re-checked under the lock.
+  const pre = await readAdmission(db, admissionId);
+  if (pre.admittedAt === null) return result;
+  const preVersion = await lockedVersion(db, pre);
+  if (preVersion !== null) await pricingFor(db, cache, preVersion, opts.now);
   const actor = IPD_NIGHTLY_ACTOR;
   await withTx(db, async (tx) => {
-    await admissionAdvisoryLock(tx, a.id);
+    await admissionAdvisoryLock(tx, admissionId);
+    let a = await readAdmission(tx, admissionId);
+    const admittedAt = a.admittedAt;
+    if (admittedAt === null) return;
+    const versionId = await lockedVersion(tx as unknown as Db, a);
+    if (a.tariffVersionId === null && versionId !== null) {
+      await tx.update(ipdAdmissions).set({ tariffVersionId: versionId }).where(eq(ipdAdmissions.id, a.id));
+      a = { ...a, tariffVersionId: versionId };
+    }
+    const ctx = versionId === null ? null : await pricingFor(tx as unknown as Db, cache, versionId, opts.now);
+    const stays = await staysOf(tx, a.id);
+    const days = ipdChargeableDays(stays, admittedAt, dischargedAtOf(a), opts.upToIstDate);
+    const done = new Set((await tx.select({ d: ipdChargeLines.serviceDate, c: ipdChargeLines.component }).from(ipdChargeLines)
+      .where(and(eq(ipdChargeLines.admissionId, a.id), eq(ipdChargeLines.source, "ipd.nightly")))).map((r) => `${r.d}:${r.c}`));
+    const todo = days.flatMap((d) => IPD_DAILY_COMPONENTS.filter((c) => !done.has(`${d.date}:${c}`)).map((c) => ({ ...d, component: c })));
     for (const t of todo) {
       if (ctx === null || versionId === null) {
         if (OPTIONAL.has(t.component)) continue;
@@ -193,50 +212,112 @@ export async function postAdmissionCharges(
         }));
       }
     }
+    const through = lastDayOf(a, opts.upToIstDate);
+    if (a.chargesPostedThrough === null || a.chargesPostedThrough < through) {
+      await tx.update(ipdAdmissions).set({ chargesPostedThrough: through }).where(eq(ipdAdmissions.id, a.id));
+    }
+    // A clean run clears an earlier posting failure.
+    await tx.update(ipdChargeExceptions).set({ resolvedAt: opts.now })
+      .where(and(eq(ipdChargeExceptions.key, failureKey(a.id)), isNull(ipdChargeExceptions.resolvedAt)));
   });
   return result;
 }
 
-export type NightlyResult = { admissions: number; posted: number; exceptions: number; failed: number };
+export type NightlyResult = { admissions: number; posted: number; exceptions: number; failed: number; quarantined: number };
+
+/** Consecutive failures after which the job stops trying an admission until a person resolves it. */
+export const IPD_QUARANTINE_AFTER = 3;
+const failureKey = (admissionId: string): string => `${admissionId}:posting_failed`;
 
 /**
- * THE NIGHTLY JOB (`kernel/worker/jobs.ts`, daily 00:05 IST; safe at any hour). For every admitted admission still
- * in a bed, and every one whose stay ended within the last `IPD_ENDED_LOOKBACK_DAYS`, posts all chargeable days up to
- * YESTERDAY (IST, from `now`) that are not yet posted — so a night the server missed is caught up with its own service
- * dates on the next run. Admissions are taken in batches; one admission's failure does not stop the others, and the
- * run then throws so the scheduler records it (`sweep.failed`) and retries on its next tick.
+ * A DOMAIN failure belongs to one admission (bad data, a tariff the engine refuses, a constraint) and is quarantined;
+ * anything else — the database unreachable, a timeout, a deadlock — is INFRASTRUCTURE and fails the run so the scheduler
+ * retries. Postgres classes 22 (data) and 23 (integrity) are domain; every other SQLSTATE is infrastructure.
+ */
+function domainErrorCode(e: unknown): string | null {
+  if (e instanceof IpdError || e instanceof IpdRefusal || e instanceof TariffError) return e.code;
+  if (e instanceof ZodError) return "invalid_data";
+  const code = (e as { cause?: { code?: unknown } }).cause?.code ?? (e as { code?: unknown }).code;
+  if (typeof code === "string" && /^(22|23)[0-9A-Z]{3}$/.test(code)) return `sql_${code}`;
+  return null;
+}
+
+async function recordPostingFailure(db: Db, admissionId: string, errorCode: string, at: Date): Promise<void> {
+  const key = failureKey(admissionId);
+  await db.insert(ipdChargeExceptions).values({
+    id: newId(), key, admissionId, reason: "posting_failed", errorCode, failCount: 1, firstSeenAt: at, lastSeenAt: at,
+  }).onConflictDoUpdate({
+    target: ipdChargeExceptions.key,
+    set: {
+      lastSeenAt: at, errorCode,
+      failCount: sql`case when ${ipdChargeExceptions.resolvedAt} is null then ${ipdChargeExceptions.failCount} + 1 else 1 end`,
+      firstSeenAt: sql`case when ${ipdChargeExceptions.resolvedAt} is null then ${ipdChargeExceptions.firstSeenAt} else ${at} end`,
+      resolvedAt: null, resolvedLineId: null,
+    },
+  });
+}
+
+/**
+ * THE NIGHTLY JOB (`kernel/worker/jobs.ts`, daily 00:05 IST; safe at any hour). Posts all chargeable days up to
+ * YESTERDAY (IST, from `now`) not yet posted — so a night the server missed is caught up with its own service dates.
+ *
+ * Selection (review #756 item 3): every admission still in a bed, plus every ENDED one whose posting is not complete
+ * (`charges_posted_through` short of the discharge day) or that has an open exception — never an age window.
+ * Quarantine (item 2): a domain failure is recorded as a `posting_failed` exception with its error code; after
+ * `IPD_QUARANTINE_AFTER` consecutive failures the admission is skipped until a person resolves the row
+ * (`retryAdmissionCharges`). Only an infrastructure error fails the run.
  */
 export async function postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyResult> {
   const yesterday = istDayString(new Date(now.getTime() - 24 * 3_600_000));
-  const since = new Date(now.getTime() - IPD_ENDED_LOOKBACK_DAYS * 24 * 3_600_000);
-  const ids = (await db.select({ id: ipdAdmissions.id }).from(ipdAdmissions).where(and(
+  const openException = sql`exists (select 1 from ipd_charge_exceptions x where x.admission_id = "ipd_admissions"."id" and x.resolved_at is null)`;
+  const quarantined = sql`exists (select 1 from ipd_charge_exceptions q where q.admission_id = "ipd_admissions"."id" and q.reason = 'posting_failed'
+    and q.resolved_at is null and q.fail_count >= ${IPD_QUARANTINE_AFTER})`;
+  const rows = await db.select({ id: ipdAdmissions.id, skip: sql<boolean>`${quarantined}` }).from(ipdAdmissions).where(and(
     isNotNull(ipdAdmissions.admittedAt),
     or(
       inArray(ipdAdmissions.state, ["admitted", "transferring", "fit_declared", "discharging"]),
-      and(inArray(ipdAdmissions.state, [...IPD_ENDED_STATES]), gte(ipdAdmissions.endedAt, since)),
+      and(
+        inArray(ipdAdmissions.state, [...IPD_ENDED_STATES]),
+        or(
+          isNull(ipdAdmissions.chargesPostedThrough),
+          sql`${ipdAdmissions.chargesPostedThrough} < (${ipdAdmissions.endedAt} at time zone 'Asia/Kolkata')::date`,
+          openException,
+        ),
+      ),
     ),
-  )).orderBy(asc(ipdAdmissions.admittedAt))).map((r) => r.id);
-  const out: NightlyResult = { admissions: ids.length, posted: 0, exceptions: 0, failed: 0 };
+  )).orderBy(asc(ipdAdmissions.admittedAt));
+  const out: NightlyResult = { admissions: rows.length, posted: 0, exceptions: 0, failed: 0, quarantined: 0 };
   const cache: PricingCache = new Map();
-  let firstError: unknown;
-  for (let i = 0; i < ids.length; i += IPD_NIGHTLY_BATCH) {
-    for (const id of ids.slice(i, i + IPD_NIGHTLY_BATCH)) {
+  for (let i = 0; i < rows.length; i += IPD_NIGHTLY_BATCH) {
+    for (const row of rows.slice(i, i + IPD_NIGHTLY_BATCH)) {
+      if (row.skip) { out.quarantined += 1; continue; }
       try {
-        const r = await postAdmissionCharges(db, id, { upToIstDate: yesterday, now, cache });
+        const r = await postAdmissionCharges(db, row.id, { upToIstDate: yesterday, now, cache });
         out.posted += r.posted;
         out.exceptions += r.exceptions;
       } catch (e) {
+        const code = domainErrorCode(e);
+        if (code === null) throw e; // infrastructure: the scheduler records sweep.failed and retries
         out.failed += 1;
-        firstError ??= e;
+        await recordPostingFailure(db, row.id, code, now);
       }
     }
   }
-  if (firstError !== undefined) {
-    throw new IpdError("charges_post_failed", `the nightly IPD charges failed for ${String(out.failed)} admission(s)`, {
-      failed: out.failed, first: firstError instanceof Error ? firstError.message : String(firstError),
-    });
-  }
   return out;
+}
+
+/**
+ * Lifts a quarantined admission (the bill desk, once the cause is fixed): resolves its `posting_failed` row and posts
+ * now. Needs `ipd.charges.reverse` (the billing manager) until the bill desk (E2.3) declares its own string.
+ */
+export async function retryAdmissionCharges(
+  db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {},
+): Promise<AdmissionPostResult> {
+  await requireIpdPermission(db, actor, IPD_CHARGES_REVERSE);
+  const now = opts.now ?? new Date();
+  await db.update(ipdChargeExceptions).set({ resolvedAt: now })
+    .where(and(eq(ipdChargeExceptions.key, failureKey(admissionId)), isNull(ipdChargeExceptions.resolvedAt)));
+  return postAdmissionCharges(db, admissionId, { upToIstDate: istDayString(new Date(now.getTime() - 24 * 3_600_000)), now });
 }
 
 // ═══════════════════════════════════════════ the visit seam ═══════════════════════════════════════════
@@ -287,11 +368,15 @@ export async function postConsultantVisit(tx: Tx, input: ConsultantVisitInput): 
   const consultant = (await tx.select({ id: opdDoctors.id }).from(opdDoctors)
     .where(and(eq(opdDoctors.userId, input.consultantUserId), eq(opdDoctors.active, true))))[0];
   if (consultant === undefined) return record("not_chargeable", null);
-  const already = (await tx.select({ id: ipdChargeLines.id }).from(ipdChargeLines).where(and(
+  // Review #756 item 7: a REVERSED visit does not count — the day can be charged again (next `visit_seq`).
+  const earlier = (await tx.select({ id: ipdChargeLines.id }).from(ipdChargeLines).where(and(
     eq(ipdChargeLines.admissionId, a.id), eq(ipdChargeLines.serviceDate, date), eq(ipdChargeLines.source, "ipd.visit"),
     eq(ipdChargeLines.consultantUserId, input.consultantUserId),
-  )))[0];
-  if (already !== undefined) return record("repeat", null);
+  ))).map((l) => l.id);
+  const reversed = new Set(earlier.length === 0 ? [] : (await tx.select({ of: ipdChargeLines.reversalOf }).from(ipdChargeLines)
+    .where(inArray(ipdChargeLines.reversalOf, earlier))).map((r) => r.of));
+  if (earlier.some((id) => !reversed.has(id))) return record("repeat", null);
+  const visitSeq = earlier.length;
 
   const stays = await staysOf(tx, a.id);
   const held = stays.find((s) => s.startedAt.getTime() <= at.getTime() && (s.endedAt === null || s.endedAt.getTime() > at.getTime()))
@@ -302,6 +387,9 @@ export async function postConsultantVisit(tx: Tx, input: ConsultantVisitInput): 
   // The pricing loader reads only; inside the caller's transaction it sees what the transaction sees.
   const db = tx as unknown as Db;
   const versionId = await lockedVersion(db, a);
+  if (a.tariffVersionId === null && versionId !== null) {
+    await tx.update(ipdAdmissions).set({ tariffVersionId: versionId }).where(eq(ipdAdmissions.id, a.id)); // item 6: pin once
+  }
   if (versionId === null) {
     await raiseException(tx, actor, a, { date, component: "visit", billedClass, code: null, reason: "tariff_missing", versionId: null, consultantUserId: input.consultantUserId }, at);
     return record("rate_missing", null);
@@ -319,7 +407,7 @@ export async function postConsultantVisit(tx: Tx, input: ConsultantVisitInput): 
   }
   const id = await insertLine(tx, {
     admission: a, serviceDate: date, component, billedClass, priced: priced.line, code: priced.code, versionId,
-    source: "ipd.visit", consultantUserId: input.consultantUserId, actor, at,
+    source: "ipd.visit", consultantUserId: input.consultantUserId, visitSeq, actor, at,
   });
   return id === null ? record("repeat", null) : record("charged", id);
 }
@@ -342,11 +430,13 @@ export async function reverseChargeLine(
   const line = (await db.select().from(ipdChargeLines).where(eq(ipdChargeLines.id, input.chargeLineId)))[0];
   if (line === undefined) throw new IpdError("charge_line_not_found", "no such charge line", { chargeLineId: input.chargeLineId });
   if (line.reversalOf !== null) throw new IpdError("charge_line_is_reversal", "a reversal line cannot itself be reversed");
-  return withTx(db, async (tx) => {
+  try {
+    return await withTx(db, async (tx) => {
     await admissionAdvisoryLock(tx, line.admissionId);
     const done = (await tx.select({ id: ipdChargeLines.id }).from(ipdChargeLines).where(eq(ipdChargeLines.reversalOf, line.id)))[0];
     if (done !== undefined) throw new IpdError("charge_line_already_reversed", "this line is already reversed", { reversalLineId: done.id });
     const id = newId();
+    // The advisory lock serialises reversals; the unique index is the backstop, answered in the same words.
     await tx.insert(ipdChargeLines).values({
       ...line, id, source: "ipd.reversal", reversalOf: line.id, reason,
       unitPaise: -line.unitPaise, grossPaise: -line.grossPaise, discountPaise: -line.discountPaise, taxablePaise: -line.taxablePaise,
@@ -357,6 +447,13 @@ export async function reverseChargeLine(
       actor, correlationId: line.admissionId, patientId: line.patientId, encounterId: line.admissionId, occurredAt: at,
     }));
     return { reversalLineId: id };
-  });
+    });
+  } catch (e) {
+    const c = (e as { cause?: { code?: string; constraint?: string } }).cause ?? (e as { code?: string; constraint?: string });
+    if (c.code === "23505" && c.constraint === "ipd_charge_lines_reversal_ux") {
+      throw new IpdError("charge_line_already_reversed", "this line is already reversed", { chargeLineId: line.id });
+    }
+    throw e;
+  }
 }
 

@@ -182,9 +182,10 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (30)
+## HTTP routes (31)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
+- `charges.controller.ts` — 1: `/ipd/charge-lines`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

@@ -16003,6 +16003,7 @@
     }
   },
   "ipdBill": {
+    "postingFailed": "Nightly posting failed ({{count}} tries) — the bill desk retries it",
     "title": "Interim bill",
     "loading": "Loading the bill…",
     "loadFailed": "The bill could not be loaded. Try again.",
@@ -16049,7 +16050,8 @@
     "now": "now",
     "reason": {
       "rate_missing": "Rate missing",
-      "tariff_missing": "No tariff"
+      "tariff_missing": "No tariff",
+      "posting_failed": "Posting failed"
     },
     "component": {
       "room": "Room rent",

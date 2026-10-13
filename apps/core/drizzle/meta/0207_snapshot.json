@@ -1,5 +1,5 @@
 {
-  "id": "3dd5095f-8215-42f7-809a-ea85c1bb4239",
+  "id": "d46b535c-4bc3-4b27-bffd-590defde0167",
   "prevId": "903cacde-bfd8-4a64-8f46-75ea03d2dfb6",
   "version": "7",
   "dialect": "postgresql",
@@ -54581,6 +54581,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "charges_posted_through": {
+          "name": "charges_posted_through",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cancel_reason": {
           "name": "cancel_reason",
           "type": "text",
@@ -55388,13 +55394,13 @@
           "name": "service_date",
           "type": "date",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "component": {
           "name": "component",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "billed_class": {
           "name": "billed_class",
@@ -55416,6 +55422,19 @@
         },
         "tariff_version_id": {
           "name": "tariff_version_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fail_count": {
+          "name": "fail_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "error_code": {
+          "name": "error_code",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -55499,11 +55518,15 @@
       "checkConstraints": {
         "ipd_charge_exceptions_component_ck": {
           "name": "ipd_charge_exceptions_component_ck",
-          "value": "\"ipd_charge_exceptions\".\"component\" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit')"
+          "value": "\"ipd_charge_exceptions\".\"component\" is null or \"ipd_charge_exceptions\".\"component\" in ('room', 'nursing', 'rmo', 'visit', 'cross_visit')"
         },
         "ipd_charge_exceptions_reason_ck": {
           "name": "ipd_charge_exceptions_reason_ck",
-          "value": "\"ipd_charge_exceptions\".\"reason\" in ('rate_missing', 'tariff_missing')"
+          "value": "\"ipd_charge_exceptions\".\"reason\" in ('rate_missing', 'tariff_missing', 'posting_failed')"
+        },
+        "ipd_charge_exceptions_shape_ck": {
+          "name": "ipd_charge_exceptions_shape_ck",
+          "value": "(\"ipd_charge_exceptions\".\"reason\" = 'posting_failed') = (\"ipd_charge_exceptions\".\"component\" is null) and (\"ipd_charge_exceptions\".\"component\" is null) = (\"ipd_charge_exceptions\".\"service_date\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -55644,6 +55667,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "visit_seq": {
+          "name": "visit_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "reversal_of": {
           "name": "reversal_of",
           "type": "text",
@@ -55715,6 +55744,12 @@
             },
             {
               "expression": "consultant_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "visit_seq",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -55795,9 +55830,17 @@
           "name": "ipd_charge_lines_qty_ck",
           "value": "\"ipd_charge_lines\".\"qty\" > 0"
         },
+        "ipd_charge_lines_reversal_ck": {
+          "name": "ipd_charge_lines_reversal_ck",
+          "value": "(\"ipd_charge_lines\".\"source\" = 'ipd.reversal') = (\"ipd_charge_lines\".\"reversal_of\" is not null)"
+        },
         "ipd_charge_lines_sign_ck": {
           "name": "ipd_charge_lines_sign_ck",
-          "value": "(\"ipd_charge_lines\".\"source\" = 'ipd.reversal') = (\"ipd_charge_lines\".\"reversal_of\" is not null) and (\"ipd_charge_lines\".\"reversal_of\" is null) = (\"ipd_charge_lines\".\"net_paise\" >= 0 and \"ipd_charge_lines\".\"gross_paise\" >= 0 and \"ipd_charge_lines\".\"unit_paise\" >= 0)"
+          "value": "case when \"ipd_charge_lines\".\"reversal_of\" is null then \"ipd_charge_lines\".\"unit_paise\" >= 0 and \"ipd_charge_lines\".\"gross_paise\" >= 0 and \"ipd_charge_lines\".\"discount_paise\" >= 0 and \"ipd_charge_lines\".\"net_paise\" >= 0\n          else \"ipd_charge_lines\".\"unit_paise\" <= 0 and \"ipd_charge_lines\".\"gross_paise\" <= 0 and \"ipd_charge_lines\".\"discount_paise\" <= 0 and \"ipd_charge_lines\".\"net_paise\" <= 0 end"
+        },
+        "ipd_charge_lines_visit_seq_ck": {
+          "name": "ipd_charge_lines_visit_seq_ck",
+          "value": "(\"ipd_charge_lines\".\"source\" = 'ipd.visit') = (\"ipd_charge_lines\".\"visit_seq\" is not null) or \"ipd_charge_lines\".\"source\" = 'ipd.reversal'"
         },
         "ipd_charge_lines_reason_ck": {
           "name": "ipd_charge_lines_reason_ck",

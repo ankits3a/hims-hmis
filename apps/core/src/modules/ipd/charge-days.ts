@@ -22,6 +22,8 @@ import type { IpdBedClass } from "@hmis/contracts";
  * - Ranking: general < semi_private < private < deluxe < suite < hdu < icu = nicu = picu (critical care outranks any
  *   ward room; a tie between critical classes goes to the longer hold).
  * - Home leave keeps billing: the stay stays open, so the days keep coming.
+ * - Review #756: overlapping stays are clipped to the previous stay's end before summing; a stay that is all there is
+ *   is never transit — a stay entirely under an hour still bills the admission day (minimum one day).
  */
 
 export type ChargeStay = {
@@ -84,10 +86,20 @@ export function ipdChargeableDays(
     const end = s.endedAt?.getTime() ?? Number.POSITIVE_INFINITY;
     return dischargedAt === null ? end : Math.min(end, dischargedAt.getTime());
   };
-  // Transit: an ended stay shorter than an hour is dropped whole. An open stay is never transit.
-  const kept = [...stays]
-    .filter((s) => s.endedAt === null || s.endedAt.getTime() - s.startedAt.getTime() >= TRANSIT_UNDER_MS)
-    .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
+  // Overlap (review #756 item 8): stays sorted by start, each clipped to begin no earlier than the previous one ended,
+  // so no hour is counted twice; a stay wholly inside an earlier one disappears.
+  const clipped: ChargeStay[] = [];
+  let prevEnd = Number.NEGATIVE_INFINITY;
+  for (const s of [...stays].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())) {
+    const start = Math.max(s.startedAt.getTime(), prevEnd);
+    const end = s.endedAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    if (end > start) clipped.push({ ...s, startedAt: new Date(start) });
+    prevEnd = Math.max(prevEnd, end);
+  }
+  // Transit: an ended stay shorter than an hour is dropped whole. An open stay is never transit. RED 1 (review #756,
+  // DECIDED: minimum one day): when EVERY stay was that short, none is dropped — the admission day bills at its class.
+  const nonTransit = clipped.filter((s) => s.endedAt === null || s.endedAt.getTime() - s.startedAt.getTime() >= TRANSIT_UNDER_MS);
+  const kept = nonTransit.length > 0 ? nonTransit : clipped;
 
   const out: ChargeableDay[] = [];
   for (let day = firstDay; day <= lastDay; day = nextIstDate(day)) {

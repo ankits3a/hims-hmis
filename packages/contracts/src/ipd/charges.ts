@@ -60,12 +60,15 @@ export const IpdBillStaySchema = z.object({
 });
 export type IpdBillStay = z.infer<typeof IpdBillStaySchema>;
 
+/** A charge not posted. `posting_failed` names no day or component: the whole admission's posting failed (`errorCode`). */
 export const IpdChargeExceptionViewSchema = z.object({
-  serviceDate: IpdIstDateSchema,
-  component: IpdRateComponentSchema,
+  serviceDate: IpdIstDateSchema.nullable(),
+  component: IpdRateComponentSchema.nullable(),
   billedClass: IpdBedClassSchema.nullable(),
   serviceCode: z.string().nullable(),
-  reason: z.enum(["rate_missing", "tariff_missing"]),
+  reason: z.enum(["rate_missing", "tariff_missing", "posting_failed"]),
+  errorCode: z.string().nullable(),
+  failCount: z.number().int().nonnegative(),
   firstSeenAt: IpdInstantSchema,
 });
 export type IpdChargeExceptionView = z.infer<typeof IpdChargeExceptionViewSchema>;
@@ -92,6 +95,7 @@ export const IpdInterimBillSchema = z.object({
     /** The net rounded once to the rupee (the invoice rounding the final bill will apply). */
     roundedPaise: SignedPaise,
   }),
+  /** Deposit receipts for the admission (entered-in-error excepted) minus the patient's advance refunds since the request. */
   depositPaidPaise: IpdPaiseSchema,
   /** Deposit paid minus the rounded total: positive = deposit left, negative = due. */
   balancePaise: SignedPaise,

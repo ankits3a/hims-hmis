@@ -16003,6 +16003,7 @@
     }
   },
   "ipdBill": {
+    "postingFailed": "रात की पोस्टिंग विफल ({{count}} प्रयास) — बिल डेस्क दोबारा चलाएगा",
     "title": "अंतरिम बिल",
     "loading": "बिल लोड हो रहा है…",
     "loadFailed": "बिल लोड नहीं हुआ। फिर से कोशिश करें।",
@@ -16049,7 +16050,8 @@
     "now": "अभी",
     "reason": {
       "rate_missing": "दर नहीं",
-      "tariff_missing": "टैरिफ़ नहीं"
+      "tariff_missing": "टैरिफ़ नहीं",
+      "posting_failed": "पोस्टिंग विफल"
     },
     "component": {
       "room": "कमरा किराया",
