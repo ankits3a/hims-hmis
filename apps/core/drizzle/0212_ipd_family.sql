@@ -55,7 +55,8 @@ CREATE TABLE "ipd_family_otps" (
 	"sent_at" timestamp with time zone NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"attempts" integer DEFAULT 0 NOT NULL,
-	"verified_at" timestamp with time zone
+	"verified_at" timestamp with time zone,
+	"failed_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE "ipd_family_sessions" (
@@ -76,6 +77,7 @@ ALTER TABLE "ipd_family_otps" ADD CONSTRAINT "ipd_family_otps_link_id_ipd_family
 ALTER TABLE "ipd_family_sessions" ADD CONSTRAINT "ipd_family_sessions_link_id_ipd_family_links_id_fk" FOREIGN KEY ("link_id") REFERENCES "public"."ipd_family_links"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ipd_family_callbacks_open_idx" ON "ipd_family_callbacks" USING btree ("status","created_at");--> statement-breakpoint
 CREATE INDEX "ipd_family_callbacks_admission_idx" ON "ipd_family_callbacks" USING btree ("admission_id");--> statement-breakpoint
+CREATE INDEX "ipd_family_callbacks_link_idx" ON "ipd_family_callbacks" USING btree ("link_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "ipd_family_links_token_ux" ON "ipd_family_links" USING btree ("token_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "ipd_family_links_live_ux" ON "ipd_family_links" USING btree ("admission_id") WHERE "ipd_family_links"."status" = 'active';--> statement-breakpoint
 CREATE INDEX "ipd_family_otps_link_idx" ON "ipd_family_otps" USING btree ("link_id","sent_at");--> statement-breakpoint

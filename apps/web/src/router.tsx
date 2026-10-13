@@ -695,10 +695,11 @@ const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/login"
 
 /**
  * E3.3 (#731) — THE FAMILY PAGE, A SIBLING OF `/login` AND NOT A CHILD OF THE SHELL: the registered attendant opens it on
- * their own phone with no staff session (`authedRoute` would bounce them to /login). The token in the path and the OTP
+ * their own phone with no staff session (`authedRoute` would bounce them to /login). The token in the FRAGMENT (`#…`, never
+ * sent to a server, review #764) and the OTP
  * session cookie are its only credentials; the API checks both on every call.
  */
-const familyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/family/$token", component: FamilyPage });
+const familyRoute = createRoute({ getParentRoute: () => rootRoute, path: "/family", component: () => <FamilyPage /> });
 
 /**
  * PLAN 11e T6 / D6 — `/change-password` IS A SIBLING OF `/login`, NOT A CHILD OF THE SHELL.

@@ -1,5 +1,5 @@
 {
-  "id": "48c6ac61-2b11-43f8-896c-9f6c47c059ea",
+  "id": "f7357dcc-b474-412d-891f-4dba928cef71",
   "prevId": "3cab7207-573a-4375-b0dc-5c3908c53098",
   "version": "7",
   "dialect": "postgresql",
@@ -56838,6 +56838,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "ipd_family_callbacks_link_idx": {
+          "name": "ipd_family_callbacks_link_idx",
+          "columns": [
+            {
+              "expression": "link_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -57113,6 +57134,12 @@
         },
         "verified_at": {
           "name": "verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_at": {
+          "name": "failed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

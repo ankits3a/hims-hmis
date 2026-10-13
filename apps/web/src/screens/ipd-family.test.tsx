@@ -118,7 +118,7 @@ describe("IpdFamilyCallbacks", () => {
   const list = (over: Partial<IpdFamilyCallbackList["rows"][number]> = {}): IpdFamilyCallbackList => ({
     rows: [{
       id: "01FAKE00000000000000000009", admissionId: "01FAKE00000000000000000002", patientName: "Synthetic Patient", bedCode: "F5-MED-B12",
-      wardName: "Ward 5B", text: "Can we meet the doctor?", phoneMasked: "******5678", status: "open", createdAt: "2030-01-04T06:00:00.000Z",
+      wardName: "Ward 5B", privacy: null, text: "Can we meet the doctor?", phoneMasked: "******5678", status: "open", createdAt: "2030-01-04T06:00:00.000Z",
       closedAt: null, closedBy: null, note: null, ...over,
     }],
   });
@@ -137,6 +137,18 @@ describe("IpdFamilyCallbacks", () => {
   });
 });
 
+describe("IpdFamilyCallbacks — review #764 privacy", () => {
+  it("shows a sealed patient as 'Sealed patient' with no bed or ward", async () => {
+    api.listFamilyCallbacks.mockResolvedValue({ rows: [{
+      id: "01FAKE00000000000000000019", admissionId: "01FAKE00000000000000000012", patientName: null, bedCode: null, wardName: null, privacy: "sealed",
+      text: "Please call", phoneMasked: "******1111", status: "open", createdAt: "2030-01-04T06:00:00.000Z", closedAt: null, closedBy: null, note: null,
+    }] });
+    renderWithRouter(<IpdFamilyCallbacks />);
+    expect(await screen.findByText("Sealed patient")).toBeInTheDocument();
+    expect(screen.queryByText("—")).toBeNull();
+  });
+});
+
 describe("FamilyCard (discharge desk)", () => {
   const panel = (over: Record<string, unknown> = {}) => ({
     admissionId: "01FAKE00000000000000000002", condition: { word: null, setAt: null, setBy: null }, familyOff: null, blocked: null, link: null,
@@ -146,7 +158,7 @@ describe("FamilyCard (discharge desk)", () => {
   it("records the consent and issues the link once, as a QR and an address to hand over", async () => {
     const { FamilyCard } = await import("./ipd-family-panel");
     api.getFamilyPanel.mockResolvedValue(panel());
-    api.issueFamilyLink.mockResolvedValue({ linkId: "01FAKE00000000000000000003", path: "/family/FAKEtoken", phoneMasked: "******5678" });
+    api.issueFamilyLink.mockResolvedValue({ linkId: "01FAKE00000000000000000003", path: "/family#FAKEtoken", phoneMasked: "******5678" });
     renderWithRouter(<FamilyCard admissionId="01FAKE00000000000000000002" />);
     expect(await screen.findByTestId("family-link-status")).toHaveTextContent("No link yet · would go to ******5678");
     // A doctor-only control is not offered to the desk.
@@ -156,7 +168,7 @@ describe("FamilyCard (discharge desk)", () => {
     fireEvent.change(screen.getByLabelText("Who agreed (name)"), { target: { value: "Sita Devi" } });
     fireEvent.click(issue);
     await waitFor(() => expect(api.issueFamilyLink).toHaveBeenCalledWith("01FAKE00000000000000000002", { consentedBy: "Sita Devi", relation: "spouse", method: "verbal" }));
-    expect(await screen.findByTestId("family-issued")).toHaveTextContent("/family/FAKEtoken");
+    expect(await screen.findByTestId("family-issued")).toHaveTextContent("/family#FAKEtoken");
   });
 
   it("lets the doctor set the condition word; a sealed patient's link is shown off with the reason", async () => {

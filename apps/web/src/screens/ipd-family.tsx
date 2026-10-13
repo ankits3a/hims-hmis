@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type { IpdFamilyBillDetails, IpdFamilyGate, IpdFamilyView } from "@hmis/contracts";
@@ -11,7 +10,7 @@ import {
 import "./ipd-family.css";
 
 /*
- * E3.3 (#731) — THE FAMILY PAGE (design board G, "Family discharge tracker"; spec §4.9 F/G). Opened from the link the ward
+ * E3.3 (#731) — THE FAMILY PAGE at `/family#<token>` (design board G, "Family discharge tracker"; spec §4.9 F/G). Opened from the link the ward
  * desk hands the registered attendant. A 390 px phone first: one column, 48 px targets, Hindi by default with an English
  * switch, never night mode (§4.10 edge 30). Before the OTP it shows only the masked phone and why the page exists (DPDP
  * notice); after it: the patient's first name (alias for a confidential patient), ward, day of stay, the condition word
@@ -30,9 +29,13 @@ function codeOf(e: unknown): string | null {
   return null;
 }
 
+/** The link is `/family#<token>`: the fragment never leaves the browser, so no server or edge log can keep it (#764). */
+function tokenFromLocation(): string {
+  return typeof window === "undefined" ? "" : decodeURIComponent(window.location.hash.replace(/^#/, ""));
+}
+
 export function FamilyPage({ token: given }: { token?: string } = {}): React.ReactElement {
-  const params = useParams({ strict: false }) as { token?: string };
-  const token = given ?? params.token ?? "";
+  const [token] = useState(() => given ?? tokenFromLocation());
   const { i18n } = useTranslation();
   const [lang, setLang] = useState<Lang>(storedLang);
   const t = useMemo(() => i18n.getFixedT(lang), [i18n, lang]);

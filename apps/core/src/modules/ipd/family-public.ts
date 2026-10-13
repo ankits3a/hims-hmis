@@ -1,5 +1,5 @@
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import { and, asc, count, desc, eq, gt, sum } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, isNull, sql, sum } from "drizzle-orm";
 import { IPD_FAMILY_LIMITS, IPD_FAMILY_PURPOSE, newId } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
@@ -13,7 +13,7 @@ import { attendantPhoneOf, dayOfStay, messageNameOf } from "./daily-totals";
 import { depositPosition } from "./deposit-ladder";
 import { familyTrackerOf } from "./discharge-read";
 import { IpdError } from "./errors";
-import { familyBlockOf, normalisePhone, sha256 } from "./family";
+import { familyBlockOf, familyPhoneDigest, normalisePhone, sha256 } from "./family";
 import { familyBillDetailsViewed, familyCallbackRequested, familyOtpSent, familyVerified } from "./family-events";
 import { FamilyOtpUnavailable } from "./family-otp";
 import type { Actor, IpdConditionWord, IpdFamilyBillDetails, IpdFamilyGate, IpdFamilyView } from "@hmis/contracts";
@@ -24,7 +24,7 @@ import type { FamilyOtpSender } from "./family-otp";
 /**
  * E3.3 (#731) — THE FAMILY LINK, PUBLIC SIDE. No staff session: the link's token is in the path, the browser holds two
  * http-only cookies the controller sets — a DEVICE id (minted on first open) and, after the OTP, a SESSION token (12 h).
- * Both are stored only as SHA-256. The OTP challenge is bound to the device that asked for it and the session to the
+ * Both are stored only as SHA-256. The link token travels in the request BODY (never a path the edge logs, #764). The OTP challenge is bound to the device that asked for it and the session to the
  * device that verified, so a code read off the phone cannot be redeemed from another browser, and a copied session
  * cookie needs the device cookie too (§4.10 edge 15).
  *
@@ -75,23 +75,31 @@ export async function familyGate(db: Db, token: string, cookies: { device?: stri
 
 /**
  * Send an OTP to the registered phone — and only to it: the number is read from the recorded attendant reference at send
- * time and must hash to the phone the desk saw at issue. Nothing a caller sends chooses the number.
+ * time and must HMAC to the phone the desk saw at issue. Nothing a caller sends chooses the number.
+ *
+ * Review #764: the challenge is COMMITTED first (under the admission lock, with the hourly count), then the SMS goes out
+ * with no transaction and no lock held. A send that fails marks the challenge `failed_at` afterwards; a failed challenge
+ * neither counts as one of the hour's sends nor verifies.
  */
-export async function sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, at: Date = new Date()): Promise<{ phoneMasked: string; expiresAt: string }> {
-  return withTx(db, async (tx) => {
+export async function sendFamilyOtp(
+  db: Db, token: string, deviceId: string, sender: FamilyOtpSender, opts: { at?: Date; secretKey: Buffer },
+): Promise<{ phoneMasked: string; expiresAt: string }> {
+  const at = opts.at ?? new Date();
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const issued = await withTx(db, async (tx) => {
     const o = await openLink(tx, token, at);
     if (o === null) throw new IpdError("family_link_closed", "This link is closed. Please contact the ward desk.");
     await admissionAdvisoryLock(tx, o.admission.id);
-    const [sent] = await tx.select({ n: count() }).from(ipdFamilyOtps)
-      .where(and(eq(ipdFamilyOtps.linkId, o.link.id), gt(ipdFamilyOtps.sentAt, new Date(at.getTime() - HOUR_MS))));
+    const [sent] = await tx.select({ n: count() }).from(ipdFamilyOtps).where(and(
+      eq(ipdFamilyOtps.linkId, o.link.id), gt(ipdFamilyOtps.sentAt, new Date(at.getTime() - HOUR_MS)), isNull(ipdFamilyOtps.failedAt),
+    ));
     if ((sent?.n ?? 0) >= IPD_FAMILY_LIMITS.otpSendsPerHour) {
       throw new IpdError("family_otp_limit", "Too many codes were sent in the last hour. Please try again later.", { retryAfterMinutes: 60 });
     }
     const phone = await attendantPhoneOf(tx, o.link.attendantKind as "guardian" | "deposit_payer", o.link.attendantRef);
-    if (phone === null || sha256(normalisePhone(phone)) !== o.link.phoneHash) {
+    if (phone === null || familyPhoneDigest(opts.secretKey, phone) !== o.link.phoneHash) {
       throw new IpdError("family_phone_changed", "The registered phone has changed since this link was made. Please ask the ward desk for a new link.");
     }
-    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const challengeId = newId();
     const expiresAt = new Date(at.getTime() + IPD_FAMILY_LIMITS.otpTtlMinutes * 60_000);
     await tx.insert(ipdFamilyOtps).values({
@@ -101,49 +109,54 @@ export async function sendFamilyOtp(db: Db, token: string, deviceId: string, sen
       actor: FAMILY_ACTOR, occurredAt: at, correlationId: o.admission.id, patientId: o.admission.patientId,
       payload: { admissionId: o.admission.id, linkId: o.link.id, challengeId, provenance: "system" },
     }));
-    // Inside the transaction: a send that fails rolls the challenge back, so a refused SMS never counts as a send.
-    try {
-      await sender.send(normalisePhone(phone), code);
-    } catch (e) {
-      if (e instanceof FamilyOtpUnavailable) {
-        throw new IpdError("family_otp_unavailable", "The code cannot be sent right now. Please ask the ward desk.");
-      }
-      throw e;
-    }
-    return { phoneMasked: o.link.phoneMasked, expiresAt: expiresAt.toISOString() };
+    return { challengeId, phone: normalisePhone(phone), phoneMasked: o.link.phoneMasked, expiresAt };
   });
+  try {
+    await sender.send(issued.phone, code);
+  } catch (e) {
+    await db.update(ipdFamilyOtps).set({ failedAt: new Date() }).where(eq(ipdFamilyOtps.id, issued.challengeId));
+    if (e instanceof FamilyOtpUnavailable) throw new IpdError("family_otp_unavailable", "The code cannot be sent right now. Please ask the ward desk.");
+    throw e;
+  }
+  return { phoneMasked: issued.phoneMasked, expiresAt: issued.expiresAt.toISOString() };
 }
 
-/** Check the code from the device that asked for it; answer the new session token (the controller sets the cookie). */
+type Verdict =
+  | { kind: "closed" } | { kind: "limit" } | { kind: "invalid"; message: string }
+  | { kind: "ok"; sessionToken: string; expiresAt: Date };
+
+/**
+ * Check the code from the device that asked for it; answer the new session token (the controller sets the cookie).
+ *
+ * Review #764 — ONE TRANSACTION UNDER THE ADMISSION LOCK: the attempt is counted FIRST (`attempts = attempts + 1 …
+ * returning`), the hour's wrong attempts are summed with it, and the limit is checked against that total BEFORE the code is
+ * compared — so parallel guesses queue and at most five are ever compared. A right code gives its attempt back and stamps
+ * `verified_at` only `where verified_at is null` (one code, one session). The verdict commits before any refusal is thrown.
+ */
 export async function verifyFamilyOtp(
   db: Db, token: string, deviceId: string, code: string, at: Date = new Date(),
 ): Promise<{ sessionToken: string; expiresAt: Date }> {
-  const o = await openLink(db, token, at);
-  if (o === null) throw new IpdError("family_link_closed", "This link is closed. Please contact the ward desk.");
-  const since = new Date(at.getTime() - HOUR_MS);
-  const [wrong] = await db.select({ n: sum(ipdFamilyOtps.attempts) }).from(ipdFamilyOtps)
-    .where(and(eq(ipdFamilyOtps.linkId, o.link.id), gt(ipdFamilyOtps.sentAt, since)));
-  if (Number(wrong?.n ?? 0) >= IPD_FAMILY_LIMITS.otpAttemptsPerHour) {
-    throw new IpdError("family_otp_limit", "Too many wrong codes. Please try again after an hour.", { retryAfterMinutes: 60 });
-  }
-  const challenge = (await db.select().from(ipdFamilyOtps).where(and(
-    eq(ipdFamilyOtps.linkId, o.link.id), eq(ipdFamilyOtps.deviceHash, sha256(deviceId)), gt(ipdFamilyOtps.expiresAt, at),
-  )).orderBy(desc(ipdFamilyOtps.sentAt)).limit(1))[0];
-  if (challenge === undefined || challenge.verifiedAt !== null) {
-    throw new IpdError("family_otp_invalid", "That code is not valid. Please ask for a new code.");
-  }
-  const expected = Buffer.from(challenge.codeHash, "hex");
-  const given = Buffer.from(sha256(`${challenge.id}:${code}`), "hex");
-  if (!timingSafeEqual(expected, given)) {
-    // Committed on its own, before the refusal: a wrong code always counts.
-    await db.update(ipdFamilyOtps).set({ attempts: challenge.attempts + 1 }).where(eq(ipdFamilyOtps.id, challenge.id));
-    throw new IpdError("family_otp_invalid", "That code is not right. Please check the SMS and try again.");
-  }
-  return withTx(db, async (tx) => {
-    const used = await tx.update(ipdFamilyOtps).set({ verifiedAt: at })
-      .where(and(eq(ipdFamilyOtps.id, challenge.id), eq(ipdFamilyOtps.attempts, challenge.attempts)))
-      .returning({ id: ipdFamilyOtps.id });
-    if (used.length === 0) throw new IpdError("family_otp_invalid", "That code is not valid. Please ask for a new code.");
+  const v = await withTx(db, async (tx): Promise<Verdict> => {
+    const o = await openLink(tx, token, at);
+    if (o === null) return { kind: "closed" };
+    await admissionAdvisoryLock(tx, o.admission.id);
+    const challenge = (await tx.select().from(ipdFamilyOtps).where(and(
+      eq(ipdFamilyOtps.linkId, o.link.id), eq(ipdFamilyOtps.deviceHash, sha256(deviceId)), gt(ipdFamilyOtps.expiresAt, at),
+      isNull(ipdFamilyOtps.failedAt),
+    )).orderBy(desc(ipdFamilyOtps.sentAt)).limit(1))[0];
+    if (challenge === undefined || challenge.verifiedAt !== null) return { kind: "invalid", message: "That code is not valid. Please ask for a new code." };
+    const bumped = await tx.update(ipdFamilyOtps).set({ attempts: sql`${ipdFamilyOtps.attempts} + 1` })
+      .where(eq(ipdFamilyOtps.id, challenge.id)).returning({ attempts: ipdFamilyOtps.attempts });
+    if (bumped.length === 0) return { kind: "invalid", message: "That code is not valid. Please ask for a new code." };
+    const [hour] = await tx.select({ n: sum(ipdFamilyOtps.attempts) }).from(ipdFamilyOtps)
+      .where(and(eq(ipdFamilyOtps.linkId, o.link.id), gt(ipdFamilyOtps.sentAt, new Date(at.getTime() - HOUR_MS))));
+    if (Number(hour?.n ?? 0) > IPD_FAMILY_LIMITS.otpAttemptsPerHour) return { kind: "limit" };
+    const expected = Buffer.from(challenge.codeHash, "hex");
+    const given = Buffer.from(sha256(`${challenge.id}:${code}`), "hex");
+    if (!timingSafeEqual(expected, given)) return { kind: "invalid", message: "That code is not right. Please check the SMS and try again." };
+    const used = await tx.update(ipdFamilyOtps).set({ verifiedAt: at, attempts: sql`${ipdFamilyOtps.attempts} - 1` })
+      .where(and(eq(ipdFamilyOtps.id, challenge.id), isNull(ipdFamilyOtps.verifiedAt))).returning({ id: ipdFamilyOtps.id });
+    if (used.length !== 1) return { kind: "invalid", message: "That code is not valid. Please ask for a new code." };
     const sessionToken = randomBytes(32).toString("base64url");
     const full = new Date(at.getTime() + IPD_FAMILY_LIMITS.sessionHours * HOUR_MS);
     const expiresAt = o.closesAt !== null && o.closesAt < full ? o.closesAt : full;
@@ -155,8 +168,12 @@ export async function verifyFamilyOtp(
       actor: FAMILY_ACTOR, occurredAt: at, correlationId: o.admission.id, patientId: o.admission.patientId,
       payload: { admissionId: o.admission.id, linkId: o.link.id, sessionId, provenance: "system" },
     }));
-    return { sessionToken, expiresAt };
+    return { kind: "ok", sessionToken, expiresAt };
   });
+  if (v.kind === "closed") throw new IpdError("family_link_closed", "This link is closed. Please contact the ward desk.");
+  if (v.kind === "limit") throw new IpdError("family_otp_limit", "Too many wrong codes. Please try again after an hour.", { retryAfterMinutes: 60 });
+  if (v.kind === "invalid") throw new IpdError("family_otp_invalid", v.message);
+  return { sessionToken: v.sessionToken, expiresAt: v.expiresAt };
 }
 
 async function liveSession(db: Db | Tx, linkId: string, sessionToken: string, deviceId: string, at: Date) {

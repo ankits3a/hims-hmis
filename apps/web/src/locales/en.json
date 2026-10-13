@@ -16653,6 +16653,7 @@
     "closedBy": "{{name}}: {{note}}"
   },
   "ipdFamilyCalls": {
+    "sealed": "Sealed patient",
     "title": "Family callback requests",
     "show": "Show",
     "open": "Waiting",

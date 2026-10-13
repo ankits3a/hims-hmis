@@ -72,17 +72,20 @@ export const IpdFamilyPanelSchema = z.object({
 });
 export type IpdFamilyPanel = z.infer<typeof IpdFamilyPanelSchema>;
 
-/** What issue answers: the path to hand over (QR / copy). The token is shown once and stored only as a hash. */
+/** What issue answers: the address to hand over (QR / copy), `/family#<token>`. Shown once; stored only as a hash. */
 export const IpdFamilyLinkIssuedSchema = z.object({ linkId: IpdIdSchema, path: z.string(), phoneMasked: z.string() });
 export type IpdFamilyLinkIssued = z.infer<typeof IpdFamilyLinkIssuedSchema>;
 
 export const IpdFamilyCallbackSchema = z.object({
   id: IpdIdSchema,
   admissionId: IpdIdSchema,
-  /** The alias for a restricted patient. */
+  /** The alias for a restricted patient; null for a SEALED patient (the desk shows "Sealed patient"). */
   patientName: z.string().nullable(),
+  /** Null for a sealed or a confidential patient: the desk list is read over a shoulder. */
   bedCode: z.string().nullable(),
   wardName: z.string().nullable(),
+  /** `sealed` (D-31) and `confidential` (staff / VIP) rows carry no bed and no ward. */
+  privacy: z.enum(["sealed", "confidential"]).nullable(),
   text: z.string(),
   phoneMasked: z.string(),
   status: z.enum(["open", "done"]),
@@ -106,7 +109,13 @@ export const IpdFamilyGateSchema = z.object({
 });
 export type IpdFamilyGate = z.infer<typeof IpdFamilyGateSchema>;
 
-export const IpdFamilyOtpSchema = z.strictObject({ code: z.string().regex(/^\d{6}$/) });
+/**
+ * The link token travels in the BODY of every public call, never in a path: the edge's access log keeps paths (review
+ * #764). The page itself is `/family#<token>` — a fragment never leaves the browser.
+ */
+export const IpdFamilyTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{20,100}$/);
+export const IpdFamilyTokenBodySchema = z.strictObject({ token: IpdFamilyTokenSchema });
+export const IpdFamilyOtpSchema = z.strictObject({ token: IpdFamilyTokenSchema, code: z.string().regex(/^\d{6}$/) });
 
 export const IpdFamilyStepSchema = z.object({
   key: z.enum(IPD_DISCHARGE_STEPS),
@@ -145,7 +154,7 @@ export const IpdFamilyBillDetailsSchema = z.object({
 });
 export type IpdFamilyBillDetails = z.infer<typeof IpdFamilyBillDetailsSchema>;
 
-export const IpdFamilyCallbackRequestSchema = z.strictObject({ text: z.string().trim().min(2).max(500) });
+export const IpdFamilyCallbackRequestSchema = z.strictObject({ token: IpdFamilyTokenSchema, text: z.string().trim().min(2).max(500) });
 
 export const IPD_FAMILY_ROUTES = {
   panel: "/ipd/admissions/:admissionId/family",
@@ -154,13 +163,13 @@ export const IPD_FAMILY_ROUTES = {
   condition: "/ipd/admissions/:admissionId/condition",
   callbacks: "/ipd/family-callbacks",
   closeCallback: "/ipd/family-callbacks/:callbackId/close",
-  /** Public (no staff session): the token in the path, the session in an http-only cookie. */
-  gate: "/ipd/family/:token",
-  sendOtp: "/ipd/family/:token/otp",
-  verify: "/ipd/family/:token/verify",
-  view: "/ipd/family/:token/view",
-  billDetails: "/ipd/family/:token/bill-details",
-  callback: "/ipd/family/:token/callback",
+  /** Public (no staff session): POST, the token in the body, the session in an http-only cookie. */
+  gate: "/ipd/family/gate",
+  sendOtp: "/ipd/family/otp",
+  verify: "/ipd/family/verify",
+  view: "/ipd/family/view",
+  billDetails: "/ipd/family/bill-details",
+  callback: "/ipd/family/callback",
 } as const;
 
 /** OTP and session limits (spec decided): 3 sends an hour, 5 wrong codes an hour, 10-minute codes, 12-hour sessions. */

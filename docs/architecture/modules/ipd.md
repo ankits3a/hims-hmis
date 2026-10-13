@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
 - **Used by modules:** —
-- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `events`, `modules`, `notify`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
 ## Public API (`index.ts`), by declaring file
@@ -225,7 +225,7 @@ Source: `apps/core/src/modules/ipd/`
   - `readFamilyBillDetails(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyBillD…`
   - `readFamilyView(db: Db, token: string, cookies: { device?: string; session?: string }, at: Date = new Date()): Promise<IpdFamilyView>`
   - `requestFamilyCallback(db: Db, token: string, cookies: { device?: string; session?: string }, text: string, at: Date = new Date()): Promise<…`
-  - `sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, at: Date = new Date()): Promise<{ phoneMasked: string; expi…`
+  - `sendFamilyOtp(db: Db, token: string, deviceId: string, sender: FamilyOtpSender, opts: { at?: Date; secretKey: Buffer }): Promise<{ phoneMas…`
   - `verifyFamilyOtp(db: Db, token: string, deviceId: string, code: string, at: Date = new Date()): Promise<{ sessionToken: string; expiresAt: D…`
 - `family.ts`
   - `closeFamilyCallback(db: Db, actor: Actor, callbackId: string, note: string, opts: { now?: Date } = {}): Promise<{ closed: boolean }>`
@@ -233,7 +233,7 @@ Source: `apps/core/src/modules/ipd/`
   - `familyCallbacksCard(db: Db): Promise<DeskCard[]>`
   - `familyStopConsumer(db: Db): Handler`
   - `handleFamilyStop(tx: Tx, eventId: string, name: string, payload: unknown): Promise<{ handled: boolean; revoked: boolean }>`
-  - `issueFamilyLink(db: Db, actor: Actor, admissionId: string, input: IpdIssueFamilyLink, opts: { now?: Date } = {}): Promise<IpdFamilyLinkIssu…`
+  - `issueFamilyLink(db: Db, actor: Actor, admissionId: string, input: IpdIssueFamilyLink, opts: { now?: Date; secretKey: Buffer }): Promise<Ipd…`
   - `listFamilyCallbacks(db: Db, actor: Actor, opts: { status?: "open" | "done" } = {}): Promise<IpdFamilyCallbackList>`
   - `readFamilyPanel(db: Db, actor: Actor, admissionId: string): Promise<IpdFamilyPanel>`
   - `revokeFamilyLink(db: Db, actor: Actor, linkId: string, opts: { now?: Date } = {}): Promise<{ revoked: boolean }>`
@@ -262,30 +262,6 @@ Source: `apps/core/src/modules/ipd/`
 - `ipd.module.ts`
   - `class IpdModule`
 - `manifest.ts`
-  - `IPD_ADMIT`
-  - `IPD_ADMIT_REQUEST`
-  - `IPD_BAND_PRINT`
-  - `IPD_BEDS_CLEAN`
-  - `IPD_BEDS_MANAGE`
-  - `IPD_BEDS_OVERFLOW`
-  - `IPD_BEDS_VIEW`
-  - `IPD_BILLDESK_VIEW`
-  - `IPD_BILL_VIEW`
-  - `IPD_CHARGES_REVERSE`
-  - `IPD_CONDITION_SET`
-  - `IPD_DISCHARGE_BILL`
-  - `IPD_DISCHARGE_CONFIRM`
-  - `IPD_DISCHARGE_DECLARE`
-  - `IPD_DISCHARGE_EXIT`
-  - `IPD_DISCHARGE_VIEW`
-  - `IPD_FAMILY_ISSUE`
-  - `IPD_GATE_PASS`
-  - `IPD_GATE_SCAN`
-  - `IPD_MORTUARY_MANAGE`
-  - `IPD_PAYER_MANAGE`
-  - `IPD_PAYER_TERMS`
-  - `IPD_TRANSFER_ACCEPT`
-  - `IPD_TRANSFER_START`
   - `ipdManifest: ModuleManifest`
 - `now-cards.ts`
   - `IPD_DISCHARGE_STEP_STUCK_MINUTES`
@@ -312,6 +288,31 @@ Source: `apps/core/src/modules/ipd/`
   - types: `AuthRowInput`, `NonPayables`, `SplitLineInput`, `SplitTerms`
 - `payer.ts`
   - `recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_payer_auth">>`
+- `permissions.ts`
+  - `IPD_ADMIT`
+  - `IPD_ADMIT_REQUEST`
+  - `IPD_BAND_PRINT`
+  - `IPD_BEDS_CLEAN`
+  - `IPD_BEDS_MANAGE`
+  - `IPD_BEDS_OVERFLOW`
+  - `IPD_BEDS_VIEW`
+  - `IPD_BILLDESK_VIEW`
+  - `IPD_BILL_VIEW`
+  - `IPD_CHARGES_REVERSE`
+  - `IPD_CONDITION_SET`
+  - `IPD_DISCHARGE_BILL`
+  - `IPD_DISCHARGE_CONFIRM`
+  - `IPD_DISCHARGE_DECLARE`
+  - `IPD_DISCHARGE_EXIT`
+  - `IPD_DISCHARGE_VIEW`
+  - `IPD_FAMILY_ISSUE`
+  - `IPD_GATE_PASS`
+  - `IPD_GATE_SCAN`
+  - `IPD_MORTUARY_MANAGE`
+  - `IPD_PAYER_MANAGE`
+  - `IPD_PAYER_TERMS`
+  - `IPD_TRANSFER_ACCEPT`
+  - `IPD_TRANSFER_START`
 - `realtime.ts`
   - `IPD_REALTIME_NAMES: string[]`
   - `IPD_TOPIC_SPACES: TopicSpace[]`
