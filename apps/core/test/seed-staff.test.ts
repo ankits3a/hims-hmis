@@ -237,8 +237,8 @@ describe("seed:staff — the census, stated before anything is compared (§2.49)
       // 18-S RS8b — the resident, by the same derivation (ROLE_MODEL).
       "radiology_resident",
       "recovery_nurse",
-      "services_supervisor", // E0.1 TASK ENGINE (issue #713) — the task board: assigns, cancels, verifies
       "security_guard", // PASSES E1.3 (#720) — by derivation from ROLE_MODEL
+      "services_supervisor", // E0.1 TASK ENGINE (issue #713) — the task board: assigns, cancels, verifies
       // OWNER RULING 2026-08-29 (Plan 07c T9 / DD14) — `staff_auditor` joins by DERIVATION: this
       // list is `ROLE_MODEL ∪ GRANTED_BY_OTHER_SEEDS ∪ OPD_ROLE_KEYS`, sorted, so a new model role
       // arrives here for free and this census is where it announces itself. It is the FIFTH place a
