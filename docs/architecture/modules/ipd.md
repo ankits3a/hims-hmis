@@ -153,6 +153,7 @@ Source: `apps/core/src/modules/ipd/`
 - `goals/goal-queries.ts`
   - `IPD_GOAL_QUERIES: Record<string, GoalQuery>`
 - `interim-bill.ts`
+  - `printInterimBillSnapshot(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdSplitSnapshot>`
   - `readInterimBill(db: Db, actor: Actor, admissionId: string): Promise<IpdInterimBill>`
 - `ipd.module.ts`
   - `class IpdModule`
@@ -167,12 +168,12 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_BILL_VIEW`
   - `IPD_CHARGES_REVERSE`
   - `IPD_PAYER_MANAGE`
+  - `IPD_PAYER_TERMS`
   - `ipdManifest: ModuleManifest`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
-  - `computePayerSplit(db: Db, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
+  - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
   - `listPayerNonPayables(db: Db, actor: Actor): Promise<IpdNonPayable[]>`
-  - `printInterimBillSnapshot(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdSplitSnapshot>`
   - `retirePayerNonPayable(db: Db, actor: Actor, id: string, at: Date = new Date()): Promise<void>`
   - `roomRentCapWarning(db: Db, actor: Actor, admissionId: string, targetClass: IpdBedClass, at: Date = new Date()): Promise<IpdRoomRentCapWarni…`
 - `payer-split.ts`

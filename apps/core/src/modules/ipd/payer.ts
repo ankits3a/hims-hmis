@@ -3,11 +3,12 @@ import { IPD_INTENTS, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import { ipdAdmissions, ipdPayerAuths } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { lockAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
+import { lockAdmission, onceIpd, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { payerAuthRecorded } from "./admission-events";
 import { loadPriceBook, planOf, quoteOrRefuse } from "./deposit";
 import { IpdRefusal } from "./errors";
-import { IPD_PAYER_MANAGE } from "./manifest";
+import { listPatientCoverages } from "../patients";
+import { IPD_PAYER_MANAGE, IPD_PAYER_TERMS } from "./manifest";
 import type { Actor, IpdBedClass, IpdIntentName } from "@hmis/contracts";
 import type { z } from "zod";
 import type { Db } from "../../kernel/db/client";
@@ -33,21 +34,32 @@ const LIVE = new Set(["requested", "reserved", "admitted", "transferring", "fit_
 export async function recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"record_payer_auth">> {
   const input: Input<"record_payer_auth"> = IPD_INTENTS.record_payer_auth.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_PAYER_MANAGE);
+  // Review 11: the letter's money terms are the billing manager's (`ipd.payer.terms`); status and number stay here.
+  if (input.roomRentCapPaise !== undefined || input.roomRentCapSiBp !== undefined || input.coPayBp !== undefined) {
+    await requireIpdPermission(db, actor, IPD_PAYER_TERMS);
+  }
   const at = opts.now ?? new Date();
+  if (input.coverageId !== undefined) {
+    const first = await readAdmission(db, input.admissionId);
+    const covers = await listPatientCoverages(db, actor, first.patientId, { reason: "ipd payer authorisation" });
+    if (!covers.some((c) => c.id === input.coverageId)) throw new IpdRefusal("state_changed", "Coverage is not this patient's");
+  }
   const prices = await loadPriceBook(db, at);
   return onceIpd(db, actor, "record_payer_auth", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const a = await lockAdmission(tx, input.admissionId);
     if (!LIVE.has(a.state)) throw new IpdRefusal("admission_wrong_state");
     const prior = await tx.select().from(ipdPayerAuths).where(eq(ipdPayerAuths.admissionId, a.id)).orderBy(desc(ipdPayerAuths.recordedAt), desc(ipdPayerAuths.id));
     const last = prior[0];
-    const closed = last !== undefined && (last.entry === "final" || last.entry === "denial");
+    // Review $9: an APPROVED `initial` after a denial is the appeal's outcome — it reinstates insurance.
+    const appeal = last?.entry === "denial" && input.entry === "initial" && APPROVED.has(input.status);
+    const closed = !appeal && last !== undefined && (last.entry === "final" || last.entry === "denial");
     const admitted = a.admittedAt !== null;
     if (input.entry === "payer_change") {
       if (admitted && input.counsellingDocumentId === undefined) throw new IpdRefusal("payer_change_needs_counselling");
     } else if (input.entry === "initial") {
       // E2.2 (#726, DECIDED): the insurer's answer to a REQUESTED pre-auth is a second `initial` carrying its status
       // (approved / partially approved); only an answered initial refuses another.
-      if (prior.some((p) => p.entry === "initial" && p.status !== "requested") && !closed) throw new IpdRefusal("auth_out_of_order", "An initial entry exists");
+      if (!appeal && prior.some((p) => p.entry === "initial" && p.status !== "requested") && !closed) throw new IpdRefusal("auth_out_of_order", "An initial entry exists");
       if (closed) throw new IpdRefusal("auth_out_of_order", "Authorisation closed");
     } else {
       if (!prior.some((p) => p.entry === "initial")) throw new IpdRefusal("auth_out_of_order", "No initial entry");
@@ -86,6 +98,8 @@ export async function recordPayerAuth(db: Db, actor: Actor, raw: unknown, opts: 
         emergencyUnstabilised: a.source === "er" && a.stabilisedAt === null,
       });
       await tx.update(ipdAdmissions).set({
+        // Review 6: the coverage moves with the payer (a payer change without one clears it; an initial keeps the plan's).
+        coverageId: input.entry === "payer_change" ? input.coverageId ?? null : input.coverageId ?? a.coverageId,
         payerKind: input.payerKind, estimatePaise: q.estimatePaise, depositRequiredPaise: q.depositPaise, depositBasis: q.basis, updatedAt: at,
       }).where(eq(ipdAdmissions.id, a.id));
     }

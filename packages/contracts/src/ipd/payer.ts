@@ -11,7 +11,7 @@ import { IpdIdSchema, IpdInstantSchema, IpdPaiseSchema } from "./common";
 /** Why (part of) a line is the patient's, or why the payer carries it. */
 export const IPD_SPLIT_REASONS = [
   "non_payable", "room_rent_over_cap", "room_rent_cap_proportional", "co_pay", "over_approved_amount", "denied", "cash",
-  "auth_pending", "scheme", "reversed",
+  "auth_pending", "scheme", "reversed", "non_covered",
 ] as const;
 export const IpdSplitReasonSchema = z.enum(IPD_SPLIT_REASONS);
 export type IpdSplitReason = z.infer<typeof IpdSplitReasonSchema>;
@@ -74,12 +74,15 @@ export const IpdRoomRentCapWarningSchema = z.object({
 });
 export type IpdRoomRentCapWarning = z.infer<typeof IpdRoomRentCapWarningSchema>;
 
-/** A printed interim bill's kept split. */
+/** A printed interim bill's kept split: the screen prints exactly this (review 5). */
 export const IpdSplitSnapshotSchema = z.object({
   snapshotId: IpdIdSchema,
   printedAt: IpdInstantSchema,
   payerPaise: SignedPaise,
   patientPaise: SignedPaise,
+  payerSplit: IpdPayerSplitSchema,
+  /** Deposit held minus the patient-payable total rounded to the rupee, as printed. */
+  patientBalancePaise: SignedPaise,
 });
 export type IpdSplitSnapshot = z.infer<typeof IpdSplitSnapshotSchema>;
 

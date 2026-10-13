@@ -72,9 +72,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 
 - (E2.2) `payer-split.ts` — THE PURE ENGINE: `splitBill(lines, terms, nonPayables)` (per line payer paise, patient paise,
   reason codes; totals; words), `splitTermsOf(payerKind, authRows, sumInsured, schemeNonCovered)` (the record → terms),
-  `capWarningOf`, `CAP_EXEMPT_CLASSES`, `PROPORTIONAL_COMPONENTS`. `payer-bill.ts` — its inputs from the database
-  (`computePayerSplit`, `loadSplitTerms`), `roomRentCapWarning(db, actor, admissionId, targetClass)`, `capWarningsFor` (the
-  admit sheet's class cards), `printInterimBillSnapshot`, the non-payables list (`listPayerNonPayables`,
+  `capWarningOf`, `distributeGroup`, `CAP_EXEMPT_CLASSES`, `PROPORTIONAL_COMPONENTS`. `payer-bill.ts` — its inputs from the
+  database (`computePayerSplit`, `loadSplitTerms`, both `Db | Tx`), `roomRentCapWarning(db, actor, admissionId,
+  targetClass)`, `capWarningsFor` (the admit sheet's class cards), the non-payables list (`listPayerNonPayables`,
   `addPayerNonPayable`, `retirePayerNonPayable`). `payer.controller.ts` — `IPD_PAYER_ROUTES`. `kernel/db/schema/ipd.ts` —
   `ipd_payer_auths.room_rent_cap_paise` / `room_rent_cap_si_bp` / `co_pay_bp`, `ipd_payer_non_payables`,
   `ipd_payer_split_snapshots` (migration `ipd_payer`). `packages/contracts/src/ipd/payer.ts` — `IpdPayerSplit`,
@@ -231,23 +231,44 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   enforces it on every route).
 - INSURED, the order per line: reversed pair 0/0 → denied (`denied`, whole stay, from admission) → not yet approved
   (`auth_pending`, patient until approval) → non-payable (`non_payable`) → room-rent cap → co-pay → approved amount
-  (`over_approved_amount`, consumed in posting order). An approval covers the stay FROM ADMISSION: the split reads the
+  (`over_approved_amount`, consumed in POSTING ORDER — postedAt, then id; never service date — review $2: a line posted
+  later never takes approval from one posted earlier, so a printed bill's earlier lines never flip on a later read). An approval covers the stay FROM ADMISSION: the split reads the
   latest state, never the approval's date, so day-1 lines turn payer-payable the moment a day-2 approval is recorded.
-- ROOM-RENT CAP (IRDAI proportional deduction): a day whose live nightly room line exceeds the cap and whose class is not
-  critical care (`icu`, `nicu`, `picu`, `hdu` — DECIDED) → room line: payer pays the cap (`room_rent_over_cap`); nursing,
-  RMO, visit and cross-visit of that day: payer pays net × cap / rent (`room_rent_cap_proportional`). Pharmacy,
+- ROOM-RENT CAP (IRDAI proportional deduction; review $8): a day whose live nightly room line's TAXABLE value (ex-GST)
+  exceeds the cap and whose class is not critical care (`icu`, `nicu`, `picu`, `hdu` — DECIDED $) → the room line and that
+  day's nursing, RMO, visit and cross-visit are paid net × cap / taxable rent — the ratio applies to taxable and each
+  line's GST follows its taxable split (`room_rent_over_cap` on the room line, `room_rent_cap_proportional` on the others).
+  Exactly ONE live nightly room line per (admission, date) — the day rule guarantees it; two throw (review 10). Pharmacy,
   consumables, implants and diagnostics are never proportionally deducted (when they post, they take no deduction).
-- ROUNDING (DECIDED): every payer share rounds DOWN to the paisa; payer + patient = the line exactly.
+- ROUNDING (DECIDED $, review 3): cap and co-pay are exact fractions (BigInt); each (service date, component) group's payer
+  share is floored ONCE and handed out as each line's floor plus one paisa to the largest remainders, ties by line id.
+  payer + patient = the line exactly.
 - DENIAL: whole stay patient-payable and `cash_consent_missing` on the bill until a `payer_change` entry carrying a
   `counsellingDocumentId` (the signed consent) follows the denial; after it the stay stays `denied` (cash from admission).
+  APPEAL (DECIDED $, review 9): an APPROVED `initial` recorded after the denial is the appeal's outcome — accepted by the
+  intent, it reinstates insurance and clears `cash_consent_missing`. A payer change is not an appeal.
+- SCHEME CARVE-OUT (DECIDED $, review 7): Σ granted non-covered approvals is carved out of the LATEST lines in posting
+  order (payer reduced, patient increased, reason `non_covered`), never more than the lines carry — no money appears that
+  is not on a line.
+- CAP STATED ONE WAY (review RED 1): an entry carries an absolute cap OR a % cap, never both (zod refine on
+  `record_payer_auth` + `ipd_payer_auths_one_cap_ck`); across entries the latest stated one wins.
+- COVERAGE MOVES WITH THE PAYER (review 6): `record_payer_auth` takes `coverageId` (checked to be the patient's,
+  `state_changed`); a `payer_change` sets `ipd_admissions.coverage_id` to it (none → null) with the payer kind; an initial
+  that sets the payer sets it. A % cap resolves against the admission's CURRENT coverage.
+- PRINT (review 4, 5): `printInterimBillSnapshot` (in `interim-bill.ts`) takes the admission lock and reads lines, record,
+  coverage, approvals, non-payables and deposit in ONE transaction, keeps the split, and answers it; the screen prints that
+  answer, and a failed keep blocks printing ("Could not record — try again").
 - RECORD ORDER (DECIDED, E2.2): a REQUESTED initial may be answered by a second `initial` with the insurer's status; a
   requested entry approves nothing (`approved_total_paise` = the last approved total), and an approved enhancement adds to
   the last APPROVED total in the current authorisation — a requested enhancement never inflates it.
 - NON-PAYABLES: `ipd_payer_non_payables` (service code or tariff category, case-insensitive; retired, never deleted). It
-  starts EMPTY (DECIDED): no IRDAI non-medical category exists as a tariff category. The TPA desk keeps it
-  (`ipd.payer.manage`, `/ipd/payer/non-payables`).
+  starts EMPTY (DECIDED): no IRDAI non-medical category exists as a tariff category. The billing manager keeps it
+  (`ipd.payer.terms`, `/ipd/payer/non-payables`).
+- PERMISSIONS (review 11): status and pre-auth number stay with `ipd.payer.manage` (front office, its supervisor, duty
+  manager, billing manager); the money terms (room-rent cap, co-pay) and the non-payables list need `ipd.payer.terms`,
+  held by `billing_manager` alone (no TPA role exists in the model).
 - MONEY OFF DOCTORS (0058): the split rides on the interim bill (`ipd.bill.view`); the cap warning needs `ipd.bill.view` or
-  `ipd.admit`; the non-payables list `ipd.payer.manage`. No doctor role holds any of them.
+  `ipd.admit`; the non-payables list `ipd.payer.terms`. No doctor role holds any of them.
 
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it

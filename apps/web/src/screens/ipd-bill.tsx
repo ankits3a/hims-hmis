@@ -5,7 +5,9 @@ import { ApiError } from "../lib/api";
 import { fmtIst, fmtPaise } from "../lib/format";
 import { getInterimBill, printInterimBill } from "../lib/ipd-bill-api";
 import type React from "react";
-import type { IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdPayerSplit, IpdSplitLine } from "@hmis/contracts";
+import type {
+  IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdPayerSplit, IpdSplitLine, IpdSplitSnapshot,
+} from "@hmis/contracts";
 import "../styles/paper-pine.css";
 import "./ipd-bill.css";
 
@@ -95,8 +97,15 @@ export function IpdBill(): React.ReactElement {
 
 export function IpdBillScreen({ admissionId }: { admissionId: string }): React.ReactElement {
   const { t } = useTranslation();
-  const [bill, setBill] = useState<IpdInterimBill | null>(null);
+  const [loaded, setBill] = useState<IpdInterimBill | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Review 5: the paper prints the split the server KEPT (the snapshot's answer), and only once it is kept.
+  const [printed, setPrinted] = useState<IpdSplitSnapshot | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
+  useEffect(() => {
+    if (printed === null) return;
+    window.print();
+  }, [printed]);
 
   useEffect(() => {
     let live = true;
@@ -111,11 +120,16 @@ export function IpdBillScreen({ admissionId }: { admissionId: string }): React.R
   }, [admissionId, t]);
 
   if (error !== null) return <main className="ipdb"><p role="alert" className="ipdb-error">{error}</p></main>;
-  if (bill === null) return <main className="ipdb"><p className="dim">{t("ipdBill.loading")}</p></main>;
+  if (loaded === null) return <main className="ipdb"><p className="dim">{t("ipdBill.loading")}</p></main>;
+  const bill: IpdInterimBill = printed === null ? loaded
+    : { ...loaded, payerSplit: printed.payerSplit, patientBalancePaise: printed.patientBalancePaise };
   const due = bill.balancePaise < 0;
   const split = showsSplit(bill.payerSplit) ? new Map(bill.payerSplit.lines.map((l) => [l.lineId, l] as const)) : null;
-  // The printed split is kept before the paper prints; a failed keep never blocks the downtime paper copy.
-  const print = (): void => { void printInterimBill(admissionId).catch(() => undefined).finally(() => window.print()); };
+  // The split is kept first; the paper then prints exactly that. A failed keep blocks printing (review 5).
+  const print = (): void => {
+    setPrintError(null);
+    printInterimBill(admissionId).then((snap) => setPrinted(snap), () => setPrintError(t("ipdBill.split.printFailed")));
+  };
 
   return (
     <main className="ipdb" aria-labelledby="ipdb-title">
@@ -131,6 +145,8 @@ export function IpdBillScreen({ admissionId }: { admissionId: string }): React.R
           <button type="button" className="ipdb-btn" onClick={print}>{t("ipdBill.print")}</button>
         </div>
       </header>
+
+      {printError === null ? null : <p role="alert" className="ipdb-error">{printError}</p>}
 
       <section className="ipdb-facts" aria-label={t("ipdBill.factsLabel")}>
         <div><span className="dim small">{t("ipdBill.admitted")}</span><span>{bill.admittedAt === null ? "—" : dayTime(bill.admittedAt)}</span></div>

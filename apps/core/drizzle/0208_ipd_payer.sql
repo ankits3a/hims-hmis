@@ -29,4 +29,5 @@ ALTER TABLE "ipd_payer_split_snapshots" ADD CONSTRAINT "ipd_payer_split_snapshot
 CREATE UNIQUE INDEX "ipd_payer_non_payables_live_ux" ON "ipd_payer_non_payables" USING btree ("match_kind",lower("match_value")) WHERE "ipd_payer_non_payables"."retired_at" is null;--> statement-breakpoint
 CREATE INDEX "ipd_payer_split_snapshots_admission_idx" ON "ipd_payer_split_snapshots" USING btree ("admission_id","printed_at");--> statement-breakpoint
 ALTER TABLE "ipd_payer_auths" ADD CONSTRAINT "ipd_payer_auths_terms_ck" CHECK (("ipd_payer_auths"."room_rent_cap_paise" is null or "ipd_payer_auths"."room_rent_cap_paise" > 0)
-      and ("ipd_payer_auths"."room_rent_cap_si_bp" is null or "ipd_payer_auths"."room_rent_cap_si_bp" between 1 and 10000) and ("ipd_payer_auths"."co_pay_bp" is null or "ipd_payer_auths"."co_pay_bp" between 0 and 10000));
+      and ("ipd_payer_auths"."room_rent_cap_si_bp" is null or "ipd_payer_auths"."room_rent_cap_si_bp" between 1 and 10000) and ("ipd_payer_auths"."co_pay_bp" is null or "ipd_payer_auths"."co_pay_bp" between 0 and 10000));--> statement-breakpoint
+ALTER TABLE "ipd_payer_auths" ADD CONSTRAINT "ipd_payer_auths_one_cap_ck" CHECK ("ipd_payer_auths"."room_rent_cap_paise" is null or "ipd_payer_auths"."room_rent_cap_si_bp" is null);

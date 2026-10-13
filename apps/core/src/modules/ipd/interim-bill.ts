@@ -1,17 +1,18 @@
 import { and, asc, eq, gte, inArray, sum } from "drizzle-orm";
-import { IPD_RATE_COMPONENTS } from "@hmis/contracts";
+import { IPD_RATE_COMPONENTS, newId } from "@hmis/contracts";
+import { withTx } from "../../kernel/db/client";
 import {
-  enteredInErrorMarks, ipdAdmissionDeposits, ipdBedStays, ipdChargeExceptions, ipdChargeLines, refundVouchers, resources, tariffVersions,
+  enteredInErrorMarks, ipdAdmissionDeposits, ipdPayerSplitSnapshots, ipdBedStays, ipdChargeExceptions, ipdChargeLines, refundVouchers, resources, tariffVersions,
 } from "../../kernel/db/schema";
 import { getPatientSummaries } from "../patients";
 import { roundTotalToRupee } from "../tariff";
-import { readAdmission, requireIpdPermission } from "./admission-core";
+import { lockAdmission, readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
 import { IPD_ENDED_STATES } from "./charges";
 import { IPD_BILL_VIEW } from "./manifest";
 import { computePayerSplit } from "./payer-bill";
-import type { Actor, IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdRateComponent } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Actor, IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdRateComponent, IpdSplitSnapshot } from "@hmis/contracts";
+import type { Db, Tx } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
 
 /**
@@ -106,7 +107,7 @@ export async function readInterimBill(db: Db, actor: Actor, admissionId: string)
  * advance refunds are per patient, not per receipt, so a refund in the stay's window is netted against its deposit
  * (DECIDED; the same reading as `cancelAdmission`'s "owed back = min(deposits, advance)").
  */
-export async function depositHeldPaise(db: Db, a: Pick<AdmissionRow, "id" | "patientId" | "requestedAt">): Promise<number> {
+export async function depositHeldPaise(db: Db | Tx, a: Pick<AdmissionRow, "id" | "patientId" | "requestedAt">): Promise<number> {
   const deps = await db.select({ receiptId: ipdAdmissionDeposits.receiptId, amount: ipdAdmissionDeposits.amountPaise })
     .from(ipdAdmissionDeposits).where(eq(ipdAdmissionDeposits.admissionId, a.id));
   if (deps.length === 0) return 0;
@@ -117,4 +118,30 @@ export async function depositHeldPaise(db: Db, a: Pick<AdmissionRow, "id" | "pat
     eq(refundVouchers.patientId, a.patientId), eq(refundVouchers.kind, "advance_refund"), gte(refundVouchers.issuedAt, a.requestedAt),
   ));
   return Math.max(0, paid - Number(r?.total ?? 0));
+}
+
+/**
+ * E2.2 (#726, review 4) — THE DESK PRINTS THE INTERIM BILL: under the admission's lock, in ONE transaction, the lines,
+ * the authorisation, the coverage, the approvals, the non-payables and the deposit are read, the split computed and
+ * kept (append-only), and that same split is answered — the screen prints exactly what was kept (review 5).
+ * `ipd.bill.view`.
+ */
+export async function printInterimBillSnapshot(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdSplitSnapshot> {
+  await requireIpdPermission(db, actor, IPD_BILL_VIEW);
+  return withTx(db, async (tx) => {
+    const a = await lockAdmission(tx, admissionId);
+    const lines = await tx.select().from(ipdChargeLines).where(eq(ipdChargeLines.admissionId, a.id));
+    const split = await computePayerSplit(tx, a, lines);
+    const deposit = await depositHeldPaise(tx, a);
+    const patientBalancePaise = deposit - roundTotalToRupee(Math.max(split.totals.patientPaise, 0)).roundedPaise;
+    const id = newId();
+    await tx.insert(ipdPayerSplitSnapshots).values({
+      id, admissionId: a.id, kind: "interim", payerPaise: split.totals.payerPaise, patientPaise: split.totals.patientPaise,
+      split: { ...split, patientBalancePaise } as unknown as Record<string, unknown>, printedBy: actor.id, printedAt: at,
+    });
+    return {
+      snapshotId: id, printedAt: at.toISOString(), payerPaise: split.totals.payerPaise, patientPaise: split.totals.patientPaise,
+      payerSplit: split, patientBalancePaise,
+    };
+  });
 }

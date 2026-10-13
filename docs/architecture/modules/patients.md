@@ -31,7 +31,7 @@ Source: `apps/core/src/modules/patients/`
   - `listAllergies(db: Db, patientId: string): Promise<AllergyRow[]>`
   - types: `AllergyRow`
 - `coverages.ts`
-  - `coverageSumInsuredPaise(db: Db, coverageId: string): Promise<number | null>`
+  - `coverageSumInsuredPaise(db: Db | Tx, coverageId: string): Promise<number | null>`
   - `listPatientCoverages(db: Db, actor: Actor, patientId: string, opts: { reason?: string } = {}): Promise<CoverageRow[]>`
   - types: `CoverageRow`
 - `display-name.ts`

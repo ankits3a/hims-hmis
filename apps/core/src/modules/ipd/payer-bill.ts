@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { IPD_BED_CLASS_INFO, IpdNonPayableInputSchema, ipdRateServiceCode, newId } from "@hmis/contracts";
 import {
-  approvals, ipdChargeLines, ipdPayerAuths, ipdPayerNonPayables, ipdPayerSplitSnapshots, services,
+  approvals, ipdPayerAuths, ipdPayerNonPayables, services,
 } from "../../kernel/db/schema";
 import { coverageSumInsuredPaise } from "../patients";
 import { loadPricingContext } from "../tariff";
@@ -10,12 +10,13 @@ import { IPD_APPROVAL_TYPE_KEYS } from "./approval-types";
 import { priceComponent } from "./charges";
 import { loadPriceBook } from "./deposit";
 import { IpdError } from "./errors";
-import { IPD_ADMIT, IPD_BILL_VIEW, IPD_PAYER_MANAGE } from "./manifest";
+import { IPD_ADMIT, IPD_BILL_VIEW, IPD_PAYER_TERMS } from "./manifest";
 import { capWarningOf, splitBill, splitTermsOf } from "./payer-split";
 import type {
-  Actor, IpdBedClass, IpdNonPayable, IpdPayerSplit, IpdRateComponent, IpdRoomRentCapWarning, IpdSplitSnapshot,
+  Actor, IpdBedClass, IpdNonPayable, IpdPayerSplit, IpdRateComponent, IpdRoomRentCapWarning,
 } from "@hmis/contracts";
-import type { Db } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
+import type { ipdChargeLines } from "../../kernel/db/schema";
 import type { AdmissionRow } from "./admission-core";
 import type { PriceBook } from "./deposit";
 import type { NonPayables, SplitLineInput, SplitTerms } from "./payer-split";
@@ -30,7 +31,7 @@ import type { NonPayables, SplitLineInput, SplitTerms } from "./payer-split";
 type ChargeLineRow = typeof ipdChargeLines.$inferSelect;
 
 /** The split's terms for one admission, from its record. */
-export async function loadSplitTerms(db: Db, a: AdmissionRow): Promise<SplitTerms> {
+export async function loadSplitTerms(db: Db | Tx, a: AdmissionRow): Promise<SplitTerms> {
   const rows = await db.select().from(ipdPayerAuths).where(eq(ipdPayerAuths.admissionId, a.id))
     .orderBy(asc(ipdPayerAuths.recordedAt), asc(ipdPayerAuths.id));
   const needsSi = rows.some((r) => r.roomRentCapSiBp !== null);
@@ -46,7 +47,7 @@ export async function loadSplitTerms(db: Db, a: AdmissionRow): Promise<SplitTerm
 }
 
 /** The live non-payables list, lower-cased for matching. */
-export async function loadNonPayables(db: Db): Promise<NonPayables> {
+export async function loadNonPayables(db: Db | Tx): Promise<NonPayables> {
   const rows = await db.select().from(ipdPayerNonPayables).where(isNull(ipdPayerNonPayables.retiredAt));
   return {
     services: new Set(rows.filter((r) => r.matchKind === "service").map((r) => r.matchValue.toLowerCase())),
@@ -55,7 +56,7 @@ export async function loadNonPayables(db: Db): Promise<NonPayables> {
 }
 
 /** Computes the split for an admission's posted lines (the interim bill passes the lines it already read). */
-export async function computePayerSplit(db: Db, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit> {
+export async function computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit> {
   const terms = await loadSplitTerms(db, a);
   const ids = [...new Set(lines.map((l) => l.serviceId))];
   const cats = ids.length === 0 ? new Map<string, string>()
@@ -63,7 +64,7 @@ export async function computePayerSplit(db: Db, a: AdmissionRow, lines: readonly
       .map((s) => [s.id, s.category] as const));
   const inputs: SplitLineInput[] = lines.map((l) => ({
     id: l.id, serviceDate: l.serviceDate, component: l.component as IpdRateComponent, billedClass: l.billedClass as IpdBedClass | null,
-    serviceCode: l.serviceCode, category: cats.get(l.serviceId) ?? null, netPaise: l.netPaise, source: l.source,
+    serviceCode: l.serviceCode, category: cats.get(l.serviceId) ?? null, taxablePaise: l.taxablePaise, netPaise: l.netPaise, source: l.source,
     reversalOf: l.reversalOf, postedAt: l.postedAt.toISOString(),
   }));
   return splitBill(inputs, terms, await loadNonPayables(db));
@@ -111,25 +112,6 @@ export async function roomRentCapWarning(
   return capWarningOf(targetClass, terms.roomRentCapPaise, await rentPerDay(db, a, targetClass, at));
 }
 
-// ═══════════════════════════════════════ printed interim bill ═══════════════════════════════════════
-
-/**
- * The desk prints the interim bill: the split as it stands is kept (append-only), so a paper in the patient's hand can
- * be matched later. `ipd.bill.view`.
- */
-export async function printInterimBillSnapshot(db: Db, actor: Actor, admissionId: string, at: Date = new Date()): Promise<IpdSplitSnapshot> {
-  await requireIpdPermission(db, actor, IPD_BILL_VIEW);
-  const a = await readAdmission(db, admissionId);
-  const lines = await db.select().from(ipdChargeLines).where(eq(ipdChargeLines.admissionId, a.id));
-  const split = await computePayerSplit(db, a, lines);
-  const id = newId();
-  await db.insert(ipdPayerSplitSnapshots).values({
-    id, admissionId: a.id, kind: "interim", payerPaise: split.totals.payerPaise, patientPaise: split.totals.patientPaise,
-    split: split as unknown as Record<string, unknown>, printedBy: actor.id, printedAt: at,
-  });
-  return { snapshotId: id, printedAt: at.toISOString(), payerPaise: split.totals.payerPaise, patientPaise: split.totals.patientPaise };
-}
-
 // ═══════════════════════════════════════ the non-payables list ═══════════════════════════════════════
 
 const viewOf = (r: typeof ipdPayerNonPayables.$inferSelect): IpdNonPayable => ({
@@ -137,16 +119,16 @@ const viewOf = (r: typeof ipdPayerNonPayables.$inferSelect): IpdNonPayable => ({
 });
 
 export async function listPayerNonPayables(db: Db, actor: Actor): Promise<IpdNonPayable[]> {
-  await requireIpdPermission(db, actor, IPD_PAYER_MANAGE);
+  await requireIpdPermission(db, actor, IPD_PAYER_TERMS);
   const rows = await db.select().from(ipdPayerNonPayables).where(isNull(ipdPayerNonPayables.retiredAt))
     .orderBy(asc(ipdPayerNonPayables.matchKind), asc(ipdPayerNonPayables.matchValue));
   return rows.map(viewOf);
 }
 
-/** The TPA desk adds a service code or tariff category insurers never pay (`ipd.payer.manage`). */
+/** The billing manager adds a service code or tariff category insurers never pay (`ipd.payer.terms`, review 11). */
 export async function addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable> {
   const input = IpdNonPayableInputSchema.parse(raw);
-  await requireIpdPermission(db, actor, IPD_PAYER_MANAGE);
+  await requireIpdPermission(db, actor, IPD_PAYER_TERMS);
   const [row] = await db.insert(ipdPayerNonPayables).values({
     id: newId(), matchKind: input.matchKind, matchValue: input.matchValue, reason: input.reason, createdBy: actor.id, createdAt: at,
   }).onConflictDoNothing().returning();
@@ -156,7 +138,7 @@ export async function addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at:
 
 /** Retires a row (never deleted: a printed split may have relied on it). */
 export async function retirePayerNonPayable(db: Db, actor: Actor, id: string, at: Date = new Date()): Promise<void> {
-  await requireIpdPermission(db, actor, IPD_PAYER_MANAGE);
+  await requireIpdPermission(db, actor, IPD_PAYER_TERMS);
   const done = await db.update(ipdPayerNonPayables).set({ retiredAt: at, retiredBy: actor.id })
     .where(and(eq(ipdPayerNonPayables.id, id), isNull(ipdPayerNonPayables.retiredAt))).returning({ id: ipdPayerNonPayables.id });
   if (done.length === 0) throw new IpdError("non_payable_not_found", "No live non-payable row with that id");

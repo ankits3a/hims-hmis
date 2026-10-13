@@ -138,14 +138,28 @@ describe("IpdBillScreen", () => {
     expect(screen.queryByRole("columnheader", { name: "Payer" })).toBeNull();
   });
 
-  it("E2.2: Print keeps the split as printed, then prints", async () => {
+  it("review 5: Print keeps the split first and the paper shows the KEPT split; a failed keep blocks printing", async () => {
     api.getInterimBill.mockResolvedValue(bill());
-    api.printInterimBill.mockResolvedValue({ snapshotId: id(99), printedAt: "2030-01-02T00:00:00.000Z", payerPaise: 0, patientPaise: 320_000 });
+    const kept = bill().payerSplit;
+    api.printInterimBill.mockResolvedValue({
+      snapshotId: id(99), printedAt: "2030-01-02T00:00:00.000Z", payerPaise: 0, patientPaise: 320_000, patientBalancePaise: 180_000,
+      payerSplit: { ...kept, mode: "insured", authState: "denied", words: ["Pre-auth denied: cash from admission"], exceptions: ["cash_consent_missing"],
+        lines: [{ lineId: id(10), payerPaise: 0, patientPaise: 150_000, reasons: ["denied"] }] },
+    });
     const printSpy = vi.spyOn(window, "print").mockImplementation(() => undefined);
     renderWithRouter(<IpdBillScreen admissionId={ADM} />);
+    expect(screen.queryByRole("region", { name: "Payer split" })).toBeNull();
     fireEvent.click(await screen.findByRole("button", { name: "Print" }));
-    await waitFor(() => expect(printSpy).toHaveBeenCalled());
+    await waitFor(() => expect(printSpy).toHaveBeenCalledTimes(1));
     expect(api.printInterimBill).toHaveBeenCalledWith(ADM);
+    // What prints is the snapshot's split, not the one loaded earlier.
+    const split = screen.getByRole("region", { name: "Payer split" });
+    expect(within(split).getByText("Cash consent missing")).toBeInTheDocument();
+    printSpy.mockClear();
+    api.printInterimBill.mockRejectedValue(new ApiError(500, { code: "boom" }));
+    fireEvent.click(screen.getByRole("button", { name: "Print" }));
+    expect(await screen.findByText("Could not record — try again")).toBeInTheDocument();
+    expect(printSpy).not.toHaveBeenCalled();
     printSpy.mockRestore();
   });
 

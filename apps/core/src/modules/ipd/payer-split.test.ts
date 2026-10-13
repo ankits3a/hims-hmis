@@ -9,6 +9,7 @@ const line = (over: Partial<SplitLineInput>): SplitLineInput => {
   return {
     id: `L${String(n).padStart(4, "0")}`, serviceDate: "2030-01-01", component: "room", billedClass: "private", serviceCode: "IPD_ROOM_PRIVATE",
     category: "room_rent", netPaise: 400_000, source: "ipd.nightly", reversalOf: null, postedAt: `2030-01-02T00:05:00.${String(n).padStart(3, "0")}Z`, ...over,
+    taxablePaise: over.taxablePaise ?? over.netPaise ?? 400_000,
   };
 };
 const insured = (over: Partial<SplitTerms> = {}): SplitTerms => ({
@@ -100,6 +101,50 @@ describe("splitBill", () => {
     expect(s.words).toContain(`Above approved ${rupeeText(200_000)}: ${rupeeText(250_000)}`);
   });
 
+  it("review $2: the approved amount is consumed in POSTING order, not service-date order — an earlier-posted line never flips", () => {
+    const early = line({ serviceDate: "2030-01-02", netPaise: 150_000, billedClass: "general", postedAt: "2030-01-03T00:05:00.000Z" });
+    const late = line({ serviceDate: "2030-01-01", netPaise: 150_000, billedClass: "general", component: "visit", postedAt: "2030-01-03T09:00:00.000Z" });
+    const s = splitBill([late, early], insured({ approvedTotalPaise: 150_000 }));
+    expect(by(s, early.id)).toMatchObject({ payerPaise: 150_000, patientPaise: 0 });
+    expect(by(s, late.id)).toMatchObject({ payerPaise: 0, patientPaise: 150_000, reasons: ["over_approved_amount"] });
+    expect(s.lines.map((l) => l.lineId)).toEqual([early.id, late.id]);
+  });
+
+  it("review $3: a (date, component) group is rounded once; the paisa left over goes to the largest remainder, then the lowest id", () => {
+    const room = line({ netPaise: 300_000 });
+    const v = [1, 2, 3].map(() => line({ component: "visit", netPaise: 100_000 }));
+    const s = splitBill([room, ...v], insured({ roomRentCapPaise: 100_000 }));
+    // Each exact share is 33,333.33…; the group's is exactly 1,00,000 — per-line floors would lose a paisa.
+    expect(v.map((l) => by(s, l.id).payerPaise)).toEqual([33_334, 33_333, 33_333]);
+    expect(v.reduce((t, l) => t + by(s, l.id).payerPaise + by(s, l.id).patientPaise, 0)).toBe(300_000);
+  });
+
+  it("review $8: the cap compares the room line's TAXABLE value; the ratio applies to taxable and GST follows it", () => {
+    const room = line({ taxablePaise: 400_000, netPaise: 420_000 });
+    const nursing = line({ component: "nursing", netPaise: 90_000 });
+    const s = splitBill([room, nursing], insured({ roomRentCapPaise: 100_000 }));
+    expect(by(s, room.id)).toMatchObject({ payerPaise: 105_000, patientPaise: 315_000, reasons: ["room_rent_over_cap"] });
+    expect(by(s, nursing.id)).toMatchObject({ payerPaise: 22_500, patientPaise: 67_500 });
+    // Taxable within the cap: no deduction, even when net with GST is above it.
+    const inside = line({ serviceDate: "2030-02-01", taxablePaise: 100_000, netPaise: 105_000 });
+    expect(by(splitBill([inside], insured({ roomRentCapPaise: 100_000 })), inside.id)).toMatchObject({ payerPaise: 105_000, reasons: [] });
+  });
+
+  it("review $7: scheme non-covered amounts are carved out of the latest lines in posting order; nothing extra appears", () => {
+    const a = line({ billedClass: "general", netPaise: 150_000 });
+    const b = line({ billedClass: "general", component: "nursing", netPaise: 20_000 });
+    const s = splitBill([a, b], insured({ mode: "scheme", schemeNonCoveredPaise: 30_000 }));
+    expect(by(s, b.id)).toMatchObject({ payerPaise: 0, patientPaise: 20_000, reasons: ["scheme", "non_covered"] });
+    expect(by(s, a.id)).toMatchObject({ payerPaise: 140_000, patientPaise: 10_000, reasons: ["scheme", "non_covered"] });
+    expect(s.totals.payerPaise + s.totals.patientPaise).toBe(170_000);
+    const over = splitBill([a], insured({ mode: "scheme", schemeNonCoveredPaise: 999_999 }));
+    expect(over.totals).toMatchObject({ payerPaise: 0, patientPaise: 150_000 });
+  });
+
+  it("review 10: two live nightly room lines on one day is refused loudly (the day rule allows one)", () => {
+    expect(() => splitBill([line({}), line({})], insured())).toThrow(/two live nightly room lines on 2030-01-01/);
+  });
+
   it("pending, denied, cash, reimbursement and scheme each decide the whole bill", () => {
     const ls = [line({ billedClass: "general", netPaise: 150_000 })];
     expect(splitBill(ls, insured({ authState: "pending" })).lines[0]).toMatchObject({ payerPaise: 0, reasons: ["auth_pending"] });
@@ -109,8 +154,8 @@ describe("splitBill", () => {
     expect(splitBill(ls, insured({ mode: "cash", deniedEver: true })).lines[0]).toMatchObject({ payerPaise: 0, reasons: ["denied"] });
     expect(splitBill(ls, insured({ mode: "reimbursement" })).lines[0]).toMatchObject({ payerPaise: 0, reasons: ["cash"] });
     const scheme = splitBill(ls, insured({ mode: "scheme", schemeNonCoveredPaise: 50_000, roomRentCapPaise: 1 }));
-    expect(scheme.lines[0]).toMatchObject({ payerPaise: 150_000, patientPaise: 0, reasons: ["scheme"] });
-    expect(scheme.totals.patientPaise).toBe(50_000);
+    expect(scheme.lines[0]).toMatchObject({ payerPaise: 100_000, patientPaise: 50_000, reasons: ["scheme", "non_covered"] });
+    expect(scheme.totals).toMatchObject({ payerPaise: 100_000, patientPaise: 50_000 });
     expect(scheme.approvedTotalPaise).toBe(100_000_000);
     expect(splitBill(ls, insured({ authState: "pending" })).approvedTotalPaise).toBeNull();
   });
@@ -157,6 +202,13 @@ describe("splitTermsOf", () => {
     expect(splitTermsOf("cash", unsigned, null, 0).exceptions).toEqual(["cash_consent_missing"]);
     const signed = [...denied, row({ entry: "payer_change", status: "approved", counsellingDocumentId: "DOC1" })];
     expect(splitTermsOf("cash", signed, null, 0)).toMatchObject({ mode: "cash", deniedEver: true, exceptions: [] });
+  });
+
+  it("review $9: an approval after the denial (appeal) reinstates insurance and clears the cash consent", () => {
+    const t = splitTermsOf("insurance_cashless", [
+      row({}), row({ entry: "denial", status: "denied" }), row({ status: "approved", approvedTotalPaise: 400_000 }),
+    ], null, 0);
+    expect(t).toMatchObject({ authState: "approved", approvedTotalPaise: 400_000, deniedEver: false, exceptions: [] });
   });
 
   it("a payer change starts a new authorisation: the old insurer's approval and terms do not carry", () => {

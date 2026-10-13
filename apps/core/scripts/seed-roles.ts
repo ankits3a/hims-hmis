@@ -719,6 +719,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ipd.payer.manage",
       // IPD CHARGES E2.1 (#725) — the interim bill, and the reversal line against a wrong charge (never an edit).
       "ipd.bill.view", "ipd.charges.reverse",
+      // IPD PAYER E2.2 (#726, review 11) — the letter's money terms (room-rent cap, co-pay) and the non-payables list.
+      "ipd.payer.terms",
       /**
        * PLAN 17 T2 / DD6 — **THE INTERLOCK'S OVERRIDE, AND IT LIVES HERE RATHER THAN IN THE LAB.**
        *

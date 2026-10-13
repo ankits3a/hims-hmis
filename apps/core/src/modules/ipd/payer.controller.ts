@@ -4,16 +4,17 @@ import { IpdBedClassSchema } from "@hmis/contracts";
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { IpdError, IpdRefusal, ipdRefusalStatus } from "./errors";
-import { IPD_BILL_VIEW, IPD_PAYER_MANAGE } from "./manifest";
+import { printInterimBillSnapshot } from "./interim-bill";
+import { IPD_BILL_VIEW, IPD_PAYER_TERMS } from "./manifest";
 import {
-  addPayerNonPayable, listPayerNonPayables, printInterimBillSnapshot, retirePayerNonPayable, roomRentCapWarning,
+  addPayerNonPayable, listPayerNonPayables, retirePayerNonPayable, roomRentCapWarning,
 } from "./payer-bill";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 
 /**
  * E2.2 (#726) — the payer split's routes (`IPD_PAYER_ROUTES`). The split itself rides on the interim bill. Billing and
- * TPA permissions only: no doctor role holds `ipd.bill.view` or `ipd.payer.manage` (decision 0058).
+ * TPA permissions only: no doctor role holds `ipd.bill.view` or `ipd.payer.terms` (decision 0058).
  */
 function toHttp(e: unknown): never {
   if (e instanceof IpdRefusal) {
@@ -49,19 +50,19 @@ export class IpdPayerController {
   }
 
   @Get("payer/non-payables")
-  @RequirePermission(IPD_PAYER_MANAGE, "hospital")
+  @RequirePermission(IPD_PAYER_TERMS, "hospital")
   async nonPayables(@CurrentActor() actor: Actor): Promise<unknown> {
     try { return { items: await listPayerNonPayables(this.db, actor) }; } catch (e) { toHttp(e); }
   }
 
   @Post("payer/non-payables")
-  @RequirePermission(IPD_PAYER_MANAGE, "hospital")
+  @RequirePermission(IPD_PAYER_TERMS, "hospital")
   async addNonPayable(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await addPayerNonPayable(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
   @Post("payer/non-payables/:id/retire")
-  @RequirePermission(IPD_PAYER_MANAGE, "hospital")
+  @RequirePermission(IPD_PAYER_TERMS, "hospital")
   async retireNonPayable(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<{ retired: true }> {
     try { await retirePayerNonPayable(this.db, actor, id); return { retired: true }; } catch (e) { toHttp(e); }
   }

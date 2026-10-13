@@ -238,6 +238,8 @@ export const ipdPayerAuths = pgTable(
     check("ipd_payer_auths_status_ck", sql`${t.status} in ('requested', 'approved', 'partially_approved', 'denied', 'final_approved')`),
     check("ipd_payer_auths_terms_ck", sql`(${t.roomRentCapPaise} is null or ${t.roomRentCapPaise} > 0)
       and (${t.roomRentCapSiBp} is null or ${t.roomRentCapSiBp} between 1 and 10000) and (${t.coPayBp} is null or ${t.coPayBp} between 0 and 10000)`),
+    // Review RED 1: one entry states the cap ONE way — absolute or % of sum insured, never both.
+    check("ipd_payer_auths_one_cap_ck", sql`${t.roomRentCapPaise} is null or ${t.roomRentCapSiBp} is null`),
   ],
 );
 

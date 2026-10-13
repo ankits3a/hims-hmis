@@ -7,10 +7,12 @@ import { ipdChargeLines, ipdPayerSplitSnapshots } from "../../../kernel/db/schem
 import { recordReceipt } from "../../billing";
 import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { CHARGE_RATES, mkChargesWorld } from "../../../../test/helpers/ipd";
+import { mkTpaDesk } from "../../../../test/helpers/ipd-payer";
 import {
   askApproval, postConsultantVisit, postNightlyIpdCharges, printInterimBillSnapshot, readInterimBill, recordPayerAuth,
   registerIpdReceiptGuard, roomRentCapWarning,
 } from "../index";
+import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../../kernel/db/client";
 import type { ChargesWorld } from "../../../../test/helpers/ipd";
 
@@ -30,13 +32,15 @@ describe("E2.2 payer authorisation and bill split — acceptance", () => {
   let teardown: () => Promise<void>;
   let w: ChargesWorld;
   let unregister: (() => void) | null = null;
+  /** The billing manager's TPA seat: the record, its money terms (`ipd.payer.terms`) and the bill. */
+  let tpa: Actor;
 
   beforeAll(async () => { ({ db, teardown } = await setupTestDb()); });
   afterAll(async () => teardown());
-  beforeEach(async () => { await truncateAll(db); w = await mkChargesWorld(db); });
+  beforeEach(async () => { await truncateAll(db); w = await mkChargesWorld(db); tpa = await mkTpaDesk(db); });
   afterEach(() => { unregister?.(); unregister = null; });
 
-  const auth = (admissionId: string, at: Date, over: Record<string, unknown>) => recordPayerAuth(db, w.admitDesk, {
+  const auth = (admissionId: string, at: Date, over: Record<string, unknown>) => recordPayerAuth(db, tpa, {
     idempotencyKey: key(), admissionId, payerKind: "insurance_cashless", entry: "initial", status: "requested",
     provisionalCashlessSigned: true, ...over,
   }, { now: at });

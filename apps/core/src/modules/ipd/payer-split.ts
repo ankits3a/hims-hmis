@@ -8,18 +8,23 @@ import type { IpdBedClass, IpdPayerSplit, IpdRateComponent, IpdSplitException, I
  * ORDER, per line (IRDAI practice, DECIDED):
  *   1. a reversed line and its reversal are both 0/0 (`reversed`) — the pair nets to nothing;
  *   2. the mode decides first: cash / reimbursement → all patient (`cash`, or `denied` after a denial); scheme → all
- *      payer (`scheme`); insured with the pre-auth denied → all patient (`denied`), still pending → all patient
- *      (`auth_pending`) until the insurer approves, and an approval covers the stay FROM ADMISSION (day-1 lines too);
+ *      payer (`scheme`) less the approved non-covered amounts (step 7); insured with the pre-auth denied → all patient
+ *      (`denied`), still pending → all patient (`auth_pending`) until the insurer approves, and an approval covers the
+ *      stay FROM ADMISSION (day-1 lines too);
  *   3. non-payables (service code or tariff category on the list) → all patient (`non_payable`);
- *   4. the room-rent cap, on a day whose room line's rent exceeds it and whose class is not critical care: the room
- *      line's excess is the patient's (`room_rent_over_cap`) and nursing, RMO and visits are paid in the ratio
- *      cap / rent, the rest the patient's (`room_rent_cap_proportional`). Pharmacy, consumables, implants and
- *      diagnostics are never proportionally deducted (IRDAI 2020);
+ *   4. the room-rent cap (review $8): on a day whose room line's TAXABLE value (ex-GST) exceeds the cap and whose
+ *      class is not critical care, the room line and that day's nursing, RMO and visits are paid in the ratio
+ *      cap / taxable rent — applied to the taxable value, the line's GST following its taxable split, i.e. net ×
+ *      cap / taxable rent (`room_rent_over_cap` on the room line, `room_rent_cap_proportional` on the others).
+ *      Pharmacy, consumables, implants and diagnostics are never proportionally deducted (IRDAI 2020);
  *   5. co-pay on what the payer still carries (`co_pay`) — after the cap;
- *   6. the approved amount, in posting order: whatever the payer's running total would carry beyond it is the
- *      patient's (`over_approved_amount`).
- * ROUNDING (DECIDED $): every payer share rounds DOWN to the paisa; the patient takes the remainder, so payer + patient
- * always equals the line exactly.
+ *   6. the approved amount, consumed in POSTING ORDER (postedAt, then id — review $2): a line posted later never takes
+ *      approval from one posted earlier, so a printed bill's earlier lines never flip on a later read;
+ *   7. scheme only (review $7): the granted non-covered amounts are carved out of the LATEST lines in posting order —
+ *      payer reduced, patient increased (`non_covered`); never more than the lines carry.
+ * ROUNDING (review $3, DECIDED): steps 4–5 are exact fractions; the payer share of each (service date, component) group
+ * is rounded DOWN once, then distributed to the group's lines by each line's floor plus one paisa to the largest
+ * remainders (ties by line id). Payer + patient always equals each line exactly.
  */
 
 /** Room classes exempt from the cap and the proportional deduction (DECIDED $: critical care, HDU included). */
@@ -35,6 +40,8 @@ export type SplitLineInput = {
   serviceCode: string;
   /** The tariff service's category (for the non-payables list); null when unknown. */
   category: string | null;
+  /** Gross less discount, before GST (the room-rent cap compares this). */
+  taxablePaise: number;
   netPaise: number;
   source: string;
   reversalOf: string | null;
@@ -53,7 +60,7 @@ export type SplitTerms = {
   /** Eligible rent per day, resolved (absolute, or % of sum insured); null = no cap. */
   roomRentCapPaise: number | null;
   coPayBp: number | null;
-  /** A denial is on the record (the stay is cash from admission even after the payer moved to cash). */
+  /** A denial is on the record with no approval after it (cash from admission, even after the payer moved to cash). */
   deniedEver: boolean;
   exceptions: IpdSplitException[];
   schemeNonCoveredPaise: number;
@@ -62,12 +69,9 @@ export type SplitTerms = {
 export type NonPayables = { services: ReadonlySet<string>; categories: ReadonlySet<string> };
 export const NO_NON_PAYABLES: NonPayables = { services: new Set(), categories: new Set() };
 
-const ORDER = (a: SplitLineInput, b: SplitLineInput): number =>
-  a.serviceDate < b.serviceDate ? -1 : a.serviceDate > b.serviceDate ? 1
-    : a.postedAt < b.postedAt ? -1 : a.postedAt > b.postedAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-
-/** Payer share of `net` in the ratio num/den, rounded down to the paisa. */
-const share = (net: number, num: number, den: number): number => Math.floor((net * num) / den);
+/** Posting order: postedAt, then id (review $2). */
+const POSTING_ORDER = (a: SplitLineInput, b: SplitLineInput): number =>
+  a.postedAt < b.postedAt ? -1 : a.postedAt > b.postedAt ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 
 /** ₹ with Indian grouping; paise shown only when present. */
 export function rupeeText(paise: number): string {
@@ -80,15 +84,38 @@ export function pctText(bp: number): string {
   return `${(bp / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })} %`;
 }
 
+/**
+ * Review $3 — one group's payer shares: each line's exact share is `net × num / den` (BigInt, no overflow); the group
+ * total is floored once and handed out as each line's floor plus one paisa to the largest remainders, ties by line id.
+ */
+export function distributeGroup(lines: readonly { id: string; net: number }[], num: bigint, den: bigint): Map<string, number> {
+  const parts = lines.map((l) => {
+    const exact = BigInt(l.net) * num;
+    return { id: l.id, floor: exact / den, rem: exact % den };
+  });
+  const total = parts.reduce((t, p) => t + p.floor * den + p.rem, 0n) / den;
+  let left = Number(total - parts.reduce((t, p) => t + p.floor, 0n));
+  const out = new Map(parts.map((p) => [p.id, Number(p.floor)] as const));
+  const byRem = [...parts].sort((x, y) => (x.rem > y.rem ? -1 : x.rem < y.rem ? 1 : x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+  for (const p of byRem) {
+    if (left <= 0) break;
+    out.set(p.id, out.get(p.id)! + 1);
+    left -= 1;
+  }
+  return out;
+}
+
 export function splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, nonPayables: NonPayables = NO_NON_PAYABLES): IpdPayerSplit {
-  const sorted = [...lines].sort(ORDER);
+  const sorted = [...lines].sort(POSTING_ORDER);
   const reversedIds = new Set(sorted.flatMap((l) => (l.reversalOf === null ? [] : [l.reversalOf])));
   const dead = (l: SplitLineInput): boolean => l.reversalOf !== null || reversedIds.has(l.id);
 
-  // The rent of each day: its live nightly room line.
+  // The taxable rent of each day: its ONE live nightly room line (the day rule guarantees one — review 10).
   const rentOf = new Map<string, { rent: number; cls: IpdBedClass | null }>();
   for (const l of sorted) {
-    if (l.component === "room" && l.source === "ipd.nightly" && !dead(l)) rentOf.set(l.serviceDate, { rent: l.netPaise, cls: l.billedClass });
+    if (l.component !== "room" || l.source !== "ipd.nightly" || dead(l)) continue;
+    if (rentOf.has(l.serviceDate)) throw new Error(`payer split: two live nightly room lines on ${l.serviceDate} (the day rule allows one)`);
+    rentOf.set(l.serviceDate, { rent: l.taxablePaise, cls: l.billedClass });
   }
   const cap = terms.roomRentCapPaise;
   const cappedDay = (date: string): { rent: number; cap: number } | null => {
@@ -99,56 +126,86 @@ export function splitBill(lines: readonly SplitLineInput[], terms: SplitTerms, n
   };
 
   const totals = { payerPaise: 0, patientPaise: 0, nonPayablePaise: 0, capDeductionPaise: 0, coPayPaise: 0, overApprovedPaise: 0 };
-  const out: IpdSplitLine[] = [];
-  let carried = 0;
+  const result = new Map<string, IpdSplitLine>();
   const cappedDays = new Map<string, { rent: number; cap: number }>();
   const whole = (l: SplitLineInput, reason: IpdSplitReason, toPayer: boolean): IpdSplitLine =>
     ({ lineId: l.id, payerPaise: toPayer ? l.netPaise : 0, patientPaise: toPayer ? 0 : l.netPaise, reasons: [reason] });
+  const nonPayable = (l: SplitLineInput): boolean =>
+    nonPayables.services.has(l.serviceCode.toLowerCase()) || (l.category !== null && nonPayables.categories.has(l.category.toLowerCase()));
 
+  // Pass 1: whole-line decisions; the rest are grouped by (service date, component) for the exact shares.
+  const groups = new Map<string, SplitLineInput[]>();
   for (const l of sorted) {
-    if (dead(l)) { out.push({ lineId: l.id, payerPaise: 0, patientPaise: 0, reasons: ["reversed"] }); continue; }
-    let line: IpdSplitLine;
-    if (terms.mode === "scheme") line = whole(l, "scheme", true);
-    else if (terms.mode !== "insured") line = whole(l, terms.deniedEver ? "denied" : "cash", false);
-    else if (terms.authState === "denied") line = whole(l, "denied", false);
-    else if (terms.authState !== "approved") line = whole(l, "auth_pending", false);
-    else if (nonPayables.services.has(l.serviceCode.toLowerCase()) || (l.category !== null && nonPayables.categories.has(l.category.toLowerCase()))) {
-      line = whole(l, "non_payable", false);
+    if (dead(l)) result.set(l.id, { lineId: l.id, payerPaise: 0, patientPaise: 0, reasons: ["reversed"] });
+    else if (terms.mode === "scheme") result.set(l.id, whole(l, "scheme", true));
+    else if (terms.mode !== "insured") result.set(l.id, whole(l, terms.deniedEver ? "denied" : "cash", false));
+    else if (terms.authState === "denied") result.set(l.id, whole(l, "denied", false));
+    else if (terms.authState !== "approved") result.set(l.id, whole(l, "auth_pending", false));
+    else if (nonPayable(l)) {
+      result.set(l.id, whole(l, "non_payable", false));
       totals.nonPayablePaise += l.netPaise;
     } else {
-      let payer = l.netPaise;
-      const reasons: IpdSplitReason[] = [];
-      const day = cappedDay(l.serviceDate);
-      if (day !== null && l.component === "room") {
-        payer = Math.min(l.netPaise, day.cap);
-        reasons.push("room_rent_over_cap");
-      } else if (day !== null && PROPORTIONAL_COMPONENTS.has(l.component)) {
-        payer = share(l.netPaise, day.cap, day.rent);
-        reasons.push("room_rent_cap_proportional");
-      }
-      if (day !== null) cappedDays.set(l.serviceDate, day);
-      totals.capDeductionPaise += l.netPaise - payer;
-      const bp = terms.coPayBp ?? 0;
-      if (bp > 0 && payer > 0) {
-        const kept = share(payer, 10_000 - bp, 10_000);
-        totals.coPayPaise += payer - kept;
-        payer = kept;
-        reasons.push("co_pay");
-      }
-      const room = Math.max(terms.approvedTotalPaise - carried, 0);
-      if (payer > room) {
-        totals.overApprovedPaise += payer - room;
-        payer = room;
-        reasons.push("over_approved_amount");
-      }
-      carried += payer;
-      line = { lineId: l.id, payerPaise: payer, patientPaise: l.netPaise - payer, reasons };
+      const k = `${l.serviceDate}|${l.component}`;
+      groups.set(k, [...(groups.get(k) ?? []), l]);
     }
-    out.push(line);
-    totals.payerPaise += line.payerPaise;
-    totals.patientPaise += line.patientPaise;
   }
-  if (terms.mode === "scheme") totals.patientPaise += terms.schemeNonCoveredPaise;
+
+  // Pass 2: cap and co-pay as exact fractions, rounded once per group.
+  const bp = BigInt(terms.coPayBp ?? 0);
+  for (const group of groups.values()) {
+    const first = group[0]!;
+    const day = cappedDay(first.serviceDate);
+    const capped = day !== null && (first.component === "room" || PROPORTIONAL_COMPONENTS.has(first.component));
+    if (capped) cappedDays.set(first.serviceDate, day);
+    const capNum = capped ? BigInt(day.cap) : 1n;
+    const capDen = capped ? BigInt(day.rent) : 1n;
+    const afterCap = distributeGroup(group.map((l) => ({ id: l.id, net: l.netPaise })), capNum, capDen);
+    const afterCoPay = distributeGroup(group.map((l) => ({ id: l.id, net: l.netPaise })), capNum * (10_000n - bp), capDen * 10_000n);
+    for (const l of group) {
+      const reasons: IpdSplitReason[] = [];
+      if (capped) reasons.push(first.component === "room" ? "room_rent_over_cap" : "room_rent_cap_proportional");
+      const capPaid = afterCap.get(l.id)!;
+      const paid = afterCoPay.get(l.id)!;
+      totals.capDeductionPaise += l.netPaise - capPaid;
+      if (bp > 0n && capPaid > 0) { reasons.push("co_pay"); totals.coPayPaise += capPaid - paid; }
+      result.set(l.id, { lineId: l.id, payerPaise: paid, patientPaise: l.netPaise - paid, reasons });
+    }
+  }
+
+  // Pass 3: the approved amount, in posting order.
+  if (terms.mode === "insured" && terms.authState === "approved") {
+    let carried = 0;
+    for (const l of sorted) {
+      const r = result.get(l.id)!;
+      if (r.payerPaise <= 0 || r.reasons.includes("reversed")) continue;
+      const room = Math.max(terms.approvedTotalPaise - carried, 0);
+      if (r.payerPaise > room) {
+        totals.overApprovedPaise += r.payerPaise - room;
+        r.patientPaise += r.payerPaise - room;
+        r.payerPaise = room;
+        r.reasons.push("over_approved_amount");
+      }
+      carried += r.payerPaise;
+    }
+  }
+
+  // Pass 4 (scheme): carve the approved non-covered amounts out of the latest lines.
+  if (terms.mode === "scheme" && terms.schemeNonCoveredPaise > 0) {
+    let left = terms.schemeNonCoveredPaise;
+    for (const l of [...sorted].reverse()) {
+      if (left <= 0) break;
+      const r = result.get(l.id)!;
+      if (r.payerPaise <= 0) continue;
+      const take = Math.min(left, r.payerPaise);
+      r.payerPaise -= take;
+      r.patientPaise += take;
+      r.reasons.push("non_covered");
+      left -= take;
+    }
+  }
+
+  const out = sorted.map((l) => result.get(l.id)!);
+  for (const r of out) { totals.payerPaise += r.payerPaise; totals.patientPaise += r.patientPaise; }
 
   return {
     mode: terms.mode, authState: terms.authState, preAuthNumber: terms.preAuthNumber,
@@ -220,7 +277,8 @@ export function splitModeOf(payerKind: string | null): SplitMode {
  *   when something was requested. A requested enhancement keeps the approved total until it is approved.
  * - Terms: the latest STATED value of each term in the chain; an SI cap needs the coverage's sum insured — without it
  *   no cap is applied and `room_rent_cap_unresolved` is raised (never a guessed cap). An absolute cap wins over a %.
- * - `cash_consent_missing`: a denial with no later payer change carrying a signed counselling document.
+ * - `cash_consent_missing`: a denial with no later approval (appeal) and no later payer change carrying a signed
+ *   counselling document.
  */
 export function splitTermsOf(
   payerKind: string | null, rows: readonly AuthRowInput[], sumInsuredPaise: number | null, schemeNonCoveredPaise: number,
@@ -250,9 +308,14 @@ export function splitTermsOf(
     if (sumInsuredPaise === null || sumInsuredPaise <= 0) exceptions.push("room_rent_cap_unresolved");
     else roomRentCapPaise = Math.floor((sumInsuredPaise * capBp) / 10_000);
   }
+  // Review $9: an approval after the denial (the appeal) reinstates insurance — the denial no longer stands, and no
+  // cash consent is owed. Otherwise the consent is a later payer change carrying the signed counselling document.
   const lastDenial = all.map((r, i) => (isDenial(r) ? i : -1)).reduce((m, i) => Math.max(m, i), -1);
-  const deniedEver = lastDenial >= 0;
-  if (deniedEver && !all.slice(lastDenial + 1).some((r) => r.entry === "payer_change" && r.counsellingDocumentId !== null)) {
+  const after = lastDenial < 0 ? [] : all.slice(lastDenial + 1);
+  // A payer change is not an appeal: it moves to another payer (or cash) and needs its own consent.
+  const appealed = after.some((r) => APPROVED.has(r.status) && r.entry !== "payer_change");
+  const deniedEver = lastDenial >= 0 && !appealed;
+  if (deniedEver && !after.some((r) => r.entry === "payer_change" && r.counsellingDocumentId !== null)) {
     exceptions.unshift("cash_consent_missing");
   }
   return {

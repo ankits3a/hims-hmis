@@ -63,7 +63,7 @@ export { IPD_ADMISSION_BOARD_EVENT_NAMES } from "./admission-events";
 export { assignBedIn, endAdmissionHolds, placementContext, proposeBeds, readBedFacts } from "./beds";
 export type { BedPlacementInput, PlacementContext } from "./beds";
 // E2.1 (#725) — the running bill: the day rule, the nightly posting job, the rounds visit seam, reversals, the interim bill.
-export { IPD_BILL_VIEW, IPD_CHARGES_REVERSE } from "./manifest";
+export { IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS } from "./manifest";
 export { DISCHARGE_FREE_UNTIL_MS, TRANSIT_UNDER_MS, classRank, ipdChargeableDays, rentClassOf } from "./charge-days";
 export type { ChargeStay, ChargeableDay } from "./charge-days";
 export {
@@ -78,5 +78,6 @@ export {
 } from "./payer-split";
 export type { AuthRowInput, NonPayables, SplitLineInput, SplitTerms } from "./payer-split";
 export {
-  addPayerNonPayable, computePayerSplit, listPayerNonPayables, printInterimBillSnapshot, retirePayerNonPayable, roomRentCapWarning,
+  addPayerNonPayable, computePayerSplit, listPayerNonPayables, retirePayerNonPayable, roomRentCapWarning,
 } from "./payer-bill";
+export { printInterimBillSnapshot } from "./interim-bill";

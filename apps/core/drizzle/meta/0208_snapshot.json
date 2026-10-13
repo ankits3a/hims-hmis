@@ -1,5 +1,5 @@
 {
-  "id": "3999e3d1-b801-4cfb-9d28-80ea6f3549b3",
+  "id": "e96e0e8f-7b5d-48fb-a2af-11fdc60be8b1",
   "prevId": "d46b535c-4bc3-4b27-bffd-590defde0167",
   "version": "7",
   "dialect": "postgresql",
@@ -56009,6 +56009,10 @@
         "ipd_payer_auths_terms_ck": {
           "name": "ipd_payer_auths_terms_ck",
           "value": "(\"ipd_payer_auths\".\"room_rent_cap_paise\" is null or \"ipd_payer_auths\".\"room_rent_cap_paise\" > 0)\n      and (\"ipd_payer_auths\".\"room_rent_cap_si_bp\" is null or \"ipd_payer_auths\".\"room_rent_cap_si_bp\" between 1 and 10000) and (\"ipd_payer_auths\".\"co_pay_bp\" is null or \"ipd_payer_auths\".\"co_pay_bp\" between 0 and 10000)"
+        },
+        "ipd_payer_auths_one_cap_ck": {
+          "name": "ipd_payer_auths_one_cap_ck",
+          "value": "\"ipd_payer_auths\".\"room_rent_cap_paise\" is null or \"ipd_payer_auths\".\"room_rent_cap_si_bp\" is null"
         }
       },
       "isRLSEnabled": false
