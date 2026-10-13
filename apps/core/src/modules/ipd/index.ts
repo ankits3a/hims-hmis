@@ -166,3 +166,9 @@ export type { NursingSweepResult } from "./nursing";
 export { listShiftHandovers, nextDueOf, readHandoverDraft, readMyShift, readNurseStation, readNursingChart } from "./nursing-read";
 export { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
 export { IPD_NURSING_EVENT_NAMES } from "./nursing-events";
+// E4.4 DIET (#736) — who lies on a bed now and in which ward (the meal lists), and the shared Now-card identity rule
+// (name, alias for a sealed or confidential patient) for the kitchen's labels and the ward diet sheet.
+export { placedCensus } from "./diet-seam";
+export type { PlacedPatient } from "./diet-seam";
+export { nowIdentities } from "./now-cards";
+export type { Identity as NowIdentity } from "./now-cards";

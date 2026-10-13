@@ -31,3 +31,4 @@ export * from "./housekeeping";
 export * from "./maintenance";
 export * from "./passes";
 export * from "./transport";
+export * from "./diet";

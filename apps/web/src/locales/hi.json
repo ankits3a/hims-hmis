@@ -161,7 +161,10 @@
     "ipdFamilyCalls": "परिवार के कॉल",
     "adminWorkflows": "वर्कफ़्लो",
     "ipdWard": "नर्स स्टेशन",
-    "ipdMyShift": "मेरी शिफ्ट"
+    "ipdMyShift": "मेरी शिफ्ट",
+    "dietWard": "आहार पत्रक",
+    "dietKitchen": "रसोई",
+    "dietConsults": "आहार परामर्श"
   },
   "palette": {
     "title": "खोज",
@@ -3837,6 +3840,9 @@
     },
     "ipdHandoverPending": {
       "title": "शिफ्ट हैंडओवर स्वीकार करने हैं"
+    },
+    "dietConsults": {
+      "title": "आहार परामर्श बाकी"
     }
   },
   "report": {
@@ -16392,7 +16398,9 @@
       "room_inspection": "कमरा जाँच (Room inspection)",
       "patient_move": "मरीज़ शिफ्टिंग (Patient move)",
       "sample_run": "सैंपल ले जाना (Sample run)",
-      "document_run": "काग़ज़ ले जाना (Document run)"
+      "document_run": "काग़ज़ ले जाना (Document run)",
+      "diet_delivery": "भोजन पहुँचाना",
+      "diet_ward_notice": "वार्ड पर आहार बदलाव"
     },
     "priority": {
       "urgent": "जल्दी",
@@ -18402,6 +18410,157 @@
       "refused": "सर्वर ने अस्वीकार किया",
       "paper": "इन्हें काग़ज़ पर दर्ज करें।",
       "done": "ठीक है"
+    }
+  },
+  "diet": {
+    "title": "आहार",
+    "offline": "लाइव नहीं",
+    "meal": {
+      "breakfast": "नाश्ता",
+      "lunch": "दोपहर का भोजन",
+      "evening": "शाम की चाय",
+      "dinner": "रात का भोजन"
+    },
+    "code": {
+      "normal": "सामान्य",
+      "soft": "नरम",
+      "liquid_clear": "साफ़ तरल",
+      "liquid_full": "पूर्ण तरल",
+      "diabetic": "मधुमेह",
+      "renal": "गुर्दा (रीनल)",
+      "cardiac": "हृदय / कम नमक",
+      "high_protein": "उच्च प्रोटीन",
+      "ryles_feed": "राइल्स ट्यूब फ़ीड",
+      "paediatric": "बाल आहार",
+      "npo": "NPO (मुँह से कुछ नहीं)"
+    },
+    "pref": {
+      "veg": "शाकाहारी",
+      "non_veg": "मांसाहारी",
+      "jain": "जैन"
+    },
+    "listState": {
+      "preview": "पूर्वावलोकन",
+      "built": "बनी",
+      "printed": "छपी",
+      "dispatched": "भेजी",
+      "delivered": "पहुँची"
+    },
+    "withdrawn": {
+      "npo": "NPO",
+      "transferred": "वार्ड बदला",
+      "discharged": "छुट्टी",
+      "deceased": "मृत्यु",
+      "lama": "सलाह के विरुद्ध गए",
+      "absconded": "फ़रार",
+      "transferred_out": "रेफ़र"
+    },
+    "kitchen": {
+      "title": "रसोई",
+      "trays": "ट्रे",
+      "npo": "NPO",
+      "late": "देर से",
+      "withdrawn": "हटाई",
+      "cutoff": "अंतिम समय {{at}}",
+      "serve": "परोसना {{at}}",
+      "mealSwitch": "भोजन",
+      "noWards": "बिस्तर पर कोई मरीज़ नहीं",
+      "more": "+{{count}} और वार्ड",
+      "noTrays": "कोई ट्रे नहीं",
+      "build": "अभी बनाएँ",
+      "print": "छापें",
+      "dispatch": "भेजें",
+      "changed": "बदला — फिर छापें",
+      "reprint": "बदलाव छापें",
+      "printedOk": "छप गया? {{ward}}",
+      "printedYes": "हाँ, छप गया",
+      "printedNo": "नहीं"
+    },
+    "print": {
+      "title": "{{ward}} — {{meal}}, {{date}}",
+      "serve": "परोसना {{at}} · ट्रे: {{count}}",
+      "bed": "बिस्तर",
+      "patient": "मरीज़",
+      "uhid": "UHID",
+      "diet": "आहार",
+      "pref": "पसंद",
+      "tube": "ट्यूब फ़ीड",
+      "allergies": "एलर्जी",
+      "npoNoTray": "NPO — ट्रे नहीं",
+      "changesOnly": "केवल बदलाव"
+    },
+    "ward": {
+      "title": "आहार पत्रक",
+      "pickWard": "वार्ड",
+      "next": "अगला: {{meal}} · {{state}}",
+      "empty": "इस वार्ड में कोई मरीज़ नहीं",
+      "npo": "NPO",
+      "npoSince": "{{at}} से",
+      "npoWindow": "{{from}} से {{to}} तक",
+      "noOrder": "आदेश नहीं — सामान्य ट्रे",
+      "tube": "{{ml}} ml हर {{h}} घंटे",
+      "consultOpen": "डाइटीशियन को बुलाया",
+      "trayOff": "ट्रे नहीं: {{why}}",
+      "trayOn": "ट्रे: {{diet}}",
+      "served": {
+        "delivered": "ट्रे पहुँची",
+        "refused": "ट्रे लौटाई"
+      },
+      "delivered": "पहुँचा",
+      "refused": "मना किया",
+      "orderDiet": "आहार लिखें",
+      "setNpo": "NPO करें",
+      "liftNpo": "NPO हटाएँ",
+      "askDietician": "डाइटीशियन बुलाएँ",
+      "diet": "आहार",
+      "preference": "पसंद",
+      "ml": "ml",
+      "everyHours": "हर (घंटे)",
+      "save": "सहेजें",
+      "npoReason": "कारण",
+      "npoUntil": "कब तक (वैकल्पिक)",
+      "consultReason": "क्यों",
+      "saved": {
+        "ordered": "आहार सहेजा",
+        "npo": "NPO लगा",
+        "lifted": "NPO हटा",
+        "served": "ट्रे दर्ज",
+        "consult": "डाइटीशियन को बुलाया"
+      }
+    },
+    "consults": {
+      "title": "आहार परामर्श",
+      "empty": "कोई परामर्श बाकी नहीं",
+      "wait": "{{h}} घंटे",
+      "note": "सलाह",
+      "complete": "पूरा करें",
+      "rounds": "भोजन समय (IST)",
+      "cutoff": "अंतिम समय",
+      "serveAt": "परोसना",
+      "saveRound": "सहेजें"
+    },
+    "refusal": {
+      "failed": "सहेजा नहीं गया। फिर से करें।",
+      "bad_input": "सभी खाने भरें।",
+      "forbidden": "आपको अनुमति नहीं।",
+      "admission_not_found": "भर्ती नहीं मिली।",
+      "admission_not_placed": "मरीज़ बिस्तर पर नहीं।",
+      "nurse_npo_only": "नर्स: केवल NPO। डॉक्टर से कहें।",
+      "tube_feed_needs_volume": "ml और घंटे भरें।",
+      "npo_end_before_start": "अंत शुरुआत के बाद हो।",
+      "npo_not_found": "NPO नहीं मिला।",
+      "npo_not_live": "NPO पहले ही खत्म।",
+      "consult_not_found": "परामर्श नहीं मिला।",
+      "consult_open": "डाइटीशियन पहले से बुलाया।",
+      "list_not_found": "सूची नहीं मिली।",
+      "list_not_printed": "पहले सूची छापें।",
+      "list_already_dispatched": "पहले ही भेजी।",
+      "line_not_found": "ट्रे नहीं मिली।",
+      "line_withdrawn": "ट्रे हटाई गई — न परोसें।",
+      "list_not_dispatched": "ट्रॉली अभी नहीं भेजी।",
+      "cutoff_after_serve": "अंतिम समय परोसने से पहले हो।",
+      "rounds_overlap": "भोजन के समय क्रम में हों, आपस में न टकराएँ।",
+      "list_changed_since_print": "छपने के बाद सूची बदली — पहले बदलाव छापें।"
     }
   }
 }

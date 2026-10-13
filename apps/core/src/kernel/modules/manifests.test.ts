@@ -29,6 +29,7 @@ import { orderingManifest } from "../../modules/ordering";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
 import { passesManifest } from "../../modules/passes";
+import { dietManifest } from "../../modules/diet";
 import { ipdManifest } from "../../modules/ipd";
 
 /**
@@ -100,6 +101,7 @@ const MANIFEST_BY_IDENTIFIER: Record<string, ModuleManifest> = {
   maintenanceManifest, // E1.5 MAINTENANCE (issue #722) — API only
   passesManifest, // E1.3 (#720) — both processes
   ipdManifest, // E3.3 (#731) — both processes (the family-link stop consumer)
+  dietManifest, // E4.4 DIET (#736) — both processes (the `diet.reconcile` consumer)
 };
 
 /** The argument of every `registry.install(<identifier>)` call, in source order. Throws if there are none. */
@@ -221,13 +223,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "passes", // PASSES E1.3 (#720): attendant and visitor passes
       // E1.6 TRANSPORT (issue #723) — appended. A leaf: it reaches into tasks, ipd and patients through their indexes.
       "transport",
+      // E4.4 DIET (issue #736) — appended. A leaf: it reaches into ipd and tasks through their indexes; OT by its events.
+      "diet",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(33); // E1.6 TRANSPORT: 29, transport; PASSES E1.3: 27, passes; //; E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(34); // E4.4 DIET: 34, diet; E1.6 TRANSPORT: 29, transport; PASSES E1.3: 27, passes; //; E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(33); // IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.6 TRANSPORT; PASSES E1.3; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
+    expect(registry.all()).toHaveLength(34); // E4.4 DIET; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.6 TRANSPORT; PASSES E1.3; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -461,10 +465,12 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "housekeeping",
       // E1.3 (#720) — the passes consumer (`passes.admission`); installed in both processes.
       "passes",
+      // E4.4 DIET (#736) — the diet consumer (`diet.reconcile`); installed in both processes.
+      "diet",
       // E3.3 (#731) — the family link's stop consumer (`ipd.family_stop`): death and absconding revoke the link. `ipd` moves
       // from the app-only list to the shared one in the commit that declares its first subscription and registers its handler.
       "ipd",
     ]);
-    expect(workerKeys).toHaveLength(23); // E3.3 (#731): 20 -> 21, `ipd`; //; E1.3: 20 -> 21, `passes`; //; E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
+    expect(workerKeys).toHaveLength(24); // E4.4 DIET: 23 -> 24, `diet`; E3.3 (#731): 20 -> 21, `ipd`; //; E1.3: 20 -> 21, `passes`; //; E1.4 HOUSEKEEPING: 20 -> 21, `housekeeping`; DECISION 0067: 19 -> 20, `ordering`; // PHASE O T1: 16 -> 17, `obligations`; ABDM S2: 17 -> 18, `abdm`; MOBILE M6b: 18 -> 19, `phone_push`
   });
 });

@@ -1726,6 +1726,15 @@ destination is the same admission's.
 `duty_manager`; `transport.request` by `front_office`, `duty_manager` and the nursing roles `ot_nurse`,
 `recovery_nurse` and `radiology_nurse`. Ward nurses get `transport.request` when the nursing lane seeds their role.
 
+**Diet and kitchen (E4.4, decision 0072, built 2026-10-13, awaiting owner review).** The ward diet sheet at `/diet/ward`,
+the kitchen board at `/diet/kitchen` and the dietician's consult queue at `/diet/consults`. Two new roles: `dietician`
+and `kitchen_staff`. `diet.order` (doctor, dietician) orders a diet; `diet.npo` (doctor, dietician) sets or lifts NPO —
+a ward nurse may do that and nothing else once the nursing lane seeds her role; `diet.view` (doctor, dietician,
+kitchen_staff) reads the sheet and the board; `diet.serve` (support_staff, dietician) taps a tray delivered or refused;
+`diet.kitchen` (kitchen_staff, dietician) builds, prints and dispatches the meal lists; and `diet.manage` (dietician)
+sets the meal rounds' cut-offs and works the consult queue. `diet.clinical.view` (doctor, dietician) shows the order
+note, the NPO reason and who set them; without it (the kitchen) a reader sees the tray only. No diet screen shows money.
+
 **Copilot halt switch and spend cap (plan E0.3/E0.5, decision 0064, built 2026-10-11, awaiting owner review).**
 `copilot.halt.set` (owner, admin, duty_manager, quality_manager) pauses the copilot by scope — read, act,
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and

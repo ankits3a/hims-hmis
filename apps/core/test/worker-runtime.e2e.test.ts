@@ -426,6 +426,8 @@ describe("worker runtime e2e (boot shape + the loop + the drain)", () => {
         // three events, one cursor. Worker-only (`abdmManifest`), and it does nothing unless the
         // worker's own config has ABDM on. `.sort()` puts `abdm.` first.
         ["abdm.care_contexts", ["consultation.completed", "imaging.report_published", "lab.report_published"]],
+        // E4.4 DIET (#736) — admission, transfer, swap, stay endings and OT booking/cancel keep the meal lists true. `abdm.` < `diet.` < `housekeeping.`.
+        ["diet.reconcile", ["case.cancelled", "daycare.booked", "ipd.admission.absconded", "ipd.admission.admitted", "ipd.admission.deceased", "ipd.admission.discharged", "ipd.admission.lama", "ipd.bed.swapped", "ipd.transfer.accepted", "list.published"]],
         // Plan 11c T1: `ops.mode_changed` is the alerts consumer's THIRD subscription (D4). The
         // array is `.sort()`ed above, so it lands after `notification.failed`.
         // 18a-iii T5 / D7: the radiology chasers are the alerts consumer's FOURTH and FIFTH

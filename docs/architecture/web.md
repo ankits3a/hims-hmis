@@ -32,6 +32,9 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/reconcile` | `apps/web/src/screens/instrument-reconcile` |
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
+| `/diet/consults` | `apps/web/src/screens/diet-consults` |
+| `/diet/kitchen` | `apps/web/src/screens/diet-kitchen` |
+| `/diet/ward` | `apps/web/src/screens/diet-ward` |
 | `/family` | `apps/web/src/screens/ipd-family` |
 | `/formulary/admin` | `(redirect)` |
 | `/housekeeping` | `apps/web/src/screens/housekeeping-board` |

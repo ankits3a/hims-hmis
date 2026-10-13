@@ -161,7 +161,10 @@
     "ipdFamilyCalls": "Family calls",
     "adminWorkflows": "Workflows",
     "ipdWard": "Nurse station",
-    "ipdMyShift": "My shift"
+    "ipdMyShift": "My shift",
+    "dietWard": "Diet sheet",
+    "dietKitchen": "Kitchen",
+    "dietConsults": "Diet consults"
   },
   "palette": {
     "title": "Search",
@@ -3837,6 +3840,9 @@
     },
     "ipdHandoverPending": {
       "title": "Shift handovers to accept"
+    },
+    "dietConsults": {
+      "title": "Diet consults waiting"
     }
   },
   "report": {
@@ -16392,7 +16398,9 @@
       "room_inspection": "Room inspection",
       "patient_move": "Patient move",
       "sample_run": "Sample run",
-      "document_run": "Document run"
+      "document_run": "Document run",
+      "diet_delivery": "Meal delivery",
+      "diet_ward_notice": "Diet change on ward"
     },
     "priority": {
       "urgent": "Urgent",
@@ -18402,6 +18410,157 @@
       "refused": "refused by server",
       "paper": "Record these on paper.",
       "done": "Done"
+    }
+  },
+  "diet": {
+    "title": "Diet",
+    "offline": "Not live",
+    "meal": {
+      "breakfast": "Breakfast",
+      "lunch": "Lunch",
+      "evening": "Evening tea",
+      "dinner": "Dinner"
+    },
+    "code": {
+      "normal": "Normal",
+      "soft": "Soft",
+      "liquid_clear": "Clear liquid",
+      "liquid_full": "Full liquid",
+      "diabetic": "Diabetic",
+      "renal": "Renal",
+      "cardiac": "Cardiac / low salt",
+      "high_protein": "High protein",
+      "ryles_feed": "Ryle's tube feed",
+      "paediatric": "Paediatric",
+      "npo": "NPO (nil by mouth)"
+    },
+    "pref": {
+      "veg": "Veg",
+      "non_veg": "Non-veg",
+      "jain": "Jain"
+    },
+    "listState": {
+      "preview": "Preview",
+      "built": "Built",
+      "printed": "Printed",
+      "dispatched": "Sent",
+      "delivered": "Delivered"
+    },
+    "withdrawn": {
+      "npo": "NPO",
+      "transferred": "Moved ward",
+      "discharged": "Discharged",
+      "deceased": "Deceased",
+      "lama": "Left against advice",
+      "absconded": "Absconded",
+      "transferred_out": "Referred out"
+    },
+    "kitchen": {
+      "title": "Kitchen",
+      "trays": "trays",
+      "npo": "NPO",
+      "late": "late",
+      "withdrawn": "off",
+      "cutoff": "Cut-off {{at}}",
+      "serve": "Serve {{at}}",
+      "mealSwitch": "Meal",
+      "noWards": "No patients on beds",
+      "more": "+{{count}} more wards",
+      "noTrays": "No trays",
+      "build": "Build now",
+      "print": "Print",
+      "dispatch": "Dispatch",
+      "changed": "Changed — reprint",
+      "reprint": "Reprint changes",
+      "printedOk": "Printed OK? {{ward}}",
+      "printedYes": "Yes, printed",
+      "printedNo": "No"
+    },
+    "print": {
+      "title": "{{ward}} — {{meal}}, {{date}}",
+      "serve": "Serve at {{at}} · trays: {{count}}",
+      "bed": "Bed",
+      "patient": "Patient",
+      "uhid": "UHID",
+      "diet": "Diet",
+      "pref": "Pref.",
+      "tube": "Tube feed",
+      "allergies": "Allergies",
+      "npoNoTray": "NPO — no tray",
+      "changesOnly": "changes only"
+    },
+    "ward": {
+      "title": "Diet sheet",
+      "pickWard": "Ward",
+      "next": "Next: {{meal}} · {{state}}",
+      "empty": "No patients on this ward",
+      "npo": "NPO",
+      "npoSince": "since {{at}}",
+      "npoWindow": "{{from}} to {{to}}",
+      "noOrder": "No order — normal tray",
+      "tube": "{{ml}} ml every {{h}} h",
+      "consultOpen": "Dietician asked",
+      "trayOff": "No tray: {{why}}",
+      "trayOn": "Tray: {{diet}}",
+      "served": {
+        "delivered": "Tray delivered",
+        "refused": "Tray refused"
+      },
+      "delivered": "Delivered",
+      "refused": "Refused",
+      "orderDiet": "Order diet",
+      "setNpo": "Set NPO",
+      "liftNpo": "Lift NPO",
+      "askDietician": "Ask dietician",
+      "diet": "Diet",
+      "preference": "Preference",
+      "ml": "ml",
+      "everyHours": "Every (hours)",
+      "save": "Save",
+      "npoReason": "Reason",
+      "npoUntil": "Until (optional)",
+      "consultReason": "Why",
+      "saved": {
+        "ordered": "Diet saved",
+        "npo": "NPO set",
+        "lifted": "NPO lifted",
+        "served": "Tray marked",
+        "consult": "Dietician asked"
+      }
+    },
+    "consults": {
+      "title": "Diet consults",
+      "empty": "No consult waiting",
+      "wait": "{{h}} h",
+      "note": "Advice",
+      "complete": "Complete",
+      "rounds": "Meal rounds (IST)",
+      "cutoff": "Cut-off",
+      "serveAt": "Serve",
+      "saveRound": "Save"
+    },
+    "refusal": {
+      "failed": "Did not save. Try again.",
+      "bad_input": "Fill every field.",
+      "forbidden": "Not allowed for you.",
+      "admission_not_found": "Admission not found.",
+      "admission_not_placed": "Patient not on a bed.",
+      "nurse_npo_only": "Nurse: NPO only. Ask the doctor.",
+      "tube_feed_needs_volume": "Enter ml and hours.",
+      "npo_end_before_start": "End must be after start.",
+      "npo_not_found": "NPO not found.",
+      "npo_not_live": "NPO already ended.",
+      "consult_not_found": "Consult not found.",
+      "consult_open": "Dietician already asked.",
+      "list_not_found": "List not found.",
+      "list_not_printed": "Print the list first.",
+      "list_already_dispatched": "Already sent.",
+      "line_not_found": "Tray not found.",
+      "line_withdrawn": "Tray withdrawn — do not serve.",
+      "list_not_dispatched": "Trolley not sent yet.",
+      "cutoff_after_serve": "Cut-off must be before serve.",
+      "rounds_overlap": "Meal rounds must run in order without overlapping.",
+      "list_changed_since_print": "The list changed after printing — reprint the changes first."
     }
   }
 }
