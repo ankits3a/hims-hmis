@@ -74,7 +74,8 @@ export { IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS } from "./manifest"
 export { DISCHARGE_FREE_UNTIL_MS, TRANSIT_UNDER_MS, classRank, ipdChargeableDays, rentClassOf } from "./charge-days";
 export type { ChargeStay, ChargeableDay } from "./charge-days";
 export {
-  IPD_DAILY_COMPONENTS, IPD_ENDED_STATES, IPD_NIGHTLY_ACTOR, postAdmissionCharges, postConsultantVisit, postNightlyIpdCharges,
+  // INTEGRATION (ipd-stage): IPD_ENDED_STATES is exported once, from ./admission-place (passes); charges.ts holds the same list.
+  IPD_DAILY_COMPONENTS, IPD_NIGHTLY_ACTOR, postAdmissionCharges, postConsultantVisit, postNightlyIpdCharges,
   priceComponent, reverseChargeLine,
 } from "./charges";
 export type { AdmissionPostResult, ConsultantVisitInput, ConsultantVisitResult, NightlyResult } from "./charges";
