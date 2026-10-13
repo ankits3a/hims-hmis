@@ -29,6 +29,9 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/counter/seat` | `(redirect)` |
 | `/counter/seat/figures` | `(redirect)` |
 | `/formulary/admin` | `(redirect)` |
+| `/housekeeping` | `apps/web/src/screens/housekeeping-board` |
+| `/ipd/admit` | `apps/web/src/screens/ipd-admit` |
+| `/ipd/beds` | `apps/web/src/screens/ipd-beds` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |
@@ -109,3 +112,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/roster/my-duties` | `apps/web/src/screens/roster-my-duties` |
 | `/roster/on-now` | `apps/web/src/screens/roster-on-now` |
 | `/staff` | `apps/web/src/screens/staff-reports` |
+| `/tasks` | `apps/web/src/screens/my-tasks` |
+| `/tasks/board` | `apps/web/src/screens/tasks-board` |
+| `/transport` | `apps/web/src/screens/transport-board` |
+| `/transport/request` | `apps/web/src/screens/transport-request` |

@@ -85,6 +85,11 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -119,11 +124,19 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // E1.6 TRANSPORT (#723) — the admission desk asks for the porter that takes the patient to the ward.
+      "transport.request",
     ],
   },
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      "ipd.beds.clean",
+      // IPD ADMISSION E1.2 (#719, decision 0072) — the admission desk; README "IPD admission" prose.
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -215,6 +228,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "doctor",
     permissions: [
+      // IPD ADMISSION E1.2 (#719) — a doctor advises admission (raises the request); answers carry no money (0058).
+      "ipd.admit.request",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.visits.read",
@@ -696,6 +711,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "billing_manager",
     permissions: [
+      // IPD ADMISSION E1.2 (#719) — the TPA desk sits in billing: the manual authorisation record.
+      "ipd.payer.manage",
       /**
        * PLAN 17 T2 / DD6 — **THE INTERLOCK'S OVERRIDE, AND IT LIVES HERE RATHER THAN IN THE LAB.**
        *
@@ -812,6 +829,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -956,6 +975,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1096,7 +1117,20 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+    // E0.1 TASK ENGINE (issue #713) — the duty manager sees the task board and may assign, cancel and take back a
+    // task out of hours, when no services supervisor is on.
+    permissions: [
+      "auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
+      // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
+      "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
+      "tasks.view", "tasks.supervise",
+      // E1.4 HOUSEKEEPING (issue #721) — the housekeeping board out of hours (not the terminal-clean check).
+      "housekeeping.view",
+      // IPD ADMISSION E1.2 (#719) — the duty manager runs the admission desk at night (and the emergency lane).
+      "ipd.admit.request", "ipd.admit", "ipd.payer.manage", "ipd.band.print",
+      // E1.6 TRANSPORT (#723) — asks for moves at night and runs the transport board when no supervisor is on.
+      "transport.request", "transport.manage",
+    ],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1398,12 +1432,14 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
     // documentation-gate failure mode this module is built to remove.
     // PHARMACY STAGE D4 — the OT's emergency tray is the theatre nurse's to check (daily seal, monthly, after use) and
     // to receive its restock into. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check"],
+    // E1.6 TRANSPORT (#723) — the theatre nurse asks for the porter (patient to OT, back to the ward).
+    permissions: ["ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check", "transport.request"],
   },
   {
     roleKey: "recovery_nurse",
     // PHARMACY STAGE D4 — the recovery bay's emergency tray. DEFAULT — owner may change.
-    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check"],
+    // E1.6 TRANSPORT (#723) — recovery sends the patient back to the ward.
+    permissions: ["ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check", "transport.request"],
   },
   {
     roleKey: "daycare_coordinator",
@@ -1732,6 +1768,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.worklist.read",
       "radiology.gates.satisfy",
       "radiology.contrast.record",
+      // E1.6 TRANSPORT (#723) — imaging sends the patient back to the ward.
+      "transport.request",
     ],
   },
   {
@@ -1962,7 +2000,25 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "ipd.beds.view"] },
+  /**
+   * E0.1 TASK ENGINE (issue #713, decision 0072) — no housekeeping or nursing-supervisor role existed, so two are
+   * minted, by the standard Indian corporate-hospital split: the people who DO service work (ward attendants,
+   * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
+   * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
+   */
+  // E1.6 TRANSPORT (#723) — porters are support staff (one cadre with ward attendants): their transport card details.
+  { roleKey: "support_staff", permissions: ["tasks.work", "transport.work"] },
+  /**
+   * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
+   * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
+   * control keeps with the supervisor alone. A routine clean is also checked by `ipd.beds.clean` holders.
+   */
+  {
+    roleKey: "services_supervisor",
+    // E1.6 TRANSPORT (#723) — the services supervisor runs the transport board too.
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "housekeeping.view", "housekeeping.verify_terminal", "transport.manage"],
+  },
 ];
 
 /**
@@ -2223,6 +2279,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
   admin: "Administrator",
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
+  support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
+  services_supervisor: "Services Supervisor (task board: assigns, cancels and verifies service tasks)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

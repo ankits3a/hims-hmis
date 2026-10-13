@@ -16,6 +16,7 @@ import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER } from "../../m
 import { LAB_INTERFACE_CONSUMER } from "../../modules/lab";
 import { ABDM_CARE_CONTEXT_CONSUMER } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
+import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
 import { seedCursors } from "./seed-cursors";
 
 const mkInput = (name: string) => ({
@@ -168,6 +169,12 @@ describe("seedCursors", () => {
          * `max(seq)`, it orders only for consults completed after it ships.
          */
         ORDERING_FREE_TESTS_CONSUMER,
+        /**
+         * E1.4 HOUSEKEEPING (issue #721) — from zero it would walk every bed release since the registry opened
+         * and raise (and at once cancel) a clean for each. Seeded at `max(seq)`, it begins with the next
+         * release, and `workerBackfills` gives every bed already in cleaning its one clean.
+         */
+        HOUSEKEEPING_BED_CONSUMER,
       ].sort());
   });
 
