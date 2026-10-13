@@ -194,7 +194,7 @@ export const IPD_IMPORT_NOTE = "IPD rate card carried over from the incumbent ta
  * bad, a GST category the services need is missing, or another version is already draft/submitted.
  */
 export async function importIpdTariff(
-  db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date },
+  db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date; notes?: string },
 ): Promise<IpdImportReport> {
   const at = opts.at ?? new Date();
   const parsed = parseIpdTariffCsv(csvText);
@@ -256,7 +256,7 @@ export async function importIpdTariff(
         idByCode.set(item.serviceCode, serviceId);
       }
       const d = await createDraftVersion(tx, actor, {
-        notes: IPD_IMPORT_NOTE, ...(active === null ? {} : { copyFromVersionId: active.versionId }),
+        notes: opts.notes ?? IPD_IMPORT_NOTE, ...(active === null ? {} : { copyFromVersionId: active.versionId }),
     });
     for (const item of items) {
       assertPaise(item.pricePaise, `${item.serviceCode} price`);

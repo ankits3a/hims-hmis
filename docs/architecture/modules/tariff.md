@@ -48,7 +48,7 @@ Source: `apps/core/src/modules/tariff/`
   - `IPD_IMPORT_NOTE`
   - `IPD_RATED_CLASSES: readonly IpdBedClass[]`
   - `IPD_TARIFF_CSV_COLUMNS`
-  - `importIpdTariff(db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date }): Promise<IpdImportReport>`
+  - `importIpdTariff(db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date; notes?: string }): Promise<IpdImportReport>`
   - `ipdRateCardGaps(db: Db, opts: { at: Date; tariffVersionId?: string }): Promise<IpdRateCard>`
   - `ipdRateCardWarnings(db: Db, at: Date): Promise<ConfigError[]>`
   - `ipdServiceCategory(cls: IpdBedClass, component: IpdRateComponent): string`
