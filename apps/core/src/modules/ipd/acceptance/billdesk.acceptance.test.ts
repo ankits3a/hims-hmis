@@ -111,11 +111,11 @@ describe("E2.3 deposit ladder and bill desk — acceptance", () => {
     expect(rows.map((r) => r.level).sort()).toEqual(["escalate", "top_up"]);
     const all = await notices(admissionId);
     const escalated = new Set(all.filter((n) => n.title.includes("90")).map((n) => n.userId));
-    // Review 3 (decision 0058): the escalation is the billing manager, the duty manager and the owner — never the MS.
-    expect([...escalated].sort()).toEqual([w.billingManager.id, people.dutyManager.id, w.owner.id].sort());
+    // Review 3 (decision 0058): the escalation reaches everyone the top-up reached plus the duty manager and the owner — never the MS.
+    expect([...escalated].sort()).toEqual([people.cashier.id, people.foSupervisor.id, w.billingManager.id, people.dutyManager.id, w.owner.id].sort());
     expect(all.filter((n) => n.userId === w.ms.id)).toEqual([]);
     // Once each: one notice per person per level.
-    expect(all.filter((n) => n.userId === people.cashier.id)).toHaveLength(1);
+    expect(all.filter((n) => n.userId === people.cashier.id)).toHaveLength(2);
     expect(all.filter((n) => n.userId === w.billingManager.id)).toHaveLength(2);
     // Never a doctor: neither the doctor nor the doctor in a cashier seat.
     const doctors = [w.doctor.id, w.resident.id, w.crossUserId, people.doctorCashier.id];
@@ -144,7 +144,7 @@ describe("E2.3 deposit ladder and bill desk — acceptance", () => {
     const rows = await alertRows(admissionId);
     expect(rows.filter((r) => r.level === "top_up")).toHaveLength(2);
     expect(rows.filter((r) => r.level === "escalate")).toHaveLength(2);
-    expect((await notices(admissionId)).filter((n) => n.userId === people.cashier.id)).toHaveLength(2);
+    expect((await notices(admissionId)).filter((n) => n.userId === people.cashier.id)).toHaveLength(4);
   });
 
   it("(iii) the daily totals message carries totals only — no line, no diagnosis; a sealed admission sends none", async () => {

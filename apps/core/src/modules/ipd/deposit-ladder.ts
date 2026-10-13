@@ -41,7 +41,7 @@ import type { AdmissionRow } from "./admission-core";
 export const IPD_DEPOSIT_LADDER = {
   /** Top-up alert: the desk (cashier, front-office supervisor) and the unit billing officer (billing manager). */
   topUpBp: 7_500,
-  /** Management escalation: the billing manager, the duty manager and the owner (DECIDED, decision 0058 review 3). */
+  /** Management escalation: everyone the top-up reaches plus the duty manager and the owner (DECIDED, decision 0058 review 3). */
   escalateBp: 9_000,
   /** Re-arm below these (hysteresis). */
   topUpRearmBp: 7_000,
@@ -57,7 +57,7 @@ const log = new Logger("ipd.deposit-ladder");
 /** Who is told at each level. Role keys, not permissions: a notice is addressed to a person in a role. */
 export const IPD_DEPOSIT_RECIPIENT_ROLES: Record<DepositLevel, readonly string[]> = {
   top_up: ["cashier", "front_office_supervisor", "billing_manager"],
-  escalate: ["billing_manager", "duty_manager", "owner"],
+  escalate: ["cashier", "front_office_supervisor", "billing_manager", "duty_manager", "owner"],
 };
 
 /**

@@ -32,6 +32,6 @@ describe("IPD clinical roles census (decision 0058)", () => {
     for (const roles of Object.values(IPD_DEPOSIT_RECIPIENT_ROLES)) {
       expect(roles.filter((r) => IPD_CLINICAL_ROLES.includes(r))).toEqual([]);
     }
-    expect(IPD_DEPOSIT_RECIPIENT_ROLES.escalate).toEqual(["billing_manager", "duty_manager", "owner"]);
+    expect(IPD_DEPOSIT_RECIPIENT_ROLES.escalate).toEqual([...IPD_DEPOSIT_RECIPIENT_ROLES.top_up, "duty_manager", "owner"]);
   });
 });
