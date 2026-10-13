@@ -5,12 +5,13 @@ import {
 } from "@hmis/contracts";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { resources, taskEvents, tasks, users } from "../../kernel/db/schema";
-import { TaskError } from "./errors";
+import { TaskError, TaskKindRefusal } from "./errors";
 import { requireTaskKind, skillRoles, taskKind, verifierPermissionsOf } from "./kinds";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { dutyCovering, pickWorker } from "./dispatch";
 import type { Actor, TaskAct, TaskEventSource, TaskSource } from "@hmis/contracts";
 import type { z } from "zod";
+import { PgTransaction } from "drizzle-orm/pg-core";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { Db, Tx } from "../../kernel/db/client";
 
@@ -29,6 +30,12 @@ import type { Db, Tx } from "../../kernel/db/client";
 export type TaskRow = typeof tasks.$inferSelect;
 export type Exec = Db | Tx;
 export type ActOptions = { asSupervisor?: boolean; source?: TaskSource };
+/**
+ * `recordDb`: the ROOT database, for a caller acting inside its own transaction. A refusal's record (`afterRefusal`)
+ * must survive the caller's rollback, so it is written there; without it, such a refusal inside a caller's
+ * transaction fails loudly instead of losing the record.
+ */
+export type HookOptions = { recordDb?: Db };
 /** `closeDone`: an owning module may also cancel a task that is done but not yet checked (the place moved on). */
 export type CancelOptions = { closeDone?: boolean };
 
@@ -81,6 +88,25 @@ async function update(tx: Exec, id: string, set: PgUpdateSetSource<typeof tasks>
 }
 
 const tx = <T>(exec: Exec, fn: (t: Tx) => Promise<T>): Promise<T> => (exec as Db).transaction(fn);
+
+/**
+ * An act whose kind hook may refuse: the act's transaction rolls back, THEN the refusal's own record (if it carries one)
+ * is written in a separate transaction, and the refusal is rethrown. A failing record never hides the refusal.
+ */
+async function hooked<T>(exec: Exec, fn: (t: Tx) => Promise<T>, opts: HookOptions): Promise<T> {
+  try {
+    return await tx(exec, fn);
+  } catch (e) {
+    if (e instanceof TaskKindRefusal && e.afterRefusal !== undefined) {
+      const root = opts.recordDb ?? (exec instanceof PgTransaction ? null : exec as Db);
+      if (root === null) {
+        throw new Error(`task refusal "${e.code}" must leave a record, and a caller's transaction would roll it back: pass { recordDb }`, { cause: e });
+      }
+      try { await e.afterRefusal(root); } catch (recordFailed) { console.error("task refusal record failed", recordFailed); }
+    }
+    throw e;
+  }
+}
 
 /* ═══════════════════════════════ raise ═══════════════════════════════ */
 
@@ -232,23 +258,26 @@ function requireMine(row: TaskRow, actor: Actor): void {
   if (row.assigneeKind !== "person" || row.assigneeId !== actor.id) throw new TaskError("not_yours", { taskId: row.id });
 }
 
-export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
+export async function startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow> {
   const input = parse(taskRefInput, raw);
-  return tx(exec, async (t) => {
+  return hooked(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
     checkVersion(row, input.version);
     if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
     requireMine(row, actor);
     if (row.state !== "accepted") throw new TaskError("wrong_state", { taskId: row.id, state: row.state });
+    // The owning module's precondition (transport: escort, oxygen check), in the same transaction.
+    const decl = taskKind(row.kind);
+    if (decl?.beforeStart !== undefined) await decl.beforeStart(t, row, actor, now);
     const next = await update(t, row.id, { state: "in_progress" }, now);
     await logEvent(t, next, "started", actor, eventSource(actor), now, {});
     return next;
-  });
+  }, opts);
 }
 
-export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow> {
+export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow> {
   const input = parse(completeTaskInput, raw);
-  return tx(exec, async (t) => {
+  return hooked(exec, async (t) => {
     const row = await lockTask(t, input.taskId);
     checkVersion(row, input.version);
     if (!OPEN.includes(row.state)) throw new TaskError("not_open", { taskId: row.id, state: row.state });
@@ -257,6 +286,9 @@ export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: 
     if (row.proofNeeded !== "none" && (input.proof === undefined || input.proof.kind !== row.proofNeeded)) {
       throw new TaskError("proof_missing", { taskId: row.id, proofNeeded: row.proofNeeded });
     }
+    // The owning module's precondition (transport: the wristband is the same patient's), in the same transaction.
+    const decl = taskKind(row.kind);
+    if (decl?.beforeDone !== undefined) await decl.beforeDone(t, row, input.proof, actor, now);
     const next = await update(t, row.id, {
       state: "done", proof: (input.proof ?? null) as Record<string, unknown> | null, doneBy: actor.id, doneAt: now,
     }, now);
@@ -265,7 +297,7 @@ export async function completeTask(exec: Exec, actor: Actor, raw: unknown, now: 
     const decl = taskKind(row.kind);
     if (decl?.onDone !== undefined) await decl.onDone(t, next, actor, now);
     return next;
-  });
+  }, opts);
 }
 
 /* ═══════════════════════════════ verify ═══════════════════════════════ */

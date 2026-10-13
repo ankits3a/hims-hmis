@@ -31,6 +31,7 @@ import { linenManifest } from "../../modules/linen";
 import { housekeepingManifest } from "../../modules/housekeeping";
 import { maintenanceManifest } from "../../modules/maintenance";
 import { passesManifest } from "../../modules/passes";
+import { transportManifest } from "../../modules/transport";
 
 /**
  * `ALL_MANIFESTS` — ONE list of the manifests the API installs, consumed by everything that
@@ -214,4 +215,7 @@ export const ALL_MANIFESTS: readonly ModuleManifest[] = [
   maintenanceManifest,
   // E1.3 (#720) — attendant and visitor passes; its one consumer runs in the worker too.
   passesManifest,
+  // E1.6 TRANSPORT (issue #723) — appended. Three permissions, two menu entries, no subscription: API only (the worker
+  // imports the module for its task kinds and installs nothing).
+  transportManifest,
 ];

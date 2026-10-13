@@ -90,6 +90,11 @@ row has its own try/catch, so one failure stops nothing else.
   rolls the verification back (housekeeping frees the bed there).
 - A kind's `onDone(tx, task, actor, now)` runs inside `completeTask`'s transaction after the row is done (maintenance
   marks its ticket fixed there); a throw rolls the completion back.
+- A kind's `beforeStart(tx, task, actor, now)` and `beforeDone(tx, task, proof, actor, now)` (E1.6) run inside
+  `startTask` / `completeTask` after the engine's own checks and before the row moves; a throw (a `TaskKindRefusal`,
+  code + sentence + fix of the owning module) refuses the act, and the tasks controller answers it like a `TaskError`.
+  Transport puts its escort, oxygen and wristband rules there, so the generic `/tasks` doors enforce them too.
+  A refusal may carry `afterRefusal(db)`: run in its own transaction after the act rolls back (a record that must survive).
 - `nudgeTask` (sweep.ts): a person escalates an open task now — an `escalated` event with `detail.nudge`, a
   `task.nudge` bell to the kind's escalation role and the holder; the ladder's rung is not moved; a second nudge
   within `TASK_NUDGE_WINDOW_MIN` (5) is refused `nudged_recently`.
@@ -110,4 +115,5 @@ row has its own try/catch, so one failure stops nothing else.
 - housekeeping (E1.4): four kinds, `raiseTask`, `cancelTask`, `verifyTask`, `nudgeTask`, `findTasks`, `taskBoard`.
 - maintenance (E1.5): two kinds (`repair_general`, `repair_biomedical`) with `onDone` + `onVerified`, `raiseTask` with
   `sourceRef` (one task per ticket), `verifyTask`, `cancelTask`, `getTask`.
-- Planned (later lanes): bmw, transport, linen — each through `index.ts`: `defineTaskKind`, `defineSkill`, `raiseTask`, `cancelTasksForPlace`.
+- transport (E1.6): three kinds with `beforeStart` / `beforeDone`, `raiseTask`, `getTask`, `taskBoard`, `TaskKindRefusal`.
+- Planned (later lanes): bmw, linen — each through `index.ts`: `defineTaskKind`, `defineSkill`, `raiseTask`, `cancelTasksForPlace`.

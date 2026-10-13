@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpException, Inject, Param, Post } from "@nest
 import { DB } from "../../kernel/tokens";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { hasPermission } from "../../kernel/auth/permissions";
-import { TaskError, taskHttpStatus } from "./errors";
+import { TaskError, TaskKindRefusal, taskHttpStatus } from "./errors";
 import {
   acceptTask, assignTask, cancelTask, cancelTasksForPlace, completeTask, raiseTask, returnToPool, startTask, verifyTask,
 } from "./engine";
@@ -28,6 +28,9 @@ async function refusing<T>(fn: () => Promise<T>): Promise<T> {
     if (e instanceof TaskError) {
       const status = taskHttpStatus(e.code);
       throw new HttpException({ statusCode: status, code: e.code, message: e.message, fix: e.fix }, status);
+    }
+    if (e instanceof TaskKindRefusal) {
+      throw new HttpException({ statusCode: e.httpStatus, code: e.code, message: e.message, fix: e.fix }, e.httpStatus);
     }
     throw e;
   }

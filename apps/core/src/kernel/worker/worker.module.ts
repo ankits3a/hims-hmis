@@ -45,6 +45,9 @@ import { HOUSEKEEPING_BED_CONSUMER, backfillBedCleans, bedTurnoverConsumer, hous
 // two repair kinds in this process, so the task clock knows their windows and their escalation role (tasks MAP §4).
 import "../../modules/maintenance";
 import { PASSES_ADMISSION_CONSUMER, passesAdmissionConsumer, passesManifest } from "../../modules/passes";
+// E1.6 TRANSPORT (issue #723) — imported for its side effect only: it DEFINES the transport task kinds (patient move,
+// sample run, document run) so the task clock knows their windows and escalation role. Nothing is installed.
+import "../../modules/transport";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";

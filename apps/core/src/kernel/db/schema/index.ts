@@ -135,3 +135,6 @@ export * from "./linen";
 export * from "./maintenance";
 // E1.3 (#720) — attendant and visitor passes. References `ipd_admissions` and `resources` (the ward).
 export * from "./passes";
+// E1.6 TRANSPORT (issue #723, decision 0072) — a transport task's extra facts (mode, oxygen, escort, handover).
+// References `tasks`, `ipd_admissions` and `resources`; nothing reads it but `modules/transport`.
+export * from "./transport";

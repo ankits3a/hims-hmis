@@ -34,6 +34,8 @@ import { LinenBoard } from "./screens/linen-board";
 import { LinenHandle } from "./screens/linen-handle";
 import { HousekeepingBoard } from "./screens/housekeeping-board";
 import { MaintenanceBoard } from "./screens/maintenance-board";
+import { TransportBoard } from "./screens/transport-board";
+import { TransportRequest } from "./screens/transport-request";
 import { StaffReports } from "./screens/staff-reports";
 import { CopilotHealthScreen } from "./screens/copilot-health";
 import { IpdBeds } from "./screens/ipd-beds";
@@ -319,6 +321,9 @@ const NAV: readonly NavEntry[] = [
   { to: "/linen", label: "nav.linenBoard", permission: "linen.view", group: "services", anyOf: ["linen.manage"] },
   { to: "/housekeeping", label: "nav.housekeeping", permission: "housekeeping.view", group: "services" },
   { to: "/maintenance", label: "nav.maintenance", permission: "maintenance.view", group: "services" },
+  // E1.6 TRANSPORT (issue #723) — the supervisor's board (`transportManifest.menu`) and the request sheet.
+  { to: "/transport", label: "nav.transport", permission: "transport.manage", group: "services" },
+  { to: "/transport/request", label: "nav.transportRequest", permission: "transport.request", group: "services", anyOf: ["transport.manage"] },
   // The OPD day report (owner, 2026-09-19): the hospital's day by department, PDF and CSV.
   { to: "/reports/opd-day", label: "nav.opdDayReport", permission: "opd.reports.read", group: "opd" },
   // 20-U U5a — who is on now, the hospital's unit board. `roster.read` matches `rosterManifest.menu`.
@@ -1235,6 +1240,20 @@ const maintenanceBoardRoute = createRoute({
   component: MaintenanceBoard,
 });
 
+/** E1.6 TRANSPORT (issue #723) — the transport supervisor's board: 16:9, open moves, late first, escort in words. */
+const transportBoardRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/transport",
+  component: TransportBoard,
+});
+
+/** E1.6 TRANSPORT — the request sheet: a patient move, a sample run or a document run (phone and desk). */
+const transportRequestRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/transport/request",
+  component: TransportRequest,
+});
+
 const myReachRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/me/reach",
@@ -2072,6 +2091,8 @@ export const router = createRouter({
       housekeepingBoardRoute,
       // E1.5 MAINTENANCE — +1, `/maintenance`. `caddyfile-parity.test.ts` pins the count.
       maintenanceBoardRoute,
+      // E1.6 TRANSPORT — +2, `/transport` and `/transport/request`.
+      transportBoardRoute, transportRequestRoute,
       rosterEvidenceRoute,
       rosterAebasRoute,
     ]),

@@ -130,6 +130,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // 20-U U5a — the "who is on now" board: whoever has to reach a doctor reads who is on. DECIDED
       // (the policy matrix: a roster READ costs nothing). Read only — drafting and publishing stay the MS's.
       "roster.read",
+      // E1.6 TRANSPORT (#723) — the admission desk asks for the porter that takes the patient to the ward.
+      "transport.request",
     ],
   },
   {
@@ -1156,6 +1158,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "passes.issue", "passes.scan", "passes.pause", "passes.manage",
       // IPD CHARGES E2.1 (#725) — the interim bill at night (a discharge or a deposit question at the desk).
       "ipd.bill.view",
+      // E1.6 TRANSPORT (#723) — asks for moves at night and runs the transport board when no supervisor is on.
+      "transport.request", "transport.manage",
     ],
   },
   /**
@@ -1474,6 +1478,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ot.cases.read", "ot.cockpit.operate", "ot.implants.scan", "ot.counts.record", "pharmacy.trays.check",
       // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair (the ward nurse role arrives with ipd-nursing).
       "maintenance.raise", "maintenance.confirm",
+      // E1.6 TRANSPORT (#723) — the theatre nurse asks for the porter (patient to OT, back to the ward).
+      "transport.request",
     ],
   },
   {
@@ -1483,6 +1489,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "ot.cases.read", "ot.recovery.operate", "ot.discharge", "pharmacy.trays.check",
       // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair.
       "maintenance.raise", "maintenance.confirm",
+      // E1.6 TRANSPORT (#723) — recovery sends the patient back to the ward.
+      "transport.request",
     ],
   },
   {
@@ -1816,6 +1824,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.contrast.record",
       // E1.5 MAINTENANCE (issue #722) — a nurse reports a fault and confirms its repair.
       "maintenance.raise", "maintenance.confirm",
+      // E1.6 TRANSPORT (#723) — imaging sends the patient back to the ward.
+      "transport.request",
     ],
   },
   {
@@ -2064,7 +2074,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // E2.4 LINEN (issue #728) — the ward attendants and linen handlers top up, return soiled and infected linen, count,
   // send and receive laundry and raise a condemn (`linen.handle`); the services supervisor is the linen supervisor: the
   // board, par levels and condemn approvals. DECIDED by the standard Indian corporate-hospital split.
-  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle"] },
+  // E1.6 TRANSPORT (#723) — porters are support staff (one cadre with ward attendants): their transport card details.
+  { roleKey: "support_staff", permissions: ["tasks.work", "bmw.handle", "linen.handle", "transport.work"] },
   /**
    * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
    * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
@@ -2079,6 +2090,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // one whose task was cancelled. Told when an item is flagged for replacement. NOT the confirmation: that is
       // the nurse's (`ipd.beds.clean` or `maintenance.confirm`).
       "maintenance.view", "maintenance.raise", "maintenance.manage",
+      // E1.6 TRANSPORT (#723) — the services supervisor runs the transport board too.
+      "transport.manage",
     ],
   },
   /**

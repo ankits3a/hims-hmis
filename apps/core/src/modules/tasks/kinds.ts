@@ -1,4 +1,4 @@
-import type { Actor, TaskProofKind } from "@hmis/contracts";
+import type { Actor, TaskProof, TaskProofKind } from "@hmis/contracts";
 import { TaskError } from "./errors";
 import type { Tx } from "../../kernel/db/client";
 import type { TaskRow } from "./engine";
@@ -34,6 +34,18 @@ export type TaskKindDecl = {
    * worker's finished part (maintenance marks its ticket fixed). A throw rolls the completion back with it.
    */
   onDone?: (tx: Tx, task: TaskRow, actor: Actor, now: Date) => Promise<void>;
+  /**
+   * E1.6 — the owning module's precondition for START, run INSIDE `startTask`'s transaction after the engine's own
+   * checks and before the row moves. A throw (a `TaskKindRefusal`) refuses the start (transport: no escort for a
+   * critical patient, oxygen cylinder not checked).
+   */
+  beforeStart?: (tx: Tx, task: TaskRow, actor: Actor, now: Date) => Promise<void>;
+  /**
+   * E1.6 — the owning module's precondition for DONE, run INSIDE `completeTask`'s transaction after the proof is
+   * checked and before the row moves; it may write its own rows (transport records the wristband handover). A throw
+   * refuses the completion and rolls those writes back.
+   */
+  beforeDone?: (tx: Tx, task: TaskRow, proof: TaskProof | undefined, actor: Actor, now: Date) => Promise<void>;
   /** Minutes past due at which each rung fires. Absent: `DEFAULT_LADDER_MIN`. */
   ladderMin?: readonly number[];
 };
