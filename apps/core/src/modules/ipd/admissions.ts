@@ -1,5 +1,6 @@
 import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { IPD_INTENTS, ipdIsInFuture, newId } from "@hmis/contracts";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import { ipdAdmissionDeposits, ipdAdmissions, users } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
@@ -45,8 +46,8 @@ type Opts = { now?: Date };
 const DAY_MS = 86_400_000;
 const SCHEME: ReadonlySet<string> = new Set(["pmjay", "state_scheme"]);
 const ENDED_STATES = ["discharged", "lama", "absconded", "deceased", "transferred_out"];
-const IST_OFFSET_MS = 330 * 60_000;
-const istDay = (d: Date): string => new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+/** The hospital's one IST clock (`kernel/approvals/cumulative`), never a local copy (ist-clock-parity). */
+const istDay = (d: Date): string => istDayString(d);
 
 /** The patient through the merge chain; refuses unknown and deceased. Returns the canonical id. */
 async function livePatient(db: Db, actor: Actor, patientId: string): Promise<string> {
