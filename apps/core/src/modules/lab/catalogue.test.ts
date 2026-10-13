@@ -92,7 +92,7 @@ describe("the lab catalogue (17a T3)", () => {
   describe("the standard catalogue, seeded", () => {
     it("lands whole through every catalogue guard, keeps the golden codes and their confidentiality, and its calculations are right", async () => {
       const report = await seedLabCatalogue(db, curator, LAB_CATALOGUE_STANDARD_DATA);
-      expect([report.orderables, report.analytes, report.activeReflexRules]).toEqual([331, 583, 0]);
+      expect([report.orderables, report.analytes, report.activeReflexRules]).toEqual([340, 585, 0]);
       const cbc = await analytesFor(db, serviceIdForLabCode("CBC"));
       expect(cbc.map((a) => a.code)).toEqual(expect.arrayContaining(["RDW_SD", "LYMPH_ABS", "NLR", "PDW", "PLTCRIT"]));
       for (const code of ["HIV", "HIV_VL", "HBV_DNA", "HCV_RNA", "TPHA"]) {

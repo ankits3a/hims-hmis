@@ -605,6 +605,20 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "decimals": 1
     },
     {
+      "code": "HIV_RAPID",
+      "nameEn": "HIV 1 & 2 antibody (rapid card)",
+      "resultType": "coded",
+      "unit": null,
+      "decimals": 1
+    },
+    {
+      "code": "HOLOTC",
+      "nameEn": "Active B12 (holotranscobalamin)",
+      "resultType": "numeric",
+      "unit": "pmol/L",
+      "decimals": 1
+    },
+    {
       "code": "HBSAG",
       "nameEn": "HBsAg",
       "resultType": "coded",
@@ -7087,6 +7101,121 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "benchKey": "IMMUNO-1"
     },
     {
+      "code": "T3T4TSH",
+      "nameEn": "Thyroid profile total (T3, T4, TSH)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "T3",
+        "T4",
+        "TSH"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "T3",
+      "nameEn": "Total T3 (triiodothyronine)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "T3"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "T4",
+      "nameEn": "Total T4 (thyroxine)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "T4"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "FT3",
+      "nameEn": "Free T3",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "FT3"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "FT4",
+      "nameEn": "Free T4",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "FT4"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "CKMB",
+      "nameEn": "CK-MB",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 180,
+      "analyteCodes": [
+        "CKMB"
+      ],
+      "benchKey": "BIOCHEM-1",
+      "tatMinutesStat": 60
+    },
+    {
+      "code": "TIBC",
+      "nameEn": "TIBC — total iron binding capacity",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 480,
+      "analyteCodes": [
+        "TIBC"
+      ],
+      "benchKey": "BIOCHEM-2"
+    },
+    {
+      "code": "ACTIVE_B12",
+      "nameEn": "Active vitamin B12 (holotranscobalamin)",
+      "discipline": "biochemistry",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 1440,
+      "analyteCodes": [
+        "HOLOTC"
+      ],
+      "benchKey": "IMMUNO-1"
+    },
+    {
+      "code": "HIV_RAPID",
+      "nameEn": "HIV 1 & 2 antibody (rapid card)",
+      "discipline": "serology",
+      "specimenType": "serum",
+      "container": "sst",
+      "tatMinutesRoutine": 60,
+      "analyteCodes": [
+        "HIV_RAPID"
+      ],
+      "benchKey": "SERO-1",
+      "consentRequired": false,
+      "sensitive": true,
+      "notifiable": true,
+      "tatMinutesStat": 30
+    },
+    {
       "code": "ATPO",
       "nameEn": "Anti-TPO antibody",
       "discipline": "biochemistry",
@@ -13343,6 +13472,32 @@ export const LAB_CATALOGUE_STANDARD_DATA: LabCatalogueFixture = {
       "criticalLow": null,
       "criticalHigh": null,
       "source": "kit insert",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HIV_RAPID",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": null,
+      "high": null,
+      "text": "Non-reactive",
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
+      "effectiveFrom": "2026-01-01"
+    },
+    {
+      "analyteCode": "HOLOTC",
+      "sex": "any",
+      "ageMinDays": 0,
+      "ageMaxDays": 36500,
+      "low": "25.1",
+      "high": "165",
+      "text": null,
+      "criticalLow": null,
+      "criticalHigh": null,
+      "source": "Literature default — verify against kit insert before clinical use",
       "effectiveFrom": "2026-01-01"
     },
     {
