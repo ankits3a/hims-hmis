@@ -670,7 +670,13 @@ export function registerAllJobs(
     // no job (and no pool client) of its own; it runs last, so a failure there never keeps the others from running.
     run: async (now) => {
       await sweepDutyReminders(db, now); await sweepQueueNudges(db, now); await sweepOverdueApprovals(db, now);
-      await sweepIpdRoundsClock(db, now);
+      // Review of 72f10b68: the rounds clock never fails the tick silently nor masks the others — logged, then rethrown.
+      try {
+        await sweepIpdRoundsClock(db, now);
+      } catch (e) {
+        roundsClockLog.error(`sweepIpdRoundsClock failed: ${e instanceof Error ? e.message : String(e)}`);
+        throw e;
+      }
     },
   });
   /**
@@ -755,6 +761,7 @@ export function registerAllJobs(
 }
 
 const clockLog = new Logger("worker.sweepTasks");
+const roundsClockLog = new Logger("worker.ipdRoundsClock");
 
 /**
  * E1.7 (PR #749 review) — the task clock and the waste storage clock share one tick. Each runs in its own try/catch

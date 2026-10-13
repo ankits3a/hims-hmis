@@ -7,8 +7,8 @@ import type { IpdOrderView, IpdRoundPatient, IpdRoundView, IpdRoundsList, IpdRou
 import { ApiError } from "../lib/api";
 import { useDebounced } from "../lib/format";
 import {
-  DRUG_ROUTES, FREQUENCIES, cancelOrder, closeConsult, cosignRound, getConsultants, getRoundPatient, getRoundsList, placeDrugOrder,
-  placeTestOrder, refusalCode, requestConsult, searchMedicines, signRound, stopOrder,
+  DOSE_UNITS, DRUG_ROUTES, FREQUENCIES, cancelOrder, closeConsult, cosignRound, getConsultants, getRoundPatient, getRoundsList, placeDrugOrder,
+  placeTestOrder, refusalCode, refusalDetail, requestConsult, searchMedicines, signRound, stopOrder,
 } from "../lib/ipd-rounds-api";
 import type { DrugRoute, WireMedicineHit } from "../lib/ipd-rounds-api";
 import { TestPicker } from "../components/test-picker";
@@ -122,9 +122,9 @@ export function IpdRoundPatientScreen({ admissionId }: { admissionId: string }):
   const { data: p, error, reload } = useLoad<IpdRoundPatient>(load);
   const [refused, setRefused] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const act = (work: () => Promise<unknown>, after?: () => void): void => {
+  const act = (work: () => Promise<unknown>, after?: () => void, onError?: (e: unknown) => void): void => {
     setBusy(true); setRefused(null);
-    work().then(() => { setBusy(false); after?.(); reload(); }, (e: unknown) => { setBusy(false); setRefused(refusalCode(e) ?? "failed"); });
+    work().then(() => { setBusy(false); after?.(); reload(); }, (e: unknown) => { setBusy(false); setRefused(refusalCode(e) ?? "failed"); onError?.(e); });
   };
   if (error !== null) return <main className="ipdr"><div className="ipdr-empty warn" role="alert">{t(error === "forbidden" ? "ipdRounds.forbidden" : "ipdRounds.failed")}</div></main>;
   if (p === null) return <main className="ipdr"><div className="ipdr-empty">{t("ipdRounds.loading")}</div></main>;
@@ -178,7 +178,7 @@ export function IpdRoundPatientScreen({ admissionId }: { admissionId: string }):
   );
 }
 
-type Act = (work: () => Promise<unknown>, after?: () => void) => void;
+type Act = (work: () => Promise<unknown>, after?: () => void, onError?: (e: unknown) => void) => void;
 
 function RoundCard({ r, children }: { r: IpdRoundView; children?: React.ReactNode }): React.ReactElement {
   const { t } = useTranslation();
@@ -327,14 +327,28 @@ function DrugForm({ admissionId, busy, act, done }: { admissionId: string; busy:
   const [days, setDays] = useState("5");
   const [stop, setStop] = useState("");
   const [abx, setAbx] = useState(false);
+  const [weight, setWeight] = useState("");
+  const [gap, setGap] = useState("6");
+  const [max24, setMax24] = useState("4");
+  const [override, setOverride] = useState("");
+  const [longWhy, setLongWhy] = useState("");
+  const [allergy, setAllergy] = useState<string | null>(null);
   const value = Number(dose);
-  const ok = med !== null && value > 0 && (stop !== "" || (!abx && Number(days) > 0));
+  const sos = freq === "SOS";
+  const ok = med !== null && value > 0 && (stop !== "" || (!abx && Number(days) > 0)) && (!sos || (Number(gap) > 0 && Number(max24) > 0));
   const submit = (): void => {
     if (med === null) return;
     act(() => placeDrugOrder(admissionId, {
       itemId: med.id, dose: { value, unit }, route, frequency: freq, startAt: new Date().toISOString(), antibiotic: abx,
       ...(stop !== "" ? { stopAt: new Date(`${stop}T23:59:00+05:30`).toISOString() } : { durationDays: Number(days) }),
-    }), done);
+      ...(sos ? { prn: { minIntervalMinutes: Number(gap) * 60, max24h: Number(max24) } } : {}),
+      ...(Number(weight) > 0 ? { weightKg: Number(weight) } : {}),
+      ...(override.trim() !== "" ? { allergyOverrideReason: override.trim() } : {}),
+      ...(longWhy.trim() !== "" ? { longCourseReason: longWhy.trim() } : {}),
+    }), done, (e) => {
+      // CPOE: an allergy conflict names the substances; the doctor may order through it only with a reason.
+      if (refusalCode(e) === "allergy_conflict") setAllergy(((refusalDetail(e)?.substances as string[] | undefined) ?? []).join(", "));
+    });
   };
   return (
     <div className="ipdr-form" data-testid="ipd-drug-form">
@@ -353,7 +367,7 @@ function DrugForm({ admissionId, busy, act, done }: { admissionId: string; busy:
       <div className="grid">
         <label><span>{t("ipdRounds.dose")}</span><input inputMode="decimal" value={dose} onChange={(e) => setDose(e.target.value)} /></label>
         <label><span>{t("ipdRounds.unit")}</span>
-          <select value={unit} onChange={(e) => setUnit(e.target.value)}>{["mg", "g", "mcg", "ml", "tab", "cap", "unit", "iu", "puff", "drop"].map((u) => <option key={u}>{u}</option>)}</select>
+          <select value={unit} onChange={(e) => setUnit(e.target.value)}>{DOSE_UNITS.map((u) => <option key={u}>{u}</option>)}</select>
         </label>
         <label><span>{t("ipdRounds.route")}</span>
           <select value={route} onChange={(e) => setRoute(e.target.value as DrugRoute)}>{DRUG_ROUTES.map((r) => <option key={r} value={r}>{t(`ipdRounds.routes.${r}`)}</option>)}</select>
@@ -363,9 +377,19 @@ function DrugForm({ admissionId, busy, act, done }: { admissionId: string; busy:
         </label>
         <label><span>{t("ipdRounds.days")}</span><input inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} disabled={stop !== ""} /></label>
         <label><span>{t("ipdRounds.stopDate")}</span><input type="date" value={stop} onChange={(e) => setStop(e.target.value)} /></label>
+        <label><span>{t("ipdRounds.weight")}</span><input inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} /></label>
+        {sos ? <label><span>{t("ipdRounds.prnGap")}</span><input inputMode="numeric" value={gap} onChange={(e) => setGap(e.target.value)} /></label> : null}
+        {sos ? <label><span>{t("ipdRounds.prnMax")}</span><input inputMode="numeric" value={max24} onChange={(e) => setMax24(e.target.value)} /></label> : null}
       </div>
       <label className="check"><input type="checkbox" checked={abx} onChange={(e) => setAbx(e.target.checked)} /> {t("ipdRounds.antibiotic")}</label>
       {abx && stop === "" ? <p className="warn small">{t("ipdRounds.refused.antibiotic_stop_date_required")}</p> : null}
+      {abx ? <input value={longWhy} onChange={(e) => setLongWhy(e.target.value)} placeholder={t("ipdRounds.longCourse")} aria-label={t("ipdRounds.longCourse")} /> : null}
+      {allergy ? (
+        <div className="allergy-hit" role="alert">
+          <b>{t("ipdRounds.allergyHit", { substances: allergy })}</b>
+          <input value={override} onChange={(e) => setOverride(e.target.value)} placeholder={t("ipdRounds.overrideReason")} aria-label={t("ipdRounds.overrideReason")} />
+        </div>
+      ) : null}
       <button type="button" className="primary" disabled={busy || !ok} onClick={submit}>{t("ipdRounds.placeOrder")}</button>
     </div>
   );

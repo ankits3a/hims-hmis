@@ -23,7 +23,7 @@ import "./ipd-bill-desk.css";
 /** The contract's reasons, in its order (most urgent first). Copied: the web imports the contract for types only. */
 const REASONS: readonly IpdBillDeskReason[] = [
   "deposit_90", "deposit_75", "icu_low_days", "posting_failed", "rate_missing", "tariff_missing", "deposit_check_pending",
-  "cash_consent_missing", "auth_pending_24h", "discharge_balance",
+  "cash_consent_missing", "auth_pending_24h", "discharge_balance", "visit_backdated",
 ];
 const HOT: ReadonlySet<IpdBillDeskReason> = new Set(["deposit_90", "icu_low_days", "posting_failed", "discharge_balance"]);
 

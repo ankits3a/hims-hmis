@@ -148,7 +148,10 @@ Source: `apps/core/src/modules/ipd/`
   - `postConsultantVisit(tx: Tx, input: ConsultantVisitInput): Promise<ConsultantVisitResult>`
   - `postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyResult>`
   - `priceComponent(ctx: PricingContext, cls: IpdBedClass, component: IpdRateComponent): Priced`
+  - `raiseBackdatedVisitIn(tx: Tx, actor: Actor, admissionId: string, consultantUserId: string, seenAt: Date, now: Date): Promise<void>`
+  - `resolveBackdatedVisit(db: Db, actor: Actor, input: { exceptionId: string; decision: "charge" | "waive" }, opts: { now?: Date } = {}): Promi…`
   - `reverseChargeLine(db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {}): Promise<{ reversalLine…`
+  - `visitChargeableAt(seenAt: Date, now: Date): boolean`
   - types: `AdmissionPostResult`, `ConsultantVisitInput`, `ConsultantVisitResult`, `NightlyResult`
 - `class-change.ts`
   - `applyClassChanges(stays: readonly S[], changes: readonly StayClassChange[]): S[]`
@@ -226,7 +229,9 @@ Source: `apps/core/src/modules/ipd/`
   - `saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdSummaryView>`
   - `signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_summary">>`
 - `encounter.ts`
+  - `IPD_ADMISSION_NO_RE`
   - `IPD_ADMISSION_PREFIX`
+  - `intendedPayerOfAdmission(payerKind: string | null): string`
   - `registerIpdEncounterResolver(): () => void`
 - `errors.ts`
   - `class IpdError`
@@ -297,11 +302,11 @@ Source: `apps/core/src/modules/ipd/`
   - `activeIpdOrdersOf(exec: Db | Tx, admissionId: string, kinds: readonly string[] = ["drug", "lab", "imaging"]): Promise<IpdOrderRow[]>`
   - `cancelIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick<IpdOrderOpts, "now"> = {}): Promise<Output<"cancel_ip_order">>`
   - `drugFactsOf(o: IpdOrderRow): IpdOrderDrugFacts | null`
-  - `markIpdOrderIssuedIn(tx: Tx, orderId: string, at: Date): Promise<boolean>`
+  - `markIpdOrderIssuedIn(tx: Tx, orderId: string, at: Date): Promise<IpdOrderIssueStamp>`
   - `placeIpOrder(db: Db, actor: Actor, raw: unknown, opts: IpdOrderOpts = {}): Promise<Output<"place_ip_order">>`
   - `readIpdOrder(exec: Db | Tx, orderId: string): Promise<IpdOrderRow | null>`
   - `stopIpOrder(db: Db, actor: Actor, raw: unknown, opts: Pick<IpdOrderOpts, "now"> = {}): Promise<Output<"stop_ip_order">>`
-  - types: `IpdOrderOpts`, `IpdOrderRow`
+  - types: `IpdOrderDoor`, `IpdOrderIssueStamp`, `IpdOrderOpts`, `IpdOrderRow`
 - `payer-bill.ts`
   - `addPayerNonPayable(db: Db, actor: Actor, raw: unknown, at: Date = new Date()): Promise<IpdNonPayable>`
   - `computePayerSplit(db: Db | Tx, a: AdmissionRow, lines: readonly ChargeLineRow[]): Promise<IpdPayerSplit>`
@@ -357,7 +362,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_ROUND_NUDGE_KIND`
   - `applyCovers(db: Db, at: Date, now: Date): Promise<number>`
   - `nudgeUnrounded(db: Db, now: Date, heads: boolean): Promise<number>`
-  - `sweepIpdRoundsClock(db: Db, now: Date): Promise<{ covers: number; nudges: number }>`
+  - `sweepIpdRoundsClock(db: Db, now: Date): Promise<{ covers: number; nudges: number; drafts: number }>`
 - `rounds-events.ts`
   - `orderCancelled`
   - `orderPlaced`
@@ -368,7 +373,11 @@ Source: `apps/core/src/modules/ipd/`
   - `readRoundsList(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdRoundsList>`
   - `roundsConsultantChoices(db: Db, actor: Actor): Promise<{ userId: string; name: string; department: string | null }[]>`
 - `rounds-team.ts`
+  - `CONSULTANT_GRADES: readonly string[]`
+  - `NON_CONSULTANT_ROLE_KEYS: readonly string[]`
+  - `consultantIdsAmong(exec: Db | Tx, userIds: readonly string[], at: Date): Promise<Set<string>>`
   - `coveringConsultantFor(exec: Db | Tx, consultantId: string, at: Date, units?: Map<string, string>): Promise<string | null>`
+  - `isConsultant(exec: Db | Tx, userId: string, at: Date): Promise<boolean>`
   - `unitHeadFor(exec: Db | Tx, consultantId: string, at: Date, units?: Map<string, string>): Promise<string | null>`
 - `rounds.ts`
   - `IPD_CONSULT_NOTICE_KIND`
@@ -399,7 +408,7 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (94)
+## HTTP routes (95)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
@@ -408,7 +417,7 @@ Foreign keys into: `patients`, `resources`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`
-- `rounds.controller.ts` — 10: `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
+- `rounds.controller.ts` — 11: `/ipd/charge-exceptions`, `/ipd/consults`, `/ipd/orders`, `/ipd/rounds`
 - `transfers.controller.ts` — 7: `/ipd/transfers`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/ipd`

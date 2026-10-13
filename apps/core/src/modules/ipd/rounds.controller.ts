@@ -5,7 +5,8 @@ import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { collectOrderKinds } from "../../kernel/orders/kinds";
 import { IpdError, IpdRefusal, ipdRefusalStatus } from "./errors";
 import { cancelIpOrder, placeIpOrder, stopIpOrder } from "./orders";
-import { IPD_ORDER_PLACE, IPD_ROUND_SIGN } from "./permissions";
+import { IPD_CHARGES_REVERSE, IPD_ORDER_PLACE, IPD_ROUND_SIGN } from "./permissions";
+import { resolveBackdatedVisit } from "./charges";
 import { closeConsult, cosignRound, requestConsult, signRound } from "./rounds";
 import { readRoundPatient, readRoundsList, roundsConsultantChoices } from "./rounds-read";
 import type { Actor, IpdConsultantChoice, IpdRefusalBody, IpdRoundPatient, IpdRoundsList } from "@hmis/contracts";
@@ -35,6 +36,7 @@ function toHttp(e: unknown): never {
 }
 
 const admissionParam = z.ulid();
+const backdatedBody = z.strictObject({ exceptionId: z.string().min(1).max(64), decision: z.enum(["charge", "waive"]) });
 
 @Controller("ipd")
 export class IpdRoundsController {
@@ -96,6 +98,13 @@ export class IpdRoundsController {
   @RequirePermission(IPD_ROUND_SIGN, "hospital")
   async requestConsult(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await requestConsult(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** Review of 72f10b68 — billing's answer to a `visit_backdated` exception: charge the visit as of its day, or waive it. */
+  @Post("charge-exceptions/backdated-visit")
+  @RequirePermission(IPD_CHARGES_REVERSE, "hospital")
+  async backdatedVisit(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await resolveBackdatedVisit(this.db, actor, backdatedBody.parse(body)); } catch (e) { toHttp(e); }
   }
 
   @Post("consults/close")

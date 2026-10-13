@@ -125,6 +125,13 @@ export const IPD_REFUSALS = {
   consult_already_open: { rule: "This consultant is already asked to see the patient.", fix: "Open the consult" },
   consult_not_found: { rule: "No consult request has this id.", fix: "Open rounds" },
   consult_closed: { rule: "The consult request is already closed.", fix: "Open rounds" },
+  // E4.2 review (#734) — the inpatient drug order's own checks.
+  stop_date_past: { rule: "The stop time must be later than now.", fix: "Pick a later stop" },
+  course_too_long: { rule: "An antibiotic course over 14 days needs a reason.", fix: "Add the reason" },
+  prn_mismatch: { rule: "An SOS order needs its as-needed limits, and only an SOS order has them.", fix: "Fix SOS limits" },
+  dose_out_of_range: { rule: "The dose is outside the range a single dose can be.", fix: "Check the dose" },
+  dose_unit_mismatch: { rule: "The dose unit does not fit the medicine's strength.", fix: "Pick another unit" },
+  route_mismatch: { rule: "The route does not fit the medicine's form.", fix: "Pick another route" },
 
   /* ═══ Discharge (§4.7) ═══ */
   department_not_yours: { rule: "A department confirms only its own charges.", fix: "Ask the department" },

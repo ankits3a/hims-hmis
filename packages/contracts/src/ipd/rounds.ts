@@ -38,6 +38,8 @@ export const IpdOrderDrugFactsSchema = z.object({
   antibiotic: z.boolean(),
   prn: z.object({ minIntervalMinutes: z.number().int().positive(), max24h: z.number().int().positive() }).nullable(),
   weightBasedPerKg: z.boolean(),
+  /** The weight the dose was ordered against (kg), or null. */
+  weightKg: z.number().positive().nullable(),
 });
 export type IpdOrderDrugFacts = z.infer<typeof IpdOrderDrugFactsSchema>;
 
@@ -57,6 +59,8 @@ export const IpdOrderPlacedPayloadSchema = z.object({
   placedAt: IpdInstantSchema,
   roundId: IpdIdSchema.nullable(),
   drug: IpdOrderDrugFactsSchema.nullable(),
+  /** The prescriber ordered through a recorded allergy (reason on the row): the pharmacist must re-check it. */
+  allergyOverride: z.boolean(),
   tests: z.object({
     department: z.enum(["lab", "imaging"]),
     serviceIds: z.array(z.string().min(1)).min(1),

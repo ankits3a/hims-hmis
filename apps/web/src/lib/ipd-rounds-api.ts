@@ -25,7 +25,8 @@ function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
 
 export type DrugRoute = "oral" | "iv" | "im" | "sc" | "inhaled" | "topical" | "rectal" | "sublingual" | "ng" | "other";
 export const DRUG_ROUTES: readonly DrugRoute[] = ["oral", "iv", "im", "sc", "inhaled", "topical", "rectal", "sublingual", "ng", "other"];
-export const FREQUENCIES = ["OD", "BD", "TDS", "QID", "HS", "SOS", "STAT"] as const;
+/** The shared prescription vocabulary (contracts `rx-line.ts`, read by path like the sig panel does). */
+export { RX_FREQUENCIES as FREQUENCIES, DOSE_UNITS } from "../../../../packages/contracts/src/rx-line";
 
 export type WireMedicineHit = { id: string; name: string; form: string; strength: string | null; salts: string[] };
 
@@ -43,7 +44,8 @@ export const cosignRound = (roundId: string): Promise<unknown> => post(R.cosign,
 
 export type DrugOrderInput = {
   itemId: string; dose: { value: number; unit: string }; route: DrugRoute; frequency: string; startAt: string;
-  stopAt?: string; durationDays?: number; antibiotic: boolean;
+  stopAt?: string; durationDays?: number; antibiotic: boolean; prn?: { minIntervalMinutes: number; max24h: number };
+  weightKg?: number; allergyOverrideReason?: string; longCourseReason?: string;
 };
 export const placeDrugOrder = (admissionId: string, drug: DrugOrderInput): Promise<{ orderId: string }> =>
   post(R.placeOrder, { admissionId, kind: "drug", drug });
@@ -56,6 +58,11 @@ export const requestConsult = (b: { admissionId: string; consultantId: string; q
 export const closeConsult = (consultId: string): Promise<unknown> => post(R.closeConsult, { consultId });
 
 /** The refusal's code, when the server answered one (`IpdRefusalBody`); the screen words it by code. */
+export function refusalDetail(e: unknown): Record<string, unknown> | null {
+  const body = (e as { body?: { detail?: unknown } } | null)?.body;
+  return body?.detail !== null && typeof body?.detail === "object" ? body.detail as Record<string, unknown> : null;
+}
+
 export function refusalCode(e: unknown): string | null {
   const body = (e as { body?: { code?: unknown } } | null)?.body;
   return typeof body?.code === "string" ? body.code : null;

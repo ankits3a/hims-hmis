@@ -270,7 +270,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `ipd.charge.rent_posted` goes out only with a room line that was actually inserted, so G5b sees one per night.
 - MISSING RATE: no item on the locked version, ₹0, or the service absent or SWITCHED OFF → required components (room,
   nursing, visit) raise one `ipd_charge_exceptions` row per key (event once) and post nothing; `rmo` is skipped silently;
-  `cross_visit` falls back to `visit`. A later run that can price it posts the line and resolves the row.
+  `cross_visit` never falls back to `visit` (review of 72f10b68: a missing cross rate is a `rate_missing` exception). A later run that can price it posts the line and resolves the row.
 - NIGHTLY JOB: `postNightlyIpdCharges(db, now)`, `dailyIst` 00:05; admissions in a bed plus ENDED ones whose
   `charges_posted_through` is short of the discharge day or that have an open exception (no age window); posts every
   unposted day up to YESTERDAY (a missed night is caught up with its own dates). One transaction per admission; the
@@ -280,7 +280,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   (billing manager) resolves it. Only infrastructure errors fail the run. Today is never posted.
 - VISITS: `postConsultantVisit(tx, { admissionId, consultantUserId, seenAt, source: "rounds_tap" })` — a consultant is a
   user with an ACTIVE `opd_doctors` row (residents are not on it → not charged); first tap per IST day posts, repeats post
-  nothing; every tap emits `ipd.charge.visit_recorded`. Not the admitting/covering consultant → `cross_visit` (else `visit`).
+  nothing; every tap emits `ipd.charge.visit_recorded`. Not the admitting/covering consultant and not a consultant of the
+  admitting consultant's roster unit → `cross_visit` (else `visit`) — review of 72f10b68, $ owner to confirm. A consultant is
+  the CONSULTANT CADRE (`rounds-team.ts` `isConsultant`), not a doctor-master row alone.
   Class = billed class of the bed held at `seenAt` (no-rent bed → general, DECIDED). The answer carries no money.
   A REVERSED visit does not count: the day can be charged again, the new line taking the next `visit_seq` (the visit
   unique index is (admission, day, consultant, visit_seq) — a partial index cannot see another row's reversal).
@@ -615,6 +617,32 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `markIpdOrderIssuedIn`; table check `ipd_orders_cancel_before_issue_ck`); stop after issue sets `return_owed`.
 - THE ORDER EVENT CONTRACT (eMAR builds on it): payload schemas in contracts `rounds.ts`; ids, codes and the drug schedule
   only — no names, no note or reason text, no money.
+- REVIEW OF 72f10b68 (all DECIDED unless marked):
+  - CADRE: consultant = active `opd_doctors` row AND the roster cadre — live team memberships' `grade` professor / associate /
+    assistant professor; with no live membership the role key decides (`resident`, `intern`, `radiology_resident` = not).
+    `rounds-team.ts` `isConsultant` is the ONE test for draft / co-sign / fit AND `charges.ts` `postConsultantVisit`.
+  - $ OWNER TO CONFIRM: any consultant of the admitting consultant's roster unit bills `visit`; only another unit's bills
+    `cross_visit`; a missing cross rate is a `rate_missing` exception (no fallback to `visit`).
+  - $ BACKDATED: a round is chargeable only on the current IST day, or yesterday before 10:00 (a night round written up);
+    older ones are recorded (`visit_outcome = backdated`) and raise a `visit_backdated` bill-desk exception (key
+    `…:backdated`); billing charges or waives it (`resolveBackdatedVisit`, `ipd.charges.reverse`, `POST
+    /ipd/charge-exceptions/backdated-visit`). The bill desk lists the reason; its button is owed.
+  - The round page refuses anyone off the treating team (`not_treating_team`). SEALED: allergies and isolation stay; name,
+    UHID, bed, ward, admission number, diagnosis and admission time are masked (page and list).
+  - DRUG ORDER CHECKS: frequency ∈ `RX_FREQUENCIES`, dose unit ∈ `DOSE_UNITS` (`packages/contracts/src/rx-line.ts`); `SOS` ⇔ `prn`; stop after
+    now; antibiotic course ≤ 14 days unless `longCourseReason`; dose ceiling by unit family; mass / IU units must match the
+    strength label; route vs `route_class` (topical ↔ topical); weight (typed, else the OPD chart's latest within 30 days)
+    for a per-kg dose and every child under 16 (`weight_required`); CPOE allergy check with the OPD prescription's matcher
+    (`matchAllergiesSaltAware`), refused `allergy_conflict` unless `allergyOverrideReason` (kept on the row, `allergyOverride`
+    on the event for the pharmacist). Round orders carry `roundId`.
+  - LAB / IMAGING: one transaction under the admission lock; the act's idempotency key is a unique column on the row; the lab
+    order is placed in that transaction (`orderTests` `{ tx }`, a savepoint); imaging gets radiology's own key
+    (`ipd:<key>`). A retry answers the row and asks no department.
+  - `markIpdOrderIssuedIn` answers `issued` / `already_issued` / `not_active` / `not_found` and stamps only an active order.
+  - `IP` resolver answers only `IPD_ADMISSION_NO_RE` (`IP26-000123`); `insurance_reimbursement` → `self`.
+  - The co-sign queue keeps drafts on stays ended within 7 days (discharge never waits on a co-sign); a draft waiting 24 h
+    nudges the treating consultant once (`ipd_round_draft_waiting`). Nudges skip declared roster holidays. `closeConsult`:
+    the consulted or the treating consultant only. `cosign_round` is not copilot-proposable.
 - CLOCK: rides `sweepStaffNotices` (no job, no pool client). 08:00–11:59 IST: `applyCovers` sets / clears `covering_for` from
   roster absences (unit head, officiating first) and tells the covering consultant once (`ipd-cover:<consultant>:<date>`).
   Mon–Sat 14:00–19:59: one nudge per responsible consultant per day; from 16:00 one per (unit head, consultant) per day. A

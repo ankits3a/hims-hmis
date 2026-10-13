@@ -17277,7 +17277,8 @@
     "reason": {
       "rate_missing": "दर नहीं",
       "tariff_missing": "टैरिफ़ नहीं",
-      "posting_failed": "पोस्टिंग विफल"
+      "posting_failed": "पोस्टिंग विफल",
+      "visit_backdated": "पुरानी तारीख़ का राउंड"
     },
     "component": {
       "room": "कमरा किराया",
@@ -17589,7 +17590,8 @@
       "deposit_check_pending": "डाउनटाइम जमा जाँचें",
       "cash_consent_missing": "नकद सहमति नहीं",
       "auth_pending_24h": "स्वीकृति 24 घंटे से लंबित",
-      "discharge_balance": "डिस्चार्ज, बकाया शेष"
+      "discharge_balance": "डिस्चार्ज, बकाया शेष",
+      "visit_backdated": "पुरानी तारीख़ की विज़िट"
     },
     "col": {
       "patient": "मरीज़",
@@ -18250,7 +18252,22 @@
       "round_not_awaiting_cosign": "पहले से सह-हस्ताक्षरित",
       "consultant_not_found": "कोई सक्रिय कंसल्टेंट चुनें",
       "consult_already_open": "इन कंसल्टेंट से पहले से पूछा गया है",
-      "consult_closed": "परामर्श पहले से बंद है"
-    }
+      "consult_closed": "परामर्श पहले से बंद है",
+      "weight_required": "पहले मरीज़ का वज़न दर्ज करें",
+      "allergy_conflict": "दर्ज एलर्जी से टकराव — ओवरराइड का कारण दें",
+      "stop_date_past": "बंद करने का समय अभी के बाद हो",
+      "course_too_long": "14 दिन से लंबे एंटीबायोटिक कोर्स का कारण चाहिए",
+      "prn_mismatch": "SOS के लिए सीमा चाहिए; सीमा केवल SOS में",
+      "dose_out_of_range": "खुराक जाँचें",
+      "dose_unit_mismatch": "यह इकाई इस दवा पर नहीं बैठती",
+      "route_mismatch": "यह मार्ग इस दवा पर नहीं बैठता",
+      "round_not_found": "राउंड नहीं मिला"
+    },
+    "weight": "वज़न (किग्रा)",
+    "prnGap": "कम से कम घंटे का अंतर",
+    "prnMax": "24 घंटे में अधिकतम खुराक",
+    "longCourse": "14 दिन से लंबे कोर्स का कारण",
+    "allergyHit": "एलर्जी: {{substances}}",
+    "overrideReason": "एलर्जी के बावजूद देने का कारण"
   }
 }

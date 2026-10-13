@@ -17,6 +17,8 @@ import { IpdPayerKindSchema } from "./intents-admit";
 export const IPD_BILLDESK_REASONS = [
   "deposit_90", "deposit_75", "icu_low_days", "posting_failed", "rate_missing", "tariff_missing", "deposit_check_pending",
   "cash_consent_missing", "auth_pending_24h", "discharge_balance",
+  // E4.2 review (#734): a round backdated past yesterday 10:00 IST — recorded, not charged; billing reviews it.
+  "visit_backdated",
 ] as const;
 export const IpdBillDeskReasonSchema = z.enum(IPD_BILLDESK_REASONS);
 export type IpdBillDeskReason = z.infer<typeof IpdBillDeskReasonSchema>;

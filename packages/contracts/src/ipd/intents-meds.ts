@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdUserRefSchema, ipdInput, ipdIntent } from "./common";
+import { DOSE_UNITS, RX_FREQUENCIES } from "../rx-line";
 
 /**
  * E0.2 (#714) — inpatient orders and the eMAR (spec §4.5A ipd-rounds orders, §4.6 ipd-emar). Contracts only.
@@ -8,7 +9,8 @@ import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdUserRefSchema, ipdInpu
  * The acceptance suite pins that for every intent in this file.
  */
 
-const DoseSchema = z.strictObject({ value: z.number().positive(), unit: z.string().trim().min(1).max(16) });
+/** E4.2 review: an inpatient drug dose names a unit of the shared prescription vocabulary (`DOSE_UNITS`). */
+const IpdDoseSchema = z.strictObject({ value: z.number().positive().max(1_000_000), unit: z.enum(DOSE_UNITS) });
 /** The dose is due at `doseDueAt` — the slot on the MAR this outcome belongs to. */
 const DoseSlot = { orderId: IpdIdSchema, doseDueAt: IpdInstantSchema };
 
@@ -23,9 +25,10 @@ export const IPD_DRUG_ROUTES = ["oral", "iv", "im", "sc", "inhaled", "topical", 
 export const IpdDrugOrderSchema = z.strictObject({
   /** The formulary medicine (`formulary_medicines.id`). */
   itemId: IpdIdSchema,
-  dose: DoseSchema,
+  dose: IpdDoseSchema,
   route: z.enum(IPD_DRUG_ROUTES),
-  frequency: z.string().trim().min(1).max(30),
+  /** The shared prescription vocabulary (`RX_FREQUENCIES`, rx-line.ts): `SOS` ⇔ a `prn` block (the intent cross-checks). */
+  frequency: z.enum(RX_FREQUENCIES),
   startAt: IpdInstantSchema,
   /** Required by the intent for an antibiotic (§4.5A). */
   stopAt: IpdInstantSchema.optional(),
@@ -35,6 +38,12 @@ export const IpdDrugOrderSchema = z.strictObject({
   antibiotic: z.boolean(),
   prn: z.strictObject({ minIntervalMinutes: z.number().int().positive(), max24h: z.number().int().positive() }).optional(),
   weightBasedPerKg: z.boolean().optional(),
+  /** Today's weight; else the latest recorded weight (30 days). Needed for a weight-based dose and for every child (< 16). */
+  weightKg: z.number().positive().max(400).optional(),
+  /** Ordering through a recorded allergy (CPOE override): the reason is kept and the pharmacist re-checks it (eMAR). */
+  allergyOverrideReason: IpdNoteSchema.optional(),
+  /** An antibiotic course longer than 14 days needs its reason. */
+  longCourseReason: IpdNoteSchema.optional(),
 });
 export type IpdDrugOrder = z.infer<typeof IpdDrugOrderSchema>;
 
@@ -55,6 +64,8 @@ export const placeIpOrder = ipdIntent({
     /** An emergency verbal order recorded by a nurse after read-back; the doctor signs within 24 hours. */
     verbal: z.strictObject({ fromDoctorId: IpdUserRefSchema, readBack: z.literal(true) }).optional(),
     note: IpdNoteSchema.optional(),
+    /** The round this order was written on (E4.2 review: round orders are linked). */
+    roundId: IpdIdSchema.optional(),
   }),
   output: z.strictObject({
     orderId: IpdIdSchema,
@@ -66,6 +77,8 @@ export const placeIpOrder = ipdIntent({
     "admission_not_found", "admission_wrong_state", "not_treating_team", "antibiotic_stop_date_required",
     "weight_required", "verbal_order_not_allowed", "verbal_order_only", "allergy_conflict", "duplicate_order",
     "duration_required", "medicine_not_found", "order_kind_not_here", "test_not_orderable", "time_in_future",
+    "stop_date_past", "course_too_long", "prn_mismatch", "dose_out_of_range", "dose_unit_mismatch", "route_mismatch",
+    "round_not_found",
   ],
   actors: ["doctor", "resident", "nurse"],
   copilotProposable: false,

@@ -1,10 +1,10 @@
-import { and, eq, gte, inArray, isNotNull, lt } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, lte, or } from "drizzle-orm";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { raiseNotice } from "../../kernel/alerts/notices";
 import { withTx } from "../../kernel/db/client";
 import { alerts, ipdAdmissions, ipdRounds } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
-import { absentUserIds, istWeekday } from "../roster";
+import { absentUserIds, addIstDays, holidaysBetween, istMinutesOfInstant, istWeekday } from "../roster";
 import { lockAdmission } from "./admission-core";
 import { IPD_PLACED_STATES } from "./admission-place";
 import { userNames } from "./admissions";
@@ -33,25 +33,39 @@ export const IPD_ROUND_NUDGE_HEAD_KIND = "ipd_round_nudge_head";
 export const IPD_COVER_KIND = "ipd_cover_today";
 export const IPD_ROUNDS_REF_TYPE = "ipd_rounds";
 const CLOCK_ACTOR: Actor = { type: "system", id: "ipd-rounds-clock" };
-const HOUR = 3_600_000;
 
-export async function sweepIpdRoundsClock(db: Db, now: Date): Promise<{ covers: number; nudges: number }> {
-  const { start } = istDayWindow(now);
-  const hour = (now.getTime() - start.getTime()) / HOUR;
+/** The clock's instants, as minutes past IST midnight (roster `istMinutesOfInstant` — the shared IST clock). */
+export const COVER_FROM = 8 * 60;
+export const COVER_UNTIL = 12 * 60;
+export const NUDGE_FROM = 14 * 60;
+export const NUDGE_HEAD_FROM = 16 * 60;
+export const NUDGE_UNTIL = 20 * 60;
+/** A resident's draft waiting this long for its co-sign nudges the consultant who may co-sign (once per draft). */
+export const STRANDED_DRAFT_HOURS = 24;
+
+export async function sweepIpdRoundsClock(db: Db, now: Date): Promise<{ covers: number; nudges: number; drafts: number }> {
+  const minute = istMinutesOfInstant(now);
+  const date = istDayString(now);
   let covers = 0;
   let nudges = 0;
-  if (hour >= 8 && hour < 12) covers = await applyCovers(db, new Date(start.getTime() + 8 * HOUR), now);
-  if (hour >= 14 && hour < 20 && istWeekday(istDayString(now)) !== 0) nudges = await nudgeUnrounded(db, now, hour >= 16);
-  return { covers, nudges };
+  if (minute >= COVER_FROM && minute < COVER_UNTIL) covers = await applyCovers(db, now, now);
+  // Mon–Sat, and never on a declared roster holiday (review of 72f10b68).
+  if (minute >= NUDGE_FROM && minute < NUDGE_UNTIL && istWeekday(date) !== 0 && (await holidaysBetween(db, date, addIstDays(date, 1))).length === 0) {
+    nudges = await nudgeUnrounded(db, now, minute >= NUDGE_HEAD_FROM);
+  }
+  const drafts = minute >= NUDGE_FROM && minute < NUDGE_UNTIL ? await nudgeStrandedDrafts(db, now) : 0;
+  return { covers, nudges, drafts };
 }
 
 /** Sets or clears `covering_for` on every open admission by the roster at `at` (08:00). Returns rows changed. */
 export async function applyCovers(db: Db, at: Date, now: Date): Promise<number> {
   const date = istDayString(at);
-  const open = await db.select({ id: ipdAdmissions.id, consultantId: ipdAdmissions.consultantId, coveringFor: ipdAdmissions.coveringFor })
-    .from(ipdAdmissions).where(inArray(ipdAdmissions.state, [...IPD_PLACED_STATES]));
-  if (open.length === 0) return 0;
+  // Review of 72f10b68: narrowed in SQL — only admissions whose consultant is away now or that carry a cover to clear.
   const away = new Set(await absentUserIds(db, at, new Date(at.getTime() + 1)));
+  const who = [isNotNull(ipdAdmissions.coveringFor), ...(away.size > 0 ? [inArray(ipdAdmissions.consultantId, [...away])] : [])];
+  const open = await db.select({ id: ipdAdmissions.id, consultantId: ipdAdmissions.consultantId, coveringFor: ipdAdmissions.coveringFor })
+    .from(ipdAdmissions).where(and(inArray(ipdAdmissions.state, [...IPD_PLACED_STATES]), or(...who)));
+  if (open.length === 0) return 0;
   const units = away.size === 0 ? new Map<string, string>() : await unitsOn(db, date);
   const coverOf = new Map<string, string | null>();
   for (const cid of new Set(open.map((a) => a.consultantId))) {
@@ -137,6 +151,36 @@ export async function nudgeUnrounded(db: Db, now: Date, heads: boolean): Promise
         sourceKey: headKeyOf(uid), at: now,
       })) raised += 1;
     }
+  }
+  return raised;
+}
+
+/**
+ * Review of 72f10b68 (DECIDED): discharge never waits on a co-sign (no detention), so a resident's draft can outlive the
+ * stay. A draft waiting over 24 h — in a bed or ended within the co-sign window — tells the treating consultant (covering,
+ * else admitting) ONCE, by count. The co-sign queue lists it until it is signed.
+ */
+export const IPD_DRAFT_NUDGE_KIND = "ipd_round_draft_waiting";
+
+export async function nudgeStrandedDrafts(db: Db, now: Date): Promise<number> {
+  const before = new Date(now.getTime() - STRANDED_DRAFT_HOURS * 3_600_000);
+  const drafts = await db.select({ id: ipdRounds.id, admissionId: ipdRounds.admissionId }).from(ipdRounds)
+    .where(and(eq(ipdRounds.status, "awaiting_cosign"), lte(ipdRounds.seenAt, before)));
+  if (drafts.length === 0) return 0;
+  const keys = drafts.map((d) => `ipd-draft-waiting:${d.id}`);
+  const already = new Set((await db.select({ k: alerts.sourceEventId }).from(alerts).where(inArray(alerts.sourceEventId, keys))).map((r) => r.k));
+  const fresh = drafts.filter((d) => !already.has(`ipd-draft-waiting:${d.id}`));
+  if (fresh.length === 0) return 0;
+  const adm = new Map((await db.select({ id: ipdAdmissions.id, consultantId: ipdAdmissions.consultantId, coveringFor: ipdAdmissions.coveringFor })
+    .from(ipdAdmissions).where(inArray(ipdAdmissions.id, [...new Set(fresh.map((d) => d.admissionId))]))).map((a) => [a.id, a] as const));
+  let raised = 0;
+  for (const d of fresh) {
+    const a = adm.get(d.admissionId);
+    if (a === undefined) continue;
+    if (await raiseNotice(db, {
+      userId: a.coveringFor ?? a.consultantId, kind: IPD_DRAFT_NUDGE_KIND, refType: IPD_ROUNDS_REF_TYPE, refId: d.id,
+      title: "Round waiting for co-sign", body: "A resident's round has waited over a day. Open Rounds.", sourceKey: `ipd-draft-waiting:${d.id}`, at: now,
+    })) raised += 1;
   }
   return raised;
 }

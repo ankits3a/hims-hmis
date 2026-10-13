@@ -67,7 +67,7 @@ export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date())
   // Open charge exceptions (an ended stay keeps its exception until it is posted or retried).
   for (const x of await db.select({ admissionId: ipdChargeExceptions.admissionId, reason: ipdChargeExceptions.reason, at: ipdChargeExceptions.firstSeenAt })
     .from(ipdChargeExceptions).where(isNull(ipdChargeExceptions.resolvedAt))) {
-    note(cand, x.admissionId, x.reason as "rate_missing" | "tariff_missing" | "posting_failed", x.at);
+    note(cand, x.admissionId, x.reason as "rate_missing" | "tariff_missing" | "posting_failed" | "visit_backdated", x.at);
   }
   // Downtime deposits nobody has checked yet.
   for (const a of await db.select({ id: ipdAdmissions.id, at: ipdAdmissions.admittedAt }).from(ipdAdmissions)

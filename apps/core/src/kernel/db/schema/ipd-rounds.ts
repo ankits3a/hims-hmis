@@ -52,7 +52,7 @@ export const ipdRounds = pgTable(
     check("ipd_rounds_mode_ck", sql`${t.mode} in ('bedside', 'remote_review')`),
     check("ipd_rounds_source_ck", sql`${t.source} in ('typed', 'voice', 'copilot_draft')`),
     check("ipd_rounds_status_ck", sql`${t.status} in ('signed', 'awaiting_cosign')`),
-    check("ipd_rounds_visit_ck", sql`${t.visitOutcome} in ('charged', 'repeat', 'not_chargeable', 'rate_missing', 'remote', 'draft')`),
+    check("ipd_rounds_visit_ck", sql`${t.visitOutcome} in ('charged', 'repeat', 'not_chargeable', 'rate_missing', 'remote', 'draft', 'backdated')`),
     // A resident's round is a draft until co-signed; a consultant's is never one.
     check("ipd_rounds_draft_ck", sql`(${t.authorKind} = 'consultant' and ${t.status} = 'signed' and ${t.cosignedBy} is null) or (${t.authorKind} = 'resident' and ((${t.status} = 'awaiting_cosign' and ${t.cosignedBy} is null) or (${t.status} = 'signed' and ${t.cosignedBy} is not null)))`),
     check("ipd_rounds_cosign_ck", sql`(${t.cosignedBy} is null) = (${t.cosignedAt} is null)`),
@@ -82,6 +82,14 @@ export const ipdOrders = pgTable(
     antibiotic: boolean("antibiotic").notNull().default(false),
     prn: jsonb("prn").$type<{ minIntervalMinutes: number; max24h: number }>(),
     weightBasedPerKg: boolean("weight_based_per_kg").notNull().default(false),
+    /** The weight the dose was ordered against (typed, or the latest recorded) — null when none was needed or known. */
+    weightKg: doublePrecision("weight_kg"),
+    /** A CPOE allergy override: the prescriber's reason; the pharmacist re-checks it at verify (eMAR). */
+    allergyOverrideReason: text("allergy_override_reason"),
+    /** An antibiotic course over 14 days: its reason. */
+    longCourseReason: text("long_course_reason"),
+    /** The placing act's idempotency key (lab / imaging): a retry finds this row and never orders twice. */
+    idempotencyKey: text("idempotency_key"),
     /** Lab / imaging: the tariff service ids ordered, the department and the kernel order it placed. */
     serviceIds: jsonb("service_ids").$type<string[]>(),
     department: text("department"),
@@ -105,12 +113,13 @@ export const ipdOrders = pgTable(
   },
   (t) => [
     index("ipd_orders_admission_idx").on(t.admissionId, t.status),
+    uniqueIndex("ipd_orders_idempotency_ux").on(t.idempotencyKey).where(sql`${t.idempotencyKey} is not null`),
     index("ipd_orders_verification_idx").on(t.verification).where(sql`${t.status} = 'active'`),
     check("ipd_orders_kind_ck", sql`${t.kind} in ('drug', 'lab', 'imaging')`),
     check("ipd_orders_status_ck", sql`${t.status} in ('active', 'stopped', 'cancelled')`),
     check("ipd_orders_verification_ck", sql`${t.verification} is null or ${t.verification} in ('pending', 'verified', 'rejected', 'query')`),
     check("ipd_orders_by_kind_ck", sql`${t.orderedByKind} in ('consultant', 'resident')`),
-    check("ipd_orders_drug_ck", sql`${t.kind} <> 'drug' or (${t.medicineId} is not null and ${t.route} is not null and ${t.frequency} is not null and ${t.startAt} is not null and ${t.verification} is not null)`),
+    check("ipd_orders_drug_ck", sql`${t.kind} <> 'drug' or (${t.medicineId} is not null and ${t.doseValue} is not null and ${t.doseUnit} is not null and ${t.route} is not null and ${t.frequency} is not null and ${t.startAt} is not null and ${t.verification} is not null)`),
     check("ipd_orders_duration_ck", sql`${t.kind} <> 'drug' or ${t.stopAt} is not null or ${t.durationDays} is not null`),
     // §4.5A: an antibiotic order always carries its stop date — a database fact, not only the intent's check.
     check("ipd_orders_antibiotic_stop_ck", sql`not ${t.antibiotic} or ${t.stopAt} is not null`),

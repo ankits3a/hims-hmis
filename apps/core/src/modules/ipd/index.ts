@@ -162,12 +162,13 @@ export { IPD_CONSULT_NOTICE_KIND, closeConsult, cosignRound, requestConsult, sig
 export {
   activeIpdOrdersOf, cancelIpOrder, drugFactsOf, markIpdOrderIssuedIn, placeIpOrder, readIpdOrder, stopIpOrder,
 } from "./orders";
-export type { IpdOrderOpts, IpdOrderRow } from "./orders";
+export type { IpdOrderDoor, IpdOrderIssueStamp, IpdOrderOpts, IpdOrderRow } from "./orders";
 export { readRoundPatient, readRoundsList, roundsConsultantChoices } from "./rounds-read";
 export {
   IPD_COVER_KIND, IPD_ROUND_NUDGE_HEAD_KIND, IPD_ROUND_NUDGE_KIND, IPD_ROUNDS_REF_TYPE, applyCovers, nudgeUnrounded, sweepIpdRoundsClock,
 } from "./rounds-clock";
-export { coveringConsultantFor, unitHeadFor } from "./rounds-team";
+export { CONSULTANT_GRADES, NON_CONSULTANT_ROLE_KEYS, consultantIdsAmong, coveringConsultantFor, isConsultant, unitHeadFor } from "./rounds-team";
+export { raiseBackdatedVisitIn, resolveBackdatedVisit, visitChargeableAt } from "./charges";
 export { declareFitIn } from "./discharge";
 export { orderCancelled, orderPlaced, orderStopped, roundSigned } from "./rounds-events";
-export { IPD_ADMISSION_PREFIX, registerIpdEncounterResolver } from "./encounter";
+export { IPD_ADMISSION_NO_RE, IPD_ADMISSION_PREFIX, intendedPayerOfAdmission, registerIpdEncounterResolver } from "./encounter";

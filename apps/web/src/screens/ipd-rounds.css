@@ -108,3 +108,4 @@
   .ipdr button { min-height: 48px; }
   .ipdr-header { position: static; }
 }
+.ipdr .allergy-hit { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 8px; background: #fdecea; color: var(--warn); }

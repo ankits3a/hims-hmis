@@ -93,7 +93,7 @@ export async function readInterimBill(db: Db, actor: Actor, admissionId: string)
     balancePaise: deposit - roundedPaise,
     exceptions: exceptions.map((x) => ({
       serviceDate: x.serviceDate, component: x.component as IpdRateComponent | null, billedClass: x.billedClass as IpdBedClass | null,
-      serviceCode: x.serviceCode, reason: x.reason as "rate_missing" | "tariff_missing" | "posting_failed", errorCode: x.errorCode,
+      serviceCode: x.serviceCode, reason: x.reason as "rate_missing" | "tariff_missing" | "posting_failed" | "visit_backdated", errorCode: x.errorCode,
       failCount: x.failCount, firstSeenAt: x.firstSeenAt.toISOString(),
     })),
     payerSplit,

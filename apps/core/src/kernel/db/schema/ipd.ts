@@ -402,7 +402,7 @@ export const ipdChargeExceptions = pgTable(
     uniqueIndex("ipd_charge_exceptions_key_ux").on(t.key),
     index("ipd_charge_exceptions_open_idx").on(t.admissionId).where(sql`${t.resolvedAt} is null`),
     check("ipd_charge_exceptions_component_ck", sql`${t.component} is null or ${t.component} in (${CHARGE_COMPONENTS_SQL})`),
-    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed')`),
+    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated')`),
     check("ipd_charge_exceptions_shape_ck", sql`(${t.reason} = 'posting_failed') = (${t.component} is null) and (${t.component} is null) = (${t.serviceDate} is null)`),
   ],
 );

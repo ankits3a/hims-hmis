@@ -32,7 +32,7 @@ function desk(over: Partial<IpdBillDesk> = {}): IpdBillDesk {
   ];
   const counts = {
     deposit_90: 1, deposit_75: 1, icu_low_days: 0, posting_failed: 1, rate_missing: 0, tariff_missing: 0, deposit_check_pending: 1,
-    cash_consent_missing: 0, auth_pending_24h: 0, discharge_balance: 0,
+    cash_consent_missing: 0, auth_pending_24h: 0, discharge_balance: 0, visit_backdated: 0,
   };
   return { asOf: "2030-01-02T04:00:00.000Z", counts, rows, canRetry: false, ...over };
 }

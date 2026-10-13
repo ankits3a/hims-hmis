@@ -48,7 +48,7 @@ const patient: IpdRoundPatient = {
   rounds: [list.cosignQueue[0]!],
   orders: [{
     orderId: id(60), kind: "drug", status: "active", verification: "pending", title: "Ceftriaxone 1 g · 1 g · IV · BD",
-    drug: { medicineId: id(61), medicineName: "Ceftriaxone 1 g", doseValue: 1, doseUnit: "g", route: "iv", frequency: "BD", startAt: NOW, stopAt: NOW, durationDays: null, antibiotic: true, prn: null, weightBasedPerKg: false },
+    drug: { medicineId: id(61), medicineName: "Ceftriaxone 1 g", doseValue: 1, doseUnit: "g", route: "iv", frequency: "BD", startAt: NOW, stopAt: NOW, durationDays: null, antibiotic: true, prn: null, weightBasedPerKg: false, weightKg: null },
     tests: null, orderedByName: "Dr Fake", orderedAt: NOW, issuedAt: null, endedAt: null, endReason: null, returnOwed: false,
   }],
   consults: [], can: { sign: true, order: true, cosign: true, declareFit: true },

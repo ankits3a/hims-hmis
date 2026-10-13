@@ -1,5 +1,5 @@
 {
-  "id": "3eb20c8c-95c9-4c7e-8f24-ece91448ae51",
+  "id": "536fbd4b-f715-4bee-a4bc-6705515e30de",
   "prevId": "c20c7fea-caef-49cf-ac61-0b66ad4019c4",
   "version": "7",
   "dialect": "postgresql",
@@ -56326,7 +56326,7 @@
         },
         "ipd_charge_exceptions_reason_ck": {
           "name": "ipd_charge_exceptions_reason_ck",
-          "value": "\"ipd_charge_exceptions\".\"reason\" in ('rate_missing', 'tariff_missing', 'posting_failed')"
+          "value": "\"ipd_charge_exceptions\".\"reason\" in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated')"
         },
         "ipd_charge_exceptions_shape_ck": {
           "name": "ipd_charge_exceptions_shape_ck",
@@ -59762,6 +59762,30 @@
           "notNull": true,
           "default": false
         },
+        "weight_kg": {
+          "name": "weight_kg",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "allergy_override_reason": {
+          "name": "allergy_override_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "long_course_reason": {
+          "name": "long_course_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "service_ids": {
           "name": "service_ids",
           "type": "jsonb",
@@ -59894,6 +59918,22 @@
           "method": "btree",
           "with": {}
         },
+        "ipd_orders_idempotency_ux": {
+          "name": "ipd_orders_idempotency_ux",
+          "columns": [
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"ipd_orders\".\"idempotency_key\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "ipd_orders_verification_idx": {
           "name": "ipd_orders_verification_idx",
           "columns": [
@@ -59974,7 +60014,7 @@
         },
         "ipd_orders_drug_ck": {
           "name": "ipd_orders_drug_ck",
-          "value": "\"ipd_orders\".\"kind\" <> 'drug' or (\"ipd_orders\".\"medicine_id\" is not null and \"ipd_orders\".\"route\" is not null and \"ipd_orders\".\"frequency\" is not null and \"ipd_orders\".\"start_at\" is not null and \"ipd_orders\".\"verification\" is not null)"
+          "value": "\"ipd_orders\".\"kind\" <> 'drug' or (\"ipd_orders\".\"medicine_id\" is not null and \"ipd_orders\".\"dose_value\" is not null and \"ipd_orders\".\"dose_unit\" is not null and \"ipd_orders\".\"route\" is not null and \"ipd_orders\".\"frequency\" is not null and \"ipd_orders\".\"start_at\" is not null and \"ipd_orders\".\"verification\" is not null)"
         },
         "ipd_orders_duration_ck": {
           "name": "ipd_orders_duration_ck",
@@ -60199,7 +60239,7 @@
         },
         "ipd_rounds_visit_ck": {
           "name": "ipd_rounds_visit_ck",
-          "value": "\"ipd_rounds\".\"visit_outcome\" in ('charged', 'repeat', 'not_chargeable', 'rate_missing', 'remote', 'draft')"
+          "value": "\"ipd_rounds\".\"visit_outcome\" in ('charged', 'repeat', 'not_chargeable', 'rate_missing', 'remote', 'draft', 'backdated')"
         },
         "ipd_rounds_draft_ck": {
           "name": "ipd_rounds_draft_ck",

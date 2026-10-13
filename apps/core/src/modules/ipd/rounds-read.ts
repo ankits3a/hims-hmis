@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, or } from "drizzle-orm";
 import { istDayString, istDayWindow } from "../../kernel/approvals/cumulative";
 import { ipdAdmissions, ipdConsults, ipdDischarges, ipdOrders, ipdRounds, resources, services } from "../../kernel/db/schema";
 import { getPatientSummaries, listAllergies } from "../patients";
@@ -12,6 +12,7 @@ import { ageInYears } from "./bed-rules";
 import { dayOfStay } from "./daily-totals";
 import { isTreatingConsultant } from "./discharge";
 import { nowIdentities } from "./now-cards";
+import { IpdRefusal } from "./errors";
 import { drugFactsOf } from "./orders";
 import { IPD_DISCHARGE_DECLARE, IPD_ORDER_PLACE, IPD_ROUND_SIGN } from "./permissions";
 import { consultantIdsAmong, mayCosign, onTeam, treatingTeamOf, unitsOn } from "./rounds-team";
@@ -95,9 +96,13 @@ export async function readRoundsList(db: Db, actor: Actor, now: Date = new Date(
   const units = await unitsOn(db, date);
   const myUnit = units.get(actor.id);
   const mates = new Set(myUnit === undefined ? [] : [...units.entries()].filter(([, t]) => t === myUnit).map(([u]) => u));
-  const open = await db.select().from(ipdAdmissions).where(inArray(ipdAdmissions.state, [...IPD_PLACED_STATES]));
   const consulted = new Map((await db.select({ id: ipdConsults.id, admissionId: ipdConsults.admissionId }).from(ipdConsults)
     .where(and(eq(ipdConsults.consultantId, actor.id), eq(ipdConsults.status, "open")))).map((c) => [c.admissionId, c.id] as const));
+  // Review of 72f10b68: the list is filtered in SQL — own, covering, the unit's consultants' and consulted admissions only.
+  const mine = [eq(ipdAdmissions.consultantId, actor.id), eq(ipdAdmissions.coveringFor, actor.id)];
+  if (mates.size > 0) mine.push(inArray(ipdAdmissions.consultantId, [...mates]));
+  if (consulted.size > 0) mine.push(inArray(ipdAdmissions.id, [...consulted.keys()]));
+  const open = await db.select().from(ipdAdmissions).where(and(inArray(ipdAdmissions.state, [...IPD_PLACED_STATES]), or(...mine)));
 
   const picked: { a: AdmissionRow; why: IpdRoundsWhy }[] = [];
   for (const a of open) {
@@ -105,8 +110,8 @@ export async function readRoundsList(db: Db, actor: Actor, now: Date = new Date(
       : consulted.has(a.id) ? "consult" : mates.has(a.consultantId) ? "unit" : null;
     if (why !== null) picked.push({ a, why });
   }
-  const isConsultant = (await consultantIdsAmong(db, [actor.id])).has(actor.id);
-  const cosignQueue = isConsultant ? await cosignQueueOf(db, actor, open, units, now) : [];
+  const isConsultant = (await consultantIdsAmong(db, [actor.id], now)).has(actor.id);
+  const cosignQueue = isConsultant ? await cosignQueueOf(db, actor, units, now) : [];
   if (picked.length === 0) return { asOf: now.toISOString(), isConsultant, rows: [], cosignQueue };
 
   const ids = picked.map((p) => p.a.id);
@@ -128,7 +133,7 @@ export async function readRoundsList(db: Db, actor: Actor, now: Date = new Date(
     const place = places.get(a.id);
     const identity = who.get(a.id)!;
     return {
-      admissionId: a.id, admissionNo: a.admissionNo, patient: identity,
+      admissionId: a.id, admissionNo: identity.sealed ? null : a.admissionNo, patient: identity,
       // A sealed patient's row names no bed or ward (review #767's rule for every IPD list).
       bedCode: identity.sealed ? null : (place?.bedCode ?? null),
       wardCode: identity.sealed ? null : (place?.wardCode ?? null),
@@ -149,16 +154,20 @@ export async function readRoundsList(db: Db, actor: Actor, now: Date = new Date(
 }
 
 /** Draft rounds this consultant may co-sign: on patients of whom they are the admitting, covering or a unit consultant. */
-async function cosignQueueOf(db: Db, actor: Actor, open: readonly AdmissionRow[], units: Map<string, string>, now: Date): Promise<IpdCosignItem[]> {
-  if (open.length === 0) return [];
-  const waiting = await db.select().from(ipdRounds)
-    .where(and(inArray(ipdRounds.admissionId, open.map((a) => a.id)), eq(ipdRounds.status, "awaiting_cosign")))
-    .orderBy(ipdRounds.seenAt);
+/** Review of 72f10b68 (DECIDED): drafts on stays that ENDED in the last 7 days still wait here — discharge never waits on a co-sign. */
+export const COSIGN_AFTER_EXIT_DAYS = 7;
+
+async function cosignQueueOf(db: Db, actor: Actor, units: Map<string, string>, now: Date): Promise<IpdCosignItem[]> {
+  const waiting = await db.select().from(ipdRounds).where(eq(ipdRounds.status, "awaiting_cosign")).orderBy(ipdRounds.seenAt);
   if (waiting.length === 0) return [];
+  const since = new Date(now.getTime() - COSIGN_AFTER_EXIT_DAYS * 86_400_000);
+  const open = (await db.select().from(ipdAdmissions).where(inArray(ipdAdmissions.id, [...new Set(waiting.map((r) => r.admissionId))])))
+    .filter((a) => (IPD_PLACED_STATES as readonly string[]).includes(a.state) || (a.endedAt !== null && a.endedAt.getTime() >= since.getTime()));
   const byId = new Map(open.map((a) => [a.id, a] as const));
   const mine: typeof waiting = [];
   for (const r of waiting) {
-    const a = byId.get(r.admissionId)!;
+    const a = byId.get(r.admissionId);
+    if (a === undefined) continue;
     if (mayCosign(await treatingTeamOf(db, a, now, units), actor.id, true)) mine.push(r);
   }
   if (mine.length === 0) return [];
@@ -193,7 +202,9 @@ export async function readRoundPatient(db: Db, actor: Actor, admissionId: string
   const a = await readAdmission(db, admissionId);
   const date = istDayString(now);
   const team = await treatingTeamOf(db, a, now);
-  const iAmConsultant = (await consultantIdsAmong(db, [actor.id])).has(actor.id);
+  // Review of 72f10b68: the round page is the treating team's (unit, covering, open consult) — anyone else is refused.
+  if (!onTeam(team, actor.id)) throw new IpdRefusal("not_treating_team");
+  const iAmConsultant = (await consultantIdsAmong(db, [actor.id], now)).has(actor.id);
   const placed = (IPD_PLACED_STATES as readonly string[]).includes(a.state);
   const rounds = await db.select().from(ipdRounds).where(eq(ipdRounds.admissionId, a.id)).orderBy(desc(ipdRounds.seenAt)).limit(30);
   const orders = await db.select().from(ipdOrders).where(eq(ipdOrders.admissionId, a.id)).orderBy(desc(ipdOrders.orderedAt)).limit(200);
@@ -214,12 +225,14 @@ export async function readRoundPatient(db: Db, actor: Actor, admissionId: string
   const mayOrder = await holdsPermission(db, actor, IPD_ORDER_PLACE);
   const mayFit = await holdsPermission(db, actor, IPD_DISCHARGE_DECLARE);
   return {
-    asOf: now.toISOString(), admissionId: a.id, admissionNo: a.admissionNo, patient: identity,
-    alerts: identity.sealed ? [] : [...allergyWords(await listAllergies(db, a.patientId)), ...(a.isolation !== "none" ? [`Isolation: ${a.isolation}`] : [])],
+    // Review of 72f10b68: a SEALED patient keeps every safety word (allergies, isolation); only identity is masked —
+    // name, UHID, bed, ward, admission number, and the diagnosis and admission time that would identify the stay.
+    asOf: now.toISOString(), admissionId: a.id, admissionNo: identity.sealed ? null : a.admissionNo, patient: identity,
+    alerts: [...allergyWords(await listAllergies(db, a.patientId)), ...(a.isolation !== "none" ? [`Isolation: ${a.isolation}`] : [])],
     bedCode: identity.sealed ? null : (place?.bedCode ?? null), wardName: identity.sealed ? null : (place?.wardName ?? null),
-    boarded: boardedOf(a, place), state: a.state as IpdAdmissionState, admittedAt: a.admittedAt?.toISOString() ?? null,
+    boarded: boardedOf(a, place), state: a.state as IpdAdmissionState, admittedAt: identity.sealed ? null : (a.admittedAt?.toISOString() ?? null),
     dayOfStay: Math.max(1, a.admittedAt === null ? 1 : dayOfStay(a.admittedAt, date)),
-    provisionalDiagnosis: a.provisionalDiagnosis, consultantName: names.get(a.consultantId) ?? "",
+    provisionalDiagnosis: identity.sealed ? null : a.provisionalDiagnosis, consultantName: names.get(a.consultantId) ?? "",
     coveringName: a.coveringFor === null ? null : (names.get(a.coveringFor) ?? null),
     fitWhen: (fit?.fitWhen ?? null) as IpdRoundPatient["fitWhen"],
     vitals: null,

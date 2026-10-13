@@ -64,8 +64,8 @@ describe("E4.2 rounds — orders, clock and episode", () => {
     expect(await refusal(cancelIpOrder(db, w.consultant, { idempotencyKey: key(), orderId: a.orderId, reason: "x" }, { now: at }))).toBe("order_not_active");
 
     const b = await drug(w.unitResident, admissionId, pan, at);
-    expect(await withTx(db, (tx) => markIpdOrderIssuedIn(tx, b.orderId, ist("2026-03-11T10:00:00")))).toBe(true);
-    expect(await withTx(db, (tx) => markIpdOrderIssuedIn(tx, b.orderId, ist("2026-03-11T11:00:00")))).toBe(false);
+    expect(await withTx(db, (tx) => markIpdOrderIssuedIn(tx, b.orderId, ist("2026-03-11T10:00:00")))).toBe("issued");
+    expect(await withTx(db, (tx) => markIpdOrderIssuedIn(tx, b.orderId, ist("2026-03-11T11:00:00")))).toBe("already_issued");
     expect(await refusal(cancelIpOrder(db, w.consultant, { idempotencyKey: key(), orderId: b.orderId, reason: "Wrong patient" }, { now: at })))
       .toBe("order_already_issued");
     const after = await stopIpOrder(db, w.consultant, { idempotencyKey: key(), orderId: b.orderId, reason: "Wrong patient" }, { now: at });
@@ -125,7 +125,7 @@ describe("E4.2 rounds — orders, clock and episode", () => {
       id: newId(), userId: w.consultant.id, kind: "CL", startsAt: ist("2026-03-11T00:00:00"), endsAt: ist("2026-03-12T00:00:00"),
       status: "approved", requestedBy: w.consultant.id, approvedBy: w.head.id, decidedAt: ist("2026-03-10T12:00:00"), createdBy: w.consultant.id, updatedBy: w.consultant.id,
     } as never);
-    expect(await sweepIpdRoundsClock(db, ist("2026-03-11T07:59:00"))).toEqual({ covers: 0, nudges: 0 });
+    expect(await sweepIpdRoundsClock(db, ist("2026-03-11T07:59:00"))).toEqual({ covers: 0, nudges: 0, drafts: 0 });
     expect((await sweepIpdRoundsClock(db, ist("2026-03-11T08:00:00"))).covers).toBe(1);
     expect((await sweepIpdRoundsClock(db, ist("2026-03-11T08:01:00"))).covers).toBe(0);
     expect((await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)))[0]!.coveringFor).toBe(w.head.id);

@@ -143,7 +143,7 @@ flowchart LR
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [formulary](modules/formulary.md) | — | cds, ipd, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
-| [ipd](modules/ipd.md) | billing, formulary, opd, ordering, patients, roster, tariff | housekeeping, maintenance, passes, transport | 94 | 29 |
+| [ipd](modules/ipd.md) | billing, formulary, opd, ordering, patients, roster, tariff | housekeeping, maintenance, passes, transport | 95 | 29 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 78 | 25 |
 | [linen](modules/linen.md) | tasks | — | 14 | 7 |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — | 7 | 2 |

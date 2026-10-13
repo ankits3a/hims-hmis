@@ -15,7 +15,8 @@ export const cosignRound = ipdIntent({
   }),
   refusals: ["round_not_found", "round_not_awaiting_cosign", "not_treating_consultant"],
   actors: ["doctor"],
-  copilotProposable: true,
+  // E4.2 review: a co-sign is the consultant's own signature — never on a copilot card.
+  copilotProposable: false,
   agentTier: "none",
   undo: "entered_in_error",
   events: ["ipd.round.cosigned"],

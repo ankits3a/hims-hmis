@@ -6,7 +6,7 @@ import { ipdConsults, ipdRounds } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { lockAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
 import { IPD_PLACED_STATES } from "./admission-place";
-import { postConsultantVisit } from "./charges";
+import { postConsultantVisit, raiseBackdatedVisitIn, visitChargeableAt } from "./charges";
 import { declareFitIn } from "./discharge";
 import { IpdRefusal } from "./errors";
 import { IPD_DISCHARGE_DECLARE, IPD_ROUND_SIGN } from "./permissions";
@@ -51,12 +51,16 @@ export async function signRound(db: Db, actor: Actor, raw: unknown, opts: Opts =
     if (a.admittedAt !== null && seenAt.getTime() < a.admittedAt.getTime()) throw new IpdRefusal("admission_wrong_state", undefined, { state: a.state });
     const team = await treatingTeamOf(tx, a, seenAt);
     if (!onTeam(team, actor.id)) throw new IpdRefusal("not_treating_team");
-    const consultant = actor.type === "user" && await isConsultant(tx, actor.id);
+    const consultant = actor.type === "user" && await isConsultant(tx, actor.id, seenAt);
     if (input.fit !== undefined && !consultant) throw new IpdRefusal("consultant_cosign_required");
 
     let visitOutcome: string = "draft";
     if (consultant && input.mode === "remote_review") visitOutcome = "remote";
-    else if (consultant) {
+    else if (consultant && !visitChargeableAt(seenAt, at)) {
+      // Review of 72f10b68 ($ DECIDED): older than today / yesterday-before-10:00 — recorded, not charged; billing reviews.
+      visitOutcome = "backdated";
+      await raiseBackdatedVisitIn(tx, actor, a.id, actor.id, seenAt, at);
+    } else if (consultant) {
       visitOutcome = (await postConsultantVisit(tx, { admissionId: a.id, consultantUserId: actor.id, seenAt, source: "rounds_tap", actor })).outcome;
     }
     const roundId = newId();
@@ -100,7 +104,7 @@ export async function cosignRound(db: Db, actor: Actor, raw: unknown, opts: Opts
     const r = (await tx.select().from(ipdRounds).where(eq(ipdRounds.id, input.roundId)).for("update"))[0]!;
     if (r.status !== "awaiting_cosign") throw new IpdRefusal("round_not_awaiting_cosign", undefined, { status: r.status });
     const team = await treatingTeamOf(tx, a, at);
-    const consultant = actor.type === "user" && await isConsultant(tx, actor.id);
+    const consultant = actor.type === "user" && await isConsultant(tx, actor.id, at);
     if (!mayCosign(team, actor.id, consultant)) throw new IpdRefusal("not_treating_consultant");
     await tx.update(ipdRounds).set({ status: "signed", cosignedBy: actor.id, cosignedAt: at, cosignNote: input.note ?? null })
       .where(eq(ipdRounds.id, r.id));
@@ -123,7 +127,7 @@ export async function requestConsult(db: Db, actor: Actor, raw: unknown, opts: O
     assertInBed(a);
     const team = await treatingTeamOf(tx, a, at);
     if (!onTeam(team, actor.id)) throw new IpdRefusal("not_treating_team");
-    if (!(await isConsultant(tx, input.consultantId)) || input.consultantId === a.consultantId) {
+    if (!(await isConsultant(tx, input.consultantId, at)) || input.consultantId === a.consultantId) {
       throw new IpdRefusal("consultant_not_found", undefined, { consultantId: input.consultantId });
     }
     const open = (await tx.select({ id: ipdConsults.id }).from(ipdConsults).where(and(
@@ -159,8 +163,8 @@ export async function closeConsult(db: Db, actor: Actor, raw: unknown, opts: Opt
     const a = await lockAdmission(tx, first.admissionId);
     const c = (await tx.select().from(ipdConsults).where(eq(ipdConsults.id, input.consultId)).for("update"))[0]!;
     if (c.status !== "open") throw new IpdRefusal("consult_closed");
-    const team = await treatingTeamOf(tx, a, at);
-    if (!onTeam(team, actor.id)) throw new IpdRefusal("not_treating_team");
+    // Review of 72f10b68: only the consulted consultant (signing off) or the treating consultant (withdrawing the ask).
+    if (actor.id !== c.consultantId && actor.id !== a.consultantId && actor.id !== a.coveringFor) throw new IpdRefusal("not_treating_team");
     await tx.update(ipdConsults).set({ status: "closed", closedBy: actor.id, closedAt: at, closeNote: input.note ?? null })
       .where(eq(ipdConsults.id, c.id));
     await appendEvent(tx, consultClosed.make({

@@ -35,6 +35,10 @@ CREATE TABLE "ipd_orders" (
 	"antibiotic" boolean DEFAULT false NOT NULL,
 	"prn" jsonb,
 	"weight_based_per_kg" boolean DEFAULT false NOT NULL,
+	"weight_kg" double precision,
+	"allergy_override_reason" text,
+	"long_course_reason" text,
+	"idempotency_key" text,
 	"service_ids" jsonb,
 	"department" text,
 	"department_order_id" text,
@@ -57,7 +61,7 @@ CREATE TABLE "ipd_orders" (
 	CONSTRAINT "ipd_orders_status_ck" CHECK ("ipd_orders"."status" in ('active', 'stopped', 'cancelled')),
 	CONSTRAINT "ipd_orders_verification_ck" CHECK ("ipd_orders"."verification" is null or "ipd_orders"."verification" in ('pending', 'verified', 'rejected', 'query')),
 	CONSTRAINT "ipd_orders_by_kind_ck" CHECK ("ipd_orders"."ordered_by_kind" in ('consultant', 'resident')),
-	CONSTRAINT "ipd_orders_drug_ck" CHECK ("ipd_orders"."kind" <> 'drug' or ("ipd_orders"."medicine_id" is not null and "ipd_orders"."route" is not null and "ipd_orders"."frequency" is not null and "ipd_orders"."start_at" is not null and "ipd_orders"."verification" is not null)),
+	CONSTRAINT "ipd_orders_drug_ck" CHECK ("ipd_orders"."kind" <> 'drug' or ("ipd_orders"."medicine_id" is not null and "ipd_orders"."dose_value" is not null and "ipd_orders"."dose_unit" is not null and "ipd_orders"."route" is not null and "ipd_orders"."frequency" is not null and "ipd_orders"."start_at" is not null and "ipd_orders"."verification" is not null)),
 	CONSTRAINT "ipd_orders_duration_ck" CHECK ("ipd_orders"."kind" <> 'drug' or "ipd_orders"."stop_at" is not null or "ipd_orders"."duration_days" is not null),
 	CONSTRAINT "ipd_orders_antibiotic_stop_ck" CHECK (not "ipd_orders"."antibiotic" or "ipd_orders"."stop_at" is not null),
 	CONSTRAINT "ipd_orders_tests_ck" CHECK ("ipd_orders"."kind" = 'drug' or ("ipd_orders"."service_ids" is not null and "ipd_orders"."department" = "ipd_orders"."kind")),
@@ -88,11 +92,12 @@ CREATE TABLE "ipd_rounds" (
 	CONSTRAINT "ipd_rounds_mode_ck" CHECK ("ipd_rounds"."mode" in ('bedside', 'remote_review')),
 	CONSTRAINT "ipd_rounds_source_ck" CHECK ("ipd_rounds"."source" in ('typed', 'voice', 'copilot_draft')),
 	CONSTRAINT "ipd_rounds_status_ck" CHECK ("ipd_rounds"."status" in ('signed', 'awaiting_cosign')),
-	CONSTRAINT "ipd_rounds_visit_ck" CHECK ("ipd_rounds"."visit_outcome" in ('charged', 'repeat', 'not_chargeable', 'rate_missing', 'remote', 'draft')),
+	CONSTRAINT "ipd_rounds_visit_ck" CHECK ("ipd_rounds"."visit_outcome" in ('charged', 'repeat', 'not_chargeable', 'rate_missing', 'remote', 'draft', 'backdated')),
 	CONSTRAINT "ipd_rounds_draft_ck" CHECK (("ipd_rounds"."author_kind" = 'consultant' and "ipd_rounds"."status" = 'signed' and "ipd_rounds"."cosigned_by" is null) or ("ipd_rounds"."author_kind" = 'resident' and (("ipd_rounds"."status" = 'awaiting_cosign' and "ipd_rounds"."cosigned_by" is null) or ("ipd_rounds"."status" = 'signed' and "ipd_rounds"."cosigned_by" is not null)))),
 	CONSTRAINT "ipd_rounds_cosign_ck" CHECK (("ipd_rounds"."cosigned_by" is null) = ("ipd_rounds"."cosigned_at" is null))
 );
 --> statement-breakpoint
+ALTER TABLE "ipd_charge_exceptions" DROP CONSTRAINT "ipd_charge_exceptions_reason_ck";--> statement-breakpoint
 ALTER TABLE "ipd_consults" ADD CONSTRAINT "ipd_consults_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ipd_consults" ADD CONSTRAINT "ipd_consults_patient_id_patients_id_fk" FOREIGN KEY ("patient_id") REFERENCES "public"."patients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ipd_orders" ADD CONSTRAINT "ipd_orders_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -103,6 +108,8 @@ ALTER TABLE "ipd_rounds" ADD CONSTRAINT "ipd_rounds_patient_id_patients_id_fk" F
 CREATE UNIQUE INDEX "ipd_consults_open_ux" ON "ipd_consults" USING btree ("admission_id","consultant_id") WHERE "ipd_consults"."status" = 'open';--> statement-breakpoint
 CREATE INDEX "ipd_consults_consultant_idx" ON "ipd_consults" USING btree ("consultant_id") WHERE "ipd_consults"."status" = 'open';--> statement-breakpoint
 CREATE INDEX "ipd_orders_admission_idx" ON "ipd_orders" USING btree ("admission_id","status");--> statement-breakpoint
+CREATE UNIQUE INDEX "ipd_orders_idempotency_ux" ON "ipd_orders" USING btree ("idempotency_key") WHERE "ipd_orders"."idempotency_key" is not null;--> statement-breakpoint
 CREATE INDEX "ipd_orders_verification_idx" ON "ipd_orders" USING btree ("verification") WHERE "ipd_orders"."status" = 'active';--> statement-breakpoint
 CREATE INDEX "ipd_rounds_admission_seen_idx" ON "ipd_rounds" USING btree ("admission_id","seen_at");--> statement-breakpoint
-CREATE INDEX "ipd_rounds_awaiting_idx" ON "ipd_rounds" USING btree ("admission_id") WHERE "ipd_rounds"."status" = 'awaiting_cosign';
+CREATE INDEX "ipd_rounds_awaiting_idx" ON "ipd_rounds" USING btree ("admission_id") WHERE "ipd_rounds"."status" = 'awaiting_cosign';--> statement-breakpoint
+ALTER TABLE "ipd_charge_exceptions" ADD CONSTRAINT "ipd_charge_exceptions_reason_ck" CHECK ("ipd_charge_exceptions"."reason" in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated'));

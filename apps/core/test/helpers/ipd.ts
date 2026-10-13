@@ -358,7 +358,7 @@ export type RoundsWorld = DischargeWorld & {
   /** Move the stay onto a bed in the SUR ward (boarding), written directly like `move`. */
   board(admissionId: string, at: Date): Promise<void>;
   /** A formulary medicine; `aware` makes it an antibiotic by the formulary's own class. */
-  medicine(name: string, aware?: "Access" | "Watch" | "Reserve"): Promise<string>;
+  medicine(name: string, aware?: "Access" | "Watch" | "Reserve", opts?: { routeClass?: "systemic" | "topical"; strength?: string | null; form?: string }): Promise<string>;
 };
 
 export async function mkRoundsWorld(db: Db): Promise<RoundsWorld> {
@@ -418,10 +418,11 @@ export async function mkRoundsWorld(db: Db): Promise<RoundsWorld> {
         startedBy: w.admitDesk.id, startedAt: at,
       });
     },
-    medicine: async (name, aware) => {
+    medicine: async (name, aware, opts = {}) => {
       const id = newId();
       await db.insert(formularyMedicines).values({
-        id, brandName: name, nameNormalized: name.toLowerCase(), form: "injection", strengthLabel: "1 g",
+        id, brandName: name, nameNormalized: name.toLowerCase(), form: opts.form ?? "injection",
+        strengthLabel: opts.strength === undefined ? "1 g" : opts.strength, routeClass: opts.routeClass ?? "systemic",
         awareCategory: aware ?? null, createdBy: "t", updatedBy: "t",
       } as never);
       return id;

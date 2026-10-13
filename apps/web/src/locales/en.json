@@ -17277,7 +17277,8 @@
     "reason": {
       "rate_missing": "Rate missing",
       "tariff_missing": "No tariff",
-      "posting_failed": "Posting failed"
+      "posting_failed": "Posting failed",
+      "visit_backdated": "Backdated round visit"
     },
     "component": {
       "room": "Room rent",
@@ -17589,7 +17590,8 @@
       "deposit_check_pending": "Downtime deposit to check",
       "cash_consent_missing": "Cash consent missing",
       "auth_pending_24h": "Authorisation waiting > 24 h",
-      "discharge_balance": "Discharge with balance"
+      "discharge_balance": "Discharge with balance",
+      "visit_backdated": "Visit backdated"
     },
     "col": {
       "patient": "Patient",
@@ -18250,7 +18252,22 @@
       "round_not_awaiting_cosign": "Already co-signed",
       "consultant_not_found": "Pick an active consultant",
       "consult_already_open": "This consultant is already asked",
-      "consult_closed": "The consult is already closed"
-    }
+      "consult_closed": "The consult is already closed",
+      "weight_required": "Record the patient's weight first",
+      "allergy_conflict": "Conflicts with a recorded allergy — give a reason to override",
+      "stop_date_past": "The stop time must be later than now",
+      "course_too_long": "An antibiotic course over 14 days needs a reason",
+      "prn_mismatch": "SOS needs its limits; only SOS has them",
+      "dose_out_of_range": "Check the dose",
+      "dose_unit_mismatch": "That unit does not fit this medicine",
+      "route_mismatch": "That route does not fit this medicine",
+      "round_not_found": "The round was not found"
+    },
+    "weight": "Weight (kg)",
+    "prnGap": "Min hours apart",
+    "prnMax": "Max doses / 24 h",
+    "longCourse": "Reason for a course over 14 days",
+    "allergyHit": "Allergy: {{substances}}",
+    "overrideReason": "Reason to order despite the allergy"
   }
 }
