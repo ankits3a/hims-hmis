@@ -87,8 +87,18 @@ export const RELEASE_SUBJECT = "imaging_study";
  * Whether the PATIENT's copy of this study's report is held for dues. The cheap facts first (no
  * query), then the payer, then the ledger — the register calls this per row.
  */
+/**
+ * E4.2 (#734) — an INPATIENT study (the admission number, `IP26-000123` — `modules/ipd` `IPD_ADMISSION_NO_RE`, written out
+ * here because radiology cannot import ipd without a cycle) is never held for dues: the IPD bill settles at discharge and
+ * nobody is detained for money (decision 0072). Billing these studies onto the IPD running bill is issue #785. Matched on
+ * the whole grammar, so no other encounter loses the hold.
+ */
+export const INPATIENT_ENCOUNTER_RE = /^IP\d{2}-\d{6}$/;
+
 export async function patientCopyHold(exec: Db | Tx, study: StudyFacts): Promise<PatientCopyHold> {
-  if (study.encounterNo.startsWith(EPISODE_SERIES.daycare) || study.bedsideLocation !== null) return { held: false, why: "ipd" };
+  if (study.encounterNo.startsWith(EPISODE_SERIES.daycare) || study.bedsideLocation !== null || INPATIENT_ENCOUNTER_RE.test(study.encounterNo)) {
+    return { held: false, why: "ipd" };
+  }
   if (study.priority === "stat") return { held: false, why: "stat" };
   if (study.invoiceLineId === null) return { held: false, why: "no_bill" };
   const payer = await encounterPayer(exec, study.encounterNo);

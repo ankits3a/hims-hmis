@@ -397,6 +397,8 @@ export const ipdChargeExceptions = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedLineId: text("resolved_line_id"),
+    /** E4.2 (#734): billing's reason when it charges or waives a `visit_backdated` exception. */
+    resolutionNote: text("resolution_note"),
   },
   (t) => [
     uniqueIndex("ipd_charge_exceptions_key_ux").on(t.key),

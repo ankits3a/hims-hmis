@@ -149,7 +149,7 @@ Source: `apps/core/src/modules/ipd/`
   - `postNightlyIpdCharges(db: Db, now: Date): Promise<NightlyResult>`
   - `priceComponent(ctx: PricingContext, cls: IpdBedClass, component: IpdRateComponent): Priced`
   - `raiseBackdatedVisitIn(tx: Tx, actor: Actor, admissionId: string, consultantUserId: string, seenAt: Date, now: Date): Promise<void>`
-  - `resolveBackdatedVisit(db: Db, actor: Actor, input: { exceptionId: string; decision: "charge" | "waive" }, opts: { now?: Date } = {}): Promi…`
+  - `resolveBackdatedVisit(db: Db, actor: Actor, input: { exceptionId: string; decision: "charge" | "waive"; reason: string }, opts: { now?: Dat…`
   - `reverseChargeLine(db: Db, actor: Actor, input: { chargeLineId: string; reason: string }, opts: { now?: Date } = {}): Promise<{ reversalLine…`
   - `visitChargeableAt(seenAt: Date, now: Date): boolean`
   - types: `AdmissionPostResult`, `ConsultantVisitInput`, `ConsultantVisitResult`, `NightlyResult`

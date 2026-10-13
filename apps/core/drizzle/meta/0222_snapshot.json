@@ -1,5 +1,5 @@
 {
-  "id": "536fbd4b-f715-4bee-a4bc-6705515e30de",
+  "id": "8fb7b7be-c9d6-4b9f-ac73-8f9a5bc71395",
   "prevId": "c20c7fea-caef-49cf-ac61-0b66ad4019c4",
   "version": "7",
   "dialect": "postgresql",
@@ -56263,6 +56263,12 @@
         },
         "resolved_line_id": {
           "name": "resolved_line_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolution_note": {
+          "name": "resolution_note",
           "type": "text",
           "primaryKey": false,
           "notNull": false

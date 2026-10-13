@@ -98,6 +98,7 @@ CREATE TABLE "ipd_rounds" (
 );
 --> statement-breakpoint
 ALTER TABLE "ipd_charge_exceptions" DROP CONSTRAINT "ipd_charge_exceptions_reason_ck";--> statement-breakpoint
+ALTER TABLE "ipd_charge_exceptions" ADD COLUMN "resolution_note" text;--> statement-breakpoint
 ALTER TABLE "ipd_consults" ADD CONSTRAINT "ipd_consults_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ipd_consults" ADD CONSTRAINT "ipd_consults_patient_id_patients_id_fk" FOREIGN KEY ("patient_id") REFERENCES "public"."patients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ipd_orders" ADD CONSTRAINT "ipd_orders_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

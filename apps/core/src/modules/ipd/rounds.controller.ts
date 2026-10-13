@@ -36,7 +36,7 @@ function toHttp(e: unknown): never {
 }
 
 const admissionParam = z.ulid();
-const backdatedBody = z.strictObject({ exceptionId: z.string().min(1).max(64), decision: z.enum(["charge", "waive"]) });
+const backdatedBody = z.strictObject({ exceptionId: z.string().min(1).max(64), decision: z.enum(["charge", "waive"]), reason: z.string().trim().min(1).max(500) });
 
 @Controller("ipd")
 export class IpdRoundsController {

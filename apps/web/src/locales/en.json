@@ -17657,6 +17657,14 @@
         "payer_claim_settled": "Payer settled the claim — cannot void",
         "nothing_to_bill": "No charge waits for a supplementary bill"
       }
+    },
+    "backdated": {
+      "what": "Round on {{date}} by {{name}} — entered late",
+      "reason": "Reason (required)",
+      "charge": "Charge visit",
+      "waive": "Waive",
+      "done": "Backdated visit settled",
+      "failed": "Could not save — try again"
     }
   },
   "ipdDischarge": {

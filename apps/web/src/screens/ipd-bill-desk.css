@@ -63,3 +63,6 @@
 .ipdsb-supp label, .ipdsb-form label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .ipdsb input { min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding: 0 8px; font: inherit; max-width: 100%; }
 .ipdsb .ipdb-btn { min-height: 36px; font-size: 13px; }
+/* E4.2 (#734) — a backdated round visit: charge or waive, with a reason. */
+.ipdb.ipdbd .ipdbd-backdated { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.ipdb.ipdbd .ipdbd-backdated input { min-height: 36px; flex: 1; min-width: 140px; border: 1px solid #dfe7e1; border-radius: 6px; padding: 0 8px; font: inherit; }

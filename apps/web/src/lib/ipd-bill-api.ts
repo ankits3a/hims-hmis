@@ -24,3 +24,8 @@ export function getBillDesk(): Promise<IpdBillDesk> {
 export function retryPosting(admissionId: string): Promise<{ posted: number; rentDays: string[]; exceptions: number }> {
   return api("POST", `/ipd/admissions/${encodeURIComponent(admissionId)}/charges/retry`, {});
 }
+
+/** E4.2 (#734) — billing charges or waives a round entered too late to charge (`IPD_BILLDESK_ROUTES.backdatedVisit`). */
+export function resolveBackdatedVisit(exceptionId: string, decision: "charge" | "waive", reason: string): Promise<{ outcome: string }> {
+  return api("POST", "/ipd/charge-exceptions/backdated-visit", { exceptionId, decision, reason });
+}

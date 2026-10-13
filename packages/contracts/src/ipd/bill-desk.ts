@@ -52,6 +52,10 @@ export const IpdBillDeskRowSchema = z.object({
   icuBurn: IpdIcuBurnSchema.nullable(),
   /** The oldest open fact behind the row (alert fired, exception first seen, request recorded). */
   since: IpdInstantSchema.nullable(),
+  /** E4.2 (#734): rounds entered too late to charge — billing charges or waives each, with a reason. */
+  backdatedVisits: z.array(z.object({
+    exceptionId: z.string(), serviceDate: z.string(), consultantName: z.string(),
+  })).optional(),
 });
 export type IpdBillDeskRow = z.infer<typeof IpdBillDeskRowSchema>;
 
@@ -67,4 +71,5 @@ export type IpdBillDesk = z.infer<typeof IpdBillDeskSchema>;
 export const IPD_BILLDESK_ROUTES = {
   desk: "/ipd/bill-desk",
   retry: "/ipd/admissions/:id/charges/retry",
+  backdatedVisit: "/ipd/charge-exceptions/backdated-visit",
 } as const;

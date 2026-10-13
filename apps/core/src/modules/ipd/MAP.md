@@ -626,7 +626,10 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   - $ BACKDATED: a round is chargeable only on the current IST day, or yesterday before 10:00 (a night round written up);
     older ones are recorded (`visit_outcome = backdated`) and raise a `visit_backdated` bill-desk exception (key
     `…:backdated`); billing charges or waives it (`resolveBackdatedVisit`, `ipd.charges.reverse`, `POST
-    /ipd/charge-exceptions/backdated-visit`). The bill desk lists the reason; its button is owed.
+    /ipd/charge-exceptions/backdated-visit`). The bill desk shows "Charge visit" / "Waive" with a
+    required reason (`apps/web/src/screens/ipd-bill-desk.tsx`; the reason is kept in `ipd_charge_exceptions.resolution_note`).
+  - INPATIENT REPORTS ARE NEVER HELD FOR PAYMENT: lab `EXEMPT_ENCOUNTER_PREFIXES` gains `IP` (whole-prefix equality) and
+    radiology `patientCopyHold` exempts the admission-number grammar; billing those orders onto the running bill is #785.
   - The round page refuses anyone off the treating team (`not_treating_team`). SEALED: allergies and isolation stay; name,
     UHID, bed, ward, admission number, diagnosis and admission time are masked (page and list).
   - DRUG ORDER CHECKS: frequency ∈ `RX_FREQUENCIES`, dose unit ∈ `DOSE_UNITS` (`packages/contracts/src/rx-line.ts`); `SOS` ⇔ `prn`; stop after

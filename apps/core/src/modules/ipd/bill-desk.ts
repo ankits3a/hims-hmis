@@ -1,3 +1,4 @@
+import { userNames } from "./admissions";
 import { Logger } from "@nestjs/common";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne } from "drizzle-orm";
 import { IPD_BILLDESK_REASONS } from "@hmis/contracts";
@@ -69,6 +70,15 @@ export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date())
     .from(ipdChargeExceptions).where(isNull(ipdChargeExceptions.resolvedAt))) {
     note(cand, x.admissionId, x.reason as "rate_missing" | "tariff_missing" | "posting_failed" | "visit_backdated", x.at);
   }
+  // E4.2 (#734): the backdated round visits, by admission, for the Charge / Waive buttons.
+  const backdated = new Map<string, { exceptionId: string; serviceDate: string; consultantId: string }[]>();
+  for (const x of await db.select({ id: ipdChargeExceptions.id, admissionId: ipdChargeExceptions.admissionId, key: ipdChargeExceptions.key, serviceDate: ipdChargeExceptions.serviceDate })
+    .from(ipdChargeExceptions).where(and(isNull(ipdChargeExceptions.resolvedAt), eq(ipdChargeExceptions.reason, "visit_backdated")))) {
+    const list = backdated.get(x.admissionId) ?? [];
+    list.push({ exceptionId: x.id, serviceDate: x.serviceDate ?? "", consultantId: x.key.split(":")[3] ?? "" });
+    backdated.set(x.admissionId, list);
+  }
+  const consultantNames = await userNames(db, [...backdated.values()].flat().map((b) => b.consultantId));
   // Downtime deposits nobody has checked yet.
   for (const a of await db.select({ id: ipdAdmissions.id, at: ipdAdmissions.admittedAt }).from(ipdAdmissions)
     .where(and(eq(ipdAdmissions.depositCheckPending, true), ne(ipdAdmissions.state, "cancelled")))) {
@@ -136,6 +146,11 @@ export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date())
       reasons: [...c.reasons].sort((x, y) => RANK.get(x)! - RANK.get(y)!),
       usedBp: pos.usedBp, patientPayablePaise: pos.patientPayablePaise, depositHeldPaise: pos.depositHeldPaise,
       balancePaise: pos.balancePaise, icuBurn, since: c.since?.toISOString() ?? null,
+      ...(backdated.has(a.id) ? {
+        backdatedVisits: backdated.get(a.id)!.map((b) => ({
+          exceptionId: b.exceptionId, serviceDate: b.serviceDate, consultantName: consultantNames.get(b.consultantId) ?? b.consultantId,
+        })),
+      } : {}),
     });
   }
   rows.sort((x, y) => RANK.get(x.reasons[0]!)! - RANK.get(y.reasons[0]!)! || (x.since ?? "").localeCompare(y.since ?? ""));

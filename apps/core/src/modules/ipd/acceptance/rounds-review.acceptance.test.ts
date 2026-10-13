@@ -205,8 +205,8 @@ describe("E4.2 rounds — review of 72f10b68", () => {
     const x = (await db.select().from(ipdChargeExceptions).where(eq(ipdChargeExceptions.reason, "visit_backdated")))[0]!;
     expect([x.serviceDate, x.component]).toEqual(["2026-03-12", "visit"]);
     // Billing's act, never the doctor's (decision 0058).
-    await expect(resolveBackdatedVisit(db, w.consultant, { exceptionId: x.id, decision: "charge" })).rejects.toMatchObject({ code: "ipd_forbidden" });
-    expect((await resolveBackdatedVisit(db, w.billDesk, { exceptionId: x.id, decision: "charge" }, { now: ist("2026-03-13T12:00:00") })).outcome).toBe("charged");
+    await expect(resolveBackdatedVisit(db, w.consultant, { exceptionId: x.id, decision: "charge", reason: "Night round, entered late" })).rejects.toMatchObject({ code: "ipd_forbidden" });
+    expect((await resolveBackdatedVisit(db, w.billDesk, { exceptionId: x.id, decision: "charge", reason: "Night round, entered late" }, { now: ist("2026-03-13T12:00:00") })).outcome).toBe("charged");
     expect((await visits(admissionId)).map((v) => v.serviceDate).sort()).toEqual(["2026-03-11", "2026-03-12"]);
   });
 

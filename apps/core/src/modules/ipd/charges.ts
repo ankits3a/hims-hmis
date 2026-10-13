@@ -465,9 +465,11 @@ export async function raiseBackdatedVisitIn(tx: Tx, actor: Actor, admissionId: s
 
 /** Billing's answer to a `visit_backdated` exception: post the visit as of its day (`charge`) or close it (`waive`). */
 export async function resolveBackdatedVisit(
-  db: Db, actor: Actor, input: { exceptionId: string; decision: "charge" | "waive" }, opts: { now?: Date } = {},
+  db: Db, actor: Actor, input: { exceptionId: string; decision: "charge" | "waive"; reason: string }, opts: { now?: Date } = {},
 ): Promise<{ outcome: "charged" | "repeat" | "not_chargeable" | "rate_missing" | "waived" }> {
   await requireIpdPermission(db, actor, IPD_CHARGES_REVERSE);
+  const reason = input.reason.trim();
+  if (reason === "") throw new IpdError("reversal_reason_required", "charging or waiving a backdated visit needs a reason");
   const now = opts.now ?? new Date();
   return withTx(db, async (tx) => {
     const x = (await tx.select().from(ipdChargeExceptions).where(eq(ipdChargeExceptions.id, input.exceptionId)).for("update"))[0];
@@ -484,7 +486,8 @@ export async function resolveBackdatedVisit(
       outcome = r.outcome;
       lineId = r.chargeLineId;
     }
-    await tx.update(ipdChargeExceptions).set({ resolvedAt: now, resolvedLineId: lineId }).where(eq(ipdChargeExceptions.id, x.id));
+    await tx.update(ipdChargeExceptions).set({ resolvedAt: now, resolvedLineId: lineId, resolutionNote: `${input.decision}: ${reason}` })
+      .where(eq(ipdChargeExceptions.id, x.id));
     return { outcome };
   });
 }
