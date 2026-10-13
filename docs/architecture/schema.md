@@ -23,6 +23,8 @@ flowchart LR
   billing[billing] --> patients[patients]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
+  ipd[ipd] --> patients[patients]
+  ipd[ipd] --> resources[resources]
   lab[lab] --> billing[billing]
   lab[lab] --> ops[ops]
   lab[lab] --> orders[orders]
@@ -72,6 +74,8 @@ flowchart LR
   roster[roster] --> auth[auth]
   roster[roster] --> org[org]
   roster[roster] --> resources[resources]
+  tasks[tasks] --> patients[patients]
+  tasks[tasks] --> resources[resources]
 ```
 
 | file | owner | tables |
@@ -92,6 +96,7 @@ flowchart LR
 | `eventIdempotency.ts` | kernel | `event_idempotency` |
 | `events.ts` | kernel | `events` |
 | `formulary.ts` | module formulary | `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances` |
+| `ipd.ts` | module ipd | `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays` |
 | `lab.ts` | module lab | `lab_analytes`, `lab_booking_settings`, `lab_bookings`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions` |
 | `materials.ts` | module materials | `consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendors` |
 | `membership.ts` | module membership | `coupon_definitions`, `coupon_redemptions`, `covered_members`, `entitlement_counters`, `entitlement_movements`, `holder_book_imports`, `import_quarantine`, `lapsed_restore_checks`, `membership_instances`, `membership_plans`, `patient_match_queue` |
@@ -116,5 +121,6 @@ flowchart LR
 | `roster.ts` | module roster | `roster_amendments`, `roster_assignments`, `roster_bed_allotments`, `roster_board_prints`, `roster_cover_requests`, `roster_cycle_entries`, `roster_cycle_overlays`, `roster_cycles`, `roster_delegations`, `roster_duty_windows`, `roster_escalation_targets`, `roster_findings`, `roster_flags`, `roster_holidays`, `roster_mode_declarations`, `roster_officiating`, `roster_periods`, `roster_positions`, `roster_requirements`, `roster_rule_profiles`, `roster_rules`, `roster_shift_defs`, `roster_team_memberships`, `roster_teams`, `staff_absences`, `staff_credentials` |
 | `search.ts` | kernel | `search_audit` |
 | `tariff.ts` | module tariff | `adjustment_rules`, `gst_config`, `gst_settings`, `regulated_prices`, `services`, `tariff_items`, `tariff_versions` |
+| `tasks.ts` | module tasks | `task_events`, `tasks` |
 | `worker.ts` | kernel | `event_dead_letters`, `event_deliveries`, `scheduler_heartbeats` |
 | `workflow.ts` | kernel | `workflow_definition_approvals`, `workflow_definitions`, `workflow_instances`, `workflow_timers`, `workflow_transitions` |

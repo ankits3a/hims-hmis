@@ -85,6 +85,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
       "opd.masters.read",
       "opd.appointments.read",
       "opd.appointments.manage",
@@ -124,6 +127,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "front_office_supervisor",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
+      "ipd.beds.manage",
+      "ipd.beds.clean",
       "opd.masters.read",
       // RC-1 T2 / D5 — the counter-flow lock pill. DECIDED (2026-08-31): no `counter_supervisor`
       // role is minted; this role already carries the desk's SLA escalation and queue-transfer
@@ -812,6 +819,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "owner",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       "workflow.definitions.approve",
       // The ACTIVATOR half of the two-key ceremony. `opd_admin` drafts; whoever holds `owner`
       // activates; `sod.ts`'s `workflow_drafter_activator` pair means they cannot be one person.
@@ -956,6 +965,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   {
     roleKey: "medical_superintendent",
     permissions: [
+      // IPD BEDS E1.1 (#718, decision 0072) — the capacity board; README "IPD beds" prose.
+      "ipd.beds.view",
       // STAFF ATTENDANCE (owner 2026-10-09: "the rules doesn't apply to owner/admin/superitendent/
       // Unit head/committee") — the superintendent is among those who see everyone's attendance in full.
       "attendance.all.read",
@@ -1096,7 +1107,16 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
   // reads the health page where those buttons are. Never a global clear: that is the owner's alone.
   {
     roleKey: "duty_manager",
-    permissions: ["auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear"],
+    // E0.1 TASK ENGINE (issue #713) — the duty manager sees the task board and may assign, cancel and take back a
+    // task out of hours, when no services supervisor is on.
+    permissions: [
+      "auth.temp_role.grant", "roster.read", "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
+      // IPD BEDS E1.1 (#718) — the duty manager approves overflow beds (spec §4.1) and runs the board at night.
+      "ipd.beds.view", "ipd.beds.manage", "ipd.beds.clean", "ipd.beds.overflow",
+      "tasks.view", "tasks.supervise",
+      // E1.4 HOUSEKEEPING (issue #721) — the housekeeping board out of hours (not the terminal-clean check).
+      "housekeeping.view",
+    ],
   },
   /**
    * ═══ PLAN 07c T9 / DD14 — OWNER RULING 2026-08-29: ONE NAMED PERSON MAY OPEN THE ROWS ═══
@@ -1962,7 +1982,23 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * adds the one non-`auth` string, so `fullAdministrators` (which counts `auth.*` only) is unchanged.
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "ipd.beds.view"] },
+  /**
+   * E0.1 TASK ENGINE (issue #713, decision 0072) — no housekeeping or nursing-supervisor role existed, so two are
+   * minted, by the standard Indian corporate-hospital split: the people who DO service work (ward attendants,
+   * housekeeping, porters) hold `tasks.work` and nothing else; the services supervisor sees the board, assigns,
+   * cancels and verifies. A kind's escalations go to `services_supervisor`. NOBODY is assigned to either by any seed.
+   */
+  { roleKey: "support_staff", permissions: ["tasks.work"] },
+  /**
+   * E1.4 HOUSEKEEPING (issue #721, decision 0072) — the services supervisor IS the housekeeping supervisor: the
+   * housekeeping board, and the check of a TERMINAL clean (isolation, infection, death), which NABH infection
+   * control keeps with the supervisor alone. A routine clean is also checked by `ipd.beds.clean` holders.
+   */
+  {
+    roleKey: "services_supervisor",
+    permissions: ["tasks.view", "tasks.work", "tasks.supervise", "housekeeping.view", "housekeeping.verify_terminal"],
+  },
 ];
 
 /**
@@ -2223,6 +2259,8 @@ export const LOCAL_ROLE_TITLES: Readonly<Record<string, string>> = {
   quality_manager: "Quality Manager (copilot steward; reads the copilot's health page)",
   admin: "Administrator",
   attendance_committee: "Attendance Committee (reads everyone's attendance from the attendance machine; handles meeting requests)",
+  support_staff: "Support Staff (ward attendants, housekeeping, porters: takes and does tasks)",
+  services_supervisor: "Services Supervisor (task board: assigns, cancels and verifies service tasks)",
   radiology_resident: "Radiology Resident (drafts, issues prelims, calls criticals; signs for a consultant's co-sign — publishes nothing alone)",
 };
 

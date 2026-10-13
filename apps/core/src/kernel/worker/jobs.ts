@@ -33,6 +33,8 @@ import {
 import { sweepOverdueQa } from "../../modules/aerb";
 import { runAliasJob, runFlowLearning } from "../../modules/opd";
 import { syncAttendance } from "../../modules/attendance";
+import { lapseBedReservations } from "../../modules/ipd";
+import { sweepTasks } from "../../modules/tasks";
 import { collectResourceKinds } from "../resources/kinds";
 import type { AppConfig } from "../config";
 import type { Scheduler } from "./scheduler";
@@ -696,5 +698,27 @@ export function registerAllJobs(
     name: "syncAttendance",
     every: 120_000,
     run: async (now) => { await syncAttendance(db, aliasConfig?.attendance, now); },
+  });
+  /*
+   * IPD BEDS E1.1 (#718) — a bed held for a patient lapses back after two hours (spec §4.1). Every minute,
+   * the `sweepExpiredPharmacyPicks` cadence: a hold is a promise to a desk, and a coarser sweep would keep a
+   * bed off the board past its time. Idempotent (each lapse re-checks under the bed's lock); a tick with
+   * nothing due runs one indexed read (`ipd_bed_reservations_due_idx`) and writes nothing.
+   */
+  scheduler.register({
+    name: "lapseBedReservations",
+    every: 60_000,
+    run: async (now) => { await lapseBedReservations(db, now); },
+  });
+  /**
+   * E0.1 TASK ENGINE (issue #713) — THE TASK CLOCK, every minute: a worker whose shift ended hands
+   * their tasks back to the pool, an assignment not accepted in its window goes to the next worker,
+   * the pool is offered again, and a late task climbs its ladder ONCE per rung. Small batches; each
+   * act re-checks its precondition under the row lock, so a second tick changes nothing.
+   */
+  scheduler.register({
+    name: "sweepTasks",
+    every: 60_000,
+    run: async (now) => { await sweepTasks(db, now); },
   });
 }

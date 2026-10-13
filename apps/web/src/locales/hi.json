@@ -65,22 +65,28 @@
     "otList": "ऑपरेशन थिएटर सूची",
     "otBook": "डे-केयर केस बुक करें",
     "otRecovery": "रिकवरी",
+    "ipdBeds": "बेड",
     "counterDesk": "डेस्क वन",
     "group": {
       "desk": "डेस्क",
       "patients": "मरीज़",
       "opd": "ओपीडी",
+      "wards": "वार्ड",
       "imaging": "इमेजिंग",
       "lab": "लैब",
       "theatre": "ओटी",
       "pharmacy": "फार्मेसी",
       "billing": "बिलिंग",
       "stores": "स्टोर",
+      "services": "सेवाएँ",
       "admin": "प्रशासन"
     },
     "staffReports": "स्टाफ़ रिपोर्ट",
     "outsideTests": "बाहर की जाँचें",
     "copilotHealth": "कोपायलट हेल्थ",
+    "myTasks": "मेरे काम",
+    "taskBoard": "काम बोर्ड",
+    "housekeeping": "हाउसकीपिंग",
     "labDesk": "लैब डेस्क",
     "labCollection": "नमूना संग्रह",
     "labBench": "बेंच",
@@ -15611,6 +15617,276 @@
       "approved": "मंज़ूर",
       "rejected": "मंज़ूर नहीं",
       "cancelled": "वापस ली"
+    }
+  },
+  "ipdBeds": {
+    "title": "बेड",
+    "allFloors": "सभी मंज़िलें",
+    "find": "मरीज़, UHID या बेड खोजें",
+    "notFound": "कुछ नहीं मिला",
+    "wallMode": "वॉल मोड · नाम छिपाएँ",
+    "showNames": "नाम दिखाएँ",
+    "home": "होम",
+    "totals": "अस्पताल का योग",
+    "stat": {
+      "occupied": "भरे",
+      "occupiedSub": "{{pct}} % · {{reserved}} आरक्षित",
+      "overflow": "अतिरिक्त {{occupied}} / {{total}} · क्षमता नहीं",
+      "free": "अभी ख़ाली",
+      "noneFree": "कोई बेड ख़ाली नहीं",
+      "cleaning": "सफ़ाई",
+      "cleaningSub": "{{n}} 60 मिनट से ज़्यादा",
+      "blocked": "बंद",
+      "blockedSub": "{{n}} वापसी की तारीख़ पार",
+      "discharges": "आज की छुट्टियाँ",
+      "dischargesSub": "अनुमान बाद में",
+      "waiting": "बेड की प्रतीक्षा",
+      "waitingSub": "भर्ती के साथ आएगा",
+      "longest": "सबसे लंबी {{minutes}} मिनट"
+    },
+    "classShort": {
+      "general": "जनरल",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट",
+      "deluxe": "डीलक्स",
+      "suite": "सुइट",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "डे केयर",
+      "emergency": "ER",
+      "overflow": "अतिरिक्त"
+    },
+    "class": {
+      "general": "जनरल वार्ड",
+      "semi_private": "सेमी-प्राइवेट",
+      "private": "प्राइवेट कमरा",
+      "deluxe": "डीलक्स कमरा",
+      "suite": "सुइट",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "डे केयर",
+      "emergency": "इमरजेंसी",
+      "overflow": "अतिरिक्त बेड"
+    },
+    "waiting": {
+      "title": "बेड की प्रतीक्षा",
+      "empty": "कोई प्रतीक्षा में नहीं",
+      "emptySub": "भर्ती के अनुरोध यहाँ दिखेंगे"
+    },
+    "floors": "मंज़िलें",
+    "floorsHint": "{{total}} में से {{shown}} दिख रही · मंज़िल चुनें",
+    "pickFloor": "मंज़िल चुनें",
+    "floorCount": "{{occupied}} / {{total}} बेड",
+    "loading": "बेड लोड हो रहे हैं…",
+    "loadFailed": "बेड लोड नहीं हो सके",
+    "noBeds": "कोई बेड दर्ज नहीं",
+    "status": {
+      "occupied": "भरा",
+      "incumbent": "पुराना सिस्टम",
+      "available": "ख़ाली",
+      "reserved": "आरक्षित",
+      "cleaning": "सफ़ाई",
+      "blocked": "बंद"
+    },
+    "full": "भरा हुआ",
+    "notInCensus": "जनगणना में नहीं",
+    "next": {
+      "title": "अगले 24 घंटे",
+      "discharges": "आज छुट्टी",
+      "forecast": "अनुमान बाद में आएगा"
+    },
+    "blockers": {
+      "title": "रुकावटें",
+      "none": "अभी कोई नहीं",
+      "cleaning": "60 मिनट से ज़्यादा सफ़ाई",
+      "cleaningItem": "{{bed}} · {{minutes}} मिनट",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
+      "nudged": "याद दिलाया",
+      "blocked": "वापसी की तारीख़ पार, अब भी बंद"
+    },
+    "live": "लाइव · अपडेट",
+    "offline": "ऑफ़लाइन · आख़िरी अपडेट {{time}}",
+    "offlineNever": "ऑफ़लाइन · अभी अपडेट नहीं",
+    "outsideCensus": "डे केयर और ER {{occupied}} / {{total}} · जनगणना में नहीं",
+    "print": "बेड बोर्ड प्रिंट करें",
+    "close": "बंद करें",
+    "pickBed": "बेड चुनें",
+    "cancel": "रद्द करें",
+    "actFailed": "सेव नहीं हुआ — फिर कोशिश करें",
+    "until": "{{time}} तक",
+    "since": "{{time}} से",
+    "back": "वापसी {{time}}",
+    "blockReason": {
+      "maintenance": "मरम्मत",
+      "infection_control": "संक्रमण नियंत्रण",
+      "deep_clean": "गहरी सफ़ाई",
+      "staff_shortage": "स्टाफ़ की कमी",
+      "other": "अन्य"
+    },
+    "releaseReason": {
+      "plan_changed": "योजना बदली",
+      "bed_unsuitable": "बेड उपयुक्त नहीं",
+      "other": "अन्य"
+    },
+    "gender": {
+      "male": "केवल पुरुष",
+      "female": "केवल महिला",
+      "any": "कोई भी",
+      "paediatric": "बच्चे"
+    },
+    "isolation": {
+      "none": "आइसोलेशन नहीं",
+      "contact": "संपर्क आइसोलेशन",
+      "droplet": "ड्रॉपलेट आइसोलेशन",
+      "airborne": "हवा से फैलने वाला आइसोलेशन"
+    },
+    "icu": "ICU बेड",
+    "overflowBed": "अतिरिक्त · ड्यूटी मैनेजर की मंज़ूरी",
+    "blockedLine": "बंद",
+    "blockOnReleaseLine": "ख़ाली होने पर बंद",
+    "reservedLine": "{{time}} तक आरक्षित",
+    "act": {
+      "reserve": "2 घंटे आरक्षित करें",
+      "assign": "बेड दें",
+      "releaseReservation": "आरक्षण हटाएँ",
+      "clean": "साफ़ हुआ",
+      "releaseIncumbent": "ख़ाली करें",
+      "unblock": "खोलें",
+      "block": "बंद करें",
+      "blockOnRelease": "ख़ाली होने पर बंद"
+    },
+    "done": {
+      "clean": "साफ़ दर्ज हुआ",
+      "released": "सफ़ाई के लिए ख़ाली",
+      "unblocked": "खुल गया",
+      "reserved": "2 घंटे के लिए आरक्षित",
+      "assigned": "बेड दिया गया",
+      "blocked": "बंद हुआ",
+      "reservationReleased": "आरक्षण हटा"
+    },
+    "form": {
+      "patientId": "मरीज़ ID",
+      "admissionId": "भर्ती संदर्भ",
+      "class": "माँगी गई श्रेणी",
+      "isolation": "आइसोलेशन",
+      "classChange": "श्रेणी बदलाव",
+      "noChange": "वही श्रेणी",
+      "upgrade": "ऊपर",
+      "downgrade": "नीचे",
+      "icu": "ICU चाहिए",
+      "reason": "कारण",
+      "expectedBack": "वापसी कब",
+      "note": "टिप्पणी"
+    }
+  },
+  "tasks": {
+    "loading": "लोड हो रहा है…",
+    "offline": "नेटवर्क नहीं",
+    "noPlace": "जगह नहीं बताई",
+    "askedAgain": "{{count}}× माँगा",
+    "kind": {
+      "general": "सामान्य काम",
+      "bed_clean_routine": "बेड सफ़ाई (Bed clean)",
+      "bed_clean_terminal": "टर्मिनल सफ़ाई (Terminal clean)",
+      "spill": "फैलाव सफ़ाई (Spill clean)",
+      "room_inspection": "कमरा जाँच (Room inspection)"
+    },
+    "priority": {
+      "urgent": "जल्दी",
+      "stat": "तुरंत"
+    },
+    "state": {
+      "created": "इंतज़ार में",
+      "assigned": "सौंपा गया",
+      "accepted": "लिया गया",
+      "in_progress": "चल रहा है",
+      "done": "हो गया",
+      "verified": "जाँचा गया",
+      "cancelled": "रद्द"
+    },
+    "act": {
+      "accept": "लें",
+      "start": "शुरू करें",
+      "done": "हो गया"
+    },
+    "clock": {
+      "late": "{{count}} मिनट देर",
+      "dueIn": "{{count}} मिनट में",
+      "dueAt": "{{at}} तक"
+    },
+    "mine": {
+      "title": "मेरे काम",
+      "none": "अभी कोई काम नहीं",
+      "pool": "लेने के लिए खुले"
+    },
+    "board": {
+      "title": "काम बोर्ड",
+      "open": "खुले",
+      "late": "देर से",
+      "pool": "इंतज़ार में",
+      "none": "कोई खुला काम नहीं",
+      "noFloor": "मंज़िल नहीं",
+      "floorOpen": "{{count}} खुले",
+      "floorLate": "{{count}} देर · {{open}} खुले",
+      "notShown": "स्क्रीन पर नहीं", "more": "+{{count}} और",
+     
+      "unassigned": "अभी किसी को नहीं",
+      "workers": "कर्मचारी",
+      "noWorkers": "ड्यूटी पर कोई नहीं",
+      "load": "{{count}} खुले",
+      "onDuty": "ड्यूटी पर",
+      "offDuty": "ड्यूटी से बाहर",
+      "busy": "{{count}} चल रहे",
+      "toVerify": "जाँचने को ({{count}})"
+    },
+    "refusal": {
+      "failed": "नहीं हुआ",
+      "bad_input": "अनुरोध अधूरा",
+      "unknown_kind": "अनजान काम",
+      "unknown_place": "जगह नहीं मिली",
+      "unknown_worker": "काम नहीं ले सकते",
+      "not_found": "काम नहीं मिला",
+      "already_taken": "किसी और ने ले लिया",
+      "not_on_duty": "अभी ड्यूटी पर नहीं", "wrong_skill": "यह काम आपके हिस्से का नहीं", "not_yours": "आपका काम नहीं",
+      "wrong_state": "रीफ़्रेश करें",
+      "not_open": "काम बंद हो चुका",
+      "stale": "बदल गया — रीफ़्रेश करें",
+      "proof_missing": "सबूत चाहिए",
+      "no_verify_step": "जाँच का चरण नहीं",
+      "verifier_is_doer": "करने वाला नहीं जाँच सकता",
+      "not_permitted": "अनुमति नहीं",
+      "reason_required": "कारण लिखें",
+      "nudged_recently": "कुछ मिनट पहले याद दिलाया"
+    }
+  },
+  "housekeeping": {
+    "title": "हाउसकीपिंग",
+    "terminal": "सुपरवाइज़र जाँचेगा",
+    "check": "जाँचें",
+    "checked": "जाँचा गया",
+    "clean": {
+      "line": "सफ़ाई · {{minutes}} मिनट",
+      "minutes": "{{minutes}} मिनट",
+      "by": "{{who}} को सौंपा",
+      "pool": "सफ़ाईकर्मी की प्रतीक्षा",
+      "done": "साफ़ · जाँच बाकी",
+      "late": "देर",
+      "terminal": "टर्मिनल सफ़ाई",
+      "verify": "सफ़ाई जाँचें",
+      "verified": "सफ़ाई जाँची · बेड ख़ाली",
+      "nudge": "हाउसकीपिंग को याद दिलाएँ",
+      "nudged": "याद दिलाया"
+    },
+    "refusal": {
+      "terminal_needs_supervisor": "टर्मिनल सफ़ाई सुपरवाइज़र जाँचता है",
+      "not_a_clean": "हाउसकीपिंग का काम नहीं",
+      "bad_input": "अनुरोध अधूरा"
     }
   }
 }

@@ -65,22 +65,28 @@
     "otList": "Theatre list",
     "otBook": "Book day-care case",
     "otRecovery": "Recovery",
+    "ipdBeds": "Beds",
     "counterDesk": "Desk One",
     "group": {
       "desk": "Desk",
       "patients": "Patients",
       "opd": "OPD",
+      "wards": "Wards",
       "imaging": "Imaging",
       "lab": "Lab",
       "theatre": "Theatre",
       "pharmacy": "Pharmacy",
       "billing": "Billing",
       "stores": "Stores",
+      "services": "Services",
       "admin": "Admin"
     },
     "staffReports": "Staff reports",
     "outsideTests": "Outside tests",
     "copilotHealth": "Copilot health",
+    "myTasks": "My tasks",
+    "taskBoard": "Task board",
+    "housekeeping": "Housekeeping",
     "labDesk": "Lab desk",
     "labCollection": "Collection",
     "labBench": "Bench",
@@ -15611,6 +15617,276 @@
       "approved": "Approved",
       "rejected": "Not approved",
       "cancelled": "Taken back"
+    }
+  },
+  "ipdBeds": {
+    "title": "Beds",
+    "allFloors": "All floors",
+    "find": "Find patient, UHID or bed",
+    "notFound": "No match",
+    "wallMode": "Wall mode · hide names",
+    "showNames": "Show names",
+    "home": "Home",
+    "totals": "Hospital totals",
+    "stat": {
+      "occupied": "Occupied",
+      "occupiedSub": "{{pct}} % · {{reserved}} reserved",
+      "overflow": "Overflow {{occupied}} / {{total}} · not capacity",
+      "free": "Free now",
+      "noneFree": "No free bed",
+      "cleaning": "Cleaning",
+      "cleaningSub": "{{n}} over 60 min",
+      "blocked": "Blocked",
+      "blockedSub": "{{n}} past return date",
+      "discharges": "Discharges today",
+      "dischargesSub": "Expected comes later",
+      "waiting": "Waiting for a bed",
+      "waitingSub": "Comes with admissions",
+      "longest": "Longest {{minutes}} min"
+    },
+    "classShort": {
+      "general": "General",
+      "semi_private": "Semi-pvt",
+      "private": "Private",
+      "deluxe": "Deluxe",
+      "suite": "Suite",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "Day care",
+      "emergency": "ER",
+      "overflow": "Overflow"
+    },
+    "class": {
+      "general": "General ward",
+      "semi_private": "Semi-private",
+      "private": "Private room",
+      "deluxe": "Deluxe room",
+      "suite": "Suite",
+      "hdu": "HDU",
+      "icu": "ICU",
+      "nicu": "NICU",
+      "picu": "PICU",
+      "ldr": "LDR",
+      "daycare": "Day care",
+      "emergency": "Emergency",
+      "overflow": "Overflow bed"
+    },
+    "waiting": {
+      "title": "Waiting for a bed",
+      "empty": "No one waiting",
+      "emptySub": "Admission requests appear here"
+    },
+    "floors": "Floors",
+    "floorsHint": "Showing {{shown}} of {{total}} · pick a floor",
+    "pickFloor": "Pick a floor",
+    "floorCount": "{{occupied}} / {{total}} beds",
+    "loading": "Loading beds…",
+    "loadFailed": "Beds could not be loaded",
+    "noBeds": "No beds on file",
+    "status": {
+      "occupied": "Occupied",
+      "incumbent": "Incumbent",
+      "available": "Free",
+      "reserved": "Reserved",
+      "cleaning": "Cleaning",
+      "blocked": "Blocked"
+    },
+    "full": "Full",
+    "notInCensus": "Not in census",
+    "next": {
+      "title": "Next 24 hours",
+      "discharges": "discharges today",
+      "forecast": "Forecast comes later"
+    },
+    "blockers": {
+      "title": "Blockers",
+      "none": "None now",
+      "cleaning": "Cleaning over 60 min",
+      "cleaningItem": "{{bed}} · {{minutes}} min",
+      "nudge": "Nudge housekeeping",
+      "nudged": "Housekeeping nudged",
+      "blocked": "Blocked past return date"
+    },
+    "live": "Live · updated",
+    "offline": "Offline · last update {{time}}",
+    "offlineNever": "Offline · not updated yet",
+    "outsideCensus": "Day care and ER {{occupied}} / {{total}} · not in census",
+    "print": "Print bed board",
+    "close": "Close",
+    "pickBed": "Pick a bed",
+    "cancel": "Cancel",
+    "actFailed": "Not saved — try again",
+    "until": "Until {{time}}",
+    "since": "Since {{time}}",
+    "back": "back {{time}}",
+    "blockReason": {
+      "maintenance": "Maintenance",
+      "infection_control": "Infection control",
+      "deep_clean": "Deep clean",
+      "staff_shortage": "Staff shortage",
+      "other": "Other"
+    },
+    "releaseReason": {
+      "plan_changed": "Plan changed",
+      "bed_unsuitable": "Bed unsuitable",
+      "other": "Other"
+    },
+    "gender": {
+      "male": "Male only",
+      "female": "Female only",
+      "any": "Any gender",
+      "paediatric": "Children"
+    },
+    "isolation": {
+      "none": "No isolation",
+      "contact": "Contact isolation",
+      "droplet": "Droplet isolation",
+      "airborne": "Airborne isolation"
+    },
+    "icu": "ICU bed",
+    "overflowBed": "Overflow · duty manager approves",
+    "blockedLine": "Blocked",
+    "blockOnReleaseLine": "Block on release",
+    "reservedLine": "Reserved until {{time}}",
+    "act": {
+      "reserve": "Reserve 2 h",
+      "assign": "Assign",
+      "releaseReservation": "Release reservation",
+      "clean": "Mark clean",
+      "releaseIncumbent": "Release",
+      "unblock": "Unblock",
+      "block": "Block",
+      "blockOnRelease": "Block on release"
+    },
+    "done": {
+      "clean": "Marked clean",
+      "released": "Released to cleaning",
+      "unblocked": "Unblocked",
+      "reserved": "Reserved for 2 hours",
+      "assigned": "Assigned",
+      "blocked": "Blocked",
+      "reservationReleased": "Reservation released"
+    },
+    "form": {
+      "patientId": "Patient ID",
+      "admissionId": "Admission ref",
+      "class": "Class asked",
+      "isolation": "Isolation",
+      "classChange": "Class change",
+      "noChange": "Same class",
+      "upgrade": "Upgrade",
+      "downgrade": "Downgrade",
+      "icu": "Needs ICU",
+      "reason": "Reason",
+      "expectedBack": "Expected back",
+      "note": "Note"
+    }
+  },
+  "tasks": {
+    "loading": "Loading…",
+    "offline": "No network",
+    "noPlace": "No place given",
+    "askedAgain": "Asked {{count}}×",
+    "kind": {
+      "general": "General task",
+      "bed_clean_routine": "Bed clean",
+      "bed_clean_terminal": "Terminal clean",
+      "spill": "Spill clean",
+      "room_inspection": "Room inspection"
+    },
+    "priority": {
+      "urgent": "Urgent",
+      "stat": "STAT"
+    },
+    "state": {
+      "created": "Waiting",
+      "assigned": "Assigned",
+      "accepted": "Accepted",
+      "in_progress": "In progress",
+      "done": "Done",
+      "verified": "Checked",
+      "cancelled": "Cancelled"
+    },
+    "act": {
+      "accept": "Accept",
+      "start": "Start",
+      "done": "Done"
+    },
+    "clock": {
+      "late": "{{count}} min late",
+      "dueIn": "Due in {{count}} min",
+      "dueAt": "Due {{at}}"
+    },
+    "mine": {
+      "title": "My tasks",
+      "none": "No tasks now",
+      "pool": "Open to take"
+    },
+    "board": {
+      "title": "Task board",
+      "open": "open",
+      "late": "late",
+      "pool": "waiting",
+      "none": "No open tasks",
+      "noFloor": "No floor",
+      "floorOpen": "{{count}} open",
+      "floorLate": "{{count}} late · {{open}} open",
+      "notShown": "not on screen", "more": "+{{count}} more",
+     
+      "unassigned": "Nobody yet",
+      "workers": "Workers",
+      "noWorkers": "Nobody on duty",
+      "load": "{{count}} open",
+      "onDuty": "On duty",
+      "offDuty": "Off duty",
+      "busy": "{{count}} in progress",
+      "toVerify": "To check ({{count}})"
+    },
+    "refusal": {
+      "failed": "Did not go through",
+      "bad_input": "Request incomplete",
+      "unknown_kind": "Unknown task kind",
+      "unknown_place": "Place not found",
+      "unknown_worker": "Cannot take tasks",
+      "not_found": "Task gone",
+      "already_taken": "Someone took it",
+      "not_on_duty": "Not on duty now", "wrong_skill": "Not your kind of task", "not_yours": "Not your task",
+      "wrong_state": "Refresh — task moved on",
+      "not_open": "Task already closed",
+      "stale": "Changed — refresh",
+      "proof_missing": "Proof needed",
+      "no_verify_step": "No check step",
+      "verifier_is_doer": "Doer cannot check",
+      "not_permitted": "Not allowed",
+      "reason_required": "Say why",
+      "nudged_recently": "Nudged a few min ago"
+    }
+  },
+  "housekeeping": {
+    "title": "Housekeeping",
+    "terminal": "Supervisor checks",
+    "check": "Check",
+    "checked": "Checked",
+    "clean": {
+      "line": "Cleaning · {{minutes}} min",
+      "minutes": "{{minutes}} min",
+      "by": "assigned to {{who}}",
+      "pool": "waiting for a cleaner",
+      "done": "Cleaned · waiting for check",
+      "late": "late",
+      "terminal": "Terminal clean",
+      "verify": "Verify clean",
+      "verified": "Clean checked · bed free",
+      "nudge": "Nudge housekeeping",
+      "nudged": "Housekeeping nudged"
+    },
+    "refusal": {
+      "terminal_needs_supervisor": "Supervisor checks terminal cleans",
+      "not_a_clean": "Not a housekeeping task",
+      "bad_input": "Request incomplete"
     }
   }
 }
