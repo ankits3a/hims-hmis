@@ -120,3 +120,5 @@ export * from "./copilot";
 export * from "./reminders";
 // E1.1 (#718) — IPD bed reservations and blocks. References `resources` (the bed) and nothing of any module's.
 export * from "./ipd";
+// E1.3 (#720) — attendant and visitor passes. References `ipd_admissions` and `resources` (the ward).
+export * from "./passes";

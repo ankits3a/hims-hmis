@@ -24,3 +24,4 @@ export * from "./lab-formula";
 export * from "./lab-ast";
 export * from "./ipd-bed-classes";
 export * from "./ipd";
+export * from "./passes";

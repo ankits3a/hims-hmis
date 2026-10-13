@@ -39,6 +39,7 @@ import {
 import { PHARMACY_MESSAGES_CONSUMER, PHARMACY_RX_ISSUED_CONSUMER, pharmacyManifest, pharmacyMessagesConsumer, rxIssuedConsumer } from "../../modules/pharmacy";
 import { ABDM_CARE_CONTEXT_CONSUMER, abdmManifest, careContextConsumer } from "../../modules/abdm";
 import { ORDERING_FREE_TESTS_CONSUMER, freeTestsConsumer, orderingManifest } from "../../modules/ordering";
+import { PASSES_ADMISSION_CONSUMER, passesAdmissionConsumer, passesManifest } from "../../modules/passes";
 import { collectResourceKinds } from "../resources/kinds";
 import { collectOrderKinds } from "../orders/kinds";
 import type { Handler } from "../events/subscriptions";
@@ -200,6 +201,9 @@ const DB_BUNDLE = Symbol("DB_BUNDLE");
         // install and the `workerConsumers` entry are ONE edit (`buildSubscriptionBus`).
         registry.install(abdmManifest);
         registry.install(orderingManifest);
+        // E1.3 (#720) — passes: the stay-ending and transfer events -> `passes.admission`. Installed in BOTH processes (the
+        // API mounts the desk and the scan); the install and the `workerConsumers` entry below are ONE edit.
+        registry.install(passesManifest);
         // ══ PLAN 13 CLOSE / M2's CARRY-FORWARD, CLOSED HERE (Plan 14 DD2, Spike Q6) ══
         //
         // This is `app.module.ts:73`'s line, in the process that did not have it. Plan 13's close
@@ -345,6 +349,9 @@ export function workerConsumers(db: Db, cfg: AppConfig | null = null): Record<st
      * ABDM unconfigured does.
      */
     [ABDM_CARE_CONTEXT_CONSUMER]: careContextConsumer(db, cfg),
+    // E1.3 (#720) — the other half of `passesManifest`: discharge, LAMA, absconding and death expire every live pass of
+    // the admission at once; a ward transfer moves them. One without the other is a boot error.
+    [PASSES_ADMISSION_CONSUMER]: passesAdmissionConsumer(db),
   };
 }
 

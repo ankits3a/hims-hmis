@@ -455,6 +455,10 @@ export function IpdAdmit(): React.ReactElement {
                   ) : selected.band === null && can("ipd.band.print") ? (
                     <button type="button" className="ipda-btn" disabled={busy} onClick={() => { void act(async () => { setBand(await printBand(selected.id, "adult", "wrist")); loadAdmission(selected.id); }); }}>{t("ipdAdmit.band.print")}</button>
                   ) : null}
+                  {/* E1.3 (#720) — the attendant passes come next at the desk. */}
+                  {can("passes.issue") ? (
+                    <Link className="ipda-btn" to="/ipd/passes" search={{ admission: selected.id }}>{t("nav.ipdPasses")}</Link>
+                  ) : null}
                 </section>
               ) : (
                 <button type="button" className="ipda-admit" disabled={!ready || busy} onClick={() => { void doAdmit(); }}>
