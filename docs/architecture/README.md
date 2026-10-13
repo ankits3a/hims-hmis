@@ -125,7 +125,7 @@ flowchart LR
 | [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | — | 183 | 32 |
 | [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 113 | 22 |
 | [roster](modules/roster.md) | — | opd, ot, radiology | 37 | 26 |
-| [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 18 | 7 |
+| [tariff](modules/tariff.md) | — | billing, lab, membership, ot, partners, pharmacy, radiology | 19 | 7 |
 
 ## Kernel subsystems
 
