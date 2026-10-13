@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/tasks/`
 · Notes: [MAP.md](../../../apps/core/src/modules/tasks/MAP.md)
 
 - **Depends on modules:** `roster`
-- **Used by modules:** `bmw`
+- **Used by modules:** `bmw`, `housekeeping`, `linen`, `maintenance`, `transport`
 - **Kernel used:** `alerts`, `auth`, `db`, `modules`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -28,16 +28,17 @@ Source: `apps/core/src/modules/tasks/`
   - `MERGE_WINDOW_MS`
   - `acceptTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `assignTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
-  - `cancelTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `cancelTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: CancelOptions = {}): Promise<TaskRow>`
   - `cancelTasksForPlace(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<string[]>`
-  - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `completeTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `raiseTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<RaiseResult>`
   - `returnToPool(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: ActOptions = {}): Promise<TaskRow>`
-  - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
+  - `startTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date(), opts: HookOptions = {}): Promise<TaskRow>`
   - `verifyTask(exec: Exec, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
-  - types: `ActOptions`, `RaiseResult`, `TaskRow`
+  - types: `ActOptions`, `CancelOptions`, `HookOptions`, `RaiseResult`, `TaskRow`
 - `errors.ts`
   - `class TaskError`
+  - `class TaskKindRefusal`
   - `taskHttpStatus(code: TaskRefusalCode): number`
 - `kinds.ts`
   - `DEFAULT_LADDER_MIN: readonly number[]`
@@ -51,6 +52,7 @@ Source: `apps/core/src/modules/tasks/`
   - `skillRoles(skill: string): readonly string[]`
   - `taskKind(kind: string): TaskKindDecl | undefined`
   - `taskKinds(): TaskKindDecl[]`
+  - `verifierPermissionsOf(decl: TaskKindDecl | undefined): readonly string[]`
   - types: `TaskKindDecl`
 - `manifest.ts`
   - `TASKS_SUPERVISE`
@@ -58,11 +60,14 @@ Source: `apps/core/src/modules/tasks/`
   - `TASKS_WORK`
   - `tasksManifest: ModuleManifest`
 - `reads.ts`
+  - `findTasks(exec: Db | Tx, q: { kinds: readonly string[]; placeResourceId?: string; states?: readonly string[]; createdSince?: Date; raisedUn…`
+  - `getTask(exec: Db | Tx, taskId: string): Promise<TaskRow | null>`
   - `myTasks(db: Db, userId: string, now: Date = new Date()): Promise<MyTasksView>`
-  - `taskBoard(db: Db, now: Date = new Date()): Promise<TaskBoardView>`
+  - `taskBoard(db: Db, now: Date = new Date(), opts: { kinds?: readonly string[] } = {}): Promise<TaskBoardView>`
 - `sweep.ts`
   - `SWEEP_ACTOR: Actor`
   - `SWEEP_BATCH`
+  - `nudgeTask(db: Db, actor: Actor, raw: unknown, now: Date = new Date()): Promise<TaskRow>`
   - `sweepTasks(db: Db, now: Date = new Date()): Promise<SweepResult>`
   - types: `SweepResult`
 - `tasks.module.ts`
