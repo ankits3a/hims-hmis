@@ -21,14 +21,23 @@ flowchart LR
   approvals[approvals] --> workflow[workflow]
   attendance[attendance] --> auth[auth]
   billing[billing] --> patients[patients]
+  bmw[bmw] --> resources[resources]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
+  ipd_rounds[ipd-rounds] --> ipd[ipd]
+  ipd_rounds[ipd-rounds] --> patients[patients]
+  ipd[ipd] --> patients[patients]
+  ipd[ipd] --> resources[resources]
   lab[lab] --> billing[billing]
   lab[lab] --> ops[ops]
   lab[lab] --> orders[orders]
   lab[lab] --> patients[patients]
   lab[lab] --> resources[resources]
   lab[lab] --> tariff[tariff]
+  linen[linen] --> resources[resources]
+  maintenance[maintenance] --> ipd[ipd]
+  maintenance[maintenance] --> resources[resources]
+  maintenance[maintenance] --> tasks[tasks]
   materials[materials] --> formulary[formulary]
   materials[materials] --> resources[resources]
   membership[membership] --> billing[billing]
@@ -48,6 +57,8 @@ flowchart LR
   ot[ot] --> resources[resources]
   partners[partners] --> billing[billing]
   partners[partners] --> patients[patients]
+  passes[passes] --> ipd[ipd]
+  passes[passes] --> resources[resources]
   pcpndt[pcpndt] --> auth[auth]
   pcpndt[pcpndt] --> patients[patients]
   pcpndt[pcpndt] --> resources[resources]
@@ -72,6 +83,11 @@ flowchart LR
   roster[roster] --> auth[auth]
   roster[roster] --> org[org]
   roster[roster] --> resources[resources]
+  tasks[tasks] --> patients[patients]
+  tasks[tasks] --> resources[resources]
+  transport[transport] --> ipd[ipd]
+  transport[transport] --> resources[resources]
+  transport[transport] --> tasks[tasks]
 ```
 
 | file | owner | tables |
@@ -82,7 +98,8 @@ flowchart LR
 | `approvals.ts` | kernel | `approval_types`, `approvals` |
 | `attendance.ts` | module attendance | `att_app_marks`, `att_days`, `att_holidays`, `att_leaves`, `att_meeting_requests`, `att_on_duty`, `att_punches`, `att_roster`, `att_shifts`, `att_staff`, `att_sync_state` |
 | `auth.ts` | kernel | `agents`, `auth_devices`, `auth_sessions`, `auth_throttle`, `break_glass_grants`, `permissions`, `phone_push_sends`, `role_assignments`, `role_permissions`, `roles`, `sod_pairs`, `temp_role_grants`, `user_totp`, `users` |
-| `billing.ts` | module billing | `allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_vouchers` |
+| `billing.ts` | module billing | `allocations`, `billing_config`, `cashier_sessions`, `credit_note_lines`, `credit_notes`, `daily_closes`, `document_series`, `entered_in_error_marks`, `idempotency_keys`, `invoice_lines`, `invoices`, `receipt_tenders`, `receipts`, `recon_batches`, `recon_resolutions`, `refund_cancellations`, `refund_vouchers` |
+| `bmw.ts` | module bmw | `bmw_bag_events`, `bmw_bags`, `bmw_disputes`, `bmw_manifests` |
 | `clinical-coding.ts` | kernel | `icd10_codes`, `icd11_map_loads`, `icd11_map_rows` |
 | `copilot.ts` | kernel | `copilot_acts`, `copilot_ask_feedback`, `copilot_asks`, `copilot_halts`, `copilot_notice_acks`, `copilot_user_settings` |
 | `desk.ts` | kernel | `user_day_facts` |
@@ -92,7 +109,11 @@ flowchart LR
 | `eventIdempotency.ts` | kernel | `event_idempotency` |
 | `events.ts` | kernel | `events` |
 | `formulary.ts` | module formulary | `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances` |
+| `ipd-rounds.ts` | kernel | `ipd_consults`, `ipd_orders`, `ipd_rounds` |
+| `ipd.ts` | module ipd | `ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers` |
 | `lab.ts` | module lab | `lab_analytes`, `lab_booking_settings`, `lab_bookings`, `lab_catalogue_imports`, `lab_critical_calls`, `lab_instrument_codes`, `lab_instruments`, `lab_items`, `lab_orderable_analytes`, `lab_orderables`, `lab_parked_results`, `lab_plate_maps`, `lab_plate_wells`, `lab_quick_reports`, `lab_reference_ranges`, `lab_reflex_rules`, `lab_report_deliveries`, `lab_reports`, `lab_results`, `lab_run_sheet_positions`, `lab_run_sheets`, `lab_sla_breaches`, `lab_specimen_items`, `lab_specimens`, `lab_transmissions` |
+| `linen.ts` | module linen | `linen_condemn_requests`, `linen_items`, `linen_laundry_batches`, `linen_movements`, `linen_par_levels`, `linen_variances`, `linen_ward_counts` |
+| `maintenance.ts` | module maintenance | `maintenance_ticket_events`, `maintenance_tickets` |
 | `materials.ts` | module materials | `consignment_lots`, `controlled_stock_register`, `grn_lines`, `grns`, `item_barcodes`, `item_merges`, `item_price_regulations`, `item_stock_levels`, `item_uoms`, `items`, `materials_settings`, `purchase_order_lines`, `purchase_orders`, `stock_adjustments`, `stock_balances`, `stock_batches`, `stock_count_lines`, `stock_counts`, `stock_ledger`, `stock_recalls`, `stock_reservations`, `stock_write_off_lines`, `stock_write_offs`, `store_indent_lines`, `store_indents`, `supplier_bill_lines`, `supplier_bills`, `supplier_credit_notes`, `supplier_payment_run_lines`, `supplier_payment_runs`, `supplier_payments`, `supplier_return_lines`, `supplier_returns`, `transfer_lines`, `transfers`, `vendor_bank_changes`, `vendor_documents`, `vendors` |
 | `membership.ts` | module membership | `coupon_definitions`, `coupon_redemptions`, `covered_members`, `entitlement_counters`, `entitlement_movements`, `holder_book_imports`, `import_quarantine`, `lapsed_restore_checks`, `membership_instances`, `membership_plans`, `patient_match_queue` |
 | `notifications.ts` | kernel | `notifications`, `notify_template_registrations`, `patient_message_preferences` |
@@ -103,6 +124,7 @@ flowchart LR
 | `org.ts` | kernel | `org_departments` |
 | `ot.ts` | module ot | `daycare_encounters`, `ot_case_gates`, `ot_case_implants`, `ot_cases`, `ot_checklist_runs`, `ot_counts`, `ot_definitions`, `ot_deposit_holds`, `ot_incidents`, `ot_lists`, `ot_specimens`, `pacu_scores` |
 | `partners.ts` | module partners | `attribution_ids`, `commission_accrual_subjects`, `commission_accruals`, `counterparties`, `partner_agreements`, `partner_ref_map`, `receivable_expectations` |
+| `passes.ts` | module passes | `pass_admission_flags`, `pass_events`, `pass_scans`, `passes` |
 | `patients.ts` | module patients | `patient_allergies`, `patient_coverages`, `patient_guardians`, `patient_identity_versions`, `patient_merge_requests`, `patient_photos`, `patients`, `registration_config` |
 | `pcpndt.ts` | module pcpndt | `pcpndt_form_f`, `pcpndt_form_f_serials`, `pcpndt_registered_machines`, `pcpndt_registered_persons`, `pcpndt_registrations` |
 | `pharmacy.ts` | module pharmacy | `pharmacy_adr_events`, `pharmacy_adr_reports`, `pharmacy_adr_suspects`, `pharmacy_authorisations`, `pharmacy_cold_excursion_batches`, `pharmacy_cold_excursion_closes`, `pharmacy_cold_excursion_decisions`, `pharmacy_cold_excursions`, `pharmacy_cold_readings`, `pharmacy_cold_units`, `pharmacy_controlled_licences`, `pharmacy_credit_moves`, `pharmacy_dispense_lines`, `pharmacy_dispenses`, `pharmacy_end_prescribers`, `pharmacy_medication_incident_events`, `pharmacy_medication_incidents`, `pharmacy_message_settings`, `pharmacy_pharmacist_registrations`, `pharmacy_reg_h1`, `pharmacy_retail_licences`, `pharmacy_retail_sale_lines`, `pharmacy_retail_sales`, `pharmacy_sale_items`, `pharmacy_settings`, `pharmacy_shelf_locations`, `pharmacy_short_book`, `pharmacy_tally_config`, `pharmacy_tally_exports`, `pharmacy_tray_check_lines`, `pharmacy_tray_checks`, `pharmacy_tray_templates` |
@@ -116,5 +138,7 @@ flowchart LR
 | `roster.ts` | module roster | `roster_amendments`, `roster_assignments`, `roster_bed_allotments`, `roster_board_prints`, `roster_cover_requests`, `roster_cycle_entries`, `roster_cycle_overlays`, `roster_cycles`, `roster_delegations`, `roster_duty_windows`, `roster_escalation_targets`, `roster_findings`, `roster_flags`, `roster_holidays`, `roster_mode_declarations`, `roster_officiating`, `roster_periods`, `roster_positions`, `roster_requirements`, `roster_rule_profiles`, `roster_rules`, `roster_shift_defs`, `roster_team_memberships`, `roster_teams`, `staff_absences`, `staff_credentials` |
 | `search.ts` | kernel | `search_audit` |
 | `tariff.ts` | module tariff | `adjustment_rules`, `gst_config`, `gst_settings`, `regulated_prices`, `services`, `tariff_items`, `tariff_versions` |
+| `tasks.ts` | module tasks | `task_events`, `tasks` |
+| `transport.ts` | module transport | `transport_requests` |
 | `worker.ts` | kernel | `event_dead_letters`, `event_deliveries`, `scheduler_heartbeats` |
 | `workflow.ts` | kernel | `workflow_definition_approvals`, `workflow_definitions`, `workflow_instances`, `workflow_timers`, `workflow_transitions` |
