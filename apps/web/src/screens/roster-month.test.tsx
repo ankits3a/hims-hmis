@@ -244,7 +244,9 @@ describe("RosterMonth (20-U U5b)", () => {
     renderWithProviders(<RosterMonth team="u2" month="2026-10" />);
     await screen.findByTestId("month-grid");
     await user.click(screen.getByTestId("zoom-day"));
-    // Page to the 13th.
+    // Page to the 13th. The day view opens on today's real date, so go back to the month's first day first:
+    // paging only "Later" never reaches the 13th once the real clock is past it.
+    while (!(screen.getByRole("button", { name: "Earlier" }) as HTMLButtonElement).disabled) await user.click(screen.getByRole("button", { name: "Earlier" }));
     while (!screen.getByTestId("pager-range").textContent!.includes("13 Oct")) await user.click(screen.getByRole("button", { name: "Later" }));
     const list = screen.getByTestId("month-grid");
     const rows = [...list.querySelectorAll(".rm-dl-row")].map((r) => r.textContent);
