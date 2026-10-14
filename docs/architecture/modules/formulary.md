@@ -116,6 +116,7 @@ Source: `apps/core/src/modules/formulary/`
   - `unreviewedSaltIds(db: Db | Tx, ids: readonly string[]): Promise<Set<string>>`
   - types: `CatalogueCensus`, `MoietySuggestion`
 - `resolve.ts`
+  - `interactionRulesPresent(db: Db): Promise<boolean>`
   - `listDrugDiseaseFor(db: Db, saltIds: string[], icd10Codes: string[]): Promise<DrugDiseaseRow[]>`
   - `listInteractionsAmong(db: Db, saltIds: string[]): Promise<InteractionPair[]>`
   - `normalizeDrugName(raw: string): string`

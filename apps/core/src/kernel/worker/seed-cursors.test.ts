@@ -19,7 +19,7 @@ import { ORDERING_FREE_TESTS_CONSUMER } from "../../modules/ordering";
 import { HOUSEKEEPING_BED_CONSUMER } from "../../modules/housekeeping";
 import { PASSES_ADMISSION_CONSUMER } from "../../modules/passes";
 import { DIET_CONSUMER } from "../../modules/diet";
-import { IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
+import { IPD_EMAR_ALLERGY_CONSUMER, IPD_FAMILY_STOP_CONSUMER } from "../../modules/ipd";
 import { seedCursors } from "./seed-cursors";
 import { workerBackfills } from "./worker.module";
 
@@ -191,6 +191,11 @@ describe("seedCursors", () => {
          */
         IPD_FAMILY_STOP_CONSUMER,
         /**
+         * E4.3 (#735) — the eMAR's allergy re-check. Unseeded, it would walk every `allergy.recorded` since the first
+         * patient; each would find no active inpatient drug order and do nothing. Seeded at `max(seq)`.
+         */
+        IPD_EMAR_ALLERGY_CONSUMER,
+        /**
          * E4.4 DIET (#736) — unseeded, it would walk every admission, transfer and stay ending since IPD began and
          * every OT booking since the mini-OT (writing an NPO for each past case). Seeded at `max(seq)`.
          */
@@ -219,8 +224,8 @@ describe("seedCursors", () => {
    * determinism (its "does not redeliver ... re-reads" case sets `lookback: 5_000`).
    */
   /** The state a seeded cursor skips, rebuilt at deploy: housekeeping's owed cleans, diet's OT NPOs (review item 7). */
-  it("workerBackfills names exactly housekeeping's bed turnover and diet's OT NPO sync", () => {
-    expect(Object.keys(workerBackfills(db)).sort()).toEqual([DIET_CONSUMER, HOUSEKEEPING_BED_CONSUMER].sort());
+  it("workerBackfills names exactly housekeeping's bed turnover, diet's OT NPO sync and the eMAR's allergy re-check", () => {
+    expect(Object.keys(workerBackfills(db)).sort()).toEqual([DIET_CONSUMER, HOUSEKEEPING_BED_CONSUMER, IPD_EMAR_ALLERGY_CONSUMER].sort());
   });
 
   it("V10 — leaves a newly-seeded consumer at max(seq); the next cycle delivers nothing", async () => {

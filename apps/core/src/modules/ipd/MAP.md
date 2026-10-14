@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing]
+tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -181,6 +181,24 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `modules/radiology/schedule.ts` `cancelStudy`. `kernel/db/schema/ipd.ts` —
   `ipd_charge_lines.order_id` / `order_item_id`, components `lab` / `imaging`, source `ipd.order` (migration `ipd_orderbill`).
   Contracts `IPD_CHARGE_COMPONENTS` / `IpdChargeComponent` (the rate card's `IpdRateComponent` is unchanged).
+
+- (E4.3 #735) `emar.ts` — the acts: `verifyOrder` (+ `verifyFindingsOf`), `issueMed`, `returnMed`, `resolveAllergyFlag`,
+  `secondCheck`, `administerDose`, `holdDose`, `refuseDose`, `missDose`, `reofferHeldDoses`, `markDoseInError`,
+  `recordInfusionEvent`, `recordNarcoticWastage`, `signVerbalOrder`, the consumer `emarAllergyConsumer` /
+  `recheckOrdersForAllergy`, the minute sweep `sweepIpdEmar`. `emar-doses.ts` — `scheduleDosesIn`, `cancelFutureDosesIn` (called
+  by `stopIpOrder` / `cancelIpOrder` in their own transaction). `emar-rules.ts` — PURE: `dueTimesFor`, `giveTiming`, `prnState`,
+  `isHighAlert`, `isTimeCritical`, `windowMinutesFor`, `doseWordsOf`. `emar-drug.ts` — `emarDrugsOf` (pharmacy shelf item flags,
+  formulary composition, NDPS class). `emar-read.ts` — `readPharmacyQueue`, `readEmarPatient`, `readWardChart`, `readEmarDue`,
+  `scanAtBedside`, `readLabelSheet`, `readOverrideCounts`. `emar-cards.ts` — `dueDoseCard`, `newOrderCard`. `emar-events.ts`,
+  `emar.controller.ts` (`IPD_EMAR_ROUTES`). Verbal orders: `orders.ts` `placeIpOrder` with `verbal` (+ `refuseVerbalHighAlert`).
+  `kernel/db/schema/ipd-emar.ts` — `ipd_emar_verifications`, `_issues`, `_labels`, `_returns`, `_doses`, `_acts`,
+  `_infusion_events`, `_narcotic_register`, `_verbal_orders`, `_second_checks`, `_allergy_flags` (migration `ipd_emar`).
+  `packages/contracts/src/ipd/emar.ts` (read models, constants, routes); `packages/contracts/src/ipd/intents-meds.ts` (verify / issue / give / hold / refuse /
+  infusion, and `miss_dose`, `reoffer_held_doses`, `mark_dose_in_error`, `second_check`, `sign_verbal_order`,
+  `record_narcotic_wastage`, `return_med`, `resolve_allergy_flag`). Seams outside: pharmacy `shelfByMedicine` /
+  `shelfItemForMedicine` / `recordIncident`, formulary `interactionRulesPresent`, materials `fefoPick` / `postMovements`.
+  Web: `apps/web/src/screens/ipd-emar-bedside.tsx` (board D2 inside `/ipd/my-shift`), `apps/web/src/screens/ipd-pharmacy.tsx` (`/ipd/pharmacy`, the
+  desk and `LabelPrint`), `apps/web/src/screens/ipd-mar.tsx` (`/ipd/mar`), `apps/web/src/lib/ipd-emar-api.ts`.
 
 ## 3. Invariants
 - A bed is a kernel `bed` row. No new resource kind, no kernel edit, no migration: the attributes are jsonb,
@@ -648,8 +666,8 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   the proposed bed by `reserve_bed` or `admit` is `accepted`, onto any other bed `overridden`.
 - The web words a refused Confirm by its refusal CODE (`ipdBeds.flow.refused.<code>`), never the server's English.
 - Tomorrow's predicted discharges = live `ipd_discharges` with `fit_when = 'tomorrow'` declared since IST midnight (marks only).
-- OWED TO M4 (no source data in this stack; no stub, no fake rows): `due_dose` (eMAR), `new_order` (ipd-orders). Each is a
-  new provider + permission. E4.1 (#733) filled `overdue_vitals`, `ews_rising`, `handover_pending` and `assessment_due`.
+- E4.3 (#735) filled `due_dose` (`ipd.emar.give`) and `new_order` (`ipd.emar.view`); E4.1 (#733) filled `overdue_vitals`,
+  `ews_rising`, `handover_pending` and `assessment_due`.
 
 ### Nursing (E4.1, #733)
 - WHICH SCORE (`ewsKindFor`): under 16 → PEWS; pregnant / ≤ 42 days postpartum (the assessment's `obstetric`) → MEOWS; a
@@ -760,6 +778,66 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   Mon–Sat 14:00–19:59: one nudge per responsible consultant per day; from 16:00 one per (unit head, consultant) per day. A
   consultant BEDSIDE signed round today is what counts; patients admitted today are not expected. Notices carry counts and
   staff names only.
+
+### eMAR (E4.3, #735)
+- VERIFY: the server runs the checks (allergy — the OPD salt-aware matcher; interaction — formulary pairs, "no interaction data"
+  when none is adopted; dose — weight for a per-kg dose or a child; duplicate — same moiety, or same `THERAPEUTIC_DUPLICATE_CLASSES`
+  class). `verified` needs the four ticks; any non-info finding, or a prescriber's allergy override, needs the pharmacist's note;
+  reject / query need a note and tell the prescriber. Verify writes the slots (IST round times OD 09 · BD 09/21 · TDS 08/14/20 ·
+  QID 00/06/12/18 · HS 21 · STAT one · SOS none) from verify − window to +36 h; the sweep tops up.
+- WINDOW (DECIDED): ±60 min; time-critical ±30 (every antibiotic order, insulin, anti-epileptics, Parkinson's — by moiety/class
+  words, the formulary has no flag). Before the window: refused. After it: the sweep marks MISSED with ONE notice per dose
+  (`ipd.emar.missed:<doseId>`, duty doctors + nursing fallback); a missed dose may still be given late with `lateReason` until two
+  more half-windows pass. A re-offered held dose opens a new window at the return.
+- GIVE: wristband = the live `ipd_bands.serial` of THIS admission, or an override with reason + note (counted per nurse and ward,
+  `readOverrideCounts`); label = an `ipd_emar_labels.code` of THIS order (a label is never overridden — DECIDED). High-alert (item
+  `high_alert`, NDPS narcotic, or the ISMP core names — insulin, heparins, KCl, opioids, common cytotoxics) needs a second-check proof:
+  a row in `ipd_emar_second_checks` made by `secondCheck` (another user, holding a nursing role, own username + PIN, throttled like
+  the pharmacy witness), bound to the asking nurse, single use, 5 minutes. LASA: `lasaConfirmed`. A give stamped more than 2 min
+  before the server's clock is `give_expired` (doses never queue offline). An open allergy flag refuses (`allergy_conflict`).
+- ONE OUTCOME PER SLOT: every act locks the admission (advisory) → the order → the slot FOR UPDATE and re-reads its status;
+  `(dose_id, slot_seq)` unique is the backstop (two nurses at once: one records, the other `dose_already_recorded`).
+- APPEND-ONLY by trigger (`ipd_emar_forbid_mutation`): verifications, issues, labels, returns, acts, infusion events, narcotic
+  register. A correction is a NEW act naming the old (`entered_in_error` reopens the slot; `medication_incident` keeps it given and
+  files pharmacy's incident register, stage `administration`). One correction per act (unique).
+- ISSUE: stock leaves the `PHARM-OPD` store through `postMovements` (`consume`, refType `ipd_emar_issue`, FEFO unless a batch is
+  named); labels = ceil(units / stripSize); `markIpdOrderIssuedIn`. Own medicine: no stock, `own_batch_no` + expiry required,
+  never charged (0 credited on return). RETURN: stock back to the batches it left (newest first), units credited; a return on a
+  stopped order clears `return_owed`. NO MONEY: no running-bill line exists for ward issue yet (owed, below).
+- STOP / CANCEL: `cancelFutureDosesIn` cancels every open slot (each its own `cancelled` act) and closes the order's allergy flags,
+  in the stop's transaction.
+- VERBAL (§4.6): the nurse records via `place_ip_order` + `verbal` (needs `ipd.emar.give`; the named doctor is the prescriber and
+  must be on the treating team); never for a high-alert or cytotoxic drug (`verbal_order_not_allowed`); a nurse without `verbal`
+  is `verbal_order_only`. Signed by the named doctor or a treating-team member (`sign_verbal_order`); the sweep nudges once 4 h
+  before the 24-h deadline and once after it.
+- ALLERGY LATER: consumer `ipd.emar_allergy_recheck` on `allergy.recorded` → one flag per (order, allergy), notices to the duty
+  doctors and every active `pharmacy` role holder once; closed by the pharmacist (`resolve_allergy_flag`) or by the order's stop.
+- NPO (`emar.ts` `npoAt`): read on `diet_npo` with diet's own predicate (diet imports ipd at load; importing diet's index is a
+  load-time cycle) — a lifted or ended NPO is not NPO (pinned by `emar-review.acceptance`). DECIDED ("NPO except medications"):
+  an oral / sublingual / NG give under NPO needs `npoMeds` — the nurse's "doctor allows meds with sips" with a reason (recorded
+  on the act, counted in `readOverrideCounts`); an OT case's NPO (`source = ot_booking`) takes only a doctor's read-back OK
+  (`doctor_ok`, a doctor-role holder).
+- REVIEW OF d500eb13 (#735), all DECIDED: LABEL LEDGER `ipd_emar_label_uses` — each give consumes the dose in the label's
+  base units (`emar-rules.ts` `unitsPerDose`: count doses, mass ÷ strength, a concentration counts a single-dose container;
+  a multi-dose container — syrup, insulin pen — is not counted), refused `label_exhausted`; a returned issue's or a superseded
+  (lost / damaged re-issue) issue's label is `label_void`; entered-in-error releases the units. SECOND-CHECK PROOFS are bound to
+  purpose, order, drug and (scheduled dose) slot. PRN interval and 24-h cap span every PRN order of the admission sharing the
+  moiety; a second PRN of one moiety is a `stop` finding at verify. A named batch must be the shelf item's, in PHARM-OPD
+  (`batch_mismatch`). NARCOTIC REGISTER: one base unit on every row; entered-in-error appends `reversal`. INFUSION start / rate
+  change need the wristband (or override) and the bag's label; a running or paused infusion stops even after the order stops;
+  infusion events take the 2-minute stale rule. PIN THROTTLE: an advisory lock on the username around read → verify → count, all
+  on the lock's connection. VERIFY: never one's own order (`verify_own_order`); no interaction data needs the note; an allergy
+  finding needs `allergyOverride` (reason enum + text). RE-ISSUE: a second issue needs `reissue` (lost / damaged / extra_supply,
+  ≤ 3 in 24 h). A bedside weight > 10 % off the order's sends the order back (`query`, the prescriber told) and refuses
+  `weight_changed_reverify`. Hold / refuse / miss never before the window. Entered-in-error on a stopped order's slot cancels
+  it; a PRN slot reopens. ALLERGY FLAG: the doctor decides (`decide_allergy_flag` stop / continue + reason; a stop of the order
+  records "stop"), then the pharmacist closes (`allergy_flag_undecided` before); the prescriber is told too; `workerBackfills`
+  re-checks active orders once (`backfillEmarAllergyFlags`). The incident is filed inside the correction's transaction. Late
+  window = one more window (`w × (1 + CATCH_UP)`). ISMP names `ISMP_HIGH_ALERT_NAMES`. Verbal emergencies are an enum and the
+  named doctor must hold a doctor role. TRIGGERS (all ENABLE ALWAYS, no bypass switch): append-only tables refuse UPDATE,
+  DELETE and TRUNCATE; the verbal signature and the second-check spend are write-once (`ipd_emar_verbal_guard`,
+  `ipd_emar_second_check_guard`). `test/helpers/db.ts` `truncateAll` turns the TRUNCATE triggers off for its one statement.
+  More than five wristband overrides by one nurse in 24 h tell the ward in-charge once a day.
 
 ## 4. Traps
 - `docker/prod/deploy.sh` runs every seed on every deploy. The loader is a script a person runs; never wire it
@@ -890,6 +968,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E4.2) `charges.ts` `postConsultantVisit` treats `covering_for` as the treating consultant: the 08:00 clock writes it, so a
   covering head's visit is `visit`, not `cross_visit`.
 
+- (E4.3) SEAMS LEFT OPEN: ward issue and returns are not on the running bill (`ipd_charge_lines` has no pharmacy source — a
+  money change for the charges lane); the credit is recorded in units. Labels print from the browser (no `ipd_emar_label`
+  print-outbox document; the band's precedent). Interaction findings depend on adopted formulary pairs (none → "no interaction
+  data"). The narcotic ward register counts issued / given / wasted / returned units, not a cabinet balance per ward.
+  Infusion rate is free-typed (no pump feed, §5 Phase 2). The minute sweep rides `sweepIpdNursing` (no job, no pool client).
+
 ## 5. Callers
 - `scripts/load-bed-layout.ts` (operator).
 - `beds.controller.ts` (the web board), `kernel/worker/jobs.ts` (`lapseBedReservations`),
@@ -916,6 +1000,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E4.1) `kernel/worker/jobs.ts` (`sweepIpdNursing`, every 60 s); `kernel/desk` collects the four nursing providers from
   `ipdManifest.desk`; the realtime router fans nursing events (and every bed event) to `ipd_nursing:board`; the goal
   query G7 reads `ipd.ews.breached` / `ipd.ews.acknowledged`.
+- (E4.3) `emar.controller.ts` (the phone's bedside, the pharmacy desk, the ward MAR); `kernel/worker/jobs.ts` `sweepIpdNursing` →
+  `sweepIpdEmar`; the worker's `workerConsumers` → `emarAllergyConsumer`; `kernel/desk` collects `ipd.due_dose` / `ipd.new_order`;
+  `stopIpOrder` / `cancelIpOrder` call `cancelFutureDosesIn`; goal G6a reads `ipd.dose.given` (`patientCheck.kind`, `labelCode`, `wardId`).
 - (E4.2) `rounds.controller.ts` (the Rounds screens); `kernel/worker/jobs.ts` `sweepStaffNotices` → `sweepIpdRoundsClock`; the eMAR
   (E4.3) consumes `ipd.order.placed|stopped|cancelled` and calls `readIpdOrder`, `activeIpdOrdersOf`, `markIpdOrderIssuedIn`;
   `signRound` calls `postConsultantVisit` and `declareFitIn`; `placeIpOrder` calls `ordering` `orderTests` / `routeTests` and

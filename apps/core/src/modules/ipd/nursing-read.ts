@@ -34,7 +34,7 @@ import type { ScoredSet } from "./nursing";
 type WardRow = { id: string; code: string; name: string };
 
 /** Wards and halls that hold at least one IPD bed, in code order. */
-async function wardsWithBeds(db: Db): Promise<{ wards: WardRow[]; beds: (typeof resources.$inferSelect & { wardId: string })[] }> {
+export async function wardsWithBeds(db: Db): Promise<{ wards: WardRow[]; beds: (typeof resources.$inferSelect & { wardId: string })[] }> {
   const places = await db.select().from(resources).where(and(inArray(resources.kind, ["ward", "hall", "room", "bed"]), ne(resources.status, "retired")));
   const byId = new Map(places.map((p) => [p.id, p] as const));
   const beds: (typeof resources.$inferSelect & { wardId: string })[] = [];
@@ -149,7 +149,7 @@ const alertView = (r: typeof ipdNursingAlerts.$inferSelect | undefined) => r ===
   doctorReached: r.notifiedAt !== null && r.doctorReached,
 };
 
-function pickWard(wards: WardRow[], wardId: string | undefined): WardRow | null {
+export function pickWard(wards: WardRow[], wardId: string | undefined): WardRow | null {
   if (wardId !== undefined) return wards.find((w) => w.id === wardId) ?? null;
   return wards[0] ?? null;
 }

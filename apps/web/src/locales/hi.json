@@ -165,7 +165,9 @@
     "dietWard": "आहार पत्रक",
     "dietKitchen": "रसोई",
     "dietConsults": "आहार परामर्श",
-    "ipdRounds": "राउंड"
+    "ipdRounds": "राउंड",
+    "ipdMar": "MAR",
+    "ipdPharmacy": "IP फ़ार्मेसी"
   },
   "palette": {
     "title": "खोज",
@@ -3844,6 +3846,12 @@
     },
     "dietConsults": {
       "title": "आहार परामर्श बाकी"
+    },
+    "ipdDueDose": {
+      "title": "बकाया खुराकें"
+    },
+    "ipdNewOrder": {
+      "title": "नए आदेश"
     }
   },
   "report": {
@@ -18760,5 +18768,248 @@
     "longCourse": "14 दिन से लंबे कोर्स का कारण",
     "allergyHit": "एलर्जी: {{substances}}",
     "overrideReason": "एलर्जी के बावजूद देने का कारण"
+  },
+  "ipdEmar": {
+    "scan": "स्कैन",
+    "highAlert": "हाई अलर्ट",
+    "narcotic": "नारकोटिक",
+    "verbal": "मौखिक आदेश",
+    "note": "नोट",
+    "reason": "कारण",
+    "save": "सहेजें",
+    "asOf": "{{time}} तक",
+    "from": "{{time}} से",
+    "dueAt": "समय {{time}}",
+    "orderedBy": "{{name}} का आदेश · {{time}}",
+    "offline": "नेटवर्क नहीं — काग़ज़ी MAR लें",
+    "offlineShort": "ऑफ़लाइन — काग़ज़ी MAR",
+    "expired": "नहीं दी — फिर स्कैन करें",
+    "lasaConfirm": "पुष्टि करें: {{name}}",
+    "lateReason": "देरी क्यों?",
+    "heldCount_one": "{{count}} खुराक वापसी तक रोकी",
+    "heldCount_other": "{{count}} खुराकें वापसी तक रोकीं",
+    "reoffered_one": "{{count}} खुराक फिर से",
+    "reoffered_other": "{{count}} खुराकें फिर से",
+    "due": {
+      "title": "बकाया खुराकें",
+      "none": "कोई खुराक बकाया नहीं",
+      "late": "देर"
+    },
+    "bedside": {
+      "title": "बेडसाइड",
+      "due": "अभी बकाया",
+      "scanBand": "रिस्टबैंड स्कैन करें",
+      "scanLabel": "दवा लेबल स्कैन करें",
+      "bandScanned": "बैंड स्कैन हुआ",
+      "bandNotScanned": "बैंड स्कैन नहीं"
+    },
+    "give": {
+      "btn": "दें",
+      "hold": "दबाकर रखें — दें"
+    },
+    "given": {
+      "ok": "खुराक दी",
+      "late": "देर से दी"
+    },
+    "check": {
+      "patient": "मरीज़",
+      "drug": "दवा",
+      "dose": "खुराक",
+      "time": "समय",
+      "route": "मार्ग"
+    },
+    "status": {
+      "scheduled": "बकाया",
+      "given": "दी",
+      "held": "रोकी",
+      "missed": "छूटी",
+      "refused": "मना",
+      "cancelled": "रद्द",
+      "corrected": "सुधारी"
+    },
+    "orderStatus": {
+      "active": "चालू",
+      "stopped": "बंद",
+      "cancelled": "रद्द"
+    },
+    "act": {
+      "hold": "रोकें",
+      "refuse": "मना किया",
+      "miss": "छूटी"
+    },
+    "done": {
+      "hold": "खुराक रोकी",
+      "refuse": "मना दर्ज",
+      "miss": "छूटी खुराक दर्ज"
+    },
+    "reasons": {
+      "npo": "NPO",
+      "off_ward": "वार्ड से बाहर",
+      "parameter_out_of_range": "रीडिंग सीमा से बाहर",
+      "clinical_hold": "क्लिनिकल रोक",
+      "doctor_instruction": "डॉक्टर का निर्देश",
+      "patient_refused": "मरीज़ ने मना किया",
+      "vomited": "उल्टी हुई",
+      "other": "अन्य",
+      "no_stock": "वार्ड में स्टॉक नहीं",
+      "patient_away": "मरीज़ बाहर",
+      "omitted": "छूट गई"
+    },
+    "override": {
+      "open": "बैंड स्कैन नहीं हो रहा",
+      "counted": "ओवरराइड गिना जाएगा",
+      "use": "ओवरराइड लें",
+      "band_unreadable": "बैंड पढ़ा नहीं जा रहा",
+      "band_refused": "मरीज़ ने बैंड मना किया",
+      "no_band_burns": "बैंड नहीं (जलन)",
+      "scanner_down": "स्कैनर ख़राब"
+    },
+    "second": {
+      "title": "दूसरी नर्स",
+      "username": "यूज़रनेम",
+      "pin": "पिन",
+      "check": "जाँचें",
+      "done": "{{name}} ने जाँचा"
+    },
+    "reoffer": {
+      "back": "वार्ड पर लौटे",
+      "npo": "NPO हटा"
+    },
+    "prn": {
+      "now": "PRN · अभी दे सकते हैं",
+      "next": "PRN · {{time}} से पहले नहीं",
+      "in24h": "24 घंटे में {{n}}/{{max}}"
+    },
+    "pharmacy": {
+      "title": "इनपेशेंट फ़ार्मेसी",
+      "toVerify": "जाँच बाक़ी",
+      "toIssue": "देना बाक़ी",
+      "flags": "एलर्जी फ़्लैग",
+      "returns": "वापसी बाक़ी",
+      "none": "कुछ नहीं",
+      "noInteractionData": "फ़ॉर्मुलरी में इंटरैक्शन डेटा नहीं",
+      "override": "डॉक्टर ने एलर्जी ओवरराइड की: {{reason}}",
+      "noteNeeded": "नोट (ज़रूरी)",
+      "query": "प्रश्न",
+      "reject": "अस्वीकार",
+      "verify": "सत्यापित करें",
+      "units": "यूनिट",
+      "perLabel": "प्रति लेबल यूनिट",
+      "own": "मरीज़ की अपनी दवा",
+      "batch": "बैच",
+      "expiry": "समाप्ति",
+      "issue": "दें और लेबल छापें",
+      "labelsCount_one": "{{count}} लेबल",
+      "labelsCount_other": "{{count}} लेबल",
+      "decision": "डॉक्टर का निर्णय",
+      "close": "फ़्लैग बंद करें",
+      "flagClosed": "फ़्लैग बंद",
+      "orderStopped": "आदेश बंद",
+      "issued": "{{units}} दिए · {{back}} वापस",
+      "unitsBack": "वापस यूनिट",
+      "takeBack": "वापस लें",
+      "credited_one": "{{count}} यूनिट क्रेडिट",
+      "credited_other": "{{count}} यूनिट क्रेडिट",
+      "tick": {
+        "allergy": "एलर्जी",
+        "interaction": "इंटरैक्शन",
+        "dose": "खुराक",
+        "duplicate": "दोहरी दवा"
+      },
+      "did": {
+        "verified": "सत्यापित",
+        "rejected": "अस्वीकृत",
+        "query": "प्रश्न भेजा"
+      },
+      "overrideReason": "एलर्जी ओवरराइड",
+      "overrideText": "क्यों (लिखें)",
+      "overrides": {
+        "tolerated_before": "पहले सहन हुई",
+        "desensitised": "डिसेंसिटाइज़ किया",
+        "no_safe_alternative": "कोई सुरक्षित विकल्प नहीं",
+        "benefit_outweighs_risk": "लाभ जोखिम से अधिक"
+      },
+      "awaitDoctor": "डॉक्टर के निर्णय की प्रतीक्षा",
+      "decided": {
+        "stop": "डॉक्टर ने आदेश रोका: {{reason}}",
+        "continue": "डॉक्टर जारी रखेंगे: {{reason}}"
+      },
+      "issuedTitle": "दिए जा चुके",
+      "reissue": "फिर से दें",
+      "reissueReason": "फिर क्यों",
+      "reissueVoids": "पुराने लेबल काम नहीं करेंगे",
+      "reissueReasons": {
+        "extra_supply": "अतिरिक्त आपूर्ति",
+        "lost": "खो गई",
+        "damaged": "ख़राब हुई"
+      }
+    },
+    "labels": {
+      "title_one": "{{count}} लेबल",
+      "title_other": "{{count}} लेबल",
+      "a4": "A4 शीट",
+      "slip": "स्लिप",
+      "print": "छापें",
+      "highAlert": "हाई अलर्ट",
+      "own": "अपनी"
+    },
+    "mar": {
+      "title": "वार्ड MAR",
+      "day": "दिन {{day}}",
+      "patient": "मरीज़",
+      "drug": "दवा",
+      "print": "MAR छापें",
+      "empty": "इस वार्ड में कोई मरीज़ नहीं",
+      "noOrders": "कोई दवा आदेश नहीं",
+      "withPharmacy": "फ़ार्मेसी के पास"
+    },
+    "needs": "ज़रूरी: {{what}}",
+    "weight": "अभी वज़न (kg)",
+    "npo": {
+      "sips": "डॉक्टर ने घूँट से दवा की अनुमति दी",
+      "doctor": "सर्जरी से पहले: डॉक्टर की हाँ",
+      "doctorId": "हाँ कहने वाले डॉक्टर (यूज़र आईडी)"
+    },
+    "flags": {
+      "title": "चालू आदेश के ख़िलाफ़ एलर्जी",
+      "allergy": "एलर्जी: {{what}}",
+      "noDose": "आपके निर्णय तक कोई खुराक नहीं",
+      "stop": "आदेश रोकें",
+      "continue": "इस कारण से जारी रखें",
+      "withPharmacy": "फ़ार्मेसी की प्रतीक्षा"
+    },
+    "infusion": {
+      "title": "इन्फ़्यूज़न",
+      "rate": "दर (ml/घंटा)",
+      "stopped": "इन्फ़्यूज़न बंद",
+      "scanToChange": "दर बदलने के लिए लेबल स्कैन करें",
+      "state": {
+        "none": "शुरू नहीं",
+        "running": "चालू",
+        "paused": "रुका",
+        "stopped": "बंद"
+      },
+      "act": {
+        "start": "इन्फ़्यूज़न शुरू करें",
+        "rate_change": "दर बदलें",
+        "resume": "फिर चालू करें",
+        "pause": "रोकें",
+        "stop": "बंद करें"
+      },
+      "did": {
+        "start": "इन्फ़्यूज़न शुरू",
+        "rate_change": "दर बदली",
+        "resume": "इन्फ़्यूज़न फिर चालू",
+        "pause": "इन्फ़्यूज़न रुका",
+        "stop": "इन्फ़्यूज़न बंद"
+      }
+    },
+    "wastage": {
+      "open": "बर्बादी दर्ज करें",
+      "title": "नारकोटिक बर्बादी",
+      "qty": "बर्बाद मात्रा (इश्यू यूनिट, जैसे 0.5)",
+      "witness": "गवाह: {{name}}",
+      "done": "बर्बादी दर्ज"
+    }
   }
 }

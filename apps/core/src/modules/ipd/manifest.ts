@@ -2,9 +2,12 @@ import { depositLowCard } from "./bill-desk";
 import { familyCallbacksCard } from "./family";
 import { bedProposalCard, cleaningOverdueCard, dischargeBlockedCard } from "./now-cards";
 import { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
+import { dueDoseCard, newOrderCard } from "./emar-cards";
+import { IPD_EMAR_ALLERGY_CONSUMER } from "./emar-events";
 import {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
   IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
+  IPD_EMAR_VIEW, IPD_EMAR_GIVE, IPD_EMAR_VERIFY, IPD_EMAR_ISSUE,
 } from "./permissions";
 import { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
 import { admissionAbsconded, admissionDeceased } from "./discharge-events";
@@ -13,6 +16,7 @@ import type { ModuleManifest } from "../../kernel/modules/manifest";
 export {
   IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT, IPD_BILL_VIEW, IPD_CHARGES_REVERSE, IPD_PAYER_TERMS, IPD_TRANSFER_START, IPD_TRANSFER_ACCEPT, IPD_DISCHARGE_VIEW, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_BILL, IPD_GATE_PASS, IPD_GATE_SCAN, IPD_DISCHARGE_EXIT, IPD_MORTUARY_MANAGE, IPD_BILLDESK_VIEW, IPD_FAMILY_ISSUE, IPD_CONDITION_SET, IPD_ROUND_SIGN, IPD_ORDER_PLACE,
   IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
+  IPD_EMAR_VIEW, IPD_EMAR_GIVE, IPD_EMAR_VERIFY, IPD_EMAR_ISSUE,
 } from "./permissions";
 
 /**
@@ -91,6 +95,17 @@ export {
  *   ipd.order.place     place, stop and cancel inpatient orders (drugs; lab and imaging through the ordering door, which
  *                       still asks `orders.place` and the department's own permission) — the doctor
  *
+ * E4.3 (#735) adds the eMAR's four (spec §4.6, §4.9 D). Clinical; no money (decision 0058):
+ *
+ *   ipd.emar.view    read a patient's MAR, the ward MAR chart, the phone's due list and the override counts; hold a dose on a
+ *                    doctor's instruction (with `ipd.order.place`); the `new_order` card — nurses, doctors, pharmacists
+ *   ipd.emar.give    the bedside: scan, give, hold, refuse, miss, re-offer, correct (entered in error / incident), the second
+ *                    nurse's PIN, infusions, narcotic wastage, record a verbal order; the `due_dose` card — the nursing roles
+ *   ipd.emar.verify  the pharmacist's verify queue (allergy, interaction, dose, duplicate), verify / reject / query, the
+ *                    allergy flags, the label sheet — the pharmacist
+ *   ipd.emar.issue   issue to the ward with patient labels (stock out through the materials ledger) and take returns back
+ *                    (stock in, units credited) — the pharmacist
+ *
  * Who holds them is `scripts/seed-roles.ts` (README "IPD beds" and "IPD admission" prose). The 2-hour reservation lapse is a scheduler job (`kernel/worker/jobs.ts`
  * `lapseBedReservations`); the one subscription is E3.3's family-link stop, so the worker installs this manifest.
  */
@@ -113,6 +128,9 @@ export const ipdManifest: ModuleManifest = {
     { label: "My shift", path: "/ipd/my-shift", permission: IPD_VITALS_RECORD },
     // E4.2 (#734) — the doctor's inpatient rounds list.
     { label: "Rounds", path: "/ipd/rounds", permission: IPD_ROUND_SIGN },
+    // E4.3 (#735) — the ward MAR chart (16:9) and the pharmacist's verify queue (desktop).
+    { label: "MAR", path: "/ipd/mar", permission: IPD_EMAR_VIEW },
+    { label: "IP pharmacy", path: "/ipd/pharmacy", permission: IPD_EMAR_VERIFY },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
@@ -128,6 +146,8 @@ export const ipdManifest: ModuleManifest = {
     IPD_NURSING_VIEW, IPD_VITALS_RECORD, IPD_ASSESSMENT_RECORD, IPD_SHIFT_HANDOVER, IPD_EWS_RESPOND,
     // E4.2 (#734)
     IPD_ROUND_SIGN, IPD_ORDER_PLACE,
+    // E4.3 (#735)
+    IPD_EMAR_VIEW, IPD_EMAR_GIVE, IPD_EMAR_VERIFY, IPD_EMAR_ISSUE,
   ],
   // E3.3 (#731) — death and absconding revoke the family link (`familyStopConsumer`, registered in the worker's
   // `workerConsumers` in the same commit; its cursor is seeded at deploy by `seedCursors`).
@@ -136,6 +156,9 @@ export const ipdManifest: ModuleManifest = {
     { event: admissionAbsconded.name, consumer: IPD_FAMILY_STOP_CONSUMER },
     // Review #764 — a patient sealed after the link was issued: revoke on that path.
     { event: "patient.updated", consumer: IPD_FAMILY_STOP_CONSUMER },
+    // E4.3 (#735) — an allergy recorded later re-checks every active drug order (`emarAllergyConsumer`, registered in the
+    // worker's `workerConsumers` in the same commit).
+    { event: "allergy.recorded", consumer: IPD_EMAR_ALLERGY_CONSUMER },
   ],
   // The Now cards (E5.1, #738): one provider and one permission per card type, its key the card's own key.
   // Declared here (not in their files) because those files import this one: the cards are called lazily.
@@ -155,5 +178,8 @@ export const ipdManifest: ModuleManifest = {
     { key: "ipd.assessment_due", permission: IPD_ASSESSMENT_RECORD, load: async (ctx) => assessmentDueCard(ctx) },
     { key: "ipd.ews_rising", permission: IPD_EWS_RESPOND, load: async (ctx) => ewsRisingCard(ctx) },
     { key: "ipd.handover_pending", permission: IPD_SHIFT_HANDOVER, load: async (ctx) => handoverPendingCard(ctx) },
+    // E4.3 (#735) — the eMAR's two nurse cards, each with its own permission.
+    { key: "ipd.due_dose", permission: IPD_EMAR_GIVE, load: async (ctx) => dueDoseCard(ctx) },
+    { key: "ipd.new_order", permission: IPD_EMAR_VIEW, load: async (ctx) => newOrderCard(ctx) },
   ],
 };

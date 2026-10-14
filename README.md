@@ -1812,6 +1812,15 @@ ward), the round page (sign a S/O/A/P round; a resident's round waits for the co
 inpatient orders: drugs from the formulary (an antibiotic needs a stop date), lab and imaging through the ordering door.
 A consultant's bedside round is the day's visit; a remote review is not. No money on any of it.
 
+**IPD eMAR (E4.3, decision 0072, built 2026-10-13, awaiting owner review).** `ipd.emar.view` is held by `doctor`,
+`ward_nurse`, `nursing_supervisor`, `nursing_superintendent`, `pharmacy` and `pharmacy_incharge`; `ipd.emar.give` by
+`ward_nurse` and `nursing_supervisor`; `ipd.emar.verify` and `ipd.emar.issue` by `pharmacy` and `pharmacy_incharge`. The
+pharmacist verifies each inpatient drug order (allergy, interaction, dose, duplicate) at `/ipd/pharmacy` and issues it to
+the ward with a patient label per unit or strip; the nurse gives at the bedside on `/ipd/my-shift` only after scanning the
+wristband (or a reasoned override, counted per nurse and ward) and the label; a high-alert drug needs a second nurse's PIN;
+the ward MAR chart is `/ipd/mar`. The ward nurses and supervisors also hold `ipd.band.print` (reprint an unreadable
+wristband) and `pharmacy.incidents.record` (a dose given in error is a medication incident). No money on any of it.
+
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
 without breaking a rule and, for everybody else, why not (*unavailable*, never the kind of leave). A
