@@ -6,6 +6,7 @@ import type { IpdFamilyCallbackList } from "@hmis/contracts";
 import { ApiError } from "../lib/api";
 import { closeFamilyCallback, listFamilyCallbacks } from "../lib/ipd-family-api";
 import "./ipd-family-desk.css";
+import { dateLocale } from "../lib/date-locale";
 
 /*
  * E3.3 (#731) — THE WARD DESK'S FAMILY CALLBACKS (spec §4.10 edge 14): every "Request a callback" a family sent from the
@@ -15,7 +16,7 @@ import "./ipd-family-desk.css";
  */
 
 const when = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })
     .format(new Date(iso));
 const POLL_MS = 30_000;
 
