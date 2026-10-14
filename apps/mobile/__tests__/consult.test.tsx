@@ -712,7 +712,7 @@ describe("the doctor's consultation on the phone (decision 0048)", () => {
 });
 
 describe("the Tests tab's search (issue #609)", () => {
-  it("a picked test carries the list price as its quotation snapshot; a test the tariff has not priced carries 0", async () => {
+  it("a picked test carries the list price as its quotation snapshot; a test the tariff has not priced carries null (prints \"Rate at counter\", never ₹0)", async () => {
     const w = world({
       "GET /ordering/tests": (_b, url) => ({ status: 200, body: { items: /q=cb/.test(url)
         ? [{ serviceId: "svc-cbc", code: "CBC", name: "Complete blood count", department: "lab", departmentName: null }]
@@ -734,7 +734,7 @@ describe("the Tests tab's search (issue #609)", () => {
     const note = (w.of("POST /opd/visits/e13/consult/complete")[0]!.body as { note: { advisedTests: unknown[] } }).note;
     expect(note.advisedTests).toEqual([
       { serviceId: "svc-cbc", code: "CBC", name: "Complete blood count", pricePaise: 25000 },
-      { serviceId: "svc-new", code: "NEWT", name: "New test", pricePaise: 0 },
+      { serviceId: "svc-new", code: "NEWT", name: "New test", pricePaise: null },
     ]);
   });
 });
