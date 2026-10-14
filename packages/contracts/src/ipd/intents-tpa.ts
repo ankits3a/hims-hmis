@@ -95,7 +95,7 @@ export const selectSchemePackage = ipdIntent({
     /** Σ of the selected packages after the multiple-package rule (100 % / 50 % / 25 %): the payer amount. */
     packageAmountPaise: IpdPaiseSchema,
   }),
-  refusals: ["admission_not_found", "admission_wrong_state", "package_needs_scheme", "package_not_found", "package_already_selected"],
+  refusals: ["admission_not_found", "admission_wrong_state", "package_needs_scheme", "package_not_found", "package_already_selected", "package_claim_filed"],
   actors: ["desk", "billing"],
   copilotProposable: false,
   agentTier: "none",
@@ -107,7 +107,7 @@ export const selectSchemePackage = ipdIntent({
 export const removeSchemePackage = ipdIntent({
   input: ipdInput({ admissionId: IpdIdSchema, selectionId: IpdIdSchema, reason: Text }),
   output: z.strictObject({ packageAmountPaise: IpdPaiseSchema }),
-  refusals: ["admission_not_found", "admission_wrong_state", "package_selection_not_found"],
+  refusals: ["admission_not_found", "admission_wrong_state", "package_selection_not_found", "package_claim_filed"],
   actors: ["desk", "billing"],
   copilotProposable: false,
   agentTier: "none",
@@ -123,11 +123,15 @@ export const submitClaim = ipdIntent({
     submittedAt: IpdInstantSchema,
     /** The payer's claim or TMS number, once the portal gives one. */
     claimRef: Ref.optional(),
-    /** Absent = the default: the scheme package amount when packages are selected, else the bill's payer portion. */
+    /**
+     * Absent = the default: on a scheme stay with packages, what the packages leave unclaimed by the stay's other filed
+     * claims (one package is claimed once across a final and supplementary bills); else the bill's payer portion. A typed
+     * amount above that refuses `claim_exceeds_claimable`.
+     */
     claimedPaise: IpdPositivePaiseSchema.optional(),
   }),
   output: z.strictObject({ claimId: IpdIdSchema, claimedPaise: IpdPositivePaiseSchema }),
-  refusals: ["claim_not_found", "claim_wrong_state", "claim_documents_missing", "time_in_future"],
+  refusals: ["claim_not_found", "claim_wrong_state", "claim_documents_missing", "claim_exceeds_claimable", "time_in_future"],
   actors: ["desk", "billing"],
   copilotProposable: false,
   agentTier: "none",

@@ -289,7 +289,7 @@ export async function readTpaPanel(db: Db, actor: Actor, admissionId: string, no
       packageVariancePaise: c.claimPaise - (claimed ?? def),
       unexplainedPaise: paid === undefined || claimed === null ? null : claimed - (paid.netPaidPaise! + paid.tdsPaise! + dedPaise),
       rejectionReason: ev[0]?.kind === "rejected" ? ev[0].reason : null,
-      missingDocuments: state === "to_submit" || state === "rejected" ? await missingClaimDocuments(db, a.id, c.id) as IpdTpaDocumentKind[] : [],
+      missingDocuments: state === "to_submit" || state === "rejected" ? await missingClaimDocuments(db, a.id, c) as IpdTpaDocumentKind[] : [],
     });
   }
 

@@ -17708,6 +17708,7 @@
         "bill_already_voided": "Already voided",
         "gate_pass_live": "Gate pass issued — void after the exit",
         "payer_claim_settled": "Payer settled the claim — cannot void",
+        "payer_claim_filed": "Claim is with the payer — cannot void",
         "nothing_to_bill": "No charge waits for a supplementary bill"
       }
     },
@@ -19289,6 +19290,8 @@
       "package_needs_scheme": "Packages are for PM-JAY or state-scheme stays.",
       "package_not_found": "No such package for this scheme.",
       "package_already_selected": "Already chosen.",
+      "claim_exceeds_claimable": "More than this bill can claim.",
+      "package_claim_filed": "A claim is filed — packages are fixed.",
       "time_in_future": "A time cannot be later than now.",
       "invalid_request": "Check the fields and try again."
     }

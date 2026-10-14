@@ -121,6 +121,17 @@ export async function packageAmountOf(db: Db | Tx, admissionId: string): Promise
   return { amountPaise: packageShares(live).reduce((s, p) => s + p.amountPaise, 0), count: live.length };
 }
 
+/**
+ * #604 review: once any live claim of the stay has gone to the payer (filed, settled or rejected), the packages are what
+ * was claimed — a later choice or removal would move the stay's payer amount under a claim already filed.
+ */
+async function refuseOnceClaimFiled(tx: Tx, admissionId: string): Promise<void> {
+  const filed = (await tx.select({ id: ipdPayerClaims.id }).from(ipdPayerClaims).where(and(
+    eq(ipdPayerClaims.admissionId, admissionId), inArray(ipdPayerClaims.status, ["filed", "settled", "rejected"]),
+  )))[0];
+  if (filed !== undefined) throw new IpdRefusal("package_claim_filed", undefined, { claimId: filed.id });
+}
+
 export async function selectSchemePackage(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"select_scheme_package">> {
   const input: Input<"select_scheme_package"> = IPD_INTENTS.select_scheme_package.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_PAYER_MANAGE);
@@ -129,6 +140,7 @@ export async function selectSchemePackage(db: Db, actor: Actor, raw: unknown, op
     const a = await lockAdmission(tx, input.admissionId);
     if (!PACKAGE_STATES.has(a.state)) throw new IpdRefusal("admission_wrong_state");
     if (a.payerKind === null || !SCHEME_KINDS.has(a.payerKind)) throw new IpdRefusal("package_needs_scheme");
+    await refuseOnceClaimFiled(tx, a.id);
     const p = (await tx.select().from(ipdSchemePackages).where(eq(ipdSchemePackages.id, input.packageId)))[0];
     if (p === undefined || p.retiredAt !== null || p.scheme !== a.payerKind) throw new IpdRefusal("package_not_found");
     const dup = (await tx.select({ id: ipdAdmissionPackages.id }).from(ipdAdmissionPackages).where(and(
@@ -156,6 +168,7 @@ export async function removeSchemePackage(db: Db, actor: Actor, raw: unknown, op
     if (!PACKAGE_STATES.has(a.state)) throw new IpdRefusal("admission_wrong_state");
     const sel = (await tx.select().from(ipdAdmissionPackages).where(eq(ipdAdmissionPackages.id, input.selectionId)))[0];
     if (sel === undefined || sel.admissionId !== a.id || sel.removedAt !== null) throw new IpdRefusal("package_selection_not_found");
+    await refuseOnceClaimFiled(tx, a.id);
     await tx.update(ipdAdmissionPackages).set({ removedAt: at, removedBy: actor.id, removedReason: input.reason }).where(eq(ipdAdmissionPackages.id, sel.id));
     await appendEvent(tx, tpaPackageRemoved.make({
       payload: { admissionId: a.id, selectionId: sel.id, provenance: provenanceOf(actor) },
@@ -187,17 +200,32 @@ async function lockClaim(tx: Tx, claimId: string) {
   return { a, c };
 }
 
-/** The default amount a submission claims: Σ scheme packages when chosen, else the bill's payer portion. */
-export async function defaultClaimPaise(db: Db | Tx, claim: { admissionId: string; claimPaise: number }): Promise<number> {
-  const pk = await packageAmountOf(db, claim.admissionId);
-  return pk.count > 0 && pk.amountPaise > 0 ? pk.amountPaise : claim.claimPaise;
+/**
+ * The most a submission may claim, and its default (DECIDED $, #604 review). A scheme stay with packages claims the
+ * package amount ONCE across its bills (a final and supplementary bills each carry a claim row): Σ packages less what the
+ * stay's other live claims already filed. Any other claim: the bill's payer portion.
+ */
+export async function defaultClaimPaise(db: Db | Tx, claim: { id: string; admissionId: string; payerKind: string; claimPaise: number }): Promise<number> {
+  const pk = SCHEME_KINDS.has(claim.payerKind) ? await packageAmountOf(db, claim.admissionId) : { amountPaise: 0, count: 0 };
+  if (pk.count === 0) return claim.claimPaise;
+  const others = (await db.select({ id: ipdPayerClaims.id }).from(ipdPayerClaims).where(and(
+    eq(ipdPayerClaims.admissionId, claim.admissionId), inArray(ipdPayerClaims.status, ["filed", "settled", "rejected"]),
+  ))).map((c) => c.id).filter((id) => id !== claim.id);
+  const events = await claimEventsOf(db, others);
+  const filed = others.reduce((s, id) => s + (events.find((e) => e.claimId === id && e.kind === "submitted")?.claimedPaise ?? 0), 0);
+  return Math.max(0, pk.amountPaise - filed);
 }
 
 /** The claim documents still missing (DECIDED checklist `IPD_CLAIM_REQUIRED_DOCUMENTS`). */
-export async function missingClaimDocuments(db: Db | Tx, admissionId: string, claimId: string): Promise<string[]> {
-  const docs = await db.select({ kind: ipdTpaDocuments.kind, claimId: ipdTpaDocuments.claimId }).from(ipdTpaDocuments)
+export async function missingClaimDocuments(db: Db | Tx, admissionId: string, claim: { id: string; createdAt: Date }): Promise<string[]> {
+  const docs = await db.select({ kind: ipdTpaDocuments.kind, claimId: ipdTpaDocuments.claimId, attachedAt: ipdTpaDocuments.attachedAt })
+    .from(ipdTpaDocuments)
     .where(and(eq(ipdTpaDocuments.admissionId, admissionId), eq(ipdTpaDocuments.stage, "claim"), isNull(ipdTpaDocuments.detachedAt)));
-  const have = new Set(docs.filter((d) => d.claimId === null || d.claimId === claimId).map((d) => d.kind));
+  // #604 review: the final bill is THIS claim's bill — named to the claim, or attached once its bill was settled (a copy
+  // attached earlier is a draft, a voided bill's or another bill's of the stay).
+  const counts = (d: (typeof docs)[number]): boolean => d.claimId === claim.id
+    || (d.claimId === null && (d.kind !== "final_bill" || d.attachedAt.getTime() >= claim.createdAt.getTime()));
+  const have = new Set(docs.filter(counts).map((d) => d.kind));
   return IPD_CLAIM_REQUIRED_DOCUMENTS.filter((k) => !have.has(k));
 }
 
@@ -210,9 +238,11 @@ export async function submitClaim(db: Db, actor: Actor, raw: unknown, opts: Opts
     const { a, c } = await lockClaim(tx, input.claimId);
     // DECIDED: a pending claim is filed; a rejected one may be filed again (the appeal / resubmission).
     if (c.status !== "pending" && c.status !== "rejected") throw new IpdRefusal("claim_wrong_state", undefined, { status: c.status });
-    const missing = await missingClaimDocuments(tx, a.id, c.id);
+    const missing = await missingClaimDocuments(tx, a.id, c);
     if (missing.length > 0) throw new IpdRefusal("claim_documents_missing", undefined, { missing });
-    const claimedPaise = input.claimedPaise ?? await defaultClaimPaise(tx, c);
+    const capPaise = await defaultClaimPaise(tx, c);
+    const claimedPaise = input.claimedPaise ?? capPaise;
+    if (claimedPaise <= 0 || claimedPaise > capPaise) throw new IpdRefusal("claim_exceeds_claimable", undefined, { capPaise, claimedPaise });
     const eventId = newId();
     await tx.insert(ipdClaimEvents).values({
       id: eventId, claimId: c.id, admissionId: a.id, kind: "submitted", at: new Date(input.submittedAt), claimRef: input.claimRef ?? null,

@@ -955,6 +955,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   settlement net + TDS + Σ deductions = the claimed amount to the paisa, else `settlement_does_not_add_up` with `detail.gapPaise`;
   TDS typed, never computed; deductions never re-billed to the patient by the system. Ageing from the latest submission: card at
   30 days, hot at 60; a pending claim is late after 7 days (board only).
+- CLAIM GUARDS (#604 review, `tpa-claims.test.ts`): a scheme stay's packages are claimed ONCE across its bills (final +
+  supplementary each carry a claim row): the cap and default is Σ packages less what the stay's other filed / settled /
+  rejected claims claimed; any other claim is capped at its bill's payer portion (`claim_exceeds_claimable`, `detail.capPaise`).
+  Packages freeze once any claim of the stay is filed (`package_claim_filed`). A void refuses while the bill's claim is `filed`
+  (`payer_claim_filed`): withdrawing it would make the payer's settlement unrecordable and free the stay to claim again. A
+  `final_bill` document counts only if named to the claim or attached at or after the claim's bill was settled.
 - WHO (DECIDED, no new permission): `ipd.payer.manage` for the board, panel, queries, documents, packages, submit, reject and the
   `ipd.tpa_due` card; `ipd.payer.terms` for a settlement and the import. The card shows the admission number, never a name.
 - Acceptance: `acceptance/tpa.acceptance.test.ts` (i–ix); each guard was killed by a mutant before it went green.

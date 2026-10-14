@@ -36,7 +36,7 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   voucher IS issued the money is out and the void is refused `refund_issued`.
  * - Newest first: a supplementary bill must be voided before the bill it followed (`void_newer_bill_first`).
  * - ⚖ Refused while a gate pass is issued and not yet scanned (`gate_pass_live` — never stop a patient at the gate); allowed
- *   after the scan. Refused when the payer has settled the bill's claim (`payer_claim_settled`). Both before any write.
+ *   after the scan. Refused when the payer has settled the bill's claim (`payer_claim_settled`) or holds it (`payer_claim_filed`). Both before any write.
  * - Voiding reopens the running bill: the days the bill closed are posted again by the nightly job, `cancel_fit` proceeds,
  *   and the next settle composes ONE new bill from every line no live bill has taken.
  */
@@ -97,6 +97,11 @@ export async function voidBill(db: Db, actor: Actor, raw: unknown, opts: Opts = 
     const settledClaim = (await tx.select({ id: ipdPayerClaims.id }).from(ipdPayerClaims)
       .where(and(eq(ipdPayerClaims.finalBillId, bill.id), eq(ipdPayerClaims.status, "settled"))))[0];
     if (settledClaim !== undefined) throw new IpdError("payer_claim_settled", "the payer has settled this bill's claim", { claimId: settledClaim.id });
+    // #604 review: a claim filed with the payer (with_payer) — withdrawing it here would leave the payer's settlement
+    // unrecordable and free the stay to claim again on a new bill. The desk records the payer's rejection first.
+    const filedClaim = (await tx.select({ id: ipdPayerClaims.id }).from(ipdPayerClaims)
+      .where(and(eq(ipdPayerClaims.finalBillId, bill.id), eq(ipdPayerClaims.status, "filed"))))[0];
+    if (filedClaim !== undefined) throw new IpdError("payer_claim_filed", "this bill's claim is with the payer", { claimId: filedClaim.id });
 
     // The refund this bill raised: refused when the money is out; else cancelled by billing's own marker (fails closed).
     let refundCancelled = false;

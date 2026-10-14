@@ -17708,6 +17708,7 @@
         "bill_already_voided": "पहले ही रद्द",
         "gate_pass_live": "गेट पास जारी — निकास के बाद रद्द करें",
         "payer_claim_settled": "भुगतानकर्ता ने दावा निपटा दिया — रद्द नहीं",
+        "payer_claim_filed": "दावा भुगतानकर्ता के पास है — रद्द नहीं",
         "nothing_to_bill": "पूरक बिल के लिए कोई शुल्क नहीं"
       }
     },
@@ -19289,6 +19290,8 @@
       "package_needs_scheme": "पैकेज केवल पीएम-जय या राज्य योजना के लिए।",
       "package_not_found": "इस योजना में यह पैकेज नहीं।",
       "package_already_selected": "पहले से चुना है।",
+      "claim_exceeds_claimable": "इस बिल पर इतना क्लेम नहीं हो सकता।",
+      "package_claim_filed": "क्लेम दाखिल है — पैकेज तय हैं।",
       "time_in_future": "समय अभी से बाद का नहीं हो सकता।",
       "invalid_request": "फ़ील्ड जाँचें और फिर कोशिश करें।"
     }
