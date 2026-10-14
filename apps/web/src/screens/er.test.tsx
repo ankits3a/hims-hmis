@@ -1,0 +1,122 @@
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { setToken } from "../lib/api";
+import { renderWithRouter } from "../test-utils";
+import { ErBoardScreen } from "./er-board";
+import { ErDesk, istClockToIso } from "./er-desk";
+import type { ErBoard, ErDeskView, ErTile } from "@hmis/contracts";
+
+/**
+ * ER lane 1 (#808) — the ER desk (an unknown in three taps, the refusal in words, a stale band) and the tracking board
+ * (clocks in words, wall mode, no money anywhere). Server stubbed.
+ */
+const NOW = Date.now();
+const iso = (minutes: number): string => new Date(NOW + minutes * 60_000).toISOString();
+const json = (b: unknown, status = 200): Response => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
+const tile = (over: Partial<ErTile>): ErTile => ({
+  episodeId: "e1", episodeNo: "ER26-000101", label: "Unknown-0007", labelHi: "अज्ञात-0007", uhid: "HMS0000101", sex: "male",
+  ageBand: "young_adult", ageYears: null, state: "arrived", arrivalMode: "ambulance_108", arrivedAt: iso(-9), triageDueAt: iso(-4),
+  chips: ["unidentified", "ambulance"], ...over,
+});
+const BOARD: ErBoard = {
+  generatedAt: iso(0), wall: false,
+  stats: { inDepartment: 2, waitingTriage: 2, longestTriageWaitMinutes: 9, expected: 1, arrivalsToday: 7, broughtDeadToday: 0, bays: { free: 52, total: 60 } },
+  expected: [{ preAlertId: "p1", mode: "ambulance_108", expectedAt: iso(6), expiresAt: iso(126), count: 2, arrivedCount: 0, sex: "male", ageBand: null, complaint: "Road accident" }],
+  waiting: [tile({}), tile({ episodeId: "e2", episodeNo: "ER26-000102", label: "Ramesh Kumar", labelHi: null, ageYears: 41, ageBand: null, arrivedAt: iso(-2), triageDueAt: iso(3), chips: ["name_alert"], arrivalMode: "walk_in" })],
+  inTreatment: [],
+};
+const DESK: ErDeskView = {
+  generatedAt: iso(0), expected: [],
+  episodes: [{
+    episodeId: "e9", episodeNo: "ER26-000090", patientId: "01J00000000000000000000009", uhid: "HMS0000090", name: "Sita Devi", nameHi: null,
+    unidentified: false, sex: "female", ageBand: null, ageYears: 37, state: "arrived", arrivalMode: "walk_in", arrivedAt: iso(-30), registeredAt: iso(-12),
+    returnedWithin24h: false, band: { serial: "ER26-000090-1", stale: true }, identity: { mergeRequestId: "01J0000000000000000000000M", stage: "merged", trueUhid: "HMS0000090" },
+  }],
+};
+
+describe("ER lane 1 (#808) screens", () => {
+  const posted: { url: string; body: Record<string, unknown> }[] = [];
+  let refuse: Record<string, unknown> | null;
+  beforeEach(() => {
+    setToken("t");
+    posted.length = 0;
+    refuse = null;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (init?.method === "POST") {
+        posted.push({ url: raw, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+        if (refuse !== null) return json(refuse, 409);
+        return json({
+          episodeId: "e3", episodeNo: "ER26-000103", patientId: "01J00000000000000000000003", uhid: "HMS0000103", state: "arrived",
+          arrivedAt: iso(0), registeredAt: iso(0), returnedWithin24h: false, alias: "Unknown-0008", aliasHi: "अज्ञात-0008",
+          band: { bandId: "b3", bandSerial: "ER26-000103-1", printedAt: iso(0), band: {
+            name: "Unknown-0008", nameHi: "अज्ञात-0008", uhid: "HMS0000103", ageSex: "~30 y U", episodeNo: "ER26-000103", arrivedOn: "15 Oct 2026, 14:02",
+            allergyWords: ["Allergy: unknown"], alertWords: ["Unidentified"], size: "adult", site: "wrist", barcode: "ER26-000103-1", qr: "ERBAND1|ER26-000103-1|HMS0000103",
+          } },
+        });
+      }
+      if (raw.includes("/er/board")) return json(raw.includes("wall=1") ? { ...BOARD, wall: true } : BOARD);
+      if (raw.endsWith("/er/desk")) return json(DESK);
+      if (raw.endsWith("/auth/me")) {
+        return json({ actor: { type: "user", id: "me" }, permissions: { hospital: ["er.board.view", "er.arrival.register"], scoped: { department: {}, floor: {} } } });
+      }
+      return json([]);
+    }));
+  });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("an unknown patient is three taps — sex, age band, Register — and the band comes back to print", async () => {
+    renderWithRouter(<ErDesk />, "/er/desk");
+    const register = await screen.findByTestId("er-desk-register-unknown");
+    expect(register).toBeDisabled();
+    await userEvent.click(within(screen.getByTestId("er-desk-sex")).getByText("Not known"));
+    await userEvent.click(within(screen.getByTestId("er-desk-age")).getByText("Adult ~30"));
+    await userEvent.click(register);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]!.url).toContain("/er/arrivals/unidentified");
+    expect(posted[0]!.body).toMatchObject({ sex: "unknown", ageBand: "young_adult", arrivalMode: "walk_in" });
+    expect(Object.keys(posted[0]!.body).sort()).toEqual(["ageBand", "arrivalMode", "idempotencyKey", "sex"]);
+    const band = await screen.findByTestId("er-desk-band");
+    expect(band).toHaveTextContent("Unknown-0008");
+    expect(band).toHaveTextContent("Allergy: unknown · Unidentified");
+  });
+
+  it("a refusal shows its rule and its fix in words", async () => {
+    refuse = { statusCode: 409, code: "episode_already_open", message: "x", rule: "x", fix: "y", detail: { episodeId: "e9" } };
+    renderWithRouter(<ErDesk />, "/er/desk");
+    await userEvent.click(within(await screen.findByTestId("er-desk-sex")).getByText("Male"));
+    await userEvent.click(within(screen.getByTestId("er-desk-age")).getByText("Elderly ~70"));
+    await userEvent.click(screen.getByTestId("er-desk-register-unknown"));
+    expect(await screen.findByTestId("er-desk-refusal")).toHaveTextContent("Already in the ER — one open episode per patient.");
+    expect(screen.getByTestId("er-desk-refusal")).toHaveTextContent("Open current episode");
+  });
+
+  it("the desk row says when the band names someone else now, and that the patient was entered late", async () => {
+    renderWithRouter(<ErDesk />, "/er/desk");
+    const row = await screen.findByTestId("er-desk-row");
+    expect(row).toHaveTextContent("Band shows the old name");
+    expect(row).toHaveTextContent("Identified → HMS0000090");
+    expect(row).toHaveTextContent(/Came \d\d:\d\d · entered \d\d:\d\d/);
+  });
+
+  it("the board words its clocks: overdue triage, the ambulance's ETA, the count — and never money", async () => {
+    renderWithRouter(<ErBoardScreen />, "/er/board");
+    const tiles = await screen.findAllByTestId("er-board-tile");
+    expect(tiles[0]).toHaveTextContent("Unknown-0007");
+    expect(tiles[0]).toHaveTextContent(/Triage overdue \d+ min/);
+    expect(tiles[0]).toHaveTextContent("Unidentified");
+    expect(tiles[1]).toHaveTextContent(/Triage in \d+ min/);
+    expect(tiles[1]).toHaveTextContent("Name alert");
+    const exp = screen.getByTestId("er-board-expected");
+    expect(exp).toHaveTextContent(/In \d+ min/);
+    expect(exp).toHaveTextContent("0 of 2 came");
+    expect(document.body.textContent ?? "").not.toMatch(/₹|paid|deposit|bill/i);
+  });
+
+  it("a time typed at the desk is today's IST time, or yesterday's when it is later than now", () => {
+    const now = Date.parse("2026-06-01T10:00:00Z"); // 15:30 IST — a fixed instant passed in, not the clock read
+    expect(istClockToIso("15:10", now)).toBe("2026-06-01T09:40:00.000Z");
+    expect(istClockToIso("23:50", now)).toBe("2026-05-31T18:20:00.000Z");
+    expect(istClockToIso("abc", now)).toBeNull();
+  });
+});

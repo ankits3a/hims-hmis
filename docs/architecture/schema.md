@@ -26,6 +26,7 @@ flowchart LR
   diet[diet] --> resources[resources]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
+  emergency[emergency] --> patients[patients]
   ipd_copilot[ipd-copilot] --> ipd[ipd]
   ipd_copilot[ipd-copilot] --> patients[patients]
   ipd_emar[ipd-emar] --> ipd_rounds[ipd-rounds]
@@ -112,6 +113,7 @@ flowchart LR
 | `desk.ts` | kernel | `user_day_facts` |
 | `diet.ts` | module diet | `diet_consults`, `diet_meal_lines`, `diet_meal_lists`, `diet_meal_rounds`, `diet_npo`, `diet_orders` |
 | `documents.ts` | kernel | `patient_documents` |
+| `emergency.ts` | module emergency | `er_bands`, `er_episodes`, `er_pre_alerts` |
 | `episodes.ts` | kernel | `episode_series` |
 | `eventCursors.ts` | kernel | `event_cursors` |
 | `eventIdempotency.ts` | kernel | `event_idempotency` |
