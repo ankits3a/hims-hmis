@@ -101,7 +101,22 @@ export async function truncateAll(db: Db): Promise<void> {
     .join(" union all ");
   const dirty = (await db.execute(sql.raw(scan))).rows.map((row) => (row as { t: string }).t);
   if (dirty.length > 0) {
-    await db.execute(sql.raw(`truncate table ${dirty.map((t) => `"${t}"`).join(", ")} restart identity cascade`));
+    // IPD E4.3 review — append-only tables refuse TRUNCATE by an ALWAYS trigger with no session switch. The test owner
+    // turns those triggers off for this one statement inside one transaction (table DDL, the owner's power) and back on
+    // as ALWAYS; a failure rolls the DDL back with it.
+    const guarded = (await db.execute(sql`
+      select c.relname as t, tg.tgname as g from pg_trigger tg join pg_class c on c.oid = tg.tgrelid
+       where c.relnamespace = 'public'::regnamespace and not tg.tgisinternal and (tg.tgtype & 32) <> 0`)).rows as { t: string; g: string }[];
+    const stmt = `truncate table ${dirty.map((t) => `"${t}"`).join(", ")} restart identity cascade`;
+    if (guarded.length === 0) {
+      await db.execute(sql.raw(stmt));
+    } else {
+      await db.transaction(async (tx) => {
+        for (const r of guarded) await tx.execute(sql.raw(`alter table "${r.t}" disable trigger "${r.g}"`));
+        await tx.execute(sql.raw(stmt));
+        for (const r of guarded) await tx.execute(sql.raw(`alter table "${r.t}" enable always trigger "${r.g}"`));
+      });
+    }
   }
   // Only sequences OWNED BY a column (the `seq` bigserials) are reset. A standalone sequence such
   // as `uhid_seq` is a business counter a migration positioned deliberately (above the reserved

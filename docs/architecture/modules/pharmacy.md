@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/pharmacy/`
 
 - **Depends on modules:** `billing`, `formulary`, `materials`, `membership`, `opd`, `patients`, `tariff`
-- **Used by modules:** —
+- **Used by modules:** `ipd`
 - **Kernel used:** `approvals`, `auth`, `config`, `copilot`, `db`, `desk`, `documents`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `report`, `resources`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -122,6 +122,8 @@ Source: `apps/core/src/modules/pharmacy/`
 - `handover.ts`
   - `handOverDispense(db: Db, actor: Actor, decls: readonly OrderKindDecl[], dispenseId: string, input: HandoverInput, now: Date): Promise<Dispe…`
   - types: `HandoverInput`
+- `incidents.ts`
+  - `recordIncident(db: Db, actor: Actor, input: RecordIncidentInput, now: Date = new Date()): Promise<{ incidentId: string; no: string }>`
 - `label.ts`
   - `labelFor(db: Db, actor: Actor, dispenseId: string): Promise<LabelData>`
   - types: `LabelData`, `LabelLine`
@@ -231,6 +233,10 @@ Source: `apps/core/src/modules/pharmacy/`
 - `shelf-locations.ts`
   - `setShelfLocation(db: Db, actor: Actor, input: { storeResourceId: string; itemId: string; location: string }, now: Date): Promise<{ location…`
   - `shelfLocationsFor(db: Db | Tx, storeResourceId: string, itemIds: readonly string[]): Promise<Map<string, string>>`
+- `shelf.ts`
+  - `shelfByMedicine(db: Db | Tx): Promise<Map<string, ShelfEntry>>`
+  - `shelfItemForMedicine(db: Db | Tx, medicineId: string): Promise<ShelfEntry | null>`
+  - types: `ShelfEntry`
 - `summary.ts`
   - `counterSummary(db: Db, day: string): Promise<CounterSummary>`
   - types: `CounterSummary`

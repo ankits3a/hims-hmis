@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api, newIdempotencyKey } from "../lib/api";
 import { fmtPaise } from "../lib/format";
 import {
-  collectionQueue, deskFind, duplicateWarnings, istToday, labErrorText, labFeeState, orderableDetail, placeLabOrder,
+  IPD_ADMISSION_NO_RE, collectionQueue, deskFind, duplicateWarnings, istToday, labErrorText, labFeeState, orderableDetail, placeLabOrder,
   previewLabOrder,
 } from "../lib/lab-api";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,8 @@ export function moneyBlockFor(
   priced: WirePricedDraft | null, lines: readonly Line[], tender: "cash" | "card" | "upi", creditReason: string,
 ): Pick<DeskOrderRequest, "receipt" | "credit"> {
   if (priced === null) return {};
+  // #785 — an inpatient's tests go on the IPD running bill: no receipt, no credit, nothing taken here.
+  if (priced.runningBill === true) return {};
   const creditIds = new Set(lines.filter((l) => l.onCredit).map((l) => l.orderable.serviceId));
   const paidPaise = priced.lines
     .filter((l) => !creditIds.has(l.serviceId))
@@ -424,6 +426,8 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
   const paidPaise = money.receipt?.tenders[0]?.amountPaise ?? 0;
   const creditPaise = priced === null ? 0 : priced.totals.netPayablePaise - paidPaise;
   const anyCredit = orderableLines.some((l) => l.onCredit);
+  /** #785 — an inpatient on a live admission: the running bill takes the charge, so the seat offers no tender. */
+  const onRunningBill = priced?.runningBill === true || IPD_ADMISSION_NO_RE.test(selected?.visit?.encounterNo ?? "");
 
   const waiting = (portal.data ?? []).length;
 
@@ -906,7 +910,7 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
                   </select>
                 </label>
               )}
-              {!labFree && <label className="text-sm">
+              {!labFree && !onRunningBill && <label className="text-sm">
                 {t("lab.desk.tender")}
                 <select className="mt-1 w-full rounded border border-input px-2 py-1" value={tender}
                   onChange={(e) => setTender(e.target.value as typeof tender)}>
@@ -922,7 +926,10 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
             </label>
             </>)}
 
-            {priced !== null && (
+            {onRunningBill && (
+              <div className="rounded border border-border bg-card p-2 text-sm" data-testid="money">{t("lab.desk.runningBill")}</div>
+            )}
+            {priced !== null && !onRunningBill && (
               <div className="rounded border border-border bg-card p-2 text-sm" data-testid="money">
                 <p><span className="font-semibold">{t("lab.desk.collectNow")}:</span> {fmtPaise(paidPaise)}</p>
                 {anyCredit && (
@@ -994,9 +1001,10 @@ export function LabDesk({ mode = "desk" }: { mode?: "desk" | "counter" } = {}): 
             style={{ fontFamily: '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif', color: "var(--ink)", padding: "16px 18px", borderColor: "var(--green)", boxShadow: "0 0 0 3px var(--green-soft)", display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: "var(--green)" }}>✓ {t("lab.desk.placed")}: <span className="mo">{placed.orderNo}</span></div>
             <div style={{ fontSize: 13 }}>{t("lab.desk.visit")}: <span className="mo" style={{ fontWeight: 600 }}>{placed.encounterNo}</span>
-              {placed.invoice.netPayablePaise > 0 && <> · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}</>}
-              {placed.invoice.netPayablePaise === 0 && <> · {t("lab.desk.flow.noCharge")}</>}
-              {(placed.invoice.creditExtended || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</div>
+              {placed.invoice !== null && placed.invoice.netPayablePaise > 0 && <> · {t("lab.desk.invoice")}: {placed.invoice.invoiceNo}</>}
+              {placed.invoice === null && IPD_ADMISSION_NO_RE.test(placed.encounterNo) && <> · {t("lab.desk.runningBill")}</>}
+              {((placed.invoice === null && !IPD_ADMISSION_NO_RE.test(placed.encounterNo)) || placed.invoice?.netPayablePaise === 0) && <> · {t("lab.desk.flow.noCharge")}</>}
+              {(placed.invoice?.creditExtended === true || placedWithBalance.current) && <> · {t("lab.desk.creditExtended")}</>}</div>
             <div style={{ fontSize: 13, color: "var(--dim)" }}>{t("lab.desk.sentToCollection")}</div>
             <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
               {counter && <a className="sec" href="/lab/qcollect" data-testid="go-qcollect">{t("lab.counter.openQCollect")} →</a>}

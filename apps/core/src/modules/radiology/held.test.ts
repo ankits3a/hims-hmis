@@ -154,6 +154,17 @@ describe("the held patient copy and the ready message on payment (18-S RS9b)", (
     expect(await db.select().from(imagingReportHandovers)).toHaveLength(4);
   });
 
+  it("E4.2 (#734): an inpatient (IP admission number) study is never held — the IPD bill settles at discharge", async () => {
+    const s = await releasedUnpaid();
+    await db.update(imagingStudies).set({ encounterNo: "IP26-000123" }).where(eq(imagingStudies.id, s.studyId));
+    await hand({ reportId: s.reportId, collectorKind: "patient" });
+    expect(await db.select().from(imagingReportHandovers)).toHaveLength(1);
+    // Only the inpatient grammar: a look-alike number keeps the hold.
+    const other = await releasedUnpaid();
+    await db.update(imagingStudies).set({ encounterNo: "IPX2608290001" }).where(eq(imagingStudies.id, other.studyId));
+    await expect(hand({ reportId: other.reportId, collectorKind: "patient" })).rejects.toMatchObject({ code: "report_held_for_dues" });
+  });
+
   it("T1: paid in full at billing, the copy is handed over", async () => {
     const s = await releasedUnpaid();
     await pay(s.invoiceId!, s.netPayablePaise);

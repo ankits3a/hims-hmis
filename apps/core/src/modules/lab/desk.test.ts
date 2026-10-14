@@ -90,7 +90,7 @@ describe("the lab desk (17a T4)", () => {
   it("A3 (the other direction): the happy path commits placement and invoice together", async () => {
     const result = await place({ items: [{ serviceId: serviceIdForLabCode("CBC") }, { serviceId: serviceIdForLabCode("LFT") }] });
     expect(result.orderNo).toMatch(/^L\d{10}$/);
-    expect(result.invoice.invoiceId).toBeTruthy();
+    expect(result.invoice!.invoiceId).toBeTruthy();
     expect(await counts()).toEqual({ orders: 1, items: 2, labItems: 2, invoices: 1, placed: 1, desked: 1 });
 
     /** Every lab item points at the line that paid for it, and the two lines are DISTINCT. */
@@ -98,7 +98,7 @@ describe("the lab desk (17a T4)", () => {
     const lineIds = rows.map((r) => r.invoiceLineId);
     expect(new Set(lineIds).size).toBe(2);
     expect(lineIds.every((l) => l !== null)).toBe(true);
-    expect(rows.every((r) => r.invoiceId === result.invoice.invoiceId)).toBe(true);
+    expect(rows.every((r) => r.invoiceId === result.invoice!.invoiceId)).toBe(true);
     expect(rows.every((r) => r.chargeReason === "lab_desk")).toBe(true);
   });
 
@@ -119,7 +119,7 @@ describe("the lab desk (17a T4)", () => {
     const second = await desked("k-A1", body);
 
     expect(second.orderNo).toBe(first.orderNo);
-    expect(second.invoice.invoiceId).toBe(first.invoice.invoiceId);
+    expect(second.invoice!.invoiceId).toBe(first.invoice!.invoiceId);
     const c = await counts();
     expect([c.orders, c.invoices, c.placed]).toEqual([1, 1, 1]);
   });
@@ -595,12 +595,12 @@ describe("the reception seat (17c T1)", () => {
       receipt: { tenders: [{ mode: "cash", amountPaise: 30000 }] },
       credit: { reason: "rx_line_unpaid" },
     }));
-    expect(placed.invoice.creditExtended).toBe(false);
+    expect(placed.invoice!.creditExtended).toBe(false);
     const held = await deliveryAllowed(db, placed.orderId);
     expect([held.allowed, held.reason, held.outstandingPaise]).toEqual([false, "unpaid_invoices", 30000]);
     const cashier = await mkCashier(db, "lab.desk.cashier");
     await openSessionFor(db, cashier, 0);
-    await settleInvoice(db, cashier, fx.patientId, placed.invoice.invoiceId, 30000);
+    await settleInvoice(db, cashier, fx.patientId, placed.invoice!.invoiceId, 30000);
     expect((await deliveryAllowed(db, placed.orderId)).allowed).toBe(true);
   });
 

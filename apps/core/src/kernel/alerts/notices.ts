@@ -5,7 +5,7 @@ import { alerts } from "../db/schema";
 import { appendEvent } from "../events/append";
 import { alertRaised } from "./events";
 import type { Actor } from "@hmis/contracts";
-import type { Db } from "../db/client";
+import type { Db, Tx } from "../db/client";
 
 /**
  * ═══ A NOTICE THE CLOCK RAISES (owner 2026-10-07, "now move ahead") ═══
@@ -37,19 +37,25 @@ export type Notice = {
 
 /** True when the row was written (and announced); false when this key had already been raised for this person. */
 export async function raiseNotice(db: Db, n: Notice): Promise<boolean> {
-  return withTx(db, async (tx) => {
-    const inserted = await tx.insert(alerts).values({
-      id: newId(), userId: n.userId, kind: n.kind, title: n.title, body: n.body,
-      refType: n.refType, refId: n.refId, sourceEventId: n.sourceKey, createdAt: n.at,
-    }).onConflictDoNothing({ target: [alerts.sourceEventId, alerts.userId] }).returning({ id: alerts.id });
-    const row = inserted[0];
-    if (row === undefined) return false;
-    await appendEvent(tx, alertRaised.make({
-      actor: NOTICES_ACTOR,
-      payload: { alertId: row.id, userId: n.userId, kind: n.kind, refType: n.refType, refId: n.refId, sourceEventId: n.sourceKey },
-    }));
-    return true;
-  });
+  return withTx(db, (tx) => raiseNoticeIn(tx, n));
+}
+
+/**
+ * IPD E2.3 (#727) — the same, on the CALLER's transaction: a module whose own row and its notices must commit or roll
+ * back together (the deposit ladder's alert row and the notices it owes) raises them here.
+ */
+export async function raiseNoticeIn(tx: Tx, n: Notice): Promise<boolean> {
+  const inserted = await tx.insert(alerts).values({
+    id: newId(), userId: n.userId, kind: n.kind, title: n.title, body: n.body,
+    refType: n.refType, refId: n.refId, sourceEventId: n.sourceKey, createdAt: n.at,
+  }).onConflictDoNothing({ target: [alerts.sourceEventId, alerts.userId] }).returning({ id: alerts.id });
+  const row = inserted[0];
+  if (row === undefined) return false;
+  await appendEvent(tx, alertRaised.make({
+    actor: NOTICES_ACTOR,
+    payload: { alertId: row.id, userId: n.userId, kind: n.kind, refType: n.refType, refId: n.refId, sourceEventId: n.sourceKey },
+  }));
+  return true;
 }
 
 /** How a repeating notice paces itself: the newest row of this kind about this subject, and how many since `since`. */

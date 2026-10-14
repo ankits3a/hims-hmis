@@ -34,13 +34,21 @@ export type { EncounterResolver, IssueInvoiceInput, IssueInvoiceResult, InvoiceR
  * Reaching around this index into `receipts.ts` would be the §4 violation; widening the index by
  * one export is the sanctioned way, and it exposes nothing `patientBalance` did not already.
  */
-export { recordReceipt, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise, releaseInvoiceSurplusOnTx } from "./receipts";
-export type { PatientBalance, DueRow, ReceiptRow, AllocationRow } from "./receipts";
+export { recordReceipt, recordReceiptInTx, registerReceiptGuard, recordCashThresholdBlocked, allocateReceipt, reverseAllocation, patientBalance, listDues, markEnteredInError, advanceOf, receiptUnallocatedPaise, releaseInvoiceSurplusOnTx, invoiceAllocatedPaise } from "./receipts";
+export type { PatientBalance, DueRow, ReceiptRow, AllocationRow, ReceiptGuard } from "./receipts";
+export type { CashThresholdDetail } from "./cash-law";
+/** #785 — the episode charge sink: an inpatient admission bills its lab / imaging orders on its running bill. */
+export {
+  RUNNING_BILL_EPISODE_RES, episodeChargeSinkFor, episodeChargeStanding, isRunningBillEpisode, refuseRunningBillTender,
+  registerEpisodeChargeSink,
+} from "./episode-charges";
+export type { EpisodeChargeItem, EpisodeChargeSink, EpisodeReverseOutcome, EpisodeStanding } from "./episode-charges";
 export { issueCreditNote, listCreditNotes } from "./credit-notes";
 /** PHARMACY P12 — the leakage triangle's billed leg (read-only). */
 export { creditedInvoiceLineIdsBetween, invoiceLineCredits } from "./credit-notes";
 export type { IssueCreditNoteInput, IssueCreditNoteResult, CreditNoteKind } from "./credit-notes";
-export { requestRefund, issueRefundVoucher, payRefundVoucher } from "./refunds";
+export { requestRefund, issueRefundVoucher, payRefundVoucher, registerAdvanceRefundListener, cancelRefundRequestOnTx } from "./refunds";
+export type { AdvanceRefundListener } from "./refunds";
 export type { RefundKind, RefundMethod, RefundVoucherRow } from "./refunds";
 /**
  * PLAN 09 / DD19 — the ONE new export this phase opens, and the only way the accrual consumer

@@ -1,4 +1,4 @@
-// events.ts — the module's complete catalog: EXACTLY these two names (§10.6 discipline)
+// events.ts — the module's complete catalog: EXACTLY these four names (§10.6 discipline)
 import { z } from "zod";
 import { defineEvent } from "@hmis/contracts";
 const MODULE = "tariff";
@@ -19,4 +19,14 @@ export const tariffRevisionAppliedDirectly = defineEvent("tariff.revision_applie
 }));
 export const configValidated = defineEvent("config.validated", MODULE, z.object({
   scope: z.literal("tariff"), ok: z.boolean(), errorCount: z.number().int().nonnegative(), caSigned: z.boolean(),
+}));
+
+/**
+ * GO-LIVE SCREENS — one per service the bulk switch-on (`switchOnServices`) turns on: the record of who put which
+ * price live. The single `PATCH /tariff/services/:id` writes no event (only `updated_by`/`updated_at`); the bulk
+ * door writes this one per service, in the same transaction as the flag.
+ */
+export const tariffServiceSwitchedOn = defineEvent("tariff.service_switched_on", MODULE, z.object({
+  serviceId: z.string().min(1), code: z.string().min(1),
+  versionId: z.string().min(1), versionNo: z.number().int().positive(), pricePaise: z.number().int().positive(),
 }));
