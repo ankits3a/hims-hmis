@@ -8,7 +8,7 @@ import { requireEnv } from "../src/kernel/config";
 import { createRole, grantPermissionToRole, syncPermissions } from "../src/kernel/auth/permissions";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { ALL_MANIFESTS } from "../src/kernel/modules/manifests";
-import { copilotAsks, events } from "../src/kernel/db/schema";
+import { alerts, copilotAsks, events } from "../src/kernel/db/schema";
 import { ROLE_MODEL } from "../scripts/seed-roles";
 import { setupTestDb, truncateAll } from "./helpers/db";
 import { mkUser, seedOpdBase } from "./helpers/opd";
@@ -173,5 +173,9 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
     expect(modelCalls).toBe(1);
 
     expect((await health(owner.token)).body).toMatchObject({ capped: true, modelCalls: 1, spendInr: 0.02, cappedAsks: 2 });
+
+    // #583 — crossing 80 % of the cap warned the owner on the bell, once, and nobody else.
+    const bell = (await db.select().from(alerts)).filter((a) => a.kind === "copilot.spend_near_cap");
+    expect(bell.map((a) => a.userId)).toEqual([owner.id]);
   });
 });

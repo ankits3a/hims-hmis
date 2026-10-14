@@ -1699,7 +1699,8 @@ timings, model calls and estimated AI spend for a day and never a per-person lis
 draft or global; `copilot.halt.clear` (owner, duty_manager) clears read, act and draft; and
 `copilot.halt.clear_global` is held by `owner` alone. Each halt and clear is an audit event naming who.
 When the day's estimated AI spend reaches ₹5,000 (`COPILOT_DAILY_CAP_INR`), the copilot answers from its
-phrasebook only until midnight IST and the health page says so.
+phrasebook only until midnight IST and the health page says so. At 80 % of the cap every `owner` gets one bell
+notice for that IST day (#583).
 
 **My duties, covers and swaps (20-U U5c/U6).** `/roster/my-duties` is a resident's phone: today, the
 rest of the week, and on every duty still ahead *"I can't do this"* — which lists who could take it
