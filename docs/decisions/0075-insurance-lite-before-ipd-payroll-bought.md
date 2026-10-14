@@ -34,6 +34,18 @@ goes live, a TPA desk adds what a corporate hospital's TPA desk works from every
   recorded;
 - a TPA copilot card for pre-auths ageing and enhancements due.
 
+Money rules of the desk (standard defaults, owner 2026-10-15, built in PR #822):
+- An enhancement falls due at 90 % of the approved amount used.
+- PM-JAY multiple packages pay 100 % / 50 % / 25 % (highest first).
+- A package rate is fixed when chosen; a re-import never re-prices a stay.
+- Lines above a package amount are absorbed by the hospital, never billed to the patient.
+- TDS is typed from the settlement advice and counts as received.
+- Payer deductions are recorded with a reason and never re-billed to the patient by the system; the billing
+  manager decides on recovery.
+- A settlement must add up to the paisa (net + TDS + deductions = claimed).
+- The default claim amount is the package total for a scheme stay, otherwise the payer part of the bill; the desk
+  may override it.
+
 Portal filing stays manual (insurer and scheme portals). Automating the portals is a later phase.
 
 ### Payroll is bought
