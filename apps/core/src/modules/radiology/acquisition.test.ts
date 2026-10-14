@@ -1,4 +1,6 @@
 import { eq } from "drizzle-orm";
+import { newId } from "@hmis/contracts";
+import { ipdAdmissions } from "../../kernel/db/schema";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import {
   placeAndCreateStudy, setupRadiologyFixture, studyTypeRow,
@@ -219,6 +221,42 @@ describe("acquisition: the patient is on the table (18a T7)", () => {
     expect(device!.status).toBe("available");
     const [item] = await db.select().from(orderItems).where(eq(orderItems.id, study.itemId));
     expect(item!.status).toBe("placed");
+  });
+
+  /* ═══════════════════════ E4.2 (#734) — a LIVE inpatient's scan never waits on the cashier ═══════════════════════ */
+
+  const admission = async (admissionNo: string, state: string) => {
+    const at = new Date(NOW.getTime() - 86_400_000);
+    await db.insert(ipdAdmissions).values({
+      id: newId(), patientId: fx.patientId, workflowInstanceId: newId(), state, source: "direct", consultantId: "u-fake-consultant",
+      requestedClass: "general", isolation: "none", icu: false, requestedAt: at, expiresAt: at, requestedBy: "u-fake-desk",
+      payerKind: "cash", admissionNo, admittedAt: at, ...(state === "discharged" ? { endedAt: NOW } : {}), updatedAt: at,
+    } as never);
+  };
+
+  it("E4.2: a self-pay inpatient's routine scan starts on a LIVE admission — `ipd_admission`, no invoice line", async () => {
+    await admission("IP26-000501", "admitted");
+    const study = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ encounterNo: "IP26-000501" }).where(eq(imagingStudies.id, study.studyId));
+    const result = await start(study.studyId);
+    expect(result.authorisedBy).toBe("ipd_admission");
+  });
+
+  it("E4.2: an ENDED admission's number authorises nothing — `payment_required`", async () => {
+    await admission("IP26-000502", "discharged");
+    const study = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ encounterNo: "IP26-000502" }).where(eq(imagingStudies.id, study.studyId));
+    await expect(start(study.studyId)).rejects.toMatchObject({ code: "payment_required" });
+    // Nor does a look-alike number with no admission behind it.
+    const other = await readyStudy("USG-ABDO", "usg");
+    await db.update(imagingStudies).set({ encounterNo: "IP26-999999" }).where(eq(imagingStudies.id, other.studyId));
+    await expect(start(other.studyId)).rejects.toMatchObject({ code: "payment_required" });
+  });
+
+  it("E4.2: an OPD self-pay routine scan is still refused `payment_required` while an inpatient admission is live", async () => {
+    await admission("IP26-000503", "admitted");
+    const study = await readyStudy("USG-ABDO", "usg");
+    await expect(start(study.studyId)).rejects.toMatchObject({ code: "payment_required" });
   });
 
   /* ═══════════════════════ A2 — THE REGISTER ANSWERS FIRST ═══════════════════════ */

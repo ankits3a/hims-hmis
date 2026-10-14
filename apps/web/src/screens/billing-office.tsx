@@ -17,6 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FeeSwitches } from "./billing-office/fee-switches";
 import { ConsultPrices } from "./billing-office/consult-prices";
+import { IpdRateCard } from "./billing-office/ipd-rate-card";
+import { TariffVersionActions } from "./billing-office/tariff-version-actions";
+import { IpdSwitchOn } from "./billing-office/ipd-switch-on";
 import { useAuth } from "../lib/auth";
 import { dayWords, fetchBillingNeeds } from "../lib/billing-office-api";
 import { istClock, istDateLabel } from "./desk-one/model";
@@ -1399,7 +1402,7 @@ export function BillingOffice(): React.ReactElement {
             {page !== null && (page.key === "fees"
               ? <><FeeSwitches /><UpiPayee /></>
               : page.key === "prices"
-              ? <ConsultPrices />
+              ? <><ConsultPrices /><IpdRateCard /><TariffVersionActions /><IpdSwitchOn /></>
               : <OfficePages key={page.key} page={page.key} onHand={(id) => go("today", undefined, id)} onGo={(v, pg) => go(v, pg)} />)}
           </div>
         </div>

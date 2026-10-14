@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/tariff/`
 · Notes: [MAP.md](../../../apps/core/src/modules/tariff/MAP.md)
 
 - **Depends on modules:** —
-- **Used by modules:** `billing`, `lab`, `membership`, `ot`, `partners`, `pharmacy`, `radiology`
+- **Used by modules:** `billing`, `ipd`, `lab`, `membership`, `ot`, `partners`, `pharmacy`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `events`, `modules`, `search`, `tokens`, `workflow`
 
 ## Public API (`index.ts`), by declaring file
@@ -36,6 +36,7 @@ Source: `apps/core/src/modules/tariff/`
   - `configValidated`
   - `tariffRevisionApplied`
   - `tariffRevisionAppliedDirectly`
+  - `tariffServiceSwitchedOn`
 - `gst-config.ts`
   - `getGstSettings(db: Db): Promise<GstSettings>`
   - `listGstCategories(db: Db): Promise<GstCategoryConfig[]>`
@@ -43,6 +44,19 @@ Source: `apps/core/src/modules/tariff/`
   - `upsertGstSettings(tx: Tx, actor: Actor, patch: Partial<GstSettings>): Promise<void>`
 - `gst.ts`
   - `computeGst(args: { cfg: GstCategoryConfig; settings: GstSettings; line: InvoiceLineInput; taxableBasePaise: number; qty: number; }): Priced…`
+- `ipd-rate-card.ts`
+  - `IPD_GST_CATEGORY`
+  - `IPD_IMPORT_NOTE`
+  - `IPD_RATED_CLASSES: readonly IpdBedClass[]`
+  - `IPD_TARIFF_CSV_COLUMNS`
+  - `importIpdTariff(db: Db, actor: Actor, csvText: string, opts: { apply: boolean; at?: Date; notes?: string }): Promise<IpdImportReport>`
+  - `ipdRateCardGaps(db: Db, opts: { at: Date; tariffVersionId?: string }): Promise<IpdRateCard>`
+  - `ipdRateCardWarnings(db: Db, at: Date): Promise<ConfigError[]>`
+  - `ipdServiceCategory(cls: IpdBedClass, component: IpdRateComponent): string`
+  - `ipdServiceName(cls: IpdBedClass, component: IpdRateComponent): string`
+  - `parseIpdTariffCsv(text: string): IpdTariffParse`
+  - `resolveIpdImportActor(db: Db, username: string): Promise<Actor>`
+  - types: `IpdImportItem`, `IpdImportReport`, `IpdRateCard`, `IpdRateCardClass`, `IpdRateCell`, `IpdRateCellState`, `IpdTariffParse`, `IpdTariffRate`, `IpdTariffRowError`, `IpdTariffUnmapped`
 - `manifest.ts`
   - `tariffManifest: ModuleManifest`
 - `money.ts`
@@ -52,6 +66,7 @@ Source: `apps/core/src/modules/tariff/`
   - `inclusiveTaxHead(inclusivePaise: number, rateBps: number): number`
   - `percentAmount(grossPaise: number, bps: number): number`
   - `roundTotalToRupee(totalPaise: number): { roundedPaise: number; roundingPaise: number }`
+  - `rupeesTextToPaise(text: string): number | null`
   - `taxHead(basePaise: number, rateBps: number): number`
 - `pricing.ts`
   - `priceInvoiceLines(ctx: PricingContext, lines: InvoiceLineInput[]): PricedLine[]`
@@ -71,6 +86,11 @@ Source: `apps/core/src/modules/tariff/`
 - `simulation.ts`
   - `simulateRevision(currentCtx: PricingContext, draftCtx: PricingContext, lines: InvoiceLineInput[]): ImpactReport`
   - types: `ImpactByService`, `ImpactLineDelta`, `ImpactReport`, `ImpactTotals`
+- `switch-on.ts`
+  - `SWITCH_ON_MAX`
+  - `listVersionsForOffice(db: Db, opts: { withNames: boolean }): Promise<OfficeVersion[]>`
+  - `switchOnServices(db: Db, actor: Actor, serviceIds: readonly string[], at: Date = new Date()): Promise<SwitchOnResult>`
+  - types: `OfficeVersion`, `SwitchOnResult`
 - `tariff.module.ts`
   - `class TariffModule`
 - `types.ts`
@@ -83,7 +103,6 @@ Source: `apps/core/src/modules/tariff/`
   - `activePricePaise(db: Db | Tx, serviceId: string, at: Date): Promise<number | null>`
   - `createDraftVersion(tx: Tx, actor: Actor, input?: { notes?: string; copyFromVersionId?: string }): Promise<{ versionId: string; versionNo: n…`
   - `getVersion(db: Db, versionId: string): Promise<{ version: TariffVersionRow; items: TariffItemRow[] } | null>`
-  - `listVersions(db: Db): Promise<TariffVersionRow[]>`
   - `resolveActiveTariffVersion(db: Db, at: Date): Promise<{ versionId: string; versionNo: number } | null>`
   - `setTariffItem(tx: Tx, actor: Actor, versionId: string, serviceId: string, pricePaise: number): Promise<void>`
   - `submitVersion(tx: Tx, actor: Actor, versionId: string, requestNote?: string): Promise<{ approvalId: string; instanceId: string }>`
@@ -94,8 +113,8 @@ Source: `apps/core/src/modules/tariff/`
 
 Foreign keys into: —
 
-## HTTP routes (18)
+## HTTP routes (20)
 
-- `tariff.controller.ts` — 18: `/tariff/gst`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
+- `tariff.controller.ts` — 20: `/tariff/gst`, `/tariff/ipd-rate-card`, `/tariff/price-list`, `/tariff/rules`, `/tariff/services`, `/tariff/versions`
 
 Full list: `grep -rnE "@(Get|Post|Put|Patch|Delete)\(" apps/core/src/modules/tariff`

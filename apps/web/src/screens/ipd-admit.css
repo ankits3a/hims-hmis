@@ -1,0 +1,172 @@
+/*
+ * E1.2 — ADMIT, ONE FLOWING SHEET (spec §4.9 B), a port of design board B (Admit.dc.html) on the paper-pine tokens
+ * (`styles/paper-pine.css`, `.ipda`). 1920×1080 first; at 1366×768 the step grid drops to one column beside the
+ * estimate; under 900 px (a tablet held upright) the estimate goes below. Touch targets ≥ 44 px.
+ */
+.ipda {
+  --paper: #f4f7f4; --card: #ffffff; --ink: #132420; --line: #dfe7e1; --dim: #5c6f66; --wash: #eef3ef;
+  --green: #0e6b4e; --green-soft: rgba(14, 107, 78, .08); --green-line: rgba(14, 107, 78, .35); --blue: #1f5f8b;
+  --gold: #8a5a0e; --gold-soft: rgba(221, 143, 28, .14); --red: #b23a30; --red-soft: rgba(178, 58, 48, .08);
+  --red-line: rgba(178, 58, 48, .4); --agent: #132420; --agent-fg: #d9efe4; --agent-dim: #7fa392; --mint: #35c48f;
+  min-height: 100vh; box-sizing: border-box; background: var(--paper); color: var(--ink);
+  font-family: "IBM Plex Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+  padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 16px;
+}
+.ipda * { box-sizing: border-box; }
+.ipda .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.ipda .strong { font-weight: 600; color: var(--ink); }
+.ipda .ink { color: var(--ink); }
+.ipda .dim { color: var(--dim); }
+.ipda .small { font-size: 12px; }
+.ipda .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ipda button, .ipda select, .ipda input { font-family: inherit; }
+.ipda button { cursor: pointer; }
+.ipda button:focus-visible, .ipda input:focus-visible, .ipda select:focus-visible, .ipda a:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ipda h2 { margin: 0; font-size: 15px; font-weight: 600; }
+
+.ipda-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.ipda-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.ipda-title h1 { margin: 0; font-size: 26px; font-weight: 600; }
+.ipda-title span { font-size: 14px; color: var(--dim); }
+.ipda-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ipda-tools select { min-height: 44px; max-width: 360px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0 10px; font-size: 14px; color: var(--ink); }
+.ipda-btn { min-height: 44px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; text-decoration: none; }
+.ipda-btn.sm { min-height: 36px; padding: 0 10px; font-size: 13px; }
+.ipda-btn.pri { background: var(--green); border-color: var(--green); color: #fff; font-weight: 600; align-self: flex-start; }
+.ipda-btn.danger { border-color: var(--red-line); color: var(--red); background: var(--red-soft); font-weight: 600; }
+.ipda-btn.quiet { background: var(--paper); }
+.ipda-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.ipda-card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ipda-empty { border-style: dashed; gap: 4px; }
+
+/* identity header */
+.ipda-patient { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 14px; }
+.ipda-photo { width: 56px; height: 56px; border-radius: 8px; background: var(--line); color: #3d5a50; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 18px; flex: none; }
+.ipda-who { display: flex; flex-direction: column; gap: 4px; flex: 1 1 280px; min-width: 0; font-size: 13px; }
+.ipda-name { font-size: 20px; font-weight: 600; }
+.ipda-name .dim { font-weight: 400; font-size: 16px; }
+.ipda-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.ipda-chip { font-size: 12px; border: 1px solid var(--line); background: var(--wash); border-radius: 4px; padding: 2px 8px; }
+.ipda-chip.alert { font-weight: 600; color: var(--red); border-color: var(--red-line); background: var(--red-soft); }
+.ipda-found { font-size: 12px; color: var(--dim); border: 1px dashed #c9d6ce; border-radius: 6px; padding: 6px 10px; }
+
+/* the sheet and the estimate */
+.ipda-cols { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+.ipda-main { flex: 999 1 600px; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); align-items: start; gap: 12px; }
+.ipda-side { flex: 1 1 320px; min-width: 0; max-width: 420px; display: flex; flex-direction: column; gap: 12px; }
+@media (max-width: 1500px) { .ipda-main { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .ipda-side { max-width: none; } }
+
+.ipda-step-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.ipda-step-head h2 { display: flex; align-items: center; gap: 8px; }
+.ipda-num { width: 22px; height: 22px; border-radius: 50%; background: var(--wash); color: var(--dim); border: 1px solid var(--line); font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
+.ipda-num.done { background: var(--green); color: #fff; border-color: var(--green); }
+.ipda-aside-note { font-size: 12px; color: var(--dim); }
+.ipda-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 16px; }
+.ipda-facts div { display: flex; flex-direction: column; gap: 2px; }
+.ipda-facts span { font-size: 12px; color: var(--dim); }
+.ipda-facts b { font-size: 14px; font-weight: 500; }
+
+.ipda-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; align-self: flex-start; }
+.ipda-seg button { min-height: 40px; padding: 0 12px; border: 0; border-right: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 13px; }
+.ipda-seg button:last-child { border-right: 0; }
+.ipda-seg button[aria-checked="true"] { background: var(--ink); color: #fff; }
+.ipda-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ipda-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+.ipda-inline input, .ipda-row select { min-height: 40px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; font-size: 14px; color: var(--ink); background: var(--card); min-width: 0; }
+.ipda-inline.wide input { width: 320px; max-width: 100%; }
+.ipda-tick { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; min-height: 44px; }
+.ipda-tick input { width: 20px; height: 20px; accent-color: var(--green); }
+.ipda-note { font-size: 13px; border-radius: 6px; padding: 8px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ipda-note.ok { background: var(--green-soft); color: var(--green); font-weight: 600; }
+.ipda-note.warn { background: var(--gold-soft); color: var(--gold); font-weight: 600; }
+
+.ipda-classes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.ipda-class { text-align: left; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: var(--card); color: var(--ink); border: 1px solid var(--line); font-size: 12px; min-height: 96px; }
+.ipda-class.on { border: 2px solid var(--green); box-shadow: 0 0 0 3px rgba(14, 107, 78, .12); }
+.ipda-class-top { display: flex; justify-content: space-between; gap: 8px; width: 100%; font-size: 14px; }
+.ipda-class-top .dim { font-size: 12px; }
+.ipda-class-dep { font-size: 13px; font-weight: 600; }
+.ipda-class .ipda-note { padding: 4px 6px; font-size: 12px; }
+
+/* Bed Flow: the dark proposal panel */
+.ipda-flow { background: var(--agent); color: var(--agent-fg); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ipda-flow-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--agent-dim); }
+.ipda-flow-head i { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); }
+.ipda-flow-empty { font-size: 13px; color: var(--agent-dim); }
+.ipda-flow-bed { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-radius: 6px; padding: 8px 10px; background: transparent; box-shadow: inset 0 0 0 1px #2c4a3f; border: 0; color: var(--agent-fg); text-align: left; min-height: 48px; }
+.ipda-flow-bed > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.ipda-flow-bed b { font-size: 14px; }
+.ipda-flow-bed .why { font-size: 12px; color: #9fc2b2; }
+.ipda-flow-bed .tag { font-size: 12px; font-weight: 600; color: var(--mint); white-space: nowrap; }
+.ipda-flow-bed.on { background: #1e3a31; box-shadow: inset 0 0 0 1px var(--mint); }
+
+.ipda-lang { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.ipda-lang button { min-height: 36px; padding: 0 12px; border: 0; background: var(--card); color: var(--ink); font-size: 13px; }
+.ipda-lang button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+.ipda-admit { grid-column: 1 / -1; min-height: 56px; border: 0; border-radius: 8px; background: var(--green); color: #fff; font-size: 17px; font-weight: 600; }
+.ipda-admit.danger { background: var(--red); }
+.ipda-admit:disabled { opacity: .45; cursor: not-allowed; }
+.ipda-refusal { grid-column: 1 / -1; border: 1px solid var(--red-line); background: var(--red-soft); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; color: var(--red); font-size: 13px; }
+.ipda-fix { font-weight: 600; }
+
+.ipda-done { grid-column: 1 / -1; background: var(--green-soft); border-color: var(--green-line); }
+.ipda-done-head { font-size: 16px; color: var(--green); }
+.ipda-done > span { font-size: 13px; display: flex; gap: 8px; }
+.ipda-done > span i { font-style: normal; color: var(--green); font-weight: 600; }
+.ipda-done > span.todo i { color: var(--gold); }
+.ipda-done > span.later { color: var(--dim); }
+.ipda-band-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+.ipda-line { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.ipda-line span:first-child { color: var(--dim); }
+.ipda-line.total { font-size: 14px; font-weight: 600; border-top: 1px solid var(--line); padding-top: 8px; }
+.ipda-line.total span:first-child, .ipda-line.strong span:first-child { color: var(--ink); }
+.ipda-line.strong { font-weight: 600; }
+.ipda-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--dim); }
+.ipda-check i { font-style: normal; width: 18px; text-align: center; }
+.ipda-check.ok { color: var(--ink); }
+.ipda-check.ok i { color: var(--green); font-weight: 600; }
+
+/* forms: new request, emergency, downtime */
+.ipda-form { max-width: 1100px; }
+.ipda-er { border-color: var(--red-line); }
+.ipda-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 14px; align-items: end; }
+.ipda-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--dim); }
+.ipda-grid label.ipda-tick { flex-direction: row; font-size: 14px; color: var(--ink); }
+.ipda-grid label.wide { grid-column: span 2; }
+.ipda-grid input, .ipda-grid select { min-height: 44px; border: 1px solid var(--line); border-radius: 6px; padding: 0 10px; font-size: 14px; color: var(--ink); background: var(--card); }
+.ipda-find { position: relative; max-width: 520px; }
+.ipda-find input { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px; font-size: 14px; }
+.ipda-hits { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.ipda-hits button { width: 100%; text-align: left; min-height: 44px; padding: 0 12px; border: 0; background: transparent; font-size: 14px; display: flex; gap: 10px; align-items: center; }
+.ipda-hits li + li button { border-top: 1px solid var(--line); }
+.ipda-picked { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
+.ipda-advice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.ipda-chipbtn { min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid var(--line); background: var(--wash); font-size: 13px; }
+.ipda-chipbtn.on { border-color: var(--green); background: var(--green-soft); color: var(--green); font-weight: 600; }
+@media (max-width: 700px) { .ipda-grid label.wide { grid-column: auto; } .ipda-main { grid-template-columns: minmax(0, 1fr); } }
+
+/*
+ * THE BAND — white thermal wristband, adult 25 × 250 mm (paediatric 20 × 200, neonatal 13 × 150). Identity, every
+ * alert in words, a Code 128 of the serial and a QR. On paper only the band prints (`.ipda-print-only`).
+ */
+.ipda-band { width: 250mm; height: 25mm; background: #fff; color: #000; border: 1px solid #c9d6ce; border-radius: 3mm; display: flex; align-items: center; gap: 3mm; padding: 1.5mm 3mm 1.5mm 30mm; font-family: "IBM Plex Sans", system-ui, sans-serif; overflow: hidden; }
+.ipda-band.size-paediatric { width: 200mm; height: 20mm; padding-left: 22mm; }
+.ipda-band.size-neonatal { width: 150mm; height: 13mm; padding-left: 14mm; }
+.ipda-band-id { display: flex; flex-direction: column; gap: .3mm; font-size: 2.6mm; line-height: 1.15; flex: 1 1 auto; min-width: 0; }
+.ipda-band-name { font-size: 3.6mm; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ipda-band-alerts { font-weight: 700; }
+.ipda-band-bar { width: 42mm; height: 12mm; flex: none; }
+.ipda-band svg:last-child { width: 18mm; height: 18mm; flex: none; }
+.ipda-print-only { display: none; }
+@media print {
+  @page { size: 260mm 30mm; margin: 2mm; }
+  body * { visibility: hidden !important; }
+  .ipda-print-only, .ipda-print-only * { visibility: visible !important; }
+  .ipda-print-only { display: block; position: fixed; left: 0; top: 0; }
+  .ipda-print-only .ipda-band { border: 0; }
+}
+.ipda-dep-line { font-size: 14px; }

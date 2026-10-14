@@ -27,7 +27,7 @@ export type { PatientSummary } from "./registration";
  * that meant: registration has been collecting policy numbers at the counter since FD-12 and the
  * product could not show one to anybody afterwards.
  */
-export { listPatientCoverages } from "./coverages";
+export { coverageSumInsuredPaise, listPatientCoverages } from "./coverages";
 export type { CoverageRow } from "./coverages";
 /**
  * `addAllergy` is exported for 18a-iii T2: a contrast reaction writes the patient's allergy in the

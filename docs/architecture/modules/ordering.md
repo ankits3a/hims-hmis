@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/ordering/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ordering/MAP.md)
 
 - **Depends on modules:** `billing`, `lab`, `opd`, `radiology`
-- **Used by modules:** —
+- **Used by modules:** `ipd`
 - **Kernel used:** `auth`, `db`, `events`, `modules`, `orders`, `tokens`
 - **Subscribes to events:** `consultationCompleted`, `paperPrescriptionTranscribed`
 
@@ -46,8 +46,8 @@ Source: `apps/core/src/modules/ordering/`
   - `searchOrderableTests(exec: Db | Tx, q: string, limit = 30): Promise<OrderableTest[]>`
   - types: `OrderableTest`, `RoutedTests`, `TestDepartment`
 - `seam.ts`
-  - `orderTests(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: OrderTestsInput, now: Date = new Date()): Promise<OrderTestsResult>`
-  - types: `OrderTestsInput`, `OrderTestsResult`, `SkippedDepartment`
+  - `orderTests(db: Db, actor: Actor, decls: readonly OrderKindDecl[], input: OrderTestsInput, now: Date = new Date(), opts: OrderTestsOpts = {}…`
+  - types: `OrderTestsInput`, `OrderTestsOpts`, `OrderTestsResult`, `SkippedDepartment`
 
 ## Tables (`kernel/db/schema/ordering.ts`)
 

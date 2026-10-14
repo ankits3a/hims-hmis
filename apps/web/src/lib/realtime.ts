@@ -13,10 +13,18 @@ export class RealtimeClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly handlers = new Map<string, Set<Handler>>();
   private readonly listeners = new Set<(connected: boolean) => void>();
+  private readonly pongs = new Set<() => void>();
   constructor(private readonly url: string, private readonly token: () => string | null) {}
 
   onStatus(l: (connected: boolean) => void): () => void { this.listeners.add(l); return () => { this.listeners.delete(l); }; }
   get connected(): boolean { return this.authed; }
+  /**
+   * E1.1 (ipd-beds) — a heartbeat for a wall display that runs for days (§4.10 edge 3). A socket that dies
+   * without a close frame (cable pulled, Wi-Fi gone) never fires `onclose`; a board that pings and hears no
+   * pong can say "Offline" within seconds instead of showing stale data as live.
+   */
+  ping(): void { if (this.authed) this.send({ type: "ping" }); }
+  onPong(l: () => void): () => void { this.pongs.add(l); return () => { this.pongs.delete(l); }; }
 
   subscribe(topics: string[], h: Handler): () => void {
     const fresh: string[] = [];
@@ -52,6 +60,8 @@ export class RealtimeClient {
         const topics = [...this.handlers.keys()];
         if (topics.length > 0) this.send({ type: "subscribe", topics });
         for (const l of this.listeners) l(true);
+      } else if (f.type === "pong") {
+        for (const l of this.pongs) l();
       } else if (f.type === "event") {
         for (const h of this.handlers.get(f.topic) ?? []) h(f);
       }

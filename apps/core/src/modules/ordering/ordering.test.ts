@@ -80,12 +80,12 @@ describe("ordering: the lab side (decision 0067)", () => {
     const result = await orderFreeTests(db, v.encounterId, fx.pathologist.doctorId, AT, fx.decls);
     expect(result?.lab?.itemIds).toHaveLength(2);
     expect(result?.routed.outside).toEqual([serviceIdForOutsideCode("ECG")]);
-    expect(result?.lab?.invoice.netPayablePaise).toBe(0);
+    expect(result?.lab?.invoice?.netPayablePaise).toBe(0);
     const items = await itemsOf(v.visitNo);
     expect(items.map((i) => i.serviceId).sort()).toEqual([serviceIdForLabCode("CBC"), serviceIdForLabCode("HBA1C")].sort());
     /** Placed by the system under the free-test protocol, for the doctor who advised. */
     expect(new Set(items.map((i) => `${i.kind}/${i.orderedByType}/${i.authority}`))).toEqual(new Set(["lab/system/protocol"]));
-    const [inv] = await db.select().from(invoices).where(eq(invoices.id, result!.lab!.invoice.invoiceId));
+    const [inv] = await db.select().from(invoices).where(eq(invoices.id, result!.lab!.invoice!.invoiceId));
     expect(inv).toBeDefined();
     const ev = await db.select().from(events).where(eq(events.name, "ordering.free_tests_ordered"));
     expect(ev.map((e) => e.payload)).toEqual([{ encounterNo: v.visitNo, labTests: 2, imagingTests: 0, outsideTests: 1, skipped: 0 }]);

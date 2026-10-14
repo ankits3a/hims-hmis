@@ -4,7 +4,9 @@ export type TariffErrorCode =
   | "gst_config_missing" | "gst_config_invalid" | "settings_missing"
   | "unknown_version" | "version_not_active" | "not_draft" | "not_submitted" | "empty_version"
   | "approval_not_granted" | "approval_rejected" | "approval_subject_mismatch" | "sod_drafter_activator" | "effective_from_not_monotone"
-  | "unknown_rule" | "invalid_rule_params";
+  | "unknown_rule" | "invalid_rule_params"
+  // GO-LIVE SCREENS — the bulk switch-on refuses a service with no price in the version in force.
+  | "service_unpriced" | "not_ipd_service";
 
 export class TariffError extends Error {
   constructor(readonly code: TariffErrorCode, message?: string) {
