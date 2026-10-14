@@ -3,43 +3,53 @@ import { IPD_RATED_CLASSES, IPD_TARIFF_CSV_COLUMNS } from "../../src/modules/tar
 import type { IpdBedClass, IpdRateComponent } from "@hmis/contracts";
 
 /**
- * ═══ UAT SAMPLE IPD TARIFF — NOT HOSPITAL RATES ═══
+ * ═══ THE SUBSIDISED MEDICAL-COLLEGE IPD RATE CARD — DECISION 0074 (owner 2026-10-14) ═══
  *
- * PLACEHOLDER data that lets staging price an admission from end to end, so the owner can walk admit → charges →
- * bill → discharge. It is NOT a money ruling and NOT the incumbent's tariff. The real rate card arrives as the
- * incumbent's export through `scripts/import-ipd-tariff.ts`. Every row's `incumbent_name` and the draft version's
- * note carry the marker below, so nobody can mistake these numbers for real ones.
+ * The owner's interim inpatient daily rates for staging, until the incumbent's IPD tariff export arrives through
+ * `scripts/import-ipd-tariff.ts` and replaces them. Rupees per day, one explicit cell per rated class × component —
+ * no derived numbers. `overflow` is never emitted: it bills as general.
  *
- * The numbers are round placeholders scaled by class (general room 1000, ICU room 6000), with the other components
- * as fixed fractions of the room rent. The table is written as TypeScript rather than a .csv because the runtime image
- * ships `dist/` only: a sibling .csv file would be missing on UAT.
+ * The table is TypeScript, not a .csv, because the runtime image ships `dist/` only.
  */
-export const UAT_SAMPLE_MARKER = "UAT SAMPLE — not hospital rates";
+export const UAT_SAMPLE_MARKER = "Subsidised medical-college rate card (decision 0074)";
 
-/** The draft tariff version's note. The importer stores it on the version the billing office sees. */
-export const UAT_SAMPLE_TARIFF_NOTE = `${UAT_SAMPLE_MARKER}: IPD placeholder rate card for staging walk-throughs (scripts/stage-ipd-setup.ts)`;
+/** The previous placeholder's marker — still recognised, so the existing staging draft is updated in place. */
+export const LEGACY_SAMPLE_MARKERS: readonly string[] = ["UAT SAMPLE — not hospital rates"];
 
-/** Room rent in rupees per class (placeholder). */
-const ROOM_RUPEES: Record<IpdBedClass, number> = {
-  general: 1000, semi_private: 1500, private: 2500, deluxe: 3500, suite: 5000,
-  hdu: 4000, icu: 6000, nicu: 6000, picu: 6000, ldr: 2000, daycare: 1000, emergency: 1500,
-  overflow: 1000, // never emitted: overflow bills as general (the importer refuses a row for it)
+/** The draft tariff version's note. */
+export const UAT_SAMPLE_TARIFF_NOTE =
+  `${UAT_SAMPLE_MARKER}: interim IPD daily rates, owner 2026-10-14; to be replaced by the incumbent tariff export (scripts/stage-ipd-setup.ts)`;
+
+type Row = Record<IpdRateComponent, number>;
+/** Rupees per day: room / nursing / rmo / visit / cross_visit (decision 0074). */
+export const RATE_CARD_RUPEES: Record<Exclude<IpdBedClass, "overflow">, Row> = {
+  general:      { room: 150,  nursing: 100, rmo: 50,  visit: 100, cross_visit: 150 },
+  semi_private: { room: 600,  nursing: 200, rmo: 100, visit: 250, cross_visit: 300 },
+  private:      { room: 1200, nursing: 300, rmo: 150, visit: 400, cross_visit: 500 },
+  deluxe:       { room: 1800, nursing: 400, rmo: 200, visit: 500, cross_visit: 600 },
+  suite:        { room: 2500, nursing: 500, rmo: 250, visit: 600, cross_visit: 700 },
+  hdu:          { room: 1000, nursing: 400, rmo: 200, visit: 300, cross_visit: 400 },
+  icu:          { room: 1500, nursing: 500, rmo: 300, visit: 400, cross_visit: 500 },
+  nicu:         { room: 1200, nursing: 500, rmo: 300, visit: 400, cross_visit: 500 },
+  picu:         { room: 1200, nursing: 500, rmo: 300, visit: 400, cross_visit: 500 },
+  ldr:          { room: 500,  nursing: 200, rmo: 100, visit: 200, cross_visit: 300 },
+  daycare:      { room: 150,  nursing: 100, rmo: 50,  visit: 100, cross_visit: 150 },
+  emergency:    { room: 300,  nursing: 150, rmo: 100, visit: 200, cross_visit: 300 },
 };
 
-/** Each component as a fraction of the room rent (placeholder). */
-const SHARE: Record<IpdRateComponent, number> = { room: 1, nursing: 0.4, rmo: 0.2, visit: 0.5, cross_visit: 0.5 };
-
 export function uatSampleTariffRows(): { bedClass: IpdBedClass; component: IpdRateComponent; rupees: number }[] {
-  return IPD_RATED_CLASSES.flatMap((bedClass) => IPD_RATE_COMPONENTS.map((component) => ({
-    bedClass, component, rupees: Math.round((ROOM_RUPEES[bedClass] * SHARE[component]) / 100) * 100,
-  })));
+  return IPD_RATED_CLASSES.flatMap((bedClass) => {
+    const row = RATE_CARD_RUPEES[bedClass as Exclude<IpdBedClass, "overflow">];
+    if (row === undefined) throw new Error(`decision 0074 rate card has no row for rated class ${bedClass}`);
+    return IPD_RATE_COMPONENTS.map((component) => ({ bedClass, component, rupees: row[component] }));
+  });
 }
 
 /** The importer's CSV: one row per rated class × component, each named with the marker. */
 export function uatSampleTariffCsv(): string {
   const lines = [IPD_TARIFF_CSV_COLUMNS.join(",")];
   for (const r of uatSampleTariffRows()) {
-    const code = `UATS-${r.bedClass}-${r.component}`.toUpperCase();
+    const code = `D0074-${r.bedClass}-${r.component}`.toUpperCase();
     lines.push([code, `"${UAT_SAMPLE_MARKER} (${r.bedClass} ${r.component})"`, r.bedClass, r.component, String(r.rupees)].join(","));
   }
   return `${lines.join("\n")}\n`;

@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { IPD_RATE_COMPONENTS } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "./helpers/db";
-import { events, roleAssignments, services, tariffVersions } from "../src/kernel/db/schema";
+import { events, roleAssignments, services, tariffItems, tariffVersions } from "../src/kernel/db/schema";
 import { createUser } from "../src/kernel/auth/identity";
 import { assignRole, createRole } from "../src/kernel/auth/permissions";
 import { roleAssigned } from "../src/kernel/auth/events";
@@ -9,8 +9,8 @@ import { withTx } from "../src/kernel/db/client";
 import { listDefinitions } from "../src/kernel/workflow/definitions";
 import { getApprovalType } from "../src/kernel/approvals/types";
 import { ADMISSION_WORKFLOW_DEF_KEY, IPD_APPROVAL_TYPE_KEYS } from "../src/modules/ipd";
-import { IPD_RATED_CLASSES, parseIpdTariffCsv, upsertGstCategory } from "../src/modules/tariff";
-import { TESTING_ROLES, assertStagingOnly, grantTestingRoles, stageIpdSetup } from "../scripts/stage-ipd-setup";
+import { IPD_RATED_CLASSES, importIpdTariff, parseIpdTariffCsv, setDraftVersionNotes, upsertGstCategory } from "../src/modules/tariff";
+import { TESTING_ROLES, assertStagingOnly, ensureRateCardDraft, grantTestingRoles, stageIpdSetup } from "../scripts/stage-ipd-setup";
 import { UAT_SAMPLE_MARKER, uatSampleTariffCsv } from "../scripts/fixtures/ipd-uat-sample-tariff";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -31,14 +31,14 @@ describe("stage-ipd-setup — the refusals", () => {
   });
 });
 
-describe("the UAT sample tariff", () => {
+describe("the decision-0074 rate card", () => {
   it("parses clean, covers every rated class × every component, and every row carries the marker", () => {
     const parsed = parseIpdTariffCsv(uatSampleTariffCsv());
     expect(parsed.errors).toEqual([]);
     expect(parsed.rates).toHaveLength(IPD_RATED_CLASSES.length * IPD_RATE_COMPONENTS.length);
     expect(parsed.rates.every((r) => r.incumbentName.startsWith(UAT_SAMPLE_MARKER))).toBe(true);
-    expect(parsed.rates.find((r) => r.bedClass === "general" && r.component === "room")?.pricePaise).toBe(100000);
-    expect(parsed.rates.find((r) => r.bedClass === "icu" && r.component === "room")?.pricePaise).toBe(600000);
+    expect(parsed.rates.find((r) => r.bedClass === "general" && r.component === "room")?.pricePaise).toBe(15000);
+    expect(parsed.rates.find((r) => r.bedClass === "icu" && r.component === "room")?.pricePaise).toBe(150000);
   });
 });
 
@@ -87,6 +87,33 @@ describe("stageIpdSetup against a database", () => {
     expect((await db.select().from(tariffVersions).where(inArray(tariffVersions.status, ["submitted", "activated"])))).toEqual([]);
     expect((await listDefinitions(db, ADMISSION_WORKFLOW_DEF_KEY)).filter((d) => d.status === "active")).toEqual([]);
     expect((await db.select().from(services).where(eq(services.active, true))).filter((s) => s.code.startsWith("IPD_"))).toEqual([]);
+  });
+
+  it("(c) brings an earlier placeholder DRAFT to the rate card in place — rates and note — and leaves a submitted one alone", async () => {
+    const legacyNote = "UAT SAMPLE — not hospital rates: IPD placeholder rate card for staging walk-throughs (scripts/stage-ipd-setup.ts)";
+    // an earlier placeholder draft: every rate x2 of the card, the old note
+    const placeholder = uatSampleTariffCsv().split("\n").map((l, i) => {
+      if (i === 0 || l === "") return l;
+      const f = l.split(","); f[f.length - 1] = String(Number(f[f.length - 1]) * 2); return f.join(",");
+    }).join("\n");
+    const r = await importIpdTariff(db, { type: "user", id: "seed-ipd-stage" }, placeholder, { apply: true, notes: legacyNote });
+    expect(r.ok).toBe(true);
+    const first = await ensureRateCardDraft(db);
+    expect(first.action).toBe("updated");
+    expect(first.lines[0]).toContain(`${IPD_RATED_CLASSES.length * IPD_RATE_COMPONENTS.length} of ${IPD_RATED_CLASSES.length * IPD_RATE_COMPONENTS.length} rates rewritten, note updated`);
+    const [v] = await db.select().from(tariffVersions);
+    expect(v!.status).toBe("draft");
+    expect(v!.notes).toContain(UAT_SAMPLE_MARKER);
+    const items = await db.select({ code: services.code, paise: tariffItems.pricePaise }).from(tariffItems)
+      .innerJoin(services, eq(services.id, tariffItems.serviceId)).where(eq(tariffItems.versionId, v!.id));
+    const price = new Map(items.map((i) => [i.code, i.paise]));
+    expect(price.get("IPD_ROOM_GENERAL")).toBe(15000);
+    expect(price.get("IPD_ROOM_ICU")).toBe(150000);
+    expect(price.get("IPD_CROSS_VISIT_SUITE")).toBe(70000);
+    expect((await ensureRateCardDraft(db)).action).toBe("already");
+    await withTx(db, (tx) => tx.update(tariffVersions).set({ status: "submitted" }).where(eq(tariffVersions.id, v!.id)));
+    expect(await ensureRateCardDraft(db)).toMatchObject({ action: "already" });
+    await expect(withTx(db, (tx) => setDraftVersionNotes(tx, { type: "user", id: "x" }, v!.id, "changed"))).rejects.toMatchObject({ code: "not_draft" });
   });
 
   it("(d) grants the testing roles to the ONE all-roles account only, with a role.assigned event each; a rerun grants nothing; a tie refuses", async () => {

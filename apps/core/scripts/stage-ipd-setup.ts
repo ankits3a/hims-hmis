@@ -7,8 +7,10 @@ import { assignRole } from "../src/kernel/auth/permissions";
 import { seedSodPairs } from "../src/kernel/auth/sod";
 import { createDraft, listDefinitions } from "../src/kernel/workflow/definitions";
 import { ADMISSION_WORKFLOW_DEF_KEY, IPD_APPROVAL_TYPE_KEYS, admissionWorkflowDefinition, registerIpdApprovalTypes } from "../src/modules/ipd";
-import { importIpdTariff } from "../src/modules/tariff";
-import { UAT_SAMPLE_MARKER, UAT_SAMPLE_TARIFF_NOTE, uatSampleTariffCsv } from "./fixtures/ipd-uat-sample-tariff";
+import { ipdRateServiceCode } from "@hmis/contracts";
+import { services, tariffItems } from "../src/kernel/db/schema";
+import { importIpdTariff, setDraftVersionNotes, setTariffItem } from "../src/modules/tariff";
+import { LEGACY_SAMPLE_MARKERS, UAT_SAMPLE_MARKER, UAT_SAMPLE_TARIFF_NOTE, uatSampleTariffCsv, uatSampleTariffRows } from "./fixtures/ipd-uat-sample-tariff";
 import { assertSyntheticDataAllowed } from "./synthetic-door";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../src/kernel/db/client";
@@ -59,7 +61,7 @@ export function assertStagingOnly(env: NodeJS.ProcessEnv): void {
 export type StageIpdReport = {
   approvalTypes: { registered: string[]; alreadyPresent: string[]; billVoid: string };
   workflow: { action: "drafted" | "already"; definitionId: string; version: number; status: string };
-  tariff: { action: "drafted" | "already" | "refused"; lines: string[] };
+  tariff: { action: "drafted" | "updated" | "already" | "refused"; lines: string[] };
   testingRoles: { action: "granted" | "already" | "refused"; granted: string[]; already: string[]; missingRoles: string[]; why?: string };
 };
 
@@ -120,31 +122,62 @@ export async function stageIpdSetup(db: Db): Promise<StageIpdReport> {
     workflow = { action: "drafted", definitionId: d.definitionId, version: d.version, status: "draft" };
   }
 
-  // c. the UAT SAMPLE tariff — a draft version
-  const pending = await db.select({ versionNo: tariffVersions.versionNo, status: tariffVersions.status, notes: tariffVersions.notes })
-    .from(tariffVersions).where(inArray(tariffVersions.status, ["draft", "submitted", "activated"]));
-  const sample = pending.find((v) => (v.notes ?? "").includes(UAT_SAMPLE_MARKER));
-  let tariff: StageIpdReport["tariff"];
-  if (sample !== undefined) {
-    tariff = { action: "already", lines: [`tariff version ${sample.versionNo} (${sample.status}) is the UAT sample already`] };
-  } else {
-    const r = await importIpdTariff(db, SETUP_ACTOR, uatSampleTariffCsv(), { apply: true, notes: UAT_SAMPLE_TARIFF_NOTE });
-    if (!r.ok) {
-      tariff = { action: "refused", lines: r.errors.map((e) => `${e.line === null ? "file" : `line ${e.line}`}: ${e.problem}`) };
-    } else {
-      tariff = {
-        action: "drafted",
-        lines: [
-          `${r.items.length} sample rates, copied from version ${r.copiedFromVersionNo ?? "none in force"}`,
-          `services created INACTIVE: ${r.servicesCreated.length}`,
-          r.draft === null ? "no draft written" : `DRAFT tariff version ${r.draft.versionNo} (${r.draft.versionId})`,
-        ],
-      };
-    }
-  }
+  // c. the decision-0074 IPD rate card — a draft version (an earlier placeholder draft is brought up to it in place)
+  const tariff = await ensureRateCardDraft(db);
   // d. the testing roles for the one all-roles account
   const testingRoles = await grantTestingRoles(db);
   return { approvalTypes: { registered, alreadyPresent: all.filter((k) => !registered.includes(k)), billVoid }, workflow, tariff, testingRoles };
+}
+
+/**
+ * Step c. A version carrying the rate card's marker (or an earlier placeholder's):
+ * - still a DRAFT → its IPD rates and note are brought to the fixture with `setTariffItem` / `setDraftVersionNotes`
+ *   (draft-only writers), only where they differ; nothing changed → "already";
+ * - submitted or activated → left alone ("already"): what went for approval is never rewritten.
+ * None → the importer drafts one.
+ */
+export async function ensureRateCardDraft(db: Db): Promise<StageIpdReport["tariff"]> {
+  const markers = [UAT_SAMPLE_MARKER, ...LEGACY_SAMPLE_MARKERS];
+  const versions = await db.select({ id: tariffVersions.id, versionNo: tariffVersions.versionNo, status: tariffVersions.status, notes: tariffVersions.notes })
+    .from(tariffVersions).where(inArray(tariffVersions.status, ["draft", "submitted", "activated"]));
+  const sample = versions.filter((v) => markers.some((m) => (v.notes ?? "").includes(m))).sort((a, b) => b.versionNo - a.versionNo)[0];
+  if (sample !== undefined && sample.status !== "draft") {
+    return { action: "already", lines: [`tariff version ${sample.versionNo} (${sample.status}) carries the rate card; not rewritten`] };
+  }
+  if (sample !== undefined) {
+    const rows = uatSampleTariffRows().map((r) => ({ code: ipdRateServiceCode(r.bedClass, r.component), paise: r.rupees * 100 }));
+    const svc = await db.select({ id: services.id, code: services.code }).from(services).where(inArray(services.code, rows.map((r) => r.code)));
+    const idOf = new Map(svc.map((x) => [x.code, x.id]));
+    const missing = rows.filter((r) => !idOf.has(r.code)).map((r) => r.code);
+    if (missing.length > 0) return { action: "refused", lines: [`draft ${sample.versionNo} lacks services: ${missing.join(", ")}`] };
+    const have = new Map((await db.select({ serviceId: tariffItems.serviceId, pricePaise: tariffItems.pricePaise }).from(tariffItems)
+      .where(eq(tariffItems.versionId, sample.id))).map((i) => [i.serviceId, i.pricePaise]));
+    let changed = 0;
+    await withTx(db, async (tx) => {
+      for (const r of rows) {
+        const id = idOf.get(r.code) as string;
+        if (have.get(id) === r.paise) continue;
+        await setTariffItem(tx, SETUP_ACTOR, sample.id, id, r.paise);
+        changed += 1;
+      }
+      if (sample.notes !== UAT_SAMPLE_TARIFF_NOTE) await setDraftVersionNotes(tx, SETUP_ACTOR, sample.id, UAT_SAMPLE_TARIFF_NOTE);
+    });
+    const noteChanged = sample.notes !== UAT_SAMPLE_TARIFF_NOTE;
+    return {
+      action: changed > 0 || noteChanged ? "updated" : "already",
+      lines: [`DRAFT tariff version ${sample.versionNo}: ${changed} of ${rows.length} rates rewritten${noteChanged ? ", note updated" : ""}`],
+    };
+  }
+  const r = await importIpdTariff(db, SETUP_ACTOR, uatSampleTariffCsv(), { apply: true, notes: UAT_SAMPLE_TARIFF_NOTE });
+  if (!r.ok) return { action: "refused", lines: r.errors.map((e) => `${e.line === null ? "file" : `line ${e.line}`}: ${e.problem}`) };
+  return {
+    action: "drafted",
+    lines: [
+      `${r.items.length} rates, copied from version ${r.copiedFromVersionNo ?? "none in force"}`,
+      `services created INACTIVE: ${r.servicesCreated.length}`,
+      r.draft === null ? "no draft written" : `DRAFT tariff version ${r.draft.versionNo} (${r.draft.versionId})`,
+    ],
+  };
 }
 
 async function main(): Promise<void> {

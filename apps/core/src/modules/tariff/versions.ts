@@ -98,6 +98,21 @@ export async function setTariffItem(
 }
 
 /**
+ * The note of a DRAFT version (draft only, like `setTariffItem`): a draft whose items are rewritten in place says what it
+ * now holds. A submitted or activated version's note is part of what was approved and never changes.
+ */
+export async function setDraftVersionNotes(tx: Tx, actor: Actor, versionId: string, notes: string): Promise<void> {
+  const rows = await tx.select({ status: tariffVersions.status }).from(tariffVersions).where(eq(tariffVersions.id, versionId));
+  const version = rows[0];
+  if (!version) throw new TariffError("unknown_version", `unknown tariff version ${versionId}`);
+  if (version.status !== "draft") {
+    throw new TariffError("not_draft", `version ${versionId} is ${version.status}, not draft — its note is fixed`);
+  }
+  void actor; // the version row carries no updated_by; the items written alongside carry the actor
+  await tx.update(tariffVersions).set({ notes }).where(and(eq(tariffVersions.id, versionId), eq(tariffVersions.status, "draft")));
+}
+
+/**
  * Class-A per §11.11: requires >=1 item (empty_version, checked BEFORE the flip so a refused
  * submit leaves the version untouched), flips draft -> submitted with a conditional UPDATE,
  * then requestApproval on the SAME tx (request-on-submit, D5).
