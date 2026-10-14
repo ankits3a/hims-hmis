@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet } from "./sheet";
 import type { ColdDecision, WireColdExcursion, WireColdUnit } from "../../lib/cold-chain-api";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ PHARMACY STAGE D3 — THE FRIDGE TEMPERATURE LOG (an office page under Stock) ═══
@@ -28,7 +29,7 @@ import type { ColdDecision, WireColdExcursion, WireColdUnit } from "../../lib/co
 const areaCls = "min-h-16 w-full rounded-md border bg-background p-2 text-sm";
 const selectCls = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 const slotCls: Record<string, string> = { done: "pill on", due: "pill gd", missed: "pill rd", upcoming: "pill", not_due: "pill" };
-const when = (iso: string): string => new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+const when = (iso: string): string => new Date(iso).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 
 export function ColdChainView(): React.ReactElement {
   const { t } = useTranslation();

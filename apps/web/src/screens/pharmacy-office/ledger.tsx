@@ -6,6 +6,7 @@ import { downloadCsv, toCsv } from "../../lib/payables-api";
 import { qtyText } from "../../lib/returns-api";
 import { fetchLedgerItems, fetchStockLedger } from "../../lib/stock-ledger-api";
 import type { LedgerDocLink, WireLedgerRow, WireStockLedger } from "../../lib/stock-ledger-api";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ GAP-CLOSURE A5 — STOCK → STOCK LEDGER: "WHERE DID THESE 50 STRIPS GO" ═══
@@ -19,8 +20,8 @@ import type { LedgerDocLink, WireLedgerRow, WireStockLedger } from "../../lib/st
  *
  * Keys: / item · ↑↓ ⏎ pick · X CSV. No filter tabs: the filters are the question's own words.
  */
-const TIME = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
-const DAY = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" });
+const TIME = { format: (d: Date | number): string => new Intl.DateTimeFormat(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(d) };
+const DAY = { format: (d: Date | number): string => new Intl.DateTimeFormat(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }).format(d) };
 const CLOCK = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false });
 
 type Item = { id: string; code: string; name: string; baseUom: string };
