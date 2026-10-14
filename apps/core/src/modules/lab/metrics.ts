@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import type { SQL } from "drizzle-orm";
+import { EMPTY_TIMING, STATS, istRange, num, rowsOf, timing } from "../../kernel/report/metrics";
+import type { MetricsRow } from "../../kernel/report/metrics";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -52,15 +53,7 @@ export type LabMetrics = {
   }[];
 };
 
-/** Midnight IST opening `day`, as an instant. */
-export function istDayStart(day: string): Date {
-  return new Date(`${day}T00:00:00+05:30`);
-}
-
-/** `[start, end)` for the inclusive IST day range. */
-export function istRange(from: string, to: string): { start: Date; end: Date } {
-  return { start: istDayStart(from), end: new Date(istDayStart(to).getTime() + 86_400_000) };
-}
+export { istDayStart, istRange } from "../../kernel/report/metrics";
 
 /** The order's source, for an `orders` row aliased `o`. */
 const SOURCE_OF_O = sql.raw(`case
@@ -69,18 +62,8 @@ const SOURCE_OF_O = sql.raw(`case
   when o.encounter_no like 'V%' then 'opd'
   else 'ipd' end`);
 
-type Row = Record<string, unknown>;
-const rowsOf = async (db: Db, q: SQL): Promise<Row[]> => (await db.execute(q)).rows as Row[];
-const num = (v: unknown): number => Number(v ?? 0);
-const mins = (v: unknown): number | null => (v === null || v === undefined ? null : Math.round(Number(v) * 10) / 10);
-const EMPTY: LabTiming = { n: 0, medianMin: null, p90Min: null };
-const timing = (r: Row | undefined): LabTiming =>
-  r === undefined ? EMPTY : { n: num(r["n"]), medianMin: mins(r["p50"]), p90Min: mins(r["p90"]) };
-
-/** median, p90 and n of `d` (an interval-valued column) per group, nulls dropped. */
-const STATS = sql.raw(`count(*) as n,
-  percentile_cont(0.5) within group (order by extract(epoch from d) / 60) as p50,
-  percentile_cont(0.9) within group (order by extract(epoch from d) / 60) as p90`);
+type Row = MetricsRow;
+const EMPTY: LabTiming = EMPTY_TIMING;
 
 export async function labMetrics(db: Db, range: { from: string; to: string }): Promise<LabMetrics> {
   const { start, end } = istRange(range.from, range.to);

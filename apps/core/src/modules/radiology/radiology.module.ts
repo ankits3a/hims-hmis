@@ -24,6 +24,7 @@ import { RadiologyReadingController } from "./radiology-reading.controller";
 import { RadiologyReleaseController } from "./radiology-release.controller";
 import { RadiologySupervisorController } from "./radiology-supervisor.controller";
 import { RadiologyReadingRoomController } from "./radiology-reading-room.controller";
+import { RadiologyMetricsController } from "./radiology-metrics.controller";
 
 /**
  * PLAN 18a T3 — the radiology module's Nest wiring.
@@ -80,6 +81,8 @@ import { RadiologyReadingRoomController } from "./radiology-reading-room.control
     RadiologySupervisorController,
     // 18-S RS8c — the reading room, part 3: follow-ups, peer review, night & outside reads.
     RadiologyReadingRoomController,
+    // #777 — imaging numbers: counts and turnaround times, read-only.
+    RadiologyMetricsController,
   ],
 })
 export class RadiologyModule implements OnModuleInit {

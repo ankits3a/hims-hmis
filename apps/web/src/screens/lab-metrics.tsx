@@ -30,7 +30,7 @@ export type WireLabMetrics = {
   }[];
 };
 
-type Period = "today" | "week" | "month" | "custom";
+export type Period = "today" | "week" | "month" | "custom";
 const PERIODS: readonly Period[] = ["today", "week", "month", "custom"];
 
 const day = (iso: string): Date => new Date(`${iso}T00:00:00Z`);
@@ -53,7 +53,7 @@ const PARAM_STEPS = ["receivedToEntered", "enteredToVerified"] as const;
 const th: React.CSSProperties = { textAlign: "left", padding: "0 14px 6px 0", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "6px 14px 6px 0", borderBottom: "1px solid var(--line2, var(--line))", whiteSpace: "nowrap" };
 
-function Time({ t }: { t: LabTiming }): React.ReactElement {
+export function Time({ t }: { t: LabTiming }): React.ReactElement {
   if (t.n === 0) return <span style={{ color: "var(--faint)" }}>—</span>;
   return (
     <span>
@@ -63,7 +63,7 @@ function Time({ t }: { t: LabTiming }): React.ReactElement {
   );
 }
 
-function Table({ title, head, rows, testId }: {
+export function Table({ title, head, rows, testId }: {
   title: string; head: string[]; rows: React.ReactNode[][]; testId: string;
 }): React.ReactElement {
   const { t } = useTranslation();
@@ -88,26 +88,28 @@ function Table({ title, head, rows, testId }: {
   );
 }
 
-export function LabMetrics(): React.ReactElement {
-  const { t } = useTranslation();
+/** The period a numbers screen reads: a preset ending today (IST) or a custom From–To. */
+export type PeriodState = {
+  today: string; period: Period; setPeriod: (p: Period) => void;
+  custom: { from: string; to: string }; setCustom: React.Dispatch<React.SetStateAction<{ from: string; to: string }>>;
+  range: { from: string; to: string }; valid: boolean;
+};
+
+export function usePeriodRange(): PeriodState {
   const today = todayIst();
   const [period, setPeriod] = useState<Period>("today");
   const [custom, setCustom] = useState<{ from: string; to: string }>({ from: today, to: today });
   const range = period === "custom" ? custom : rangeFor(period, today);
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(range.from) && /^\d{4}-\d{2}-\d{2}$/.test(range.to) && range.from <= range.to;
+  return { today, period, setPeriod, custom, setCustom, range, valid };
+}
 
-  const q = useQuery({
-    queryKey: ["lab", "metrics", range.from, range.to],
-    queryFn: () => api<WireLabMetrics>("GET", `/lab/metrics?from=${range.from}&to=${range.to}`),
-    enabled: valid,
-  });
-  const m = q.data;
-  const counts = (c: Counts): React.ReactNode[] => COUNT_COLS.map((k) => c[k]);
-
+/** Today / this week / this month / custom, the two dates when custom, the legend, and From-after-To refused. */
+export function PeriodPicker({ state }: { state: PeriodState }): React.ReactElement {
+  const { t } = useTranslation();
+  const { today, period, setPeriod, custom, setCustom, valid } = state;
   return (
-    <PaperScreen testId="lab-metrics" style={{ padding: "18px 22px", gap: 14 }}>
-      <ScreenTitle title={t("labMetrics.title")} route="/lab/metrics" />
-
+    <>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="group" aria-label={t("labMetrics.period")}>
           {PERIODS.map((p) => (
@@ -136,11 +138,36 @@ export function LabMetrics(): React.ReactElement {
         )}
         <span className="mo" style={{ fontSize: 11, color: "var(--faint)" }}>{t("labMetrics.legend")}</span>
       </div>
-
       {!valid ? <p role="alert" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{t("labMetrics.badRange")}</p> : null}
-      {q.isError ? <p role="alert" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{t("labMetrics.failed")}</p> : null}
-      {valid && q.isLoading ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("labMetrics.loading")}</p> : null}
+    </>
+  );
+}
 
+/** Loading and failure lines every numbers tab shows the same way. */
+export function QueryState({ valid, isLoading, isError }: { valid: boolean; isLoading: boolean; isError: boolean }): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <>
+      {isError ? <p role="alert" style={{ margin: 0, fontSize: 12.5, color: "var(--red)" }}>{t("labMetrics.failed")}</p> : null}
+      {valid && isLoading ? <p style={{ margin: 0, fontSize: 12.5, color: "var(--dim)" }}>{t("labMetrics.loading")}</p> : null}
+    </>
+  );
+}
+
+/** The lab's tables for a range — the Lab tab of Hospital numbers (#777), unchanged from Lab numbers (#768). */
+export function LabMetricsPanel({ range, valid }: { range: { from: string; to: string }; valid: boolean }): React.ReactElement {
+  const { t } = useTranslation();
+  const q = useQuery({
+    queryKey: ["lab", "metrics", range.from, range.to],
+    queryFn: () => api<WireLabMetrics>("GET", `/lab/metrics?from=${range.from}&to=${range.to}`),
+    enabled: valid,
+  });
+  const m = q.data;
+  const counts = (c: Counts): React.ReactNode[] => COUNT_COLS.map((k) => c[k]);
+
+  return (
+    <>
+      <QueryState valid={valid} isLoading={q.isLoading} isError={q.isError} />
       {m === undefined ? null : (
         <>
           <Table
@@ -173,6 +200,19 @@ export function LabMetrics(): React.ReactElement {
           />
         </>
       )}
+    </>
+  );
+}
+
+/** Lab numbers on its own (#768); the app now opens it as Hospital numbers' Lab tab (`/lab/metrics` forwards). */
+export function LabMetrics(): React.ReactElement {
+  const { t } = useTranslation();
+  const state = usePeriodRange();
+  return (
+    <PaperScreen testId="lab-metrics" style={{ padding: "18px 22px", gap: 14 }}>
+      <ScreenTitle title={t("labMetrics.title")} route="/lab/metrics" />
+      <PeriodPicker state={state} />
+      <LabMetricsPanel range={state.range} valid={state.valid} />
     </PaperScreen>
   );
 }

@@ -80,7 +80,7 @@ describe("the lab manifest (Plan 17 T2)", () => {
       "/lab/desk", "/lab/collection", "/lab/bench", "/lab/verify",
       "/lab/reports", // PLAN 17c T5 — the report centre, on the counter's `lab.reports.print`
       "/lab/quick", // decision 0061 — quick entry, on `lab.results.enter`
-      "/lab/metrics", // owner 2026-10-13 (#768) — lab numbers, on `lab.metrics.read`
+      "/reports/numbers", // owner 2026-10-13 (#768) — lab numbers, on `lab.metrics.read`; #777 — Hospital numbers, its Lab tab
     ]);
     for (const entry of labManifest.menu) {
       expect([entry.path, labManifest.permissions.includes(entry.permission)]).toEqual([entry.path, true]);

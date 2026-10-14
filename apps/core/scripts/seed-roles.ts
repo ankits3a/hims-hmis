@@ -953,6 +953,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "copilot.halt.set", "copilot.halt.clear", "copilot.halt.clear_global",
       // LAB NUMBERS (owner 2026-10-13, #768) — the lab's counts and turnaround times. Aggregate only; names nobody.
       "lab.metrics.read",
+      // HOSPITAL NUMBERS (owner 2026-10-13, #777) — imaging's and the pharmacy's counts, amounts and times. Aggregate only.
+      "radiology.metrics.read", "pharmacy.metrics.read",
     ],
   },
   {
@@ -1595,6 +1597,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       "radiology.definitions.read",
       /** 18-S RS5 — the contrast injection and reaction (split off `radiology.acquire`). */
       "radiology.contrast.record",
+      /** HOSPITAL NUMBERS (owner 2026-10-13, #777) — the department head reads imaging's counts and turnaround times. */
+      "radiology.metrics.read",
       /**
        * 18-S RS5 T2 — the radiologist is the approver of `imaging_gate_override`, the prep bay's
        * "please override". The approvals spine's reachability invariant (every approver role holds
@@ -1870,6 +1874,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // copied). DEFAULT — owner may change.
       "pharmacy.reports.read",
       "pharmacy.reports.margin",
+      // HOSPITAL NUMBERS (owner 2026-10-13, #777) — the in-charge reads the pharmacy's numbers tab. DEFAULT — owner may change.
+      "pharmacy.metrics.read",
       // PHARMACY P6 — the pharmacist in charge holds the controlled-drug cabinet's key, witnesses, and records
       // its licences and the doctors trained to prescribe a narcotic drug. DEFAULT — owner may change.
       "pharmacy.ndps.custody",
@@ -1967,7 +1973,8 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    */
   // COPILOT HALT E0.3 — IT may halt a misbehaving copilot; clearing is the owner's or the duty manager's.
   // LAB NUMBERS (owner 2026-10-13, #768) — admin reads the lab's counts and turnaround times too (owner's request).
-  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read"] },
+  // HOSPITAL NUMBERS (owner 2026-10-13, #777) — and imaging's and the pharmacy's (owner: "not just admin but owner").
+  { roleKey: "admin", permissions: ["copilot.health.read", "copilot.halt.set", "lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"] },
 ];
 
 /**
