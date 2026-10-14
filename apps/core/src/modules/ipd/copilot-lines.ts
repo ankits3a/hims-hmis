@@ -46,6 +46,11 @@ export type Fact = FactBase & (
   | { kind: "orders_stopped"; count: number }
   | { kind: "orders_active"; count: number }
   | { kind: "results"; department: "lab" | "imaging"; count: number }
+  /**
+   * One analyte's signed values in the window: the latest, and the most severe when it was worse than the latest.
+   * `value` is the report's own print (null for a free-text result); `flag` the bench's (`L` `H` `LL` `HH` `A` `N`).
+   */
+  | { kind: "lab_value"; analyte: string; latest: LabReading; worst: LabReading | null; readings: number }
   | { kind: "notes"; count: number; flagged: number }
   | { kind: "io"; inMl: number; outMl: number; balanceMl: number }
   | { kind: "consults"; asked: number; answered: number }
@@ -53,6 +58,14 @@ export type Fact = FactBase & (
   | { kind: "diet"; code: string }
   | { kind: "rounds_other"; count: number }
 );
+
+/** A signed lab value as a line prints it: the clock time is IST ("14:05"). */
+export type LabReading = { value: string | null; unit: string | null; flag: string | null; at: string };
+
+/** 2 = outside the critical band, 1 = outside the reference range, 0 = in range or unflagged. */
+export function labSeverity(flag: string | null): 0 | 1 | 2 {
+  return flag === "LL" || flag === "HH" ? 2 : flag === "L" || flag === "H" || flag === "A" ? 1 : 0;
+}
 
 export type Line = { key: string; text: string; source: IpdCopilotSource; abnormal: boolean; weight: number; fact: Fact };
 
@@ -85,6 +98,14 @@ export const shown = (n: number): string => String(Math.round(n * 10) / 10);
 const plural = (n: number, one: string, many: string): string => `${shown(n)} ${n === 1 ? one : many}`;
 const named = (terms: readonly string[]): string => (terms.length === 0 ? "" : `: ${terms.slice(0, 3).join(", ")}${terms.length > 3 ? " and others" : ""}`);
 
+const LAB_FLAG_WORDS: Readonly<Record<string, string>> = { HH: "critical high", LL: "critical low", H: "high", L: "low", A: "abnormal" };
+/** "6.8 mmol/L (critical high) at 14:05" — a free-text result is named, never quoted. */
+function labReading(r: LabReading): string {
+  const v = r.value === null ? "text result" : `${r.value}${r.unit === null || r.unit.trim() === "" ? "" : ` ${r.unit.trim()}`}`;
+  const word = r.flag === null ? undefined : LAB_FLAG_WORDS[r.flag];
+  return `${v}${word === undefined ? "" : ` (${word})`} at ${r.at}`;
+}
+
 /** Whether the fact is something the doctor must see first. */
 export function isAbnormal(f: Fact): boolean {
   switch (f.kind) {
@@ -93,6 +114,7 @@ export function isAbnormal(f: Fact): boolean {
     case "ews": return BAND_RANK[f.to] >= BAND_RANK.medium || BAND_RANK[f.peak] >= BAND_RANK.medium || (f.from !== null && BAND_RANK[f.to] > BAND_RANK[f.from]);
     case "emar_exceptions": return f.missed + f.refused + f.held > 0;
     case "notes": return f.flagged > 0;
+    case "lab_value": return labSeverity(f.latest.flag) > 0 || (f.worst !== null && labSeverity(f.worst.flag) > 0);
     default: return false;
   }
 }
@@ -105,6 +127,11 @@ export function weightOf(f: Fact): number {
     case "vital": return f.abnormal ? 80 : 10;
     case "notes": return f.flagged > 0 ? 75 : 30;
     case "results": return 70;
+    // A critical value sits just under a rising early-warning score; a value out of range with the abnormal vitals.
+    case "lab_value": {
+      const sev = Math.max(labSeverity(f.latest.flag), f.worst === null ? 0 : labSeverity(f.worst.flag));
+      return sev === 2 ? 95 : sev === 1 ? 78 : 40;
+    }
     case "consults": return 60;
     case "orders_new": return 56;
     case "orders_stopped": return 55;
@@ -150,6 +177,11 @@ export function renderLine(f: Fact): string {
     case "orders_stopped": return `${plural(f.count, "order stopped", "orders stopped")}${named(f.terms)}`;
     case "orders_active": return `No change to orders — ${shown(f.count)} active`;
     case "results": return `${plural(f.count, f.department === "lab" ? "lab result reported" : "imaging report ready", f.department === "lab" ? "lab results reported" : "imaging reports ready")}${named(f.terms)}`;
+    case "lab_value": {
+      const lead = labSeverity(f.latest.flag) === 2 || (f.worst !== null && labSeverity(f.worst.flag) === 2) ? "Critical lab: " : "Lab: ";
+      const tail = f.worst === null ? "" : `; ${labReading(f.worst)}`;
+      return `${lead}${f.analyte} ${labReading(f.latest)}${tail}`;
+    }
     case "notes": return f.flagged > 0
       ? `${plural(f.count, "nursing note", "nursing notes")}, ${shown(f.flagged)} flagged`
       : `${plural(f.count, "nursing note", "nursing notes")}, none flagged`;

@@ -135,3 +135,6 @@ export {
 } from "./coagulation";
 export type { LatestLabNumber } from "./coagulation";
 export type { LabReleaseTest, LabReleaseValue } from "./abdm-release";
+// ── IPD E5.3 (#740) — the inpatient copilot's "since yesterday" reads an admission's signed values through here ──
+export { RESULTED_VALUES_LIMIT, printedNumber, resultedValuesForOrders } from "./stay-values";
+export type { ResultedValue } from "./stay-values";
