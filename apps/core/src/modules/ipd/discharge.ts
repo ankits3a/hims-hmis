@@ -2,13 +2,15 @@ import { and, asc, eq, gte, isNull } from "drizzle-orm";
 import { IPD_INTENTS, IpdSaveSummaryDraftSchema, IpdSummaryContentSchema, newId } from "@hmis/contracts";
 import { withTx } from "../../kernel/db/client";
 import {
-  icd10Codes, ipdChargeLines, ipdDischargeConfirmations, ipdDischargeSummaries, ipdDischarges, ipdFinalBills, ipdGatePasses, orders,
+  icd10Codes, ipdChargeLines, ipdDischargeConfirmations, ipdDischargeSummaries, ipdDischarges, ipdFinalBills, ipdGatePasses, ipdOrders, orders,
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { withIdempotency } from "../billing";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { lockAdmission, moveAdmission, onceIpd, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
+import { draftForSigning, draftProvenances } from "./copilot-drafts";
+import { medicineFlagsOf } from "./discharge-medicines";
 import { chargesConfirmed, fitCancelled, fitDeclared, summarySigned } from "./discharge-events";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_DISCHARGE_CONFIRM, IPD_DISCHARGE_DECLARE, IPD_DISCHARGE_VIEW } from "./manifest";
@@ -37,7 +39,8 @@ import type { AdmissionRow } from "./admission-core";
  *   since admission is still open, and `billing` always and last. Pharmacy issue to IPD is not in this branch (no
  *   pharmacy lines or orders to read): pharmacy joins the list when the eMAR lane posts its issues (seam).
  * - The treating consultant = the admission's consultant or the one they cover for.
- * - A medicine on the summary is typed until the ipd-orders lane exists (`medicine_not_on_active_order` is its seam).
+ * - A medicine on the summary: a row the drafter copied from an order must match that ACTIVE order at signing
+ *   (`medicine_not_on_active_order`); a typed row is flagged, never refused (E5.4, `discharge-medicines.ts`).
  */
 
 type Input<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["input"]>;
@@ -250,6 +253,11 @@ export async function saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts:
     await checkIcd10(tx, input.content);
     const cur = await summaryOf(tx, a.id);
     if (cur?.status === "signed") throw new IpdError("summary_already_signed", "a signed summary cannot be edited", { summaryId: cur.id });
+    // E5.4 — text started from a copilot draft: the SERVER stamps the draft's own model id and prompt version (never the
+    // client's word for them). Provenance is sticky: a later save without `draftId` keeps what the summary already carries.
+    const draft = input.draftId === undefined ? undefined : await draftForSigning(tx, input.draftId, a.id, "discharge");
+    if (input.draftId !== undefined && draft === undefined) throw new IpdError("summary_draft_not_found", "no discharge draft of this admission has that id");
+    const stamp = draft === undefined ? {} : { draftSource: "copilot_draft", draftModelId: draft.modelId, draftPromptVersion: draft.promptVersion, draftId: draft.id };
     if ((cur?.version ?? 0) !== input.expectedVersion) {
       throw new IpdRefusal("draft_changed", undefined, { version: cur?.version ?? 0 });
     }
@@ -257,13 +265,13 @@ export async function saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts:
       const summaryId = newId();
       await tx.insert(ipdDischargeSummaries).values({
         id: summaryId, admissionId: a.id, status: "draft", version: 1, content: input.content as unknown as Record<string, unknown>,
-        draftSource: "person", draftModelId: null, draftPromptVersion: null, draftedBy: actor.id, draftedAt: at,
+        draftSource: "person", draftModelId: null, draftPromptVersion: null, draftedBy: actor.id, draftedAt: at, ...stamp,
       });
       return summaryId;
     }
     await tx.update(ipdDischargeSummaries).set({
       status: "draft", version: cur.version + 1, content: input.content as unknown as Record<string, unknown>,
-      draftSource: "person", draftedBy: actor.id, draftedAt: at, residentSignedBy: null, residentSignedAt: null,
+      draftedBy: actor.id, draftedAt: at, residentSignedBy: null, residentSignedAt: null, ...stamp,
     }).where(eq(ipdDischargeSummaries.id, cur.id));
     return cur.id;
   }), at);
@@ -294,7 +302,10 @@ export async function signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts
     if (s?.id !== input.draftId) throw new IpdError("summary_not_found", "no summary draft with that id on this admission");
     if (s.status === "signed") throw new IpdError("summary_already_signed", "the summary is already signed", { summaryId: s.id });
     if (s.version !== input.draftVersion) throw new IpdRefusal("draft_changed", undefined, { version: s.version });
-    // SEAM (ipd-orders): `medicine_not_on_active_order` once active orders exist; every medicine is typed today.
+    // E5.4: a row the drafter copied from an order must still match that ACTIVE order (the machine copied it; the order
+    // changed since). A row the doctor typed is flagged on the summary, never refused (`discharge-medicines.ts`).
+    const stale = medicineFlagsOf(IpdSummaryContentSchema.parse(s.content).medicines.filter((m) => m.source === "order"), await drugOrdersOf(tx, a.id));
+    if (stale.length > 0) throw new IpdRefusal("medicine_not_on_active_order", undefined, { medicines: stale.map((f) => f.name) });
     const documentId = s.documentId ?? newId();
     const consultant = isTreatingConsultant(a, actor);
     const status = consultant ? "signed" as const : "awaiting_cosign" as const;
@@ -312,18 +323,25 @@ export async function signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts
   }), at);
 }
 
+const drugOrdersOf = (db: Db | Tx, admissionId: string) =>
+  db.select().from(ipdOrders).where(and(eq(ipdOrders.admissionId, admissionId), eq(ipdOrders.kind, "drug")));
+
 async function readSummaryIn(db: Db, admissionId: string): Promise<IpdSummaryView> {
   const s = await summaryOf(db, admissionId);
   if (s === undefined) throw new IpdError("summary_not_found", "no summary on this admission yet");
+  const content = IpdSummaryContentSchema.parse(s.content);
+  const draft = s.draftId === null ? null : (await draftProvenances(db, [s.draftId])).get(s.draftId) ?? null;
   const names = await userNames(db, [s.draftedBy, ...(s.signedBy === null ? [] : [s.signedBy]), ...(s.residentSignedBy === null ? [] : [s.residentSignedBy])]);
   const who = (id: string | null) => (id === null ? null : { id, name: names.get(id) ?? id });
   return {
     summaryId: s.id, admissionId: s.admissionId, status: s.status as IpdSummaryView["status"], version: s.version,
-    content: IpdSummaryContentSchema.parse(s.content),
+    content,
     provenance: {
       source: s.draftSource as "person" | "copilot_draft", draftModelId: s.draftModelId, draftPromptVersion: s.draftPromptVersion,
-      draftedBy: { id: s.draftedBy, name: names.get(s.draftedBy) ?? s.draftedBy }, draftedAt: s.draftedAt.toISOString(),
+      draftedBy: { id: s.draftedBy, name: names.get(s.draftedBy) ?? s.draftedBy }, draftedAt: s.draftedAt.toISOString(), draft,
     },
+    // A signed summary's flags are not recomputed against later order changes: it says what was true to its signer's eye.
+    medicineFlags: s.status === "signed" ? [] : medicineFlagsOf(content.medicines, await drugOrdersOf(db, admissionId)),
     label: s.status === "signed" ? "Signed" : s.status === "awaiting_cosign" ? "Awaiting co-sign" : "Draft",
     residentSignedBy: who(s.residentSignedBy), signedBy: who(s.signedBy), signedAt: s.signedAt?.toISOString() ?? null,
     documentId: s.documentId,

@@ -4,8 +4,10 @@ import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type {
-  IpdDischargeBoard, IpdDischargeDepartment, IpdDischargeTracker, IpdFinalBill, IpdRefusalBody, IpdSummaryContent, IpdSummaryView,
+  IpdDischargeBoard, IpdDischargeDepartment, IpdDischargeDraft, IpdDischargeTracker, IpdFinalBill, IpdMedicineFlag, IpdRefusalBody, IpdSummaryContent,
+  IpdSummaryView,
 } from "@hmis/contracts";
+import { buildDischargeDraft } from "../lib/ipd-copilot-api";
 import { ApiError } from "../lib/api";
 import { fmtIst, fmtPaise } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
@@ -288,11 +290,32 @@ const EMPTY_SUMMARY: IpdSummaryContent = {
 function medsToText(c: IpdSummaryContent): string {
   return c.medicines.map((m) => [m.name, m.dose, m.frequency, m.duration].filter((x) => x !== undefined && x !== "").join(" — ")).join("\n");
 }
-function textToMeds(s: string): IpdSummaryContent["medicines"] {
+/**
+ * `fromOrders` (E5.4): rows the drafter copied from active orders, by name. A line still carrying such a name keeps its
+ * order (the server checks it against that order at signing); any other line is the doctor's own typing.
+ */
+function textToMeds(s: string, fromOrders: ReadonlyMap<string, string> = new Map()): IpdSummaryContent["medicines"] {
   return s.split("\n").map((l) => l.trim()).filter((l) => l !== "").map((l) => {
     const [name, dose, frequency, duration] = l.split("—").map((x) => x.trim());
-    return { name: name!, ...(dose ? { dose } : {}), ...(frequency ? { frequency } : {}), ...(duration ? { duration } : {}), source: "typed" as const };
+    const orderId = fromOrders.get(name!);
+    return {
+      name: name!, ...(dose ? { dose } : {}), ...(frequency ? { frequency } : {}), ...(duration ? { duration } : {}),
+      ...(orderId !== undefined ? { source: "order" as const, orderId } : { source: "typed" as const }),
+    };
   });
+}
+const orderRowsOf = (c: IpdSummaryContent): Map<string, string> =>
+  new Map(c.medicines.flatMap((m) => (m.source === "order" && m.orderId !== undefined ? [[m.name, m.orderId] as const] : [])));
+
+/** E5.4 — medicines no active order of the stay carries: a mark, a word and the name (never colour alone). */
+function MedicineFlags({ flags }: { flags: readonly IpdMedicineFlag[] }): React.ReactElement | null {
+  const { t } = useTranslation();
+  if (flags.length === 0) return null;
+  return (
+    <ul className="ipdd-flags" role="alert" data-testid="ipdd-medicine-flags">
+      {flags.map((f) => <li key={`${f.where}:${f.name}:${String(f.index)}`}><span aria-hidden="true">⚑</span> <b>{f.name}</b> — {t(`ipdCopilot.discharge.flag.${f.reason}`)}</li>)}
+    </ul>
+  );
 }
 
 function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => void }): React.ReactElement {
@@ -303,6 +326,9 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
   const [meds, setMeds] = useState("");
   const [busy, setBusy] = useState(false);
   const [r, fail, clear] = useRefusal();
+  // E5.4 — the copilot draft the form was filled from (its stamp and flags are shown; the save names it).
+  const [copilot, setCopilot] = useState<IpdDischargeDraft | null>(null);
+  const [fromOrders, setFromOrders] = useState<Map<string, string>>(new Map());
   const status = tr.summary.status;
   useEffect(() => {
     if (status === "none") { setView(null); return; }
@@ -310,14 +336,20 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
   }, [tr.admissionId, status, tr.summary.version]);
   const startEdit = () => {
     const c = view?.content ?? EMPTY_SUMMARY;
-    setDraft(c); setMeds(medsToText(c)); setEditing(true); clear();
+    setDraft(c); setMeds(medsToText(c)); setFromOrders(orderRowsOf(c)); setCopilot(null); setEditing(true); clear();
+  };
+  const draftFromRecord = () => {
+    setBusy(true); clear();
+    buildDischargeDraft(tr.admissionId).then((d) => {
+      setBusy(false); setCopilot(d); setDraft(d.content); setMeds(medsToText(d.content)); setFromOrders(orderRowsOf(d.content)); setEditing(true);
+    }, (e: unknown) => { setBusy(false); fail(e); });
   };
   const save = () => {
     setBusy(true); clear();
-    const content: IpdSummaryContent = { ...draft, medicines: textToMeds(meds) };
+    const content: IpdSummaryContent = { ...draft, medicines: textToMeds(meds, fromOrders) };
     if (content.diagnosis.icd10Code === "") delete content.diagnosis.icd10Code;
-    saveSummary(tr.admissionId, view?.version ?? 0, content).then(
-      (v) => { setBusy(false); setView(v); setEditing(false); onDone(); },
+    saveSummary(tr.admissionId, view?.version ?? 0, content, copilot?.draftId ?? null).then(
+      (v) => { setBusy(false); setView(v); setEditing(false); setCopilot(null); onDone(); },
       (e: unknown) => { setBusy(false); fail(e); },
     );
   };
@@ -343,10 +375,25 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
               : view.residentSignedBy !== null ? t("ipdDischarge.summary.residentSigned", { name: view.residentSignedBy.name })
                 : t("ipdDischarge.summary.draftBy", { name: view.provenance.draftedBy.name })}
           </p>
+          {view.provenance.source === "copilot_draft" ? (
+            <p className="dim" data-testid="ipdd-summary-prov">
+              {t("ipdCopilot.discharge.startedFrom", { model: view.provenance.draftModelId ?? t("ipdCopilot.template"), version: view.provenance.draftPromptVersion ?? "" })}
+            </p>
+          ) : null}
+          <MedicineFlags flags={view.medicineFlags} />
         </div>
       ) : null}
       {editing ? (
         <div className="ipdd-form">
+          {copilot !== null ? (
+            <>
+              <p className="ipdd-stamp" data-testid="ipdd-draft-stamp">
+                <b>{t("ipdCopilot.draft")}</b> · {copilot.stamp.modelId ?? t("ipdCopilot.template")} · {copilot.stamp.promptVersion} · {t("ipdCopilot.builtAt", { time: fmtIst(copilot.stamp.builtAt) })}
+                <span className="dim"> — {t("ipdCopilot.discharge.youSign")}</span>
+              </p>
+              <MedicineFlags flags={copilot.flags} />
+            </>
+          ) : null}
           <div className="pair">
             <label>{t("ipdDischarge.summary.f.diagnosis")}
               <input value={draft.diagnosis.text} onChange={(e) => setDraft({ ...draft, diagnosis: { ...draft.diagnosis, text: e.target.value } })} />
@@ -370,6 +417,7 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
       ) : (
         <div className="row">
           {tr.can.editSummary ? <button type="button" className="ipdd-btn" onClick={startEdit}>{status === "none" ? t("ipdDischarge.summary.write") : t("ipdDischarge.summary.edit")}</button> : null}
+          {tr.can.editSummary && status !== "signed" ? <button type="button" className="ipdd-btn" disabled={busy} onClick={draftFromRecord} data-testid="ipdd-draft-from-record">{t("ipdCopilot.discharge.draftBtn")}</button> : null}
           {tr.can.signSummary && view !== null ? <button type="button" className="ipdd-btn pri" disabled={busy} onClick={sign}>{t("ipdDischarge.summary.sign")}</button> : null}
         </div>
       )}

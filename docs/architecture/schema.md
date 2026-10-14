@@ -26,6 +26,8 @@ flowchart LR
   diet[diet] --> resources[resources]
   documents[documents] --> opd[opd]
   documents[documents] --> patients[patients]
+  ipd_copilot[ipd-copilot] --> ipd[ipd]
+  ipd_copilot[ipd-copilot] --> patients[patients]
   ipd_emar[ipd-emar] --> ipd_rounds[ipd-rounds]
   ipd_emar[ipd-emar] --> ipd[ipd]
   ipd_emar[ipd-emar] --> patients[patients]
@@ -115,6 +117,7 @@ flowchart LR
 | `eventIdempotency.ts` | kernel | `event_idempotency` |
 | `events.ts` | kernel | `events` |
 | `formulary.ts` | module formulary | `formulary_drug_disease`, `formulary_generic_substances`, `formulary_generics`, `formulary_interactions`, `formulary_mapping_proposals`, `formulary_medicine_salts`, `formulary_medicines`, `formulary_monographs`, `formulary_renal_doses`, `formulary_salts`, `formulary_staging`, `formulary_substances` |
+| `ipd-copilot.ts` | kernel | `ipd_copilot_drafts` |
 | `ipd-emar.ts` | kernel | `ipd_emar_acts`, `ipd_emar_allergy_flags`, `ipd_emar_doses`, `ipd_emar_infusion_events`, `ipd_emar_issues`, `ipd_emar_label_uses`, `ipd_emar_labels`, `ipd_emar_narcotic_register`, `ipd_emar_returns`, `ipd_emar_second_checks`, `ipd_emar_verbal_orders`, `ipd_emar_verifications` |
 | `ipd-rounds.ts` | kernel | `ipd_consults`, `ipd_orders`, `ipd_rounds` |
 | `ipd.ts` | module ipd | `ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_proposals`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_intake_output`, `ipd_mortuary_register`, `ipd_nursing_alerts`, `ipd_nursing_assessments`, `ipd_nursing_notes`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_shift_handovers`, `ipd_stay_exits`, `ipd_transfers`, `ipd_vitals` |

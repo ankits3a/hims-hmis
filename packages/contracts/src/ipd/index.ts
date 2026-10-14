@@ -31,6 +31,8 @@ export * from "./nursing";
 export * from "./rounds";
 // E4.3 (#735) — the eMAR: verify queue, the MAR, the bedside, labels, override counts.
 export * from "./emar";
+// E5.3 (#740), E5.4 (#741) — "Since yesterday", the SBAR draft and the discharge drafter: lines with sources, stamps, flags.
+export * from "./copilot";
 export { IPD_ALLERGY_OVERRIDE_REASONS, IPD_DRUG_ROUTES, IPD_REISSUE_REASONS, IPD_VERBAL_EMERGENCIES, IpdDrugOrderSchema } from "./intents-meds";
 export type { IpdDrugOrder } from "./intents-meds";
 export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";

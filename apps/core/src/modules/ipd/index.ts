@@ -163,7 +163,7 @@ export {
   isNightIst, recordIntakeOutput, recordNursingAssessment, recordVitals, scoreContextOf, shiftOf, sweepIpdNursing,
 } from "./nursing";
 export type { NursingSweepResult } from "./nursing";
-export { listShiftHandovers, nextDueOf, readHandoverDraft, readMyShift, readNurseStation, readNursingChart } from "./nursing-read";
+export { listShiftHandovers, nextDueOf, readMyShift, readNurseStation, readNursingChart } from "./nursing-read";
 export { assessmentDueCard, ewsRisingCard, handoverPendingCard, overdueVitalsCard } from "./nursing-cards";
 export { IPD_NURSING_EVENT_NAMES } from "./nursing-events";
 // E4.4 DIET (#736) — who lies on a bed now and in which ward (the meal lists), and the shared Now-card identity rule
@@ -209,3 +209,20 @@ export { ISMP_HIGH_ALERT_NAMES, dueTimesFor, giveTiming, isHighAlert, isTimeCrit
 export { readAdmissionAllergyFlags, readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
 export { IPD_NEW_ORDER_HOURS, dueDoseCard, newOrderCard } from "./emar-cards";
 export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";
+
+// E5.3 (#740), E5.4 (#741) — "Since yesterday", the nurse's SBAR draft and the discharge drafter: a deterministic fact
+// builder and line templates (every line names its records), a verifier that refuses a model's wrong or invented
+// number, and the staff copilot's own model behind one door (mask, halt, cap, ledger). Drafts only: a person signs.
+export {
+  DISCHARGE_PROMPT_VERSION, DRAFT_BUDGET_MS, SBAR_PROMPT_VERSION, SINCE_BUDGET_MS, SINCE_PROMPT_VERSION, buildDischargeDraft, buildSbarDraft,
+  medicinesNamedWithoutOrder, polishSinceYesterday, readHandoverDraft, readSinceYesterday,
+} from "./copilot";
+export type { CopilotOpts } from "./copilot";
+export { buildFacts, factsHash } from "./copilot-facts";
+export {
+  SINCE_MAX_LINES, applyRewordings, chooseLines, isAbnormal, quantitiesIn, renderLine, verifyFreeText, verifyReworded,
+} from "./copilot-lines";
+export type { Fact, FactRecord, Line, Quantities, Verdict } from "./copilot-lines";
+export { askIpdModel, ipdModelFrom, maskForModel } from "./copilot-model";
+export type { FallbackReason, IpdModel } from "./copilot-model";
+export { medicineFlagsOf, medicineRowReason, sameMedicineName } from "./discharge-medicines";

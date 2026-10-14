@@ -119,3 +119,28 @@
 .ipde-flagrow input { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font: inherit; }
 .ipde-flagacts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .ipde-flagacts button { min-height: 48px; }
+
+/* E5.3 (#740) — "Since yesterday" (`.ipdc-*`): the round page's first block. An abnormal line carries ▲ and a screen-reader
+   word as well as its colour; the source chip is a 44 px target that opens the records under the line. */
+.ipdc-since { margin-top: 12px; }
+.ipdc-since h2 { flex-wrap: wrap; }
+.ipdr .ipdc-mode { font-size: 12px; font-weight: 400; color: var(--dim); border: 1px solid var(--line); border-radius: 12px; padding: 1px 8px; }
+.ipdr .ipdc-mode.model { border-color: var(--amber); color: var(--amber); }
+.ipdc-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ipdc-line { border-top: 1px solid var(--line); padding: 6px 0; }
+.ipdc-line:first-child { border-top: 0; }
+.ipdc-line .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ipdc-line .text { flex: 1 1 auto; min-width: 0; font-size: 15px; overflow-wrap: anywhere; }
+.ipdc-line.abn .text { font-weight: 600; }
+.ipdc-line .mark { color: var(--warn); flex: 0 0 auto; }
+.ipdc-line .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ipdc-line .ai { flex: 0 0 auto; font-size: 11px; color: var(--amber); border: 1px dashed var(--amber); border-radius: 10px; padding: 0 6px; white-space: nowrap; }
+.ipdr button.ipdc-chip { flex: 0 0 auto; min-height: 44px; padding: 0 12px; border-radius: 22px; font-size: 13px; color: var(--green); border-color: var(--green); white-space: nowrap; }
+.ipdr button.ipdc-chip[aria-expanded="true"] { background: var(--green); color: #fff; }
+.ipdc-records { list-style: none; margin: 4px 0 6px; padding: 8px 10px; background: var(--bg); border-radius: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.ipdc-records li { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .ipdc-line .row { flex-wrap: wrap; }
+  .ipdc-line .text { flex-basis: calc(100% - 28px); }
+  .ipdr button.ipdc-chip { min-height: 48px; margin-left: auto; }
+}

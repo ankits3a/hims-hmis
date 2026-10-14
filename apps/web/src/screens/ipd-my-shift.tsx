@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type { IpdEmarDueList, IpdHandoverDraft, IpdMyShift, IpdRefusalBody, IpdShiftHandoverList, IpdShiftItem } from "@hmis/contracts";
@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { acceptShiftHandover, getHandoverDraft, getMyShift, getShiftHandovers, giveShiftHandover } from "../lib/ipd-nursing-api";
+import { buildSbarDraft } from "../lib/ipd-copilot-api";
 import type { SbarText } from "../lib/ipd-nursing-api";
 import { getDue, scan } from "../lib/ipd-emar-api";
 import { Bedside, DueDoses, ScanBox } from "./ipd-emar-bedside";
@@ -196,20 +197,32 @@ function HandoverPane({ shift, toAccept, online, onBack, onDone }: {
   const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
   const mayAct = online && can("ipd.handover.shift");
 
+  const textOf = (d: IpdHandoverDraft): SbarText => ({
+    situation: d.situation.map((l) => l.text).join("\n"), background: d.background.map((l) => l.text).join("\n"),
+    assessment: d.assessment.map((l) => l.text).join("\n"), recommendation: d.recommendation.map((l) => l.text).join("\n"),
+  });
+  const picked = useRef<string | null>(null);
   const pick = (id: string): void => {
     setAdmissionId(id); setDraft(null); setRefusal(null);
+    picked.current = id;
+    // The record's own draft first (at once); then the kept draft (E5.4), which may add a sentence over the shift's
+    // notes and carries the stamp and the id the give names. The nurse's own edits are never overwritten by it.
     getHandoverDraft(id).then((d) => {
-      setDraft(d);
-      setSbar({
-        situation: d.situation.map((l) => l.text).join("\n"), background: d.background.map((l) => l.text).join("\n"),
-        assessment: d.assessment.map((l) => l.text).join("\n"), recommendation: d.recommendation.map((l) => l.text).join("\n"),
-      });
+      if (picked.current !== id) return;
+      const plain = textOf(d);
+      setDraft(d); setSbar(plain);
+      buildSbarDraft(id).then((kept) => {
+        if (picked.current !== id) return;
+        setDraft(kept);
+        setSbar((now) => (SBAR_KEYS.every((k) => now[k] === plain[k]) ? textOf(kept) : now));
+      }, () => undefined);
     }, () => setSbar(EMPTY_SBAR));
   };
   const give = (): void => {
     if (admissionId === null) return;
     setBusy(true); setRefusal(null);
-    giveShiftHandover(admissionId, sbar).then(() => {
+    // A kept copilot draft is named so the signed handover keeps its provenance; a typed one names none.
+    (draft?.draftId ? giveShiftHandover(admissionId, sbar, draft.draftId) : giveShiftHandover(admissionId, sbar)).then(() => {
       setBusy(false); setGiven(new Set([...given, admissionId])); setAdmissionId(null); onDone(t("ipdNursing.handover.given"));
     }, (e: unknown) => { setBusy(false); setRefusal(refusalOf(e)); });
   };
@@ -230,6 +243,7 @@ function HandoverPane({ shift, toAccept, online, onBack, onDone }: {
               <li key={h.handoverId} className="ipdn-card" data-testid={`ipdn-shift-handover-${h.handoverId}`}>
                 <div><span className="mono">{h.bedCode ?? "—"}</span> · <b>{h.identity.name}</b></div>
                 <div className="dim">{t("ipdNursing.handover.from", { name: h.givenBy.name, time: fmtIst(h.givenAt) })}</div>
+                {h.draft != null ? <div className="dim ipdn-prov" data-testid="ipdn-handover-prov">{t("ipdCopilot.sbar.signedFrom", { model: h.draft.modelId ?? t("ipdCopilot.template"), version: h.draft.promptVersion })}</div> : null}
                 <dl className="ipdn-sbar">{SBAR_KEYS.map((k) => <div key={k}><dt>{t(`ipdNursing.sbar.${k}`)}</dt><dd>{h.sbar[k]}</dd></div>)}</dl>
                 <button type="button" className="ipdn-btn pri wide" disabled={busy || !mayAct} onClick={() => accept(h.handoverId)}>{t("ipdNursing.handover.accept")}</button>
               </li>
@@ -252,10 +266,16 @@ function HandoverPane({ shift, toAccept, online, onBack, onDone }: {
         </ul>
       ) : (
         <form className="ipdn-form" onSubmit={(e) => { e.preventDefault(); if (sbarFilled) give(); }}>
+          {draft?.stamp != null ? (
+            <p className="ipdn-stamp" data-testid="ipdn-sbar-stamp">
+              <b>{t("ipdCopilot.draft")}</b> · {draft.stamp.modelId ?? t("ipdCopilot.template")} · {draft.stamp.promptVersion} · {t("ipdCopilot.builtAt", { time: fmtIst(draft.stamp.builtAt) })}
+              <span className="dim"> — {t("ipdCopilot.sbar.youSign")}</span>
+            </p>
+          ) : null}
           {SBAR_KEYS.map((k) => (
             <label key={k}>{t(`ipdNursing.sbar.${k}`)}
               {draft !== null && draft[k].length > 0 ? (
-                <span className="ipdn-chiprow">{[...new Set(draft[k].map((l) => l.source))].map((s) => <span key={s} className="ipdn-src">{t(`ipdNursing.sbarSource.${s}`)}</span>)}</span>
+                <span className="ipdn-chiprow">{[...new Set(draft[k].map((l) => l.source))].map((s) => <span key={s} className="ipdn-src">{t(`ipdNursing.sbarSource.${s}`)}</span>)}{draft[k].some((l) => l.by === "model") ? <span className="ipdn-src ai">{t("ipdCopilot.since.ai")}</span> : null}</span>
               ) : null}
               <textarea rows={3} value={sbar[k]} onChange={(e) => setSbar({ ...sbar, [k]: e.target.value })} />
             </label>

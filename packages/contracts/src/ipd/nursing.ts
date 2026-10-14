@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IpdIdSchema, IpdInstantSchema, IpdNoteSchema, IpdProvenanceSchema, ipdInput } from "./common";
+import { IpdCopilotBySchema, IpdCopilotRecordSchema, IpdCopilotSourceSchema, IpdDraftProvenanceSchema, IpdDraftStampSchema } from "./copilot";
 import { IPD_CONSCIOUSNESS, IPD_EWS_BANDS, IPD_EWS_KINDS } from "./ews";
 
 export * from "./ews";
@@ -219,14 +220,23 @@ export type IpdNursingNoteInput = z.infer<typeof IpdNursingNoteInputSchema>;
 const SbarIn = z.strictObject({
   situation: IpdNoteSchema, background: IpdNoteSchema, assessment: IpdNoteSchema, recommendation: IpdNoteSchema,
 });
-export const IpdGiveShiftHandoverInputSchema = ipdInput({ admissionId: IpdIdSchema, sbar: SbarIn });
+/** `draftId` (E5.4): the copilot draft the nurse edited and is signing; the handover keeps that draft's provenance. */
+export const IpdGiveShiftHandoverInputSchema = ipdInput({ admissionId: IpdIdSchema, sbar: SbarIn, draftId: IpdIdSchema.optional() });
 export const IpdAcceptShiftHandoverInputSchema = ipdInput({ handoverId: IpdIdSchema });
 export const IpdAcknowledgeEwsInputSchema = ipdInput({ alertId: IpdIdSchema, note: IpdNoteSchema.optional() });
 
 /** One SBAR line drawn from the record, with its source chip (spec §0A principle 6). */
-export const IpdSbarLineSchema = z.object({ text: z.string(), source: z.enum(["vitals", "assessment", "io", "note", "admission"]) });
+export const IpdSbarLineSchema = z.object({
+  text: z.string(), source: IpdCopilotSourceSchema,
+  /** E5.4 — `model` = a model's sentence over the shift's notes, verified against them; every other line is the record's. */
+  by: IpdCopilotBySchema.default("template"),
+  records: z.array(IpdCopilotRecordSchema).default([]),
+});
 export const IpdHandoverDraftSchema = z.object({
   admissionId: IpdIdSchema,
+  /** E5.4 — set once the draft is built and kept (`POST`); the give names it. Null on the plain read. */
+  draftId: IpdIdSchema.nullable().default(null),
+  stamp: IpdDraftStampSchema.nullable().default(null),
   situation: z.array(IpdSbarLineSchema),
   background: z.array(IpdSbarLineSchema),
   assessment: z.array(IpdSbarLineSchema),
@@ -245,6 +255,8 @@ export const IpdShiftHandoverCardSchema = z.object({
   givenAt: IpdInstantSchema,
   givenBy: z.object({ id: z.string(), name: z.string() }),
   givenByViewer: z.boolean(),
+  /** E5.4 — the copilot draft the giver signed from (model id, prompt version, built at); null when typed. */
+  draft: IpdDraftProvenanceSchema.nullable(),
 });
 export type IpdShiftHandoverCard = z.infer<typeof IpdShiftHandoverCardSchema>;
 export const IpdShiftHandoverListSchema = z.object({ asOf: IpdInstantSchema, handovers: z.array(IpdShiftHandoverCardSchema) });

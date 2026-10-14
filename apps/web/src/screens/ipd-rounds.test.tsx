@@ -16,6 +16,9 @@ vi.mock("../lib/ipd-rounds-api", async (orig) => {
   return { ...real, ...api };
 });
 
+// E5.3 — "Since yesterday" is its own test's (`ipd-copilot.test.tsx`); here the block has nothing to load.
+vi.mock("../lib/ipd-copilot-api", () => ({ getSince: vi.fn(async () => { throw new Error("not in this test"); }), polishSince: vi.fn() }));
+
 const id = (n: number): string => `01FAKE${String(n).padStart(20, "0")}`;
 const NOW = new Date().toISOString();
 const MONEY = /₹|paise|rupee|\bfee\b|\bcharges?\b|\bbill\b|payable|deposit|price/i; // "discharge" is not money

@@ -190,6 +190,7 @@ function ShiftCard({ h, onDone }: { h: IpdShiftHandoverCard; onDone: () => void 
       <div className="ipdh-meta">
         <span>{t(`ipdNursing.shift.${h.shift}`)}</span>
         <span>{t("ipdNursing.handover.from", { name: h.givenBy.name, time: fmtIst(h.givenAt) })}</span>
+        {h.draft != null ? <span className="dim" data-testid="ipd-shift-handover-prov">{t("ipdCopilot.sbar.signedFrom", { model: h.draft.modelId ?? t("ipdCopilot.template"), version: h.draft.promptVersion })}</span> : null}
       </div>
       <dl className="ipdh-sbar">
         {(["situation", "background", "assessment", "recommendation"] as const).map((k) => (
