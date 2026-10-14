@@ -6,6 +6,7 @@ import {
   ipdAdmissionDeposits, ipdCopilotDrafts, ipdFamilyLinks, ipdNursingNotes, ipdOrders, ipdRounds, orderItems, passes, patientGuardians, services,
 } from "../../kernel/db/schema";
 import { resolveDrugTexts } from "../formulary";
+import { proceduresDone } from "../ot";
 import { getPatientSummaries } from "../patients";
 import { readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
@@ -27,6 +28,7 @@ import type {
   IpdSinceLine, IpdSinceYesterday, IpdSummaryContent,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
+import type { ProcedureDone } from "../ot";
 import type { AdmissionRow } from "./admission-core";
 import type { DraftRow } from "./copilot-drafts";
 import type { Fact, FactRecord, Line, Quantities } from "./copilot-lines";
@@ -435,6 +437,19 @@ const COURSE_MAX = 1200;
 /** Read limits of the drafter (newest first). A list longer than its limit is named in `truncated` and the draft is not complete. */
 export const DISCHARGE_LIMITS = { orders: 400, rounds: 30, notes: 60, results: 400 } as const;
 
+/**
+ * "12 Mar 2026 — GYN-HYST-OP (gynae hysteroscopy operative, left), spinal anaesthesia; converted from GYN-DNC-01" — one
+ * per procedure, in theatre order, from the theatre's own record (no tariff, package or price). Pure.
+ */
+export function procedureText(procs: readonly ProcedureDone[]): string {
+  return procs.map((p) => {
+    const what = [p.procedureClass.replace(/_/g, " "), p.laterality].filter((x): x is string => x !== null && x !== "").join(", ");
+    const under = p.anaesthesiaType === null ? "" : `, ${p.anaesthesiaType.replace(/_/g, " ")} anaesthesia`;
+    const conv = p.convertedFrom === null ? "" : `; converted from ${p.convertedFrom}`;
+    return `${istDate(p.incisionAt)} — ${p.procedureCode} (${what})${under}${conv}`;
+  }).join("\n").slice(0, 2000);
+}
+
 function medicineRows(drugOrders: readonly IpdOrderRow[]): IpdSummaryContent["medicines"] {
   return drugOrders.filter((o) => o.status === "active").slice(0, 40).map((o) => ({
     name: (o.medicineName ?? "Medicine").slice(0, 160),
@@ -447,9 +462,10 @@ function medicineRows(drugOrders: readonly IpdOrderRow[]): IpdSummaryContent["me
 
 /**
  * Build and KEEP a discharge summary draft. STRUCTURED PARTS COME FROM THE RECORD, NEVER FROM A MODEL: the diagnosis (the
- * admission's), results reported and awaited (the stay's lab and imaging orders), and the medicines — one row per
- * ACTIVE drug order, each naming its order. Procedures have no record this module can read (the theatre's), so the
- * field is left for the doctor. The course in hospital is the round notes quoted in order (template), or a model's
+ * admission's), results reported and awaited (the stay's lab and imaging orders), the procedures (the theatre's cases
+ * with an incision during the stay, or of the day-care encounter the admission was converted from — `proceduresDone`,
+ * through the OT module's index), and the medicines — one row per ACTIVE drug order, each naming its order. A procedure
+ * done outside the theatre module (a bedside procedure, an IR case) has no record here yet: the doctor adds it. The course in hospital is the round notes quoted in order (template), or a model's
  * summary of the masked notes when one is up and its text passes the checks; a text that names a medicine on no order
  * and in no note is dropped and flagged; any medicine named with no active order is flagged, in a note or not. A
  * sealed, confidential or medico-legal patient gets the template only. Every list is read newest first; a list cut at
@@ -482,6 +498,10 @@ export async function buildDischargeDraft(db: Db, actor: Actor, admissionId: str
     .orderBy(desc(orderItems.createdAt), desc(orderItems.id)).limit(limits.results + 1));
   const reported = items.filter((i) => i.at !== null);
   const awaited = items.filter((i) => i.at === null);
+  // Procedures: the theatre's record of the stay, and of the day-care case the admission was converted from.
+  const procs = a.admittedAt === null ? [] : await proceduresDone(db, {
+    patientId: a.patientId, from: a.admittedAt, until: now, linkedRef: a.source === "ot_daycare_conversion" ? a.sourceRef : null,
+  });
 
   const said = (r: (typeof rounds)[number]): string => [r.soap.assessment, r.soap.plan === undefined ? undefined : `plan: ${r.soap.plan}`]
     .filter((s): s is string => typeof s === "string" && s.trim() !== "").join("; ");
@@ -528,13 +548,15 @@ export async function buildDischargeDraft(db: Db, actor: Actor, admissionId: str
   flags.push(...medicineFlagsOf(medicines, drugOrders));
   const content = IpdSummaryContentSchema.parse({
     diagnosis: { text: (a.provisionalDiagnosis ?? "").trim() === "" ? "To be completed" : a.provisionalDiagnosis },
-    course, medicines, pendingResults: [...new Set(awaited.map((i) => i.name))].join(", ").slice(0, 1000),
+    course, medicines, procedures: procedureText(procs), pendingResults: [...new Set(awaited.map((i) => i.name))].join(", ").slice(0, 1000),
   });
   const sources: IpdDischargeDraft["sources"] = [
     { field: "diagnosis", source: "admission", records: [{ id: a.id, at: a.admittedAt?.toISOString() ?? null, label: "Diagnosis at admission" }] },
     { field: "course", source: "round", records: rounds.map((r) => ({ id: r.id, at: r.seenAt.toISOString(), label: `Round ${istDate(r.seenAt)} ${istClock(r.seenAt)}` })) },
     { field: "medicines", source: "order", records: drugOrders.filter((o) => o.status === "active").map((o) => ({ id: o.id, at: o.orderedAt.toISOString(), label: o.medicineName ?? "Medicine" })) },
     { field: "pendingResults", source: "lab", records: awaited.map((i) => ({ id: i.id, at: null, label: i.name })) },
+    // Named only when the theatre recorded one: a stay with no procedure has no source to show.
+    ...(procs.length === 0 ? [] : [{ field: "procedures", source: "ot" as const, records: procs.map((p) => ({ id: p.caseId, at: p.incisionAt.toISOString(), label: `${p.procedureCode} — incision ${istDate(p.incisionAt)} ${istClock(p.incisionAt)}` })) }]),
   ];
   const draftId = newId();
   // The row keeps no record text: ids, the fingerprint, and the model's own paragraph when it wrote one (`copilot-drafts.ts`).

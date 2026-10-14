@@ -18794,7 +18794,8 @@
       "order": "Orders",
       "round": "Rounds",
       "admission": "Admission",
-      "assessment": "Assessment"
+      "assessment": "Assessment",
+      "ot": "Theatre"
     },
     "since": {
       "label": "Since yesterday",

@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ipd/`
 · Notes: [MAP.md](../../../apps/core/src/modules/ipd/MAP.md)
 
-- **Depends on modules:** `billing`, `formulary`, `materials`, `opd`, `ordering`, `patients`, `pharmacy`, `roster`, `tariff`
+- **Depends on modules:** `billing`, `formulary`, `lab`, `materials`, `opd`, `ordering`, `ot`, `patients`, `pharmacy`, `roster`, `tariff`
 - **Used by modules:** `diet`, `housekeeping`, `maintenance`, `passes`, `transport`
 - **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`

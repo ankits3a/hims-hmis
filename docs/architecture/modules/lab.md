@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/lab/`
 
 - **Depends on modules:** `billing`, `opd`, `patients`, `tariff`
-- **Used by modules:** `abdm`, `ordering`, `radiology`
+- **Used by modules:** `abdm`, `ipd`, `ordering`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `ops`, `orders`, `phi`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `interfaceDown`, `interfaceRestored`
 
@@ -217,6 +217,11 @@ Source: `apps/core/src/modules/lab/`
   - `getSpecimenByNo(exec: Db | Tx, specimenNo: string): Promise<{ specimen: SpecimenView; itemIds: string[] } | null>`
   - `printLabels(db: Db, actor: Actor, input: PrintLabelsInput, now: Date = new Date()): Promise<PrintLabelsResult>`
   - types: `PrintLabelsInput`, `PrintLabelsResult`, `PrintedSpecimen`, `SpecimenView`
+- `stay-values.ts`
+  - `RESULTED_VALUES_LIMIT`
+  - `printedNumber(raw: string, decimals: number): string`
+  - `resultedValuesForOrders(exec: Db | Tx, input: { orderIds: readonly string[]; since: Date; until: Date; limit?: number }): Promise<{ values:…`
+  - types: `ResultedValue`
 - `sweeps.ts`
   - `LAB_NON_RETURN_ACTOR: Actor`
   - `LAB_SLA_ACTOR: Actor`
