@@ -13,6 +13,7 @@ import { closedThroughOf, lineIsBilled, liveBills } from "./bill-cover";
 import { ipdChargeableDays, rentClassOf } from "./charge-days";
 import { applyClassChanges, classChangesOf } from "./class-change";
 import { evaluateDepositLadderSafely } from "./deposit-ladder";
+import { keepDrugLineIn, retryDrugExceptionsIn, settleDrugLineReversalIn } from "./drug-charges";
 import { chargeException, chargeReversed, rentPosted, visitRecorded } from "./charge-events";
 import { IpdError, IpdRefusal } from "./errors";
 import { IPD_CHARGES_REVERSE } from "./manifest";
@@ -247,6 +248,8 @@ export async function postAdmissionCharges(
       }
     }
     result.posted += await retryOrderExceptionsIn(tx, actor, a, opts.now, cache);
+    // #787: an issued medicine whose price was missing is priced again (the units still with the patient).
+    result.posted += await retryDrugExceptionsIn(tx, actor, a, opts.now);
     const through = lastDayOf(a, opts.upToIstDate);
     if (a.chargesPostedThrough === null || a.chargesPostedThrough < through) {
       await tx.update(ipdAdmissions).set({ chargesPostedThrough: through }).where(eq(ipdAdmissions.id, a.id));
@@ -623,9 +626,11 @@ export async function keepOrderCharge(
   const at = opts.now ?? new Date();
   return withTx(db, async (tx) => {
     const line = (await tx.select().from(ipdChargeLines).where(eq(ipdChargeLines.id, input.chargeLineId)))[0];
-    if (line === undefined || line.orderItemId === null) throw new IpdError("charge_line_not_found", "no order line with this id", { chargeLineId: input.chargeLineId });
+    if (line === undefined || (line.orderItemId === null && line.source !== "ipd.pharmacy")) throw new IpdError("charge_line_not_found", "no order line with this id", { chargeLineId: input.chargeLineId });
     await admissionAdvisoryLock(tx, line.admissionId);
-    const resolved = await resolveOrderCancelExceptionsIn(tx, line.admissionId, line.orderItemId, at, `kept: ${reason}`);
+    // #787: a pharmacy line's decisions (a return after the bill, a charged lost / damaged replacement) close the same way.
+    const resolved = line.orderItemId === null ? await keepDrugLineIn(tx, line, at, `kept: ${reason}`)
+      : await resolveOrderCancelExceptionsIn(tx, line.admissionId, line.orderItemId, at, `kept: ${reason}`);
     if (resolved === 0) throw new IpdError("charge_line_not_found", "no open cancelled-order decision for this line", { chargeLineId: line.id });
     return { resolved };
   });
@@ -670,6 +675,8 @@ export async function reverseChargeLine(
     }));
     // #785 review: billing's reversal of a cancelled order's line answers its bill-desk decision.
     if (line.orderItemId !== null) await resolveOrderCancelExceptionsIn(tx, line.admissionId, line.orderItemId, at, `reversed: ${reason}`);
+    // #787: a pharmacy line — the returns that waited on a void are credited (kept units re-posted); a re-issue flag is waived.
+    await settleDrugLineReversalIn(tx, actor, line, at, reason);
     return { reversalLineId: id };
     });
   } catch (e) {

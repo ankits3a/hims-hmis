@@ -24,7 +24,7 @@ import "./ipd-bill-desk.css";
 const REASONS: readonly IpdBillDeskReason[] = [
   "deposit_90", "deposit_75", "icu_low_days", "posting_failed", "rate_missing", "tariff_missing", "deposit_check_pending",
   "cash_consent_missing", "auth_pending_24h", "discharge_balance", "visit_backdated",
-  "order_cancelled_after_bill", "order_cancelled_after_work",
+  "order_cancelled_after_bill", "order_cancelled_after_work", "return_after_bill", "reissue_lost_damaged",
 ];
 const HOT: ReadonlySet<IpdBillDeskReason> = new Set(["deposit_90", "icu_low_days", "posting_failed", "discharge_balance"]);
 
@@ -69,6 +69,12 @@ function BackdatedVisit({ v, onDone }: { v: NonNullable<IpdBillDeskRow["backdate
   );
 }
 
+/** #787: the second button's words for a medicine line (a return credited after the void; a re-issue waived). */
+const REVERSE_LABEL: Partial<Record<NonNullable<IpdBillDeskRow["orderCancels"]>[number]["reason"], string>> = {
+  return_after_bill: "ipdBillDesk.orderCancel.reverse_return_after_bill",
+  reissue_lost_damaged: "ipdBillDesk.orderCancel.reverse_reissue_lost_damaged",
+};
+
 /**
  * #785 — a lab / imaging order cancelled after its line went on a settled bill, or (lab) after the sample: billing KEEPS
  * the charge or REVERSES it (once the bill is voided), and either way gives the reason. `ipd.charges.reverse` only.
@@ -87,7 +93,7 @@ function OrderCancel({ c, onDone }: { c: NonNullable<IpdBillDeskRow["orderCancel
       <span className="small">{t(`ipdBillDesk.orderCancel.${c.reason}`, { name: c.serviceName, date: c.serviceDate })}</span>
       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("ipdBillDesk.orderCancel.reason")} aria-label={t("ipdBillDesk.orderCancel.reason")} />
       <button type="button" className="ipdb-btn" disabled={busy || reason.trim() === ""} onClick={() => go("keep")}>{t("ipdBillDesk.orderCancel.keep")}</button>
-      <button type="button" className="ipdb-btn" disabled={busy || reason.trim() === ""} onClick={() => go("reverse")}>{t("ipdBillDesk.orderCancel.reverse")}</button>
+      <button type="button" className="ipdb-btn" disabled={busy || reason.trim() === ""} onClick={() => go("reverse")}>{t(REVERSE_LABEL[c.reason] ?? "ipdBillDesk.orderCancel.reverse")}</button>
     </div>
   );
 }

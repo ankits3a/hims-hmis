@@ -24,7 +24,7 @@ export const visitRecorded = defineEvent("ipd.charge.visit_recorded", MODULE, z.
 
 /** A charge that could not be posted (the rate is missing on the admission's locked tariff). Raised once per key. */
 export const chargeException = defineEvent("ipd.charge.exception_raised", MODULE, z.object({
-  admissionId: id, serviceDate: istDate, component: IpdChargeComponentSchema, reason: z.enum(["rate_missing", "tariff_missing", "visit_backdated", "order_cancelled_after_bill", "order_cancelled_after_work"]),
+  admissionId: id, serviceDate: istDate, component: IpdChargeComponentSchema, reason: z.enum(["rate_missing", "tariff_missing", "visit_backdated", "order_cancelled_after_bill", "order_cancelled_after_work", "return_after_bill", "reissue_lost_damaged"]),
   serviceCode: z.string().nullable(), provenance: IpdProvenanceSchema,
 }));
 

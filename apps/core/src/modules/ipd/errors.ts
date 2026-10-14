@@ -6,6 +6,10 @@ import type { IpdRefusalCode } from "@hmis/contracts";
  * maps, a sentence a person reads, and `detail` carrying the data the sentence names.
  */
 export type IpdErrorCode =
+  /** #787 — a return would credit more units than the pharmacy line carries; nothing is capped silently. */
+  | "credit_exceeds_line"
+  /** #787 — a pharmacy line could neither be inserted nor found: the posting is refused, never dropped. */
+  | "charge_line_not_posted"
   /** A bed-layout file failed validation or disagrees with the registry; nothing was written. */
   | "bed_layout_invalid"
   /** `apply` by an actor who does not hold the bed-layout permission; nothing was written. */

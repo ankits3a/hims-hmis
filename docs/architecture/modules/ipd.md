@@ -232,6 +232,12 @@ Source: `apps/core/src/modules/ipd/`
   - `readSummary(db: Db, actor: Actor, admissionId: string): Promise<IpdSummaryView>`
   - `saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdSummaryView>`
   - `signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"sign_summary">>`
+- `drug-charges.ts`
+  - `postDrugIssueChargesIn(tx: Tx, actor: Actor, a: AdmissionRow, input: DrugIssueCharge): Promise<{ posted: string[]; missing: number }>`
+  - `postDrugReturnCreditsIn(tx: Tx, actor: Actor, a: AdmissionRow, input: { issueId: string; returnId: string; batches: readonly { batchId: str…`
+  - `retryDrugExceptionsIn(tx: Tx, actor: Actor, a: AdmissionRow, at: Date): Promise<number>`
+  - `versionPricedServices(db: Db | Tx, serviceIds: readonly string[], at: Date): Promise<Set<string>>`
+  - types: `DrugIssueCharge`, `DrugReturnOutcome`
 - `emar-cards.ts`
   - `IPD_NEW_ORDER_HOURS`
   - `dueDoseCard(ctx: DeskProviderCtx): Promise<DeskCard[]>`

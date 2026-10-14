@@ -17307,6 +17307,8 @@
     "now": "अभी",
     "reason": {
       "order_cancelled_after_bill": "बिल के बाद ऑर्डर रद्द",
+      "return_after_bill": "बिल के बाद दवा वापस",
+      "reissue_lost_damaged": "खोई या खराब दवा दोबारा दी गई",
       "order_cancelled_after_work": "सैंपल के बाद ऑर्डर रद्द",
       "rate_missing": "दर नहीं",
       "tariff_missing": "टैरिफ़ नहीं",
@@ -17320,7 +17322,8 @@
       "visit": "कंसल्टेंट विज़िट",
       "cross_visit": "क्रॉस-कंसल्टेशन",
       "lab": "लैब जाँच",
-      "imaging": "इमेजिंग"
+      "imaging": "इमेजिंग",
+      "pharmacy": "दवाइयाँ"
     },
     "class": {
       "general": "जनरल वार्ड",
@@ -17606,6 +17609,10 @@
   "ipdBillDesk": {
     "orderCancel": {
       "order_cancelled_after_bill": "{{name}} · {{date}} — बिल के बाद रद्द",
+      "return_after_bill": "{{name}} · {{date}} — बिल के बाद वापस",
+      "reissue_lost_damaged": "{{name}} · {{date}} — खोई या खराब, दोबारा दी गई",
+      "reverse_return_after_bill": "वॉइड के बाद वापसी घटाएँ",
+      "reverse_reissue_lost_damaged": "शुल्क माफ़ करें",
       "order_cancelled_after_work": "{{name}} · {{date}} — सैंपल के बाद रद्द",
       "reason": "कारण (ज़रूरी)",
       "keep": "शुल्क रखें",
@@ -17626,6 +17633,8 @@
     "empty": "कुछ भी लंबित नहीं। सामान्य चालू बिल यहाँ नहीं दिखते।",
     "reason": {
       "order_cancelled_after_bill": "बिल के बाद रद्द",
+      "return_after_bill": "बिल के बाद वापस",
+      "reissue_lost_damaged": "खोई / खराब दवा दोबारा",
       "order_cancelled_after_work": "सैंपल के बाद रद्द",
       "deposit_90": "जमा 90 % उपयोग",
       "deposit_75": "जमा 75 % उपयोग",

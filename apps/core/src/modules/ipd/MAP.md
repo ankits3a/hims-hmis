@@ -1,9 +1,9 @@
 ---
 type: module-notes
 title: "ipd — module notes"
-description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3)."
+description: "Why and traps of the inpatient module: validated bed and ward attributes and the bed-layout loader (E0.3), the bed intents and the Beds board (E1.1), admission — request, plan and deposit from the tariff, admit onto a bed in one transaction, the payer record, the band, the emergency lane and the downtime back-fill (E1.2) — and the running bill: tariff lock, day rule, nightly posting, visit seam, reversals, interim bill (E2.1) — and the payer split: payer- or patient-payable per line, room-rent cap with proportional deduction, co-pay, approved amount, denial to cash, scheme ₹0 (E2.2) — and transfers: start with an SBAR handover, accept by the receiving nurse, cancel, the atomic swap and the class change in place at the next noon (E3.1) — and the deposit ladder, the daily totals to the attendant and the exceptions-only bill desk (E2.3) — and discharge: fit, departments confirm, structured summary, final bill with payer claim and dues, gate pass, LAMA / abscond / death, mortuary register (E3.2) — and nursing: the admission assessment, vitals scored by NEWS2 / MEOWS / PEWS with one alert per breach, intake/output, notes, the shift handover, the nurse station and the phone (E4.1) — and rounds: the doctor's list, S/O/A/P round sign with resident co-sign, fit from the round, inpatient orders (drugs; lab and imaging through the ordering door) and the order event contract for the eMAR, cross-consults, the 08:00 cover and 14:00 nudge clock (E4.2) — and lab / imaging orders on the running bill through billing's episode charge sink, reversed when cancelled before the work (#785) — and the eMAR: pharmacist verify, ward issue with patient labels, the dose schedule, the bedside acts with both scans, the second nurse's PIN, PRN limits, infusions, the narcotic register, verbal orders, the allergy re-check and the missed-dose sweep (E4.3) — and medicines issued to the ward on the running bill at the pharmacy counter's batch price, returns credited at the issue price (#787)."
 resource: apps/core/src/modules/ipd
-tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar]
+tags: [ipd, beds, resources, admission, billing, transfer, discharge, now-cards, bed-flow, nursing, ews, rounds, orders, order-billing, emar, drug-billing]
 generated: { by: agent:claude, at: 2026-10-12 }
 verified: []
 stale_after: 2027-01-12
@@ -181,6 +181,15 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `modules/radiology/schedule.ts` `cancelStudy`. `kernel/db/schema/ipd.ts` —
   `ipd_charge_lines.order_id` / `order_item_id`, components `lab` / `imaging`, source `ipd.order` (migration `ipd_orderbill`).
   Contracts `IPD_CHARGE_COMPONENTS` / `IpdChargeComponent` (the rate card's `IpdRateComponent` is unchanged).
+
+- (#787) `drug-charges.ts` — WARD-ISSUED MEDICINES ON THE RUNNING BILL: `postDrugIssueChargesIn` (called by `emar.ts`
+  `issueMed`), `postDrugReturnCreditsIn` (`returnMed`), `retryDrugExceptionsIn` (inside `charges.ts` `postAdmissionCharges`),
+  `settleDrugLineReversalIn` (inside `reverseChargeLine`), `keepDrugLineIn` (inside `keepOrderCharge`), `versionPricedServices`
+  (for `discharge-bill.ts` `patientInvoiceLines`). The price is `modules/pharmacy/bill.ts` `priceBatchLine` + billing's
+  `previewInvoice` — the OPD counter's own two calls. `kernel/db/schema/ipd.ts` — `ipd_charge_lines.issue_id` / `batch_id` /
+  `drug_seq`, component `pharmacy`, source `ipd.pharmacy`, exception reasons `return_after_bill` / `reissue_lost_damaged`
+  (migration `ipd_drugbill`). Contracts `IPD_DRUG_COMPONENT`, `IPD_CHARGE_EXCEPTION_REASONS`, `IPD_LINE_DECISION_REASONS`. Web:
+  the bill desk's order-cancel row serves the two new decisions (`apps/web/src/screens/ipd-bill-desk.tsx` `REVERSE_LABEL`).
 
 - (E4.3 #735) `emar.ts` — the acts: `verifyOrder` (+ `verifyFindingsOf`), `issueMed`, `returnMed`, `resolveAllergyFlag`,
   `secondCheck`, `administerDose`, `holdDose`, `refuseDose`, `missDose`, `reofferHeldDoses`, `markDoseInError`,
@@ -370,6 +379,62 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
     module). The lab desk refuses a tender on a live admission (`ipd_running_bill`); its preview answers `runningBill: true`
     and the web hides the tender.
   - The deposit ladder re-checks right after a posting (`evaluateDepositLadderSafely`, a savepoint; a failure is logged).
+
+- WARD-ISSUED MEDICINES (#787, `drug-charges.ts`; DECIDED unless marked $):
+  - ISSUE: `issueMed` posts one `ipd.pharmacy` line per issued BATCH (component `pharmacy`, no bed class; `order_id` = the
+    `ipd_orders` row, `issue_id`, `batch_id`, `qty` = units, `drug_seq` 0) in its own transaction — the stock movement and
+    the charge commit together, under the admission lock `lockOrderIn` takes FIRST (the orderbill lock order).
+  - PRICE = THE OPD COUNTER'S: pharmacy `priceBatchLine` (batch MRP per base unit, the NPPA ceiling, the loose-MRP ruling,
+    the sale item's standing discount; GST carved OUT of the MRP, `taxInclusive`) priced by billing `previewInvoice` at the
+    issue instant — no second price rule exists. A pack residue is folded into the batch's one line (money summed), so
+    `gross_paise` may exceed `qty × unit_paise` by the residue. $ OWNER TO CONFIRM: the line follows the tariff IN FORCE AT
+    ISSUE (the counter's rule; an MRP is the batch's, and a drug reaches the shelf without a tariff revision) — not the
+    admission's locked version, which only matters where a version carries a contracted medicine rate below MRP.
+    $ OWNER TO CONFIRM: no member benefit is contested at issue (no patient is named to the preview — a counter would
+    never be consumed); billing contests benefits once, on the final invoice.
+  - MISSING PRICE: no MRP in the item's units, no GST slab row, no tariff in force, or a ₹0 price → `rate_missing` (key
+    `<admission>:<date>:pharmacy:<issue>.<batch>`, `error_code` = the pharmacy's / tariff's own code, or `price_zero`),
+    nothing posted — never ₹0. Retry and the nightly run re-price the units STILL WITH THE PATIENT (issued less returned);
+    all returned closes the record. $ OWNER TO CONFIRM — THE PRICING INSTANT IS THE ISSUE (`issued_at`), ALWAYS: a Retry
+    never uses a tariff or a ceiling that came into force later; where no price existed at issue the exception stays open
+    for billing (recording the batch's own MRP — a fact about the issued stock, not a dated list — lets a Retry post). A medicine with no ACTIVE sale item
+    cannot be issued at all (`medicine_not_stocked`, the eMAR's own guard).
+  - RETURN — THE SHAPE: every reader of `ipd_charge_lines` treats a reversal as the WHOLE line (the final bill, the split,
+    the interim bill, `bill-cover.ts`), so a return REVERSES the batch's live line and, when units stay, posts the next
+    line of the chain (`drug_seq` + 1, `ipd_charge_lines_pharmacy_ux`) for the kept units at the FIRST line's price:
+    gross, discount and the tax heads by billing's cumulative `creditShare`, net = gross − discount, taxable = net − tax.
+    Today's MRP is never read. Net effect on the bill = exactly the returned units' share; a full return leaves nothing.
+    A credit larger than the live line throws `credit_exceeds_line` (never capped). `returnMed` offers each batch only
+    what is still out of it (issued less earlier returns). `credited_units` / the act's `creditedUnits` = what came off
+    what the patient owes (`creditedUnitsOf`): 0 while a settled bill holds the line, 0 for a line billing waived.
+  - RETURN AFTER THE BILL: a line a settled bill took is never reversed behind it — `return_after_bill` (key
+    `<admission>:<date>:pharmacy:<line>:return_billed:<return>`) goes to the bill desk; the stock is back all the same.
+    Billing voids the bill (#763) and reverses the line — `reverseChargeLine` then re-posts the kept units
+    (`settleDrugLineReversalIn` reads the waiting returns' units), so only what came back is credited — or keeps the charge
+    (`keepOrderCharge`). TRAP: `reverseChargeLine` on a pharmacy line with NO waiting return takes the whole line off.
+  - RE-ISSUE — $ OWNER TO CONFIRM: `lost` / `damaged` is CHARGED (the patient consumed or lost the stock) and flagged
+    `reissue_lost_damaged` (key `…:<line>:reissue`); billing waives it (`ipd.charges.reverse`, reason) or keeps it. A
+    return answers the flag ("returned to pharmacy") and raises it again on the kept-units line while any stay charged.
+    `extra_supply` is charged with no flag.
+  - NEVER CHARGED / NO MONEY EFFECT: the patient's own medicine (no stock, no line, `credited_units` 0); a give marked
+    entered in error (the charge is at issue, not at give); a narcotic wastage (the unit was issued).
+  - FINAL INVOICE: `patientInvoiceLines` puts a pharmacy line on the invoice `taxInclusive` at the frozen amount, ALWAYS
+    as per-unit lines (`qty × floor(amount / qty)`, then the paise left over at 1 paisa each) — a sale service is created
+    unregulated (`registerSaleItem`) but `updateService` can make one `regulated`, and the engine's per-unit bound would cut
+    a single whole-amount line. As a prepaid quote when today's version prices the service, else as its batch price
+    (`versionPricedServices`). Without this billing would add GST on
+    top of an MRP and the settle would refuse `bill_changed`.
+  - PAYER: nothing new — a pharmacy line is payer-payable under the existing split unless the non-payables list names its
+    service code or its tariff category (`pharmacy`, `pharmacy_5`, `pharmacy_18`, `pharmacy_exempt`); it takes no
+    proportional room-rent deduction. Scheme / package exclusions are the split's existing rules.
+  - NO DOUBLE CHARGE: no pharmacy path can invoice an admission — a counter dispense binds an OPD visit, a walk-in sale no
+    episode, and billing's `issueInvoice` refuses the `IP…` grammar (`ipd_running_bill`). OWED (not built, an issue): a
+    counter door that SELLS to an inpatient on the admission number and posts to the running bill with no tender — the
+    pharmacy counter has no admission-number field, and a retail sale row cannot exist without an invoice.
+  - STORE — OWNER / PHARMACY TO DECIDE: ward issues leave `PHARM-OPD` (`OPD_PHARMACY_STORE_CODE`), the OPD counter's own
+    shelf. A separate inpatient store (its own stock, FEFO and reorder levels) is not created here.
+  - 0058: the eMAR's and the pharmacy verify screen's answers and events are unchanged — units only. Money is read on the
+    interim bill, the final bill and the bill desk (`ipd.bill.view`, `ipd.billdesk.view`).
 
 ### Payer split (E2.2, #726)
 - COMPUTED ON READ, never stored per line: the interim bill computes it every time from the record. Only a PRINT keeps it
@@ -803,7 +868,8 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - ISSUE: stock leaves the `PHARM-OPD` store through `postMovements` (`consume`, refType `ipd_emar_issue`, FEFO unless a batch is
   named); labels = ceil(units / stripSize); `markIpdOrderIssuedIn`. Own medicine: no stock, `own_batch_no` + expiry required,
   never charged (0 credited on return). RETURN: stock back to the batches it left (newest first), units credited; a return on a
-  stopped order clears `return_owed`. NO MONEY: no running-bill line exists for ward issue yet (owed, below).
+  stopped order clears `return_owed`. MONEY (#787): the issue and the return post / credit the running bill in the same
+  transaction (`drug-charges.ts`, "Running bill" above); the eMAR's own answers carry units only.
 - STOP / CANCEL: `cancelFutureDosesIn` cancels every open slot (each its own `cancelled` act) and closes the order's allergy flags,
   in the stop's transaction.
 - VERBAL (§4.6): the nurse records via `place_ip_order` + `verbal` (needs `ipd.emar.give`; the named doctor is the prescriber and
@@ -968,8 +1034,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E4.2) `charges.ts` `postConsultantVisit` treats `covering_for` as the treating consultant: the 08:00 clock writes it, so a
   covering head's visit is `visit`, not `cross_visit`.
 
-- (E4.3) SEAMS LEFT OPEN: ward issue and returns are not on the running bill (`ipd_charge_lines` has no pharmacy source — a
-  money change for the charges lane); the credit is recorded in units. Labels print from the browser (no `ipd_emar_label`
+- (E4.3) SEAMS LEFT OPEN: (ward issue and returns went on the running bill with #787.) Labels print from the browser (no `ipd_emar_label`
   print-outbox document; the band's precedent). Interaction findings depend on adopted formulary pairs (none → "no interaction
   data"). The narcotic ward register counts issued / given / wasted / returned units, not a cabinet balance per ward.
   Infusion rate is free-typed (no pump feed, §5 Phase 2). The minute sweep rides `sweepIpdNursing` (no job, no pool client).
