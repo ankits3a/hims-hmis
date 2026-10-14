@@ -282,6 +282,10 @@ export const IPD_GOLIVE_ITEMS: readonly GoLiveItem[] = [
       const held = Object.values(notificationTemplates).filter((t) => t.key.startsWith("ipd.") && t.heldReason !== undefined).map((t) => t.key);
       const why: string[] = [];
       if (held.length > 0) why.push(`held: ${held.join(", ")}`);
+      // INTEGRATION (ipd-stage, #800/#761): the daily totals are no longer "held" by the template table — they leave only
+      // when config names an approved template and the bill desk's phone (`ipdTemplateRegistrations`). Unset → not sent.
+      const totalsTemplate = (env.IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE ?? "").trim() !== "" || (env.IPD_DAILY_TOTALS_DLT_TEMPLATE_ID ?? "").trim() !== "";
+      if (!totalsTemplate || (env.IPD_BILL_DESK_PHONE ?? "").trim() === "") why.push("ipd.daily_totals: template or IPD_BILL_DESK_PHONE not configured");
       if ((env.IPD_FAMILY_OTP_DLT_TEMPLATE_ID ?? "").trim() === "") why.push("IPD_FAMILY_OTP_DLT_TEMPLATE_ID not set");
       if (whatsappConfigured(env) === false) why.push("WhatsApp not configured");
       return why.length === 0 ? { ok: true, detail: "configured" } : { ok: false, detail: why.join("; ") };
