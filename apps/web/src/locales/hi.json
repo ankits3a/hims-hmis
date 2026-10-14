@@ -8589,7 +8589,7 @@
     "rejected": "{{who}} ने छूट नामंज़ूर की: {{note}}। छूट हटाएँ, या फिर से माँगें।"
   },
   "pharmacyDesk": {
-    "wordmark": "PHARMACY DESK",
+    "wordmark": "फ़ार्मेसी डेस्क",
     "where": "ओपीडी काउंटर",
     "thisDesk": "यह डेस्क",
     "waiting": "{{count}} प्रतीक्षा में",
@@ -15739,5 +15739,8 @@
         "value": "लागत मूल्य"
       }
     }
+  },
+  "agentDock": {
+    "title": "डेस्क एजेंट"
   }
 }

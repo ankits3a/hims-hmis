@@ -15739,5 +15739,8 @@
         "value": "Value at cost"
       }
     }
+  },
+  "agentDock": {
+    "title": "DESK AGENT"
   }
 }

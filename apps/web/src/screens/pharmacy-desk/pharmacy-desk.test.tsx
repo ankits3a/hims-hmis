@@ -1,5 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { act } from "react";
+import i18next from "i18next";
 import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
 import { PharmacyDesk } from "./pharmacy-desk";
@@ -93,6 +95,9 @@ describe("the desk's rules, pure (PD-3)", () => {
     expect(queuedDay("2026-09-20", now)).toBeNull();
     expect(queuedDay("2026-09-19", now)).toEqual({ kind: "yesterday" });
     expect(queuedDay("2026-09-17", now)).toEqual({ kind: "date", label: "17 Sept" });
+    // the desk's language, not a fixed English month
+    expect(queuedDay("2026-09-17", now, "hi")).toEqual({ kind: "date", label: new Intl.DateTimeFormat("hi-IN", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2026, 8, 17))) });
+    expect(ticketLabel("P2609190004", "2026-09-20", "hi")).not.toMatch(/Sep/);
   });
   it("the co-pilot names ONE offer: checked clear, enough on the shelf, cheapest — and says the saving", () => {
     const alt = (over: Partial<WireAlternative>): WireAlternative => ({
@@ -325,6 +330,22 @@ describe("PharmacyDesk (PD-3)", () => {
     expect(await screen.findByTestId("queue-row-d9")).toHaveTextContent("yesterday");
     expect(screen.getByTestId("queue-row-d9")).not.toHaveTextContent(/\d+h \d+m/);
     expect(screen.getByTestId("queue-row-d1")).toHaveTextContent("18m");
+  });
+
+  it("in Hindi the wordmark and an earlier day's date are Hindi too (walk 2026-10-14: 'PHARMACY DESK', '23 Sept')", async () => {
+    const istDay = (ms: number): string => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+    const old = row("d9", "Sunita Devi", { status: "queued", createdAt: ago(5 * 24 * 60), queuedOn: istDay(NOW - 5 * 24 * 60 * 60_000), dispenseNo: null });
+    mockRoutes(base({ "GET /api/pharmacy/queue": { status: 200, body: { items: [old, ...QUEUE] } } }));
+    await act(async () => { await i18next.changeLanguage("hi"); });
+    try {
+      renderWithProviders(<PharmacyDesk ticketId={null} />);
+      const r = await screen.findByTestId("queue-row-d9");
+      expect(r).not.toHaveTextContent(/Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec/);
+      expect(r.textContent).toMatch(/[\u0900-\u097F]/);
+      expect(screen.queryByText("PHARMACY DESK")).not.toBeInTheDocument();
+    } finally {
+      await act(async () => { await i18next.changeLanguage("en"); });
+    }
   });
 
   it("PD-D6 — every keycap drawn is one this desk binds", async () => {
