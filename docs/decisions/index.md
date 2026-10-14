@@ -97,3 +97,4 @@ Records without ✓ were transcribed by an agent and await the owner's check.
 | 0073 | 2026-10-14 | [IPD money rules confirmed; IPD stays off production until all modules are built](0073-ipd-money-rules-confirmed.md) | ipd, billing, tariff, planning | Ruled |  |
 | 0074 | 2026-10-14 | [IPD open items settled by standard practice; subsidised medical-college room and visit rates](0074-ipd-open-items-standard-defaults.md) | ipd, billing, tariff, pharmacy, nursing, discharge | Ruled |  |
 | 0075 | 2026-10-15 | [A light insurance/TPA desk is built before IPD go-live; payroll is bought, not built](0075-insurance-lite-before-ipd-payroll-bought.md) | billing, insurance, ipd, hr, procurement | Ruled |  |
+| 0076 | 2026-10-15 | [Emergency department: the spec's defaults are ruled (rates, dues, cashless schemes, mass casualty, hardware)](0076-emergency-module-defaults.md) | emergency, billing, law, procurement | Ruled |  |
