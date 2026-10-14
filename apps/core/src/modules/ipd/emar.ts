@@ -14,7 +14,7 @@ import {
 } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { THERAPEUTIC_DUPLICATE_CLASSES, interactionRulesPresent, listInteractionsAmong, resolveDrugTexts, resolveMedicines } from "../formulary";
-import { MaterialsError, batchLocations, fefoPick, findStoreByCode, getBatch, postMovements } from "../materials";
+import { MaterialsError, fefoPick, findStoreByCode, getBatch, postMovements, sellableBatchesByItem } from "../materials";
 import { allergyRecorded, getPatientSummaries, listAllergies } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, recordIncident } from "../pharmacy";
 import { matchAllergiesSaltAware } from "../opd";
@@ -252,8 +252,9 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
       if (input.batchId !== undefined) {
         // E4.3 review: a named batch must be THIS medicine's stocked item and lie in THIS store.
         const batch = await getBatch(tx, input.batchId);
-        const here = batch === undefined ? [] : (await batchLocations(tx, batch.id)).filter((l) => l.resourceId === store.id && l.qtyOnHand > 0);
-        if (batch === undefined || batch.itemId !== shelf.item.id || here.length === 0) {
+        // ... and be one FEFO could sell here today: never expired, never recalled.
+        const sellable = (await sellableBatchesByItem(tx, store.id, [shelf.item.id], at)).get(shelf.item.id) ?? [];
+        if (batch === undefined || batch.itemId !== shelf.item.id || !sellable.some((s) => s.batchId === input.batchId)) {
           throw new IpdRefusal("batch_mismatch", undefined, { batchId: input.batchId, itemId: batch?.itemId ?? null });
         }
       }

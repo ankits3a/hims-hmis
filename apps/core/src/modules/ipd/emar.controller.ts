@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, Inject, Param, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { DB } from "../../kernel/tokens";
+import { BillingError, billingHttpStatus } from "../billing";
 import { istDayWindow } from "../../kernel/approvals/cumulative";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { IpdError, IpdRefusal, ipdRefusalStatus } from "./errors";
@@ -31,6 +32,11 @@ function toHttp(e: unknown): never {
   if (e instanceof IpdError) {
     const status = e.code === "ipd_forbidden" ? 403 : e.code.endsWith("_not_found") ? 404 : 422;
     throw new HttpException({ statusCode: status, code: e.code, message: e.message, detail: e.detail }, status);
+  }
+  if (e instanceof BillingError) {
+    // The idempotency helper's answers (a key still in flight, or reused with another body): 409, never a 500.
+    const status = billingHttpStatus(e.code);
+    throw new HttpException({ statusCode: status, code: e.code, message: e.message }, status);
   }
   if (e instanceof z.ZodError) {
     throw new HttpException({ statusCode: 400, code: "invalid_request", message: "request body failed validation", detail: e.issues }, 400);
