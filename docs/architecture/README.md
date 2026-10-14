@@ -152,7 +152,7 @@ flowchart LR
 | [diet](modules/diet.md) | ipd, ot, tasks | — | 17 | 6 |
 | [formulary](modules/formulary.md) | — | cds, ipd, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
-| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, housekeeping, maintenance, passes, transport | 144 | 35 |
+| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, housekeeping, maintenance, passes, transport | 147 | 36 |
 | [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ipd, ordering, radiology | 78 | 25 |
 | [linen](modules/linen.md) | tasks | — | 14 | 7 |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — | 7 | 2 |
