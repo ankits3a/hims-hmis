@@ -137,7 +137,7 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `settleBedProposalIn` (called by `reserveBed` and `assignBedIn`, so admit / emergency / back-fill / assign_bed all log the
   outcome) and `withdrawBedProposalIn` (called by `cancelAdmission` and the read). `now-cards.ts` — the Now cards
   `bedProposalCard`, `dischargeBlockedCard` (`stuckStepOf`, pure), `cleaningOverdueCard`, the shared `nowIdentities`,
-  `nowSubtitle`, `rankNowRows`, `SEALED_LABEL`. `bill-desk.ts` `depositLowCard(ctx)` (money). `goals/bed-flow-queries.ts` —
+  `nowSubtitle`, `rankNowRows`, `SEALED_LABEL`. `rounds-cards.ts` — the doctor's `allergyFlagsCard`. `bill-desk.ts` `depositLowCard(ctx)` (money). `goals/bed-flow-queries.ts` —
   `IPD_BED_FLOW_QUERIES` BF1 (accepted %) and BF2 (overridden %), per IST week. `beds.ts` `roomGendersFor` (the twin-room
   rule for many beds, one holder rule with `roomGender`). `kernel/db/schema/ipd.ts` — `ipd_bed_proposals` (migration
   `ipd_bed_flow`). Contracts: `IpdBedFlowProposal`, `IpdWaitingCard.flow` / `.uhid`, board `totals.predictedDischargesTomorrow`.
@@ -678,6 +678,11 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - Tomorrow's predicted discharges = live `ipd_discharges` with `fit_when = 'tomorrow'` declared since IST midnight (marks only).
 - E4.3 (#735) filled `due_dose` (`ipd.emar.give`) and `new_order` (`ipd.emar.view`); E4.1 (#733) filled `overdue_vitals`,
   `ews_rising`, `handover_pending` and `assessment_due`.
+- THE DOCTOR'S ALLERGY CARD `ipd.allergy_flags` → `ipd.round.sign` (`rounds-cards.ts` `allergyFlagsCard`, owner
+  2026-10-14): the rounds list's own patients (`rounds-read.ts` `myInpatients`: own, covering, unit, consulted; filtered on
+  `actor`) with an open eMAR allergy flag on an ACTIVE order and no doctor decision yet (hot), or an active allergy recorded
+  after THIS doctor's latest round on the stay (`ipd_rounds.created_at`, author = the doctor; none → since admission) (warn).
+  A decided flag waits on the pharmacist: no row. Row → `/ipd/rounds/<admissionId>`; no drug or allergen words on the row.
 
 ### Nursing (E4.1, #733)
 - WHICH SCORE (`ewsKindFor`): under 16 → PEWS; pregnant / ≤ 42 days postpartum (the assessment's `obstetric`) → MEOWS; a
@@ -909,7 +914,10 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   course is the signed rounds quoted in order, or the model's summary. `save_summary_draft` takes `draftId`; the SERVER
   stamps `draft_source = copilot_draft`, the draft's model id and prompt version, and `draft_id`; the stamp is sticky across
   later saves. A template draft has `draft_model_id` null. The draft row's fingerprint is `dischargeRecordsHash` (orders
-  and their status, signed rounds, nursing notes, result items): a save naming a draft built before the records changed is
+  and their status, signed rounds, nursing notes, result items, and — since #794 — the theatre's cases, `proceduresDone`
+  in the drafter's own window). VERSIONED (#794): a stamp is `v2:` + 32 hex; a stamp with no prefix is v1 (no theatre
+  cases) and `dischargeRecordsUnchanged` compares it with the v1 algorithm, so no draft or summary went stale on deploy; an
+  unknown version is never current. A new fingerprint part = a new version, never an edit of v2. A save naming a draft built before the records changed is
   refused (`summary_draft_stale`); a copilot-sourced summary carries `content.recordsHash` from its last save and the
   signature refuses when the records moved since (`summary_records_changed` — open, check, save, sign). The content's
   server fields (`medicineFlags`, `medicineAck`, `recordsHash`) are stripped from every client save. `IpdSummaryView.stamp`

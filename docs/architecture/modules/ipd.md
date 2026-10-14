@@ -162,7 +162,7 @@ Source: `apps/core/src/modules/ipd/`
 - `copilot-drafts.ts`
   - `MODEL_COOLDOWN_MS`
   - `checkSbarDraftForGive(db: Db | Tx, draftId: string, a: { id: string; patientId: string }, sbar: { situation: string; background: string; as…`
-  - `dischargeRecordsHash(db: Db | Tx, admissionId: string): Promise<string>`
+  - `dischargeRecordsHash(db: Db | Tx, a: RecordsAdmission): Promise<string>`
   - `sbarTextHash(sbar: { situation: string; background: string; assessment: string; recommendation: string }): string`
 - `copilot-facts.ts`
   - `buildFactSet(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise…`

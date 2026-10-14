@@ -90,26 +90,37 @@ function roundView(r: typeof ipdRounds.$inferSelect, names: Map<string, string>)
   };
 }
 
+/**
+ * WHOSE INPATIENTS (spec §4.5A): own (admitting), covering, the clinical unit's (roster parent unit on the IST day) and
+ * consulted, in a placed state — one read for the rounds list and the doctor's allergy Now card (`rounds-cards.ts`).
+ */
+export async function myInpatients(db: Db, userId: string, now: Date, units?: Map<string, string>): Promise<{
+  picked: { a: AdmissionRow; why: IpdRoundsWhy }[]; consulted: Map<string, string>;
+}> {
+  const byUser = units ?? await unitsOn(db, istDayString(now));
+  const myUnit = byUser.get(userId);
+  const mates = new Set(myUnit === undefined ? [] : [...byUser.entries()].filter(([, t]) => t === myUnit).map(([u]) => u));
+  const consulted = new Map((await db.select({ id: ipdConsults.id, admissionId: ipdConsults.admissionId }).from(ipdConsults)
+    .where(and(eq(ipdConsults.consultantId, userId), eq(ipdConsults.status, "open")))).map((c) => [c.admissionId, c.id] as const));
+  // Review of 72f10b68: the list is filtered in SQL — own, covering, the unit's consultants' and consulted admissions only.
+  const mine = [eq(ipdAdmissions.consultantId, userId), eq(ipdAdmissions.coveringFor, userId)];
+  if (mates.size > 0) mine.push(inArray(ipdAdmissions.consultantId, [...mates]));
+  if (consulted.size > 0) mine.push(inArray(ipdAdmissions.id, [...consulted.keys()]));
+  const open = await db.select().from(ipdAdmissions).where(and(inArray(ipdAdmissions.state, [...IPD_PLACED_STATES]), or(...mine)));
+  const picked: { a: AdmissionRow; why: IpdRoundsWhy }[] = [];
+  for (const a of open) {
+    const why: IpdRoundsWhy | null = a.consultantId === userId ? "own" : a.coveringFor === userId ? "covering"
+      : consulted.has(a.id) ? "consult" : mates.has(a.consultantId) ? "unit" : null;
+    if (why !== null) picked.push({ a, why });
+  }
+  return { picked, consulted };
+}
+
 export async function readRoundsList(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdRoundsList> {
   await requireIpdPermission(db, actor, IPD_ROUND_SIGN);
   const date = istDayString(now);
   const units = await unitsOn(db, date);
-  const myUnit = units.get(actor.id);
-  const mates = new Set(myUnit === undefined ? [] : [...units.entries()].filter(([, t]) => t === myUnit).map(([u]) => u));
-  const consulted = new Map((await db.select({ id: ipdConsults.id, admissionId: ipdConsults.admissionId }).from(ipdConsults)
-    .where(and(eq(ipdConsults.consultantId, actor.id), eq(ipdConsults.status, "open")))).map((c) => [c.admissionId, c.id] as const));
-  // Review of 72f10b68: the list is filtered in SQL — own, covering, the unit's consultants' and consulted admissions only.
-  const mine = [eq(ipdAdmissions.consultantId, actor.id), eq(ipdAdmissions.coveringFor, actor.id)];
-  if (mates.size > 0) mine.push(inArray(ipdAdmissions.consultantId, [...mates]));
-  if (consulted.size > 0) mine.push(inArray(ipdAdmissions.id, [...consulted.keys()]));
-  const open = await db.select().from(ipdAdmissions).where(and(inArray(ipdAdmissions.state, [...IPD_PLACED_STATES]), or(...mine)));
-
-  const picked: { a: AdmissionRow; why: IpdRoundsWhy }[] = [];
-  for (const a of open) {
-    const why: IpdRoundsWhy | null = a.consultantId === actor.id ? "own" : a.coveringFor === actor.id ? "covering"
-      : consulted.has(a.id) ? "consult" : mates.has(a.consultantId) ? "unit" : null;
-    if (why !== null) picked.push({ a, why });
-  }
+  const { picked, consulted } = await myInpatients(db, actor.id, now, units);
   const isConsultant = (await consultantIdsAmong(db, [actor.id], now)).has(actor.id);
   const cosignQueue = isConsultant ? await cosignQueueOf(db, actor, units, now) : [];
   if (picked.length === 0) return { asOf: now.toISOString(), isConsultant, rows: [], cosignQueue };
