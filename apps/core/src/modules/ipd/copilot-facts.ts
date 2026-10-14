@@ -4,12 +4,14 @@ import {
   dietNpo, dietOrders, ipdConsults, ipdEmarActs, ipdEmarDoses, ipdIntakeOutput, ipdNursingNotes, ipdOrders, ipdRounds, ipdVitals,
   orderItems, services,
 } from "../../kernel/db/schema";
+import { resultedValuesForOrders } from "../lab";
 import { istMinutesOfInstant } from "../roster";
-import { mkFact as fact, quantitiesIn, shown } from "./copilot-lines";
+import { labSeverity, mkFact as fact, quantitiesIn, shown } from "./copilot-lines";
+import type { ResultedValue } from "../lab";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Db } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
-import type { EwsBand, Fact, FactRecord, VitalParam } from "./copilot-lines";
+import type { EwsBand, Fact, FactRecord, LabReading, VitalParam } from "./copilot-lines";
 
 /**
  * E5.3 (#740) — THE FACT BUILDER. Reads what was RECORDED for one admission in a window `(since, until]` and answers
@@ -18,9 +20,11 @@ import type { EwsBand, Fact, FactRecord, VitalParam } from "./copilot-lines";
  * yesterday" (window = since the doctor's last round), the nurse's SBAR (window = the shift) and the discharge draft.
  *
  * WHAT IS LEFT OUT, AND WHY (DECIDED):
- *  - Lab VALUES: the lab's result reader is not on its module index (and answers no row ids), so a result is a count of
- *    the stay's own lab / imaging order items the department completed in the window, with the test's name. A
- *    restricted item (HIV, PCPNDT-class) is omitted, not counted (the kernel's DD11 rule).
+ *  - Lab values come from the lab's own reader (`resultedValuesForOrders`, its index): only the stay's own lab orders,
+ *    only SIGNED, not superseded values, signed inside the window. One fact per analyte (its latest value, and the
+ *    most severe one when that was worse), critical first, then out of range, then in range — at most
+ *    `LAB_VALUE_FACTS` of them (DECIDED); the "results reported" line still counts every test. A free-text result is
+ *    named, never quoted. A restricted item (HIV, PCPNDT-class) is omitted, not counted (the kernel's DD11 rule).
  *  - Money: no charge line, tariff or invoice is read (decision 0058).
  *  - A refused vitals set and an administration later marked entered-in-error are not counted.
  *  - "Abnormal" for one vital sign is judged only for a NEWS2 patient (adult ranges, RCP chart); a child's or a mother's
@@ -43,6 +47,47 @@ const round1 = (n: number): number => Math.round(n * 10) / 10;
 function istClock(at: Date): string {
   const m = istMinutesOfInstant(at);
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/** At most this many lab-value facts per window (DECIDED): the "since yesterday" block shows six lines in all. */
+export const LAB_VALUE_FACTS = 4;
+
+/**
+ * Signed values (newest first, as the lab answers them) → one fact per analyte: its latest value, and the most severe
+ * value of the window when it is more severe than the latest. Critical first, then out of range, then in range; newest
+ * first within each; at most `cap`. Pure. Every number a line may print is read from the row's own printed value,
+ * unit and analyte name.
+ */
+export function labValueFacts(values: readonly ResultedValue[], cap = LAB_VALUE_FACTS): Fact[] {
+  const byAnalyte = new Map<string, ResultedValue[]>();
+  for (const v of values) {
+    const k = v.analyteName.trim().toLowerCase();
+    byAnalyte.set(k, [...(byAnalyte.get(k) ?? []), v]);
+  }
+  const reading = (v: ResultedValue): LabReading => ({ value: v.value, unit: v.unit, flag: v.flag, at: istClock(v.resultedAt) });
+  const facts = [...byAnalyte.entries()].map(([k, rows]) => {
+    const sorted = [...rows].sort((a, b) => b.resultedAt.getTime() - a.resultedAt.getTime());
+    const latest = sorted[0]!;
+    const worst = sorted.reduce((m, v) => (labSeverity(v.flag) > labSeverity(m.flag) ? v : m), latest);
+    const shownRows = worst === latest ? [latest] : [latest, worst];
+    const severity = Math.max(...shownRows.map((v) => labSeverity(v.flag)));
+    const q = shownRows.map((v) => quantitiesIn(`${v.value ?? ""} ${v.unit ?? ""}`));
+    return {
+      severity, at: latest.resultedAt.getTime(),
+      fact: fact({
+        kind: "lab_value", key: `lab:${k}`, source: "lab", analyte: latest.analyteName, latest: reading(latest),
+        worst: worst === latest ? null : reading(worst), readings: rows.length,
+        numbers: q.flatMap((x) => x.numbers), times: [...q.flatMap((x) => x.times), ...shownRows.map((v) => istClock(v.resultedAt))],
+        terms: [latest.analyteName],
+        records: sorted.map((v) => ({
+          id: v.resultId, at: v.resultedAt,
+          label: `${v.testName}: ${v.analyteName} ${v.value ?? "text result"}${v.unit === null ? "" : ` ${v.unit}`}${v.flag === null || v.flag === "N" ? "" : ` (${v.flag})`} at ${istClock(v.resultedAt)}`,
+        })),
+      }),
+    };
+  });
+  facts.sort((a, b) => b.severity - a.severity || b.at - a.at);
+  return facts.slice(0, cap).map((f) => f.fact);
 }
 
 export type FactWindow = { since: Date; until: Date };
@@ -178,6 +223,12 @@ export async function buildFactSet(db: Db, a: Pick<AdmissionRow, "id" | "patient
         terms: [...new Set(mine.map((d) => d.name))],
         records: mine.map((d) => ({ id: d.id, at: d.at, label: `${d.name} — reported at ${d.at === null ? "" : istClock(d.at)}` })),
       }));
+    }
+    const labOrderIds = placed.filter((o) => o.kind === "lab").map((o) => o.departmentOrderId!);
+    if (labOrderIds.length > 0) {
+      const signed = await resultedValuesForOrders(db, { orderIds: labOrderIds, since: w.since, until: w.until, limit: LIMIT });
+      if (signed.truncated) truncated.push("lab_values");
+      out.push(...labValueFacts(signed.values));
     }
   }
 

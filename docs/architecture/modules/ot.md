@@ -11,7 +11,7 @@ generated: { by: tools/arch/gen.mjs }
 Source: `apps/core/src/modules/ot/`
 
 - **Depends on modules:** `billing`, `materials`, `patients`, `roster`, `tariff`
-- **Used by modules:** `diet`, `radiology`
+- **Used by modules:** `diet`, `ipd`, `radiology`
 - **Kernel used:** `approvals`, `auth`, `config`, `db`, `episodes`, `events`, `modules`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `materialConsumed`, `patientMerged`
 
@@ -158,6 +158,10 @@ Source: `apps/core/src/modules/ot/`
   - `class OtModule`
   - `intendedPayerFor(payerClass: string): string`
   - `registerOtEncounterResolver(): () => void`
+- `procedures-done.ts`
+  - `PROCEDURES_DONE_LIMIT`
+  - `proceduresDone(exec: Db | Tx, input: { patientId: string; from: Date; until: Date; linkedRef?: string | null }): Promise<ProcedureDone[]>`
+  - types: `ProcedureDone`
 - `recovery.ts`
   - `admitToBay(db: Db, actor: Actor, input: { encounterId: string; bayResourceId: string }): Promise<void>`
   - `convertToAdmission(db: Db, actor: Actor, input: { encounterId: string; caseId: string; destination?: string; reason: string }): Promise<{ s…`

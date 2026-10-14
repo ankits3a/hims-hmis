@@ -18803,7 +18803,8 @@
       "order": "ऑर्डर",
       "round": "राउंड",
       "admission": "भर्ती",
-      "assessment": "आकलन"
+      "assessment": "आकलन",
+      "ot": "ओटी"
     },
     "since": {
       "label": "कल से अब तक",

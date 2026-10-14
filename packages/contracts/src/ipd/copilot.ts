@@ -9,7 +9,7 @@ import { IpdIdSchema, IpdInstantSchema } from "./common";
  */
 
 /** Where a line's facts were read: the chip on the line, and which records it opens. */
-export const IPD_COPILOT_SOURCES = ["vitals", "ews", "lab", "imaging", "emar", "note", "io", "consult", "diet", "order", "round", "admission", "assessment"] as const;
+export const IPD_COPILOT_SOURCES = ["vitals", "ews", "lab", "imaging", "emar", "note", "io", "consult", "diet", "order", "round", "admission", "assessment", "ot"] as const;
 export const IpdCopilotSourceSchema = z.enum(IPD_COPILOT_SOURCES);
 export type IpdCopilotSource = z.infer<typeof IpdCopilotSourceSchema>;
 

@@ -76,9 +76,11 @@ flowchart LR
   housekeeping --> tasks
   ipd --> billing
   ipd --> formulary
+  ipd --> lab
   ipd --> materials
   ipd --> opd
   ipd --> ordering
+  ipd --> ot
   ipd --> patients
   ipd --> pharmacy
   ipd --> roster
@@ -150,15 +152,15 @@ flowchart LR
 | [diet](modules/diet.md) | ipd, ot, tasks | — | 17 | 6 |
 | [formulary](modules/formulary.md) | — | cds, ipd, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
-| [ipd](modules/ipd.md) | billing, formulary, materials, opd, ordering, patients, pharmacy, roster, tariff | diet, housekeeping, maintenance, passes, transport | 136 | 35 |
-| [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ordering, radiology | 78 | 25 |
+| [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, housekeeping, maintenance, passes, transport | 136 | 35 |
+| [lab](modules/lab.md) | billing, opd, patients, tariff | abdm, ipd, ordering, radiology | 78 | 25 |
 | [linen](modules/linen.md) | tasks | — | 14 | 7 |
 | [maintenance](modules/maintenance.md) | ipd, tasks | — | 7 | 2 |
 | [materials](modules/materials.md) | formulary | ipd, opd, ot, pharmacy | 117 | 38 |
 | [membership](modules/membership.md) | patients, tariff | billing, partners, pharmacy | 11 | 11 |
 | [opd](modules/opd.md) | billing, cds, formulary, materials, patients, roster | abdm, billing, ipd, lab, ordering, pharmacy, radiology | 165 | 32 |
 | [ordering](modules/ordering.md) | billing, lab, opd, radiology | ipd | 4 | 1 |
-| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | diet, radiology | 53 | 12 |
+| [ot](modules/ot.md) | billing, materials, patients, roster, tariff | diet, ipd, radiology | 53 | 12 |
 | [partners](modules/partners.md) | billing, membership, patients, tariff | — | 10 | 7 |
 | [passes](modules/passes.md) | billing, ipd, patients | — | 9 | 4 |
 | [patients](modules/patients.md) | — | abdm, aerb, billing, ipd, lab, membership, opd, ot, partners, passes, pharmacy, radiology, transport | 31 | 8 |

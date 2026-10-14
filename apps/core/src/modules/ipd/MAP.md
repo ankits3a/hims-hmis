@@ -969,7 +969,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   may be another nurse than the builder; the card names both (`draft.builtBy`, `givenBy`). Nothing auto-accepts.
 - DISCHARGE: structured parts come from the record, never the model — diagnosis (the admission's), medicines (one row per
   ACTIVE drug order, `source: order` + `orderId`), results reported / awaited (the stay's own lab and imaging order items;
-  restricted items are never named). Procedures are left empty (the theatre's records are not read here — owed). The
+  restricted items are never named). Procedures come from ot's `proceduresDone` (cases with an incision during the stay, or of the day-care encounter an
+  `ot_daycare_conversion` admission names in `source_ref`; a theatre conversion names both codes; no quote or package),
+  source `ot`, named only when there is one (`procedureText`). Bedside and IR procedures have no record here yet. The
   course is the signed rounds quoted in order, or the model's summary. `save_summary_draft` takes `draftId`; the SERVER
   stamps `draft_source = copilot_draft`, the draft's model id and prompt version, and `draft_id`; the stamp is sticky across
   later saves. A template draft has `draft_model_id` null. The draft row's fingerprint is `dischargeRecordsHash` (orders
@@ -984,8 +986,10 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `medicineAck` (reason, signer, time) are written into the signed content and never recomputed. The reason is asked on
   EVERY summary that names a medicine with no active order — person-typed or copilot-sourced, with drug orders on the
   stay or none (NABH medicine reconciliation; the E3.2 carve-out was lifted by decision 0074).
-- LAB VALUES ARE NOT IN THE FACTS (owed): lab's `patientResultsForDoctor` is not on its index and answers no row ids, so a
-  result is a count of completed order items with the test's name. Vital "abnormal" is judged only for NEWS2 patients
+- LAB VALUES (`labValueFacts`): lab's `resultedValuesForOrders` (its index) answers the stay's own lab orders' SIGNED,
+  non-superseded, non-restricted values signed in the window. One `lab_value` fact per analyte — latest value, plus the
+  most severe one when worse — critical (weight 95) before out of range (78) before in range (40), at most
+  `LAB_VALUE_FACTS` (4); the "results reported" count line stays. A free-text result is named, never quoted. Vital "abnormal" is judged only for NEWS2 patients
   (`ADULT_RANGE`); a child's or a mother's deterioration is the band's to say. Temperatures print in °C as recorded.
 - NO MONEY: nothing here reads a charge line; `MONEY_RE` refuses a model's money word. No permission was added:
   `ipd.round.sign` + the treating team (since yesterday), `ipd.handover.shift` (SBAR), `ipd.discharge.declare` (discharge).
