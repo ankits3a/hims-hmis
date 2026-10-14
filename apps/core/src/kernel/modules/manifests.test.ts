@@ -225,13 +225,15 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
       "transport",
       // E4.4 DIET (issue #736) — appended. A leaf: it reaches into ipd and tasks through their indexes; OT by its events.
       "diet",
+      // ER lane 1 (issue #808) — appended. A leaf: it reaches into patients, ipd and billing through their indexes.
+      "emergency",
     ]);
-    expect(ALL_MANIFESTS).toHaveLength(34); // E4.4 DIET: 34, diet; E1.6 TRANSPORT: 29, transport; PASSES E1.3: 27, passes; //; E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
+    expect(ALL_MANIFESTS).toHaveLength(35); // ER lane 1 (#808): 35, emergency; E4.4 DIET: 34, diet; E1.6 TRANSPORT: 29, transport; PASSES E1.3: 27, passes; //; E1.5 MAINTENANCE: 29, maintenance; E1.4 HOUSEKEEPING: 28, housekeeping; E2.4 LINEN: 27; E1.7 BIO-MEDICAL WASTE: 27; IPD BEDS E1.1: 26, ipd; E0.1 TASK ENGINE: 26; TEST ORDERING: 25; STAFF ATTENDANCE: 24; PHASE R R1: 23, the roster; PLAN 16c T1: 20 -> 21, the pharmacy; PLAN 18c T1: 22, the AERB registers
     // Installable as a set: `ModuleRegistry.install` throws on a duplicate key, so this also
     // pins that no manifest appears twice.
     const registry = new ModuleRegistry();
     for (const manifest of ALL_MANIFESTS) registry.install(manifest);
-    expect(registry.all()).toHaveLength(34); // E4.4 DIET; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.6 TRANSPORT; PASSES E1.3; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
+    expect(registry.all()).toHaveLength(35); // ER lane 1 (#808); E4.4 DIET; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.6 TRANSPORT; PASSES E1.3; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING + E1.5 MAINTENANCE; IPD BEDS E1.1 + E0.1 TASK ENGINE + E1.4 HOUSEKEEPING; IPD BEDS E1.1
   });
 
   it("V4: app.module.ts installs ALL_MANIFESTS and nothing else", () => {
@@ -244,7 +246,7 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     expect(manifestKeys(extras, "app.module.ts")).toEqual([]);
   });
 
-  it("the worker's registry differs from ALL_MANIFESTS in exactly fourteen enumerated, intentional ways", () => {
+  it("the worker's registry differs from ALL_MANIFESTS in exactly fifteen enumerated, intentional ways", () => {
     const workerKeys = manifestKeys(
       installArguments(readFileSync(WORKER_MODULE, "utf8"), "worker.module.ts"),
       "worker.module.ts",
@@ -379,7 +381,9 @@ describe("ALL_MANIFESTS is the one manifest list (Plan 11d D2)", () => {
     // (1n) E1.6 TRANSPORT — the TWENTY-NINTH, `transport`, APP-ONLY on the same terms: three permissions, no
     //      subscription; the worker imports the module only so its task kinds are defined for the task clock.
     // E3.3 FAMILY — `ipd` now declares a subscription (the family stop consumer), so the worker installs it: it leaves this list.
-    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport"]);
+    // (1o) ER lane 1 (#808) — `emergency`, APP-ONLY: two permissions, no subscription; its pre-alert lapse rides the
+    //      worker's `lapseBedReservations` job, which imports the emergency index and needs no permission to run it.
+    expect(appOnly).toEqual(["ops", "membership", "formulary", "resources", "desk", "orders", "aerb", "roster", "attendance", "tasks", "bmw", "linen", "maintenance", "transport", "emergency"]);
 
     /**
      * ═══ THE COUNT IS THE FRICTION, AND UNTIL NOW NOTHING ENFORCED IT ═══
