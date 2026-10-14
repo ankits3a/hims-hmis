@@ -242,6 +242,7 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_EMAR_ALLERGY_CONSUMER`
   - `IPD_EMAR_EVENT_NAMES: readonly string[]`
 - `emar-read.ts`
+  - `readAdmissionAllergyFlags(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<{ flags: IpdEmarPharmacyQueue["all…`
   - `readEmarDue(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdEmarDueList>`
   - `readEmarPatient(db: Db, actor: Actor, admissionId: string, opts: { now?: Date; from?: Date; to?: Date } = {}): Promise<IpdEmarPatient>`
   - `readLabelSheet(db: Db, actor: Actor, issueId: string): Promise<IpdEmarLabelSheet>`
@@ -503,14 +504,14 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (130)
+## HTTP routes (131)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
-- `emar.controller.ts` — 23: `/ipd/emar`
+- `emar.controller.ts` — 24: `/ipd/emar`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `nursing.controller.ts` — 12: `/ipd/nursing`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`

@@ -13,6 +13,7 @@ import {
 import type { DrugRoute, WireMedicineHit } from "../lib/ipd-rounds-api";
 import { TestPicker } from "../components/test-picker";
 import type { WireOrderableTest } from "../lib/ordering-api";
+import { AllergyFlags } from "./ipd-emar-flags";
 import "./ipd-rounds.css";
 
 /*
@@ -146,6 +147,8 @@ export function IpdRoundPatientScreen({ admissionId }: { admissionId: string }):
         {p.provisionalDiagnosis !== null ? <p className="dx"><span className="dim">{t("ipdRounds.dx")}</span> {p.provisionalDiagnosis}</p> : null}
       </header>
       {refused !== null ? <div className="ipdr-refused" role="alert">{t(`ipdRounds.refused.${refused}`, { defaultValue: t("ipdRounds.refused.failed") })}</div> : null}
+      {/* E4.3 (#735): an allergy recorded after an order — the doctor decides here (stop / continue with a reason). */}
+      <AllergyFlags admissionId={admissionId} onDecided={reload} />
       <div className="ipdr-cols">
         <div className="col main">
           {p.can.sign ? <SignRound p={p} busy={busy} act={act} /> : <div className="ipdr-empty small">{t("ipdRounds.notOnTeam")}</div>}

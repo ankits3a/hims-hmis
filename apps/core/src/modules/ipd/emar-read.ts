@@ -287,6 +287,7 @@ export async function readPharmacyQueue(db: Db, actor: Actor, opts: { now?: Date
     toVerify.push({ ...base(o), ...f });
   }
   const toIssue = orders.filter((o) => o.verification === "verified" && o.issuedAt === null).map(base);
+  const issued = orders.filter((o) => o.verification === "verified" && o.issuedAt !== null).map(base);
   const flagRows = await db.select().from(ipdEmarAllergyFlags).where(isNull(ipdEmarAllergyFlags.resolvedAt)).orderBy(asc(ipdEmarAllergyFlags.raisedAt)).limit(100);
   const flagOrders = flagRows.length === 0 ? [] : await db.select().from(ipdOrders).where(inArray(ipdOrders.id, flagRows.map((f) => f.orderId)));
   const flagAdm = flagRows.length === 0 ? [] : await db.select().from(ipdAdmissions).where(inArray(ipdAdmissions.id, [...new Set(flagRows.map((f) => f.admissionId))]));
@@ -318,7 +319,29 @@ export async function readPharmacyQueue(db: Db, actor: Actor, opts: { now?: Date
       issuedAt: i.issuedAt.toISOString(),
     };
   });
-  return { asOf: at.toISOString(), toVerify, toIssue, allergyFlags, returnsOwed };
+  return { asOf: at.toISOString(), toVerify, toIssue, issued, allergyFlags, returnsOwed };
+}
+
+/** One admission's OPEN allergy flags, for the doctor's round page (`ipd.emar.view`): the drug, the allergy, the decision so far. No money. */
+export async function readAdmissionAllergyFlags(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<{ flags: IpdEmarPharmacyQueue["allergyFlags"] }> {
+  await requireIpdPermission(db, actor, IPD_EMAR_VIEW);
+  const at = opts.now ?? new Date();
+  const a = await readAdmission(db, admissionId);
+  const rows = await db.select().from(ipdEmarAllergyFlags).where(and(eq(ipdEmarAllergyFlags.admissionId, a.id), isNull(ipdEmarAllergyFlags.resolvedAt))).orderBy(asc(ipdEmarAllergyFlags.raisedAt));
+  if (rows.length === 0) return { flags: [] };
+  const orders = await db.select().from(ipdOrders).where(inArray(ipdOrders.id, rows.map((f) => f.orderId)));
+  const id = (await identitiesOf(db, actor, [a], at)).get(a.id)!;
+  const place = (await placesOf(db, [a.id])).get(a.id);
+  return {
+    flags: rows.map((f) => {
+      const o = orders.find((x) => x.id === f.orderId);
+      return {
+        flagId: f.id, orderId: f.orderId, admissionId: a.id, identity: id, bedCode: id.sealed ? null : place?.bedCode ?? null, title: o?.medicineName ?? "—",
+        substances: f.substances, raisedAt: f.raisedAt.toISOString(), orderActive: o?.status === "active",
+        doctorDecision: (f.doctorDecision as "stop" | "continue" | null) ?? null, doctorReason: f.doctorReason,
+      };
+    }),
+  };
 }
 
 /** The labels of one issue, for the A4 sheet or the label slips (and the browser fallback). */

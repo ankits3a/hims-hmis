@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setToken } from "../lib/api";
+import { ApiError, setToken } from "../lib/api";
+import { AllergyFlags } from "./ipd-emar-flags";
 import { renderWithRouter } from "../test-utils";
 import { Bedside } from "./ipd-emar-bedside";
 import { IpdMar } from "./ipd-mar";
 import { IpdPharmacy, LabelPrint } from "./ipd-pharmacy";
-import { emarPatientOf, labelSheetOf, pharmacyQueueOf, scanOf, wardChartOf } from "./ipd-emar.fixture";
+import { eid, emarPatientOf, flagsOf, labelSheetOf, pharmacyQueueOf, scanOf, wardChartOf } from "./ipd-emar.fixture";
 
 /*
   E4.3 (#735) — the eMAR screens: board D2 (the bedside), the inpatient pharmacy desk, the labels and the ward MAR chart.
@@ -13,7 +14,7 @@ import { emarPatientOf, labelSheetOf, pharmacyQueueOf, scanOf, wardChartOf } fro
 */
 const api = vi.hoisted(() => ({
   getEmarPatient: vi.fn(), scan: vi.fn(), give: vi.fn(), secondCheck: vi.fn(), hold: vi.fn(), getPharmacyQueue: vi.fn(), verify: vi.fn(),
-  getWardChart: vi.fn(), issue: vi.fn(), getLabelSheet: vi.fn(),
+  getWardChart: vi.fn(), issue: vi.fn(), getLabelSheet: vi.fn(), getAdmissionFlags: vi.fn(), decideFlag: vi.fn(), infusion: vi.fn(), wastage: vi.fn(),
 }));
 vi.mock("../lib/ipd-emar-api", async (orig) => ({ ...(await orig<typeof import("../lib/ipd-emar-api")>()), ...api }));
 vi.mock("../lib/realtime", () => ({
@@ -22,7 +23,7 @@ vi.mock("../lib/realtime", () => ({
   resetRealtimeClientForTests: () => {},
 }));
 
-const PERMS = ["ipd.emar.view", "ipd.emar.give", "ipd.emar.verify", "ipd.emar.issue", "ipd.nursing.view"];
+const PERMS = ["ipd.emar.view", "ipd.emar.give", "ipd.emar.verify", "ipd.emar.issue", "ipd.nursing.view", "ipd.order.place"];
 const NOW = Date.now();
 
 beforeEach(() => {
@@ -151,6 +152,76 @@ describe("the inpatient pharmacy desk (E4.3)", () => {
     expect(labels[0]).toHaveTextContent("Actrapid 100 IU/ml");
     expect(labels[0]).toHaveTextContent("8 unit · SC · TDS");
     expect(labels[0]).toHaveTextContent("UH-FAKE-0101");
+  });
+});
+
+describe("web gaps closed (E4.3 review): flag decision, re-issue, infusions, wastage", () => {
+  it("the doctor decides an allergy flag on the round page: a reason, then stop or continue", async () => {
+    api.getAdmissionFlags.mockResolvedValue(flagsOf(NOW));
+    api.decideFlag.mockResolvedValue({});
+    renderWithRouter(<AllergyFlags admissionId={eid(100)} />, "/ipd/rounds");
+    const box = await screen.findByTestId("ipde-flags");
+    expect(box).toHaveTextContent("Ceftriaxone 1 g");
+    expect(box).toHaveTextContent("No dose is given until you decide");
+    expect(screen.getByTestId("ipde-flag-stop")).toBeDisabled();
+    await userEvent.type(screen.getByTestId("ipde-flag-reason"), "Switch to a macrolide");
+    await userEvent.click(screen.getByTestId("ipde-flag-stop"));
+    await waitFor(() => expect(api.decideFlag).toHaveBeenCalledWith(eid(21), "stop", "Switch to a macrolide"));
+  });
+
+  it("a decided flag shows the decision and no buttons", async () => {
+    api.getAdmissionFlags.mockResolvedValue(flagsOf(NOW, true));
+    renderWithRouter(<AllergyFlags admissionId={eid(100)} />, "/ipd/rounds");
+    expect(await screen.findByTestId("ipde-flags")).toHaveTextContent("Doctor continues: Mild rash; benefit outweighs");
+    expect(screen.queryByTestId("ipde-flag-stop")).toBeNull();
+  });
+
+  it("re-issue on the pharmacy desk sends its reason and note, and shows the daily cap's refusal", async () => {
+    api.issue.mockRejectedValue(new ApiError(409, { statusCode: 409, code: "reissue_limit", message: "x", rule: "This order has had its three extra issues in a day.", fix: "Ask the pharmacist in charge" }));
+    renderWithRouter(<IpdPharmacy />, "/ipd/pharmacy");
+    const card = await screen.findByTestId(`ipde-reissue-${eid(15)}`);
+    await userEvent.click(within(card).getByTestId("ipde-reissue-open"));
+    expect(within(card).getByTestId("ipde-reissue-btn")).toBeDisabled();
+    await userEvent.selectOptions(within(card).getByLabelText("Why again"), "lost");
+    expect(card).toHaveTextContent("The old labels stop working");
+    await userEvent.type(within(card).getByLabelText("Note"), "Strip dropped");
+    await userEvent.click(within(card).getByTestId("ipde-reissue-btn"));
+    await waitFor(() => expect(api.issue).toHaveBeenCalledTimes(1));
+    expect(api.issue.mock.calls[0]![0]).toMatchObject({ orderId: eid(15), reissue: { reason: "lost", note: "Strip dropped" } });
+    expect(await within(card).findByTestId("ipde-reissue-refusal")).toHaveTextContent("three extra issues in a day");
+  });
+
+  it("an infusion starts through the same scans as a give; stop needs no label", async () => {
+    api.scan.mockResolvedValue(scanOf(NOW));
+    api.infusion.mockResolvedValue({ infusionState: "running" });
+    bedside(true);
+    await userEvent.click(await screen.findByTestId("ipde-infusion-stop"));
+    await waitFor(() => expect(api.infusion).toHaveBeenCalledWith({ orderId: eid(6), event: "stop" }));
+    await userEvent.type(screen.getByTestId("ipde-label-input"), "EML-FAKE-LABEL{enter}");
+    const box = await screen.findByTestId("ipde-infusion");
+    expect(within(box).getByTestId("ipde-infusion-go")).toBeDisabled();
+    await userEvent.type(within(box).getByTestId("ipde-infusion-rate"), "100");
+    await userEvent.click(within(box).getByTestId("ipde-infusion-go"));
+    await waitFor(() => expect(api.infusion).toHaveBeenCalledTimes(2));
+    expect(api.infusion.mock.calls[1]![0]).toEqual({ orderId: eid(1), event: "start", rateMlPerHour: 100, patientCheck: { kind: "scan", wristbandCode: "IP26-000101-1" }, labelCode: "EML-FAKE-LABEL" });
+  });
+
+  it("narcotic wastage takes the amount in issue units, a reason and a witnessing second nurse", async () => {
+    api.secondCheck.mockResolvedValue({ pinProof: "proof-w", userId: "u2", name: "Nurse Fake Two", expiresAt: new Date(NOW + 300_000).toISOString() });
+    api.wastage.mockResolvedValue({});
+    bedside(true);
+    await userEvent.click(await screen.findByTestId("ipde-wastage-open"));
+    const form = screen.getByTestId("ipde-wastage");
+    await userEvent.type(within(form).getByTestId("ipde-wastage-qty"), "0.5");
+    await userEvent.type(within(form).getByTestId("ipde-wastage-reason"), "Half ampoule unused");
+    expect(within(form).getByTestId("ipde-wastage-save")).toBeDisabled();
+    await userEvent.type(within(form).getByLabelText("Username"), "fake.nurse2");
+    await userEvent.type(within(form).getByLabelText("PIN"), "8642");
+    await userEvent.click(within(form).getByRole("button", { name: "Check" }));
+    await within(form).findByText(/Witness: Nurse Fake Two/);
+    expect(api.secondCheck.mock.calls[0]!.slice(0, 2)).toEqual(["narcotic_wastage", { orderId: eid(7) }]);
+    await userEvent.click(within(form).getByTestId("ipde-wastage-save"));
+    await waitFor(() => expect(api.wastage).toHaveBeenCalledWith(eid(7), 0.5, "Half ampoule unused", { userId: "u2", pinProof: "proof-w" }));
   });
 });
 

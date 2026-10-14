@@ -7,7 +7,7 @@ import { ApiError } from "../lib/api";
 import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { getLabelSheet, getPharmacyQueue, issue, resolveFlag, returnMed, verify } from "../lib/ipd-emar-api";
-import type { AllergyOverride, Checks } from "../lib/ipd-emar-api";
+import type { AllergyOverride, Checks, ReissueReason } from "../lib/ipd-emar-api";
 import "./ipd-emar.css";
 
 /**
@@ -52,6 +52,8 @@ export function IpdPharmacy(): React.ReactElement {
             <h2>{t("ipdEmar.pharmacy.toIssue")} <span className="ipde-count">{q.toIssue.length}</span></h2>
             {q.toIssue.length === 0 ? <div className="ipde-empty">{t("ipdEmar.pharmacy.none")}</div> : null}
             {q.toIssue.map((it) => <IssueCard key={it.order.orderId} it={it} onIssued={(id) => { void load(); getLabelSheet(id).then(setSheet, () => undefined); }} />)}
+            <h2>{t("ipdEmar.pharmacy.issuedTitle")} <span className="ipde-count">{q.issued.length}</span></h2>
+            {q.issued.map((it) => <ReissueCard key={it.order.orderId} it={it} onIssued={(id) => { void load(); getLabelSheet(id).then(setSheet, () => undefined); }} />)}
           </section>
           <section className="ipde-col" aria-label={t("ipdEmar.pharmacy.flags")}>
             <h2>{t("ipdEmar.pharmacy.flags")} <span className="ipde-count">{q.allergyFlags.length}</span></h2>
@@ -178,6 +180,51 @@ function IssueCard({ it, onIssued }: { it: IpdEmarPharmacyQueue["toIssue"][numbe
             .then((r) => onIssued(r.issueId), (e: unknown) => setRefusal(refusalOf(e)));
         }}>{t("ipdEmar.pharmacy.issue")}</button>
       </div>
+    </article>
+  );
+}
+
+/** A second issue of an order already issued: its reason (lost and damaged replace the old labels) and a note; capped at three a day. */
+function ReissueCard({ it, onIssued }: { it: IpdEmarPharmacyQueue["issued"][number]; onIssued: (issueId: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [units, setUnits] = useState("10");
+  const [strip, setStrip] = useState("10");
+  const [reason, setReason] = useState<ReissueReason>("extra_supply");
+  const [note, setNote] = useState("");
+  const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
+  const n = Number(units);
+  const s = Number(strip);
+  const ok = Number.isInteger(n) && n > 0 && Number.isInteger(s) && s > 0 && note.trim() !== "";
+  return (
+    <article className="ipde-card" data-testid={`ipde-reissue-${it.order.orderId}`}>
+      <Who it={it} />
+      <Drug o={it.order} />
+      {!open ? <div className="ipde-acts"><button type="button" className="ipde-btn" onClick={() => setOpen(true)} data-testid="ipde-reissue-open">{t("ipdEmar.pharmacy.reissue")}</button></div> : (
+        <>
+          <div className="ipde-row">
+            <label className="ipde-field">{t("ipdEmar.pharmacy.units")}<input value={units} onChange={(e) => setUnits(e.target.value)} inputMode="numeric" /></label>
+            <label className="ipde-field">{t("ipdEmar.pharmacy.perLabel")}<input value={strip} onChange={(e) => setStrip(e.target.value)} inputMode="numeric" /></label>
+          </div>
+          <div className="ipde-row">
+            <label className="ipde-field">{t("ipdEmar.pharmacy.reissueReason")}
+              <select value={reason} onChange={(e) => setReason(e.target.value as ReissueReason)}>
+                {(["extra_supply", "lost", "damaged"] as const).map((r) => <option key={r} value={r}>{t(`ipdEmar.pharmacy.reissueReasons.${r}`)}</option>)}
+              </select>
+            </label>
+            <label className="ipde-field">{t("ipdEmar.note")}<input value={note} onChange={(e) => setNote(e.target.value)} /></label>
+          </div>
+          {reason !== "extra_supply" ? <div className="ipde-finding warn">⚠ {t("ipdEmar.pharmacy.reissueVoids")}</div> : null}
+          {refusal !== null ? <div className="ipde-refusal" role="alert" data-testid="ipde-reissue-refusal">{refusal.rule}</div> : null}
+          <div className="ipde-acts">
+            <button type="button" className="ipde-btn pri" disabled={!ok} data-testid="ipde-reissue-btn" onClick={() => {
+              setRefusal(null);
+              issue({ orderId: it.order.orderId, units: n, stripSize: s, ownMedicine: false, reissue: { reason, note: note.trim() } })
+                .then((r) => onIssued(r.issueId), (e: unknown) => setRefusal(refusalOf(e)));
+            }}>{t("ipdEmar.pharmacy.issue")}</button>
+          </div>
+        </>
+      )}
     </article>
   );
 }

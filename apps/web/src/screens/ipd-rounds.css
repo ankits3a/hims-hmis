@@ -109,3 +109,13 @@
   .ipdr-header { position: static; }
 }
 .ipdr .allergy-hit { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 8px; background: #fdecea; color: var(--warn); }
+
+/* E4.3 (#735) — the doctor's allergy-flag decision on the round page. */
+.ipde-flags { border-color: var(--red, #b42318); margin-bottom: 12px; }
+.ipde-flags h2 { font-size: 16px; margin: 0 0 6px; color: var(--red, #b42318); }
+.ipde-flagrow { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.ipde-flagrow p { margin: 0; }
+.ipde-flagrow label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.ipde-flagrow input { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font: inherit; }
+.ipde-flagacts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.ipde-flagacts button { min-height: 48px; }

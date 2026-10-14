@@ -8,7 +8,7 @@ import {
   administerDose, decideAllergyFlag, holdDose, issueMed, markDoseInError, missDose, recordInfusionEvent, recordNarcoticWastage, refuseDose, reofferHeldDoses,
   resolveAllergyFlag, returnMed, secondCheck, signVerbalOrder, verifyOrder,
 } from "./emar";
-import { readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
+import { readAdmissionAllergyFlags, readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
 import { placeIpOrder } from "./orders";
 import { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VERIFY, IPD_EMAR_VIEW, IPD_ORDER_PLACE } from "./permissions";
 import type {
@@ -89,6 +89,12 @@ export class IpdEmarController {
   @RequirePermission(IPD_EMAR_VIEW, "hospital")
   async patient(@CurrentActor() actor: Actor, @Param("admissionId") id: string): Promise<IpdEmarPatient> {
     try { return await readEmarPatient(this.db, actor, idParam.parse(id)); } catch (e) { toHttp(e); }
+  }
+
+  @Get("admissions/:admissionId/allergy-flags")
+  @RequirePermission(IPD_EMAR_VIEW, "hospital")
+  async admissionFlags(@CurrentActor() actor: Actor, @Param("admissionId") id: string): Promise<unknown> {
+    try { return await readAdmissionAllergyFlags(this.db, actor, idParam.parse(id)); } catch (e) { toHttp(e); }
   }
 
   @Get("ward")

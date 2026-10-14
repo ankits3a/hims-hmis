@@ -211,6 +211,8 @@ export const IpdEmarPharmacyQueueSchema = z.object({
   asOf: IpdInstantSchema,
   toVerify: z.array(IpdEmarVerifyItemSchema),
   toIssue: z.array(IpdEmarVerifyItemSchema.omit({ findings: true, interactionDataPresent: true })),
+  /** Active orders already issued: a second issue is the explicit re-issue act (lost, damaged, extra supply). */
+  issued: z.array(IpdEmarVerifyItemSchema.omit({ findings: true, interactionDataPresent: true })),
   allergyFlags: z.array(IpdEmarAllergyFlagSchema),
   returnsOwed: z.array(IpdEmarIssueRowSchema),
 });
@@ -294,6 +296,8 @@ export const IPD_EMAR_ROUTES = {
   labels: "/ipd/emar/issues/:issueId/labels",
   returnMed: "/ipd/emar/return",
   resolveFlag: "/ipd/emar/allergy-flags/resolve",
+  decideFlag: "/ipd/emar/allergy-flags/decide",
+  admissionFlags: "/ipd/emar/admissions/:admissionId/allergy-flags",
   patient: "/ipd/emar/admissions/:admissionId",
   ward: "/ipd/emar/ward",
   scan: "/ipd/emar/scan",

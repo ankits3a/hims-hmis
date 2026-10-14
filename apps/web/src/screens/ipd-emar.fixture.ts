@@ -34,7 +34,9 @@ export function emarPatientOf(base: number, over: Partial<IpdEmarPatient> = {}):
     asOf: new Date(base).toISOString(), admissionId: eid(100), admissionNo: "IP26-000101",
     identity: { name: "Test Patient Asha", uhid: "UH-FAKE-0101", ageYears: 54, sex: "female", sealed: false },
     bedCode: "F05-MED-F-B01", wardName: "Medicine Female", alerts: ["Allergy: Penicillin (severe)"], npo: false, weightKg: 58,
-    orders: [orderLine(), insulin, lasa, prn],
+    orders: [orderLine(), insulin, lasa, prn,
+      orderLine({ orderId: eid(6), title: "Noradrenaline 4 mg/4 ml", doseWords: "4 mg · IV · OD", highAlert: true, infusion: "running", frequency: "OD" }),
+      orderLine({ orderId: eid(7), title: "Morphine 10 mg/ml", doseWords: "5 mg · IV · BD", highAlert: true, narcotic: true })],
     doses: [dose(base), dose(base, { doseId: eid(51), orderId: eid(2), dueAt: at(base, 5), windowStart: at(base, -25), windowEnd: at(base, 35) }),
       dose(base, { doseId: eid(52), orderId: eid(1), dueAt: at(base, -600), status: "given", outcome: { actId: eid(60), kind: "given", at: at(base, -598), byName: "Nurse Fake One", reason: null, patientCheck: "scan", late: false, secondNurseName: null, corrected: null } })],
     narcotic: [], ...over,
@@ -81,6 +83,7 @@ export function pharmacyQueueOf(base: number): IpdEmarPharmacyQueue {
       { ...who, admissionId: eid(101), identity: { ...who.identity, name: "Test Patient Bina", uhid: "UH-FAKE-0102" }, bedCode: "F05-MED-F-B02", alerts: ["Allergy: none recorded"],
         order: orderLine({ orderId: eid(11), title: "Pantoprazole 40 mg", verification: "pending", issued: false, doseWords: "40 mg · IV · OD", frequency: "OD", timeCritical: false }), orderedByName: "Dr Fake Resident", orderedAt: at(base, -5), allergyOverrideReason: null, findings: [], interactionDataPresent: true },
     ],
+    issued: [{ ...who, order: orderLine({ orderId: eid(15), title: "Ondansetron 4 mg", doseWords: "4 mg · oral · TDS", route: "oral", frequency: "TDS", timeCritical: false }), orderedByName: "Dr Fake Consultant", orderedAt: at(base, -400), allergyOverrideReason: null }],
     toIssue: [{ ...who, order: orderLine({ orderId: eid(12), title: "Actrapid 100 IU/ml", highAlert: true, issued: false, doseWords: "8 unit · SC · TDS" }), orderedByName: "Dr Fake Consultant", orderedAt: at(base, -40), allergyOverrideReason: null }],
     allergyFlags: [{ flagId: eid(20), orderId: eid(13), admissionId: eid(102), identity: { name: "Test Patient Chand", uhid: "UH-FAKE-0103", ageYears: 40, sex: "male", sealed: false }, bedCode: "F05-MED-M-B03", title: "Ceftriaxone 1 g", substances: ["Ceftriaxone"], raisedAt: at(base, -30), orderActive: true, doctorDecision: "continue", doctorReason: "Mild rash; benefit outweighs" }],
     returnsOwed: [{ issueId: eid(30), orderId: eid(14), admissionId: eid(100), identity: who.identity, bedCode: "F05-MED-F-B01", title: "Ondansetron 4 mg", units: 10, returnedUnits: 0, ownMedicine: false, issuedAt: at(base, -300) }],
@@ -118,4 +121,12 @@ export function wardChartOf(base: number): IpdEmarWardChart {
         orders: [orderLine({ orderId: eid(5), title: "Levetiracetam 500 mg", doseWords: "500 mg · oral · BD", route: "oral" })], doses: [mk(206, eid(5), 9, "missed"), mk(207, eid(5), 21, "scheduled")] },
     ],
   };
+}
+
+export function flagsOf(base: number, decided = false): { flags: IpdEmarPharmacyQueue["allergyFlags"] } {
+  return { flags: [{
+    flagId: eid(21), orderId: eid(1), admissionId: eid(100), identity: { name: "Test Patient Asha", uhid: "UH-FAKE-0101", ageYears: 54, sex: "female", sealed: false },
+    bedCode: "F05-MED-F-B01", title: "Ceftriaxone 1 g", substances: ["Ceftriaxone"], raisedAt: at(base, -20), orderActive: true,
+    doctorDecision: decided ? "continue" : null, doctorReason: decided ? "Mild rash; benefit outweighs" : null,
+  }] };
 }

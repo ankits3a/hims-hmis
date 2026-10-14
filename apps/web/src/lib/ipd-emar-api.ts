@@ -19,6 +19,10 @@ export const EMAR = {
   labels: (id: string) => `/ipd/emar/issues/${encodeURIComponent(id)}/labels`,
   returnMed: "/ipd/emar/return",
   resolveFlag: "/ipd/emar/allergy-flags/resolve",
+  decideFlag: "/ipd/emar/allergy-flags/decide",
+  admissionFlags: (id: string) => `/ipd/emar/admissions/${encodeURIComponent(id)}/allergy-flags`,
+  infusion: "/ipd/emar/infusion",
+  wastage: "/ipd/emar/narcotic-wastage",
   patient: (id: string) => `/ipd/emar/admissions/${encodeURIComponent(id)}`,
   ward: "/ipd/emar/ward",
   due: "/ipd/emar/due",
@@ -53,7 +57,17 @@ export type Checks = { allergy: boolean; interaction: boolean; dose: boolean; du
 export type AllergyOverride = { reason: "tolerated_before" | "desensitised" | "no_safe_alternative" | "benefit_outweighs_risk"; text: string };
 export const verify = (orderId: string, decision: "verified" | "rejected" | "query", checks: Checks, note?: string, allergyOverride?: AllergyOverride): Promise<{ status: string; dosesScheduled: number }> =>
   post(EMAR.verify, { orderId, decision, checks, ...(note ? { note } : {}), ...(allergyOverride ? { allergyOverride } : {}) });
-export const issue = (b: { orderId: string; units: number; stripSize?: number; ownMedicine: boolean; ownBatch?: { batchNo: string; expiry: string } }):
+export type ReissueReason = "lost" | "damaged" | "extra_supply";
+export const getAdmissionFlags = (admissionId: string): Promise<{ flags: IpdEmarPharmacyQueue["allergyFlags"] }> => api("GET", EMAR.admissionFlags(admissionId));
+export const decideFlag = (flagId: string, decision: "stop" | "continue", reason: string): Promise<unknown> => post(EMAR.decideFlag, { flagId, decision, reason });
+export const infusion = (b: {
+  orderId: string; event: "start" | "rate_change" | "pause" | "resume" | "stop"; rateMlPerHour?: number;
+  patientCheck?: PatientCheck; labelCode?: string; secondNurse?: { userId: string; pinProof: string };
+}): Promise<{ infusionState: "running" | "paused" | "stopped" }> => post(EMAR.infusion, { ...b, at: serverNow().toISOString() });
+/** `qty` is in the issue's base unit (e.g. 0.5 of an ampoule); the witness is a second nurse's proof. */
+export const wastage = (orderId: string, qty: number, reason: string, witness: { userId: string; pinProof: string }): Promise<unknown> =>
+  post(EMAR.wastage, { orderId, qty, reason, witness });
+export const issue = (b: { orderId: string; units: number; stripSize?: number; ownMedicine: boolean; ownBatch?: { batchNo: string; expiry: string }; reissue?: { reason: ReissueReason; note: string } }):
   Promise<{ issueId: string; units: number; labelIds: string[] }> => post(EMAR.issue, b);
 export const returnMed = (issueId: string, units: number, reason: string): Promise<{ creditedUnits: number }> => post(EMAR.returnMed, { issueId, units, reason });
 export const resolveFlag = (flagId: string, note: string): Promise<unknown> => post(EMAR.resolveFlag, { flagId, note });

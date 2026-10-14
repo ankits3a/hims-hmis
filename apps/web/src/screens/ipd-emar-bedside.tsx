@@ -4,7 +4,7 @@ import type React from "react";
 import type { IpdEmarDose, IpdEmarDueItem, IpdEmarOrderLine, IpdEmarPatient, IpdEmarScan, IpdRefusalBody } from "@hmis/contracts";
 import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
-import { getEmarPatient, give, hold, miss, refuse, reoffer, scan, secondCheck } from "../lib/ipd-emar-api";
+import { getEmarPatient, give, hold, infusion, miss, refuse, reoffer, scan, secondCheck, wastage } from "../lib/ipd-emar-api";
 import type { PatientCheck } from "../lib/ipd-emar-api";
 import "./ipd-emar.css";
 
@@ -198,6 +198,12 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
               <span>{o.prnNextAt === null ? t("ipdEmar.prn.now") : t("ipdEmar.prn.next", { time: fmtIst(o.prnNextAt) })} · {t("ipdEmar.prn.in24h", { n: o.prnGiven24h, max: o.prn!.max24h })}</span>
             </div>
           ))}
+          {mar.orders.filter((o) => o.status !== "cancelled" && (o.infusion === "running" || o.infusion === "paused")).map((o) => (
+            <InfusionRow key={o.orderId} o={o} online={online} onDone={(w) => { onDone(w); void load(); }} />
+          ))}
+          {mar.orders.filter((o) => o.narcotic && o.issued).map((o) => (
+            <WastageForm key={o.orderId} o={o} online={online} onDone={(w) => { onDone(w); void load(); }} />
+          ))}
           {held.length > 0 ? (
             <div className="ipdn-card">
               <span>{t("ipdEmar.heldCount", { count: held.length })}</span>
@@ -242,6 +248,10 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
             </div>
           ) : null}
           {label.needs.secondNurse ? (second === null ? <SecondNurse online={online} target={{ orderId: label.orderId, ...(label.dose !== null && !label.dose.prn ? { doseDueAt: label.dose.dueAt } : {}) }} onProof={setSecond} /> : <p className="ipdn-ok">✓ {t("ipdEmar.second.done", { name: second.name })}</p>) : null}
+          {label.order.route === "iv" && patientCheck !== null && labelCode !== null ? (
+            <InfusionStart o={label.order} online={online} patientCheck={patientCheck} labelCode={labelCode}
+              onDone={(w) => { setStarted(null); setSecond(null); onDone(w); void load(); }} />
+          ) : null}
           {!ready && missing.length > 0 ? <p className="ipdn-warn" data-testid="ipde-needs">{t("ipdEmar.needs", { what: missing.join(" · ") })}</p> : null}
           <div className="ipdn-thumb ipde-thumb">
             {label.order.highAlert
@@ -333,7 +343,10 @@ function OverrideForm({ onSet }: { onSet: (c: PatientCheck) => void }): React.Re
   );
 }
 
-function SecondNurse({ online, target, onProof }: { online: boolean; target: { orderId: string; doseDueAt?: string }; onProof: (p: { userId: string; pinProof: string; name: string }) => void }): React.ReactElement {
+function SecondNurse({ online, target, onProof, purpose = "high_alert_dose" }: {
+  online: boolean; target: { orderId: string; doseDueAt?: string }; onProof: (p: { userId: string; pinProof: string; name: string }) => void;
+  purpose?: "high_alert_dose" | "infusion" | "narcotic_wastage";
+}): React.ReactElement {
   const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
@@ -341,7 +354,7 @@ function SecondNurse({ online, target, onProof }: { online: boolean; target: { o
   return (
     <form className="ipdn-form ipdn-card ipde-second" onSubmit={(e) => {
       e.preventDefault(); setRefusal(null);
-      secondCheck("high_alert_dose", target, username.trim(), pin).then((p) => { setPin(""); onProof(p); }, (er: unknown) => { setPin(""); setRefusal(refusalOf(er)); });
+      secondCheck(purpose, target, username.trim(), pin).then((p) => { setPin(""); onProof(p); }, (er: unknown) => { setPin(""); setRefusal(refusalOf(er)); });
     }} data-testid="ipde-second">
       <b>{t("ipdEmar.second.title")}</b>
       <label>{t("ipdEmar.second.username")}<input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" /></label>
@@ -349,5 +362,90 @@ function SecondNurse({ online, target, onProof }: { online: boolean; target: { o
       {refusal !== null ? <div className="ipdn-refusal" role="alert">{refusal.rule}</div> : null}
       <button type="submit" className="ipdn-btn pri" disabled={!online || username.trim() === "" || pin.length < 4}>{t("ipdEmar.second.check")}</button>
     </form>
+  );
+}
+
+/**
+ * Infusions (§4.6): START and RATE CHANGE (and resume) happen here, after the wristband and the bag's label were scanned —
+ * the same scans as a give; a high-alert drug needs its own second-nurse check (purpose "infusion"). Pause and stop are on
+ * the patient's list and need no label.
+ */
+function InfusionStart({ o, online, patientCheck, labelCode, onDone }: {
+  o: IpdEmarOrderLine; online: boolean; patientCheck: PatientCheck; labelCode: string; onDone: (w: string) => void;
+}): React.ReactElement {
+  const { t } = useTranslation();
+  const [rate, setRate] = useState("");
+  const [proof, setProof] = useState<{ userId: string; pinProof: string; name: string } | null>(null);
+  const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
+  const event = o.infusion === "running" ? "rate_change" : o.infusion === "paused" ? "resume" : "start";
+  const r = Number(rate);
+  const rateOk = event === "resume" || (rate.trim() !== "" && Number.isFinite(r) && r >= 0 && r <= 2000);
+  if (o.infusion === "stopped") return <p className="dim">{t("ipdEmar.infusion.stopped")}</p>;
+  return (
+    <div className="ipdn-card ipde-infusion" data-testid="ipde-infusion">
+      <b>{t("ipdEmar.infusion.title")} · {t(`ipdEmar.infusion.state.${o.infusion ?? "none"}`)}</b>
+      {event !== "resume" ? <label className="ipde-field">{t("ipdEmar.infusion.rate")}<input value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" data-testid="ipde-infusion-rate" /></label> : null}
+      {o.highAlert ? (proof === null ? <SecondNurse online={online} purpose="infusion" target={{ orderId: o.orderId }} onProof={setProof} /> : <p className="ipdn-ok">✓ {t("ipdEmar.second.done", { name: proof.name })}</p>) : null}
+      {refusal !== null ? <div className="ipdn-refusal" role="alert">{refusal.rule}</div> : null}
+      <button type="button" className="ipdn-btn pri" disabled={!online || !rateOk || (o.highAlert && proof === null)} data-testid="ipde-infusion-go" onClick={() => {
+        setRefusal(null);
+        infusion({
+          orderId: o.orderId, event, ...(event === "resume" ? {} : { rateMlPerHour: r, patientCheck, labelCode }),
+          ...(proof !== null ? { secondNurse: { userId: proof.userId, pinProof: proof.pinProof } } : {}),
+        }).then(() => onDone(t(`ipdEmar.infusion.did.${event}`)), (e: unknown) => setRefusal(refusalOf(e)));
+      }}>{online ? t(`ipdEmar.infusion.act.${event}`) : t("ipdEmar.offlineShort")}</button>
+    </div>
+  );
+}
+
+function InfusionRow({ o, online, onDone }: { o: IpdEmarOrderLine; online: boolean; onDone: (w: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
+  const send = (event: "pause" | "stop"): void => {
+    setRefusal(null);
+    infusion({ orderId: o.orderId, event }).then(() => onDone(t(`ipdEmar.infusion.did.${event}`)), (e: unknown) => setRefusal(refusalOf(e)));
+  };
+  return (
+    <div className="ipdn-card ipde-infusion" data-testid={`ipde-infusion-row-${o.orderId}`}>
+      <div><b>{o.tallMan ?? o.title}</b> · {t("ipdEmar.infusion.title")} · {t(`ipdEmar.infusion.state.${o.infusion ?? "none"}`)}</div>
+      <div className="dim">{t("ipdEmar.infusion.scanToChange")}</div>
+      {refusal !== null ? <div className="ipdn-refusal" role="alert">{refusal.rule}</div> : null}
+      <div className="ipdn-acts">
+        {o.infusion === "running" ? <button type="button" className="ipdn-btn" disabled={!online} onClick={() => send("pause")} data-testid="ipde-infusion-pause">{t("ipdEmar.infusion.act.pause")}</button> : null}
+        <button type="button" className="ipdn-btn" disabled={!online} onClick={() => send("stop")} data-testid="ipde-infusion-stop">{t("ipdEmar.infusion.act.stop")}</button>
+      </div>
+    </div>
+  );
+}
+
+/** Narcotic wastage: the amount in the issue's BASE unit (0.5 = half an ampoule), a reason, and a second nurse as witness. */
+function WastageForm({ o, online, onDone }: { o: IpdEmarOrderLine; online: boolean; onDone: (w: string) => void }): React.ReactElement {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState("");
+  const [reason, setReason] = useState("");
+  const [witness, setWitness] = useState<{ userId: string; pinProof: string; name: string } | null>(null);
+  const [refusal, setRefusal] = useState<IpdRefusalBody | null>(null);
+  const n = Number(qty);
+  const ok = qty.trim() !== "" && Number.isFinite(n) && n > 0 && reason.trim() !== "" && witness !== null;
+  if (!open) {
+    return <div className="ipdn-card"><div><b>{o.tallMan ?? o.title}</b> <span className="ipdn-tag c-allergy">Ⓝ {t("ipdEmar.narcotic")}</span></div>
+      <div className="ipdn-acts"><button type="button" className="ipdn-btn" onClick={() => setOpen(true)} data-testid="ipde-wastage-open">{t("ipdEmar.wastage.open")}</button></div></div>;
+  }
+  return (
+    <div className="ipdn-form ipdn-card" data-testid="ipde-wastage">
+      <b>{t("ipdEmar.wastage.title")} · {o.title}</b>
+      <label>{t("ipdEmar.wastage.qty")}<input value={qty} onChange={(e) => setQty(e.target.value)} inputMode="decimal" data-testid="ipde-wastage-qty" /></label>
+      <label>{t("ipdEmar.reason")}<input value={reason} onChange={(e) => setReason(e.target.value)} data-testid="ipde-wastage-reason" /></label>
+      {witness === null ? <SecondNurse online={online} purpose="narcotic_wastage" target={{ orderId: o.orderId }} onProof={setWitness} /> : <p className="ipdn-ok">✓ {t("ipdEmar.wastage.witness", { name: witness.name })}</p>}
+      {refusal !== null ? <div className="ipdn-refusal" role="alert">{refusal.rule}</div> : null}
+      <div className="ipdn-acts">
+        <button type="button" className="ipdn-btn" onClick={() => setOpen(false)}>{t("ipdNursing.cancel")}</button>
+        <button type="button" className="ipdn-btn pri" disabled={!online || !ok} data-testid="ipde-wastage-save" onClick={() => {
+          setRefusal(null);
+          wastage(o.orderId, n, reason.trim(), { userId: witness!.userId, pinProof: witness!.pinProof }).then(() => { setOpen(false); onDone(t("ipdEmar.wastage.done")); }, (e: unknown) => { setWitness(null); setRefusal(refusalOf(e)); });
+        }}>{t("ipdEmar.save")}</button>
+      </div>
+    </div>
   );
 }
