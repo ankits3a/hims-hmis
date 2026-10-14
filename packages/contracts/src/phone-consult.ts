@@ -21,7 +21,8 @@ export type ConsultLine = {
   /** Shown beside a line that came from "Repeat last" or a set and was then changed, or was added new. */
   mark?: "changed" | "new" | null; was?: string | null;
 };
-export type ConsultTest = { serviceId: string; code: string; name: string; pricePaise: number };
+/** `pricePaise` null: the tariff has no price for it (#609) — the slip says "Rate at counter". */
+export type ConsultTest = { serviceId: string; code: string; name: string; pricePaise: number | null };
 /** `source` (decision 0050 P0): picked from the doctor's most-used list (`suggested`), from the search, or typed. Absent on an older draft. */
 export type ConsultDx = { text: string; icd10Code: string | null; source?: DxSource | null };
 export type ConsultDraft = {
@@ -239,7 +240,7 @@ export type WireSetBody = {
 };
 
 /** A set FILLS the visit: its lines after the ones already there (a drug already on the visit is not added twice), its tests, its advice. */
-export function applySet(d: ConsultDraft, name: string, body: WireSetBody, priceOf: (serviceId: string) => number, now: number, band: Band = "adult"): ConsultDraft {
+export function applySet(d: ConsultDraft, name: string, body: WireSetBody, priceOf: (serviceId: string) => number | null, now: number, band: Band = "adult"): ConsultDraft {
   const have = new Set(d.lines.map((l) => l.drug.trim().toLowerCase()));
   /* A set's doses were written for an adult: for a child the set brings the medicines and the doctor enters each dose. */
   const add = withoutDoseForChild(linesFrom(body.lines, "set").filter((l) => !have.has(l.drug.trim().toLowerCase())), band);

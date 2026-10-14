@@ -129,7 +129,7 @@ const COMMON_COMPLAINTS = ["Fever", "Cough", "Cold", "Body ache", "Headache", "S
 
 export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder, deskWords, onAddMedicine, onAddTest }: {
   api: ConsultApi; encounterId: string; draft: ConsultDraft; patch: Patch; onClose: () => void; recorder: VoiceRecorder; deskWords: string | null;
-  onAddMedicine: (hit: { medicineId: string; name: string }) => void; onAddTest: (t: { serviceId: string; code: string; name: string; pricePaise: number }) => void;
+  onAddMedicine: (hit: { medicineId: string; name: string }) => void; onAddTest: (t: { serviceId: string; code: string; name: string; pricePaise: number | null }) => void;
 }) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
@@ -254,7 +254,7 @@ export function NotesDrawer({ api, encounterId, draft, patch, onClose, recorder,
                 setLasaAsk(null);
                 setTaken((x) => [...x, id]);
                 if (sg.kind === "medicine") onAddMedicine({ medicineId: sg.medicineId, name: sg.name });
-                else onAddTest({ serviceId: sg.serviceId, code: sg.code, name: sg.name, pricePaise: sg.pricePaise });
+                else onAddTest({ serviceId: sg.serviceId, code: sg.code, name: sg.name, pricePaise: sg.pricePaise > 0 ? sg.pricePaise : null }); // #609: no price known ⇒ null, never a ₹0 quote
               }} style={[st.small, done ? st.smallDone : st.smallOn]}>
                 <Text style={[st.smallText, { color: done ? color.green : "#f2faf6" }]}>{done ? t("mobile.consult.added") : asking ? t("mobile.consult.lasa.yesShort") : t(sg.kind === "medicine" ? "mobile.consult.voice.addMedicine" : "mobile.consult.voice.addTest")}</Text>
               </Pressable>
@@ -580,19 +580,19 @@ export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFA
     void api.signals({ suggestions: [{ kind: "test", source: "suggested", outcome, surface: "consult_phone", encounterId: enc, ...(context === null ? {} : { contextKey: context }), itemKey: serviceId, rankShown }] }).catch(() => undefined);
   };
   const has = (id: string): boolean => draft.tests.some((x) => x.serviceId === id);
-  const toggle = (x: { serviceId: string; code: string; name: string; pricePaise: number }): void =>
+  const toggle = (x: { serviceId: string; code: string; name: string; pricePaise: number | null }): void =>
     patch((d) => (has(x.serviceId) ? { ...d, tests: d.tests.filter((y) => y.serviceId !== x.serviceId) } : d.tests.length >= MAX_TESTS ? d : { ...d, tests: [...d.tests, { serviceId: x.serviceId, code: x.code, name: x.name, pricePaise: x.pricePaise }] }));
   const needle = q.trim().toLowerCase();
   const hits = needle.length < 2 ? [] : found.rows.slice(0, 12);
-  /** DECIDED: the quotation snapshot is the active list price; a test the tariff has not priced yet carries 0 and the counter prices it. */
-  const priceOf = (serviceId: string): number => list?.find((r) => r.serviceId === serviceId)?.pricePaise ?? 0;
+  /** DECIDED 2026-10-14: the quotation snapshot is the active list price; a test the tariff has not priced carries null — the slip prints "Rate at counter", never ₹0. */
+  const priceOf = (serviceId: string): number | null => list?.find((r) => r.serviceId === serviceId)?.pricePaise ?? null;
   const none = needle.length >= 2 && !found.busy && found.error === null && found.rows.length === 0;
   const suggestions = needle.length < 2 && before.length > 0 && (
     <>
       <Lab>{t("mobile.consult.testsBefore")}</Lab>
       <View style={st.chips}>{before.map((x, i) => (
         <View key={x.serviceId} style={st.offer}>
-          <Chip testID={`test-before-${x.serviceId}`} label={x.name} on={has(x.serviceId)} onPress={() => { if (!has(x.serviceId)) told(x.serviceId, i, "accepted"); toggle(x); }} />
+          <Chip testID={`test-before-${x.serviceId}`} label={x.name} on={has(x.serviceId)} onPress={() => { if (!has(x.serviceId)) told(x.serviceId, i, "accepted"); toggle({ ...x, pricePaise: priceOf(x.serviceId) ?? (x.pricePaise > 0 ? x.pricePaise : null) }); }} />
           {!has(x.serviceId) && <Cross testID={`test-before-x-${x.serviceId}`} name={x.name} onPress={() => { crossOff(enc, "test", x.serviceId); told(x.serviceId, i, "dismissed"); setTick((n) => n + 1); }} />}
         </View>
       ))}</View>

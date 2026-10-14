@@ -66,7 +66,7 @@ export type AdvisedImagingLine = {
   serviceId: string;
   code: string;
   name: string;
-  pricePaise: number;
+  pricePaise: number | null;
   /** Null when the active book does not name this service (D6): the seat greys it with `reason`. */
   orderable: ImagingOrderable | null;
   reason: string | null;
