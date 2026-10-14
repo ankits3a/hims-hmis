@@ -916,7 +916,8 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   later saves. A template draft has `draft_model_id` null. The draft row's fingerprint is `dischargeRecordsHash` (orders
   and their status, signed rounds, nursing notes, result items, and — since #794 — the theatre's cases, `proceduresDone`
   in the drafter's own window). VERSIONED (#794): a stamp is `v2:` + 32 hex; a stamp with no prefix is v1 (no theatre
-  cases) and `dischargeRecordsUnchanged` compares it with the v1 algorithm, so no draft or summary went stale on deploy; an
+  cases) and `dischargeRecordsUnchanged` compares it with the v1 algorithm, so no draft or summary went stale on deploy —
+  except on a stay with a theatre case, where v1 cannot vouch for the theatre and is refused (review of #794); an
   unknown version is never current. A new fingerprint part = a new version, never an edit of v2. A save naming a draft built before the records changed is
   refused (`summary_draft_stale`); a copilot-sourced summary carries `content.recordsHash` from its last save and the
   signature refuses when the records moved since (`summary_records_changed` — open, check, save, sign). The content's

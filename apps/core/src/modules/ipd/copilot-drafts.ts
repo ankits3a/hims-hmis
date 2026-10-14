@@ -138,5 +138,9 @@ export async function dischargeRecordsUnchanged(db: Db | Tx, a: RecordsAdmission
   if (typeof stored !== "string" || stored === "") return false;
   if (stored.startsWith(`${DISCHARGE_RECORDS_HASH_VERSION}:`)) return stored === await dischargeRecordsHash(db, a);
   if (stored.includes(":")) return false;
+  // Review of #794: v1 never saw the theatre, so it cannot say a case was not recorded since — a stay with any case
+  // (in the window the fingerprint reads) refuses a v1 stamp; the doctor builds the draft again or saves again (v2).
+  const window = dischargeProcedureWindow(a, OPEN_STAY_UNTIL);
+  if (window !== null && (await proceduresDone(db, window)).length > 0) return false;
   return stored === await dischargeRecordsHashV1(db, a.id);
 }

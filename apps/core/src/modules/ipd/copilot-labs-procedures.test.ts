@@ -223,4 +223,16 @@ describe("the reads, against rows", () => {
     await labOrderRow(a.id, newId(), "GLUF", ist("2026-03-12T10:10:00"));
     expect(await dischargeRecordsUnchanged(db, row, v1)).toBe(false);
   });
+
+  it("#794 review: a v1 stamp cannot vouch for the theatre — a stay with a theatre case never accepts it", async () => {
+    const a = await admission();
+    const d = await buildDischargeDraft(db, doctor, a.id, { now: ist("2026-03-12T10:00:00") });
+    const v1 = createHash("sha256").update(JSON.stringify([[], [], [], []])).digest("hex").slice(0, 32);
+    await db.update(ipdCopilotDrafts).set({ factsHash: v1 }).where(eq(ipdCopilotDrafts.id, d.draftId));
+    const row = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, a.id)))[0]!;
+    // A procedure recorded after the v1 stamp: v1's parts did not move, but the records did.
+    await theatreCase(ist("2026-03-12T10:30:00"));
+    expect(await dischargeRecordsUnchanged(db, row, v1)).toBe(false);
+    expect(await codeOf(saveFrom(a.id, d.draftId))).toBe("summary_draft_stale");
+  });
 });
