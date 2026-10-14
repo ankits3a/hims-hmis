@@ -38,6 +38,9 @@ type Input<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["input"]>;
 type Output<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["output"]>;
 export type NarcoticOpts = { now?: Date };
 
+/** A count this long before a shift began is that shift's handover count (`countDue`). */
+export const NARCOTIC_HANDOVER_GRACE_MS = 30 * 60_000;
+
 /** Who closes a count exception besides a pharmacist (DECIDED: the ward's nursing line above the nurse). */
 export const IPD_NARCOTIC_RESOLVER_ROLES = ["nursing_supervisor", "nursing_superintendent"];
 
@@ -63,7 +66,10 @@ export async function recordNarcoticCount(db: Db, actor: Actor, raw: unknown, op
   const input: Input<"record_narcotic_count"> = IPD_INTENTS.record_narcotic_count.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_EMAR_GIVE);
   const at = opts.now ?? new Date();
-  return onceIpd(db, actor, "record_narcotic_count", input.idempotencyKey, input, async () => {
+  // The second nurse's PIN is a secret: it is never stored, not even inside the idempotency store's body hash (like
+  // `secondCheck`, which keeps no PIN either). A replay of the same key answers the first result.
+  const hashed = { ...input, secondNurse: { username: input.secondNurse.username } };
+  return onceIpd(db, actor, "record_narcotic_count", input.idempotencyKey, hashed, async () => {
     const ward = await wardRow(db, input.wardId);
     if (ward === null) throw new IpdRefusal("ward_not_found");
     const witnessId = await confirmSecondNursePin(db, actor, input.secondNurse.username, input.secondNurse.pin, at);
@@ -76,7 +82,7 @@ export async function recordNarcoticCount(db: Db, actor: Actor, raw: unknown, op
         if (seen.has(k)) throw new IpdRefusal("narcotic_count_incomplete", "A drug is counted twice", { duplicate: { medicineId: l.medicineId, unit: l.unit } });
         seen.add(k);
       }
-      const balances = await wardNarcoticBalances(tx, ward.id);
+      const balances = await wardNarcoticBalances(tx, ward.id, { cut: at });
       const byKey = new Map(balances.map((b) => [balanceKey(b.medicineId, b.unit), b] as const));
       const missing = balances.filter((b) => b.expected !== 0 && !seen.has(balanceKey(b.medicineId, b.unit)));
       if (missing.length > 0) {
@@ -140,6 +146,11 @@ export async function resolveNarcoticException(db: Db, actor: Actor, raw: unknow
     if (c === undefined) throw new IpdRefusal("narcotic_count_not_found");
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd.narcotic.ward:${c.wardId}`}))`);
     if (r3(c.variance) === 0) throw new IpdRefusal("narcotic_count_matched");
+    // Review 2026-10-14: segregation of duties — neither nurse of the count closes its own discrepancy (a supervisor who
+    // counted is a counting nurse here).
+    if (c.countedBy === actor.id || c.witnessId === actor.id) {
+      throw new IpdRefusal("not_narcotic_resolver", "A nurse of the count cannot close its discrepancy", { ownCount: true });
+    }
     const had = (await tx.select({ id: ipdNarcoticCountResolutions.id }).from(ipdNarcoticCountResolutions).where(eq(ipdNarcoticCountResolutions.countId, c.id)))[0];
     if (had !== undefined) throw new IpdRefusal("narcotic_count_resolved");
     await tx.insert(ipdNarcoticCountResolutions).values({ id: newId(), countId: c.id, resolvedBy: actor.id, note: input.note, at });
@@ -202,8 +213,10 @@ export async function readNarcoticWard(db: Db, actor: Actor, opts: { wardId?: st
       resolution: res === undefined ? null : { at: res.at.toISOString(), byName: nameOf(res.resolvedBy), note: res.note },
     };
   });
+  // DECIDED (review 2026-10-14): the handover count is done by the outgoing and incoming nurse together, often just
+  // before the hour — a count in the last NARCOTIC_HANDOVER_GRACE_MS before this shift began stands for this shift.
   const countedThisShift = (await db.select({ id: ipdNarcoticCounts.id }).from(ipdNarcoticCounts)
-    .where(and(eq(ipdNarcoticCounts.wardId, ward.id), gte(ipdNarcoticCounts.at, shift.startsAt))).limit(1)).length > 0;
+    .where(and(eq(ipdNarcoticCounts.wardId, ward.id), gte(ipdNarcoticCounts.at, new Date(shift.startsAt.getTime() - NARCOTIC_HANDOVER_GRACE_MS)))).limit(1)).length > 0;
   const live = balances.filter((b) => b.expected !== 0 || b.received + b.given + b.wasted + b.returned + b.transferredIn + b.transferredOut !== 0
     || exc.some((c) => c.medicineId === b.medicineId && c.unit === b.unit && !resolvedBy.has(c.id)));
   return {

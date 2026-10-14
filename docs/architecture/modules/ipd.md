@@ -396,7 +396,7 @@ Source: `apps/core/src/modules/ipd/`
   - `ipdManifest: ModuleManifest`
 - `narcotic-ledger.ts`
   - `followNarcoticsIn(tx: Tx, actor: Actor, admissionId: string, at: Date): Promise<number>`
-  - `wardNarcoticBalances(exec: Db | Tx, wardId: string): Promise<NarcoticBalance[]>`
+  - `wardNarcoticBalances(exec: Db | Tx, wardId: string, opts: { cut?: Date } = {}): Promise<NarcoticBalance[]>`
   - types: `NarcoticBalance`
 - `narcotic.ts`
   - `IPD_NARCOTIC_RESOLVER_ROLES`

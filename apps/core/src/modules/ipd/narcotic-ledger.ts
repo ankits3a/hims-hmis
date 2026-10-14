@@ -36,8 +36,9 @@ export type NarcoticBalance = {
 export const balanceKey = (medicineId: string, unit: string): string => `${medicineId}\u0000${unit}`;
 
 /** The last agreed count of each drug on the ward (matched, or resolved). */
-async function agreedCounts(exec: Db | Tx, wardId: string): Promise<Map<string, { counted: number; at: Date }>> {
-  const counts = await (exec as Db).select().from(ipdNarcoticCounts).where(eq(ipdNarcoticCounts.wardId, wardId));
+async function agreedCounts(exec: Db | Tx, wardId: string, cut: Date | null): Promise<Map<string, { counted: number; at: Date }>> {
+  const counts = (await (exec as Db).select().from(ipdNarcoticCounts).where(eq(ipdNarcoticCounts.wardId, wardId)))
+    .filter((c) => cut === null || c.at.getTime() <= cut.getTime());
   const resolved = counts.length === 0 ? new Set<string>() : new Set((await (exec as Db).select({ countId: ipdNarcoticCountResolutions.countId })
     .from(ipdNarcoticCountResolutions).where(inArray(ipdNarcoticCountResolutions.countId, counts.map((c) => c.id)))).map((r) => r.countId));
   const out = new Map<string, { counted: number; at: Date }>();
@@ -50,17 +51,23 @@ async function agreedCounts(exec: Db | Tx, wardId: string): Promise<Map<string, 
   return out;
 }
 
-/** Every controlled drug's running balance on one ward (drugs the ward has ever held or counted). */
-export async function wardNarcoticBalances(exec: Db | Tx, wardId: string): Promise<NarcoticBalance[]> {
+/**
+ * Every controlled drug's running balance on one ward (drugs the ward has ever held or counted). `cut` (a count's own
+ * instant) leaves out every row written after it — the SAME cut the next balance uses to start from that count. Review
+ * 2026-10-14: without it, a dose written after the count's instant but committed before the count read the register was
+ * in the count's expected AND, once the count was agreed, taken off again (counted twice).
+ */
+export async function wardNarcoticBalances(exec: Db | Tx, wardId: string, opts: { cut?: Date } = {}): Promise<NarcoticBalance[]> {
+  const cut = opts.cut ?? null;
   const rows = await (exec as Db).select({
     kind: ipdEmarNarcoticRegister.kind, qty: ipdEmarNarcoticRegister.qty, unit: ipdEmarNarcoticRegister.unit,
     at: ipdEmarNarcoticRegister.at, recordedAt: ipdEmarNarcoticRegister.recordedAt,
     medicineId: ipdOrders.medicineId, name: ipdOrders.medicineName,
   }).from(ipdEmarNarcoticRegister).innerJoin(ipdOrders, eq(ipdOrders.id, ipdEmarNarcoticRegister.orderId))
     .where(and(eq(ipdEmarNarcoticRegister.wardId, wardId), isNotNull(ipdOrders.medicineId)));
-  const agreed = await agreedCounts(exec, wardId);
-  const counted = await (exec as Db).select({ medicineId: ipdNarcoticCounts.medicineId, unit: ipdNarcoticCounts.unit, name: ipdNarcoticCounts.medicineName })
-    .from(ipdNarcoticCounts).where(eq(ipdNarcoticCounts.wardId, wardId));
+  const agreed = await agreedCounts(exec, wardId, cut);
+  const counted = (await (exec as Db).select({ medicineId: ipdNarcoticCounts.medicineId, unit: ipdNarcoticCounts.unit, name: ipdNarcoticCounts.medicineName, at: ipdNarcoticCounts.at })
+    .from(ipdNarcoticCounts).where(eq(ipdNarcoticCounts.wardId, wardId))).filter((c) => cut === null || c.at.getTime() <= cut.getTime());
   const out = new Map<string, NarcoticBalance>();
   const ensure = (medicineId: string, unit: string, name: string | null): NarcoticBalance => {
     const k = balanceKey(medicineId, unit);
@@ -81,6 +88,7 @@ export async function wardNarcoticBalances(exec: Db | Tx, wardId: string): Promi
   for (const r of rows) {
     const b = ensure(r.medicineId!, r.unit, r.name);
     const written = r.recordedAt ?? r.at;
+    if (cut !== null && written.getTime() > cut.getTime()) continue;
     if (b.openingAt !== null && written.getTime() <= b.openingAt.getTime()) continue;
     if (r.kind === "received") b.received += r.qty;
     else if (r.kind === "given") b.given += r.qty;

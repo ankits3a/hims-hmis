@@ -69,7 +69,7 @@ export const IpdNarcoticWardSchema = z.object({
   ward: IpdWardRefSchema.nullable(),
   wards: z.array(IpdWardRefSchema),
   shift: z.enum(["morning", "evening", "night"]),
-  /** No count on this ward since the current shift began. */
+  /** No count on this ward since the current shift began (or in the 30 minutes before it: the handover count). */
   countDue: z.boolean(),
   /** The reader may close an exception (a nursing supervisor or a pharmacist). */
   canResolve: z.boolean(),
