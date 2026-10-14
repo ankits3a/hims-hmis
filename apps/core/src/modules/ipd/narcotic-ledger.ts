@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
-import { ipdEmarNarcoticRegister, ipdNarcoticCountResolutions, ipdNarcoticCounts, ipdOrders } from "../../kernel/db/schema";
+import { ipdBedStays, ipdEmarNarcoticRegister, ipdNarcoticCountResolutions, ipdNarcoticCounts, ipdOrders, resources } from "../../kernel/db/schema";
 import { admissionPlace } from "./admission-place";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -105,46 +105,74 @@ export async function wardNarcoticBalances(exec: Db | Tx, wardId: string, opts: 
   return [...out.values()].sort((a, b) => a.name.localeCompare(b.name) || a.unit.localeCompare(b.unit));
 }
 
+/** The ward (or hall) a bed sits in: bed → (room) → ward, as `admissionPlace` walks it. */
+async function wardOfBed(tx: Tx, bedId: string): Promise<string | null> {
+  let cur = (await tx.select({ id: resources.id, kind: resources.kind, parentId: resources.parentId }).from(resources).where(eq(resources.id, bedId)))[0];
+  for (let i = 0; i < 4 && cur !== undefined && cur.parentId !== null; i += 1) {
+    cur = (await tx.select({ id: resources.id, kind: resources.kind, parentId: resources.parentId }).from(resources).where(eq(resources.id, cur.parentId)))[0];
+    if (cur !== undefined && (cur.kind === "ward" || cur.kind === "hall")) return cur.id;
+  }
+  return null;
+}
+
+/** One ward move: the transfer's id (or the swap's), and the bed the patient left. */
+export type NarcoticMove = { moveId: string; fromBedId: string };
+
 /**
- * THE PATIENT'S UNITS GO WITH THE PATIENT (DECIDED): after a transfer or a bed swap puts the patient on another ward, every
- * unit of this admission still on an earlier ward's register moves to the new ward's cabinet — a `transfer_out` row there
- * and a `transfer_in` row here, in the move's own transaction. Idempotent: a second call finds nothing left behind.
+ * THE PATIENT'S UNITS GO WITH THE PATIENT — and a SHORTFALL BELONGS TO THE WARD (DECIDED, coordinator 2026-10-14, standard
+ * NDPS practice; never to the patient, never to another patient). After a transfer or a bed swap puts the patient on
+ * another ward, the patient's own unused units on the ward LEFT move to the new ward's cabinet — a `transfer_out` row
+ * there and a `transfer_in` row here, in the move's own transaction, both keyed on the move (`act_id` = `moveId`):
+ *   · moved = min(the patient's own unused units on the old ward during THIS stay there, what that ward's register still
+ *     holds of the drug); a shortfall stays on the old ward's books as ITS discrepancy (its next count flags it);
+ *   · "this stay there" = the patient's rows on that ward written since they last arrived on it — rows of an earlier stay
+ *     were settled when they left it, so a remainder a short ward kept is never swept again by a later move;
+ *   · only the ward just left (`fromBedId`'s ward), never an older one; a move within one ward moves nothing;
+ *   · exactly once per move: a move whose rows exist moves nothing more (a replayed or retried transfer).
  */
-export async function followNarcoticsIn(tx: Tx, actor: Actor, admissionId: string, at: Date): Promise<number> {
+export async function followNarcoticsIn(tx: Tx, actor: Actor, admissionId: string, at: Date, move: NarcoticMove): Promise<number> {
   const here = (await admissionPlace(tx, admissionId))?.wardId ?? null;
   if (here === null) return 0;
+  const done = await tx.select({ id: ipdEmarNarcoticRegister.id }).from(ipdEmarNarcoticRegister).where(and(
+    eq(ipdEmarNarcoticRegister.admissionId, admissionId), eq(ipdEmarNarcoticRegister.actId, move.moveId),
+    inArray(ipdEmarNarcoticRegister.kind, ["transfer_out", "transfer_in"]),
+  )).limit(1);
+  if (done.length > 0) return 0;
+  const from = await wardOfBed(tx, move.fromBedId);
+  if (from === null || from === here) return 0;
+  // The patient last arrived on `from` when a stay on another ward ended (stays are one after another).
+  const stays = await tx.select({ bedId: ipdBedStays.bedId, endedAt: ipdBedStays.endedAt }).from(ipdBedStays)
+    .where(and(eq(ipdBedStays.admissionId, admissionId), isNotNull(ipdBedStays.endedAt)));
+  let arrived: number | null = null;
+  for (const st of stays) {
+    if (st.endedAt === null || (arrived !== null && st.endedAt.getTime() <= arrived)) continue;
+    if ((await wardOfBed(tx, st.bedId)) !== from) arrived = st.endedAt.getTime();
+  }
   const rows = await tx.select().from(ipdEmarNarcoticRegister)
-    .where(and(eq(ipdEmarNarcoticRegister.admissionId, admissionId), isNotNull(ipdEmarNarcoticRegister.wardId)));
-  const held = new Map<string, { wardId: string; orderId: string; unit: string; qty: number }>();
+    .where(and(eq(ipdEmarNarcoticRegister.admissionId, admissionId), eq(ipdEmarNarcoticRegister.wardId, from)));
+  const held = new Map<string, { orderId: string; unit: string; qty: number }>();
   for (const r of rows) {
-    if (r.wardId === here) continue;
-    const k = `${r.wardId!}\u0000${r.orderId}\u0000${r.unit}`;
-    const h = held.get(k) ?? { wardId: r.wardId!, orderId: r.orderId, unit: r.unit, qty: 0 };
+    if (arrived !== null && (r.recordedAt ?? r.at).getTime() < arrived) continue;
+    const k = `${r.orderId}\u0000${r.unit}`;
+    const h = held.get(k) ?? { orderId: r.orderId, unit: r.unit, qty: 0 };
     h.qty += (SIGN[r.kind] ?? 0) * r.qty;
     held.set(k, h);
   }
   if (held.size === 0) return 0;
-  let moved = 0;
-  // Never more than the old ward's register still holds of that drug: a count a supervisor agreed below the patient's own
-  // ledger (a broken ampoule) already took the difference off the ward, and must not leave that ward negative.
-  const wardLeft = new Map<string, Map<string, number>>();
   const medicineOf = new Map((await tx.select({ id: ipdOrders.id, medicineId: ipdOrders.medicineId }).from(ipdOrders)
     .where(inArray(ipdOrders.id, [...new Set([...held.values()].map((h) => h.orderId))]))).map((o) => [o.id, o.medicineId] as const));
+  const left = new Map((await wardNarcoticBalances(tx, from)).map((b) => [balanceKey(b.medicineId, b.unit), b.expected] as const));
+  let moved = 0;
   for (const h of held.values()) {
     const medicineId = medicineOf.get(h.orderId) ?? null;
     if (medicineId === null) continue;
-    let left = wardLeft.get(h.wardId);
-    if (left === undefined) {
-      left = new Map((await wardNarcoticBalances(tx, h.wardId)).map((b) => [balanceKey(b.medicineId, b.unit), b.expected] as const));
-      wardLeft.set(h.wardId, left);
-    }
     const k = balanceKey(medicineId, h.unit);
     const qty = r3(Math.min(h.qty, left.get(k) ?? 0));
     if (qty <= 0) continue;
     left.set(k, r3((left.get(k) ?? 0) - qty));
-    const base = { orderId: h.orderId, admissionId, qty, unit: h.unit, actorId: actor.id, at, recordedAt: at, reason: "Moved with the patient" };
+    const base = { orderId: h.orderId, admissionId, qty, unit: h.unit, actId: move.moveId, actorId: actor.id, at, recordedAt: at, reason: "Moved with the patient" };
     await tx.insert(ipdEmarNarcoticRegister).values([
-      { ...base, id: newId(), kind: "transfer_out", wardId: h.wardId },
+      { ...base, id: newId(), kind: "transfer_out", wardId: from },
       { ...base, id: newId(), kind: "transfer_in", wardId: here },
     ]);
     moved += 1;

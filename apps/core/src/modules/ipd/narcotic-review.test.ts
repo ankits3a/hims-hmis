@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { idempotencyKeys, ipdEmarLabels } from "../../kernel/db/schema";
+import { withTx } from "../../kernel/db/client";
 import { grantPermissionToRole } from "../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../kernel/modules/loader";
 import { authManifest } from "../../kernel/auth/manifest";
@@ -9,7 +10,7 @@ import { mkEmarWorld } from "../../../test/helpers/ipd";
 import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { admissionPlace } from "./admission-place";
 import {
-  IpdRefusal, administerDose, ipdManifest, issueMed, placeIpOrder, readNarcoticWard, recordNarcoticCount,
+  IpdRefusal, administerDose, followNarcoticsIn, ipdManifest, issueMed, placeIpOrder, readNarcoticWard, recordNarcoticCount,
   resolveNarcoticException, secondCheck, verifyOrder,
 } from "./index";
 import type { Db } from "../../kernel/db/client";
@@ -22,7 +23,9 @@ import type { Actor } from "@hmis/contracts";
  *      expected AND again after the agreed count (counted twice);
  *   2. the counting nurse (a supervisor counting) could close their own count's exception;
  *   3. the second nurse's PIN is never stored, not even inside the idempotency store's body hash;
- *   4. a count a few minutes before a shift began left the new shift "count due" all shift.
+ *   4. a count a few minutes before a shift began left the new shift "count due" all shift;
+ *   5. after a move capped by a short ward, the patient's remainder stayed "theirs" on the old ward and a LATER move (or
+ *      a replay of the same move) swept it again — out of another patient's units.
  * Explicit IST instants; nothing reads the real clock.
  */
 jest.setTimeout(300_000);
@@ -70,7 +73,7 @@ describe("ward narcotic register — review fixes", () => {
     supervisor = (await mkUser(db, "emar.supervisor", ["nursing_supervisor"])).actor;
   });
 
-  async function morphine(): Promise<{ orderId: string; medicineId: string; labelCode: string; band: string; wardId: string }> {
+  async function morphine(): Promise<{ admissionId: string; orderId: string; medicineId: string; labelCode: string; band: string; wardId: string }> {
     const { admissionId } = await w.admitMed(ist("2026-03-10T10:00:00"));
     const med = await w.stocked("Morphine 10 mg/ml inj", { narcotic: true, form: "injection", strength: "10 mg/ml", baseUom: "ampoule" });
     const placed = await placeIpOrder(db, w.consultant, {
@@ -81,7 +84,7 @@ describe("ward narcotic register — review fixes", () => {
     const issued = await issueMed(db, w.pharmacist, { idempotencyKey: key(), orderId: placed.orderId, units: 4, ownMedicine: false }, { now: H("07:40:00") });
     const labelCode = (await db.select().from(ipdEmarLabels).where(eq(ipdEmarLabels.issueId, issued.issueId)))[0]!.code;
     const wardId = (await admissionPlace(db, admissionId))!.wardId!;
-    return { orderId: placed.orderId, medicineId: med.medicineId, labelCode, band: await w.band(admissionId), wardId };
+    return { admissionId, orderId: placed.orderId, medicineId: med.medicineId, labelCode, band: await w.band(admissionId), wardId };
   }
   const count = (by: Actor, wardId: string, medicineId: string, counted: number, at: Date) =>
     recordNarcoticCount(db, by, {
@@ -134,5 +137,52 @@ describe("ward narcotic register — review fixes", () => {
     // An earlier count, well inside the morning, does not stand for the evening.
     await count(w.nurse, m.wardId, m.medicineId, 4, H("19:00:00"));
     expect((await readNarcoticWard(db, w.nurse, { wardId: m.wardId, now: H("20:30:00") })).countDue).toBe(true);
+  });
+
+  /**
+   * The short-ward setup: patient X on the MED ward holds 4 ampoules; the ward counts 3 and the supervisor agrees it (the
+   * ward's shortfall). X moves to SUR (`moveId` T1): min(4 own, 3 held) = 3 go. Then patient Y arrives on MED with 4 of
+   * the same drug — MED holds Y's 4 and nothing of X's.
+   */
+  async function shortWardThenAnotherPatient() {
+    const x = await morphine();
+    const fromBed = (await admissionPlace(db, x.admissionId))!.bedId!;
+    const bad = await count(w.nurse, x.wardId, x.medicineId, 3, H("10:00:00"));
+    await resolveNarcoticException(db, supervisor, { idempotencyKey: key(), countId: bad.lines[0]!.countId, note: "Ampoule broken; incident filed" }, { now: H("10:10:00") });
+    await w.board(x.admissionId, H("11:00:00"));
+    const moved = await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, x.admissionId, H("11:00:00"), { moveId: "T1", fromBedId: fromBed }));
+    expect(moved).toBe(1);
+    // Y: same drug, same ward.
+    const { admissionId: yAdm } = await w.admitMed(H("11:30:00"));
+    const placed = await placeIpOrder(db, w.consultant, {
+      idempotencyKey: key(), admissionId: yAdm, kind: "drug",
+      drug: { itemId: x.medicineId, dose: { value: 5, unit: "mg" }, route: "iv", frequency: "BD", startAt: H("11:40:00").toISOString(), antibiotic: false, durationDays: 5 },
+    }, { now: H("11:40:00") });
+    await verifyOrder(db, w.pharmacist, { idempotencyKey: key(), orderId: placed.orderId, decision: "verified", checks: TICKS, note: "checked" }, { now: H("11:45:00") });
+    await issueMed(db, w.pharmacist, { idempotencyKey: key(), orderId: placed.orderId, units: 4, ownMedicine: false }, { now: H("11:50:00") });
+    const surWard = (await admissionPlace(db, x.admissionId))!.wardId!;
+    const surBed = (await admissionPlace(db, x.admissionId))!.bedId!;
+    const med = async () => (await readNarcoticWard(db, w.nurse, { wardId: x.wardId, now: H("13:00:00") })).drugs[0]!;
+    const sur = async () => (await readNarcoticWard(db, w.nurse, { wardId: surWard, now: H("13:00:00") })).drugs[0]!;
+    expect(await med()).toMatchObject({ opening: 3, transferredOut: 3, received: 4, expected: 4 });
+    expect(await sur()).toMatchObject({ transferredIn: 3, expected: 3 });
+    return { x, fromBed, surBed, med, sur };
+  }
+
+  it("a short ward, then a second move of the same patient: no other patient's units are taken", async () => {
+    const { x, surBed, med, sur } = await shortWardThenAnotherPatient();
+    // X moves again, to another SUR bed (T2): nothing on MED is X's any more.
+    await w.board(x.admissionId, H("12:30:00"));
+    expect(await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, x.admissionId, H("12:30:00"), { moveId: "T2", fromBedId: surBed }))).toBe(0);
+    expect(await med()).toMatchObject({ transferredOut: 3, expected: 4 });
+    expect(await sur()).toMatchObject({ transferredIn: 3, expected: 3 });
+  });
+
+  it("a replayed transfer moves nothing more", async () => {
+    const { x, fromBed, med, sur } = await shortWardThenAnotherPatient();
+    // The same transfer (T1, from the same MED bed) handled again: it moved once; it moves nothing more.
+    expect(await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, x.admissionId, H("12:30:00"), { moveId: "T1", fromBedId: fromBed }))).toBe(0);
+    expect(await med()).toMatchObject({ transferredOut: 3, expected: 4 });
+    expect(await sur()).toMatchObject({ transferredIn: 3, expected: 3 });
   });
 });

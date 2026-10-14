@@ -213,7 +213,7 @@ export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";
 // exceptions to the nursing supervisor and the pharmacy, resolved with a note; the patient's units follow a ward move.
 export { IPD_NARCOTIC_RESOLVER_ROLES, readNarcoticWard, recordNarcoticCount, resolveNarcoticException } from "./narcotic";
 export { followNarcoticsIn, wardNarcoticBalances } from "./narcotic-ledger";
-export type { NarcoticBalance } from "./narcotic-ledger";
+export type { NarcoticBalance, NarcoticMove } from "./narcotic-ledger";
 
 // E5.3 (#740), E5.4 (#741) — "Since yesterday", the nurse's SBAR draft and the discharge drafter: a deterministic fact
 // builder and line templates (every line names its records), a verifier that refuses a model's wrong or invented

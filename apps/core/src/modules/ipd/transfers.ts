@@ -224,7 +224,7 @@ export async function acceptHandover(db: Db, actor: Actor, raw: unknown, opts: O
         admissionId: a.id, bedId: t.toBedId, patientId: a.patientId, need, ...(protectBookedClass === undefined ? {} : { protectBookedClass }),
       }, at, ctx, { viaAdmit: true });
       // 2026-10-14 — the patient's unused narcotic units move to the new ward's register (NDPS / NABH ward balance).
-      await followNarcoticsIn(tx, actor, a.id, at);
+      await followNarcoticsIn(tx, actor, a.id, at, { moveId: t.id, fromBedId: t.fromBedId });
       await moveAdmission(tx, actor, a, "admitted", at, {}, "accept_handover");
       await tx.update(ipdTransfers).set({ status: "accepted", endedBy: actor.id, endedAt: at }).where(eq(ipdTransfers.id, t.id));
       await appendEvent(tx, transferAccepted.make({
@@ -331,8 +331,9 @@ export async function swapBeds(db: Db, actor: Actor, raw: unknown, opts: Opts = 
         admissionId: b.id, bedId: bedA.id, patientId: b.patientId, need: transferNeed(b, bedA), ...(protectB === undefined ? {} : { protectBookedClass: protectB }),
       }, at, ctxB, { viaAdmit: true });
       // 2026-10-14 — a swap across wards moves each patient's unused narcotic units with them.
-      await followNarcoticsIn(tx, actor, a.id, at);
-      await followNarcoticsIn(tx, actor, b.id, at);
+      const swapId = newId();
+      await followNarcoticsIn(tx, actor, a.id, at, { moveId: swapId, fromBedId: bedA.id });
+      await followNarcoticsIn(tx, actor, b.id, at, { moveId: swapId, fromBedId: bedB.id });
       await appendEvent(tx, bedSwapped.make({
         payload: { admissionIdA: a.id, admissionIdB: b.id, bedIdA: bedA.id, bedIdB: bedB.id, reason: input.reason, provenance: provenanceOf(actor) },
         actor, correlationId: a.id, patientId: a.patientId, occurredAt: at,

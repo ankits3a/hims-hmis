@@ -143,11 +143,12 @@ describe("ward narcotic register — balance, two-nurse count, exceptions", () =
     expect(await db.select().from(ipdNarcoticCounts).where(and(eq(ipdNarcoticCounts.wardId, m.wardId)))).toHaveLength(2); // refused counts wrote nothing
 
     // The patient moves to another ward: the unused ampoule goes with them (transfer out here, in there).
+    const fromBedId = (await admissionPlace(db, m.admissionId))!.bedId!;
     await w.board(m.admissionId, H("21:00"));
     const surWard = (await admissionPlace(db, m.admissionId))!.wardId!;
     expect(surWard).not.toBe(m.wardId);
-    expect(await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, m.admissionId, H("21:00")))).toBe(1);
-    expect(await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, m.admissionId, H("21:01")))).toBe(0);
+    expect(await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, m.admissionId, H("21:00"), { moveId: "T1", fromBedId }))).toBe(1);
+    expect(await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, m.admissionId, H("21:01"), { moveId: "T1", fromBedId }))).toBe(0);
     expect((await readNarcoticWard(db, w.nurse, { wardId: m.wardId, now: H("21:05") })).drugs[0]).toMatchObject({ transferredOut: 1, expected: 0 });
     expect((await readNarcoticWard(db, w.nurse, { wardId: surWard, now: H("21:05") })).drugs[0]).toMatchObject({ transferredIn: 1, expected: 1 });
   });

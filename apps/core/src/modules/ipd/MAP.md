@@ -1071,9 +1071,15 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   count (unique index); a matched count is `narcotic_count_matched`; neither nurse of the count may close it
   (`not_narcotic_resolver`, `ownCount`). No register adjustment row: the resolved count IS
   the new opening. The notice is the exception; there is no Now card for it (owed if the wards ask).
-- TRANSFER: `acceptHandover` and `swapBeds` call `followNarcoticsIn` in their transaction: the admission's units still on
-  an earlier ward move (`transfer_out` there, `transfer_in` here), CAPPED at what the old ward's register still expects of
-  that drug (a resolved shortfall must not leave the old ward negative). Idempotent.
+- TRANSFER (DECIDED, coordinator 2026-10-14, standard NDPS practice: a SHORTFALL BELONGS TO THE WARD that holds it —
+  never to the patient, never to another patient): `acceptHandover` and `swapBeds` call
+  `followNarcoticsIn(tx, actor, admissionId, at, { moveId, fromBedId })` in their transaction (`moveId` = the transfer's
+  id, or one id per swap). It moves min(the patient's own unused units on the ward LEFT during this stay there — rows
+  written since they last arrived on it — , what that ward's register still holds of the drug): `transfer_out` there,
+  `transfer_in` here, both with `act_id` = `moveId`. A shortfall stays on the old ward's books as its discrepancy (its
+  next count flags it; the supervisor resolves). Only the ward just left; a move inside one ward moves nothing; a move
+  whose rows exist moves nothing more (replay). Review 2026-10-14: before this, a remainder a short ward kept stayed the
+  patient's and a later move or a replay swept it again — out of another patient's units.
 - APPEND-ONLY: `ipd_narcotic_counts` and `ipd_narcotic_count_resolutions` take the eMAR's `ipd_emar_forbid_mutation`
   triggers (UPDATE / DELETE / TRUNCATE refused, ENABLE ALWAYS). Every act appends its event. No money (0058).
 - NOT BUILT: per-ward cabinet stock that is not patient-issued (a ward imprest of narcotics) — the hospital issues
