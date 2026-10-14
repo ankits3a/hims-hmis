@@ -237,6 +237,7 @@ Source: `apps/core/src/modules/materials/`
   - `batchesByIds(db: Db | Tx, ids: readonly string[]): Promise<Map<string, BatchFacts>>`
   - `billsForReconciliation(db: Db | Tx, from: string, to: string): Promise<ReconBill[]>`
   - `findDocumentByNo(db: Db | Tx, typed: string): Promise<MaterialsDocRef | null>`
+  - `grnReceivedTotals(db: Db | Tx, start: Date, end: Date): Promise<{ grns: number; valuePaise: number }>`
   - `itemFactsThroughMerge(db: Db | Tx, itemIds: readonly string[]): Promise<Map<string, { id: string; code: string; name: string; baseUom: stri…`
   - `nonMovingStock(db: Db | Tx, now: Date, days: number, opts: { storeResourceId?: string | null } = {}): Promise<NonMovingReport>`
   - `purchaseAdjustmentsBetween(db: Db | Tx, from: string, to: string): Promise<PurchaseAdjustment[]>`

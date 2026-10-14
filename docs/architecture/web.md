@@ -57,7 +57,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
 | `/lab/counter` | `apps/web/src/screens/lab-desk` |
 | `/lab/desk` | `apps/web/src/screens/lab-desk` |
-| `/lab/metrics` | `apps/web/src/screens/lab-metrics` |
+| `/lab/metrics` | `(redirect)` |
 | `/lab/qbench` | `apps/web/src/screens/lab-qchain` |
 | `/lab/qcollect` | `apps/web/src/screens/lab-qchain` |
 | `/lab/qreports` | `apps/web/src/screens/lab-qchain` |
@@ -130,6 +130,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/radiology/usg` | `apps/web/src/screens/radiology-usg` |
 | `/radiology/worklist` | `apps/web/src/screens/radiology-worklist` |
 | `/registration` | `apps/web/src/screens/desk-one/desk-one` |
+| `/reports/numbers` | `apps/web/src/screens/hospital-numbers` |
 | `/reports/opd-day` | `apps/web/src/screens/opd-report` |
 | `/roster/aebas` | `apps/web/src/screens/roster-aebas` |
 | `/roster/evidence` | `apps/web/src/screens/roster-evidence` |

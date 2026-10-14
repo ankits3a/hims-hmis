@@ -109,7 +109,6 @@
     "labQCollect": "त्वरित संग्रह",
     "labQBench": "त्वरित बेंच",
     "labQReports": "त्वरित रिपोर्ट",
-    "labMetrics": "लैब आंकड़े",
     "pharmacyCounter": "दवा वितरण काउंटर",
     "pharmacyDesk": "फ़ार्मेसी डेस्क",
     "pharmacyItems": "फ़ार्मेसी बिक्री वस्तुएँ",
@@ -168,7 +167,8 @@
     "ipdRounds": "राउंड",
     "ipdMar": "MAR",
     "ipdNarcotics": "नारकोटिक्स",
-    "ipdPharmacy": "IP फ़ार्मेसी"
+    "ipdPharmacy": "IP फ़ार्मेसी",
+    "hospitalNumbers": "अस्पताल आंकड़े"
   },
   "palette": {
     "title": "खोज",
@@ -8743,7 +8743,16 @@
     "rejected": "{{who}} ने छूट नामंज़ूर की: {{note}}। छूट हटाएँ, या फिर से माँगें।"
   },
   "pharmacyDesk": {
-    "wordmark": "PHARMACY DESK",
+    "wordmark": "फ़ार्मेसी डेस्क",
+    "phone": {
+      "menu": "मेनू",
+      "tabTicket": "टिकट",
+      "tabLine": "कतार",
+      "tabBill": "बिल",
+      "tabDay": "आपका दिन",
+      "showPatient": "पूरा रिकॉर्ड दिखाएँ",
+      "hidePatient": "पूरा रिकॉर्ड छिपाएँ"
+    },
     "where": "ओपीडी काउंटर",
     "thisDesk": "यह डेस्क",
     "waiting": "{{count}} प्रतीक्षा में",
@@ -19250,5 +19259,75 @@
       "self": "मरीज़",
       "other": "अन्य"
     }
+  },
+  "hospitalNumbers": {
+    "title": "अस्पताल आंकड़े",
+    "tabsLabel": "विभाग",
+    "none": "आपकी भूमिका के लिए कोई आंकड़ा नहीं",
+    "tabs": {
+      "lab": "लैब",
+      "imaging": "इमेजिंग",
+      "pharmacy": "फार्मेसी"
+    },
+    "imaging": {
+      "bySource": "स्रोत अनुसार गिनती",
+      "byModality": "जांच प्रकार अनुसार गिनती",
+      "times": "रिपोर्ट समय",
+      "cols": {
+        "source": "स्रोत",
+        "modality": "प्रकार",
+        "orders": "ऑर्डर",
+        "studies": "जांच हुई",
+        "signed": "हस्ताक्षरित",
+        "delivered": "दी गई"
+      },
+      "modalities": {
+        "xray": "एक्स-रे",
+        "usg": "अल्ट्रासाउंड",
+        "ct": "सीटी",
+        "mri": "एमआरआई",
+        "mammography": "मैमोग्राफी",
+        "other": "अन्य"
+      },
+      "steps": {
+        "placedToDone": "ऑर्डर → जांच",
+        "doneToSigned": "जांच → हस्ताक्षर",
+        "signedToDelivered": "हस्ताक्षर → दी गई",
+        "placedToSigned": "ऑर्डर → हस्ताक्षर"
+      }
+    },
+    "pharmacy": {
+      "sales": "बिक्री",
+      "rx": "पर्चे",
+      "top": "शीर्ष 10 दवाएं",
+      "purchases": "प्राप्त खरीद",
+      "cols": {
+        "figure": "आंकड़ा",
+        "value": "मान",
+        "item": "दवा",
+        "qty": "मात्रा",
+        "amount": "राशि"
+      },
+      "rows": {
+        "bills": "बिल",
+        "sales": "बिक्री",
+        "returns": "वापसी",
+        "net": "शुद्ध बिक्री",
+        "revenue": "आय (कर योग्य)",
+        "cost": "लागत",
+        "profit": "लाभ",
+        "margin": "मार्जिन",
+        "received": "प्राप्त",
+        "full": "पूरा दिया",
+        "part": "आंशिक दिया",
+        "none": "नहीं दिया",
+        "time": "प्राप्त → दिया",
+        "grns": "GRN",
+        "value": "लागत मूल्य"
+      }
+    }
+  },
+  "agentDock": {
+    "title": "डेस्क एजेंट"
   }
 }

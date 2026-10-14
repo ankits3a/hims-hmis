@@ -109,7 +109,6 @@
     "labQCollect": "Quick Collect",
     "labQBench": "Quick Bench",
     "labQReports": "Quick Reports",
-    "labMetrics": "Lab numbers",
     "pharmacyCounter": "Dispense counter",
     "pharmacyDesk": "Pharmacy desk",
     "pharmacyItems": "Pharmacy sale items",
@@ -168,7 +167,8 @@
     "ipdRounds": "Rounds",
     "ipdMar": "MAR",
     "ipdNarcotics": "Narcotics",
-    "ipdPharmacy": "IP pharmacy"
+    "ipdPharmacy": "IP pharmacy",
+    "hospitalNumbers": "Hospital numbers"
   },
   "palette": {
     "title": "Search",
@@ -8744,6 +8744,15 @@
   },
   "pharmacyDesk": {
     "wordmark": "PHARMACY DESK",
+    "phone": {
+      "menu": "Menu",
+      "tabTicket": "Ticket",
+      "tabLine": "The line",
+      "tabBill": "Bill",
+      "tabDay": "Your day",
+      "showPatient": "Show the full record",
+      "hidePatient": "Hide the full record"
+    },
     "where": "OPD counter",
     "thisDesk": "this desk",
     "waiting": "{{count}} waiting",
@@ -19250,5 +19259,75 @@
       "self": "Patient",
       "other": "Other"
     }
+  },
+  "hospitalNumbers": {
+    "title": "Hospital numbers",
+    "tabsLabel": "Department",
+    "none": "No numbers for your role",
+    "tabs": {
+      "lab": "Lab",
+      "imaging": "Imaging",
+      "pharmacy": "Pharmacy"
+    },
+    "imaging": {
+      "bySource": "Counts by source",
+      "byModality": "Counts by modality",
+      "times": "Report time",
+      "cols": {
+        "source": "Source",
+        "modality": "Modality",
+        "orders": "Orders",
+        "studies": "Studies done",
+        "signed": "Signed",
+        "delivered": "Delivered"
+      },
+      "modalities": {
+        "xray": "X-ray",
+        "usg": "Ultrasound",
+        "ct": "CT",
+        "mri": "MRI",
+        "mammography": "Mammography",
+        "other": "Other"
+      },
+      "steps": {
+        "placedToDone": "Order → done",
+        "doneToSigned": "Done → signed",
+        "signedToDelivered": "Signed → delivered",
+        "placedToSigned": "Order → signed"
+      }
+    },
+    "pharmacy": {
+      "sales": "Sales",
+      "rx": "Prescriptions",
+      "top": "Top 10 items",
+      "purchases": "Purchases received",
+      "cols": {
+        "figure": "Figure",
+        "value": "Value",
+        "item": "Item",
+        "qty": "Qty",
+        "amount": "Amount"
+      },
+      "rows": {
+        "bills": "Bills",
+        "sales": "Sales",
+        "returns": "Returns",
+        "net": "Net sales",
+        "revenue": "Revenue (taxable)",
+        "cost": "Cost",
+        "profit": "Profit",
+        "margin": "Margin",
+        "received": "Received",
+        "full": "Given in full",
+        "part": "Given in part",
+        "none": "Not given",
+        "time": "Received → given",
+        "grns": "GRNs",
+        "value": "Value at cost"
+      }
+    }
+  },
+  "agentDock": {
+    "title": "DESK AGENT"
   }
 }

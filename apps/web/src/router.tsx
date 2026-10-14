@@ -132,7 +132,8 @@ import { LabVerify } from "./screens/lab-verify";
 import { LabReports } from "./screens/lab-reports";
 import { LabQuick } from "./screens/lab-quick";
 import { LabQBench, LabQCollect, LabQReports } from "./screens/lab-qchain";
-import { LabMetrics } from "./screens/lab-metrics";
+import { HospitalNumbers, NUMBERS_TABS } from "./screens/hospital-numbers";
+import type { NumbersTab } from "./screens/hospital-numbers";
 
 /**
  * PLAN 11h T6 — the shell's navigation, PAIRED WITH THE PERMISSION EACH SCREEN'S ROUTE ACTUALLY
@@ -448,8 +449,12 @@ const NAV: readonly NavEntry[] = [
   { to: "/lab/qcollect", label: "nav.labQCollect", permission: "lab.worklist.read", group: "lab", labMode: "quick" },
   { to: "/lab/qbench", label: "nav.labQBench", permission: "lab.results.enter", group: "lab", labMode: "quick" },
   { to: "/lab/qreports", label: "nav.labQReports", permission: "lab.reports.print", group: "lab", labMode: "quick" },
-  /** Owner 2026-10-13 (#768) — lab counts and turnaround times, read-only; in both lab modes. Matches `labManifest.menu`. */
-  { to: "/lab/metrics", label: "nav.labMetrics", permission: "lab.metrics.read", group: "lab" },
+  /**
+   * Owner 2026-10-13 (#768, #777) — Hospital numbers: the lab's, imaging's and the pharmacy's counts and times,
+   * read-only; a tab per grant. `permission` is `labManifest.menu`'s pairing; `anyOf` shows it to a holder
+   * of either other tab's grant. `/lab/metrics` forwards here.
+   */
+  { to: "/reports/numbers", label: "nav.hospitalNumbers", permission: "lab.metrics.read", group: "admin", anyOf: ["radiology.metrics.read", "pharmacy.metrics.read"] },
   // PHASE PD — the pharmacy desk: one ticket in hand, one screen. PARITY P1 retired `/pharmacy/counter` into it.
   { to: "/pharmacy/desk", label: "nav.pharmacyDesk", permission: "pharmacy.dispense.read", group: "pharmacy" },
   /*
@@ -503,7 +508,7 @@ declare module "@tanstack/react-router" {
  * that RENDERS `PaletteProvider`. A hook cannot read a context its own caller provides.
  */
 function ShellChrome(): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { username, can, logout } = useAuth();
   const navigate = useNavigate();
   const palette = usePalette();
@@ -585,7 +590,7 @@ function ShellChrome(): React.ReactElement {
           {t("app.menu")}
         </button>
         <div className="right">
-          <span className="mo clock">{istDateLabel()} · {istClock()} IST</span>
+          <span className="mo clock">{istDateLabel(new Date(), i18n.language.startsWith("hi") ? "hi-IN" : "en-IN")} · {istClock()} IST</span>
           {/*
             The search button the owner ruled stays in the header. It advertises F8 and not
             Ctrl+K: Chrome answers Ctrl+K with its own address bar first, which FD-9 measured.
@@ -1903,11 +1908,27 @@ const labQReportsRoute = createRoute({
   staticData: { fullViewport: true },
 });
 
-/** Owner 2026-10-13 (#768) — lab numbers: counts and turnaround times. Path matches `labManifest.menu`. */
+/**
+ * Owner 2026-10-13 (#768) — lab numbers. #777 folded it into Hospital numbers as the Lab tab; the old
+ * address (a bookmark, a link) forwards there with the Lab tab chosen.
+ */
 const labMetricsRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/lab/metrics",
-  component: LabMetrics,
+  beforeLoad: () => { throw redirect({ to: "/reports/numbers", search: { tab: "lab" } }); },
+});
+
+/** Owner 2026-10-13 (#777) — Hospital numbers: Lab / Imaging / Pharmacy tabs, each on its own grant. */
+const hospitalNumbersRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/reports/numbers",
+  validateSearch: (search: Record<string, unknown>): { tab?: NumbersTab } => ({
+    tab: (NUMBERS_TABS as readonly unknown[]).includes(search.tab) ? (search.tab as NumbersTab) : undefined,
+  }),
+  component: function HospitalNumbersRoute() {
+    const { tab } = hospitalNumbersRoute.useSearch();
+    return <HospitalNumbers initialTab={tab} />;
+  },
 });
 
 const labQuickRoute = createRoute({
@@ -2226,6 +2247,8 @@ export const router = createRouter({
       // OWNER 2026-10-11 — the quick chain (+4).
       labCounterRoute, labQCollectRoute, labQBenchRoute, labQReportsRoute,
       labMetricsRoute,
+      // #777 — Hospital numbers (+1); `/lab/metrics` above now forwards to it.
+      hospitalNumbersRoute,
       // PLAN 18a T9 — 39 -> 44, imaging. FIVE routes and TWO nav links: the study console, the
       // report and the Form F are all reached from a study rather than browsed, and the Form F is
       // unlisted on purpose (see the route's own comment). `caddyfile-parity.test.ts` pins the

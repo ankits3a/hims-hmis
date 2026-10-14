@@ -38,6 +38,7 @@
 .d1 {
   position: fixed;
   inset: 0;
+  top: var(--env-banner-h, 0px); /* below the staging banner; 0 on production */
   z-index: 40;
   display: flex;
   flex-direction: column;

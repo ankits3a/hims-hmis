@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory } from "@tanstack/react-router";
 import { AuthProvider } from "./lib/auth";
@@ -603,4 +603,38 @@ it("imaging, lab, theatre and pharmacy places sit in their own groups, not under
   expect(groupOf("Pharmacy office")).toBe("shell-nav-pharmacy");
   const order = ["OPD", "Imaging", "Lab", "Theatre", "Pharmacy"].map((n) => (screen.getByRole("navigation").textContent ?? "").indexOf(n));
   expect([...order].sort((a, b) => a - b)).toEqual(order);
+});
+
+/**
+ * HOSPITAL NUMBERS (owner 2026-10-13, #777) — one row for the three tabs, shown to a holder of ANY
+ * of the three grants (`anyOf`), and to nobody else. The old Lab numbers row is gone with its screen.
+ */
+it("#777: Hospital numbers is one row for a holder of any numbers grant, and absent without one", async () => {
+  for (const grant of ["lab.metrics.read", "radiology.metrics.read", "pharmacy.metrics.read"]) {
+    renderShell([grant]);
+    await waitFor(() => expect(screen.getByRole("link", { name: "Hospital numbers" })).toHaveAttribute("href", "/reports/numbers"));
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).not.toContain("/lab/metrics");
+    cleanup();
+  }
+  renderShell(["pharmacy.register.read"]);
+  await waitFor(() => expect(screen.getByRole("link", { name: "Pharmacy office" })).toBeInTheDocument());
+  expect(screen.queryByRole("link", { name: "Hospital numbers" })).not.toBeInTheDocument();
+});
+
+/*
+ * WALK 2026-10-14 — the shell's clock read "WED 14 OCT · 22:15 IST" on every Hindi screen. Its date
+ * follows the language like every other label in the header.
+ */
+it("the shell clock's date follows the language", async () => {
+  renderShell(["opd.visits.open"]);
+  const clock = (): HTMLElement => document.querySelector<HTMLElement>("header.shell .clock")!;
+  await waitFor(() => expect(clock()).not.toBeNull());
+  expect(clock()).toHaveTextContent(/(MON|TUE|WED|THU|FRI|SAT|SUN) \d/);
+  await act(async () => { await i18next.changeLanguage("hi"); });
+  try {
+    await waitFor(() => expect(clock()).not.toHaveTextContent(/(MON|TUE|WED|THU|FRI|SAT|SUN) \d/));
+    expect(clock().textContent).toMatch(/[ऀ-ॿ]/);
+  } finally {
+    await act(async () => { await i18next.changeLanguage("en"); });
+  }
 });

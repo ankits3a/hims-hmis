@@ -12,7 +12,7 @@ Source: `apps/core/src/modules/radiology/`
 
 - **Depends on modules:** `aerb`, `billing`, `lab`, `opd`, `ot`, `patients`, `pcpndt`, `roster`, `tariff`
 - **Used by modules:** `abdm`, `ordering`
-- **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `approvals`, `auth`, `config`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `phi`, `report`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `approvalGranted`, `orderPlaced`
 
 ## Public API (`index.ts`), by declaring file
@@ -420,7 +420,7 @@ Source: `apps/core/src/modules/radiology/`
 
 Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 
-## HTTP routes (113)
+## HTTP routes (114)
 
 - `radiology-acquisition.controller.ts` — 8: `/radiology/studies`
 - `radiology-bill-decisions.controller.ts` — 2: `/radiology/bill-decisions`
@@ -428,6 +428,7 @@ Foreign keys into: `billing`, `orders`, `patients`, `resources`, `tariff`
 - `radiology-floor.controller.ts` — 3: `/radiology/devices`, `/radiology/display`, `/radiology/portable`
 - `radiology-images.controller.ts` — 1: `/radiology/studies`
 - `radiology-ir.controller.ts` — 10: `/radiology/ir`, `/radiology/studies`
+- `radiology-metrics.controller.ts` — 1: `/radiology/metrics`
 - `radiology-mwl.controller.ts` — 1: `/radiology/mwl`
 - `radiology-orders.controller.ts` — 3: `/radiology/advised`, `/radiology/orders`
 - `radiology-pacs.controller.ts` — 5: `/radiology/pacs`

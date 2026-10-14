@@ -78,7 +78,7 @@
 .d1.bof .bof-drawer .bof-list { width: auto; border-left: none; padding: 0; flex-grow: 1; }
 
 /* the phone */
-.d1.bof .bof-full { position: fixed; inset: 0; z-index: 44; display: flex; flex-direction: column; background: var(--paper); }
+.d1.bof .bof-full { position: fixed; inset: 0; top: var(--env-banner-h, 0px); z-index: 44; display: flex; flex-direction: column; background: var(--paper); }
 .d1.bof .bof-full .pof-ptop { gap: 10px; }
 .d1.bof .bof-full .bof-money { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .d1.bof .pof-legacy .bof-page-note { font-size: 12px; color: var(--dim); }
