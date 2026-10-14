@@ -194,7 +194,7 @@ describe("triage — the complaint, in the patient's own words", () => {
   it("an index we did not send is DROPPED, not trusted", () => {
     // 9 is not in the list; 1 is Cardiology.
     const out = parseSuggestions('{"suggestions":[{"index":9,"reason":"Neurosurgery"},{"index":1,"reason":"cardiac"}]}', DEPTS);
-    expect(out).toEqual([{ departmentId: "d-card", reason: "cardiac" }]);
+    expect(out).toEqual([{ departmentId: "d-card", reason: "Suggested by the triage model", reasonKey: "opdTriage.reason.model" }]); // #622: never the model's words
   });
 
   it("a model that answers in prose, or with a NAME instead of an index, changes nothing", async () => {
@@ -234,7 +234,7 @@ describe("triage — the complaint, in the patient's own words", () => {
       "chhaati mein jalan aur pasina", DEPTS, CONFIG,
       reply('{"suggestions":[{"index":1,"reason":"possible cardiac"}]}'),
     );
-    expect(r).toEqual({ source: "model", suggestions: [{ departmentId: "d-card", reason: "possible cardiac" }] });
+    expect(r).toEqual({ source: "model", suggestions: [{ departmentId: "d-card", reason: "Suggested by the triage model", reasonKey: "opdTriage.reason.model" }] }); // #622
   });
 
   /** It is fenced JSON in practice more often than not; the desk should not care. */
@@ -523,5 +523,56 @@ describe("suggestDepartments — TypeSafe first", () => {
     expect(ts.calls).toHaveLength(0);
     expect(groq.asked()).toBe(0);
     expect(out.source).toBe("keywords");
+  });
+});
+
+/**
+ * #622 — THE CHAT-MODEL FALLBACK GOES THROUGH THE ONE INFERENCE MODULE, AND ITS WORDS STAY THERE.
+ *
+ * Triage's chat call used its own `fetch` and one user message, outside `kernel/inference`. It now
+ * calls `complete()`: a system prompt (the task and the department list) and a user string (the
+ * masked complaint), with the token ceiling a reasoning model needs. And the model's free-text
+ * `reason` no longer reaches the clerk: a chat-model row carries a fixed reason the screen
+ * translates (`opdTriage.reason.model`), never what the model wrote.
+ */
+describe("#622 — the triage fallback through the inference module", () => {
+  function capture(content: string): { fetchImpl: typeof fetch; bodies: string[]; urls: string[] } {
+    const bodies: string[] = [];
+    const urls: string[] = [];
+    const fetchImpl = (async (u: string, init: { body: string }) => {
+      urls.push(u);
+      bodies.push(init.body);
+      return { ok: true, json: async () => ({ choices: [{ message: { content } }] }) };
+    }) as unknown as typeof fetch;
+    return { fetchImpl, bodies, urls };
+  }
+
+  it("sends a system prompt with the list and a user message with only the masked complaint, with room to think", async () => {
+    const c = capture('{"suggestions":[{"index":1}]}');
+    await suggestDepartments("Ramesh ko seene mein jalan", DEPTS, CONFIG, c.fetchImpl, createTriageCache(), { ageYears: 30, names: ["Ramesh Kumar"] });
+    expect(c.urls).toEqual(["https://omniroute.example/v1/chat/completions"]);
+    const body = JSON.parse(c.bodies[0]!) as { messages: { role: string; content: string }[]; max_tokens: number; stream: boolean; temperature: number };
+    expect(body.messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(body.messages[0]!.content).toContain("0: General Medicine");
+    expect(body.messages[0]!.content).not.toContain("jalan");
+    expect(body.messages[1]!.content).toMatch(/^Complaint: \S+ ko seene mein jalan$/);
+    expect(body.messages[1]!.content).not.toContain("Ramesh");
+    expect(body.max_tokens).toBeGreaterThanOrEqual(256);
+    expect(body.stream).toBe(false);
+    expect(body.temperature).toBe(0);
+  });
+
+  it("the model's own words never reach the clerk: a chat-model row carries the fixed, translated reason", async () => {
+    const c = capture('{"suggestions":[{"index":1,"reason":"likely heart attack, rush"}]}');
+    const r = await suggestDepartments("chest burning after food", DEPTS, CONFIG, c.fetchImpl, createTriageCache(), { ageYears: 20 });
+    expect(r.source).toBe("model");
+    expect(r.suggestions).toEqual([{ departmentId: "d-card", reason: "Suggested by the triage model", reasonKey: "opdTriage.reason.model" }]);
+    expect(JSON.stringify(r)).not.toContain("heart attack");
+  });
+
+  it("keyword rows say which table matched, as a key the screen translates", async () => {
+    const r = await suggestDepartments("bukhar", DEPTS, { ...CONFIG, apiKey: null });
+    expect(r.source).toBe("keywords");
+    expect(r.suggestions.every((s) => s.reasonKey === "opdTriage.reason.keywords")).toBe(true);
   });
 });

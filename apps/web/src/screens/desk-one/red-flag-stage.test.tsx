@@ -112,8 +112,28 @@ describe("a red-flagged complaint cannot be booked from the appointment stage", 
    * test above — the empty-result trap, where the assertion is satisfied by the screen being broken.
    */
   it("still offers the button for an ordinary complaint", async () => {
-    mount({ suggestions: [{ departmentId: "d-1", reason: "fever" }], source: "keywords" });
+    mount({ suggestions: [{ departmentId: "d-1", reason: "fever", reasonKey: "opdTriage.reason.keywords" }], source: "keywords" });
     await holdPatientAndType("bukhar");
     await waitFor(() => expect(screen.getByTestId("propose-assign")).toBeInTheDocument());
+  });
+});
+
+/*
+  #622 — the origin of a ranking is a FIXED reason the screen translates, never the model's words.
+  The reply below carries a model sentence in `reason` (an older server sent one); it must not reach
+  the clerk, and the line says "Suggested by the triage model" from the locale file.
+*/
+describe("#622 — the clerk sees our reason, never the model's", () => {
+  it("names the triage model through the translated reason and never shows the model's sentence", async () => {
+    mount({ suggestions: [{ departmentId: "d-1", reason: "likely heart attack, rush", reasonKey: "opdTriage.reason.model" }], source: "model" });
+    await holdPatientAndType("jalan");
+    await waitFor(() => expect(screen.getByTestId("triage-source")).toHaveTextContent("Suggested by the triage model"));
+    expect(screen.getByTestId("desk-one")).not.toHaveTextContent(/heart attack/i);
+  });
+
+  it("a keyword ranking says so, translated", async () => {
+    mount({ suggestions: [{ departmentId: "d-1", reason: "fever", reasonKey: "opdTriage.reason.keywords" }], source: "keywords" });
+    await holdPatientAndType("bukhar");
+    await waitFor(() => expect(screen.getByTestId("triage-source")).toHaveTextContent("Matched by the keyword table"));
   });
 });
