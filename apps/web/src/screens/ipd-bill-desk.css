@@ -52,3 +52,9 @@
 @media (max-width: 900px) {
   .ipdbd-list { max-height: none; overflow-x: auto; }
 }
+
+/* #761 — the daily totals strip: one line of state, then every not-sent admission with its reason in words. */
+.ipdbd-dt { display: flex; flex-direction: column; gap: 6px; }
+.ipdbd-dt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px; }
+.ipdbd-dt-list { margin: 0; padding: 0; list-style: none; max-height: 120px; overflow: auto; font-size: 13px; }
+.ipdbd-dt-list li { display: flex; gap: 12px; padding: 2px 0; }

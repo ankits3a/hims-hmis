@@ -16061,7 +16061,44 @@
     "retried_one": "Retried — {{count}} line posted",
     "retried_other": "Retried — {{count}} lines posted",
     "retryFailed": "Retry failed — try again",
-    "careNote": "Care never stops for money: the deposit ladder only tells the desk and management."
+    "careNote": "Care never stops for money: the deposit ladder only tells the desk and management.",
+    "dailyTotals": {
+      "label": "Daily totals to attendants",
+      "title": "Daily totals to attendants · {{date}}",
+      "on": "Sending at {{hour}}:00",
+      "off": "Sending is off: template not configured",
+      "counts": "Sent {{sent}} · Waiting {{waiting}} · Not sent {{notSent}}"
+    }
+  },
+  "ipdAttendant": {
+    "label": "Daily totals message",
+    "title": "Daily totals message",
+    "to": "Goes to",
+    "consent": "Consent",
+    "viaFamilyLink": "Given with the family link",
+    "last": "Last ({{date}})",
+    "consentedBy": "Consent given by",
+    "relation": "Relation",
+    "method": "How",
+    "verbal": "Verbal",
+    "paper": "On paper",
+    "record": "Record consent",
+    "stop": "Stop messages",
+    "actFailed": "Could not save — try again",
+    "kind": {
+      "guardian": "guardian",
+      "deposit_payer": "deposit payer"
+    },
+    "rel": {
+      "spouse": "Spouse",
+      "parent": "Parent",
+      "child": "Child",
+      "sibling": "Sibling",
+      "relative": "Relative",
+      "guardian": "Guardian",
+      "self": "Patient",
+      "other": "Other"
+    }
   },
   "ipdBill": {
     "postingFailed": "Nightly posting failed ({{count}} tries) — the bill desk retries it",
