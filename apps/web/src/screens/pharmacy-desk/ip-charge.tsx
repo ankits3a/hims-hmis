@@ -21,6 +21,10 @@ import "./paper-rx.css";
  */
 type Line = { entry: IpdCounterShelfEntry; qty: string };
 
+/** The server's own answer to the act (a 4xx other than "still running"): the next press is a new request. */
+const answered = (e: unknown): boolean => e instanceof ApiError && e.status >= 400 && e.status < 500
+  && !(typeof e.body === "object" && e.body !== null && (e.body as { code?: unknown }).code === "idempotency_key_in_progress");
+
 const rupees = (paise: number): string => `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export function IpChargeSheet({ onClose }: { onClose: () => void }): React.ReactElement {
@@ -35,8 +39,14 @@ export function IpChargeSheet({ onClose }: { onClose: () => void }): React.React
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<CounterChargeResult | null>(null);
   const [backQty, setBackQty] = useState<Record<string, string>>({});
-  /* One key per charge, kept across a network failure (the retry is the same request) and dropped on an answer. */
+  /*
+   * One key per charge, kept across a network failure (the retry is the same request) and dropped on an answer. Review of
+   * 73731986: only the server's own answer drops it — a gateway 5xx (a deploy, a timeout) may sit in front of a sale the
+   * server did, and `idempotency_key_in_progress` IS that sale still running; a new key there would charge it twice.
+   */
   const key = useRef(newIdempotencyKey());
+  /* One key per return row, by the same rule. */
+  const backKeys = useRef<Record<string, string>>({});
 
   const say = (e: unknown): string => {
     const r = refusalOf(e);
@@ -76,18 +86,25 @@ export function IpChargeSheet({ onClose }: { onClose: () => void }): React.React
       void qc.invalidateQueries({ queryKey: ["ipd", "counter", "sales", admission.admissionId] });
     } catch (e) {
       setError(say(e));
-      if (e instanceof ApiError) key.current = newIdempotencyKey();
+      if (answered(e)) key.current = newIdempotencyKey();
     } finally { setBusy(false); }
   };
   const giveBack = async (saleId: string, itemId: string): Promise<void> => {
     const n = Number(backQty[`${saleId}:${itemId}`] ?? "");
     if (!Number.isInteger(n) || n <= 0 || busy) return;
     setBusy(true); setError(null);
+    const row = `${saleId}:${itemId}`;
+    const k = backKeys.current[row] ?? newIdempotencyKey();
+    backKeys.current[row] = k;
     try {
-      await returnToCounter(saleId, itemId, n, t("ipCharge.returnReason"));
-      setBackQty((m) => ({ ...m, [`${saleId}:${itemId}`]: "" }));
+      await returnToCounter(saleId, itemId, n, t("ipCharge.returnReason"), k);
+      delete backKeys.current[row];
+      setBackQty((m) => ({ ...m, [row]: "" }));
       void qc.invalidateQueries({ queryKey: ["ipd", "counter", "sales", admission?.admissionId ?? ""] });
-    } catch (e) { setError(say(e)); } finally { setBusy(false); }
+    } catch (e) {
+      setError(say(e));
+      if (answered(e)) delete backKeys.current[row];
+    } finally { setBusy(false); }
   };
 
   return (

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../../lib/api";
 import { renderWithProviders } from "../../test-utils";
@@ -91,5 +91,80 @@ describe("Charge to IP — the OPD counter's IP-charge mode", () => {
     renderWithProviders(<PharmacyDesk ticketId={null} />);
     await user.click(await screen.findByTestId("desk-ip-charge"));
     expect(await screen.findByTestId("ip-charge-sheet")).toBeInTheDocument();
+  });
+
+  /*
+   * Review of 73731986 — a retry after an answer that is not the server's own (a gateway 502/504 during a deploy, a lost
+   * response) is the SAME request: it carries the same key, so a sale or a return the server already did is not done twice.
+   */
+  function sequenced(post: Record<string, (Reply | "network")[]>, get: Record<string, Reply>): void {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = (typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url).split("?")[0]!;
+      const method = init?.method ?? "GET";
+      const table = method === "POST" ? post : get;
+      const hit = Object.entries(table).find(([path]) => raw.endsWith(path));
+      if (hit === undefined) return new Response("{}", { status: 404 });
+      const reply = Array.isArray(hit[1]) ? hit[1].shift() : hit[1];
+      if (reply === undefined) return new Response("{}", { status: 404 });
+      if (reply === "network") throw new TypeError("Failed to fetch");
+      return new Response(JSON.stringify(reply.body), { status: reply.status, headers: { "Content-Type": "application/json" } });
+    }));
+  }
+  const keysOf = (path: string): unknown[] => vi.mocked(fetch).mock.calls
+    .filter(([input, init]) => init?.method === "POST" && String(input).split("?")[0]!.endsWith(path))
+    .map(([, init]) => (init?.headers as Record<string, string>)["Idempotency-Key"]);
+  const SALE = { saleId: "01JSALE0000000000000000000A", soldAt: "2026-03-11T05:30:00.000Z", lines: [{ itemId: SHELF[0]!.itemId, name: "Pan 40 mg", units: 10, returned: 0 }] };
+  const RESULT = { saleId: SALE.saleId, admissionId: ADMISSION.admissionId, lines: [{ medicineId: SHELF[0]!.medicineId, units: 10, netPaise: 1250 }], totalPaise: 1250 };
+
+  it("a charge retried after a gateway error or an in-flight answer carries the same key — charged once", async () => {
+    sequenced({
+      "/ipd/counter/charge": [
+        { status: 502, body: {} },
+        { status: 409, body: { statusCode: 409, code: "idempotency_key_in_progress", message: "x" } },
+        { status: 201, body: RESULT },
+      ],
+    }, {
+      "/ipd/counter/admission": { status: 200, body: ADMISSION },
+      "/ipd/counter/shelf": { status: 200, body: SHELF },
+      [`/ipd/counter/admissions/${ADMISSION.admissionId}/sales`]: { status: 200, body: { admissionId: ADMISSION.admissionId, sales: [] } },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<IpChargeSheet onClose={() => {}} />);
+    await user.type(screen.getByTestId("ip-charge-find"), "IP26-000123");
+    await user.click(screen.getByTestId("ip-charge-find-go"));
+    await user.type(await screen.findByTestId("ip-charge-search"), "pan");
+    await user.click(await screen.findByRole("button", { name: /Pan 40 mg/ }));
+    await user.type(screen.getByLabelText("Qty Pan"), "10");
+    await user.click(screen.getByTestId("ip-charge-save"));
+    await screen.findByTestId("ip-charge-error");
+    await user.click(screen.getByTestId("ip-charge-save"));
+    await waitFor(() => expect(keysOf("/ipd/counter/charge")).toHaveLength(2));
+    await waitFor(() => expect(screen.getByTestId("ip-charge-save")).not.toHaveTextContent(/Charging/));
+    await user.click(screen.getByTestId("ip-charge-save"));
+    expect(await screen.findByTestId("ip-charge-done")).toBeInTheDocument();
+    const keys = keysOf("/ipd/counter/charge");
+    expect(keys).toHaveLength(3);
+    expect(new Set(keys).size).toBe(1);
+  });
+
+  it("a return retried after a lost response carries the same key — the units come back once", async () => {
+    sequenced({
+      "/ipd/counter/return": ["network", { status: 201, body: { returnId: "01JRETURN00000000000000000A", units: 2, creditedUnits: 2 } }],
+    }, {
+      "/ipd/counter/admission": { status: 200, body: ADMISSION },
+      [`/ipd/counter/admissions/${ADMISSION.admissionId}/sales`]: { status: 200, body: { admissionId: ADMISSION.admissionId, sales: [SALE] } },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<IpChargeSheet onClose={() => {}} />);
+    await user.type(screen.getByTestId("ip-charge-find"), "IP26-000123");
+    await user.click(screen.getByTestId("ip-charge-find-go"));
+    await user.type(await screen.findByLabelText(/Pan 40 mg/), "2");
+    const button = within(screen.getByTestId("ip-charge-sales")).getByRole("button");
+    await user.click(button);
+    await screen.findByTestId("ip-charge-error");
+    await user.click(button);
+    await waitFor(() => expect(keysOf("/ipd/counter/return")).toHaveLength(2));
+    const keys = keysOf("/ipd/counter/return");
+    expect(keys[0]).toBe(keys[1]);
   });
 });
