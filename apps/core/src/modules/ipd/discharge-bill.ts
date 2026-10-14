@@ -117,8 +117,7 @@ export async function composeFinalBill(db: Db | Tx, a: AdmissionRow, take?: (lin
  * The invoice lines for the patient's portion, each at its frozen price (see the header).
  *
  * #787 — a PHARMACY line was priced inclusive of its GST (an MRP holds the tax), so it goes on the invoice `taxInclusive`
- * at the amount the stay was charged: whole (the units at their unit price) when nothing was taken off it, else one line
- * at the patient's amount. `versionPriced` names the services today's tariff version prices (`versionPricedServices`):
+ * at the amount the stay was charged, as per-unit lines (see the body). `versionPriced` names the services today's tariff version prices (`versionPricedServices`):
  * those take the frozen amount as a prepaid quote, every other one as its batch price — never today's list price.
  */
 export function patientInvoiceLines(c: ComposedFinalBill, versionPriced: ReadonlySet<string> = new Set()): InvoiceLineInput[] {
@@ -126,12 +125,15 @@ export function patientInvoiceLines(c: ComposedFinalBill, versionPriced: Readonl
   for (const { line, patientPaise } of c.live) {
     if (patientPaise <= 0) continue;
     if (line.component === "pharmacy") {
+      // Review of 70115d2d: ALWAYS per-unit lines — a REGULATED service's bound is per unit, and one line carrying the
+      // whole amount would be clamped down to it. The units at the amount's per-unit share (rounded down, so never above
+      // the price they were charged at), then the few paise left over at 1 paisa each: together the amount, to the paisa.
       const whole = patientPaise === line.netPaise && line.discountPaise === 0 && line.grossPaise === line.qty * line.unitPaise;
-      const unit = whole ? line.unitPaise : patientPaise;
-      out.push({
-        lineId: `ipd-${line.id}`, serviceId: line.serviceId, qty: whole ? line.qty : 1, taxInclusive: true,
-        ...(versionPriced.has(line.serviceId) ? { prepaidUnitPaise: unit } : { batchUnitPaise: unit, capUnitPaise: unit }),
-      });
+      const unit = whole ? line.unitPaise : Math.floor(patientPaise / line.qty);
+      const priceAt = (u: number) => (versionPriced.has(line.serviceId) ? { prepaidUnitPaise: u } : { batchUnitPaise: u, capUnitPaise: u });
+      if (unit > 0) out.push({ lineId: `ipd-${line.id}`, serviceId: line.serviceId, qty: line.qty, taxInclusive: true, ...priceAt(unit) });
+      const left = patientPaise - unit * line.qty;
+      if (left > 0) out.push({ lineId: `ipd-${line.id}-r`, serviceId: line.serviceId, qty: left, taxInclusive: true, ...priceAt(1) });
       continue;
     }
     if (patientPaise === line.netPaise) {

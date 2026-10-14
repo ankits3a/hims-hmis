@@ -10,15 +10,15 @@ import { setupTestDb, truncateAll } from "../../../../test/helpers/db";
 import { mkEmarWorld } from "../../../../test/helpers/ipd";
 import { mkTpaDesk } from "../../../../test/helpers/ipd-payer";
 import { BillingError, issueInvoice, previewInvoice } from "../../billing";
-import { postMovement } from "../../materials";
+import { postMovement, setPriceRegulation } from "../../materials";
 import { gstCategoryMap, invoiceInputsOf, priceBatchLine } from "../../pharmacy";
-import { upsertGstCategory } from "../../tariff";
+import { appendRegulatedPrice, upsertGstCategory } from "../../tariff";
 import { grantPermissionToRole, syncPermissions } from "../../../kernel/auth/permissions";
 import { ModuleRegistry } from "../../../kernel/modules/loader";
 import { ipdManifest } from "../manifest";
 import {
   IpdError, IpdRefusal, addPayerNonPayable, administerDose, composeFinalBill, confirmCharges, declareFit, issueGatePass, issueMed, keepOrderCharge,
-  markDoseInError, placeIpOrder, prepareFinalBill, prepareSupplementaryBill, readBillDesk, readEmarPatient, readInterimBill, readLabelSheet,
+  markDoseInError, placeIpOrder, postDrugIssueChargesIn, postDrugReturnCreditsIn, prepareFinalBill, prepareSupplementaryBill, readBillDesk, readEmarPatient, readInterimBill, readLabelSheet,
   readPharmacyQueue, recordNarcoticWastage, recordPayerAuth, registerIpdOrderChargeSink, retryFromBillDesk, returnMed, reverseChargeLine,
   saveSummaryDraft, scanGatePass, secondCheck, settleFinalBill, signSummary, verifyOrder,
 } from "../index";
@@ -488,6 +488,133 @@ describe("#787 — ward-issued medicines and returns post to the IPD running bil
     const emar = (await db.select().from(events).where(eq(events.correlationId, admissionId))).filter((e) => e.name.startsWith("ipd.emar.") || e.name.startsWith("ipd.order."));
     expect(emar.length).toBeGreaterThan(0);
     for (const e of emar) expect([...keysOf(e.payload)].filter((k) => MONEY.test(k))).toEqual([]);
+  });
+
+  // ═══════════════════════════ review of 70115d2d ═══════════════════════════
+
+  const admissionRow = async (id: string) => (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, id)))[0]!;
+
+  it("review 1 — a return on a lost / damaged replacement answers its flag: all back closes it, part back carries it to the kept units", async () => {
+    const r = await ready(6);
+    const lost = await issue(r.orderId, 6, { reissue: { reason: "lost", note: "Strip fell behind the bed" } }, ist("2026-03-11T09:00:00"));
+    const flagged = (await liveDrug(r.admissionId)).find((l) => l.issueId === lost.issueId)!;
+    await giveBack(lost.issueId, 2, ist("2026-03-11T10:00:00"));
+    // Four tablets are still charged: the question stays with billing, on the line that now carries them.
+    const kept = (await liveDrug(r.admissionId)).find((l) => l.issueId === lost.issueId)!;
+    expect([kept.qty, kept.id === flagged.id]).toEqual([4, false]);
+    expect((await openExceptions(r.admissionId)).map((x) => [x.reason, x.key.split(":")[3]])).toEqual([["reissue_lost_damaged", kept.id]]);
+    const row = (await readBillDesk(db, w.billDesk, ist("2026-03-11T10:30:00"))).rows.find((x) => x.admissionId === r.admissionId)!;
+    expect(row.orderCancels?.map((c) => [c.chargeLineId, c.reason])).toEqual([[kept.id, "reissue_lost_damaged"]]);
+    // The rest comes back: nothing of the replacement is charged, so nothing is left to decide.
+    await giveBack(lost.issueId, 4, ist("2026-03-11T11:00:00"));
+    expect(await openExceptions(r.admissionId)).toEqual([]);
+    const closed = (await db.select().from(ipdChargeExceptions).where(eq(ipdChargeExceptions.admissionId, r.admissionId))).filter((x) => x.reason === "reissue_lost_damaged");
+    expect(closed.map((x) => x.resolutionNote)).toEqual(["returned to pharmacy", "returned to pharmacy"]);
+  });
+
+  it("review 2 — a credit larger than the line is refused by code, never capped; a two-batch issue takes each return off the right batch", async () => {
+    const r = await ready(6);
+    const a = await admissionRow(r.admissionId);
+    const over = withTx(db, (tx) => postDrugReturnCreditsIn(tx, w.pharmacist, a, { issueId: r.issueId, returnId: newId(), batches: [{ batchId: r.med.batchId, qty: 7 }], reason: "x", at: ist("2026-03-11T10:00:00") }));
+    expect(await codeOf(over)).toBe("credit_exceeds_line");
+    expect((await drugLines(r.admissionId)).map((l) => [l.source, l.qty])).toEqual([["ipd.pharmacy", 6]]);
+
+    // FEFO took 4 from the first batch and 6 from the later one. Six back, then four back: every unit credited once.
+    const med = await w.stocked("Twobatch return 500", { qty: 4 });
+    const later = await addBatch(med.itemId, { mrpPaise: 1200, qty: 50, expiry: "2031-06-30" });
+    const issued = await issue(await order(r.admissionId, med.medicineId), 10);
+    await giveBack(issued.issueId, 6, ist("2026-03-11T12:00:00"));
+    const liveOf = async () => (await liveDrug(r.admissionId)).filter((l) => l.issueId === issued.issueId).map((l) => [l.batchId, l.qty]);
+    expect(await liveOf()).toEqual([[med.batchId, 4]]);
+    const second = await giveBack(issued.issueId, 4, ist("2026-03-11T13:00:00"));
+    expect(second.creditedUnits).toBe(4);
+    expect(await liveOf()).toEqual([]);
+    expect([await onHand(med.batchId), await onHand(later)]).toEqual([4, 50]);
+  });
+
+  it("review 3 — posting an issue a second time finds its line and says posted; never a silent miss", async () => {
+    const r = await ready(6);
+    const a = await admissionRow(r.admissionId);
+    const [line] = await drugLines(r.admissionId);
+    const again = await withTx(db, (tx) => postDrugIssueChargesIn(tx, w.pharmacist, a, {
+      orderId: r.orderId, issueId: r.issueId, itemId: r.med.itemId, batches: [{ batchId: r.med.batchId, qty: 6 }], reissueReason: null, at: ISSUE_AT,
+    }));
+    expect(again).toEqual({ posted: [line!.id], missing: 0 });
+    expect(await drugLines(r.admissionId)).toHaveLength(1);
+  });
+
+  it("review 4 — the price is the price AT ISSUE: a price that only exists later is never used; the exception stays open for billing", async () => {
+    const { admissionId } = await w.admitMed(ist("2026-03-10T10:00:00"));
+    const med = await w.stocked("Laterprice 500", { qty: 1 });
+    const bare = await addBatch(med.itemId, { mrpPaise: null, qty: 40, expiry: "2031-06-30" });
+    // A ceiling is notified, in force from the day AFTER the issue.
+    await withTx(db, (tx) => setPriceRegulation(tx, HEAD, med.itemId, { ceilingPaise: 1000, mrpUom: "strip", effectiveFrom: ist("2026-03-12T00:00:00"), gazetteRef: "fixture" }));
+    await issue(await order(admissionId, med.medicineId), 10, { batchId: bare });
+    expect((await openExceptions(admissionId)).map((x) => [x.reason, x.errorCode])).toEqual([["rate_missing", "price_unknown"]]);
+    await retryFromBillDesk(db, w.billDesk, admissionId, ist("2026-03-13T10:00:00"));
+    expect(await drugLines(admissionId)).toEqual([]);
+    expect((await openExceptions(admissionId)).map((x) => x.reason)).toEqual(["rate_missing"]);
+    // The batch's own MRP is a fact about the issued stock, not a later price list: once recorded, Retry posts.
+    await db.update(stockBatches).set({ mrpPaise: 1000, mrpUom: "strip" }).where(eq(stockBatches.id, bare));
+    await retryFromBillDesk(db, w.billDesk, admissionId, ist("2026-03-13T11:00:00"));
+    expect((await drugLines(admissionId)).map((l) => [l.qty, l.netPaise])).toEqual([[10, 1000]]);
+  });
+
+  it("review 5 — a REGULATED medicine service with an odd strip: the invoice carries per-unit lines the clamp cannot cut, to the paisa", async () => {
+    const { admissionId } = await w.admitMed(ist("2026-03-10T10:00:00"));
+    const med = await w.stocked("Regulated 500", { qty: 1 });
+    const odd = await addBatch(med.itemId, { mrpPaise: 1055, qty: 40, expiry: "2031-06-30" });
+    const sale = (await db.select().from(pharmacySaleItems).where(eq(pharmacySaleItems.itemId, med.itemId)))[0]!;
+    await db.update(services).set({ regulated: true }).where(eq(services.id, sale.serviceId));
+    await withTx(db, (tx) => appendRegulatedPrice(tx, w.tariffDrafter, { serviceId: sale.serviceId, mrpPaise: 106, effectiveFrom: new Date("2026-01-01T00:00:00Z") }));
+    await issue(await order(admissionId, med.medicineId), 12, { batchId: odd });
+    const [line] = await drugLines(admissionId);
+    expect([line!.qty, line!.unitPaise, line!.netPaise]).toEqual([12, 105, 1265]);
+    await fitAndReady(admissionId, "2026-03-12");
+    const done = await settle(admissionId, ist("2026-03-12T09:30:00"));
+    const bill = (await db.select().from(ipdFinalBills).where(eq(ipdFinalBills.id, done.billId)))[0]!;
+    const onInvoice = (await db.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, bill.invoiceId!))).filter((l) => l.serviceId === sale.serviceId);
+    expect(onInvoice.reduce((t, l) => t + l.taxableBasePaise + l.cgstPaise + l.sgstPaise, 0)).toBe(1265);
+    expect(onInvoice.map((l) => [l.qty, l.unitPaise]).sort()).toEqual([[12, 105], [5, 1]].sort());
+    expect([bill.totalPaise, bill.payerPaise]).toEqual([bill.patientPaise, 0]);
+  });
+
+  it("review 6 — creditedUnits is what came off the bill: nothing while a settled bill holds the line, nothing for a waived line", async () => {
+    const r = await ready(10);
+    const [line] = await liveDrug(r.admissionId);
+    expect((await giveBack(r.issueId, 2, ist("2026-03-11T09:00:00"))).creditedUnits).toBe(2);
+    const [kept] = await liveDrug(r.admissionId);
+    await settleBillOver(r.admissionId, [line!.id, kept!.id], ist("2026-03-11T10:00:00"));
+    const waiting = await giveBack(r.issueId, 3, ist("2026-03-11T11:00:00"));
+    expect(waiting).toEqual({ returnId: waiting.returnId, units: 3, creditedUnits: 0 });
+    // Billing waives a whole line; a later return of that issue has nothing left to take off.
+    const other = await ready(4, { name: "Waived 500" });
+    const [waived] = await liveDrug(other.admissionId);
+    await reverseChargeLine(db, w.billDesk, { chargeLineId: waived!.id, reason: "Goodwill" }, { now: ist("2026-03-11T12:00:00") });
+    expect((await giveBack(other.issueId, 1, ist("2026-03-11T13:00:00"))).creditedUnits).toBe(0);
+  });
+
+  it("review 7 — two returns racing on one batch: the credit equals the units returned, and one live line is left", async () => {
+    for (let round = 0; round < 3; round += 1) {
+      const r = await ready(10, { name: `Returnrace ${String(round)}` });
+      const at = ist("2026-03-11T15:00:00");
+      const both = await Promise.all([giveBack(r.issueId, 3, at), giveBack(r.issueId, 4, at)]);
+      expect(both.map((b) => b.creditedUnits).sort()).toEqual([3, 4]);
+      expect((await liveDrug(r.admissionId)).map((l) => [l.qty, l.netPaise, l.drugSeq])).toEqual([[3, 300, 2]]);
+      expect((await drugLines(r.admissionId)).reduce((t, l) => t + l.netPaise, 0)).toBe(300);
+      expect(await onHand(r.med.batchId)).toBe(97);
+    }
+  });
+
+  it("review 7 — an issue racing a return on the same order: both land, each on its own issue's line", async () => {
+    for (let round = 0; round < 3; round += 1) {
+      const r = await ready(10, { name: `Issuerace ${String(round)}` });
+      const at = ist("2026-03-11T15:00:00");
+      const [more, back] = await Promise.all([issue(r.orderId, 4, { reissue: { reason: "extra_supply", note: "Two more days" } }, at), giveBack(r.issueId, 3, at)]);
+      expect(back.creditedUnits).toBe(3);
+      expect((await liveDrug(r.admissionId)).map((l) => [l.issueId, l.qty, l.netPaise]).sort()).toEqual([[r.issueId, 7, 700], [more.issueId, 4, 400]].sort());
+      expect(await onHand(r.med.batchId)).toBe(100 - 10 - 4 + 3);
+    }
   });
 
   it("concurrency — an issue racing the discharge: stock and charge move together or not at all", async () => {

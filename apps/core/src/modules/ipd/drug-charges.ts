@@ -10,6 +10,7 @@ import { provenanceOf } from "./admission-core";
 import { lineIsBilled } from "./bill-cover";
 import { chargeException, chargeReversed } from "./charge-events";
 import { evaluateDepositLadderSafely } from "./deposit-ladder";
+import { IpdError } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
@@ -27,7 +28,7 @@ import type { AdmissionRow } from "./admission-core";
  * - MISSING PRICE: no sale item, no MRP, no GST slab, no tariff in force, or a price of ₹0 raises a `rate_missing`
  *   exception (key `<admission>:<date>:pharmacy:<issue>.<batch>`, `error_code` = the pharmacy's / tariff's own code) and
  *   posts nothing — never ₹0 silently. The bill desk's Retry and every nightly run re-price it (`retryDrugExceptionsIn`),
- *   for the units still with the patient.
+ *   for the units still with the patient, ALWAYS as of the issue instant — a price that only exists later is never used.
  * - RETURN (DECIDED — the shape; the money is the spec's): the lines are append-only and every reader treats a reversal as
  *   the whole line, so a return REVERSES the batch's live line and, when units stay with the patient, posts the next line of
  *   the chain (`drug_seq` + 1) for the kept units at the ORIGINAL line's price — billing's cumulative `creditShare` over
@@ -107,15 +108,18 @@ async function raise(
 type DrugLine = { orderId: string; issueId: string; itemId: string; batchId: string; units: number; serviceDate: string; reissueReason: string | null };
 
 /**
- * One issued batch on the running bill (`drug_seq` 0), or its `rate_missing` exception. `priceAt` is the issue instant; a
- * Retry prices as of it and, where no price was in force then (the tariff activated since), as of now.
+ * One issued batch on the running bill (`drug_seq` 0), or its `rate_missing` exception. `priceAt` is ALWAYS the issue
+ * instant (DECIDED, review of 70115d2d): a Retry prices as of it too — a tariff or a ceiling that came into force later is
+ * never used. Where no price was in force at issue the exception stays open for billing (the batch's own MRP is a fact
+ * about the issued stock, not a dated price list: recording it lets a Retry post).
+ *
+ * A batch already posted (its chain exists) answers its first line's id — posted, not a miss; a unique conflict with no
+ * line to show for it throws.
  */
-async function postDrugLineIn(tx: Tx, actor: Actor, a: AdmissionRow, d: DrugLine, priceAt: readonly Date[], at: Date): Promise<string | null> {
-  let price: DrugPrice = { ok: false, code: "price_unknown" };
-  for (const when of priceAt) {
-    price = await priceDrugUnits(tx, { itemId: d.itemId, batchId: d.batchId, qtyBase: d.units }, when);
-    if (price.ok) break;
-  }
+async function postDrugLineIn(tx: Tx, actor: Actor, a: AdmissionRow, d: DrugLine, priceAt: Date, at: Date): Promise<string | null> {
+  const had = await chainOf(tx, d.issueId, d.batchId);
+  if (had !== null) return had.first.id;
+  const price = await priceDrugUnits(tx, { itemId: d.itemId, batchId: d.batchId, qtyBase: d.units }, priceAt);
   const key = rateKey(a.id, d.serviceDate, d.issueId, d.batchId);
   if (!price.ok) {
     await raise(tx, actor, a, { key, date: d.serviceDate, reason: "rate_missing", serviceCode: null, versionId: null, errorCode: price.code }, at);
@@ -130,7 +134,11 @@ async function postDrugLineIn(tx: Tx, actor: Actor, a: AdmissionRow, d: DrugLine
     source: SOURCE, orderId: d.orderId, issueId: d.issueId, batchId: d.batchId, drugSeq: 0, postedBy: actor.id, postedAt: at,
   }).onConflictDoNothing().returning();
   const line = inserted[0];
-  if (line === undefined) return null;
+  if (line === undefined) {
+    const now = await chainOf(tx, d.issueId, d.batchId);
+    if (now === null) throw new IpdError("charge_line_not_posted", "the medicine's charge line was refused by the table and none exists", { issueId: d.issueId, batchId: d.batchId });
+    return now.first.id;
+  }
   await tx.update(ipdChargeExceptions).set({ resolvedAt: at, resolvedLineId: id }).where(and(eq(ipdChargeExceptions.key, key), isNull(ipdChargeExceptions.resolvedAt)));
   if (d.reissueReason === "lost" || d.reissueReason === "damaged") {
     await raise(tx, actor, a, { key: reissueKey(line), date: line.serviceDate, reason: "reissue_lost_damaged", serviceCode: line.serviceCode, versionId: line.tariffVersionId }, at);
@@ -160,7 +168,7 @@ export async function postDrugIssueChargesIn(tx: Tx, actor: Actor, a: AdmissionR
   for (const b of byBatch(input.batches)) {
     const id = await postDrugLineIn(tx, actor, a, {
       orderId: input.orderId, issueId: input.issueId, itemId: input.itemId, batchId: b.batchId, units: b.qty, serviceDate, reissueReason: input.reissueReason,
-    }, [input.at], input.at);
+    }, input.at, input.at);
     if (id === null) missing += 1; else posted.push(id);
   }
   if (posted.length > 0) await evaluateDepositLadderSafely(tx as unknown as Db, a.id, input.at, "ward issue");
@@ -198,7 +206,7 @@ async function insertReversal(tx: Tx, actor: Actor, line: LineRow, reason: strin
  * first line's less billing's cumulative share for the units that went back, so any sequence of returns ends at exactly
  * the first line's amount for the units kept (and at nothing when all of it came back).
  */
-async function insertKept(tx: Tx, actor: Actor, first: LineRow, after: LineRow, keep: number, at: Date): Promise<string> {
+async function insertKept(tx: Tx, actor: Actor, first: LineRow, after: LineRow, keep: number, at: Date): Promise<LineRow> {
   const gone = creditShare({
     grossPaise: first.grossPaise, discountPaise: first.discountPaise, taxableBasePaise: first.taxablePaise, cgstPaise: first.cgstPaise,
     sgstPaise: first.sgstPaise, qty: first.qty,
@@ -210,44 +218,65 @@ async function insertKept(tx: Tx, actor: Actor, first: LineRow, after: LineRow, 
   const netPaise = grossPaise - discountPaise;
   const cgstPaise = first.cgstPaise - gone.cgstPaise;
   const sgstPaise = first.sgstPaise - gone.sgstPaise;
-  const id = newId();
-  await tx.insert(ipdChargeLines).values({
-    ...first, id, qty: keep, grossPaise, discountPaise,
+  const [kept] = await tx.insert(ipdChargeLines).values({
+    ...first, id: newId(), qty: keep, grossPaise, discountPaise,
     taxablePaise: netPaise - cgstPaise - sgstPaise, cgstPaise, sgstPaise, netPaise, drugSeq: (after.drugSeq ?? 0) + 1,
     reason: "units kept after a return to pharmacy", postedBy: actor.id, postedAt: at,
-  });
-  return id;
+  }).returning();
+  return kept!;
 }
 
-export type DrugReturnOutcome = "credited" | "billed" | "not_charged";
+/**
+ * What a return did to one batch's charge: `credited` (reversal + kept units), `billed` (a settled bill holds the line — the
+ * bill desk decides), `not_charged` (no line was ever posted: its price is still missing, and a Retry charges issued less
+ * returned) or `reversed` (billing already took the whole line off — nothing is owed for it).
+ */
+export type DrugReturnOutcome = "credited" | "billed" | "not_charged" | "reversed";
+export type DrugReturnCredit = { batchId: string; units: number; outcome: DrugReturnOutcome };
+
+/** The units a return took off what the patient owes: credited now, or never to be charged. Not the ones billing must decide. */
+export function creditedUnitsOf(credits: readonly DrugReturnCredit[]): number {
+  return credits.filter((c) => c.outcome === "credited" || c.outcome === "not_charged").reduce((t, c) => t + c.units, 0);
+}
 
 /**
  * Units came back to the pharmacy (the eMAR's `returnMed`, in its transaction, under the admission lock it holds). Per
- * batch: never charged (own medicine, a missing rate still open, a line billing already reversed) → nothing; the live
- * line is on a settled bill → the `return_after_bill` decision, nothing reversed; else the reversal and the kept units.
+ * batch: see `DrugReturnOutcome`. A credit larger than the live line is REFUSED (`credit_exceeds_line`) — never capped.
+ * A `reissue_lost_damaged` flag on the reversed line is answered ("returned to pharmacy") and, when units stay charged,
+ * raised again on the line that now carries them.
  */
 export async function postDrugReturnCreditsIn(
   tx: Tx, actor: Actor, a: AdmissionRow, input: { issueId: string; returnId: string; batches: readonly { batchId: string; qty: number }[]; reason: string; at: Date },
-): Promise<DrugReturnOutcome[]> {
-  const out: DrugReturnOutcome[] = [];
+): Promise<DrugReturnCredit[]> {
+  const out: DrugReturnCredit[] = [];
   let credited = false;
   for (const b of byBatch(input.batches)) {
+    const say = (outcome: DrugReturnOutcome): void => { out.push({ batchId: b.batchId, units: b.qty, outcome }); };
     const chain = await chainOf(tx, input.issueId, b.batchId);
-    if (chain === null || chain.live === null) { out.push("not_charged"); continue; }
+    if (chain === null) { say("not_charged"); continue; }
+    if (chain.live === null) { say("reversed"); continue; }
     const { first, live } = chain;
     if (await lineIsBilled(tx, a.id, live.id)) {
       await raise(tx, actor, a, { key: returnKey(live, input.returnId), date: live.serviceDate, reason: "return_after_bill", serviceCode: live.serviceCode, versionId: live.tariffVersionId }, input.at);
-      out.push("billed");
+      say("billed");
       continue;
     }
     // Returns that waited on a bill since voided are credited with this one — their decision named this line, and
     // it is about to be reversed, so nothing would ever credit them afterwards.
     const waited = await takeWaitingReturnsIn(tx, live, input.at, "credited with a later return");
-    const units = Math.min(b.qty + waited, live.qty);
+    const units = b.qty + waited;
+    if (units > live.qty) {
+      throw new IpdError("credit_exceeds_line", `a return of ${String(units)} units exceeds the ${String(live.qty)} this line carries`, { chargeLineId: live.id, units, qty: live.qty });
+    }
     await insertReversal(tx, actor, live, `returned to pharmacy (${String(units)} of ${String(live.qty)}): ${input.reason}`, input.at);
-    if (live.qty - units > 0) await insertKept(tx, actor, first, live, live.qty - units, input.at);
+    const flagged = (await tx.update(ipdChargeExceptions).set({ resolvedAt: input.at, resolutionNote: "returned to pharmacy" })
+      .where(and(eq(ipdChargeExceptions.key, reissueKey(live)), isNull(ipdChargeExceptions.resolvedAt))).returning({ id: ipdChargeExceptions.id })).length > 0;
+    if (live.qty - units > 0) {
+      const kept = await insertKept(tx, actor, first, live, live.qty - units, input.at);
+      if (flagged) await raise(tx, actor, a, { key: reissueKey(kept), date: kept.serviceDate, reason: "reissue_lost_damaged", serviceCode: kept.serviceCode, versionId: kept.tariffVersionId }, input.at);
+    }
     credited = true;
-    out.push("credited");
+    say("credited");
   }
   // A return lowers the patient-payable total: the deposit ladder re-checks (a savepoint; a failure is logged only).
   if (credited) await evaluateDepositLadderSafely(tx as unknown as Db, a.id, input.at, "ward return");
@@ -322,7 +351,7 @@ export async function retryDrugExceptionsIn(tx: Tx, actor: Actor, a: AdmissionRo
     }
     const id = await postDrugLineIn(tx, actor, a, {
       orderId: issue.orderId, issueId: issue.id, itemId: issue.itemId, batchId, units, serviceDate: x.serviceDate, reissueReason: issue.reissueReason,
-    }, [issue.issuedAt, at], at);
+    }, issue.issuedAt, at);
     if (id !== null) posted += 1;
   }
   return posted;

@@ -23,7 +23,7 @@ import { admissionPlace } from "./admission-place";
 import { checkPrinter } from "./bands";
 import { ageInYears } from "./bed-rules";
 import { IPD_SYSTEM_ACTOR } from "./beds";
-import { postDrugIssueChargesIn, postDrugReturnCreditsIn } from "./drug-charges";
+import { creditedUnitsOf, postDrugIssueChargesIn, postDrugReturnCreditsIn } from "./drug-charges";
 import { horizonOf, scheduleDosesIn } from "./emar-doses";
 import { emarDrugsOf } from "./emar-drug";
 import {
@@ -326,11 +326,17 @@ export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOp
     const returnId = newId();
     let batches: { batchId: string; qty: number; ledgerEntryId: string }[] = [];
     if (!first.ownMedicine && first.storeId !== null) {
+      // #787 review: each batch takes back only what is still out of it — an earlier return's units are not offered again
+      // (stock went back to the wrong batch, and that batch's charge was never credited).
+      const earlier = await tx.select({ batches: ipdEmarReturns.batches }).from(ipdEmarReturns).where(eq(ipdEmarReturns.issueId, first.id));
+      const out = new Map<string, number>();
+      for (const r of earlier) for (const x of r.batches) out.set(x.batchId, (out.get(x.batchId) ?? 0) + x.qty);
       let left = input.units;
       const plan: { batchId: string; qty: number }[] = [];
       for (const b of [...first.batches].reverse()) {
         if (left <= 0) break;
-        const q = Math.min(b.qty, left);
+        const q = Math.min(b.qty - (out.get(b.batchId) ?? 0), left);
+        if (q <= 0) continue;
         plan.push({ batchId: b.batchId, qty: q });
         left -= q;
       }
@@ -341,15 +347,16 @@ export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOp
       })));
       batches = plan.map((p, i) => ({ ...p, ledgerEntryId: moved[i]!.ledgerEntryId }));
     }
-    const creditedUnits = first.ownMedicine ? 0 : input.units;
+    // #787: the returned units come off the running bill at the price they were issued at (never today's); a line a
+    // settled bill took raises the bill desk's `return_after_bill` decision instead. `creditedUnits` is what really came
+    // off what the patient owes (review of 70115d2d) — own medicine, a billed line and a waived line credit nothing.
+    const creditedUnits = first.ownMedicine ? 0
+      : creditedUnitsOf(await postDrugReturnCreditsIn(tx, actor, a, { issueId: first.id, returnId, batches, reason: input.reason, at }));
     await tx.insert(ipdEmarReturns).values({
       id: returnId, issueId: first.id, orderId: o.id, admissionId: a.id, units: input.units, creditedUnits, reason: input.reason, batches,
       returnedBy: actor.id, returnedAt: at,
     });
     if (o.status !== "active" && o.returnOwed) await tx.update(ipdOrders).set({ returnOwed: false }).where(eq(ipdOrders.id, o.id));
-    // #787: the returned units come off the running bill at the price they were issued at (never today's); a line a
-    // settled bill took raises the bill desk's `return_after_bill` decision instead. Own medicine: nothing was charged.
-    if (creditedUnits > 0) await postDrugReturnCreditsIn(tx, actor, a, { issueId: first.id, returnId, batches, reason: input.reason, at });
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
     if (drug?.narcotic === true) {
       await tx.insert(ipdEmarNarcoticRegister).values({

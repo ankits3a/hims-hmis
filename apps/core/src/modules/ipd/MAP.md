@@ -394,27 +394,35 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
     never be consumed); billing contests benefits once, on the final invoice.
   - MISSING PRICE: no MRP in the item's units, no GST slab row, no tariff in force, or a ₹0 price → `rate_missing` (key
     `<admission>:<date>:pharmacy:<issue>.<batch>`, `error_code` = the pharmacy's / tariff's own code, or `price_zero`),
-    nothing posted — never ₹0. Retry and the nightly run re-price the units STILL WITH THE PATIENT (issued less returned),
-    as of the issue instant and, failing that, now; all returned closes the record. A medicine with no ACTIVE sale item
+    nothing posted — never ₹0. Retry and the nightly run re-price the units STILL WITH THE PATIENT (issued less returned);
+    all returned closes the record. $ OWNER TO CONFIRM — THE PRICING INSTANT IS THE ISSUE (`issued_at`), ALWAYS: a Retry
+    never uses a tariff or a ceiling that came into force later; where no price existed at issue the exception stays open
+    for billing (recording the batch's own MRP — a fact about the issued stock, not a dated list — lets a Retry post). A medicine with no ACTIVE sale item
     cannot be issued at all (`medicine_not_stocked`, the eMAR's own guard).
   - RETURN — THE SHAPE: every reader of `ipd_charge_lines` treats a reversal as the WHOLE line (the final bill, the split,
     the interim bill, `bill-cover.ts`), so a return REVERSES the batch's live line and, when units stay, posts the next
     line of the chain (`drug_seq` + 1, `ipd_charge_lines_pharmacy_ux`) for the kept units at the FIRST line's price:
     gross, discount and the tax heads by billing's cumulative `creditShare`, net = gross − discount, taxable = net − tax.
     Today's MRP is never read. Net effect on the bill = exactly the returned units' share; a full return leaves nothing.
+    A credit larger than the live line throws `credit_exceeds_line` (never capped). `returnMed` offers each batch only
+    what is still out of it (issued less earlier returns). `credited_units` / the act's `creditedUnits` = what came off
+    what the patient owes (`creditedUnitsOf`): 0 while a settled bill holds the line, 0 for a line billing waived.
   - RETURN AFTER THE BILL: a line a settled bill took is never reversed behind it — `return_after_bill` (key
     `<admission>:<date>:pharmacy:<line>:return_billed:<return>`) goes to the bill desk; the stock is back all the same.
     Billing voids the bill (#763) and reverses the line — `reverseChargeLine` then re-posts the kept units
     (`settleDrugLineReversalIn` reads the waiting returns' units), so only what came back is credited — or keeps the charge
     (`keepOrderCharge`). TRAP: `reverseChargeLine` on a pharmacy line with NO waiting return takes the whole line off.
   - RE-ISSUE — $ OWNER TO CONFIRM: `lost` / `damaged` is CHARGED (the patient consumed or lost the stock) and flagged
-    `reissue_lost_damaged` (key `…:<line>:reissue`); billing waives it (`ipd.charges.reverse`, reason) or keeps it.
+    `reissue_lost_damaged` (key `…:<line>:reissue`); billing waives it (`ipd.charges.reverse`, reason) or keeps it. A
+    return answers the flag ("returned to pharmacy") and raises it again on the kept-units line while any stay charged.
     `extra_supply` is charged with no flag.
   - NEVER CHARGED / NO MONEY EFFECT: the patient's own medicine (no stock, no line, `credited_units` 0); a give marked
     entered in error (the charge is at issue, not at give); a narcotic wastage (the unit was issued).
-  - FINAL INVOICE: `patientInvoiceLines` puts a pharmacy line on the invoice `taxInclusive` at the frozen amount — whole
-    (`qty × unit`) when nothing was taken off it, else one line at the patient's amount; as a prepaid quote when today's
-    version prices the service, else as its batch price (`versionPricedServices`). Without this billing would add GST on
+  - FINAL INVOICE: `patientInvoiceLines` puts a pharmacy line on the invoice `taxInclusive` at the frozen amount, ALWAYS
+    as per-unit lines (`qty × floor(amount / qty)`, then the paise left over at 1 paisa each) — a sale service is created
+    unregulated (`registerSaleItem`) but `updateService` can make one `regulated`, and the engine's per-unit bound would cut
+    a single whole-amount line. As a prepaid quote when today's version prices the service, else as its batch price
+    (`versionPricedServices`). Without this billing would add GST on
     top of an MRP and the settle would refuse `bill_changed`.
   - PAYER: nothing new — a pharmacy line is payer-payable under the existing split unless the non-payables list names its
     service code or its tariff category (`pharmacy`, `pharmacy_5`, `pharmacy_18`, `pharmacy_exempt`); it takes no
