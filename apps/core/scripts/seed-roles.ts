@@ -967,6 +967,10 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
       // Therapeutics Committee practice). The pharmacy holds `formulary.manage` and NOT this: the
       // reviewer is never the department that wrote the text.
       "formulary.monograph.review",
+      // COPILOT HALT #581 (DECIDED 2026-10-14: the owner, the MS and the copilot steward flip the halt) —
+      // the superintendent halts the copilot and clears a read/act/draft halt, and reads the health page
+      // where those buttons are. Never a global clear: that stays the owner's alone.
+      "copilot.health.read", "copilot.halt.set", "copilot.halt.clear",
       // The clinical half of Class A. CHANGE_CLASS_POLICY.A requires an approval from THIS role
       // as well as from `owner`, so a patient-journey flow cannot be activated on the strength of
       // administrative sign-off alone. No `.activate`: approving and activating stay separate.
@@ -1965,7 +1969,9 @@ export const ROLE_MODEL: readonly RoleGrants[] = [
    * nothing else. NOBODY is assigned to it by any seed — the owner names the steward.
    */
   // COPILOT HALT E0.3 — and throws the halt switch: the steward runs the monthly halt drill (G6d).
-  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.set"] },
+  // #581 (DECIDED 2026-10-14) — the copilot steward flips the halt both ways: halt, and clear a
+  // read/act/draft halt. A global clear stays the owner's alone.
+  { roleKey: "quality_manager", permissions: ["copilot.health.read", "copilot.halt.set", "copilot.halt.clear"] },
   /**
    * COPILOT LEDGER E0.1 (D2) — IT reads the copilot's health too (latency, failures, the cost meter
    * to come). `admin`'s `auth.*` set is `seed:admin`'s to write (GRANTED_BY_OTHER_SEEDS); this row

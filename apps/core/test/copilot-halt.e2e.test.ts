@@ -119,6 +119,27 @@ describe("E0.3 + E0.5 — the copilot halt switch and the daily AI spend cap", (
     ]);
   });
 
+  /*
+    #581 — WHO MAY FLIP THE HALT (DECIDED 2026-10-14): the owner, the Medical Superintendent and the
+    copilot steward (`quality_manager`, the spec's steward who runs the drill). Each may halt and clear
+    a read/act/draft halt and reads the health page; a GLOBAL clear stays the owner's alone.
+  */
+  it("#581: the MS and the copilot steward halt and clear act, read the health page, and cannot clear global", async () => {
+    for (const r of ["medical_superintendent", "quality_manager"]) await seededRole(r);
+    const ms = await mkUser(db, "halt_ms", ["medical_superintendent"]);
+    const steward = await mkUser(db, "halt_steward", ["quality_manager"]);
+    for (const who of [ms, steward]) {
+      await halt(who.token, "act").expect(200);
+      await health(who.token);
+      await clear(who.token, "act").expect(200);
+      await halt(who.token, "global").expect(200);
+      await clear(who.token, "global").expect(403);
+      await clear(owner.token, "global").expect(200);
+    }
+    const flips = (await db.select().from(events).orderBy(asc(events.seq))).filter((e) => e.name === "copilot.halt_set" || e.name === "copilot.halt_cleared");
+    expect(flips.map((e) => e.actorId)).toEqual([ms.id, ms.id, ms.id, owner.id, steward.id, steward.id, steward.id, owner.id]);
+  });
+
   it("done-means 5: a halted read path answers 'paused', reaches no model, and is ledgered `halted`; an act halt leaves reads answering", async () => {
     await halt(owner.token, "read").expect(200);
     const res = await ask("kitna wait hai").expect(200);
