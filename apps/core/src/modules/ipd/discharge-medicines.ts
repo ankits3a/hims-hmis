@@ -9,8 +9,8 @@ import type { IpdOrderRow } from "./orders";
  * and still carries that name. A typed row matches when an active drug order of the stay carries its name. Anything
  * else is flagged — `order_stopped` when a stopped or cancelled order carries the name, `no_active_order` otherwise.
  *
- * DECIDED (standard practice): a TYPED row is flagged and never refused — a take-home medicine is often new at discharge
- * and the doctor typed it under their own signature. A DRAFTED row (`source: "order"`) that no longer matches refuses
+ * DECIDED (standard practice): a TYPED row is flagged — a take-home medicine is often new at discharge — and the
+ * signature asks the doctor's no-order reason on every stay (decision 0074, `signSummary`). A DRAFTED row (`source: "order"`) that no longer matches refuses
  * the signature (`medicine_not_on_active_order`, the intent's declared refusal): the machine copied it, the order
  * changed since, and a person must look.
  */
