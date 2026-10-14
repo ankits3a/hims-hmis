@@ -89,7 +89,9 @@ export type IpdErrorCode =
   | "shift_handover_not_open"
   | "shift_handover_own"
   | "ews_alert_not_found"
-  | "ews_alert_closed";
+  | "ews_alert_closed"
+  /** #604 (decision 0075) — the scheme package file failed validation (`detail.problems`, line by line); nothing was written. */
+  | "package_import_invalid";
 
 export class IpdError extends Error {
   constructor(
