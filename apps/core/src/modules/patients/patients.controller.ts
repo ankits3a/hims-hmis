@@ -339,6 +339,7 @@ const guardianPatchBody = z.object({
 const qrVerifyBody = z.object({ payload: z.string().min(1).max(500) });
 const mergeBody = z.object({ winnerId: z.string().min(1), loserId: z.string().min(1), note: z.string().min(1) });
 const unmergeBody = z.object({ note: z.string().min(1), actFirst: z.boolean().optional() });
+const mobileShownBody = z.object({ patientIds: z.array(z.string().min(1)).min(1).max(2) });
 
 function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
   const r = schema.safeParse(body);
@@ -430,6 +431,33 @@ export class PatientsController {
     const list = typeof ids === "string" ? ids.split(",").map((x) => x.trim()).filter((x) => x !== "") : [];
     if (list.length === 0 || list.length > 2) throw new BadRequestException("ids: one or two patient ids, comma-separated");
     return { items: await visitSummaries(this.db, list) };
+  }
+
+  /**
+   * #653 — THE MERGE REVIEW MASKS BOTH MOBILES; "SHOW" IS A LOGGED ACT. The comparison draws each
+   * mobile as `•••••• 1236` (the "job needs the number" rule: the officer compares records, and most
+   * of the time the last four answer "same phone?"). Pressing Show posts here first; each record is
+   * resolved through the same sealed-record gate as `GET /patients/:id` (an unreadable one is a 404)
+   * and gets one `patient.merge_mobile` access row. `patients.read`, like the merge reads above, so
+   * the MRD officer who asks and the MS who decides can both use it.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Post("merge-mobile-shown")
+  async mergeMobileShown(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ ok: true }> {
+    const { patientIds } = parsed(mobileShownBody, body);
+    const found = [];
+    for (const id of patientIds) {
+      const f = await getPatient(this.db, actor, id);
+      if (!f) throw new NotFoundException(`unknown patient ${id}`);
+      found.push(f);
+    }
+    for (const f of found) {
+      await recordPhiAccess(this.db, {
+        actor, patientId: f.patient.id, surface: "patient.merge_mobile",
+        sealed: f.patient.isConfidential, reason: f.breakGlass?.reason ?? null,
+      });
+    }
+    return { ok: true };
   }
 
   @RequirePermission("patients.read", "hospital")

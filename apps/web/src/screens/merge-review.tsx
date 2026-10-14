@@ -139,7 +139,28 @@ function maskedPhone(phone: string | null): string | null {
   return `•••••• ${phone.replace(/\D/g, "").slice(-4)}`;
 }
 
-/** The comparison shows the full mobile, grouped as the board draws it: `98290 41236`. */
+/**
+ * #653 — THE COMPARISON MASKS BOTH MOBILES BY DEFAULT; "SHOW" IS A LOGGED ACT. The officer compares
+ * records, and the last four answer "same phone?" ("job needs the number"). Show posts to
+ * `POST /patients/merge-mobile-shown` (one `patient.merge_mobile` access row per record) and reveals
+ * the numbers only once that call succeeds. The "differs" mark still compares the whole numbers.
+ */
+type MobileReveal = { shown: boolean; busy: boolean; onShow: () => void };
+function useMobileReveal(aId: string, bId: string): MobileReveal {
+  const key = `${aId},${bId}`;
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const onShow = useCallback((): void => {
+    setBusy(true);
+    api("POST", "/patients/merge-mobile-shown", { patientIds: [aId, bId] })
+      .then(() => setShownFor(key))
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  }, [aId, bId, key]);
+  return { shown: shownFor === key, busy, onShow };
+}
+
+/** Once shown, the full mobile, grouped as the board draws it: `98290 41236`. */
 function spacedPhone(phone: string | null): string {
   if (phone === null || phone === "") return "—";
   return /^\d{10}$/.test(phone) ? `${phone.slice(0, 5)} ${phone.slice(5)}` : phone;
@@ -286,7 +307,7 @@ function PatientPicker({
 
 // ——— step 2: the comparison ———
 
-type CompareRow = { key: string; label: string; a: React.ReactNode; b: React.ReactNode; differs: boolean };
+type CompareRow = { key: string; label: React.ReactNode; a: React.ReactNode; b: React.ReactNode; differs: boolean };
 
 function AllergyList({ items, movesTo }: { items: Allergy[] | undefined; movesTo?: string }): React.ReactElement {
   const { t } = useTranslation();
@@ -344,13 +365,22 @@ function compareRows(
     aVisits?: VisitSummary | undefined; bVisits?: VisitSummary | undefined;
     allergiesLabel?: string;
     withExtras?: boolean;
+    mobile?: MobileReveal;
   },
 ): CompareRow[] {
+  const shown = extra.mobile?.shown === true;
+  const phoneCell = (phone: string | null): string => (shown ? spacedPhone(phone) : maskedPhone(phone) ?? "—");
+  const phoneLabel: React.ReactNode = shown || extra.mobile === undefined ? t("register.phone") : (
+    <>
+      {t("register.phone")}{" "}
+      <button type="button" className="link" onClick={extra.mobile.onShow} disabled={extra.mobile.busy}>{t("merge.showMobile")}</button>
+    </>
+  );
   const rows: CompareRow[] = [
     { key: "name", label: t("register.name"), a: a.name, b: b.name, differs: a.name !== b.name },
     { key: "sex", label: t("card.sex"), a: sexWord(t, a.administrativeGender), b: sexWord(t, b.administrativeGender), differs: a.administrativeGender !== b.administrativeGender },
     { key: "dob", label: t("register.dob"), a: dobCell(t, a), b: dobCell(t, b), differs: (a.dob ?? "").slice(0, 10) !== (b.dob ?? "").slice(0, 10) },
-    { key: "phone", label: t("register.phone"), a: <span className="mo">{spacedPhone(a.phone)}</span>, b: <span className="mo">{spacedPhone(b.phone)}</span>, differs: (a.phone ?? "") !== (b.phone ?? "") },
+    { key: "phone", label: phoneLabel, a: <span className="mo">{phoneCell(a.phone)}</span>, b: <span className="mo">{phoneCell(b.phone)}</span>, differs: (a.phone ?? "") !== (b.phone ?? "") },
     { key: "address", label: t("register.address"), a: a.addressLine ?? "—", b: b.addressLine ?? "—", differs: (a.addressLine ?? "") !== (b.addressLine ?? "") },
     { key: "abha", label: t("patient.abha"), a: abhaCell(t, a), b: abhaCell(t, b), differs: (a.abhaAddress ?? a.abhaNumber ?? "") !== (b.abhaAddress ?? b.abhaNumber ?? "") },
     {
@@ -798,10 +828,11 @@ function CompareStep({
   aVisits: VisitSummary | undefined; bVisits: VisitSummary | undefined;
 }): React.ReactElement {
   const { t } = useTranslation();
+  const mobile = useMobileReveal(lp.id, rp.id);
   // The table always reads A | B as picked; the survivor's column carries the green edge, and the
   // closing record's allergies say where they go — the one thing (with guardians) the merge carries.
   const rows = compareRows(t, lp, rp, {
-    aAllergies, bAllergies, aGuardians, bGuardians, aVisits, bVisits, withExtras: true,
+    aAllergies, bAllergies, aGuardians, bGuardians, aVisits, bVisits, withExtras: true, mobile,
     aMovesTo: winner === "right" ? "B" : undefined,
     bMovesTo: winner === "left" ? "A" : undefined,
   });
@@ -916,6 +947,7 @@ function RequestView({
       api<{ items: Allergy[] }>("GET", `/patients/${id}/allergies`).then((r) => r.items).catch(() => undefined))),
     enabled: req !== undefined,
   });
+  const mobile = useMobileReveal(req?.winnerId ?? "", req?.loserId ?? "");
 
   if (detail.data === undefined || req === undefined) {
     return <main className="centre"><div className="flow"><p>{detail.isError ? errorMessage(detail.error) : t("app.loading")}</p></div></main>;
@@ -932,7 +964,7 @@ function RequestView({
   const [wa, la] = allergies.data ?? [undefined, undefined];
   const w = req.snapshot.winnerBefore;
   const l = req.snapshot.loserBefore;
-  const rows = compareRows(t, w, l, { aAllergies: wa, bAllergies: la, allergiesLabel: t("merge.allergiesNow") });
+  const rows = compareRows(t, w, l, { aAllergies: wa, bAllergies: la, allergiesLabel: t("merge.allergiesNow"), mobile });
 
   const act = async (fn: () => Promise<unknown>): Promise<void> => {
     setError(null); setBusy(true);

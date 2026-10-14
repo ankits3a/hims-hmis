@@ -211,11 +211,51 @@ describe("MergeReview", () => {
     await pickBoth(user);
 
     const phoneRow = (await screen.findByText("Mobile number")).closest("tr")!;
-    const [aCell, bCell] = [within(phoneRow).getByText("98765 43210").closest("td")!, within(phoneRow).getByText("98765 00000").closest("td")!];
+    const [aCell, bCell] = [within(phoneRow).getByText("•••••• 3210").closest("td")!, within(phoneRow).getByText("•••••• 0000").closest("td")!];
     expect(within(aCell).getByText("Record A")).toBeInTheDocument();
     expect(within(bCell).getByText("Record B")).toBeInTheDocument();
     expect(within(phoneRow).getByText("differs")).toBeInTheDocument();
   });
+  /*
+    #653 — the comparison masks both mobiles by default ("job needs the number": the last four answer
+    "same phone?"), and "Show" is a LOGGED act: the screen posts to the server first and reveals the
+    numbers only once that call succeeds.
+  */
+  it("#653: the comparison masks both mobiles; Show logs on the server first, then reveals them", async () => {
+    stubFetch({ ...baseRoutes, "POST /api/patients/merge-mobile-shown": { ok: true } });
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+    await pickBoth(user);
+
+    const phoneRow = (await screen.findByText("Mobile number")).closest("tr")!;
+    expect(phoneRow).toHaveTextContent("•••••• 3210");
+    expect(phoneRow).toHaveTextContent("•••••• 0000");
+    expect(phoneRow).not.toHaveTextContent("98765 43210");
+    expect(phoneRow).not.toHaveTextContent("98765 00000");
+    // Masked, the row still says the two numbers differ.
+    expect(within(phoneRow).getByText("differs")).toBeInTheDocument();
+
+    await user.click(within(phoneRow).getByRole("button", { name: "Show" }));
+    expect(await within(phoneRow).findByText("98765 43210")).toBeInTheDocument();
+    expect(within(phoneRow).getByText("98765 00000")).toBeInTheDocument();
+    const posted = fetchCalls().filter((c) => c.method === "POST" && c.url === "/api/patients/merge-mobile-shown");
+    expect(posted).toHaveLength(1);
+    expect(JSON.parse(posted[0]!.body)).toEqual({ patientIds: ["p-1", "p-2"] });
+  });
+
+  it("#653: when the Show call fails, the mobiles stay masked", async () => {
+    stubFetch(baseRoutes); // no route: the POST answers 404
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+    await pickBoth(user);
+
+    const phoneRow = (await screen.findByText("Mobile number")).closest("tr")!;
+    await user.click(within(phoneRow).getByRole("button", { name: "Show" }));
+    await waitFor(() => expect(fetchCalls().some((c) => c.url === "/api/patients/merge-mobile-shown")).toBe(true));
+    expect(phoneRow).toHaveTextContent("•••••• 3210");
+    expect(phoneRow).not.toHaveTextContent("98765 43210");
+  });
+
   /*
     UX-AUDIT 2026-09-28 · BOARD — the owner-approved merge-review board. Each test below was run
     against origin/main's merge-review.tsx first and failed there.
@@ -322,6 +362,10 @@ describe("MergeReview", () => {
     expect(screen.getByText("Asha Debi")).toBeInTheDocument();
     expect(screen.getByText("Lab caught two UHIDs on one sample label")).toBeInTheDocument();
     expect(screen.getByText("Allergies · now")).toBeInTheDocument();
+    // #653 — the approver's comparison masks the mobiles too.
+    const phoneRow = screen.getByText("Mobile number").closest("tr")!;
+    expect(phoneRow).toHaveTextContent("•••••• 3210");
+    expect(phoneRow).not.toHaveTextContent("98765 43210");
 
     const approve = await screen.findByRole("button", { name: /Approve/ });
     expect(approve).toBeDisabled();

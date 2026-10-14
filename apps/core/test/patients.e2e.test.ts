@@ -12,7 +12,7 @@ import { authManifest } from "../src/kernel/auth/manifest";
 import { workflowManifest } from "../src/kernel/workflow/manifest";
 import { approvalsManifest } from "../src/kernel/approvals/manifest";
 import { patientsManifest } from "../src/modules/patients";
-import { registrationConfig, patientIdentityVersions, events, patients, patientAllergies, patientGuardians } from "../src/kernel/db/schema";
+import { registrationConfig, patientIdentityVersions, events, patients, patientAllergies, patientGuardians, phiAccessLog } from "../src/kernel/db/schema";
 import { eq } from "drizzle-orm";
 import { resolveIdentityAt } from "../src/modules/patients/identity";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
@@ -428,6 +428,33 @@ describe("patients e2e", () => {
     expect(visits.body).toEqual({ items: [{ patientId: a.body.patient.id, visits: 0, lastVisitOn: null }] });
     await request(app.getHttpServer()).get("/patients/merge-visits").set(...auth(clerkToken)).expect(400);
     await request(app.getHttpServer()).get("/patients/merge-requests").set(...auth(randoToken)).expect(403);
+  });
+
+  /*
+    #653 — the merge review masks both mobiles by default; "Show" is a LOGGED act. The route writes
+    one `patient.merge_mobile` access row per record, so "who saw this person's number on the merge
+    screen" has an answer.
+  */
+  it("#653: showing the mobiles on the merge review writes one access row per record", async () => {
+    const a = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken)).send({ name: "Ramesh Kumar", sex: "male", ageYears: 40 }).expect(201);
+    const b = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken)).send({ name: "Gopal Sharma", sex: "female", ageYears: 63 }).expect(201);
+    const ids = [String(a.body.patient.id), String(b.body.patient.id)];
+    const shown = await request(app.getHttpServer())
+      .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: ids }).expect(201);
+    expect(shown.body).toEqual({ ok: true });
+    const rows = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_mobile"));
+    expect(rows.map((r) => r.patientId).sort()).toEqual([...ids].sort());
+    await request(app.getHttpServer())
+      .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: [] }).expect(400);
+    await request(app.getHttpServer())
+      .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: [...ids, ids[0]] }).expect(400);
+    await request(app.getHttpServer())
+      .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: ["01NOSUCHPATIENT0000000000"] }).expect(404);
+    await request(app.getHttpServer())
+      .post("/patients/merge-mobile-shown").set(...auth(randoToken)).send({ patientIds: ids }).expect(403);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_mobile"))).toHaveLength(2);
   });
 
   /**

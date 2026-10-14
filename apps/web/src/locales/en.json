@@ -295,6 +295,7 @@
     }
   },
   "merge": {
+    "showMobile": "Show",
     "title": "Merge review",
     "heading": "Merge two records of one person",
     "left": "Record A",
