@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
+import i18next from "i18next";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { renderWithProviders } from "../test-utils";
@@ -72,5 +73,31 @@ describe("/admin/workflows", () => {
     renderWithProviders(<AdminWorkflows />);
     expect(await screen.findByTestId("wf-ipd_admission-v1-approve-owner")).toBeDisabled();
     expect(screen.getByTestId("wf-ipd_admission-v1-drafter")).toHaveTextContent("You drafted it");
+  });
+});
+
+/*
+  IPD walk 2026-10-14 — a person without the grant saw the server's own sentence, "missing permission
+  workflow.definitions.read", in English on a Hindi screen. A 403 is said in the reader's language.
+*/
+describe("/admin/workflows — refused", () => {
+  beforeEach(() => {
+    setToken("t");
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const path = raw.replace(/^.*\/api/, "");
+      if (path === "/auth/me") return new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: [], scoped: { department: {}, floor: {} } } }), { status: 200 });
+      return new Response(JSON.stringify({ statusCode: 403, message: "missing permission workflow.definitions.read", error: "Forbidden" }), { status: 403, headers: { "Content-Type": "application/json" } });
+    }));
+  });
+  afterEach(async () => { vi.unstubAllGlobals(); setToken(null); await act(async () => { await i18next.changeLanguage("en"); }); });
+
+  it("says the person has no access, translated, never the raw permission name", async () => {
+    renderWithProviders(<AdminWorkflows />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("You don't have access to this screen.");
+    expect(alert).not.toHaveTextContent("workflow.definitions.read");
+    await act(async () => { await i18next.changeLanguage("hi"); });
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("आपको इस स्क्रीन की अनुमति नहीं है।"));
   });
 });

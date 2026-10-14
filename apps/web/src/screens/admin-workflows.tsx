@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { billingErrorMessage } from "../lib/billing-api";
+import { refusalWords } from "../lib/refusal-words";
 import { PaperScreen, ScreenTitle } from "../components/paper-screen";
 
 /**
@@ -151,7 +152,7 @@ function DefinitionCard({ d, myRoles }: { d: WireBoardDefinition; myRoles: strin
           {t("workflows.waitingFor", { roles: d.missingRoles.map((r) => t(`workflows.role.${r}`, { defaultValue: r })).join(", ") })}
         </p>
       )}
-      {error !== null && <p role="alert" style={{ margin: 0, fontSize: 13, color: "#b91c1c" }}>{billingErrorMessage(error)}</p>}
+      {error !== null && <p role="alert" style={{ margin: 0, fontSize: 13, color: "#b91c1c" }}>{refusalWords(error, t, billingErrorMessage)}</p>}
     </article>
   );
 }
@@ -167,7 +168,7 @@ export function AdminWorkflows(): React.ReactElement {
     <PaperScreen testId="admin-workflows" style={{ padding: "18px 22px", gap: 14 }}>
       <ScreenTitle title={t("workflows.title")} route="/admin/workflows" />
       <p style={{ margin: 0, fontSize: 13, color: "var(--dim)" }}>{t("workflows.lead")}</p>
-      {q.error !== null && <p role="alert" style={{ margin: 0, color: "#b91c1c" }}>{billingErrorMessage(q.error)}</p>}
+      {q.error !== null && <p role="alert" style={{ margin: 0, color: "#b91c1c" }}>{refusalWords(q.error, t, billingErrorMessage)}</p>}
       {q.isLoading && <p style={{ margin: 0 }}>{t("workflows.loading")}</p>}
       {q.data !== undefined && (
         <>
