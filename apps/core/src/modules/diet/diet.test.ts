@@ -13,7 +13,7 @@ import {
   DIET_DELIVERY_TASK, DietRefusal, buildDueLists, buildSlot, completeConsult, consultQueue, dietConsultsCard, dispatchList, dueSlots, handleDietEvent,
   kitchenBoard, liftNpo, markPrinted, mealRounds, nextSlot, orderDiet, requestConsult, serveLine, setMealRound, slotOf, startNpo, wardSheet,
 } from "./index";
-import { IPD_ADMITTED_EVENT, IPD_BED_SWAPPED_EVENT, OT_BOOKED_EVENT, OT_CANCELLED_EVENT } from "./names";
+import { IPD_ADMITTED_EVENT, IPD_BED_SWAPPED_EVENT, OT_BOOKED_EVENT, OT_CANCELLED_EVENT, OT_LIST_PUBLISHED_EVENT, OT_POSTPONED_EVENT } from "./names";
 import { DIET_EVENTS } from "./events";
 import type { Db } from "../../kernel/db/client";
 import type { DietWorld } from "../../../test/helpers/diet";
@@ -44,6 +44,8 @@ describe("diet — pure facts", () => {
     const ot = OT_EVENTS.map((e) => e.name);
     expect(ot).toContain(OT_BOOKED_EVENT);
     expect(ot).toContain(OT_CANCELLED_EVENT);
+    expect(ot).toContain(OT_POSTPONED_EVENT);
+    expect(ot).toContain(OT_LIST_PUBLISHED_EVENT);
     expect(DIET_EVENTS.map((e) => e.name).every((n) => n.startsWith("diet."))).toBe(true);
   });
 
