@@ -4,7 +4,7 @@ import { withTx } from "../../kernel/db/client";
 import { ipdAdmissions, ipdChargeLines, patients } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { medicinesByIds, ndpsClassByMedicine } from "../formulary";
-import { MaterialsError, batchLocations, fefoPick, findStoreByCode, getBatch, itemsByIds, movementsFor, postMovements } from "../materials";
+import { MaterialsError, fefoPick, findStoreByCode, getBatch, itemsByIds, movementsFor, postMovements, sellableBatchesByItem } from "../materials";
 import { resolvePatientId } from "../patients";
 import { OPD_PHARMACY_STORE_CODE, controlOf, searchShelfAt, shelfByMedicine } from "../pharmacy";
 import { lockAdmission, onceIpd, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
@@ -27,7 +27,8 @@ import type { AdmissionRow } from "./admission-core";
  * hospitals. Every rule below is DECIDED by standard practice; the money ones come from decisions 0073 / 0074.
  *
  * - FIND: by IP number (`IP26-000123`) or by UHID with an open admission. The answer names the bed and the ward, so the
- *   pharmacist confirms the patient (a sealed patient shows the alias and no bed — the shared identity rule).
+ *   pharmacist confirms the patient (a sealed patient shows the alias and no admission number, bed or ward — the shared
+ *   identity rule — and only its IP number finds it: its UHID answers `not_admitted`).
  * - REFUSED: no admission yet (`not_admitted`: requested / reserved / cancelled, or a UHID with none open); a stay that
  *   ended (`ip_discharged`); a live settled final bill (`ip_bill_settled` — later medicines go on the supplementary bill
  *   through the ward, or are sold for cash). A controlled drug (Schedule X, NDPS) reaches an inpatient only against a ward
@@ -76,6 +77,10 @@ async function findAdmission(db: Db, q: string): Promise<AdmissionRow> {
   const all = await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.patientId, patientId)).orderBy(desc(ipdAdmissions.requestedAt));
   const open = all.find((a) => (IPD_NURSING_STATES as readonly string[]).includes(a.state));
   if (open === undefined) throw new IpdRefusal("not_admitted", undefined, { uhid: text });
+  // Review of 73731986 — the sealed-identity rule (D-31, #767): a sealed patient's UHID must not confirm a stay. The
+  // attendant gives the IP number; the answer is the one a UHID with no stay gets.
+  const sealed = (await db.select({ s: patients.sensitiveContext }).from(patients).where(eq(patients.id, open.patientId)))[0]?.s === true;
+  if (sealed) throw new IpdRefusal("not_admitted", undefined, { uhid: text });
   return open;
 }
 
@@ -89,7 +94,7 @@ export async function lookupCounterAdmission(db: Db, actor: Actor, q: string, op
   const identity = (await identitiesOf(db, actor, [a], at)).get(a.id)!;
   const place = (await placesOf(db, [a.id])).get(a.id);
   return {
-    admissionId: a.id, admissionNo: a.admissionNo, state: a.state as IpdCounterAdmission["state"], identity,
+    admissionId: a.id, admissionNo: identity.sealed ? null : a.admissionNo, state: a.state as IpdCounterAdmission["state"], identity,
     bedCode: identity.sealed ? null : place?.bedCode ?? null, wardName: identity.sealed ? null : place?.wardName ?? null,
   };
 }
@@ -119,6 +124,8 @@ export async function counterCharge(db: Db, actor: Actor, raw: unknown, opts: Co
     const ids = [...new Set(input.lines.map((l) => l.medicineId))];
     const [shelf, meds, ndps] = await Promise.all([shelfByMedicine(tx as unknown as Db), medicinesByIds(tx as unknown as Db, ids), ndpsClassByMedicine(tx, ids)]);
     const saleId = newId();
+    // One plan entry per stocked item, its picks merged per batch: the same medicine twice in one sale is ONE line per batch
+    // (the charge line's unique key is sale + batch) and one ledger row per batch (the return reads them).
     const plan: { medicineId: string; itemId: string; picks: { batchId: string; qty: number }[] }[] = [];
     for (const l of input.lines) {
       const entry = shelf.get(l.medicineId);
@@ -126,19 +133,22 @@ export async function counterCharge(db: Db, actor: Actor, raw: unknown, opts: Co
       if (entry === undefined || med === undefined) throw new IpdRefusal("medicine_not_stocked", undefined, { medicineId: l.medicineId });
       if (controlOf(med.scheduleFlag, ndps.get(l.medicineId)).controlled) throw new IpdRefusal("controlled_at_counter", undefined, { medicineId: l.medicineId });
       if (l.batchId !== undefined) {
+        // Review of 73731986: a named batch must be one FEFO could sell here today — never expired, never recalled.
         const batch = await getBatch(tx, l.batchId);
-        const here = batch === undefined ? [] : (await batchLocations(tx, batch.id)).filter((x) => x.resourceId === store.id && x.qtyOnHand > 0);
-        if (batch === undefined || batch.itemId !== entry.item.id || here.length === 0) {
+        const sellable = (await sellableBatchesByItem(tx, store.id, [entry.item.id], at)).get(entry.item.id) ?? [];
+        if (batch === undefined || batch.itemId !== entry.item.id || !sellable.some((s) => s.batchId === l.batchId)) {
           throw new IpdRefusal("batch_mismatch", undefined, { batchId: l.batchId, itemId: batch?.itemId ?? null });
         }
       }
-      // The same medicine twice in one sale: the second pick must not offer the units the first already took.
-      const taken = plan.filter((p) => p.itemId === entry.item.id).flatMap((p) => p.picks);
+      let p = plan.find((x) => x.itemId === entry.item.id);
+      if (p === undefined) { p = { medicineId: l.medicineId, itemId: entry.item.id, picks: [] }; plan.push(p); }
+      // The same medicine again: this pick must not offer the units an earlier line took, and takes exactly `units`.
+      const taken = p.picks;
       const picks = l.batchId !== undefined ? [{ batchId: l.batchId, qty: l.units }]
-        : await fefoPick(tx, store.id, entry.item.id, l.units + taken.reduce((t, p) => t + p.qty, 0), at).then((all) => less(all, taken));
-      const got = picks.reduce((t, p) => t + p.qty, 0);
+        : upTo(less(await fefoPick(tx, store.id, entry.item.id, l.units + taken.reduce((t, x) => t + x.qty, 0), at), taken), l.units);
+      const got = picks.reduce((t, x) => t + x.qty, 0);
       if (got < l.units) throw new IpdRefusal("stock_short", undefined, { medicineId: l.medicineId, asked: l.units, available: got });
-      plan.push({ medicineId: l.medicineId, itemId: entry.item.id, picks });
+      p.picks = merged([...taken, ...picks]);
     }
     try {
       await postMovements(tx, actor, plan.flatMap((p) => p.picks.map((x) => ({
@@ -167,6 +177,26 @@ export async function counterCharge(db: Db, actor: Actor, raw: unknown, opts: Co
     await evaluateDepositLadderSafely(tx as unknown as Db, a.id, at, "counter charge");
     return { saleId, admissionId: a.id, lines, totalPaise };
   }), at);
+}
+
+/** The first `units` of the picks, in order. */
+function upTo(picks: readonly { batchId: string; qty: number }[], units: number): { batchId: string; qty: number }[] {
+  const out: { batchId: string; qty: number }[] = [];
+  let left = units;
+  for (const p of picks) {
+    if (left <= 0) break;
+    const q = Math.min(p.qty, left);
+    out.push({ batchId: p.batchId, qty: q });
+    left -= q;
+  }
+  return out;
+}
+
+/** Picks summed per batch, first-taken order kept. */
+function merged(picks: readonly { batchId: string; qty: number }[]): { batchId: string; qty: number }[] {
+  const out = new Map<string, number>();
+  for (const p of picks) out.set(p.batchId, (out.get(p.batchId) ?? 0) + p.qty);
+  return [...out.entries()].map(([batchId, qty]) => ({ batchId, qty }));
 }
 
 /** FEFO picks less what an earlier line of the same sale already took (batch by batch). */

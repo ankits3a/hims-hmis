@@ -923,7 +923,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - REFUSED: `not_admitted` (requested / reserved / cancelled, or a UHID with no open stay), `ip_discharged` (the stay ended),
   `ip_bill_settled` (a live final bill: the supplementary bill through the ward, or a cash sale), `controlled_at_counter`
   (Schedule X / NDPS only against a ward order), `price_missing` (never ₹0, and nothing waits on the bill desk). The lookup
-  gives the same refusals as the charge.
+  gives the same refusals as the charge. A sealed patient's UHID answers `not_admitted` (only the IP number finds the
+  stay) and the answer carries no admission number, bed or ward. A named batch must be sellable today (FEFO's own list:
+  not expired, not recalled) or `batch_mismatch`. The same medicine twice in one sale is one line per batch.
 - The charge runs under the admission lock with the stock movement: refused or failed, nothing moves. A return is the ward
   return's credit (`postDrugReturnCreditsIn`), including `return_after_bill`; returns are allowed after discharge as on the ward.
 
