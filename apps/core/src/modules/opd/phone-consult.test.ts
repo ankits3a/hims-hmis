@@ -128,6 +128,15 @@ describe("phone consult — sets and the spoken note", () => {
       expect(await db.select().from(opdRxSets)).toHaveLength(1);
     });
 
+    it("a set line keeps its food timing as a CODE, not as words in one language", async () => {
+      const line = { ...PARA, instructions: null, food: "after" as const };
+      await withTx(db, (tx) => saveRxSet(tx, dra.actor, { scope: "doctor", name: "Fever", body: body([line, { ...PARA, drug: "Pantoprazole 40 mg Tablet", instructions: "with water", food: "before" }]) }));
+      const lines = (await listRxSets(db, dra.actor)).items[0]!.body.lines;
+      expect(lines.map((l) => [l.food, l.instructions])).toEqual([["after", null], ["before", "with water"]]);
+      await expect(withTx(db, (tx) => saveRxSet(tx, dra.actor, { scope: "doctor", name: "x", body: body([{ ...PARA, food: "midnight" }]) })))
+        .rejects.toMatchObject({ code: "invalid_rx_set" });
+    });
+
     it("a hospital STARTER set is shown to nobody until the department's unit head signs it — and an edit un-signs it", async () => {
       await makeHead(dra.userId);
       // Any doctor of the department may draft one; only its author and the unit head see the draft.

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { ApiError, NetworkError } from "../api";
 import { useI18n } from "../i18n";
@@ -37,10 +37,9 @@ export function SetEditor({ api, set, encounterId, onDone }: {
   const [error, setError] = useState<string | null>(null);
   const patch: Patch = useCallback((next) => { setDraft((d) => ({ ...next(d), updatedAt: Date.now() })); setError(null); }, []);
   const days = useCallback((n: number): string => t("mobile.consult.days", { count: n }), [t]);
-  const food = useMemo(() => ({ before: t("mobile.consult.foodBefore"), after: t("mobile.consult.foodAfter") }), [t]);
   const starter = set.scope === "department";
 
-  const body = setBodyOf(draft, food);
+  const body = setBodyOf(draft);
   const empty = body.lines.length === 0 && body.tests.length === 0 && (body.advice ?? "").trim() === "";
   const ready = name.trim() !== "" && !empty && !busy;
 

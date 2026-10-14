@@ -488,7 +488,7 @@ export function ConsultScreen({ doctorApi, encounterId, patientId, tokenNo, entr
       {drawer === "advice" && <AdviceDrawer api={api} draft={draft} patch={patch} onClose={closeDrawer} followChoices={followUpChoices(cfg)} />}
       {editingSet !== null && <SetEditor api={api} set={editingSet} encounterId={encounterId} onDone={() => { setEditingSet(null); setDrawer("sets"); }} />}
       {drawer === "sets" && <SetsDrawer api={api} onClose={() => setDrawer(null)} onUse={useSet} onEdit={(x) => { setDrawer(null); setEditingSet(x); }} canSave={draft.lines.some(lineComplete) || draft.tests.length > 0}
-        onSave={async (setName) => { await api.saveSet(setName, setBodyOf(draft, food)); setSetsCount((c) => (c === null ? c : { ...c, mine: c.mine + 1 })); }} />}
+        onSave={async (setName) => { await api.saveSet(setName, setBodyOf(draft)); setSetsCount((c) => (c === null ? c : { ...c, mine: c.mine + 1 })); }} />}
     </View>
   );
 }

@@ -38,6 +38,8 @@ const lineSchema = z.object({
   durationDays: z.number().int().positive().max(3650).nullable(),
   instructions: z.string().max(2000).nullable(),
   medicineId: z.string().min(1).max(64).nullish(),
+  /** Food timing as a language-neutral code; the phone puts it into words. Absent on a set saved before it (its words are in `instructions`). */
+  food: z.enum(["before", "after"]).nullish(),
 });
 const testSchema = z.object({
   serviceId: z.string().min(1).max(64), code: z.string().min(1).max(64), name: z.string().min(1).max(300),
