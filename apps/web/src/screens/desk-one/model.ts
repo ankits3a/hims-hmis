@@ -197,8 +197,8 @@ export function istClock(at: Date = new Date()): string {
 }
 
 /** `SUN 30 AUG`, IST, upper-case — the artifact's header format. */
-export function istDateLabel(at: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-IN", {
+export function istDateLabel(at: Date = new Date(), locale = "en-IN"): string {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: "Asia/Kolkata", weekday: "short", day: "2-digit", month: "short",
   }).format(at).toUpperCase().replace(/,/g, "");
 }

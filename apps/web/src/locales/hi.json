@@ -8590,6 +8590,15 @@
   },
   "pharmacyDesk": {
     "wordmark": "फ़ार्मेसी डेस्क",
+    "phone": {
+      "menu": "मेनू",
+      "tabTicket": "टिकट",
+      "tabLine": "कतार",
+      "tabBill": "बिल",
+      "tabDay": "आपका दिन",
+      "showPatient": "पूरा रिकॉर्ड दिखाएँ",
+      "hidePatient": "पूरा रिकॉर्ड छिपाएँ"
+    },
     "where": "ओपीडी काउंटर",
     "thisDesk": "यह डेस्क",
     "waiting": "{{count}} प्रतीक्षा में",
