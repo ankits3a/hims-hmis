@@ -33,6 +33,8 @@ export * from "./rounds";
 export * from "./emar";
 // E5.3 (#740), E5.4 (#741) — "Since yesterday", the SBAR draft and the discharge drafter: lines with sources, stamps, flags.
 export * from "./copilot";
+// 2026-10-14 — the ward narcotic register: per-ward running balance, the shift-change count, its exceptions.
+export * from "./narcotic";
 export { IPD_ALLERGY_OVERRIDE_REASONS, IPD_DRUG_ROUTES, IPD_REISSUE_REASONS, IPD_VERBAL_EMERGENCIES, IpdDrugOrderSchema } from "./intents-meds";
 export type { IpdDrugOrder } from "./intents-meds";
 export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";
@@ -99,6 +101,9 @@ export const IPD_INTENTS = {
   return_med: medIntents.returnMed,
   resolve_allergy_flag: medIntents.resolveAllergyFlag,
   decide_allergy_flag: medIntents.decideAllergyFlag,
+  // 2026-10-14 (DECIDED, NDPS / NABH) — the ward narcotic register's shift-change count and its exception closed.
+  record_narcotic_count: medIntents.recordNarcoticCount,
+  resolve_narcotic_exception: medIntents.resolveNarcoticException,
   declare_fit: dischargeIntents.declareFit,
   cancel_fit: dischargeIntents.cancelFit,
   confirm_charges: dischargeIntents.confirmCharges,

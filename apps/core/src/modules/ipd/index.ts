@@ -201,7 +201,7 @@ export { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VERIFY, IPD_EMAR_VIEW } from ".
 export {
   EMAR_SYSTEM_ACTOR, IPD_EMAR_NURSE_ROLES, NPO_ROUTES, administerDose, backfillEmarAllergyFlags, decideAllergyFlag, npoAt, emarAllergyConsumer, holdDose, issueMed, markDoseInError, missDose,
   recheckOrdersForAllergy, recordInfusionEvent, recordNarcoticWastage, refuseDose, reofferHeldDoses, resolveAllergyFlag, returnMed,
-  secondCheck, signVerbalOrder, sweepIpdEmar, verifyFindingsOf, verifyOrder,
+  secondCheck, confirmSecondNursePin, signVerbalOrder, sweepIpdEmar, verifyFindingsOf, verifyOrder,
 } from "./emar";
 export type { EmarSweepResult } from "./emar";
 export { cancelFutureDosesIn, scheduleDosesIn } from "./emar-doses";
@@ -209,6 +209,11 @@ export { ISMP_HIGH_ALERT_NAMES, dueTimesFor, giveTiming, isHighAlert, isTimeCrit
 export { readAdmissionAllergyFlags, readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
 export { IPD_NEW_ORDER_HOURS, dueDoseCard, newOrderCard } from "./emar-cards";
 export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";
+// 2026-10-14 — the ward narcotic register (NDPS / NABH): per-ward running balance, the shift-change count by two nurses,
+// exceptions to the nursing supervisor and the pharmacy, resolved with a note; the patient's units follow a ward move.
+export { IPD_NARCOTIC_RESOLVER_ROLES, readNarcoticWard, recordNarcoticCount, resolveNarcoticException } from "./narcotic";
+export { followNarcoticsIn, wardNarcoticBalances } from "./narcotic-ledger";
+export type { NarcoticBalance } from "./narcotic-ledger";
 
 // E5.3 (#740), E5.4 (#741) — "Since yesterday", the nurse's SBAR draft and the discharge drafter: a deterministic fact
 // builder and line templates (every line names its records), a verifier that refuses a model's wrong or invented

@@ -74,6 +74,20 @@ export const narcoticWasted = defineEvent("ipd.narcotic.wasted", MODULE, z.objec
   entryId: id, orderId: id, admissionId: id, provenance: IpdProvenanceSchema,
 }));
 
+/** 2026-10-14 — a shift-change count of a ward's narcotic cabinet by two nurses: ids and counts only. */
+export const narcoticCounted = defineEvent("ipd.narcotic.counted", MODULE, z.object({
+  roundId: id, wardId: id, drugs: z.number().int(), mismatches: z.number().int(), shift: z.string().min(1), provenance: IpdProvenanceSchema,
+}));
+
+/** One drug whose count differed from the register: the supervisor and the pharmacy are told (no drug name on the stream). */
+export const narcoticCountMismatch = defineEvent("ipd.narcotic.count_mismatch", MODULE, z.object({
+  countId: id, roundId: id, wardId: id, medicineId: id, expected: z.number(), counted: z.number(), variance: z.number(), provenance: IpdProvenanceSchema,
+}));
+
+export const narcoticCountResolved = defineEvent("ipd.narcotic.count_resolved", MODULE, z.object({
+  countId: id, wardId: id, provenance: IpdProvenanceSchema,
+}));
+
 export const allergyFlagRaised = defineEvent("ipd.allergy_flag.raised", MODULE, z.object({
   flagId: id, orderId: id, admissionId: id, notified: z.number().int(), provenance: IpdProvenanceSchema,
 }));
@@ -87,6 +101,8 @@ export const IPD_EMAR_EVENT_NAMES: readonly string[] = [
   orderVerified.name, medIssued.name, medReturned.name, doseGiven.name, doseHeld.name, doseRefused.name, doseMissed.name,
   dosesReoffered.name, dosesCancelled.name, doseCorrected.name, infusionRecorded.name, verbalOrderRecorded.name, allergyFlagRaised.name,
   allergyFlagResolved.name, "ipd.allergy_flag.decided",
+  // 2026-10-14 — the ward narcotic register refetches on its own acts too.
+  narcoticWasted.name, narcoticCounted.name, narcoticCountMismatch.name, narcoticCountResolved.name,
 ];
 
 /** The consumer that re-checks active orders when an allergy is recorded (§4.6 edge "allergy added later"). */

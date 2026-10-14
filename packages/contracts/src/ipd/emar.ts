@@ -121,7 +121,7 @@ export type IpdEmarDose = z.infer<typeof IpdEmarDoseSchema>;
 export const IpdEmarNarcoticEntrySchema = z.object({
   entryId: IpdIdSchema,
   orderId: IpdIdSchema,
-  kind: z.enum(["received", "given", "wasted", "returned"]),
+  kind: z.enum(["received", "given", "wasted", "returned", "reversal", "transfer_out", "transfer_in"]),
   qty: z.number(),
   unit: z.string(),
   at: IpdInstantSchema,

@@ -141,6 +141,10 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   return_med: { idempotencyKey: key(67), issueId: id(28), units: 4, reason: "order stopped" },
   resolve_allergy_flag: { idempotencyKey: key(68), flagId: id(29), note: "doctor stopped" },
   decide_allergy_flag: { idempotencyKey: key(69), flagId: id(29), decision: "continue", reason: "benefit outweighs" },
+  record_narcotic_count: {
+    idempotencyKey: key(70), wardId: id(4), lines: [{ medicineId: id(30), unit: "ampoule", counted: 3 }], secondNurse: { username: "fake.nurse", pin: "0000" },
+  },
+  resolve_narcotic_exception: { idempotencyKey: key(71), countId: id(31), note: "synthetic: ampoule found broken in the tray" },
   declare_fit: { idempotencyKey: key(30), admissionId: id(3), when: "today", disposition: "home" },
   cancel_fit: { idempotencyKey: key(31), admissionId: id(3), reason: "synthetic worsening" },
   confirm_charges: { idempotencyKey: key(32), admissionId: id(3), department: "pharmacy" },
