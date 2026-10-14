@@ -7456,7 +7456,8 @@
     }
   },
   "common": {
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "noAccess": "You don't have access to this screen."
   },
   "registrationCounter": {
     "title": "Registration counter",
