@@ -20,6 +20,7 @@ import { OPD_PHARMACY_STORE_CODE, recordIncident } from "../pharmacy";
 import { matchAllergiesSaltAware } from "../opd";
 import { holdsPermission, lockAdmission, onceIpd, provenanceOf, requireIpdPermission } from "./admission-core";
 import { admissionPlace } from "./admission-place";
+import { insertNarcoticRows } from "./narcotic-ledger";
 import { checkPrinter } from "./bands";
 import { ageInYears } from "./bed-rules";
 import { IPD_SYSTEM_ACTOR } from "./beds";
@@ -296,7 +297,7 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
       await postDrugIssueChargesIn(tx, actor, a, { orderId: o.id, issueId, itemId, batches, reissueReason: input.reissue?.reason ?? null, at });
     }
     if (drug?.narcotic === true) {
-      await tx.insert(ipdEmarNarcoticRegister).values({
+      await insertNarcoticRows(tx, {
         id: newId(), orderId: o.id, admissionId: a.id, kind: "received", qty: input.units, unit: drug.shelf?.item.baseUom ?? "unit", issueId, actorId: actor.id, at,
         wardId: await wardOf(tx, a.id), recordedAt: at,
       });
@@ -361,7 +362,7 @@ export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOp
     if (o.status !== "active" && o.returnOwed) await tx.update(ipdOrders).set({ returnOwed: false }).where(eq(ipdOrders.id, o.id));
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
     if (drug?.narcotic === true) {
-      await tx.insert(ipdEmarNarcoticRegister).values({
+      await insertNarcoticRows(tx, {
         id: newId(), orderId: o.id, admissionId: a.id, kind: "returned", qty: input.units, unit: drug.shelf?.item.baseUom ?? "unit", issueId: first.id, actorId: actor.id, at,
         wardId: await wardOf(tx, a.id), recordedAt: at,
       });
@@ -705,7 +706,7 @@ async function giveIn(tx: Tx, db: Db, actor: Actor, input: Input<"administer_dos
   if (units !== null) await tx.insert(ipdEmarLabelUses).values({ id: newId(), labelId: label.id, actId: administrationId, units, at: givenAt });
   if (drug?.narcotic === true) {
     // E4.3 review: the register keeps ONE unit — the issue's base unit — on every row; the dose is converted here.
-    await tx.insert(ipdEmarNarcoticRegister).values({
+    await insertNarcoticRows(tx, {
       id: newId(), orderId: o.id, admissionId: a.id, kind: "given", qty: units ?? 1, unit: drug.baseUom ?? "unit", actId: administrationId, actorId: actor.id, at: givenAt,
       wardId, recordedAt: at,
     });
@@ -915,7 +916,7 @@ export async function markDoseInError(db: Db, actor: Actor, raw: unknown, opts: 
         if (used !== undefined) await tx.insert(ipdEmarLabelUses).values({ id: newId(), labelId: used.labelId, actId: correctionId, units: -used.units, at });
         const reg = (await tx.select().from(ipdEmarNarcoticRegister).where(and(eq(ipdEmarNarcoticRegister.actId, act.id), eq(ipdEmarNarcoticRegister.kind, "given"))))[0];
         if (reg !== undefined) {
-          await tx.insert(ipdEmarNarcoticRegister).values({
+          await insertNarcoticRows(tx, {
             id: newId(), orderId: reg.orderId, admissionId: reg.admissionId, kind: "reversal", qty: reg.qty, unit: reg.unit, actId: correctionId,
             reason: input.reason, actorId: actor.id, at, wardId: await wardOf(tx, reg.admissionId), recordedAt: at,
           });
@@ -1001,7 +1002,7 @@ export async function recordNarcoticWastage(db: Db, actor: Actor, raw: unknown, 
     const witnessId = await spendSecondCheck(tx, actor, input.witness, at, { purpose: "narcotic_wastage", orderId: o.id, doseId: null, medicineId: o.medicineId });
     const entryId = newId();
     // The register's one unit: the issue's base unit (`qty` is typed in it).
-    await tx.insert(ipdEmarNarcoticRegister).values({
+    await insertNarcoticRows(tx, {
       id: entryId, orderId: o.id, admissionId: a.id, kind: "wasted", qty: input.qty, unit: drug.baseUom ?? "unit", reason: input.reason, actorId: actor.id, witnessId, at,
       wardId: await wardOf(tx, a.id), recordedAt: at,
     });

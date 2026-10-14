@@ -10,7 +10,7 @@ import { userNames } from "./admissions";
 import { IPD_EMAR_NURSE_ROLES, confirmSecondNursePin } from "./emar";
 import { narcoticCountMismatch, narcoticCountResolved, narcoticCounted } from "./emar-events";
 import { IpdRefusal } from "./errors";
-import { balanceKey, r3, wardNarcoticBalances } from "./narcotic-ledger";
+import { balanceKey, lockNarcoticWard, r3, wardNarcoticBalances } from "./narcotic-ledger";
 import { activeHolders, nursingFallback, shiftOf } from "./nursing";
 import { pickWard, wardsWithBeds } from "./nursing-read";
 import { IPD_EMAR_GIVE, IPD_EMAR_ISSUE, IPD_EMAR_VIEW } from "./permissions";
@@ -75,7 +75,7 @@ export async function recordNarcoticCount(db: Db, actor: Actor, raw: unknown, op
     const witnessId = await confirmSecondNursePin(db, actor, input.secondNurse.username, input.secondNurse.pin, at);
     return withTx(db, async (tx) => {
       if (!(await actorHoldsAnyRole(tx, witnessId, IPD_EMAR_NURSE_ROLES))) throw new IpdRefusal("second_nurse_not_nurse");
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd.narcotic.ward:${ward.id}`}))`);
+      await lockNarcoticWard(tx, ward.id, "exclusive");
       const seen = new Set<string>();
       for (const l of input.lines) {
         const k = balanceKey(l.medicineId, l.unit);
@@ -144,7 +144,7 @@ export async function resolveNarcoticException(db: Db, actor: Actor, raw: unknow
     if (!(await mayResolve(tx, actor))) throw new IpdRefusal("not_narcotic_resolver");
     const c = (await tx.select().from(ipdNarcoticCounts).where(eq(ipdNarcoticCounts.id, input.countId)))[0];
     if (c === undefined) throw new IpdRefusal("narcotic_count_not_found");
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ipd.narcotic.ward:${c.wardId}`}))`);
+    await lockNarcoticWard(tx, c.wardId, "exclusive");
     if (r3(c.variance) === 0) throw new IpdRefusal("narcotic_count_matched");
     // Review 2026-10-14: segregation of duties — neither nurse of the count closes its own discrepancy (a supervisor who
     // counted is a counting nurse here).

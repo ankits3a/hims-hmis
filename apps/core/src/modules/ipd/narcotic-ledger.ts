@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, max, sql } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { ipdBedStays, ipdEmarNarcoticRegister, ipdNarcoticCountResolutions, ipdNarcoticCounts, ipdOrders, resources } from "../../kernel/db/schema";
 import { admissionPlace } from "./admission-place";
@@ -105,6 +105,38 @@ export async function wardNarcoticBalances(exec: Db | Tx, wardId: string, opts: 
   return [...out.values()].sort((a, b) => a.name.localeCompare(b.name) || a.unit.localeCompare(b.unit));
 }
 
+/** The ward's narcotic advisory lock: a count (and a resolution) takes it EXCLUSIVE, every register write SHARED. */
+export async function lockNarcoticWard(tx: Tx, wardId: string, mode: "exclusive" | "shared"): Promise<void> {
+  const k = `ipd.narcotic.ward:${wardId}`;
+  if (mode === "exclusive") await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${k}))`);
+  else await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtext(${k}))`);
+}
+
+type RegisterRow = typeof ipdEmarNarcoticRegister.$inferInsert;
+
+/**
+ * EVERY register write goes through here (review 2026-10-14). Under the ward's SHARED lock no count of that ward is in
+ * flight, so the counts already written are final for this row: a row whose stamp is not after the latest count's
+ * instant is restamped (`recorded_at` = that instant + 1 ms) — it was invisible to that count, so it belongs to the
+ * NEXT balance. Together with the count's EXCLUSIVE lock: a row is either seen by a count (committed before it read) or
+ * on the balance after it — never on none. `at` (the act's own clinical time) is never changed.
+ */
+export async function insertNarcoticRows(tx: Tx, rows: RegisterRow | RegisterRow[]): Promise<void> {
+  const list = Array.isArray(rows) ? rows : [rows];
+  const wards = [...new Set(list.map((r) => r.wardId).filter((x): x is string => typeof x === "string"))].sort();
+  const floor = new Map<string, number>();
+  for (const wardId of wards) {
+    await lockNarcoticWard(tx, wardId, "shared");
+    const last = (await tx.select({ at: max(ipdNarcoticCounts.at) }).from(ipdNarcoticCounts).where(eq(ipdNarcoticCounts.wardId, wardId)))[0]?.at ?? null;
+    if (last !== null) floor.set(wardId, new Date(last).getTime());
+  }
+  await tx.insert(ipdEmarNarcoticRegister).values(list.map((r) => {
+    const f = typeof r.wardId === "string" ? floor.get(r.wardId) : undefined;
+    const stamp = (r.recordedAt ?? r.at).getTime();
+    return f !== undefined && stamp <= f ? { ...r, recordedAt: new Date(f + 1) } : r;
+  }));
+}
+
 /** The ward (or hall) a bed sits in: bed → (room) → ward, as `admissionPlace` walks it. */
 async function wardOfBed(tx: Tx, bedId: string): Promise<string | null> {
   let cur = (await tx.select({ id: resources.id, kind: resources.kind, parentId: resources.parentId }).from(resources).where(eq(resources.id, bedId)))[0];
@@ -171,7 +203,7 @@ export async function followNarcoticsIn(tx: Tx, actor: Actor, admissionId: strin
     if (qty <= 0) continue;
     left.set(k, r3((left.get(k) ?? 0) - qty));
     const base = { orderId: h.orderId, admissionId, qty, unit: h.unit, actId: move.moveId, actorId: actor.id, at, recordedAt: at, reason: "Moved with the patient" };
-    await tx.insert(ipdEmarNarcoticRegister).values([
+    await insertNarcoticRows(tx, [
       { ...base, id: newId(), kind: "transfer_out", wardId: from },
       { ...base, id: newId(), kind: "transfer_in", wardId: here },
     ]);
