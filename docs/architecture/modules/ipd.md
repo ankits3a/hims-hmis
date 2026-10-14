@@ -13,7 +13,7 @@ Source: `apps/core/src/modules/ipd/`
 
 - **Depends on modules:** `billing`, `formulary`, `materials`, `opd`, `ordering`, `patients`, `pharmacy`, `roster`, `tariff`
 - **Used by modules:** `diet`, `housekeeping`, `maintenance`, `passes`, `transport`
-- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `crypto`, `db`, `desk`, `episodes`, `events`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
+- **Kernel used:** `alerts`, `approvals`, `auth`, `config`, `copilot`, `crypto`, `db`, `desk`, `episodes`, `events`, `inference`, `modules`, `notify`, `orders`, `printing`, `realtime`, `resources`, `tokens`, `workflow`
 - **Subscribes to events:** `admissionAbsconded`, `admissionDeceased`
 
 ## Public API (`index.ts`), by declaring file
@@ -159,6 +159,49 @@ Source: `apps/core/src/modules/ipd/`
   - `classChangesOf(db: Db | Tx, admissionId: string): Promise<StayClassChange[]>`
   - `nextNoonIst(at: Date): Date`
   - types: `StayClassChange`
+- `copilot-drafts.ts`
+  - `MODEL_COOLDOWN_MS`
+  - `checkSbarDraftForGive(db: Db | Tx, draftId: string, a: { id: string; patientId: string }, sbar: { situation: string; background: string; as…`
+  - `dischargeRecordsHash(db: Db | Tx, admissionId: string): Promise<string>`
+  - `sbarTextHash(sbar: { situation: string; background: string; assessment: string; recommendation: string }): string`
+- `copilot-facts.ts`
+  - `buildFactSet(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise…`
+  - `buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise<F…`
+  - `factsHash(facts: readonly Fact[]): string`
+- `copilot-lines.ts`
+  - `CONNECTIVES: Readonly<Record<"en" | "hi", ReadonlySet<string>>>`
+  - `SINCE_MAX_LINES`
+  - `applyRewordings(lines: readonly Line[], reworded: readonly { key: string; text: string }[]): { lines: (Line & { by: "template" | "model" })…`
+  - `chooseLines(facts: readonly Fact[]): Line[]`
+  - `isAbnormal(f: Fact): boolean`
+  - `lineTokens(text: string): { tokens: string[]; foreign: string | null }`
+  - `quantitiesIn(text: string): Quantities`
+  - `renderLine(f: Fact): string`
+  - `unverifiedWords(text: string, sources: readonly string[], known: ReadonlySet<string> = new Set()): string[]`
+  - `verifyFreeText(text: string, sources: readonly string[], allowed: Quantities = { numbers: [], times: [] }, maxChars = FREE_TEXT_MAX_CHARS, …`
+  - `verifyReworded(text: string, line: Pick<Line, "text" | "fact">): Verdict`
+  - types: `Fact`, `FactRecord`, `Line`, `Quantities`, `Verdict`
+- `copilot-model.ts`
+  - `askIpdModel(db: Db, actor: Actor, model: IpdModel | null | undefined, admissionId: string, ask: ModelAsk, now: Date): Promise<ModelAnswer>`
+  - `ipdModelFrom(cfg: Pick<AppConfig, "copilot" | "copilotSpend">): IpdModel`
+  - `maskForModel(text: string, names: readonly (string | null | undefined)[], places: readonly (string | null | undefined)[] = []): string`
+  - `modelBarred(db: Db, admissionId: string): Promise<"sealed" | "confidential" | "mlc" | "unknown" | null>`
+  - types: `FallbackReason`, `IpdModel`
+- `copilot.ts`
+  - `DISCHARGE_LIMITS`
+  - `DISCHARGE_PROMPT_VERSION`
+  - `DRAFT_BUDGET_MS`
+  - `HANDOVER_GRACE_MS`
+  - `SBAR_PROMPT_VERSION`
+  - `SINCE_BUDGET_MS`
+  - `SINCE_PROMPT_VERSION`
+  - `buildDischargeDraft(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts & { limits?: Partial<Record<keyof typeof DISCHARGE_LIMITS,…`
+  - `buildSbarDraft(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdHandoverDraft>`
+  - `medicinesNamedWithoutOrder(db: Db, text: string, drugOrders: readonly IpdOrderRow[], by: "template" | "model", sources: readonly string[] =…`
+  - `polishSinceYesterday(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdSinceYesterday>`
+  - `readHandoverDraft(db: Db, actor: Actor, admissionId: string, opts: { now?: Date; rowLimit?: number } = {}): Promise<IpdHandoverDraft>`
+  - `readSinceYesterday(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdSinceYesterday>`
+  - types: `CopilotOpts`
 - `daily-totals.ts`
   - `attendantOf(db: Db | Tx, patientId: string, admissionId: string): Promise<Attendant | null>`
   - `attendantPhoneOf(db: Db | Tx, kind: "guardian" | "deposit_payer", ref: string): Promise<string | null>`
@@ -219,6 +262,10 @@ Source: `apps/core/src/modules/ipd/`
   - `recordPoliceClearance(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
   - `releaseBody(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<IpdMortuaryEntry>`
   - `scanGatePass(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"scan_gate_pass">>`
+- `discharge-medicines.ts`
+  - `medicineFlagsOf(medicines: readonly IpdSummaryMedicine[], drugOrders: readonly IpdOrderRow[]): IpdMedicineFlag[]`
+  - `medicineRowReason(m: Pick<IpdSummaryMedicine, "name" | "orderId">, drugOrders: readonly IpdOrderRow[]): IpdMedicineFlag["reason"] | null`
+  - `sameMedicineName(a: string, b: string): boolean`
 - `discharge-read.ts`
   - `readDischargeBoard(db: Db, actor: Actor, opts: { now?: Date } = {}): Promise<IpdDischargeBoard>`
   - `readDischargeTracker(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdDischargeTracker>`
@@ -372,7 +419,6 @@ Source: `apps/core/src/modules/ipd/`
 - `nursing-read.ts`
   - `listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdShiftHandoverList>`
   - `nextDueOf(f: DueFacts, now: Date): { kind: "vitals" | "assessment"; dueAt: Date; overdue: boolean } | null`
-  - `readHandoverDraft(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdHandoverDraft>`
   - `readMyShift(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdMyShift>`
   - `readNurseStation(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdNurseStation>`
   - `readNursingChart(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdNursingChart>`
@@ -518,12 +564,13 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (132)
+## HTTP routes (136)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 2: `/ipd/charge-lines`
+- `copilot.controller.ts` — 4: `/ipd/discharge`, `/ipd/nursing`, `/ipd/rounds`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
 - `emar.controller.ts` — 24: `/ipd/emar`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`

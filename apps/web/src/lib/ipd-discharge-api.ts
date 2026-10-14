@@ -46,10 +46,12 @@ export const declareFit = (admissionId: string, disposition: "home" | "transfer_
 export const cancelFit = (admissionId: string, reason: string): Promise<unknown> => post(R.cancelFit, { admissionId, reason });
 export const confirmDepartment = (admissionId: string, department: IpdDischargeDepartment): Promise<unknown> =>
   post(R.confirm, { admissionId, department });
-export const saveSummary = (admissionId: string, expectedVersion: number, content: IpdSummaryContent): Promise<IpdSummaryView> =>
-  post(R.saveSummary, { admissionId, expectedVersion, content });
-export const signSummary = (admissionId: string, draftId: string, draftVersion: number): Promise<unknown> =>
-  post(R.signSummary, { admissionId, draftId, draftVersion });
+/** `draftId` (E5.4): the copilot draft the text was started from; the server stamps its model id and prompt version. */
+export const saveSummary = (admissionId: string, expectedVersion: number, content: IpdSummaryContent, draftId?: string | null): Promise<IpdSummaryView> =>
+  post(R.saveSummary, draftId ? { admissionId, expectedVersion, content, draftId } : { admissionId, expectedVersion, content });
+/** `unorderedMedicinesReason` (E5.4): the doctor's reason for signing with a typed medicine that no active order carries. */
+export const signSummary = (admissionId: string, draftId: string, draftVersion: number, unorderedMedicinesReason?: string): Promise<unknown> =>
+  post(R.signSummary, unorderedMedicinesReason ? { admissionId, draftId, draftVersion, unorderedMedicinesReason } : { admissionId, draftId, draftVersion });
 
 export const prepareFinalBill = (admissionId: string): Promise<IpdFinalBill> => api("POST", R.prepareBill, { admissionId });
 /**

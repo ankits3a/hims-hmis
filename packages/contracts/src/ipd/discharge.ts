@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdIdempotencyKeySchema, IpdInstantSchema, IpdPaiseSchema } from "./common";
+import { IpdCopilotRecordSchema, IpdCopilotSourceSchema, IpdDraftProvenanceSchema, IpdDraftStampSchema, IpdMedicineFlagSchema } from "./copilot";
 import { IPD_DISCHARGE_DEPARTMENTS } from "./intents-discharge";
 
 /**
@@ -21,8 +22,10 @@ export const IpdSummaryMedicineSchema = z.strictObject({
   dose: Text(80).optional(),
   frequency: Text(80).optional(),
   duration: Text(80).optional(),
-  /** `typed` today; `order` once the ipd-orders lane writes active orders (the summary then copies them). */
+  /** `typed` = the doctor's own typing; `order` = copied from an active drug order by the drafter (E5.4), with `orderId`. */
   source: z.enum(["typed", "order"]).default("typed"),
+  /** E5.4 — the active drug order a drafted row was copied from; a row that names one must still match it at signing. */
+  orderId: IpdIdSchema.optional(),
 });
 export type IpdSummaryMedicine = z.infer<typeof IpdSummaryMedicineSchema>;
 
@@ -42,6 +45,14 @@ export const IpdSummaryContentSchema = z.strictObject({
   warningSigns: Text(1000).default(""),
   /** Results still awaited (histopathology, cultures): listed on the summary (§4.7). */
   pendingResults: Text(1000).default(""),
+  /**
+   * E5.4 — WRITTEN BY THE SERVER, never taken from a client (a save strips them): the medicines no active order carried
+   * when the summary was signed, the doctor's reason for signing with them, and the fingerprint of the stay's records
+   * the text was last saved against.
+   */
+  medicineFlags: z.array(IpdMedicineFlagSchema).max(60).optional(),
+  medicineAck: z.strictObject({ reason: Text(500), by: z.strictObject({ id: z.string(), name: z.string() }), at: IpdInstantSchema }).optional(),
+  recordsHash: z.string().max(64).optional(),
 });
 export type IpdSummaryContent = z.infer<typeof IpdSummaryContentSchema>;
 
@@ -51,6 +62,8 @@ export const IpdSaveSummaryDraftSchema = z.strictObject({
   admissionId: IpdIdSchema,
   expectedVersion: z.number().int().nonnegative(),
   content: IpdSummaryContentSchema,
+  /** E5.4 — the copilot draft this text was started from: the server stamps its model id and prompt version on the summary. */
+  draftId: IpdIdSchema.optional(),
 });
 
 export const IpdSummaryViewSchema = z.object({
@@ -66,7 +79,13 @@ export const IpdSummaryViewSchema = z.object({
     draftPromptVersion: z.string().nullable(),
     draftedBy: z.object({ id: z.string(), name: z.string() }),
     draftedAt: IpdInstantSchema,
+    /** E5.4 — the copilot draft the text was started from (kept on the signed copy); null for a typed summary. */
+    draft: IpdDraftProvenanceSchema.nullable(),
   }),
+  /** E5.4 — medicines no active order of the stay carries (a typed row is flagged; a drafted row refuses the signature). */
+  medicineFlags: z.array(IpdMedicineFlagSchema),
+  /** E5.4 — the "Draft" stamp, present whenever the summary is unsigned and started from a copilot draft (screen and print). */
+  stamp: IpdDraftStampSchema.nullable(),
   /** "Draft" until a named consultant signs. */
   label: z.enum(["Draft", "Awaiting co-sign", "Signed"]),
   residentSignedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
@@ -75,6 +94,21 @@ export const IpdSummaryViewSchema = z.object({
   documentId: IpdIdSchema.nullable(),
 });
 export type IpdSummaryView = z.infer<typeof IpdSummaryViewSchema>;
+
+export const IpdDischargeDraftSchema = z.object({
+  draftId: IpdIdSchema,
+  admissionId: IpdIdSchema,
+  stamp: IpdDraftStampSchema,
+  /** The proposed summary: diagnosis, results and medicines from the record; only `course` may hold model words. */
+  content: IpdSummaryContentSchema,
+  /** One source per filled field of `content`. */
+  sources: z.array(z.object({ field: z.string(), source: IpdCopilotSourceSchema, records: z.array(IpdCopilotRecordSchema) })),
+  flags: z.array(IpdMedicineFlagSchema),
+  /** Lists cut at the read's limit (newest kept), e.g. `orders`. A truncated draft is never `complete`. */
+  truncated: z.array(z.string()),
+  complete: z.boolean(),
+});
+export type IpdDischargeDraft = z.infer<typeof IpdDischargeDraftSchema>;
 
 // ═══════════════════════════════════════ the final bill ═══════════════════════════════════════
 

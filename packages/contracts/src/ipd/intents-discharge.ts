@@ -85,6 +85,8 @@ export const signSummary = ipdIntent({
     draftId: IpdIdSchema,
     /** The version the doctor read; a newer draft refuses `draft_changed`. */
     draftVersion: z.number().int().positive(),
+    /** E5.4 — required when a typed medicine has no active order: why it is on the summary (e.g. a take-home medicine). */
+    unorderedMedicinesReason: z.string().trim().min(3).max(500).optional(),
   }),
   output: z.strictObject({
     summaryId: IpdIdSchema,

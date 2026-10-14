@@ -95,7 +95,9 @@ export const recordIntakeOutput = (b: { admissionId: string; direction: "in" | "
 export const addNote = (b: { admissionId: string; category: string; text: string }): Promise<unknown> =>
   post(R.note, { ...b, observedAt: new Date().toISOString(), source: "person" });
 export type SbarText = { situation: string; background: string; assessment: string; recommendation: string };
-export const giveShiftHandover = (admissionId: string, sbar: SbarText): Promise<unknown> => post(R.giveHandover, { admissionId, sbar });
+/** `draftId` (E5.4): the copilot draft the nurse edited and is signing; the handover keeps its provenance. */
+export const giveShiftHandover = (admissionId: string, sbar: SbarText, draftId?: string | null): Promise<unknown> =>
+  post(R.giveHandover, draftId ? { admissionId, sbar, draftId } : { admissionId, sbar });
 export const acceptShiftHandover = (handoverId: string): Promise<unknown> => post(R.acceptHandover, { handoverId });
 export const acknowledgeEws = (alertId: string, note?: string): Promise<unknown> =>
   post(R.acknowledgeEws, note === undefined || note.trim() === "" ? { alertId } : { alertId, note: note.trim() });

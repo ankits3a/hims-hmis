@@ -173,3 +173,8 @@
   border: 2px solid var(--ipdn-alert, #b42318); border-radius: 0.5rem; font-size: 0.95rem; }
 .ipdn-dropped ul { margin: 0; padding-left: 1.1rem; flex-basis: 100%; }
 .ipdn-nodoc { color: var(--ipdn-alert, #b42318); }
+
+/* E5.4 (#741) — the SBAR draft's stamp ("Draft · model · prompt version · built at") and a signed handover's provenance. */
+.ipdn-stamp { margin: 0; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 6px; font-size: 0.8125rem; overflow-wrap: anywhere; }
+.ipdn-src.ai { border-style: solid; }
+.ipdn-prov { font-size: 0.75rem; overflow-wrap: anywhere; }
