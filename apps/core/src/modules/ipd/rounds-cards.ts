@@ -28,7 +28,7 @@ export async function allergyFlagsCard(ctx: DeskProviderCtx): Promise<DeskCard[]
   const admissions = picked.map((p) => p.a);
   const ids = admissions.map((a) => a.id);
 
-  const flags = await db.select({ admissionId: ipdEmarAllergyFlags.admissionId, raisedAt: ipdEmarAllergyFlags.raisedAt }).from(ipdEmarAllergyFlags)
+  const flags = await db.select({ admissionId: ipdEmarAllergyFlags.admissionId, orderId: ipdEmarAllergyFlags.orderId, raisedAt: ipdEmarAllergyFlags.raisedAt }).from(ipdEmarAllergyFlags)
     .innerJoin(ipdOrders, eq(ipdOrders.id, ipdEmarAllergyFlags.orderId))
     .where(and(inArray(ipdEmarAllergyFlags.admissionId, ids), isNull(ipdEmarAllergyFlags.resolvedAt), isNull(ipdEmarAllergyFlags.doctorDecision),
       eq(ipdOrders.status, "active")));
@@ -47,11 +47,13 @@ export async function allergyFlagsCard(ctx: DeskProviderCtx): Promise<DeskCard[]
   const subjects: { a: (typeof admissions)[number]; flagged: number; fresh: number; since: Date }[] = [];
   for (const a of admissions) {
     const mine = flags.filter((f) => f.admissionId === a.id);
+    // A flag is per (order, allergy): the doctor decides per ORDER, so the row counts orders.
+    const orders = new Set(mine.map((f) => f.orderId)).size;
     const after = lastRound.get(a.id) ?? a.admittedAt ?? a.requestedAt;
     const fresh = allergies.filter((x) => x.patientId === a.patientId && x.recordedAt > after && x.recordedAt <= now);
     if (mine.length === 0 && fresh.length === 0) continue;
     const since = [...mine.map((f) => f.raisedAt), ...fresh.map((x) => x.recordedAt)].reduce((m, d) => (d < m ? d : m));
-    subjects.push({ a, flagged: mine.length, fresh: fresh.length, since });
+    subjects.push({ a, flagged: orders, fresh: fresh.length, since });
   }
   if (subjects.length === 0) return [];
   const who = await nowIdentities(db, ctx.reader, subjects.map((s) => s.a));

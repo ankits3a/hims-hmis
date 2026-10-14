@@ -89,6 +89,20 @@ describe("ipd.allergy_flags — the doctor's allergy Now card", () => {
     expect((await load(w.consultant, H("10:05")))[0]!.rows![0]!.subtitle).toContain("1 new allergy");
   });
 
+  it("review: two allergies flagging ONE order count one order to decide", async () => {
+    const { admissionId, patientId } = await w.admitMed(ist("2026-03-10T10:00:00"));
+    const med = await w.stocked("Zemoxicillin 500", { moiety: "Zemoxicillin" });
+    await placeIpOrder(db, w.consultant, {
+      idempotencyKey: randomUUID(), admissionId, kind: "drug",
+      drug: { itemId: med.medicineId, dose: { value: 500, unit: "mg" }, route: "oral", frequency: "TDS", startAt: H("07:00").toISOString(), antibiotic: false, durationDays: 5 },
+    }, { now: H("07:00") });
+    await allergy(patientId, "Zemoxicillin", H("07:45"));
+    await allergy(patientId, "Zemoxicillin 500", H("07:46"));
+    expect(await backfillEmarAllergyFlags(db, H("08:00"))).toBe(2);
+    const row = (await load(w.consultant, H("09:00")))[0]!.rows![0]!;
+    expect(row.subtitle).toContain("1 order to decide · 2 new allergies");
+  });
+
   it("an allergy recorded before the admission is not new; a sealed patient's row shows no UHID and no bed", async () => {
     const { admissionId, patientId } = await w.admitMed(ist("2026-03-10T10:00:00"));
     await allergy(patientId, "Peanut", ist("2026-03-09T10:00:00"));
