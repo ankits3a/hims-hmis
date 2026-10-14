@@ -6,7 +6,7 @@ import { AuthProvider } from "../lib/auth";
 import { setToken } from "../lib/api";
 import { resetRealtimeClientForTests } from "../lib/realtime";
 import { router } from "../router";
-import "../lib/i18n";
+import i18next from "../lib/i18n";
 
 /**
  * PLAN 07c T4 — MY DESK, AND `/` STOPS BEING SOMEBODY ELSE'S SCREEN.
@@ -154,6 +154,19 @@ describe("07c T4 — the desk is the front door", () => {
     // The registration desk's own search box is its signature. Its ABSENCE is the defect being
     // closed: this element was on screen for every doctor and cashier in the hospital.
     expect(document.querySelector("[data-search-input]")).toBeNull();
+  });
+
+  it("the card's clock follows the language — Hindi read 'WED 14 OCT' (walk 2026-10-14)", async () => {
+    renderAt("/", [HALL, MY_VISITS]);
+    const heading = await screen.findByRole("heading", { name: "My desk" });
+    const band = heading.parentElement!;
+    expect(band).toHaveTextContent(/(MON|TUE|WED|THU|FRI|SAT|SUN) \d/);
+    await act(async () => { await i18next.changeLanguage("hi"); });
+    try {
+      await waitFor(() => expect(band).not.toHaveTextContent(/(MON|TUE|WED|THU|FRI|SAT|SUN) \d/));
+    } finally {
+      await act(async () => { await i18next.changeLanguage("en"); });
+    }
   });
 
   it("A1b: the cards the server sent are the cards on screen, in their bands", async () => {

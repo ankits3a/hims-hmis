@@ -1,5 +1,6 @@
 import type { CounterSequence, TokenLane, WireDoctorSummary } from "../../lib/opd-api";
 import type { DeptQueue as SharedDeptQueue, Lane } from "../../../../../packages/contracts/src/desk-counter";
+import { dateLocale } from "../../lib/date-locale";
 
 /*
   THE LANES, THE TOKEN'S STATES, TODAY'S OPEN VISIT, THE MONEY READ, THE QUEUE READ, THE TOKEN LABEL
@@ -197,7 +198,8 @@ export function istClock(at: Date = new Date()): string {
 }
 
 /** `SUN 30 AUG`, IST, upper-case — the artifact's header format. */
-export function istDateLabel(at: Date = new Date(), locale = "en-IN"): string {
+/** "WED 14 OCT" — in the app's language ("बुध 14 अक्टू॰" in Hindi) unless a locale is given. */
+export function istDateLabel(at: Date = new Date(), locale: string = dateLocale()): string {
   return new Intl.DateTimeFormat(locale, {
     timeZone: "Asia/Kolkata", weekday: "short", day: "2-digit", month: "short",
   }).format(at).toUpperCase().replace(/,/g, "");
