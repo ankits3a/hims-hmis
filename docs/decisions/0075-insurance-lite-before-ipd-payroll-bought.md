@@ -43,6 +43,9 @@ Money rules of the desk (standard defaults, owner 2026-10-15, built in PR #822):
 - Payer deductions are recorded with a reason and never re-billed to the patient by the system; the billing
   manager decides on recovery.
 - A settlement must add up to the paisa (net + TDS + deductions = claimed).
+- A scheme package is claimed once per stay, however many bills the stay has. A non-package claim is capped at
+  the bill's payer part.
+- A bill cannot be voided while its claim is with the payer; the desk first records the payer's rejection.
 - The default claim amount is the package total for a scheme stay, otherwise the payer part of the bill; the desk
   may override it.
 
