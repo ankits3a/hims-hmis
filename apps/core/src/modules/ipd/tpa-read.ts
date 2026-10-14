@@ -190,7 +190,11 @@ export async function readTpaBoard(db: Db, actor: Actor, now: Date = new Date())
   const who = await nowIdentities(db, actor, [...new Map(raw.map((r) => [r.admissionId, { id: r.admissionId, patientId: r.patientId }])).values()]);
   const rows: IpdTpaBoardRow[] = raw
     .sort((x, y) => SEV_RANK[x.severity] - SEV_RANK[y.severity] || KIND_RANK[x.kind] - KIND_RANK[y.kind] || y.waitMinutes - x.waitMinutes || x.id.localeCompare(y.id))
-    .map(({ patientId: _p, ...r }) => ({ ...r, patientName: who.get(r.admissionId)?.name ?? "—" }));
+    .map((x) => {
+      const r: Omit<RawRow, "patientId"> & { patientId?: string } = { ...x };
+      delete r.patientId;
+      return { ...r, patientName: who.get(r.admissionId)?.name ?? "—" };
+    });
   const counts = Object.fromEntries(IPD_TPA_ROW_KINDS.map((k) => [k, rows.filter((r) => r.kind === k).length])) as IpdTpaBoard["counts"];
   return { asOf: now.toISOString(), rows, counts };
 }

@@ -51,6 +51,7 @@ From `apps/web/src/router.tsx`. Screen = the file the route's component comes fr
 | `/ipd/pharmacy` | `apps/web/src/screens/ipd-pharmacy` |
 | `/ipd/rounds` | `apps/web/src/screens/ipd-rounds` |
 | `/ipd/rounds/$admissionId` | `apps/web/src/screens/ipd-rounds` |
+| `/ipd/tpa` | `apps/web/src/screens/ipd-tpa` |
 | `/ipd/ward` | `apps/web/src/screens/ipd-ward` |
 | `/lab/bench` | `apps/web/src/screens/lab-bench` |
 | `/lab/collection` | `apps/web/src/screens/lab-collection` |
