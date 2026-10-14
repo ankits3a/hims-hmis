@@ -4,9 +4,9 @@ import { roleAssignments, roles, tariffVersions, users } from "../src/kernel/db/
 import { appendEvent } from "../src/kernel/events/append";
 import { roleAssigned } from "../src/kernel/auth/events";
 import { assignRole } from "../src/kernel/auth/permissions";
-import { seedSodPairs } from "../src/kernel/auth/sod";
-import { createDraft, listDefinitions } from "../src/kernel/workflow/definitions";
-import { ADMISSION_WORKFLOW_DEF_KEY, IPD_APPROVAL_TYPE_KEYS, admissionWorkflowDefinition, registerIpdApprovalTypes } from "../src/modules/ipd";
+import { ADMISSION_WORKFLOW_DEF_KEY } from "../src/modules/ipd";
+import { draftAdmissionWorkflowStep, registerIpdApprovalTypesStep } from "./ipd-setup-steps";
+import type { AdmissionWorkflowReport, ApprovalTypesReport } from "./ipd-setup-steps";
 import { ipdRateServiceCode } from "@hmis/contracts";
 import { services, tariffItems } from "../src/kernel/db/schema";
 import { importIpdTariff, setDraftVersionNotes, setTariffItem } from "../src/modules/tariff";
@@ -22,10 +22,10 @@ import type { Db } from "../src/kernel/db/client";
  *
  * The script is idempotent: every step checks first and reports "already" on a rerun. It does three things.
  *
- *  a. Registers the IPD approval types (`registerIpdApprovalTypes`). This is the same go-live step every module's seed
+ *  a. Registers the IPD approval types (`registerIpdApprovalTypesStep`, shared with `ipd-golive-setup`). This is the same go-live step every module's seed
  *     takes for its own types (seed-ot, seed-tariff): a system drafter, the script's own activator identity, and the
  *     SoD pairs ensured first.
- *  b. DRAFTS the `ipd_admission` workflow definition (change class A) as a system drafter, and stops there. Approval
+ *  b. DRAFTS (`draftAdmissionWorkflowStep`, shared) the `ipd_admission` workflow definition (change class A) as a system drafter, and stops there. Approval
  *     (medical superintendent + owner, two people) and activation (the owner) stay with them:
  *     `POST /workflow/definitions/:id/approve` and `/activate`. The script never approves or activates it.
  *  c. Imports the UAT SAMPLE IPD tariff (`scripts/fixtures/ipd-uat-sample-tariff.ts`) through `importIpdTariff` as a
@@ -59,8 +59,8 @@ export function assertStagingOnly(env: NodeJS.ProcessEnv): void {
 }
 
 export type StageIpdReport = {
-  approvalTypes: { registered: string[]; alreadyPresent: string[]; billVoid: string };
-  workflow: { action: "drafted" | "already"; definitionId: string; version: number; status: string };
+  approvalTypes: ApprovalTypesReport;
+  workflow: AdmissionWorkflowReport;
   tariff: { action: "drafted" | "updated" | "already" | "refused"; lines: string[] };
   testingRoles: { action: "granted" | "already" | "refused"; granted: string[]; already: string[]; missingRoles: string[]; why?: string };
 };
@@ -105,28 +105,15 @@ export async function grantTestingRoles(db: Db): Promise<StageIpdReport["testing
 }
 
 export async function stageIpdSetup(db: Db): Promise<StageIpdReport> {
-  // a. approval types
-  await seedSodPairs(db);
-  const { registered } = await registerIpdApprovalTypes(db, SETUP_ACTOR);
-  const all = Object.values(IPD_APPROVAL_TYPE_KEYS);
-  const billVoid = all.includes("ipd_bill_void") ? "included" : "not in this tree (IPD_APPROVAL_TYPE_KEYS has no ipd_bill_void)";
-
-  // b. the admission workflow — a draft, and nothing more
-  const defs = await listDefinitions(db, ADMISSION_WORKFLOW_DEF_KEY);
-  const live = defs.find((d) => d.status === "active") ?? defs.find((d) => d.status === "draft");
-  let workflow: StageIpdReport["workflow"];
-  if (live !== undefined) {
-    workflow = { action: "already", definitionId: live.id, version: live.version, status: live.status };
-  } else {
-    const d = await createDraft(db, DRAFTER, admissionWorkflowDefinition);
-    workflow = { action: "drafted", definitionId: d.definitionId, version: d.version, status: "draft" };
-  }
+  // a. approval types, b. the admission workflow (a draft, and nothing more) — the steps go-live day shares
+  const approvalTypes = await registerIpdApprovalTypesStep(db, SETUP_ACTOR);
+  const workflow = await draftAdmissionWorkflowStep(db, DRAFTER);
 
   // c. the decision-0074 IPD rate card — a draft version (an earlier placeholder draft is brought up to it in place)
   const tariff = await ensureRateCardDraft(db);
   // d. the testing roles for the one all-roles account
   const testingRoles = await grantTestingRoles(db);
-  return { approvalTypes: { registered, alreadyPresent: all.filter((k) => !registered.includes(k)), billVoid }, workflow, tariff, testingRoles };
+  return { approvalTypes, workflow, tariff, testingRoles };
 }
 
 /**
