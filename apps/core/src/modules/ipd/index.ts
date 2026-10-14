@@ -214,3 +214,5 @@ export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";
 // replacement with the order-cancel acts (`reverseChargeLine`, `keepOrderCharge`).
 export { postDrugIssueChargesIn, postDrugReturnCreditsIn, retryDrugExceptionsIn, versionPricedServices } from "./drug-charges";
 export type { DrugIssueCharge, DrugReturnOutcome } from "./drug-charges";
+// #787 (IP counter) — the OPD pharmacy counter charges a sale to the admission (and takes its returns) on the running bill.
+export { counterCharge, counterReturn, lookupCounterAdmission, readCounterSales, searchCounterShelfForIp } from "./counter-charge";

@@ -31,7 +31,9 @@ export * from "./nursing";
 export * from "./rounds";
 // E4.3 (#735) — the eMAR: verify queue, the MAR, the bedside, labels, override counts.
 export * from "./emar";
-export { IPD_ALLERGY_OVERRIDE_REASONS, IPD_DRUG_ROUTES, IPD_REISSUE_REASONS, IPD_VERBAL_EMERGENCIES, IpdDrugOrderSchema } from "./intents-meds";
+// #787 (IP counter) — the OPD pharmacy counter's charge to an admission: the lookup, the sales, the routes.
+export * from "./counter";
+export { IPD_ALLERGY_OVERRIDE_REASONS, IPD_COUNTER_MAX_LINES, IPD_DRUG_ROUTES, IPD_REISSUE_REASONS, IPD_VERBAL_EMERGENCIES, IpdDrugOrderSchema } from "./intents-meds";
 export type { IpdDrugOrder } from "./intents-meds";
 export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";
 export type { IpdRoundSoap } from "./intents-ward";
@@ -97,6 +99,9 @@ export const IPD_INTENTS = {
   return_med: medIntents.returnMed,
   resolve_allergy_flag: medIntents.resolveAllergyFlag,
   decide_allergy_flag: medIntents.decideAllergyFlag,
+  // #787 (IP counter, DECIDED) — the OPD pharmacy counter charges a sale to the admission, and takes its returns.
+  counter_charge: medIntents.counterCharge,
+  counter_return: medIntents.counterReturn,
   declare_fit: dischargeIntents.declareFit,
   cancel_fit: dischargeIntents.cancelFit,
   confirm_charges: dischargeIntents.confirmCharges,

@@ -166,6 +166,14 @@ export const IPD_REFUSALS = {
   batch_mismatch: { rule: "The batch is not this medicine's or is not in this store.", fix: "Pick another batch" },
   allergy_flag_undecided: { rule: "The doctor must decide on the allergy flag before it closes.", fix: "Ask the doctor" },
   verbal_doctor_invalid: { rule: "The person named is not a doctor.", fix: "Name the doctor" },
+  // #787 (IP counter) — the OPD pharmacy counter's charge to an admission.
+  not_admitted: { rule: "The patient has no active admission.", fix: "Sell for cash" },
+  ip_discharged: { rule: "The patient is discharged, so nothing more goes on the admission's bill.", fix: "Sell for cash" },
+  ip_bill_settled: { rule: "The final bill is settled, so later medicines go on the supplementary bill or are paid in cash.", fix: "Sell for cash" },
+  controlled_at_counter: { rule: "A controlled drug reaches an inpatient only against a ward order.", fix: "Issue against ward order" },
+  price_missing: { rule: "This medicine has no counter price, so it cannot be charged.", fix: "Ask billing for the price" },
+  counter_sale_not_found: { rule: "No counter sale on an admission has this id.", fix: "Open the sales" },
+  not_on_sale: { rule: "This medicine is not on that sale.", fix: "Check the sale" },
 
   /* ═══ Discharge (§4.7) ═══ */
   department_not_yours: { rule: "A department confirms only its own charges.", fix: "Ask the department" },

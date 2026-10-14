@@ -159,6 +159,12 @@ Source: `apps/core/src/modules/ipd/`
   - `classChangesOf(db: Db | Tx, admissionId: string): Promise<StayClassChange[]>`
   - `nextNoonIst(at: Date): Date`
   - types: `StayClassChange`
+- `counter-charge.ts`
+  - `counterCharge(db: Db, actor: Actor, raw: unknown, opts: CounterOpts = {}): Promise<Output<"counter_charge">>`
+  - `counterReturn(db: Db, actor: Actor, raw: unknown, opts: CounterOpts = {}): Promise<Output<"counter_return">>`
+  - `lookupCounterAdmission(db: Db, actor: Actor, q: string, opts: CounterOpts = {}): Promise<IpdCounterAdmission>`
+  - `readCounterSales(db: Db, actor: Actor, admissionId: string): Promise<IpdCounterSales>`
+  - `searchCounterShelfForIp(db: Db, actor: Actor, q: string, opts: CounterOpts = {}): Promise<IpdCounterShelfEntry[]>`
 - `daily-totals.ts`
   - `attendantOf(db: Db | Tx, patientId: string, admissionId: string): Promise<Attendant | null>`
   - `attendantPhoneOf(db: Db | Tx, kind: "guardian" | "deposit_payer", ref: string): Promise<string | null>`
@@ -518,12 +524,13 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (132)
+## HTTP routes (137)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
 - `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 2: `/ipd/charge-lines`
+- `counter.controller.ts` — 5: `/ipd/counter`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
 - `emar.controller.ts` — 24: `/ipd/emar`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
