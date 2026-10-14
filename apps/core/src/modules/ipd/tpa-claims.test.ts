@@ -10,7 +10,7 @@ import { mkDischargeWorld } from "../../../test/helpers/ipd";
 import { mkTpaDesk } from "../../../test/helpers/ipd-payer";
 import {
   IpdError, IpdRefusal, askBillVoid, attachTpaDocument, confirmCharges, declareFit, importSchemePackages, postNightlyIpdCharges,
-  prepareFinalBill, prepareSupplementaryBill, readTpaPanel, recordPayerAuth, removeSchemePackage, saveSummaryDraft, selectSchemePackage,
+  prepareFinalBill, prepareSupplementaryBill, readTpaPanel, recordClaimSettlement, recordPayerAuth, recordTpaQuery, removeSchemePackage, saveSummaryDraft, selectSchemePackage,
   settleFinalBill, settleSupplementaryBill, signSummary, submitClaim, voidBill,
 } from "./index";
 import type { Actor } from "@hmis/contracts";
@@ -168,5 +168,43 @@ describe("#604 review — TPA claim money guards", () => {
     const [claim] = await claimsOf(admissionId);
     const r = await refusal(submit(claim!.id, "2026-03-12T10:00:00"));
     expect([r.code, r.detail?.missing]).toEqual(["claim_documents_missing", ["final_bill"]]);
+  });
+
+  it("two concurrent attaches of one document answer the same attachment", async () => {
+    const { admissionId, patientId } = await w.admitAt("general", ist("2026-03-10T09:00:00"));
+    const d = await doc(patientId);
+    const one = () => attachTpaDocument(db, tpa, { idempotencyKey: key(), admissionId, stage: "preauth", kind: "investigations", patientDocumentId: d });
+    const [x, y] = await Promise.all([one(), one()]);
+    expect(x.attachmentId).toBe(y.attachmentId);
+  });
+
+  it("a query or a document on a withdrawn claim refuses", async () => {
+    const { admissionId, patientId } = await schemeStay();
+    const [claim] = await claimsOf(admissionId);
+    const asked = await askBillVoid(db, w.cashier, { admissionId, billId: claim!.finalBillId, reason: "wrong room class billed" });
+    await approveRequest(db, w.billingManager, { approvalId: asked.approvalId, note: "checked" });
+    await voidBill(db, w.cashier, { idempotencyKey: key(), admissionId, billId: claim!.finalBillId, approvalId: asked.approvalId, reason: "x" }, { now: ist("2026-03-12T11:00:00") });
+    expect((await claimsOf(admissionId))[0]!.status).toBe("withdrawn");
+    const q = await refusal(recordTpaQuery(db, tpa, {
+      idempotencyKey: key(), admissionId, stage: "claim", claimId: claim!.id, raisedAt: ist("2026-03-12T11:30:00").toISOString(), queryText: "Send the bill",
+    }, { now: ist("2026-03-12T11:35:00") }));
+    expect(q.code).toBe("claim_wrong_state");
+    const d = await refusal(attachTpaDocument(db, tpa, {
+      idempotencyKey: key(), admissionId, stage: "claim", kind: "final_bill", patientDocumentId: await doc(patientId), claimId: claim!.id,
+    }, { now: ist("2026-03-12T11:40:00") }));
+    expect(d.code).toBe("claim_wrong_state");
+  });
+
+  it("a settlement dated after today in IST refuses; today in IST is accepted even while UTC is still on yesterday", async () => {
+    const { admissionId, patientId } = await schemeStay();
+    const [claim] = await claimsOf(admissionId);
+    await attach(admissionId, patientId);
+    await submit(claim!.id, "2026-03-12T10:00:00");
+    const settle = (settledOn: string, at: string) => recordClaimSettlement(db, tpa, {
+      idempotencyKey: key(), claimId: claim!.id, netPaidPaise: 2_700_000, tdsPaise: 300_000, deductions: [], utrRef: "UTR-FAKE-2", settledOn,
+    }, { now: ist(at) });
+    expect((await refusal(settle("2026-03-14", "2026-03-13T23:00:00"))).code).toBe("time_in_future");
+    // 02:00 IST on the 13th is still the 12th in UTC: the 13th is today, not the future.
+    await expect(settle("2026-03-13", "2026-03-13T02:00:00")).resolves.toMatchObject({ outcome: "settled" });
   });
 });

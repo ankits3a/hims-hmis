@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { IPD_CLAIM_REQUIRED_DOCUMENTS, IPD_INTENTS, ipdIsInFuture, newId } from "@hmis/contracts";
+import { istDayString } from "../../kernel/approvals/cumulative";
 import { withTx } from "../../kernel/db/client";
 import {
   ipdAdmissionPackages, ipdClaimDeductions, ipdClaimEvents, ipdPayerClaims, ipdSchemePackages, ipdTpaDocuments, ipdTpaQueries,
@@ -41,6 +42,8 @@ const SCHEME_KINDS = new Set(["pmjay", "state_scheme"]);
 async function claimOfAdmission(db: Db | Tx, claimId: string, admissionId: string) {
   const c = (await db.select().from(ipdPayerClaims).where(eq(ipdPayerClaims.id, claimId)))[0];
   if (c === undefined || c.admissionId !== admissionId) throw new IpdRefusal("claim_not_found");
+  // #604 review: a withdrawn claim (its bill was voided) takes no further query or document.
+  if (c.status === "withdrawn") throw new IpdRefusal("claim_wrong_state", undefined, { status: c.status });
   return c;
 }
 
@@ -88,7 +91,9 @@ export async function attachTpaDocument(db: Db, actor: Actor, raw: unknown, opts
   await requireIpdPermission(db, actor, IPD_PAYER_MANAGE);
   const at = opts.now ?? new Date();
   return onceIpd(db, actor, "attach_tpa_document", input.idempotencyKey, input, () => withTx(db, async (tx) => {
-    const a = await readAdmission(tx, input.admissionId);
+    // The admission lock serialises two attaches of one document (#604 review): the second reads the first and answers it,
+    // instead of tripping the live unique index.
+    const a = await lockAdmission(tx, input.admissionId);
     const doc = (await tx.select({ patientId: patientDocuments.patientId, status: patientDocuments.status }).from(patientDocuments)
       .where(eq(patientDocuments.id, input.patientDocumentId)))[0];
     if (doc?.patientId !== a.patientId || doc.status !== "active") throw new IpdRefusal("tpa_document_invalid", undefined, { documentId: input.patientDocumentId });
@@ -266,6 +271,8 @@ export async function recordClaimSettlement(db: Db, actor: Actor, raw: unknown, 
   const input: Input<"record_claim_settlement"> = IPD_INTENTS.record_claim_settlement.input.parse(raw);
   await requireIpdPermission(db, actor, IPD_PAYER_TERMS);
   const at = opts.now ?? new Date();
+  // #604 review: the advice's date is an IST calendar day — never after today in IST.
+  if (input.settledOn > istDayString(at)) throw new IpdRefusal("time_in_future", undefined, { settledOn: input.settledOn, todayIst: istDayString(at) });
   return onceIpd(db, actor, "record_claim_settlement", input.idempotencyKey, input, () => withTx(db, async (tx) => {
     const { a, c } = await lockClaim(tx, input.claimId);
     if (c.status !== "filed") throw new IpdRefusal("claim_wrong_state", undefined, { status: c.status });
