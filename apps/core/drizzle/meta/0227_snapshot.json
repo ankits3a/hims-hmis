@@ -1,5 +1,5 @@
 {
-  "id": "784030ec-4e43-4f43-b9da-dcd7f1fa8223",
+  "id": "8095b8de-450d-4340-819b-674b5d89edee",
   "prevId": "c924f1c8-071c-47ba-98f3-1df38f9e67bb",
   "version": "7",
   "dialect": "postgresql",
@@ -59943,6 +59943,12 @@
         "draft_id": {
           "name": "draft_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "draft_edited": {
+          "name": "draft_edited",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": false
         }

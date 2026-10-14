@@ -21,6 +21,7 @@ CREATE TABLE "ipd_copilot_drafts" (
 --> statement-breakpoint
 ALTER TABLE "ipd_discharge_summaries" ADD COLUMN "draft_id" text;--> statement-breakpoint
 ALTER TABLE "ipd_shift_handovers" ADD COLUMN "draft_id" text;--> statement-breakpoint
+ALTER TABLE "ipd_shift_handovers" ADD COLUMN "draft_edited" boolean;--> statement-breakpoint
 ALTER TABLE "ipd_copilot_drafts" ADD CONSTRAINT "ipd_copilot_drafts_admission_id_ipd_admissions_id_fk" FOREIGN KEY ("admission_id") REFERENCES "public"."ipd_admissions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ipd_copilot_drafts" ADD CONSTRAINT "ipd_copilot_drafts_patient_id_patients_id_fk" FOREIGN KEY ("patient_id") REFERENCES "public"."patients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "ipd_copilot_drafts_current_idx" ON "ipd_copilot_drafts" USING btree ("admission_id","kind","scope_key","built_at");
