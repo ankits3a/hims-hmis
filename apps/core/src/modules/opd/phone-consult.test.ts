@@ -144,7 +144,10 @@ describe("phone consult — sets and the spoken note", () => {
       expect(seen[0]!.signedByName).not.toBeNull();
 
       // What was signed is what is shown: an edit clears the signature and hides it again.
-      await withTx(db, (tx) => saveRxSet(tx, drb.actor, { id: setId, scope: "department", name: "URTI — adult", body: body([PARA, { ...PARA, drug: "Cetirizine 10 mg Tablet", frequency: "HS" }]) }));
+      // #610 — once signed, the set is the unit head's to change: its drafter can no longer write over it.
+      await expect(withTx(db, (tx) => saveRxSet(tx, drb.actor, { id: setId, scope: "department", name: "URTI — adult", body: body([PARA]) })))
+        .rejects.toMatchObject({ code: "unknown_rx_set" });
+      await withTx(db, (tx) => saveRxSet(tx, dra.actor, { id: setId, scope: "department", name: "URTI — adult", body: body([PARA, { ...PARA, drug: "Cetirizine 10 mg Tablet", frequency: "HS" }]) }));
       expect((await listRxSets(db, drc.actor)).items).toEqual([]);
     });
 
