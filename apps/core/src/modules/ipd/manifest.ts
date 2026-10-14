@@ -131,6 +131,8 @@ export const ipdManifest: ModuleManifest = {
     // E4.3 (#735) — the ward MAR chart (16:9) and the pharmacist's verify queue (desktop).
     { label: "MAR", path: "/ipd/mar", permission: IPD_EMAR_VIEW },
     { label: "IP pharmacy", path: "/ipd/pharmacy", permission: IPD_EMAR_VERIFY },
+    // 2026-10-14 — the ward narcotic register (NDPS / NABH): balances, the two-nurse shift count, exceptions.
+    { label: "Narcotics", path: "/ipd/narcotics", permission: IPD_EMAR_VIEW },
   ],
   permissions: [
     IPD_BEDS_VIEW, IPD_BEDS_MANAGE, IPD_BEDS_CLEAN, IPD_BEDS_OVERFLOW, IPD_ADMIT_REQUEST, IPD_ADMIT, IPD_PAYER_MANAGE, IPD_BAND_PRINT,
