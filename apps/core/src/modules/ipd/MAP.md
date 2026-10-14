@@ -1058,12 +1058,14 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   unresolved mismatch is not agreed: the next shift's count differs again, so a discrepancy keeps surfacing until closed.
   A count's own expected uses the SAME cut (`wardNarcoticBalances(…, { cut: at })`: rows written after the count's
   instant are left out) — review 2026-10-14: without it a dose stamped after the count's instant but committed before the
-  count read the register was counted twice. Residual race (not closed): a row stamped before the count's instant that
-  commits after the count read the register is on no balance; the next count shows it as a mismatch.
+  count read the register was counted twice. EVERY register write goes through `insertNarcoticRows`: it takes the
+  ward's advisory lock SHARED (the count and the resolution take it EXCLUSIVE, `lockNarcoticWard`) and restamps a row
+  whose `recorded_at` is not after the ward's latest count to that count's instant + 1 ms (`at` is never changed) — so a
+  row is either seen by a count or on the balance after it, never on none.
 - COUNT: the counting nurse (`ipd.emar.give`) + a second nurse by own username + PIN (the eMAR's atomic PIN throttle; a
   nursing role; never the same person). Every drug with expected ≠ 0 must be counted (`narcotic_count_incomplete`); a drug
   counted twice is refused the same way. The ward's advisory lock (`ipd.narcotic.ward:<id>`) serialises counts and
-  resolutions of one ward. A mismatch: one notice per drug to the nursing fallback chain (supervisor → superintendent →
+  resolutions of one ward (exclusive) against every register write (shared). A mismatch: one notice per drug to the nursing fallback chain (supervisor → superintendent →
   duty manager) AND every active `pharmacy` role holder (not the two counters), and `ipd.narcotic.count_mismatch`.
   The PIN is never stored, not even inside the idempotency store's body hash. `countDue` is false when
   the ward was counted this shift or in the 30 minutes before it began (the handover count).

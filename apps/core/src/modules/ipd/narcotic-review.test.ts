@@ -11,7 +11,7 @@ import { ensureRole, mkUser } from "../../../test/helpers/opd";
 import { admissionPlace } from "./admission-place";
 import {
   IpdRefusal, administerDose, followNarcoticsIn, ipdManifest, issueMed, placeIpOrder, readNarcoticWard, recordNarcoticCount,
-  resolveNarcoticException, secondCheck, verifyOrder,
+  resolveNarcoticException, returnMed, secondCheck, verifyOrder,
 } from "./index";
 import type { Db } from "../../kernel/db/client";
 import type { EmarWorld } from "../../../test/helpers/ipd";
@@ -25,7 +25,8 @@ import type { Actor } from "@hmis/contracts";
  *   3. the second nurse's PIN is never stored, not even inside the idempotency store's body hash;
  *   4. a count a few minutes before a shift began left the new shift "count due" all shift;
  *   5. after a move capped by a short ward, the patient's remainder stayed "theirs" on the old ward and a LATER move (or
- *      a replay of the same move) swept it again — out of another patient's units.
+ *      a replay of the same move) swept it again — out of another patient's units;
+ *   6. a register row stamped BEFORE a count's instant but committed AFTER the count read the register was on no balance.
  * Explicit IST instants; nothing reads the real clock.
  */
 jest.setTimeout(300_000);
@@ -73,7 +74,7 @@ describe("ward narcotic register — review fixes", () => {
     supervisor = (await mkUser(db, "emar.supervisor", ["nursing_supervisor"])).actor;
   });
 
-  async function morphine(): Promise<{ admissionId: string; orderId: string; medicineId: string; labelCode: string; band: string; wardId: string }> {
+  async function morphine(): Promise<{ admissionId: string; issueId: string; orderId: string; medicineId: string; labelCode: string; band: string; wardId: string }> {
     const { admissionId } = await w.admitMed(ist("2026-03-10T10:00:00"));
     const med = await w.stocked("Morphine 10 mg/ml inj", { narcotic: true, form: "injection", strength: "10 mg/ml", baseUom: "ampoule" });
     const placed = await placeIpOrder(db, w.consultant, {
@@ -84,7 +85,7 @@ describe("ward narcotic register — review fixes", () => {
     const issued = await issueMed(db, w.pharmacist, { idempotencyKey: key(), orderId: placed.orderId, units: 4, ownMedicine: false }, { now: H("07:40:00") });
     const labelCode = (await db.select().from(ipdEmarLabels).where(eq(ipdEmarLabels.issueId, issued.issueId)))[0]!.code;
     const wardId = (await admissionPlace(db, admissionId))!.wardId!;
-    return { admissionId, orderId: placed.orderId, medicineId: med.medicineId, labelCode, band: await w.band(admissionId), wardId };
+    return { admissionId, issueId: issued.issueId, orderId: placed.orderId, medicineId: med.medicineId, labelCode, band: await w.band(admissionId), wardId };
   }
   const count = (by: Actor, wardId: string, medicineId: string, counted: number, at: Date) =>
     recordNarcoticCount(db, by, {
@@ -184,5 +185,15 @@ describe("ward narcotic register — review fixes", () => {
     expect(await withTx(db, (tx) => followNarcoticsIn(tx, w.nurse, x.admissionId, H("12:30:00"), { moveId: "T1", fromBedId: fromBed }))).toBe(0);
     expect(await med()).toMatchObject({ transferredOut: 3, expected: 4 });
     expect(await sur()).toMatchObject({ transferredIn: 3, expected: 3 });
+  });
+
+  it("a row stamped before a count's instant but committed after the count is on the next balance, never lost", async () => {
+    const m = await morphine();
+    // The count (09:00) commits first and agrees 4.
+    expect((await count(w.nurse, m.wardId, m.medicineId, 4, H("09:00:00"))).lines[0]).toMatchObject({ expected: 4, variance: 0 });
+    // A return stamped 08:59 commits after it (its request began before the count's, its transaction ended after).
+    await returnMed(db, w.pharmacist, { idempotencyKey: key(), issueId: m.issueId, units: 1, reason: "Order changed" }, { now: H("08:59:00") });
+    const view = await readNarcoticWard(db, w.nurse, { wardId: m.wardId, now: H("09:10:00") });
+    expect(view.drugs[0]).toMatchObject({ opening: 4, returned: 1, expected: 3 });
   });
 });
