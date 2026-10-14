@@ -12,6 +12,7 @@ import {
 } from "../lib/passes-api";
 import "../styles/paper-pine.css";
 import "./passes.css";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * E1.3 (#720) — PASSES AT THE ADMISSION DESK (SPEC-ipd-companions §8, §10). Left: the admitted patients (bed, ward).
@@ -31,7 +32,7 @@ const refusalText = (e: unknown): Refusal => {
   return r !== null ? { rule: r.rule, fix: r.fix } : { rule: e instanceof Error ? e.message : String(e) };
 };
 const timeIst = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+  new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 
 /** The paper pass: who it is for, whom it lets in, where, until when — and the QR of the token. */
 export function PassCardPrint({ card }: { card: PassCard }): React.ReactElement {
