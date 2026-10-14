@@ -10,6 +10,7 @@ import { acceptShiftHandover, getHandoverDraft, getMyShift, getShiftHandovers, g
 import { buildSbarDraft } from "../lib/ipd-copilot-api";
 import type { SbarText } from "../lib/ipd-nursing-api";
 import { getDue, scan } from "../lib/ipd-emar-api";
+import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { Bedside, DueDoses, ScanBox } from "./ipd-emar-bedside";
 import { LiveLine, VitalsForm, ageFromAgeSex, dueWords, savedWords, useLiveLoad, useNight } from "./ipd-nursing-shared";
 import type { T } from "./ipd-nursing-shared";
@@ -41,7 +42,8 @@ export function IpdMyShift(): React.ReactElement {
   const [due, setDue] = useState<IpdEmarDueList | null>(null);
   const [scanRefusal, setScanRefusal] = useState<string | null>(null);
   const [error, setError] = useState<"forbidden" | null>(null);
-  const [wardId, setWardId] = useState<string | null>(null);
+  const pick = useWardChoice();
+  const wardId = pick.wardId;
   const [mode, setMode] = useState<Mode>({ kind: "list" });
   const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -56,13 +58,15 @@ export function IpdMyShift(): React.ReactElement {
   const [night, flipNight] = useNight(shift?.night);
 
   const patient = mode.kind === "vitals" ? shift?.patients.find((p) => p.identity.admissionId === mode.admissionId) ?? null : null;
+  // Nothing remembered and more than one ward: ask, never show the server's first ward as "mine".
+  const asking = shift !== null && pick.needsPick(shift.wards);
   const toAccept = (handovers?.handovers ?? []).filter((h) => !h.givenByViewer);
 
   return (
     <main className={`ipdn ipdn-phone${night ? " night" : ""}`} data-testid="ipd-my-shift">
       <header className="ipdn-phead">
         <div className="ipdn-prow">
-          <b className="ipdn-wardname">{shift?.ward?.name ?? t("ipdNursing.shiftPage.title")}</b>
+          <b className="ipdn-wardname">{(asking ? null : shift?.ward?.name) ?? t("ipdNursing.shiftPage.title")}</b>
           <button type="button" className="ipdn-btn sm" aria-pressed={night} onClick={flipNight} data-testid="ipdn-night-toggle">{night ? "☾" : "☀"}<span className="sr">{night ? t("ipdNursing.night") : t("ipdNursing.day")}</span></button>
         </div>
         {shift !== null ? (
@@ -73,11 +77,7 @@ export function IpdMyShift(): React.ReactElement {
         ) : null}
         <LiveLine online={live.online} lastUpdate={live.lastUpdate} />
         {shift !== null && shift.wards.length > 1 ? (
-          <nav className="ipdn-chips" aria-label={t("ipdNursing.ward.wards")}>
-            {shift.wards.map((w) => (
-              <button key={w.id} type="button" className="ipdn-chip" aria-pressed={shift.ward?.id === w.id} onClick={() => setWardId(w.id)}>{w.code}</button>
-            ))}
-          </nav>
+          <WardPicker wards={shift.wards} value={asking ? null : shift.ward?.id ?? null} onChange={pick.choose} />
         ) : null}
       </header>
       {notice === null ? null : notice === t("ipdNursing.noDoctorReached")
@@ -87,7 +87,8 @@ export function IpdMyShift(): React.ReactElement {
       {error === "forbidden" ? <div className="ipdn-empty" role="alert">{t("ipdNursing.forbidden")}</div> : null}
       {shift === null && error === null ? <div className="ipdn-empty">{t("ipdNursing.loading")}</div> : null}
 
-      {mode.kind === "list" && shift !== null ? (
+      {asking ? <PickWardPrompt className="ipdn-empty" /> : null}
+      {mode.kind === "list" && shift !== null && !asking ? (
         <>
           {due !== null ? <DueDoses items={due.items} now={now} onOpen={(id) => { setNotice(null); setMode({ kind: "bedside", admissionId: id, band: null }); }} /> : null}
           <section aria-label={t("ipdNursing.shiftPage.now")}>
@@ -156,9 +157,11 @@ export function IpdMyShift(): React.ReactElement {
           {can("ipd.emar.give") ? (
             <button type="button" className="ipdn-btn pri wide ipde-scanbtn" onClick={() => { setScanRefusal(null); setMode({ kind: "scan" }); }} data-testid="ipde-scan-open">⌗ {t("ipdEmar.scan")}</button>
           ) : null}
-          <button type="button" className="ipdn-btn wide" onClick={() => setMode({ kind: "handover" })} data-testid="ipdn-handover-open">
-            {t("ipdNursing.handover.ready", { count: shift.patients.length })}{toAccept.length > 0 ? ` · ${t("ipdNursing.handover.toAccept", { count: toAccept.length })}` : ""}
-          </button>
+          {asking ? null : (
+            <button type="button" className="ipdn-btn wide" onClick={() => setMode({ kind: "handover" })} data-testid="ipdn-handover-open">
+              {t("ipdNursing.handover.ready", { count: shift.patients.length })}{toAccept.length > 0 ? ` · ${t("ipdNursing.handover.toAccept", { count: toAccept.length })}` : ""}
+            </button>
+          )}
         </footer>
       ) : null}
     </main>

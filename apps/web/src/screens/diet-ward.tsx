@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PaperScreen } from "../components/paper-screen";
+import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { useAuth } from "../lib/auth";
 import { istWallToIso } from "../lib/opd-api";
 import {
@@ -14,14 +15,11 @@ import "./diet.css";
 /**
  * ═══ E4.4 DIET (issue #736) — THE WARD DIET SHEET (390 px first, Hindi first) ═══
  *
- * Pick the ward once (remembered on this device). One card per bed: the patient (the alias for a sealed patient), the
+ * Pick the ward once (remembered per user on this device, the same picker and labels as every IPD ward screen). One card per bed: the patient (the alias for a sealed patient), the
  * diet in force, NPO in red with its window, allergies in red, "no order" when the kitchen sends a normal tray by
  * default, and the next meal's tray. What a person may do follows their permissions: a doctor or dietician orders a
  * diet; a nurse sets or lifts NPO (and never sees "Order diet"); the ward taps a dispatched tray delivered or refused.
  */
-const WARD_KEY = "hmis.diet.ward";
-const readWard = (): string => { try { return localStorage.getItem(WARD_KEY) ?? ""; } catch { return ""; } };
-const keepWard = (id: string): void => { try { localStorage.setItem(WARD_KEY, id); } catch { /* private window */ } };
 const PREFS: readonly DietPreference[] = ["veg", "non_veg", "jain"];
 
 function Two({ k, o }: { k: string; o?: Record<string, unknown> }): React.ReactElement {
@@ -37,18 +35,19 @@ function Two({ k, o }: { k: string; o?: Record<string, unknown> }): React.ReactE
 export function DietWard(): React.ReactElement {
   const { t } = useTranslation();
   const wardsQ = useQuery({ queryKey: ["diet", "wards"], queryFn: fetchDietWards });
-  const [wardId, setWardId] = useState<string>(readWard);
-  const ward = wardId !== "" ? wardId : (wardsQ.data?.[0]?.id ?? "");
+  const pick = useWardChoice();
+  const wards = wardsQ.data ?? [];
+  // One ward: that one. Several: the one this person last picked, or ask — never the list's first ward.
+  const ward = wards.length === 1 ? wards[0]!.id : pick.wardId !== null && wards.some((w) => w.id === pick.wardId) ? pick.wardId : "";
+  const asking = wardsQ.data !== undefined && pick.needsPick(wards);
   const sheetQ = useQuery({ queryKey: ["diet", "sheet", ward], queryFn: () => fetchWardSheet(ward), enabled: ward !== "", refetchInterval: 30_000 });
   const sheet = sheetQ.data;
   return (
     <PaperScreen testId="diet-ward">
       <div className="dw-phone">
         <h1>{t("diet.ward.title")}</h1>
-        <select aria-label={t("diet.ward.pickWard")} value={ward} data-testid="dw-ward"
-          onChange={(e) => { setWardId(e.target.value); keepWard(e.target.value); }}>
-          {(wardsQ.data ?? []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-        </select>
+        {wards.length > 1 ? <WardPicker wards={wards} value={ward === "" ? null : ward} onChange={pick.choose} testId="dw-ward" /> : null}
+        {asking ? <PickWardPrompt className="dk-empty" /> : null}
         {sheet !== undefined && (
           <p className="dw-next" data-testid="dw-next">
             {t("diet.ward.next", { meal: t(`diet.meal.${sheet.next.meal}`), state: t(`diet.listState.${sheet.next.state}`) })}

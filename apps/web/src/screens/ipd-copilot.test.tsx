@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError, setToken } from "../lib/api";
+import { keepLastWard } from "../components/ward-picker";
 import { renderWithRouter } from "../test-utils";
 import { IpdDischarge } from "./ipd-discharge";
 import { IpdMyShift } from "./ipd-my-shift";
@@ -51,11 +52,12 @@ const reworded: IpdSinceYesterday = {
 const PERMS = ["ipd.round.sign", "ipd.nursing.view", "ipd.vitals.record", "ipd.handover.shift", "ipd.discharge.view", "ipd.discharge.declare"];
 
 beforeEach(() => {
+  keepLastWard(null, fid(900)); // the nurse has picked her ward before (ward-picker.tsx)
   setToken("stub-token");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: PERMS, scoped: { department: {}, floor: {} } } }), { status: 200 })));
   for (const f of [...Object.values(copilot), ...Object.values(nursing), ...Object.values(discharge)]) f.mockReset();
 });
-afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+afterEach(() => { localStorage.removeItem("hmis.ward.last"); vi.unstubAllGlobals(); setToken(null); });
 
 describe("Since yesterday (E5.3)", () => {
   it("draws the record's lines at once, each with a source chip that opens its records; the model's copy arrives later", async () => {

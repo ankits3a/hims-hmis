@@ -6,6 +6,7 @@ import type React from "react";
 import type {
   IpdAdmissionView, IpdAdvice, IpdBandPayload, IpdBedClass, IpdBedProposal, IpdClassQuote, IpdPayerKind, IpdRefusalBody,
 } from "@hmis/contracts";
+import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { fmtIst, fmtRupees } from "../lib/format";
 import { searchPatients } from "../lib/patients-api";
@@ -84,7 +85,7 @@ function PatientFind({ onPick }: { onPick: (p: WirePatientHit) => void }): React
   }, [q]);
   return (
     <div className="ipda-find">
-      <input aria-label={t("ipdAdmit.findPatient")} placeholder={t("ipdAdmit.findPatient")} value={q} onChange={(e) => setQ(e.target.value)} />
+      <input aria-label={t("ipdAdmit.findPatient")} placeholder={t("ipdAdmit.findShort")} value={q} onChange={(e) => setQ(e.target.value)} />
       {hits.length > 0 ? (
         <ul className="ipda-hits">
           {hits.map((h) => (
@@ -165,7 +166,14 @@ export function IpdAdmit(): React.ReactElement {
   const [error, setError] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const reloadList = useCallback(() => { listAdmissions().then(setList, () => setList([])); }, []);
+  /* IPD walk 2026-10-14: a refused or failed list used to read "Open requests (0)" — an empty desk, not a closed one. */
+  const [listError, setListError] = useState<"forbidden" | "failed" | null>(null);
+  const reloadList = useCallback(() => {
+    listAdmissions().then((xs) => { setList(xs); setListError(null); }, (e: unknown) => {
+      setList([]);
+      setListError(e instanceof ApiError && e.status === 403 ? "forbidden" : "failed");
+    });
+  }, []);
   useEffect(() => { reloadList(); }, [reloadList]);
 
   const loadAdmission = useCallback((id: string) => {
@@ -255,7 +263,7 @@ export function IpdAdmit(): React.ReactElement {
         </div>
         <div className="ipda-tools">
           <select aria-label={t("ipdAdmit.openRequests")} value={selId ?? ""} onChange={(e) => { setMode("sheet"); setSelId(e.target.value === "" ? null : e.target.value); }}>
-            <option value="">{t("ipdAdmit.pickRequest", { n: list.length })}</option>
+            <option value="">{listError === null ? t("ipdAdmit.pickRequest", { n: list.length }) : t("ipdAdmit.openRequests")}</option>
             {list.map((a) => (
               <option key={a.id} value={a.id}>
                 {`${a.patient.name ?? a.patient.uhid} · ${a.patient.uhid} · ${t(`ipdAdmit.state.${a.state}`)}${a.incomplete.length > 0 ? ` · ${t("ipdAdmit.incomplete")}` : ""}`}
@@ -273,7 +281,14 @@ export function IpdAdmit(): React.ReactElement {
       {mode === "emergency" ? <EmergencyLane onDone={(id) => { reloadList(); setMode("sheet"); setSelId(id); }} /> : null}
       {mode === "downtime" ? <DowntimeBackfill onDone={(id) => { reloadList(); setMode("sheet"); setSelId(id); }} /> : null}
 
-      {mode === "sheet" && selected === null ? (
+      {mode === "sheet" && selected === null && listError !== null ? (
+        <section className="ipda-card ipda-empty" role="alert" data-testid="ipda-list-error">
+          <b>{t(listError === "forbidden" ? "ipdAdmit.listForbidden" : "ipdAdmit.listFailed")}</b>
+          {listError === "failed" ? <button type="button" className="ipda-btn sm" onClick={reloadList}>{t("ipdAdmit.retry")}</button> : null}
+        </section>
+      ) : null}
+
+      {mode === "sheet" && selected === null && listError === null ? (
         <section className="ipda-card ipda-empty">
           <b>{t("ipdAdmit.emptyTitle")}</b>
           <span>{t("ipdAdmit.emptySub")}</span>

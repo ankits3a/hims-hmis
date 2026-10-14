@@ -9,6 +9,7 @@ import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { acknowledgeEws, addNote, getChart, getStation, recordAssessment, recordIntakeOutput } from "../lib/ipd-nursing-api";
 import type { AssessmentInput } from "../lib/ipd-nursing-api";
+import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { LiveLine, ScoreBadge, VitalsForm, ageFromAgeSex, dueWords, savedWords, spanWords, useLiveLoad, useNight } from "./ipd-nursing-shared";
 import type { T } from "./ipd-nursing-shared";
 import "./ipd-nursing.css";
@@ -36,7 +37,8 @@ export function IpdWard(): React.ReactElement {
   const [error, setError] = useState<"forbidden" | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [needsMe, setNeedsMe] = useState<boolean | null>(null);
-  const wardId = search.ward ?? null;
+  const pick = useWardChoice(search.ward ?? null);
+  const wardId = pick.wardId;
 
   const load = useCallback(() => getStation(wardId).then(
     (s) => { setStation(s); setError(null); setNow(Date.now()); },
@@ -50,6 +52,8 @@ export function IpdWard(): React.ReactElement {
     void navigate({ to: "/ipd/ward", search: { ...(search.ward ? { ward: search.ward } : {}), ...(search.admission ? { admission: search.admission } : {}), ...next } as never });
   };
 
+  // A person with nothing remembered and more than one ward is asked, never shown the server's first ward.
+  const asking = station !== null && pick.needsPick(station.wards);
   const beds = useMemo(() => station?.beds ?? [], [station]);
   const sortNeeds = needsMe ?? beds.length > NEEDS_ME_DEFAULT_ABOVE;
   const shown = useMemo(() => (sortNeeds
@@ -61,7 +65,7 @@ export function IpdWard(): React.ReactElement {
     <main className={`ipdn ipdn-ward${night ? " night" : ""}`} data-testid="ipd-ward">
       <header className="ipdn-head">
         <div className="ipdn-title">
-          <h1>{station?.ward?.name ?? t("ipdNursing.ward.title")}</h1>
+          <h1>{(asking ? null : station?.ward?.name) ?? t("ipdNursing.ward.title")}</h1>
           {station !== null ? (
             <span className="dim">{t(`ipdNursing.shift.${station.shift.key}`)} · {fmtIst(station.shift.startsAt)}–{fmtIst(station.shift.endsAt)}</span>
           ) : null}
@@ -77,20 +81,15 @@ export function IpdWard(): React.ReactElement {
         </div>
       </header>
       {station !== null && station.wards.length > 1 ? (
-        <nav className="ipdn-chips" aria-label={t("ipdNursing.ward.wards")}>
-          {station.wards.map((w) => (
-            <button key={w.id} type="button" className="ipdn-chip" aria-pressed={station.ward?.id === w.id} onClick={() => setSearch({ ward: w.id, admission: undefined })}>
-              {w.name}
-            </button>
-          ))}
-        </nav>
+        <WardPicker wards={station.wards} value={asking ? null : station.ward?.id ?? null} onChange={(id) => { pick.choose(id); setSearch({ ward: id, admission: undefined }); }} />
       ) : null}
-      {station !== null ? <TopBar s={station} t={t as T} /> : null}
+      {asking ? <PickWardPrompt className="ipdn-empty" /> : null}
+      {station !== null && !asking ? <TopBar s={station} t={t as T} /> : null}
       {error === "forbidden" ? <div className="ipdn-empty" role="alert">{t("ipdNursing.forbidden")}</div> : null}
       {station === null && error === null ? <div className="ipdn-empty">{t("ipdNursing.loading")}</div> : null}
-      {station !== null && station.ward === null ? <div className="ipdn-empty">{t("ipdNursing.ward.noWard")}</div> : null}
+      {station !== null && station.ward === null && !asking ? <div className="ipdn-empty">{t("ipdNursing.ward.noWard")}</div> : null}
       <section className="ipdn-grid" aria-label={t("ipdNursing.ward.beds")}>
-        {shown.map((b) => <BedCard key={b.bedId} b={b} now={now} onOpen={(id) => setSearch({ admission: id })} onDone={() => void load().catch(() => undefined)} />)}
+        {asking ? null : shown.map((b) => <BedCard key={b.bedId} b={b} now={now} onOpen={(id) => setSearch({ admission: id })} onDone={() => void load().catch(() => undefined)} />)}
       </section>
       {open !== null && open.patient !== null ? (
         <ChartDrawer bed={open} onClose={() => setSearch({ admission: undefined })} onChanged={() => void load().catch(() => undefined)} />

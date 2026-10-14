@@ -6,7 +6,7 @@ import type {
   BedCleanView, BedTicketView, IpdBedBoard, IpdBedClass, IpdBoardBed, IpdBoardBedStatus, IpdBoardFloor, IpdBoardWard, IpdRefusalBody, IpdWaitingCard,
 } from "@hmis/contracts";
 import { useAuth } from "../lib/auth";
-import { dateLocale } from "../lib/date-locale";
+import { istDayLabel } from "../lib/ist-date";
 import { fmtIst } from "../lib/format";
 import { realtimeClient, useRealtime } from "../lib/realtime";
 import {
@@ -85,9 +85,6 @@ function repairLine(r: BedTicketView, t: T, short = false): string {
 /** The blockers list shows this many slow cleans, then "+N more" (the right column never grows a page scroll). */
 const SLOW_SHOWN = 4;
 
-// IPD/ER train B1 — main's #803 guard: the named weekday and month follow the language (#801 brings the shared label).
-const istDate = (d: Date): string =>
-  new Intl.DateTimeFormat(dateLocale(), { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short" }).format(d);
 const istSeconds = (d: Date): string =>
   new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d);
 
@@ -97,7 +94,7 @@ function orderedBeds(w: IpdBoardWard): IpdBoardBed[] {
 }
 
 export function IpdBeds(): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { can } = useAuth();
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { wall?: string | number | boolean };
@@ -255,7 +252,7 @@ export function IpdBeds(): React.ReactElement {
       <header className="ipdb-head">
         <div className="ipdb-title">
           <h1>{t("ipdBeds.title")}</h1>
-          <span>{floor ? floor.name : t("ipdBeds.allFloors")} · {istDate(new Date(now))} · {fmtIst(new Date(now).toISOString())}</span>
+          <span>{floor ? floor.name : t("ipdBeds.allFloors")} · {istDayLabel(new Date(now), i18n.language)} · {fmtIst(new Date(now).toISOString())}</span>
         </div>
         <div className="ipdb-tools">
           {wall ? null : (
@@ -367,7 +364,7 @@ export function IpdBeds(): React.ReactElement {
             )}
             {floors.map((f) => (
               <button key={f.id} type="button" className="ipdb-chip" aria-pressed={floor?.id === f.id} onClick={() => setFloorId(f.id)}>
-                {f.name} <span className="mono">{f.census.occupied}/{f.census.total}</span>
+                {f.name}{f.census.total > 0 ? <> <span className="mono">{f.census.occupied}/{f.census.total}</span></> : null}
               </button>
             ))}
           </div>
@@ -379,10 +376,7 @@ export function IpdBeds(): React.ReactElement {
             <div className="ipdb-floorlist" data-testid="ipd-beds-floor">
               {shown.map((f) => (
                 <div key={f.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div className="ipdb-floorhead">
-                    <span>{f.name}</span>
-                    <span>{t("ipdBeds.floorCount", { occupied: f.census.occupied, total: f.census.total })}</span>
-                  </div>
+                  <FloorHead f={f} t={t as T} />
                   <div className="ipdb-wards">
                     {f.wards.map((w) => <WardCard key={w.id} ward={w} cleans={cleans} tickets={tickets} onOpen={() => { setWardId(w.id); setBedId(null); }} />)}
                   </div>
@@ -456,6 +450,24 @@ export function IpdBeds(): React.ReactElement {
           mayTransfer={!wall && can("ipd.transfer.start")} mayClass={!wall && can("ipd.admit")}
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * IPD walk 2026-10-14 — a floor's heading says its census beds AND its beds outside the census, each in words. The
+ * ground floor holds only day care and emergency, so it read "0 / 0 beds" above 120 beds marked "Not in census".
+ */
+function FloorHead({ f, t }: { f: IpdBoardFloor; t: T }): React.ReactElement {
+  const outside = f.wards.filter((w) => !w.inCensus);
+  const out = outside.reduce((a, w) => ({ occupied: a.occupied + w.counts.occupied + w.counts.incumbent, total: a.total + w.counts.total }), { occupied: 0, total: 0 });
+  const parts: string[] = [];
+  if (f.census.total > 0 || out.total === 0) parts.push(out.total > 0 ? t("ipdBeds.floorCensus", { occupied: f.census.occupied, total: f.census.total }) : t("ipdBeds.floorCount", { occupied: f.census.occupied, total: f.census.total }));
+  if (out.total > 0) parts.push(t("ipdBeds.floorOutside", { occupied: out.occupied, total: out.total }));
+  return (
+    <div className="ipdb-floorhead" data-testid={`ipdb-floorhead-${f.id}`}>
+      <span>{f.name}</span>
+      <span className={f.census.total === 0 && out.total > 0 ? "outside" : undefined}>{parts.join(" · ")}</span>
     </div>
   );
 }
