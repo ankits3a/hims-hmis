@@ -31,6 +31,12 @@ that are in medical college and hospital."*
 - Ward issue comes from the main pharmacy store (PHARM-OPD). A separate inpatient store is a later setup step,
   not a code change.
 
+### Pharmacy counter sale charged to an admission (PR #796)
+- A medicine with no price is refused at the counter (a ward issue instead raises a bill-desk exception).
+- No counter discount applies to a sale charged to the admission; only the item's standing discount.
+- A settled final bill refuses a counter sale; later medicines reach the supplementary bill through a ward issue.
+- Returns are accepted after discharge, as ward returns are, and credit at the sale's own price.
+
 ### Price-list revisions
 - A tariff revision keeps two people: the billing manager approves the draft, the owner activates it with a start
   date. This is the rule built today.
