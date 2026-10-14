@@ -78,6 +78,8 @@ export type IpdErrorCode =
    * stay_ended); no such link or callback; the public side's refusals (closed link, OTP limits, wrong or stale code, no
    * session, the attendant's phone changed since issue, the SMS could not be sent). */
   | "family_link_refused"
+  /** #761 — consent or stop for the daily totals refused (`detail.reason`: stay_ended, no_attendant_phone). */
+  | "attendant_messages_refused"
   | "family_link_not_found"
   | "family_callback_not_found"
   | "family_link_closed"

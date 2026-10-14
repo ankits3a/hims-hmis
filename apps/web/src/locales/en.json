@@ -17733,6 +17733,13 @@
       "waive": "Waive",
       "done": "Backdated visit settled",
       "failed": "Could not save — try again"
+    },
+    "dailyTotals": {
+      "label": "Daily totals to attendants",
+      "title": "Daily totals to attendants · {{date}}",
+      "on": "Sending at {{hour}}:00",
+      "off": "Sending is off: template not configured",
+      "counts": "Sent {{sent}} · Waiting {{waiting}} · Not sent {{notSent}}"
     }
   },
   "ipdDischarge": {
@@ -19212,6 +19219,36 @@
       "reversal": "Given in error — back",
       "transfer_out": "Moved out",
       "transfer_in": "Moved in"
+    }
+  },
+  "ipdAttendant": {
+    "label": "Daily totals message",
+    "title": "Daily totals message",
+    "to": "Goes to",
+    "consent": "Consent",
+    "viaFamilyLink": "Given with the family link",
+    "last": "Last ({{date}})",
+    "consentedBy": "Consent given by",
+    "relation": "Relation",
+    "method": "How",
+    "verbal": "Verbal",
+    "paper": "On paper",
+    "record": "Record consent",
+    "stop": "Stop messages",
+    "actFailed": "Could not save — try again",
+    "kind": {
+      "guardian": "guardian",
+      "deposit_payer": "deposit payer"
+    },
+    "rel": {
+      "spouse": "Spouse",
+      "parent": "Parent",
+      "child": "Child",
+      "sibling": "Sibling",
+      "relative": "Relative",
+      "guardian": "Guardian",
+      "self": "Patient",
+      "other": "Other"
     }
   }
 }

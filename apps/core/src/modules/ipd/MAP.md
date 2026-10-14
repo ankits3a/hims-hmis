@@ -121,8 +121,16 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `depositLowCard` (the desk's `ipd.deposit_low` Now card, declared in `manifest.ts`). `billdesk.controller.ts` —
   `IPD_BILLDESK_ROUTES` (`GET /ipd/bill-desk`, `POST /ipd/admissions/:id/charges/retry`). `billdesk-events.ts`.
   `kernel/db/schema/ipd.ts` — `ipd_deposit_alerts` (migration `ipd_billdesk`). `packages/contracts/src/ipd/bill-desk.ts`.
-  `kernel/notify/templates.ts` — template `ipd.daily_totals` (held: `heldReason`), `kernel/notify/pump.ts` suppresses a held
-  template `template_pending`. Web: `apps/web/src/screens/ipd-bill-desk.tsx` (`/ipd/bill-desk`, nav "Bill desk").
+  `kernel/notify/templates.ts` — template `ipd.daily_totals` (#761: `recipient: "attendant"`, `requiresApprovedTemplate`).
+  Web: `apps/web/src/screens/ipd-bill-desk.tsx` (`/ipd/bill-desk`, nav "Bill desk").
+- (#761) `attendant-messages.ts` — the pump's ATTENDANT SEAM `ipdAttendantRecipient(cfg)` and the config switch
+  `ipdTemplateRegistrations(cfg)` (both installed by `kernel/worker/jobs.ts` on `runNotifyPump`), `dailyTotalsSendingOf`,
+  `dailyTotalsWords`, `readDailyTotalsStrip` (the bill desk's `dailyTotals`), `readAttendantMessages`, `recordAttendantConsent`,
+  `stopAttendantMessages`. Routes on `billdesk.controller.ts` (`IPD_BILLDESK_ROUTES.attendant*`). `kernel/db/schema/ipd.ts` —
+  `ipd_attendant_message_consents` (migration `ipd_attendant_messages`). Config `IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE`,
+  `IPD_DAILY_TOTALS_DLT_TEMPLATE_ID`, `IPD_BILL_DESK_PHONE` (`kernel/config.ts` `ipdDailyTotals`). Kernel seam:
+  `kernel/notify/pump.ts` `recipientResolvers`, `templateRegistrations`, `RecipientResolution`. Web:
+  `apps/web/src/screens/ipd-attendant-card.tsx` (on the interim bill), `apps/web/src/lib/ipd-attendant-api.ts`.
 
 - (E3.3) `family.ts` — staff side: `issueFamilyLink`, `revokeFamilyLink`, `setCondition` (word + family-off switch),
   `listFamilyCallbacks`, `closeFamilyCallback`, `readFamilyPanel`, `familyBlockOf`, the stop consumer `familyStopConsumer` /
@@ -591,15 +599,34 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   negative). NO line, diagnosis, ward, bed or doctor. Attendant (DECIDED): active guardian with a phone and bill authority,
   else the latest deposit payer recorded as a relative with a phone; travels as a reference (`attendant`, `attendantRef`),
   never a number. None → `ipd.daily_totals.skipped` `no_attendant_phone`; sealed (`sensitive_context`) → `sealed`, no row.
-  HELD: no approved WhatsApp template, no DLT id, and the pump addresses a patient row to the patient's phone — the pump
-  records every row `suppressed` / `template_pending`. G10 therefore measures nothing until the template is released.
-  DECIDED (review 10): keep held — RELEASE NEEDS AN ATTENDANT-RECIPIENT SEAM in kernel/notify (issue #761).
+  #761 (supersedes "held"): the row is queued for 09:00 IST (`scheduledFor`, `dailyTotalsSendAt`) and addressed through the
+  pump's attendant seam — `attendantRef` resolved to a phone at send time, never the patient's phone. It leaves ONLY as an
+  approved template named in config; otherwise `suppressed` / `template_pending` with no adapter call, and the bill desk shows
+  "Not sent: template not configured". See "Attendant seam" below.
 - BILL DESK: candidates from the facts (live ladder rows, open charge exceptions, unchecked downtime deposits, denial
   entries, the latest authorisation `requested` > 24 h, ICU-class stays, `fit_declared`/`discharging`); only those are
   computed. "Expected discharge today" = `fit_declared` or `discharging` with the patient owing (DECIDED, no date field yet).
   `ipd.billdesk.view` (cashier, billing manager, front-office supervisor, duty manager, owner); Retry needs
   `ipd.charges.reverse`. Deposit reasons are the LIVE ladder rows only (a re-armed level leaves the desk, review 7). A sealed
   patient (`sensitive_context`) shows by alias or "Sealed patient" — no name, UHID or bed (review 2).
+
+### Attendant seam and the send switch (#761)
+- ⚖ RECIPIENT = the registered attendant (`attendantOf`'s rule) — the reference in params must still BE `attendantOf` at
+  send time (a row queued for an attendant since replaced, or whose phone was cleared, is undeliverable `no_phone`), and the
+  phone is the one `attendantOf` reads then. No input anywhere chooses a number.
+- At send time, in this order: stay ended or `familyBlockOf` (sealed, MLC, team switch) → `recipient_blocked`; a desk STOP →
+  `opted_out` (beats every consent); not the current attendant → `no_phone`; no desk consent AND no live family link for the
+  SAME phone → `no_consent`. ⚖ DECIDED (DPDP practice): consent is for a number — desk consent keeps the phone's HMAC in its
+  `consent` jsonb (`phoneHash`, `familyPhoneDigest` under `SECRET_KEY`; never sent to the web), a family link its
+  `phone_hash`; a number changed since → no consent until recorded again (card state `number_changed`, "Consent needed
+  again (number changed)"). No key = no consent (fail closed).
+  Re-consenting clears a stop. Consent and stop are `ipd.family.issue`; the card is read under `ipd.bill.view`.
+- SWITCH (DECIDED): ON only when config names an approved WhatsApp template name and/or DLT id AND `IPD_BILL_DESK_PHONE`;
+  `ipdTemplateRegistrations` then gives the pump those ids, else explicit nulls (no table row can turn it on). The pump drops
+  rungs with no id and console-sink rungs for this template; none left → `template_pending`. The message carries only the
+  template variables: first name, total, deposit balance (signed), desk phone (`renderParams`, never stored on the row).
+- AUDIT: `ipd.daily_totals.skipped`, `notification.sent|suppressed|failed|expired`, `ipd.attendant_messages.consented|stopped`.
+  A retry inside a rung updates the row's `last_error` only (the pump appends events on terminal states).
 
 ### Discharge (E3.2, #730)
 - THE GATE PASS IS THE SINGLE GATE (E0.2): `issue_gate_pass` refuses `charges_unconfirmed` (detail.pending names the
@@ -1107,8 +1134,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - (E2.3) `.ipdb` is ALSO the Beds board's root class (`ipd-beds.css`: `height: 100vh; overflow: hidden`), and vite loads
   every screen's CSS globally: the bill desk overrides it with `.ipdb.ipdbd`. The interim bill (`apps/web/src/screens/ipd-bill.tsx`) still
   inherits the collision (owed).
-- (E2.3) Releasing the daily totals (issue #761): approve the WhatsApp template / DLT id, give the pump a recipient seam that
-  resolves `attendantRef` at send time, then remove `heldReason` from `ipd.daily_totals`. Until then nothing is sent.
+- (#761) Switching the daily totals on is CONFIG ONLY, on the API and the worker: `IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE` (Meta-
+  approved name, body variables {{1}} name, {{2}} total, {{3}} deposit balance, {{4}} desk phone) and/or
+  `IPD_DAILY_TOTALS_DLT_TEMPLATE_ID` (+ the MSG91 mapping), plus `IPD_BILL_DESK_PHONE`, with `NOTIFY_PROVIDER=live` and the
+  channel's gateway keys. The approved text must match `kernel/notify/templates.ts` `ipd.daily_totals` v2's render.
+- (#761) The billdesk acceptance test (iii) pins the params keys (`dayOfStay` included) and `template_pending` for a pump run
+  with no config: the seam keeps both (the gate reuses `template_pending`; `dayOfStay` stays in params, unused by the text).
 - (E2.3) Migration 0209 was regenerated in place (unmerged) to add `ipd_daily_totals`: a lane test DB that applied the old
   0209 dies `relation already exists` — drop `hmis_lane_<lane>_test_1/_2`.
 

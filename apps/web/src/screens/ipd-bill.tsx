@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../lib/api";
 import { fmtIst, fmtPaise } from "../lib/format";
 import { getInterimBill, printInterimBill } from "../lib/ipd-bill-api";
+import { AttendantMessagesCard } from "./ipd-attendant-card";
 import type React from "react";
 import type {
   IpdBedClass, IpdBillDay, IpdChargeLineView, IpdInterimBill, IpdPayerSplit, IpdSplitLine, IpdSplitSnapshot,
@@ -193,6 +194,8 @@ export function IpdBillScreen({ admissionId }: { admissionId: string }): React.R
           </section>
 
           <SplitCard bill={bill} />
+
+          <AttendantMessagesCard admissionId={admissionId} />
 
           {bill.exceptions.length === 0 ? null : (
             <section className="ipdb-card ipdb-ex" aria-label={t("ipdBill.exceptionsLabel")}>

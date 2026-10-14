@@ -9,6 +9,7 @@ import {
 import { getPatientSummaries } from "../patients";
 import { holdsPermission, requireIpdPermission } from "./admission-core";
 import { retryAdmissionCharges } from "./charges";
+import { dailyTotalsSendingOf, readDailyTotalsStrip } from "./attendant-messages";
 import { queueAllDailyTotals } from "./daily-totals";
 import {
   IPD_LADDER_STATES, depositPosition, evaluateAllDepositLadders, evaluateDepositLadderSafely, icuBurnOf,
@@ -16,7 +17,7 @@ import {
 import { IPD_BILLDESK_VIEW, IPD_CHARGES_REVERSE } from "./manifest";
 import { SEALED_LABEL, rankNowRows } from "./now-cards";
 import type {
-  Actor, IpdBedClass, IpdBillDesk, IpdBillDeskReason, IpdBillDeskRow, IpdAdmissionState, IpdPayerKind,
+  Actor, IpdBedClass, IpdBillDesk, IpdBillDeskReason, IpdBillDeskRow, IpdAdmissionState, IpdDailyTotalsSending, IpdPayerKind,
 } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { DeskCard, DeskProviderCtx } from "../../kernel/desk/types";
@@ -56,7 +57,11 @@ function note(m: Map<string, Candidate>, id: string, reason: IpdBillDeskReason |
   m.set(id, c);
 }
 
-export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdBillDesk> {
+export async function readBillDesk(
+  db: Db, actor: Actor, now: Date = new Date(),
+  /** #761 — whether the daily totals can be sent (the controller reads it from config); off when not given. */
+  sending: IpdDailyTotalsSending = dailyTotalsSendingOf(undefined),
+): Promise<IpdBillDesk> {
   await requireIpdPermission(db, actor, IPD_BILLDESK_VIEW);
   const cand = new Map<string, Candidate>();
 
@@ -175,7 +180,10 @@ export async function readBillDesk(db: Db, actor: Actor, now: Date = new Date())
   }
   rows.sort((x, y) => RANK.get(x.reasons[0]!)! - RANK.get(y.reasons[0]!)! || (x.since ?? "").localeCompare(y.since ?? ""));
   const counts = Object.fromEntries(IPD_BILLDESK_REASONS.map((r) => [r, rows.filter((x) => x.reasons.includes(r)).length])) as Record<IpdBillDeskReason, number>;
-  return { asOf: now.toISOString(), counts, rows, canRetry: await holdsPermission(db, actor, IPD_CHARGES_REVERSE) };
+  return {
+    asOf: now.toISOString(), counts, rows, canRetry: await holdsPermission(db, actor, IPD_CHARGES_REVERSE),
+    dailyTotals: await readDailyTotalsStrip(db, sending, now),
+  };
 }
 
 /**

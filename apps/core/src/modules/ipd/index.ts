@@ -240,3 +240,9 @@ export type { FallbackReason, IpdModel } from "./copilot-model";
 export { medicineFlagsOf, medicineRowReason, sameMedicineName } from "./discharge-medicines";
 // #787 (IP counter) — the OPD pharmacy counter charges a sale to the admission (and takes its returns) on the running bill.
 export { counterCharge, counterReturn, lookupCounterAdmission, readCounterSales, searchCounterShelfForIp } from "./counter-charge";
+// #761 — the attendant-recipient seam for the daily totals, the approved-template switch from config, consent and stop.
+export { IPD_DAILY_TOTALS_SEND_HOUR_IST, dailyTotalsSendAt } from "./daily-totals";
+export {
+  dailyTotalsSendingOf, dailyTotalsWords, ipdAttendantRecipient, ipdTemplateRegistrations, readAttendantMessages, readDailyTotalsStrip,
+  recordAttendantConsent, stopAttendantMessages,
+} from "./attendant-messages";

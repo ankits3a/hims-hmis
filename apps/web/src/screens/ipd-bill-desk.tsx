@@ -143,6 +143,35 @@ function Row({ r, canRetry, onRetry, busy, onBackdated, onOrderCancel }: {
   );
 }
 
+/**
+ * #761 — the daily totals to attendants for the day the nightly run reported: whether sending is on at all, how many went,
+ * and EVERY admission whose message did not go, with the reason in words ("Not sent: template not configured"). Never silent.
+ */
+function DailyTotalsStrip({ d }: { d: IpdBillDesk["dailyTotals"] }): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <section className="ipdb-card ipdbd-dt" aria-label={t("ipdBillDesk.dailyTotals.label")}>
+      <div className="ipdbd-dt-head">
+        <strong>{t("ipdBillDesk.dailyTotals.title", { date: d.billDate })}</strong>
+        {d.sending.on
+          ? <span className="ipdb-tag">{t("ipdBillDesk.dailyTotals.on", { hour: String(d.sending.sendHourIst).padStart(2, "0") })}</span>
+          : <span className="ipdb-tag hot">{t("ipdBillDesk.dailyTotals.off")}</span>}
+        <span className="small">{t("ipdBillDesk.dailyTotals.counts", { sent: d.sent, waiting: d.waiting, notSent: d.notSent.length })}</span>
+      </div>
+      {d.notSent.length === 0 ? null : (
+        <ul className="ipdbd-dt-list">
+          {d.notSent.map((l) => (
+            <li key={l.admissionId}>
+              <Link to="/ipd/admissions/$admissionId/bill" params={{ admissionId: l.admissionId }} className="mono">{l.admissionNo ?? l.admissionId}</Link>
+              <span>{l.words}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function IpdBillDeskScreen(): React.ReactElement {
   const { t } = useTranslation();
   const [desk, setDesk] = useState<IpdBillDesk | null>(null);
@@ -208,6 +237,8 @@ export function IpdBillDeskScreen(): React.ReactElement {
       </nav>
 
       {notice === null ? null : <p role="status" className="ipdbd-notice">{notice}</p>}
+
+      <DailyTotalsStrip d={desk.dailyTotals} />
 
       <section className="ipdb-card ipdbd-list" aria-label={t("ipdBillDesk.listLabel")}>
         {rows.length === 0 ? <p className="ipdbd-empty">{t("ipdBillDesk.empty")}</p> : (
