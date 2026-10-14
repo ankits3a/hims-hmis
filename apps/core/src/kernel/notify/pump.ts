@@ -50,7 +50,33 @@ export type NotifyPumpOptions = {
    * `runNotifyPump` DIRECTLY, never through the Scheduler (Global Constraint 8).
    */
   adapters?: AdapterSet;
+  /**
+   * #761 — THE RECIPIENT SEAM. A template with `recipient: "attendant"` is addressed through the resolver installed here
+   * (a module's, threaded in by `registerAllJobs`; this file imports no module). Absent = such a row is undeliverable
+   * `no_phone`; it never falls back to the patient's own phone.
+   */
+  recipientResolvers?: Partial<Record<RecipientKind, RecipientResolver>>;
+  /**
+   * #761 — the provider ids for a template FROM CONFIG, in place of its `notify_template_registrations` row. A module
+   * whose approved template ids live in the deployment's config hands them here; a key absent here reads the table.
+   */
+  templateRegistrations?: Record<string, TemplateProviderIds>;
 };
+
+/** #761 — the recipients a template may name besides the patient (`NotificationTemplate.recipient`). */
+export type RecipientKind = NonNullable<NotificationTemplate["recipient"]>;
+export type TemplateProviderIds = { dltTemplateId: string | null; whatsappTemplateName: string | null };
+/**
+ * #761 — what a recipient seam answers for one claimed row, read AT SEND TIME (contact truth, D4):
+ *   send      the number to use, and render-only params (never stored on the row) such as a desk phone;
+ *   suppress  the recipient's own stop, a missing consent, or a block on the patient — recorded, never sent;
+ *   no_phone  nobody reachable now — undeliverable, as a phoneless patient is.
+ */
+export type RecipientResolution =
+  | { kind: "send"; to: string; renderParams?: Record<string, unknown> }
+  | { kind: "suppress"; reason: "opted_out" | "no_consent" | "recipient_blocked" }
+  | { kind: "no_phone"; detail: string };
+export type RecipientResolver = (tx: Tx, row: NotificationRow) => Promise<RecipientResolution>;
 
 const DEFAULT_BATCH_SIZE = 50;
 /** D6: `attempts` counts failures on the CURRENT rung; at this many the rung advances. */
@@ -194,7 +220,7 @@ async function markExpired(tx: Tx, row: NotificationRow, now: Date): Promise<voi
 async function markSuppressed(
   tx: Tx,
   row: NotificationRow,
-  reason: "deceased" | "promotional_blocked" | "merge_unresolvable" | "opted_out" | "no_consent" | "template_pending",
+  reason: "deceased" | "promotional_blocked" | "merge_unresolvable" | "opted_out" | "no_consent" | "template_pending" | "recipient_blocked",
   now: Date,
 ): Promise<void> {
   if (!(await settle(tx, row, { status: "suppressed", lastError: reason }, now))) return;
@@ -377,7 +403,16 @@ function patientLadder(channels: Channel[], pref: MessagePreference | null, adap
  * either a message to hand an adapter, or `done` — meaning this row has already been written to
  * its terminal state (or deferred) inside this transaction.
  */
-async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: AdapterSet): Promise<SendPlan> {
+/** #761 — the id a provider needs for this channel, or null (web push needs none). */
+function providerIdFor(channel: Channel, reg: TemplateProviderIds | undefined): string | null {
+  if (channel === "web_push") return "web_push";
+  const id = channel === "whatsapp" ? reg?.whatsappTemplateName : reg?.dltTemplateId;
+  return id === undefined || id === null || id.trim() === "" ? null : id;
+}
+
+type Seams = Pick<NotifyPumpOptions, "recipientResolvers" | "templateRegistrations">;
+
+async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: AdapterSet, seams: Seams = {}): Promise<SendPlan> {
   // ── 1. EXPIRY (D5). CHECKED FIRST because a stale message is dead no matter what else is
   // true, and because this is the replay defense: a re-dispatched last-month booking expires
   // here instead of confirming an appointment that has already happened.
@@ -434,6 +469,38 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
     return { kind: "done" };
   }
 
+  // PHARMACY P6: the provider's ids for this template — a live DLT gateway refuses without its id. #761: config first.
+  const reg: TemplateProviderIds | undefined = seams.templateRegistrations?.[row.templateKey]
+    ?? (await tx.select().from(notifyTemplateRegistrations).where(eq(notifyTemplateRegistrations.templateKey, row.templateKey)))[0];
+
+  // ── 3c. APPROVED TEMPLATE ONLY (#761). A rung with no provider id configured, or on a console sink, cannot carry an
+  // approved template; with none left the row is recorded `template_pending` and no adapter is ever called.
+  const approvedOnly = (channels: Channel[]): Channel[] => template.requiresApprovedTemplate === true
+    ? channels.filter((c) => adapters[c].sink !== true && providerIdFor(c, reg) !== null)
+    : channels;
+  if (approvedOnly(template.channels ?? DEFAULT_CHANNELS).length === 0) {
+    await markSuppressed(tx, row, "template_pending", now);
+    return { kind: "done" };
+  }
+
+  // ── 3d. THE RECIPIENT SEAM (#761). Read at send time, before quiet hours, so a stop never waits overnight.
+  let seamTo: Extract<RecipientResolution, { kind: "send" }> | null = null;
+  if (template.recipient !== undefined) {
+    const resolve = seams.recipientResolvers?.[template.recipient];
+    const found: RecipientResolution = resolve === undefined
+      ? { kind: "no_phone", detail: `no recipient seam is installed for "${template.recipient}" — never the patient's phone` }
+      : await resolve(tx, row);
+    if (found.kind === "suppress") {
+      await markSuppressed(tx, row, found.reason, now);
+      return { kind: "done" };
+    }
+    if (found.kind === "no_phone") {
+      await markUndeliverable(tx, row, "no_phone", now, found.detail);
+      return { kind: "done" };
+    }
+    seamTo = found;
+  }
+
   // ── 4. QUIET HOURS (D7, + T4's staff leg). Not a suppression: back to `queued`, no attempt
   // counted. The exemption is read per person, and only for the audience that can carry one.
   const quietExempt = row.audience === "staff" && row.userId !== null
@@ -454,7 +521,7 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
   // channel is being asked about. Resolving the phone first would have declared a doctor with
   // no phone number unreachable by push, which is exactly backwards.
   const templateLadder = template.channels ?? DEFAULT_CHANNELS;
-  const channels = row.audience === "patient" ? patientLadder(templateLadder, word.best, adapters) : templateLadder;
+  const channels = approvedOnly(row.audience === "patient" ? patientLadder(templateLadder, word.best, adapters) : templateLadder);
   const channel = channels[row.rung];
   if (channel === undefined) {
     await markUndeliverable(tx, row, "ladder_exhausted", now, row.lastError ?? "ladder exhausted");
@@ -475,6 +542,8 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
       return { kind: "done" };
     }
     to = encodePushAddresses(subs);
+  } else if (seamTo !== null) {
+    to = seamTo.to;
   } else {
     to = patient !== null ? patient.phone : await userPhone(tx, row.userId);
   }
@@ -494,9 +563,11 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
     row.audience !== "patient" ? "en" : (asked ?? patient?.language) === "en" ? "en" : "hi";
   let text: string;
   let variables: string[] | undefined;
+  // #761: render-only params from the recipient seam (a desk phone) — never written back to the row.
+  const params = seamTo?.renderParams === undefined ? row.params : { ...row.params, ...seamTo.renderParams };
   try {
-    text = template.render[language](row.params);
-    variables = template.variables?.(row.params);
+    text = template.render[language](params);
+    variables = template.variables?.(params);
   } catch (err) {
     // A RENDER THROW IS NOT A CHANNEL FAILURE AND NEVER ENTERS THE LADDER (D3). Retrying a
     // render cannot fix params — the second attempt renders the same wrong object with the same
@@ -506,8 +577,6 @@ async function prepareRow(tx: Tx, row: NotificationRow, now: Date, adapters: Ada
     return { kind: "done" };
   }
 
-  // PHARMACY P6: the provider's ids for this template — a live DLT gateway refuses without its id.
-  const reg = (await tx.select().from(notifyTemplateRegistrations).where(eq(notifyTemplateRegistrations.templateKey, row.templateKey)))[0];
   return {
     kind: "send", channel, channels: [...channels], to, text, templateVersion: template.version,
     meta: {
@@ -695,7 +764,9 @@ export async function runNotifyPump(db: Db, opts: NotifyPumpOptions = {}): Promi
 
   for (const row of claimed) {
     try {
-      const plan = await withTx(db, (tx) => prepareRow(tx, row, now, adapters));
+      const plan = await withTx(db, (tx) => prepareRow(tx, row, now, adapters, {
+        recipientResolvers: opts.recipientResolvers, templateRegistrations: opts.templateRegistrations,
+      }));
       if (plan.kind === "done") continue;
 
       let result: Awaited<ReturnType<ChannelAdapter["send"]>>;
