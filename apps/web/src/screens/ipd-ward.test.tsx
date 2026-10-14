@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToken } from "../lib/api";
 import { resetVitalsQueueForTests } from "../lib/ipd-nursing-api";
+import { keepLastWard } from "../components/ward-picker";
 import { renderWithRouter } from "../test-utils";
 import { IpdWard } from "./ipd-ward";
 import { chartOf, fid, stationOf } from "./ipd-nursing.fixture";
@@ -23,6 +24,8 @@ vi.mock("../lib/realtime", () => ({
 const PERMS = ["ipd.nursing.view", "ipd.vitals.record", "ipd.ews.respond", "ipd.assessment.record"];
 
 beforeEach(() => {
+  // The nurse has picked her ward before (the picker remembers it); a first visit is asked — see ward-picker.test.tsx.
+  keepLastWard(null, fid(900));
   setToken("stub-token");
   resetVitalsQueueForTests();
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ actor: { type: "user", id: "u1" }, permissions: { hospital: PERMS, scoped: { department: {}, floor: {} } } }), { status: 200 })));
@@ -30,7 +33,7 @@ beforeEach(() => {
   api.getChart.mockReset().mockResolvedValue(chartOf(Date.now()));
   api.acknowledgeEws.mockReset().mockResolvedValue({});
 });
-afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+afterEach(() => { localStorage.removeItem("hmis.ward.last"); vi.unstubAllGlobals(); setToken(null); });
 
 const codes = (): string[] => screen.getAllByTestId(/^ipdn-bed-/).map((e) => e.getAttribute("data-testid")!.replace("ipdn-bed-", ""));
 

@@ -44,7 +44,8 @@
 .ipdb-stat .val { display: flex; align-items: baseline; gap: 6px; }
 .ipdb-stat .val b { font-family: "IBM Plex Mono", monospace; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
 .ipdb-stat .val span { font-family: "IBM Plex Mono", monospace; font-size: 14px; color: var(--dim); }
-.ipdb-stat .sub { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* IPD walk 2026-10-14: the subtitle wraps — "General 432 · Semi-pvt 144 · …" hid the very numbers the card is for. */
+.ipdb-stat .sub { font-size: 12px; color: var(--dim); white-space: normal; overflow-wrap: anywhere; }
 .ipdb-stat .sub.warn { color: #8a5a0e; font-weight: 600; }
 .ipdb-stat .sub.bad { color: var(--red); font-weight: 600; }
 
@@ -73,7 +74,8 @@
 .ipdb.wall > * { transform: translate(var(--ipdb-shift, 0px), var(--ipdb-shift, 0px)); }
 .ipdb-floorhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
 .ipdb-floorhead span:first-child { font-size: 13px; font-weight: 600; }
-.ipdb-floorhead span:last-child { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dim); }
+.ipdb-floorhead span:last-child { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--dim); text-align: right; }
+.ipdb-floorhead span.outside:last-child { font-family: inherit; }
 .ipdb-wards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .ipdb-ward { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
 .ipdb-ward:hover { border-color: var(--green-line); }

@@ -5,6 +5,8 @@ import type { IpdEmarDose, IpdEmarWardChart } from "@hmis/contracts";
 import { ApiError } from "../lib/api";
 import { fmtIst } from "../lib/format";
 import { getWardChart } from "../lib/ipd-emar-api";
+import { istDayLabel } from "../lib/ist-date";
+import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { LiveLine, useLiveLoad } from "./ipd-nursing-shared";
 import "./ipd-emar.css";
 
@@ -18,9 +20,10 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MARK: Record<string, string> = { given: "✓", scheduled: "◷", missed: "✕", held: "⏸", refused: "⊘", cancelled: "—" };
 
 export function IpdMar(): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [chart, setChart] = useState<IpdEmarWardChart | null>(null);
-  const [wardId, setWardId] = useState<string | null>(null);
+  const pick = useWardChoice();
+  const wardId = pick.wardId;
   const [error, setError] = useState<"forbidden" | null>(null);
   const load = useCallback(() => getWardChart(wardId).then((c) => { setChart(c); setError(null); }, (e: unknown) => {
     if (e instanceof ApiError && e.status === 403) setError("forbidden");
@@ -29,24 +32,26 @@ export function IpdMar(): React.ReactElement {
   const live = useLiveLoad(load);
   const dayStart = chart === null ? 0 : new Date(chart.dayStart).getTime();
   const hourOf = (d: IpdEmarDose): number => Math.floor((new Date(d.dueAt).getTime() - dayStart) / 3_600_000);
+  // Nothing remembered and more than one ward: ask, never show the server's first ward.
+  const asking = chart !== null && pick.needsPick(chart.wards);
   const nowHour = chart === null ? -1 : Math.floor((new Date(chart.asOf).getTime() - dayStart) / 3_600_000);
   return (
     <main className="ipde ipde-mar" data-testid="ipd-mar">
       <header className="ipde-head">
-        <h1>{t("ipdEmar.mar.title")}{chart?.ward ? ` · ${chart.ward.name}` : ""}</h1>
-        {chart !== null ? <span className="dim">{t("ipdEmar.mar.day", { day: new Date(new Date(chart.dayStart).getTime() + 12 * 3_600_000).toISOString().slice(0, 10) })}</span> : null}
+        <h1>{t("ipdEmar.mar.title")}{chart?.ward && !asking ? ` · ${chart.ward.name}` : ""}</h1>
+        {/* The IST day (midday of it, so no offset can tip it into the next or last) in the reader's language. */}
+        {chart !== null ? <span className="dim" data-testid="ipde-mar-day">{t("ipdEmar.mar.day", { day: istDayLabel(new Date(new Date(chart.dayStart).getTime() + 12 * 3_600_000), i18n.language, { weekday: "short", day: "numeric", month: "short", year: "numeric" }) })}</span> : null}
         <LiveLine online={live.online} lastUpdate={live.lastUpdate} />
         {chart !== null && chart.wards.length > 1 ? (
-          <nav className="ipde-chips noprint" aria-label={t("ipdNursing.ward.wards")}>
-            {chart.wards.map((w) => <button key={w.id} type="button" className="ipde-chip" aria-pressed={chart.ward?.id === w.id} onClick={() => setWardId(w.id)}>{w.code}</button>)}
-          </nav>
+          <WardPicker wards={chart.wards} value={asking ? null : chart.ward?.id ?? null} onChange={pick.choose} />
         ) : null}
         <button type="button" className="ipde-btn noprint" onClick={() => window.print()}>{t("ipdEmar.mar.print")}</button>
       </header>
       <p className="ipde-legend">{Object.entries(MARK).map(([k, m]) => <span key={k}><b>{m}</b> {t(`ipdEmar.status.${k}`)}</span>)}<span><b>!</b> {t("ipdEmar.status.corrected")}</span></p>
       {error === "forbidden" ? <div className="ipde-empty" role="alert">{t("ipdNursing.forbidden")}</div> : null}
-      {chart !== null && chart.patients.length === 0 ? <div className="ipde-empty">{t("ipdEmar.mar.empty")}</div> : null}
-      {chart !== null && chart.patients.length > 0 ? (
+      {asking ? <PickWardPrompt className="ipde-empty" /> : null}
+      {chart !== null && !asking && chart.patients.length === 0 ? <div className="ipde-empty">{t("ipdEmar.mar.empty")}</div> : null}
+      {chart !== null && !asking && chart.patients.length > 0 ? (
         <div className="ipde-grid-wrap">
           <table className="ipde-grid">
             <thead>

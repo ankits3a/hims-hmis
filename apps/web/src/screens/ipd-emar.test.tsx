@@ -1,4 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import i18next from "i18next";
+import { keepLastWard } from "../components/ward-picker";
 import userEvent from "@testing-library/user-event";
 import { ApiError, setToken } from "../lib/api";
 import { AllergyFlags } from "./ipd-emar-flags";
@@ -226,6 +228,10 @@ describe("web gaps closed (E4.3 review): flag decision, re-issue, infusions, was
 });
 
 describe("the ward MAR chart (E4.3)", () => {
+  // The nurse has picked her ward before; the first visit (nothing remembered) is its own test below.
+  beforeEach(() => { keepLastWard(null, eid(900)); });
+  afterEach(async () => { localStorage.removeItem("hmis.ward.last"); await act(async () => { await i18next.changeLanguage("en"); }); });
+
   it("places each dose in its IST hour with a symbol AND a word", async () => {
     renderWithRouter(<IpdMar />, "/ipd/mar");
     await screen.findByTestId("ipd-mar");
@@ -233,5 +239,53 @@ describe("the ward MAR chart (E4.3)", () => {
     expect(screen.getAllByText("Missed").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Held").length).toBeGreaterThan(0);
     expect(screen.getAllByText("✓").length).toBeGreaterThan(0);
+  });
+
+  // IPD walk 2026-10-14: the header read "Day 2026-10-14" — an ISO string, in English, on a Hindi screen.
+  it("names the IST day in words in the reader's language, never as an ISO date", async () => {
+    const chart = wardChartOf(NOW);
+    const istDay = new Date(new Date(chart.dayStart).getTime() + 12 * 3_600_000 + 330 * 60_000).getUTCDate();
+    renderWithRouter(<IpdMar />, "/ipd/mar");
+    const en = await screen.findByTestId("ipde-mar-day");
+    expect(en.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(en.textContent).toMatch(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\b/);
+    expect(en.textContent).toContain(String(istDay));
+    await act(async () => { await i18next.changeLanguage("hi"); });
+    await waitFor(() => expect(screen.getByTestId("ipde-mar-day").textContent).toMatch(/[\u0900-\u097F]/));
+    expect(screen.getByTestId("ipde-mar-day").textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  // IPD walk 2026-10-14: 60 code chips ("F03-SPVT") across a phone; now one select, grouped by floor, "name · code".
+  it("picks the ward from one select labelled name · code, and remembers the pick", async () => {
+    renderWithRouter(<IpdMar />, "/ipd/mar");
+    const select = await screen.findByTestId<HTMLSelectElement>("ward-picker");
+    expect(screen.queryAllByRole("button", { name: "F05-MED-M" })).toHaveLength(0);
+    expect(within(select).getByRole("option", { name: "Medicine Male · F05-MED-M" })).toBeInTheDocument();
+    expect(select.value).toBe(eid(900));
+    await userEvent.selectOptions(select, eid(901));
+    await waitFor(() => expect(api.getWardChart).toHaveBeenLastCalledWith(eid(901)));
+    expect(localStorage.getItem("hmis.ward.last")).toBe(eid(901));
+  });
+
+  it("asks for the ward on a first visit instead of showing the server's first ward", async () => {
+    localStorage.removeItem("hmis.ward.last");
+    renderWithRouter(<IpdMar />, "/ipd/mar");
+    expect(await screen.findByTestId("ward-pick-prompt")).toHaveTextContent("Pick your ward");
+    expect(screen.queryByText("Test Patient Bina", { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).not.toHaveTextContent("Medicine Female");
+  });
+});
+
+// IPD walk 2026-10-14 — a refused or failed read of the bedside said "Loading…" for ever.
+describe("the bedside cannot load", () => {
+  it("says the account has no access on a 403, and that the doses did not load otherwise", async () => {
+    api.getEmarPatient.mockReset().mockRejectedValue(new ApiError(403, { message: "Forbidden" }));
+    const first = renderWithRouter(<Bedside admissionId={scanOf(NOW).admissionId} bandCode={null} online onBack={() => {}} onDone={() => {}} onPivot={() => {}} />, "/ipd/my-shift");
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have access to this ward screen.");
+    first.unmount();
+    api.getEmarPatient.mockReset().mockRejectedValue(new ApiError(500, { message: "boom" }));
+    renderWithRouter(<Bedside admissionId={scanOf(NOW).admissionId} bandCode={null} online onBack={() => {}} onDone={() => {}} onPivot={() => {}} />, "/ipd/my-shift");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This patient's doses did not load.");
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
   });
 });

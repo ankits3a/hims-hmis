@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError, setToken } from "../lib/api";
 import { queuedVitals, resetVitalsQueueForTests } from "../lib/ipd-nursing-api";
+import { keepLastWard } from "../components/ward-picker";
 import { renderWithRouter } from "../test-utils";
 import { IpdMyShift } from "./ipd-my-shift";
 import { draftOf, fid, handoversOf, myShiftOf, shiftHandover } from "./ipd-nursing.fixture";
@@ -32,6 +33,8 @@ let vitalsCalls: unknown[] = [];
 let vitalsAnswer: () => Response = () => new Response(JSON.stringify({ vitalsId: fid(999), score: { kind: "news2", value: 6, band: "medium" }, alertRaised: true, lateEntry: false }), { status: 201 });
 
 beforeEach(() => {
+  // The nurse has picked her ward before (the picker remembers it); a first visit is asked — see ward-picker.test.tsx.
+  keepLastWard(null, fid(900));
   setToken("stub-token");
   resetVitalsQueueForTests();
   vitalsCalls = [];
@@ -45,7 +48,7 @@ beforeEach(() => {
   api.giveShiftHandover.mockReset().mockResolvedValue({});
   api.acceptShiftHandover.mockReset().mockResolvedValue({});
 });
-afterEach(() => {
+afterEach(() => { localStorage.removeItem("hmis.ward.last");
   vi.unstubAllGlobals(); setToken(null);
   vitalsAnswer = () => new Response(JSON.stringify({ vitalsId: fid(999), score: { kind: "news2", value: 6, band: "medium" }, alertRaised: true, lateEntry: false }), { status: 201 });
 });

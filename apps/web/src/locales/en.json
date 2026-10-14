@@ -16692,7 +16692,9 @@
         "state_changed": "Request changed — refresh",
         "advice_expired": "Advice expired"
       }
-    }
+    },
+    "floorCensus": "In census {{occupied}} / {{total}}",
+    "floorOutside": "Not in census {{occupied}} / {{total}}"
   },
   "linen": {
     "offline": "Offline",
@@ -17046,7 +17048,11 @@
       "admittedAt": "Admitted at (paper)",
       "save": "Enter admission"
     },
-    "capWarning": "Room-rent cap"
+    "capWarning": "Room-rent cap",
+    "listForbidden": "Your account cannot see admission requests.",
+    "listFailed": "Admission requests did not load.",
+    "retry": "Try again",
+    "findShort": "Name, UHID or mobile"
   },
   "maintenance": {
     "title": "Maintenance",
@@ -17261,7 +17267,9 @@
         "paused": "Paused",
         "unknown": "Not a pass"
       }
-    }
+    },
+    "listForbidden": "Your account cannot see admitted patients.",
+    "listFailed": "Admitted patients did not load."
   },
   "ipdBill": {
     "postingFailed": "Nightly posting failed ({{count}} tries) — the bill desk retries it",
@@ -17734,7 +17742,7 @@
     "loadFailed": "Could not load — try again",
     "forbidden": "You do not have access to the discharge desk.",
     "empty": "No discharge in progress.",
-    "pick": "Pick a patient on the left.",
+    "pick": "Pick a patient.",
     "actFailed": "Could not record — try again",
     "cancel": "Cancel",
     "dur": {
@@ -18466,6 +18474,14 @@
       "refused": "refused by server",
       "paper": "Record these on paper.",
       "done": "Done"
+    },
+    "wardPicker": {
+      "label": "Ward",
+      "choose": "Pick your ward",
+      "ground": "Ground floor",
+      "floor": "Floor {{n}}",
+      "otherFloor": "Other",
+      "pickFirst": "Pick your ward to begin."
     }
   },
   "diet": {
@@ -18894,7 +18910,8 @@
       "scanBand": "Scan wristband",
       "scanLabel": "Scan drug label",
       "bandScanned": "Band scanned",
-      "bandNotScanned": "Band not scanned"
+      "bandNotScanned": "Band not scanned",
+      "loadFailed": "This patient's doses did not load."
     },
     "give": {
       "btn": "Give",
@@ -19048,7 +19065,7 @@
     },
     "mar": {
       "title": "Ward MAR",
-      "day": "Day {{day}}",
+      "day": "{{day}}",
       "patient": "Patient",
       "drug": "Drug",
       "print": "Print MAR",

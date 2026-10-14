@@ -6,6 +6,7 @@ import { ApiError } from "../lib/api";
 import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { getNarcoticWard, recordNarcoticCount, resolveNarcoticException } from "../lib/ipd-emar-api";
+import { PickWardPrompt, WardPicker, useWardChoice } from "../components/ward-picker";
 import { LiveLine, useLiveLoad } from "./ipd-nursing-shared";
 import "./ipd-emar.css";
 import "./ipd-narcotics.css";
@@ -22,7 +23,8 @@ const qty = (n: number): string => String(Math.round(n * 1000) / 1000);
 export function IpdNarcotics(): React.ReactElement {
   const { t } = useTranslation();
   const [view, setView] = useState<IpdNarcoticWard | null>(null);
-  const [wardId, setWardId] = useState<string | null>(null);
+  const pick = useWardChoice();
+  const wardId = pick.wardId;
   const [error, setError] = useState<"forbidden" | null>(null);
   const load = useCallback(() => getNarcoticWard(wardId).then((v) => { setView(v); setError(null); }, (e: unknown) => {
     if (e instanceof ApiError && e.status === 403) setError("forbidden");
@@ -30,23 +32,24 @@ export function IpdNarcotics(): React.ReactElement {
   }), [wardId]);
   const live = useLiveLoad(load);
   const reload = (): void => { void load().catch(() => {}); };
+  // Nothing remembered and more than one ward: ask, never count the server's first ward's cabinet.
+  const asking = view !== null && pick.needsPick(view.wards);
   return (
     <main className="ipde ipdk" data-testid="ipd-narcotics">
       <header className="ipde-head">
-        <h1>{t("ipdNarcotic.title")}{view?.ward ? ` · ${view.ward.name}` : ""}</h1>
+        <h1>{t("ipdNarcotic.title")}{view?.ward && !asking ? ` · ${view.ward.name}` : ""}</h1>
         {view !== null ? <span className="ipde-tag">{t(`ipdNarcotic.shift.${view.shift}`)}</span> : null}
-        {view?.countDue === true ? <span className="ipde-tag red" data-testid="ipdk-count-due">⚠ {t("ipdNarcotic.countDue")}</span> : null}
+        {view?.countDue === true && !asking ? <span className="ipde-tag red" data-testid="ipdk-count-due">⚠ {t("ipdNarcotic.countDue")}</span> : null}
         <LiveLine online={live.online} lastUpdate={live.lastUpdate} />
         {view !== null && view.wards.length > 1 ? (
-          <nav className="ipde-chips noprint" aria-label={t("ipdNursing.ward.wards")}>
-            {view.wards.map((w) => <button key={w.id} type="button" className="ipde-chip" aria-pressed={view.ward?.id === w.id} onClick={() => setWardId(w.id)}>{w.code}</button>)}
-          </nav>
+          <WardPicker wards={view.wards} value={asking ? null : view.ward?.id ?? null} onChange={pick.choose} />
         ) : null}
         <button type="button" className="ipde-btn noprint" onClick={() => window.print()}>{t("ipdNarcotic.print")}</button>
       </header>
       {error === "forbidden" ? <div className="ipde-empty" role="alert">{t("ipdNursing.forbidden")}</div> : null}
-      {view !== null && view.ward === null ? <div className="ipde-empty">{t("ipdNarcotic.noWard")}</div> : null}
-      {view !== null && view.ward !== null ? (
+      {asking ? <PickWardPrompt className="ipde-empty" /> : null}
+      {view !== null && !asking && view.ward === null ? <div className="ipde-empty">{t("ipdNarcotic.noWard")}</div> : null}
+      {view !== null && !asking && view.ward !== null ? (
         <>
           <section className="ipdk-sec" aria-labelledby="ipdk-bal">
             <h2 id="ipdk-bal">{t("ipdNarcotic.balance")}</h2>

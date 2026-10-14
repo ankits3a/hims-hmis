@@ -1,0 +1,14 @@
+/* The shared ward picker (components/ward-picker.tsx). Takes the host screen's colour tokens when it has them. */
+.ward-picker { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.ward-picker__label { font-size: 0.8125rem; color: var(--dim, #55675f); white-space: nowrap; }
+.ward-picker select {
+  font: inherit; font-size: 0.9375rem; color: var(--ink, #14302a); background: var(--card, #fff);
+  border: 1px solid var(--line, #d5ddd5); border-radius: 8px; min-height: 44px; padding: 0 10px;
+  min-width: 0; max-width: 100%; width: 22rem; box-sizing: border-box;
+}
+.ward-picker select:focus-visible { outline: 2px solid var(--blue, #1d4ed8); outline-offset: 2px; }
+@media (max-width: 760px) {
+  .ward-picker { display: flex; width: 100%; }
+  .ward-picker select { flex: 1; width: auto; }
+}
+@media print { .ward-picker { display: none; } }

@@ -153,3 +153,34 @@ describe("Admit — one flowing sheet (E1.2)", () => {
     expect(screen.getByRole("button", { name: "Admit and print band" })).toBeDisabled();
   });
 });
+
+/*
+  IPD walk 2026-10-14 — a refused list read "Open requests (0)": a person without the grant was shown an empty desk,
+  not a closed one. A 403 is said in words; any other failure is said too, with a way to try again.
+*/
+describe("Admit — the request list cannot load", () => {
+  it("says the account cannot see admission requests on a 403, never 'Open requests (0)'", async () => {
+    api.listAdmissions.mockReset().mockRejectedValue(new ApiError(403, { message: "Forbidden" }));
+    renderWithRouter(<IpdAdmit />, "/ipd/admit");
+    expect(await screen.findByTestId("ipda-list-error")).toHaveTextContent("Your account cannot see admission requests.");
+    expect(screen.queryByText("Open requests (0)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pick an open request or raise a new one")).not.toBeInTheDocument();
+  });
+
+  it("says the list did not load on any other failure, and Try again reloads it", async () => {
+    api.listAdmissions.mockReset().mockRejectedValueOnce(new ApiError(500, { message: "boom" })).mockResolvedValue([view()]);
+    renderWithRouter(<IpdAdmit />, "/ipd/admit");
+    const card = await screen.findByTestId("ipda-list-error");
+    expect(card).toHaveTextContent("Admission requests did not load.");
+    await userEvent.click(within(card).getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByTestId("ipda-list-error")).not.toBeInTheDocument());
+    expect(screen.getByText("Open requests (1)")).toBeInTheDocument();
+  });
+
+  it("keeps the find box's placeholder short enough for a phone", async () => {
+    renderWithRouter(<IpdAdmit />, "/ipd/admit");
+    await userEvent.click(await screen.findByRole("button", { name: "New request" }));
+    const box = await screen.findByLabelText("Scan the UHID card, or type name, UHID or mobile");
+    expect(box).toHaveAttribute("placeholder", "Name, UHID or mobile");
+  });
+});

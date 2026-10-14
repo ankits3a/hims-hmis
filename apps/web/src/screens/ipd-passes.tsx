@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
 import type React from "react";
 import type { IpdAdmissionView, PassAdmissionView, PassCard, PassHolder, PassIssueKind } from "@hmis/contracts";
+import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { listAdmissions } from "../lib/ipd-admit-api";
 import {
@@ -92,6 +93,7 @@ export function IpdPasses(): React.ReactElement {
   const search = useSearch({ strict: false }) as { admission?: string };
   const navigate = useNavigate();
   const [list, setList] = useState<IpdAdmissionView[]>([]);
+  const [listError, setListError] = useState<"forbidden" | "failed" | null>(null);
   const [view, setView] = useState<PassAdmissionView | null>(null);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
@@ -103,7 +105,9 @@ export function IpdPasses(): React.ReactElement {
 
   useEffect(() => {
     if (!can("ipd.admit")) return;
-    listAdmissions().then((xs) => setList(xs.filter((a) => PLACED.has(a.state)))).catch(() => setList([]));
+    // IPD walk 2026-10-14: a refused list is said in words, never drawn as "no one admitted".
+    listAdmissions().then((xs) => { setList(xs.filter((a) => PLACED.has(a.state))); setListError(null); })
+      .catch((e: unknown) => { setList([]); setListError(e instanceof ApiError && e.status === 403 ? "forbidden" : "failed"); });
   }, [can]);
 
   const load = useCallback((id: string) => {
@@ -139,7 +143,8 @@ export function IpdPasses(): React.ReactElement {
       <div className="psd-grid">
         <aside className="psd-card psd-list" aria-label={t("passes.admitted")}>
           <h2>{t("passes.admitted")} <span className="dim">({list.length})</span></h2>
-          {list.length === 0 ? <p className="dim small">{t("passes.noneAdmitted")}</p> : null}
+          {listError !== null ? <p className="small" role="alert">{t(listError === "forbidden" ? "passes.listForbidden" : "passes.listFailed")}</p> : null}
+          {list.length === 0 && listError === null ? <p className="dim small">{t("passes.noneAdmitted")}</p> : null}
           <ul>
             {list.map((a) => (
               <li key={a.id}>
