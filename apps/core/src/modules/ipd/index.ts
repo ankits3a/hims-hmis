@@ -209,3 +209,8 @@ export { ISMP_HIGH_ALERT_NAMES, dueTimesFor, giveTiming, isHighAlert, isTimeCrit
 export { readAdmissionAllergyFlags, readEmarDue, readEmarPatient, readLabelSheet, readOverrideCounts, readPharmacyQueue, readWardChart, scanAtBedside } from "./emar-read";
 export { IPD_NEW_ORDER_HOURS, dueDoseCard, newOrderCard } from "./emar-cards";
 export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";
+// #787 — medicines issued to the ward on the running bill: the eMAR's issue and return post / credit `ipd.pharmacy` lines
+// at the pharmacy counter's own batch price; the bill desk decides a return after the bill and a charged lost / damaged
+// replacement with the order-cancel acts (`reverseChargeLine`, `keepOrderCharge`).
+export { postDrugIssueChargesIn, postDrugReturnCreditsIn, retryDrugExceptionsIn, versionPricedServices } from "./drug-charges";
+export type { DrugIssueCharge, DrugReturnOutcome } from "./drug-charges";

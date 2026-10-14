@@ -23,6 +23,7 @@ import { admissionPlace } from "./admission-place";
 import { checkPrinter } from "./bands";
 import { ageInYears } from "./bed-rules";
 import { IPD_SYSTEM_ACTOR } from "./beds";
+import { postDrugIssueChargesIn, postDrugReturnCreditsIn } from "./drug-charges";
 import { horizonOf, scheduleDosesIn } from "./emar-doses";
 import { emarDrugsOf } from "./emar-drug";
 import {
@@ -288,6 +289,11 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
     const stamp = await markIpdOrderIssuedIn(tx, o.id, at);
     if (stamp === "not_active" || stamp === "not_found") throw new IpdRefusal("order_not_active", undefined, { stamp });
     if (stamp === "already_issued" && earlier.length === 0) throw new IpdRefusal("already_issued");
+    // #787: the issue is charged HERE — one running-bill line per batch, in this transaction, under the admission lock
+    // `lockOrderIn` took first. The patient's own medicine is never charged. Nothing about money goes back to this screen.
+    if (!input.ownMedicine && itemId !== null) {
+      await postDrugIssueChargesIn(tx, actor, a, { orderId: o.id, issueId, itemId, batches, reissueReason: input.reissue?.reason ?? null, at });
+    }
     if (drug?.narcotic === true) {
       await tx.insert(ipdEmarNarcoticRegister).values({
         id: newId(), orderId: o.id, admissionId: a.id, kind: "received", qty: input.units, unit: drug.shelf?.item.baseUom ?? "unit", issueId, actorId: actor.id, at,
@@ -304,8 +310,8 @@ export async function issueMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpt
 /**
  * Unused units back to the pharmacy. Stock returns to the batches it left (newest-taken first); the units are CREDITED —
  * the patient owes for issued minus returned (own medicine: never charged, 0 credited). A return on a stopped order
- * clears `return_owed` (the pharmacist counted what came back). DECIDED: no running-bill line exists for a ward issue yet
- * (the charges lane's seam, MAP.md), so the credit is recorded in units on the issue; billing composes from them.
+ * clears `return_owed` (the pharmacist counted what came back). #787: the running bill is credited in the same
+ * transaction (`drug-charges.ts` `postDrugReturnCreditsIn`) — the answer here still carries units only, never money.
  */
 export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"return_med">> {
   const input: Input<"return_med"> = IPD_INTENTS.return_med.input.parse(raw);
@@ -341,6 +347,9 @@ export async function returnMed(db: Db, actor: Actor, raw: unknown, opts: EmarOp
       returnedBy: actor.id, returnedAt: at,
     });
     if (o.status !== "active" && o.returnOwed) await tx.update(ipdOrders).set({ returnOwed: false }).where(eq(ipdOrders.id, o.id));
+    // #787: the returned units come off the running bill at the price they were issued at (never today's); a line a
+    // settled bill took raises the bill desk's `return_after_bill` decision instead. Own medicine: nothing was charged.
+    if (creditedUnits > 0) await postDrugReturnCreditsIn(tx, actor, a, { issueId: first.id, returnId, batches, reason: input.reason, at });
     const drug = (await emarDrugsOf(tx, [o])).get(o.id);
     if (drug?.narcotic === true) {
       await tx.insert(ipdEmarNarcoticRegister).values({

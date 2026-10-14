@@ -17307,6 +17307,8 @@
     "now": "now",
     "reason": {
       "order_cancelled_after_bill": "Order cancelled after the bill",
+      "return_after_bill": "Medicine returned after the bill",
+      "reissue_lost_damaged": "Lost or damaged medicine replaced",
       "order_cancelled_after_work": "Order cancelled after the sample",
       "rate_missing": "Rate missing",
       "tariff_missing": "No tariff",
@@ -17320,7 +17322,8 @@
       "visit": "Consultant visit",
       "cross_visit": "Cross-consultation",
       "lab": "Laboratory",
-      "imaging": "Imaging"
+      "imaging": "Imaging",
+      "pharmacy": "Medicines"
     },
     "class": {
       "general": "General ward",
@@ -17606,6 +17609,10 @@
   "ipdBillDesk": {
     "orderCancel": {
       "order_cancelled_after_bill": "{{name}} · {{date}} — cancelled after the bill",
+      "return_after_bill": "{{name}} · {{date}} — returned after the bill",
+      "reissue_lost_damaged": "{{name}} · {{date}} — lost or damaged, replaced",
+      "reverse_return_after_bill": "Credit return after void",
+      "reverse_reissue_lost_damaged": "Waive charge",
       "order_cancelled_after_work": "{{name}} · {{date}} — cancelled after the sample",
       "reason": "Reason (required)",
       "keep": "Keep charge",
@@ -17626,6 +17633,8 @@
     "empty": "Nothing needs the desk. Normal running bills are not listed.",
     "reason": {
       "order_cancelled_after_bill": "Cancelled after bill",
+      "return_after_bill": "Returned after bill",
+      "reissue_lost_damaged": "Lost or damaged re-issue",
       "order_cancelled_after_work": "Cancelled after sample",
       "deposit_90": "Deposit 90 % used",
       "deposit_75": "Deposit 75 % used",

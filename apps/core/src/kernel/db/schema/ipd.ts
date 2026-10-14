@@ -298,8 +298,8 @@ export const ipdBands = pgTable(
 // ═══════════════════════════════════════ E2.1 (#725) — the running bill ═══════════════════════════════════════
 
 /** The daily and per-visit components the running bill posts (`IPD_RATE_COMPONENTS`, retyped for drizzle-kit). */
-/** The rate card's five components plus #785's two order departments (contracts `IPD_CHARGE_COMPONENTS`). */
-const CHARGE_COMPONENTS_SQL = sql.raw(["room", "nursing", "rmo", "visit", "cross_visit", "lab", "imaging"].map((c) => `'${c}'`).join(", "));
+/** The rate card's five components, #785's two order departments and #787's `pharmacy` (contracts `IPD_CHARGE_COMPONENTS`). */
+const CHARGE_COMPONENTS_SQL = sql.raw(["room", "nursing", "rmo", "visit", "cross_visit", "lab", "imaging", "pharmacy"].map((c) => `'${c}'`).join(", "));
 
 /**
  * One posted line of an admission's running bill (spec SPEC-ipd-core §4.3). APPEND-ONLY: a wrong line is answered by
@@ -336,11 +336,20 @@ export const ipdChargeLines = pgTable(
     netPaise: bigint("net_paise", { mode: "number" }).notNull(),
     gstRateBps: integer("gst_rate_bps").notNull(),
     gstExempt: boolean("gst_exempt").notNull(),
-    /** `ipd.nightly` (rent, nursing, RMO), `ipd.visit` (the rounds tap), `ipd.reversal`, `ipd.order` (#785: a lab / imaging order item). */
+    /** `ipd.nightly` (rent, nursing, RMO), `ipd.visit` (the rounds tap), `ipd.reversal`, `ipd.order` (#785: a lab / imaging order item), `ipd.pharmacy` (#787: a ward issue). */
     source: text("source").notNull(),
     /** #785 — order lines: the department order (kernel `orders.id`) and the order item the line charges (copied onto the reversal). */
     orderId: text("order_id"),
     orderItemId: text("order_item_id"),
+    /**
+     * #787 — a medicine issued to the ward (`ipd.pharmacy`): the eMAR issue, the batch the stock left and the line's place
+     * in that batch's chain (0 at issue; n after n returns — a return reverses the live line and, when units stay with
+     * the patient, posts the next one for the kept units at the ORIGINAL line's price). `order_id` is the `ipd_orders`
+     * row; `qty` is the units charged. Copied onto the reversal.
+     */
+    issueId: text("issue_id"),
+    batchId: text("batch_id"),
+    drugSeq: integer("drug_seq"),
     /** The visiting consultant (visit lines; copied onto their reversal). */
     consultantUserId: text("consultant_user_id"),
     /**
@@ -359,9 +368,15 @@ export const ipdChargeLines = pgTable(
     uniqueIndex("ipd_charge_lines_reversal_ux").on(t.reversalOf).where(sql`${t.reversalOf} is not null`),
     // #785: one order line per order item, ever (a retried placement posts nothing).
     uniqueIndex("ipd_charge_lines_order_ux").on(t.orderItemId).where(sql`${t.source} = 'ipd.order'`),
+    // #787: one live chain per issued batch (a retried issue or return posts nothing twice).
+    uniqueIndex("ipd_charge_lines_pharmacy_ux").on(t.issueId, t.batchId, t.drugSeq).where(sql`${t.source} = 'ipd.pharmacy'`),
     index("ipd_charge_lines_admission_idx").on(t.admissionId, t.serviceDate),
     check("ipd_charge_lines_component_ck", sql`${t.component} in (${CHARGE_COMPONENTS_SQL})`),
-    check("ipd_charge_lines_source_ck", sql`${t.source} in ('ipd.nightly', 'ipd.visit', 'ipd.reversal', 'ipd.order')`),
+    check("ipd_charge_lines_source_ck", sql`${t.source} in ('ipd.nightly', 'ipd.visit', 'ipd.reversal', 'ipd.order', 'ipd.pharmacy')`),
+    check(
+      "ipd_charge_lines_pharmacy_ck",
+      sql`${t.source} = 'ipd.reversal' or (${t.source} = 'ipd.pharmacy') = (${t.issueId} is not null and ${t.batchId} is not null and ${t.drugSeq} is not null and ${t.orderId} is not null)`,
+    ),
     check("ipd_charge_lines_order_ck", sql`${t.source} = 'ipd.reversal' or (${t.source} = 'ipd.order') = (${t.orderItemId} is not null and ${t.orderId} is not null)`),
     check("ipd_charge_lines_qty_ck", sql`${t.qty} > 0`),
     check("ipd_charge_lines_reversal_ck", sql`(${t.source} = 'ipd.reversal') = (${t.reversalOf} is not null)`),
@@ -411,7 +426,7 @@ export const ipdChargeExceptions = pgTable(
     uniqueIndex("ipd_charge_exceptions_key_ux").on(t.key),
     index("ipd_charge_exceptions_open_idx").on(t.admissionId).where(sql`${t.resolvedAt} is null`),
     check("ipd_charge_exceptions_component_ck", sql`${t.component} is null or ${t.component} in (${CHARGE_COMPONENTS_SQL})`),
-    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated', 'order_cancelled_after_bill', 'order_cancelled_after_work')`),
+    check("ipd_charge_exceptions_reason_ck", sql`${t.reason} in ('rate_missing', 'tariff_missing', 'posting_failed', 'visit_backdated', 'order_cancelled_after_bill', 'order_cancelled_after_work', 'return_after_bill', 'reissue_lost_damaged')`),
     check("ipd_charge_exceptions_shape_ck", sql`(${t.reason} = 'posting_failed') = (${t.component} is null) and (${t.component} is null) = (${t.serviceDate} is null)`),
   ],
 );

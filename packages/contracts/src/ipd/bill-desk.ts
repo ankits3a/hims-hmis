@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { IpdBedClassSchema } from "../ipd-bed-classes";
 import { IpdAdmissionStateSchema, IpdIdSchema, IpdInstantSchema, IpdPaiseSchema } from "./common";
+import { IpdLineDecisionReasonSchema } from "./charges";
 import { IpdPayerKindSchema } from "./intents-admit";
 
 /**
@@ -21,6 +22,8 @@ export const IPD_BILLDESK_REASONS = [
   "visit_backdated",
   // #785 review: a lab / imaging order cancelled after its line went on a settled bill, or (lab) after the sample was taken.
   "order_cancelled_after_bill", "order_cancelled_after_work",
+  // #787: medicine returned after a settled bill took its line; a lost / damaged replacement that was charged.
+  "return_after_bill", "reissue_lost_damaged",
 ] as const;
 export const IpdBillDeskReasonSchema = z.enum(IPD_BILLDESK_REASONS);
 export type IpdBillDeskReason = z.infer<typeof IpdBillDeskReasonSchema>;
@@ -58,9 +61,12 @@ export const IpdBillDeskRowSchema = z.object({
   backdatedVisits: z.array(z.object({
     exceptionId: z.string(), serviceDate: z.string(), consultantName: z.string(),
   })).optional(),
-  /** #785: lab / imaging lines whose order was cancelled late — billing keeps the charge or reverses it (after a void). */
+  /**
+   * #785: lab / imaging lines whose order was cancelled late — billing keeps the charge or reverses it (after a void).
+   * #787: the same two answers for a medicine returned after the bill and for a charged lost / damaged replacement.
+   */
   orderCancels: z.array(z.object({
-    chargeLineId: z.string(), reason: z.enum(["order_cancelled_after_bill", "order_cancelled_after_work"]),
+    chargeLineId: z.string(), reason: IpdLineDecisionReasonSchema,
     serviceName: z.string(), serviceDate: z.string(),
   })).optional(),
 });

@@ -27,8 +27,11 @@ Source: `apps/core/src/modules/pharmacy/`
   - `registerPharmacyApprovalTypes(db: Db, activator: Actor): Promise<{ registered: string[]; already: string[] }>`
 - `bill.ts`
   - `billDispense(db: Db, actor: Actor, dispenseId: string, input: BillInput, now: Date): Promise<DispenseView>`
+  - `gstCategoryMap(db: Db): Promise<GstCategoryMap>`
+  - `invoiceInputsOf(p: { input: InvoiceLineInput; residual: InvoiceLineInput | null }): InvoiceLineInput[]`
   - `previewDispenseBill(db: Db, actor: Actor, dispenseId: string, now: Date, opts: { tender?: TenderKind; discount?: DiscountAsk } = {}): Promi…`
-  - types: `BillInput`
+  - `priceBatchLine(db: Db, gstByCategory: GstCategoryMap, line: { itemId: string; batchId: string; qtyBase: number }, now: Date): Promise<Price…`
+  - types: `BillInput`, `GstCategoryMap`, `PricedBatchLine`
 - `claim.ts`
   - `claimDispense(db: Db, actor: Actor, input: { dispenseId: string; door: CounterDoor }, now: Date): Promise<DispenseView>`
   - `findAtCounter(db: Db, cfg: AppConfig, actor: Actor, q: string, now: Date): Promise<FindResult>`
