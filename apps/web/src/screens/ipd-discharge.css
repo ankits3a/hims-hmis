@@ -131,3 +131,5 @@
 .ipdd-stamp { margin: 0; padding: 6px 10px; border: 1px dashed #c9b27a; border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
 .ipdd-flags { list-style: none; margin: 0; padding: 6px 10px; border: 1px solid #e3b4a8; border-radius: 6px; background: #fdf3f0; color: #9a3412; font-size: 13.5px; display: flex; flex-direction: column; gap: 2px; }
 .ipdd-flags li { overflow-wrap: anywhere; }
+.ipdd-ack { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+@media print { .ipdd-print .ipdd-stamp { border: 1pt dashed #000; padding: 3pt 6pt; margin: 0 0 6pt; } .ipdd-print .ipdd-flags { border: 1pt solid #000; background: #fff; color: #000; } }

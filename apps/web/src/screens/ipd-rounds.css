@@ -144,3 +144,4 @@
   .ipdc-line .text { flex-basis: calc(100% - 28px); }
   .ipdr button.ipdc-chip { min-height: 48px; margin-left: auto; }
 }
+.ipdc-cut { margin: 0 0 6px; padding: 6px 10px; border: 1px solid var(--warn); border-radius: 8px; color: var(--warn); font-size: 13px; font-weight: 600; }

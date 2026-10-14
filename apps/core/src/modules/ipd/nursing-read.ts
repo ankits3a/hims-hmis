@@ -356,7 +356,8 @@ export async function listShiftHandovers(db: Db, actor: Actor, opts: { wardId?: 
   const bedOf = new Map(stays.map((s) => [s.admissionId, s.code] as const));
   const wardIds = [...new Set(rows.flatMap((r) => (r.wardId === null ? [] : [r.wardId])))];
   const wardNames = new Map((wardIds.length === 0 ? [] : await db.select({ id: resources.id, name: resources.name }).from(resources).where(inArray(resources.id, wardIds))).map((w) => [w.id, w.name] as const));
-  const drafts = await draftProvenances(db, rows.flatMap((r) => (r.draftId === null ? [] : [r.draftId])));
+  const drafts = await draftProvenances(db, rows.flatMap((r) => (r.draftId === null ? [] : [r.draftId])),
+    new Map(rows.flatMap((r) => (r.draftId === null ? [] : [[r.draftId, r.draftEdited] as const]))));
   const givers = new Map((await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, [...new Set(rows.map((r) => r.givenBy))]))).map((u) => [u.id, u.name] as const));
   return {
     asOf: now.toISOString(),

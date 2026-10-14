@@ -213,106 +213,148 @@ export function quantitiesIn(text: string): Quantities {
 const same = (a: number, b: number): boolean => Math.abs(a - b) < 1e-9;
 const within = (n: number, set: readonly number[]): boolean => set.some((x) => same(x, n));
 
-/** Guarded words: a rewording must carry exactly the classes its template line carries (negation, direction, outcome). */
+/**
+ * Words whose presence changes what a sentence says: negation, direction, outcome, and the early-warning bands. FREE TEXT
+ * (`verifyFreeText`) may carry one of these classes only when the notes it summarises carry it.
+ */
 const GUARDED: readonly (readonly [string, RegExp])[] = [
-  ["neg", /\b(no|not|none|nil|without|never|neither|nor|zero)\b|n't\b/i],
-  ["max", /\b(max|maximum|peak|peaked|highest|high of)\b/i],
+  ["neg", /\b(no|not|none|nil|without|never|neither|nor|zero|denies|denied|absent)\b|n't\b/i],
   // "/min" is a unit, not a minimum.
-  ["min", /(?<!\/)\b(min|minimum|lowest|low of|nadir)\b/i],
-  ["up", /\b(rose|risen|rising|rise|increased|increase|up|worse|worsened|climbed|higher)\b/i],
-  ["down", /\b(fell|fallen|falling|fall|decreased|decrease|down|settled|improved|dropped|lower)\b/i],
+  ["max", /\b(max|maximum|peak|peaked|highest)\b/i],
+  ["min", /(?<!\/)\b(min|minimum|lowest|nadir)\b/i],
+  ["up", /\b(rose|risen|rising|rise|increased|increase|increasing|worse|worsened|worsening|climbed|higher|deteriorated|deteriorating)\b/i],
+  ["down", /\b(fell|fallen|falling|decreased|decrease|decreasing|settled|improved|improving|dropped|lower|resolved)\b/i],
   ["missed", /\b(missed|miss|omitted|skipped)\b/i],
   ["refused", /\b(refused|refusal|declined)\b/i],
-  ["held", /\b(held|hold|withheld)\b/i],
-  ["given", /\b(given|gave|administered|received|taken)\b/i],
-  ["stopped", /\b(stopped|stop|discontinued|ceased)\b/i],
-  ["new", /\b(new|started|added|begun|commenced)\b/i],
-  ["change", /\b(change|changed|unchanged|stable|same|stays|steady)\b/i],
-  ["flagged", /\b(flagged|flag|concern|concerns)\b/i],
+  ["held", /\b(held|withheld)\b/i],
+  ["given", /\b(given|gave|administered)\b/i],
+  ["stopped", /\b(stopped|discontinued|ceased)\b/i],
+  ["band_low", /\blow\b/i], ["band_medium", /\b(medium|moderate)\b/i], ["band_high", /\b(high|severe|critical)\b/i],
+  ["stable", /\b(stable|unchanged|normal)\b/i],
 ];
-const guardedOf = (text: string): string => GUARDED.filter(([, re]) => re.test(text)).map(([k]) => k).join(",");
+const guardedIn = (text: string): string[] => GUARDED.filter(([, re]) => re.test(text)).map(([k]) => k);
 
 const MONEY_RE = /₹|\brs\.?\s*\d|\brupees?\b|\bpaise\b|\bINR\b|\bbill\b|\bcharges?\b|\bdeposit\b|\bpayment\b/i;
 /** Words that would turn a summary into a proposal (autonomy ladder: doses and orders — None, ever). */
-const PROPOSAL_RE = /\b(start|give|increase|decrease|reduce|stop|administer|prescribe|consider|recommend|recommended|suggest|suggested|should|must|advise|titrate|switch to|add)\b/i;
+const PROPOSAL_RE = /\b(start|give|increase|decrease|reduce|stop|administer|prescribe|consider|recommend|recommended|suggest|suggested|should|must|advise|advised|titrate|switch|add|needs?|require[sd]?|review|repeat|monitor|continue|withhold|hold|order|escalate|refer)\b/i;
 
 export const REWORD_MAX_CHARS = 200;
-
-const flat = (s: string): string => s.toLowerCase().replace(/\u2212/g, "-").replace(/\s+/g, " ").trim();
-
-/**
- * THE PHRASES THAT BIND A NUMBER TO WHAT IT COUNTS. A template line is cut at its punctuation; in each piece, every
- * token that states a quantity is taken with the word before it and the word after it ("max 38.9 °C", "2 missed",
- * "at 12:30", "over 6 readings"). A rewording must carry each of these as written — so a model can move a clause or
- * change the words around it, but it cannot hand "2 missed, 9 given" back as "2 given, 9 missed".
- */
-export function boundPhrases(templateText: string): string[] {
-  const out: string[] = [];
-  for (const piece of templateText.split(/[,;—()]|:\s/)) {
-    const tokens = piece.trim().split(/\s+/).filter((t) => t !== "");
-    tokens.forEach((tok, i) => {
-      const q = quantitiesIn(tok);
-      if (q.numbers.length + q.times.length === 0) return;
-      out.push(flat([tokens[i - 1], tok, tokens[i + 1]].filter((t) => t !== undefined).join(" ")));
-    });
-  }
-  return out;
-}
 
 export type Verdict = { ok: true } | { ok: false; reason: string };
 const no = (reason: string): Verdict => ({ ok: false, reason });
 
 /**
- * MAY THIS REWORDING REPLACE ITS TEMPLATE LINE? Only when it says the same quantities about the same records:
- *  - every number and clock time in it is one the FACT carries (a wrong or invented number is refused);
- *  - it states exactly the numbers and times the template line states (none dropped, none borrowed from the fact's others);
- *  - each number still sits in the template's own phrase for it (`boundPhrases`): no number moved to another label;
- *  - every drug or test name the template printed is still there;
- *  - its guarded words are the template's (no added or lost negation, direction or outcome);
- *  - it is one short line with no money word and no placeholder.
+ * THE ONLY WORDS A MODEL MAY ADD TO A LINE (DECIDED, closed, per language). Nothing that binds, compares, negates or
+ * counts: no "of", "over", "than", "to", "from", "no", "not", "before", "after". The Hindi list applies only to a line
+ * whose template is in Devanagari (none is today); every other non-ASCII word or digit is refused.
+ */
+export const CONNECTIVES: Readonly<Record<"en" | "hi", ReadonlySet<string>>> = {
+  en: new Set(["and", "with", "since", "at", "the", "a", "an", "is", "was", "were", "are", "has", "had", "been", "there", "also", "then"]),
+  hi: new Set(["और", "तथा", "के", "साथ", "है", "हैं", "था", "थे"]),
+};
+/** Punctuation a line may carry. Anything else that is not a token — a digit of another script, a symbol — refuses the line. */
+const PUNCTUATION = new Set([".", ",", ";", ":", "(", ")", "—", "–", "-", "/", "%", "°", "+", "'", "\"", "!"]);
+const TOKEN_RE = /(?<![\p{L}\p{N}.])[+-]?\d+(?:[.:]\d+)*|\p{L}[\p{L}\p{M}\p{N}]*|\S/gu;
+
+/**
+ * A line as tokens: numbers (with a leading sign and their decimal or clock part), words (letters then letters or
+ * digits — "NEWS2", "SpO2" and "B12" are one word each), lower-cased. `foreign` is the first character that is neither
+ * a token nor permitted punctuation.
+ */
+export function lineTokens(text: string): { tokens: string[]; foreign: string | null } {
+  const tokens: string[] = [];
+  let foreign: string | null = null;
+  for (const m of text.replace(/−/g, "-").matchAll(TOKEN_RE)) {
+    const t = m[0];
+    if (/^[+-]?\d/.test(t) || /^\p{L}/u.test(t)) tokens.push(t.toLowerCase());
+    else if (!PUNCTUATION.has(t)) foreign ??= t;
+  }
+  return { tokens, foreign };
+}
+
+/**
+ * MAY THIS REWORDING REPLACE ITS TEMPLATE LINE? FAIL CLOSED, BY ALLOWLIST (review of 1f7cc591): a rewording is the
+ * template line's own tokens, ALL of them and IN THE TEMPLATE'S ORDER, with nothing between them but words of the closed
+ * connective list. So a model can join a line more smoothly and nothing else: it cannot change a number or move it to
+ * another label, change or swap a band word, drop a negation, or add a medicine, advice, a source or a number word in
+ * any script — each of those is a token that is not the next template token and not a connective. Any such token, any
+ * character that is not permitted punctuation, a proposal word or a money word: the line keeps the record's own words.
+ * (The model's real freedom is the ORDER and choice of emphasis among lines — `applyRewordings`.)
  */
 export function verifyReworded(text: string, line: Pick<Line, "text" | "fact">): Verdict {
   const t = text.trim();
   if (t === "" || t.length > REWORD_MAX_CHARS || /[\r\n]/.test(t)) return no("shape");
   if (MONEY_RE.test(t)) return no("money");
   if (t.includes("<<") || t.includes(">>")) return no("placeholder");
+  if (PROPOSAL_RE.test(t) && !PROPOSAL_RE.test(line.text)) return no("proposal");
+  // Said first, for the plainest reason: a number or a clock time the record does not hold.
   const said = quantitiesIn(t);
   for (const n of said.numbers) if (!within(n, line.fact.numbers)) return no(`number_not_in_record:${String(n)}`);
   for (const c of said.times) if (!line.fact.times.includes(c)) return no(`time_not_in_record:${c}`);
-  const template = quantitiesIn(line.text);
-  const sort = (xs: readonly number[]): string => [...xs].sort((a, b) => a - b).map((n) => String(n)).join(",");
-  if (sort(said.numbers) !== sort(template.numbers)) return no("numbers_differ_from_line");
-  if ([...said.times].sort().join(",") !== [...template.times].sort().join(",")) return no("times_differ_from_line");
-  const flatText = flat(t);
-  for (const phrase of boundPhrases(line.text)) if (!flatText.includes(phrase)) return no("number_moved");
-  const lower = t.toLowerCase();
-  for (const term of line.fact.terms) {
-    if (line.text.includes(term) && !lower.includes(term.toLowerCase())) return no("name_dropped");
+  const mine = lineTokens(t);
+  if (mine.foreign !== null) return no("character_not_allowed");
+  const template = lineTokens(line.text).tokens;
+  const connectives = /[ऀ-ॿ]/.test(line.text) ? CONNECTIVES.hi : CONNECTIVES.en;
+  let k = 0;
+  for (const tok of mine.tokens) {
+    if (k < template.length && tok === template[k]) k += 1;
+    else if (!connectives.has(tok)) return no(`token_not_allowed:${tok}`);
   }
-  if (guardedOf(t) !== guardedOf(line.text)) return no("meaning_words_differ");
+  if (k < template.length) return no(`content_dropped:${template[k]!}`);
   return { ok: true };
 }
 
 export const FREE_TEXT_MAX_CHARS = 1200;
 
 /**
- * MAY THIS FREE TEXT STAND IN A DRAFT? It summarises `sources` (the masked notes it was given) and nothing else: every
- * number and time in it must already be in them or in `allowed` (the facts' numbers); no proposal, no money, no placeholder.
- * Medicine names are checked by the caller against the stay's orders (it needs the formulary).
+ * MAY THIS FREE TEXT STAND IN A DRAFT? It summarises `sources` (the masked notes it was given) and nothing else:
+ *  - ASCII only (a number word or a digit in another script cannot be checked, so it is refused);
+ *  - every number and clock time in it is already in the notes or in `allowed` (the facts' numbers);
+ *  - every guarded class it carries (negation, direction, outcome, band) is one the notes carry;
+ *  - no proposal, no money, no placeholder, and none of `names` (the people the notes were masked for).
+ * Medicine names and unknown words are the caller's check (`medicinesNamedWithoutOrder`, `unverifiedWords`).
  */
-export function verifyFreeText(text: string, sources: readonly string[], allowed: Quantities = { numbers: [], times: [] }, maxChars = FREE_TEXT_MAX_CHARS): Verdict {
+export function verifyFreeText(
+  text: string, sources: readonly string[], allowed: Quantities = { numbers: [], times: [] }, maxChars = FREE_TEXT_MAX_CHARS, names: readonly string[] = [],
+): Verdict {
   const t = text.trim();
   if (t === "" || t.length > maxChars) return no("shape");
+  if (/[^\x00-\x7F°—–’‘“”]/.test(t)) return no("non_ascii");
   if (MONEY_RE.test(t)) return no("money");
   if (t.includes("<<") || t.includes(">>")) return no("placeholder");
   if (PROPOSAL_RE.test(t)) return no("proposal");
+  const lower = t.toLowerCase();
+  for (const name of [...names, ...names.flatMap((x) => x.split(/\s+/))]) {
+    const n = name.trim().toLowerCase();
+    if (n.length >= 3 && new RegExp(`(?<![a-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9])`).test(lower)) return no("name");
+  }
   const known = sources.map((s) => quantitiesIn(s));
   const numbers = [...allowed.numbers, ...known.flatMap((k) => k.numbers)];
   const times = [...allowed.times, ...known.flatMap((k) => k.times)];
   const said = quantitiesIn(t);
   for (const n of said.numbers) if (!within(n, numbers)) return no(`number_not_in_record:${String(n)}`);
   for (const c of said.times) if (!times.includes(c)) return no(`time_not_in_record:${c}`);
+  const carried = new Set(sources.flatMap((s) => guardedIn(s)));
+  for (const cls of guardedIn(t)) if (!carried.has(cls)) return no(`meaning_not_in_notes:${cls}`);
   return { ok: true };
+}
+
+/** Plain words a summary sentence is made of (closed). A word outside this list, the notes and the orders is "unverified". */
+const SUMMARY_WORDS = new Set((
+  "about above after afternoon again along also although among around been before being below between both came came comfortable complained complaint complaints " +
+  "condition course days during each earlier eased evening felt following from further general have having hospital hours later made more morning most much " +
+  "night noted nothing nurse nurses observed only other over overnight pain patient period present recorded remained reported rest since slept some stay than that " +
+  "their them then there these they this those through throughout today told took treated under until very ward well were when where which while with within yesterday " +
+  "admitted admission discharge discharged doctor informed seen shift taken tolerated treatment fever afebrile plan planned home"
+).split(/\s+/));
+
+/**
+ * Words of a model's free text that are in none of the notes it was given, on no order of the stay and not plain summary
+ * words — a misspelt or unknown medicine looks exactly like this, so each is shown to the signer as "unverified".
+ */
+export function unverifiedWords(text: string, sources: readonly string[], known: ReadonlySet<string> = new Set()): string[] {
+  const given = new Set(sources.flatMap((s) => wordsOf(s)));
+  return wordsOf(text).filter((w) => !given.has(w) && !known.has(w) && !SUMMARY_WORDS.has(w) && !CONNECTIVES.en.has(w));
 }
 
 /** Lower-cased words of four letters or more — what a medicine-name check compares. */

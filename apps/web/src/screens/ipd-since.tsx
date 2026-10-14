@@ -79,6 +79,9 @@ export function SinceYesterday({ admissionId }: { admissionId: string }): React.
             : t("ipdCopilot.since.modeTimeline")}
         </span>
       </h2>
+      {s.truncated.length > 0 ? (
+        <p className="ipdc-cut" role="alert" data-testid="ipd-since-truncated">⚠ {t("ipdCopilot.truncated", { lists: s.truncated.map((k) => t(`ipdCopilot.list.${k}`, { defaultValue: k })).join(", ") })}</p>
+      ) : null}
       <ul className="ipdc-lines">{s.lines.map((l) => <Line key={l.key} l={l} />)}</ul>
     </section>
   );

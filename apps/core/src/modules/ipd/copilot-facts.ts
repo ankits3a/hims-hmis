@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import {
   dietNpo, dietOrders, ipdConsults, ipdEmarActs, ipdEmarDoses, ipdIntakeOutput, ipdNursingNotes, ipdOrders, ipdRounds, ipdVitals,
   orderItems, services,
 } from "../../kernel/db/schema";
+import { istMinutesOfInstant } from "../roster";
 import { mkFact as fact, quantitiesIn, shown } from "./copilot-lines";
-import { istClock } from "./nursing";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Db } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
@@ -39,17 +39,38 @@ const VITAL_LABEL: Record<VitalParam, string> = { temperatureC: "Temp", pulse: "
 const VITAL_UNIT: Record<VitalParam, string> = { temperatureC: " °C", pulse: "/min", respRate: "/min", systolic: " mmHg", spo2: "%", painScore: "" };
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
+/** "14:05", the hospital's clock (the roster's own offset — `test/ist-clock-parity.test.ts`). */
+function istClock(at: Date): string {
+  const m = istMinutesOfInstant(at);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
 
 export type FactWindow = { since: Date; until: Date };
 
-export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string } = {}): Promise<Fact[]> {
+export type FactSet = { facts: Fact[]; /** Kinds of record whose list was cut at the limit (the NEWEST rows were kept). */ truncated: string[] };
+
+export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise<Fact[]> {
+  return (await buildFactSet(db, a, w, opts)).facts;
+}
+
+/**
+ * NO SILENT CAP (review of 1f7cc591): every list is read NEWEST FIRST, one row past the limit; a list that was cut is
+ * named in `truncated`, and what is kept is the newest (then put back in time order). The caller shows the cut.
+ */
+export async function buildFactSet(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise<FactSet> {
   const out: Fact[] = [];
+  const LIMIT = opts.rowLimit ?? FACT_ROW_LIMIT;
+  const truncated: string[] = [];
+  const newest = <T>(kind: string, rows: T[]): T[] => {
+    if (rows.length > LIMIT) { truncated.push(kind); return rows.slice(0, LIMIT).reverse(); }
+    return rows.reverse();
+  };
   const inWindow = (col: AnyPgColumn) => and(gt(col, w.since), lte(col, w.until));
 
   // ── vitals and the early-warning band ──
   const sets = await db.select().from(ipdVitals)
     .where(and(eq(ipdVitals.admissionId, a.id), eq(ipdVitals.refused, false), inWindow(ipdVitals.observedAt)))
-    .orderBy(asc(ipdVitals.observedAt), asc(ipdVitals.id)).limit(FACT_ROW_LIMIT);
+    .orderBy(desc(ipdVitals.observedAt), desc(ipdVitals.id)).limit(LIMIT + 1).then((r) => newest("vitals", r));
   const scored = sets.filter((v) => v.scoreKind !== null && v.scoreBand !== null && v.scoreValue !== null);
   const adult = scored.length > 0 ? scored[scored.length - 1]!.scoreKind === "news2" : sets.length > 0;
   for (const param of VITAL_PARAMS) {
@@ -90,7 +111,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
     id: ipdEmarActs.id, kind: ipdEmarActs.kind, at: ipdEmarActs.at, orderId: ipdEmarActs.orderId, prn: ipdEmarDoses.prn, name: ipdOrders.medicineName,
   }).from(ipdEmarActs).innerJoin(ipdEmarDoses, eq(ipdEmarDoses.id, ipdEmarActs.doseId)).innerJoin(ipdOrders, eq(ipdOrders.id, ipdEmarActs.orderId))
     .where(and(eq(ipdEmarActs.admissionId, a.id), inArray(ipdEmarActs.kind, ["given", "missed", "refused", "held"]), inWindow(ipdEmarActs.at)))
-    .orderBy(asc(ipdEmarActs.at), asc(ipdEmarActs.id)).limit(FACT_ROW_LIMIT);
+    .orderBy(desc(ipdEmarActs.at), desc(ipdEmarActs.id)).limit(LIMIT + 1).then((r) => newest("doses", r));
   const struck = acts.length === 0 ? new Set<string>() : new Set((await db.select({ id: ipdEmarActs.correctsActId }).from(ipdEmarActs)
     .where(and(eq(ipdEmarActs.kind, "entered_in_error"), inArray(ipdEmarActs.correctsActId, acts.map((x) => x.id))))).map((r) => r.id));
   const live = acts.filter((x) => !struck.has(x.id));
@@ -115,7 +136,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
   }
 
   // ── orders: new, stopped; results the departments completed ──
-  const orders = await db.select().from(ipdOrders).where(eq(ipdOrders.admissionId, a.id)).orderBy(asc(ipdOrders.orderedAt)).limit(FACT_ROW_LIMIT);
+  const orders = await db.select().from(ipdOrders).where(eq(ipdOrders.admissionId, a.id)).orderBy(desc(ipdOrders.orderedAt), desc(ipdOrders.id)).limit(LIMIT + 1).then((r) => newest("orders", r));
   const serviceIds = [...new Set(orders.flatMap((o) => o.serviceIds ?? []))];
   const testNames = new Map(serviceIds.length === 0 ? [] : (await db.select({ id: services.id, name: services.name }).from(services)
     .where(inArray(services.id, serviceIds))).map((s) => [s.id, s.name] as const));
@@ -148,7 +169,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
     const done = await db.select({ id: orderItems.id, orderId: orderItems.orderId, at: orderItems.completedAt, name: services.name })
       .from(orderItems).innerJoin(services, eq(services.id, orderItems.serviceId))
       .where(and(inArray(orderItems.orderId, [...kindOf.keys()]), eq(orderItems.restricted, false), inWindow(orderItems.completedAt)))
-      .orderBy(asc(orderItems.completedAt)).limit(FACT_ROW_LIMIT);
+      .orderBy(desc(orderItems.completedAt), desc(orderItems.id)).limit(LIMIT + 1).then((r) => newest("results", r));
     for (const department of ["lab", "imaging"] as const) {
       const mine = done.filter((d) => kindOf.get(d.orderId) === department);
       if (mine.length === 0) continue;
@@ -162,7 +183,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
 
   // ── nursing notes, intake and output ──
   const notes = await db.select().from(ipdNursingNotes).where(and(eq(ipdNursingNotes.admissionId, a.id), inWindow(ipdNursingNotes.observedAt)))
-    .orderBy(asc(ipdNursingNotes.observedAt)).limit(FACT_ROW_LIMIT);
+    .orderBy(desc(ipdNursingNotes.observedAt), desc(ipdNursingNotes.id)).limit(LIMIT + 1).then((r) => newest("notes", r));
   if (notes.length > 0) {
     const flagged = notes.filter((n) => n.category !== "general");
     out.push(fact({
@@ -171,7 +192,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
     }));
   }
   const io = await db.select().from(ipdIntakeOutput).where(and(eq(ipdIntakeOutput.admissionId, a.id), inWindow(ipdIntakeOutput.observedAt)))
-    .orderBy(asc(ipdIntakeOutput.observedAt)).limit(FACT_ROW_LIMIT);
+    .orderBy(desc(ipdIntakeOutput.observedAt), desc(ipdIntakeOutput.id)).limit(LIMIT + 1).then((r) => newest("io", r));
   if (io.length > 0) {
     const inMl = io.filter((e) => e.direction === "in").reduce((s, e) => s + e.volumeMl, 0);
     const outMl = io.filter((e) => e.direction === "out").reduce((s, e) => s + e.volumeMl, 0);
@@ -182,7 +203,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
   }
 
   // ── consults, diet and NPO, other doctors' rounds ──
-  const consults = await db.select().from(ipdConsults).where(eq(ipdConsults.admissionId, a.id)).limit(FACT_ROW_LIMIT);
+  const consults = await db.select().from(ipdConsults).where(eq(ipdConsults.admissionId, a.id)).orderBy(desc(ipdConsults.requestedAt), desc(ipdConsults.id)).limit(LIMIT + 1).then((r) => newest("consults", r));
   const asked = consults.filter((c) => between(c.requestedAt));
   const answered = consults.filter((c) => between(c.closedAt));
   if (asked.length + answered.length > 0) {
@@ -213,7 +234,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
     }));
   }
   const others = (await db.select({ id: ipdRounds.id, at: ipdRounds.seenAt, authorId: ipdRounds.authorId }).from(ipdRounds)
-    .where(and(eq(ipdRounds.admissionId, a.id), inWindow(ipdRounds.seenAt))).orderBy(asc(ipdRounds.seenAt)).limit(FACT_ROW_LIMIT))
+    .where(and(eq(ipdRounds.admissionId, a.id), inWindow(ipdRounds.seenAt))).orderBy(desc(ipdRounds.seenAt), desc(ipdRounds.id)).limit(LIMIT + 1).then((r) => newest("rounds", r)))
     .filter((r) => r.authorId !== opts.actorId);
   if (opts.actorId !== undefined && others.length > 0) {
     out.push(fact({
@@ -221,7 +242,7 @@ export async function buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId
       records: others.map((r) => ({ id: r.id, at: r.at, label: `Round at ${istClock(r.at)}` })),
     }));
   }
-  return out;
+  return { facts: out, truncated };
 }
 
 /** The fingerprint of the records a draft was built from: any row added, or any number changed, changes it. */

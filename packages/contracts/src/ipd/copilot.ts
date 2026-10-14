@@ -54,6 +54,8 @@ export const IpdSinceYesterdaySchema = z.object({
   mode: z.enum(["timeline", "model"]),
   lines: z.array(IpdSinceLineSchema),
   stamp: IpdDraftStampSchema.nullable(),
+  /** Kinds of record whose list was cut at the read's limit (newest kept): the lines over them are not the whole story. */
+  truncated: z.array(z.string()),
   /** The page may ask for a reworded copy (`POST …/since/polish`); false for a sealed patient or with no model. */
   polishable: z.boolean(),
 });
@@ -66,6 +68,10 @@ export const IpdDraftProvenanceSchema = z.object({
   modelId: z.string().nullable(),
   promptVersion: z.string(),
   builtAt: IpdInstantSchema,
+  /** Who asked for the draft. The signer is named by the signed record itself and may be another person. */
+  builtBy: z.object({ id: z.string(), name: z.string() }),
+  /** Whether the signed text differs from the draft's (a shift handover records it; null where it is not recorded). */
+  edited: z.boolean().nullable(),
 });
 export type IpdDraftProvenance = z.infer<typeof IpdDraftProvenanceSchema>;
 
@@ -75,7 +81,8 @@ export const IpdMedicineFlagSchema = z.object({
   /** `medicines` = a row of the medicines list (with its index); `course` = named in the free text. */
   where: z.enum(["medicines", "course"]),
   index: z.number().int().nonnegative().nullable(),
-  reason: z.enum(["no_active_order", "order_stopped", "model_invented"]),
+  /** `unverified`: a word a model wrote that is in none of its notes, on no order and not a plain summary word. */
+  reason: z.enum(["no_active_order", "order_stopped", "model_invented", "unverified"]),
 });
 export type IpdMedicineFlag = z.infer<typeof IpdMedicineFlagSchema>;
 

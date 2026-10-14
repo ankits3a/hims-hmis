@@ -855,48 +855,69 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   `renderLine(fact)`. `acceptance/copilot-verifier.acceptance.test.ts` proves over 400 generated facts that a template prints
   only its fact's numbers, and that any one number changed in a reply is refused — that test is the "number differs from its
   record fails CI" check.
-- A MODEL ONLY REWORDS, AND `verifyReworded` REFUSES RATHER THAN REPAIRS: every number and time must be the fact's; the reply
-  must state exactly the template line's numbers; each number must still sit in the template's own phrase for it
-  (`boundPhrases` — "2 missed; 9 given" cannot come back as "2 given; 9 missed"); names kept; the guarded words (no / missed /
-  given / max / rose …) must be the template's (`GUARDED`); one line, no money word, no placeholder. A refused line keeps the
-  record's own words. Abnormal lines sort first whatever order the model chose. A NEW TEMPLATE WORD THAT CARRIES MEANING OWES A
-  `GUARDED` ENTRY; a new template must keep each number next to the word it counts.
+- A MODEL ONLY REWORDS, BY ALLOWLIST, FAIL CLOSED (review of 1f7cc591; a word-by-word check was beaten four ways).
+  `verifyReworded` accepts a rewording only when it is the template line's own tokens (`lineTokens`), ALL of them and IN
+  ORDER, with nothing between them but words of the closed list `CONNECTIVES` (and, with, since, at, the, a, an, is, was,
+  were, are, has, had, been, there, also, then — no "of", "over", "to", "from", "no"). Any other token (a changed or moved
+  number, a band word, a medicine, advice, a source, a number word in any script), any character that is not permitted
+  punctuation, a proposal or money word: the line keeps the record's own words. The model's real freedom is the order of
+  the lines; abnormal lines still sort first. NEVER ADD A BINDING OR NEGATING WORD TO `CONNECTIVES`.
 - THE READ NEVER CALLS A MODEL AND NEVER WRITES. `readSinceYesterday` is the page; `polishSinceYesterday` (a POST the page
   fires after it has drawn) asks inside `SINCE_BUDGET_MS` (1 s) and keeps accepted rewordings in `ipd_copilot_drafts` per
   admission, doctor and IST day. A kept rewording is re-verified against TODAY's facts on every read (§4.10 edge 13): a new
   vitals set changes the line's numbers and the kept sentence is dropped. The same `factsHash` never costs a second call
-  (also when every line was refused). Model down / slow / off / halted / capped: no row, the plain timeline, `mode: timeline`.
+  (also when every line was refused). Model down / slow: a fallback row is kept and the model is left alone for these
+  records for `MODEL_COOLDOWN_MS` (5 min, `mayAskAgain`); off / halted / capped / barred: no row. Always the plain timeline.
 - WINDOW (DECIDED): since the READER's own latest round on the patient (any status — a resident's draft is their last look),
   else 24 h. Other doctors' rounds in the window are a line.
 - ONE DOOR TO A MODEL (`copilot-model.ts`), the staff copilot's own: `openAiCompatibleClient(cfg.copilot)`, `maskQuestion` +
   `assertNoIdentifiers`, `readCopilotGate` (halt `global` / `read`, plus `draft` for the two drafters; the ₹ cap of decision
   0064), `SpendMeter`, and `recordAsk` — a drafter's call is a `copilot_asks` row (`route = model`, `intent = ipd.*`, NO
-  question text) so the cap counts it; a call that failed or ran past its budget is still charged its input. Order of
-  refusals: sealed → no model configured → halted / capped → identifier leak → down / over budget.
-- SEALED (`patients.sensitive_context`): no model call at all, and nothing is even built to send — template only.
+  question text). SPEND IS RESERVED BEFORE THE CALL (the table is append-only): a `failed` / `answer_key = reserved` row with
+  the worst case (input + `maxTokens`), then an `answered` row with no cost — the cap counts high, never low, and the
+  health counts see two rows per answered call. `askIpdModel` NEVER THROWS: gate, ledger or provider failing is a fallback.
+  Order of refusals: barred → no model configured → halted / capped → identifier leak → down / over budget.
+- BARRED (`modelBarred`, read inside the door from the admission — never a caller's flag): sealed (`sensitive_context`),
+  confidential (`is_confidential`) and medico-legal (`mlc`) patients get no model call at all, on all three surfaces.
 - WHAT A MODEL SEES: since yesterday — the template lines (no identity in them). SBAR / discharge — the shift's nursing
-  notes / the round notes and nursing notes, with the patient's name, alias, UHID, admission number and the authors' names
-  replaced by placeholders (`maskForModel`), then scrubbed again.
-- FREE TEXT (`verifyFreeText`): every number and clock time must already be in the notes it was given (or the facts); no
-  proposal word (start / give / increase / consider / should … — autonomy ladder: doses and orders, None); no money word; no
-  placeholder. A medicine it names that is on no order of the stay and in no note it was given (`medicinesNamedWithoutOrder`:
-  the formulary's `resolveDrugTexts` by moiety, alias or exact brand, plus "word 500") is `model_invented`: the text is
-  dropped, the flag is shown. LIMIT: a brand the formulary does not hold, misspelt, is not recognised as a medicine.
-- SBAR: `readHandoverDraft` (GET, not kept) and `buildSbarDraft` (POST, kept) share `sbarBase` — the shift's facts
-  (`shiftOf(now).startsAt` → now) under S / B / A / R. The model writes ONE assessment sentence over the shift's notes; else
-  the latest note is quoted. `give_shift_handover` takes `draftId` (must be this admission's SBAR draft —
-  `shift_handover_draft_not_found`); the handover row keeps it and `listShiftHandovers` shows it beside `givenBy` (the nurse
-  who signed). Building a draft hands nothing over; accepting stays the next nurse's own act.
+  notes / the round notes and nursing notes, fenced as DATA (`fenced`, `UNTRUSTED` in the system prompt: nothing inside is an
+  instruction), masked by VALUE (`termsToMask`: patient name, alias, UHID, admission number, the authors, guardians, pass
+  holders, the deposit's payer, the family link's consenter; bed and ward) and by SHAPE (`maskForModel`: the name after a
+  kinship word or title, any bed / ward / room token, any telephone number; digits of every script), then scrubbed again.
+- FREE TEXT (`verifyFreeText`): ASCII only; every number and clock time already in the notes (or the facts); every guarded
+  class it carries (negation, direction, outcome, band — `GUARDED`) carried by the notes; no proposal word; no money word;
+  no placeholder; none of the masked names. `medicinesNamedWithoutOrder`: a medicine named with no ACTIVE order is flagged
+  whether or not a note names it (`no_active_order` / `order_stopped`); one on no order and in no note is `model_invented`
+  (the text is dropped); any other word of a model's text that is in no note, on no order and not in `SUMMARY_WORDS` is
+  `unverified` (a misspelt medicine looks like that). The SBAR sentence has nowhere to carry a flag: any flag refuses it.
+- NO SILENT CAP: every list is read newest first, one row past its limit (`FACT_ROW_LIMIT`, `DISCHARGE_LIMITS`); a cut list
+  is named in `truncated` (shown on the block / the draft) and a truncated discharge draft is not `complete`.
+- WHAT A DRAFT ROW KEEPS (retention): never record text — ids, the fingerprint, and the model's own checked sentence or
+  paragraph. Structured lines are rendered again from the records. The kernel's retention sweep has no table registry.
+- SBAR: window = the giving nurse's shift (for `HANDOVER_GRACE_MS`, 60 min, into the next shift: the shift just ended).
+  `readHandoverDraft` (GET, no model, no write) answers the KEPT draft of the shift while the records are what it was built
+  from, else the plain lines with `changedSinceDraft`. `buildSbarDraft` (POST) runs on the nurse's tap or when the records
+  changed; unchanged records answer the kept draft (no second call). `give_shift_handover` with `draftId` →
+  `checkSbarDraftForGive`: this admission's draft (`shift_handover_draft_not_found`), records unchanged since the build
+  (`shift_handover_draft_stale` — build again), and `draft_edited` = the given text differs from the draft's. The signer
+  may be another nurse than the builder; the card names both (`draft.builtBy`, `givenBy`). Nothing auto-accepts.
 - DISCHARGE: structured parts come from the record, never the model — diagnosis (the admission's), medicines (one row per
   ACTIVE drug order, `source: order` + `orderId`), results reported / awaited (the stay's own lab and imaging order items;
   restricted items are never named). Procedures are left empty (the theatre's records are not read here — owed). The
   course is the signed rounds quoted in order, or the model's summary. `save_summary_draft` takes `draftId`; the SERVER
   stamps `draft_source = copilot_draft`, the draft's model id and prompt version, and `draft_id`; the stamp is sticky across
-  later saves. A template draft has `draft_model_id` null.
-- MEDICINES WITHOUT AN ACTIVE ORDER (DECIDED, standard practice): a TYPED row is flagged on the summary (`medicineFlags`,
-  `no_active_order` / `order_stopped`) and never refused — take-home medicines are often new at discharge. A DRAFTED row
-  (`source: order`) that no longer matches its active order refuses the signature (`medicine_not_on_active_order`, the
-  intent's declared refusal). A signed summary's flags are not recomputed.
+  later saves. A template draft has `draft_model_id` null. The draft row's fingerprint is `dischargeRecordsHash` (orders
+  and their status, signed rounds, nursing notes, result items): a save naming a draft built before the records changed is
+  refused (`summary_draft_stale`); a copilot-sourced summary carries `content.recordsHash` from its last save and the
+  signature refuses when the records moved since (`summary_records_changed` — open, check, save, sign). The content's
+  server fields (`medicineFlags`, `medicineAck`, `recordsHash`) are stripped from every client save. `IpdSummaryView.stamp`
+  is the "Draft" stamp while unsigned and copilot-sourced (screen and `SummaryPrint`).
+- MEDICINES WITHOUT AN ACTIVE ORDER (DECIDED): a DRAFTED row (`source: order`) that no longer matches its active order
+  refuses the signature (`medicine_not_on_active_order`). A TYPED row is flagged on the summary and the signature needs
+  the doctor's reason (`unorderedMedicinesReason`; without it the same refusal with `detail.acknowledge`); the flags and
+  `medicineAck` (reason, signer, time) are written into the signed content and never recomputed. CARVE-OUT: the reason is
+  asked when the summary is copilot-sourced or the stay has any inpatient drug order — a person-typed summary on a stay
+  with no drug order signs as before (the locked E3.2 acceptance tests sign exactly that; lifting it needs the owner).
 - LAB VALUES ARE NOT IN THE FACTS (owed): lab's `patientResultsForDoctor` is not on its index and answers no row ids, so a
   result is a count of completed order items with the test's name. Vital "abnormal" is judged only for NEWS2 patients
   (`ADULT_RANGE`); a child's or a mother's deterioration is the band's to say. Temperatures print in °C as recorded.

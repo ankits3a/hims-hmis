@@ -214,15 +214,17 @@ export { IPD_EMAR_ALLERGY_CONSUMER, IPD_EMAR_EVENT_NAMES } from "./emar-events";
 // builder and line templates (every line names its records), a verifier that refuses a model's wrong or invented
 // number, and the staff copilot's own model behind one door (mask, halt, cap, ledger). Drafts only: a person signs.
 export {
-  DISCHARGE_PROMPT_VERSION, DRAFT_BUDGET_MS, SBAR_PROMPT_VERSION, SINCE_BUDGET_MS, SINCE_PROMPT_VERSION, buildDischargeDraft, buildSbarDraft,
-  medicinesNamedWithoutOrder, polishSinceYesterday, readHandoverDraft, readSinceYesterday,
+  DISCHARGE_LIMITS, DISCHARGE_PROMPT_VERSION, DRAFT_BUDGET_MS, HANDOVER_GRACE_MS, SBAR_PROMPT_VERSION, SINCE_BUDGET_MS, SINCE_PROMPT_VERSION,
+  buildDischargeDraft, buildSbarDraft, medicinesNamedWithoutOrder, polishSinceYesterday, readHandoverDraft, readSinceYesterday,
 } from "./copilot";
 export type { CopilotOpts } from "./copilot";
-export { buildFacts, factsHash } from "./copilot-facts";
+export { MODEL_COOLDOWN_MS, checkSbarDraftForGive, dischargeRecordsHash, sbarTextHash } from "./copilot-drafts";
+export { buildFactSet, buildFacts, factsHash } from "./copilot-facts";
 export {
-  SINCE_MAX_LINES, applyRewordings, chooseLines, isAbnormal, quantitiesIn, renderLine, verifyFreeText, verifyReworded,
+  CONNECTIVES, SINCE_MAX_LINES, applyRewordings, chooseLines, isAbnormal, lineTokens, quantitiesIn, renderLine, unverifiedWords, verifyFreeText,
+  verifyReworded,
 } from "./copilot-lines";
 export type { Fact, FactRecord, Line, Quantities, Verdict } from "./copilot-lines";
-export { askIpdModel, ipdModelFrom, maskForModel } from "./copilot-model";
+export { askIpdModel, ipdModelFrom, maskForModel, modelBarred } from "./copilot-model";
 export type { FallbackReason, IpdModel } from "./copilot-model";
 export { medicineFlagsOf, medicineRowReason, sameMedicineName } from "./discharge-medicines";

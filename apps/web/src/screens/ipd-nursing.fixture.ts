@@ -110,7 +110,7 @@ export function chartOf(now: number): IpdNursingChart {
 export function draftOf(admissionId: string): IpdHandoverDraft {
   const line = (text: string, source: IpdHandoverDraft["situation"][number]["source"]): IpdHandoverDraft["situation"][number] => ({ text, source, by: "template", records: [] });
   return {
-    admissionId, draftId: null, stamp: null,
+    admissionId, draftId: null, stamp: null, changedSinceDraft: false, truncated: [],
     situation: [line("Day 7. NEWS2 1 at 09:10, falling.", "vitals")],
     background: [line("Admitted for synthetic pneumonia.", "admission")],
     assessment: [line("Morse 55 (high fall risk).", "assessment"), line("In 1450 ml, out 900 ml since 08:00.", "io")],

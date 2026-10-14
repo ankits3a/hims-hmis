@@ -36,6 +36,10 @@ export type IpdErrorCode =
   /** E5.4 (#741) — a signing act named a copilot draft that is not this admission's (or not of that kind). */
   | "shift_handover_draft_not_found"
   | "summary_draft_not_found"
+  /** E5.4 review — the records changed after the draft was built (build again); after the summary was last saved (open, check, save). */
+  | "shift_handover_draft_stale"
+  | "summary_draft_stale"
+  | "summary_records_changed"
   /** E3.2 (#730) — a signed summary is immutable; an addendum is a later lane's. */
   | "summary_already_signed"
   /** E3.2 — no draft to sign yet. */

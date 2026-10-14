@@ -23,7 +23,7 @@ import type { Db } from "../../kernel/db/client";
  * `IpdRefusalBody`; the nursing acts' own errors answer 404 (not found) or 409 (state).
  */
 const NURSING_ERROR_STATUS: Partial<Record<string, number>> = {
-  shift_handover_not_found: 404, shift_handover_draft_not_found: 404, ews_alert_not_found: 404, shift_handover_not_open: 409, shift_handover_own: 409, ews_alert_closed: 409,
+  shift_handover_not_found: 404, shift_handover_draft_not_found: 404, shift_handover_draft_stale: 409, ews_alert_not_found: 404, shift_handover_not_open: 409, shift_handover_own: 409, ews_alert_closed: 409,
 };
 
 function toHttp(e: unknown): never {

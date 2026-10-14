@@ -237,6 +237,9 @@ export const IpdHandoverDraftSchema = z.object({
   /** E5.4 — set once the draft is built and kept (`POST`); the give names it. Null on the plain read. */
   draftId: IpdIdSchema.nullable().default(null),
   stamp: IpdDraftStampSchema.nullable().default(null),
+  /** A kept draft exists for this shift but the records changed since it was built: build again. */
+  changedSinceDraft: z.boolean().default(false),
+  truncated: z.array(z.string()).default([]),
   situation: z.array(IpdSbarLineSchema),
   background: z.array(IpdSbarLineSchema),
   assessment: z.array(IpdSbarLineSchema),

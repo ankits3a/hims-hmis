@@ -20,7 +20,7 @@ import { lockAdmission, provenanceOf, requireIpdPermission } from "./admission-c
 import { IPD_ACTOR_ROLE_KEYS } from "./admission-workflow";
 import { ageInYears } from "./bed-rules";
 import { bedWithWard } from "./beds";
-import { draftForSigning } from "./copilot-drafts";
+import { checkSbarDraftForGive } from "./copilot-drafts";
 import { IpdError, IpdRefusal } from "./errors";
 import { EWS_ACK_KINDS } from "./goals/goal-events";
 import {
@@ -587,15 +587,15 @@ export async function giveShiftHandover(db: Db, actor: Actor, raw: unknown, opts
     if (open !== undefined) await tx.update(ipdShiftHandovers).set({ status: "superseded" }).where(eq(ipdShiftHandovers.id, open.id));
     const bed = await bedCodeOf(tx, a.id);
     // E5.4 — the nurse signs a copilot draft she edited: the handover keeps that draft (its model id and prompt version).
-    if (input.draftId !== undefined && (await draftForSigning(tx, input.draftId, a.id, "sbar")) === undefined) {
-      throw new IpdError("shift_handover_draft_not_found", "No SBAR draft of this patient has that id.");
-    }
+    // The draft must be this patient's and the shift's records must be what it was built from (`checkSbarDraftForGive`);
+    // whether the nurse changed its words is recorded. The signer may differ from whoever asked for the draft: both are named.
+    const drafted = input.draftId === undefined ? null : await checkSbarDraftForGive(tx, input.draftId, a, input.sbar, at);
     const handoverId = newId();
     const shift = shiftOf(at).key;
     await tx.insert(ipdShiftHandovers).values({
       id: handoverId, admissionId: a.id, patientId: a.patientId, wardId: bed.wardId, shift, situation: input.sbar.situation,
       background: input.sbar.background, assessment: input.sbar.assessment, recommendation: input.sbar.recommendation,
-      status: "given", givenBy: actor.id, givenAt: at, draftId: input.draftId ?? null,
+      status: "given", givenBy: actor.id, givenAt: at, draftId: input.draftId ?? null, draftEdited: drafted?.edited ?? null,
     });
     await appendEvent(tx, shiftHandoverGiven.make({
       payload: { handoverId, admissionId: a.id, wardId: bed.wardId, shift, supersedes: open?.id ?? null, provenance: provenanceOf(actor) },

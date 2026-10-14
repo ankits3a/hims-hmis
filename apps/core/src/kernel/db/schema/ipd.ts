@@ -1277,6 +1277,8 @@ export const ipdShiftHandovers = pgTable(
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     /** E5.4 — the copilot draft (`ipd_copilot_drafts.id`) the giving nurse edited and signed; null when typed. */
     draftId: text("draft_id"),
+    /** E5.4 — whether the text given differs from that draft's text; null when there is no draft. */
+    draftEdited: boolean("draft_edited"),
   },
   (t) => [
     uniqueIndex("ipd_shift_handovers_open_ux").on(t.admissionId).where(sql`${t.status} = 'given'`),

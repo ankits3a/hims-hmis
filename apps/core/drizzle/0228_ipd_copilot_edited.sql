@@ -1,0 +1,1 @@
+ALTER TABLE "ipd_shift_handovers" ADD COLUMN "draft_edited" boolean;

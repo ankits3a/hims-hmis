@@ -18812,7 +18812,14 @@
     },
     "sbar": {
       "youSign": "you edit and sign",
-      "signedFrom": "From copilot draft · {{model}} · {{version}}"
+      "signedFrom": "From copilot draft · {{model}} · {{version}}",
+      "builtBy": "built by {{name}}",
+      "edited": "edited",
+      "unedited": "not edited",
+      "stale": "Records changed. Build again.",
+      "build": "Build draft",
+      "rebuild": "Build again",
+      "building": "Building…"
     },
     "discharge": {
       "draftBtn": "Draft from record",
@@ -18821,8 +18828,24 @@
       "flag": {
         "no_active_order": "no active order",
         "order_stopped": "order stopped",
-        "model_invented": "on no order — model text dropped"
-      }
+        "model_invented": "on no order — model text dropped",
+        "unverified": "not in notes or orders — check"
+      },
+      "notSigned": "not signed",
+      "ackLabel": "Reason for medicine with no active order",
+      "ackBy": "Medicine with no order — reason: {{reason}} ({{name}})",
+      "print": "Print summary"
+    },
+    "truncated": "List cut short — check {{lists}}",
+    "list": {
+      "orders": "orders",
+      "vitals": "vitals",
+      "doses": "doses",
+      "results": "results",
+      "notes": "notes",
+      "io": "I/O",
+      "consults": "consults",
+      "rounds": "rounds"
     }
   },
   "ipdEmar": {

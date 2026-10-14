@@ -9,7 +9,7 @@ import { withIdempotency } from "../billing";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { lockAdmission, moveAdmission, onceIpd, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
-import { draftForSigning, draftProvenances } from "./copilot-drafts";
+import { dischargeRecordsHash, draftForSigning, draftProvenances } from "./copilot-drafts";
 import { medicineFlagsOf } from "./discharge-medicines";
 import { chargesConfirmed, fitCancelled, fitDeclared, summarySigned } from "./discharge-events";
 import { IpdError, IpdRefusal } from "./errors";
@@ -258,19 +258,30 @@ export async function saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts:
     const draft = input.draftId === undefined ? undefined : await draftForSigning(tx, input.draftId, a.id, "discharge");
     if (input.draftId !== undefined && draft === undefined) throw new IpdError("summary_draft_not_found", "no discharge draft of this admission has that id");
     const stamp = draft === undefined ? {} : { draftSource: "copilot_draft", draftModelId: draft.modelId, draftPromptVersion: draft.promptVersion, draftId: draft.id };
+    // The stay's records must be what the draft was built from: an order, round, note or result since then refuses the
+    // save (build the draft again). A copilot-sourced summary then carries the fingerprint it was last saved against,
+    // which the signature checks. The server-written fields of the content are never taken from the client.
+    const copilotSourced = draft !== undefined || (cur?.draftId ?? null) !== null;
+    const recordsNow = copilotSourced ? await dischargeRecordsHash(tx, a.id) : undefined;
+    if (draft !== undefined && draft.factsHash !== recordsNow) {
+      throw new IpdError("summary_draft_stale", "The records changed after this draft was built. Build the draft again and check it.", { draftId: draft.id });
+    }
+    const typedContent: Record<string, unknown> = { ...input.content };
+    for (const k of ["medicineFlags", "medicineAck", "recordsHash"]) delete typedContent[k];
+    const content = recordsNow === undefined ? typedContent : { ...typedContent, recordsHash: recordsNow };
     if ((cur?.version ?? 0) !== input.expectedVersion) {
       throw new IpdRefusal("draft_changed", undefined, { version: cur?.version ?? 0 });
     }
     if (cur === undefined) {
       const summaryId = newId();
       await tx.insert(ipdDischargeSummaries).values({
-        id: summaryId, admissionId: a.id, status: "draft", version: 1, content: input.content as unknown as Record<string, unknown>,
+        id: summaryId, admissionId: a.id, status: "draft", version: 1, content,
         draftSource: "person", draftModelId: null, draftPromptVersion: null, draftedBy: actor.id, draftedAt: at, ...stamp,
       });
       return summaryId;
     }
     await tx.update(ipdDischargeSummaries).set({
-      status: "draft", version: cur.version + 1, content: input.content as unknown as Record<string, unknown>,
+      status: "draft", version: cur.version + 1, content,
       draftedBy: actor.id, draftedAt: at, residentSignedBy: null, residentSignedAt: null, ...stamp,
     }).where(eq(ipdDischargeSummaries.id, cur.id));
     return cur.id;
@@ -304,15 +315,35 @@ export async function signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts
     if (s.version !== input.draftVersion) throw new IpdRefusal("draft_changed", undefined, { version: s.version });
     // E5.4: a row the drafter copied from an order must still match that ACTIVE order (the machine copied it; the order
     // changed since). A row the doctor typed is flagged on the summary, never refused (`discharge-medicines.ts`).
-    const stale = medicineFlagsOf(IpdSummaryContentSchema.parse(s.content).medicines.filter((m) => m.source === "order"), await drugOrdersOf(tx, a.id));
+    const content = IpdSummaryContentSchema.parse(s.content);
+    const drugOrders = await drugOrdersOf(tx, a.id);
+    // A summary started from a copilot draft is signed against the records it was last SAVED against: anything recorded
+    // since (an order, a round, a note, a result) sends it back to be opened, checked and saved again.
+    if (s.draftId !== null && content.recordsHash !== await dischargeRecordsHash(tx, a.id)) {
+      throw new IpdError("summary_records_changed", "The patient's records changed after this summary was saved. Open it, check it and save it again before signing.");
+    }
+    const stale = medicineFlagsOf(content.medicines.filter((m) => m.source === "order"), drugOrders);
     if (stale.length > 0) throw new IpdRefusal("medicine_not_on_active_order", undefined, { medicines: stale.map((f) => f.name) });
+    // A TYPED medicine no active order carries may be right (a take-home medicine never ordered in hospital) — the doctor
+    // says so in words, and the words and the flags are kept in the signed copy. Asked whenever the summary came from a
+    // drafter or the stay has any inpatient drug order (a stay with none has nothing to compare a typed row against).
+    const flags = medicineFlagsOf(content.medicines, drugOrders);
+    const reason = input.unorderedMedicinesReason;
+    if (flags.length > 0 && (s.draftId !== null || drugOrders.length > 0) && reason === undefined) {
+      throw new IpdRefusal("medicine_not_on_active_order", undefined, { medicines: flags.map((f) => f.name), acknowledge: true });
+    }
+    const signerName = (await userNames(tx as unknown as Db, [actor.id])).get(actor.id) ?? actor.id;
+    const signedContent = {
+      ...content, medicineFlags: flags,
+      ...(flags.length > 0 && reason !== undefined ? { medicineAck: { reason, by: { id: actor.id, name: signerName }, at: at.toISOString() } } : {}),
+    } as unknown as Record<string, unknown>;
     const documentId = s.documentId ?? newId();
     const consultant = isTreatingConsultant(a, actor);
     const status = consultant ? "signed" as const : "awaiting_cosign" as const;
     if (consultant) {
-      await tx.update(ipdDischargeSummaries).set({ status, signedBy: actor.id, signedAt: at, documentId }).where(eq(ipdDischargeSummaries.id, s.id));
+      await tx.update(ipdDischargeSummaries).set({ status, signedBy: actor.id, signedAt: at, documentId, content: signedContent }).where(eq(ipdDischargeSummaries.id, s.id));
     } else {
-      await tx.update(ipdDischargeSummaries).set({ status, residentSignedBy: actor.id, residentSignedAt: at, documentId })
+      await tx.update(ipdDischargeSummaries).set({ status, residentSignedBy: actor.id, residentSignedAt: at, documentId, content: signedContent })
         .where(eq(ipdDischargeSummaries.id, s.id));
     }
     await appendEvent(tx, summarySigned.make({
@@ -340,8 +371,12 @@ async function readSummaryIn(db: Db, admissionId: string): Promise<IpdSummaryVie
       source: s.draftSource as "person" | "copilot_draft", draftModelId: s.draftModelId, draftPromptVersion: s.draftPromptVersion,
       draftedBy: { id: s.draftedBy, name: names.get(s.draftedBy) ?? s.draftedBy }, draftedAt: s.draftedAt.toISOString(), draft,
     },
-    // A signed summary's flags are not recomputed against later order changes: it says what was true to its signer's eye.
-    medicineFlags: s.status === "signed" ? [] : medicineFlagsOf(content.medicines, await drugOrdersOf(db, admissionId)),
+    // A signed summary shows the flags it was signed with (kept in its content), never a later recomputation.
+    medicineFlags: s.status === "signed" ? (content.medicineFlags ?? []) : medicineFlagsOf(content.medicines, await drugOrdersOf(db, admissionId)),
+    // "Draft" on screen and on the print for as long as a copilot-sourced summary is unsigned.
+    stamp: s.status !== "signed" && s.draftSource === "copilot_draft"
+      ? { label: "Draft", source: draft?.source ?? "template", modelId: s.draftModelId, promptVersion: s.draftPromptVersion ?? "", builtAt: draft?.builtAt ?? s.draftedAt.toISOString() }
+      : null,
     label: s.status === "signed" ? "Signed" : s.status === "awaiting_cosign" ? "Awaiting co-sign" : "Draft",
     residentSignedBy: who(s.residentSignedBy), signedBy: who(s.signedBy), signedAt: s.signedAt?.toISOString() ?? null,
     documentId: s.documentId,

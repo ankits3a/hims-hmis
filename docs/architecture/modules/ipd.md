@@ -159,35 +159,47 @@ Source: `apps/core/src/modules/ipd/`
   - `classChangesOf(db: Db | Tx, admissionId: string): Promise<StayClassChange[]>`
   - `nextNoonIst(at: Date): Date`
   - types: `StayClassChange`
+- `copilot-drafts.ts`
+  - `MODEL_COOLDOWN_MS`
+  - `checkSbarDraftForGive(db: Db | Tx, draftId: string, a: { id: string; patientId: string }, sbar: { situation: string; background: string; as…`
+  - `dischargeRecordsHash(db: Db | Tx, admissionId: string): Promise<string>`
+  - `sbarTextHash(sbar: { situation: string; background: string; assessment: string; recommendation: string }): string`
 - `copilot-facts.ts`
-  - `buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string } = {}): Promise<Fact[]>`
+  - `buildFactSet(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise…`
+  - `buildFacts(db: Db, a: Pick<AdmissionRow, "id" | "patientId">, w: FactWindow, opts: { actorId?: string; rowLimit?: number } = {}): Promise<F…`
   - `factsHash(facts: readonly Fact[]): string`
 - `copilot-lines.ts`
+  - `CONNECTIVES: Readonly<Record<"en" | "hi", ReadonlySet<string>>>`
   - `SINCE_MAX_LINES`
   - `applyRewordings(lines: readonly Line[], reworded: readonly { key: string; text: string }[]): { lines: (Line & { by: "template" | "model" })…`
   - `chooseLines(facts: readonly Fact[]): Line[]`
   - `isAbnormal(f: Fact): boolean`
+  - `lineTokens(text: string): { tokens: string[]; foreign: string | null }`
   - `quantitiesIn(text: string): Quantities`
   - `renderLine(f: Fact): string`
-  - `verifyFreeText(text: string, sources: readonly string[], allowed: Quantities = { numbers: [], times: [] }, maxChars = FREE_TEXT_MAX_CHARS):…`
+  - `unverifiedWords(text: string, sources: readonly string[], known: ReadonlySet<string> = new Set()): string[]`
+  - `verifyFreeText(text: string, sources: readonly string[], allowed: Quantities = { numbers: [], times: [] }, maxChars = FREE_TEXT_MAX_CHARS, …`
   - `verifyReworded(text: string, line: Pick<Line, "text" | "fact">): Verdict`
   - types: `Fact`, `FactRecord`, `Line`, `Quantities`, `Verdict`
 - `copilot-model.ts`
-  - `askIpdModel(db: Db, actor: Actor, model: IpdModel | null | undefined, sealed: boolean, ask: ModelAsk, now: Date): Promise<ModelAnswer>`
+  - `askIpdModel(db: Db, actor: Actor, model: IpdModel | null | undefined, admissionId: string, ask: ModelAsk, now: Date): Promise<ModelAnswer>`
   - `ipdModelFrom(cfg: Pick<AppConfig, "copilot" | "copilotSpend">): IpdModel`
-  - `maskForModel(text: string, names: readonly (string | null | undefined)[]): string`
+  - `maskForModel(text: string, names: readonly (string | null | undefined)[], places: readonly (string | null | undefined)[] = []): string`
+  - `modelBarred(db: Db, admissionId: string): Promise<"sealed" | "confidential" | "mlc" | "unknown" | null>`
   - types: `FallbackReason`, `IpdModel`
 - `copilot.ts`
+  - `DISCHARGE_LIMITS`
   - `DISCHARGE_PROMPT_VERSION`
   - `DRAFT_BUDGET_MS`
+  - `HANDOVER_GRACE_MS`
   - `SBAR_PROMPT_VERSION`
   - `SINCE_BUDGET_MS`
   - `SINCE_PROMPT_VERSION`
-  - `buildDischargeDraft(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdDischargeDraft>`
+  - `buildDischargeDraft(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts & { limits?: Partial<Record<keyof typeof DISCHARGE_LIMITS,…`
   - `buildSbarDraft(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdHandoverDraft>`
   - `medicinesNamedWithoutOrder(db: Db, text: string, drugOrders: readonly IpdOrderRow[], by: "template" | "model", sources: readonly string[] =…`
   - `polishSinceYesterday(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdSinceYesterday>`
-  - `readHandoverDraft(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<IpdHandoverDraft>`
+  - `readHandoverDraft(db: Db, actor: Actor, admissionId: string, opts: { now?: Date; rowLimit?: number } = {}): Promise<IpdHandoverDraft>`
   - `readSinceYesterday(db: Db, actor: Actor, admissionId: string, opts: CopilotOpts = {}): Promise<IpdSinceYesterday>`
   - types: `CopilotOpts`
 - `daily-totals.ts`

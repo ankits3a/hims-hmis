@@ -4,7 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type {
-  IpdDischargeBoard, IpdDischargeDepartment, IpdDischargeDraft, IpdDischargeTracker, IpdFinalBill, IpdMedicineFlag, IpdRefusalBody, IpdSummaryContent,
+  IpdDischargeBoard, IpdDischargeDepartment, IpdDischargeDraft, IpdDischargeTracker, IpdDraftStamp, IpdFinalBill, IpdMedicineFlag, IpdRefusalBody, IpdSummaryContent,
   IpdSummaryView,
 } from "@hmis/contracts";
 import { buildDischargeDraft } from "../lib/ipd-copilot-api";
@@ -142,7 +142,8 @@ function Tracker({ admissionId, now, onChanged }: { admissionId: string; now: nu
   const { t } = useTranslation();
   const [tr, setTr] = useState<IpdDischargeTracker | null>(null);
   const [failed, setFailed] = useState(false);
-  const [printing, setPrinting] = useState<"bill" | "pass" | null>(null);
+  const [printing, setPrinting] = useState<"bill" | "pass" | "summary" | null>(null);
+  const [summaryToPrint, setSummaryToPrint] = useState<IpdSummaryView | null>(null);
   const reload = useCallback(() => {
     getDischargeTracker(admissionId).then((x) => { setTr(x); setFailed(false); }, () => setFailed(true));
   }, [admissionId]);
@@ -187,7 +188,7 @@ function Tracker({ admissionId, now, onChanged }: { admissionId: string; now: nu
           <div className="ipdd-cards">
             <FitCard tr={tr} onDone={changed} />
             <DepartmentsCard tr={tr} onDone={changed} />
-            <SummaryCard tr={tr} onDone={changed} />
+            <SummaryCard tr={tr} onDone={changed} onPrint={(v) => { setSummaryToPrint(v); setPrinting("summary"); }} />
             <BillCard tr={tr} onDone={changed} onPrint={() => setPrinting("bill")} />
             <GatePassCard tr={tr} onDone={changed} onPrint={() => setPrinting("pass")} />
             {/* E3.3 (#731) — the family link, the condition word and the family's callbacks. */}
@@ -197,6 +198,7 @@ function Tracker({ admissionId, now, onChanged }: { admissionId: string; now: nu
       </div>
       {printing === "bill" && tr.bill !== null ? <BillPrint tr={tr} bill={tr.bill} /> : null}
       {printing === "pass" && tr.gatePass !== null ? <PassPrint tr={tr} /> : null}
+      {printing === "summary" && summaryToPrint !== null ? <SummaryPrint tr={tr} view={summaryToPrint} /> : null}
     </div>
   );
 }
@@ -318,7 +320,39 @@ function MedicineFlags({ flags }: { flags: readonly IpdMedicineFlag[] }): React.
   );
 }
 
-function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => void }): React.ReactElement {
+/** "Draft · model or Template · prompt version · built at": on the screen and on the paper while the summary is unsigned. */
+function DraftStamp({ stamp, tail }: { stamp: IpdDraftStamp; tail?: string }): React.ReactElement {
+  const { t } = useTranslation();
+  return (
+    <p className="ipdd-stamp" data-testid="ipdd-draft-stamp">
+      <b>{t("ipdCopilot.draft")}</b> · {stamp.modelId ?? t("ipdCopilot.template")} · {stamp.promptVersion} · {t("ipdCopilot.builtAt", { time: fmtIst(stamp.builtAt) })}
+      {tail ? <span className="dim"> — {tail}</span> : null}
+    </p>
+  );
+}
+
+/** E5.4 — the summary on paper. An unsigned copilot-sourced summary prints its "Draft" stamp; a signed one names its signer. */
+function SummaryPrint({ tr, view }: { tr: IpdDischargeTracker; view: IpdSummaryView }): React.ReactElement {
+  const { t } = useTranslation();
+  const c = view.content;
+  const rows: [string, string][] = ([
+    ["diagnosis", c.diagnosis.text + (c.diagnosis.icd10Code ? ` (${c.diagnosis.icd10Code})` : "")], ["course", c.course], ["procedures", c.procedures],
+    ["conditionAtDischarge", c.conditionAtDischarge], ["medicines", medsToText(c)], ["followUp", c.followUp], ["advice", c.advice],
+    ["warningSigns", c.warningSigns], ["pendingResults", c.pendingResults],
+  ] as [string, string][]).filter(([, v]) => v.trim() !== "");
+  return (
+    <section className="ipdd-print" data-testid="ipdd-summary-print">
+      <PrintHead tr={tr} title={t("ipdDischarge.summary.title")} />
+      {view.stamp !== null ? <DraftStamp stamp={view.stamp} tail={t("ipdCopilot.discharge.notSigned")} /> : view.status !== "signed" ? <p className="ipdd-stamp"><b>{t("ipdCopilot.draft")}</b> — {t("ipdCopilot.discharge.notSigned")}</p> : null}
+      {rows.map(([k, v]) => <div key={k} className="ipdd-print-row"><b>{t(`ipdDischarge.summary.f.${k}`)}</b><p style={{ whiteSpace: "pre-wrap", margin: "0 0 6pt" }}>{v}</p></div>)}
+      <MedicineFlags flags={view.medicineFlags} />
+      {c.medicineAck !== undefined ? <p>{t("ipdCopilot.discharge.ackBy", { reason: c.medicineAck.reason, name: c.medicineAck.by.name })}</p> : null}
+      <p>{view.signedBy !== null ? t("ipdDischarge.summary.signedBy", { name: view.signedBy.name, time: view.signedAt === null ? "" : fmtIst(view.signedAt) }) : t("ipdDischarge.summary.draftBy", { name: view.provenance.draftedBy.name })}</p>
+    </section>
+  );
+}
+
+function SummaryCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone: () => void; onPrint: (v: IpdSummaryView) => void }): React.ReactElement {
   const { t } = useTranslation();
   const [view, setView] = useState<IpdSummaryView | null>(null);
   const [editing, setEditing] = useState(false);
@@ -329,6 +363,8 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
   // E5.4 — the copilot draft the form was filled from (its stamp and flags are shown; the save names it).
   const [copilot, setCopilot] = useState<IpdDischargeDraft | null>(null);
   const [fromOrders, setFromOrders] = useState<Map<string, string>>(new Map());
+  // E5.4 — the doctor's reason for signing with a typed medicine that no active order carries (asked only then).
+  const [ackReason, setAckReason] = useState("");
   const status = tr.summary.status;
   useEffect(() => {
     if (status === "none") { setView(null); return; }
@@ -356,9 +392,10 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
   const sign = () => {
     if (view === null) return;
     setBusy(true); clear();
-    signSummary(tr.admissionId, view.summaryId, view.version).then(() => { setBusy(false); onDone(); }, (e: unknown) => { setBusy(false); fail(e); });
+    signSummary(tr.admissionId, view.summaryId, view.version, ackReason.trim() === "" ? undefined : ackReason.trim())
+      .then(() => { setBusy(false); setAckReason(""); onDone(); }, (e: unknown) => { setBusy(false); fail(e); });
   };
-  const field = (k: Exclude<keyof IpdSummaryContent, "diagnosis" | "medicines">, rows = 2) => (
+  const field = (k: Exclude<keyof IpdSummaryContent, "diagnosis" | "medicines" | "medicineFlags" | "medicineAck" | "recordsHash">, rows = 2) => (
     <label key={k}>{t(`ipdDischarge.summary.f.${k}`)}
       <textarea rows={rows} value={draft[k]} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} />
     </label>
@@ -375,22 +412,30 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
               : view.residentSignedBy !== null ? t("ipdDischarge.summary.residentSigned", { name: view.residentSignedBy.name })
                 : t("ipdDischarge.summary.draftBy", { name: view.provenance.draftedBy.name })}
           </p>
+          {view.stamp !== null ? <DraftStamp stamp={view.stamp} tail={t("ipdCopilot.discharge.youSign")} /> : null}
           {view.provenance.source === "copilot_draft" ? (
             <p className="dim" data-testid="ipdd-summary-prov">
               {t("ipdCopilot.discharge.startedFrom", { model: view.provenance.draftModelId ?? t("ipdCopilot.template"), version: view.provenance.draftPromptVersion ?? "" })}
+              {view.provenance.draft !== null ? ` · ${t("ipdCopilot.sbar.builtBy", { name: view.provenance.draft.builtBy.name })}` : ""}
             </p>
           ) : null}
           <MedicineFlags flags={view.medicineFlags} />
+          {view.content.medicineAck !== undefined ? <p className="dim" data-testid="ipdd-medicine-ack">{t("ipdCopilot.discharge.ackBy", { reason: view.content.medicineAck.reason, name: view.content.medicineAck.by.name })}</p> : null}
+          {view.status !== "signed" && tr.can.signSummary && view.medicineFlags.some((f) => f.reason === "no_active_order") ? (
+            <label className="ipdd-ack">{t("ipdCopilot.discharge.ackLabel")}
+              <input value={ackReason} onChange={(e) => setAckReason(e.target.value)} data-testid="ipdd-ack-reason" />
+            </label>
+          ) : null}
         </div>
       ) : null}
       {editing ? (
         <div className="ipdd-form">
           {copilot !== null ? (
             <>
-              <p className="ipdd-stamp" data-testid="ipdd-draft-stamp">
-                <b>{t("ipdCopilot.draft")}</b> · {copilot.stamp.modelId ?? t("ipdCopilot.template")} · {copilot.stamp.promptVersion} · {t("ipdCopilot.builtAt", { time: fmtIst(copilot.stamp.builtAt) })}
-                <span className="dim"> — {t("ipdCopilot.discharge.youSign")}</span>
-              </p>
+              <DraftStamp stamp={copilot.stamp} tail={t("ipdCopilot.discharge.youSign")} />
+              {copilot.truncated.length > 0 ? (
+                <p className="ipdd-refusal" role="alert" data-testid="ipdd-draft-truncated">⚠ {t("ipdCopilot.truncated", { lists: copilot.truncated.map((k) => t(`ipdCopilot.list.${k}`, { defaultValue: k })).join(", ") })}</p>
+              ) : null}
               <MedicineFlags flags={copilot.flags} />
             </>
           ) : null}
@@ -419,6 +464,7 @@ function SummaryCard({ tr, onDone }: { tr: IpdDischargeTracker; onDone: () => vo
           {tr.can.editSummary ? <button type="button" className="ipdd-btn" onClick={startEdit}>{status === "none" ? t("ipdDischarge.summary.write") : t("ipdDischarge.summary.edit")}</button> : null}
           {tr.can.editSummary && status !== "signed" ? <button type="button" className="ipdd-btn" disabled={busy} onClick={draftFromRecord} data-testid="ipdd-draft-from-record">{t("ipdCopilot.discharge.draftBtn")}</button> : null}
           {tr.can.signSummary && view !== null ? <button type="button" className="ipdd-btn pri" disabled={busy} onClick={sign}>{t("ipdDischarge.summary.sign")}</button> : null}
+          {view !== null ? <button type="button" className="ipdd-btn" onClick={() => onPrint(view)} data-testid="ipdd-summary-print-btn">{t("ipdCopilot.discharge.print")}</button> : null}
         </div>
       )}
       <Refusal r={r} />

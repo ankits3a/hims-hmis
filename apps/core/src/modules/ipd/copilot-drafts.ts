@@ -1,14 +1,36 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { ipdCopilotDrafts } from "../../kernel/db/schema";
+import { createHash } from "node:crypto";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { ipdCopilotDrafts, ipdNursingNotes, ipdOrders, ipdRounds, orderItems, users } from "../../kernel/db/schema";
+import { buildFactSet, factsHash } from "./copilot-facts";
+import { IpdError } from "./errors";
 import type { IpdDraftProvenance } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 
 /**
- * E5.3 (#740), E5.4 (#741) — reads of `ipd_copilot_drafts` (what a drafter showed, with its provenance). A signing act
- * (give a shift handover, save a discharge summary) names a draft by id; the signed copy keeps that id, and its reader
- * shows the draft's source, model id, prompt version and build time beside the person who signed.
+ * E5.3 (#740), E5.4 (#741) — reads of `ipd_copilot_drafts` and the checks a SIGNING act makes on the draft it names.
+ *
+ * WHAT A ROW KEEPS (review of 1f7cc591, retention): never the record's free text. A row holds the draft's provenance,
+ * the fingerprint of the records it was built from, the ids of those records, and — only when a model wrote one — the
+ * model's own sentence, which was checked to carry no name and was written from masked notes. The structured lines are
+ * rendered again from the records whenever they are shown. So the table holds nothing the patient-record retention
+ * sweep would have to find (the kernel has no table registry to add it to — `kernel/retention/sweep.ts`).
+ *
+ * A signing act (give a shift handover, save or sign a discharge summary) names a draft by id. The signed copy keeps
+ * that id and names BOTH people: who asked for the draft (`built_by`) and who signed (the record's own signer) — they
+ * may differ (a draft built for the outgoing nurse's shift).
  */
 export type DraftRow = typeof ipdCopilotDrafts.$inferSelect;
+
+/** How long a model that failed is left alone for the same records (DECIDED): no page open re-asks a down model. */
+export const MODEL_COOLDOWN_MS = 5 * 60_000;
+const OUTAGE_REASONS: ReadonlySet<string> = new Set(["model_down", "over_budget", "no_text", "identifier_leak"]);
+
+/** May a model be asked again for these records? Not when a row answers them already, nor inside an outage's cooldown. */
+export function mayAskAgain(row: DraftRow | undefined, hash: string, now: Date): boolean {
+  if (row === undefined || row.factsHash !== hash) return true;
+  if (row.fallbackReason !== null && OUTAGE_REASONS.has(row.fallbackReason)) return now.getTime() - row.builtAt.getTime() >= MODEL_COOLDOWN_MS;
+  return false;
+}
 
 export async function latestDraft(db: Db | Tx, admissionId: string, kind: DraftRow["kind"], scopeKey: string): Promise<DraftRow | undefined> {
   return (await db.select().from(ipdCopilotDrafts)
@@ -22,13 +44,55 @@ export async function draftForSigning(db: Db | Tx, draftId: string, admissionId:
   return row !== undefined && row.admissionId === admissionId && row.kind === kind ? row : undefined;
 }
 
-export function provenanceOfDraft(row: Pick<DraftRow, "id" | "source" | "modelId" | "promptVersion" | "builtAt">): IpdDraftProvenance {
-  return { draftId: row.id, source: row.source as "template" | "model", modelId: row.modelId, promptVersion: row.promptVersion, builtAt: row.builtAt.toISOString() };
-}
-
-export async function draftProvenances(db: Db | Tx, draftIds: readonly string[]): Promise<Map<string, IpdDraftProvenance>> {
+export async function draftProvenances(db: Db | Tx, draftIds: readonly string[], edited: ReadonlyMap<string, boolean | null> = new Map()): Promise<Map<string, IpdDraftProvenance>> {
   if (draftIds.length === 0) return new Map();
   const rows = await db.select().from(ipdCopilotDrafts).where(inArray(ipdCopilotDrafts.id, [...new Set(draftIds)]));
-  return new Map(rows.map((r) => [r.id, provenanceOfDraft(r)] as const));
+  const names = new Map((await db.select({ id: users.id, name: users.fullName }).from(users).where(inArray(users.id, [...new Set(rows.map((r) => r.builtBy))])))
+    .map((u) => [u.id, u.name] as const));
+  return new Map(rows.map((r) => [r.id, {
+    draftId: r.id, source: r.source as "template" | "model", modelId: r.modelId, promptVersion: r.promptVersion, builtAt: r.builtAt.toISOString(),
+    builtBy: { id: r.builtBy, name: names.get(r.builtBy) ?? r.builtBy }, edited: edited.get(r.id) ?? null,
+  }] as const));
 }
 
+/** The four SBAR texts as one fingerprint (whitespace and case do not count as an edit). */
+export function sbarTextHash(sbar: { situation: string; background: string; assessment: string; recommendation: string }): string {
+  const flat = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
+  return createHash("sha256").update([sbar.situation, sbar.background, sbar.assessment, sbar.recommendation].map(flat).join("\u0001")).digest("hex").slice(0, 32);
+}
+
+/**
+ * THE GIVE'S CHECK ON ITS DRAFT (review of 1f7cc591): the draft must be this admission's SBAR draft, and the shift's
+ * records must be what they were when it was built — a new vitals set, dose, note or order since then refuses the give
+ * (`shift_handover_draft_stale`: build again and read it). Answers whether the nurse changed the draft's words.
+ */
+export async function checkSbarDraftForGive(
+  db: Db | Tx, draftId: string, a: { id: string; patientId: string }, sbar: { situation: string; background: string; assessment: string; recommendation: string }, now: Date,
+): Promise<{ edited: boolean }> {
+  const row = await draftForSigning(db, draftId, a.id, "sbar");
+  if (row === undefined) throw new IpdError("shift_handover_draft_not_found", "No SBAR draft of this patient has that id.");
+  const kept = row.content as { windowStart?: string; textHash?: string };
+  const since = new Date(kept.windowStart ?? row.builtAt.toISOString());
+  const current = factsHash((await buildFactSet(db as Db, a, { since, until: now })).facts);
+  if (current !== row.factsHash) {
+    throw new IpdError("shift_handover_draft_stale", "The records changed after this draft was built. Build the draft again and check it.", { draftId, builtAt: row.builtAt.toISOString() });
+  }
+  return { edited: kept.textHash !== sbarTextHash(sbar) };
+}
+
+/**
+ * The fingerprint of what a discharge summary is drafted from: every order of the stay with its status, the signed
+ * rounds, the nursing notes and the lab / imaging items with whether they are reported. A summary started from a draft
+ * is checked against it when it is saved and again when it is signed.
+ */
+export async function dischargeRecordsHash(db: Db | Tx, admissionId: string): Promise<string> {
+  const orders = await db.select({ id: ipdOrders.id, status: ipdOrders.status, dep: ipdOrders.departmentOrderId }).from(ipdOrders)
+    .where(eq(ipdOrders.admissionId, admissionId)).orderBy(ipdOrders.id);
+  const rounds = await db.select({ id: ipdRounds.id }).from(ipdRounds).where(and(eq(ipdRounds.admissionId, admissionId), eq(ipdRounds.status, "signed"))).orderBy(ipdRounds.id);
+  const notes = await db.select({ id: ipdNursingNotes.id }).from(ipdNursingNotes).where(eq(ipdNursingNotes.admissionId, admissionId)).orderBy(ipdNursingNotes.id);
+  const placed = orders.flatMap((o) => (o.dep === null ? [] : [o.dep]));
+  const items = placed.length === 0 ? [] : await db.select({ id: orderItems.id, at: orderItems.completedAt }).from(orderItems)
+    .where(and(inArray(orderItems.orderId, placed), isNull(orderItems.cancelledAt))).orderBy(orderItems.id);
+  const canon = [orders.map((o) => [o.id, o.status]), rounds.map((r) => r.id), notes.map((n) => n.id), items.map((i) => [i.id, i.at !== null])];
+  return createHash("sha256").update(JSON.stringify(canon)).digest("hex").slice(0, 32);
+}

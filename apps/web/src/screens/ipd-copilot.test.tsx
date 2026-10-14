@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setToken } from "../lib/api";
+import { ApiError, setToken } from "../lib/api";
 import { renderWithRouter } from "../test-utils";
 import { IpdDischarge } from "./ipd-discharge";
 import { IpdMyShift } from "./ipd-my-shift";
@@ -32,7 +32,7 @@ const NOW = "2026-03-11T12:30:00.000Z"; // 18:00 IST
 const MONEY = /₹|paise|rupee|\bfee\b|\bcharges?\b|\bbill\b|payable|deposit|price/i;
 
 const plain: IpdSinceYesterday = {
-  admissionId: id(1), asOf: NOW, since: "2026-03-11T01:20:00.000Z", sinceBasis: "last_round", mode: "timeline", stamp: null, polishable: true,
+  admissionId: id(1), asOf: NOW, since: "2026-03-11T01:20:00.000Z", sinceBasis: "last_round", mode: "timeline", stamp: null, polishable: true, truncated: [],
   lines: [
     { key: "ews", text: "NEWS2 reached medium (5 at 12:30), now low — latest 2 at 16:05", source: "ews", abnormal: true, by: "template",
       records: [{ id: id(11), at: "2026-03-11T07:00:00.000Z", label: "NEWS2 5 (medium) at 12:30" }, { id: id(12), at: "2026-03-11T10:35:00.000Z", label: "NEWS2 2 (low) at 16:05" }] },
@@ -116,7 +116,7 @@ describe("SBAR draft on my shift (E5.4)", () => {
   it("shows the stamp, fills the model's sentence only into an untouched form, and the give names the draft", async () => {
     nursing.getMyShift.mockResolvedValue(myShiftOf(Date.now()));
     nursing.getShiftHandovers.mockResolvedValue(handoversOf(Date.now(), [shiftHandover(Date.now(), {
-      draft: { draftId: id(70), source: "template", modelId: null, promptVersion: "ipd-sbar-v1", builtAt: NOW },
+      draft: { draftId: id(70), source: "template", modelId: null, promptVersion: "ipd-sbar-v1", builtAt: NOW, builtBy: { id: "u-fake-3", name: "Sister Builder" }, edited: true },
     })]));
     nursing.getHandoverDraft.mockImplementation(async (a: string) => draftOf(a));
     nursing.giveShiftHandover.mockResolvedValue({});
@@ -126,16 +126,60 @@ describe("SBAR draft on my shift (E5.4)", () => {
     const pane = await screen.findByTestId("ipdn-handover");
     // A handover waiting for me: signed by a named nurse, and it says which draft it came from.
     expect(within(pane).getByTestId(`ipdn-shift-handover-${fid(701)}`)).toHaveTextContent("Sister Fake");
-    expect(within(pane).getByTestId("ipdn-handover-prov")).toHaveTextContent("From copilot draft · Template · ipd-sbar-v1");
+    // …by whom it was built, and that the signer changed its words.
+    expect(within(pane).getByTestId("ipdn-handover-prov")).toHaveTextContent("From copilot draft · Template · ipd-sbar-v1 · built by Sister Builder · edited");
 
+    // READ FIRST: opening a patient reads; nothing is built until the nurse asks.
     await userEvent.click(within(pane).getAllByRole("button", { name: /Draft SBAR/ })[0]!);
+    await waitFor(() => expect(within(pane).getByDisplayValue("Day 7. NEWS2 1 at 09:10, falling.")).toBeInTheDocument());
+    expect(copilot.buildSbarDraft).not.toHaveBeenCalled();
+    await userEvent.click(within(pane).getByTestId("ipdn-sbar-build"));
     const stamp = await within(pane).findByTestId("ipdn-sbar-stamp");
     expect(stamp).toHaveTextContent("Draft · stub-model-1 · ipd-sbar-v1 · built");
+    expect(within(pane).queryByTestId("ipdn-sbar-build")).toBeNull();
     expect(stamp).toHaveTextContent("you edit and sign");
     await waitFor(() => expect(within(pane).getByDisplayValue(/Slept in the afternoon; no pain\./)).toBeInTheDocument());
     expect(nursing.giveShiftHandover).not.toHaveBeenCalled();
     await userEvent.click(within(pane).getByRole("button", { name: "Give" }));
     await waitFor(() => expect(nursing.giveShiftHandover).toHaveBeenCalledWith(fid(101), expect.objectContaining({ assessment: expect.stringContaining("Slept in the afternoon; no pain.") as unknown }), id(77)));
+  });
+
+  it("reads the kept draft without building; builds by itself only when the records changed; a stale give offers the rebuild", async () => {
+    nursing.getMyShift.mockResolvedValue(myShiftOf(Date.now()));
+    nursing.getShiftHandovers.mockResolvedValue(handoversOf(Date.now(), []));
+    // A kept draft whose records are unchanged: shown as it is, with its id — no build.
+    nursing.getHandoverDraft.mockImplementation(async (a: string) => kept(a));
+    copilot.buildSbarDraft.mockImplementation(async (a: string) => ({ ...kept(a), draftId: id(78) }));
+    nursing.giveShiftHandover.mockRejectedValueOnce(new ApiError(409, { statusCode: 409, code: "shift_handover_draft_stale", message: "changed" })).mockResolvedValue({});
+    renderWithRouter(<IpdMyShift />, "/ipd/my-shift");
+    await userEvent.click(await screen.findByTestId("ipdn-handover-open"));
+    const pane = await screen.findByTestId("ipdn-handover");
+    await userEvent.click(within(pane).getAllByRole("button", { name: /Draft SBAR/ })[0]!);
+    await within(pane).findByTestId("ipdn-sbar-stamp");
+    expect(copilot.buildSbarDraft).not.toHaveBeenCalled();
+    expect(within(pane).queryByTestId("ipdn-sbar-build")).toBeNull();
+    // The server refuses the give (records changed since the build): the screen says so and offers "Build again".
+    await userEvent.click(within(pane).getByRole("button", { name: "Give" }));
+    expect(await within(pane).findByTestId("ipdn-sbar-stale")).toHaveTextContent("Records changed. Build again.");
+    expect(nursing.giveShiftHandover).toHaveBeenLastCalledWith(fid(101), expect.anything(), id(77));
+    await userEvent.click(within(pane).getByRole("button", { name: "Build again" }));
+    await waitFor(() => expect(copilot.buildSbarDraft).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(within(pane).queryByTestId("ipdn-sbar-stale")).toBeNull());
+    await userEvent.click(within(pane).getByRole("button", { name: "Give" }));
+    await waitFor(() => expect(nursing.giveShiftHandover).toHaveBeenLastCalledWith(fid(101), expect.anything(), id(78)));
+  });
+
+  it("builds without a tap when the kept draft is older than the records", async () => {
+    nursing.getMyShift.mockResolvedValue(myShiftOf(Date.now()));
+    nursing.getShiftHandovers.mockResolvedValue(handoversOf(Date.now(), []));
+    nursing.getHandoverDraft.mockImplementation(async (a: string) => ({ ...draftOf(a), changedSinceDraft: true }));
+    copilot.buildSbarDraft.mockImplementation(async (a: string) => kept(a));
+    renderWithRouter(<IpdMyShift />, "/ipd/my-shift");
+    await userEvent.click(await screen.findByTestId("ipdn-handover-open"));
+    const pane = await screen.findByTestId("ipdn-handover");
+    await userEvent.click(within(pane).getAllByRole("button", { name: /Draft SBAR/ })[0]!);
+    await waitFor(() => expect(copilot.buildSbarDraft).toHaveBeenCalledWith(fid(101)));
+    expect(await within(pane).findByTestId("ipdn-sbar-stamp")).toHaveTextContent("stub-model-1");
   });
 });
 
@@ -157,7 +201,8 @@ describe("Discharge drafter (E5.4)", () => {
       medicines: [{ name: "Test Medicine 500 mg", dose: "500 mg", frequency: "TDS", duration: "5 days", source: "order", orderId: id(60) }],
     },
     sources: [{ field: "medicines", source: "order", records: [{ id: id(60), at: NOW, label: "Test Medicine 500 mg" }] }],
-    flags: [{ name: "warfarin", where: "course", index: null, reason: "model_invented" }],
+    flags: [{ name: "warfarin", where: "course", index: null, reason: "model_invented" }, { name: "asprin", where: "course", index: null, reason: "unverified" }],
+    truncated: ["orders"], complete: false,
   };
 
   it("fills the editor from the record with the stamp and the flags; the save names the draft and keeps the order rows; nothing signs itself", async () => {
@@ -168,7 +213,8 @@ describe("Discharge drafter (E5.4)", () => {
     const saved: IpdSummaryView = {
       summaryId: id(90), admissionId: id(1), status: "draft", version: 1, content: draft.content, label: "Draft",
       provenance: { source: "copilot_draft", draftModelId: null, draftPromptVersion: "ipd-discharge-v1", draftedBy: { id: "u-doc", name: "Fake Rao" }, draftedAt: NOW,
-        draft: { draftId: id(88), source: "template", modelId: null, promptVersion: "ipd-discharge-v1", builtAt: NOW } },
+        draft: { draftId: id(88), source: "template", modelId: null, promptVersion: "ipd-discharge-v1", builtAt: NOW, builtBy: { id: "u-doc", name: "Fake Rao" }, edited: null } },
+      stamp: { label: "Draft", source: "template", modelId: null, promptVersion: "ipd-discharge-v1", builtAt: NOW },
       medicineFlags: [{ name: "Vitamin C 500 mg", where: "medicines", index: 1, reason: "no_active_order" }],
       residentSignedBy: null, signedBy: null, signedAt: null, documentId: null,
     };
@@ -179,6 +225,9 @@ describe("Discharge drafter (E5.4)", () => {
     expect(stamp).toHaveTextContent("Draft · Template · ipd-discharge-v1 · built");
     expect(stamp).toHaveTextContent("check, edit and sign");
     expect(screen.getByTestId("ipdd-medicine-flags")).toHaveTextContent("warfarin — on no order — model text dropped");
+    expect(screen.getByTestId("ipdd-medicine-flags")).toHaveTextContent("asprin — not in notes or orders — check");
+    // A list cut at the limit is said, in words.
+    expect(screen.getByTestId("ipdd-draft-truncated")).toHaveTextContent("List cut short — check orders");
     expect(screen.getByDisplayValue("Community-acquired pneumonia")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Test Medicine 500 mg — 500 mg — TDS — 5 days")).toBeInTheDocument();
     expect(discharge.saveSummary).not.toHaveBeenCalled();
@@ -199,5 +248,20 @@ describe("Discharge drafter (E5.4)", () => {
     expect(await screen.findByTestId("ipdd-summary-prov")).toHaveTextContent("Started from copilot draft · Template · ipd-discharge-v1");
     expect(screen.getByTestId("ipdd-medicine-flags")).toHaveTextContent("Vitamin C 500 mg — no active order");
     expect(discharge.signSummary).not.toHaveBeenCalled();
+    // Unsigned and copilot-sourced: the Draft stamp stays on the saved summary.
+    expect(screen.getByTestId("ipdd-draft-stamp")).toHaveTextContent("Draft · Template · ipd-discharge-v1 · built");
+    // A typed medicine with no active order: the doctor's reason goes with the signature.
+    discharge.signSummary.mockResolvedValue({});
+    await userEvent.type(screen.getByTestId("ipdd-ack-reason"), "Take-home supplement");
+    await userEvent.click(screen.getByRole("button", { name: "Sign" }));
+    await waitFor(() => expect(discharge.signSummary).toHaveBeenCalledWith(id(1), id(90), 1, "Take-home supplement"));
+    // The print carries the stamp too.
+    const print = vi.spyOn(window, "print").mockImplementation(() => undefined);
+    await userEvent.click(screen.getByTestId("ipdd-summary-print-btn"));
+    const paper = await screen.findByTestId("ipdd-summary-print");
+    expect(paper).toHaveTextContent("Draft · Template · ipd-discharge-v1 · built");
+    expect(paper).toHaveTextContent("not signed");
+    expect(paper).toHaveTextContent("Vitamin C 500 mg — no active order");
+    print.mockRestore();
   });
 });
