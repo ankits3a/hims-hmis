@@ -44,7 +44,7 @@
 
 /* ─── header: white, 48px ─── */
 .ddf-top {
-  position: sticky; top: 0; z-index: 30;
+  position: sticky; top: var(--env-banner-h, 0px); z-index: 30;
   display: flex; align-items: center; gap: 14px;
   height: 48px; flex-shrink: 0; padding: 0 20px 0 12px;
   background: #ffffff; border-bottom: 1px solid var(--dd-line);
@@ -100,7 +100,7 @@
 .ddf[data-rail="none"][data-menu="closed"] .ddf-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main"; }
 
 .ddf-menu {
-  grid-area: menu; position: sticky; top: 48px; height: calc(100vh - 48px); overflow-y: auto;
+  grid-area: menu; position: sticky; top: calc(48px + var(--env-banner-h, 0px)); height: calc(100vh - 48px - var(--env-banner-h, 0px)); overflow-y: auto;
   display: flex; flex-direction: column; gap: 12px; padding: 14px 12px 12px;
   background: var(--dd-bg); border-right: 1px solid var(--dd-line2);
 }
