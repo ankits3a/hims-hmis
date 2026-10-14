@@ -27,9 +27,9 @@ describe("My attendance (board frames 2 and 3)", () => {
     const s = server([], { "GET /attendance/me": meRoute() });
     await mount(s.fetcher, <MyAttendance nowMs={nowMs} />);
     await screen.findByTestId("att-word-2026-10-12");
-    fireEvent.press(screen.getByTestId("att-prev"));
+    await fireEvent.press(screen.getByTestId("att-prev"));
     await waitFor(() => expect(screen.getByTestId("att-period")).toHaveTextContent("5 – 11 October"));
-    fireEvent.press(screen.getByTestId("att-prev"));
+    await fireEvent.press(screen.getByTestId("att-prev"));
     await waitFor(() => expect(screen.getByTestId("att-period")).toHaveTextContent(/^28 September – 4 October$/));
     const basis = (id: string): number => (StyleSheet.flatten(screen.getByTestId(id).props.style) as { flexBasis: number }).flexBasis;
     expect(basis("att-count-present")).toBeGreaterThanOrEqual(1.5 * basis("att-count-partial"));
@@ -50,7 +50,7 @@ describe("My attendance (board frames 2 and 3)", () => {
     expect(s.sent("GET /attendance/me").map((c) => c.url)).toEqual(["/attendance/me?from=2026-10-12&to=2026-10-14"]);
     // "Next" stops at the week today is in; "Previous" goes back.
     expect(screen.getByTestId("att-next").props.accessibilityState).toMatchObject({ disabled: true });
-    fireEvent.press(screen.getByTestId("att-prev"));
+    await fireEvent.press(screen.getByTestId("att-prev"));
     expect(await screen.findByTestId("att-word-2026-10-08")).toHaveTextContent("Absent");
     expect(screen.getByTestId("att-word-2026-10-07")).toHaveTextContent("Leave");
     expect(screen.getByTestId("att-word-2026-10-11")).toHaveTextContent("Off");
@@ -69,7 +69,7 @@ describe("My attendance (board frames 2 and 3)", () => {
   it("MONTH: a calendar coloured by the same words, and the five counts", async () => {
     const s = server([], { "GET /attendance/me": meRoute() });
     await mount(s.fetcher, <MyAttendance nowMs={nowMs} />);
-    fireEvent.press(await screen.findByTestId("att-view-month"));
+    await fireEvent.press(await screen.findByTestId("att-view-month"));
     expect(await screen.findByTestId("att-month")).toBeTruthy();
     expect(screen.getByTestId("att-period")).toHaveTextContent("October 2026");
     await waitFor(() => expect(screen.getByTestId("att-count-present")).toHaveTextContent(/^4Present$/));
@@ -88,7 +88,7 @@ describe("My attendance (board frames 2 and 3)", () => {
   it("DAY, times OFF (the owner's default): the word and nothing else — no in/out block, no punches asked for", async () => {
     const s = server([], { "GET /attendance/me": meRoute(), "GET /attendance/me/punches": { status: 200, body: { linked: true, date: "2026-10-13", showsTimes: false, status: "present" } } });
     await mount(s.fetcher, <MyAttendance nowMs={nowMs} />);
-    fireEvent.press(await screen.findByTestId("att-day-2026-10-13"));
+    await fireEvent.press(await screen.findByTestId("att-day-2026-10-13"));
     expect(await screen.findByTestId("att-day-word")).toHaveTextContent("Present");
     expect(screen.getByTestId("att-period")).toHaveTextContent("Tue 13 October");
     expect(screen.queryByTestId("att-day-times")).toBeNull();
@@ -105,7 +105,7 @@ describe("My attendance (board frames 2 and 3)", () => {
     await mount(s.fetcher, <MyAttendance nowMs={nowMs} />);
     expect(await screen.findByTestId("att-word-2026-10-12")).toHaveTextContent("Present");
     expect(screen.getByTestId("att-day-2026-10-12")).not.toHaveTextContent(TIME); // the week is words, whatever arrives
-    fireEvent.press(screen.getByTestId("att-day-2026-10-13"));
+    await fireEvent.press(screen.getByTestId("att-day-2026-10-13"));
     expect(await screen.findByTestId("att-day-times")).toHaveTextContent(/In08:58Out17:05Hours8 h/);
     expect(await screen.findByTestId("att-day-punches")).toHaveTextContent(/Punches08:58 · OPD17:05 · OPD/);
     expect(s.sent("GET /attendance/me/punches").map((c) => c.url)).toEqual(["/attendance/me/punches?date=2026-10-13"]);
@@ -136,8 +136,8 @@ describe("My attendance (board frames 2 and 3)", () => {
       return { ...s, state };
     };
     const openFriday = async () => {
-      fireEvent.press(await screen.findByTestId("att-prev"));
-      fireEvent.press(await screen.findByTestId("att-day-2026-10-09"));
+      await fireEvent.press(await screen.findByTestId("att-prev"));
+      await fireEvent.press(await screen.findByTestId("att-day-2026-10-09"));
       return screen.findByTestId("confirm-sheet");
     };
 
@@ -149,7 +149,7 @@ describe("My attendance (board frames 2 and 3)", () => {
       expect(screen.getByTestId("confirm-reason")).toHaveTextContent("⚠ Only one punch that day");
       expect(sheet).not.toHaveTextContent(TIME);
       expect(screen.queryByTestId("confirm-state")).toBeNull();
-      fireEvent.press(await screen.findByTestId("confirm-ask"));
+      await fireEvent.press(await screen.findByTestId("confirm-ask"));
       expect(await screen.findByTestId("confirm-state-word")).toHaveTextContent("Request sent");
       expect(w.sent("POST /attendance/me/requests").map((c) => c.body)).toEqual([{ date: "2026-10-09" }]);
       // Sent: the button is gone, so a second tap cannot raise a second one.
@@ -178,7 +178,7 @@ describe("My attendance (board frames 2 and 3)", () => {
       const w = world([], () => { w.state.requests = [request()]; return "offline"; });
       await mount(w.fetcher, <MyAttendance nowMs={nowMs} />);
       await openFriday();
-      fireEvent.press(await screen.findByTestId("confirm-ask"));
+      await fireEvent.press(await screen.findByTestId("confirm-ask"));
       expect(await screen.findByTestId("confirm-state-word")).toHaveTextContent("Request sent");
       expect(w.sent("POST /attendance/me/requests")).toHaveLength(1); // not resent
       expect(w.sent("GET /attendance/me/requests")).toHaveLength(2); // once on opening, once to settle
@@ -189,7 +189,7 @@ describe("My attendance (board frames 2 and 3)", () => {
       const w = world([], "offline");
       await mount(w.fetcher, <MyAttendance nowMs={nowMs} />);
       await openFriday();
-      fireEvent.press(await screen.findByTestId("confirm-ask"));
+      await fireEvent.press(await screen.findByTestId("confirm-ask"));
       expect(await screen.findByTestId("confirm-error")).toHaveTextContent("Not sent — try again");
       expect(w.sent("POST /attendance/me/requests")).toHaveLength(1);
       expect(screen.getByTestId("confirm-ask")).toBeTruthy();
@@ -200,7 +200,7 @@ describe("My attendance (board frames 2 and 3)", () => {
       const w = world([], { status: 429, body: { code: "too_many_open_requests", max: 5 } });
       await mount(w.fetcher, <MyAttendance nowMs={nowMs} />);
       await openFriday();
-      fireEvent.press(await screen.findByTestId("confirm-ask"));
+      await fireEvent.press(await screen.findByTestId("confirm-ask"));
       expect(await screen.findByTestId("confirm-error")).toHaveTextContent("Too many open requests");
     });
 
@@ -224,7 +224,7 @@ describe("My attendance (board frames 2 and 3)", () => {
       await openFriday();
       expect(screen.getByTestId("confirm-date")).toHaveTextContent("शुक्र 9 अक्टूबर");
       expect(screen.getByTestId("confirm-reason")).toHaveTextContent("⚠ उस दिन केवल एक पंच");
-      fireEvent.press(await screen.findByTestId("confirm-ask"));
+      await fireEvent.press(await screen.findByTestId("confirm-ask"));
       expect(await screen.findByTestId("confirm-state-word")).toHaveTextContent("अनुरोध भेजा गया");
     });
   });
