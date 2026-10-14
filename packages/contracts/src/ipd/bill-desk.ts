@@ -53,16 +53,84 @@ export const IpdBillDeskRowSchema = z.object({
 });
 export type IpdBillDeskRow = z.infer<typeof IpdBillDeskRowSchema>;
 
+/**
+ * #761 — whether the daily totals to the attendant can be sent at all. OFF until config names an approved template
+ * (`IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE` and/or `IPD_DAILY_TOTALS_DLT_TEMPLATE_ID`) and the desk phone the message names
+ * (`IPD_BILL_DESK_PHONE`); `missing` lists what is not set. `channels` are the ones with an approved id.
+ */
+export const IpdDailyTotalsSendingSchema = z.object({
+  on: z.boolean(),
+  channels: z.array(z.enum(["whatsapp", "sms"])),
+  missing: z.array(z.string()),
+  /** The fixed IST hour the day's message is sent at (DECIDED, #761). */
+  sendHourIst: z.number().int().min(0).max(23),
+});
+export type IpdDailyTotalsSending = z.infer<typeof IpdDailyTotalsSendingSchema>;
+
+/** #761 — one day's message for one admission, as the desk reads it: `words` is the visible line ("Not sent: …"). */
+export const IPD_DAILY_TOTALS_STATUSES = ["sent", "waiting", "not_sent"] as const;
+export const IpdDailyTotalsLineSchema = z.object({
+  admissionId: IpdIdSchema,
+  admissionNo: z.string().nullable(),
+  billDate: z.string(),
+  status: z.enum(IPD_DAILY_TOTALS_STATUSES),
+  words: z.string(),
+});
+export type IpdDailyTotalsLine = z.infer<typeof IpdDailyTotalsLineSchema>;
+
+/** #761 — the bill desk's daily-totals strip: the day the nightly run reported, the switch, the counts, the not-sent lines. */
+export const IpdBillDeskDailyTotalsSchema = z.object({
+  billDate: z.string(),
+  sending: IpdDailyTotalsSendingSchema,
+  sent: z.number().int().nonnegative(),
+  waiting: z.number().int().nonnegative(),
+  notSent: z.array(IpdDailyTotalsLineSchema),
+});
+export type IpdBillDeskDailyTotals = z.infer<typeof IpdBillDeskDailyTotalsSchema>;
+
 export const IpdBillDeskSchema = z.object({
   asOf: IpdInstantSchema,
   counts: z.record(IpdBillDeskReasonSchema, z.number().int().nonnegative()),
   rows: z.array(IpdBillDeskRowSchema),
   /** The reader may retry a quarantined admission's posting (`ipd.charges.reverse`, the billing manager). */
   canRetry: z.boolean(),
+  /** #761 — the daily totals to attendants: sent, waiting and NOT SENT with the reason, never silent. */
+  dailyTotals: IpdBillDeskDailyTotalsSchema,
 });
 export type IpdBillDesk = z.infer<typeof IpdBillDeskSchema>;
+
+/** #761 — record the attendant's consent to the daily totals (the attendant is `attendantOf`; no number is typed). */
+export const IpdAttendantConsentSchema = z.strictObject({
+  consent: z.strictObject({
+    consentedBy: z.string().trim().min(2).max(120),
+    relation: z.enum(["self", "spouse", "parent", "child", "sibling", "relative", "guardian", "other"]),
+    method: z.enum(["verbal", "paper"]),
+  }),
+});
+export type IpdAttendantConsent = z.infer<typeof IpdAttendantConsentSchema>;
+
+/** #761 — the admission's daily-totals card: who it goes to (masked), consent, stop, and the last day's line. */
+export const IpdAttendantMessagesSchema = z.object({
+  admissionId: IpdIdSchema,
+  attendant: z.object({ kind: z.enum(["guardian", "deposit_payer"]), phoneMasked: z.string() }).nullable(),
+  consent: z.object({ consentedBy: z.string(), relation: z.string(), method: z.string(), at: IpdInstantSchema }).nullable(),
+  /** A live family link to the same attendant: its consent covers the daily totals too. */
+  viaFamilyLink: z.boolean(),
+  stoppedAt: IpdInstantSchema.nullable(),
+  /** What happens to tomorrow's message, in one word. */
+  state: z.enum(["will_send", "not_configured", "no_attendant", "no_consent", "number_changed", "stopped", "blocked"]),
+  words: z.string(),
+  sending: IpdDailyTotalsSendingSchema,
+  last: IpdDailyTotalsLineSchema.nullable(),
+  /** The reader may record consent or a stop (`ipd.family.issue`). */
+  canManage: z.boolean(),
+});
+export type IpdAttendantMessages = z.infer<typeof IpdAttendantMessagesSchema>;
 
 export const IPD_BILLDESK_ROUTES = {
   desk: "/ipd/bill-desk",
   retry: "/ipd/admissions/:id/charges/retry",
+  attendantMessages: "/ipd/admissions/:id/attendant-messages",
+  attendantConsent: "/ipd/admissions/:id/attendant-messages/consent",
+  attendantStop: "/ipd/admissions/:id/attendant-messages/stop",
 } as const;

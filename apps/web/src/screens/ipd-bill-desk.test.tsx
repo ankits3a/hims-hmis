@@ -32,7 +32,10 @@ function desk(over: Partial<IpdBillDesk> = {}): IpdBillDesk {
     deposit_90: 1, deposit_75: 1, icu_low_days: 0, posting_failed: 1, rate_missing: 0, tariff_missing: 0, deposit_check_pending: 1,
     cash_consent_missing: 0, auth_pending_24h: 0, discharge_balance: 0,
   };
-  return { asOf: "2030-01-02T04:00:00.000Z", counts, rows, canRetry: false, ...over };
+  const dailyTotals = {
+    billDate: "2030-01-01", sending: { on: true, channels: ["whatsapp" as const], missing: [], sendHourIst: 9 }, sent: 5, waiting: 0, notSent: [],
+  };
+  return { asOf: "2030-01-02T04:00:00.000Z", counts, rows, canRetry: false, dailyTotals, ...over };
 }
 
 describe("IpdBillDeskScreen", () => {
@@ -67,6 +70,26 @@ describe("IpdBillDeskScreen", () => {
     await waitFor(() => expect(api.retryPosting).toHaveBeenCalledWith(id(3)));
     expect(await screen.findByRole("status")).toHaveTextContent("Retried — 3 lines posted");
     expect(api.getBillDesk).toHaveBeenCalledTimes(2);
+  });
+
+  it("#761: shows the daily totals to attendants — off says 'template not configured', and every not-sent line is listed", async () => {
+    api.getBillDesk.mockResolvedValue(desk({
+      dailyTotals: {
+        billDate: "2030-01-01", sending: { on: false, channels: [], missing: ["IPD_DAILY_TOTALS_WHATSAPP_TEMPLATE or IPD_DAILY_TOTALS_DLT_TEMPLATE_ID"], sendHourIst: 9 },
+        sent: 0, waiting: 0,
+        notSent: [
+          { admissionId: id(7), admissionNo: "IP30-000047", billDate: "2030-01-01", status: "not_sent", words: "Not sent: template not configured" },
+          { admissionId: id(8), admissionNo: "IP30-000048", billDate: "2030-01-01", status: "not_sent", words: "Not sent: no consent recorded" },
+        ],
+      },
+    }));
+    renderWithRouter(<IpdBillDeskScreen />);
+    const strip = await screen.findByRole("region", { name: "Daily totals to attendants" });
+    expect(within(strip).getByText("Sending is off: template not configured")).toBeInTheDocument();
+    const lines = within(strip).getAllByRole("listitem");
+    expect(lines).toHaveLength(2);
+    expect(within(lines[0]!).getByText("Not sent: template not configured")).toBeInTheDocument();
+    expect(within(lines[1]!).getByRole("link", { name: "IP30-000048" })).toHaveAttribute("href", `/ipd/admissions/${id(8)}/bill`);
   });
 
   it("says when nothing needs the desk, and refuses a reader without the permission in words", async () => {

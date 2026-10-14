@@ -29,15 +29,22 @@ import type { Db, Tx } from "../../kernel/db/client";
  *   `no_attendant_phone`. The recipient travels as a REFERENCE (guardian or deposit row id), never as a phone number:
  *   the sender reads contact truth at send time.
  * - SEALED (`patients.sensitive_context`, D-31) → no message (`sealed`); no opt-in path exists in this lane.
- * - THE CHANNEL: no approved WhatsApp template and no DLT registration exist, and the notify pump addresses a patient
- *   row to the patient's own phone — so the template is HELD: the row is queued and the pump records it suppressed
- *   `template_pending` (kernel/notify `heldReason`). Language: the patient's message language, as every patient message.
- *   RELEASE (review 10, DECIDED: keep held) needs an ATTENDANT-RECIPIENT SEAM in kernel/notify — a patient-audience row
- *   addressed to a guardian or deposit payer resolved from `attendantRef` at send time — owed as GitHub issue #761.
+ * - THE CHANNEL (#761): the row is addressed to the attendant through the pump's recipient seam (`attendant-messages.ts`
+ *   `ipdAttendantRecipient`: `attendantRef` resolved at send time, consent and stop honoured) and leaves only as an
+ *   approved template named in config; until then the pump records it suppressed `template_pending` ("not sent: template
+ *   not configured" on the bill desk). Sent at 09:00 IST (`scheduledFor`). Language: the patient's message language.
  * - DEDUPE (review 9): one `ipd_daily_totals` row per admission and IST day (unique key), decided under the admission's
  *   advisory lock; the outbox row and the record commit together.
  */
 const SYSTEM: Actor = { type: "system", id: "ipd-daily-totals" };
+
+/** DECIDED (#761): the day's message goes at 09:00 IST — after quiet hours end (08:00), before the day's bills move. */
+export const IPD_DAILY_TOTALS_SEND_HOUR_IST = 9;
+
+/** The send instant (09:00 IST) of the IST day `now` falls on: the nightly run queues just after midnight. */
+export function dailyTotalsSendAt(now: Date): Date {
+  return new Date(`${istDayString(now)}T${String(IPD_DAILY_TOTALS_SEND_HOUR_IST).padStart(2, "0")}:00:00+05:30`);
+}
 const DAY_MS = 24 * 3_600_000;
 const log = new Logger("ipd.daily-totals");
 
@@ -125,7 +132,7 @@ export async function queueDailyTotals(
     };
     const row = await enqueueNotification(tx, {
       templateKey: IPD_GOAL_TEMPLATES.dailyTotals, params, dedupeKey: `ipd.daily_totals:${a.id}:${billDate}`, occurredAt: now,
-      patientId: a.patientId, refType: "admission", refId: a.id,
+      patientId: a.patientId, refType: "admission", refId: a.id, scheduledFor: dailyTotalsSendAt(now),
     });
     await record("queued", row?.id ?? null);
     return row === null ? "already" : "queued";

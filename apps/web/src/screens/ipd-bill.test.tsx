@@ -11,6 +11,8 @@ import type { IpdInterimBill } from "@hmis/contracts";
 
 const api = vi.hoisted(() => ({ getInterimBill: vi.fn(), printInterimBill: vi.fn() }));
 vi.mock("../lib/ipd-bill-api", () => api);
+// #761 — the daily-totals card has its own wire and its own test (`ipd-attendant-card.test.tsx`); here it stays quiet.
+vi.mock("../lib/ipd-attendant-api", () => ({ getAttendantMessages: vi.fn(() => new Promise(() => {})), recordAttendantConsent: vi.fn(), stopAttendantMessages: vi.fn() }));
 
 const id = (n: number): string => `01FAKE${String(n).padStart(20, "0")}`;
 const ADM = id(3);

@@ -985,3 +985,36 @@ export const ipdFamilyCallbacks = pgTable(
     check("ipd_family_callbacks_closed_ck", sql`(${t.status} = 'done') = (${t.closedAt} is not null)`),
   ],
 );
+
+// ═══════════════════════════════════ #761 — the attendant's word on the daily totals ═══════════════════════════════════
+
+/**
+ * The attendant's consent to the daily totals message, and their stop. One row per (admission, attendant reference): the
+ * recipient is always `attendantOf` (the daily totals' rule), never a number typed at the desk. A live family link to the
+ * same attendant counts as consent too (its consent was recorded at issue, purpose `inpatient_updates`); a stop here
+ * beats it. Re-consenting after a stop clears the stop. Every change is an `ipd.attendant_messages.*` event.
+ */
+export const ipdAttendantMessageConsents = pgTable(
+  "ipd_attendant_message_consents",
+  {
+    id: text("id").primaryKey(),
+    admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
+    attendantKind: text("attendant_kind").notNull(),
+    attendantRef: text("attendant_ref").notNull(),
+    /** Null when the attendant only ever said stop (e.g. a family-link attendant). `phoneHash`: the HMAC of the number the
+     *  consent was given for (`familyPhoneDigest`) — a changed number is no consent until recorded again. */
+    consent: jsonb("consent").$type<{ consentedBy: string; relation: string; method: string; phoneHash?: string }>(),
+    consentedBy: text("consented_by"),
+    consentedAt: timestamp("consented_at", { withTimezone: true }),
+    stoppedAt: timestamp("stopped_at", { withTimezone: true }),
+    stoppedBy: text("stopped_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex("ipd_attendant_message_consents_ux").on(t.admissionId, t.attendantRef),
+    check("ipd_attendant_message_consents_kind_ck", sql`${t.attendantKind} in ('guardian', 'deposit_payer')`),
+    check("ipd_attendant_message_consents_stop_ck", sql`(${t.stoppedAt} is null) = (${t.stoppedBy} is null)`),
+    check("ipd_attendant_message_consents_consent_ck", sql`(${t.consent} is null) = (${t.consentedAt} is null) and (${t.consentedAt} is null) = (${t.consentedBy} is null)`),
+    check("ipd_attendant_message_consents_some_ck", sql`${t.consentedAt} is not null or ${t.stoppedAt} is not null`),
+  ],
+);

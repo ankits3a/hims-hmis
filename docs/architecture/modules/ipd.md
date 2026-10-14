@@ -52,6 +52,15 @@ Source: `apps/core/src/modules/ipd/`
   - `IPD_APPROVAL_TYPE_KEYS: Record<IpdApprovalKind, string>`
   - `ipdApprovalDefinition(spec: IpdApprovalTypeSpec)`
   - `registerIpdApprovalTypes(db: Db, activator: Actor): Promise<{ registered: string[] }>`
+- `attendant-messages.ts`
+  - `dailyTotalsSendingOf(cfg: AppConfig["ipdDailyTotals"] | undefined): IpdDailyTotalsSending`
+  - `dailyTotalsWords(outcome: string, n: { status: string; lastError: string | null } | null, sending: IpdDailyTotalsSending): { status: IpdDai…`
+  - `ipdAttendantRecipient(cfg: AppConfig["ipdDailyTotals"] | undefined, secretKey?: Buffer): RecipientResolver`
+  - `ipdTemplateRegistrations(cfg: AppConfig["ipdDailyTotals"] | undefined): Record<string, TemplateProviderIds>`
+  - `readAttendantMessages(db: Db, actor: Actor, admissionId: string, sending: IpdDailyTotalsSending, opts: { secretKey?: Buffer } = {}): Promis…`
+  - `readDailyTotalsStrip(db: Db, sending: IpdDailyTotalsSending, now: Date): Promise<IpdBillDeskDailyTotals>`
+  - `recordAttendantConsent(db: Db, actor: Actor, admissionId: string, input: IpdAttendantConsent, opts: { now?: Date; secretKey: Buffer }): Pro…`
+  - `stopAttendantMessages(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<{ stopped: boolean }>`
 - `bands.ts`
   - `allergyWords(rows: { substance: string; severity: string | null; status: string }[]): string[]`
   - `printBand(db: Db, actor: Actor, raw: unknown, opts: Opts = {}): Promise<Output<"print_band">>`
@@ -109,7 +118,7 @@ Source: `apps/core/src/modules/ipd/`
 - `bill-desk.ts`
   - `SEALED_LABEL`
   - `depositLowCard(db: Db): Promise<DeskCard[]>`
-  - `readBillDesk(db: Db, actor: Actor, now: Date = new Date()): Promise<IpdBillDesk>`
+  - `readBillDesk(db: Db, actor: Actor, now: Date = new Date(), sending: IpdDailyTotalsSending = dailyTotalsSendingOf(undefined)): Promise<IpdBi…`
   - `retryFromBillDesk(db: Db, actor: Actor, admissionId: string, now: Date = new Date()): Promise<AdmissionPostResult>`
   - `runIpdBillDeskNightly(db: Db, now: Date): Promise<{ ladder: LadderOutcome[]; ladderFailed: string[]; dailyTotals: DailyTotalsResult | null …`
 - `charge-days.ts`
@@ -135,8 +144,10 @@ Source: `apps/core/src/modules/ipd/`
   - `nextNoonIst(at: Date): Date`
   - types: `StayClassChange`
 - `daily-totals.ts`
+  - `IPD_DAILY_TOTALS_SEND_HOUR_IST`
   - `attendantOf(db: Db | Tx, patientId: string, admissionId: string): Promise<Attendant | null>`
   - `attendantPhoneOf(db: Db | Tx, kind: "guardian" | "deposit_payer", ref: string): Promise<string | null>`
+  - `dailyTotalsSendAt(now: Date): Date`
   - `dayOfStay(admittedAt: Date, billDate: string): number`
   - `messageNameOf(p: { name: string; alias: string | null; isConfidential: boolean }): string`
   - `queueAllDailyTotals(db: Db, now: Date): Promise<DailyTotalsResult>`
@@ -312,15 +323,15 @@ Source: `apps/core/src/modules/ipd/`
 
 ## Tables (`kernel/db/schema/ipd.ts`)
 
-`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
+`ipd_admission_conditions`, `ipd_admission_deposits`, `ipd_admissions`, `ipd_attendant_message_consents`, `ipd_bands`, `ipd_bed_blocks`, `ipd_bed_reservations`, `ipd_bed_stays`, `ipd_charge_exceptions`, `ipd_charge_lines`, `ipd_class_changes`, `ipd_daily_totals`, `ipd_deposit_alerts`, `ipd_discharge_confirmations`, `ipd_discharge_summaries`, `ipd_discharges`, `ipd_family_callbacks`, `ipd_family_links`, `ipd_family_otps`, `ipd_family_sessions`, `ipd_final_bills`, `ipd_gate_passes`, `ipd_mortuary_register`, `ipd_payer_auths`, `ipd_payer_claims`, `ipd_payer_non_payables`, `ipd_payer_split_snapshots`, `ipd_stay_exits`, `ipd_transfers`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (80)
+## HTTP routes (83)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
-- `billdesk.controller.ts` — 2: `/ipd/admissions`, `/ipd/bill-desk`
+- `billdesk.controller.ts` — 5: `/ipd/admissions`, `/ipd/bill-desk`
 - `charges.controller.ts` — 1: `/ipd/charge-lines`
 - `discharge.controller.ts` — 23: `/ipd/discharge`, `/ipd/mortuary`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`

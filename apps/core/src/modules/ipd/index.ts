@@ -130,3 +130,9 @@ export { FamilyOtpUnavailable, LoggingFamilyOtpSender, SmsFamilyOtpSender, famil
 export type { FamilyOtpSender } from "./family-otp";
 export { IPD_FAMILY_STOP_CONSUMER } from "./family-events";
 export { attendantOf, attendantPhoneOf } from "./daily-totals";
+// #761 — the attendant-recipient seam for the daily totals, the approved-template switch from config, consent and stop.
+export { IPD_DAILY_TOTALS_SEND_HOUR_IST, dailyTotalsSendAt } from "./daily-totals";
+export {
+  dailyTotalsSendingOf, dailyTotalsWords, ipdAttendantRecipient, ipdTemplateRegistrations, readAttendantMessages, readDailyTotalsStrip,
+  recordAttendantConsent, stopAttendantMessages,
+} from "./attendant-messages";
