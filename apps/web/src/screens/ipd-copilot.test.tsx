@@ -264,4 +264,23 @@ describe("Discharge drafter (E5.4)", () => {
     expect(paper).toHaveTextContent("Vitamin C 500 mg — no active order");
     print.mockRestore();
   });
+
+  it("a typed medicine whose only order was stopped asks the no-order reason too, and the reason goes with the signature", async () => {
+    discharge.getDischargeBoard.mockResolvedValue({ rows: [] });
+    discharge.getDischargeTracker.mockResolvedValue({ ...tracker, summary: { status: "draft", signedBy: null, version: 1 } });
+    const view: IpdSummaryView = {
+      summaryId: id(91), admissionId: id(1), status: "draft", version: 1,
+      content: { ...draft.content, medicines: [{ name: "Zemox 500", frequency: "TDS", source: "typed" }] }, label: "Draft",
+      provenance: { source: "person", draftModelId: null, draftPromptVersion: null, draftedBy: { id: "u-doc", name: "Fake Rao" }, draftedAt: NOW, draft: null },
+      stamp: null,
+      medicineFlags: [{ name: "Zemox 500", where: "medicines", index: 0, reason: "order_stopped" }],
+      residentSignedBy: null, signedBy: null, signedAt: null, documentId: null,
+    };
+    discharge.getSummary.mockResolvedValue(view);
+    discharge.signSummary.mockResolvedValue({});
+    renderWithRouter(<IpdDischarge />, `/ipd/discharge?admission=${id(1)}`);
+    await userEvent.type(await screen.findByTestId("ipdd-ack-reason"), "Restarted at home by the physician");
+    await userEvent.click(screen.getByRole("button", { name: "Sign" }));
+    await waitFor(() => expect(discharge.signSummary).toHaveBeenCalledWith(id(1), id(91), 1, "Restarted at home by the physician"));
+  });
 });

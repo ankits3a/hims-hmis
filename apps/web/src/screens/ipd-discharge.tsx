@@ -363,7 +363,8 @@ function SummaryCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone:
   // E5.4 — the copilot draft the form was filled from (its stamp and flags are shown; the save names it).
   const [copilot, setCopilot] = useState<IpdDischargeDraft | null>(null);
   const [fromOrders, setFromOrders] = useState<Map<string, string>>(new Map());
-  // E5.4 — the doctor's reason for signing with a typed medicine that no active order carries (asked only then).
+  // E5.4 — the doctor's reason for signing with a medicine that no active order carries — none, or only a stopped one
+  // (the server asks it for every such flag, decision 0074).
   const [ackReason, setAckReason] = useState("");
   const status = tr.summary.status;
   useEffect(() => {
@@ -421,7 +422,7 @@ function SummaryCard({ tr, onDone, onPrint }: { tr: IpdDischargeTracker; onDone:
           ) : null}
           <MedicineFlags flags={view.medicineFlags} />
           {view.content.medicineAck !== undefined ? <p className="dim" data-testid="ipdd-medicine-ack">{t("ipdCopilot.discharge.ackBy", { reason: view.content.medicineAck.reason, name: view.content.medicineAck.by.name })}</p> : null}
-          {view.status !== "signed" && tr.can.signSummary && view.medicineFlags.some((f) => f.reason === "no_active_order") ? (
+          {view.status !== "signed" && tr.can.signSummary && view.medicineFlags.some((f) => f.where === "medicines" && (f.reason === "no_active_order" || f.reason === "order_stopped")) ? (
             <label className="ipdd-ack">{t("ipdCopilot.discharge.ackLabel")}
               <input value={ackReason} onChange={(e) => setAckReason(e.target.value)} data-testid="ipdd-ack-reason" />
             </label>
