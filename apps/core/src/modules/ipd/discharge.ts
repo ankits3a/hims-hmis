@@ -9,7 +9,7 @@ import { withIdempotency } from "../billing";
 import { actorHoldsAnyRole } from "../../kernel/workflow/roles";
 import { lockAdmission, moveAdmission, onceIpd, provenanceOf, readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
-import { dischargeRecordsHash, draftForSigning, draftProvenances } from "./copilot-drafts";
+import { dischargeRecordsHash, dischargeRecordsUnchanged, draftForSigning, draftProvenances } from "./copilot-drafts";
 import { medicineFlagsOf } from "./discharge-medicines";
 import { chargesConfirmed, fitCancelled, fitDeclared, summarySigned } from "./discharge-events";
 import { IpdError, IpdRefusal } from "./errors";
@@ -263,8 +263,9 @@ export async function saveSummaryDraft(db: Db, actor: Actor, raw: unknown, opts:
     // save (build the draft again). A copilot-sourced summary then carries the fingerprint it was last saved against,
     // which the signature checks. The server-written fields of the content are never taken from the client.
     const copilotSourced = draft !== undefined || (cur?.draftId ?? null) !== null;
-    const recordsNow = copilotSourced ? await dischargeRecordsHash(tx, a.id) : undefined;
-    if (draft !== undefined && draft.factsHash !== recordsNow) {
+    const recordsNow = copilotSourced ? await dischargeRecordsHash(tx, a) : undefined;
+    // #794: a draft stamped under an older fingerprint version is compared with that version's algorithm.
+    if (draft !== undefined && !await dischargeRecordsUnchanged(tx, a, draft.factsHash)) {
       throw new IpdError("summary_draft_stale", "The records changed after this draft was built. Build the draft again and check it.", { draftId: draft.id });
     }
     const typedContent: Record<string, unknown> = { ...input.content };
@@ -320,7 +321,7 @@ export async function signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts
     const drugOrders = await drugOrdersOf(tx, a.id);
     // A summary started from a copilot draft is signed against the records it was last SAVED against: anything recorded
     // since (an order, a round, a note, a result) sends it back to be opened, checked and saved again.
-    if (s.draftId !== null && content.recordsHash !== await dischargeRecordsHash(tx, a.id)) {
+    if (s.draftId !== null && !await dischargeRecordsUnchanged(tx, a, content.recordsHash)) {
       throw new IpdError("summary_records_changed", "The patient's records changed after this summary was saved. Open it, check it and save it again before signing.");
     }
     const stale = medicineFlagsOf(content.medicines.filter((m) => m.source === "order"), drugOrders);

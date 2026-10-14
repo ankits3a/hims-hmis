@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { ipdCopilotDrafts, ipdNursingNotes, ipdOrders, ipdRounds, orderItems, users } from "../../kernel/db/schema";
 import { buildFactSet, factsHash } from "./copilot-facts";
+import { proceduresDone } from "../ot";
 import { IpdError } from "./errors";
 import type { IpdDraftProvenance } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
@@ -81,11 +82,23 @@ export async function checkSbarDraftForGive(
 }
 
 /**
- * The fingerprint of what a discharge summary is drafted from: every order of the stay with its status, the signed
- * rounds, the nursing notes and the lab / imaging items with whether they are reported. A summary started from a draft
- * is checked against it when it is saved and again when it is signed.
+ * #794 — the discharge fingerprint is VERSIONED: the version is the hash's prefix. v1 (no prefix, 32 hex) left the
+ * theatre's cases out, so a procedure recorded after the draft never made it stale. v2 adds them. A draft or a summary
+ * stamped under v1 is compared with the v1 algorithm (`dischargeRecordsUnchanged`), so nothing stamped before the
+ * deploy turns stale by the change of algorithm alone; its next save stamps v2.
  */
-export async function dischargeRecordsHash(db: Db | Tx, admissionId: string): Promise<string> {
+export const DISCHARGE_RECORDS_HASH_VERSION = "v2";
+
+/** The admission fields the fingerprint reads (the stay's window and the day-care case it was converted from). */
+export type RecordsAdmission = { id: string; patientId: string; admittedAt: Date | null; endedAt: Date | null; source: string; sourceRef: string | null };
+
+/** The upper bound of a live stay's window for the theatre read: no incision is recorded in the future. */
+const OPEN_STAY_UNTIL = new Date("9999-12-31T23:59:59Z");
+
+const digest = (canon: unknown): string => createHash("sha256").update(JSON.stringify(canon)).digest("hex").slice(0, 32);
+
+/** The v1 parts: every order of the stay with its status, the signed rounds, the nursing notes, the lab / imaging items. */
+async function recordsCanonV1(db: Db | Tx, admissionId: string): Promise<unknown[]> {
   const orders = await db.select({ id: ipdOrders.id, status: ipdOrders.status, dep: ipdOrders.departmentOrderId }).from(ipdOrders)
     .where(eq(ipdOrders.admissionId, admissionId)).orderBy(ipdOrders.id);
   const rounds = await db.select({ id: ipdRounds.id }).from(ipdRounds).where(and(eq(ipdRounds.admissionId, admissionId), eq(ipdRounds.status, "signed"))).orderBy(ipdRounds.id);
@@ -93,6 +106,37 @@ export async function dischargeRecordsHash(db: Db | Tx, admissionId: string): Pr
   const placed = orders.flatMap((o) => (o.dep === null ? [] : [o.dep]));
   const items = placed.length === 0 ? [] : await db.select({ id: orderItems.id, at: orderItems.completedAt }).from(orderItems)
     .where(and(inArray(orderItems.orderId, placed), isNull(orderItems.cancelledAt))).orderBy(orderItems.id);
-  const canon = [orders.map((o) => [o.id, o.status]), rounds.map((r) => r.id), notes.map((n) => n.id), items.map((i) => [i.id, i.at !== null])];
-  return createHash("sha256").update(JSON.stringify(canon)).digest("hex").slice(0, 32);
+  return [orders.map((o) => [o.id, o.status]), rounds.map((r) => r.id), notes.map((n) => n.id), items.map((i) => [i.id, i.at !== null])];
+}
+
+/** The theatre's cases of the stay — the same read as the drafter's `procedures` (`proceduresDone`), in the same window. */
+export function dischargeProcedureWindow(a: RecordsAdmission, now: Date): Parameters<typeof proceduresDone>[1] | null {
+  if (a.admittedAt === null) return null;
+  return { patientId: a.patientId, from: a.admittedAt, until: a.endedAt ?? now, linkedRef: a.source === "ot_daycare_conversion" ? a.sourceRef : null };
+}
+
+/**
+ * The fingerprint of what a discharge summary is drafted from (current version, `v2:` + 32 hex): every order of the stay
+ * with its status, the signed rounds, the nursing notes, the lab / imaging items with whether they are reported, and the
+ * theatre's cases (`proceduresDone`: case, procedure code after any conversion, incision). A summary started from a
+ * draft is checked against it when it is saved and again when it is signed.
+ */
+export async function dischargeRecordsHash(db: Db | Tx, a: RecordsAdmission): Promise<string> {
+  const window = dischargeProcedureWindow(a, OPEN_STAY_UNTIL);
+  const procs = window === null ? [] : await proceduresDone(db, window);
+  const canon = [...await recordsCanonV1(db, a.id), procs.map((p) => [p.caseId, p.procedureCode, p.incisionAt.toISOString()])];
+  return `${DISCHARGE_RECORDS_HASH_VERSION}:${digest(canon)}`;
+}
+
+/** The v1 fingerprint (no prefix, no theatre cases) — only to compare a draft or a summary stamped before #794. */
+export async function dischargeRecordsHashV1(db: Db | Tx, admissionId: string): Promise<string> {
+  return digest(await recordsCanonV1(db, admissionId));
+}
+
+/** Are the stay's records still what `stored` was stamped from? Compared under the version `stored` carries. */
+export async function dischargeRecordsUnchanged(db: Db | Tx, a: RecordsAdmission, stored: string | null | undefined): Promise<boolean> {
+  if (typeof stored !== "string" || stored === "") return false;
+  if (stored.startsWith(`${DISCHARGE_RECORDS_HASH_VERSION}:`)) return stored === await dischargeRecordsHash(db, a);
+  if (stored.includes(":")) return false;
+  return stored === await dischargeRecordsHashV1(db, a.id);
 }
