@@ -165,8 +165,8 @@ flowchart LR
 | [passes](modules/passes.md) | billing, ipd, patients | — | 9 | 4 |
 | [patients](modules/patients.md) | — | abdm, aerb, billing, ipd, lab, membership, opd, ot, partners, passes, pharmacy, radiology, transport | 31 | 8 |
 | [pcpndt](modules/pcpndt.md) | — | radiology | 10 | 5 |
-| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | ipd | 183 | 32 |
-| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 113 | 22 |
+| [pharmacy](modules/pharmacy.md) | billing, formulary, materials, membership, opd, patients, tariff | ipd | 184 | 32 |
+| [radiology](modules/radiology.md) | aerb, billing, lab, opd, ot, patients, pcpndt, roster, tariff | abdm, ordering | 114 | 22 |
 | [roster](modules/roster.md) | — | ipd, opd, ot, radiology, tasks | 37 | 26 |
 | [tariff](modules/tariff.md) | — | billing, ipd, lab, membership, ot, partners, pharmacy, radiology | 20 | 7 |
 | [tasks](modules/tasks.md) | roster | bmw, diet, housekeeping, linen, maintenance, transport | 11 | 2 |
@@ -200,7 +200,7 @@ Shared platform code in `apps/core/src/kernel/`. Coordinate before editing (see 
 | `push` | — | alerts, db, events, modules | — |
 | `realtime` | ipd, lab, opd | auth, db, tokens | — |
 | `reminders` | — | alerts, auth, copilot, db, tokens | 3 |
-| `report` | billing, bmw, opd, pharmacy | — | — |
+| `report` | billing, bmw, lab, opd, pharmacy, radiology | db | — |
 | `resources` | aerb, housekeeping, ipd, lab, linen, materials, opd, ot, pharmacy, radiology | auth, db, events, modules, tokens | 3 |
 | `retention` | — | db, events, phi, search, worker | — |
 | `search` | billing, formulary, membership, opd, patients, tariff | auth, config, db, events, modules, tokens | 2 |
