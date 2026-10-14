@@ -252,6 +252,8 @@ describe("MergeReview", () => {
     const phoneRow = (await screen.findByText("Mobile number")).closest("tr")!;
     await user.click(within(phoneRow).getByRole("button", { name: "Show" }));
     await waitFor(() => expect(fetchCalls().some((c) => c.url === "/api/patients/merge-mobile-shown")).toBe(true));
+    // #653 (S1) — and it says so, in words.
+    expect(await within(phoneRow).findByRole("alert")).toHaveTextContent("Could not show. Try again.");
     expect(phoneRow).toHaveTextContent("•••••• 3210");
     expect(phoneRow).not.toHaveTextContent("98765 43210");
   });
@@ -376,6 +378,78 @@ describe("MergeReview", () => {
     await waitFor(() => expect(fetchCalls().some((c) => c.method === "POST" && c.url === "/api/approvals/ap-1/approve")).toBe(true));
     const posted = fetchCalls().find((c) => c.url === "/api/approvals/ap-1/approve")!;
     expect(JSON.parse(posted.body)).toEqual({ note: "Checked the lab slip and the two OPD cards" });
+  });
+
+  /*
+    #653 (S1) — the server masks the request's frozen snapshot for every reader (last 4 of the phone,
+    the DOB's year, the address's locality, last 4 of the ABHA) and says what differs. Show posts to
+    the request's own logged route and draws the full values it returns; a failed Show says so.
+  */
+  const MASKED = (row: Record<string, unknown>, phone: string, abha: string | null) => ({
+    ...row, phone, dob: null, dobYear: 1990, addressLine: null, pincode: null, locality: "Patna, Bihar",
+    abhaAddress: abha, abhaNumber: null, masked: true,
+  });
+  const MASKED_REQ = () => REQ({
+    request: {
+      ...REQ().request,
+      snapshot: {
+        winnerBefore: MASKED(LEFT_PATIENT, "\u2022\u2022\u2022\u2022\u2022\u2022 3210", "\u2022\u2022\u2022\u2022 abdm"),
+        loserBefore: MASKED({ ...RIGHT_PATIENT, name: "Asha Debi" }, "\u2022\u2022\u2022\u2022\u2022\u2022 0000", null),
+      },
+    },
+    differs: { dob: false, phone: true, address: true, abha: true },
+  });
+
+  it("#653 S1: a request's comparison draws the server's masked values and its differs marks; Show reveals what the logged route returns", async () => {
+    setToken("t-1");
+    openRequestFromUrl();
+    stubFetch({
+      ...baseRoutes,
+      "GET /api/auth/me": me("u-ms", ["approvals.requests.decide", "patients.read"]),
+      "GET /api/patients/merge-requests": { items: [] },
+      "GET /api/patients/merge-requests/mr-1": MASKED_REQ(),
+      "POST /api/patients/merge-requests/mr-1/show": {
+        winner: { phone: "9876543210", altPhone: null, referredByPhone: null, dob: "1990-04-02", addressLine: "12 MG Road", pincode: "800020", abhaNumber: null, abhaAddress: "asha@abdm" },
+        loser: { phone: "9876500000", altPhone: null, referredByPhone: null, dob: "1990-04-02", addressLine: "Ward 7, Danapur", pincode: "801503", abhaNumber: null, abhaAddress: null },
+      },
+    });
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+
+    const phoneRow = (await screen.findByText("Mobile number")).closest("tr")!;
+    expect(phoneRow).toHaveTextContent("\u2022\u2022\u2022\u2022\u2022\u2022 3210");
+    expect(within(phoneRow).getByText("differs")).toBeInTheDocument();
+    const dobRow = screen.getByText("Date of birth").closest("tr")!;
+    expect(dobRow).toHaveTextContent("1990");
+    expect(within(dobRow).queryByText("differs")).toBeNull();
+    const addrRow = screen.getByText("Address").closest("tr")!;
+    expect(addrRow).toHaveTextContent("Patna, Bihar");
+    expect(within(addrRow).getByText("differs")).toBeInTheDocument();
+
+    await user.click(within(phoneRow).getByRole("button", { name: "Show" }));
+    expect(await within(phoneRow).findByText("98765 43210")).toBeInTheDocument();
+    expect(within(phoneRow).getByText("98765 00000")).toBeInTheDocument();
+    expect(addrRow).toHaveTextContent("Ward 7, Danapur");
+    expect(dobRow).toHaveTextContent("02-Apr-1990");
+    expect(fetchCalls().filter((c) => c.method === "POST" && c.url === "/api/patients/merge-requests/mr-1/show")).toHaveLength(1);
+    expect(fetchCalls().some((c) => c.url === "/api/patients/merge-mobile-shown")).toBe(false);
+  });
+
+  it("#653 S1: a failed Show on a request says so in words and keeps the values masked", async () => {
+    setToken("t-1");
+    openRequestFromUrl();
+    stubFetch({
+      ...baseRoutes,
+      "GET /api/auth/me": me("u-ms", ["approvals.requests.decide", "patients.read"]),
+      "GET /api/patients/merge-requests": { items: [] },
+      "GET /api/patients/merge-requests/mr-1": MASKED_REQ(),
+    });
+    renderWithProviders(<MergeReview />);
+    const user = userEvent.setup();
+    const phoneRow = (await screen.findByText("Mobile number")).closest("tr")!;
+    await user.click(within(phoneRow).getByRole("button", { name: "Show" }));
+    expect(await within(phoneRow).findByRole("alert")).toHaveTextContent("Could not show. Try again.");
+    expect(phoneRow).toHaveTextContent("\u2022\u2022\u2022\u2022\u2022\u2022 3210");
   });
 
   it("BOARD: the person who asked sees who decides instead of an Approve button, whatever roles they hold", async () => {

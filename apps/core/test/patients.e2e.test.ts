@@ -12,8 +12,8 @@ import { authManifest } from "../src/kernel/auth/manifest";
 import { workflowManifest } from "../src/kernel/workflow/manifest";
 import { approvalsManifest } from "../src/kernel/approvals/manifest";
 import { patientsManifest } from "../src/modules/patients";
-import { registrationConfig, patientIdentityVersions, events, patients, patientAllergies, patientGuardians, phiAccessLog } from "../src/kernel/db/schema";
-import { eq } from "drizzle-orm";
+import { registrationConfig, patientIdentityVersions, events, patients, patientAllergies, patientGuardians, phiAccessLog, patientMergeRequests, users } from "../src/kernel/db/schema";
+import { eq, inArray } from "drizzle-orm";
 import { resolveIdentityAt } from "../src/modules/patients/identity";
 import { ModuleRegistry } from "../src/kernel/modules/loader";
 import { loadConfig, requireEnv } from "../src/kernel/config";
@@ -432,7 +432,7 @@ describe("patients e2e", () => {
 
   /*
     #653 — the merge review masks both mobiles by default; "Show" is a LOGGED act. The route writes
-    one `patient.merge_mobile` access row per record, so "who saw this person's number on the merge
+    one `patient.merge_reveal` access row per record, so "who saw this person's number on the merge
     screen" has an answer.
   */
   it("#653: showing the mobiles on the merge review writes one access row per record", async () => {
@@ -444,7 +444,7 @@ describe("patients e2e", () => {
     const shown = await request(app.getHttpServer())
       .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: ids }).expect(201);
     expect(shown.body).toEqual({ ok: true });
-    const rows = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_mobile"));
+    const rows = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"));
     expect(rows.map((r) => r.patientId).sort()).toEqual([...ids].sort());
     await request(app.getHttpServer())
       .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: [] }).expect(400);
@@ -454,7 +454,101 @@ describe("patients e2e", () => {
       .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: ["01NOSUCHPATIENT0000000000"] }).expect(404);
     await request(app.getHttpServer())
       .post("/patients/merge-mobile-shown").set(...auth(randoToken)).send({ patientIds: ids }).expect(403);
-    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_mobile"))).toHaveLength(2);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(2);
+  });
+
+  /*
+    #653 (S1) — THE MERGE-REQUEST DETAIL MASKS CONTACT AND IDENTITY FIELDS ON THE SERVER, FOR EVERY
+    READER: last 4 of the phone, the year of the DOB, the locality of the address, last 4 of the ABHA.
+    The full values come back only through the logged Show route, which applies the sealed-record
+    gate and logs one row per ORIGINAL record id, a merged one included.
+  */
+  const twoForMerge = async (): Promise<{ winnerId: string; loserId: string; requestId: string }> => {
+    const a = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken)).send({ name: "Asha Devi", sex: "female", ageYears: 40, phone: "9876543210" }).expect(201);
+    const b = await request(app.getHttpServer())
+      .post("/patients").set(...auth(clerkToken)).send({ name: "Gopal Sharma", sex: "male", ageYears: 63, phone: "9876500000" }).expect(201);
+    const winnerId = String(a.body.patient.id);
+    const loserId = String(b.body.patient.id);
+    await db.update(patients).set({
+      dob: new Date("1974-03-14T00:00:00.000Z"), addressLine: "12 Gandhi Path, Kankarbagh", district: "Patna", stateName: "Bihar",
+      pincode: "800020", abhaNumber: "91-1234-5678-4321", abhaAddress: "asha.devi@abdm",
+    }).where(eq(patients.id, winnerId));
+    await db.update(patients).set({
+      dob: new Date("1974-03-14T00:00:00.000Z"), addressLine: "Ward 7, Danapur", district: "Patna", stateName: "Bihar",
+      pincode: "801503", abhaNumber: null, abhaAddress: null,
+    }).where(eq(patients.id, loserId));
+    const rows = await db.select().from(patients).where(inArray(patients.id, [winnerId, loserId]));
+    const [clerk] = await db.select({ id: users.id }).from(users).where(eq(users.username, "clerk"));
+    const requestId = "01MERGEREQSNAPSHOT00000001";
+    await db.insert(patientMergeRequests).values({
+      id: requestId, winnerId, loserId, approvalId: "01APPROVALNOTREGISTERED001", requestNote: "same person",
+      snapshot: JSON.parse(JSON.stringify({ winnerBefore: rows.find((r) => r.id === winnerId), loserBefore: rows.find((r) => r.id === loserId) })),
+      requestedBy: clerk!.id,
+    });
+    return { winnerId, loserId, requestId };
+  };
+
+  it("#653 S1: the merge-request detail masks phone, DOB, address and ABHA for every reader; differs is computed on the full values", async () => {
+    const { requestId } = await twoForMerge();
+    const res = await request(app.getHttpServer()).get(`/patients/merge-requests/${requestId}`).set(...auth(clerkToken)).expect(200);
+    const text = JSON.stringify(res.body);
+    for (const secret of ["9876543210", "9876500000", "1974-03-14", "Gandhi Path", "Danapur", "800020", "801503", "5678", "asha.devi"]) {
+      expect(text).not.toContain(secret);
+    }
+    const w = res.body.request.snapshot.winnerBefore;
+    const l = res.body.request.snapshot.loserBefore;
+    expect(w).toMatchObject({
+      phone: "\u2022\u2022\u2022\u2022\u2022\u2022 3210", dob: null, dobYear: 1974, addressLine: null, pincode: null, locality: "Patna, Bihar",
+      abhaNumber: "\u2022\u2022\u2022\u2022 4321", abhaAddress: "\u2022\u2022\u2022\u2022 abdm", abhaLinkToken: null, masked: true,
+    });
+    expect(l).toMatchObject({ phone: "\u2022\u2022\u2022\u2022\u2022\u2022 0000", dobYear: 1974, abhaNumber: null, abhaAddress: null });
+    expect(res.body.differs).toEqual({ dob: false, phone: true, address: true, abha: true });
+  });
+
+  it("#653 S1: Show on a merge request returns the full values and logs one row per record; 404 unknown, 403 without the grant", async () => {
+    const { winnerId, loserId, requestId } = await twoForMerge();
+    const shown = await request(app.getHttpServer())
+      .post(`/patients/merge-requests/${requestId}/show`).set(...auth(clerkToken)).expect(201);
+    expect(shown.body.winner).toMatchObject({
+      phone: "9876543210", addressLine: "12 Gandhi Path, Kankarbagh", pincode: "800020", abhaNumber: "91-1234-5678-4321", abhaAddress: "asha.devi@abdm",
+    });
+    expect(String(shown.body.winner.dob)).toMatch(/^1974-03-14/);
+    expect(shown.body.loser).toMatchObject({ phone: "9876500000", addressLine: "Ward 7, Danapur" });
+    const rows = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"));
+    expect(rows.map((r) => r.patientId).sort()).toEqual([winnerId, loserId].sort());
+    await request(app.getHttpServer()).post("/patients/merge-requests/01NOSUCHREQUEST00000000000/show").set(...auth(clerkToken)).expect(404);
+    await request(app.getHttpServer()).post(`/patients/merge-requests/${requestId}/show`).set(...auth(randoToken)).expect(403);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(2);
+  });
+
+  it("#653 S1: after the merge, Show logs against the ORIGINAL record ids, not the survivor twice (both Show routes)", async () => {
+    const { winnerId, loserId, requestId } = await twoForMerge();
+    await db.update(patients).set({ status: "merged", mergedIntoPatientId: winnerId }).where(eq(patients.id, loserId));
+    await request(app.getHttpServer()).post(`/patients/merge-requests/${requestId}/show`).set(...auth(clerkToken)).expect(201);
+    await request(app.getHttpServer())
+      .post("/patients/merge-mobile-shown").set(...auth(clerkToken)).send({ patientIds: [winnerId, loserId] }).expect(201);
+    const rows = await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"));
+    expect(rows.map((r) => r.patientId).sort()).toEqual([winnerId, winnerId, loserId, loserId].sort());
+  });
+
+  it("#653 S1: Show on a merge request with a sealed record needs the confidential grant: 404 and nothing logged without it", async () => {
+    const { loserId, requestId } = await twoForMerge();
+    await db.update(patients).set({ isConfidential: true, alias: "Patient S" }).where(eq(patients.id, loserId));
+    await createRole(db, "merge_reader", "Reads merges, no sealed read");
+    await grantPermissionToRole(db, registry, "merge_reader", "patients.read");
+    const { id: userId } = await createUser(db, { username: "mergereader", fullName: "mergereader", password: "p1234567" });
+    const { token } = await createSession(db, cfg, userId);
+    await assignRole(db, { userId, roleKey: "merge_reader", scopeType: "hospital" });
+    await request(app.getHttpServer()).post(`/patients/merge-requests/${requestId}/show`).set(...auth(token)).expect(404);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(0);
+    // The sealed-at-request snapshot still governs after the seal is lifted on the live record.
+    await db.update(patients).set({ isConfidential: false }).where(eq(patients.id, loserId));
+    const snap = (await db.select().from(patientMergeRequests).where(eq(patientMergeRequests.id, requestId)))[0]!.snapshot as Record<string, Record<string, unknown>>;
+    await db.update(patientMergeRequests).set({ snapshot: { ...snap, loserBefore: { ...snap.loserBefore!, isConfidential: true } } })
+      .where(eq(patientMergeRequests.id, requestId));
+    await request(app.getHttpServer()).post(`/patients/merge-requests/${requestId}/show`).set(...auth(token)).expect(404);
+    expect(await db.select().from(phiAccessLog).where(eq(phiAccessLog.surface, "patient.merge_reveal"))).toHaveLength(0);
   });
 
   /**

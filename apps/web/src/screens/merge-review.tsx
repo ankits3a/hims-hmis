@@ -53,6 +53,10 @@ type PatientRow = {
   abhaVerificationStatus?: string;
   isConfidential?: boolean;
   createdAt?: string;
+  // #653 (S1) — a request's snapshot as the server masks it: the DOB's year, the address's locality.
+  dobYear?: number | null;
+  locality?: string | null;
+  masked?: boolean;
 };
 type Allergy = { id: string; substance: string; reaction: string | null; severity: string | null; status?: string };
 type Guardian = { id: string; name: string; status?: string };
@@ -78,6 +82,8 @@ type MergeDetail = {
   decidedAt?: string | null;
   requestedByName?: string | null;
   sealed?: { winner: boolean; loser: boolean };
+  /** #653 (S1) — what differs, computed by the server on the full values the snapshot no longer carries. */
+  differs?: { dob: boolean; phone: boolean; address: boolean; abha: boolean };
 };
 type Stage = "granted" | "waiting" | "refused" | "unmerge_waiting" | "done";
 type ListSide = { id: string; uhid: string; name: string; sealed: boolean };
@@ -140,24 +146,40 @@ function maskedPhone(phone: string | null): string | null {
 }
 
 /**
- * #653 — THE COMPARISON MASKS BOTH MOBILES BY DEFAULT; "SHOW" IS A LOGGED ACT. The officer compares
- * records, and the last four answer "same phone?" ("job needs the number"). Show posts to
- * `POST /patients/merge-mobile-shown` (one `patient.merge_mobile` access row per record) and reveals
- * the numbers only once that call succeeds. The "differs" mark still compares the whole numbers.
+ * #653 — THE COMPARISON MASKS BY DEFAULT; "SHOW" IS A LOGGED ACT. The officer compares records, and
+ * the last four answer "same phone?" ("job needs the number"). Show posts first and reveals only once
+ * that call succeeds; a failed Show says so in words. Two roads:
+ *   · picking two records: `POST /patients/merge-mobile-shown` logs, and the mobiles already read
+ *     through `GET /patients/:id` are drawn in full;
+ *   · a request (S1): the server masks the frozen snapshot (phone, DOB, address, ABHA) for every
+ *     reader, and `POST /patients/merge-requests/:id/show` logs and RETURNS the full values.
+ * The "differs" marks compare the whole values (the server's `differs` block on a request).
  */
-type MobileReveal = { shown: boolean; busy: boolean; onShow: () => void };
-function useMobileReveal(aId: string, bId: string): MobileReveal {
-  const key = `${aId},${bId}`;
-  const [shownFor, setShownFor] = useState<string | null>(null);
+type MobileReveal = { shown: boolean; busy: boolean; failed: boolean; onShow: () => void };
+function useReveal<T>(key: string, fetcher: () => Promise<T>): MobileReveal & { data: T | null } {
+  const [got, setGot] = useState<{ key: string; data: T } | null>(null);
+  const [failedFor, setFailedFor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const onShow = useCallback((): void => {
     setBusy(true);
-    api("POST", "/patients/merge-mobile-shown", { patientIds: [aId, bId] })
-      .then(() => setShownFor(key))
-      .catch(() => undefined)
+    setFailedFor(null);
+    fetcher()
+      .then((data) => setGot({ key, data }))
+      .catch(() => setFailedFor(key))
       .finally(() => setBusy(false));
-  }, [aId, bId, key]);
-  return { shown: shownFor === key, busy, onShow };
+  }, [key, fetcher]);
+  const shown = got !== null && got.key === key;
+  return { shown, busy, failed: failedFor === key, onShow, data: shown ? got.data : null };
+}
+function useMobileReveal(aId: string, bId: string): MobileReveal {
+  const fetcher = useCallback(() => api("POST", "/patients/merge-mobile-shown", { patientIds: [aId, bId] }), [aId, bId]);
+  return useReveal(`${aId},${bId}`, fetcher);
+}
+type RevealedFields = Partial<Pick<PatientRow, "phone" | "dob" | "addressLine" | "abhaAddress" | "abhaNumber">>;
+function useRequestReveal(requestId: string): MobileReveal & { data: { winner: RevealedFields; loser: RevealedFields } | null } {
+  const fetcher = useCallback(
+    () => api<{ winner: RevealedFields; loser: RevealedFields }>("POST", `/patients/merge-requests/${requestId}/show`), [requestId]);
+  return useReveal(requestId, fetcher);
 }
 
 /** Once shown, the full mobile, grouped as the board draws it: `98290 41236`. */
@@ -334,7 +356,7 @@ function allergyKey(items: Allergy[] | undefined): string {
 }
 
 function dobCell(t: TFunction, p: PatientRow): React.ReactNode {
-  if (p.dob === null) return "—";
+  if (p.dob === null) return p.dobYear !== undefined && p.dobYear !== null ? String(p.dobYear) : "—";
   const age = ageYears(p.dob);
   return (
     <>
@@ -366,6 +388,7 @@ function compareRows(
     allergiesLabel?: string;
     withExtras?: boolean;
     mobile?: MobileReveal;
+    differs?: MergeDetail["differs"];
   },
 ): CompareRow[] {
   const shown = extra.mobile?.shown === true;
@@ -374,15 +397,16 @@ function compareRows(
     <>
       {t("register.phone")}{" "}
       <button type="button" className="link" onClick={extra.mobile.onShow} disabled={extra.mobile.busy}>{t("merge.showMobile")}</button>
+      {extra.mobile.failed && <> <span role="alert" style={{ color: "var(--red)" }}>{t("merge.showFailed")}</span></>}
     </>
   );
   const rows: CompareRow[] = [
     { key: "name", label: t("register.name"), a: a.name, b: b.name, differs: a.name !== b.name },
     { key: "sex", label: t("card.sex"), a: sexWord(t, a.administrativeGender), b: sexWord(t, b.administrativeGender), differs: a.administrativeGender !== b.administrativeGender },
-    { key: "dob", label: t("register.dob"), a: dobCell(t, a), b: dobCell(t, b), differs: (a.dob ?? "").slice(0, 10) !== (b.dob ?? "").slice(0, 10) },
-    { key: "phone", label: phoneLabel, a: <span className="mo">{phoneCell(a.phone)}</span>, b: <span className="mo">{phoneCell(b.phone)}</span>, differs: (a.phone ?? "") !== (b.phone ?? "") },
-    { key: "address", label: t("register.address"), a: a.addressLine ?? "—", b: b.addressLine ?? "—", differs: (a.addressLine ?? "") !== (b.addressLine ?? "") },
-    { key: "abha", label: t("patient.abha"), a: abhaCell(t, a), b: abhaCell(t, b), differs: (a.abhaAddress ?? a.abhaNumber ?? "") !== (b.abhaAddress ?? b.abhaNumber ?? "") },
+    { key: "dob", label: t("register.dob"), a: dobCell(t, a), b: dobCell(t, b), differs: extra.differs?.dob ?? (a.dob ?? "").slice(0, 10) !== (b.dob ?? "").slice(0, 10) },
+    { key: "phone", label: phoneLabel, a: <span className="mo">{phoneCell(a.phone)}</span>, b: <span className="mo">{phoneCell(b.phone)}</span>, differs: extra.differs?.phone ?? (a.phone ?? "") !== (b.phone ?? "") },
+    { key: "address", label: t("register.address"), a: a.addressLine ?? a.locality ?? "—", b: b.addressLine ?? b.locality ?? "—", differs: extra.differs?.address ?? (a.addressLine ?? "") !== (b.addressLine ?? "") },
+    { key: "abha", label: t("patient.abha"), a: abhaCell(t, a), b: abhaCell(t, b), differs: extra.differs?.abha ?? (a.abhaAddress ?? a.abhaNumber ?? "") !== (b.abhaAddress ?? b.abhaNumber ?? "") },
     {
       key: "allergies", label: extra.allergiesLabel ?? t("patient.allergies"),
       a: <AllergyList items={extra.aAllergies} {...(extra.aMovesTo === undefined ? {} : { movesTo: extra.aMovesTo })} />,
@@ -947,7 +971,7 @@ function RequestView({
       api<{ items: Allergy[] }>("GET", `/patients/${id}/allergies`).then((r) => r.items).catch(() => undefined))),
     enabled: req !== undefined,
   });
-  const mobile = useMobileReveal(req?.winnerId ?? "", req?.loserId ?? "");
+  const reveal = useRequestReveal(requestId);
 
   if (detail.data === undefined || req === undefined) {
     return <main className="centre"><div className="flow"><p>{detail.isError ? errorMessage(detail.error) : t("app.loading")}</p></div></main>;
@@ -962,9 +986,12 @@ function RequestView({
     .filter((x): x is string => x !== null);
   const due = req.requestedAt === undefined ? null : new Date(new Date(req.requestedAt).getTime() + MS_LINE_MS);
   const [wa, la] = allergies.data ?? [undefined, undefined];
-  const w = req.snapshot.winnerBefore;
-  const l = req.snapshot.loserBefore;
-  const rows = compareRows(t, w, l, { aAllergies: wa, bAllergies: la, allergiesLabel: t("merge.allergiesNow"), mobile });
+  // #653 (S1) — the snapshot arrives masked; once Show succeeds, its full values are drawn over it.
+  const w: PatientRow = reveal.data === null ? req.snapshot.winnerBefore : { ...req.snapshot.winnerBefore, ...reveal.data.winner, masked: false };
+  const l: PatientRow = reveal.data === null ? req.snapshot.loserBefore : { ...req.snapshot.loserBefore, ...reveal.data.loser, masked: false };
+  const rows = compareRows(t, w, l, {
+    aAllergies: wa, bAllergies: la, allergiesLabel: t("merge.allergiesNow"), mobile: reveal, ...(d.differs === undefined ? {} : { differs: d.differs }),
+  });
 
   const act = async (fn: () => Promise<unknown>): Promise<void> => {
     setError(null); setBusy(true);

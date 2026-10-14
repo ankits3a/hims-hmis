@@ -16,10 +16,11 @@ import type { Db } from "../db/client";
 export type PhiSurface =
   | "patient.detail" | "patient.allergies"
   /**
-   * #653 — the merge review's "Show" on the two masked mobiles. Its own name: the comparison masks
-   * the numbers by default, and revealing them is the act a records-access enquiry asks about.
+   * #653 — the merge review's "Show": the masked mobiles, and on a merge request the masked phone,
+   * DOB, address and ABHA. Its own name: the comparison masks them by default, and revealing them is
+   * the act a records-access enquiry asks about. One row per ORIGINAL record id.
    */
-  | "patient.merge_mobile"
+  | "patient.merge_reveal"
   /**
    * The desk's photograph of a paper slip, and they are TWO surfaces rather than one.
    *
