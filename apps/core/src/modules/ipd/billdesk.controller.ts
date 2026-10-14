@@ -33,8 +33,11 @@ function toHttp(e: unknown): never {
 export class IpdBillDeskController {
   /** #761 — whether the daily totals can be sent, from this process's config (the worker reads the same keys). */
   private readonly sending: IpdDailyTotalsSending;
+  /** The server key a family link's phone HMAC is checked with (a link counts as consent only for its own phone). */
+  private readonly secretKey: Buffer;
   constructor(@Inject(DB) private readonly db: Db, @Inject(CONFIG) cfg: AppConfig) {
     this.sending = dailyTotalsSendingOf(cfg.ipdDailyTotals);
+    this.secretKey = cfg.secretKey;
   }
 
   @Get("bill-desk")
@@ -47,7 +50,7 @@ export class IpdBillDeskController {
   @Get("admissions/:id/attendant-messages")
   @RequirePermission(IPD_BILL_VIEW, "hospital")
   async attendantMessages(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<IpdAttendantMessages> {
-    try { return await readAttendantMessages(this.db, actor, id, this.sending); } catch (e) { toHttp(e); }
+    try { return await readAttendantMessages(this.db, actor, id, this.sending, { secretKey: this.secretKey }); } catch (e) { toHttp(e); }
   }
 
   @Post("admissions/:id/attendant-messages/consent")
@@ -57,7 +60,7 @@ export class IpdBillDeskController {
     if (!parsed.success) throw new HttpException({ statusCode: 400, code: "invalid_body", message: "invalid body", issues: parsed.error.issues }, 400);
     try {
       await recordAttendantConsent(this.db, actor, id, parsed.data);
-      return await readAttendantMessages(this.db, actor, id, this.sending);
+      return await readAttendantMessages(this.db, actor, id, this.sending, { secretKey: this.secretKey });
     } catch (e) { toHttp(e); }
   }
 
@@ -66,7 +69,7 @@ export class IpdBillDeskController {
   async attendantStop(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<IpdAttendantMessages> {
     try {
       await stopAttendantMessages(this.db, actor, id);
-      return await readAttendantMessages(this.db, actor, id, this.sending);
+      return await readAttendantMessages(this.db, actor, id, this.sending, { secretKey: this.secretKey });
     } catch (e) { toHttp(e); }
   }
 

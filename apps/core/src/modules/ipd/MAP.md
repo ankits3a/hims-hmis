@@ -466,10 +466,12 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   patient (`sensitive_context`) shows by alias or "Sealed patient" — no name, UHID or bed (review 2).
 
 ### Attendant seam and the send switch (#761)
-- ⚖ RECIPIENT = the registered attendant (`attendantOf`'s rule) — the reference in params is re-read at send time
-  (`attendantPhoneOf`); a cleared phone is undeliverable `no_phone`. No input anywhere chooses a number.
+- ⚖ RECIPIENT = the registered attendant (`attendantOf`'s rule) — the reference in params must still BE `attendantOf` at
+  send time (a row queued for an attendant since replaced, or whose phone was cleared, is undeliverable `no_phone`), and the
+  phone is the one `attendantOf` reads then. No input anywhere chooses a number.
 - At send time, in this order: stay ended or `familyBlockOf` (sealed, MLC, team switch) → `recipient_blocked`; a desk STOP →
-  `opted_out` (beats every consent); no consent row AND no live family link to the same attendant reference → `no_consent`.
+  `opted_out` (beats every consent); not the current attendant → `no_phone`; no consent row AND no live family link to the
+  same attendant reference issued to the SAME phone (link `phone_hash` vs `SECRET_KEY` HMAC; no key = no link) → `no_consent`.
   Re-consenting clears a stop. Consent and stop are `ipd.family.issue`; the card is read under `ipd.bill.view`.
 - SWITCH (DECIDED): ON only when config names an approved WhatsApp template name and/or DLT id AND `IPD_BILL_DESK_PHONE`;
   `ipdTemplateRegistrations` then gives the pump those ids, else explicit nulls (no table row can turn it on). The pump drops

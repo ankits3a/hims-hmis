@@ -358,7 +358,7 @@ export function registerAllJobs(
   // #761 — the IPD attendant seam and the daily totals' approved template ids, from the config the caller resolved
   // (`aliasConfig`, the whole AppConfig). Without it (census tests) the template has no ids and is never sent.
   const ipdDailyTotals = aliasConfig?.ipdDailyTotals;
-  const recipientResolvers = { attendant: ipdAttendantRecipient(ipdDailyTotals) };
+  const recipientResolvers = { attendant: ipdAttendantRecipient(ipdDailyTotals, aliasConfig?.secretKey) };
   const templateRegistrations = ipdTemplateRegistrations(ipdDailyTotals);
   scheduler.register({
     name: "runNotifyPump",

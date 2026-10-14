@@ -7,10 +7,10 @@ import { appendEvent } from "../../kernel/events/append";
 import { maskPhone } from "../../kernel/notify/mask";
 import { admissionAdvisoryLock, holdsPermission, readAdmission, requireIpdPermission } from "./admission-core";
 import { attendantMessagesConsented, attendantMessagesStopped } from "./billdesk-events";
-import { IPD_DAILY_TOTALS_SEND_HOUR_IST, attendantOf, attendantPhoneOf } from "./daily-totals";
+import { IPD_DAILY_TOTALS_SEND_HOUR_IST, attendantOf } from "./daily-totals";
 import { IPD_LADDER_STATES } from "./deposit-ladder";
 import { IpdError } from "./errors";
-import { familyBlockOf } from "./family";
+import { familyBlockOf, familyPhoneDigest } from "./family";
 import { IPD_GOAL_TEMPLATES } from "./goals/goal-events";
 import { IPD_BILL_VIEW, IPD_FAMILY_ISSUE } from "./permissions";
 import type {
@@ -84,27 +84,42 @@ async function consentRow(db: Db | Tx, admissionId: string, ref: string) {
     .where(and(eq(ipdAttendantMessageConsents.admissionId, admissionId), eq(ipdAttendantMessageConsents.attendantRef, ref))))[0];
 }
 
-async function liveFamilyLinkTo(db: Db | Tx, admissionId: string, ref: string): Promise<boolean> {
-  const r = await db.select({ id: ipdFamilyLinks.id }).from(ipdFamilyLinks).where(and(
+/**
+ * A live family link to this attendant. Its consent covers the daily totals only for the phone it was issued to (the link
+ * keeps that phone as an HMAC, and refuses its own sends once the phone changes): with `phone` and the server key given, a
+ * link issued to another number is not consent here either. Without the key no link counts (fail closed).
+ */
+async function liveFamilyLinkTo(db: Db | Tx, admissionId: string, ref: string, phone?: { phone: string; secretKey: Buffer | undefined }): Promise<boolean> {
+  const r = await db.select({ phoneHash: ipdFamilyLinks.phoneHash }).from(ipdFamilyLinks).where(and(
     eq(ipdFamilyLinks.admissionId, admissionId), eq(ipdFamilyLinks.attendantRef, ref), eq(ipdFamilyLinks.status, "active"),
   ));
-  return r.length > 0;
+  if (phone === undefined) return r.length > 0;
+  const key = phone.secretKey;
+  if (key === undefined) return false;
+  return r.some((l) => l.phoneHash === familyPhoneDigest(key, phone.phone));
 }
 
-/** The send-time rule above, for one admission and one attendant reference. */
-async function attendantWordOf(db: Db | Tx, admissionId: string, kind: Kind, ref: string): Promise<Word> {
+/**
+ * The send-time rule above, for one admission and one attendant reference. The reference must still be the admission's
+ * registered attendant (`attendantOf` now): a row queued for an attendant since replaced reaches nobody — the desk's card,
+ * consent and stop all name the current one.
+ */
+async function attendantWordOf(db: Db | Tx, admissionId: string, kind: Kind, ref: string, secretKey: Buffer | undefined): Promise<Word> {
   const a = (await db.select().from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)))[0];
   if (a === undefined || !(IPD_LADDER_STATES as readonly string[]).includes(a.state)) return { state: "blocked", reason: "recipient_blocked" };
   if ((await familyBlockOf(db, a)) !== null) return { state: "blocked", reason: "recipient_blocked" };
   const row = await consentRow(db, admissionId, ref);
   if (row?.stoppedAt != null) return { state: "stopped", reason: "opted_out" };
-  if (row?.consentedAt == null && !(await liveFamilyLinkTo(db, admissionId, ref))) return { state: "no_consent", reason: "no_consent" };
-  const phone = await attendantPhoneOf(db, kind, ref);
-  return phone === null ? { state: "no_attendant" } : { state: "ok", phone };
+  const now = await attendantOf(db, a.patientId, a.id);
+  if (now === null || now.kind !== kind || now.ref !== ref) return { state: "no_attendant" };
+  if (row?.consentedAt == null && !(await liveFamilyLinkTo(db, admissionId, ref, { phone: now.phone, secretKey }))) {
+    return { state: "no_consent", reason: "no_consent" };
+  }
+  return { state: "ok", phone: now.phone };
 }
 
 /** The pump's recipient seam for `recipient: "attendant"` rows (installed by `registerAllJobs`). */
-export function ipdAttendantRecipient(cfg: AppConfig["ipdDailyTotals"] | undefined): RecipientResolver {
+export function ipdAttendantRecipient(cfg: AppConfig["ipdDailyTotals"] | undefined, secretKey?: Buffer): RecipientResolver {
   const deskPhone = (cfg ?? NONE).deskPhone;
   return async (tx, row): Promise<RecipientResolution> => {
     const p = row.params as { attendant?: unknown; attendantRef?: unknown };
@@ -113,8 +128,8 @@ export function ipdAttendantRecipient(cfg: AppConfig["ipdDailyTotals"] | undefin
     if (row.refType !== "admission" || row.refId === null || kind === null || ref === null) {
       return { kind: "no_phone", detail: "the row names no admission or attendant reference" };
     }
-    const w = await attendantWordOf(tx, row.refId, kind, ref);
-    if (w.state === "no_attendant") return { kind: "no_phone", detail: "the registered attendant has no phone at send time" };
+    const w = await attendantWordOf(tx, row.refId, kind, ref, secretKey);
+    if (w.state === "no_attendant") return { kind: "no_phone", detail: "the attendant this was queued for is not the registered attendant with a phone at send time" };
     if (w.state !== "ok") return { kind: "suppress", reason: w.reason };
     return { kind: "send", to: w.phone, ...(deskPhone === null ? {} : { renderParams: { deskPhone } }) };
   };
@@ -178,14 +193,14 @@ export async function readDailyTotalsStrip(db: Db, sending: IpdDailyTotalsSendin
 // ═══════════════════════════════════════ the admission's card and its two acts ═══════════════════════════════════════
 
 export async function readAttendantMessages(
-  db: Db, actor: Actor, admissionId: string, sending: IpdDailyTotalsSending,
+  db: Db, actor: Actor, admissionId: string, sending: IpdDailyTotalsSending, opts: { secretKey?: Buffer } = {},
 ): Promise<IpdAttendantMessages> {
   await requireIpdPermission(db, actor, IPD_BILL_VIEW);
   const a = await readAdmission(db, admissionId);
   const to = await attendantOf(db, a.patientId, a.id);
   const row = to === null ? undefined : await consentRow(db, a.id, to.ref);
-  const viaFamilyLink = to === null ? false : await liveFamilyLinkTo(db, a.id, to.ref);
-  const word = to === null ? ({ state: "no_attendant" } as const) : await attendantWordOf(db, a.id, to.kind, to.ref);
+  const viaFamilyLink = to === null ? false : await liveFamilyLinkTo(db, a.id, to.ref, { phone: to.phone, secretKey: opts.secretKey });
+  const word = to === null ? ({ state: "no_attendant" } as const) : await attendantWordOf(db, a.id, to.kind, to.ref, opts.secretKey);
   const last = (await db.select({ billDate: ipdDailyTotals.billDate, outcome: ipdDailyTotals.outcome, status: notifications.status, lastError: notifications.lastError })
     .from(ipdDailyTotals).leftJoin(notifications, eq(notifications.id, ipdDailyTotals.notificationId))
     .where(eq(ipdDailyTotals.admissionId, a.id)).orderBy(desc(ipdDailyTotals.billDate)).limit(1))[0];

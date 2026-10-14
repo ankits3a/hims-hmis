@@ -40,7 +40,7 @@ const SECRET = Buffer.alloc(32, 7);
 
 type Call = { channel: string; to: string; text: string; meta: SendMeta };
 type Seam = {
-  ipdAttendantRecipient(cfg: unknown): unknown;
+  ipdAttendantRecipient(cfg: unknown, secretKey?: Buffer): unknown;
   ipdTemplateRegistrations(cfg: unknown): unknown;
   dailyTotalsSendingOf(cfg: unknown): unknown;
   recordAttendantConsent(db: Db, actor: unknown, admissionId: string, input: unknown, opts: unknown): Promise<unknown>;
@@ -78,7 +78,7 @@ describe("#761 daily totals to the attendant — the recipient seam, consent, st
   const adapters = { whatsapp: fake("whatsapp"), sms: fake("sms"), web_push: fake("web_push") };
   const pump = (at: string, cfg: AppConfig["ipdDailyTotals"] | undefined) => runNotifyPump(db, {
     now: ist(at), adapters,
-    recipientResolvers: { attendant: seam.ipdAttendantRecipient(cfg) },
+    recipientResolvers: { attendant: seam.ipdAttendantRecipient(cfg, SECRET) },
     templateRegistrations: seam.ipdTemplateRegistrations(cfg),
   } as NotifyPumpOptions);
 
@@ -189,6 +189,32 @@ describe("#761 daily totals to the attendant — the recipient seam, consent, st
     await pump("2026-03-12T09:00:00", ON);
     expect(calls.map((c) => c.to)).toEqual([NEW_PHONE]);
     expect((await rows(b.admissionId))[0]).toMatchObject({ status: "suppressed", lastError: "recipient_blocked" });
+  });
+
+  it("the attendant the row was queued for is no longer the registered one: nothing goes to the old attendant, and the desk's stop is not bypassed", async () => {
+    const { admissionId } = await admitted();
+    await consent(admissionId, "2026-03-10T11:00:00");
+    await night("2026-03-12");
+    // Before 09:00 another relative pays: the card now names them, and the desk records their stop.
+    await takeDeposit(db, w.admitDesk, {
+      idempotencyKey: key(), admissionId, amountPaise: 100_000, tender: "cash",
+      payer: { name: "Mohan Lal", relation: "relative", phone: NEW_PHONE },
+    }, { now: ist("2026-03-12T08:00:00") });
+    await seam.stopAttendantMessages(db, w.admitDesk, admissionId, { now: ist("2026-03-12T08:10:00") });
+    expect((await seam.readAttendantMessages(db, w.admitDesk, admissionId, seam.dailyTotalsSendingOf(ON))).state).toBe("stopped");
+    await pump("2026-03-12T09:00:00", ON);
+    expect(calls).toEqual([]);
+    expect((await rows(admissionId))[0]!.status).not.toBe("sent");
+  });
+
+  it("a family link counts as consent only for the phone it was issued to: a phone changed since issue gets nothing", async () => {
+    const { admissionId } = await admitted();
+    await issueFamilyLink(db, w.admitDesk, admissionId, { consent: CONSENT }, { now: ist("2026-03-11T11:00:00"), secretKey: SECRET });
+    await night("2026-03-12");
+    await db.update(ipdAdmissionDeposits).set({ payerPhone: NEW_PHONE }).where(eq(ipdAdmissionDeposits.admissionId, admissionId));
+    await pump("2026-03-12T09:00:00", ON);
+    expect(calls).toEqual([]);
+    expect((await rows(admissionId))[0]).toMatchObject({ status: "suppressed", lastError: "no_consent" });
   });
 
   it("at most one message per admission per day: a second nightly run and a second pump send nothing more", async () => {

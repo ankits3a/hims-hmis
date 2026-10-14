@@ -55,9 +55,9 @@ Source: `apps/core/src/modules/ipd/`
 - `attendant-messages.ts`
   - `dailyTotalsSendingOf(cfg: AppConfig["ipdDailyTotals"] | undefined): IpdDailyTotalsSending`
   - `dailyTotalsWords(outcome: string, n: { status: string; lastError: string | null } | null, sending: IpdDailyTotalsSending): { status: IpdDai…`
-  - `ipdAttendantRecipient(cfg: AppConfig["ipdDailyTotals"] | undefined): RecipientResolver`
+  - `ipdAttendantRecipient(cfg: AppConfig["ipdDailyTotals"] | undefined, secretKey?: Buffer): RecipientResolver`
   - `ipdTemplateRegistrations(cfg: AppConfig["ipdDailyTotals"] | undefined): Record<string, TemplateProviderIds>`
-  - `readAttendantMessages(db: Db, actor: Actor, admissionId: string, sending: IpdDailyTotalsSending): Promise<IpdAttendantMessages>`
+  - `readAttendantMessages(db: Db, actor: Actor, admissionId: string, sending: IpdDailyTotalsSending, opts: { secretKey?: Buffer } = {}): Promis…`
   - `readDailyTotalsStrip(db: Db, sending: IpdDailyTotalsSending, now: Date): Promise<IpdBillDeskDailyTotals>`
   - `recordAttendantConsent(db: Db, actor: Actor, admissionId: string, input: IpdAttendantConsent, opts: { now?: Date } = {}): Promise<{ recorde…`
   - `stopAttendantMessages(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<{ stopped: boolean }>`
