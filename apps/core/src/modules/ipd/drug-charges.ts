@@ -1,16 +1,17 @@
 import { and, asc, eq, inArray, isNull, like, sql } from "drizzle-orm";
-import { newId } from "@hmis/contracts";
+import { IPD_COUNTER_RETURN_REF, newId } from "@hmis/contracts";
 import { istDayString } from "../../kernel/approvals/cumulative";
 import { ipdChargeExceptions, ipdChargeLines, ipdEmarIssues, ipdEmarReturns, services } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { BillingError, creditShare, previewInvoice } from "../billing";
+import { movementsFor } from "../materials";
 import { PharmacyError, gstCategoryMap, invoiceInputsOf, priceBatchLine } from "../pharmacy";
 import { TariffError, loadPricingContext } from "../tariff";
 import { provenanceOf } from "./admission-core";
 import { lineIsBilled } from "./bill-cover";
 import { chargeException, chargeReversed } from "./charge-events";
 import { evaluateDepositLadderSafely } from "./deposit-ladder";
-import { IpdError } from "./errors";
+import { IpdError, IpdRefusal } from "./errors";
 import type { Actor } from "@hmis/contracts";
 import type { Db, Tx } from "../../kernel/db/client";
 import type { AdmissionRow } from "./admission-core";
@@ -175,6 +176,35 @@ export async function postDrugIssueChargesIn(tx: Tx, actor: Actor, a: AdmissionR
   return { posted, missing };
 }
 
+export type CounterDrugCharge = { saleId: string; itemId: string; batches: readonly { batchId: string; qty: number }[]; at: Date };
+
+/**
+ * #787 (IP counter) — a counter sale's lines: one `ipd.pharmacy` line per sold batch (`drug_seq` 0), priced by the SAME
+ * function as a ward issue (`priceDrugUnits`: the counter's price at the sale instant, no member benefit). The sale is its
+ * own order and issue: `order_id` = `issue_id` = the sale id (the line's CHECK needs both; no inpatient order exists).
+ * DECIDED: a price missing at the counter REFUSES the sale (`price_missing`) — the pharmacist cannot quote an amount, and
+ * a cash sale of the same pack is refused the same way; nothing waits on the bill desk. The caller holds the admission
+ * lock and the transaction (the stock movement rolls back with the refusal).
+ */
+export async function postCounterDrugLinesIn(tx: Tx, actor: Actor, a: AdmissionRow, input: CounterDrugCharge): Promise<LineRow[]> {
+  const serviceDate = istDayString(input.at);
+  const out: LineRow[] = [];
+  for (const b of byBatch(input.batches)) {
+    const price = await priceDrugUnits(tx, { itemId: input.itemId, batchId: b.batchId, qtyBase: b.qty }, input.at);
+    if (!price.ok) throw new IpdRefusal("price_missing", undefined, { itemId: input.itemId, batchId: b.batchId, reason: price.code });
+    const [line] = await tx.insert(ipdChargeLines).values({
+      id: newId(), admissionId: a.id, patientId: a.patientId, serviceDate, component: COMPONENT, billedClass: null,
+      serviceId: price.serviceId, serviceCode: price.serviceCode, serviceName: price.serviceName, tariffVersionId: price.tariffVersionId,
+      qty: b.qty, unitPaise: price.unitPaise, grossPaise: price.grossPaise, discountPaise: price.discountPaise, taxablePaise: price.taxablePaise,
+      cgstPaise: price.cgstPaise, sgstPaise: price.sgstPaise, netPaise: price.netPaise, gstRateBps: price.gstRateBps, gstExempt: price.gstExempt,
+      source: SOURCE, orderId: input.saleId, issueId: input.saleId, batchId: b.batchId, drugSeq: 0, reason: "OPD pharmacy counter, charged to IP",
+      postedBy: actor.id, postedAt: input.at,
+    }).returning();
+    out.push(line!);
+  }
+  return out;
+}
+
 /** The batch's chain of lines, oldest first, and the one still live (its newest, unless that one is reversed). */
 async function chainOf(tx: Tx, issueId: string, batchId: string): Promise<{ first: LineRow; live: LineRow | null } | null> {
   const chain = await tx.select().from(ipdChargeLines)
@@ -295,8 +325,15 @@ async function takeWaitingReturnsIn(tx: Tx, line: LineRow, at: Date, note: strin
     like(ipdChargeExceptions.key, `%:${line.id}:return_billed:%`),
   )).returning({ key: ipdChargeExceptions.key });
   if (waiting.length === 0) return 0;
-  const rows = await tx.select({ batches: ipdEmarReturns.batches }).from(ipdEmarReturns).where(inArray(ipdEmarReturns.id, waiting.map((x) => x.key.split(":").at(-1)!)));
-  return rows.reduce((t, r) => t + unitsOf(r.batches, line.batchId ?? ""), 0);
+  const ids = waiting.map((x) => x.key.split(":").at(-1)!);
+  const rows = await tx.select({ id: ipdEmarReturns.id, batches: ipdEmarReturns.batches }).from(ipdEmarReturns).where(inArray(ipdEmarReturns.id, ids));
+  const ward = rows.reduce((t, r) => t + unitsOf(r.batches, line.batchId ?? ""), 0);
+  // #787 (IP counter): a counter return has no eMAR row — its units are the stock ledger's return rows (`<sale>:<return>`).
+  const counter = new Set(ids.filter((id) => !rows.some((r) => r.id === id)));
+  if (counter.size === 0) return ward;
+  const back = (await movementsFor(tx, { encounterId: line.admissionId })).filter((m) => m.refType === IPD_COUNTER_RETURN_REF && m.batchId === line.batchId
+    && counter.has((m.refId ?? "").split(":").at(-1) ?? ""));
+  return ward + back.reduce((t, m) => t + m.qtyDelta, 0);
 }
 
 /**

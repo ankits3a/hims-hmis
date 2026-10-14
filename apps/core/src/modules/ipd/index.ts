@@ -233,3 +233,5 @@ export type { Fact, FactRecord, Line, Quantities, Verdict } from "./copilot-line
 export { askIpdModel, ipdModelFrom, maskForModel, modelBarred } from "./copilot-model";
 export type { FallbackReason, IpdModel } from "./copilot-model";
 export { medicineFlagsOf, medicineRowReason, sameMedicineName } from "./discharge-medicines";
+// #787 (IP counter) — the OPD pharmacy counter charges a sale to the admission (and takes its returns) on the running bill.
+export { counterCharge, counterReturn, lookupCounterAdmission, readCounterSales, searchCounterShelfForIp } from "./counter-charge";

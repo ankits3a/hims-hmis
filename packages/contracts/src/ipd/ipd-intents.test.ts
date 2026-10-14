@@ -141,6 +141,8 @@ const IPD_SAMPLE_INPUTS: Record<IpdIntentName, Record<string, unknown>> = {
   return_med: { idempotencyKey: key(67), issueId: id(28), units: 4, reason: "order stopped" },
   resolve_allergy_flag: { idempotencyKey: key(68), flagId: id(29), note: "doctor stopped" },
   decide_allergy_flag: { idempotencyKey: key(69), flagId: id(29), decision: "continue", reason: "benefit outweighs" },
+  counter_charge: { idempotencyKey: key(70), admissionId: id(3), lines: [{ medicineId: id(30), units: 10 }, { medicineId: id(31), units: 2, batchId: id(19) }] },
+  counter_return: { idempotencyKey: key(71), saleId: id(32), itemId: id(33), units: 2, reason: "not used" },
   declare_fit: { idempotencyKey: key(30), admissionId: id(3), when: "today", disposition: "home" },
   cancel_fit: { idempotencyKey: key(31), admissionId: id(3), reason: "synthetic worsening" },
   confirm_charges: { idempotencyKey: key(32), admissionId: id(3), department: "pharmacy" },

@@ -218,6 +218,7 @@ Source: `apps/core/src/modules/pharmacy/`
   - `retailStore(db: Db): Promise<StoreRow>`
   - `searchCounterShelf(db: Db, actor: Actor, storeCode: string, q: string, now: Date): Promise<RetailShelfEntry[]>`
   - `searchRetailShelf(db: Db, actor: Actor, q: string, now: Date): Promise<RetailShelfEntry[]>`
+  - `searchShelfAt(db: Db, storeId: string, q: string, now: Date): Promise<RetailShelfEntry[]>`
   - `sellRetail(db: Db, documents: DocumentStore, actor: Actor, input: RetailSaleInput, idempotencyKey: string | undefined, now: Date): Promise<…`
   - types: `CounterBatch`, `PaperDispenseInput`, `PharmacyStaffMember`, `RecordLicenceInput`, `RetailCustomerInput`, `RetailLicenceState`, `RetailLicenceView`, `RetailLineInput`, `RetailPrescriptionInput`, `RetailPreview`, `RetailSaleInput`, `RetailSaleRow`, `RetailSaleView`, `RetailShelfEntry`, `SheetCheck`
 - `returns.ts`

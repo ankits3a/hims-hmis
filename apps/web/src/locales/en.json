@@ -19103,5 +19103,41 @@
       "witness": "Witness: {{name}}",
       "done": "Wastage recorded"
     }
+  },
+  "ipCharge": {
+    "open": "Charge to IP",
+    "title": "Charge to IP admission",
+    "sub": "The sale goes on the patient's IPD running bill, priced at the batch MRP. No cash is taken.",
+    "findPlaceholder": "IP number or UHID",
+    "find": "Find",
+    "bed": "Bed",
+    "ward": "Ward",
+    "medicine": "Medicine",
+    "search": "Search the OPD shelf — brand or salt",
+    "available": "{{count}} on shelf",
+    "qty": "Qty",
+    "remove": "Remove",
+    "charge": "Charge to IP bill",
+    "charging": "Charging…",
+    "cancel": "Close",
+    "charged": "{{amount}} added to the IP bill {{ip}}.",
+    "returns": "Return to counter",
+    "out": "{{count}} with patient",
+    "returnQty": "Units back",
+    "returnButton": "Return",
+    "returnReason": "Returned at the OPD pharmacy counter",
+    "failed": "The server refused this. Try again or ask the pharmacist in charge.",
+    "offline": "No answer from the server. Check the network and try again.",
+    "refusal": {
+      "not_admitted": "This patient is not admitted. Sell for cash instead.",
+      "ip_discharged": "This patient is discharged. Sell for cash instead.",
+      "ip_bill_settled": "The final bill is settled. Medicines now go on the supplementary bill through the ward, or sell for cash.",
+      "admission_not_found": "No admission has this IP number.",
+      "controlled_at_counter": "A controlled drug goes to an inpatient only against a ward order.",
+      "price_missing": "This medicine has no counter price. Ask billing to set it.",
+      "stock_short": "Not enough stock on the shelf for this quantity.",
+      "medicine_not_stocked": "The OPD pharmacy does not stock this medicine.",
+      "return_exceeds_issue": "More units cannot come back than are with the patient."
+    }
   }
 }

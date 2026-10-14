@@ -19,6 +19,7 @@ import { noteDraftSaved, say, useDeskLog, useDraftNotice } from "./log";
 import { Dossier, QueueOverlay, QueueRail } from "./rails";
 import { SlipSheet } from "./slip";
 import { PaperRxSheet } from "./paper-rx";
+import { IpChargeSheet } from "./ip-charge";
 import { RegisterSheet } from "./register-sheet";
 import { DraftCard, DuplicateItemsCard, PaymentRunCard, PurchasePlanCard, ReturnPlanCard, ShortBookSheet, duplicateItemsOf, paymentRunPlanOf, purchasePlanOf, returnPlanOf, shortBookDraftOf } from "./short-book";
 import type { DuplicateItemsCardData, PaymentRunCardData, PurchasePlanCardData, ReturnPlanCardData, ShortBookDraft, ShortDrug } from "./short-book";
@@ -77,7 +78,7 @@ function discountBody(d: AppliedDiscount | null): { discount?: { kind: AppliedDi
 
 export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.ReactElement {
   const { t, i18n } = useTranslation();
-  const { actor, username } = useAuth();
+  const { actor, username, can } = useAuth();
   const me = actor?.type === "user" ? actor.id : null;
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -86,7 +87,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
   const [inHandId, setInHandId] = useState<string | null>(ticketId);
   useEffect(() => { setInHandId(ticketId); }, [ticketId]);
   const [candidates, setCandidates] = useState<WirePatientSummary[] | null>(null);
-  const [overlay, setOverlay] = useState<"queue" | "slip" | "short" | "paper" | "register" | null>(null);
+  const [overlay, setOverlay] = useState<"queue" | "slip" | "short" | "paper" | "register" | "ipcharge" | null>(null);
   /* 2026-09-30 (owner) — nobody found for a typed name or number: register them here, then the paper sheet. */
   const [registerFrom, setRegisterFrom] = useState<string | null>(null);
   /* 2026-09-30 — the patient found with no e-prescription today: the desk offers the paper-prescription door. */
@@ -496,6 +497,10 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
             </span>
           )}
           <span className="pill">PHARM-OPD</span>
+          {/* #787 (IP counter) — the IP-charge mode: the sale goes on an admitted patient's running bill, not the drawer. */}
+          {can("ipd.emar.issue") ? (
+            <button type="button" className="pill" style={{ height: 24 }} data-testid="desk-ip-charge" onClick={() => setOverlay("ipcharge")}>{t("ipCharge.open")}</button>
+          ) : null}
           <div style={{ flexGrow: 1 }} />
           <span className="mo" style={{ fontSize: 11.5, color: "var(--faint)", letterSpacing: ".04em" }}>{istDateLabel()} · {clock}</span>
           <button
@@ -615,6 +620,7 @@ export function PharmacyDesk({ ticketId }: { ticketId: string | null }): React.R
         />
       ) : null}
       {overlay === "slip" && inHand !== null ? <SlipSheet dispense={inHand} onClose={() => setOverlay(null)} /> : null}
+      {overlay === "ipcharge" ? <IpChargeSheet onClose={() => setOverlay(null)} /> : null}
       {overlay === "short" ? <ShortBookSheet prefill={inHand === null ? null : focusedDrug} dispenseId={inHandId} onClose={() => setOverlay(null)} /> : null}
       {overlay === "queue" ? (
         <QueueOverlay rows={rows} me={me} now={now} onOpen={(id, who, mine) => void openInTab(id, who, mine)} onResume={(id) => { setOverlay(null); hold(id); }} onClose={() => setOverlay(null)} />

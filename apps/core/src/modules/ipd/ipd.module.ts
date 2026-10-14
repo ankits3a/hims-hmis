@@ -16,6 +16,7 @@ import { IPD_TOPIC_SPACES, ipdTopicRouter } from "./realtime";
 import { registerIpdEncounterResolver } from "./encounter";
 import { registerIpdOrderChargeSink } from "./order-charges";
 import { IpdRoundsController } from "./rounds.controller";
+import { IpdCounterController } from "./counter.controller";
 import { IpdEmarController } from "./emar.controller";
 import { IpdCopilotController } from "./copilot.controller";
 
@@ -43,7 +44,7 @@ class IpdRealtimeRegistrar implements OnModuleInit {
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController, IpdRoundsController, IpdEmarController, IpdCopilotController],
+  controllers: [IpdBedsController, IpdAdmissionsController, IpdChargesController, IpdPayerController, IpdTransfersController, IpdBillDeskController, IpdDischargeController, IpdFamilyController, IpdNursingController, IpdRoundsController, IpdEmarController, IpdCopilotController, IpdCounterController],
   providers: [IpdRealtimeRegistrar],
 })
 export class IpdModule {}
