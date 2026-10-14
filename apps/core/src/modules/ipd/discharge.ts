@@ -40,7 +40,8 @@ import type { AdmissionRow } from "./admission-core";
  *   pharmacy lines or orders to read): pharmacy joins the list when the eMAR lane posts its issues (seam).
  * - The treating consultant = the admission's consultant or the one they cover for.
  * - A medicine on the summary: a row the drafter copied from an order must match that ACTIVE order at signing
- *   (`medicine_not_on_active_order`); a typed row is flagged, never refused (E5.4, `discharge-medicines.ts`).
+ *   (`medicine_not_on_active_order`); a typed row no active order carries is flagged and signs only with the doctor's
+ *   no-order reason — on every stay, drug orders or none (NABH medicine reconciliation, decision 0074).
  */
 
 type Input<N extends IpdIntentName> = z.infer<(typeof IPD_INTENTS)[N]["input"]>;
@@ -314,7 +315,7 @@ export async function signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts
     if (s.status === "signed") throw new IpdError("summary_already_signed", "the summary is already signed", { summaryId: s.id });
     if (s.version !== input.draftVersion) throw new IpdRefusal("draft_changed", undefined, { version: s.version });
     // E5.4: a row the drafter copied from an order must still match that ACTIVE order (the machine copied it; the order
-    // changed since). A row the doctor typed is flagged on the summary, never refused (`discharge-medicines.ts`).
+    // changed since). A row the doctor typed is flagged on the summary and needs a reason (below).
     const content = IpdSummaryContentSchema.parse(s.content);
     const drugOrders = await drugOrdersOf(tx, a.id);
     // A summary started from a copilot draft is signed against the records it was last SAVED against: anything recorded
@@ -325,11 +326,11 @@ export async function signSummary(db: Db, actor: Actor, raw: unknown, opts: Opts
     const stale = medicineFlagsOf(content.medicines.filter((m) => m.source === "order"), drugOrders);
     if (stale.length > 0) throw new IpdRefusal("medicine_not_on_active_order", undefined, { medicines: stale.map((f) => f.name) });
     // A TYPED medicine no active order carries may be right (a take-home medicine never ordered in hospital) — the doctor
-    // says so in words, and the words and the flags are kept in the signed copy. Asked whenever the summary came from a
-    // drafter or the stay has any inpatient drug order (a stay with none has nothing to compare a typed row against).
+    // says so in words, and the words and the flags are kept in the signed copy. Asked on every summary that names such a
+    // medicine — a stay with no drug order included (NABH medicine reconciliation, decision 0074).
     const flags = medicineFlagsOf(content.medicines, drugOrders);
     const reason = input.unorderedMedicinesReason;
-    if (flags.length > 0 && (s.draftId !== null || drugOrders.length > 0) && reason === undefined) {
+    if (flags.length > 0 && reason === undefined) {
       throw new IpdRefusal("medicine_not_on_active_order", undefined, { medicines: flags.map((f) => f.name), acknowledge: true });
     }
     const signerName = (await userNames(tx as unknown as Db, [actor.id])).get(actor.id) ?? actor.id;

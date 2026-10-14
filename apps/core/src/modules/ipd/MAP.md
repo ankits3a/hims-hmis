@@ -915,9 +915,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - MEDICINES WITHOUT AN ACTIVE ORDER (DECIDED): a DRAFTED row (`source: order`) that no longer matches its active order
   refuses the signature (`medicine_not_on_active_order`). A TYPED row is flagged on the summary and the signature needs
   the doctor's reason (`unorderedMedicinesReason`; without it the same refusal with `detail.acknowledge`); the flags and
-  `medicineAck` (reason, signer, time) are written into the signed content and never recomputed. CARVE-OUT: the reason is
-  asked when the summary is copilot-sourced or the stay has any inpatient drug order — a person-typed summary on a stay
-  with no drug order signs as before (the locked E3.2 acceptance tests sign exactly that; lifting it needs the owner).
+  `medicineAck` (reason, signer, time) are written into the signed content and never recomputed. The reason is asked on
+  EVERY summary that names a medicine with no active order — person-typed or copilot-sourced, with drug orders on the
+  stay or none (NABH medicine reconciliation; the E3.2 carve-out was lifted by decision 0074).
 - LAB VALUES ARE NOT IN THE FACTS (owed): lab's `patientResultsForDoctor` is not on its index and answers no row ids, so a
   result is a count of completed order items with the test's name. Vital "abnormal" is judged only for NEWS2 patients
   (`ADULT_RANGE`); a child's or a mother's deterioration is the band's to say. Temperatures print in °C as recorded.
