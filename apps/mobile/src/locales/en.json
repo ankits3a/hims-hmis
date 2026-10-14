@@ -898,7 +898,7 @@
       },
       "testSearch": "test name — CBC, X-ray chest",
       "testsBefore": "You advised these before for this diagnosis",
-      "testNone": "No test by that name in the hospital's list.",
+      "testNone": "Not in the lab's list — ask the lab to add it",
       "testsHint": "Tests go to the lab and imaging counters when you issue.",
       "adviceLang": "Language on the paper",
       "adviceChips": "Advice · yours first",

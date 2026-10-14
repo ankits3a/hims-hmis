@@ -17,6 +17,8 @@ export type WireMyDiagnosis = { text: string; icd10Code: string | null; uses: nu
 export type WireComplaintHit = { term: string; mine: number; hospital: number };
 export type WireTestHit = { serviceId: string; code: string; name: string; pricePaise: number; mine: number; hospital: number };
 export type WirePriceRow = { serviceId: string; code: string; name: string; pricePaise: number; category?: string | null };
+/** One row of the hospital's test list (`GET /ordering/tests`, decision 0067): the lab catalogue's parameters and panels, imaging, outside tests. */
+export type WireOrderableTest = { serviceId: string; code: string; name: string; department: "lab" | "imaging" | "outside" | "in_hospital"; departmentName: string | null };
 export type WireAdviceTemplate = { id: string; title: string; textEn: string | null; textHi: string | null; mine: boolean };
 export type WireRxSet = {
   id: string; scope: "doctor" | "department"; name: string; body: WireSetBody; departmentId: string | null; departmentName: string | null;
@@ -65,6 +67,8 @@ export function consultApi(call: Call) {
     complaints: async (q: string) => (await call<{ items: WireComplaintHit[] }>("GET", `/opd/cds/complete/complaint?q=${enc(q)}`)).items,
     testsFor: async (dx: { text: string; icd10: string | null }[]) => (await call<{ items: WireTestHit[] }>("GET", `/opd/cds/suggest/tests?dx=${enc(JSON.stringify(dx))}`)).items,
     priceList: async () => (await call<{ items: WirePriceRow[] }>("GET", "/tariff/price-list")).items,
+    /** Issue #609 — the test box searches the hospital's test list by code or name, from two letters (the server says nothing below two). */
+    testSearch: async (q: string) => (await call<{ items: WireOrderableTest[] }>("GET", `/ordering/tests?q=${enc(q)}`)).items,
     advice: async () => (await call<{ items: WireAdviceTemplate[] }>("GET", "/opd/advice-templates")).items,
     lastPrescriptions: async (patientId: string) => (await call<{ items: { prescriptionId: string; encounterId: string; serviceDate: string; issuedAt: string; status: string; lines: WireLastLine[] }[] }>("GET", `/opd/patients/${enc(patientId)}/prescriptions`)).items,
 

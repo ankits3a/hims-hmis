@@ -552,16 +552,22 @@ export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFA
 }) {
   const { t } = useI18n();
   const [q, setQ] = useState("");
+  /** The price list is read only for the SNAPSHOT an advised test carries (consultation.ts AdvisedTest); the doctor is never shown it. */
   const [list, setList] = useState<WirePriceRow[] | null>(null);
+  /**
+   * Issue #609 (owner 2026-10-10, "free-text tests: NO") — the box searches the hospital's test list:
+   * the lab catalogue's parameters and panels, imaging, and the outside tests (decision 0067). A pick
+   * carries the row's own service id and code, which is what the lab desk reads; nothing else can be added.
+   */
+  const found = useSearch(q, 2, api.testSearch);
   const [offeredAll, setBefore] = useState<WireTestHit[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const enc = draft.encounterId;
   const first = draft.diagnoses[0];
   /** The diagnosis these tests were offered FOR — what a tap or a cross is counted under. */
   const context = first === undefined ? null : dxKeyOf(first.icd10Code, first.text);
   useEffect(() => {
-    api.priceList().then(setList).catch((e) => { setList([]); setError(says(e, t)); });
+    api.priceList().then(setList).catch(() => setList([]));
     if (suggest.on && draft.diagnoses.length > 0) api.testsFor(draft.diagnoses.map((d) => ({ text: d.text, icd10: d.icd10Code }))).then((items) => {
       setBefore(items);
       const shown = items.filter((x) => !notOffered(suggest, enc, "test", context, x.serviceId)).map((x) => x.serviceId);
@@ -577,30 +583,39 @@ export function TestsDrawer({ api, draft, patch, onClose, suggest = SUGGEST_DEFA
   const toggle = (x: { serviceId: string; code: string; name: string; pricePaise: number }): void =>
     patch((d) => (has(x.serviceId) ? { ...d, tests: d.tests.filter((y) => y.serviceId !== x.serviceId) } : d.tests.length >= MAX_TESTS ? d : { ...d, tests: [...d.tests, { serviceId: x.serviceId, code: x.code, name: x.name, pricePaise: x.pricePaise }] }));
   const needle = q.trim().toLowerCase();
-  const hits = needle.length < 2 || list === null ? [] : list.filter((r) => r.name.toLowerCase().includes(needle) || r.code.toLowerCase().includes(needle)).slice(0, 12);
-  return (
-    <Drawer testID="tests-drawer" title={t("mobile.consult.tests")} onClose={() => {
-      // A test the price list could not answer, left in the box as the sheet closes: the term alone.
-      if (needle.length >= 3 && list !== null && list.length > 0 && hits.length === 0) void api.signals({ misses: [{ kind: "test", term: needle, stage: "search" }] }).catch(() => undefined);
-      onClose();
-    }}>
-      <Box testID="test-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.testSearch")} maxLength={60} />
-      {draft.tests.length > 0 && <View style={st.chips}>{draft.tests.map((x) => <Chip key={x.serviceId} testID={`test-on-${x.serviceId}`} label={`${x.name} ✕`} on onPress={() => toggle(x)} />)}</View>}
-      {needle.length < 2 && before.length > 0 && <Lab>{t("mobile.consult.testsBefore")}</Lab>}
-      {needle.length < 2 && before.length > 0 && <View style={st.chips}>{before.map((x, i) => (
+  const hits = needle.length < 2 ? [] : found.rows.slice(0, 12);
+  /** DECIDED: the quotation snapshot is the active list price; a test the tariff has not priced yet carries 0 and the counter prices it. */
+  const priceOf = (serviceId: string): number => list?.find((r) => r.serviceId === serviceId)?.pricePaise ?? 0;
+  const none = needle.length >= 2 && !found.busy && found.error === null && found.rows.length === 0;
+  const suggestions = needle.length < 2 && before.length > 0 && (
+    <>
+      <Lab>{t("mobile.consult.testsBefore")}</Lab>
+      <View style={st.chips}>{before.map((x, i) => (
         <View key={x.serviceId} style={st.offer}>
           <Chip testID={`test-before-${x.serviceId}`} label={x.name} on={has(x.serviceId)} onPress={() => { if (!has(x.serviceId)) told(x.serviceId, i, "accepted"); toggle(x); }} />
           {!has(x.serviceId) && <Cross testID={`test-before-x-${x.serviceId}`} name={x.name} onPress={() => { crossOff(enc, "test", x.serviceId); told(x.serviceId, i, "dismissed"); setTick((n) => n + 1); }} />}
         </View>
-      ))}</View>}
+      ))}</View>
+    </>
+  );
+  return (
+    <Drawer testID="tests-drawer" title={t("mobile.consult.tests")} onClose={() => {
+      // A test the price list could not answer, left in the box as the sheet closes: the term alone.
+      if (needle.length >= 3 && none) void api.signals({ misses: [{ kind: "test", term: needle, stage: "search" }] }).catch(() => undefined);
+      onClose();
+    }}>
+      {/* The diagnosis-based suggestions stay ABOVE the search (spec #609 item 5). */}
+      {suggestions}
+      <Box testID="test-input" value={q} onChangeText={setQ} placeholder={t("mobile.consult.testSearch")} maxLength={60} autoCorrect={false} autoCapitalize="none" />
+      {draft.tests.length > 0 && <View style={st.chips}>{draft.tests.map((x) => <Chip key={x.serviceId} testID={`test-on-${x.serviceId}`} label={`${x.name} ✕`} on onPress={() => toggle(x)} />)}</View>}
       {hits.map((r) => (
-        <Pressable key={r.serviceId} testID={`test-hit-${r.serviceId}`} accessibilityRole="button" onPress={() => toggle(r)} style={st.hit}>
+        <Pressable key={r.serviceId} testID={`test-hit-${r.serviceId}`} accessibilityRole="button" onPress={() => toggle({ ...r, pricePaise: priceOf(r.serviceId) })} style={st.hit}>
           <View style={{ flex: 1, minWidth: 0 }}><Text style={st.hitName}>{r.name}</Text><Text style={st.hitSub}>{r.code}</Text></View>
           {has(r.serviceId) && <Text style={st.tick}>✓</Text>}
         </Pressable>
       ))}
-      {needle.length >= 2 && list !== null && hits.length === 0 && <Text style={st.fine}>{t("mobile.consult.testNone")}</Text>}
-      {error !== null && <Note tone="bad" testID="tests-error">{error}</Note>}
+      {none && <Text testID="test-none" style={st.fine}>{t("mobile.consult.testNone")}</Text>}
+      {found.error !== null && <Note tone="bad" testID="tests-error">{found.error}</Note>}
       <Text style={st.fine}>{t("mobile.consult.testsHint")}</Text>
     </Drawer>
   );
