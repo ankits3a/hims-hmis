@@ -9,7 +9,7 @@ import { registerEncounterResolver } from "../../kernel/episodes/encounter-resol
 import { withTx } from "../../kernel/db/client";
 import { invoiceLines, invoices, labItems, orderItems, orders, services } from "../../kernel/db/schema";
 import { issueInvoice } from "../billing";
-import { deliveryAllowed, EXEMPT_PAYERS } from "./interlock";
+import { deliveryAllowed, EXEMPT_ENCOUNTER_PREFIXES, EXEMPT_PAYERS } from "./interlock";
 import { activateTshReflex } from "./verify.test.helpers";
 import type { LabDeskFixture } from "../../../test/helpers/lab";
 import type { Db } from "../../kernel/db/client";
@@ -238,6 +238,21 @@ describe("the lab delivery interlock (17b T7)", () => {
     } finally {
       unregister();
     }
+  });
+
+  it("E4.2 (#734): an `IP` inpatient encounter delivers with ZERO receipts — the IPD bill settles at discharge", async () => {
+    const admissionNo = "IP26-000123";
+    const unregister = registerEncounterResolver("IP", async (_db, no) =>
+      (no === admissionNo ? { patientId: fx.patientId, intendedPayer: "self" } : null));
+    try {
+      const run = await runLabOrder(db, { ...fx, encounterNo: admissionNo }, ["TSH"], { at: AT });
+      const verdict = await deliveryAllowed(db, run.orderId);
+      expect([verdict.allowed, verdict.reason, verdict.outstandingPaise]).toEqual([true, "exempt_payer", 0]);
+    } finally {
+      unregister();
+    }
+    // Widened for inpatients ONLY: the list is exactly these two, and a self-pay OPD visit is still held (next test).
+    expect(EXEMPT_ENCOUNTER_PREFIXES).toEqual(["D", "IP"]);
   });
 
   it("the exemption is per invoice and EVERY one must qualify — one self-pay line blocks", async () => {

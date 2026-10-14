@@ -509,6 +509,11 @@ export function todayIst(at: Date = new Date()): string {
   return new Date(Math.floor((at.getTime() + IST_OFFSET_MS) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
 }
 
+/** An IST wall time from a `datetime-local` field ('YYYY-MM-DDTHH:MM') as an ISO instant — same offset, same file. */
+export function istWallToIso(wall: string): string {
+  return new Date(Date.parse(`${wall}:00Z`) - IST_OFFSET_MS).toISOString();
+}
+
 // ——— tiny fetchers (the masters reads every OPD screen needs) ———
 
 export function listDepartments(): Promise<{ items: WireDepartment[] }> {

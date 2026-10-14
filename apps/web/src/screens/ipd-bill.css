@@ -1,0 +1,93 @@
+/*
+ * E2.1 — THE INTERIM BILL (spec §4.3, §4.9 H) on the paper-pine tokens (`styles/paper-pine.css`), scoped `.ipdb`.
+ * 1920×1080 first: lines left, totals and moves right. At 1366×768 the side column narrows; under 900 px it goes below.
+ * Colour never carries meaning alone: "Due" and "Deposit left" are words, a reversal is tagged in words.
+ */
+.ipdb {
+  --paper: #f4f7f4; --card: #ffffff; --ink: #132420; --line: #dfe7e1; --dim: #5c6f66; --wash: #eef3ef;
+  --green: #0e6b4e; --green-soft: rgba(14, 107, 78, .08); --gold: #8a5a0e; --gold-soft: rgba(221, 143, 28, .14);
+  --red: #b23a30; --red-soft: rgba(178, 58, 48, .08); --blue: #1f5f8b;
+  min-height: 100vh; box-sizing: border-box; background: var(--paper); color: var(--ink);
+  font-family: "IBM Plex Sans", "Noto Sans Devanagari", system-ui, sans-serif;
+  padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 14px;
+}
+.ipdb * { box-sizing: border-box; }
+/* A column of sections: none may shrink when the bill is taller than the screen (1366×768 squeezed the facts row to 2 px). */
+.ipdb > * { flex-shrink: 0; }
+.ipdb .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+.ipdb .strong { font-weight: 600; }
+.ipdb .dim { color: var(--dim); }
+.ipdb .small { font-size: 12px; }
+.ipdb .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ipdb .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ipdb h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.ipdb a:focus-visible, .ipdb button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.ipdb-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.ipdb-title { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.ipdb-title h1 { margin: 0; font-size: 26px; font-weight: 600; }
+.ipdb-title span { font-size: 15px; color: var(--dim); }
+.ipdb-title span:first-of-type { color: var(--ink); font-weight: 600; }
+.ipdb-actions { display: flex; gap: 8px; }
+.ipdb-btn {
+  min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px;
+  text-decoration: none; cursor: pointer;
+}
+
+.ipdb-facts {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+}
+.ipdb-facts > div { background: var(--card); padding: 10px 14px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+
+.ipdb-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 14px; align-items: start; }
+.ipdb-side { display: flex; flex-direction: column; gap: 14px; }
+.ipdb-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+
+.ipdb-lines table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ipdb-lines thead th { text-align: left; font-size: 12px; font-weight: 500; color: var(--dim); padding: 0 8px 8px; border-bottom: 1px solid var(--line); }
+.ipdb-lines td { padding: 6px 8px; border-bottom: 1px solid var(--wash); }
+.ipdb-dayhead th { text-align: left; padding: 12px 8px 6px; background: var(--wash); font-weight: 500; }
+.ipdb-dayhead th.num { text-align: right; font-weight: 600; }
+.ipdb-class { margin-left: 10px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); }
+.ipdb-line.reversed td { color: var(--dim); text-decoration: line-through; }
+.ipdb-line.reversal td { color: var(--red); }
+.ipdb-tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; margin-right: 4px; text-decoration: none; }
+.ipdb-tag.warn { color: var(--gold); background: var(--gold-soft); border-color: transparent; }
+
+.ipdb-totals .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+.ipdb-totals .row.total { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; font-size: 18px; font-weight: 600; }
+.ipdb-totals .row.balance { font-weight: 600; border-radius: 6px; padding: 8px 10px; margin-top: 4px; }
+.ipdb-totals .row.balance.due { background: var(--red-soft); color: var(--red); }
+.ipdb-totals .row.balance.left { background: var(--green-soft); color: var(--green); }
+.ipdb-bycomp { list-style: none; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px dashed var(--line); font-size: 13px; color: var(--dim); }
+.ipdb-bycomp li { display: flex; justify-content: space-between; padding: 2px 0; }
+
+.ipdb-ex { border-color: var(--gold); }
+.ipdb-ex ul, .ipdb-moves ol { margin: 0; padding: 0; list-style: none; font-size: 14px; display: flex; flex-direction: column; gap: 8px; }
+.ipdb-moves li { border-left: 3px solid var(--green); padding-left: 10px; }
+.ipdb-error { color: var(--red); font-weight: 600; }
+
+/* E2.2 (#726) — the payer split card and the per-line reason chips. */
+.ipdb-split .row { display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 0; font-size: 14px; }
+.ipdb-split .row.total { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 10px; font-size: 16px; font-weight: 600; }
+.ipdb-split .row.balance { font-weight: 600; border-radius: 6px; padding: 8px 10px; margin-top: 4px; }
+.ipdb-split .row.balance.due { background: var(--red-soft); color: var(--red); }
+.ipdb-split .row.balance.left { background: var(--green-soft); color: var(--green); }
+.ipdb-words { margin: 6px 0; padding-left: 18px; font-size: 13px; }
+.ipdb-why { margin-top: 2px; }
+.ipdb-why .ipdb-tag { font-size: 10px; color: var(--dim); }
+
+@media (max-width: 1500px) { .ipdb-grid { grid-template-columns: minmax(0, 1fr) 320px; } }
+@media (max-width: 900px) {
+  .ipdb { padding: 16px; }
+  .ipdb-grid { grid-template-columns: 1fr; }
+  .ipdb-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ipdb-lines { overflow-x: auto; }
+}
+@media print {
+  .ipdb { background: #fff; padding: 0; }
+  .ipdb-actions { display: none; }
+  .ipdb-card { border-color: #999; }
+}

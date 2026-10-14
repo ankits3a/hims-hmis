@@ -4,6 +4,7 @@ import { appendEvent } from "../../kernel/events/append";
 import { hasPermission } from "../../kernel/auth/permissions";
 import { imagingBillDecisions, imagingStudies } from "../../kernel/db/schema/radiology";
 import { daycareEncounters } from "../../kernel/db/schema/ot";
+import { ipdAdmissions } from "../../kernel/db/schema/ipd";
 import { invoiceLines, invoices } from "../../kernel/db/schema/billing";
 import { EPISODE_SERIES } from "../../kernel/episodes/series";
 import { getEncounter } from "../opd";
@@ -48,8 +49,18 @@ export type AuthorisationStudyFacts = {
   encounterNo: string;
 };
 
-/** The facts it reads from the ENCOUNTER. `intendedPayer` is `self | tpa | pmjay | corporate`. */
-export type AuthorisationEncounterFacts = { intendedPayer: string };
+/**
+ * The facts it reads from the ENCOUNTER. `intendedPayer` is `self | tpa | pmjay | corporate`. `liveAdmission` (E4.2 #734):
+ * the encounter is an inpatient admission number whose stay has not ended — read by `encounterPayer`, never inferred.
+ */
+export type AuthorisationEncounterFacts = { intendedPayer: string; liveAdmission?: boolean };
+
+/**
+ * E4.2 (#734) — the inpatient admission number, EXACTLY (`modules/ipd` `IPD_ADMISSION_NO_RE`, written out because
+ * radiology cannot import ipd without a cycle), and the stay states in which it is live (ipd `IPD_PLACED_STATES`).
+ */
+export const INPATIENT_ADMISSION_NO_RE = /^IP\d{2}-\d{6}$/;
+const LIVE_ADMISSION_STATES: readonly string[] = ["admitted", "transferring", "fit_declared", "discharging"];
 
 /**
  * DD12a's rule. Returns `null` when NOTHING authorises the scan — the caller turns that into
@@ -69,6 +80,8 @@ export function authorisationOf(
 ): ImagingAuthorisation | null {
   if (study.invoiceLineId !== null) return "invoice";
   if (study.encounterNo.startsWith(EPISODE_SERIES.daycare)) return "daycare";
+  // E4.2 (#734): a LIVE inpatient's scan never waits on the cashier — the IPD bill settles at discharge (#785 bills it).
+  if (INPATIENT_ADMISSION_NO_RE.test(study.encounterNo) && encounter.liveAdmission === true) return "ipd_admission";
   if (encounter.intendedPayer !== "self") return "payer_branch";
   if (imagingFree) return "free";
   if (study.priority === "stat") return "stat";
@@ -101,7 +114,16 @@ export async function imagingFreeAt(exec: Db | Tx, orderedAt: Date): Promise<boo
  * **An encounter that cannot be found is `self`**, which is the strict direction: an unknown payer
  * must not authorise a scan, and `self` is the only value that can leave `authorisationOf` null.
  */
-export async function encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string }> {
+export async function encounterPayer(exec: Db | Tx, encounterNo: string): Promise<{ intendedPayer: string; liveAdmission?: boolean }> {
+  if (INPATIENT_ADMISSION_NO_RE.test(encounterNo)) {
+    // The kernel schema table, the day-care leg's pattern below: ipd exports no reader radiology may import (cycle).
+    const a = (await (exec as Db).select({ state: ipdAdmissions.state, payerKind: ipdAdmissions.payerKind })
+      .from(ipdAdmissions).where(eq(ipdAdmissions.admissionNo, encounterNo)))[0];
+    if (a === undefined) return { intendedPayer: "self", liveAdmission: false };
+    const payer = a.payerKind === "insurance_cashless" ? "tpa" : a.payerKind === "corporate" ? "corporate"
+      : a.payerKind === "pmjay" || a.payerKind === "state_scheme" ? "pmjay" : "self";
+    return { intendedPayer: payer, liveAdmission: LIVE_ADMISSION_STATES.includes(a.state) };
+  }
   if (encounterNo.startsWith(EPISODE_SERIES.daycare)) {
     const rows = await (exec as Db)
       .select({ payerClass: daycareEncounters.payerClass })
