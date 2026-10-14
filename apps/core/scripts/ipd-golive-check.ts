@@ -167,7 +167,7 @@ function whatsappConfigured(env: NodeJS.ProcessEnv): boolean | null {
 export const IPD_GOLIVE_ITEMS: readonly GoLiveItem[] = [
   {
     code: "admission_workflow_active",
-    fix: `Admin → Workflows → ${ADMISSION_WORKFLOW_DEF_KEY}: the medical superintendent and the owner approve the draft, the owner activates it (${RUNBOOK} §4)`,
+    fix: `Admin → Workflows → ${ADMISSION_WORKFLOW_DEF_KEY}: the medical superintendent and the owner approve the draft (made by ipd-golive-setup --confirm), the owner activates it (${RUNBOOK} §4)`,
     run: async (tx) => {
       const def = await getActiveDefinition(tx, ADMISSION_WORKFLOW_DEF_KEY);
       return def === null ? { ok: false, detail: "no active version" } : { ok: true, detail: `version ${def.version} active` };
@@ -175,7 +175,7 @@ export const IPD_GOLIVE_ITEMS: readonly GoLiveItem[] = [
   },
   {
     code: "approval_types_registered",
-    fix: `register the IPD approval types (staging: stage-ipd-setup; production: the setup step of issue #798, ${RUNBOOK} §3.3)`,
+    fix: `run node dist/scripts/ipd-golive-setup.js (plan), then with --confirm: it registers the IPD approval types and drafts the workflow (${RUNBOOK} §3.3)`,
     run: async (tx) => {
       const missing: string[] = [];
       for (const t of IPD_APPROVAL_TYPES) if ((await getApprovalType(tx, t.typeKey)) === null) missing.push(t.typeKey);
