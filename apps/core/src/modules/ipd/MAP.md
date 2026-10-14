@@ -470,8 +470,11 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
   send time (a row queued for an attendant since replaced, or whose phone was cleared, is undeliverable `no_phone`), and the
   phone is the one `attendantOf` reads then. No input anywhere chooses a number.
 - At send time, in this order: stay ended or `familyBlockOf` (sealed, MLC, team switch) → `recipient_blocked`; a desk STOP →
-  `opted_out` (beats every consent); not the current attendant → `no_phone`; no consent row AND no live family link to the
-  same attendant reference issued to the SAME phone (link `phone_hash` vs `SECRET_KEY` HMAC; no key = no link) → `no_consent`.
+  `opted_out` (beats every consent); not the current attendant → `no_phone`; no desk consent AND no live family link for the
+  SAME phone → `no_consent`. ⚖ DECIDED (DPDP practice): consent is for a number — desk consent keeps the phone's HMAC in its
+  `consent` jsonb (`phoneHash`, `familyPhoneDigest` under `SECRET_KEY`; never sent to the web), a family link its
+  `phone_hash`; a number changed since → no consent until recorded again (card state `number_changed`, "Consent needed
+  again (number changed)"). No key = no consent (fail closed).
   Re-consenting clears a stop. Consent and stop are `ipd.family.issue`; the card is read under `ipd.bill.view`.
 - SWITCH (DECIDED): ON only when config names an approved WhatsApp template name and/or DLT id AND `IPD_BILL_DESK_PHONE`;
   `ipdTemplateRegistrations` then gives the pump those ids, else explicit nulls (no table row can turn it on). The pump drops

@@ -1001,8 +1001,9 @@ export const ipdAttendantMessageConsents = pgTable(
     admissionId: text("admission_id").notNull().references(() => ipdAdmissions.id),
     attendantKind: text("attendant_kind").notNull(),
     attendantRef: text("attendant_ref").notNull(),
-    /** Null when the attendant only ever said stop (e.g. a family-link attendant). */
-    consent: jsonb("consent").$type<{ consentedBy: string; relation: string; method: string }>(),
+    /** Null when the attendant only ever said stop (e.g. a family-link attendant). `phoneHash`: the HMAC of the number the
+     *  consent was given for (`familyPhoneDigest`) — a changed number is no consent until recorded again. */
+    consent: jsonb("consent").$type<{ consentedBy: string; relation: string; method: string; phoneHash?: string }>(),
     consentedBy: text("consented_by"),
     consentedAt: timestamp("consented_at", { withTimezone: true }),
     stoppedAt: timestamp("stopped_at", { withTimezone: true }),

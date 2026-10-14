@@ -60,7 +60,7 @@ export function AttendantMessagesCard({ admissionId }: { admissionId: string }):
       {error === null ? null : <p role="alert" className="ipdb-error small">{error}</p>}
       {!card.canManage || card.attendant === null ? null : (
         <div className="ipdam-acts">
-          {card.consent === null || card.stoppedAt !== null ? (
+          {card.consent === null || card.stoppedAt !== null || card.state === "number_changed" ? (
             <form onSubmit={(e) => { e.preventDefault(); act(recordAttendantConsent(admissionId, { consent: { consentedBy: by.trim(), relation, method } })); }}>
               <label>{t("ipdAttendant.consentedBy")}<input value={by} onChange={(e) => setBy(e.target.value)} minLength={2} maxLength={120} required /></label>
               <label>{t("ipdAttendant.relation")}

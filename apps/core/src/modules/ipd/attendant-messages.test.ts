@@ -45,7 +45,7 @@ type Seam = {
   dailyTotalsSendingOf(cfg: unknown): unknown;
   recordAttendantConsent(db: Db, actor: unknown, admissionId: string, input: unknown, opts: unknown): Promise<unknown>;
   stopAttendantMessages(db: Db, actor: unknown, admissionId: string, opts: unknown): Promise<unknown>;
-  readAttendantMessages(db: Db, actor: unknown, admissionId: string, sending: unknown): Promise<{ state: string; words: string }>;
+  readAttendantMessages(db: Db, actor: unknown, admissionId: string, sending: unknown, opts?: unknown): Promise<{ state: string; words: string }>;
 };
 const seam = ipd as unknown as Seam;
 
@@ -103,7 +103,7 @@ describe("#761 daily totals to the attendant — the recipient seam, consent, st
     await runIpdBillDeskNightly(db, ist(`${date}T00:06:00`));
   };
   const rows = async (admissionId: string) => db.select().from(notifications).where(eq(notifications.refId, admissionId));
-  const consent = (admissionId: string, at: string) => seam.recordAttendantConsent(db, w.admitDesk, admissionId, { consent: CONSENT }, { now: ist(at) });
+  const consent = (admissionId: string, at: string) => seam.recordAttendantConsent(db, w.admitDesk, admissionId, { consent: CONSENT }, { now: ist(at), secretKey: SECRET });
 
   it("OFF until config names an approved template: recorded 'not sent: template not configured' on the bill desk, no adapter called", async () => {
     const { admissionId } = await admitted();
@@ -168,7 +168,7 @@ describe("#761 daily totals to the attendant — the recipient seam, consent, st
     await pump("2026-03-12T09:00:00", ON);
     expect(calls).toEqual([]);
     expect((await rows(admissionId))[0]).toMatchObject({ status: "suppressed", lastError: "opted_out" });
-    expect((await seam.readAttendantMessages(db, w.admitDesk, admissionId, seam.dailyTotalsSendingOf(ON))).state).toBe("stopped");
+    expect((await seam.readAttendantMessages(db, w.admitDesk, admissionId, seam.dailyTotalsSendingOf(ON), { secretKey: SECRET })).state).toBe("stopped");
     const names = (await db.select({ name: events.name }).from(events).where(eq(events.correlationId, admissionId))).map((e) => e.name);
     expect(names).toEqual(expect.arrayContaining(["ipd.attendant_messages.consented", "ipd.attendant_messages.stopped"]));
 
@@ -178,7 +178,7 @@ describe("#761 daily totals to the attendant — the recipient seam, consent, st
     expect(calls.map((c) => c.to)).toEqual([ATTENDANT_PHONE]);
   });
 
-  it("contact truth at send time: a phone corrected after queueing is the one used; a patient sealed after queueing gets nothing", async () => {
+  it("consent is for a number: a phone changed after consent gets nothing until the desk records consent again; a patient sealed after queueing gets nothing", async () => {
     const a = await admitted();
     await consent(a.admissionId, "2026-03-10T11:00:00");
     const b = await admitted();
@@ -187,8 +187,18 @@ describe("#761 daily totals to the attendant — the recipient seam, consent, st
     await db.update(ipdAdmissionDeposits).set({ payerPhone: NEW_PHONE }).where(eq(ipdAdmissionDeposits.admissionId, a.admissionId));
     await db.update(patients).set({ sensitiveContext: true }).where(eq(patients.id, b.patientId));
     await pump("2026-03-12T09:00:00", ON);
-    expect(calls.map((c) => c.to)).toEqual([NEW_PHONE]);
+    expect(calls).toEqual([]);
+    expect((await rows(a.admissionId))[0]).toMatchObject({ status: "suppressed", lastError: "no_consent" });
     expect((await rows(b.admissionId))[0]).toMatchObject({ status: "suppressed", lastError: "recipient_blocked" });
+    const card = await seam.readAttendantMessages(db, w.admitDesk, a.admissionId, seam.dailyTotalsSendingOf(ON), { secretKey: SECRET });
+    expect(card).toMatchObject({ state: "number_changed", words: "Consent needed again (number changed)" });
+    // The digest the consent keeps never leaves the server.
+    expect(JSON.stringify(card)).not.toMatch(/phoneHash|hash/i);
+    // Consent recorded again, for the new number: the next day's message goes to it.
+    await consent(a.admissionId, "2026-03-12T12:00:00");
+    await night("2026-03-13");
+    await pump("2026-03-13T09:00:00", ON);
+    expect(calls.map((c) => c.to)).toEqual([NEW_PHONE]);
   });
 
   it("the attendant the row was queued for is no longer the registered one: nothing goes to the old attendant, and the desk's stop is not bypassed", async () => {
@@ -201,7 +211,7 @@ describe("#761 daily totals to the attendant — the recipient seam, consent, st
       payer: { name: "Mohan Lal", relation: "relative", phone: NEW_PHONE },
     }, { now: ist("2026-03-12T08:00:00") });
     await seam.stopAttendantMessages(db, w.admitDesk, admissionId, { now: ist("2026-03-12T08:10:00") });
-    expect((await seam.readAttendantMessages(db, w.admitDesk, admissionId, seam.dailyTotalsSendingOf(ON))).state).toBe("stopped");
+    expect((await seam.readAttendantMessages(db, w.admitDesk, admissionId, seam.dailyTotalsSendingOf(ON), { secretKey: SECRET })).state).toBe("stopped");
     await pump("2026-03-12T09:00:00", ON);
     expect(calls).toEqual([]);
     expect((await rows(admissionId))[0]!.status).not.toBe("sent");

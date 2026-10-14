@@ -118,7 +118,7 @@ export const IpdAttendantMessagesSchema = z.object({
   viaFamilyLink: z.boolean(),
   stoppedAt: IpdInstantSchema.nullable(),
   /** What happens to tomorrow's message, in one word. */
-  state: z.enum(["will_send", "not_configured", "no_attendant", "no_consent", "stopped", "blocked"]),
+  state: z.enum(["will_send", "not_configured", "no_attendant", "no_consent", "number_changed", "stopped", "blocked"]),
   words: z.string(),
   sending: IpdDailyTotalsSendingSchema,
   last: IpdDailyTotalsLineSchema.nullable(),

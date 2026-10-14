@@ -59,7 +59,7 @@ export class IpdBillDeskController {
     const parsed = IpdAttendantConsentSchema.safeParse(body);
     if (!parsed.success) throw new HttpException({ statusCode: 400, code: "invalid_body", message: "invalid body", issues: parsed.error.issues }, 400);
     try {
-      await recordAttendantConsent(this.db, actor, id, parsed.data);
+      await recordAttendantConsent(this.db, actor, id, parsed.data, { secretKey: this.secretKey });
       return await readAttendantMessages(this.db, actor, id, this.sending, { secretKey: this.secretKey });
     } catch (e) { toHttp(e); }
   }

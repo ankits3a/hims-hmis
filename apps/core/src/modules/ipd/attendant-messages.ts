@@ -75,7 +75,7 @@ export function ipdTemplateRegistrations(cfg: AppConfig["ipdDailyTotals"] | unde
 
 type Kind = "guardian" | "deposit_payer";
 type Word =
-  | { state: "blocked" | "stopped" | "no_consent"; reason: "recipient_blocked" | "opted_out" | "no_consent" }
+  | { state: "blocked" | "stopped" | "no_consent" | "number_changed"; reason: "recipient_blocked" | "opted_out" | "no_consent" }
   | { state: "no_attendant" }
   | { state: "ok"; phone: string };
 
@@ -112,10 +112,14 @@ async function attendantWordOf(db: Db | Tx, admissionId: string, kind: Kind, ref
   if (row?.stoppedAt != null) return { state: "stopped", reason: "opted_out" };
   const now = await attendantOf(db, a.patientId, a.id);
   if (now === null || now.kind !== kind || now.ref !== ref) return { state: "no_attendant" };
-  if (row?.consentedAt == null && !(await liveFamilyLinkTo(db, admissionId, ref, { phone: now.phone, secretKey }))) {
-    return { state: "no_consent", reason: "no_consent" };
-  }
-  return { state: "ok", phone: now.phone };
+  // DECIDED (DPDP practice): consent is for a NUMBER. A desk consent keeps the HMAC of the phone it was given for; a phone
+  // changed since then is no consent until the desk records it again ("consent needed again (number changed)").
+  const digest = secretKey === undefined ? null : familyPhoneDigest(secretKey, now.phone);
+  const deskFor = row?.consentedAt == null || row.consent == null ? null : (row.consent.phoneHash ?? "");
+  if (deskFor !== null && digest !== null && deskFor === digest) return { state: "ok", phone: now.phone };
+  if (await liveFamilyLinkTo(db, admissionId, ref, { phone: now.phone, secretKey })) return { state: "ok", phone: now.phone };
+  if (deskFor !== null) return { state: "number_changed", reason: "no_consent" };
+  return { state: "no_consent", reason: "no_consent" };
 }
 
 /** The pump's recipient seam for `recipient: "attendant"` rows (installed by `registerAllJobs`). */
@@ -210,14 +214,17 @@ export async function readAttendantMessages(
     not_configured: "Not sent: template not configured",
     no_attendant: "Not sent: no attendant phone",
     no_consent: "Not sent: no consent recorded",
+    number_changed: "Consent needed again (number changed)",
     stopped: "Not sent: messages stopped",
     blocked: "Not sent: family updates are off for this patient",
   };
   return {
     admissionId: a.id,
     attendant: to === null ? null : { kind: to.kind, phoneMasked: maskPhone(to.phone) },
-    consent: row?.consent == null || row.consentedAt === null
-      ? null : { ...row.consent, at: row.consentedAt.toISOString() },
+    // Named fields only: the phone digest the consent keeps never leaves the server.
+    consent: row?.consent == null || row.consentedAt === null ? null : {
+      consentedBy: row.consent.consentedBy, relation: row.consent.relation, method: row.consent.method, at: row.consentedAt.toISOString(),
+    },
     viaFamilyLink,
     stoppedAt: row?.stoppedAt?.toISOString() ?? null,
     state, words: WORDS[state], sending,
@@ -245,13 +252,15 @@ async function currentAttendant(tx: Tx, admissionId: string) {
 
 /** Consent to the daily totals for the registered attendant (re-consenting clears an earlier stop). */
 export async function recordAttendantConsent(
-  db: Db, actor: Actor, admissionId: string, input: IpdAttendantConsent, opts: { now?: Date } = {},
+  db: Db, actor: Actor, admissionId: string, input: IpdAttendantConsent, opts: { now?: Date; secretKey: Buffer },
 ): Promise<{ recorded: true }> {
   await requireIpdPermission(db, actor, IPD_FAMILY_ISSUE);
   const now = opts.now ?? new Date();
   return withTx(db, async (tx) => {
     const { a, to } = await currentAttendant(tx, admissionId);
-    const values = { consent: input.consent, consentedBy: actor.id, consentedAt: now, stoppedAt: null, stoppedBy: null, updatedAt: now };
+    // The consent is for this number: its HMAC (never the number) is kept with it.
+    const consent = { ...input.consent, phoneHash: familyPhoneDigest(opts.secretKey, to.phone) };
+    const values = { consent, consentedBy: actor.id, consentedAt: now, stoppedAt: null, stoppedBy: null, updatedAt: now };
     await tx.insert(ipdAttendantMessageConsents)
       .values({ id: newId(), admissionId: a.id, attendantKind: to.kind, attendantRef: to.ref, ...values })
       .onConflictDoUpdate({ target: [ipdAttendantMessageConsents.admissionId, ipdAttendantMessageConsents.attendantRef], set: values });

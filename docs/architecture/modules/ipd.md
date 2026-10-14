@@ -59,7 +59,7 @@ Source: `apps/core/src/modules/ipd/`
   - `ipdTemplateRegistrations(cfg: AppConfig["ipdDailyTotals"] | undefined): Record<string, TemplateProviderIds>`
   - `readAttendantMessages(db: Db, actor: Actor, admissionId: string, sending: IpdDailyTotalsSending, opts: { secretKey?: Buffer } = {}): Promis…`
   - `readDailyTotalsStrip(db: Db, sending: IpdDailyTotalsSending, now: Date): Promise<IpdBillDeskDailyTotals>`
-  - `recordAttendantConsent(db: Db, actor: Actor, admissionId: string, input: IpdAttendantConsent, opts: { now?: Date } = {}): Promise<{ recorde…`
+  - `recordAttendantConsent(db: Db, actor: Actor, admissionId: string, input: IpdAttendantConsent, opts: { now?: Date; secretKey: Buffer }): Pro…`
   - `stopAttendantMessages(db: Db, actor: Actor, admissionId: string, opts: { now?: Date } = {}): Promise<{ stopped: boolean }>`
 - `bands.ts`
   - `allergyWords(rows: { substance: string; severity: string | null; status: string }[]): string[]`
