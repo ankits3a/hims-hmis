@@ -12,6 +12,7 @@ import { ageOf, initialsOf, rs, SEAT_STEPS, seatStepIndex, sexLetter, tokenLabel
 import { useDesk } from "./session";
 import { PhotoPanel } from "./photo";
 import { CreditChip } from "../../components/patient-credit";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ THE DOSSIER — §3: "the left column IS the patient session" ═══
@@ -474,7 +475,7 @@ export function Dossier(): React.ReactElement {
         {s.attributionCode === "" ? null : <span className="pill on">✓ slip {s.attributionCode}</span>}
         {s.future === null ? null : (
           <span className="pill on">
-            ✓ future {new Date(s.future.slotStart).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+            ✓ future {new Date(s.future.slotStart).toLocaleString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
         {freeReason === null && memberships.length === 0 && s.coupons.length === 0 && s.attributionCode === "" && s.future === null ? (

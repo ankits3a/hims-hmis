@@ -27,6 +27,7 @@ import { TeleDeskPay } from "../components/tele-desk-pay";
 import type { QrCardData } from "../components/qr-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * Appointments (D7): slot picker → book, the day list with reschedule/cancel, the needs-rebooking
@@ -599,7 +600,7 @@ function NeedsRebookingTab(
 
 /** "Mon 5 Oct" — the booked day as the unit line says it. */
 function dayLabel(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })
+  return new Intl.DateTimeFormat(dateLocale(undefined, "en-GB"), { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })
     .format(new Date(`${iso}T00:00:00Z`)).replace(",", "");
 }
 

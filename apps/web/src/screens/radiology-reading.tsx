@@ -21,6 +21,7 @@ import { SeatLink } from "../components/radiology/imaging-counter";
 import { ImagingReportPrint } from "../components/radiology/imaging-report-print";
 import { RadiologyStation } from "./radiology-station";
 import { FollowupsView, PeerView, TeleView } from "./radiology-reading-room";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * PLAN 18-S RS8a T4 — **THE READING ROOM: one urgency-sorted list, and the study in hand.**
@@ -534,7 +535,7 @@ function StudyLane({ ctx, now }: { ctx: WireReadingContext; now: number }): Reac
             <ul className="m-0 mt-1 list-none space-y-1 p-0" data-testid="priors">
               {ctx.priors.map((p) => (
                 <li key={p.studyId} className="rounded border bg-card p-1 text-xs">
-                  <b>{new Date(p.signedAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" })} · {p.studyTypeName}</b>
+                  <b>{new Date(p.signedAt).toLocaleDateString(dateLocale(), { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" })} · {p.studyTypeName}</b>
                   <span className="block">{p.impression ?? "—"}</span>
                 </li>
               ))}

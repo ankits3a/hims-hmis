@@ -9,6 +9,7 @@ import { DeskModal } from "../components/desk-modal";
 import {
   DeskTBody, DeskTD, DeskTH, DeskTHead, DeskTR, DeskTable,
 } from "../components/desk-fields";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ THE CONSULT LAYOUT BUILDER (board `Profiles`, approved 2026-09-23; 01-CONSULT-ENGINE.md §3) ═══
@@ -90,7 +91,7 @@ function changeText(t: TFunction, c: WireLayoutChange): string {
 }
 
 const fmtAt = (iso: string): string =>
-  new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
+  new Date(iso).toLocaleString(dateLocale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" });
 
 /** The AUDIT block — newest first, who and what, and the board's promise about old visits. */
 function AuditList({ audit, testId }: { audit: WireLayoutAudit[]; testId: string }): React.ReactElement {

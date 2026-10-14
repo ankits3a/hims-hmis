@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../lib/auth";
 import { fetchPatientMessages, recordPatientMessages } from "../../lib/messages-api";
 import { pharmacyErrorText } from "../../lib/pharmacy-api";
+import { deskDateLocale } from "./model";
 import type { MessageChange, WireBillMessageState, WirePatientMessages } from "../../lib/messages-api";
 
 const IST = { timeZone: "Asia/Kolkata" } as const;
-const when = (iso: string): string =>
-  new Intl.DateTimeFormat("en-GB", { ...IST, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+const when = (iso: string, lang?: string): string =>
+  new Intl.DateTimeFormat(deskDateLocale(lang), { ...IST, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 const clock = (iso: string): string => new Intl.DateTimeFormat("en-IN", { ...IST, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 
 /**
@@ -19,7 +20,7 @@ const clock = (iso: string): string => new Intl.DateTimeFormat("en-IN", { ...IST
  * everybody at the desk; recorded only under `pharmacy.messages.consent`.
  */
 export function MessagesChip({ dispenseId }: { dispenseId: string }): React.ReactElement | null {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { can } = useAuth();
   const qc = useQueryClient();
   const key = ["pharmacy", "messages", dispenseId];
@@ -44,7 +45,7 @@ export function MessagesChip({ dispenseId }: { dispenseId: string }): React.Reac
         <div style={{ marginTop: 7 }}>
           <span className="pill gd" data-testid="desk-messages-stopped">{t("pharmacyDesk.messages.stoppedPill")}</span>
           <p style={{ margin: "5px 0 0 0", fontSize: 11.5, lineHeight: "16px", color: "var(--dim)" }}>
-            {t("pharmacyDesk.messages.stoppedBy", { when: when(d.stopped.at), who: d.stopped.byName ?? "—" })}
+            {t("pharmacyDesk.messages.stoppedBy", { when: when(d.stopped.at, i18n.language), who: d.stopped.byName ?? "—" })}
           </p>
           {mayRecord ? (
             <button className="sec" style={{ marginTop: 6, height: 26, fontSize: 12 }} data-testid="desk-messages-resume" disabled={busy} onClick={() => tap({ change: "resume" })}>
@@ -73,7 +74,7 @@ export function MessagesChip({ dispenseId }: { dispenseId: string }): React.Reac
           </div>
           {d.refillReminders && d.remindersConsent !== null ? (
             <p style={{ margin: "5px 0 0 0", fontSize: 11, color: "var(--faint)" }} data-testid="desk-reminders-consent">
-              {t("pharmacyDesk.messages.consentBy", { when: when(d.remindersConsent.at), who: d.remindersConsent.byName ?? "—" })}
+              {t("pharmacyDesk.messages.consentBy", { when: when(d.remindersConsent.at, i18n.language), who: d.remindersConsent.byName ?? "—" })}
             </p>
           ) : mayRecord ? (
             <p style={{ margin: "5px 0 0 0", fontSize: 11, lineHeight: "15px", color: "var(--faint)" }}>{t("pharmacyDesk.messages.askFirst")}</p>

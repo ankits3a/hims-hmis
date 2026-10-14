@@ -38,6 +38,7 @@ import { MoveDepartmentForm } from "./move-department";
 import { RegAllergies } from "./reg-allergies";
 import { useAuth } from "../../lib/auth";
 import type { CoverageDraft, Person } from "./session";
+import { dateLocale } from "../../lib/date-locale";
 
 /**
  * ═══ THE FIVE STAGES OF ONE SESSION ═══
@@ -481,7 +482,7 @@ function StageRegister(): React.ReactElement {
           ) : ageRead.kind === "dob" ? (
             <div data-testid="reg-age-read" style={{ fontSize: 11, color: "var(--green)", marginTop: 4 }}>
               {t("registrationCounter.register.ageOrDobBorn", {
-                date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString("en-IN", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
+                date: new Date(`${ageRead.iso}T00:00:00Z`).toLocaleDateString(dateLocale(), { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
                 years: formAgeYears(f) ?? 0,
               })}
             </div>

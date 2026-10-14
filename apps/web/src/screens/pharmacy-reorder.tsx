@@ -9,6 +9,7 @@ import { materialsErrorText } from "../lib/materials-api";
 import { Button } from "@/components/ui/button";
 import { OfficeHead } from "./pharmacy-office/office-page";
 import type { WireReorderLine } from "../lib/pharmacy-api";
+import { dateLocale } from "../lib/date-locale";
 
 /**
  * ═══ PHARMACY P4 — THE REORDER LIST ═══
@@ -215,7 +216,7 @@ function LevelsCell({ itemId, code, storeResourceId, levels }: {
   );
 }
 
-const IST_WHEN = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
+const IST_WHEN = { format: (d: Date | number): string => new Intl.DateTimeFormat(dateLocale(), { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false }).format(d) };
 
 /**
  * ═══ PARITY P1 — THE SHORT BOOK, AT THE TOP OF THE REORDER LIST ═══

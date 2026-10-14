@@ -427,7 +427,7 @@ declare module "@tanstack/react-router" {
  * that RENDERS `PaletteProvider`. A hook cannot read a context its own caller provides.
  */
 function ShellChrome(): React.ReactElement {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { username, can, logout } = useAuth();
   const navigate = useNavigate();
   const palette = usePalette();
@@ -509,7 +509,7 @@ function ShellChrome(): React.ReactElement {
           {t("app.menu")}
         </button>
         <div className="right">
-          <span className="mo clock">{istDateLabel()} · {istClock()} IST</span>
+          <span className="mo clock">{istDateLabel(new Date(), i18n.language.startsWith("hi") ? "hi-IN" : "en-IN")} · {istClock()} IST</span>
           {/*
             The search button the owner ruled stays in the header. It advertises F8 and not
             Ctrl+K: Chrome answers Ctrl+K with its own address bar first, which FD-9 measured.

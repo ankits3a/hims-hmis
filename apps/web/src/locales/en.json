@@ -8590,6 +8590,15 @@
   },
   "pharmacyDesk": {
     "wordmark": "PHARMACY DESK",
+    "phone": {
+      "menu": "Menu",
+      "tabTicket": "Ticket",
+      "tabLine": "The line",
+      "tabBill": "Bill",
+      "tabDay": "Your day",
+      "showPatient": "Show the full record",
+      "hidePatient": "Hide the full record"
+    },
     "where": "OPD counter",
     "thisDesk": "this desk",
     "waiting": "{{count}} waiting",
@@ -15739,5 +15748,8 @@
         "value": "Value at cost"
       }
     }
+  },
+  "agentDock": {
+    "title": "DESK AGENT"
   }
 }

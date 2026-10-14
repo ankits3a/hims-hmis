@@ -258,7 +258,7 @@ export function LineList({
           {scanNote === null ? null : <span role="status" style={{ fontSize: 12, color: "var(--gold-ink, #9a6208)" }}>{scanNote}</span>}
         </div>
       ) : null}
-      <div style={{
+      <div className="pd-lhead" style={{
         display: "flex", alignItems: "center", gap: 11, padding: "9px 15px", marginTop: 13, background: "var(--wash)",
         border: "1px solid var(--line)", borderRadius: "7px 7px 0 0",
       }}>
@@ -605,7 +605,7 @@ function LineRow({
 
   return (
     <section data-testid={id} onFocusCapture={onFocusLine} onMouseDown={onFocusLine} style={{ borderTop: line.lineIdx === 0 ? "none" : "1px solid var(--line2)", boxShadow: `inset 3px 0 0 ${bar}` }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px" }}>
+      <div className="pd-lrow" style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px" }}>
         <span style={{ width: 21, flexShrink: 0, paddingTop: 1 }}>
           {editable ? (
             <input
