@@ -775,8 +775,10 @@ export class PatientsController {
   @Post(":id/allergies")
   async postAllergy(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
     const b = parsed(allergyBody, body);
+    /* Resolved like the other allergy routes: the merge chain and the sealed-record gate, then the canonical id. */
+    const patientId = await this.parentPatientId(actor, id);
     try {
-      return await withTx(this.db, (tx) => addAllergy(tx, actor, id, b));
+      return await withTx(this.db, (tx) => addAllergy(tx, actor, patientId, b));
     } catch (e) {
       toHttp(e);
     }
