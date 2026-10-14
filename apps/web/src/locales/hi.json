@@ -3852,6 +3852,9 @@
     },
     "ipdNewOrder": {
       "title": "नए आदेश"
+    },
+    "ipdAllergyFlags": {
+      "title": "जाँचने योग्य एलर्जी"
     }
   },
   "report": {

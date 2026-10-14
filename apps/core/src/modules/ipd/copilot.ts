@@ -12,7 +12,7 @@ import { readAdmission, requireIpdPermission } from "./admission-core";
 import { userNames } from "./admissions";
 import { IPD_SYSTEM_ACTOR } from "./beds";
 import { admissionPlace } from "./admission-place";
-import { dischargeRecordsHash, latestDraft, mayAskAgain, sbarTextHash } from "./copilot-drafts";
+import { dischargeProcedureWindow, dischargeRecordsHash, latestDraft, mayAskAgain, sbarTextHash } from "./copilot-drafts";
 import { buildFactSet, factsHash } from "./copilot-facts";
 import { applyRewordings, chooseLines, renderLine, unverifiedWords, verifyFreeText, wordsOf } from "./copilot-lines";
 import { askIpdModel, jsonIn, maskForModel, modelBarred } from "./copilot-model";
@@ -499,9 +499,9 @@ export async function buildDischargeDraft(db: Db, actor: Actor, admissionId: str
   const reported = items.filter((i) => i.at !== null);
   const awaited = items.filter((i) => i.at === null);
   // Procedures: the theatre's record of the stay, and of the day-care case the admission was converted from.
-  const procs = a.admittedAt === null ? [] : await proceduresDone(db, {
-    patientId: a.patientId, from: a.admittedAt, until: now, linkedRef: a.source === "ot_daycare_conversion" ? a.sourceRef : null,
-  });
+  // The same window as the fingerprint's (#794): the stay, up to its end when it has ended.
+  const window = dischargeProcedureWindow(a, now);
+  const procs = window === null ? [] : await proceduresDone(db, window);
 
   const said = (r: (typeof rounds)[number]): string => [r.soap.assessment, r.soap.plan === undefined ? undefined : `plan: ${r.soap.plan}`]
     .filter((s): s is string => typeof s === "string" && s.trim() !== "").join("; ");
@@ -562,7 +562,7 @@ export async function buildDischargeDraft(db: Db, actor: Actor, admissionId: str
   // The row keeps no record text: ids, the fingerprint, and the model's own paragraph when it wrote one (`copilot-drafts.ts`).
   await db.insert(ipdCopilotDrafts).values({
     id: draftId, admissionId: a.id, patientId: a.patientId, kind: "discharge", scopeKey: "", source, modelId: source === "model" ? modelId : null,
-    promptVersion: DISCHARGE_PROMPT_VERSION, factsHash: await dischargeRecordsHash(db, a.id),
+    promptVersion: DISCHARGE_PROMPT_VERSION, factsHash: await dischargeRecordsHash(db, a),
     content: { course: source === "model" ? course : null, flags, truncated, roundIds: rounds.map((r) => r.id), noteIds: notes.map((n) => n.id), orderIds: orders.map((o) => o.id) },
     fallbackReason: reason, builtBy: actor.id, builtAt: now, modelMs,
   });
