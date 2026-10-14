@@ -35,6 +35,8 @@ export * from "./emar";
 export * from "./copilot";
 // #787 (IP counter) — the OPD pharmacy counter's charge to an admission: the lookup, the sales, the routes.
 export * from "./counter";
+// 2026-10-14 — the ward narcotic register: per-ward running balance, the shift-change count, its exceptions.
+export * from "./narcotic";
 export { IPD_ALLERGY_OVERRIDE_REASONS, IPD_COUNTER_MAX_LINES, IPD_DRUG_ROUTES, IPD_REISSUE_REASONS, IPD_VERBAL_EMERGENCIES, IpdDrugOrderSchema } from "./intents-meds";
 export type { IpdDrugOrder } from "./intents-meds";
 export { IPD_ROUND_SOURCES, IpdRoundSoapSchema } from "./intents-ward";
@@ -104,6 +106,9 @@ export const IPD_INTENTS = {
   // #787 (IP counter, DECIDED) — the OPD pharmacy counter charges a sale to the admission, and takes its returns.
   counter_charge: medIntents.counterCharge,
   counter_return: medIntents.counterReturn,
+  // 2026-10-14 (DECIDED, NDPS / NABH) — the ward narcotic register's shift-change count and its exception closed.
+  record_narcotic_count: medIntents.recordNarcoticCount,
+  resolve_narcotic_exception: medIntents.resolveNarcoticException,
   declare_fit: dischargeIntents.declareFit,
   cancel_fit: dischargeIntents.cancelFit,
   confirm_charges: dischargeIntents.confirmCharges,

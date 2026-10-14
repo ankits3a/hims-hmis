@@ -55,6 +55,7 @@ import { FamilyPage } from "./screens/ipd-family";
 import { IpdFamilyCallbacks } from "./screens/ipd-family-callbacks";
 import { IpdRoundPatientRoute, IpdRounds } from "./screens/ipd-rounds";
 import { IpdMar } from "./screens/ipd-mar";
+import { IpdNarcotics } from "./screens/ipd-narcotics";
 import { IpdPharmacy } from "./screens/ipd-pharmacy";
 import { CopilotNoticeHost } from "./components/copilot-notice";
 import { OpdReportScreen } from "./screens/opd-report";
@@ -419,6 +420,8 @@ const NAV: readonly NavEntry[] = [
   // E4.3 (#735) — the ward MAR chart and the inpatient pharmacy desk; paths and permissions match `ipdManifest.menu`.
   { to: "/ipd/mar", label: "nav.ipdMar", permission: "ipd.emar.view", group: "wards" },
   { to: "/ipd/pharmacy", label: "nav.ipdPharmacy", permission: "ipd.emar.verify", group: "wards" },
+  // 2026-10-14 — the ward narcotic register (NDPS / NABH): balance, the shift count, exceptions; matches `ipdManifest.menu`.
+  { to: "/ipd/narcotics", label: "nav.ipdNarcotics", permission: "ipd.emar.view", group: "wards" },
   { to: "/ot/list", label: "nav.otList", permission: "ot.cases.read", group: "theatre" },
   { to: "/ot/book", label: "nav.otBook", permission: "ot.cases.book", group: "theatre" },
   { to: "/ot/recovery", label: "nav.otRecovery", permission: "ot.recovery.operate", group: "theatre" },
@@ -963,6 +966,12 @@ const ipdPharmacyRoute = createRoute({
   getParentRoute: () => authedRoute,
   path: "/ipd/pharmacy",
   component: IpdPharmacy,
+});
+/** 2026-10-14 — the ward narcotic register (`ipd.emar.view`; the count needs `ipd.emar.give`, the act re-checks). */
+const ipdNarcoticsRoute = createRoute({
+  getParentRoute: () => authedRoute,
+  path: "/ipd/narcotics",
+  component: IpdNarcotics,
 });
 
 /** E0.1 (decision 0064) — one day's copilot totals; aggregate only, it names nobody. */
@@ -2176,7 +2185,7 @@ export const router = createRouter({
     familyRoute,
     changePasswordRoute,
     authedRoute.addChildren([
-      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdBillDeskRoute, ipdDischargeRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
+      indexRoute, myDayRoute, staffReportsRoute, copilotHealthRoute, ipdBedsRoute, ipdAdmitRoute, ipdPassesRoute, passesScanRoute, ipdBillRoute, ipdHandoversRoute, ipdWardRoute, ipdMyShiftRoute, ipdBillDeskRoute, ipdDischargeRoute, ipdFamilyCallbacksRoute, ipdRoundsRoute, ipdRoundPatientRoute, ipdMarRoute, ipdPharmacyRoute, ipdNarcoticsRoute, opdDayReportRoute, counterDeskRoute, patientRoute, mergeRoute, approvalsRoute, myReachRoute, opdAdminRoute, opdAppointmentsRoute,
       opdDeskRoute, opdConsultRoute, opdConsultFocusRoute, opdScribeRoute, paperConsultsRoute, opdSetsRoute, opdDisplayRoute, billingRoute, billingDuesRoute,
       billingSessionRoute, billingOfficeRoute, opsModeRoute, opsDowntimeKitRoute, adminUsersRoute,
       // GO-LIVE SCREENS — +1, `/admin/workflows`. `caddyfile-parity.test.ts` pins the count.

@@ -318,6 +318,7 @@ Source: `apps/core/src/modules/ipd/`
   - `NPO_ROUTES: readonly string[]`
   - `administerDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"administer_dose">>`
   - `backfillEmarAllergyFlags(db: Db, now: Date = new Date()): Promise<number>`
+  - `confirmSecondNursePin(db: Db, actor: Actor, rawUsername: string, pin: string, at: Date): Promise<string>`
   - `decideAllergyFlag(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"decide_allergy_flag">>`
   - `emarAllergyConsumer(db: Db): Handler`
   - `holdDose(db: Db, actor: Actor, raw: unknown, opts: EmarOpts = {}): Promise<Output<"hold_dose">>`
@@ -399,6 +400,15 @@ Source: `apps/core/src/modules/ipd/`
   - `class IpdModule`
 - `manifest.ts`
   - `ipdManifest: ModuleManifest`
+- `narcotic-ledger.ts`
+  - `followNarcoticsIn(tx: Tx, actor: Actor, admissionId: string, at: Date, move: NarcoticMove): Promise<number>`
+  - `wardNarcoticBalances(exec: Db | Tx, wardId: string, opts: { cut?: Date } = {}): Promise<NarcoticBalance[]>`
+  - types: `NarcoticBalance`, `NarcoticMove`
+- `narcotic.ts`
+  - `IPD_NARCOTIC_RESOLVER_ROLES`
+  - `readNarcoticWard(db: Db, actor: Actor, opts: { wardId?: string; now?: Date } = {}): Promise<IpdNarcoticWard>`
+  - `recordNarcoticCount(db: Db, actor: Actor, raw: unknown, opts: NarcoticOpts = {}): Promise<Output<"record_narcotic_count">>`
+  - `resolveNarcoticException(db: Db, actor: Actor, raw: unknown, opts: NarcoticOpts = {}): Promise<Output<"resolve_narcotic_exception">>`
 - `now-cards.ts`
   - `IPD_DISCHARGE_STEP_STUCK_MINUTES`
   - `SEALED_LABEL`
@@ -564,7 +574,7 @@ Source: `apps/core/src/modules/ipd/`
 
 Foreign keys into: `patients`, `resources`
 
-## HTTP routes (136)
+## HTTP routes (139)
 
 - `admissions.controller.ts` — 22: `/ipd/admissions`
 - `beds.controller.ts` — 8: `/ipd/beds`
@@ -572,7 +582,7 @@ Foreign keys into: `patients`, `resources`
 - `charges.controller.ts` — 2: `/ipd/charge-lines`
 - `copilot.controller.ts` — 4: `/ipd/discharge`, `/ipd/nursing`, `/ipd/rounds`
 - `discharge.controller.ts` — 27: `/ipd/discharge`, `/ipd/mortuary`
-- `emar.controller.ts` — 24: `/ipd/emar`
+- `emar.controller.ts` — 27: `/ipd/emar`
 - `family.controller.ts` — 12: `/ipd/admissions`, `/ipd/family`, `/ipd/family-callbacks`, `/ipd/family-links`
 - `nursing.controller.ts` — 12: `/ipd/nursing`
 - `payer.controller.ts` — 5: `/ipd/admissions`, `/ipd/payer`

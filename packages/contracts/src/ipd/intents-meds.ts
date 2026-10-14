@@ -427,6 +427,52 @@ export const recordNarcoticWastage = ipdIntent({
   idempotent: true,
 });
 
+/**
+ * 2026-10-14 — THE SHIFT-CHANGE NARCOTIC COUNT (NDPS / NABH). Two nurses count the ward cabinet together: the counting
+ * nurse sends every controlled drug's counted quantity (in the register's base unit), and the second nurse confirms at the
+ * same phone with THEIR username and PIN. Every drug the register expects on the ward must be counted. A count that
+ * differs from the register is an exception: the nursing supervisor and the pharmacy are told.
+ */
+export const recordNarcoticCount = ipdIntent({
+  input: ipdInput({
+    wardId: IpdIdSchema,
+    lines: z.array(z.strictObject({
+      medicineId: IpdIdSchema,
+      unit: z.string().trim().min(1).max(32),
+      counted: z.number().min(0).max(100_000),
+    })).min(1).max(200),
+    secondNurse: z.strictObject({ username: z.string().trim().min(1).max(64), pin: z.string().min(4).max(12) }),
+  }),
+  output: z.strictObject({
+    roundId: IpdIdSchema,
+    mismatches: z.number().int().min(0),
+    lines: z.array(z.strictObject({ countId: IpdIdSchema, medicineId: IpdIdSchema, unit: z.string(), expected: z.number(), counted: z.number(), variance: z.number() })),
+  }),
+  refusals: ["ward_not_found", "narcotic_count_incomplete", "second_nurse_same_person", "second_nurse_not_confirmed", "second_nurse_not_nurse"],
+  actors: ["nurse", "supervisor"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.narcotic.counted", "ipd.narcotic.count_mismatch"],
+  idempotent: true,
+});
+
+/**
+ * 2026-10-14 — a count exception closed by the nursing supervisor (or the pharmacist) with what was found. The counted
+ * quantity becomes the register's agreed balance from that count on.
+ */
+export const resolveNarcoticException = ipdIntent({
+  input: ipdInput({ countId: IpdIdSchema, note: IpdNoteSchema }),
+  output: z.strictObject({ countId: IpdIdSchema, resolvedAt: IpdInstantSchema }),
+  refusals: ["narcotic_count_not_found", "narcotic_count_matched", "narcotic_count_resolved", "not_narcotic_resolver"],
+  actors: ["supervisor", "pharmacist"],
+  copilotProposable: false,
+  agentTier: "none",
+  undo: "irreversible",
+  events: ["ipd.narcotic.count_resolved"],
+  idempotent: true,
+});
+
 /** Unused issued units back to the pharmacy (order stopped after issue, discharge): stock in, the units credited. */
 export const returnMed = ipdIntent({
   input: ipdInput({ issueId: IpdIdSchema, units: z.number().int().positive().max(500), reason: IpdNoteSchema }),

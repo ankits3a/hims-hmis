@@ -167,6 +167,7 @@
     "dietConsults": "Diet consults",
     "ipdRounds": "Rounds",
     "ipdMar": "MAR",
+    "ipdNarcotics": "Narcotics",
     "ipdPharmacy": "IP pharmacy"
   },
   "palette": {
@@ -19138,6 +19139,61 @@
       "stock_short": "Not enough stock on the shelf for this quantity.",
       "medicine_not_stocked": "The OPD pharmacy does not stock this medicine.",
       "return_exceeds_issue": "More units cannot come back than are with the patient."
+    }
+  },
+  "ipdNarcotic": {
+    "title": "Narcotic register",
+    "print": "Print",
+    "noWard": "No ward with beds yet",
+    "empty": "No controlled drug on this ward",
+    "countDue": "Count due this shift",
+    "balance": "Balance by drug",
+    "lines": "Register lines",
+    "noLines": "No register line yet",
+    "exceptions": "Count exceptions",
+    "noExceptions": "No count exception",
+    "open": "Open",
+    "resolved": "Resolved",
+    "resolve": "Resolve",
+    "findings": "What was found",
+    "resolvedBy": "Resolved by {{name}}",
+    "expectedCounted": "register {{expected}}, counted {{counted}} {{unit}}",
+    "by": "by {{name}}",
+    "witness": "witness {{name}}",
+    "neverCounted": "Not counted yet",
+    "countOk": "Count matches the register",
+    "countBad_one": "{{count}} mismatch — supervisor and pharmacy told",
+    "countBad_other": "{{count}} mismatches — supervisor and pharmacy told",
+    "shift": {
+      "morning": "Morning shift",
+      "evening": "Evening shift",
+      "night": "Night shift"
+    },
+    "col": {
+      "drug": "Drug",
+      "opening": "Opening",
+      "received": "Received",
+      "given": "Given",
+      "wasted": "Wasted",
+      "returned": "Returned",
+      "moved": "Moved in / out",
+      "expected": "Expected",
+      "lastCount": "Last count"
+    },
+    "count": {
+      "title": "Shift count (two nurses)",
+      "hint": "Count together. Second nurse: own username and PIN.",
+      "counted": "Counted: {{name}}",
+      "save": "Save count"
+    },
+    "kind": {
+      "received": "Received",
+      "given": "Given",
+      "wasted": "Wasted",
+      "returned": "Returned",
+      "reversal": "Given in error — back",
+      "transfer_out": "Moved out",
+      "transfer_in": "Moved in"
     }
   }
 }

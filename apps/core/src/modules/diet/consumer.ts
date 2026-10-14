@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { IPD_ADMISSION_ENDED_EVENT_NAMES, IPD_TRANSFER_ACCEPTED_EVENT_NAME } from "../ipd";
 import { Logger } from "@nestjs/common";
-import { IPD_ADMITTED_EVENT, IPD_BED_SWAPPED_EVENT, OT_BOOKED_EVENT, OT_CANCELLED_EVENT, OT_LIST_PUBLISHED_EVENT } from "./names";
+import { IPD_ADMITTED_EVENT, IPD_BED_SWAPPED_EVENT, OT_BOOKED_EVENT, OT_CANCELLED_EVENT, OT_LIST_PUBLISHED_EVENT, OT_POSTPONED_EVENT } from "./names";
 import { endStay, liftOtNpo, npoForOtBooking, syncOtNpo } from "./orders";
 import { reconcileAdmission } from "./trays";
 import type { Db } from "../../kernel/db/client";
@@ -13,7 +13,8 @@ import type { DispatchedEvent, Handler } from "../../kernel/events/subscriptions
  *     the old ward's tray withdrawn and that ward TOLD when its list was printed);
  *   · IPD discharged / LAMA / absconded / deceased → `endStay` (order ended, trays withdrawn from every list ahead);
  *   · OT `daycare.booked` → NPO for the surgery day; OT `case.cancelled` → that NPO lifts and the ward is told;
- *     OT `list.published` → that day's cases re-read (a postponed case's NPO moves to its new date).
+ *     OT `case.postponed` → that case re-read (its NPO moves to the new date at once; a case cancelled since keeps
+ *     its NPO lifted); OT `list.published` → that day's cases re-read (the belt and braces of the same move).
  * Only ids are read from the payloads; every act re-reads IPD live and is idempotent (at-least-once delivery, and the
  * dispatcher's look-back re-reads recent history once on a fresh cursor).
  */
@@ -21,6 +22,7 @@ const Admission = z.looseObject({ admissionId: z.string().min(1) });
 const Swap = z.looseObject({ admissionIdA: z.string().min(1), admissionIdB: z.string().min(1) });
 const Booked = z.looseObject({ caseId: z.string().min(1), patientId: z.string().min(1), listDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
 const Cancelled = z.looseObject({ caseId: z.string().min(1) });
+const Postponed = z.looseObject({ caseId: z.string().min(1), newListDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
 
 const ENDED: ReadonlySet<string> = new Set(IPD_ADMISSION_ENDED_EVENT_NAMES);
 
@@ -43,6 +45,10 @@ export async function handleDietEvent(db: Db, e: DispatchedEvent, now: Date = ne
   }
   if (e.name === OT_CANCELLED_EVENT) {
     await liftOtNpo(db, read(Cancelled, e).caseId, now);
+    return;
+  }
+  if (e.name === OT_POSTPONED_EVENT) {
+    await syncOtNpo(db, { caseId: read(Postponed, e).caseId }, now);
     return;
   }
   if (e.name === OT_LIST_PUBLISHED_EVENT) {
