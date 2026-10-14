@@ -1,3 +1,4 @@
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 
 type Extra = { apiBase?: string; appEnv?: string; updateFeed?: string; version?: string; versionCode?: number; pushInBuild?: boolean };
@@ -10,7 +11,13 @@ export const IS_PRODUCTION = APP_ENV === "production";
 
 /** This build, and where it asks whether a newer one exists (src/update.ts). */
 export const APP_VERSION: string = extra.version ?? "0.0.0";
-export const APP_VERSION_CODE: number = typeof extra.versionCode === "number" ? extra.versionCode : 0;
+/**
+ * The build number is asked of the PHONE, not of `extra`: once a bundle arrives over the air
+ * (src/ota.ts) `extra` is the bundle's, written when it was published, while the APK underneath —
+ * the thing a newer APK must outnumber (src/update.ts) — is whichever one this phone installed.
+ */
+const installed = Number(Application.nativeBuildVersion);
+export const APP_VERSION_CODE: number = Number.isInteger(installed) && installed > 0 ? installed : typeof extra.versionCode === "number" ? extra.versionCode : 0;
 export const UPDATE_FEED: string = extra.updateFeed ?? "https://stagehmis.crkmch.com/app/hmis-staff-staging-latest.json";
 
 /**
