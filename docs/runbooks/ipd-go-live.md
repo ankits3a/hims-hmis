@@ -130,8 +130,17 @@ node dist/scripts/import-ipd-tariff.js <path to tariff.csv> --by <billing login>
 
 ### 3.3 Register the IPD approval types and draft the admission workflow
 
-On staging, `stage-ipd-setup` does both. **On production there is no command for this yet: issue #798.** It must be
-built and merged before cutover day; until then the check item `approval_types_registered` cannot PASS on production.
+One command, run once on go-live day (#798). Without `--confirm` it only prints what it would do and writes nothing:
+
+```bash
+node dist/scripts/ipd-golive-setup.js
+node dist/scripts/ipd-golive-setup.js --confirm
+```
+
+It registers the five IPD approval types and creates the `ipd_admission` workflow as a **draft**. It never approves
+or activates anything, imports no tariff and gives nobody a role; the approvals are §4. Running it again only says
+"already". It is not part of any deploy: it runs only when IT runs it. (On staging, `stage-ipd-setup` does the same
+two steps through the same code.)
 
 ### 3.4 Mark the incumbent beds
 
@@ -168,7 +177,7 @@ about a minute).
 | When | What | Who |
 |---|---|---|
 | Day before, evening | The IPD code is merged and deployed (§11). IT runs the check: expect FAIL only on data items | IT |
-| Day before, evening | §3.1 bed list, §3.2 tariff import and approval, §3.3 approval types and workflow draft | IT, billing manager, owner |
+| Day before, evening | §3.1 bed list, §3.2 tariff import and approval, §3.3 `ipd-golive-setup --confirm` | IT, billing manager, owner |
 | Day before, evening | §4 approvals clicks | MS, owner |
 | Cutover night, 23:00 | Ward in-charges list incumbent beds; §3.4 dry run, then apply | nursing superintendent, IT |
 | Cutover night, 23:45 | IT runs the check. **Only READY goes ahead.** A FAIL is fixed now or the owner postpones | IT, owner |
@@ -335,7 +344,7 @@ section.
 | 3 | Rehearsal scripts R1–R12 each run once (§2) | staff | | |
 | 4 | Rehearsal: zero issued items without a bill line; every discharge closed | billing manager | | |
 | 5 | Owner "OK for production" after the rehearsal | owner | | |
-| 6 | Issue #798 merged (production approval types and workflow draft) | IT | | |
+| 6 | Dry run of `ipd-golive-setup` read (§3.3); nothing written | IT | | |
 | 7 | All IPD PRs merged in the §11 order | IT | | |
 | 8 | Cutover: bed list loaded (§3.1) | IT | | count = |
 | 9 | Cutover: tariff imported, approved, activated; IPD services on (§3.2) | billing manager, owner | | version = |

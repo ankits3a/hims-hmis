@@ -48,6 +48,9 @@ E1.1 (#718) adds the module surface: `manifest.ts` (four `ipd.beds.*` permission
 - `scripts/ipd-golive-check.ts` (E3.4 #732) — the read-only go-live readiness check (PASS / FAIL / WARN per item, exit 1 on
   any FAIL, one READ ONLY transaction). Its items are also `standup-check`'s `ipd` rows. Runbook: `docs/runbooks/ipd-go-live.md`.
   An IPD bed there is what the board shows (`IpdBedAttributesSchema`); the OT's recovery bays are `bed` rows too and are not IPD's.
+- `scripts/ipd-golive-setup.ts` (#798) — go-live day, run once by IT: registers the IPD approval types and DRAFTS
+  `ipd_admission` (never approves/activates; no tariff, no roles). Plan without `--confirm`. NOT a seed, NOT in deploy.sh.
+  Shares `scripts/ipd-setup-steps.ts` with `stage-ipd-setup` steps a and b.
 - `apps/web/src/screens/ipd-beds.tsx` — the board (route `/ipd/beds`, `?wall=1` for wall displays).
 
 - `admissions.ts` (E1.2) — `requestAdmission`, `cancelAdmission`, `admit`, `emergencyAdmit`, `backfillDowntime`,
