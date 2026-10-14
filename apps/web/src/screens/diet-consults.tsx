@@ -60,6 +60,23 @@ function ConsultRow({ c }: { c: DietConsultView }): React.ReactElement {
   );
 }
 
+/* IPD walk 2026-10-14: `<input type="time">` drew "06:00 AM" — the browser's 12-hour clock beside a kitchen board that
+   reads 24-hour. The field is a plain HH:MM box, 24-hour like every other IST time on the diet screens. */
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+function Clock24({ label, value, onChange, testId }: { label: string; value: string; onChange: (v: string) => void; testId: string }): React.ReactElement {
+  return (
+    <label>
+      <span>{label}</span>
+      <input className="dc-clock" type="text" inputMode="numeric" autoComplete="off" maxLength={5} placeholder="HH:MM" pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+        aria-invalid={!HHMM.test(value)} value={value} data-testid={testId}
+        onChange={(ev) => {
+          const raw = ev.target.value.replace(/[^\d:]/g, "");
+          onChange(/^\d{3,4}$/.test(raw) ? `${raw.slice(0, raw.length - 2).padStart(2, "0")}:${raw.slice(-2)}` : raw);
+        }} />
+    </label>
+  );
+}
+
 const toMin = (s: string): number => { const [h, m] = s.split(":").map(Number); return (h ?? 0) * 60 + (m ?? 0); };
 
 function Rounds(): React.ReactElement {
@@ -82,9 +99,9 @@ function Rounds(): React.ReactElement {
         return (
           <div key={r.meal} className="dc-round" data-testid={`dc-round-${r.meal}`}>
             <span className="m">{t(`diet.meal.${r.meal}`)}</span>
-            <label>{t("diet.consults.cutoff")}<input type="time" value={e.cutoff} onChange={(ev) => set("cutoff", ev.target.value)} /></label>
-            <label>{t("diet.consults.serveAt")}<input type="time" value={e.serve} onChange={(ev) => set("serve", ev.target.value)} /></label>
-            <button type="button" className="dk-btn ghost" disabled={edit[r.meal] === undefined || save.isPending}
+            <Clock24 label={t("diet.consults.cutoff")} value={e.cutoff} onChange={(v) => set("cutoff", v)} testId={`dc-cutoff-${r.meal}`} />
+            <Clock24 label={t("diet.consults.serveAt")} value={e.serve} onChange={(v) => set("serve", v)} testId={`dc-serve-${r.meal}`} />
+            <button type="button" className="dk-btn ghost" disabled={edit[r.meal] === undefined || save.isPending || !HHMM.test(e.cutoff) || !HHMM.test(e.serve)}
               onClick={() => save.mutate({ meal: r.meal, cutoffMinute: toMin(e.cutoff), serveMinute: toMin(e.serve) })}>{t("diet.consults.saveRound")}</button>
           </div>
         );

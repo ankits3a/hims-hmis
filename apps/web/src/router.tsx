@@ -731,7 +731,7 @@ function Shell(): React.ReactElement {
         <div className="flex-1">
           <Outlet />
         </div>
-        <ShortcutLegend can={can} />
+        <ShortcutLegend can={can} path={pathname} />
       </div>
   );
 

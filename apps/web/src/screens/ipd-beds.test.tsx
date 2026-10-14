@@ -1,4 +1,5 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
+import i18next from "i18next";
 import userEvent from "@testing-library/user-event";
 import { ApiError, setToken } from "../lib/api";
 import { renderWithRouter } from "../test-utils";
@@ -373,5 +374,34 @@ describe("Beds board — repair tickets (E1.5)", () => {
     await user.click(within(acts).getByRole("button", { name: "Confirm repair" }));
     expect(await within(acts).findByText(/Repair confirmed/)).toBeInTheDocument();
     expect(posted).toEqual(["/api/maintenance/tickets/k/confirm"]);
+  });
+});
+
+/*
+  IPD walk 2026-10-14 — the board's date was hard-coded en-IN ("Wed, 14 Oct" on a Hindi screen), and the ground floor,
+  which holds only day care and emergency, read "0 / 0 beds" above 120 beds marked "Not in census".
+*/
+describe("Beds — the walk's words", () => {
+  afterEach(async () => { await act(async () => { await i18next.changeLanguage("en"); }); });
+
+  it("writes the date in the reader's language", async () => {
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    await screen.findByTestId("ipd-beds-floor");
+    const title = (): string => screen.getByRole("heading", { level: 1 }).parentElement!.textContent ?? "";
+    expect(title()).toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/);
+    await act(async () => { await i18next.changeLanguage("hi"); });
+    await waitFor(() => expect(title()).not.toMatch(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/));
+    expect(title()).toMatch(/(सोम|मंगल|बुध|गुरु|शुक्र|शनि|रवि)/);
+  });
+
+  it("says a floor's census beds and its beds outside the census, each by name", async () => {
+    const b = boardOf(false);
+    const ground = { ...b.floors[0]!, id: id(90), code: "F00", name: "Ground floor", census: { occupied: 0, total: 0 }, wards: [b.floors[0]!.wards[1]!] };
+    api.getBedBoard.mockReset().mockResolvedValue({ ...b, floors: [ground, b.floors[0]!] });
+    renderWithRouter(<IpdBedsUnderTest />, "/ipd/beds");
+    const g = await screen.findByTestId(`ipdb-floorhead-${id(90)}`);
+    expect(g).toHaveTextContent("Not in census 1 / 1");
+    expect(g).not.toHaveTextContent("0 / 0");
+    expect(screen.getByTestId(`ipdb-floorhead-${id(1)}`)).toHaveTextContent("In census 2 / 4 · Not in census 1 / 1");
   });
 });

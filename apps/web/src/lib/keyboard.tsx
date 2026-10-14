@@ -195,22 +195,34 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }): R
  * listener in the shell binds it (the strip's Release is a button), so it was a keycap that lies on
  * every shell screen. Omitted `can` keeps the old unfiltered legend for mounts with no auth context.
  */
-export function ShortcutLegend({ can }: { can?: (permission: string) => boolean } = {}): React.ReactElement {
+/*
+ * IPD walk 2026-10-14 — THE DESK'S KEYS ARE NOT THE WARD'S. The legend ("/ Search · F4 New patient · F7 Appointments ·
+ * Ctrl+⏎ Confirm") is the OPD front desk's, and it sat under every IPD and diet screen, at phone width too, where no
+ * keyboard exists. `path`, when given, drops it on the inpatient and diet screens; on a phone it is hidden by CSS.
+ */
+const NO_LEGEND_PREFIXES = ["/ipd", "/diet"] as const;
+export function legendAppliesTo(path: string | undefined): boolean {
+  if (path === undefined) return true;
+  return !NO_LEGEND_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
+export function ShortcutLegend({ can, path }: { can?: (permission: string) => boolean; path?: string } = {}): React.ReactElement | null {
   const { t } = useTranslation();
   const reach = (permission: string): boolean => can === undefined || can(permission);
   const screenKeys = useSyncExternalStore(subscribeScreenKeys, readScreenKeys, readScreenKeys);
+  if (!legendAppliesTo(path)) return null;
   // PARITY P3 — a screen that registers its own keys (`useScreenKeys`) gets them here instead of
   // the front desk's: F4 / F7 / Ctrl+⏎ / "release the patient" mean nothing on the pharmacy office.
   if (screenKeys !== null) {
     return (
-      <footer className="no-print flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-1 text-xs text-neutral-500" data-testid="shortcut-legend-screen">
+      <footer className="no-print hidden sm:flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-1 text-xs text-neutral-500" data-testid="shortcut-legend-screen">
         <span>{t("shortcuts.search")}</span>
         {screenKeys.map((k) => <span key={k}>{k}</span>)}
       </footer>
     );
   }
   return (
-    <footer className="no-print flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-1 text-xs text-neutral-500">
+    <footer className="no-print hidden sm:flex flex-wrap gap-x-4 gap-y-1 border-t px-4 py-1 text-xs text-neutral-500" data-testid="shortcut-legend">
       <span>{t("shortcuts.search")}</span>
       {reach("patients.register") ? <span>{t("shortcuts.new")}</span> : null}
       {reach("opd.appointments.read") ? <span>{t("shortcuts.book")}</span> : null}

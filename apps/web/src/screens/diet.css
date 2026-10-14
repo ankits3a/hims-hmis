@@ -47,7 +47,8 @@
 
 @media (max-width: 760px) {
   .pp .dk-head { flex-wrap: wrap; }
-  .pp .dk-meals { margin-left: 0; }
+  /* IPD walk 2026-10-14: four meal tabs ran off a 390 px phone in Hindi. They wrap onto a second row instead. */
+  .pp .dk-meals { margin-left: 0; display: flex; flex-wrap: wrap; width: 100%; }
 }
 
 @media print {
@@ -123,8 +124,10 @@
 .pp .dc-rounds > header { display: flex; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .pp .dc-round { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line2); }
 .pp .dc-round .m { width: 110px; font-weight: 700; color: var(--ink); }
-.pp .dc-round label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); }
-.pp .dc-round input { min-height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); }
+.pp .dc-round label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); white-space: nowrap; }
+/* Outranks paper-pine's `.pp input:not(.in):not(…):not(…)` (width: 100%): an HH:MM box is five characters wide. */
+.pp .dc-rounds .dc-round label input.dc-clock { height: 36px; min-height: 36px; width: 6ch; padding: 0 8px; box-sizing: content-box; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 15px; }
+.pp .dc-rounds .dc-round label input.dc-clock[aria-invalid="true"] { border-color: var(--red); }
 @media (max-width: 760px) {
   .pp .dc-row { grid-template-columns: minmax(0, 1fr); }
 }

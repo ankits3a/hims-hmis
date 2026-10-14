@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type React from "react";
 import type { IpdEmarDose, IpdEmarDueItem, IpdEmarOrderLine, IpdEmarPatient, IpdEmarScan, IpdRefusalBody } from "@hmis/contracts";
+import { ApiError } from "../lib/api";
 import { fmtIst } from "../lib/format";
 import { refusalOf } from "../lib/ipd-beds-api";
 import { getEmarPatient, give, hold, infusion, miss, refuse, reoffer, scan, secondCheck, wastage } from "../lib/ipd-emar-api";
@@ -103,7 +104,11 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
   const [npoReason, setNpoReason] = useState("");
   const [npoDoctor, setNpoDoctor] = useState("");
   const [outcome, setOutcome] = useState<{ kind: "hold" | "refuse" | "miss"; dose: IpdEmarDose } | null>(null);
-  const load = useCallback(() => getEmarPatient(admissionId).then(setMar, () => setMar(null)), [admissionId]);
+  // IPD walk 2026-10-14: a refused or failed read said "Loading…" for ever; it now says which.
+  const [loadError, setLoadError] = useState<"forbidden" | "failed" | null>(null);
+  const load = useCallback(() => getEmarPatient(admissionId).then((m) => { setMar(m); setLoadError(null); }, (e: unknown) => {
+    setMar(null); setLoadError(e instanceof ApiError && e.status === 403 ? "forbidden" : "failed");
+  }), [admissionId]);
   useEffect(() => { void load(); setStarted(null); setSecond(null); setOverride(null); setLasaOk(false); }, [load]);
   useEffect(() => {
     if (started === null) return;
@@ -158,7 +163,10 @@ export function Bedside({ admissionId, bandCode, online, onBack, onDone, onPivot
     }, (e: unknown) => { setBusy(false); setRefusal(refusalOf(e)); });
   };
 
-  if (mar === null) return <div className="ipdn-empty">{t("ipdNursing.loading")}</div>;
+  if (mar === null) {
+    if (loadError !== null) return <div className="ipdn-empty" role="alert">{t(loadError === "forbidden" ? "ipdNursing.forbidden" : "ipdEmar.bedside.loadFailed")}</div>;
+    return <div className="ipdn-empty">{t("ipdNursing.loading")}</div>;
+  }
   const open = mar.doses.filter((d) => d.status === "scheduled" || d.status === "missed");
   const held = mar.doses.filter((d) => d.status === "held" && d.reoffer);
   const byOrder = new Map(mar.orders.map((o) => [o.orderId, o] as const));
