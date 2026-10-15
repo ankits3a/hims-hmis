@@ -90,7 +90,7 @@ export type ErCareWorld = ErWorld & {
   resident: Actor;
   /** An ER nurse whose PIN a second check uses, and the doctor's. */
   nurse2: Actor;
-  pins: { nurse2: { username: string; pin: string }; erNurse: { username: string; pin: string } };
+  pins: { nurse2: { username: string; pin: string }; erNurse: { username: string; pin: string }; doctor: { username: string; pin: string } };
   storeId: string;
   /** A drug stocked in the ER satellite store (`ER-SAT`): returns its item id. */
   stocked(name: string, opts?: { highAlert?: boolean; moiety?: string; qty?: number }): Promise<string>;
@@ -117,6 +117,21 @@ export async function mkErCareWorld(db: Db): Promise<ErCareWorld> {
   const nurse2 = (await mkUser(db, "er.nurse2", ["er_nurse"])).actor;
   await setPin(db, nurse2.id, "8642");
   await setPin(db, w.erNurse.id, "4321");
+  await setPin(db, w.doctor.id, "1357");
+  // ER review 2 (2026-10-15): the consultant rule (IPD's) reads the doctor master — the ER doctor and `w.doctor` are on it;
+  // the resident is not.
+  {
+    const deptId = newId();
+    await db.insert(schema.opdDepartments).values({ id: deptId, code: "ERCARE", name: "ER care test", createdBy: "t", updatedBy: "t" });
+    for (const [userId, code] of [[w.erDoctor.id, "DR-ER-1"], [w.doctor.id, "DR-ER-2"]] as const) {
+      const on = await db.select({ id: schema.opdDoctors.id }).from(schema.opdDoctors).where(eq(schema.opdDoctors.userId, userId));
+      if (on.length === 0) {
+        await db.insert(schema.opdDoctors).values({
+          id: newId(), userId, displayName: `Dr ${code}`, code, registrationNo: "BMC/5", departmentId: deptId, createdBy: "t", updatedBy: "t",
+        });
+      }
+    }
+  }
 
   // The lab: catalogue, definitions, an exempt GST category, and a tariff pricing CBC and RFT (ESR deliberately not).
   const curator = (await mkUser(db, "er.labcurator", ["lab_reception"])).actor;
@@ -142,7 +157,10 @@ export async function mkErCareWorld(db: Db): Promise<ErCareWorld> {
   const erNurseName = (await db.select({ u: schema.users.username }).from(schema.users).where(eq(schema.users.id, w.erNurse.id)))[0]!.u;
   return {
     ...w, decls: collectOrderKinds(registry), bench, resident, nurse2, storeId,
-    pins: { nurse2: { username: "er.nurse2", pin: "8642" }, erNurse: { username: erNurseName, pin: "4321" } },
+    pins: {
+      nurse2: { username: "er.nurse2", pin: "8642" }, erNurse: { username: erNurseName, pin: "4321" },
+      doctor: { username: (await db.select({ u: schema.users.username }).from(schema.users).where(eq(schema.users.id, w.doctor.id)))[0]!.u, pin: "1357" },
+    },
     stocked: async (name, opts = {}) => {
       n += 1;
       const { medicineId } = await withTx(db, async (tx) => {

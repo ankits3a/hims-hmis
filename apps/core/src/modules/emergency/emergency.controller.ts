@@ -9,7 +9,7 @@ import { printErBand, reprintErBand } from "./bands";
 import { listErBays, listErDoctors, readErBoard, readErDesk, readErEpisode, searchErPatients } from "./board";
 import { assignErDoctor, moveBay, placeInBay, reTriage, recordErVitals, triage } from "./triage";
 import {
-  answerCall, callSpecialty, cosignErNote, declareStabilised, giveErDose, issueErMed, placeErOrder, recordConsent, recordErNote,
+  answerCall, callSpecialty, cosignErNote, declareStabilised, giveErDose, issueErMed, returnErMed, placeErOrder, recordConsent, recordErNote,
   recordProcedure, signErVerbalOrder,
 } from "./care";
 import { listErItems, readErCare } from "./care-read";
@@ -251,6 +251,13 @@ export class EmergencyController {
   @RequirePermission(ER_CARE, "hospital")
   async dose(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
     try { return await giveErDose(this.db, actor, body); } catch (e) { toHttp(e); }
+  }
+
+  /** ER review 2 (2026-10-15) — a medicine not given goes back unopened, or is recorded as wastage. */
+  @Post("meds/return")
+  @RequirePermission(ER_CARE, "hospital")
+  async returnMed(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<unknown> {
+    try { return await returnErMed(this.db, actor, body); } catch (e) { toHttp(e); }
   }
 
   @Post("meds/sign-verbal")
