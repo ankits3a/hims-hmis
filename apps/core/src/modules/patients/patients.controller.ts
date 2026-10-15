@@ -38,6 +38,8 @@ import {
 } from "./merge";
 import type { MergeRequestListItem, VisitSummary } from "./merge";
 import { displayNameFor } from "./display-name";
+import { maskMergeSnapshotRow, mergeSnapshotDiffers, revealMergeSnapshot } from "./merge-reveal";
+import type { SnapshotRow } from "./merge-reveal";
 import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
@@ -339,6 +341,7 @@ const guardianPatchBody = z.object({
 const qrVerifyBody = z.object({ payload: z.string().min(1).max(500) });
 const mergeBody = z.object({ winnerId: z.string().min(1), loserId: z.string().min(1), note: z.string().min(1) });
 const unmergeBody = z.object({ note: z.string().min(1), actFirst: z.boolean().optional() });
+const mobileShownBody = z.object({ patientIds: z.array(z.string().min(1)).min(1).max(2) });
 
 function parsed<T>(schema: z.ZodType<T>, body: unknown): T {
   const r = schema.safeParse(body);
@@ -432,6 +435,47 @@ export class PatientsController {
     return { items: await visitSummaries(this.db, list) };
   }
 
+  /**
+   * #653 — THE MERGE REVIEW MASKS BOTH MOBILES; "SHOW" IS A LOGGED ACT. The comparison draws each
+   * mobile as `•••••• 1236` (the "job needs the number" rule: the officer compares records, and most
+   * of the time the last four answer "same phone?"). Pressing Show posts here first; each record is
+   * resolved through the same sealed-record gate as `GET /patients/:id` (an unreadable one is a 404)
+   * and gets one `patient.merge_reveal` access row. `patients.read`, like the merge reads above, so
+   * the MRD officer who asks and the MS who decides can both use it.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Post("merge-mobile-shown")
+  async mergeMobileShown(@CurrentActor() actor: Actor, @Body() body: unknown): Promise<{ ok: true }> {
+    const { patientIds } = parsed(mobileShownBody, body);
+    const found = [];
+    for (const id of patientIds) {
+      const f = await getPatient(this.db, actor, id);
+      if (!f) throw new NotFoundException(`unknown patient ${id}`);
+      found.push(f);
+    }
+    // One row per record AS ASKED: a merged record's id is logged as itself, not as its survivor.
+    for (const [i, f] of found.entries()) {
+      await recordPhiAccess(this.db, {
+        actor, patientId: patientIds[i]!, surface: "patient.merge_reveal",
+        sealed: f.patient.isConfidential, reason: f.breakGlass?.reason ?? null,
+      });
+    }
+    return { ok: true };
+  }
+
+  /**
+   * #653 (S1) — the logged Show on a merge request. The detail below masks phone, DOB, address and
+   * ABHA for every reader; this returns the frozen full values, after the sealed-record gate on both
+   * records, and logs one `patient.merge_reveal` row per original record id (`merge-reveal.ts`).
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Post("merge-requests/:id/show")
+  async mergeReveal(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    const out = await revealMergeSnapshot(this.db, actor, id);
+    if (!out) throw new NotFoundException(`unknown merge request ${id}`);
+    return out;
+  }
+
   @RequirePermission("patients.read", "hospital")
   @Get("merge-requests/:id")
   async mergeDetail(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
@@ -446,9 +490,22 @@ export class PatientsController {
     const snap = view.request.snapshot as { winnerBefore: SnapRow; loserBefore: SnapRow };
     const mask = async (row: SnapRow): Promise<SnapRow> =>
       row.isConfidential ? { ...row, name: await displayNameFor(this.db, actor, row) } : row;
+    /*
+      #653 (S1) — and phone, DOB, address and ABHA are masked for EVERY reader (`merge-reveal.ts`);
+      `differs` is computed on the full values. The full values come only from the logged Show.
+    */
+    const full = view.request.snapshot as { winnerBefore: SnapshotRow; loserBefore: SnapshotRow };
     return {
       ...view,
-      request: { ...view.request, snapshot: { ...snap, winnerBefore: await mask(snap.winnerBefore), loserBefore: await mask(snap.loserBefore) } },
+      request: {
+        ...view.request,
+        snapshot: {
+          ...snap,
+          winnerBefore: maskMergeSnapshotRow(await mask(snap.winnerBefore) as unknown as SnapshotRow),
+          loserBefore: maskMergeSnapshotRow(await mask(snap.loserBefore) as unknown as SnapshotRow),
+        },
+      },
+      differs: mergeSnapshotDiffers(full.winnerBefore, full.loserBefore),
     };
   }
 
@@ -775,8 +832,10 @@ export class PatientsController {
   @Post(":id/allergies")
   async postAllergy(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<unknown> {
     const b = parsed(allergyBody, body);
+    /* Resolved like the other allergy routes: the merge chain and the sealed-record gate, then the canonical id. */
+    const patientId = await this.parentPatientId(actor, id);
     try {
-      return await withTx(this.db, (tx) => addAllergy(tx, actor, id, b));
+      return await withTx(this.db, (tx) => addAllergy(tx, actor, patientId, b));
     } catch (e) {
       toHttp(e);
     }

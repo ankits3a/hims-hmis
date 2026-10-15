@@ -44,7 +44,7 @@ describe("the home card — Attendance (board frame 1)", () => {
     expect(screen.queryByTestId("attendance-confirm")).toBeNull();
     // ONE request for it, for today and the 31 days behind.
     expect(s.sent("GET /attendance/me").map((c) => c.url)).toEqual([`/attendance/me?from=2026-09-13&to=${TODAY}`]);
-    fireEvent.press(screen.getByTestId("attendance-open"));
+    await fireEvent.press(screen.getByTestId("attendance-open"));
     expect(mockPush).toHaveBeenCalledWith("/attendance");
   });
 
@@ -61,7 +61,7 @@ describe("the home card — Attendance (board frame 1)", () => {
     const row = await screen.findByTestId("attendance-confirm");
     expect(row).toHaveTextContent(/^⚠ Confirm · Fri 9\+2›$/);
     expect(screen.getByTestId("attendance-confirm-more")).toHaveTextContent("+2");
-    fireEvent.press(row);
+    await fireEvent.press(row);
     expect(mockPush).toHaveBeenCalledWith({ pathname: "/attendance", params: { confirm: "2026-10-09" } });
   });
 
@@ -138,7 +138,7 @@ describe("the home card — Attendance (board frame 1)", () => {
       await mount(s.fetcher, <SeatHome />);
       const row = await screen.findByTestId("attendance-manage-open");
       expect(row).toHaveTextContent(/Staff attendance.*My team today/);
-      fireEvent.press(row);
+      await fireEvent.press(row);
       expect(mockPush).toHaveBeenCalledWith({ pathname: "/attendance-staff", params: { lead: "1" } });
       expect(s.keys().filter((k) => MANAGER_ROUTES.includes(k))).toEqual([]);
     });
@@ -148,7 +148,7 @@ describe("the home card — Attendance (board frame 1)", () => {
       await mount(s.fetcher, <SeatHome />);
       const row = await screen.findByTestId("attendance-manage-open");
       expect(row).toHaveTextContent(/Staff attendance.*Everyone today · requests/);
-      fireEvent.press(row);
+      await fireEvent.press(row);
       expect(mockPush).toHaveBeenCalledWith({ pathname: "/attendance-staff", params: {} });
       expect(screen.getByTestId("attendance-not-linked")).toBeTruthy();
     });

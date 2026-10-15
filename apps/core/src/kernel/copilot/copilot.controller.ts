@@ -19,6 +19,7 @@ import * as router from "./router";
 import { acknowledgeNotice, noticeSeen, phoneCopilotOn, readCopilotHealth, recordAsk, recordWrong, setPhoneCopilot } from "./ledger";
 import { asksHalted, listHalts, readCopilotGate } from "./halt";
 import { SpendMeter, inrToMicro } from "./spend";
+import { warnOwnersNearCap } from "./spend-warn";
 import type { CopilotGate } from "./halt";
 import type { AskRecord, CopilotHealth } from "./ledger";
 import type { CopilotAnswer, CopilotToolDecl } from "./types";
@@ -161,14 +162,35 @@ export class CopilotController {
     const rec: Omit<AskRecord, "actor" | "ms"> = {
       id: askId, outcome: "error", route: "none", intent: null, answerKey: null, maskedQuestion: null, screen: null,
     };
+    const spend = { beforeMicroInr: 0, now: new Date() };
     try {
-      return { ...await this.answer(actor, raw, rec), askId };
+      return { ...await this.answer(actor, raw, rec, spend), askId };
     } finally {
       await recordAsk(this.db, { ...rec, actor, ms: Date.now() - started });
+      await this.warnNearCap(rec, spend);
     }
   }
 
-  private async answer(actor: Actor, raw: unknown, rec: Omit<AskRecord, "actor" | "ms">): Promise<Omit<AskResponse, "askId">> {
+  /**
+   * #583 — after an ask that SPENT, the day's total (what the gate read plus this ask) is checked
+   * against 80 % of the cap, and the owner is warned once per IST day (`spend-warn.ts`). After the
+   * ledger write, and never able to fail the ask: a bell row that could not be written is logged.
+   */
+  private async warnNearCap(rec: Omit<AskRecord, "actor" | "ms">, spend: { beforeMicroInr: number; now: Date }): Promise<void> {
+    const cost = (rec.modelCalls ?? []).reduce((n, c) => n + c.microInr, 0);
+    if (cost <= 0) return;
+    try {
+      await warnOwnersNearCap(this.db, {
+        spentMicroInr: spend.beforeMicroInr + cost, capMicroInr: inrToMicro(this.cfg.copilotSpend.dailyCapInr), now: spend.now,
+      });
+    } catch {
+      this.logger.warn("copilot: the 80% spend warning could not be raised");
+    }
+  }
+
+  private async answer(
+    actor: Actor, raw: unknown, rec: Omit<AskRecord, "actor" | "ms">, spend: { beforeMicroInr: number; now: Date },
+  ): Promise<Omit<AskResponse, "askId">> {
     if (actor.type !== "user") {
       rec.outcome = "refusedActor";
       throw new ForbiddenException("the copilot is a desk surface — user actors only");
@@ -189,6 +211,8 @@ export class CopilotController {
       estimated spend. A halted read path answers "paused" before anything is masked or routed.
     */
     const gate: CopilotGate = await readCopilotGate(this.db, now);
+    spend.beforeMicroInr = gate.spentMicroInr;
+    spend.now = now;
     if (asksHalted(gate.halts)) {
       rec.outcome = "halted";
       rec.answerKey = PAUSED;

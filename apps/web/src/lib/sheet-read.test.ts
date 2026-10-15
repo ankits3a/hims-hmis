@@ -31,7 +31,7 @@ describe("reading a vendor's price list", () => {
 
   it("the sample CSV reads back with every column recognised", () => {
     const g = parseDelimited(sampleCsv());
-    expect(guessColumns(g[0]!)).toEqual({ brand: 1, manufacturer: 0, composition: 2, pack: 3, hsn: 4, gst: 5, mrp: 6 });
+    expect(guessColumns(g[0]!)).toEqual({ brand: 1, manufacturer: 0, composition: 2, pack: 3, hsn: 4, gst: 5, mrp: 6, rate: 7 });
     expect(g).toHaveLength(4);
   });
 });

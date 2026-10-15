@@ -9,7 +9,7 @@ import { ModuleRegistry } from "../modules/loader";
 import { authManifest } from "../auth/manifest";
 import { workflowManifest } from "../workflow/manifest";
 import { approvalsManifest } from "../approvals/manifest";
-import { patientsManifest } from "../../modules/patients";
+import { PATIENTS_APPROVAL_REJECTED_CONSUMER, patientsManifest } from "../../modules/patients";
 import { tariffManifest } from "../../modules/tariff";
 import { opdManifest } from "../../modules/opd";
 import { billingManifest } from "../../modules/billing";
@@ -76,7 +76,10 @@ describe("buildSubscriptionBus (amendment 6 seam)", () => {
   // real job — pinning that the seven non-alerts manifests declare nothing, so leg (a)'s
   // synthetic manifest is what gives the seam its teeth here (EXECUTION-LESSONS 3.14: shipping
   // only this leg would be an assertion that starts and ends at `[] === []`).
-  it("the real registry's union equals the real bus — EMPTY for the seven non-alerts manifests (all declare subscriptions: [])", () => {
+  // #653 — `patients` now declares ONE subscription (its approvals → patients hook), so of these seven
+  // manifests it is the only wire; the other six still declare nothing. Both directions: the bus
+  // carries exactly that pair, and a map without its handler refuses to boot.
+  it("the real registry's union equals the real bus — only patients' approval.rejected hook among the seven non-alerts manifests", () => {
     const registry = new ModuleRegistry();
     registry.install(authManifest);
     registry.install(workflowManifest);
@@ -86,9 +89,10 @@ describe("buildSubscriptionBus (amendment 6 seam)", () => {
     registry.install(opdManifest);
     registry.install(billingManifest);
 
-    const bus = buildSubscriptionBus(registry, {});
+    expect(() => buildSubscriptionBus(registry, {})).toThrow(/patients\.approval_rejected/);
+    const bus = buildSubscriptionBus(registry, { [PATIENTS_APPROVAL_REJECTED_CONSUMER]: noopHandler });
 
-    expect(busPairs(bus)).toEqual([]);
+    expect(busPairs(bus)).toEqual([[PATIENTS_APPROVAL_REJECTED_CONSUMER, "approval.rejected"]]);
   });
 });
 

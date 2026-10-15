@@ -7,7 +7,7 @@ import { withTx } from "../../kernel/db/client";
 import { CurrentActor, RequirePermission } from "../../kernel/auth/decorators";
 import { opdEncounterDiagnoses, opdEncounters, opdLasaPairs } from "../../kernel/db/schema";
 import { OPENAI_SPEECH_MODELS } from "../../kernel/inference/openai-speech";
-import { listRxSets, retireRxSet, saveRxSet, signRxSet } from "./rx-sets";
+import { listRxSets, retireRxSet, saveRxSet, signRxSet, updateRxSet } from "./rx-sets";
 import {
   loadVoiceSettings, recordVoiceKept, saveVoiceSettings, transcribeConsultNote, voiceMeter, voiceStatus,
 } from "./consult-voice";
@@ -44,6 +44,7 @@ const setBody = z.object({
   name: z.string().min(1).max(60),
   body: z.unknown(),
 });
+const setUpdateBody = z.object({ name: z.string().min(1).max(60), body: z.unknown() });
 const voiceBody = z.object({
   /** base64, held in memory for one request and written nowhere. */
   audio: z.string().min(1).max(1_000_000),
@@ -103,6 +104,18 @@ export class OpdPhoneConsultController {
     const b = parsed(setBody, body);
     try {
       return await withTx(this.db, (tx) => saveRxSet(tx, actor, { id: b.id ?? null, scope: b.scope, departmentId: b.departmentId ?? null, name: b.name, body: b.body }));
+    } catch (e) {
+      toHttp(e);
+    }
+  }
+
+  /** #610 — edit a saved set (name and body). Who may: checked in the service (own set; a starter set's unit head). */
+  @RequirePermission("opd.consult", "hospital")
+  @Put("rx-sets/:id")
+  async updateSet(@CurrentActor() actor: Actor, @Param("id") id: string, @Body() body: unknown): Promise<{ setId: string }> {
+    const b = parsed(setUpdateBody, body);
+    try {
+      return await withTx(this.db, (tx) => updateRxSet(tx, actor, id, { name: b.name, body: b.body }));
     } catch (e) {
       toHttp(e);
     }

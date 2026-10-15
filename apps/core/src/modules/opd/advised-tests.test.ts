@@ -9,6 +9,7 @@ import { openVisit } from "./encounters";
 import { recordVitals } from "./vitals";
 import { callNext } from "./queue";
 import { saveConsultNote, startConsultation } from "./consultation";
+import { OpdQueueController } from "./opd-queue.controller";
 // §4 — a module may import another module's index.ts (its declared interface) and never its
 // internals. `pnpm lint` refuses `../tariff/services`, and it refused this file's first draft.
 import { listPriceList } from "../tariff";
@@ -93,6 +94,20 @@ describe("advised investigations (07d T5)", () => {
 
     const advised = [{ serviceId: base.genericServiceId, code: "GEN", name: "Ultrasound abdomen", pricePaise: 120000 }];
     await saveConsultNote(db, dra.actor, opened.encounter.id, { diagnosis: "Abdominal pain", advisedTests: advised }, MON);
+
+    const row = (await db.select().from(opdEncounters).where(eq(opdEncounters.id, opened.encounter.id)))[0]!;
+    expect(row.advisedTests).toEqual(advised);
+  });
+
+  it("#609: a test the tariff has not priced is stored with a NULL price through the note route — never a ₹0 quote", async () => {
+    const opened = await openVisit(db, clerk.actor, { patientId, departmentId: deptId, doctorId: dra.doctorId }, MON);
+    await recordVitals(db, vd.actor, opened.encounter.id, adultOk, MON);
+    await callNext(db, dra.actor, opened.sessionId, MON);
+    await startConsultation(db, dra.actor, opened.encounter.id, MON);
+
+    const ctl = new OpdQueueController(db, {} as never);
+    const advised = [{ serviceId: base.genericServiceId, code: "GEN", name: "Ultrasound abdomen", pricePaise: null }];
+    await ctl.note(dra.actor, opened.encounter.id, { advisedTests: advised });
 
     const row = (await db.select().from(opdEncounters).where(eq(opdEncounters.id, opened.encounter.id)))[0]!;
     expect(row.advisedTests).toEqual(advised);
