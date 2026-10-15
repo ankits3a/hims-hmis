@@ -1,5 +1,5 @@
 {
-  "id": "e00372f5-f616-4512-bc70-8cec7c4e7d36",
+  "id": "51c2f84a-b36a-4e0f-af1f-50cd8b371299",
   "prevId": "3996038a-c693-44ce-8fea-89964e818eff",
   "version": "7",
   "dialect": "postgresql",
@@ -16058,6 +16058,324 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.formulary_crk_entries": {
+      "name": "formulary_crk_entries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "generic_id": {
+          "name": "generic_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signed_crk": {
+          "name": "signed_crk",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewer_designation": {
+          "name": "reviewer_designation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "second_reviewed_by": {
+          "name": "second_reviewed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "second_reviewed_at": {
+          "name": "second_reviewed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "second_reviewer_designation": {
+          "name": "second_reviewer_designation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_due_on": {
+          "name": "review_due_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "draft_crk": {
+          "name": "draft_crk",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drafted_model": {
+          "name": "drafted_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "drafted_at": {
+          "name": "drafted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "draft_usage": {
+          "name": "draft_usage",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model_drafts": {
+          "name": "model_drafts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "model_input_tokens": {
+          "name": "model_input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "model_output_tokens": {
+          "name": "model_output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "high_alert": {
+          "name": "high_alert",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "first_signed_by": {
+          "name": "first_signed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_signed_at": {
+          "name": "first_signed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_signer_designation": {
+          "name": "first_signer_designation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "formulary_crk_entries_generic_ux": {
+          "name": "formulary_crk_entries_generic_ux",
+          "columns": [
+            {
+              "expression": "generic_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "formulary_crk_entries_generic_id_formulary_generics_id_fk": {
+          "name": "formulary_crk_entries_generic_id_formulary_generics_id_fk",
+          "tableFrom": "formulary_crk_entries",
+          "tableTo": "formulary_generics",
+          "columnsFrom": [
+            "generic_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "formulary_crk_entries_text_ck": {
+          "name": "formulary_crk_entries_text_ck",
+          "value": "\"formulary_crk_entries\".\"signed_crk\" is not null or \"formulary_crk_entries\".\"draft_crk\" is not null"
+        },
+        "formulary_crk_entries_signed_ck": {
+          "name": "formulary_crk_entries_signed_ck",
+          "value": "(\"formulary_crk_entries\".\"signed_crk\" is not null) = (\"formulary_crk_entries\".\"reviewed_by\" is not null) and (\"formulary_crk_entries\".\"signed_crk\" is not null) = (\"formulary_crk_entries\".\"reviewed_at\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.formulary_crk_signatures": {
+      "name": "formulary_crk_signatures",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "entry_id": {
+          "name": "entry_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signed_by": {
+          "name": "signed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "designation": {
+          "name": "designation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signed_at": {
+          "name": "signed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "crk": {
+          "name": "crk",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "formulary_crk_signatures_entry_idx": {
+          "name": "formulary_crk_signatures_entry_idx",
+          "columns": [
+            {
+              "expression": "entry_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "signed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "formulary_crk_signatures_entry_id_formulary_crk_entries_id_fk": {
+          "name": "formulary_crk_signatures_entry_id_formulary_crk_entries_id_fk",
+          "tableFrom": "formulary_crk_signatures",
+          "tableTo": "formulary_crk_entries",
+          "columnsFrom": [
+            "entry_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "formulary_crk_signatures_kind_ck": {
+          "name": "formulary_crk_signatures_kind_ck",
+          "value": "\"formulary_crk_signatures\".\"kind\" in ('sole', 'first', 'second', 'renewal', 'renewal_first', 'renewal_second')"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.formulary_drug_disease": {
       "name": "formulary_drug_disease",
       "schema": "",
@@ -17035,109 +17353,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.formulary_monograph_signatures": {
-      "name": "formulary_monograph_signatures",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "monograph_id": {
-          "name": "monograph_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "signed_by": {
-          "name": "signed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "designation": {
-          "name": "designation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "signed_at": {
-          "name": "signed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "crk": {
-          "name": "crk",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "formulary_monograph_signatures_monograph_idx": {
-          "name": "formulary_monograph_signatures_monograph_idx",
-          "columns": [
-            {
-              "expression": "monograph_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "signed_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "formulary_monograph_signatures_monograph_id_formulary_monographs_id_fk": {
-          "name": "formulary_monograph_signatures_monograph_id_formulary_monographs_id_fk",
-          "tableFrom": "formulary_monograph_signatures",
-          "tableTo": "formulary_monographs",
-          "columnsFrom": [
-            "monograph_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "formulary_monograph_signatures_kind_ck": {
-          "name": "formulary_monograph_signatures_kind_ck",
-          "value": "\"formulary_monograph_signatures\".\"kind\" in ('sole', 'first', 'second', 'renewal', 'renewal_first', 'renewal_second')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.formulary_monographs": {
       "name": "formulary_monographs",
       "schema": "",
@@ -17202,92 +17417,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "crk": {
-          "name": "crk",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "drafted_model": {
-          "name": "drafted_model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "drafted_at": {
-          "name": "drafted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft_usage": {
-          "name": "draft_usage",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "high_alert": {
-          "name": "high_alert",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "first_signed_by": {
-          "name": "first_signed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "first_signed_at": {
-          "name": "first_signed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "first_signer_designation": {
-          "name": "first_signer_designation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reviewer_designation": {
-          "name": "reviewer_designation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "second_reviewed_by": {
-          "name": "second_reviewed_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "second_reviewed_at": {
-          "name": "second_reviewed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "second_reviewer_designation": {
-          "name": "second_reviewer_designation",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "review_due_on": {
-          "name": "review_due_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "created_by": {
           "name": "created_by",

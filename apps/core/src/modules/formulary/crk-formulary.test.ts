@@ -2,21 +2,22 @@ import { eq } from "drizzle-orm";
 import { newId } from "@hmis/contracts";
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { withTx } from "../../kernel/db/client";
-import { events, formularyGenerics, formularyMedicines, formularyMonographs, formularyMonographSignatures } from "../../kernel/db/schema";
+import { events, formularyCrkEntries, formularyCrkSignatures, formularyGenerics, formularyMedicines } from "../../kernel/db/schema";
 import { registerItem } from "../materials";
 import { FormularyError } from "./errors";
 import { addMedicine, addSalt } from "./masters";
-import { getMonograph, reviewMonograph, saveMonograph } from "./monographs";
-import { crkLabel, crkWorklist, isOverdue, draftCrkEntry, saveCrkEntry, signCrkEntry } from "./crk-formulary";
+import { getMonograph, renalDoseFor, reviewMonograph, saveMonograph } from "./monographs";
+import { crkEntryForReview, crkLabel, crkWorklist, draftCrkEntry, isOverdue, sanitiseModelDraft, saveCrkEntry, signCrkEntry, signedCrkForGeneric } from "./crk-formulary";
 import type { Actor } from "@hmis/contracts";
 import type { Db } from "../../kernel/db/client";
 import type { CrkEntry } from "../../kernel/db/schema";
 import type { CompleteInput, InferenceClient } from "../../kernel/inference/types";
 
 /**
- * #618 / decision 0053 — the CRK formulary. The model only drafts; nothing is read until a Pharmacology
+ * #618 / #884 / decision 0053 — the CRK formulary. The model only drafts; nothing is read until a Pharmacology
  * reviewer signs; a high-alert medicine needs a second, different signer; no model configured leaves the
- * hand path working.
+ * hand path working. The entry has its own state: the last signed version stays live while a new one is
+ * pending, and neither touches the pharmacy's monograph.
  */
 
 const PHARMACIST: Actor = { type: "user", id: "01HPHARMACIST0000000000001" };
@@ -65,16 +66,19 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     try { await p; } catch (e) { if (e instanceof FormularyError) return e.code; throw e; }
     return "did not refuse";
   };
+  const live = async (): Promise<CrkEntry | undefined> => (await signedCrkForGeneric(db, SCTID, "2026-10-15"))?.crk;
+  const entryRow = async () => (await db.select().from(formularyCrkEntries))[0]!;
   const save = (entry: CrkEntry = ENTRY, actor: Actor = PHARMACIST) => withTx(db, (tx) => saveCrkEntry(tx, actor, SCTID, entry));
   const sign = (id: string, actor: Actor, extra: { crk?: CrkEntry; highAlert?: boolean } = {}) =>
     withTx(db, (tx) => signCrkEntry(tx, actor, id, { designation: "Professor, Pharmacology", ...extra }));
+  const CHANGED: CrkEntry = { ...ENTRY, fields: { uses: [{ text: "Changed.", source: "fda1" }] } };
 
   it("no model configured: drafting answers model_not_configured and writes nothing; the hand path still signs", async () => {
     expect(await code(draftCrkEntry(db, PHARMACIST, { genericSctid: SCTID, sources: SOURCES }, { client: null, id: null }))).toBe("model_not_configured");
-    expect(await db.select().from(formularyMonographs)).toHaveLength(0);
-    const { monographId } = await save();
-    expect(await sign(monographId, PROF_A)).toEqual({ status: "reviewed", version: 1 });
-    expect((await getMonograph(db, SCTID))?.crk?.fields.uses?.[0]?.text).toBe("Treats shingles and cold sores.");
+    expect(await db.select().from(formularyCrkEntries)).toHaveLength(0);
+    const { entryId } = await save();
+    expect(await sign(entryId, PROF_A)).toEqual({ status: "reviewed", version: 1, renewal: false });
+    expect((await live())?.fields.uses?.[0]?.text).toBe("Treats shingles and cold sores.");
   });
 
   it("a model draft keeps only sourced, dose-free statements, is masked on the way out, and is read by nobody until signed", async () => {
@@ -87,13 +91,27 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     const res = await draftCrkEntry(db, PHARMACIST, { genericSctid: SCTID, sources: SOURCES }, { client: model, id: "gpt-test" });
     expect(res).toMatchObject({ statements: 2, dropped: 2, usage: { inputTokens: 1200, outputTokens: 300 } });
     expect(seen[0]!.user).not.toContain("9876543210");
-    expect(await getMonograph(db, SCTID)).toBeUndefined();
-    const draft = await getMonograph(db, SCTID, { includeDraft: true });
-    expect(draft?.crk?.fields).toEqual({ uses: [{ text: "Treats shingles.", source: "fda1" }], howToTake: [{ text: "Swallow with water.", source: "fda1" }] });
-    expect(draft).toMatchObject({ status: "draft", draftedModel: "gpt-test", draftUsage: { inputTokens: 1200, outputTokens: 300 } });
-    expect(await db.select().from(events).where(eq(events.name, "monograph.crk_saved"))).toHaveLength(1);
-    // the cost of the drafts so far is on the reviewers' worklist (#618: measured on the first 20)
+    expect(await live()).toBeUndefined();
+    const draft = await crkEntryForReview(db, SCTID);
+    expect(draft?.draftCrk?.fields).toEqual({ uses: [{ text: "Treats shingles.", source: "fda1" }], howToTake: [{ text: "Swallow with water.", source: "fda1" }] });
+    expect(draft).toMatchObject({ signedCrk: null, draftedModel: "gpt-test", draftUsage: { inputTokens: 1200, outputTokens: 300 } });
+    expect(await db.select().from(events).where(eq(events.name, "crk.draft_saved"))).toHaveLength(1);
+    // the cost of the drafts so far is on the reviewers' worklist (#618: measured on the first 20), and survives the signature
     expect((await crkWorklist(db, "2026-10-15")).drafting).toEqual({ drafted: 1, inputTokens: 1200, outputTokens: 300 });
+    await sign(res.entryId, PROF_A);
+    expect((await crkWorklist(db, "2026-10-15")).drafting).toEqual({ drafted: 1, inputTokens: 1200, outputTokens: 300 });
+  });
+
+  it("review Low: a count without a unit, a sig or a schedule is a dose; a masking placeholder echo is dropped", () => {
+    const sources = [{ ref: "fda1", kind: "openfda", title: "t", url: null, asOf: null }];
+    const st = (text: string) => ({ text, source: "fda1" });
+    const { fields, dropped } = sanitiseModelDraft({ fields: { howToTake: [
+      st("Take 2 tablets at night."), st("1 tab twice a day."), st("Two capsules with food."), st("Use 1 puff when needed."),
+      st("Take 1-0-1 after meals."), st("Take every 8 hours."), st("Take 3 times a day."), st("Take twice daily."),
+      st("Call <<P1>> for advice."), st("Swallow whole with water."),
+    ] } }, sources);
+    expect(fields).toEqual({ howToTake: [st("Swallow whole with water.")] });
+    expect(dropped).toBe(9);
   });
 
   it("the label every reader shows names the signer and the date", () => {
@@ -103,7 +121,7 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
   it("an unparseable model answer writes nothing", async () => {
     const bad: InferenceClient = { complete: async () => ({ text: "sorry, I cannot" }) };
     expect(await code(draftCrkEntry(db, PHARMACIST, { genericSctid: SCTID, sources: SOURCES }, { client: bad, id: "m" }))).toBe("draft_failed");
-    expect(await db.select().from(formularyMonographs)).toHaveLength(0);
+    expect(await db.select().from(formularyCrkEntries)).toHaveLength(0);
   });
 
   it("a hand-written statement must cite one of the entry's own sources", async () => {
@@ -111,39 +129,45 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     expect(await code(save({ ...ENTRY, sources: [{ ...ENTRY.sources[0]!, kind: "1mg" }] }))).toBe("invalid_crk");
   });
 
-  it("one signature: reviewed, versioned, due in twelve months, kept as signed; the reviewer may edit as they sign", async () => {
-    const { monographId } = await save();
+  it("one signature: live, versioned, due in twelve months, kept as signed; the reviewer may edit as they sign", async () => {
+    const { entryId } = await save();
     const edited = { ...ENTRY, fields: { uses: [{ text: "Treats shingles.", source: "fda1" }] } };
-    await sign(monographId, PROF_A, { crk: edited });
-    const row = (await db.select().from(formularyMonographs))[0]!;
-    expect(row).toMatchObject({ status: "reviewed", reviewedBy: PROF_A.id, reviewerDesignation: "Professor, Pharmacology", version: 1 });
+    await sign(entryId, PROF_A, { crk: edited });
+    const row = await entryRow();
+    expect(row).toMatchObject({ signedCrk: edited, draftCrk: null, reviewedBy: PROF_A.id, reviewerDesignation: "Professor, Pharmacology", version: 1 });
     expect(row.reviewDueOn! > new Date(Date.now() + 360 * 86_400_000).toISOString().slice(0, 10)).toBe(true);
-    const sigs = await db.select().from(formularyMonographSignatures);
+    const sigs = await db.select().from(formularyCrkSignatures);
     expect(sigs).toHaveLength(1);
     expect(sigs[0]).toMatchObject({ kind: "sole", version: 1, signedBy: PROF_A.id, crk: edited });
-    expect(await code(sign(monographId, PROF_B))).toBe("monograph_already_reviewed");
+    expect(await code(sign(entryId, PROF_B))).toBe("monograph_already_reviewed");
   });
 
   it("high-alert: the first signature waits, the same person cannot sign twice, a second reviewer makes it read", async () => {
-    const { monographId } = await save();
-    expect(await sign(monographId, PROF_A, { highAlert: true })).toEqual({ status: "awaiting_second", version: 0 });
-    expect(await getMonograph(db, SCTID)).toBeUndefined();
-    expect(await code(sign(monographId, PROF_A))).toBe("monograph_same_actor");
-    expect(await sign(monographId, PROF_B)).toEqual({ status: "reviewed", version: 1 });
-    const row = await getMonograph(db, SCTID);
-    expect(row).toMatchObject({ reviewedBy: PROF_A.id, secondReviewedBy: PROF_B.id, highAlert: true, firstSignedBy: null });
-    expect((await db.select().from(formularyMonographSignatures)).map((s) => s.kind).sort()).toEqual(["first", "second"]);
+    const { entryId } = await save();
+    expect(await sign(entryId, PROF_A, { highAlert: true })).toEqual({ status: "awaiting_second", version: 0, renewal: false });
+    expect(await live()).toBeUndefined();
+    expect(await code(sign(entryId, PROF_A))).toBe("monograph_same_actor");
+    expect(await sign(entryId, PROF_B)).toEqual({ status: "reviewed", version: 1, renewal: false });
+    expect(await entryRow()).toMatchObject({ reviewedBy: PROF_A.id, secondReviewedBy: PROF_B.id, highAlert: true, firstSignedBy: null, draftCrk: null });
+    expect((await db.select().from(formularyCrkSignatures)).map((s) => s.kind).sort()).toEqual(["first", "second"]);
   });
 
   it("an edit at the second signature restarts the pair: it is a first signature again", async () => {
-    const { monographId } = await save();
-    await sign(monographId, PROF_A, { highAlert: true });
-    expect(await sign(monographId, PROF_B, { crk: { ...ENTRY, fields: { uses: [{ text: "Shingles.", source: "fda1" }] } } }))
-      .toEqual({ status: "awaiting_second", version: 0 });
-    expect(await sign(monographId, PROF_A)).toEqual({ status: "reviewed", version: 1 });
+    const { entryId } = await save();
+    await sign(entryId, PROF_A, { highAlert: true });
+    expect(await sign(entryId, PROF_B, { crk: { ...ENTRY, fields: { uses: [{ text: "Shingles.", source: "fda1" }] } } }))
+      .toEqual({ status: "awaiting_second", version: 0, renewal: false });
+    expect(await sign(entryId, PROF_A)).toEqual({ status: "reviewed", version: 1, renewal: false });
   });
 
-  it("a stocked item flagged high-alert makes the generic high-alert whatever the reviewer says", async () => {
+  it("review Low: removing the high-alert flag clears a stale first signature; this signature alone decides", async () => {
+    const { entryId } = await save();
+    await sign(entryId, PROF_A, { highAlert: true });
+    expect(await sign(entryId, PROF_B, { highAlert: false })).toEqual({ status: "reviewed", version: 1, renewal: false });
+    expect(await entryRow()).toMatchObject({ highAlert: false, reviewedBy: PROF_B.id, secondReviewedBy: null, firstSignedBy: null, firstSignedAt: null, firstSignerDesignation: null });
+  });
+
+  const stockedHighAlert = async (): Promise<string> => {
     const medicineId = await withTx(db, async (tx) => {
       const salt = await addSalt(tx, PHARMACIST, { name: "Aciclovir", drugClass: "antiviral" });
       const m = await addMedicine(tx, PHARMACIST, { brandName: "Zovirax 800", form: "tablet", routeClass: "systemic", strengthLabel: "800 mg", scheduleFlag: "H", salts: [{ saltId: salt.saltId, strength: "800 mg" }] });
@@ -154,77 +178,88 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
       code: "ZOV800", name: "Zovirax 800 tablet", class: "drug", baseUom: "tablet", batchTracked: true, formularyMedicineId: medicineId,
       gstRateBps: 1200, highAlert: true, uoms: [{ uom: "strip", toBaseMultiplier: 10, isPurchaseUom: true, isIssueUom: true }],
     }));
-    const { monographId } = await save();
-    expect(await sign(monographId, PROF_A)).toEqual({ status: "awaiting_second", version: 0 });
+    return medicineId;
+  };
+
+  it("a stocked item flagged high-alert makes the generic high-alert whatever the reviewer says", async () => {
+    await stockedHighAlert();
+    const { entryId } = await save();
+    expect(await sign(entryId, PROF_A, { highAlert: false })).toEqual({ status: "awaiting_second", version: 0, renewal: false });
   });
 
-  it("any later edit unsigns it; the plain review path refuses a CRK entry", async () => {
-    const { monographId } = await save();
-    await sign(monographId, PROF_A);
-    await save({ ...ENTRY, fields: { uses: [{ text: "Changed.", source: "fda1" }] } });
-    expect(await getMonograph(db, SCTID)).toBeUndefined();
-    expect(await code(withTx(db, (tx) => reviewMonograph(tx, PROF_B, monographId)))).toBe("monograph_needs_signature");
-    // a pharmacist's save of the four sections also unsigns it
-    await sign(monographId, PROF_A);
-    await withTx(db, (tx) => saveMonograph(tx, PHARMACIST, { genericSctid: SCTID, sourceVersion: "1.25" }));
-    expect(await getMonograph(db, SCTID)).toBeUndefined();
+  it("a new version waits beside the live one; signing it replaces the live text", async () => {
+    const { entryId } = await save();
+    await sign(entryId, PROF_A);
+    await save(CHANGED);
+    expect(await entryRow()).toMatchObject({ signedCrk: ENTRY, draftCrk: CHANGED, version: 1 });
+    expect(await sign(entryId, PROF_B)).toEqual({ status: "reviewed", version: 2, renewal: false });
+    expect(await live()).toEqual(CHANGED);
+    expect(await entryRow()).toMatchObject({ draftCrk: null, reviewedBy: PROF_B.id });
   });
 
-  it("the worklist counts drafts, pairs waiting and entries due again", async () => {
-    const { monographId } = await save();
+  it("the worklist counts drafts, pending versions, pairs waiting and entries due again", async () => {
+    const { entryId } = await save();
     let w = await crkWorklist(db, "2026-10-15");
-    expect(w.counts).toMatchObject({ draft: 1, awaitingSecond: 0, signed: 0 });
+    expect(w.counts).toMatchObject({ draft: 1, pending: 0, awaitingSecond: 0, signed: 0 });
     expect(w.items.map((i) => i.state)).toEqual(["draft"]);
-    await sign(monographId, PROF_A, { highAlert: true });
+    await sign(entryId, PROF_A, { highAlert: true });
     w = await crkWorklist(db, "2026-10-15");
     expect(w.counts).toMatchObject({ draft: 0, awaitingSecond: 1 });
-    await sign(monographId, PROF_B);
+    await sign(entryId, PROF_B);
     w = await crkWorklist(db, "2099-01-01");
     expect(w.counts).toMatchObject({ signed: 1, overdue: 1, dueForReview: 0 });
     expect(w.items.map((i) => i.state)).toEqual(["overdue"]);
+    await save(CHANGED);
+    w = await crkWorklist(db, "2026-10-15");
+    expect(w.counts).toMatchObject({ signed: 1, pending: 1, draft: 0 });
+    expect(w.items.map((i) => i.state)).toEqual(["pending"]);
   });
 
   /* #884 — the 12-month renewal. Every date below is passed in; nothing reads the real clock. */
   const at = (iso: string): Date => new Date(`${iso}T06:00:00.000Z`);
   const signAt = (id: string, actor: Actor, iso: string, extra: { crk?: CrkEntry; highAlert?: boolean } = {}) =>
     withTx(db, (tx) => signCrkEntry(tx, actor, id, { designation: "Professor, Pharmacology", ...extra }, at(iso)));
-  const kinds = async (): Promise<string[]> => (await db.select().from(formularyMonographSignatures).orderBy(formularyMonographSignatures.signedAt)).map((r) => r.kind);
+  const kinds = async (): Promise<string[]> => (await db.select().from(formularyCrkSignatures).orderBy(formularyCrkSignatures.signedAt)).map((r) => r.kind);
 
   it("#884: an unchanged entry is re-affirmed in its window; it stays read throughout; due moves 12 months; audited", async () => {
-    const { monographId } = await save();
-    await signAt(monographId, PROF_A, "2026-01-10");
-    expect((await db.select().from(formularyMonographs))[0]).toMatchObject({ reviewDueOn: "2027-01-10", version: 1 });
+    const { entryId } = await save();
+    await signAt(entryId, PROF_A, "2026-01-10");
+    expect(await entryRow()).toMatchObject({ reviewDueOn: "2027-01-10", version: 1 });
     // not yet: the window opens 30 days before the due date
-    expect(await code(signAt(monographId, PROF_B, "2026-11-01"))).toBe("monograph_already_reviewed");
-    // a renewal re-affirms the text as signed; an edit is a draft, not a renewal
-    expect(await code(signAt(monographId, PROF_B, "2027-01-20", { crk: { ...ENTRY, fields: { uses: [{ text: "Other.", source: "fda1" }] } } }))).toBe("invalid_crk");
-    // overdue: still read, by every reader
-    expect(await getMonograph(db, SCTID)).toBeDefined();
-    expect(await signAt(monographId, PROF_B, "2027-01-20")).toEqual({ status: "reviewed", version: 2 });
-    const row = (await db.select().from(formularyMonographs))[0]!;
-    expect(row).toMatchObject({ status: "reviewed", reviewedBy: PROF_B.id, reviewDueOn: "2028-01-20", version: 2, firstSignedBy: null });
-    expect(row.crk).toEqual(ENTRY);
+    expect(await code(signAt(entryId, PROF_B, "2026-11-01"))).toBe("monograph_already_reviewed");
+    // overdue: still read, by every reader, and flagged
+    expect(await signedCrkForGeneric(db, SCTID, "2027-01-20")).toMatchObject({ overdue: true, crk: ENTRY });
+    expect(await signAt(entryId, PROF_B, "2027-01-20")).toEqual({ status: "reviewed", version: 2, renewal: true });
+    expect(await entryRow()).toMatchObject({ signedCrk: ENTRY, reviewedBy: PROF_B.id, reviewDueOn: "2028-01-20", version: 2, firstSignedBy: null });
     expect(await kinds()).toEqual(["sole", "renewal"]);
-    const signedEvents = await db.select().from(events).where(eq(events.name, "monograph.signed"));
+    const signedEvents = await db.select().from(events).where(eq(events.name, "crk.signed"));
     expect(signedEvents.map((e) => (e.payload as { renewal: boolean }).renewal)).toEqual([false, true]);
   });
 
+  it("#884: edits sent at renewal time are a new version, not a renewal; the live one stays until signed", async () => {
+    const { entryId } = await save();
+    await signAt(entryId, PROF_A, "2026-01-10", { highAlert: true });
+    await signAt(entryId, PROF_B, "2026-01-10");
+    expect(await signAt(entryId, PROF_A, "2027-01-20", { crk: CHANGED })).toEqual({ status: "awaiting_second", version: 1, renewal: false });
+    expect(await live()).toEqual(ENTRY);
+  });
+
   it("#884: a high-alert renewal takes two different signers, and the entry stays read while the first waits", async () => {
-    const { monographId } = await save();
-    await signAt(monographId, PROF_A, "2026-01-10", { highAlert: true });
-    await signAt(monographId, PROF_B, "2026-01-11");
-    expect(await signAt(monographId, PROF_A, "2027-01-05")).toEqual({ status: "awaiting_second", version: 1 });
-    expect(await getMonograph(db, SCTID)).toMatchObject({ status: "reviewed", reviewDueOn: "2027-01-11" });
-    expect(await code(signAt(monographId, PROF_A, "2027-01-06"))).toBe("monograph_same_actor");
-    expect(await signAt(monographId, PROF_B, "2027-01-06")).toEqual({ status: "reviewed", version: 2 });
-    expect(await getMonograph(db, SCTID)).toMatchObject({ reviewedBy: PROF_A.id, secondReviewedBy: PROF_B.id, reviewDueOn: "2028-01-06", firstSignedBy: null });
+    const { entryId } = await save();
+    await signAt(entryId, PROF_A, "2026-01-10", { highAlert: true });
+    await signAt(entryId, PROF_B, "2026-01-11");
+    expect(await signAt(entryId, PROF_A, "2027-01-05")).toEqual({ status: "awaiting_second", version: 1, renewal: true });
+    expect(await signedCrkForGeneric(db, SCTID, "2027-01-05")).toMatchObject({ reviewDueOn: "2027-01-11", crk: ENTRY });
+    expect(await code(signAt(entryId, PROF_A, "2027-01-06"))).toBe("monograph_same_actor");
+    expect(await signAt(entryId, PROF_B, "2027-01-06")).toEqual({ status: "reviewed", version: 2, renewal: true });
+    expect(await entryRow()).toMatchObject({ reviewedBy: PROF_A.id, secondReviewedBy: PROF_B.id, reviewDueOn: "2028-01-06", firstSignedBy: null });
     expect(await kinds()).toEqual(["first", "second", "renewal_first", "renewal_second"]);
   });
 
   it("#884: the worklist names an entry due soon, overdue, or waiting for its second renewal signer", async () => {
-    const { monographId } = await save();
-    await signAt(monographId, PROF_A, "2026-01-10", { highAlert: true });
-    await signAt(monographId, PROF_B, "2026-01-10");
+    const { entryId } = await save();
+    await signAt(entryId, PROF_A, "2026-01-10", { highAlert: true });
+    await signAt(entryId, PROF_B, "2026-01-10");
     expect((await crkWorklist(db, "2026-06-01")).items).toEqual([]);
     let w = await crkWorklist(db, "2026-12-20");
     expect(w.counts).toMatchObject({ dueForReview: 1, overdue: 0 });
@@ -232,7 +267,7 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     w = await crkWorklist(db, "2027-02-01");
     expect(w.counts).toMatchObject({ dueForReview: 0, overdue: 1 });
     expect(w.items.map((i) => i.state)).toEqual(["overdue"]);
-    await signAt(monographId, PROF_A, "2027-02-01");
+    await signAt(entryId, PROF_A, "2027-02-01");
     w = await crkWorklist(db, "2027-02-01");
     expect(w.counts).toMatchObject({ awaitingSecond: 1, signed: 1 });
     expect(w.items.map((i) => i.state)).toEqual(["awaiting_second"]);
@@ -244,9 +279,54 @@ describe("CRK formulary — drafted by a model, signed by Pharmacology", () => {
     expect(isOverdue(null, "2099-01-01")).toBe(false);
   });
 
+  /* ═══ REVIEW (Medium) — the CRK entry and the pharmacy monograph have SEPARATE states ═══ */
+  const MS: Actor = { type: "user", id: "01HMEDSUPT0000000000000001" };
+  const pharmacyMonograph = async (): Promise<string> => {
+    const { monographId } = await withTx(db, (tx) => saveMonograph(tx, PHARMACIST, {
+      genericSctid: SCTID, sourceVersion: "1.25", patient: { what_it_is: "An antiviral." },
+      renalDoses: [{ crclMin: null, crclMax: 10, dose: "800 mg every 12 hours", severity: "reduce" }],
+    }));
+    return monographId;
+  };
+
+  it("seam: a CRK draft or edit leaves the pharmacy's reviewed renal bands answering", async () => {
+    const monographId = await pharmacyMonograph();
+    await withTx(db, (tx) => reviewMonograph(tx, MS, monographId));
+    expect(await renalDoseFor(db, genericId, 5)).not.toBeNull();
+    await save();
+    expect(await renalDoseFor(db, genericId, 5)).not.toBeNull();
+    expect((await getMonograph(db, SCTID))?.status).toBe("reviewed");
+  });
+
+  it("seam: a CRK signature does not publish the pharmacy's draft sections or bands", async () => {
+    await pharmacyMonograph();
+    const { entryId } = await save();
+    await sign(entryId, PROF_A);
+    expect(await getMonograph(db, SCTID)).toBeUndefined();
+    expect(await renalDoseFor(db, genericId, 5)).toBeNull();
+  });
+
+  it("seam: the signed version stays read by doctors while a new draft is pending", async () => {
+    const { entryId } = await save();
+    await sign(entryId, PROF_A);
+    await save(CHANGED);
+    expect((await live())?.fields.uses?.[0]?.text).toBe("Treats shingles and cold sores.");
+  });
+
+  it("seam: a pharmacy act never touches the CRK entry", async () => {
+    const { entryId } = await save();
+    await sign(entryId, PROF_A);
+    const monographId = await pharmacyMonograph();
+    await withTx(db, (tx) => reviewMonograph(tx, MS, monographId));
+    await withTx(db, (tx) => saveMonograph(tx, PHARMACIST, { genericSctid: SCTID, sourceVersion: "1.26" }));
+    expect(await live()).toEqual(ENTRY);
+    expect(await entryRow()).toMatchObject({ version: 1, draftCrk: null });
+  });
+
   it("only a person signs, and a signature names a designation", async () => {
-    const { monographId } = await save();
-    expect(await code(withTx(db, (tx) => signCrkEntry(tx, { type: "agent", id: "bot" } as Actor, monographId, { designation: "x" })))).toBe("attester_not_user");
-    expect(await code(withTx(db, (tx) => signCrkEntry(tx, PROF_A, monographId, { designation: "  " })))).toBe("invalid_crk");
+    const { entryId } = await save();
+    expect(await code(withTx(db, (tx) => signCrkEntry(tx, { type: "agent", id: "bot" } as Actor, entryId, { designation: "x" })))).toBe("attester_not_user");
+    expect(await code(withTx(db, (tx) => signCrkEntry(tx, PROF_A, entryId, { designation: "  " })))).toBe("invalid_crk");
+    expect(await code(withTx(db, (tx) => signCrkEntry(tx, PROF_A, "no-such", { designation: "x" })))).toBe("unknown_crk_entry");
   });
 });
