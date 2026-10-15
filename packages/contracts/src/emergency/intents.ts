@@ -251,7 +251,7 @@ export const linkIdentity = erIntent({
   }),
   refusals: [
     "episode_not_found", "not_unidentified", "same_patient", "patient_not_found", "true_record_unidentified",
-    "merge_already_requested",
+    "merge_already_requested", "patient_deceased", "episode_already_open",
   ],
   actors: ["desk", "supervisor", "duty_manager"],
   copilotProposable: true,

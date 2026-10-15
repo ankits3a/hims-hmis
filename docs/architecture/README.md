@@ -154,7 +154,7 @@ flowchart LR
 | [bmw](modules/bmw.md) | tasks | — | 14 | 4 |
 | [cds](modules/cds.md) | formulary | opd | 0 | 0 |
 | [diet](modules/diet.md) | ipd, ot, tasks | — | 17 | 6 |
-| [emergency](modules/emergency.md) | billing, ipd, patients | — | 12 | 3 |
+| [emergency](modules/emergency.md) | billing, ipd, patients | — | 13 | 3 |
 | [formulary](modules/formulary.md) | — | cds, ipd, materials, opd, pharmacy | 27 | 12 |
 | [housekeeping](modules/housekeeping.md) | ipd, tasks | — | 4 | 0 |
 | [ipd](modules/ipd.md) | billing, formulary, lab, materials, opd, ordering, ot, patients, pharmacy, roster, tariff | diet, emergency, housekeeping, maintenance, passes, transport | 136 | 35 |

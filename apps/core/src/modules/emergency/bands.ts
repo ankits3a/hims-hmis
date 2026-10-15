@@ -4,7 +4,7 @@ import { withTx } from "../../kernel/db/client";
 import { erBands, patients } from "../../kernel/db/schema";
 import { appendEvent } from "../../kernel/events/append";
 import { computerAlive, getComputer } from "../../kernel/printing/computers";
-import { listAllergies, resolvePatientId } from "../patients";
+import { displayNameFor, listAllergies, resolvePatientId } from "../patients";
 import { ageWords, aliasHiOf, lockEpisode, onceEr, provenanceOf, requireErPermission, yearsOld } from "./core";
 import { ErRefusal } from "./errors";
 import { erBandPrinted, erBandVoided } from "./events";
@@ -45,14 +45,18 @@ export async function checkPrinter(db: Db, printerId: string | undefined, at: Da
 
 /** The patient as the band names them NOW: through the merge chain, read in the caller's transaction. */
 export async function bandPerson(tx: Db | Tx, patientId: string): Promise<{
-  id: string; uhid: string; name: string; dob: Date | null; sex: string; unidentified: boolean;
+  id: string; uhid: string; name: string; dob: Date | null; sex: string; unidentified: boolean; alias: string | null; isConfidential: boolean;
 }> {
   const canonical = (await resolvePatientId(tx, patientId)) ?? patientId;
   const p = (await tx.select({
     id: patients.id, uhid: patients.uhid, name: patients.name, dob: patients.dob, sex: patients.sex, identityStatus: patients.identityStatus,
+    alias: patients.alias, isConfidential: patients.isConfidential,
   }).from(patients).where(eq(patients.id, canonical)))[0];
   if (p === undefined) throw new ErRefusal("patient_not_found");
-  return { id: p.id, uhid: p.uhid, name: p.name, dob: p.dob, sex: p.sex, unidentified: p.identityStatus === "unidentified" };
+  return {
+    id: p.id, uhid: p.uhid, name: p.name, dob: p.dob, sex: p.sex, unidentified: p.identityStatus === "unidentified",
+    alias: p.alias, isConfidential: p.isConfidential,
+  };
 }
 
 /** Band size from the age: a recorded DOB under 14, or a paediatric age band, takes the paediatric band. */
@@ -63,9 +67,12 @@ export function defaultBandSize(dob: Date | null, band: ErAgeBand | null, at: Da
 }
 
 async function payloadOf(
-  db: Db, tx: Tx, e: EpisodeRow, serial: string, size: BandSize | undefined, site: BandSite, at: Date,
+  db: Db, tx: Tx, actor: Actor, e: EpisodeRow, serial: string, size: BandSize | undefined, site: BandSite, at: Date,
 ): Promise<ErBandPayload> {
   const p = await bandPerson(tx, e.patientId);
+  // ER review (2026-10-15, DECIDED): a sealed patient's band (and the response that carries it) shows the alias unless
+  // the reader holds `patients.confidential.read` — the patients module's one rule (`displayNameFor`).
+  const name = await displayNameFor(tx, actor, p);
   const band = (e.ageBand ?? null) as ErAgeBand | null;
   const allergies = p.unidentified ? [] : await listAllergies(db, p.id);
   const live = allergies.filter((r) => r.status === "active");
@@ -76,7 +83,7 @@ async function payloadOf(
   if (p.unidentified) alertWords.push("Unidentified");
   if (e.returnedWithin24h) alertWords.push("Returned within 24 h");
   return {
-    name: p.name, nameHi: p.unidentified ? aliasHiOf(e.alias) : null, uhid: p.uhid,
+    name, nameHi: p.unidentified ? aliasHiOf(e.alias) : null, uhid: p.uhid,
     ageSex: `${ageWords(yearsOld(p.dob, at), band)} ${SEX_LETTER[p.sex] ?? "U"}`,
     episodeNo: e.episodeNo, arrivedOn: IST(e.arrivedAt), allergyWords, alertWords,
     size: size ?? defaultBandSize(p.dob, band, at), site, barcode: serial, qr: `ERBAND1|${serial}|${p.uhid}`,
@@ -97,7 +104,7 @@ export async function mintBandIn(
   db: Db, tx: Tx, actor: Actor, e: EpisodeRow, choice: { size?: BandSize; site: BandSite; printerId?: string }, at: Date,
 ): Promise<Output<"print_er_band">> {
   const serial = await nextSerial(tx, e);
-  const band = await payloadOf(db, tx, e, serial, choice.size, choice.site, at);
+  const band = await payloadOf(db, tx, actor, e, serial, choice.size, choice.site, at);
   const bandId = newId();
   await tx.insert(erBands).values({
     id: bandId, episodeId: e.id, serial, size: band.size, site: band.site, printerId: choice.printerId ?? null,
