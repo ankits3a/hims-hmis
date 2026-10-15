@@ -519,7 +519,7 @@ describe("the doctor's OPD line on a phone", () => {
     await mount(w.fetcher);
     await fireEvent.press(await screen.findByTestId("with-row-13-open"));
     await fireEvent.press(await screen.findByTestId("consult-park"));
-    expect(await screen.findByTestId("with-state-13")).toHaveTextContent("Parked just now");
+    expect(await screen.findByTestId("with-state-13")).toHaveTextContent("On hold just now");
     await fireEvent.press(screen.getByTestId("with-row-13-open"));
     await fireEvent.press(await screen.findByTestId("act-resume"));
     expect(await screen.findByTestId("issue-complete")).toBeTruthy();

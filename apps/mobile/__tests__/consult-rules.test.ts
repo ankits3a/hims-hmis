@@ -135,7 +135,7 @@ describe("phone consult — the reading rules (one file, shared; packages/contra
     expect(filled.tests).toEqual([{ serviceId: "s1", code: "CBC", name: "CBC", pricePaise: 25000 }]);
     expect(filled).toMatchObject({ adviceText: "Rest", reviewDays: 5, from: "Viral fever" });
     // "Save as a set" carries lines, tests, advice, review — and nothing about the patient.
-    expect(Object.keys(setBodyOf(filled, food)).sort()).toEqual(["advice", "lines", "reviewDays", "tests"]);
+    expect(Object.keys(setBodyOf(filled)).sort()).toEqual(["advice", "lines", "reviewDays", "tests"]);
   });
 
   it("a stored draft is this visit's or it is nothing", () => {

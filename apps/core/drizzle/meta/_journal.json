@@ -1440,7 +1440,14 @@
     {
       "idx": 205,
       "version": "7",
-      "when": 1792058738684,
+      "when": 1792059467180,
+      "tag": "0206_vendor_item_rates",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1792059467181,
       "tag": "0205_opd_renal_overrides",
       "breakpoints": true
     }
