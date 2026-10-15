@@ -821,6 +821,14 @@
       "adviceTitle": "Advice and follow-up",
       "history": "Patient's history ›",
       "allergy": "Allergy · {{substance}}",
+      "allergyAdd": {
+        "open": "+ Allergy",
+        "title": "Add allergy",
+        "placeholder": "Type 3 letters, e.g. pen",
+        "reactionHint": "e.g. rash",
+        "noRule": "No check rule for this",
+        "failed": "Not saved — {{why}}"
+      },
       "pulse": "Pulse",
       "temp": "Temp",
       "toldDesk": "Told the desk: “{{words}}”",

@@ -821,6 +821,14 @@
       "adviceTitle": "सलाह और फ़ॉलो-अप",
       "history": "मरीज़ का इतिहास ›",
       "allergy": "एलर्जी · {{substance}}",
+      "allergyAdd": {
+        "open": "+ एलर्जी",
+        "title": "एलर्जी जोड़ें",
+        "placeholder": "3 अक्षर लिखें, जैसे pen",
+        "reactionHint": "जैसे दाने",
+        "noRule": "इसका जाँच नियम नहीं",
+        "failed": "सहेजा नहीं — {{why}}"
+      },
       "pulse": "नाड़ी",
       "temp": "ताप",
       "toldDesk": "डेस्क को बताया: “{{words}}”",
