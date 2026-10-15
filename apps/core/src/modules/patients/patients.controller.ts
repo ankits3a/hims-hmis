@@ -38,7 +38,7 @@ import {
 } from "./merge";
 import type { MergeRequestListItem, VisitSummary } from "./merge";
 import { displayNameFor } from "./display-name";
-import { patientProfile } from "./profile";
+import { aliasCard, patientProfile } from "./profile";
 import type { PatientProfile } from "./profile";
 import { maskMergeSnapshotRow, mergeSnapshotDiffers, revealMergeSnapshot } from "./merge-reveal";
 import type { SnapshotRow } from "./merge-reveal";
@@ -781,6 +781,20 @@ export class PatientsController {
     if (!found) throw new NotFoundException(`unknown patient ${id}`);
     const p = found.patient;
     return { payload: buildQrPayload(this.cfg, p), uhid: p.uhid, name: p.name, administrativeGender: p.administrativeGender, dob: p.dob };
+  }
+
+  /**
+   * #849 — the alias variant of the card above, for a SEALED record (board §4 "Print card (alias)").
+   * The alias in the name's place, no DOB, the record's own signed QR (`profile.ts`). Logged as
+   * `patient.card_alias` (sealed) — the ordinary card read above writes no access row today.
+   */
+  @RequirePermission("patients.read", "hospital")
+  @Get(":id/qr/alias")
+  async qrCardAlias(@CurrentActor() actor: Actor, @Param("id") id: string): Promise<unknown> {
+    const card = await aliasCard(this.db, this.cfg, actor, id);
+    if (!card) throw new NotFoundException(`unknown patient ${id}`);
+    await recordPhiAccess(this.db, { actor, patientId: card.patientId, surface: "patient.card_alias", sealed: true, reason: null });
+    return { payload: card.payload, uhid: card.uhid, name: card.name, administrativeGender: card.administrativeGender, dob: card.dob };
   }
 
   @RequirePermission("patients.update", "hospital")

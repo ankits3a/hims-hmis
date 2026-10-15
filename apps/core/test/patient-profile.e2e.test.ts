@@ -115,6 +115,28 @@ describe("#657 patient profile e2e", () => {
     await request(app.getHttpServer()).get("/patients/01NOSUCH00000000000000000/profile").set(...auth(desk)).expect(404);
   });
 
+  it("#849 GET /patients/:id/qr/alias — a sealed record's card with the alias, never the name, DOB or mobile; logged as patient.card_alias", async () => {
+    const desk = await deskSeat();
+    const id = await register({ name: "Sealed Card Name", phone: "9811100006", isConfidential: true, alias: "R-79", addressLine: "Card Road" });
+    // The ordinary card stays refused to this seat, exactly as before.
+    await request(app.getHttpServer()).get(`/patients/${id}/qr`).set(...auth(desk)).expect(404);
+    const res = await request(app.getHttpServer()).get(`/patients/${id}/qr/alias`).set(...auth(desk)).expect(200);
+    expect(res.body).toMatchObject({ name: "R-79", dob: null });
+    expect(res.body.uhid).toMatch(/^HMS\d{8}$/);
+    expect(typeof res.body.payload).toBe("string");
+    const wire = JSON.stringify(res.body);
+    for (const leak of ["Sealed Card Name", "9811100006", "Card Road"]) expect(wire).not.toContain(leak);
+    expect(await accessRows(id)).toEqual([{ surface: "patient.card_alias", sealed: true }]);
+    await request(app.getHttpServer()).get(`/patients/${id}/qr/alias`).set(...auth(randoToken)).expect(403);
+  });
+
+  it("#849 GET /patients/:id/qr/alias — an ordinary record has no alias card (404, nothing logged)", async () => {
+    const desk = await deskSeat();
+    const id = await register({ name: "Open Card", phone: "9811100007" });
+    await request(app.getHttpServer()).get(`/patients/${id}/qr/alias`).set(...auth(desk)).expect(404);
+    expect(await accessRows(id)).toEqual([]);
+  });
+
   it("POST /patients/:id/mobile-shown — answers the numbers and writes one patient.profile_mobile row", async () => {
     const desk = await deskSeat();
     const id = await register({ name: "Caller", phone: "9811100003", altPhone: "9811100004" });

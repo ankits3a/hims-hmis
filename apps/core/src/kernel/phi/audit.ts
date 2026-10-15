@@ -22,6 +22,8 @@ export type PhiSurface =
    * Their own names, so the access log tells the profile apart from the merge review's Show.
    */
   | "patient.profile_mobile" | "patient.profile_alias"
+  /** #849 — the alias variant of the patient card (`GET /patients/:id/qr/alias`): alias, UHID, gender, the signed QR. */
+  | "patient.card_alias"
   /**
    * #653 — the merge review's "Show": the masked mobiles, and on a merge request the masked phone,
    * DOB, address and ABHA. Its own name: the comparison masks them by default, and revealing them is

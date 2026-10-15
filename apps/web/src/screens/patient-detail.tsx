@@ -145,6 +145,8 @@ type RestrictedProfileWire = {
     ageYears: number | null; ageMonths: number | null; sensitiveContext: boolean; status: string;
   };
   allergies: { id: string; substance: string; reaction: string | null; severity: "mild" | "moderate" | "severe" | null }[];
+  /** #849 — date and department per visit; optional so an older server's shape still reads. */
+  history?: { serviceDate: string; departmentName: string | null }[];
 };
 type ProfileWire = FullProfileWire | RestrictedProfileWire;
 
@@ -1122,13 +1124,18 @@ function LinkedPatients({ patient }: { patient: PatientRow }): React.ReactElemen
 
 /* ——— The hospital card: print + reissue (D-23: every previously printed card dies at that moment) ——— */
 
-function PrintCardDialog({ patient, open, onOpenChange, reissued }: {
-  patient: PatientRow; open: boolean; onOpenChange: (o: boolean) => void; reissued: { qrVersion: number; payload: string } | null;
+/**
+ * The patient card. `alias` (#849, board §4 "Print card (alias)") asks the alias variant of the same
+ * read (`GET /patients/:id/qr/alias`: the alias in the name's place, no DOB) and prints it through
+ * the same `QrCard` — one renderer, two sources.
+ */
+function PrintCardDialog({ patientId, alias = false, open, onOpenChange, reissued }: {
+  patientId: string; alias?: boolean; open: boolean; onOpenChange: (o: boolean) => void; reissued: { qrVersion: number; payload: string } | null;
 }): React.ReactElement {
   const { t } = useTranslation();
   const qr = useQuery({
-    queryKey: ["qr-card", patient.id],
-    queryFn: () => api<QrCardData>("GET", `/patients/${patient.id}/qr`),
+    queryKey: ["qr-card", patientId, alias ? "alias" : "card"],
+    queryFn: () => api<QrCardData>("GET", alias ? `/patients/${patientId}/qr/alias` : `/patients/${patientId}/qr`),
     enabled: open,
   });
   // UX-AUDIT 2026-09-29 · BOARD — the QR payload carries the internal patient id; it is encoded in the
@@ -1138,7 +1145,7 @@ function PrintCardDialog({ patient, open, onOpenChange, reissued }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Not `.pp`: its button reset strips QrCard's own Print button (board finding 10). */}
       <DialogContent>
-        <DialogHeader><DialogTitle>{t("card.print")}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{alias ? t("profile.restricted.printAlias") : t("card.print")}</DialogTitle></DialogHeader>
         {data === null ? <p>{t("app.loading")}</p> : (
           <div data-testid="qr-card-print" data-payload={data.payload}><QrCard data={data} /></div>
         )}
@@ -1206,6 +1213,7 @@ function RestrictedProfileView({ data, canOpenVisit, onOpenVisit }: {
   const queryClient = useQueryClient();
   const genderWord = useGenderWord();
   const [glassOpen, setGlassOpen] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1267,6 +1275,21 @@ function RestrictedProfileView({ data, canOpenVisit, onOpenVisit }: {
             <div className="refuse" style={{ marginBottom: 12 }} data-testid="restricted-banner">
               <b style={{ color: "var(--red)" }}>{t("profile.restricted.title")}</b> {t("profile.restricted.body")}
             </div>
+            {/* #849 — board §4: each visit as its date and department; the rest is the treating doctor's. */}
+            {(data.history ?? []).length > 0 && (
+              <section data-testid="restricted-history">
+                <div className="tag" style={{ marginBottom: 6 }}>{t("profile.restricted.history")}</div>
+                {(data.history ?? []).map((h, i) => (
+                  <div className="ev" key={`${h.serviceDate}-${String(i)}`} data-testid="restricted-history-row">
+                    <span className="src">OPD</span>
+                    <div>
+                      <div className="t">{[dmy(h.serviceDate), h.departmentName].filter((x) => x !== null && x !== "").join(" · ")}</div>
+                      <div className="s">{t("profile.restricted.doctorOnly")}</div>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )}
             {glassOpen && (
               <div className="box" style={{ padding: 14 }} data-testid="break-glass-form">
                 <label style={{ display: "block", fontSize: 12.5, fontWeight: 600, marginBottom: 6 }} htmlFor="pf-glass-reason">{t("profile.breakGlass.reason")}</label>
@@ -1284,15 +1307,17 @@ function RestrictedProfileView({ data, canOpenVisit, onOpenVisit }: {
             <section className="box" style={{ padding: 14 }}>
               <div className="tag" style={{ marginBottom: 10 }}>{t("profile.nextAct")}</div>
               {canOpenVisit && <button className="pri" style={{ width: "100%" }} data-testid="onward-open-visit" onClick={onOpenVisit}>{t("profile.openAtDeskOne")}</button>}
-              {can("auth.break_glass.use") && !glassOpen && (
-                <div className="acts2">
+              <div className="acts2">
+                <button type="button" className="sec" data-testid="print-card-alias" onClick={() => setPrinting(true)}>{t("profile.restricted.printAlias")}</button>
+                {can("auth.break_glass.use") && !glassOpen && (
                   <button type="button" className="sec rd" data-testid="break-glass" onClick={() => setGlassOpen(true)}>{t("profile.breakGlass.act")}</button>
-                </div>
-              )}
+                )}
+              </div>
             </section>
           </aside>
         </div>
       </div>
+      <PrintCardDialog patientId={p.id} alias open={printing} onOpenChange={setPrinting} reissued={null} />
     </PaperScreen>
   );
 }
@@ -1916,7 +1941,7 @@ export function PatientDetail(): React.ReactElement {
       </div>
 
       {editing && <EditDrawer key={JSON.stringify(patient)} patient={patient} displayName={name} onClose={() => setEditing(false)} />}
-      <PrintCardDialog patient={patient} open={printing} onOpenChange={setPrinting} reissued={reissued} />
+      <PrintCardDialog patientId={patient.id} open={printing} onOpenChange={setPrinting} reissued={reissued} />
       <ReissueDialog patient={patient} open={reissuing} onOpenChange={setReissuing} onReissued={setReissued} />
       <RecordDeathDialog patient={patient} open={recordingDeath} onOpenChange={setRecordingDeath} />
       {!restricted && <AddGuardianDialog patientId={patient.id} open={addingRep} onOpenChange={setAddingRep} />}

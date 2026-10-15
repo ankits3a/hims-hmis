@@ -1,10 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import type { Actor } from "@hmis/contracts";
-import { patients } from "../../kernel/db/schema";
+import { opdDepartments, opdEncounters, patients } from "../../kernel/db/schema";
 import { getPatient, listMergedLoserIds, resolvePatientId } from "./registration";
 import type { PatientRow } from "./registration";
 import { listAllergies } from "./allergies";
 import { visitSummaries } from "./merge";
+import { buildQrPayload } from "./qr";
+import type { AppConfig } from "../../kernel/config";
 import type { Db } from "../../kernel/db/client";
 
 /**
@@ -47,6 +49,15 @@ export type RestrictedProfilePatient = {
   status: string;
 };
 
+/**
+ * #849 — board §4's history row on a restricted record: "OPD 18-Sep-2026 · General Medicine ·
+ * details for the treating doctor only". The date and the department, and nothing else: no visit
+ * id, no doctor, no diagnosis.
+ */
+export type RestrictedHistoryRow = { serviceDate: string; departmentName: string | null };
+
+const RESTRICTED_HISTORY_CAP = 50;
+
 export type ProfileAllergy = { id: string; substance: string; reaction: string | null; severity: string | null };
 
 export type PatientProfile =
@@ -62,6 +73,7 @@ export type PatientProfile =
     patient: RestrictedProfilePatient;
     resolvedFrom: string | null;
     allergies: ProfileAllergy[];
+    history: RestrictedHistoryRow[];
   };
 
 const IST_OFFSET_MS = 330 * 60_000;
@@ -106,6 +118,14 @@ export async function patientProfile(db: Db, actor: Actor, patientId: string, no
   const allergies = (await listAllergies(db, row.id))
     .filter((a) => a.status === "active")
     .map((a) => ({ id: a.id, substance: a.substance, reaction: a.reaction, severity: a.severity }));
+  const chain = [row.id, ...await listMergedLoserIds(db, row.id)];
+  const history = await db
+    .select({ serviceDate: opdEncounters.serviceDate, departmentName: opdDepartments.name })
+    .from(opdEncounters)
+    .leftJoin(opdDepartments, eq(opdDepartments.id, opdEncounters.departmentId))
+    .where(and(inArray(opdEncounters.patientId, chain), ne(opdEncounters.status, "abandoned")))
+    .orderBy(desc(opdEncounters.serviceDate), desc(opdEncounters.openedAt))
+    .limit(RESTRICTED_HISTORY_CAP);
   return {
     view: "restricted",
     resolvedFrom: canonical === patientId ? null : patientId,
@@ -121,5 +141,34 @@ export async function patientProfile(db: Db, actor: Actor, patientId: string, no
       status: row.status,
     },
     allergies,
+    history,
+  };
+}
+
+/** A SEALED row, by any id on its merge chain; null for an absent or an ordinary record. */
+async function sealedRow(db: Db, patientId: string): Promise<typeof patients.$inferSelect | null> {
+  const canonical = await resolvePatientId(db, patientId);
+  if (canonical === null) return null;
+  const row = (await db.select().from(patients).where(eq(patients.id, canonical)))[0];
+  return row && row.isConfidential ? row : null;
+}
+
+/**
+ * #849 — "PRINT CARD (ALIAS)" (board §4). The SAME card the profile prints (`GET /patients/:id/qr`
+ * → the web `QrCard`), with the alias where the name goes and no date of birth: the board's
+ * restricted card shows the alias, the UHID and age, and the card has no age line. The signed QR is
+ * the record's own — a scan goes through `verifyQrScan`, which already masks a sealed name.
+ * Only a sealed record has an alias card; an ordinary one answers null (404).
+ */
+export async function aliasCard(
+  db: Db, cfg: AppConfig, actor: Actor, patientId: string,
+): Promise<{ payload: string; uhid: string; name: string; administrativeGender: string; dob: null; patientId: string } | null> {
+  if (actor.type !== "user") return null;
+  const row = await sealedRow(db, patientId);
+  if (row === null) return null;
+  return {
+    payload: buildQrPayload(cfg, row), uhid: row.uhid,
+    name: row.alias !== null && row.alias.trim() !== "" ? row.alias : "—",
+    administrativeGender: row.administrativeGender, dob: null, patientId: row.id,
   };
 }

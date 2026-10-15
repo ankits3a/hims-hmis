@@ -14325,7 +14325,10 @@
       "title": "This record is restricted.",
       "body": "Staff see the alias, the UHID, age and allergies. The name, contact and address open only through break-glass by the Medical Superintendent (owner ruling 28-Sep-2026), with a reason, logged.",
       "editHidden": "Contact and address are not shown or edited on a restricted record.",
-      "noFamily": "not shown on a restricted record"
+      "noFamily": "not shown on a restricted record",
+      "history": "History",
+      "doctorOnly": "details for the treating doctor only",
+      "printAlias": "Print card (alias)"
     },
     "hidden": "hidden",
     "hiddenWord": "hidden",

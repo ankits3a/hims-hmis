@@ -1375,3 +1375,43 @@ describe("PatientDetail — #657 profile reads", () => {
     expect(card).not.toHaveTextContent("AG-0001");
   });
 });
+
+/**
+ * #849 — board §4 on a sealed record the seat may not open: the history rows say only date and
+ * department ("details for the treating doctor only"), and "Print card (alias)" prints the same card
+ * the profile prints, from the alias variant of its read — never the legal name.
+ */
+describe("PatientDetail — #849 restricted history and alias card", () => {
+  beforeEach(() => { setToken(null); localStorage.clear(); });
+  afterEach(() => { vi.unstubAllGlobals(); setToken(null); });
+
+  const SEALED = {
+    view: "restricted", resolvedFrom: null,
+    patient: { id: "p-1", uhid: "HMS0000001234", alias: "Patient R-2291", isConfidential: true, administrativeGender: "female", ageYears: 71, ageMonths: null, sensitiveContext: false, status: "active" },
+    allergies: [],
+    history: [{ serviceDate: "2026-09-18", departmentName: "General Medicine" }],
+  };
+
+  it("draws each visit as date and department, with the treating-doctor line and nothing more", async () => {
+    stubSeat({ "GET /api/patients/p-1/profile": SEALED }, ["patients.read"]);
+    renderWithProviders(<PatientDetail />);
+    const row = await screen.findByTestId("restricted-history-row");
+    expect(row).toHaveTextContent("OPD");
+    expect(row).toHaveTextContent("18-Sep-2026 · General Medicine");
+    expect(row).toHaveTextContent("details for the treating doctor only");
+  });
+
+  it("Print card (alias) opens the patient card from the alias read: the alias, never the legal name", async () => {
+    stubSeat({
+      "GET /api/patients/p-1/profile": SEALED,
+      "GET /api/patients/p-1/qr/alias": { payload: "1.p-1.HMS0000001234.1.sig", uhid: "HMS0000001234", name: "Patient R-2291", administrativeGender: "female", dob: null },
+    }, ["patients.read"]);
+    renderWithProviders(<PatientDetail />);
+    fireEvent.click(await screen.findByRole("button", { name: "Print card (alias)" }));
+    const card = await screen.findByTestId("qr-card-print");
+    expect(card).toHaveTextContent("Patient R-2291");
+    expect(card).toHaveTextContent("HMS0000001234");
+    expect(card).not.toHaveTextContent("Asha Devi");
+    expect(fetchCalls().some((c) => c.url === "/api/patients/p-1/qr")).toBe(false);
+  });
+});

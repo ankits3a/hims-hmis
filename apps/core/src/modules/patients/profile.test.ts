@@ -74,6 +74,24 @@ describe("#657 patientProfile", () => {
     for (const leak of ["Real Legal Name", "9899000102", "12 Hidden Lane", "1955-03-12"]) expect(wire).not.toContain(leak);
   });
 
+  it("#849 — the restricted view carries the board's history rows: date and department only, newest first, abandoned left out", async () => {
+    const p = await mkPatient(db, clerk.actor, { name: "Real Legal Name", isConfidential: true, alias: "R-2294", phone: "9899000103" });
+    const a = await openOpdVisit(db, { clerk: clerk.actor, patientId: p.id, departmentId: deptId, doctorId }, T0);
+    const b = await openOpdVisit(db, { clerk: clerk.actor, patientId: p.id, departmentId: deptId, doctorId }, new Date(T0.getTime() + 86_400_000));
+    const c = await openOpdVisit(db, { clerk: clerk.actor, patientId: p.id, departmentId: deptId, doctorId }, new Date(T0.getTime() + 2 * 86_400_000));
+    await db.update(opdEncounters).set({ status: "abandoned" }).where(eq(opdEncounters.id, c.encounterId));
+    const day = async (id: string): Promise<string> => (await db.select().from(opdEncounters).where(eq(opdEncounters.id, id)))[0]!.serviceDate;
+
+    const view = await patientProfile(db, clerk.actor, p.id, T0);
+    if (view?.view !== "restricted") throw new Error("expected the restricted view");
+    expect(view.history).toEqual([
+      { serviceDate: await day(b.encounterId), departmentName: "General Medicine" },
+      { serviceDate: await day(a.encounterId), departmentName: "General Medicine" },
+    ]);
+    const wire = JSON.stringify(view);
+    for (const leak of ["Real Legal Name", "9899000103", "pf_dr", a.encounterId]) expect(wire).not.toContain(leak);
+  });
+
   it("after the MS breaks the glass on that record, the same read answers the full row with the grant", async () => {
     const p = await mkPatient(db, clerk.actor, { name: "Real Legal Name", isConfidential: true, alias: "R-2292" });
     const ms = await mkUser(db, "pf_ms", ["medical_superintendent"]);
