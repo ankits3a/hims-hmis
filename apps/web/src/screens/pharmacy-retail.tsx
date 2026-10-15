@@ -326,7 +326,7 @@ function BatchPick({ itemId, name, value, priced, onChange }: {
   const q = useRetailBatches(itemId);
   return (
     <>
-      <select className="in mo" aria-label={t("pharmacyRetail.batchFor", { name })} value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}>
+      <select className="in rt-batch" aria-label={t("pharmacyRetail.batchFor", { name })} value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? undefined : e.target.value)}>
         <option value="">{t("pharmacyRetail.batchAuto")}</option>
         {(q.data?.batches ?? []).map((b) => (
           <option key={b.batchId} value={b.batchId}>
@@ -789,7 +789,7 @@ export function PharmacyRetail(): React.ReactElement {
                                       onChange={(e) => { const v = e.target.value.replace(/\D/g, ""); setCart((all) => all.map((x, j) => (j === i ? { ...x, qty: v } : x))); invalidate(); }} />
                                     <span className="rt-muted"> {c.entry.baseUom}</span>
                                   </td>
-                                  <td className="rt-nowrap" data-label={t("pharmacyBill.batch")}>
+                                  <td className="rt-nowrap rt-batchcell" data-label={t("pharmacyBill.batch")}>
                                     {c.entry.scannedBatchId !== null ? <span className="mo">{p?.batchNo ?? "—"}</span> : (
                                       <BatchPick itemId={c.entry.itemId} name={c.entry.brandName} value={c.batchId} priced={p?.batchNo ?? null}
                                         onChange={(batchId) => { setCart((all) => all.map((x, j) => (j === i ? { ...x, batchId } : x))); invalidate(); }} />
