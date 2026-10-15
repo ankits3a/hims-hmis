@@ -249,7 +249,8 @@ describe("WASA L-09 — the edge does not name its software", () => {
 describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
   const prod = parseCaddyfile(readFileSync(CADDYFILE, "utf8"));
   const uat = parseCaddyfile(readFileSync(UAT_CADDYFILE, "utf8"));
-  const HEADER = "Content-Security-Policy-Report-Only";
+  /** Enforced since 2026-10-15: the report-only period showed no directive the app needs that the policy refuses. */
+  const HEADER = "Content-Security-Policy";
 
   /** The one CSP line in a site's `header` block, as directive → sources. */
   function policyOf(tree: Block, site: RegExp, name: string): Map<string, string[]> {
@@ -279,6 +280,14 @@ describe("WASA M-01 — the site sends a Content-Security-Policy", () => {
       expect(p.get("script-src")).toEqual(["'self'"]);
     });
   }
+
+  it("the policy is ENFORCED, not report-only, on both sites", () => {
+    for (const [tree, site] of [[prod, /^hmis\.crkmch\.com$/], [uat, /^http:\/\/\{\$HMIS_UAT_SITE\}:8080$/]] as const) {
+      const lines = only(only(tree, site, "site"), /^header$/, "header block").lines;
+      expect(lines.some((l) => l.startsWith("Content-Security-Policy-Report-Only"))).toBe(false);
+      expect(lines.some((l) => l.startsWith("Content-Security-Policy "))).toBe(true);
+    }
+  });
 
   it("production and UAT send the SAME policy, so UAT is where a violation shows first", () => {
     const text = (tree: Block, site: RegExp): string | undefined =>
