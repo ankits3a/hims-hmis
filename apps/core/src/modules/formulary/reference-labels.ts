@@ -92,28 +92,33 @@ const first = (v: unknown): string | null => (Array.isArray(v) && typeof v[0] ==
  */
 export function planReferenceImport(choicesJson: string, labelsJsonl: string): ReferencePlan {
   const choices = ChoicesSchema.parse(JSON.parse(choicesJson));
-  const wanted = new Map<string, { refKey: string; choice: z.infer<typeof ChoiceSchema> }>();
+  // One label may be the choice for SEVERAL keys (a combination product's label chosen for a component, two spellings
+  // of one moiety): every key keeps its row, so the map holds a list per label id.
+  const wanted = new Map<string, { refKey: string; choice: z.infer<typeof ChoiceSchema> }[]>();
   for (const [refKey, c] of [...Object.entries(choices.substances), ...Object.entries(choices.combinations)]) {
     const key = refKey.split(" + ").map((s) => s.trim().toLowerCase()).sort().join(" + ");
-    if (c.label_id !== undefined) wanted.set(c.label_id, { refKey: key, choice: c });
+    if (c.label_id !== undefined) wanted.set(c.label_id, [...(wanted.get(c.label_id) ?? []).filter((w) => w.refKey !== key), { refKey: key, choice: c }]);
   }
   const rows: ReferencePlanRow[] = [];
   for (const line of labelsJsonl.split("\n")) {
     if (line.trim() === "") continue;
     const label = JSON.parse(line) as Record<string, unknown>;
     const id = typeof label.id === "string" ? label.id : "";
-    const w = wanted.get(id);
-    if (w === undefined) continue;
-    wanted.delete(id);
+    const ws = wanted.get(id);
+    if (ws === undefined) continue;
+    wanted.delete(id); // a label repeated across the files is read once
     const openfda = (label.openfda ?? {}) as Record<string, unknown>;
-    rows.push({
-      refKey: w.refKey, labelId: id, setId: typeof label.set_id === "string" ? label.set_id : (w.choice.set_id ?? ""),
-      version: typeof label.version === "string" ? label.version : (w.choice.version ?? ""),
-      product: first(openfda.brand_name) ?? (w.choice.brand?.trim() || null) ?? w.refKey,
-      productType: first(openfda.product_type) ?? w.choice.product_type ?? null,
-      effectiveDate: isoOf(label.effective_time) ?? isoOf(w.choice.effective_date), matchTier: w.choice.tier ?? null,
-      sections: referenceSectionsOf(label),
-    });
+    const sections = referenceSectionsOf(label);
+    for (const w of ws) {
+      rows.push({
+        refKey: w.refKey, labelId: id, setId: typeof label.set_id === "string" ? label.set_id : (w.choice.set_id ?? ""),
+        version: typeof label.version === "string" ? label.version : (w.choice.version ?? ""),
+        product: first(openfda.brand_name) ?? (w.choice.brand?.trim() || null) ?? w.refKey,
+        productType: first(openfda.product_type) ?? w.choice.product_type ?? null,
+        effectiveDate: isoOf(label.effective_time) ?? isoOf(w.choice.effective_date), matchTier: w.choice.tier ?? null,
+        sections,
+      });
+    }
   }
   const names = new Map<string, string>();
   for (const [refKey, c] of Object.entries(choices.substances)) {
@@ -122,7 +127,7 @@ export function planReferenceImport(choicesJson: string, labelsJsonl: string): R
   return {
     rows: rows.sort((a, b) => a.refKey.localeCompare(b.refKey)),
     names: [...names].map(([name, refKey]) => ({ name, refKey })).sort((a, b) => a.name.localeCompare(b.name)),
-    missing: [...wanted.values()].map((w) => w.refKey).sort(),
+    missing: [...wanted.values()].flatMap((ws) => ws.map((w) => w.refKey)).sort(),
   };
 }
 

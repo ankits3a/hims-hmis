@@ -62,6 +62,27 @@ describe("#616 FDA label reference layer", () => {
     expect(plan.names).toContainEqual({ name: "potassium clavulanate", refKey: "clavulanate" });
   });
 
+  /*
+    The coverage run chooses ONE label for several keys when no better one exists (measured on the real coverage file:
+    62 label ids serve more than one key, e.g. a combination product's label chosen for a component). Each key keeps
+    its row; none is dropped silently and none is reported missing. A label repeated across files is read once.
+  */
+  it("a label chosen for two keys gives each key its row, and a label repeated in the files is read once", async () => {
+    const shared = JSON.parse(CHOICES) as { substances: Record<string, Record<string, unknown>> };
+    shared.substances["clavulanate"] = { ...shared.substances["clavulanate"], status: "single_label", label_id: "fake-label-0003" };
+    const choicesJson = JSON.stringify(shared);
+    const plan = planReferenceImport(choicesJson, `${LABELS}\n${LABELS}`);
+    expect(plan.rows.map((r) => [r.refKey, r.labelId]).sort()).toEqual([
+      ["acetaminophen", "fake-label-0001"], ["amoxicillin", "fake-label-0002"], ["amoxicillin + clavulanate", "fake-label-0003"],
+      ["cetirizine", "fake-label-0004"], ["clavulanate", "fake-label-0003"],
+    ].sort());
+    expect(plan.missing).toEqual(["lost"]);
+    const apply = () => importReferenceLabels(db, OWNER, { choicesJson, labelsJsonl: LABELS, source: SOURCE, retrievedOn: "2026-10-07", apply: true });
+    expect((await apply()).labels).toMatchObject({ added: 5, changed: 0, unchanged: 0, missing: 1 });
+    expect((await apply()).labels).toMatchObject({ added: 0, changed: 0, unchanged: 5, missing: 1 });
+    expect(await db.select().from(formularyReferenceLabels).where(isNull(formularyReferenceLabels.retiredAt))).toHaveLength(5);
+  });
+
   it("the script keeps only the chosen labels, from a published bulk file or JSON lines", () => {
     const wanted = chosenLabelIds(CHOICES);
     const records = LABELS.split("\n").filter((l) => l !== "").map((l) => JSON.parse(l) as unknown);
