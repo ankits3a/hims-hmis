@@ -94,6 +94,17 @@ export const erEvidenceCustody = defineEvent("er.evidence_custody", MODULE, z.ob
   episodeId: id, mlcId: id, custodyId: id, link: z.number().int(), action: z.string(), provenance: ErProvenanceSchema,
 }));
 
+/* ═══ lane 5 (#812) — disposition and departure (ids and codes only) ═══ */
+export const erDispositionDecided = defineEvent("er.disposition_decided", MODULE, z.object({
+  episodeId: id, disposition: z.string(), provenance: ErProvenanceSchema,
+}));
+export const erHandedToUnit = defineEvent("er.handed_to_unit", MODULE, z.object({
+  episodeId: id, admissionId: id, boarding: z.boolean(), provenance: ErProvenanceSchema,
+}));
+export const erDeparted = defineEvent("er.departed", MODULE, z.object({
+  episodeId: id, outcome: z.string(), bayId: id.nullable(), admissionId: id.nullable(), provenance: ErProvenanceSchema,
+}));
+
 /** Every event the tracking board refetches on. */
 export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erPreAlerted.name, erPreAlertCancelled.name, erArrived.name, erBroughtDead.name, erBandPrinted.name, erBandVoided.name,
@@ -101,5 +112,5 @@ export const ER_BOARD_EVENT_NAMES: readonly string[] = [
   erTriaged.name, erRetriaged.name, erVitalsRecorded.name, erPlaced.name, erMoved.name, erDoctorAssigned.name,
   erNoteRecorded.name, erNoteCosigned.name, erOrderPlaced.name, erMedIssued.name, erDoseRecorded.name, erVerbalSigned.name,
   erProcedureRecorded.name, erConsentRecorded.name, erCallRaised.name, erCallAnswered.name, erStabilised.name,
-  erMlcOpened.name,
+  erMlcOpened.name, erDispositionDecided.name, erHandedToUnit.name, erDeparted.name,
 ];

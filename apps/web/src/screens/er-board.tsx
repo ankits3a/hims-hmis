@@ -199,14 +199,16 @@ export function ErBoardScreen(): React.ReactElement {
       </header>
 
       <section className="erb-stats" aria-label={t("erBoard.totals")}>
-        <Stat label={t("erBoard.stat.inDept")} value={s ? String(s.inDepartment) : "—"} />
+        <Stat label={t("erBoard.stat.inDept")} value={s ? String(s.inDepartment) : "—"}
+          sub={s && s.boarding > 0 ? t("erBoard.stat.boarding", { n: s.boarding }) : undefined} />
         <Stat label={t("erBoard.stat.waiting")} value={s ? String(s.waitingTriage) : "—"}
           sub={s ? (s.longestTriageWaitMinutes === null ? t("erBoard.stat.noneWaiting") : t("erBoard.stat.longest", { minutes: s.longestTriageWaitMinutes })) : undefined}
           tone={s && s.longestTriageWaitMinutes !== null && s.longestTriageWaitMinutes > 5 ? "bad" : undefined} />
         <Stat label={t("erBoard.stat.expected")} value={s ? String(s.expected) : "—"} />
         <Stat label={t("erBoard.stat.bays")} value={s ? String(s.bays.free) : "—"} sub={s ? t("erBoard.stat.baysOf", { total: s.bays.total }) : undefined}
           tone={s && s.bays.total > 0 && s.bays.free === 0 ? "bad" : undefined} />
-        <Stat label={t("erBoard.stat.arrivals")} value={s ? String(s.arrivalsToday) : "—"} />
+        <Stat label={t("erBoard.stat.arrivals")} value={s ? String(s.arrivalsToday) : "—"}
+          sub={s && s.lwbsToday > 0 ? t("erBoard.stat.lwbs", { n: s.lwbsToday }) : undefined} />
         <Stat label={t("erBoard.stat.broughtDead")} value={s ? String(s.broughtDeadToday) : "—"} />
       </section>
 

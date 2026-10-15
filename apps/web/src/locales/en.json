@@ -19146,7 +19146,8 @@
       "paper": "Paper sheet",
       "critical": "Critical result",
       "call_waiting": "Call waiting",
-      "stabilised": "Stabilised"
+      "stabilised": "Stabilised",
+      "boarding": "Boarding"
     },
     "state": {
       "arrived": "Waiting for triage",
@@ -19388,6 +19389,46 @@
       "seal_already_handed_over": {
         "rule": "This seal is already handed over.",
         "fix": "Open MLC desk"
+      },
+      "disposition_already_decided": {
+        "rule": "Disposition already decided.",
+        "fix": "Open episode"
+      },
+      "disposition_mismatch": {
+        "rule": "Does not match the decided disposition.",
+        "fix": "Open episode"
+      },
+      "disposition_reason_needed": {
+        "rule": "Give the reason for the decision.",
+        "fix": "Add reason"
+      },
+      "admission_refused": {
+        "rule": "The admission could not be raised.",
+        "fix": "Call the admission desk"
+      },
+      "already_boarding": {
+        "rule": "Already waiting for a bed.",
+        "fix": "Open episode"
+      },
+      "referral_not_for_money": {
+        "rule": "Never referred for money.",
+        "fix": "Pick the clinical reason"
+      },
+      "lama_witness_needed": {
+        "rule": "A second staff member witnesses the refusal.",
+        "fix": "Name a witness"
+      },
+      "last_seen_before_arrival": {
+        "rule": "Last seen cannot be before arrival.",
+        "fix": "Fix the time"
+      },
+      "died_before_arrival": {
+        "rule": "Time of death is before arrival.",
+        "fix": "Fix the time"
+      },
+      "mccd_required": {
+        "rule": "Enter the MCCD number.",
+        "fix": "Enter MCCD number"
       }
     },
     "esi": {
@@ -19428,7 +19469,9 @@
       "bays": "Bays free",
       "baysOf": "of {{total}}",
       "arrivals": "Arrivals today",
-      "broughtDead": "Brought dead today"
+      "broughtDead": "Brought dead today",
+      "boarding": "{{n}} boarding",
+      "lwbs": "{{n}} left unseen"
     },
     "col": {
       "expected": "Expected",
@@ -19661,7 +19704,8 @@
       "procedure": "Procedure",
       "consent": "Consent",
       "stabilised": "Stabilised",
-      "mlc": "MLC"
+      "mlc": "MLC",
+      "dispo": "Disposition"
     },
     "meds": "Medicines",
     "calls": "Specialty calls",
@@ -19773,6 +19817,99 @@
       "open": "Open MLC",
       "opened": "MLC {{no}} opened",
       "openedLate": "MLC {{no}} opened (late)"
+    },
+    "dispo": {
+      "tab": {
+        "discharge": "Discharge",
+        "admit": "Admit",
+        "refer": "Refer out",
+        "lama": "LAMA",
+        "death": "Death",
+        "left": "Left"
+      },
+      "reason": "Why (the decision)",
+      "diagnosis": "Diagnosis",
+      "treatment": "Treatment given",
+      "medicines": "Medicines (one per line)",
+      "medicinesHint": "Paracetamol · 500 mg · three times a day",
+      "returnIf": "Come back at once if",
+      "followDept": "Follow-up OPD (department)",
+      "followOn": "Follow-up date",
+      "dischargeNow": "Sign summary · discharge",
+      "discharged": "Discharged — bay to cleaning",
+      "consultant": "Admitting consultant",
+      "class": "Ward class",
+      "provisional": "Provisional diagnosis",
+      "admitNow": "Hand to unit",
+      "boarding": "Admission raised — boarding until the bed",
+      "admitted": "Admitted — bay to cleaning",
+      "facility": "Referred to",
+      "referralNote": "Referral note",
+      "escort": "Escort",
+      "transport": "Transport",
+      "referNow": "Refer out",
+      "referred": "Referred out — bay to cleaning",
+      "risks": "Risks explained",
+      "signerName": "Name of the person signing",
+      "relation": "Relation",
+      "witness": "Witness (staff)",
+      "lamaNow": "Record LAMA",
+      "lamaDone": "LAMA recorded — bay to cleaning",
+      "diedAt": "Time of death",
+      "mccd": "MCCD number",
+      "mccdHint": "Without the MCCD number only for an MLC already intimated to the police.",
+      "deathNow": "Record death",
+      "deathDone": "Death recorded — body to the mortuary register",
+      "lastSeen": "Last seen at",
+      "lwbsNow": "Left without being seen",
+      "lwbsDone": "Recorded: left without being seen",
+      "abscondNow": "Absconded",
+      "abscondDone": "Absconded — security told",
+      "abscondPolice": "Absconded — security told; inform the police (MLC)",
+      "sign": {
+        "chest_pain": "Chest pain",
+        "breathlessness": "Breathlessness",
+        "bleeding": "Bleeding",
+        "high_fever": "High fever",
+        "repeated_vomiting": "Repeated vomiting",
+        "fits": "Fits",
+        "drowsiness": "Drowsiness",
+        "worsening_pain": "Pain getting worse",
+        "wound_redness": "Wound red or swollen",
+        "less_urine": "Passing less urine",
+        "weakness_one_side": "Weakness of one side",
+        "severe_headache": "Severe headache"
+      },
+      "cls": {
+        "general": "General",
+        "semi_private": "Semi-private",
+        "private": "Private",
+        "icu": "ICU"
+      },
+      "referReason": {
+        "higher_centre_care": "Higher-centre care",
+        "specialty_not_available": "Specialty not here",
+        "bed_not_available": "No bed",
+        "equipment_not_available": "Equipment not here",
+        "patient_choice": "Patient's choice"
+      },
+      "escortOf": {
+        "doctor": "Doctor",
+        "nurse": "Nurse",
+        "paramedic": "Paramedic",
+        "family": "Family"
+      },
+      "transportOf": {
+        "own_ambulance": "Hospital ambulance",
+        "ambulance_108": "108 ambulance",
+        "private_vehicle": "Private vehicle",
+        "other": "Other"
+      },
+      "signer": {
+        "patient": "Patient signs",
+        "representative": "Representative signs",
+        "refused_to_sign": "Refused to sign"
+      }
     }
   },
   "erMlc": {

@@ -65,6 +65,8 @@ export async function mkErWorld(db: Db): Promise<ErWorld> {
   await grantPermissionToRole(db, registry, "doctor", "er.board.wall");
   // Lane 4 (#811) — the MLC: the ER desk, the casualty nurse and doctors (seed-roles grants the same three and more).
   for (const r of ["front_office", "er_nurse", "doctor"]) await grantPermissionToRole(db, registry, r, "er.mlc");
+  // Lane 5 (#812) — disposition and departure: the same three (seed-roles adds the duty manager).
+  for (const r of ["front_office", "er_nurse", "doctor"]) await grantPermissionToRole(db, registry, r, "er.disposition");
   const erNurse = (await mkUser(db, "er.nurse", ["er_nurse"])).actor;
   const mrd = (await mkUser(db, "er.mrd", ["mrd_officer"])).actor;
   const erDoctor = (await mkUser(db, "er.doctor", ["doctor"])).actor;
@@ -185,7 +187,7 @@ export async function mkErMlcWorld(db: Db): Promise<ErMlcWorld> {
   registry.install(emergencyManifest);
   await syncPermissions(db, registry);
   await ensureRole(db, "duty_manager");
-  for (const p of ["ipd.mortuary.manage", "er.mlc"]) await grantPermissionToRole(db, registry, "duty_manager", p);
+  for (const p of ["ipd.mortuary.manage", "er.mlc", "er.disposition"]) await grantPermissionToRole(db, registry, "duty_manager", p);
   const mortuary = (await mkUser(db, "er.dm", ["duty_manager"])).actor;
   const witness = (await mkUser(db, "er.mortuary2", ["duty_manager"])).actor;
   const desk2 = (await mkUser(db, "er.desk2", ["front_office"])).actor;

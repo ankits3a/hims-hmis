@@ -102,6 +102,9 @@ export const erChargeSink: EpisodeChargeSink = {
     const line = (await tx.select().from(erChargeLines).where(eq(erChargeLines.orderItemId, input.orderItemId)).for("update"))[0];
     if (line === undefined) return "none";
     if (line.status === "reversed") return "none";
+    // Lane 5 (#812): the line moved onto the IP running bill at hand-off — the charge stands there; billing reverses it
+    // through the IP bill (`ipd.charges.reverse`) if it should not (DECIDED: never reversed behind the IP bill from here).
+    if (line.status === "moved") return "work_done";
     if (input.workStarted) return "work_done";
     await tx.update(erChargeLines).set({ status: "reversed", amountPaise: null, reversedAt: input.at, reverseReason: input.reason })
       .where(eq(erChargeLines.id, line.id));

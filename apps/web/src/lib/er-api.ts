@@ -51,6 +51,15 @@ const ER_ROUTES = {
   mlcCountersign: "/er/mlc/countersign",
   mlcBelongings: "/er/mlc/belongings",
   mlcEvidence: "/er/mlc/evidence",
+  // lane 5 (#812)
+  dispoDecide: "/er/dispo/decide",
+  dispoDischarge: "/er/dispo/discharge",
+  dispoAdmit: "/er/dispo/admit",
+  dispoRefer: "/er/dispo/refer",
+  dispoLama: "/er/dispo/lama",
+  dispoLwbs: "/er/dispo/lwbs",
+  dispoAbscond: "/er/dispo/abscond",
+  dispoDeath: "/er/dispo/death",
 } as const;
 export const ER_BOARD_TOPIC = "er:board";
 export const ER_WALL_TOPIC = "erwall:board";
@@ -178,3 +187,20 @@ export const mlcIntimationApi = (body: Record<string, unknown>) => post<{ within
 export const mlcCountersignApi = (mlcId: string) => post<{ withinTarget: boolean }>(ER_ROUTES.mlcCountersign, { mlcId });
 export const mlcBelongingsApi = (body: Record<string, unknown>) => post<{ custodyId: string }>(ER_ROUTES.mlcBelongings, body);
 export const mlcEvidenceApi = (body: Record<string, unknown>) => post<{ custodyId: string; link: number }>(ER_ROUTES.mlcEvidence, body);
+
+/* ═══ lane 5 (#812) — disposition and departure. Lists are the contract's (`emergency/dispo.ts`), copied. ═══ */
+export const ER_RETURN_IF_SIGNS = [
+  "chest_pain", "breathlessness", "bleeding", "high_fever", "repeated_vomiting", "fits", "drowsiness", "worsening_pain",
+  "wound_redness", "less_urine", "weakness_one_side", "severe_headache",
+] as const;
+export const ER_REFERRAL_REASONS = [
+  "higher_centre_care", "specialty_not_available", "bed_not_available", "equipment_not_available", "patient_choice",
+] as const;
+export type DepartureOut = { episodeId: string; state: "departed"; outcome: string; departedAt: string; bayReleased: string | null };
+export const dischargeApi = (body: Record<string, unknown>) => post<DepartureOut>(ER_ROUTES.dispoDischarge, body);
+export const handToUnitApi = (body: Record<string, unknown>) => post<{ admissionId: string; boarding: boolean }>(ER_ROUTES.dispoAdmit, body);
+export const referApi = (body: Record<string, unknown>) => post<DepartureOut>(ER_ROUTES.dispoRefer, body);
+export const lamaApi = (body: Record<string, unknown>) => post<DepartureOut>(ER_ROUTES.dispoLama, body);
+export const lwbsApi = (body: Record<string, unknown>) => post<DepartureOut>(ER_ROUTES.dispoLwbs, body);
+export const abscondApi = (body: Record<string, unknown>) => post<DepartureOut & { policeToBeInformed: boolean }>(ER_ROUTES.dispoAbscond, body);
+export const deathApi = (body: Record<string, unknown>) => post<DepartureOut>(ER_ROUTES.dispoDeath, body);

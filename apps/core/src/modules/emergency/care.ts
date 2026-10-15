@@ -547,9 +547,11 @@ export async function sweepErCareClocks(db: Db, now: Date): Promise<{ criticals:
       out.calls += 1;
     });
   }
+  // Lane 5 (#812): a departed episode leaves every care clock — the verbal-order bell too (only open episodes are read).
   const verbal = await db.select().from(erMedIssues).where(and(
     eq(erMedIssues.verbal, true), isNull(erMedIssues.verbalSignedAt), isNull(erMedIssues.verbalNoticeAt),
     lte(erMedIssues.issuedAt, new Date(now.getTime() - ER_VERBAL_SIGN_MIN * MIN)),
+    inArray(erMedIssues.episodeId, db.select({ id: erEpisodes.id }).from(erEpisodes).where(inArray(erEpisodes.state, [...ER_OPEN_STATE_VALUES]))),
   ));
   for (const v of verbal) {
     await withTx(db, async (tx) => {

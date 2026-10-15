@@ -1,7 +1,7 @@
-import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_TRIAGE } from "./names";
+import { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE } from "./names";
 import type { ModuleManifest } from "../../kernel/modules/manifest";
 
-export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_TRIAGE };
+export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_DISPOSITION, ER_MLC, ER_TRIAGE };
 
 /**
  * ER lane 1 (#808, decision 0076) — the emergency department's declared surface: five permissions, five menu entries,
@@ -21,6 +21,10 @@ export { ER_ARRIVAL_REGISTER, ER_BOARD_VIEW, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_
  *   er.care              (lane 3, #810) notes, STAT orders through the ordering door, the ER issue and the medication
  *                        record, procedures, consent, specialty calls, "stabilised" — doctors and the casualty nurse
  *                        (doctor-only acts also check the doctor role)
+ *
+ *   er.disposition       (lane 5, #812) decide the disposition, discharge with the summary, hand to a unit, refer out,
+ *                        LAMA, LWBS, abscond, death — doctors, the casualty nurse, the duty manager, the front office
+ *                        (the doctor's acts also check the doctor role; LAMA a doctor or the duty manager)
  *
  *   er.mlc               (lane 4, #811) the medico-legal case: open, addendum, police intimation, countersign,
  *                        belongings, evidence chain of custody, and the MLC desk — doctors, the casualty nurse, the
@@ -45,6 +49,6 @@ export const emergencyManifest: ModuleManifest = {
     // Lane 4 (#811) — the MLC desk: owed intimations and countersigns with their clocks.
     { label: "MLC desk", path: "/er/mlc", permission: ER_MLC },
   ],
-  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC],
+  permissions: [ER_BOARD_VIEW, ER_ARRIVAL_REGISTER, ER_TRIAGE, ER_BOARD_WALL, ER_CARE, ER_MLC, ER_DISPOSITION],
   subscriptions: [],
 };

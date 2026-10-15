@@ -32,3 +32,9 @@ export const ER_CARE = "er.care";
  * one string; the doctor-only acts also check the doctor role. Nothing behind it names money.
  */
 export const ER_MLC = "er.mlc";
+/**
+ * ER lane 5 (#812) — disposition and departure: decide, discharge with the summary, hand to a unit, refer out, LAMA,
+ * LWBS, abscond, death. DECIDED: one string; the doctor's acts (decide, discharge, hand, refer, death) also check the
+ * doctor role, LAMA a doctor or the duty manager. Nothing behind it names money.
+ */
+export const ER_DISPOSITION = "er.disposition";

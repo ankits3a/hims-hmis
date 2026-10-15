@@ -3,7 +3,7 @@ import { ipdAdmissions } from "../../kernel/db/schema";
 import { admissionAdvisoryLock, readAdmission } from "./admission-core";
 import { postOrderLineIn } from "./charges";
 import type { Actor } from "@hmis/contracts";
-import type { Tx } from "../../kernel/db/client";
+import type { Db, Tx } from "../../kernel/db/client";
 
 /**
  * ER lane 5 (#812, spec SPEC-emergency §3.10) — THE ER's HAND-OFF SEAMS INTO AN ADMISSION. The emergency module raises the
@@ -43,4 +43,9 @@ export async function carryErOrderLinesIn(
     if (a.tariffVersionId === null) a = await readAdmission(tx, admissionId);
   }
   return out;
+}
+
+/** The state of an admission the ER handed a patient to (the boarding sweep reads it; null when unknown). */
+export async function erAdmissionState(db: Db | Tx, admissionId: string): Promise<string | null> {
+  return (await (db as Db).select({ state: ipdAdmissions.state }).from(ipdAdmissions).where(eq(ipdAdmissions.id, admissionId)))[0]?.state ?? null;
 }

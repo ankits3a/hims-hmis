@@ -123,6 +123,8 @@ async function tilesFor(db: Db, actor: Actor, eps: readonly EpisodeRow[], at: Da
     if (critical.has(e.episodeNo)) extra.push("critical");
     if (waitingCall.has(e.id)) extra.push("call_waiting");
     if (e.stabilisedAt !== null) extra.push("stabilised");
+    // Lane 5 (#812): admitted, waiting here for the inpatient bed.
+    if (e.boardingSince !== null && e.state === "disposition_decided") extra.push("boarding");
     const esi = (e.esi ?? null) as ErEsiLevel | null;
     const doc = e.doctorId === null ? null : docs.get(e.doctorId) ?? null;
     out.set(e.id, {
@@ -163,9 +165,10 @@ export async function readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; 
   const counts = (await db.execute(sql`
     select
       count(*) filter (where ${erEpisodes.state} <> 'brought_dead') as arrivals,
-      count(*) filter (where ${erEpisodes.state} = 'brought_dead') as dead
+      count(*) filter (where ${erEpisodes.state} = 'brought_dead') as dead,
+      count(*) filter (where ${erEpisodes.outcome} = 'lwbs') as lwbs
     from ${erEpisodes} where ${erEpisodes.arrivedAt} >= ${today.start} and ${erEpisodes.arrivedAt} < ${today.end}
-  `)).rows[0] as { arrivals: string | number; dead: string | number };
+  `)).rows[0] as { arrivals: string | number; dead: string | number; lwbs: string | number };
   // The emergency-class beds of the bed registry (the 60 of the planning layout), in service.
   const bays = (await db.execute(sql`
     select count(*) filter (where ${resources.status} <> 'retired') as total,
@@ -180,6 +183,7 @@ export async function readErBoard(db: Db, actor: Actor, opts: { wall?: boolean; 
       inDepartment: open.length, waitingTriage: waiting.length,
       longestTriageWaitMinutes: oldest === undefined ? null : Math.max(0, Math.floor((at.getTime() - new Date(oldest.arrivedAt).getTime()) / MINUTE)),
       expected: expected.length, arrivalsToday: Number(counts.arrivals), broughtDeadToday: Number(counts.dead),
+      boarding: open.filter((e) => e.state === "disposition_decided" && e.boardingSince !== null).length, lwbsToday: Number(counts.lwbs),
       bays: { free: Number(bays.free), total: Number(bays.total) },
     },
     expected, waiting, inTreatment,
