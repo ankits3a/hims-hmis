@@ -1,7 +1,7 @@
 import { setupTestDb, truncateAll } from "../../../test/helpers/db";
 import { activateOpdVisitDefinition, mkDoctor, mkPatient, mkUser, seedOpdBase, seedOpdMasters } from "../../../test/helpers/opd";
 import { withTx } from "../../kernel/db/client";
-import { captureDocument } from "../patients";
+import { captureDocument, listDocuments } from "../patients";
 import { completeConsultation, startConsultation } from "./consultation";
 import { openVisit } from "./encounters";
 import { callNext } from "./queue";
@@ -121,5 +121,15 @@ describe("#659 — a missing slip goes to MRD at day end", () => {
     await seeAndFinish(r, LATER(20));
     const farLater = new Date(MON.getTime() + 40 * 86_400_000);
     expect(await mrdSlips(db, clerk.actor, farLater)).toEqual([]);
+  });
+
+  it("RT1: the doctor's list of a patient's pages carries the retake ask, so the button says it was asked", async () => {
+    const asha = await mkPatient(db, clerk.actor);
+    const a = await arrive(asha.id);
+    await seeAndFinish(a, LATER(10));
+    const { documentId } = await file(asha.id, a.encounterId, LATER(12));
+    expect((await listDocuments(db, dra.actor, asha.id))[0]).toMatchObject({ id: documentId, retakeRequestedAt: null });
+    await requestSlipRetake(db, dra.actor, documentId, null, LATER(15));
+    expect((await listDocuments(db, dra.actor, asha.id))[0]!.retakeRequestedAt?.toISOString()).toBe(LATER(15).toISOString());
   });
 });
